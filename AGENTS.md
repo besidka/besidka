@@ -391,6 +391,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   2FA, no other users' emails over MCP, the Axiom `featureAccess` replay
   ledger, the side-panel width as a Preferences key, and the exact input list
   for the P0-9 legal records; later track pre-checks append a section here
+- `docs/legal/content-incidents.md` - Content incidents runbook (engineer-drafted,
+  2026-11-08, A-9): triage order for reports, the TCO one-hour removal order
+  (Szef ABW, takedown without a report, six-month `legalHoldUntil`, Annex II
+  confirmation, 1 March duties), the DSA Art. 18 threat-to-life path, takedown
+  and statement-of-reasons steps, the Cloudflare abuse-complaint response on
+  the shared account, the private record, and the email templates T1 to T4
+  (receipt, decision, statement of reasons, TCO owner notice)
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
   only, not legal text, superseded on 2026-10-26 by the published pages (its
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA

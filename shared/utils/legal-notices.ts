@@ -91,6 +91,41 @@ export const LEGAL_NOTICES = [
       + 'keep any feature I turned on for you by hand.',
     ],
   },
+  {
+    id: '2026-12-artifacts',
+    documents: ['privacy-policy', 'terms-of-use'],
+    publishedAt: '2026-11-15T07:00:00Z',
+    sendFrom: '2026-11-15T10:00:00Z',
+    effectiveAt: '2026-12-19',
+    summary: [
+      'Artifacts: the assistant, or an AI app you connect, can make pages, '
+      + 'interactive components, diagrams and documents that run in a sealed '
+      + 'frame next to the chat. I keep every version until you delete the '
+      + 'artifact or your account. Deleting a chat keeps its artifacts. Later '
+      + 'messages in the chat send its artifacts to the chat\'s AI provider. '
+      + 'They reach accounts step by step, first by hand to me and to testers.',
+      'You can publish an artifact by link. Anyone with the link can open '
+      + 'it without an account, search engines never index it, and the page '
+      + 'says it was made by AI and not reviewed by me. Links an AI app '
+      + 'creates expire within 30 days. At first only accounts I invite can '
+      + 'publish artifacts.',
+      'If its author allows it, a signed-in visitor can save progress in an '
+      + 'artifact and let it ask an AI model with their own API key after '
+      + 'confirming the request. The author never sees saved progress in '
+      + 'Besidka, but the artifact\'s own code does. I store neither the '
+      + 'request nor the answer. Both features start only after I ask for '
+      + 'your consent to a text that names them.',
+      'Anyone can report an artifact with a form on its page. The Terms '
+      + 'now forbid artifacts that imitate a sign-in or payment form, ask '
+      + 'visitors for passwords, payment details, who they are or how to '
+      + 'contact them, redirect them, try to spend their keys, are aimed at '
+      + 'children under 13 or serve as website hosting.',
+      'The Terms also say how I handle removal orders for terrorist content '
+      + '(within one hour, and the removed content kept for six months as the '
+      + 'law requires). Reports about an artifact are kept for 12 months after '
+      + 'they are closed, also after the artifact or the account is deleted.',
+    ],
+  },
 ] as const satisfies readonly LegalNotice[]
 
 export function parseNoticeInstant(value: string): number {

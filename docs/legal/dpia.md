@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.7, 2026-11-08 (feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.8, 2026-11-08 (artifacts: new section 3.13, data-flow steps 10 to 14, section 4 rows, risk rows 49 to 60, section 6 items 20 to 23; 1.7, 2026-11-08: feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -73,6 +73,18 @@ planned. It is a new purpose on a new legitimate interest, so the Privacy
 Policy change is material: notice `2026-11-experimental-features`, effective
 2026-12-19. No special-category data, no new processor, and no change to the
 consent gate or `CURRENT_CONSENT_VERSION`.
+
+**Added 2026-11-08 (artifacts).** Phase 1 adds artifacts: AI-written HTML,
+React, SVG, Mermaid and Markdown that run in a sandboxed frame on a separate
+origin, with versions, public links, per-viewer storage, AI calls on the
+viewer's own key, an in-app report form and takedowns (section 3.13, risk rows
+49 to 60, section 6 items 20 to 23). Only the runtime Worker is built; the rest
+is planned in A-1 to A-8. New purposes and new obligations in the Terms, so the
+Privacy Policy and Terms change is material: notice `2026-12-artifacts`,
+effective 2026-12-19. No new processor and no new third-country recipient
+(esm.sh dropped). `CURRENT_CONSENT_VERSION` unchanged; the consent text does
+not name viewer storage or the bridge, so both stay off beyond the controller
+until the owner decides the wording (section 6, item 20).
 
 ## 1. Why a DPIA is required
 
@@ -527,6 +539,11 @@ removed.
 | 7 | AI client (pulls) | Worker (MCP server) | Token, then the chats, projects, knowledge, files, memory and settings the user approved; for write scopes, new values (names, instructions, notes, text files, memory entries, settings) and which items to move or delete | OAuth 2.1 with PKCE, scopes ticked per client, 15-minute tokens, per-user ownership in SQL, consent gate, never-store and sensitive-topic gate on memory writes. The client is an independent controller the user chose |
 | 8 | Worker | Workers Analytics Engine | `feature_exposure`, flag, variant, reason for hash-based decisions | No bucket, path or user id (C1). Pseudonymous while a cohort is tiny |
 | 9 | Admin browser, or the controller's AI client (planned) | Worker (`/api/v1/admin/`, MCP `admin:features`) | Searches by email prefix or name; grants, roles and rules; for MCP, user ids and grants | Admin only (env secret or `user_roles`, verified email, TOTP in production), 404 for everyone else, same-origin writes, audit row and Axiom ledger line per write, reads logged without search text; MCP returns ids only (C9) |
+| 10 | Worker | R2 `artifacts/`, D1 artifact tables | Artifact versions, links, viewer storage, reports (planned, section 3.13) | Ownership in SQL, R2 key derived on the server, takedown and legal hold columns |
+| 11 | Viewer's browser | Runtime origin (Cloudflare, built) | Request for the runtime page and vendored libraries; IP address and User-Agent as in any request | Sandboxed frame, header CSP, no third-party host; self-navigation tripwire (wired by A-4) |
+| 12 | Besidka page | Runtime frame (`postMessage` channel) | Artifact source, theme, viewer storage values, bridge answers | Opaque origin; the frame's code is the author's, so anything given to it can leave by self-navigation (risk rows 51, 52) |
+| 13 | Worker | Viewer's direct provider (planned, A-6) | The artifact's prompt, after the viewer confirms it | Viewer's own key, consent gate and transfer consent, caps, nothing stored |
+| 14 | Visitor or reporter | Worker, privacy mailbox (planned, A-7) | Report form: name, email, reason, details; Turnstile for signed-out reporters; receipts and statements of reasons by email | Rate limit, no IP stored, a person decides |
 
 ### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- built
 
@@ -782,6 +799,170 @@ removed.
   object.
 - **Basis.** Section 4 and the assessment in section 4.1.
 
+### 3.13 Artifacts -- runtime built, everything else planned
+
+Phase 1 of the agentic capabilities programme (parent BES-225, tickets A-1
+to A-8, A-11, A-14). Compliance pre-check: `docs/legal/prechecks/artifacts.md`
+(A-12); its track rows are cited here as P1 to P15. Only the runtime Worker
+(A-2, #751) is built and deployed; the rest is planned. Read every measure
+below as `planned` unless it says `built`.
+
+- **(a) Owner content.** The chat model writes an artifact with the
+  `create_artifact` and `update_artifact` tools on the user's own send and key
+  (A-3; at most 3 writes a turn), or a connected client writes it with
+  `artifacts:write` (A-8). Kinds: HTML, React, SVG, Mermaid, Markdown.
+  Content is stored in R2 under `artifacts/<userId>/<artifactId>/v<n>`, at most
+  512 KB a version, 50 versions an artifact, 25 MB a user; metadata in D1
+  (`artifacts`, `artifact_versions`: title, kind, origin chat and message,
+  `createdVia`, sizes, SHA-256, optional `modelId`), with no foreign key to
+  `users` or `chats` (A-1). Messages store only a reference part
+  (`data-artifact`: id, version, kind, title), never the content. Up to three
+  referenced artifacts, 30,000 characters each, go to the chat's provider as
+  user data in the system prompt (A-3). Retention: until the user deletes the
+  artifact or the account; **chat deletion keeps the artifact** (origin chat
+  id nulled, shown as "Chat deleted" on the Artifacts page, A-11); versions
+  are never pruned. Account purge deletes R2 objects first, then rows, and
+  skips rows and objects under a legal hold (P3). Basis: contract; special
+  categories under the chat consent, read as covering artifacts built in a
+  chat (section 6, item 20).
+- **(b) Runtime isolation.** Built (A-2): a separate Worker origin, assets
+  only, no bindings, configured in one place
+  (`NUXT_PUBLIC_ARTIFACTS_ORIGIN`; production
+  `besidka-artifacts.chernenko.workers.dev`, same Cloudflare account, owner
+  decision 2026-11-08). The frame is `sandbox="allow-scripts"` (opaque
+  origin, no cookies or storage), and the document carries a header CSP:
+  `default-src 'none'`, scripts and styles only from itself, `connect-src
+  'none'`, `form-action 'none'`, `frame-src 'none'`, `base-uri 'none'`,
+  `webrtc 'block'` (not enforced by Chromium or WebKit today; WebRTC is also
+  removed from the frame), `frame-ancestors` limited to Besidka hosts; plus
+  `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`. Libraries are
+  vendored on that origin (React, ReactDOM, Recharts, lucide-react, Sucrase,
+  Mermaid with dagre, marked, DOMPurify); an unknown import fails in the
+  frame and makes no request. **esm.sh is not used** (P5): no third party
+  receives the viewer's IP address. A licence scan fails the build on a
+  licence outside the allowlist, and `THIRD_PARTY_NOTICES.txt` is served from
+  the runtime origin (P6). **Limit (P10):** a sandboxed frame can still
+  try to navigate itself (`location.href`) to any address, with data in the
+  URL; the page that replaces the runtime is not under its CSP. Two layers
+  (`docs/artifacts-runtime.md`): **(1) primary:** every page that embeds
+  artifacts sends `Content-Security-Policy: frame-src <artifactsOrigin>`,
+  which the A-2 e2e spec shows blocks the self-navigation before its request
+  leaves, in Chromium and WebKit, including targets that never fire `load`
+  (a 204, a download); A-4 adds it to the chat and shared-chat pages, and
+  **A-7 must add it to `/a/**` and the admin report drawer** (its
+  `routeRules` set only `frame-ancestors 'none'` today); **(2) fallback:** the
+  host treats any second iframe `load` as navigation and destroys the frame
+  (built in `packages/artifacts-protocol`), and logs
+  `attributes.artifacts.runtimeNavigation` with ids only. Without the
+  `frame-src` header the URL and whatever the new page sends while it loads
+  leave before the tripwire fires, and a 204 target is never detected.
+  Firefox was not tested. No document may claim that the frame "cannot send
+  data out" or that credential collection is impossible.
+  A-14 (planned) adds a clipboard write from the frame, text only and only
+  after a recent user gesture in the parent, and a full-screen request; no
+  new network access.
+- **(c) Viewer storage (A-5).** Per artifact and signed-in viewer
+  (`artifact_storage`): opaque JSON written by the artifact's code, at most
+  32 KB a value, 100 KB and 64 keys; 120 writes a minute. Only on the owner's
+  own artifacts and on links with `storageAllowed`; signed-out viewers get page
+  memory only. Every storage route requires `getLegalConsentStatus ===
+  'current'` (P8). Never shown to the owner, the controller's UI, any model or
+  MCP; logs hold ids and byte counts. **Not end-to-end private:** the
+  artifact's code receives the values in the viewer's browser and can send
+  them out as in (b), so no text may say the author "cannot" see them. Values
+  can be special-category data (a symptom tracker), so they need the Art.
+  9(2)(a) consent, which the current text does not name (section 6, item 20).
+  Retention: reset, artifact deletion, account deletion; for non-owner
+  viewers also 30 days after the last active link ends and at once on
+  takedown (default; owner item 4 of the pre-check may change it).
+- **(d) Public links (A-7, A-8).** `besidka.com/a/<token>`; the token is 32
+  random bytes, stored as a SHA-256 hash for lookup and encrypted
+  (`useEncryptText`) so the owner can copy the link again. The pre-check bans
+  the raw token from logs on `/a/**`; A-7 must also log the
+  `/api/v1/artifact-shares/[token]/**` routes by route pattern (or move the
+  token out of the path), because request logs carry the path.
+  At most 10 active links an artifact; expiry from 1 hour to never; latest or
+  pinned version; `storageAllowed` and `bridgeAllowed` start off.
+  `X-Robots-Tag: noindex, nofollow`, robots meta, not in the sitemap and not
+  in `robots.disallow` (so the `noindex` is read); `Cache-Control: private,
+  no-store`; `Referrer-Policy: no-referrer`; no Web Analytics beacon; logs
+  carry the share id. Banner "AI-generated by a Besidka user, not reviewed by
+  Besidka.", a line warning against passwords and payment details, and a
+  Report button, all outside the frame. A deterministic PII check
+  (`detectSharePii`) warns before publishing. Revoke is soft (`revokedAt`),
+  so a taken-down link stays recorded. **Grant-only:** `artifacts.share`
+  stays a beta granted by hand until the owner decides the Cloudflare
+  separation (P11; risk row 54). MCP links: separate unticked scope
+  `artifacts:share` ("Publish artifacts as public links (up to 30 days)"),
+  expiry 1 to 30 days required, storage and bridge forced off, the client id
+  stored and shown to the owner as "created by connected app <name>", a daily
+  cap (suggested 10, not fixed yet), PII warnings returned to the client.
+  Artifacts inside a shared chat are readable by the chat's audience through
+  a separate read-only route that honours takedown (A-4).
+- **(e) Reports and takedowns (A-7, A-1).** Report form with name and email
+  required except for `csam`; reasons `csam`, `terrorism`, `threat-to-life`,
+  `phishing`, `copyright` (with the six notice elements), `privacy`,
+  `illegal`, `harmful`, `other`; details 20 to 2,000 characters; good-faith
+  box; Turnstile for signed-out reporters only; 5 reports an hour per IP or
+  user (hashed, expiring keys); no IP stored with a report. `threat-to-life`
+  and `terrorism` set a priority and a subject prefix on the mailbox email.
+  Emails: receipt to the reporter (DSA Art. 16(4)), decision with redress
+  (Art. 16(5)), statement of reasons to the owner (Art. 17), sent no later
+  than the takedown; templates in
+  `docs/legal/content-incidents.md`. Admin actions: take down or reject a
+  report with a 20 to 4,000 character statement; **take down by URL, token,
+  artifact id or user without a report** (for a one-hour TCO order), at phone
+  width, effective on the next request (no SWR cache), with an audit row.
+  Takedown sets `takedownAt` on the artifact so `/a/`, the shared-chat route
+  and the owner view all stop (410); it never deletes. `legalHoldUntil`
+  preserves content and report rows for six months under a TCO order (Art.
+  6), or at an authority's explicit request; no voluntary holds (the
+  runbook keeps CSAM only as disabled content, never copied). Report rows
+  outlive the artifact: deleted 12 months after closing, 24
+  for a copyright removal. Emergency fallback: the global `artifacts` rule
+  off. Runbook: `docs/legal/content-incidents.md`.
+- **(f) AI bridge (A-6).** `POST /api/v1/artifacts/[id]/complete` on the
+  signed-in viewer's own direct provider key (gateways refused), only on the
+  owner's own artifacts and links with `bridgeAllowed`, never over MCP. The
+  server runs `assertLegalConsent` and the model and provider transfer-consent
+  checks before any provider call. The modal shows the artifact title, "the
+  author of this artifact wrote these prompts, not you and not Besidka", the
+  provider and model, the full prompt (scrollable, up to 8,000 characters),
+  the maximum cost, the remaining calls and that the viewer's provider terms
+  apply; no "Don't ask again" through a share link (session-only for the
+  owner's own artifacts). Caps: prompt 8,000 characters, system 2,000, output
+  2,000 tokens; 30 calls an hour per viewer and artifact, 200 a day per
+  viewer; 30-second abort; no tools, memory, history or web search. Nothing
+  stored; logs `attributes.artifactBridge` with ids, model, provider, tokens,
+  cost and duration. Besidka's server sends the request, so Besidka is the
+  exporter as in section 3.8a, and the per-provider Art. 49(1)(a) consent
+  applies. The key holder, not the author, carries the provider's usage-policy
+  exposure for a prompt a stranger wrote (P7).
+- **(g) MCP (A-8).** Scopes `artifacts:read` ("Read your artifacts and their
+  share links"), `artifacts:write` ("Create and edit your artifacts"),
+  `artifacts:share` (above); deletion through the existing `data:delete`
+  (`delete_artifacts`, at most 20 ids, `confirm: true`, also removes links and
+  viewer storage, never report rows or held content). Content at most 200,000
+  characters per create. No storage, bridge, report or takedown over MCP.
+  Flags checked: `artifacts.mcp`, `artifacts`, `artifacts.share`,
+  `artifacts.react`. The amendment to `docs/mcp-server.md` exclusion 2 is an
+  owner-decided exception for artifacts only.
+- **(h) AI Act marking.** Banner, in-app "AI-generated" badge,
+  `<meta name="ai-generated" content="true">` on `/a/` and the shared-chat
+  artifact view, a meta plus an HTML comment with the model id only in HTML
+  exports, a comment in `.md` and `.svg` exports; `.jsx` and `.mmd` exports
+  unmarked as source code. Details and open points:
+  `docs/legal/compliance-review-2026-10.md`, section 3.2.
+- **(i) Rollout.** Flags `artifacts`, `artifacts.react`, `artifacts.storage`,
+  `artifacts.llm-bridge`, `artifacts.share`, `artifacts.mcp`, all `internal`
+  (admin only) today. The public text is announced by notice
+  `2026-12-artifacts` (effective 2026-12-19, the day the rollout gate opens).
+  **Operating rule:** no grant of `artifacts.storage` or
+  `artifacts.llm-bridge` to anyone but the controller until the consent
+  wording decision (owner item 2) ships; `artifacts.share` stays grant-only
+  until the Cloudflare separation decision; no percentage rollout of any
+  `artifacts.*` flag before 2026-12-19.
+
 ## 4. Necessity and proportionality
 
 **Purposes and bases.**
@@ -808,6 +989,11 @@ removed.
 | Objection records (`experiments` key) | Legal obligation, Art. 6(1)(c) with Art. 21 (judgment call, like the consent receipts) |
 | Feature access audit log and the `featureAccess` log lines | Legitimate interests, Art. 6(1)(f) (section 4.1) |
 | The controller's AI client with `admin:features` (planned) | Legitimate interests, Art. 6(1)(f), as for the admin area |
+| Artifacts and their versions (section 3.13) | Contract, Art. 6(1)(b); special categories under the chat consent (section 6, item 20) |
+| Public artifact links | Consent, Art. 6(1)(a), per link |
+| Artifact viewer storage and AI calls on the viewer's key | Contract, Art. 6(1)(b), at the viewer's request; explicit consent, Art. 9(2)(a), **open** until the consent text names them (section 6, item 20); for the bridge, Art. 49(1)(a) per provider as for chats |
+| Artifact reports, takedowns, preservation and notices to authorities | Legal obligation, Art. 6(1)(c), where EU or Polish law requires action (TCO orders and Art. 6 preservation; DSA Art. 18 if the DSA applies); otherwise legitimate interests, Art. 6(1)(f) |
+| Frame navigation tripwire, report rate limits, Turnstile on the report form | Legitimate interests, Art. 6(1)(f): protecting visitors and the service |
 
 **Why this is necessary.** Besidka cannot store and forward a chat while leaving
 out the parts that happen to be health or belief. That would mean reading every
@@ -970,6 +1156,18 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 46 | Users are put into rollouts or experiments before the Privacy Policy notice takes effect, or before they can object in the app as the policy promises | Medium | Low | `NUXT_FEATURES_ROLLOUT_ENABLED` defaults to false and the writer refuses rollout and variant writes while it is false (C2); production may switch it on only from 2026-12-19 and only once the Labs objection switch (P0-7) is in production; until then grants go only to the controller and to testers told individually | built (code); operating rule for the controller | Low |
 | 47 | Audit rows or log lines keep a deleted user's identity | Low | Low | Account deletion nulls the actor and target ids and removes user ids and the reason from `before` and `after` (C5, flat-JSON rule); the admin views read emails live, so they disappear with the account; Axiom lines stay 30 days, disclosed | built on the Phase 0 stack | Low |
 | 48 | The maker of the controller's AI client receives other users' ids, a recipient and possibly a transfer that the records and the Privacy Policy do not cover | Low | Low | Ids and grants only, never emails, names or reasons (C9); before the first production use the owner names the client, records its terms and safeguard (Art. 30 record, section 6.4) and adds it to the Privacy Policy under its own material notice | planned (P0-8) | Low once recorded and announced |
+| 49 | A user publishes personal data, someone else's content or special-category data in a public artifact (section 3.13 (d)) | Medium | High | Off by default, consent per link, `noindex` always, expiry and revoke, deterministic PII warning before publishing (A-7) and for MCP shares (A-8), Terms promise on third-party data and rights (A-9), Report button and form with a `privacy` category, takedown at artifact level (A-7) | planned (A-7, A-8); Terms built in A-9 | Medium (copies cannot be recalled) |
+| 50 | A malicious artifact tries to spend the viewer's key, or to send more than the viewer meant | Medium | Medium | Bridge off on every link until the owner switches it on; signed-in viewers only; direct key only; a modal before each call through a share link with the full prompt, provider, model, maximum cost and remaining calls, and "the author wrote these prompts"; 30 calls an hour per artifact, 200 a day; output at most 2,000 tokens; no tools, memory or history; consent and transfer-consent checks before the call; Terms ban (A-6, A-9) | planned (A-6) | Low |
+| 51 | An artifact navigates its own frame to an attacker's address, carrying data in the URL, or replaces itself with a fake sign-in or payment page (P10) | Medium | High | Opaque sandbox, CSP and no network (built, A-2); `frame-src <artifactsOrigin>` on every embedding page, which blocks the navigation before its request leaves in Chromium and WebKit (A-4 for chat and shared pages; A-7 must add it to `/a/**` and the admin drawer); second-`load` tripwire that destroys the frame as the fallback (built in the protocol package) and an id-only log line; banner and "never enter passwords or payment details" line outside the frame (A-7); A-3 tool instructions forbid navigation and credential forms; Terms ban and a `phishing` report category (A-9, A-7); e2e test of self-navigation in Chromium and WebKit (A-2) | runtime built; wiring planned (A-4, A-7) | Low to medium (untested browsers such as Firefox, and any embedding page that lacks the `frame-src` header, fall back to the tripwire, which fires only after the first request has left and never for a 204 target) |
+| 52 | Stored answers reveal a viewer's knowledge, health or beliefs, to the artifact's author or by inference (section 3.13 (c)) | Medium | Medium | Storage only for signed-in viewers on links that allow it, consent gate on every storage route, no owner, admin, model or MCP access, ids-only logs, reset button, purge 30 days after the last link ends and at once on takedown (A-5); Privacy Policy states the author's code receives the values (A-9) | planned (A-5) | Medium (the author's code can still send values out, risk 51) |
+| 53 | Children use quizzes and public links, or an artifact is aimed at children | Medium | Medium | 18+ service; storage and the bridge need sign-in and a current consent record, which includes the age confirmation (A-5, A-6); Terms ban artifacts aimed at children under 13 and collecting visitors' personal data (A-9); signed-out visitors get page memory only and no cookie beyond the necessary ones | planned (A-5, A-6); Terms built in A-9 | Medium (whether user-published child-aimed artifacts make Besidka "directed to children" under COPPA is **[U]**) |
+| 54 | Cloudflare suspends the account that also runs besidka.com after abuse reports against artifact links (P11) | Low to medium | High | `artifacts.share` grant-only (invited beta); kill switch (global `artifacts` rule off, UI only); no-report admin takedown; Cloudflare abuse-response steps in `docs/legal/content-incidents.md`; runtime origin configurable in one place. Owner decision 2026-11-08: same Cloudflare account for now (pre-check option C) | planned (A-7, A-10) | Medium to high, accepted for the invited beta; option A (separate registrable domain and account) before wider public sharing |
+| 55 | A takedown misses a path (shared chat, owner view, export), or a one-hour TCO order is missed | Low | High | Artifact-level `takedownAt` honoured by `/a/`, the shared-chat route and owner reads (A-1, A-4, A-7); no-report takedown by URL, token, artifact id or user at phone width, effective on the next request (A-7); phone alert on the privacy mailbox (owner item 3); runbook (A-9) | planned (A-1, A-4, A-7); owner item 3 open | Low once built and the alert is set |
+| 56 | A leaked `NUXT_ENCRYPTION_KEY` plus a D1 read exposes every live artifact link (`token_encrypted`) | Low | Medium | Breach runbook: re-encrypt `artifact_shares.token_encrypted` on key rotation and bulk-revoke all artifact links as containment (A-9, section 2.5 and 2.6); lookup uses the hash only | runbook built (A-9); re-encryption job planned | Low |
+| 57 | A connected client, possibly steered by text it read, publishes content it read through `artifacts:share` | Medium | Medium | Separate unticked scope; links expire within 30 days; storage and bridge forced off; PII warnings returned; the owner's list marks the link as created by that app; daily cap; revoke in the app (A-8) | planned (A-8) | Medium (copies cannot be recalled) |
+| 58 | Report records are deleted with the artifact or account, defeating the repeat-infringement rule, the retention promise and a TCO preservation duty | Medium | Medium | `deleteArtifacts` and the account purge never delete `artifact_reports`; a sweep deletes them 12 months after closing (24 for copyright); `legalHoldUntil` keeps held content and rows six months (A-1) | planned (A-1) | Low |
+| 59 | Viewer storage or the bridge processes special-category data under a consent text that does not name them | High | Medium | Operating rule: neither flag is granted beyond the controller until owner item 2 ships (a wider text with a `CURRENT_CONSENT_VERSION` bump, or a separate first-use consent); the Privacy Policy says the current text does not name them and that they are not offered until it does; both routes still require a current consent record | operating rule (A-9); consent change open (owner item 2) | Low while the rule holds |
+| 60 | A D1 restore brings back revoked or taken-down artifact links, closed reports or deleted artifacts | Low | High | Takedowns and revocations logged with ids; replay steps in `docs/d1-restore-reconciliation.md` ("Artifacts"); R2 objects of deleted artifacts are gone, so reads return 410 | planned (A-1, A-7 log lines); runbook built (A-9) | Low |
 
 ## 6. Residual risks
 
@@ -1100,6 +1298,34 @@ the Privacy Policy or should be.
     deleting it; the change is already in the audit log for 12 months.
     Decision: accept for v1; a sweep that deletes expired grants is a
     follow-up candidate.
+20. **The consent text does not name artifacts.** The Art. 9(2)(a) consent
+    `2026-11-a` names "chats, projects and files". Artifacts the model builds
+    in a chat are read as covered, because they are made from that chat; that
+    is a judgment call. Viewer storage and the AI bridge are not covered by any
+    reading: a stranger's artifact collects the answers, and a stranger wrote
+    the prompt. Options (pre-check owner item 2): (A) widen the text and bump
+    `CURRENT_CONSENT_VERSION`, which re-prompts every user once; (B) rely on
+    the current text (rejected here: specific and informed consent is the
+    point); (C) a separate first-use consent for storage and the bridge.
+    Recommendation: A, timed with the rollout beyond `internal`. Until it is
+    decided, the operating rule in section 3.13 (i) applies (risk row 59).
+21. **A frame may still send data out (risk 51).** The `frame-src` header
+    blocks self-navigation in the engines tested (Chromium, WebKit); in other
+    browsers, or on a page that misses the header, the tripwire limits a
+    malicious artifact to one request, not zero. Decision: accept, disclose
+    plainly (Privacy Policy "Where artifacts run", the banner line), and
+    never claim that the frame cannot send data out.
+22. **Same Cloudflare account for public artifacts (risk 54).** An abuse
+    report against an artifact link can reach the account that runs the whole
+    service. Decision (owner, 2026-11-08): accept for the invited beta with
+    grant-only sharing and the kill switch; separate before wider sharing.
+23. **The DSA and TCO may apply after all.** The argument that Besidka is not
+    "normally provided for remuneration" (`compliance-review-2026-10.md`,
+    section 3.1) is untested, and public artifact links make Besidka look more
+    like a hosting service that disseminates to the public. The notice process,
+    statements of reasons, Art. 18 path, one-hour removal and six-month
+    preservation are therefore built as if both applied. Decision: accept the
+    argument, follow the rules.
 
 **Overall.** With the consent gate, the transfer notice and consent, and the
 removal of the ungated background refresh in place (all built in this release),
@@ -1124,6 +1350,15 @@ conclusion stays medium; nothing here raises it. Row 43 is medium until the
 opt-in ledger ships, because a restore could revive a withdrawn opt-in; do not
 release a spending feature to users before P0-7 is in production.
 
+**Artifacts (2026-11-08).** Rows 49 to 60, all planned except the runtime
+isolation. With the measures in section 3.13 built, the overall conclusion
+stays medium. Three rows carry it: row 51 (self-navigation, low to medium,
+accepted and disclosed; medium if `/a/` ships without `frame-src`), row 54 (one Cloudflare account, medium to high, accepted only
+for the invited beta) and row 59 (consent text, low only while the operating
+rule holds). If storage or the bridge reaches users before the consent text
+names them, treat row 59 as high. If `artifacts.share` leaves the grant-only
+beta on the same account, treat row 54 as high and review this DPIA first.
+
 ## 7. Consultation
 
 - **Data subjects.** Not consulted. The service has no panel of users. Feedback
@@ -1139,7 +1374,11 @@ release a spending feature to users before P0-7 is in production.
   the Art. 9(2)(a) consent when the existing gate wording names only the
   providers whose keys the user adds. For feature access (section 3.12): is
   Art. 6(1)(f) the right basis for staged rollout, and is an objection
-  record rightly kept under Art. 6(1)(c)?
+  record rightly kept under Art. 6(1)(c)? For artifacts (section 3.13): is a
+  free, non-gainful service a `usługodawca` and so within the Polish DSA and
+  TCO penalty rules; who receives a DSA Art. 18 notice in Poland; and does a
+  user-published, child-aimed artifact make Besidka a service "directed to
+  children"?
 - **DPO.** None. Not required for one person with no systematic large-scale
   monitoring.
 - **Processors.** Cloudflare and Axiom DPAs. Keep dated copies in a private
@@ -1152,7 +1391,7 @@ release a spending feature to users before P0-7 is in production.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 19] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 23] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**

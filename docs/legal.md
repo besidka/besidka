@@ -518,6 +518,21 @@ retention (until the account is deleted).
   history. The dismissal race above stays harmless because the two ids are
   dismissed through separate banners, never together. A component test pins
   the newest-wins behaviour with the real registry.
+- **Three active notices (decided 2026-11-08).** `2026-12-artifacts`
+  (Privacy Policy and Terms) is published at 2026-11-15T07:00Z, one hour after
+  `2026-11-experimental-features`, so that both take effect on 2026-12-19, the
+  day the feature rollout gate opens, and one date covers the experimental
+  features and the artifacts rollout. The cost: the experimental-features
+  banner is replaced by the artifacts banner after one hour, not weeks. Accepted
+  for the same reasons as above: both emails go out (oldest notice first), both
+  entries are in the change history the banner links to, and the artifacts
+  banner covers the Privacy Policy too. The second cost is the email volume:
+  two notices share the 300-a-day cap from 2026-11-15, so check the verified
+  account count first. If it is over about 500, the artifacts emails can land
+  less than 30 days before 2026-12-19 (`lateDeliveries`). `sendFrom` cannot
+  move earlier (the registry is ordered by `publishedAt`), so move
+  `effectiveAt` later instead and hold any `artifacts.*` rollout by hand until
+  then.
 
 Nothing is written to browser storage for it. The older key
 `legal-notice:dismissed:<user id>:<notice id>` is deleted on load by the
