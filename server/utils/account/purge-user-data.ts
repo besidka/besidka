@@ -8,6 +8,7 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildSearchOwnerTag } from '~~/server/utils/search/query'
 import { purgeProjectKnowledge } from '~~/server/utils/knowledge/purge'
 import { buildOAuthGrantDeletes } from '~~/server/utils/account/revoke-user-oauth-grants'
+import { purgeUserFeatureAccess } from '~~/server/utils/account/purge-feature-access'
 
 const r2BatchDeleteLimit = 1000
 
@@ -36,6 +37,10 @@ export interface PurgeUserDataResult {
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
+  featureGrantsDeleted: number
+  featureOptInsDeleted: number
+  userRolesDeleted: number
+  featureAuditRowsAnonymised: number
   sessionKeysDeleted: number
 }
 
@@ -55,11 +60,16 @@ export interface PurgeUserDataResult {
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
  *     authenticated until its TTL expires,
  *   - rows carrying a `userId` with no foreign key to `users`
- *     (`image_generation_locks`, and `verifications` whose `value` is the id),
+ *     (`image_generation_locks`, `verifications` whose `value` is the id,
+ *     and the feature access tables `feature_grants`, `feature_opt_ins`,
+ *     `user_roles`; `feature_audit_log` rows are anonymised instead),
  *   - `message_search` FTS5 rows: a standalone virtual table with no FK to
  *     `messages`, scoped only by an `owner` tag column, so a deleted user's
  *     indexed message text would otherwise sit until the hourly GC sweep
  *     notices the underlying message row is gone.
+ *
+ * The feature access purge runs last, right before the `users` row goes:
+ * if an earlier step aborts, the user keeps their opt-outs and objections.
  *
  * MUST run before the `users` row is deleted: once the cascade removes the
  * `files` rows, the R2 storage keys are gone and the objects are orphaned
@@ -229,6 +239,26 @@ export async function purgeUserData(
     }
   }
 
+  let featureAccess: Awaited<ReturnType<typeof purgeUserFeatureAccess>>
+
+  try {
+    featureAccess = await purgeUserFeatureAccess(userId, db)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'feature-access-purge',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   const result: PurgeUserDataResult = {
     memoryEntriesDeleted: memoryEntries.length,
     memoryBackfillJobsDeleted: memoryBackfillJobs.length,
@@ -239,6 +269,7 @@ export async function purgeUserData(
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
+    ...featureAccess,
     sessionKeysDeleted: sessionStorageKeys.length,
   }
 
@@ -246,6 +277,10 @@ export async function purgeUserData(
     memoryEntriesDeleted,
     memoryBackfillJobsDeleted,
     knowledgeObjectsDeleted,
+    featureGrantsDeleted,
+    featureOptInsDeleted,
+    userRolesDeleted,
+    featureAuditRowsAnonymised,
     ...existingResult
   } = result
 
@@ -260,6 +295,10 @@ export async function purgeUserData(
         memoryEntriesDeleted,
         memoryBackfillJobsDeleted,
         knowledgeObjectsDeleted,
+        featureGrantsDeleted,
+        featureOptInsDeleted,
+        userRolesDeleted,
+        featureAuditRowsAnonymised,
       },
     },
   })

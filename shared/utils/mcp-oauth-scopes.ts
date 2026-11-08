@@ -20,9 +20,12 @@ export const MCP_WRITE_SCOPES = [
   'files:write',
   'settings:write',
   'data:delete',
+  'admin:features',
 ] as const
 
 export const MCP_DELETE_SCOPES = ['data:delete'] as const
+
+export const MCP_ADMIN_SCOPES = ['admin:features'] as const
 
 export const MCP_RESOURCE_SCOPES = [
   ...MCP_READ_SCOPES,
@@ -44,6 +47,20 @@ export function isMcpWriteScope(scope: string): boolean {
 
 export function isMcpDeleteScope(scope: string): boolean {
   return (MCP_DELETE_SCOPES as readonly string[]).includes(scope)
+}
+
+export function isMcpAdminScope(scope: string): boolean {
+  return (MCP_ADMIN_SCOPES as readonly string[]).includes(scope)
+}
+
+/**
+ * Drops the admin-only scopes from a scope list. Non-admins never see them
+ * on the consent page, and the consent routes strip them on the server too.
+ */
+export function withoutMcpAdminScopes(scopes: readonly string[]): string[] {
+  return scopes.filter((scope) => {
+    return !isMcpAdminScope(scope)
+  })
 }
 
 export function isMcpIdentityScope(scope: string): boolean {

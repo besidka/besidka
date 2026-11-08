@@ -239,6 +239,8 @@ const oauthScopePhrases: Record<string, string> = {
   'files:write': 'change your files',
   'settings:write': 'change your settings',
   'data:delete': 'permanently delete your data',
+  'admin:features': 'grant or revoke experimental features for '
+    + 'individual users (admin)',
   'openid': 'know who you are',
   'profile': 'see your name',
   'email': 'see your email address',
