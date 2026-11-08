@@ -167,12 +167,14 @@ How the non-top skip works:
 - **Cloudflare previews.** Only the umbrella parent and the stack top get
   `pr-<n>`. Umbrella children and lower stack layers have no preview; take
   screenshots from a local dev server.
-- **Unverified: creation build.** A third-party source says `opened` fires
-  before a PR joins a stack, so `stack` is absent at that moment and the bottom
-  layer may get one full build when it is created. Verify with a throwaway stack
-  before relying on the zero-build claim. If true, the cost is one full build
-  and a `pr-<n>` preview for the bottom layer, because later events carry
-  `stack`.
+- **Creation build (confirmed 2026-11-08, stack #744).** `opened` fires before
+  a PR joins a stack, so `stack` is absent at that moment and creating a new
+  bottom layer triggers one full build and a `pr-<n>` preview deploy. That
+  deploy applied the layer's D1 migration to `besidka-preview`. Later events
+  carry `stack`, so the zero-build behaviour only starts after creation. Plan
+  for one full build and a preview for each new bottom layer, and take the
+  `besidka-preview` Time Travel bookmark before creating a bottom layer that
+  carries a migration.
 - **Unverified: path filter on lower layers.** It is not confirmed whether
   `paths-ignore` is evaluated against the direct base or the stack base for
   lower layers. It only affects whether a lower layer's (skipped) run fires.
