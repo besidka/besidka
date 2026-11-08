@@ -259,6 +259,17 @@ jobs:
       - name: Setup project
         uses: ./.github/actions/setup
 
+      - name: Point the preview at this PR's artifacts runtime
+        if: vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(workers/artifacts-runtime/|packages/artifacts-protocol/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$)'; then
+            echo "NUXT_PUBLIC_ARTIFACTS_ORIGIN=https://pr-${PR_NUMBER}-besidka-artifacts.chernenko.workers.dev" >> "$GITHUB_ENV"
+            echo "This preview embeds the artifacts runtime preview of PR #${PR_NUMBER}."
+          fi
+
       - name: Build application
         id: build-app
         env:
@@ -368,6 +379,72 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  artifacts-runtime:
+    name: Artifacts runtime
+    needs: gate
+    if: needs.gate.outputs.should-skip != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      CI: true
+      WRANGLER_SEND_METRICS: false
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Detect artifacts runtime changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(workers/|packages/|tests/e2e-artifacts/|playwright\.artifacts\.config\.ts$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "The artifacts runtime and its protocol did not change."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup project
+        if: steps.changes.outputs.changed == 'true'
+        uses: ./.github/actions/setup
+
+      - name: Build the runtime with production headers and scan licences
+        if: steps.changes.outputs.changed == 'true'
+        run: pnpm run artifacts:build
+
+      - name: Upload runtime build
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-artifacts-runtime
+          path: workers/artifacts-runtime/dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Install Playwright browsers
+        if: steps.changes.outputs.changed == 'true'
+        run: timeout 300 pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Run the runtime sandbox tests (Chromium and WebKit)
+        if: steps.changes.outputs.changed == 'true'
+        timeout-minutes: 10
+        run: pnpm run test:e2e:artifacts
+
+      - name: Upload Playwright report
+        if: failure() && steps.changes.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-artifacts
+          path: playwright-report-artifacts/
+          retention-days: 30
+          if-no-files-found: ignore
+
   summary:
     name: Summary
     needs:
@@ -377,6 +454,7 @@ jobs:
       - integration
       - build
       - e2e
+      - artifacts-runtime
     if: >-
       !cancelled()
       && needs.gate.outputs.should-skip != 'true'
@@ -385,6 +463,7 @@ jobs:
       && needs.integration.result == 'success'
       && needs.build.result == 'success'
       && needs.e2e.result == 'success'
+      && needs.artifacts-runtime.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

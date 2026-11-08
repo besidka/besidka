@@ -32,6 +32,7 @@ worker-configuration.d.ts
 # Tests
 coverage
 playwright-report
+playwright-report-artifacts
 test-results
 .playwright
 

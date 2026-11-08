@@ -137,6 +137,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/TextFileModal.client.spec.ts',
     'tests/e2e/chat/chat-input-markdown.spec.ts',
   ]
+  const artifactsRuntimeTests = [
+    'tests/unit/packages/artifacts-protocol/jsonrpc.spec.ts',
+    'tests/unit/packages/artifacts-protocol/connection.spec.ts',
+    'tests/unit/packages/artifacts-protocol/host.spec.ts',
+    'tests/unit/workers/artifacts-runtime/render.spec.ts',
+    'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
+    'tests/unit/workers/artifacts-runtime/build.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/profile-settings-legal-notices.spec.ts',
@@ -2918,6 +2926,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/plugins\/.*user-settings.*\.ts$/,
       tests: profileSettingsTests,
+    },
+    {
+      pattern:
+        /^(workers\/artifacts-runtime\/|packages\/artifacts-protocol\/|tests\/e2e-artifacts\/|playwright\.artifacts\.config\.ts$)/,
+      tests: artifactsRuntimeTests,
     },
     {
       pattern:

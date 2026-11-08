@@ -402,6 +402,8 @@ export default defineNuxtConfig({
       baseUrl: '',
       privacyEmail: '',
       authorGithubProfile: '',
+      artifactsOrigin: process.env.NUXT_PUBLIC_ARTIFACTS_ORIGIN
+        || 'https://besidka-artifacts.chernenko.workers.dev',
       defaultModel,
       providers,
       redirectUserTo: '/chats/new',

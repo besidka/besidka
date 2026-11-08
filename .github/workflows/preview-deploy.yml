@@ -268,6 +268,39 @@ jobs:
             --message "$PR_URL" \
             --json > "$RUNNER_TEMP/preview.json"
 
+      - name: Download artifacts runtime build
+        id: runtime-artifact
+        if: steps.pr-state.outputs.is-open == 'true' && vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          name: preview-artifacts-runtime
+          path: workers/artifacts-runtime/dist/
+          github-token: ${{ github.token }}
+
+      - name: Deploy PR preview of the artifacts runtime
+        if: steps.runtime-artifact.outcome == 'success' && vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_URL: https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}
+        run: |
+          if [ ! -f workers/artifacts-runtime/wrangler.jsonc ]; then
+            echo "::notice::The default branch has no workers/artifacts-runtime/wrangler.jsonc yet, so the runtime preview is skipped (bootstrap PR)."
+            exit 0
+          fi
+
+          cd workers/artifacts-runtime
+          rm -f dist/_headers dist/_redirects
+          node --input-type=module -e "import { createHeadersFile } from './scripts/headers.mjs'; process.stdout.write(createHeadersFile())" > dist/_headers
+          pnpm exec wrangler preview \
+            --name "pr-${PR_NUMBER}" \
+            --message "$PR_URL"
+          echo "Runtime preview: https://pr-${PR_NUMBER}-besidka-artifacts.chernenko.workers.dev/v1/index.html"
+
       - name: Delete preview if PR closed during deploy
         id: post-deploy-state
         if: steps.pr-state.outputs.is-open == 'true'

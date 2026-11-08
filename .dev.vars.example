@@ -9,6 +9,9 @@ NUXT_PUBLIC_PRIVACY_EMAIL=privacy@besidka.com
 # Author profile linked from the footer credit
 NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE=https://github.com/serhii-chernenko
 
+# Sandboxed artifacts runtime (pnpm run artifacts:dev) — see docs/artifacts-runtime.md
+NUXT_PUBLIC_ARTIFACTS_ORIGIN=http://localhost:8788
+
 # Drizzle
 NUXT_ENCRYPTION_HASHIDS=secret
 NUXT_ENCRYPTION_KEY=secret
