@@ -24,6 +24,7 @@ const {
   ARTIFACT_REACT_IMPORTS,
   ARTIFACT_WRITES_PER_TURN,
   applyArtifactEdits,
+  buildArtifactCodeBlocksDescription,
   buildArtifactInstructions,
   createArtifactTools,
 } = await import('~~/server/utils/ai/artifact-tools')
@@ -127,6 +128,20 @@ describe('artifact tools', () => {
       content: '<p>x</p>',
     }).success).toBe(true)
     expect(String(tools.create_artifact!.description)).not.toContain('react:')
+  })
+
+  it('describes the chat-style code and diagram elements briefly', () => {
+    const description = String(buildTools().tools.create_artifact!.description)
+
+    expect(description).toContain('<besidka-code lang="ts">')
+    expect(description).toContain('<besidka-mermaid>')
+    expect(description).toContain('data-besidka-raw')
+    expect(description).toContain('```mermaid')
+    expect(buildArtifactCodeBlocksDescription(ALL_KINDS).length)
+      .toBeLessThan(450)
+    expect(buildArtifactCodeBlocksDescription(['svg', 'mermaid'])).toBe('')
+    expect(String(buildTools({ allowedKinds: ['svg'] })
+      .tools.create_artifact!.description)).not.toContain('besidka-code')
   })
 
   it('validates the title length and a non-empty content', () => {

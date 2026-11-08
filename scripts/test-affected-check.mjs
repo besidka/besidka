@@ -144,6 +144,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/workers/artifacts-runtime/render.spec.ts',
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',
+    'tests/unit/workers/artifacts-runtime/kit.spec.ts',
+    'tests/e2e-artifacts/code-blocks.spec.ts',
+    'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
   ]
   const artifactsCoreTests = [
     'tests/unit/server/utils/artifacts/store.spec.ts',

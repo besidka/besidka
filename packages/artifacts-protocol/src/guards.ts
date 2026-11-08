@@ -1,9 +1,13 @@
 import {
   ARTIFACT_KINDS,
+  CLIPBOARD_FAILURE_REASONS,
+  CLIPBOARD_MIME_TYPES,
   DISPLAY_MODES,
   LOG_LEVELS,
   MAX_COMPLETE_OUTPUT_TOKENS,
+  MAX_CLIPBOARD_TEXT_LENGTH,
   MAX_COMPLETE_PROMPT_LENGTH,
+  MAX_DIAGRAM_SOURCE_LENGTH,
   MAX_FRAME_HEIGHT,
   MAX_JSON_DEPTH,
   MAX_JSON_NODES,
@@ -11,6 +15,7 @@ import {
   MAX_LOG_MESSAGE_LENGTH,
   MAX_STORAGE_KEY_LENGTH,
   MAX_STORAGE_VALUE_BYTES,
+  REQUESTABLE_DISPLAY_MODES,
   STORAGE_MODES,
   THEMES,
 } from './constants.ts'
@@ -18,6 +23,8 @@ import { isRecord } from './jsonrpc.ts'
 import type {
   ArtifactKind,
   ArtifactPayload,
+  ClipboardWriteParams,
+  ClipboardWriteResult,
   CompleteParams,
   DisplayMode,
   HostContext,
@@ -26,7 +33,10 @@ import type {
   InitializeResult,
   JsonValue,
   LogMessageParams,
+  OpenDiagramViewerParams,
   OpenLinkParams,
+  RequestDisplayModeParams,
+  RequestDisplayModeResult,
   SizeChangedParams,
   StorageGetResult,
   StorageKeyParams,
@@ -375,4 +385,54 @@ export function isCompleteResult(value: unknown): value is CompleteResult {
 
 export function isEmptyParams(value: unknown): boolean {
   return value === undefined || isRecord(value)
+}
+
+export function isClipboardWriteParams(
+  value: unknown,
+): value is ClipboardWriteParams {
+  return isRecord(value)
+    && typeof value.text === 'string'
+    && value.text.length <= MAX_CLIPBOARD_TEXT_LENGTH
+    && typeof value.userActivation === 'boolean'
+    && (value.mimeType === undefined
+      || isOneOf(CLIPBOARD_MIME_TYPES, value.mimeType))
+}
+
+export function isClipboardWriteResult(
+  value: unknown,
+): value is ClipboardWriteResult {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  if (value.copied === true) {
+    return true
+  }
+
+  return value.copied === false
+    && isOneOf(CLIPBOARD_FAILURE_REASONS, value.reason)
+}
+
+export function isRequestDisplayModeParams(
+  value: unknown,
+): value is RequestDisplayModeParams {
+  return isRecord(value)
+    && isOneOf(REQUESTABLE_DISPLAY_MODES, value.mode)
+    && typeof value.userActivation === 'boolean'
+}
+
+export function isRequestDisplayModeResult(
+  value: unknown,
+): value is RequestDisplayModeResult {
+  return isRecord(value) && isDisplayMode(value.displayMode)
+}
+
+export function isOpenDiagramViewerParams(
+  value: unknown,
+): value is OpenDiagramViewerParams {
+  return isRecord(value)
+    && typeof value.source === 'string'
+    && value.source.trim().length > 0
+    && value.source.length <= MAX_DIAGRAM_SOURCE_LENGTH
+    && typeof value.userActivation === 'boolean'
 }

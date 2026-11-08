@@ -4,6 +4,7 @@ export interface RenderContext {
   root: HTMLElement
   theme: Theme
   isCurrent: () => boolean
+  partial?: boolean
 }
 
 export type Renderer = (

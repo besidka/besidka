@@ -1,4 +1,5 @@
 import type { ArtifactPayload, Theme } from '@besidka/artifacts-protocol'
+import { upgradeCodeBlocks } from './kit/upgrade.ts'
 import { installLinkInterception } from './links.ts'
 import { replaceDocument, replaceDocumentRoot } from './render/html.ts'
 import { selectRenderer } from './render/index.ts'
@@ -48,6 +49,7 @@ function markDocumentAsGenerated() {
 function htmlPrelude() {
   installDocumentHooks()
   markDocumentAsGenerated()
+  upgradeCodeBlocks(document)
 }
 
 function restoreShell() {
@@ -190,7 +192,12 @@ async function flushPartial() {
       return
     }
 
-    await renderer(payload, { root, theme: getTheme(), isCurrent })
+    await renderer(payload, {
+      root,
+      theme: getTheme(),
+      isCurrent,
+      partial: true,
+    })
   } catch (exception) {
     reportError(exception, { level: 'warning', showPanel: false })
   } finally {

@@ -182,6 +182,33 @@ export function buildArtifactKindsDescription(
   }).join('; ')
 }
 
+const CODE_BLOCK_KINDS: readonly ArtifactKind[] = ['html', 'react', 'markdown']
+
+/**
+ * One sentence on the runtime's chat-style code and diagram blocks, only
+ * when a kind that can hold them is allowed. HTML needs `<` and `&` escaped
+ * inside the elements, the most likely model mistake.
+ */
+export function buildArtifactCodeBlocksDescription(
+  allowedKinds: readonly ArtifactKind[],
+): string {
+  const hasCodeBlockKind = allowedKinds.some((kind) => {
+    return CODE_BLOCK_KINDS.includes(kind)
+  })
+
+  if (!hasCodeBlockKind) {
+    return ''
+  }
+
+  return 'Code and diagrams render like chat (highlighting, Copy, '
+    + 'Fullscreen): fenced code and ```mermaid in markdown and '
+    + '<pre><code class="language-ts"> in html upgrade automatically '
+    + '(data-besidka-raw opts out); otherwise use '
+    + '<besidka-code lang="ts">source</besidka-code> and '
+    + '<besidka-mermaid>source</besidka-mermaid>, in JSX with the source '
+    + 'as a string child, in html with < and & escaped.'
+}
+
 export const ARTIFACT_REACT_IMPORTS = [
   'react',
   'react/jsx-runtime',
@@ -290,7 +317,8 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
         'Create a new artifact shown to the user next to the chat.',
         `Kinds: ${buildArtifactKindsDescription(input.allowedKinds)}.`,
         `The content is at most ${ARTIFACT_VERSION_MAX_BYTES} bytes.`,
-      ].join(' '),
+        buildArtifactCodeBlocksDescription(input.allowedKinds),
+      ].filter(Boolean).join(' '),
       inputSchema: z.object({
         kind: kindSchema,
         title: titleSchema,

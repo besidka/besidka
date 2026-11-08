@@ -27,7 +27,8 @@ const HOST_HTML = [
   '<!doctype html>',
   '<html lang="en">',
   '<head><meta charset="utf-8"><title>Artifacts runtime harness</title></head>',
-  '<body><script type="module" src="/host.js"></script></body>',
+  `<body data-runtime-origin="${RUNTIME_ORIGIN}">`,
+  '<script type="module" src="/host.js"></script></body>',
   '</html>',
 ].join('\n')
 
