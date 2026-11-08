@@ -153,6 +153,21 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const artifactsSharedChatTests = [
+    'tests/integration/api/shared-artifacts.spec.ts',
+    'tests/unit/server/api/shared-context.spec.ts',
+    'tests/unit/components/Chat/Artifact/ReportButton.client.spec.ts',
+  ]
+  const artifactsUiTests = [
+    'tests/unit/components/Chat/Artifact/Card.spec.ts',
+    'tests/unit/components/Chat/Artifact/Detail.client.spec.ts',
+    'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/composables/artifacts.spec.ts',
+    'tests/unit/utils/artifact-export.spec.ts',
+    'tests/unit/utils/artifact-parts.spec.ts',
+    'tests/e2e/chat/artifacts-panel.spec.ts',
+  ]
   const artifactsChatTests = [
     'tests/unit/server/utils/ai/artifact-tools.spec.ts',
     'tests/unit/server/utils/artifacts/message-parts.spec.ts',
@@ -2967,6 +2982,25 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/artifacts\/|server\/api\/v1\/artifacts\/|server\/capabilities\/artifacts\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|server\/plugins\/artifact-report-sweep\.ts$|tests\/setup\/helpers\/artifacts-store\.ts$)/,
       tests: artifactsCoreTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/shared\/\[slug\]\/artifacts\/|server\/utils\/artifacts\/(store|shared-chat|report-rate-limit)\.ts$|server\/utils\/features\/global\.ts$|server\/utils\/chats\/share\.ts$|shared\/utils\/artifacts\.ts$|app\/components\/Chat\/Artifact\/ReportButton\.client\.vue$|tests\/setup\/helpers\/(artifacts-store|memory-extraction-db)\.ts$)/,
+      tests: artifactsSharedChatTests,
+    },
+    {
+      pattern:
+        /^(server\/plugins\/artifacts-frame-src\.ts|(app|shared)\/utils\/artifact-frame-policy\.ts|app\/components\/Chat\/Artifact\/Frame\.client\.vue)$/,
+      tests: [
+        'tests/integration/server/artifacts-frame-src-plugin.spec.ts',
+        'tests/unit/utils/artifact-frame-policy.spec.ts',
+        'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/PreStream\.vue|app\/composables\/artifacts\.ts|app\/utils\/artifact-(export|parts)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
+      tests: artifactsUiTests,
     },
     {
       pattern:

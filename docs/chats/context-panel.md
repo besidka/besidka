@@ -44,9 +44,11 @@ slot 5.
   before). Shared pages show Branch only when `allowBranch` is on.
 - **Sections**, each hidden when empty: Outputs, Inputs, Used. Rows show an
   icon (a thumbnail for images), the title and one line of detail.
-- **Clicks**: a generated image opens `ChatImagePreview`; a web source opens
-  the page in a new tab (`noopener noreferrer`); anything else scrolls the
-  chat to its message (`[data-message-id]`). On mobile the sheet closes first;
+- **Clicks**: a generated image opens `ChatImagePreview`; an artifact pushes
+  its detail view on top of Context (`useArtifactPanel().open(..., { push:
+  true })`, Back returns to Context; see `docs/artifacts/panel.md`); a web
+  source opens the page in a new tab (`noopener noreferrer`); anything else
+  scrolls the chat to its message (`[data-message-id]`). On mobile the sheet closes first;
   on desktop the panel stays open.
 - **States**: `UiSidePanelSkeleton` while loading; an `alert-error` with Retry
   on failure; one sentence when the chat has nothing yet.
@@ -99,20 +101,39 @@ Built from persisted message parts and chat columns. No new tables.
 `build-chat-context.ts` runs every section over every message in order and
 deduplicates items by `id` per group.
 
+`collect(message, accumulator, scope)` gets a third argument,
+`ChatContextScope`: data loaded once per request before the build, because
+sections are synchronous and must not query per message. Today it carries
+`artifacts`, a map from public artifact id to `{ title, kind, version,
+latestVersion }`, loaded by `loadChatContextArtifacts()`
+(`server/utils/chats/context/artifacts.ts`) and passed to
+`buildChatContext(..., { artifacts })`. The builder defaults it to an
+empty map, so callers without it (MCP `get_chat`) list no artifacts.
+
 ```ts
 const artifactsSection: ChatContextSection = {
   id: 'artifacts',
   group: 'outputs',
   visibility: 'public',
-  collect(message, accumulator) {
+  collect(message, accumulator, scope) {
     for (const part of message.parts) {
-      // read your persisted part, then:
+      if (!isDataArtifactPart(part)) {
+        continue
+      }
+
+      const artifact = scope.artifacts.get(part.data.artifactId)
+
+      if (!artifact) {
+        continue
+      }
+
       accumulator.add('outputs', {
-        id: `artifact:${artifactId}`,
+        id: `artifact:${part.data.artifactId}`,
         sectionId: 'artifacts',
         kind: 'artifact',
-        title,
+        title: artifact.title,
         messageId: message.id,
+        meta: { artifactId: part.data.artifactId, version: artifact.version },
       })
     }
   },
@@ -136,9 +157,24 @@ Rules for a new section:
    `useSidePanel().push(...)` so Back returns to Context.
 6. Add fixtures to `tests/unit/server/utils/chats/context/build-chat-context.spec.ts`.
 
-Planned: artifacts and documents (Outputs, A-4, D-4), research reports from
-the new research flow (R-6), Drive files (Inputs, G-4), connectors and skills
-(Used, C-5, S-3).
+Planned: documents (Outputs, D-4), research reports from the new research
+flow (R-6), Drive files (Inputs, G-4), connectors and skills (Used, C-5,
+S-3).
+
+### Artifacts (A-4)
+
+The `artifacts` section (Outputs, `public`) lists each artifact a
+`data-artifact` part references, once per artifact, with `meta.artifactId`,
+`artifactKind`, `version` (the newest version the chat references) and
+`latestVersion`. Left out: deleted artifacts, taken-down artifacts and
+artifacts not owned by the chat owner (a branched chat that references
+someone else's artifact).
+
+- Owner route: only when `artifacts` is active for the user; the title is the
+  artifact's current title and `latestVersion` its `currentVersion`.
+- Shared route: only when the global `artifacts` rule is on; the title is the
+  one on the shared part and `latestVersion` equals `version`, so a shared
+  chat never reveals a newer version or a later rename.
 
 Phase 0 sections: `generated-images` and `research-reports` (Outputs);
 `uploaded-files` and `project-knowledge` (Inputs; knowledge as item ids and
@@ -152,7 +188,8 @@ source (`messages.tools` alone only says the tool was enabled for that send).
 `get_chat` (`chats:read`) returns a `context` summary built by the same
 builder over the newest 1,000 messages: counts of outputs, inputs, web sources,
 images,
-research reports and memory actions, a `truncated` flag, and up to 20
+research reports and memory actions (artifacts are not counted yet: the MCP
+build passes no artifacts scope, a known open item), a `truncated` flag, and up to 20
 attached files as `{ id, name }`, where `id` is the `files.id` that
 `list_files`, `read_file` and `delete_files` take (resolved by storage key
 for the signed-in user; files they no longer own are left out). Added in MCP
@@ -175,4 +212,6 @@ URL scheme nor match an `Object.prototype` key.
   `tests/unit/components/Chat/ContextPanel.spec.ts`,
   `tests/unit/composables/chat-context.spec.ts`,
   `tests/unit/composables/chat-route.spec.ts`
+- Artifacts section and detail view: the specs above plus
+  `tests/e2e/chat/artifacts-panel.spec.ts` (see `docs/artifacts/panel.md`)
 - `tests/e2e/chat-context-panel.spec.ts`

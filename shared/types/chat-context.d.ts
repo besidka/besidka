@@ -1,3 +1,5 @@
+import type { ArtifactKind } from '#shared/utils/artifacts'
+
 export type ChatContextGroup = 'outputs' | 'inputs' | 'used'
 
 export type ChatContextItemKind
@@ -9,6 +11,7 @@ export type ChatContextItemKind
     | 'chat-search'
     | 'web-source'
     | 'web-search'
+    | 'artifact'
 
 export interface ChatContextItemMeta {
   url?: string
@@ -18,6 +21,10 @@ export interface ChatContextItemMeta {
   provider?: string
   count?: number
   domain?: string
+  artifactId?: string
+  artifactKind?: ArtifactKind
+  version?: number
+  latestVersion?: number
 }
 
 export interface ChatContextItem {

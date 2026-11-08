@@ -603,6 +603,48 @@ async function readObjectText(
   return await new Response(object.body).text()
 }
 
+async function readStoredVersion(
+  db: DbClient,
+  storage: BlobStore,
+  artifact: typeof schema.artifacts.$inferSelect,
+  artifactId: string,
+  version: number,
+): Promise<ArtifactVersionContent> {
+  const [versionRow] = await db
+    .select()
+    .from(schema.artifactVersions)
+    .where(and(
+      eq(schema.artifactVersions.artifactId, artifact.id),
+      eq(schema.artifactVersions.version, version),
+    ))
+    .limit(1)
+
+  if (!versionRow) {
+    throw createArtifactNotFoundError()
+  }
+
+  const content = await readObjectText(storage, versionRow.r2Key)
+
+  if (content === null) {
+    throw createError({
+      message: 'The content of this artifact is missing',
+      status: 410,
+      code: ARTIFACT_ERROR_CODES.contentMissing,
+      why: 'The stored object of this version no longer exists',
+    })
+  }
+
+  return {
+    artifactId,
+    kind: artifact.kind,
+    title: artifact.title,
+    version: versionRow.version,
+    content,
+    sizeBytes: versionRow.sizeBytes,
+    createdAt: versionRow.createdAt.toISOString(),
+  }
+}
+
 /**
  * Reads one version (the current one by default) of an owned artifact.
  * 404 for an unknown or foreign id or version, 451 for an artifact taken
@@ -626,40 +668,68 @@ export async function readArtifactVersion(
 
   assertNotTakenDown(artifact)
 
-  const version = input.version ?? artifact.currentVersion
-  const [versionRow] = await input.db
-    .select()
-    .from(schema.artifactVersions)
-    .where(and(
-      eq(schema.artifactVersions.artifactId, internalId),
-      eq(schema.artifactVersions.version, version),
-    ))
-    .limit(1)
+  return readStoredVersion(
+    input.db,
+    input.storage,
+    artifact,
+    input.artifactId,
+    input.version ?? artifact.currentVersion,
+  )
+}
 
-  if (!versionRow) {
+export interface ReadArtifactVersionForShareInput {
+  db: DbClient
+  storage: BlobStore
+  chatOwnerUserId: number
+  artifactId: string
+  version: number
+}
+
+/**
+ * Reads one version of an artifact for a viewer of a shared chat. The caller
+ * has already checked that an active share's messages reference exactly this
+ * artifact id and version; this helper skips the session owner check but
+ * still requires the artifact to belong to the shared chat's owner, so a
+ * branched chat cannot expose another user's artifact. 404 for an unknown,
+ * deleted or foreign artifact or version, 410 (`artifact_taken_down`) for an
+ * artifact taken down after a report, 410 (`artifact_content_missing`) when
+ * the R2 object is gone.
+ */
+export async function readArtifactVersionForShare(
+  input: ReadArtifactVersionForShareInput,
+): Promise<ArtifactVersionContent> {
+  const internalId = decodeArtifactId(input.artifactId)
+
+  if (internalId === null) {
     throw createArtifactNotFoundError()
   }
 
-  const content = await readObjectText(input.storage, versionRow.r2Key)
+  const artifact = await findOwnedArtifact(
+    input.db,
+    input.chatOwnerUserId,
+    internalId,
+  )
 
-  if (content === null) {
+  if (!artifact || input.version > artifact.currentVersion) {
+    throw createArtifactNotFoundError()
+  }
+
+  if (artifact.takedownAt) {
     throw createError({
-      message: 'The content of this artifact is missing',
+      message: 'This artifact is unavailable',
       status: 410,
-      code: ARTIFACT_ERROR_CODES.contentMissing,
-      why: 'The stored object of this version no longer exists',
+      code: ARTIFACT_ERROR_CODES.takenDown,
+      why: 'The artifact was disabled after a report',
     })
   }
 
-  return {
-    artifactId: input.artifactId,
-    kind: artifact.kind,
-    title: artifact.title,
-    version: versionRow.version,
-    content,
-    sizeBytes: versionRow.sizeBytes,
-    createdAt: versionRow.createdAt.toISOString(),
-  }
+  return readStoredVersion(
+    input.db,
+    input.storage,
+    artifact,
+    input.artifactId,
+    input.version,
+  )
 }
 
 function chunkIds<T>(ids: T[]): T[][] {

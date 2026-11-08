@@ -1,0 +1,381 @@
+import {
+  mockComponent,
+  mockNuxtImport,
+  mountSuspended,
+} from '@nuxt/test-utils/runtime'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import ChatArtifactDetail from '../../../../../app/components/Chat/Artifact/Detail.client.vue'
+import {
+  useArtifactPanel,
+  useSharedArtifactVersions,
+} from '../../../../../app/composables/artifacts'
+import type { ArtifactPanelTarget } from '../../../../../app/composables/artifacts'
+import { useSidePanel } from '../../../../../app/composables/side-panel'
+
+enableAutoUnmount(afterEach)
+
+const { fetchMock, downloadMock, layout, frameMounts } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+  downloadMock: vi.fn(),
+  layout: { value: 'docked' as 'docked' | 'overlay' | 'sheet' },
+  frameMounts: { count: 0 },
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
+
+mockNuxtImport('useSidePanelLayout', () => {
+  return () => layout
+})
+
+vi.mock('~/utils/artifact-export', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../../../../app/utils/artifact-export')
+  >()
+
+  return { ...actual, downloadArtifactFile: downloadMock }
+})
+
+mockComponent('ChatArtifactFrame', () => {
+  return {
+    props: ['title', 'result', 'partial', 'artifactId', 'version'],
+    emits: ['runtime-message', 'ready'],
+    setup() {
+      frameMounts.count += 1
+    },
+    template: `
+      <div
+        data-testid="frame-stub"
+        :data-content="result?.content ?? ''"
+        :data-partial="partial?.content ?? ''"
+        @click="$emit('runtime-message', {
+          level: 'error',
+          message: 'ReferenceError: x is not defined',
+          stack: 'at render',
+        })"
+      />
+    `,
+  }
+})
+
+mockComponent('ProsePreStream', () => {
+  return {
+    props: {
+      code: String,
+      language: String,
+      sourceOnly: Boolean,
+      alwaysExpanded: Boolean,
+    },
+    template: `
+      <pre
+        data-testid="code-stub"
+        :data-language="language"
+        :data-source-only="String(sourceOnly)"
+      >{{ code }}</pre>
+    `,
+  }
+})
+
+mockComponent('ChatArtifactReportButton', () => {
+  return {
+    props: ['shareSlug', 'artifactId', 'title'],
+    template: `
+      <button
+        data-testid="report-stub"
+        :data-share-slug="shareSlug"
+        :data-artifact-id="artifactId"
+      />
+    `,
+  }
+})
+
+const DETAIL = {
+  id: 'art_1',
+  title: 'Landing page',
+  kind: 'html',
+  currentVersion: 3,
+  versionCount: 3,
+  versions: [
+    { version: 3, sizeBytes: 10, createdBy: 'model', createdAt: '' },
+    { version: 2, sizeBytes: 10, createdBy: 'model', createdAt: '' },
+    { version: 1, sizeBytes: 10, createdBy: 'model', createdAt: '' },
+  ],
+}
+
+function versionContent(version: number, kind = 'html') {
+  return {
+    artifactId: 'art_1',
+    kind,
+    title: 'Landing page',
+    version,
+    content: `<p>v${version}</p>`,
+    sizeBytes: 10,
+    createdAt: '',
+  }
+}
+
+function respond() {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url === '/api/v1/artifacts/art_1') {
+      return DETAIL
+    }
+
+    const match = /\/versions\/(\d+)$/.exec(url)
+
+    if (match) {
+      return versionContent(Number(match[1]))
+    }
+
+    throw new Error(`Unexpected ${url}`)
+  })
+}
+
+function openTarget(overrides: Partial<ArtifactPanelTarget> = {}) {
+  useArtifactPanel().open({
+    artifactId: 'art_1',
+    version: 3,
+    kind: 'html',
+    title: 'Landing page',
+    source: 'owner',
+    ...overrides,
+  })
+}
+
+async function mountDetail() {
+  const wrapper = await mountSuspended(ChatArtifactDetail)
+
+  await flushPromises()
+
+  return wrapper
+}
+
+function resetState() {
+  useSidePanel().close()
+  useArtifactPanel().state.value = null
+  useArtifactPanel().stream.value = null
+  useSharedArtifactVersions().value = {}
+}
+
+beforeEach(() => {
+  resetState()
+  fetchMock.mockReset()
+  downloadMock.mockReset()
+  frameMounts.count = 0
+  layout.value = 'docked'
+  respond()
+})
+
+afterEach(resetState)
+
+describe('ChatArtifactDetail', () => {
+  it('loads the owner version and lists every version', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+    const options = wrapper.findAll(
+      '[data-testid="artifact-version-select"] option',
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/artifacts/art_1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/artifacts/art_1/versions/3',
+    )
+    expect(options.map(option => option.text())).toEqual(['v3', 'v2', 'v1'])
+    expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-content'))
+      .toBe('<p>v3</p>')
+    expect(wrapper.get('[data-testid="artifact-ai-note"]').text())
+      .toBe('AI-generated content')
+  })
+
+  it('switches versions without remounting the frame', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await wrapper.get('[data-testid="artifact-version-select"]')
+      .setValue('1')
+    await flushPromises()
+
+    expect(useArtifactPanel().state.value?.version).toBe(1)
+    expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-content'))
+      .toBe('<p>v1</p>')
+    expect(frameMounts.count).toBe(1)
+  })
+
+  it('shows the exact stored source in the Code tab', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await wrapper.get('[data-testid="artifact-tab-code"]').trigger('click')
+    await flushPromises()
+
+    const code = wrapper.get('[data-testid="code-stub"]')
+
+    expect(code.text()).toBe('<p>v3</p>')
+    expect(code.attributes('data-language')).toBe('html')
+    expect(code.attributes('data-source-only')).toBe('true')
+    expect(wrapper.get('[data-testid="frame-stub"]').element.parentElement
+      ?.style.display).toBe('none')
+  })
+
+  it('prefills the composer to fix a runtime error and never sends',
+    async () => {
+      const prefill = vi.fn()
+      const submit = vi.fn()
+
+      useNuxtApp().hook('chat-input:prefill', prefill)
+      useNuxtApp().hook('chat:submit', submit)
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await wrapper.get('[data-testid="frame-stub"]').trigger('click')
+
+      const alert = wrapper.get('[data-testid="artifact-runtime-error"]')
+
+      expect(alert.text()).toContain('ReferenceError: x is not defined')
+
+      await wrapper.get('[data-testid="artifact-ask-to-fix"]').trigger('click')
+      await flushPromises()
+
+      expect(prefill).toHaveBeenCalledWith(
+        'Fix the error in "Landing page": ReferenceError: x is not defined',
+      )
+      expect(submit).not.toHaveBeenCalled()
+      expect(useSidePanel().isOpen.value).toBe(true)
+    })
+
+  it('downloads the source with the kind extension', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await wrapper.get('[data-testid="artifact-action-download-source"]')
+      .trigger('click')
+
+    expect(downloadMock).toHaveBeenCalledWith(expect.objectContaining({
+      fileName: 'Landing-page.html',
+    }))
+    expect(wrapper.find('[data-testid="artifact-action-download-html"]')
+      .exists()).toBe(false)
+  })
+
+  it('is read-only on a shared chat with the banner and Report',
+    async () => {
+      useSharedArtifactVersions().value = { art_1: [1, 3] }
+      openTarget({ source: 'shared', shareSlug: 'share_1' })
+
+      const wrapper = await mountDetail()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/shared/share_1/artifacts/art_1/versions/3',
+      )
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/artifacts/art_1')
+      expect(wrapper.findAll('[data-testid="artifact-version-select"] option')
+        .map(option => option.text())).toEqual(['v3', 'v1'])
+      expect(wrapper.get('[data-testid="artifact-shared-banner"]').text())
+        .toContain('AI-generated by a Besidka user, not reviewed by Besidka.')
+      expect(wrapper.get('[data-testid="artifact-shared-banner"]').text())
+        .toContain('Never enter passwords or payment details here.')
+      expect(wrapper.get('[data-testid="report-stub"]').attributes())
+        .toMatchObject({
+          'data-share-slug': 'share_1',
+          'data-artifact-id': 'art_1',
+        })
+
+      await wrapper.get('[data-testid="frame-stub"]').trigger('click')
+
+      expect(wrapper.find('[data-testid="artifact-runtime-error"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="artifact-ask-to-fix"]').exists())
+        .toBe(false)
+    })
+
+  it('marks a missing artifact as unavailable', async () => {
+    fetchMock.mockRejectedValue({
+      statusCode: 404,
+      data: { message: 'Not found' },
+    })
+    openTarget({ source: 'shared', shareSlug: 'share_1' })
+
+    const wrapper = await mountDetail()
+
+    expect(wrapper.find('[data-testid="artifact-unavailable"]').exists())
+      .toBe(true)
+    expect(useArtifactPanel().isUnavailable('art_1')).toBe(true)
+  })
+
+  it('streams react source in the Code tab, then previews the stored '
+    + 'version', async () => {
+    useArtifactPanel().open({
+      artifactId: null,
+      version: null,
+      kind: 'react',
+      title: 'Counter',
+      source: 'owner',
+      toolCallId: 'call_1',
+    })
+    useArtifactPanel().setStream({
+      toolCallId: 'call_1',
+      kind: 'react',
+      title: 'Counter',
+      content: 'export default function App',
+      status: 'streaming',
+    })
+
+    const wrapper = await mountDetail()
+
+    expect(wrapper.get('[data-testid="artifact-tab-code"]').classes())
+      .toContain('tab-active')
+    expect(wrapper.get('[data-testid="code-stub"]').text())
+      .toBe('export default function App')
+    expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-partial'))
+      .toBe('')
+
+    useArtifactPanel().updateTarget('artifact:call:call_1', {
+      artifactId: 'art_1',
+      version: 1,
+    })
+    useArtifactPanel().setStream({
+      toolCallId: 'call_1',
+      kind: 'react',
+      title: 'Counter',
+      content: 'export default function App() {}',
+      status: 'done',
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="artifact-tab-preview"]').classes())
+      .toContain('tab-active')
+    expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-content'))
+      .toBe('<p>v1</p>')
+    expect(frameMounts.count).toBe(1)
+  })
+
+  it('previews html while it streams', async () => {
+    useArtifactPanel().open({
+      artifactId: null,
+      version: null,
+      kind: 'html',
+      title: 'Page',
+      source: 'owner',
+      toolCallId: 'call_2',
+    })
+    useArtifactPanel().setStream({
+      toolCallId: 'call_2',
+      kind: 'html',
+      title: 'Page',
+      content: '<h1>Hel',
+      status: 'streaming',
+    })
+
+    const wrapper = await mountDetail()
+
+    expect(wrapper.get('[data-testid="artifact-tab-preview"]').classes())
+      .toContain('tab-active')
+    expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-partial'))
+      .toBe('<h1>Hel')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

@@ -200,6 +200,8 @@ const props = defineProps<{
   language: string
   class?: string
   meta?: string
+  sourceOnly?: boolean
+  alwaysExpanded?: boolean
 }>()
 
 const DIAGRAM_ERROR_LIMIT: number = 200
@@ -219,7 +221,7 @@ const trimmedCode = computed<string>(() => {
 })
 
 const isMermaid = computed<boolean>(() => {
-  return props.language?.toLowerCase() === 'mermaid'
+  return !props.sourceOnly && props.language?.toLowerCase() === 'mermaid'
 })
 
 const isMermaidComplete = computed<boolean>(() => {
@@ -443,13 +445,15 @@ function copy() {
   }, 2000)
 }
 
-const expanded = shallowRef(codeLines.value < 3)
-const isExpandButtonVisible = shallowRef(codeLines.value >= 3)
+const expanded = shallowRef(props.alwaysExpanded || codeLines.value < 3)
+const isExpandButtonVisible = shallowRef(
+  !props.alwaysExpanded && codeLines.value >= 3,
+)
 const timer = ref<NodeJS.Timeout | null>(null)
 const savedCodeState = shallowRef<string>(props.code)
 
 function updateExpandedState() {
-  if (codeLines.value < 3) {
+  if (props.alwaysExpanded || codeLines.value < 3) {
     return
   }
 

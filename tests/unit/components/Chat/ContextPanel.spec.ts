@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatContextItem } from '../../../../shared/types/chat-context.d'
 import ChatContextPanel from '../../../../app/components/Chat/ContextPanel.vue'
 import { useSidePanel } from '../../../../app/composables/side-panel'
+import { useArtifactPanel } from '../../../../app/composables/artifacts'
 
 enableAutoUnmount(afterEach)
 
@@ -1061,6 +1062,82 @@ describe('Chat/ContextPanel', () => {
       expect(used).toContain('Used in 1 answer')
       expect(used).toContain('Saved')
       expect(used).toContain('Searched chats')
+    })
+  })
+
+  describe('artifacts', () => {
+    function artifactItem(meta: ChatContextItem['meta'] = {}) {
+      return item({
+        id: 'artifact:art_1',
+        sectionId: 'artifacts',
+        kind: 'artifact',
+        title: 'Landing page',
+        meta: {
+          artifactId: 'art_1',
+          artifactKind: 'html',
+          version: 2,
+          latestVersion: 3,
+          ...meta,
+        },
+      })
+    }
+
+    it('lists an artifact under Outputs with its kind and version',
+      async () => {
+        data.value = ownedData({
+          outputs: [artifactItem()],
+          counts: { outputs: 1, inputs: 0, used: 0 },
+        })
+
+        const wrapper = await mountPanel()
+        const row = wrapper.get(testId('chat-context-item-artifact'))
+
+        expect(row.text()).toContain('Landing page')
+        expect(row.text()).toContain('HTML · v2')
+      })
+
+    it('pushes the owner detail on top so Back returns to the context',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({ outputs: [artifactItem()] })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-artifact')).trigger('click')
+
+        expect(useSidePanel().stack.value.map(view => view.viewKey))
+          .toEqual(['chat-context', 'artifact:art_1'])
+        expect(useArtifactPanel().state.value).toMatchObject({
+          artifactId: 'art_1',
+          version: 3,
+          source: 'owner',
+        })
+
+        useSidePanel().back()
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
+
+    it('opens the referenced version on a shared chat', async () => {
+      routeSlug.value = 'share-slug'
+      data.value = sharedData({
+        outputs: [artifactItem({ latestVersion: 2 })],
+      })
+
+      const wrapper = await mountPanel()
+
+      await wrapper.get(testId('chat-context-item-artifact')).trigger('click')
+
+      expect(useArtifactPanel().state.value).toMatchObject({
+        artifactId: 'art_1',
+        version: 2,
+        source: 'shared',
+        shareSlug: 'share-slug',
+      })
     })
   })
 })

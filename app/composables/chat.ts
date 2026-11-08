@@ -451,7 +451,11 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
   }
 
   return message.parts?.some((part) => {
-    if (part.type === 'file' || isVisibleGenerateImageToolPart(part)) {
+    if (
+      part.type === 'file'
+      || part.type === ARTIFACT_DATA_PART_TYPE
+      || isVisibleGenerateImageToolPart(part)
+    ) {
       return true
     }
 

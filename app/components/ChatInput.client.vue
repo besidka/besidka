@@ -651,6 +651,12 @@ const { textarea, input } = useTextareaAutosize({
   input: message,
 })
 
+nuxtApp.hook('chat-input:prefill', async (text) => {
+  message.value = text
+  await nextTick()
+  textarea.value?.focus({ preventScroll: true })
+})
+
 const {
   onPaste: onMarkdownPaste,
   onKeydown: onMarkdownKeydown,

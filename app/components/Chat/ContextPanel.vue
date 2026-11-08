@@ -259,6 +259,7 @@ import type {
   ChatContextItem,
 } from '#shared/types/chat-context.d'
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
+import { isArtifactKind } from '#shared/utils/artifacts'
 import { formatMessageCost } from '#shared/utils/message-format'
 import {
   CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
@@ -277,6 +278,7 @@ const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
 const { close } = useSidePanel()
+const { open: openArtifact } = useArtifactPanel()
 const {
   openShareModal,
   branchOwnedChat,
@@ -451,7 +453,35 @@ function scrollToMessage(messageId: string) {
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+function openArtifactItem(item: ChatContextItem): boolean {
+  const meta = item.meta
+  const artifactId = meta?.artifactId
+  const isSharedContext = data.value?.kind === 'shared'
+  const version = isSharedContext
+    ? meta?.version
+    : meta?.latestVersion ?? meta?.version
+
+  if (!artifactId || !version) {
+    return false
+  }
+
+  openArtifact({
+    artifactId,
+    version,
+    kind: isArtifactKind(meta.artifactKind) ? meta.artifactKind : null,
+    title: item.title,
+    source: isSharedContext ? 'shared' : 'owner',
+    shareSlug: isSharedContext ? routeSlug.value : undefined,
+  }, { push: true })
+
+  return true
+}
+
 async function onItemClick(item: ChatContextItem) {
+  if (item.kind === 'artifact' && openArtifactItem(item)) {
+    return
+  }
+
   if (item.kind === 'image' && toSafeLocalUrl(item.meta?.url)) {
     previewImage.value = item
     isImagePreviewOpen.value = true

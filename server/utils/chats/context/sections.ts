@@ -2,6 +2,8 @@ import type {
   ChatContextGroup,
   ChatContextItem,
 } from '#shared/types/chat-context.d'
+import type { ArtifactKind } from '#shared/utils/artifacts'
+import { isDataArtifactPart } from '#shared/utils/artifacts'
 import { isHiddenFilePart } from '#shared/utils/files'
 import {
   MEMORY_FORGET_TOOL_NAME,
@@ -32,6 +34,22 @@ export interface ChatContextAccumulator {
   ) => void
 }
 
+export interface ChatContextArtifact {
+  title: string
+  kind: ArtifactKind
+  version: number
+  latestVersion: number
+}
+
+/**
+ * Data a section needs beyond the message parts, loaded once per request
+ * before the build: artifacts maps each listable artifact id (owned by the
+ * chat owner, not deleted, not taken down) to its row.
+ */
+export interface ChatContextScope {
+  artifacts: ReadonlyMap<string, ChatContextArtifact>
+}
+
 /**
  * One block of the chat context panel. A feature that produces or consumes
  * something in a chat adds its own section here (see
@@ -45,6 +63,7 @@ export interface ChatContextSection {
   collect: (
     message: ChatContextMessage,
     accumulator: ChatContextAccumulator,
+    scope: ChatContextScope,
   ) => void
 }
 
@@ -197,6 +216,39 @@ const researchReportsSection: ChatContextSection = {
         meta: {
           provider: readString(data.provider) ?? undefined,
           action: readString(data.level) ?? undefined,
+        },
+      })
+    }
+  },
+}
+
+const artifactsSection: ChatContextSection = {
+  id: 'artifacts',
+  group: 'outputs',
+  visibility: 'public',
+  collect(message, accumulator, scope) {
+    for (const part of message.parts) {
+      if (!isDataArtifactPart(part)) {
+        continue
+      }
+
+      const artifact = scope.artifacts.get(part.data.artifactId)
+
+      if (!artifact) {
+        continue
+      }
+
+      accumulator.add('outputs', {
+        id: `artifact:${part.data.artifactId}`,
+        sectionId: 'artifacts',
+        kind: 'artifact',
+        title: toTitle(artifact.title) || 'Artifact',
+        messageId: message.id,
+        meta: {
+          artifactId: part.data.artifactId,
+          artifactKind: artifact.kind,
+          version: artifact.version,
+          latestVersion: artifact.latestVersion,
         },
       })
     }
@@ -458,6 +510,7 @@ const webSourcesSection: ChatContextSection = {
 export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   generatedImagesSection,
   researchReportsSection,
+  artifactsSection,
   uploadedFilesSection,
   projectKnowledgeSection,
   memorySection,

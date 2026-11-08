@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { loadOwnedChatContext } from '~~/server/utils/chats/context/load-chat-context'
+import { evaluateFeatureForEvent } from '~~/server/utils/features/context'
 
 export default defineEventHandler(async (event) => {
   const params = z.object({
@@ -23,10 +24,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const logger = useRequestLogger(event)
+  const artifactsFeature = await evaluateFeatureForEvent(event, 'artifacts', {
+    recordExposure: false,
+  })
   const context = await loadOwnedChatContext(
     useDb(),
     parseInt(session.user.id),
     params.data.slug,
+    { includeArtifacts: artifactsFeature.active },
   )
 
   if (!context) {
