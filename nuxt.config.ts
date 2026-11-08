@@ -380,7 +380,7 @@ export default defineNuxtConfig({
     adminEmails: '',
     featuresDisabled: '',
     featuresHostMode: 'byok',
-    featuresRolloutEnabled: false,
+    featuresRolloutEnabled: '',
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
     messageSearchSweepMaxRuntimeMs: 20000,

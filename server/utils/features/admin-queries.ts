@@ -10,7 +10,12 @@ import {
   FEATURE_REGISTRY,
   getFeatureDefinition,
 } from '#shared/utils/features/registry'
+import {
+  computeFeatureRolloutGate,
+  describeFeatureRolloutGate,
+} from '#shared/utils/features/rollout-gate'
 import * as schema from '~~/server/db/schema'
+import { listFeatureSchedules } from '~~/server/utils/features/schedules'
 import {
   isEnvAdminEmail,
   isFeatureKillSwitched,
@@ -31,8 +36,18 @@ function escapeLikePattern(value: string): string {
 }
 
 function readAdminConfig(config: FeatureEvaluationConfig) {
+  const rolloutGate = config.featuresRolloutGate
+    ?? computeFeatureRolloutGate(
+      config.featuresRolloutEnabled ? 'on' : 'off',
+      new Date(),
+    )
+
   return {
     rolloutEnabled: config.featuresRolloutEnabled,
+    rolloutGate: {
+      ...rolloutGate,
+      description: describeFeatureRolloutGate(rolloutGate),
+    },
     hostMode: config.featuresHostMode,
   }
 }
@@ -141,6 +156,7 @@ export async function getAdminFeature(
   return {
     ...readAdminConfig(config),
     flag: toFlagSummary(flag, rules, counts, config),
+    schedules: await listFeatureSchedules(db, flag),
   }
 }
 

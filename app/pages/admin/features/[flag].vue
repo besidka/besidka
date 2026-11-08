@@ -64,7 +64,10 @@
           The settings below apply once it is removed.
         </p>
       </header>
-      <AdminRolloutNotice v-if="!data.rolloutEnabled" />
+      <AdminRolloutNotice
+        v-if="!data.rolloutEnabled"
+        :gate="data.rolloutGate"
+      />
       <form
         class="bubble rounded-box grid gap-6 p-6"
         data-testid="admin-feature-rule-form"
@@ -191,6 +194,12 @@
           </div>
         </div>
       </form>
+      <AdminFeatureSchedules
+        :flag="feature.key"
+        :schedules="data.schedules ?? []"
+        :rollout-gate="data.rolloutGate"
+        @changed="refresh()"
+      />
       <AdminFeatureGrants
         :flag="feature.key"
         :variants="feature.variants"

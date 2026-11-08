@@ -598,12 +598,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (`spend` implies opt-in, variants only on non-spending flags), the
   evaluation precedence (unknown, `NUXT_FEATURES_DISABLED`, host mode, rule
   disabled, anonymous, deny, allow, role, sticky salted-hash rollout gated by
-  `NUXT_FEATURES_ROLLOUT_ENABLED` and the user's experiments objection,
+  the computed rollout gate (the Privacy notice date, `NUXT_FEATURES_ROLLOUT_ENABLED`
+  only as an override) and the user's experiments objection,
   default), KV rules cache and per-request user state, env admins with
   verified email and 2FA (`NUXT_ADMIN_EMAILS` is a secret, tester-only role
   grants in v1), exposure telemetry without a bucket, the Axiom
   `featureAccess` replay ledger, client access and Labs, MCP limits, the
-  Flagship path and the "adding a flag" checklist
+  Flagship path, the "adding a flag" checklist and scheduled rollouts (the
+  `feature_rule_schedules` table, the 5-minute applier, the claim, the
+  notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
   32 per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table

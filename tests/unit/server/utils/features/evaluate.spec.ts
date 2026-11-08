@@ -517,9 +517,12 @@ describe('opt-out and availability', () => {
   })
 })
 
+const beforeNotice = new Date('2026-11-08T00:00:00Z')
+const afterNotice = new Date('2026-12-19T00:00:00Z')
+
 describe('getFeatureEvaluationConfig', () => {
   it('defaults rollouts off and host mode to byok', () => {
-    expect(getFeatureEvaluationConfig({})).toMatchObject({
+    expect(getFeatureEvaluationConfig({}, beforeNotice)).toMatchObject({
       adminEmails: '',
       featuresDisabled: '',
       featuresHostMode: 'byok',
@@ -527,20 +530,35 @@ describe('getFeatureEvaluationConfig', () => {
     })
   })
 
-  it('ships rollouts off and no admins in nuxt.config defaults', () => {
-    expect(getFeatureEvaluationConfig()).toMatchObject({
+  it('ships rollouts to the notice date and no admins in nuxt.config defaults', () => {
+    expect(getFeatureEvaluationConfig(undefined, beforeNotice)).toMatchObject({
       adminEmails: '',
       featuresDisabled: '',
       featuresHostMode: 'byok',
       featuresRolloutEnabled: false,
     })
+  })
+
+  it('opens the rollout gate by itself when the notice takes effect', () => {
+    expect(getFeatureEvaluationConfig({}, afterNotice)).toMatchObject({
+      featuresRolloutEnabled: true,
+      featuresRolloutGate: { reason: 'notice_in_force' },
+    })
+    expect(getFeatureEvaluationConfig(
+      { featuresRolloutEnabled: 'off' },
+      afterNotice,
+    ).featuresRolloutEnabled).toBe(false)
+    expect(getFeatureEvaluationConfig(
+      { featuresRolloutEnabled: 'on' },
+      beforeNotice,
+    ).featuresRolloutEnabled).toBe(true)
   })
 
   it('reads env string values', () => {
     expect(getFeatureEvaluationConfig({
       featuresRolloutEnabled: 'true',
       featuresHostMode: 'off',
-    })).toMatchObject({
+    }, beforeNotice)).toMatchObject({
       featuresRolloutEnabled: true,
       featuresHostMode: 'off',
     })

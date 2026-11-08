@@ -784,6 +784,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/features/exposure.spec.ts',
     'tests/unit/server/utils/features/guards.spec.ts',
     'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/features/rollout-gate.spec.ts',
+    'tests/unit/utils/features/schedule-schemas.spec.ts',
+    'tests/unit/server/utils/features/schedules.spec.ts',
+    'tests/unit/server/utils/features/schedule-notify.spec.ts',
     'tests/unit/utils/account/purge-feature-access.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
     'tests/integration/api/profiles-features.spec.ts',
@@ -814,6 +818,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/features/admin.spec.ts',
     'tests/integration/api/admin-features.spec.ts',
     'tests/integration/server/feature-audit-sweep-plugin.spec.ts',
+    'tests/integration/server/feature-schedule-applier-plugin.spec.ts',
+    'tests/unit/server/utils/features/schedules.spec.ts',
+    'tests/unit/server/utils/features/schedule-notify.spec.ts',
+    'tests/unit/utils/features/schedule-schemas.spec.ts',
+    'tests/unit/utils/features/rollout-gate.spec.ts',
+    'tests/unit/components/Admin/FeatureSchedules.spec.ts',
     'tests/unit/pages/admin/features/[flag].spec.ts',
     'tests/unit/utils/admin-features.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
@@ -2359,7 +2369,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|tests\/setup\/helpers\/features-available\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
+        /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|tests\/setup\/helpers\/features-available\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_(access_tables|rule_schedules)\/.*)$/,
       tests: featureAccessTests,
     },
     {
@@ -2369,7 +2379,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/api\/v1\/admin\/.*\.ts|server\/utils\/features\/admin(-queries|-request)?\.ts|shared\/utils\/features\/admin-schemas\.ts|server\/plugins\/feature-audit-sweep\.ts|app\/(layouts\/admin\.vue|middleware\/admin\.ts|pages\/admin\/.*\.vue|components\/Admin\/.*\.vue|utils\/admin-features\.ts)|app\/components\/Search\/Modal\.client\.vue|nuxt\.config\.ts)$/,
+        /^(server\/api\/v1\/admin\/.*\.ts|server\/utils\/features\/admin(-queries|-request)?\.ts|shared\/utils\/features\/(admin-schemas|schedule-schemas|rollout-gate)\.ts|server\/utils\/features\/schedule.*\.ts|server\/plugins\/feature-(audit-sweep|schedule-applier)\.ts|app\/(layouts\/admin\.vue|middleware\/admin\.ts|pages\/admin\/.*\.vue|components\/Admin\/.*\.vue|utils\/admin-(features|schedule)\.ts)|app\/components\/Search\/Modal\.client\.vue|nuxt\.config\.ts)$/,
       tests: featureAdminTests,
     },
     {

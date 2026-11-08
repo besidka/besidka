@@ -28,8 +28,9 @@ type FeatureAdminDatabase = Pick<
 
 export interface FeatureAdminActor {
   userId: number | null
-  kind: 'ui' | 'mcp'
+  kind: 'ui' | 'mcp' | 'schedule'
   clientId?: string | null
+  scheduleId?: number
 }
 
 export interface FeatureAdminContext {
@@ -47,6 +48,8 @@ export type FeatureAdminAction
     | 'grant.revoke'
     | 'role.set'
     | 'role.revoke'
+    | 'schedule.create'
+    | 'schedule.cancel'
 
 interface FeatureRuleLedgerState {
   enabled: boolean
@@ -63,6 +66,8 @@ interface FeatureAccessLedgerEntry {
   expiresAt: string | null
   role?: FeatureRole
   clientId?: string
+  scheduleId?: number
+  scheduleRunAt?: string[]
   rule?: {
     before: FeatureRuleLedgerState | null
     after: FeatureRuleLedgerState
@@ -71,7 +76,7 @@ interface FeatureAccessLedgerEntry {
 
 type AuditSnapshot = Record<string, unknown> | null
 
-function throwAdminError(
+export function throwAdminError(
   status: number,
   message: string,
   why: string,
@@ -80,7 +85,7 @@ function throwAdminError(
   throw createError({ message, status, why, fix })
 }
 
-function requireKnownFlag(flag: string) {
+export function requireKnownFlag(flag: string) {
   const definition = getFeatureDefinition(flag)
 
   if (!definition) {
@@ -94,7 +99,7 @@ function toUnixSeconds(date: Date | null | undefined): number | null {
   return date ? Math.floor(date.getTime() / MILLISECONDS_PER_SECOND) : null
 }
 
-function logFeatureAccess(
+export function logFeatureAccess(
   context: FeatureAdminContext,
   entry: FeatureAccessLedgerEntry,
 ) {
@@ -104,12 +109,15 @@ function logFeatureAccess(
         ...entry,
         actorKind: context.actor.kind,
         ...(context.actor.clientId ? { clientId: context.actor.clientId } : {}),
+        ...(context.actor.scheduleId
+          ? { scheduleId: context.actor.scheduleId }
+          : {}),
       },
     },
   })
 }
 
-function buildAuditInsert(
+export function buildAuditInsert(
   context: FeatureAdminContext,
   input: {
     action: FeatureAdminAction
@@ -132,7 +140,7 @@ function buildAuditInsert(
   })
 }
 
-function validateVariants(
+export function validateVariants(
   flag: string,
   variants: FeatureRulePatch['variants'],
 ) {
@@ -193,7 +201,8 @@ function assertRolloutChangeAllowed(
       409,
       'Gradual rollouts are switched off',
       'rollout_disabled',
-      'Set NUXT_FEATURES_ROLLOUT_ENABLED once the Privacy notice is in force',
+      'They open when the Privacy notice 2026-11-experimental-features takes '
+      + 'effect, or when NUXT_FEATURES_ROLLOUT_ENABLED forces them on',
     )
   }
 }
@@ -201,10 +210,12 @@ function assertRolloutChangeAllowed(
 /**
  * Creates or updates a flag's rule (a fresh salt on the first write), writes
  * the audit row in the same batch and busts the rules cache. Rollout and
- * variant changes are refused while `NUXT_FEATURES_ROLLOUT_ENABLED` is off,
- * except setting them back to zero (compliance pre-check C2). A failed cache
- * bust is logged, not thrown: the write is already committed and the 300 s
- * TTL bounds the stale window. UI-only: the MCP tools never call it.
+ * variant changes are refused while the rollout gate is closed (the Privacy
+ * notice is not yet in force, or `NUXT_FEATURES_ROLLOUT_ENABLED` forces it
+ * off), except setting them back to zero (compliance pre-check C2). A failed
+ * cache bust is logged, not thrown: the write is already committed and the
+ * 300 s TTL bounds the stale window. The single write path for the admin
+ * route and the schedule applier; the MCP tools never call it.
  */
 export async function setFeatureRule(
   context: FeatureAdminContext,
