@@ -875,6 +875,14 @@ Some things are left out on purpose, and some are impossible, not omitted.
 Each exclusion has a reason and a point at which to look at it again. Do not
 add one of these tools without reading its entry first.
 
+Connectors and skills (planned, not built) follow the same boundary: MCP may
+add a connector or a skill switched off, list it, reduce what it may do and
+delete it, but never enable it, connect it, give consent, approve a call, set
+"Always allow", grant script permission or import from a URL. The reasons and
+the planned tool rows are in `docs/connectors.md` (section 11) and
+`docs/skills.md` (section 11); C-9 and S-6 add the full entries here when the
+tools ship.
+
 ### Left out on purpose
 
 1. **Anything that spends the user's provider keys.** No `send_message`
