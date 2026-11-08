@@ -742,6 +742,8 @@ export default defineNuxtConfig({
         'shiki-stream/vue',
         'shiki/bundle/web',
         'shiki/engine/javascript',
+        '@panzoom/panzoom',
+        'dompurify',
       ],
       // mediabunny spawns a Web Worker for UrlSource range reads; Vite's dep
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`

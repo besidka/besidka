@@ -14,6 +14,7 @@ export interface SharedChatArtifact {
   shareId: string
   internalId: number
   chatOwnerUserId: number
+  referencedTitle: string | null
 }
 
 export function createSharedArtifactNotFoundError() {
@@ -24,18 +25,28 @@ export function createSharedArtifactNotFoundError() {
   })
 }
 
-function referencedInChat(artifactId: string, version?: number) {
+function referencedParts(artifactId: string, version?: number) {
   const versionCondition = version === undefined
     ? sql``
     : sql`and json_extract(part.value, '$.data.version') = ${version}`
 
-  return sql`exists (
-    select 1 from ${schema.messages}, json_each(${schema.messages.parts}) as part
+  return sql`from ${schema.messages}, json_each(${schema.messages.parts}) as part
     where ${schema.messages.chatId} = ${schema.chats.id}
       and ${inArray(schema.messages.role, [...persistedMessageRoles])}
       and json_extract(part.value, '$.type') = ${ARTIFACT_DATA_PART_TYPE}
       and json_extract(part.value, '$.data.artifactId') = ${artifactId}
-      ${versionCondition}
+      ${versionCondition}`
+}
+
+function referencedInChat(artifactId: string, version?: number) {
+  return sql`exists (select 1 ${referencedParts(artifactId, version)})`
+}
+
+function referencedTitle(artifactId: string, version?: number) {
+  return sql<unknown>`(
+    select json_extract(part.value, '$.data.title')
+    ${referencedParts(artifactId, version)}
+    limit 1
   )`
 }
 
@@ -45,13 +56,15 @@ function referencedInChat(artifactId: string, version?: number) {
  * part for this artifact (and version, when given) and whether that artifact
  * still exists and belongs to the chat's owner. Returns null otherwise, so a
  * branched chat that references another user's artifact exposes nothing.
+ * `referencedTitle` is the title the shared part carries, never the current
+ * one, so a rename after sharing stays private.
  */
 export async function findSharedChatArtifact(input: {
   db: DbClient
   chatId: typeof schema.chats.$inferSelect.id
   artifactId: string
   version?: number
-}): Promise<{ internalId: number, chatOwnerUserId: number } | null> {
+}): Promise<Omit<SharedChatArtifact, 'shareId'> | null> {
   const internalId = decodeArtifactId(input.artifactId)
 
   if (internalId === null) {
@@ -62,6 +75,7 @@ export async function findSharedChatArtifact(input: {
     .select({
       internalId: schema.artifacts.id,
       chatOwnerUserId: schema.chats.userId,
+      referencedTitle: referencedTitle(input.artifactId, input.version),
     })
     .from(schema.chats)
     .innerJoin(schema.artifacts, and(
@@ -75,7 +89,17 @@ export async function findSharedChatArtifact(input: {
     ))
     .limit(1)
 
-  return row ?? null
+  if (!row) {
+    return null
+  }
+
+  return {
+    internalId: row.internalId,
+    chatOwnerUserId: row.chatOwnerUserId,
+    referencedTitle: typeof row.referencedTitle === 'string'
+      ? row.referencedTitle
+      : null,
+  }
 }
 
 /**

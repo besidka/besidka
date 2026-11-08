@@ -44,9 +44,27 @@ artifactId, version, content, toolCallId, errorText }`.
 | unavailable | "Artifact unavailable" (a ready card whose version answered 403, 404 or 410) | Not clickable |
 
 The card is `aria-live="polite"` and marks itself active while its view is
-open. A card keyed by the tool call id keeps the same panel view (and the
-same iframe) when the streamed artifact becomes a stored version: the view
-reads its target from `useState`, not from panel props.
+open on its version. Persisted cards of one artifact share the view key
+`artifact:<id>`, so a card compares its version with the open one too:
+clicking the v1 card while v2 is open switches the open view to v1
+(`selectVersion`) instead of doing nothing. A card keyed by the tool call id
+keeps the same panel view (and the same iframe) when the streamed artifact
+becomes a stored version: the view reads its target from `useState`, not
+from panel props.
+
+A message that holds only an artifact tool part (`tool-create_artifact` or
+`tool-update_artifact`, streaming or finished) is visible content
+(`hasVisibleAssistantContent`), even though those tools are not reasoning
+steps (`EXCLUDED_TOOL_STEP_NAMES`). Without it the bubble, and the card,
+stayed hidden until text arrived.
+
+Every stream delta clones the message parts, so the card sees a new part
+object many times a second. Nothing downstream may react to identity alone:
+`updateTarget` is a no-op when no field changed, the detail view watches
+primitives (`artifactId`, `source`, selected version, streaming flag), and
+the Frame skips `tool-result` when id, version, kind, title and content are
+the same as the last one it sent. A refetch here used to reset the
+artifact's React state and drop a pending copy.
 
 ## Panel and Frame
 
@@ -68,7 +86,16 @@ The detail view:
 - Runtime errors: the last of up to 5 `notifications/message` errors from the
   runtime, with the stack under Details. The owner gets **Ask to fix**, which
   closes the panel outside the docked layout and fires
-  `chat-input:prefill` with `Fix the error in "<title>": <message>`.
+  `chat-input:prefill` with `Fix the error in "<title>": <message>`. The
+  composer appends that text after a blank line when it already holds a
+  draft, and never sends it.
+- A failed generation (`stream.status === 'failed'`) shows
+  `alert alert-error alert-soft` with the tool error text over both tabs
+  instead of a skeleton or a partial preview.
+- Ids and versions are checked before any URL is built: the id must match
+  the store's public id shape (Hashids, `[A-Za-z0-9]{16,32}`) and the version
+  must be a positive safe integer. Anything else is treated as unavailable
+  without a request.
 
 `Frame.client.vue` is the host:
 
@@ -94,7 +121,10 @@ The detail view:
   frame, shows "The preview was stopped" and logs
   `attributes.artifacts.runtimeNavigation` with ids only.
 - No `initialized` within 10 seconds: "The preview did not load" with Retry,
-  which mounts a fresh frame.
+  which mounts a fresh frame. The Frame owns this one timer from the moment
+  it inserts the iframe, so it also covers an iframe that never fires `load`.
+  It passes no `onConnectTimeout`; the protocol package still arms its own
+  connect timer after `load`, but with no handler it does nothing.
 
 ## Capabilities per viewer (v1)
 
@@ -128,6 +158,11 @@ Every failure is a 404. A taken-down artifact answers 410
 `artifact_taken_down`, a missing R2 object 410 `artifact_content_missing`.
 The response carries `Cache-Control: private, no-store`.
 
+The title in a shared version read is the one the referenced `data-artifact`
+part carries for that version (`json_extract(value, '$.data.title')` in the
+same query), never `artifacts.title`, so a rename after sharing stays
+private.
+
 ## Report
 
 `POST /api/v1/shared/<shareSlug>/artifacts/<artifactId>/report` with
@@ -136,7 +171,7 @@ required unless the reason is `csam`). It stores an `artifact_reports` row
 with `priority: 'urgent'` for the urgent reasons. Limit: 5 reports per hour
 per signed-in user, otherwise per client IP (IPv6 by /64), in KV; 429 with
 `Retry-After`. Without a user or an IP the limiter fails open and notes it on
-the logger.
+the logger (`attributes.artifacts.reportRateLimit.skipped`).
 
 ## Auto-open marker
 
@@ -160,7 +195,11 @@ frame-src 'self' <artifactsOrigin> https://challenges.cloudflare.com
 ```
 
 - **Header**: `server/plugins/artifacts-frame-src.ts` adds it on documents
-  loaded at `/chats/**` and `/shared/**` (an existing policy is extended).
+  loaded at `/chats/**` and `/shared/**`. An existing policy is extended:
+  when it already has `frame-src`, the sources are merged into that
+  directive (browsers ignore a second `frame-src`, and `'none'` is dropped
+  because it cannot be combined with sources); with only `default-src` or
+  no frame directive, `frame-src` is appended.
 - **Meta**: a document first loaded on another route (`/`, `/profile/*`) has
   no header when the user navigates client-side into a chat.
   `ensureArtifactFramePolicy()` inserts
@@ -194,6 +233,34 @@ Exports reference no third-party host and include no runtime library:
   Running them would need React, Babel or Mermaid from a CDN, which the
   export must not load.
 
+Every exported HTML document (Download source for HTML, Download as HTML)
+gets a policy meta right after `<head>` (a `<head>` is created when the
+document has none):
+
+```text
+default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';
+img-src data: blob:; font-src data:; media-src data: blob:
+```
+
+so an exported file opened from disk cannot load or send anything to any
+host. File names drop `\p{Cf}` format characters (bidi overrides such as
+U+202E, zero-width characters) as well as control characters and the
+characters that are unsafe on common file systems.
+
+## Diagram SVG sanitising
+
+Mermaid diagrams render through `MermaidDiagram.vue` and
+`MermaidViewer.client.vue` with `v-html`. Their source can come from a model,
+an artifact (`openDiagramViewer`) or a shared chat, so the rendered SVG goes
+through `sanitizeDiagramSvg()` (`app/utils/sanitize-diagram-svg.ts`, DOMPurify
+pinned at 3.4.17) first: SVG and SVG filter profiles, `foreignObject` and
+`script` forbidden, `role` kept. Pele renders labels as SVG `<text>` and no
+`<style>`, so nothing visible is removed. Checked on 2026-11-08 in Playwright
+Chromium on real Pele output (flowchart, sequence, pie): same elements, same
+attributes and same text before and after. The unit tests mock DOMPurify,
+because happy-dom parses `<svg>` in the HTML namespace and DOMPurify then
+drops the root element, which no browser does.
+
 ## Known open items
 
 - The report route stores `shareId: null`; the chat share the report came
@@ -207,7 +274,8 @@ Exports reference no third-party host and include no runtime library:
 - `tests/unit/composables/artifacts.spec.ts`
 - `tests/unit/utils/artifact-export.spec.ts`,
   `tests/unit/utils/artifact-parts.spec.ts`,
-  `tests/unit/utils/artifact-frame-policy.spec.ts`
+  `tests/unit/utils/artifact-frame-policy.spec.ts`,
+  `tests/unit/utils/sanitize-diagram-svg.spec.ts`
 - `tests/integration/api/shared-artifacts.spec.ts`,
   `tests/integration/server/artifacts-frame-src-plugin.spec.ts`
 - `tests/e2e/chat/artifacts-panel.spec.ts` (runs the artifacts runtime on

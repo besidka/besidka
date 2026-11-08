@@ -38,6 +38,7 @@ export const ARTIFACT_ERROR_CODES = {
 } as const
 
 const BYTES_PER_MEGABYTE = 1024 * 1024
+const SHARED_UNTITLED_ARTIFACT = 'Untitled artifact'
 
 interface ArtifactStoreDeps {
   db: DbClient
@@ -609,6 +610,7 @@ async function readStoredVersion(
   artifact: typeof schema.artifacts.$inferSelect,
   artifactId: string,
   version: number,
+  title: string,
 ): Promise<ArtifactVersionContent> {
   const [versionRow] = await db
     .select()
@@ -637,7 +639,7 @@ async function readStoredVersion(
   return {
     artifactId,
     kind: artifact.kind,
-    title: artifact.title,
+    title,
     version: versionRow.version,
     content,
     sizeBytes: versionRow.sizeBytes,
@@ -674,6 +676,7 @@ export async function readArtifactVersion(
     artifact,
     input.artifactId,
     input.version ?? artifact.currentVersion,
+    artifact.title,
   )
 }
 
@@ -683,6 +686,7 @@ export interface ReadArtifactVersionForShareInput {
   chatOwnerUserId: number
   artifactId: string
   version: number
+  referencedTitle: string | null
 }
 
 /**
@@ -693,7 +697,8 @@ export interface ReadArtifactVersionForShareInput {
  * branched chat cannot expose another user's artifact. 404 for an unknown,
  * deleted or foreign artifact or version, 410 (`artifact_taken_down`) for an
  * artifact taken down after a report, 410 (`artifact_content_missing`) when
- * the R2 object is gone.
+ * the R2 object is gone. The title is the one the shared part carries
+ * (`referencedTitle`), never the artifact's current title.
  */
 export async function readArtifactVersionForShare(
   input: ReadArtifactVersionForShareInput,
@@ -729,6 +734,7 @@ export async function readArtifactVersionForShare(
     artifact,
     input.artifactId,
     input.version,
+    input.referencedTitle || SHARED_UNTITLED_ARTIFACT,
   )
 }
 

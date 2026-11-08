@@ -126,6 +126,7 @@ let connection: HostConnection | null = null
 let loadTimer: ReturnType<typeof setTimeout> | null = null
 let partialTimer: ReturnType<typeof setTimeout> | null = null
 let lastPartialAt = 0
+let lastSentResult: ToolResultContent | null = null
 
 const theme = computed<Theme>(() => {
   return colorMode.value === 'dark' ? 'dark' : 'light'
@@ -161,6 +162,27 @@ function toPlainResult(result: ToolResultContent): ToolResultContent {
   }
 }
 
+function isSameResult(
+  left: ToolResultContent | null,
+  right: ToolResultContent,
+): boolean {
+  return !!left
+    && left.artifactId === right.artifactId
+    && left.version === right.version
+    && left.kind === right.kind
+    && left.title === right.title
+    && left.content === right.content
+}
+
+function sendResult(result: ToolResultContent) {
+  if (!connection || isSameResult(lastSentResult, result)) {
+    return
+  }
+
+  lastSentResult = toPlainResult(result)
+  connection.sendToolResult(lastSentResult)
+}
+
 function getHostContext(): HostContext {
   return {
     theme: theme.value,
@@ -189,6 +211,7 @@ function teardown() {
   frame?.remove()
   connection = null
   frame = null
+  lastSentResult = null
 }
 
 function fail(kind: FrameErrorKind) {
@@ -255,7 +278,7 @@ function sendCurrentContent() {
   }
 
   if (props.result) {
-    connection.sendToolResult(toPlainResult(props.result))
+    sendResult(props.result)
 
     return
   }
@@ -293,10 +316,7 @@ function mountFrame() {
     onMessage,
     onOpenLink,
     onUnexpectedNavigation,
-    onConnectTimeout: () => {
-      fail('timeout')
-    },
-  }, { connectTimeoutMs: LOAD_TIMEOUT_MS })
+  })
   frame = element
   container.appendChild(element)
   sendCurrentContent()
@@ -346,7 +366,7 @@ watch(() => props.result, (result) => {
     partialTimer = null
   }
 
-  connection.sendToolResult(toPlainResult(result))
+  sendResult(result)
 })
 
 watch(() => props.partial, (partial) => {

@@ -63,7 +63,6 @@ describe('ChatArtifactCard', () => {
     const card = wrapper.get('[data-testid="artifact-card"]')
 
     expect(card.element.tagName).toBe('BUTTON')
-    expect(card.classes()).toContain('js-artifact-card')
     expect(card.attributes('aria-label')).toBe('Open Landing page')
     expect(card.attributes('data-state')).toBe('ready')
     expect(wrapper.get('[data-testid="artifact-card-kind"]').classes())
@@ -91,6 +90,58 @@ describe('ChatArtifactCard', () => {
       shareSlug: 'share_1',
     })
   })
+
+  it('switches the open view to the clicked card version', async () => {
+    const versionOne = {
+      ...READY_PART,
+      data: { ...READY_PART.data, version: 1 },
+    }
+    const first = await mountSuspended(ChatArtifactCard, {
+      props: { part: versionOne, source: 'owner' },
+    })
+    const second = await mountSuspended(ChatArtifactCard, {
+      props: { part: READY_PART, source: 'owner' },
+    })
+
+    await second.get('[data-testid="artifact-card"]').trigger('click')
+
+    expect(useArtifactPanel().state.value?.version).toBe(2)
+    expect(second.get('[data-testid="artifact-card"]')
+      .attributes('aria-current')).toBe('true')
+    expect(first.get('[data-testid="artifact-card"]')
+      .attributes('aria-current')).toBeUndefined()
+
+    await first.get('[data-testid="artifact-card"]').trigger('click')
+
+    expect(useSidePanel().viewKey.value).toBe('artifact:art_1')
+    expect(useArtifactPanel().state.value?.version).toBe(1)
+    expect(first.get('[data-testid="artifact-card"]')
+      .attributes('aria-current')).toBe('true')
+    expect(second.get('[data-testid="artifact-card"]')
+      .attributes('aria-current')).toBeUndefined()
+  })
+
+  it('keeps the panel state when an identical part is set again',
+    async () => {
+      const readyPart = {
+        type: 'tool-create_artifact',
+        toolCallId: 'call_1',
+        state: 'output-available',
+        input: { kind: 'html', title: 'Page', content: '<p>x</p>' },
+        output: { artifactId: 'art_9', version: 1, kind: 'html', title: 'Page' },
+      }
+      const wrapper = await mountSuspended(ChatArtifactCard, {
+        props: { part: readyPart, source: 'owner' },
+      })
+
+      await wrapper.get('[data-testid="artifact-card"]').trigger('click')
+
+      const stateBefore = useArtifactPanel().state.value
+
+      await wrapper.setProps({ part: structuredClone(readyPart) })
+
+      expect(useArtifactPanel().state.value).toBe(stateBefore)
+    })
 
   it('shows an honest streaming state before any input arrives', async () => {
     const wrapper = await mountSuspended(ChatArtifactCard, {

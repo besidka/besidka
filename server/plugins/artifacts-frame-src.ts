@@ -2,6 +2,8 @@ import type { RenderContext, RenderResponse } from 'nitropack/types'
 import { buildArtifactFrameSrc } from '#shared/utils/artifact-frame-policy'
 
 const CSP_HEADER = 'content-security-policy'
+const FRAME_SRC = 'frame-src'
+const NONE_SOURCE = '\'none\''
 const ARTIFACT_PAGE_PREFIXES = ['/chats/', '/shared/']
 
 export default defineNitroPlugin((nitroApp) => {
@@ -58,11 +60,41 @@ export function applyArtifactFrameSrc(
     return
   }
 
-  const existingPolicy = String(headers[existingName]).trim()
-  const separator = existingPolicy.endsWith(';') ? ' ' : '; '
-
   response.headers = {
     ...headers,
-    [existingName]: `${existingPolicy}${separator}${directive}`,
+    [existingName]: mergeFrameSrc(String(headers[existingName]), directive),
   }
+}
+
+/**
+ * Adds the sources of `directive` to the `frame-src` of `policy`. Browsers
+ * ignore a repeated directive, so an existing `frame-src` is extended in
+ * place (dropping `'none'`, which cannot be combined with sources) and a
+ * missing one is appended. Every other directive is kept as is.
+ */
+export function mergeFrameSrc(policy: string, directive: string): string {
+  const [directiveName = FRAME_SRC, ...sources] = directive.split(/\s+/)
+  const directives = policy
+    .split(';')
+    .map(entry => entry.trim())
+    .filter(Boolean)
+  const frameSrcIndex = directives.findIndex((entry) => {
+    return entry.split(/\s+/)[0]?.toLowerCase() === directiveName
+  })
+
+  if (frameSrcIndex === -1) {
+    return [...directives, directive].join('; ')
+  }
+
+  const existingSources = directives[frameSrcIndex]!
+    .split(/\s+/)
+    .slice(1)
+    .filter((source) => {
+      return source.toLowerCase() !== NONE_SOURCE
+    })
+  const mergedSources = [...new Set([...existingSources, ...sources])]
+
+  directives[frameSrcIndex] = [directiveName, ...mergedSources].join(' ')
+
+  return directives.join('; ')
 }

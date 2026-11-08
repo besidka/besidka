@@ -9,7 +9,7 @@ import {
 
 const E2E_ADMIN_EMAIL = 'e2e-admin@example.com'
 const TEST_CHAT_ID = 'test-chat-short'
-const ARTIFACT_ID = 'art_e2e_panel'
+const ARTIFACT_ID = 'E2ePanelArtifact'
 const TOOL_CALL_ID = 'call_e2e_panel'
 const SHARE_SLUG = 'e2e-share-artifacts'
 const ARTIFACT_TITLE = 'Greeting page'
@@ -318,6 +318,10 @@ test('opens a streamed artifact in the side panel and renders it in the '
     timeout: 20_000,
   })
   await expect(card).toHaveAttribute('aria-label', `Open ${ARTIFACT_TITLE}`)
+  await expect(card).toBeVisible()
+  await expect(page.getByText('Here is your page.')).toBeVisible({
+    timeout: 20_000,
+  })
   await expect(page.getByTestId('side-panel')).toHaveCount(0)
 
   const messageId = await card.evaluate((element) => {
@@ -390,6 +394,23 @@ test('auto-opens the first streamed artifact once per chat', async ({
   await expect(page.getByTestId('side-panel')).toBeVisible()
   await expect(getPreviewFrame(page).locator('#greeting'))
     .toHaveText(ARTIFACT_TEXT, { timeout: 20_000 })
+
+  await page.reload()
+  await waitForHydration(page)
+
+  const markerAfterReload = await page.evaluate((chatId) => {
+    return window.sessionStorage.getItem(`artifacts:auto-opened:${chatId}`)
+  }, TEST_CHAT_ID)
+
+  expect(markerAfterReload).toBe('1')
+
+  await sendMessage(page, 'Make a greeting page')
+  await expect(page.getByTestId('artifact-card').last()).toHaveAttribute(
+    'data-state',
+    'ready',
+    { timeout: 20_000 },
+  )
+  await expect(page.getByTestId('side-panel')).toHaveCount(0)
 })
 
 test('shows shared-chat artifacts read-only', async ({ page }) => {

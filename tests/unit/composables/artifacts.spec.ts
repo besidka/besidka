@@ -7,6 +7,7 @@ import {
   getArtifactVersionUrl,
   getArtifactViewKey,
   hasArtifactAutoOpened,
+  loadArtifactDetail,
   loadArtifactVersion,
   markArtifactAutoOpened,
   useArtifactAutoOpen,
@@ -254,30 +255,55 @@ describe('useArtifactPanel', () => {
 describe('loadArtifactVersion', () => {
   it('builds owner and shared URLs', () => {
     expect(getArtifactVersionUrl({
-      artifactId: 'art_1',
+      artifactId: 'Art1Art1Art1Art1',
       version: 2,
       source: 'owner',
-    })).toBe('/api/v1/artifacts/art_1/versions/2')
+    })).toBe('/api/v1/artifacts/Art1Art1Art1Art1/versions/2')
     expect(getArtifactVersionUrl({
-      artifactId: 'art 1',
+      artifactId: 'Art1Art1Art1Art1',
       version: 2,
       source: 'shared',
-      shareSlug: 'share_1',
-    })).toBe('/api/v1/shared/share_1/artifacts/art%201/versions/2')
+      shareSlug: 'share 1',
+    })).toBe('/api/v1/shared/share%201/artifacts/Art1Art1Art1Art1/versions/2')
   })
 
+  it('treats a malformed id or version as unavailable without fetching',
+    async () => {
+      const malformed = [
+        { artifactId: '../keys', version: 1 },
+        { artifactId: 'art 1', version: 1 },
+        { artifactId: 'Art1Art1Art1Art1', version: 0 },
+        { artifactId: 'Art1Art1Art1Art1', version: 1.5 },
+        { artifactId: 'Art1Art1Art1Art1', version: Number.NaN },
+      ]
+
+      for (const request of malformed) {
+        expect(getArtifactVersionUrl({ ...request, source: 'owner' }))
+          .toBeNull()
+        expect(await loadArtifactVersion({ ...request, source: 'owner' }))
+          .toEqual({ ok: false, status: 404, message: 'Artifact unavailable' })
+      }
+
+      expect(await loadArtifactDetail('art_1/../../keys')).toMatchObject({
+        ok: false,
+        status: 404,
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(errorMessageMock).not.toHaveBeenCalled()
+    })
+
   it('returns the version content', async () => {
-    const content = { artifactId: 'art_1', version: 2, content: '<p>x</p>' }
+    const content = { artifactId: 'Art1Art1Art1Art1', version: 2, content: '<p>x</p>' }
 
     fetchMock.mockResolvedValueOnce(content)
 
     const result = await loadArtifactVersion({
-      artifactId: 'art_1',
+      artifactId: 'Art1Art1Art1Art1',
       version: 2,
       source: 'owner',
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/artifacts/art_1/versions/2')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/artifacts/Art1Art1Art1Art1/versions/2')
     expect(result).toEqual({ ok: true, value: content })
   })
 
@@ -288,7 +314,7 @@ describe('loadArtifactVersion', () => {
     })
 
     const result = await loadArtifactVersion({
-      artifactId: 'art_1',
+      artifactId: 'Art1Art1Art1Art1',
       version: 2,
       source: 'owner',
     })
@@ -304,7 +330,7 @@ describe('loadArtifactVersion', () => {
     })
 
     const result = await loadArtifactVersion({
-      artifactId: 'art_1',
+      artifactId: 'Art1Art1Art1Art1',
       version: 2,
       source: 'shared',
       shareSlug: 'share_1',

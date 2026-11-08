@@ -39,7 +39,7 @@
     <button
       v-else
       type="button"
-      class="js-artifact-card flex w-full items-center gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-left cursor-pointer transition-colors duration-150 hover:bg-base-300/60 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      class="flex w-full items-center gap-3 rounded-box border border-base-300 bg-base-200 p-3 text-left cursor-pointer transition-colors duration-150 hover:bg-base-300/60 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       :class="{ 'border-accent': isActive }"
       :aria-label="`Open ${displayTitle}`"
       :aria-current="isActive ? 'true' : undefined"
@@ -201,8 +201,16 @@ const viewKey = computed<string | null>(() => {
   })
 })
 
-const isActive = computed<boolean>(() => {
+const isViewOpen = computed<boolean>(() => {
   return !!viewKey.value && panel.isOpenOn(viewKey.value)
+})
+
+const isActive = computed<boolean>(() => {
+  const version = model.value?.version ?? null
+  const openVersion = panel.state.value?.version ?? null
+
+  return isViewOpen.value
+    && (version === null || openVersion === null || openVersion === version)
 })
 
 const isUnavailable = computed<boolean>(() => {
@@ -281,16 +289,28 @@ watch([model, isActive], ([current, active]) => {
     })
   }
 
-  if (panel.stream.value?.toolCallId === current.toolCallId) {
+  const finalStatus = current.state === 'ready' ? 'done' : 'failed'
+
+  if (
+    panel.stream.value?.toolCallId === current.toolCallId
+    && panel.stream.value.status !== finalStatus
+  ) {
     panel.setStream({
       ...panel.stream.value,
-      status: current.state === 'ready' ? 'done' : 'failed',
+      status: finalStatus,
+      ...(finalStatus === 'failed' ? { errorText: current.errorText } : {}),
     })
   }
 }, { immediate: true })
 
 function onOpen() {
   if (!target.value || !canOpen.value || isActive.value) {
+    return
+  }
+
+  if (isViewOpen.value && target.value.version !== null) {
+    panel.selectVersion(target.value.version)
+
     return
   }
 

@@ -266,11 +266,12 @@ Another component can put a draft into the composer with the runtime hook
 await useNuxtApp().callHook('chat-input:prefill', text)
 ```
 
-`ChatInput.client.vue` replaces the whole message with `text` (it does not
-append), waits a tick and focuses the textarea with `preventScroll`. Nothing
-is sent: the user reviews and presses Send. The replacement assigns the model
-directly, not through the insertion helper, so it is not on the native undo
-stack. The only caller today is **Ask to fix** in the artifact detail view
+`ChatInput.client.vue` puts `text` into an empty composer, or appends it
+after a blank line when the composer already holds a draft (trailing
+whitespace of the draft is trimmed first), so a draft is never lost. It then
+waits a tick and focuses the textarea with `preventScroll`. Nothing is sent:
+the user reviews and presses Send. The change assigns the model directly,
+not through the insertion helper, so it is not on the native undo stack. The only caller today is **Ask to fix** in the artifact detail view
 (`docs/artifacts/panel.md`), which closes the side panel first outside the
 docked layout so the composer is visible.
 

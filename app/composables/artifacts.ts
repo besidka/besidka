@@ -30,6 +30,7 @@ export interface ArtifactStreamState {
   title: string
   content: string
   status: ArtifactStreamStatus
+  errorText?: string
 }
 
 export interface ArtifactRuntimeMessage {
@@ -55,6 +56,9 @@ export const ARTIFACT_AUTO_OPEN_MEDIA_QUERY = '(min-width: 64rem)'
 
 const ARTIFACT_AUTO_OPEN_MARKER = '1'
 const UNAVAILABLE_STATUSES = new Set<number>([403, 404, 410])
+const ARTIFACT_PUBLIC_ID_PATTERN = /^[A-Za-z0-9]{16,32}$/
+const UNAVAILABLE_STATUS = 404
+const UNAVAILABLE_MESSAGE = 'Artifact unavailable'
 
 export function getArtifactViewKey(
   target: Pick<ArtifactPanelTarget, 'artifactId' | 'toolCallId'>,
@@ -100,9 +104,27 @@ export function isArtifactUnavailableStatus(status: number): boolean {
   return UNAVAILABLE_STATUSES.has(status)
 }
 
-export function getArtifactVersionUrl(request: ArtifactVersionRequest): string {
-  const artifactId = encodeURIComponent(request.artifactId)
-  const version = encodeURIComponent(String(request.version))
+export function isArtifactPublicId(value: unknown): value is string {
+  return typeof value === 'string' && ARTIFACT_PUBLIC_ID_PATTERN.test(value)
+}
+
+export function isArtifactVersionNumber(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value > 0
+}
+
+export function getArtifactVersionUrl(
+  request: ArtifactVersionRequest,
+): string | null {
+  if (
+    !isArtifactPublicId(request.artifactId)
+    || !isArtifactVersionNumber(request.version)
+  ) {
+    return null
+  }
+
+  const { artifactId, version } = request
 
   if (request.source === 'shared') {
     const shareSlug = encodeURIComponent(request.shareSlug ?? '')
@@ -112,6 +134,14 @@ export function getArtifactVersionUrl(request: ArtifactVersionRequest): string {
   }
 
   return `/api/v1/artifacts/${artifactId}/versions/${version}`
+}
+
+function getUnavailableResult<Value>(): ArtifactLoadResult<Value> {
+  return {
+    ok: false,
+    status: UNAVAILABLE_STATUS,
+    message: UNAVAILABLE_MESSAGE,
+  }
 }
 
 /**
@@ -170,11 +200,23 @@ export function useArtifactPanel() {
     viewKey: string,
     changes: Partial<ArtifactPanelTarget>,
   ): void {
-    if (state.value?.viewKey !== viewKey) {
+    const current = state.value
+
+    if (current?.viewKey !== viewKey) {
       return
     }
 
-    state.value = { ...state.value, ...changes }
+    const changedKeys = (
+      Object.keys(changes) as Array<keyof ArtifactPanelTarget>
+    ).filter((key) => {
+      return changes[key] !== current[key]
+    })
+
+    if (!changedKeys.length) {
+      return
+    }
+
+    state.value = { ...current, ...changes }
 
     const currentView = sidePanel.currentView.value
 
@@ -306,22 +348,29 @@ async function loadArtifactResource<Value>(
   }
 }
 
-export function loadArtifactVersion(
+export async function loadArtifactVersion(
   request: ArtifactVersionRequest,
   options: { notify?: boolean } = {},
 ): Promise<ArtifactLoadResult<ArtifactVersionContent>> {
-  return loadArtifactResource<ArtifactVersionContent>(
-    getArtifactVersionUrl(request),
-    options,
-  )
+  const url = getArtifactVersionUrl(request)
+
+  if (!url) {
+    return getUnavailableResult()
+  }
+
+  return loadArtifactResource<ArtifactVersionContent>(url, options)
 }
 
-export function loadArtifactDetail(
+export async function loadArtifactDetail(
   artifactId: string,
   options: { notify?: boolean } = {},
 ): Promise<ArtifactLoadResult<ArtifactDetail>> {
+  if (!isArtifactPublicId(artifactId)) {
+    return getUnavailableResult()
+  }
+
   return loadArtifactResource<ArtifactDetail>(
-    `/api/v1/artifacts/${encodeURIComponent(artifactId)}`,
+    `/api/v1/artifacts/${artifactId}`,
     options,
   )
 }

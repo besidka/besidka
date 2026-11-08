@@ -60,5 +60,6 @@ export default defineEventHandler(async (event) => {
     chatOwnerUserId: artifact.chatOwnerUserId,
     artifactId: params.data.artifactId,
     version: params.data.version,
+    referencedTitle: artifact.referencedTitle,
   })
 })

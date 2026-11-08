@@ -36,7 +36,11 @@ export async function enforceArtifactReportRateLimit(
   const key = resolveReporterKey(event, userId)
 
   if (!key) {
-    logger.set({ artifactReportRateLimit: { skipped: 'no-client-key' } })
+    logger.set({
+      attributes: {
+        artifacts: { reportRateLimit: { skipped: 'no-client-key' } },
+      },
+    })
 
     return
   }

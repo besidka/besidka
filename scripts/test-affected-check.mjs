@@ -648,6 +648,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/prose/MermaidActionMenu.spec.ts',
     'tests/unit/components/prose/MermaidEditor.spec.ts',
     'tests/unit/components/Chat/MarkdownSource.spec.ts',
+    'tests/unit/utils/sanitize-diagram-svg.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
   ]
   const historyProjectsTests = [
@@ -2305,7 +2306,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/prose\/(PreStream|MermaidDiagram|MermaidViewer\.client|MermaidActionMenu|MermaidEditor)\.vue|server\/utils\/chats\/test\/mermaid-fixture\.ts|app\/composables\/(diagram-renderer|diagram-export|markdown-source|chat-format)\.ts|app\/utils\/(markdown-fences|mermaid-menu-actions|diagram-render-core|diagram-fonts|diagram-export-[a-z-]+)\.ts|app\/assets\/css\/(main|diagram-theme)\.css|tests\/utils\/diagram-theme-colors\.ts|tests\/fixtures\/pele-examples\.json|app\/workers\/diagram\.worker\.ts|app\/types\/diagram(-export)?\.d\.ts|app\/components\/Chat\/MarkdownSource\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+        /^(app\/components\/prose\/(PreStream|MermaidDiagram|MermaidViewer\.client|MermaidActionMenu|MermaidEditor)\.vue|server\/utils\/chats\/test\/mermaid-fixture\.ts|app\/composables\/(diagram-renderer|diagram-export|markdown-source|chat-format)\.ts|app\/utils\/(markdown-fences|mermaid-menu-actions|diagram-render-core|diagram-fonts|diagram-export-[a-z-]+|sanitize-diagram-svg)\.ts|app\/assets\/css\/(main|diagram-theme)\.css|tests\/utils\/diagram-theme-colors\.ts|tests\/fixtures\/pele-examples\.json|app\/workers\/diagram\.worker\.ts|app\/types\/diagram(-export)?\.d\.ts|app\/components\/Chat\/MarkdownSource\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
       tests: mermaidDiagramTests,
     },
     {
@@ -3001,6 +3002,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/PreStream\.vue|app\/composables\/artifacts\.ts|app\/utils\/artifact-(export|parts)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
       tests: artifactsUiTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/(chats|shared)\/\[slug\]\.vue|app\/utils\/reasoning\.ts|app\/composables\/chat\.ts)$/,
+      tests: ['tests/e2e/chat/artifacts-panel.spec.ts'],
     },
     {
       pattern:

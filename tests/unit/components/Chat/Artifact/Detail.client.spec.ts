@@ -90,7 +90,7 @@ mockComponent('ChatArtifactReportButton', () => {
 })
 
 const DETAIL = {
-  id: 'art_1',
+  id: 'Art1Art1Art1Art1',
   title: 'Landing page',
   kind: 'html',
   currentVersion: 3,
@@ -104,7 +104,7 @@ const DETAIL = {
 
 function versionContent(version: number, kind = 'html') {
   return {
-    artifactId: 'art_1',
+    artifactId: 'Art1Art1Art1Art1',
     kind,
     title: 'Landing page',
     version,
@@ -116,7 +116,7 @@ function versionContent(version: number, kind = 'html') {
 
 function respond() {
   fetchMock.mockImplementation(async (url: string) => {
-    if (url === '/api/v1/artifacts/art_1') {
+    if (url === '/api/v1/artifacts/Art1Art1Art1Art1') {
       return DETAIL
     }
 
@@ -132,7 +132,7 @@ function respond() {
 
 function openTarget(overrides: Partial<ArtifactPanelTarget> = {}) {
   useArtifactPanel().open({
-    artifactId: 'art_1',
+    artifactId: 'Art1Art1Art1Art1',
     version: 3,
     kind: 'html',
     title: 'Landing page',
@@ -176,9 +176,9 @@ describe('ChatArtifactDetail', () => {
       '[data-testid="artifact-version-select"] option',
     )
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/artifacts/art_1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/artifacts/Art1Art1Art1Art1')
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/artifacts/art_1/versions/3',
+      '/api/v1/artifacts/Art1Art1Art1Art1/versions/3',
     )
     expect(options.map(option => option.text())).toEqual(['v3', 'v2', 'v1'])
     expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-content'))
@@ -263,15 +263,15 @@ describe('ChatArtifactDetail', () => {
 
   it('is read-only on a shared chat with the banner and Report',
     async () => {
-      useSharedArtifactVersions().value = { art_1: [1, 3] }
+      useSharedArtifactVersions().value = { Art1Art1Art1Art1: [1, 3] }
       openTarget({ source: 'shared', shareSlug: 'share_1' })
 
       const wrapper = await mountDetail()
 
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/shared/share_1/artifacts/art_1/versions/3',
+        '/api/v1/shared/share_1/artifacts/Art1Art1Art1Art1/versions/3',
       )
-      expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/artifacts/art_1')
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/artifacts/Art1Art1Art1Art1')
       expect(wrapper.findAll('[data-testid="artifact-version-select"] option')
         .map(option => option.text())).toEqual(['v3', 'v1'])
       expect(wrapper.get('[data-testid="artifact-shared-banner"]').text())
@@ -281,7 +281,7 @@ describe('ChatArtifactDetail', () => {
       expect(wrapper.get('[data-testid="report-stub"]').attributes())
         .toMatchObject({
           'data-share-slug': 'share_1',
-          'data-artifact-id': 'art_1',
+          'data-artifact-id': 'Art1Art1Art1Art1',
         })
 
       await wrapper.get('[data-testid="frame-stub"]').trigger('click')
@@ -303,7 +303,7 @@ describe('ChatArtifactDetail', () => {
 
     expect(wrapper.find('[data-testid="artifact-unavailable"]').exists())
       .toBe(true)
-    expect(useArtifactPanel().isUnavailable('art_1')).toBe(true)
+    expect(useArtifactPanel().isUnavailable('Art1Art1Art1Art1')).toBe(true)
   })
 
   it('streams react source in the Code tab, then previews the stored '
@@ -334,7 +334,7 @@ describe('ChatArtifactDetail', () => {
       .toBe('')
 
     useArtifactPanel().updateTarget('artifact:call:call_1', {
-      artifactId: 'art_1',
+      artifactId: 'Art1Art1Art1Art1',
       version: 1,
     })
     useArtifactPanel().setStream({
@@ -376,6 +376,63 @@ describe('ChatArtifactDetail', () => {
       .toContain('tab-active')
     expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-partial'))
       .toBe('<h1>Hel')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not refetch when the open target is set again unchanged',
+    async () => {
+      openTarget({ toolCallId: 'call_3' })
+
+      const wrapper = await mountDetail()
+      const callsBefore = fetchMock.mock.calls.length
+
+      useArtifactPanel().updateTarget('artifact:call:call_3', {
+        artifactId: 'Art1Art1Art1Art1',
+        version: 3,
+        kind: 'html',
+        title: 'Landing page',
+      })
+      useArtifactPanel().state.value = {
+        ...useArtifactPanel().state.value!,
+      }
+      await flushPromises()
+
+      expect(fetchMock.mock.calls.length).toBe(callsBefore)
+      expect(frameMounts.count).toBe(1)
+      expect(wrapper.get('[data-testid="frame-stub"]')
+        .attributes('data-content')).toBe('<p>v3</p>')
+    })
+
+  it('shows a failed generation as an error in both tabs', async () => {
+    useArtifactPanel().open({
+      artifactId: null,
+      version: null,
+      kind: 'html',
+      title: 'Page',
+      source: 'owner',
+      toolCallId: 'call_4',
+    })
+    useArtifactPanel().setStream({
+      toolCallId: 'call_4',
+      kind: 'html',
+      title: 'Page',
+      content: '<h1>Hel',
+      status: 'failed',
+      errorText: 'The artifact is too large.',
+    })
+
+    const wrapper = await mountDetail()
+    const alert = wrapper.get('[data-testid="artifact-stream-error"]')
+
+    expect(alert.classes()).toEqual(
+      expect.arrayContaining(['alert', 'alert-error', 'alert-soft']),
+    )
+    expect(alert.text()).toContain('The artifact is too large.')
+
+    await wrapper.get('[data-testid="artifact-tab-code"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="artifact-stream-error"]').text())
+      .toContain('The artifact is too large.')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

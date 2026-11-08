@@ -82,6 +82,49 @@ describe('artifacts frame-src plugin', () => {
     })
   })
 
+  it('merges into an existing frame-src instead of adding a second one',
+    async () => {
+      const { applyArtifactFrameSrc } = await loadPlugin()
+      const response = {
+        headers: {
+          'Content-Security-Policy':
+            `default-src 'self'; frame-src ${SELF} https://example.com;`,
+        },
+      }
+
+      applyArtifactFrameSrc(
+        response as never,
+        createContext('/chats/new') as never,
+        { artifactsOrigin: ARTIFACTS_ORIGIN },
+      )
+
+      const policy = response.headers['Content-Security-Policy']
+
+      expect(policy).toBe(
+        `default-src 'self'; frame-src ${SELF} https://example.com `
+        + `${ARTIFACTS_ORIGIN} ${TURNSTILE}`,
+      )
+      expect(policy.match(/frame-src/g)).toHaveLength(1)
+    })
+
+  it('replaces a frame-src of none with the artifact sources', async () => {
+    const { mergeFrameSrc } = await loadPlugin()
+
+    expect(mergeFrameSrc(
+      'FRAME-SRC \'none\'; img-src data:',
+      `frame-src ${SELF} ${ARTIFACTS_ORIGIN}`,
+    )).toBe(`frame-src ${SELF} ${ARTIFACTS_ORIGIN}; img-src data:`)
+  })
+
+  it('appends frame-src when the policy only has default-src', async () => {
+    const { mergeFrameSrc } = await loadPlugin()
+
+    expect(mergeFrameSrc(
+      'default-src \'self\'',
+      `frame-src ${SELF} ${ARTIFACTS_ORIGIN}`,
+    )).toBe(`default-src 'self'; frame-src ${SELF} ${ARTIFACTS_ORIGIN}`)
+  })
+
   it('sends the same directive as the client meta policy', async () => {
     const { applyArtifactFrameSrc } = await loadPlugin()
     const response = { headers: {} as Record<string, string> }

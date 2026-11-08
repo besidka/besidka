@@ -28,6 +28,12 @@ vi.mock('@panzoom/panzoom', () => {
   return { default: mocks.panzoom }
 })
 
+const { sanitizeDiagramSvgMock } = vi.hoisted(() => ({
+  sanitizeDiagramSvgMock: vi.fn((svg: string) => svg),
+}))
+
+mockNuxtImport('sanitizeDiagramSvg', () => sanitizeDiagramSvgMock)
+
 mockNuxtImport('useDiagramExport', () => {
   return () => {
     return { runExportAction: mocks.runExportAction }

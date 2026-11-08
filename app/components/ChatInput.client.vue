@@ -652,7 +652,9 @@ const { textarea, input } = useTextareaAutosize({
 })
 
 nuxtApp.hook('chat-input:prefill', async (text) => {
-  message.value = text
+  const draft = message.value.trimEnd()
+
+  message.value = draft ? `${draft}\n\n${text}` : text
   await nextTick()
   textarea.value?.focus({ preventScroll: true })
 })

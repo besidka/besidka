@@ -28,6 +28,7 @@ import {
 } from '#shared/utils/message-metadata'
 import { isPastChatPreRetrievalPart } from '#shared/utils/past-chat-retrieval'
 import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import { isArtifactToolPartType } from '~/utils/artifact-parts'
 import {
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
@@ -454,6 +455,7 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
     if (
       part.type === 'file'
       || part.type === ARTIFACT_DATA_PART_TYPE
+      || isArtifactToolPartType(part.type)
       || isVisibleGenerateImageToolPart(part)
     ) {
       return true

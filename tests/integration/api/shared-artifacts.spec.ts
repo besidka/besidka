@@ -252,7 +252,7 @@ describe('shared chat artifacts API', () => {
         await expect(result).resolves.toEqual({
           artifactId: quiz.artifactId,
           kind: 'html',
-          title: 'Quiz renamed',
+          title: 'Quiz',
           version: 1,
           content: '<p>v1</p>',
           sizeBytes: 9,
@@ -263,6 +263,32 @@ describe('shared chat artifacts API', () => {
         expect(JSON.stringify(mocks.logger.set.mock.calls))
           .not.toContain('<p>v1</p>')
       })
+
+    it('returns the title of the shared part for each version, never '
+      + 'the current title', async () => {
+      const { chat, quiz } = await seedSharedChat()
+
+      await seedMessage(
+        testDb.db,
+        chat.id,
+        'assistant',
+        [artifactPart(quiz.artifactId, 2, 'Quiz v2 as shared')],
+        minutesBefore(28),
+      )
+
+      const first = await readVersion(quiz.artifactId, '1')
+      const second = await readVersion(quiz.artifactId, '2')
+
+      await expect(first.result).resolves.toMatchObject({
+        version: 1,
+        title: 'Quiz',
+      })
+      await expect(second.result).resolves.toMatchObject({
+        version: 2,
+        title: 'Quiz v2 as shared',
+        content: '<p>v2 private</p>',
+      })
+    })
 
     it('answers 404 for a version the shared messages do not reference',
       async () => {
