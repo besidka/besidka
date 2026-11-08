@@ -206,6 +206,15 @@ describe('setFeatureRule', () => {
           effect: 'enabled',
           expiresAt: null,
           actorKind: 'ui',
+          rule: {
+            before: null,
+            after: {
+              enabled: true,
+              rolloutBps: 0,
+              allowRoles: ['admin', 'tester'],
+              variants: null,
+            },
+          },
         },
       },
     })
@@ -222,11 +231,34 @@ describe('setFeatureRule', () => {
       updatedBy: 99,
     }
     const { db, batches } = createFakeDb([[existing]])
-    const { context } = createContext(db)
+    const { context, logger } = createContext(db)
 
     await setFeatureRule(context, 'artifacts', { enabled: false })
 
     const [write, audit] = batches[0]!
+
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        featureAccess: expect.objectContaining({
+          action: 'rule.set',
+          effect: 'disabled',
+          rule: {
+            before: {
+              enabled: true,
+              rolloutBps: 2500,
+              allowRoles: ['admin'],
+              variants: null,
+            },
+            after: {
+              enabled: false,
+              rolloutBps: 2500,
+              allowRoles: ['admin'],
+              variants: null,
+            },
+          },
+        }),
+      },
+    })
 
     expect(write!.kind).toBe('update')
     expect(write!.set).toMatchObject({

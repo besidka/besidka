@@ -255,8 +255,9 @@ have no foreign key to `users`, so nothing cascades to them. A restore:
   audit table is therefore **not a replay source**. The ledger is Axiom
   `besidka-prod`: every feature-access write logs
   `attributes.featureAccess` with ids only (action, flag, target user id,
-  effect, expiry; the opt-in route logs `optedIn`, the objection switch
-  `objected`). Those writers ship with the admin API, Labs and MCP tickets
+  effect, expiry; a rule write also logs `rule.before` and `rule.after`
+  with `enabled`, `rolloutBps`, `allowRoles` and `variants`; the opt-in
+  route logs `optedIn`, the objection switch `objected`). Those writers ship with the admin API, Labs and MCP tickets
   (P0-6, P0-7, P0-8).
 
 Rules live in KV (`features:config:v1`, TTL 300 seconds) as a cache only.
@@ -460,9 +461,11 @@ order:
    2. role revocations (`role.revoke`): delete the `user_roles` row,
    3. deny grants (`grant.set` with `effect: 'deny'`) and grant revocations
       (`grant.revoke`): upsert the deny row or delete the grant,
-   4. rule changes (`rule.update`, kill switch first): set `enabled`,
-      `rollout_bps` and `variants` to the last value logged in the window,
-      then delete the KV key `features:config:v1`.
+   4. rule changes (`rule.set`): set `enabled`, `rollout_bps`,
+      `allow_roles` and `variants` to `rule.after` of the last event logged
+      per flag in the window, then delete the KV key `features:config:v1`.
+      The env kill switch (`NUXT_FEATURES_DISABLED`) is not in D1 and needs
+      no replay.
 
    Within each group, take only the **last** logged event per (user, flag)
    in `_time asc` order: an opt-out followed by a fresh opt-in in the window

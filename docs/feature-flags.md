@@ -420,7 +420,7 @@ never an email or a reason:
 
 | Writer | Fields |
 |---|---|
-| Admin UI and MCP writes | `{ action, flag, targetUserId, effect, expiresAt, actorKind }`, plus `role` for role writes; MCP writes also carry the client id. `action` is `rule.set`, `grant.set`, `grant.revoke`, `role.set` or `role.revoke`; for a rule write `effect` is `enabled` or `disabled` |
+| Admin UI and MCP writes | `{ action, flag, targetUserId, effect, expiresAt, actorKind }`, plus `role` for role writes; MCP writes also carry the client id. `action` is `rule.set`, `grant.set`, `grant.revoke`, `role.set` or `role.revoke`; for a rule write `effect` is `enabled` or `disabled`, and `rule: { before, after }` carries `enabled`, `rolloutBps`, `allowRoles` and `variants` (before is null for a new rule), so a restore can rebuild the rollout share and variants |
 | Opt-in route | `{ action: 'opt_in.set', flag, optedIn }` |
 | Objection switch | `{ action: 'experiments.set', objected }` |
 | Admin reads (C15) | `{ action: 'admin.read', resource, resultCount }`, never the search text |

@@ -48,6 +48,13 @@ export type FeatureAdminAction
     | 'role.set'
     | 'role.revoke'
 
+interface FeatureRuleLedgerState {
+  enabled: boolean
+  rolloutBps: number
+  allowRoles: string[] | null
+  variants: FeatureRulePatch['variants'] | null
+}
+
 interface FeatureAccessLedgerEntry {
   action: FeatureAdminAction
   flag: string | null
@@ -56,6 +63,10 @@ interface FeatureAccessLedgerEntry {
   expiresAt: string | null
   role?: FeatureRole
   clientId?: string
+  rule?: {
+    before: FeatureRuleLedgerState | null
+    after: FeatureRuleLedgerState
+  }
 }
 
 type AuditSnapshot = Record<string, unknown> | null
@@ -263,6 +274,7 @@ export async function setFeatureRule(
     targetUserId: null,
     effect: next.enabled ? 'enabled' : 'disabled',
     expiresAt: null,
+    rule: { before, after: next },
   })
 
   try {
