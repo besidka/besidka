@@ -2,7 +2,7 @@
 title: "Cookie Policy"
 description: "Every cookie and browser storage entry Besidka uses, what it is for, how long it lasts, and how to change or withdraw your consent."
 updatedAt: 2026-10-29
-summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, hand a tapped push notification to the open app, and remember a folder you linked to a project. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. There is also an optional Analytics category: if you allow it, Besidka loads Cloudflare Web Analytics, a script that measures page views and page-load speed and, according to Cloudflare, sets no cookie and stores nothing on your device. It is off until you allow it. The only other third-party script is a security check on the sign-in forms. There is no marketing category. My own page-view counting happens on the server with no cookie, no identifier and no stored IP address, and the campaign tags in a link you click are read from the web address, never stored on your device. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
+summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, hand a tapped push notification to the open app, and remember a folder you linked to a project. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. There is also an optional Analytics category: if you allow it, Besidka loads Cloudflare Web Analytics, a script that measures page views and page-load speed and, according to Cloudflare, sets no cookie and stores nothing on your device. It is off until you allow it. The only other third-party script is a security check on the sign-in forms and on the artifact report form for visitors who are not signed in. There is no marketing category. My own page-view counting happens on the server with no cookie, no identifier and no stored IP address, and the campaign tags in a link you click are read from the web address, never stored on your device. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
 ---
 
 ## What this policy covers
@@ -58,6 +58,7 @@ These are needed to run the service you asked for. They are not consent-gated un
 | `knowledge-folders:<project id>` | localStorage | Besidka | Created only if you add a folder to a project. Holds the folder's own name, which the server never stores, and which folder is linked to the handle above, so the project shows your folder by name and **Sync** knows which folder to read. In your browser only, never sent to me | Until removed |
 | `pwa:refresher-dismissed-until` | sessionStorage | Besidka | Remembers, for the current tab only, that you dismissed the "new version available" prompt, so it does not come straight back | 30 minutes, and gone when the tab closes |
 | `pwa:auto-refresh-applied-until` | sessionStorage | Besidka | Stops the installed app from reloading itself over and over while it applies an update in the background. Current tab only | 5 minutes, and gone when the tab closes |
+| `artifacts:auto-opened:<chat id>` | sessionStorage | Besidka | Created only when artifacts are available to your account. Remembers, for the current tab, that the first artifact of a chat was already opened next to it, so the panel does not open by itself again. Holds a marker, never the artifact | Gone when the tab closes |
 
 The cookie settings dialog lists cookies, localStorage keys and sessionStorage keys. The two IndexedDB databases above, `besidka-push` and `besidka-knowledge`, are listed only on this page, because the dialog has no entry type for them. Both are necessary, and neither exists unless you used the feature it belongs to.
 
@@ -94,9 +95,9 @@ These only remember how you like the app set up. They are kept **only if you agr
 
 ## Security check on sign-in forms
 
-The **sign-in, sign-up and reset-password** pages include a bot check from Cloudflare called **Turnstile**. It loads a script and an embedded frame from `challenges.cloudflare.com`, and only on those three pages. Nowhere else on Besidka loads it.
+The **sign-in, sign-up and reset-password** pages include a bot check from Cloudflare called **Turnstile**. It loads a script and an embedded frame from `challenges.cloudflare.com`. The only other place that loads it is the **report form for an artifact**, and only when you open that form without being signed in. Nowhere else on Besidka loads it.
 
-This check exists to keep automated sign-up and password-guessing out of the service you are about to use, so it does not need your consent and it is not part of the banner. Cloudflare processes the data it collects as described in the [Privacy Policy](/privacy-policy). Anything Turnstile itself stores sits in Cloudflare's own origin, not on besidka.com, and I do not read it.
+This check exists to keep automated sign-up, password-guessing and automated false reports out of the service, so it does not need your consent and it is not part of the banner. Cloudflare processes the data it collects as described in the [Privacy Policy](/privacy-policy). Anything Turnstile itself stores sits in Cloudflare's own origin, not on besidka.com, and I do not read it.
 
 ## Analytics
 
@@ -139,10 +140,12 @@ I considered a cookie that would remember a campaign across visits. I do **not**
 
 I do not embed advertising scripts, so no advertiser sets a cookie through my pages. Besidka has two third-party scripts, both from Cloudflare:
 
-- **Cloudflare Turnstile**, a security check that runs only on the sign-in, sign-up and reset-password pages. It is not consent-gated (see above).
+- **Cloudflare Turnstile**, a security check that runs only on the sign-in, sign-up and reset-password pages and on the artifact report form for visitors who are not signed in. It is not consent-gated (see above).
 - **Cloudflare Web Analytics**, which loads only if you allow the Analytics category. According to Cloudflare it sets no cookie (see above).
 
-**Fonts and icons.** The fonts and icons Besidka uses are served from besidka.com. Your browser does not contact Google Fonts or an icon service to draw a page, so no one else sets a cookie or sees your IP address for that. If the person who shared a chat chose to show their avatar on the share page, the image is delivered through besidka.com too, so opening a share does not contact Google or GitHub.
+**Fonts and icons.** The fonts and icons Besidka uses are served from besidka.com. Your browser does not contact Google Fonts or an icon service to draw a page, so no one else sets a cookie or sees your IP address for that. If the person who shared a chat chose to show their avatar on the share page, the image is delivered through besidka.com too, so opening a share does not contact Google or GitHub. Artifacts run in a frame loaded from a separate address that I run on Cloudflare; it sets no cookie, and the frame cannot use your browser storage.
+
+**Public artifact pages** do not load Cloudflare Web Analytics, whatever you chose in the banner, and set no cookie beyond the necessary ones listed above.
 
 Some things happen off my site and are worth knowing about:
 

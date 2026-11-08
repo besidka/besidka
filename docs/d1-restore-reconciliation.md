@@ -43,6 +43,10 @@ command below is for the operator, preview first.
 | Revoked roles (`user_roles`), deny grants and grant revocations (`feature_grants`) | Revoked testers and grants work again; deny grants vanish | High | No |
 | Kill switch and rollout changes (`feature_flag_rules`) | Revert to B | Medium | No |
 | `feature_audit_log` | Rolled back with the rows it describes, so it cannot be the replay source; rows anonymised in the window lose their scrub | Medium (erasure) | No |
+| Artifact links revoked or taken down in the window (planned, A-1, A-7) | Public again; a takedown is undone, also inside shared chats | High (privacy, notice-and-action) | No |
+| Artifacts deleted in the window | Rows return; R2 objects stay gone, so reads answer 410 | Medium (erasure) | No |
+| Artifact reports and decisions in the window | Rolled back or reopened; legal holds set in the window vanish | High (TCO preservation) | No |
+| Viewer storage reset or purged in the window | Old answers return | Medium (erasure) | No |
 | `d1_migrations` | Rolled back, so the next deploy re-applies migrations | **Blocking** | No |
 
 ## Sessions: why a restore revives revoked sessions
@@ -177,6 +181,32 @@ The bulk routes take public chat ids in their request body but log slugs on
 purpose. `chats.id` is a plain `INTEGER PRIMARY KEY`, so a chat created in
 the window can have its row id reused after the restore, and replaying a
 logged id would hit someone else's chat. A slug never collides.
+
+## Artifacts (planned, A-1 to A-7)
+
+A restore rolls back every artifact table (`artifacts`, `artifact_versions`,
+`artifact_shares`, `artifact_storage`, `artifact_reports`) to the bookmark B.
+R2 keeps its current state. Reconcile before `/a/` is reachable again: turn the
+global `artifacts` rule off in `/admin` until the steps below are done.
+
+- **Revocations and takedowns first.** Replay from Axiom every share revoke
+  and every takedown in the window by share id and artifact id (A-7 logs ids,
+  never tokens): set `revoked_at`, `takedown_at` and `takedown_reason` again.
+  A takedown that was undone is a notice-and-action failure and, for a TCO
+  order, a breach of the one-hour rule.
+- **Legal holds.** Re-set `legal_hold_until` for every artifact held in the
+  window, from the private content-incident record
+  (`docs/legal/content-incidents.md`, section 8). A held artifact deleted
+  before B and held after it is not affected; one held in the window and
+  deleted after the restore point must not be purged by the sweep.
+- **Reports.** Report rows created in the window are gone from D1; the mailbox
+  email is the copy. Recreate the open ones by hand, or keep working from the
+  mailbox and the private record.
+- **Deletions.** Artifacts and viewer storage deleted in the window come back
+  as rows. Replay the deletes (artifact ids, viewer resets) from Axiom; their
+  R2 objects are already gone, so reads answer 410 until then.
+- **Ids.** Artifact ids are public ids; replay by them, never by a row id that
+  a new artifact could have reused.
 
 ### The visibility-flag migrations (closed)
 
