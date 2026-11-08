@@ -912,6 +912,7 @@ async function deleteMessage(messageId: string) {
     chatSdk.messages = chatSdk.messages.filter((message) => {
       return message.id !== messageId
     })
+    nuxtApp.callHook('chat:context-changed')
   } catch (exception) {
     const parsedException = parseError(exception)
 

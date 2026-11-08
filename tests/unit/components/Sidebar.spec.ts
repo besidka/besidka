@@ -10,9 +10,14 @@ enableAutoUnmount(afterEach)
 
 const loggedIn = ref<boolean>(true)
 const sidebarElementWidth = ref<number>(0)
+const isChatPage = ref<boolean>(false)
 
 mockNuxtImport('useAuth', () => {
   return () => ({ loggedIn })
+})
+
+mockNuxtImport('useChatRoute', () => {
+  return () => ({ isChatPage })
 })
 
 mockNuxtImport('useElementSize', () => {
@@ -26,6 +31,7 @@ function mountSidebar() {
         SidebarAuthCta: true,
         LazySidebarNewChat: true,
         LazySidebarDevelopment: true,
+        SidebarChatContextButton: true,
       },
     },
   })
@@ -144,6 +150,70 @@ describe('Sidebar.client', () => {
       .flatMap(icon => icon.classes())
 
     expect(iconClasses).toContain('i-lucide:home')
+  })
+})
+
+describe('Sidebar.client slot 5', () => {
+  beforeEach(() => {
+    loggedIn.value = true
+    isChatPage.value = false
+    stubMatchMedia()
+  })
+
+  afterEach(() => {
+    isChatPage.value = false
+    vi.restoreAllMocks()
+  })
+
+  it('shows the more menu outside chat pages', async () => {
+    const wrapper = await mountSidebar()
+
+    expect(wrapper.find('[data-testid="sidebar-more-features"]').exists())
+      .toBe(true)
+    expect(wrapper.find('sidebar-chat-context-button-stub').exists())
+      .toBe(false)
+  })
+
+  it('swaps the more menu for the chat context button on chat pages',
+    async () => {
+      isChatPage.value = true
+
+      const wrapper = await mountSidebar()
+
+      expect(wrapper.find('sidebar-chat-context-button-stub').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="sidebar-more-features"]').exists())
+        .toBe(false)
+    })
+
+  it('follows navigation between a chat page and another page', async () => {
+    const wrapper = await mountSidebar()
+
+    isChatPage.value = true
+    await nextTick()
+
+    expect(wrapper.find('sidebar-chat-context-button-stub').exists())
+      .toBe(true)
+
+    isChatPage.value = false
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="sidebar-more-features"]').exists())
+      .toBe(true)
+    expect(wrapper.find('sidebar-chat-context-button-stub').exists())
+      .toBe(false)
+  })
+
+  it('keeps search and home beside either slot 5', async () => {
+    isChatPage.value = true
+
+    const wrapper = await mountSidebar()
+
+    expect(wrapper.find('[data-testid="sidebar-search-trigger"]').exists())
+      .toBe(true)
+    expect(wrapper.findAll('.iconify').flatMap((icon) => {
+      return icon.classes()
+    })).toContain('i-lucide:home')
   })
 })
 

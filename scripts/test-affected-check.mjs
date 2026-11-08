@@ -1090,6 +1090,24 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/side-panel.spec.ts',
   ]
 
+  const chatContextTests = [
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/server/api/chats-context.spec.ts',
+    'tests/unit/server/api/shared-context.spec.ts',
+    'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/mcp/tools/get-chat.spec.ts',
+    'tests/unit/utils/chat-context.spec.ts',
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/composables/chat-context.spec.ts',
+    'tests/unit/composables/chat-route.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/components/Sidebar/ChatContextButton.spec.ts',
+    'tests/unit/components/Sidebar/AuthCta.spec.ts',
+    'tests/unit/components/Sidebar/Development.spec.ts',
+    'tests/unit/components/Sidebar.spec.ts',
+    'tests/e2e/chat-context-panel.spec.ts',
+  ]
+
   const messageSearchTests = [
     'tests/unit/utils/search/text.spec.ts',
     'tests/unit/utils/search/ukrainian-stemmer.spec.ts',
@@ -2024,6 +2042,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
       tests: sidePanelTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
+      tests: chatContextTests,
     },
     {
       pattern:

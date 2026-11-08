@@ -216,6 +216,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   inside an open fence does not send, Shift+Enter list continuation, Tab
   indent, IME guard), the single insertion helper that keeps native undo, and
   why a TipTap/ProseMirror editor was deferred
+- `docs/chats/context-panel.md` - The chat context panel: the contextual
+  fifth pill slot (Chat button with an outputs badge on owned and shared chat
+  pages, ⋯ More elsewhere), Pin sidebar and Cookie settings moving into the
+  User menu on chat pages, Branch, Share and memory exclusion in the panel
+  header, the Outputs, Inputs and Used sections, the
+  `GET /api/v1/chats/[slug]/context` and shared aggregates, the section
+  registry later features add to, and the `get_chat` context summary
 - `docs/chats/model-picker.md` - The chat input model picker: dropdown at
   md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
   the `layout` prop on the shared Panel, inline filter chips, the
@@ -725,7 +732,10 @@ subdirectory. Pick the directory form as soon as a second route appears.
   the tab, and its id added to `tests/unit/components/Search/Modal.spec.ts`;
 - nothing in the sidebar user dropdown (`app/components/Sidebar/AuthCta.vue`)
   by default. That dropdown holds only the most important pages (Security and
-  API Keys); add to it only when the owner asks.
+  API Keys); add to it only when the owner asks. The one owner-directed
+  exception: on chat pages it also ends with Pin sidebar and Cookie settings,
+  because slot 5 of the pill is the Chat context button there
+  (`docs/chats/context-panel.md`).
 
 The profile tabs show every label only from `lg`. Below that, only the active
 tab shows its label and the rest show icons, so a sixth tab still fits.

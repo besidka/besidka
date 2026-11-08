@@ -54,6 +54,15 @@ vi.mock('~~/server/utils/mcp/private/chats', async (importOriginal) => {
 })
 
 const SLUG = '01ARZ3NDEKTSV4RRFFQ69G5FA1'
+const CONTEXT_SUMMARY = {
+  outputs: 3,
+  inputs: 2,
+  sources: 1,
+  images: 2,
+  researchReports: 1,
+  memoryActions: 0,
+  files: [{ id: 'key-1', name: 'report.pdf' }],
+}
 
 async function loadTool(context: Record<string, unknown>) {
   stubMcpToolGlobals(context)
@@ -76,6 +85,7 @@ describe('get_chat tool', () => {
       projectName: 'Vaimo',
       share: null,
       truncated: false,
+      context: CONTEXT_SUMMARY,
       messages: [],
     })
   })
@@ -88,7 +98,12 @@ describe('get_chat tool', () => {
       idempotentHint: true,
       openWorldHint: false,
     },
-    descriptionIncludes: ['pinned', 'share link', 'truncated'],
+    descriptionIncludes: [
+      'pinned',
+      'share link',
+      'truncated',
+      'context summary',
+    ],
     validInput: { slug: SLUG },
     mocks,
     domainMock: mocks.getMcpChat,
@@ -110,6 +125,15 @@ describe('get_chat tool', () => {
       memoryExcluded: false,
       projectName: 'Vaimo',
       share: null,
+    })
+  })
+
+  it('returns the context summary built by the chat reader', async () => {
+    const tool = await loadTool({ mcpAuth: authWithScopes(['chats:read']) })
+    const result = await tool.handler({ slug: SLUG })
+
+    expect(parseToolResult(result)).toMatchObject({
+      context: CONTEXT_SUMMARY,
     })
   })
 
