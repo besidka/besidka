@@ -12,6 +12,7 @@
     "chat-scroll-spacer.md": "364b7155-1767-4701-af40-f0656dd29cf0",
     "chats/chat-input-markdown.md": "9941ec0e-a401-401d-ad84-c33b00e58658",
     "chats/chat-input-tools-menu.md": "889beda9-eccf-4154-bc32-a0f2cb690d3e",
+    "chats/context-panel.md": "0aeb57cf-2c47-4c7f-8844-3949334dec38",
     "chats/error-handling.md": "1e376e12-91ba-4eb2-aa93-6b5634b21044",
     "chats/files-generation-plan.md": "81fc0c12-b2ab-498c-ae6e-a5e575440ff1",
     "chats/files-generation-progress.md": "88bd2373-3460-4b2f-bac9-2179e43227ed",
@@ -92,6 +93,7 @@
     "skills.md": "3f2a672f-e47d-4475-aad0-2d6f615f2c59",
     "stacked-prs.md": "d8759281-2101-467f-a3fe-08c6e7c60fed",
     "test-optimization.md": "3cd2bdf5-633a-4626-9831-d312002d663f",
+    "ui/side-panel.md": "8c58e055-bf00-401b-8cbb-963a3cda93d8",
     "video-player.md": "3d4e964b-cfdf-4cd3-9ffa-64ed02a77797",
     "vite-css-minify.md": "a80e1753-705c-43f6-a84b-c963ab3e0733",
     "web-search-cost-accounting.md": "51bebf8a-189b-420d-9dde-b795c3c8e51f"
