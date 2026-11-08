@@ -3,12 +3,31 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LEGAL_NOTICES } from '#shared/utils/legal-notices'
+import type { LegalNotice } from '#shared/utils/legal-notices'
 import {
   formatLegalDocumentList,
   getLegalNoticeHref,
   removeLegacyLegalNoticeDismissals,
   useLegalNoticeBanner,
 } from '../../../app/composables/legal-notice-banner'
+
+vi.mock('#shared/utils/legal-notices', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('#shared/utils/legal-notices')
+  >()
+  const pinnedNotices = [actual.LEGAL_NOTICES[0]]
+
+  return {
+    ...actual,
+    LEGAL_NOTICES: pinnedNotices,
+    getActiveLegalNotices: (
+      now: Date,
+      notices: readonly LegalNotice[] = pinnedNotices,
+    ) => {
+      return actual.getActiveLegalNotices(now, notices)
+    },
+  }
+})
 
 const [NOTICE] = LEGAL_NOTICES
 const USER_ID = 42

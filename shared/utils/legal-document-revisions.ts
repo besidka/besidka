@@ -11,12 +11,14 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: 'cd5434daec92ffd66177be56ffbd4a4279605e8f543c4bbe9bf5dc3102f1f0c1',
-    classification: 'minor',
-    note: 'Settings list now names the dismissed in-app legal notices; a UI '
-      + 'choice like the push prompt answer, same purpose, basis and '
-      + 'retention. Body still includes the 2026-11-legal-notices changes, '
-      + 'effective 2026-12-04.',
+    hash: '59a124392b6f2cf658cfc54e64159c7890a32a24eff40db7e289eec1efd5026c',
+    classification: 'material',
+    noticeId: '2026-11-experimental-features',
+    note: 'Experimental features: per-account feature access, gradual '
+      + 'rollouts and version tests (new purpose on legitimate interests), '
+      + 'Labs opt-ins, the objection switch, the 12-month change log and '
+      + 'the feature counters. Body still includes the '
+      + '2026-11-legal-notices changes, effective 2026-12-04.',
   },
   'terms-of-use': {
     hash: '9ed16390042063601702e2848cfc14c44ff111c8a6e0dd79b8c4b89e26fea941',
