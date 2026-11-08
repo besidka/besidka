@@ -7,7 +7,8 @@
   pages). They work without a token, read only public content and never
   touch user data.
 - **Private tools** (the signed-in user's chats, projects, files, memory and
-  settings: 32 tools that cover what the web UI does except chatting, see
+  settings: 36 tools that cover what the web UI does except chatting, plus
+  the admin-only feature access tools, see
   [What MCP does not do (and why)](#what-mcp-does-not-do-and-why)). They
   need an OAuth access token issued by Besidka's own authorization server
   (Better Auth `@better-auth/mcp`, see `server/utils/auth.ts`).
@@ -83,9 +84,10 @@ never data.
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
 | `files:write` | `create_file`, `rename_file` |
-| `settings:read` | `get_settings` |
+| `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+| `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
 The per-user surface has 32 tools: the original thirteen plus 19 added for
 UI parity (six new scopes: `files:read`, `settings:read`, `chats:write`,
@@ -132,7 +134,59 @@ history (the `DESTRUCTIVE_TOOLS` list in the spec): `delete_memory`,
 `delete_chats`, `delete_chat_message`, `revoke_chat_shares`,
 `update_project`, `delete_project`, `update_project_knowledge_item`,
 `delete_project_knowledge_items`, `rename_file`, `delete_files`,
-`reset_memory` and `update_settings`.
+`reset_memory`, `update_settings` and `set_feature_access`.
+
+Since 2.0.0 the surface has 36 private tools: `list_my_features` under
+`settings:read`, and three admin tools under the new `admin:features` scope.
+The two admin list tools are reads under a write-class scope:
+`isMcpWriteTool` excludes them (`READ_TOOLS_UNDER_WRITE_SCOPES` in
+`tool-scopes.ts`), so they carry `readOnlyHint: true` and count against the
+read limit, while the scope itself stays unticked by default.
+
+#### The `admin:features` scope
+
+An admin's agent can read the feature registry and grant or revoke a
+feature for one person; nothing else (`docs/feature-flags.md`, section 8).
+
+- **Who can get it.** It is in `MCP_WRITE_SCOPES` (unticked by default) and
+  `MCP_ADMIN_SCOPES` (`isMcpAdminScope`, `withoutMcpAdminScopes`). The
+  consent picker (`ScopePicker.vue`) hides it unless `useIsAdmin()` is true.
+  The server strips it twice for anyone who is not an admin right now
+  (`keepMcpAdminScopesForAdmins` in `server/utils/mcp/admin-scopes.ts`,
+  the same `isAdminUser` check as `/admin`: verified email, and 2FA outside
+  dev and CI): in the native form route
+  (`profiles/connected-apps/consent.post.ts`) and in a Better Auth `before`
+  hook on `/oauth2/consent` (`stripMcpAdminScopesFromConsent` in
+  `server/utils/auth.ts`). The hook is the boundary: the hydrated consent
+  page calls Better Auth directly, and a consent body without `scope` would
+  otherwise grant every requested scope, so the hook writes the narrowed
+  list back as an explicit `scope` and refuses a consent left empty.
+- **The 401 and 403 challenges still name it** (it is in `MCP_OAUTH_SCOPES`,
+  and `refreshStaleClientScopes` adds it to old clients), as for every other
+  scope. A non-admin who calls an admin tool gets the usual
+  `403 insufficient_scope`; reconnecting cannot add the scope, so the call
+  keeps failing. Accepted: claude.ai does not step up anyway.
+- **A token that outlives the role** (role removed, 2FA turned off) still
+  carries the scope, and `/oauth2/authorize` reuses a stored consent that
+  holds it. So `withMcpPrivateTool` re-checks the user for every
+  `admin:features` tool (`isMcpAdminTool`, `assertMcpFeatureAdmin`), and
+  the logic functions check again; a non-admin gets a generic
+  `404 Not found` with no side effect. A new admin tool therefore cannot
+  forget the check.
+- **Rate limits.** The two list tools count as reads. `set_feature_access`
+  takes the write limit (30 per minute) plus its own bucket of 60 per hour
+  (`MCP_PRIVATE_ADMIN_WRITE_RATE_LIMIT`), so a prompt-injected admin agent
+  cannot sweep the user base.
+- **No other users' personal data** (pre-check C9): `list_feature_access`
+  returns numeric user ids, never an email, a name or the grant reason, and
+  `set_feature_access` accepts `userId` or an exact `email` but echoes only
+  the id. The admin's AI client therefore receives pseudonymous ids only.
+- **Writes go through the shared writer** (`setFeatureGrant` and
+  `revokeFeatureGrant` in `server/utils/features/admin.ts`) with
+  `actor: { kind: 'mcp', clientId }`, so each change is one grant upsert or
+  delete plus one `feature_audit_log` row with `actor_kind = 'mcp'` and the
+  client id, and the `attributes.featureAccess` ledger line (C8). Reads log
+  `featureAccess.action = 'admin.read'` with `mcp.flags` or `mcp.grants`.
 
 #### The `data:delete` scope
 
@@ -715,6 +769,10 @@ text only and capped.
 | `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
 | `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
 | `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
+| `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
+| `list_feature_flags` | `admin:features` | no | Admins only. Every registry flag with stage, roles, rule (enabled, rollout percentage, variants), kill switch and grant counts. Read-only | `listAdminFeatures` (the `/admin` query) |
+| `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email` (an unknown user is a 404 either way); with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`), `truncated: true` when there are more |
+| `set_feature_access` | `admin:features` | yes | Admins only. `access` `allow`, `deny` or `clear` for one user (`userId` or `email`) and one registry flag, optional `expiresInDays` (1 to 365) and `reason` (200 characters, kept in the audit log only). Echoes the user id only (`expiresAt` as an ISO string, while `list_feature_access` uses unix seconds, as the admin API does). Cannot touch rules, rollouts, the kill switch or opt-ins | `setFeatureGrant`, `revokeFeatureGrant` with an MCP actor; 30 per minute and 60 per hour |
 | `update_settings` | `settings:write` | yes | Set `reasoningExpanded`, `reasoningAutoHide`, `defaultReasoningLevel` (`null` clears it), `favoriteModels`, `favoriteGatewayModels`, `sidebarPinned`, `memoryEnabled`, `chatSearchEnabled`. Keys that are not listed are dropped by the tool input schema before the handler runs, not refused (the strict schema in `updateMcpSettings` is a second guard for direct callers). `favoriteModels` and `favoriteGatewayModels` are replaced as a whole, so a client reads `get_settings` first and sends the full list or map. `memoryEnabled: true` is refused while it is off and automatic extraction is on, or any of the user's projects has automatic updates set to `on`, because turning it on would resume that background extraction | `applyUserSettingsUpdate`, the same schemas as `PATCH /profiles/settings` (`shared/utils/user-settings-schemas.ts`) |
 
 Notes:
@@ -973,20 +1031,24 @@ add one of these tools without reading its entry first.
    passkeys and account deletion.** Why: they are security and legal acts that
    must stay human. An app that could add a key or end a session could widen
    its own reach or lock the user out. **Revisit when:** not planned.
-6. **Feature rollout percentage, variants and the global kill switch.**
-   Planned MCP admin tools (P0-8, scope `admin:features`) may grant, deny or
-   clear one feature for **one** user. They never change a flag's rule:
-   rollout percentage, A/B variants, allowed roles or the on/off switch for
-   everyone. Why: those settings act on every account at once. A
-   prompt-injected admin agent could switch a feature on for everyone, or
-   switch off a safety feature for everyone, with one call, and no per-call
-   approval reaches the human. They stay in the `/admin` UI, behind a
-   confirmation. The same boundary keeps feature opt-ins (Labs) out of MCP:
-   opting in authorises a feature to spend the user's keys (item 1).
-   **Revisit when** the server enforces a cap on rule changes (for example at
+6. **Feature rules, rollout percentages, variants, the kill switch, Labs
+   opt-ins, the experiments objection and role management.** MCP can read the
+   caller's own features (`list_my_features`) and, for admins, change one
+   user's grant (`set_feature_access`, scope `admin:features`: allow, deny or
+   clear one feature for **one** user); nothing else. Why: a rule or rollout
+   change (rollout percentage, A/B variants, allowed roles or the on/off
+   switch for everyone) affects every account at once, so a prompt-injected
+   admin agent could switch a feature on or off for everyone with one call,
+   and no per-call approval reaches the human. Those settings stay in the
+   `/admin` UI, behind a confirmation. An opt-in (Labs) authorises spending
+   the user's keys (item 1); the objection is a GDPR Art. 21 act of the user;
+   roles widen who is an admin or tester. No tool imports `setFeatureRule` or
+   writes `feature_flag_rules` (the tool-scopes spec checks the sources).
+   **Revisit when:** the server enforces a cap on rule changes (for example at
    most a small rollout step per day, with automatic rollback), or a rule
-   change made over MCP stays pending until the admin confirms it in the
-   app.
+   change made over MCP stays pending until the admin confirms it in the app;
+   not planned for opt-ins; for roles, when the owner asks for tester
+   management from an agent.
 
 ### Not possible, not omitted
 
