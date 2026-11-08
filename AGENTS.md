@@ -581,6 +581,29 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   there is no `send_message` tool (decided 2026-10-30: no per-call approval
   guarantee, Art. 49 consent path; revisit criteria and the zero-spend
   `create_chat_draft` alternative)
+- `docs/connectors.md` - Connectors design (Phase 4a, C-1, not built yet):
+  user-brought remote MCP servers that Besidka calls as an MCP client
+  (outbound, unlike Connected apps); the threat model with the mitigating
+  ticket per row (SSRF, DNS rebinding and `global_fetch_strictly_public`,
+  LibreChat-style interpolation, token passthrough, lookalike hosts, rug
+  pulls, cross-connector exfiltration, CIMD tampering); the SSRF validator
+  rules and test vectors; the add-without-request, connect, consent and
+  OAuth flow (CIMD at `/connectors/client-metadata.json`, the preview host
+  rule, DCR fallback, PKCE, `resource`, `iss`); the per-send lifecycle;
+  approvals (every tool starts at "ask", forced rules F1 and F2, "approval
+  ends the send"); the data model, limits table (`connectors-policy.ts`),
+  UI placement, MCP tools and scopes, the OpenAI-only native path, the
+  `@ai-sdk/mcp` verification, host portability, the vendor-policy re-check,
+  and the ticket changes it imposes on C-2 to C-11
+- `docs/skills.md` - Skills design (Phase 4c, not built yet): Agent Skills
+  (agentskills.io) imported by GitHub, link, zip, paste or MCP; pinning,
+  archive rules, findings, the licence classifier (Anthropic's 2026-11-06
+  Apache-2.0 relicence, content-based blocking), the R2 layout
+  (`user-skills/`), the runtime (catalog budget, `activate_skill`,
+  `read_skill_file`, re-injection past the text-only sanitizer), the threat
+  model, Anthropic-only provider-container scripts, the data model, limits,
+  review UI, MCP tools, the never-public invariant, and the ticket changes
+  it imposes on S-1 to S-7
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the
