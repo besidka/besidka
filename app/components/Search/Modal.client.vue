@@ -292,6 +292,12 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Connected apps',
           run: () => goTo('/profile/connected-apps'),
         },
+        {
+          id: 'search-option-labs',
+          iconName: 'lucide:flask-conical',
+          label: 'Labs',
+          run: () => goTo('/profile/labs'),
+        },
         ...(isAdmin.value
           ? [{
             id: 'search-option-admin',

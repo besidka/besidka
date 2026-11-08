@@ -124,7 +124,7 @@ export function isEnvAdminEmail(
   return toCommaList(config.adminEmails).includes(email.trim().toLowerCase())
 }
 
-function isActiveOptIn(optIn: FeatureOptInState | undefined): boolean {
+export function isActiveOptIn(optIn: FeatureOptInState | undefined): boolean {
   if (!optIn?.optedInAt) {
     return false
   }
