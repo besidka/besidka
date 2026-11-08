@@ -13,7 +13,7 @@ the section it implements with the final API. The roadmap is in
 | 11. Capability contract | P0-5 (BES-240) | Built |
 | 6. `/admin`, 7. Admin ledger writers | P0-6 (BES-242) | Built |
 | 7. Opt-in and objection writers, 8. Labs | P0-7 (BES-246) | Built |
-| 8. MCP | P0-8 (BES-250) | Design |
+| 8. MCP | P0-8 (BES-250) | Built |
 
 This document is the contract for per-user feature access: which account can
 use which experimental feature, how a feature is rolled out to a share of
@@ -553,6 +553,17 @@ notification announces Labs features (C12; `docs/legal/monetisation-readiness.md
   id (C9).
 - No tool changes a rule (`docs/mcp-server.md`, "What MCP does not do",
   item 6).
+
+As built (P0-8, MCP server 2.0.0): logic in
+`server/utils/mcp/private/features.ts`, tools in `server/mcp/tools/`
+(`list-my-features.ts`, `list-feature-flags.ts`, `list-feature-access.ts`,
+`set-feature-access.ts`). Every admin tool re-checks `isAdminUser` first and
+answers a generic 404 otherwise. `set_feature_access` builds a
+`FeatureAdminContext` with `actor: { kind: 'mcp', clientId }` and calls
+`setFeatureGrant` or `revokeFeatureGrant`, so the audit row and the
+`featureAccess` ledger line are the same as the admin UI's. The consent
+strip and the scope details are in `docs/mcp-server.md`, "The
+`admin:features` scope".
 
 ## 9. Flagship later (P0-10)
 
