@@ -643,6 +643,8 @@ describe('Chat/ContextPanel', () => {
         .toBe('false')
       expect(wrapper.find(testId('chat-context-section-inputs-list')).exists())
         .toBe(false)
+      expect(toggleOf(wrapper, 'inputs').attributes('aria-controls'))
+        .toBeUndefined()
       expect(wrapper.get(testId('chat-context-section-inputs')).text())
         .toContain('Inputs')
 

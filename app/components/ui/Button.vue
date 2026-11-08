@@ -33,7 +33,7 @@
               'sr-only lg:not-sr-only': mobileText,
             }"
           >
-            {{ text }}
+            {{ text ?? title }}
           </span>
           <span
             v-if="mobileText && !(iconOnly || iconOnlyMobile || iconOnlyPhone)"
@@ -63,7 +63,6 @@ defineOptions({
 const props = withDefaults(defineProps<ButtonProps>(), {
   type: 'button',
   mode: 'primary',
-  text: 'Text',
   iconSize: 20,
   tooltipPosition: 'bottom',
   tooltipStyle: 'inherit',
@@ -105,7 +104,7 @@ const resultTitle = computed<string>(() => {
     return ''
   }
 
-  return props.title ?? props.text
+  return props.title ?? props.text ?? ''
 })
 
 const containerAttrs = computed<ButtonContainerAttrs>(() => {

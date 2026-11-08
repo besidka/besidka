@@ -1,36 +1,42 @@
 <template>
-  <div
-    class="indicator"
-    data-testid="sidebar-chat-context-wrapper"
+  <UiButton
+    ghost
+    circle
+    :icon-only="true"
+    :title="title"
+    tooltip-position="left"
+    :class="{ 'btn-active': isActive }"
+    :aria-expanded="isActive"
+    data-testid="sidebar-chat-context"
+    @click="toggleContext"
   >
-    <span
-      v-if="outputsCount > 0"
-      class="indicator-item badge badge-xs badge-soft badge-accent pointer-events-none"
-      aria-hidden="true"
-      data-testid="sidebar-chat-context-badge"
-    >
-      {{ badgeLabel }}
-    </span>
-    <UiButton
-      ghost
-      circle
-      :icon-only="true"
-      :icon-name="iconName"
-      :title="title"
-      tooltip-position="left"
-      :class="{ 'btn-active': isActive }"
-      :aria-expanded="isActive"
-      data-testid="sidebar-chat-context"
-      @click="toggleContext"
-    />
-  </div>
+    <template #icon>
+      <span
+        class="indicator"
+        data-testid="sidebar-chat-context-wrapper"
+      >
+        <span
+          v-if="outputsCount > 0"
+          class="indicator-item badge badge-xs badge-accent pointer-events-none"
+          aria-hidden="true"
+          data-testid="sidebar-chat-context-badge"
+        >
+          {{ badgeLabel }}
+        </span>
+        <Icon
+          :name="iconName"
+          size="20"
+        />
+      </span>
+    </template>
+  </UiButton>
 </template>
 
 <script setup lang="ts">
 import ChatContextPanel from '~/components/Chat/ContextPanel.vue'
 import { CHAT_CONTEXT_VIEW_KEY } from '~/composables/chat-context'
 
-const BADGE_MAX = 99
+const BADGE_MAX = 9
 
 const { mode, isOpen, toggle } = useSidePanel()
 const { outputsCount, refresh } = useChatContext()

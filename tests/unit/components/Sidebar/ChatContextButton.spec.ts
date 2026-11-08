@@ -53,22 +53,42 @@ describe('Sidebar/ChatContextButton', () => {
     expect(wrapper.get(BADGE).attributes('aria-hidden')).toBe('true')
   })
 
-  it('caps the badge at 99+', async () => {
-    outputsCount.value = 99
+  it('caps the badge at 9+', async () => {
+    outputsCount.value = 9
 
     const wrapper = await mountButton()
 
-    expect(wrapper.get(BADGE).text()).toBe('99')
+    expect(wrapper.get(BADGE).text()).toBe('9')
 
-    outputsCount.value = 100
+    outputsCount.value = 10
     await nextTick()
 
-    expect(wrapper.get(BADGE).text()).toBe('99+')
+    expect(wrapper.get(BADGE).text()).toBe('9+')
 
     outputsCount.value = 1204
     await nextTick()
 
-    expect(wrapper.get(BADGE).text()).toBe('99+')
+    expect(wrapper.get(BADGE).text()).toBe('9+')
+  })
+
+  it('uses a solid accent badge anchored to the icon corner', async () => {
+    outputsCount.value = 3
+
+    const wrapper = await mountButton()
+    const badge = wrapper.get(BADGE)
+    const anchor = wrapper.get('[data-testid="sidebar-chat-context-wrapper"]')
+
+    expect(badge.classes()).toEqual(expect.arrayContaining([
+      'indicator-item',
+      'badge',
+      'badge-xs',
+      'badge-accent',
+    ]))
+    expect(badge.classes()).not.toContain('badge-soft')
+    expect(anchor.classes()).toContain('indicator')
+    expect(anchor.find('.iconify').exists()).toBe(true)
+    expect(anchor.element.contains(badge.element)).toBe(true)
+    expect(wrapper.get(TRIGGER).element.contains(anchor.element)).toBe(true)
   })
 
   it('labels the button with the outputs count', async () => {

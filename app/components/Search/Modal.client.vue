@@ -131,6 +131,9 @@ const { loggedIn } = useAuth()
 const isAdmin = useIsAdmin()
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
+const { sidebarPinned, setSidebarPinned } = useUserSetting()
+const { showPinToggle } = useSidebarPinToggle()
+const cookieConsentUi = useCookieConsentUi()
 const {
   pendingOpen: pendingFilesModalOpen,
   requestOpen: requestFilesModalOpen,
@@ -185,6 +188,17 @@ async function goTo(path: string) {
 
 function toggleTheme() {
   toggle()
+}
+
+async function toggleSidebarPin() {
+  dismiss()
+
+  await setSidebarPinned(!sidebarPinned.value)
+}
+
+function openCookieSettings() {
+  dismiss()
+  cookieConsentUi.expand()
 }
 
 async function openAttachments() {
@@ -297,6 +311,20 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           iconName: 'lucide:flask-conical',
           label: 'Labs',
           run: () => goTo('/profile/labs'),
+        },
+        ...(showPinToggle.value
+          ? [{
+            id: 'search-option-pin-sidebar',
+            iconName: sidebarPinned.value ? 'lucide:pin-off' : 'lucide:pin',
+            label: sidebarPinned.value ? 'Unpin sidebar' : 'Pin sidebar',
+            run: toggleSidebarPin,
+          }]
+          : []),
+        {
+          id: 'search-option-cookies',
+          iconName: 'lucide:cookie',
+          label: 'Cookie settings',
+          run: openCookieSettings,
         },
         ...(isAdmin.value
           ? [{

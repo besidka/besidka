@@ -174,7 +174,7 @@
             type="button"
             class="chat-context-section-toggle"
             :aria-expanded="!isGroupCollapsed(group)"
-            :aria-controls="`${idPrefix}-${group.id}-list`"
+            :aria-controls="getControlledListId(group)"
             :data-testid="`chat-context-section-${group.id}-toggle`"
             @click="toggleGroup(group)"
           >
@@ -414,6 +414,10 @@ function isGroupCollapsed(group: ContextGroup): boolean {
       && group.total > CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD)
 }
 
+function getControlledListId(group: ContextGroup): string | undefined {
+  return isGroupCollapsed(group) ? undefined : `${idPrefix}-${group.id}-list`
+}
+
 function toggleGroup(group: ContextGroup) {
   collapsedOverrides.value = {
     ...collapsedOverrides.value,
@@ -471,12 +475,14 @@ async function onItemClick(item: ChatContextItem) {
   @apply flex w-full items-center gap-1.5 rounded-field px-2 py-1 text-left
     text-xs font-semibold uppercase tracking-wide text-base-content/60
     cursor-pointer transition-colors duration-150 hover:bg-base-200
-    focus-visible:outline-2 focus-visible:outline-accent;
+    focus-visible:outline-2 focus-visible:-outline-offset-2
+    focus-visible:outline-accent;
 }
 
 .chat-context-row {
   @apply flex w-full items-center gap-2 rounded-field px-2 py-1 text-left
     cursor-pointer transition-colors duration-150 hover:bg-base-200
-    focus-visible:outline-2 focus-visible:outline-accent;
+    focus-visible:outline-2 focus-visible:-outline-offset-2
+    focus-visible:outline-accent;
 }
 </style>
