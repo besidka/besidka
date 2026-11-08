@@ -113,6 +113,7 @@ export type FeatureScheduleIssueCode
     | 'not_increasing'
     | 'duplicate_time'
     | 'too_far'
+    | 'invalid_rollout'
 
 export interface FeatureScheduleIssue {
   index: number
@@ -137,7 +138,29 @@ export function validateScheduleSteps(
   steps.forEach((step, index) => {
     const seconds = toEpochSeconds(Date.parse(step.runAt))
 
-    if (!hasScheduleChange(toScheduleRulePatch(step))) {
+    const rolloutBps = step.rolloutBps
+
+    if (
+      rolloutBps !== undefined
+      && (
+        !Number.isInteger(rolloutBps)
+        || rolloutBps < 0
+        || rolloutBps > FEATURE_BASIS_POINTS_TOTAL
+      )
+    ) {
+      issues.push({
+        index,
+        code: 'invalid_rollout',
+        message: 'Enter a rollout between 0 and 100%.',
+      })
+    }
+
+    if (
+      step.enabled === undefined
+      && step.rolloutBps === undefined
+      && step.grantRoles === undefined
+      && step.variants === undefined
+    ) {
       issues.push({
         index,
         code: 'empty_step',

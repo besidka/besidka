@@ -198,6 +198,28 @@ describe('Admin feature schedules', () => {
       .toContain('already runs')
   })
 
+  it.each(['150', '-5', ''])(
+    'shows a row message instead of breaking for a rollout of "%s"',
+    async (value) => {
+      const wrapper = await mountSchedules()
+
+      await wrapper.get('[data-testid="admin-schedule-add-step"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="admin-schedule-run-at-0"]')
+        .setValue(localInput(10))
+      await wrapper.get('[data-testid="admin-schedule-rollout-toggle-0"]')
+        .setValue(true)
+      await wrapper.get('[data-testid="admin-schedule-rollout-0"]')
+        .setValue(value)
+      await nextTick()
+
+      expect(wrapper.get('[data-testid="admin-schedule-error-0"]').text())
+        .toContain('between 0 and 100')
+      expect(wrapper.get('[data-testid="admin-schedule-submit"]')
+        .element.tagName).not.toBe('BUTTON')
+    },
+  )
+
   it('shows "applies after" for a rollout dated before the notice', async () => {
     const wrapper = await mountSchedules()
 

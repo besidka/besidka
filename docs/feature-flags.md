@@ -773,8 +773,8 @@ same audited path as a manual edit.
   log; it carries no account id or email.
 - **E2E hook.** `POST /api/v1/admin/features/schedules/apply-due` runs the
   applier on demand and answers 404 unless
-  `NUXT_FEATURES_SCHEDULE_TEST_HOOK=true`, which only the Playwright web
-  server sets.
+  `NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED=true`, the flag the Playwright web
+  server and the CI `.dev.vars` already set.
 - **Restore.** The table is rolled back with D1, so replay `schedule.create`
   and `schedule.cancel` ledger lines (`docs/d1-restore-reconciliation.md`).
   Account deletion nulls `created_by`.

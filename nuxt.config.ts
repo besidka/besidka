@@ -381,7 +381,6 @@ export default defineNuxtConfig({
     featuresDisabled: '',
     featuresHostMode: 'byok',
     featuresRolloutEnabled: '',
-    featuresScheduleTestHook: false,
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
     messageSearchSweepMaxRuntimeMs: 20000,

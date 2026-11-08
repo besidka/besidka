@@ -108,6 +108,16 @@ describe('validateScheduleSteps', () => {
     )).toEqual([expect.objectContaining({ code: 'too_far' })])
   })
 
+  it.each([15000, -500, 12.5, Number.NaN])(
+    'flags a rollout of %s without throwing',
+    (rolloutBps) => {
+      expect(validateScheduleSteps(
+        [step('2026-12-01T10:00:00Z', { rolloutBps })],
+        { now, existingRunAtMs: [] },
+      )).toEqual([expect.objectContaining({ code: 'invalid_rollout' })])
+    },
+  )
+
   it('flags a step that changes nothing', () => {
     expect(validateScheduleSteps(
       [{ runAt: '2026-12-01T10:00:00Z' }],

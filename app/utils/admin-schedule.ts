@@ -81,7 +81,11 @@ export function draftStepToInput(
   }
 
   if (step.changeRollout) {
-    input.rolloutBps = Math.round(Number(step.rolloutPercent) * 100)
+    const typed = String(step.rolloutPercent).trim()
+
+    input.rolloutBps = typed === ''
+      ? Number.NaN
+      : Math.round(Number(typed) * 100)
   }
 
   return input

@@ -157,7 +157,3 @@ NUXT_FEATURES_HOST_MODE=byok
 # empty for that. `on` forces them open (self-host, local testing), `off`
 # forces them closed (compliance pre-check C2).
 NUXT_FEATURES_ROLLOUT_ENABLED=
-
-# Only the Playwright web server sets this: it opens the e2e route that runs
-# due scheduled feature changes on demand. Never set it anywhere else.
-NUXT_FEATURES_SCHEDULE_TEST_HOOK=
