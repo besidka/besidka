@@ -10,6 +10,7 @@ the section it implements with the final API. The roadmap is in
 | 3. Tables | P0-2 (BES-234) | Built |
 | 4. Registry, 5. Evaluation, 7. Exposure | P0-3 (BES-236) | Built |
 | 8. Client access | P0-4 (BES-238) | Built |
+| 11. Capability contract | P0-5 (BES-240) | Built |
 | 6. `/admin`, 7. Ledger writers, 8. Labs and MCP | P0-6 to P0-8 | Design |
 
 This document is the contract for per-user feature access: which account can
@@ -468,3 +469,93 @@ support.
    (only once `NUXT_FEATURES_ROLLOUT_ENABLED` is on in production), then GA
    (set `default: true` in the registry, then remove the flag once it is
    stable).
+
+## 11. Capability contract (P0-5)
+
+Every Phase 1 to 4 capability (artifacts, documents, code execution,
+research, connectors, Google, skills) is one module that declares its flag
+and every surface it adds, so a conformance spec can prove that each surface
+is gated. The contract stays small on purpose: no lifecycle hooks until a
+second capability needs one.
+
+### Declaring a capability
+
+`defineCapability(definition)` in `server/capabilities/types.ts` freezes the
+definition and registers it for `listCapabilities()`
+(`server/capabilities/index.ts`):
+
+| Field | Meaning |
+|---|---|
+| `feature` | The capability's `FeatureKey` from the registry |
+| `aiTools?` | `(context) => ToolSet`, the chat tools. Gets a `CapabilityToolContext` (`userId`, `chatId`, `db`, `kv`, `model`, `logger`, `isFeatureActive`) captured before any fan-out; a factory never reads the request event |
+| `routesPrefix?` | Directories under `server/api/v1/` that belong to the capability |
+| `mcpTools?` | `McpPrivateToolName`s the capability adds |
+| `jobs?` | `{ kind, feature }` background jobs; `feature` is the capability flag or a child of it |
+| `clientChunk?` | Name of the lazy client chunk |
+
+To add a capability, create `server/capabilities/<name>.ts` that calls
+`defineCapability`, and import it explicitly in
+`server/capabilities/index.ts` (no auto-discovery, so the module graph stays
+visible). A spec fails when a module file is not imported there, so the
+conformance run cannot miss one. A second definition for the same feature
+replaces the first. `getCapabilityTools(context)` merges the `aiTools` of every
+capability whose flag `context.isFeatureActive` reports as active, one
+factory after another. It is the seam the chat send path will call from its
+tool-assembly block; the first consumer (A-3) wires it in. Until then the
+send path is unchanged.
+
+### Conformance rules
+
+`checkCapabilityConformance` (`server/capabilities/conformance.ts`) runs in
+`tests/unit/server/capabilities/conformance.spec.ts` over every registered
+capability and reports:
+
+| Rule | Fails when |
+|---|---|
+| `unknown_feature` | `feature` is not a registry key |
+| `route_prefix_without_routes` | A `routesPrefix` directory has no route files |
+| `route_without_feature_guard` | A `.ts` file under `server/api/v1/<prefix>/` does not call `requireFeature(event, '<flag>')` with the capability's flag or a child of it (comments are ignored) |
+| `mcp_tool_without_scope` | An `mcpTools` name is missing from `MCP_PRIVATE_TOOL_SCOPES` |
+| `mcp_tool_without_private_wrapper` | `server/mcp/tools/<name-with-dashes>.ts` is missing or does not call `withMcpPrivateTool(` |
+| `job_without_feature` | A job has no `feature`, or one outside the capability's flag tree |
+
+The checks read source text, so they are a heuristic: a guard inside a
+string literal still passes. Routes are found only in the directory form
+(`server/api/v1/<prefix>/**/*.ts`, the CLAUDE.md layout rule), and every
+`.ts` file there counts as a route, so keep helpers out of route
+directories. A later improvement can register
+handlers through a `defineGuardedHandler(feature, handler)` helper and check
+that instead. The spec also runs the checker over fixtures that break each
+rule (`tests/unit/server/capabilities/fixtures/demo.ts`), so it cannot pass
+just because no real capability exists yet. A job still checks its flag at
+run time with `evaluateFeature` (it has no request context for
+`requireFeature`); the conformance rule only proves the flag is declared.
+
+### Host interfaces
+
+`server/utils/platform/types.ts` holds the host-agnostic interfaces; adapters
+live in `server/utils/platform/<host>/`. Only Cloudflare adapters exist.
+
+- **`BlobStore`** (`put`, `get`, `delete(keys[])`, `signedUrl`).
+  `createR2BlobStore(bucket)` (`cloudflare/blob-store.ts`) takes the bucket
+  as an argument, for example `useFileStorage()` captured before any
+  fan-out, and never reads the request context. `delete` is one R2 batch
+  call per 1000 keys (the R2 limit), sent one after another, which keeps a
+  Worker under its six simultaneous connections.
+  `signedUrl` answers 501 with `why: 'not_supported'`: the existing
+  file-share token helper (`server/utils/files/file-share-access.ts`) signs
+  with the request event, which a background job does not have. The first
+  consumer that needs signed URLs adds an event-free signer.
+- **`JobRunner`** (`enqueue`, `get`, `cancel`, `step`). `step` requires an
+  explicit `retries` with no default, so a step that spends the user's money
+  says `retries: 0` and no adapter retries it silently (Cloudflare Workflows
+  default to five). `createCloudflareJobRunner()`
+  (`cloudflare/job-runner.ts`) answers 501 with
+  `why: 'job_runner_not_configured'` until R-1 and R-5 add the orchestrator
+  Workflow Worker with HMAC callbacks. Nitro cannot export a
+  `WorkflowEntrypoint`, so the Workflow runs in that separate Worker.
+
+Host portability: a VPS, Vercel or AWS host adds its own `BlobStore` and
+`JobRunner` adapters next to `cloudflare/` and picks them at startup;
+capability code depends only on the interfaces. Durable Objects and the
+Cloudflare Agents SDK are not part of the contract (lock-in).
