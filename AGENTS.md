@@ -377,6 +377,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA
   skeleton (UODO M.P. 2019 poz. 666 + EDPB criteria) and an Art. 30 record
   skeleton
+- `docs/legal/prechecks/` - Per-track compliance pre-checks for the agentic
+  capabilities programme (engineer-drafted, not lawyer-reviewed, 2026-11-07):
+  one file per track (`research.md` R-11, `google.md` G-11, `artifacts.md`
+  A-12, `documents.md` D-10, `connectors.md` C-12, `skills.md` S-8), each with
+  a verdict, a question table with sources, the shared gate from P0-14, the
+  ticket changes and the input list for the track's legal ticket. Key
+  results: research may not keep Brave/Exa results past a run (Brave §3(b)(i),
+  Exa §4.2(a)); a public BYO Google OAuth client is an owner risk call,
+  recommended owner-only; Google data only to providers that do not train on
+  API input. Read the track's file before building that track
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
   auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
   collision the schema and copy are shaped around, deliberate non-actions
