@@ -7,6 +7,7 @@ export const nodeSpecDirectories: readonly string[] = [
   'tests/unit/content',
   'tests/unit/db',
   'tests/unit/middleware',
+  'tests/unit/packages',
   'tests/unit/providers',
   'tests/unit/scripts',
   'tests/unit/server',

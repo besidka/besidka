@@ -169,6 +169,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `server/` - Backend Nitro server (API routes, database, utilities)
 - `shared/` - Code shared between client and server (types, utility functions)
 - `providers/` - LLM provider configurations (Google, OpenAI models)
+- `packages/` - Workspace packages shared by the app and satellite Workers
+  (`artifacts-protocol`)
+- `workers/` - Satellite Workers deployed by `deploy-satellites`
+  (`artifacts-runtime`, see `docs/artifacts-runtime.md`)
 
 ### Project Docs
 
@@ -507,6 +511,17 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   decision log (section 7: no expiry, singletons, entry caps, the write lock,
   the pending Anthropic token factor, non-atomic leases, deferred issues
   #537 to #540)
+- `docs/artifacts-runtime.md` - The sandboxed artifacts runtime Worker
+  `besidka-artifacts` (`workers/artifacts-runtime`, assets only, no bindings)
+  and `packages/artifacts-protocol` (JSON-RPC over one MessagePort, shaped
+  like MCP Apps `ui/*`): the isolation layers (iframe + header `sandbox`,
+  the CSP, port-only trust, the self-navigation tripwire and its residual
+  URL leak), why the HTML renderer replaces the root element instead of
+  `document.write()`, the vendored import allowlist (no esm.sh), the licence
+  scan and `THIRD_PARTY_NOTICES.txt` (ELK excluded, dagre layout), the
+  consent error codes for A-5/A-6, the separate Playwright sandbox spec, and
+  the CI jobs guarded by the `ARTIFACTS_RUNTIME_DEPLOY_ENABLED` variable with
+  the owner steps before the first deploy
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
