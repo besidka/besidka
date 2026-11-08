@@ -21,6 +21,7 @@ const CLAUDE_REQUESTED_SCOPES = [
   'files:write',
   'settings:write',
   'data:delete',
+  'admin:features',
   'offline_access',
 ].join(' ')
 const RESOURCE_ONLY_SCOPES = 'chats:read chats:write projects:read'
@@ -30,6 +31,8 @@ const SIGN_IN_URL_PATTERN = /\/signin\?/
 interface AuthorizationRequest {
   path: string
   state: string
+  clientId: string
+  verifier: string
 }
 
 async function registerClient(page: Page): Promise<string> {
@@ -76,6 +79,8 @@ async function createAuthorizationRequest(
   return {
     path: `/api/auth/oauth2/authorize?${params.toString()}`,
     state,
+    clientId,
+    verifier,
   }
 }
 
@@ -237,6 +242,69 @@ test.describe('OAuth consent after hydration', () => {
 
     expect(callbackUrl.searchParams.get('code')).toBeTruthy()
   })
+  test('hides the admin scope from a non-admin', async ({ page }) => {
+    test.setTimeout(30_000)
+
+    const request = await createAuthorizationRequest(page)
+
+    await page.goto(request.path)
+    await expect(page).toHaveURL(CONSENT_URL_PATTERN)
+    await waitForApproveButtonHydration(page)
+
+    await expect(page.getByTestId('oauth-scope-data:delete')).toBeVisible()
+    await expect(page.getByTestId('oauth-scope-admin:features'))
+      .toHaveCount(0)
+  })
+
+  test('never grants the admin scope to a non-admin, even without scope', async ({
+    page,
+  }) => {
+    test.setTimeout(30_000)
+
+    const request = await createAuthorizationRequest(page)
+
+    await page.goto(request.path)
+    await expect(page).toHaveURL(CONSENT_URL_PATTERN)
+    await waitForApproveButtonHydration(page)
+
+    const redirectUrl = await page.evaluate(async () => {
+      const response = await fetch('/api/auth/oauth2/consent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          accept: true,
+          oauth_query: window.location.search.slice(1),
+        }),
+      })
+      const payload = await response.json()
+
+      return String(payload.url)
+    })
+    const code = new URL(redirectUrl).searchParams.get('code')
+    const baseUrl = test.info().project.use.baseURL!
+
+    expect(code).toBeTruthy()
+
+    const tokenResponse = await page.request.post('/api/auth/oauth2/token', {
+      headers: { Origin: new URL(baseUrl).origin },
+      form: {
+        grant_type: 'authorization_code',
+        code: code!,
+        redirect_uri: CLIENT_REDIRECT_URI,
+        client_id: request.clientId,
+        code_verifier: request.verifier,
+        resource: `${baseUrl}/mcp`,
+      },
+    })
+
+    expect(tokenResponse.ok(), await tokenResponse.text()).toBe(true)
+
+    const grantedScopes = String((await tokenResponse.json()).scope).split(' ')
+
+    expect(grantedScopes).toContain('chats:read')
+    expect(grantedScopes).not.toContain('admin:features')
+  })
+
   test('pressing Enter on a scope does not decide after hydration', async ({
     page,
   }) => {
