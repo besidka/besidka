@@ -100,6 +100,14 @@ vi.mock('~~/server/utils/artifacts/context', () => ({
   buildArtifactContextBlock: mocks.buildArtifactContextBlock,
 }))
 
+vi.mock('~~/server/utils/artifacts/chat-artifacts', () => ({
+  listChatArtifactIds: vi.fn(async (input: { chatId: string }) => {
+    return [...mocks.artifacts.entries()]
+      .filter(([, artifact]) => artifact.originChatId === input.chatId)
+      .map(([artifactId]) => artifactId)
+  }),
+}))
+
 vi.mock('~~/server/utils/artifacts/store', async (importOriginal) => {
   const actual = await importOriginal<
     typeof import('~~/server/utils/artifacts/store')
@@ -378,6 +386,16 @@ function readSystemPrompt(callOptions: any): string {
   return String(systemMessage?.content ?? '')
 }
 
+function readLastUserText(callOptions: any): string {
+  const userMessage = (callOptions?.prompt ?? []).filter((message: any) => {
+    return message.role === 'user'
+  }).at(-1)
+
+  return (userMessage?.content ?? []).map((part: any) => {
+    return part.text ?? ''
+  }).join('\n')
+}
+
 function readKindEnum(callOptions: any): string[] {
   const createTool = (callOptions?.tools ?? []).find((declared: any) => {
     return declared.name === 'create_artifact'
@@ -552,14 +570,18 @@ describe('artifact tools on the chat send path', () => {
       ],
     })
     const parts = assistantInsert?.parts ?? []
-    const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+    const firstCall = doStream.mock.calls[0]?.[0]
 
     expect(mocks.buildArtifactContextBlock).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 1, artifactIds: ['art-7'] }),
+      expect.objectContaining({
+        userId: 1,
+        chatId: 'chat-1',
+        artifactIds: ['art-7'],
+      }),
     )
-    expect(systemPrompt).toContain(CONTEXT_BLOCK)
-    expect(systemPrompt.indexOf('`create_artifact`'))
-      .toBeLessThan(systemPrompt.indexOf(CONTEXT_BLOCK))
+    expect(readSystemPrompt(firstCall)).toContain('`create_artifact`')
+    expect(readSystemPrompt(firstCall)).not.toContain(CONTEXT_BLOCK)
+    expect(readLastUserText(firstCall)).toContain(CONTEXT_BLOCK)
     expect(mocks.appendArtifactVersion).not.toHaveBeenCalled()
     expect(parts).toContainEqual(expect.objectContaining({
       type: 'tool-update_artifact',

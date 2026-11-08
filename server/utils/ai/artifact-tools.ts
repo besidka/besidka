@@ -26,12 +26,14 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 type DbClient = ReturnType<typeof useDb>
 
 export const ARTIFACT_WRITES_PER_TURN = 3
+export const ARTIFACT_EDIT_READS_PER_TURN = 6
 export const ARTIFACT_EDITS_MAX = 20
 
 export const ARTIFACT_TOOL_ERROR_CODES = {
   tooLarge: 'artifact-too-large',
   quota: 'artifact-quota',
   versionCap: 'artifact-version-cap',
+  versionConflict: 'artifact-version-conflict',
   editMismatch: 'artifact-edit-mismatch',
   unknown: 'artifact-unknown',
   invalidInput: 'artifact-invalid-input',
@@ -43,6 +45,8 @@ const STORE_TO_TOOL_ERROR_CODES: Record<string, string> = {
   [ARTIFACT_ERROR_CODES.tooLarge]: ARTIFACT_TOOL_ERROR_CODES.tooLarge,
   [ARTIFACT_ERROR_CODES.quotaExceeded]: ARTIFACT_TOOL_ERROR_CODES.quota,
   [ARTIFACT_ERROR_CODES.versionCap]: ARTIFACT_TOOL_ERROR_CODES.versionCap,
+  [ARTIFACT_ERROR_CODES.versionConflict]:
+    ARTIFACT_TOOL_ERROR_CODES.versionConflict,
   [ARTIFACT_ERROR_CODES.notFound]: ARTIFACT_TOOL_ERROR_CODES.unknown,
   [ARTIFACT_ERROR_CODES.takenDown]: ARTIFACT_TOOL_ERROR_CODES.unknown,
   [ARTIFACT_ERROR_CODES.contentMissing]: ARTIFACT_TOOL_ERROR_CODES.unknown,
@@ -61,7 +65,7 @@ export interface CreateArtifactToolsInput {
   chatId: string
   messageId: string
   allowedKinds: readonly ArtifactKind[]
-  referencedArtifactIds: readonly string[]
+  chatArtifactIds: readonly string[]
   modelId?: string | null
   createdBy?: ArtifactVersionCreatedBy
   logger: LoggerLike
@@ -70,6 +74,7 @@ export interface CreateArtifactToolsInput {
 interface ArtifactToolError extends Error {
   code?: string
   why?: string
+  fix?: string
 }
 
 function createToolError(code: string, message: string, why?: string) {
@@ -91,8 +96,13 @@ function toToolError(exception: unknown): Error {
     const why = error.why && error.why !== error.message
       ? ` ${error.why}.`
       : ''
+    const fix = error.fix ? ` ${error.fix}.` : ''
 
-    return createToolError(toolCode, `${error.message}.${why}`, error.why)
+    return createToolError(
+      toolCode,
+      `${error.message}.${why}${fix}`,
+      error.why,
+    )
   }
 
   if (error?.code && Object.values<string>(ARTIFACT_TOOL_ERROR_CODES)
@@ -228,14 +238,30 @@ export function buildArtifactInstructions(
  * Builds the `create_artifact` and `update_artifact` chat tools. Each write
  * goes through the artifact store as a new immutable version, at most
  * `ARTIFACT_WRITES_PER_TURN` per send. `update_artifact` only reaches
- * artifacts the user owns that this chat already references or that this
- * turn created. Errors are thrown as tool errors with a readable message
- * the model can relay.
+ * artifacts created in this chat (`chatArtifactIds`: owned rows whose
+ * origin is this chat) or in this turn, never one that a copied or branched
+ * message merely references, so a shared chat cannot steer a model into
+ * overwriting the reader's own artifacts. An edit is applied to the version
+ * it read and refused if a newer one appeared meanwhile. Errors are thrown
+ * as tool errors with a readable message the model can relay.
  */
 export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
-  const knownArtifactIds = new Set(input.referencedArtifactIds)
+  const knownArtifactIds = new Set(input.chatArtifactIds)
   const createdBy = input.createdBy ?? 'model'
   let writes = 0
+  let editReads = 0
+
+  function claimEditRead() {
+    if (editReads >= ARTIFACT_EDIT_READS_PER_TURN) {
+      throw createToolError(
+        ARTIFACT_TOOL_ERROR_CODES.turnLimit,
+        'Too many artifact edits in this reply. Finish the reply and let '
+        + 'the user ask for more changes.',
+      )
+    }
+
+    editReads += 1
+  }
 
   function claimWrite() {
     if (writes >= ARTIFACT_WRITES_PER_TURN) {
@@ -317,8 +343,8 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
         title: titleSchema.optional(),
         content: z.string().min(1).optional(),
         edits: z.array(z.object({
-          old_string: z.string().min(1),
-          new_string: z.string(),
+          old_string: z.string().min(1).max(ARTIFACT_VERSION_MAX_BYTES),
+          new_string: z.string().max(ARTIFACT_VERSION_MAX_BYTES),
         })).min(1).max(ARTIFACT_EDITS_MAX).optional(),
       }),
       async execute({ artifactId, title, content, edits }) {
@@ -338,14 +364,22 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
             )
           }
 
-          const nextContent = edits
-            ? applyArtifactEdits((await readArtifactVersion({
+          let nextContent = content as string
+          let expectedVersion: number | undefined
+
+          if (edits) {
+            claimEditRead()
+
+            const current = await readArtifactVersion({
               db: input.db,
               storage: input.storage,
               userId: input.userId,
               artifactId,
-            })).content, edits)
-            : content as string
+            })
+
+            nextContent = applyArtifactEdits(current.content, edits)
+            expectedVersion = current.version
+          }
 
           claimWrite()
 
@@ -356,6 +390,7 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
             artifactId,
             content: nextContent,
             title,
+            expectedVersion,
             createdBy,
             modelId: input.modelId ?? null,
             logger: input.logger,

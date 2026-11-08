@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryExtractionTestDb,
+  seedChat,
   seedUser,
 } from '../../../../setup/helpers/memory-extraction-db'
 import type {
@@ -68,15 +69,34 @@ describe('buildArtifactContextBlock', () => {
     return created.artifactId
   }
 
-  function build(artifactIds: string[]) {
+  function build(artifactIds: string[], chatId = 'pub-999') {
     return buildArtifactContextBlock({
       db: testDb.db,
       storage,
       userId,
+      chatId,
       artifactIds,
       logger,
     })
   }
+
+  it('includes artifacts created in the chat without a reference', async () => {
+    const chat = await seedChat(testDb.db, userId)
+    const created = await createArtifact({
+      db: testDb.db,
+      storage,
+      userId,
+      kind: 'svg',
+      title: 'Unrecorded',
+      content: '<svg/>',
+      originChatId: chat.id,
+      createdVia: 'chat',
+      createdBy: 'model',
+    })
+    const block = await build([], chat.id)
+
+    expect(block).toContain(`id="${created.artifactId}"`)
+  })
 
   it('returns null without references', async () => {
     await expect(build([])).resolves.toBeNull()

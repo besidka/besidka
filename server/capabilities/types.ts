@@ -10,8 +10,7 @@ import type { McpPrivateToolName } from '~~/server/utils/mcp/tool-scopes'
  * before any parallel work starts. Tool factories never read the request
  * event. `model` is undefined for a gateway send (no curated model), so
  * `modelId` is the reliable id. `assistantMessageId` is the public id the
- * reply will be persisted under, and `messages` the chat history loaded
- * from D1 before this send.
+ * reply will be persisted under.
  */
 export interface CapabilityToolContext {
   userId: number
@@ -21,7 +20,6 @@ export interface CapabilityToolContext {
   model: Model | undefined
   modelId?: string
   assistantMessageId?: string
-  messages?: ReadonlyArray<{ role: string, parts: unknown }>
   logger: LoggerLike
   isFeatureActive: (flag: FeatureKey) => boolean
 }

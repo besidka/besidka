@@ -4,7 +4,7 @@ import { ARTIFACT_KINDS } from '#shared/utils/artifacts'
 import { defineCapability } from '~~/server/capabilities/types'
 import { createArtifactTools } from '~~/server/utils/ai/artifact-tools'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
-import { collectReferencedArtifactIds } from '~~/server/utils/artifacts/message-parts'
+import { listChatArtifactIds } from '~~/server/utils/artifacts/chat-artifacts'
 
 export function getAllowedArtifactKinds(
   isFeatureActive: CapabilityToolContext['isFeatureActive'],
@@ -17,10 +17,16 @@ export function getAllowedArtifactKinds(
 export const artifactsCapability = defineCapability({
   feature: 'artifacts',
   routesPrefix: ['artifacts'],
-  aiTools(context) {
+  async aiTools(context) {
     if (!context.assistantMessageId) {
       return {}
     }
+
+    const chatArtifactIds = await listChatArtifactIds({
+      db: context.db,
+      userId: context.userId,
+      chatId: context.chatId,
+    })
 
     return createArtifactTools({
       db: context.db,
@@ -29,9 +35,7 @@ export const artifactsCapability = defineCapability({
       chatId: context.chatId,
       messageId: context.assistantMessageId,
       allowedKinds: getAllowedArtifactKinds(context.isFeatureActive),
-      referencedArtifactIds: collectReferencedArtifactIds(
-        context.messages ?? [],
-      ),
+      chatArtifactIds,
       modelId: context.modelId ?? context.model?.id ?? null,
       logger: context.logger,
     })

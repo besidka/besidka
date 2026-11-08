@@ -264,6 +264,11 @@ function hasMeaningfulPersistedAssistantParts(
       || part.type === 'source-url'
       || part.type === ARTIFACT_DATA_PART_TYPE
       || (
+        (part.type === 'tool-create_artifact'
+          || part.type === 'tool-update_artifact')
+        && part.state === 'output-error'
+      )
+      || (
         part.type === 'tool-generate_image'
         && (
           part.state === 'output-available'

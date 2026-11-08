@@ -67,7 +67,7 @@ describe('artifact tools', () => {
 
   function buildTools(overrides: {
     allowedKinds?: readonly typeof ALL_KINDS[number][]
-    referencedArtifactIds?: string[]
+    chatArtifactIds?: string[]
   } = {}) {
     const tools = createArtifactTools({
       db: testDb.db,
@@ -76,7 +76,7 @@ describe('artifact tools', () => {
       chatId,
       messageId: 'assistant-public-1',
       allowedKinds: overrides.allowedKinds ?? ALL_KINDS,
-      referencedArtifactIds: overrides.referencedArtifactIds ?? [],
+      chatArtifactIds: overrides.chatArtifactIds ?? [],
       modelId: 'claude-opus-5',
       logger,
     })
@@ -253,7 +253,7 @@ describe('artifact tools', () => {
     })).resolves.toMatchObject({ version: 2, title: 'Renamed' })
   })
 
-  it('updates only artifacts this chat references and the user owns', async () => {
+  it('updates only artifacts created in this chat that the user owns', async () => {
     const owned = await createArtifact({
       db: testDb.db,
       storage,
@@ -284,7 +284,7 @@ describe('artifact tools', () => {
     })
 
     const referenced = buildTools({
-      referencedArtifactIds: [owned.artifactId, foreign.artifactId],
+      chatArtifactIds: [owned.artifactId, foreign.artifactId],
     })
 
     await expect(referenced.update({
@@ -295,6 +295,46 @@ describe('artifact tools', () => {
       artifactId: foreign.artifactId,
       content: '<p>d</p>',
     })).rejects.toMatchObject({ code: 'artifact-unknown' })
+  })
+
+  it('never loses an edit when two edits of one artifact run in parallel', async () => {
+    const { create, update } = buildTools()
+    const created = await create({
+      kind: 'html',
+      title: 'Quiz',
+      content: QUIZ,
+    }) as { artifactId: string }
+    const results = await Promise.allSettled([
+      update({
+        artifactId: created.artifactId,
+        edits: [{ old_string: 'Question 1', new_string: 'First' }],
+      }),
+      update({
+        artifactId: created.artifactId,
+        edits: [{ old_string: 'Question 2', new_string: 'Second' }],
+      }),
+    ])
+    const latest = await readArtifactVersion({
+      db: testDb.db,
+      storage,
+      userId,
+      artifactId: created.artifactId,
+    })
+    const rejected = results.filter((result) => {
+      return result.status === 'rejected'
+    }) as PromiseRejectedResult[]
+
+    if (rejected.length === 0) {
+      expect(latest.content).toContain('First')
+      expect(latest.content).toContain('Second')
+    } else {
+      expect(rejected).toHaveLength(1)
+      expect(rejected[0]!.reason).toMatchObject({
+        code: 'artifact-version-conflict',
+        message: expect.stringContaining('Read the artifact again'),
+      })
+      expect(latest.version).toBe(2)
+    }
   })
 
   it('caps the writes per turn', async () => {
@@ -359,7 +399,7 @@ describe('artifact tools', () => {
     testDb.sqlite.prepare('update artifacts set current_version = 50').run()
 
     await expect(buildTools({
-      referencedArtifactIds: [created.artifactId],
+      chatArtifactIds: [created.artifactId],
     }).update({
       artifactId: created.artifactId,
       content: '<p>b</p>',

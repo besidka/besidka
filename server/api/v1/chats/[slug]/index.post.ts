@@ -275,6 +275,7 @@ import { buildArtifactInstructions } from '~~/server/utils/ai/artifact-tools'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { buildArtifactContextBlock } from '~~/server/utils/artifacts/context'
 import {
+  ARTIFACT_TOOL_NAMES,
   collectReferencedArtifactIds,
   isArtifactToolName,
   rewriteArtifactToolParts,
@@ -1490,7 +1491,6 @@ export default defineEventHandler(async (event) => {
       model,
       modelId,
       assistantMessageId: assistantMessagePublicId,
-      messages: chat.messages,
       logger: aiLogger,
       isFeatureActive: sendFeatures.isFeatureActive,
     })
@@ -1511,6 +1511,7 @@ export default defineEventHandler(async (event) => {
       db,
       storage: useArtifactBlobStore(),
       userId,
+      chatId: chat.id,
       artifactIds: collectReferencedArtifactIds(chat.messages),
       logger: aiLogger,
     })
@@ -1554,20 +1555,22 @@ export default defineEventHandler(async (event) => {
       return message.id !== newMessage.id
     }),
     fileSizesByStorageKey,
-    baseInstructions: buildChatInstructions({
-      projectSystemPrompt,
-      requestedTools,
-      gatewayId,
-      shouldNudgeNativeSearch: shouldNudgeNativeWebSearch(
+    baseInstructions: [
+      buildChatInstructions({
+        projectSystemPrompt,
         requestedTools,
-        parsedTools,
-      ),
-      hasDeepSeekWebSearch,
-      hasChatSearchTools: chatSearchToolsRegistered,
-      memoryInstructions,
-      artifactInstructions,
+        gatewayId,
+        shouldNudgeNativeSearch: shouldNudgeNativeWebSearch(
+          requestedTools,
+          parsedTools,
+        ),
+        hasDeepSeekWebSearch,
+        hasChatSearchTools: chatSearchToolsRegistered,
+        memoryInstructions,
+        artifactInstructions,
+      }),
       artifactContextBlock,
-    }),
+    ].filter(Boolean).join('\n\n') || undefined,
     toolGroupCount: [
       hasProviderToolGroup,
       chatSearchToolsRegistered,
@@ -1588,8 +1591,9 @@ export default defineEventHandler(async (event) => {
   if (chatSearchBudget) {
     presetMemoryWriteLock(chatSearchBudget, {
       requestedTools,
-      holdsUntrustedKnowledge: !!knowledgeContext
-        && holdsUntrustedKnowledge(knowledgeContext),
+      holdsUntrustedKnowledge: (!!knowledgeContext
+        && holdsUntrustedKnowledge(knowledgeContext))
+      || artifactContextBlock !== null,
       holdsPastChatExcerpts: pastChatPreRetrieval !== null,
     })
   }
@@ -1720,7 +1724,11 @@ export default defineEventHandler(async (event) => {
           messagesForAI,
           modelProviderId,
           mediaTurns: knowledge?.mediaTurns ?? [],
-          excerpts: [knowledge?.excerpts, pastChatPreRetrieval?.block]
+          excerpts: [
+            knowledge?.excerpts,
+            pastChatPreRetrieval?.block,
+            artifactContextBlock,
+          ]
             .filter((excerpts): excerpts is string => !!excerpts)
             .join('\n\n') || null,
         })
@@ -1866,7 +1874,6 @@ export default defineEventHandler(async (event) => {
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
-              artifactContextBlock,
             }),
             reasoning: reasoningEffort,
             messages: modelMessages,
@@ -2098,7 +2105,6 @@ export default defineEventHandler(async (event) => {
               memoryInstructions,
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: false,
-              artifactContextBlock,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -2139,6 +2145,9 @@ export default defineEventHandler(async (event) => {
           ? withSearchAnswerGuarantee({
             stream: correctedUiMessageStream,
             followUpToolNames,
+            deliverableToolNames: artifactToolsRegistered
+              ? new Set(ARTIFACT_TOOL_NAMES)
+              : undefined,
             forcedStepIndex: toolLoop.maxSteps - 1,
             startContinuation: startSearchAnswerContinuation,
             buildFinishMessageMetadata: (continuation) => {
@@ -3727,7 +3736,6 @@ function buildChatInstructions(input: {
   knowledgeSystemBlock?: string | null
   hasKnowledgeTools?: boolean
   artifactInstructions?: string | null
-  artifactContextBlock?: string | null
   now?: Date
 }): string | undefined {
   const {
@@ -3741,7 +3749,6 @@ function buildChatInstructions(input: {
     knowledgeSystemBlock,
     hasKnowledgeTools,
     artifactInstructions,
-    artifactContextBlock,
     now = new Date(),
   } = input
   const instructions = [
@@ -3758,7 +3765,9 @@ function buildChatInstructions(input: {
     instructions.push(CHAT_SEARCH_INSTRUCTION)
   }
 
-  instructions.push(artifactInstructions ?? null, artifactContextBlock ?? null)
+  if (artifactInstructions) {
+    instructions.push(artifactInstructions)
+  }
 
   if (requestedTools.includes('image_generation')) {
     instructions.push(gatewayId

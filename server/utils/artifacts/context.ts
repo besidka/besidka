@@ -1,6 +1,6 @@
 import type { BlobStore } from '~~/server/utils/platform/types'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
   decodeArtifactId,
@@ -64,17 +64,21 @@ function truncateContent(content: string): string {
 }
 
 /**
- * Builds the system block with the current content of at most three
- * artifacts referenced in this chat, most recently updated first, each cut
- * to 30,000 characters. Only artifacts the sender owns and that are not
- * taken down are read, so a branch of someone else's shared chat gets no
- * content. A failed read skips that artifact and is logged under
- * `attributes.artifacts.contextError`; the send never fails because of it.
+ * Builds the context block with the current content of at most three
+ * artifacts of this chat (created in it, or referenced by a `data-artifact`
+ * part of its history), most recently updated first, each cut to 30,000
+ * characters. Only artifacts the sender owns and that are not taken down
+ * are read, so a branch of someone else's shared chat gets no content. The
+ * caller appends it to the latest user turn, not the system prompt, so a
+ * new artifact version never invalidates the cached prefix. A failed read
+ * skips that artifact and is logged under `attributes.artifacts.contextError`;
+ * the send never fails because of it.
  */
 export async function buildArtifactContextBlock(input: {
   db: DbClient
   storage: BlobStore
   userId: number
+  chatId: string
   artifactIds: readonly string[]
   logger: LoggerLike
 }): Promise<string | null> {
@@ -82,10 +86,6 @@ export async function buildArtifactContextBlock(input: {
     .slice(0, ARTIFACT_CONTEXT_REFERENCE_LIMIT)
     .map(decodeArtifactId)
     .filter((id): id is number => id !== null)
-
-  if (internalIds.length === 0) {
-    return null
-  }
 
   const candidates = await input.db
     .select({
@@ -96,8 +96,14 @@ export async function buildArtifactContextBlock(input: {
     .from(schema.artifacts)
     .where(and(
       eq(schema.artifacts.userId, input.userId),
-      inArray(schema.artifacts.id, internalIds),
+      gt(schema.artifacts.currentVersion, 0),
       isNull(schema.artifacts.takedownAt),
+      internalIds.length > 0
+        ? or(
+          eq(schema.artifacts.originChatId, input.chatId),
+          inArray(schema.artifacts.id, internalIds),
+        )
+        : eq(schema.artifacts.originChatId, input.chatId),
     ))
     .orderBy(desc(schema.artifacts.updatedAt), desc(schema.artifacts.id))
     .limit(ARTIFACT_CONTEXT_MAX_ARTIFACTS)
