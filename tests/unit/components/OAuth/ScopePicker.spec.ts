@@ -1,6 +1,6 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { computed, shallowRef } from 'vue'
+import { computed, nextTick, shallowRef } from 'vue'
 import ScopePicker from '../../../../app/components/OAuth/ScopePicker.vue'
 
 const ALL_SCOPES = [
@@ -45,6 +45,20 @@ describe('OAuth scope picker', () => {
 
     expect(wrapper.find('[data-testid="oauth-scope-admin:features"]').exists())
       .toBe(false)
+  })
+
+  it('keeps the selection when the admin state arrives late', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: [...ALL_SCOPES, 'admin:features'], modelValue: [] },
+    })
+
+    await wrapper.setProps({ modelValue: ['chats:read', 'memory:write'] })
+    isAdmin.value = true
+    await nextTick()
+
+    expect(lastSelection(wrapper)).toEqual(['chats:read', 'memory:write'])
+    expect(wrapper.find('[data-testid="oauth-scope-admin:features"]').exists())
+      .toBe(true)
   })
 
   it('shows admin:features to admins, unticked', async () => {

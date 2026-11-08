@@ -141,9 +141,16 @@ feature for one person; nothing else (`docs/feature-flags.md`, section 8).
   `403 insufficient_scope`; reconnecting cannot add the scope, so the call
   keeps failing. Accepted: claude.ai does not step up anyway.
 - **A token that outlives the role** (role removed, 2FA turned off) still
-  carries the scope; every admin tool re-checks the user first
-  (`assertMcpFeatureAdmin`) and answers a generic `404 Not found` with no
-  side effect.
+  carries the scope, and `/oauth2/authorize` reuses a stored consent that
+  holds it. So `withMcpPrivateTool` re-checks the user for every
+  `admin:features` tool (`isMcpAdminTool`, `assertMcpFeatureAdmin`), and
+  the logic functions check again; a non-admin gets a generic
+  `404 Not found` with no side effect. A new admin tool therefore cannot
+  forget the check.
+- **Rate limits.** The two list tools count as reads. `set_feature_access`
+  takes the write limit (30 per minute) plus its own bucket of 60 per hour
+  (`MCP_PRIVATE_ADMIN_WRITE_RATE_LIMIT`), so a prompt-injected admin agent
+  cannot sweep the user base.
 - **No other users' personal data** (pre-check C9): `list_feature_access`
   returns numeric user ids, never an email, a name or the grant reason, and
   `set_feature_access` accepts `userId` or an exact `email` but echoes only
@@ -736,10 +743,10 @@ text only and capped.
 | `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
 | `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
 | `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
-| `list_my_features` | `settings:read` | no | The caller's client-visible experimental features: `key`, `title`, `stage`, `enabled` (access), `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
+| `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
 | `list_feature_flags` | `admin:features` | no | Admins only. Every registry flag with stage, roles, rule (enabled, rollout percentage, variants), kill switch and grant counts. Read-only | `listAdminFeatures` (the `/admin` query) |
-| `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email`; with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`) |
-| `set_feature_access` | `admin:features` | yes | Admins only. `access` `allow`, `deny` or `clear` for one user (`userId` or `email`) and one registry flag, optional `expiresInDays` (1 to 365) and `reason` (200 characters, kept in the audit log only). Echoes the user id only. Cannot touch rules, rollouts, the kill switch or opt-ins | `setFeatureGrant`, `revokeFeatureGrant` with an MCP actor; the 30 per minute write limit |
+| `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email` (an unknown user is a 404 either way); with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`), `truncated: true` when there are more |
+| `set_feature_access` | `admin:features` | yes | Admins only. `access` `allow`, `deny` or `clear` for one user (`userId` or `email`) and one registry flag, optional `expiresInDays` (1 to 365) and `reason` (200 characters, kept in the audit log only). Echoes the user id only (`expiresAt` as an ISO string, while `list_feature_access` uses unix seconds, as the admin API does). Cannot touch rules, rollouts, the kill switch or opt-ins | `setFeatureGrant`, `revokeFeatureGrant` with an MCP actor; 30 per minute and 60 per hour |
 | `update_settings` | `settings:write` | yes | Set `reasoningExpanded`, `reasoningAutoHide`, `defaultReasoningLevel` (`null` clears it), `favoriteModels`, `favoriteGatewayModels`, `sidebarPinned`, `memoryEnabled`, `chatSearchEnabled`. Keys that are not listed are dropped by the tool input schema before the handler runs, not refused (the strict schema in `updateMcpSettings` is a second guard for direct callers). `favoriteModels` and `favoriteGatewayModels` are replaced as a whole, so a client reads `get_settings` first and sends the full list or map. `memoryEnabled: true` is refused while it is off and automatic extraction is on, or any of the user's projects has automatic updates set to `on`, because turning it on would resume that background extraction | `applyUserSettingsUpdate`, the same schemas as `PATCH /profiles/settings` (`shared/utils/user-settings-schemas.ts`) |
 
 Notes:

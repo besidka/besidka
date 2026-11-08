@@ -113,9 +113,10 @@ function throwNotFound(): never {
 }
 
 /**
- * The caller's own client-visible features: access, opt-in and variant. The
- * opt-in itself is never writable over MCP, because it authorises spending
- * the user's keys.
+ * The caller's own client-visible features that they have access to, as on
+ * the Labs page (a feature without access is never advertised): opt-in,
+ * active state and variant. The opt-in itself is never writable over MCP,
+ * because it authorises spending the user's keys.
  */
 export async function listMyFeatures(
   db: DbClient,
@@ -139,6 +140,10 @@ export async function listMyFeatures(
     }
 
     const resolution = await evaluateFeature(key, context)
+
+    if (!resolution.value) {
+      continue
+    }
 
     features.push({
       key,
@@ -199,12 +204,29 @@ async function findUserIdByEmail(
   return user?.id ?? null
 }
 
+async function findExistingUserId(
+  db: DbClient,
+  userId: number,
+): Promise<number | null> {
+  const [user] = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1)
+
+  return user?.id ?? null
+}
+
+/**
+ * Resolves the target user by id or exact email, checking that the account
+ * exists either way, so both selectors answer an unknown user the same.
+ */
 async function resolveTargetUserId(
   db: DbClient,
   input: { userId?: number, email?: string },
 ): Promise<number | null> {
   if (input.userId !== undefined) {
-    return input.userId
+    return await findExistingUserId(db, input.userId)
   }
 
   if (input.email !== undefined) {
@@ -266,7 +288,7 @@ export async function listMcpFeatureAccess(
     .from(schema.featureGrants)
     .where(and(...conditions))
     .orderBy(desc(schema.featureGrants.id))
-    .limit(MCP_FEATURE_ACCESS_LIMIT)
+    .limit(MCP_FEATURE_ACCESS_LIMIT + 1)
   const roles = targetUserId === null
     ? null
     : await context.db
@@ -274,10 +296,12 @@ export async function listMcpFeatureAccess(
       .from(schema.userRoles)
       .where(eq(schema.userRoles.userId, targetUserId))
 
-  logFeatureAdminRead(context.logger, 'mcp.grants', grants.length)
+  const visibleGrants = grants.slice(0, MCP_FEATURE_ACCESS_LIMIT)
+
+  logFeatureAdminRead(context.logger, 'mcp.grants', visibleGrants.length)
 
   return {
-    grants: grants.map((grant) => {
+    grants: visibleGrants.map((grant) => {
       return {
         ...grant,
         expiresAt: toUnixSeconds(grant.expiresAt),
@@ -293,6 +317,7 @@ export async function listMcpFeatureAccess(
       }
       : {}),
     limit: MCP_FEATURE_ACCESS_LIMIT,
+    truncated: grants.length > MCP_FEATURE_ACCESS_LIMIT,
   }
 }
 

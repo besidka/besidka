@@ -1,6 +1,7 @@
 import type { McpResourceScope } from '#shared/utils/mcp-oauth-scopes'
 import {
   MCP_OAUTH_SCOPES,
+  isMcpAdminScope,
   isMcpDeleteScope,
   isMcpWriteScope,
 } from '#shared/utils/mcp-oauth-scopes'
@@ -78,6 +79,10 @@ export function isMcpWriteTool(name: McpPrivateToolName): boolean {
 
 export function isMcpDeleteTool(name: McpPrivateToolName): boolean {
   return isMcpDeleteScope(MCP_PRIVATE_TOOL_SCOPES[name])
+}
+
+export function isMcpAdminTool(name: McpPrivateToolName): boolean {
+  return isMcpAdminScope(MCP_PRIVATE_TOOL_SCOPES[name])
 }
 
 export function findMissingMcpScopes(

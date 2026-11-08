@@ -11,7 +11,12 @@ const mocks = vi.hoisted(() => {
     enforceMcpToolRateLimit: vi.fn(),
     requireMcpLegalConsent: vi.fn(),
     listMyFeatures: vi.fn(),
+    isFeatureAdminUserId: vi.fn(),
   }
+})
+
+vi.mock('~~/server/utils/mcp/admin-scopes', () => {
+  return { isFeatureAdminUserId: mocks.isFeatureAdminUserId }
 })
 
 vi.mock('nitropack/runtime', () => {
@@ -71,6 +76,7 @@ describe('list_my_features tool', () => {
     mocks.enforceMcpToolRateLimit.mockReset()
     mocks.requireMcpLegalConsent.mockReset()
     mocks.listMyFeatures.mockReset().mockResolvedValue(RESULT)
+    mocks.isFeatureAdminUserId.mockReset().mockResolvedValue(true)
   })
 
   it('declares the documented annotations and scope', async () => {
@@ -107,6 +113,17 @@ describe('list_my_features tool', () => {
 
     await expect(tool.handler(INPUT)).rejects.toMatchObject({ status: 403 })
     expect(mocks.listMyFeatures).not.toHaveBeenCalled()
+  })
+
+  it('needs no admin role', async () => {
+    mocks.isFeatureAdminUserId.mockResolvedValue(false)
+
+    const tool = await loadTool({ mcpAuth: AUTH })
+
+    await tool.handler(INPUT)
+
+    expect(mocks.isFeatureAdminUserId).not.toHaveBeenCalled()
+    expect(mocks.listMyFeatures).toHaveBeenCalled()
   })
 
   it('refuses a request without a verified token', async () => {

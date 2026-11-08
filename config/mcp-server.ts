@@ -22,6 +22,11 @@ export const MCP_PRIVATE_DELETE_RATE_LIMIT = {
   max: 20,
 } as const
 
+export const MCP_PRIVATE_ADMIN_WRITE_RATE_LIMIT = {
+  window: 3600,
+  max: 60,
+} as const
+
 export const MCP_DISABLED_TOOLKIT_ROUTES = [
   `${MCP_SERVER_ROUTE}/deeplink`,
   `${MCP_SERVER_ROUTE}/badge.svg`,

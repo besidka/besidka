@@ -121,8 +121,8 @@ describe('MCP feature tools logic', () => {
         optedIn: true,
         variant: null,
       })
-      expect(result.features.some(feature => feature.key === 'artifacts.mcp'))
-        .toBe(false)
+      expect(result.features.map(feature => feature.key))
+        .toEqual(['research.custom'])
       expect(JSON.stringify(result)).not.toContain('u@example.com')
     })
 
@@ -180,11 +180,46 @@ describe('MCP feature tools logic', () => {
         userId: 9,
         roles: ['tester'],
         limit: 100,
+        truncated: false,
       })
       expect(JSON.stringify(result)).not.toMatch(/@|reason/)
       expect(mocks.logFeatureAdminRead)
         .toHaveBeenCalledWith(logger, 'mcp.grants', 1)
     })
+
+  it('answers 404 for an unknown user id, like an unknown email', async () => {
+    mocks.selectResults = [[]]
+
+    await expect(setMcpFeatureAccess(createContext(), {
+      flag: 'artifacts',
+      access: 'clear',
+      userId: 404,
+    })).rejects.toMatchObject({ status: 404 })
+    expect(mocks.revokeFeatureGrant).not.toHaveBeenCalled()
+  })
+
+  it('flags a truncated grant list', async () => {
+    mocks.selectResults = [
+      Array.from({ length: 101 }, (_value, index) => {
+        return {
+          id: index + 1,
+          userId: 9,
+          flag: 'artifacts',
+          effect: 'allow',
+          variant: null,
+          expiresAt: null,
+          createdAt: null,
+        }
+      }),
+    ]
+
+    const result = await listMcpFeatureAccess(createContext(), {
+      flag: 'artifacts',
+    })
+
+    expect(result.grants).toHaveLength(100)
+    expect(result.truncated).toBe(true)
+  })
 
   it('answers 404 for an unknown user email', async () => {
     mocks.selectResults = [[]]
@@ -247,7 +282,7 @@ describe('MCP feature tools logic', () => {
     })
 
   it('clears an existing grant through the shared revoke', async () => {
-    mocks.selectResults = [[{ id: 12 }]]
+    mocks.selectResults = [[{ id: 9 }], [{ id: 12 }]]
 
     const result = await setMcpFeatureAccess(createContext(), {
       flag: 'artifacts',
@@ -270,7 +305,7 @@ describe('MCP feature tools logic', () => {
   })
 
   it('reports nothing to clear without a grant', async () => {
-    mocks.selectResults = [[]]
+    mocks.selectResults = [[{ id: 9 }], []]
 
     const result = await setMcpFeatureAccess(createContext(), {
       flag: 'artifacts',

@@ -11,7 +11,12 @@ const mocks = vi.hoisted(() => {
     enforceMcpToolRateLimit: vi.fn(),
     requireMcpLegalConsent: vi.fn(),
     setMcpFeatureAccess: vi.fn(),
+    isFeatureAdminUserId: vi.fn(),
   }
+})
+
+vi.mock('~~/server/utils/mcp/admin-scopes', () => {
+  return { isFeatureAdminUserId: mocks.isFeatureAdminUserId }
 })
 
 vi.mock('nitropack/runtime', () => {
@@ -77,6 +82,7 @@ describe('set_feature_access tool', () => {
     mocks.enforceMcpToolRateLimit.mockReset()
     mocks.requireMcpLegalConsent.mockReset()
     mocks.setMcpFeatureAccess.mockReset().mockResolvedValue(RESULT)
+    mocks.isFeatureAdminUserId.mockReset().mockResolvedValue(true)
   })
 
   it('declares the documented annotations and scope', async () => {
@@ -118,6 +124,16 @@ describe('set_feature_access tool', () => {
     })
 
     await expect(tool.handler(INPUT)).rejects.toMatchObject({ status: 403 })
+    expect(mocks.setMcpFeatureAccess).not.toHaveBeenCalled()
+  })
+
+  it('answers a generic 404 to a non-admin token', async () => {
+    mocks.isFeatureAdminUserId.mockResolvedValue(false)
+
+    const tool = await loadTool({ mcpAuth: AUTH })
+
+    await expect(tool.handler(INPUT))
+      .rejects.toMatchObject({ status: 404, message: 'Not found' })
     expect(mocks.setMcpFeatureAccess).not.toHaveBeenCalled()
   })
 

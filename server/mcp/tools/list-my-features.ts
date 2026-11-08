@@ -4,9 +4,9 @@ import { withMcpPrivateTool } from '~~/server/utils/mcp/private-tool'
 export default defineMcpTool({
   name: 'list_my_features',
   title: 'List my experimental features',
-  description: 'List the experimental Besidka features your account can '
-    + 'see, with whether you have access (enabled), whether you are opted '
-    + 'in, whether the feature is active and any A/B variant. Opting in '
+  description: 'List the experimental Besidka features your account has '
+    + 'access to, with whether you are opted in, whether the feature is '
+    + 'active and any A/B variant. Opting in '
     + 'authorises spending your API keys, so it is only possible on the '
     + 'Labs page, never through MCP. Requires signing in (settings:read).',
   annotations: {

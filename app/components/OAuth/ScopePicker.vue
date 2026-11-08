@@ -108,10 +108,25 @@ const hasWriteScopes = computed<boolean>(() => {
   })
 })
 
-watch(resourceScopes, (scopes) => {
-  selected.value = props.mode === 'edit'
-    ? [...scopes]
-    : defaultSelectedMcpScopes(scopes)
+function initialSelection(scopes: string[]): string[] {
+  return props.mode === 'edit' ? [...scopes] : defaultSelectedMcpScopes(scopes)
+}
+
+watch(resourceScopes, (scopes, previousScopes) => {
+  if (!previousScopes) {
+    selected.value = initialSelection(scopes)
+
+    return
+  }
+
+  const addedScopes = scopes.filter((scope) => {
+    return !previousScopes.includes(scope)
+  })
+  const keptSelection = selected.value.filter((scope) => {
+    return scopes.includes(scope)
+  })
+
+  selected.value = [...keptSelection, ...initialSelection(addedScopes)]
 }, { immediate: true })
 
 function toggle(scope: string) {
