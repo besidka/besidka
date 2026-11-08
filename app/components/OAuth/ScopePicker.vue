@@ -66,6 +66,7 @@
 <script setup lang="ts">
 import {
   defaultSelectedMcpScopes,
+  isMcpAdminScope,
   isMcpWriteScope,
   MCP_IDENTITY_SCOPES,
 } from '#shared/utils/mcp-oauth-scopes'
@@ -81,6 +82,8 @@ const props = withDefaults(defineProps<{
 
 const selected = defineModel<string[]>({ default: () => [] })
 
+const isAdmin = useIsAdmin()
+
 const identityScopeSet = new Set<string>(MCP_IDENTITY_SCOPES)
 
 const identityScopes = computed<string[]>(() => {
@@ -91,7 +94,11 @@ const identityScopes = computed<string[]>(() => {
 
 const resourceScopes = computed<string[]>(() => {
   return props.scopes.filter((scope) => {
-    return !identityScopeSet.has(scope)
+    if (identityScopeSet.has(scope)) {
+      return false
+    }
+
+    return isAdmin.value || !isMcpAdminScope(scope)
   })
 })
 

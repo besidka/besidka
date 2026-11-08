@@ -38,9 +38,18 @@ export const MCP_PRIVATE_TOOL_SCOPES = {
   reset_memory: 'data:delete',
   get_settings: 'settings:read',
   update_settings: 'settings:write',
+  list_my_features: 'settings:read',
+  list_feature_flags: 'admin:features',
+  list_feature_access: 'admin:features',
+  set_feature_access: 'admin:features',
 } as const satisfies Record<string, McpResourceScope>
 
 export type McpPrivateToolName = keyof typeof MCP_PRIVATE_TOOL_SCOPES
+
+const READ_TOOLS_UNDER_WRITE_SCOPES: ReadonlySet<McpPrivateToolName> = new Set([
+  'list_feature_flags',
+  'list_feature_access',
+])
 
 export function isMcpPrivateToolName(
   name: unknown,
@@ -57,8 +66,14 @@ export function getMcpToolRequiredScopes(name: unknown): McpResourceScope[] {
   return [MCP_PRIVATE_TOOL_SCOPES[name]]
 }
 
+/**
+ * A write tool counts against the write rate limit and carries
+ * `readOnlyHint: false`. The admin list tools sit under the write-class
+ * `admin:features` scope (so it is unticked by default) but only read.
+ */
 export function isMcpWriteTool(name: McpPrivateToolName): boolean {
   return isMcpWriteScope(MCP_PRIVATE_TOOL_SCOPES[name])
+    && !READ_TOOLS_UNDER_WRITE_SCOPES.has(name)
 }
 
 export function isMcpDeleteTool(name: McpPrivateToolName): boolean {

@@ -21,6 +21,7 @@ const CLAUDE_REQUESTED_SCOPES = [
   'files:write',
   'settings:write',
   'data:delete',
+  'admin:features',
   'offline_access',
 ].join(' ')
 const RESOURCE_ONLY_SCOPES = 'chats:read chats:write projects:read'
@@ -237,6 +238,20 @@ test.describe('OAuth consent after hydration', () => {
 
     expect(callbackUrl.searchParams.get('code')).toBeTruthy()
   })
+  test('hides the admin scope from a non-admin', async ({ page }) => {
+    test.setTimeout(30_000)
+
+    const request = await createAuthorizationRequest(page)
+
+    await page.goto(request.path)
+    await expect(page).toHaveURL(CONSENT_URL_PATTERN)
+    await waitForApproveButtonHydration(page)
+
+    await expect(page.getByTestId('oauth-scope-data:delete')).toBeVisible()
+    await expect(page.getByTestId('oauth-scope-admin:features'))
+      .toHaveCount(0)
+  })
+
   test('pressing Enter on a scope does not decide after hydration', async ({
     page,
   }) => {

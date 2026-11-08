@@ -187,6 +187,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/connected-apps.spec.ts',
   ]
   const mcpUiParityTests = [
+    'tests/unit/server/mcp/tools/list-my-features.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-access.spec.ts',
+    'tests/unit/server/mcp/tools/set-feature-access.spec.ts',
+    'tests/unit/server/utils/mcp/private/features.spec.ts',
     'tests/unit/server/mcp/tools/branch-chat.spec.ts',
     'tests/unit/server/mcp/tools/create-file.spec.ts',
     'tests/unit/server/mcp/tools/delete-chat-message.spec.ts',
@@ -772,6 +777,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/account/purge-user-data.spec.ts',
     'tests/integration/api/profiles-features.spec.ts',
     'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/server/mcp/tools/list-my-features.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-access.spec.ts',
+    'tests/unit/server/mcp/tools/set-feature-access.spec.ts',
+    'tests/unit/server/utils/mcp/private/features.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/utils/auth-oauth.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
   ]
 
   const featureLabsTests = [

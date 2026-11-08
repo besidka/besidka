@@ -6,6 +6,12 @@ const mocks = vi.hoisted(() => ({
   getRequestHeader: vi.fn(),
   getRequestURL: vi.fn(),
   logger: { set: vi.fn() },
+  isAdmin: false,
+  keepMcpAdminScopesForAdmins: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/mcp/admin-scopes', () => ({
+  keepMcpAdminScopesForAdmins: mocks.keepMcpAdminScopesForAdmins,
 }))
 
 vi.mock('@better-auth/oauth-provider', () => ({
@@ -127,6 +133,15 @@ describe('connected apps consent form API', () => {
     )
 
     vi.stubGlobal('assertNotCrossSiteRequest', vi.fn())
+    vi.stubGlobal('useDb', () => ({ marker: 'db' }))
+    mocks.isAdmin = false
+    mocks.keepMcpAdminScopesForAdmins.mockImplementation(
+      async (scopes: string[]) => {
+        return mocks.isAdmin
+          ? scopes
+          : scopes.filter(scope => scope !== 'admin:features')
+      },
+    )
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '5' },
       session: { token: 'session-token' },
@@ -328,6 +343,64 @@ describe('connected apps consent form API', () => {
         status: SEE_OTHER,
       })
     })
+
+  it('strips admin:features from a crafted non-admin approval', async () => {
+    const handler = await getHandler()
+    const oauthQuery = signedQuery({
+      scope: `${REQUESTED_SCOPE} admin:features`,
+    })
+
+    await handler(createEvent(validBody({
+      oauth_query: oauthQuery,
+      scope: ['chats:read', 'admin:features'],
+    })))
+
+    const request = authHandler.mock.calls[0]![0] as Request
+
+    expect(mocks.keepMcpAdminScopesForAdmins).toHaveBeenCalledWith(
+      [...REQUESTED_SCOPE.split(' '), 'admin:features'],
+      5,
+      { marker: 'db' },
+    )
+    expect(await request.json()).toMatchObject({
+      accept: true,
+      scope: 'openid offline_access chats:read',
+    })
+  })
+
+  it('approves identity scopes only when a non-admin ticks just the admin scope',
+    async () => {
+      const handler = await getHandler()
+      const oauthQuery = signedQuery({ scope: 'openid admin:features' })
+      const response = await handler(createEvent(validBody({
+        oauth_query: oauthQuery,
+        scope: ['admin:features'],
+      })))
+
+      expect(authHandler).toHaveBeenCalledTimes(1)
+      expect(await (authHandler.mock.calls[0]![0] as Request).json())
+        .toMatchObject({ scope: 'openid' })
+      expect(response).toMatchObject({ status: SEE_OTHER })
+    })
+
+  it('keeps admin:features for an admin', async () => {
+    mocks.isAdmin = true
+
+    const handler = await getHandler()
+    const oauthQuery = signedQuery({
+      scope: `${REQUESTED_SCOPE} admin:features`,
+    })
+
+    await handler(createEvent(validBody({
+      oauth_query: oauthQuery,
+      scope: ['chats:read', 'admin:features'],
+    })))
+
+    expect(await (authHandler.mock.calls[0]![0] as Request).json())
+      .toMatchObject({
+        scope: 'openid offline_access chats:read admin:features',
+      })
+  })
 
   it('forwards a single scope sent as a plain string', async () => {
     const handler = await getHandler()

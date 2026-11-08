@@ -293,9 +293,10 @@ consent page lets the user approve each scope separately.
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
 | `files:write` | `create_file`, `rename_file` |
-| `settings:read` | `get_settings` |
+| `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+| `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (Besidka admins only; hidden on the consent page and stripped on the server for everyone else) |
 
 Identity scopes: `openid`, `profile`, `email`, `offline_access`. Every tool
 has a `title` and explicit `readOnlyHint`, `destructiveHint`,

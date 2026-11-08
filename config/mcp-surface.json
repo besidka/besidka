@@ -696,6 +696,63 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
+      "description": "List per-user feature grants, newest first, at most 100: filter by flag, by user id or by exact account email. Users appear only as numeric ids, never with an email, a name or the grant reason. With a user filter the result also lists that user's roles. Admins only. Requires signing in (admin:features).",
+      "inputSchema": {
+        "properties": {
+          "email": {
+            "description": "Only this user's grants and roles, by exact account email. The result shows the user id, never the email.",
+            "format": "email",
+            "maxLength": 254,
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "type": "string"
+          },
+          "flag": {
+            "description": "Only grants for this feature flag, for example \"artifacts\".",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "userId": {
+            "description": "Only this user's grants and roles, by numeric user id.",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_feature_access",
+      "public": false,
+      "requiredScopes": [
+        "admin:features"
+      ],
+      "title": "List feature grants (admin)"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List every Besidka feature flag with its stage, the roles that get it, the rule (enabled, rollout percentage, variants), the kill switch and grant counts. Read-only: rules, rollouts and the kill switch are changed only in the admin web UI. Admins only. Requires signing in (admin:features).",
+      "inputSchema": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_feature_flags",
+      "public": false,
+      "requiredScopes": [
+        "admin:features"
+      ],
+      "title": "List feature flags (admin)"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "List the files in your Besidka library, newest first, with your storage usage. Each file has an id, name, media type, size in bytes, source and expiry. Pass nextOffset back as offset to continue. Requires signing in (files:read).",
       "inputSchema": {
         "properties": {
@@ -806,6 +863,25 @@
       "public": true,
       "requiredScopes": [],
       "title": "List models"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List the experimental Besidka features your account can see, with whether you have access (enabled), whether you are opted in, whether the feature is active and any A/B variant. Opting in authorises spending your API keys, so it is only possible on the Labs page, never through MCP. Requires signing in (settings:read).",
+      "inputSchema": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_my_features",
+      "public": false,
+      "requiredScopes": [
+        "settings:read"
+      ],
+      "title": "List my experimental features"
     },
     {
       "annotations": {
@@ -1165,6 +1241,68 @@
         "chats:write"
       ],
       "title": "Stop sharing chats"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Give one user an experimental feature (allow), keep it off for them (deny) or remove their grant (clear). Identify the user by numeric userId or exact email; the result shows only the user id. Changes one user at a time and is written to the audit log. It cannot change a rollout, a rule or the kill switch, and it cannot opt anyone in to a feature that spends their API keys. Admins only. Requires signing in (admin:features).",
+      "inputSchema": {
+        "properties": {
+          "access": {
+            "description": "allow gives the user the feature, deny keeps it off even for their role, clear removes the user's grant.",
+            "enum": [
+              "allow",
+              "deny",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "email": {
+            "description": "The user, by exact account email. Give userId or email.",
+            "format": "email",
+            "maxLength": 254,
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "type": "string"
+          },
+          "expiresInDays": {
+            "description": "Days until an allow or deny grant expires.",
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "flag": {
+            "description": "The feature flag, for example \"artifacts\".",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why, kept in the audit log. Do not include personal data.",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "userId": {
+            "description": "The user, by numeric user id. Give userId or email.",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "flag",
+          "access"
+        ],
+        "type": "object"
+      },
+      "name": "set_feature_access",
+      "public": false,
+      "requiredScopes": [
+        "admin:features"
+      ],
+      "title": "Give or remove a feature for one user (admin)"
     },
     {
       "annotations": {
