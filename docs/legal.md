@@ -335,6 +335,16 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   needs `chats:write` too). The Privacy Policy says this ("When a permission
   grows"). A future scope must keep the first rule: never extend a stored
   `oauth_consents` row without the user ticking the scope.
+- **Three artifact scopes, no consent version bump (2026-11-09, A-8).**
+  `artifacts:read`, `artifacts:write` and `artifacts:share` (MCP 3.0.0, 14
+  resource scopes) follow the same rule: new scope names, so no existing
+  approval reaches the artifact tools; the write and share scopes are unticked
+  by default; deleting artifacts stays behind `data:delete`. `artifacts:share`
+  is the only MCP path that publishes anything (public `/a/` links, at most 30
+  days, always `noindex`, storage and the bridge off, 10 a day,
+  deterministic personal-data warnings returned to the client). The Privacy
+  Policy already names the three scopes (A-9), so no legal text, hash or
+  notice changes here.
 - **Gate integration for connected clients (required, built).** The MCP
   server must treat a user whose gate status is not `current` like the in-app
   routes do: read nothing and change nothing for a connected client until the

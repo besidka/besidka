@@ -401,4 +401,11 @@ condensed by the Vue compiler, so they render as before (checked in
 - `app/plugins/cloudflare-web-analytics.client.ts` never loads the beacon on
   `/a/**` (any case) or when `?next=` points at `/a/`.
 
-MCP share tools come with A-8.
+## MCP (A-8)
+
+`share_artifact` (scope `artifacts:share`), `list_artifact_shares` and
+`revoke_artifact_shares` use the same helpers. MCP links always expire within
+30 days, never allow storage or the bridge, carry `createdVia: 'mcp'` and the
+OAuth client id (the owner's list shows "Created by connected app <name>"),
+return the deterministic PII warnings, and are capped at 10 per user per day.
+See `docs/mcp-server.md`, "The artifacts scopes".
