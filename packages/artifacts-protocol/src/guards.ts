@@ -2,6 +2,7 @@ import {
   ARTIFACT_KINDS,
   CLIPBOARD_FAILURE_REASONS,
   CLIPBOARD_MIME_TYPES,
+  DIAGRAM_EXPORT_ACTIONS,
   DISPLAY_MODES,
   LOG_LEVELS,
   MAX_COMPLETE_OUTPUT_TOKENS,
@@ -27,6 +28,8 @@ import type {
   ClipboardWriteParams,
   ClipboardWriteResult,
   CompleteParams,
+  DiagramExportParams,
+  DiagramExportResult,
   DisplayMode,
   HostContext,
   HostContextChangedParams,
@@ -429,6 +432,24 @@ export function isRequestDisplayModeResult(
   value: unknown,
 ): value is RequestDisplayModeResult {
   return isRecord(value) && isDisplayMode(value.displayMode)
+}
+
+export function isDiagramExportParams(
+  value: unknown,
+): value is DiagramExportParams {
+  return isRecord(value)
+    && typeof value.source === 'string'
+    && value.source.trim().length > 0
+    && value.source.length <= MAX_DIAGRAM_SOURCE_LENGTH
+    && typeof value.action === 'string'
+    && (DIAGRAM_EXPORT_ACTIONS as readonly string[]).includes(value.action)
+    && typeof value.userActivation === 'boolean'
+}
+
+export function isDiagramExportResult(
+  value: unknown,
+): value is DiagramExportResult {
+  return isRecord(value) && typeof value.completed === 'boolean'
 }
 
 export function isOpenDiagramViewerParams(

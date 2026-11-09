@@ -38,6 +38,16 @@ export const MAX_CLIPBOARD_TEXT_LENGTH = 512 * 1024
 
 export const MAX_DIAGRAM_SOURCE_LENGTH = 64 * 1024
 
+export const DIAGRAM_EXPORT_ACTIONS = [
+  'download-svg',
+  'download-png',
+  'download-drawio',
+  'copy-source',
+  'copy-markdown',
+  'copy-svg',
+  'copy-drawio',
+] as const
+
 export const CLIPBOARD_WRITE_LIMIT = { count: 5, windowMs: 10_000 } as const
 
 export const DISPLAY_REQUEST_LIMIT = { count: 2, windowMs: 1_000 } as const
@@ -79,6 +89,7 @@ export const METHODS = {
   clipboardWrite: 'ui/clipboard-write',
   requestDisplayMode: 'ui/request-display-mode',
   openDiagramViewer: 'besidka/open-diagram-viewer',
+  diagramExport: 'besidka/diagram-export',
   message: 'notifications/message',
   storageGet: 'besidka/storage/get',
   storageSet: 'besidka/storage/set',

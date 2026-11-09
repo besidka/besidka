@@ -25,6 +25,7 @@ const {
   resetStorageMock,
   successMessageMock,
   errorMessageMock,
+  renderDiagramMock,
 } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
   downloadMock: vi.fn(),
@@ -34,7 +35,34 @@ const {
   resetStorageMock: vi.fn(),
   successMessageMock: vi.fn(),
   errorMessageMock: vi.fn(),
+  renderDiagramMock: vi.fn(async () => {
+    return { svg: '<svg data-testid="rendered"></svg>' }
+  }),
 }))
+
+mockNuxtImport('useDiagramRenderer', () => {
+  return () => {
+    return { renderDiagram: renderDiagramMock }
+  }
+})
+
+mockNuxtImport('sanitizeDiagramSvg', () => {
+  return (svg: string) => svg
+})
+
+mockComponent('ProseMermaidActionMenu', () => {
+  return {
+    props: ['label', 'icon', 'testId', 'actions', 'input'],
+    template: `
+      <button
+        :data-testid="testId"
+        :data-actions="actions.map(item => item.action).join(',')"
+        :data-has-svg="String(!!input.svg)"
+        :data-has-theme="String(!!input.themeElement())"
+      >{{ label }}</button>
+    `,
+  }
+})
 
 mockNuxtImport('$fetch', () => fetchMock)
 
@@ -135,19 +163,34 @@ mockComponent('ChatArtifactFrame', () => {
   }
 })
 
-mockComponent('ProsePreStream', () => {
+mockComponent('ChatArtifactCodeView', () => {
   return {
     props: {
       code: String,
       language: String,
-      sourceOnly: Boolean,
-      alwaysExpanded: Boolean,
     },
     template: `
       <pre
         data-testid="code-stub"
+        data-mode="finished"
         :data-language="language"
-        :data-source-only="String(sourceOnly)"
+      >{{ code }}</pre>
+    `,
+  }
+})
+
+mockComponent('ProseCodeStream', () => {
+  return {
+    props: {
+      code: String,
+      language: String,
+      theme: String,
+    },
+    template: `
+      <pre
+        data-testid="code-stub"
+        data-mode="streaming"
+        :data-language="language"
       >{{ code }}</pre>
     `,
   }
@@ -288,6 +331,50 @@ describe('ChatArtifactDetail', () => {
     expect(frameMounts.count).toBe(1)
   })
 
+  it('gives a Mermaid artifact the chat diagram actions on the Code tab',
+    async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url === '/api/v1/artifacts/Art1Art1Art1Art1') {
+          return { ...DETAIL, kind: 'mermaid' }
+        }
+
+        return {
+          ...versionContent(3, 'mermaid'),
+          content: 'graph TD\n  A --> B',
+        }
+      })
+      openTarget({ kind: 'mermaid' })
+
+      const wrapper = await mountDetail()
+
+      expect(wrapper.find('[data-testid="artifact-mermaid-actions"]').exists())
+        .toBe(false)
+
+      await wrapper.get('[data-testid="artifact-tab-code"]').trigger('click')
+      await flushPromises()
+
+      const actions = wrapper.get('[data-testid="artifact-mermaid-actions"]')
+      const download = actions.get('[data-testid="artifact-mermaid-download"]')
+
+      expect(actions.classes()).toContain('pele-theme')
+      expect(download.attributes('data-actions'))
+        .toBe('download-svg,download-png,download-drawio')
+      expect(download.attributes('data-has-svg')).toBe('true')
+      expect(download.attributes('data-has-theme')).toBe('true')
+      expect(actions.get('[data-testid="artifact-mermaid-copy"]')
+        .attributes('data-actions')).toContain('copy-drawio')
+      expect(renderDiagramMock).toHaveBeenCalledWith(
+        'graph TD\n  A --> B',
+        expect.objectContaining({ idPrefix: expect.any(String) }),
+      )
+
+      await wrapper.get('[data-testid="artifact-tab-preview"]')
+        .trigger('click')
+
+      expect(wrapper.find('[data-testid="artifact-mermaid-actions"]').exists())
+        .toBe(false)
+    })
+
   it('shows the exact stored source in the Code tab', async () => {
     openTarget()
 
@@ -300,7 +387,7 @@ describe('ChatArtifactDetail', () => {
 
     expect(code.text()).toBe('<p>v3</p>')
     expect(code.attributes('data-language')).toBe('html')
-    expect(code.attributes('data-source-only')).toBe('true')
+    expect(code.attributes('data-mode')).toBe('finished')
     expect(wrapper.get('[data-testid="frame-stub"]').element.parentElement
       ?.style.display).toBe('none')
   })

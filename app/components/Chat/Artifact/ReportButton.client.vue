@@ -5,7 +5,7 @@
       data-testid="artifact-report-button"
       class="btn btn-ghost btn-sm min-h-6"
       aria-haspopup="dialog"
-      @click="isOpen = true"
+      @click="openReport"
     >
       <Icon
         name="lucide:flag"
@@ -14,7 +14,8 @@
       />
       Report
     </button>
-    <ArtifactReportModal
+    <LazyArtifactReportModal
+      v-if="hasOpened"
       v-model:open="isOpen"
       :title="title"
       :endpoint="endpoint"
@@ -32,6 +33,12 @@ const props = defineProps<{
 }>()
 
 const isOpen = shallowRef<boolean>(false)
+const hasOpened = shallowRef<boolean>(false)
+
+function openReport() {
+  hasOpened.value = true
+  isOpen.value = true
+}
 
 const endpoint = computed<string>(() => {
   return `/api/v1/shared/${encodeURIComponent(props.shareSlug)}/artifacts/`

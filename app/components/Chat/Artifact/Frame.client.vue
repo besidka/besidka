@@ -10,6 +10,11 @@
       :class="{ invisible: !isShowingContent }"
     />
     <div
+      ref="diagramTheme"
+      class="pele-theme hidden"
+      aria-hidden="true"
+    />
+    <div
       v-if="isLoading"
       class="absolute inset-0 flex flex-col gap-3 p-4"
       aria-busy="true"
@@ -99,6 +104,51 @@
             aria-label="Dismiss"
             data-testid="artifact-copy-fallback-dismiss"
             @click="dismissPendingCopy"
+          >
+            <Icon
+              name="lucide:x"
+              size="16"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      v-if="pendingExport"
+      class="absolute inset-x-2 top-2 z-10 flex justify-center"
+    >
+      <div
+        class="alert alert-horizontal w-auto max-w-full gap-2 py-2 pr-2 pl-3 shadow-lg"
+        role="alert"
+        data-testid="artifact-export-fallback"
+      >
+        <Icon
+          :name="pendingExport.action.startsWith('copy-')
+            ? 'lucide:clipboard'
+            : 'lucide:download'"
+          size="16"
+          class="shrink-0"
+        />
+        <p class="min-w-0 grow text-sm">
+          {{ pendingExport.label }} from the artifact?
+        </p>
+        <div class="flex shrink-0 items-center gap-1">
+          <button
+            ref="exportFallbackButton"
+            type="button"
+            class="btn btn-sm btn-primary"
+            data-testid="artifact-export-fallback-confirm"
+            @click="onConfirmExportClick"
+          >
+            {{ pendingExport.action.startsWith('copy-') ? 'Copy' : 'Download' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost btn-circle"
+            aria-label="Dismiss"
+            data-testid="artifact-export-fallback-dismiss"
+            @click="dismissPendingExport"
           >
             <Icon
               name="lucide:x"
@@ -268,7 +318,19 @@ const {
   viewerSource,
   confirmPendingCopy,
   dismissPendingCopy,
-} = useArtifactHostActions({ layout, displayMode })
+  pendingExport,
+  confirmPendingExport,
+  dismissPendingExport,
+} = useArtifactHostActions({
+  layout,
+  displayMode,
+  diagramThemeElement: () => diagramTheme.value,
+})
+
+const diagramTheme = useTemplateRef<HTMLElement>('diagramTheme')
+const exportFallbackButton = useTemplateRef<HTMLButtonElement>(
+  'exportFallbackButton',
+)
 
 const copyFallbackButton = useTemplateRef<HTMLButtonElement>(
   'copyFallbackButton',
@@ -389,6 +451,7 @@ function clearTimers() {
 
 function teardown() {
   dismissPendingCopy()
+  dismissPendingExport()
   bridge.dispose()
   clearTimers()
   connection?.destroy()
@@ -641,6 +704,7 @@ watch(() => props.result, (result) => {
   }
 
   dismissPendingCopy()
+  dismissPendingExport()
 
   if (!result || !connection) {
     return
@@ -695,6 +759,35 @@ function onConfirmCopyClick(event: MouseEvent) {
 
   confirmPendingCopy()
 }
+
+let pendingExportShownAt = 0
+
+function onConfirmExportClick(event: MouseEvent) {
+  const isKeyboardClick = event.detail === 0
+  const elapsed = Date.now() - pendingExportShownAt
+
+  if (isKeyboardClick && elapsed < COPY_KEYBOARD_GUARD_MS) {
+    return
+  }
+
+  confirmPendingExport()
+}
+
+watch(pendingExport, async (pending) => {
+  if (!pending) {
+    return
+  }
+
+  pendingExportShownAt = Date.now()
+
+  const isFrameFocused = !!frame && document.activeElement === frame
+
+  await nextTick()
+
+  if (isFrameFocused) {
+    exportFallbackButton.value?.focus()
+  }
+})
 
 watch(pendingCopy, async (pending) => {
   if (!pending) {

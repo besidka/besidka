@@ -39,6 +39,7 @@ interface HarnessState {
   completePrompts: string[]
   clipboardWrites: Array<{ text: string, result: ClipboardWriteResult }>
   diagramViews: string[]
+  diagramExports: Array<{ source: string, action: string }>
 }
 
 declare global {
@@ -64,6 +65,7 @@ function createInitialState(): HarnessState {
     completePrompts: [],
     clipboardWrites: [],
     diagramViews: [],
+    diagramExports: [],
   }
 }
 
@@ -253,6 +255,13 @@ function createHarness() {
       openDiagramViewer: options.viewer
         ? ({ source }) => {
           state.diagramViews.push(source)
+        }
+        : undefined,
+      diagramExport: options.viewer
+        ? ({ source, action }) => {
+          state.diagramExports.push({ source, action })
+
+          return { completed: true }
         }
         : undefined,
     })

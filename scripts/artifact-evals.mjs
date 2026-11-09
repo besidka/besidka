@@ -13,7 +13,7 @@
  *       --base-url=https://pr-<n>-besidka.chernenko.workers.dev \
  *       --models=claude-haiku-5-5,gpt-6-luna,gemini-3.8-flash \
  *       [--cases=quiz-photosynthesis,edit-flow] [--out=.evals/artifacts]
- *       [--budget-usd=4]
+ *       [--budget-usd=4] [--failed-case-estimate-usd=0.1]
  *
  *   node scripts/artifact-evals.mjs summary --dir=.evals/artifacts/<date>
  *   node scripts/artifact-evals.mjs rescore --dir=.evals/artifacts/<date>
@@ -566,8 +566,63 @@ async function sendTurn(client, slug, model, message) {
   return text
 }
 
+export const DEFAULT_FAILED_CASE_ESTIMATE_USD = 0.1
+
+export function isValidUsdAmount(value) {
+  return Number.isFinite(value) && value >= 0
+}
+
+/**
+ * Tags an error thrown after the eval chat exists with that chat, so the
+ * run can still count what the provider billed before the failure.
+ */
+export function attachChatToError(exception, chatSlug, sendStarted) {
+  const error = exception instanceof Error
+    ? exception
+    : new Error(String(exception))
+
+  error.chatSlug = chatSlug
+  error.sendStarted = sendStarted
+
+  return error
+}
+
+/**
+ * The cost of a case that threw. Before the chat exists nothing was billed.
+ * Otherwise the chat's assistant messages are summed; when they cannot be
+ * read, or a send started but no cost was recorded yet (a timed-out
+ * generation keeps running on the server), the pessimistic estimate is
+ * charged so `--budget-usd` still holds.
+ */
+export async function recoverFailedCaseUsage(
+  fetchChat,
+  exception,
+  estimateUsd = DEFAULT_FAILED_CASE_ESTIMATE_USD,
+) {
+  const empty = { costUsd: 0, inputTokens: 0, outputTokens: 0 }
+  const chatSlug = exception?.chatSlug
+
+  if (!chatSlug) {
+    return { ...empty, estimated: false }
+  }
+
+  try {
+    const chat = await fetchChat(chatSlug)
+    const usage = computeUsageCost((chat?.messages ?? [])
+      .filter(message => message.role === 'assistant')
+      .map(message => message.usage))
+
+    if (exception.sendStarted && usage.costUsd === 0) {
+      return { ...usage, costUsd: estimateUsd, estimated: true }
+    }
+
+    return { ...usage, estimated: false }
+  } catch {
+    return { ...empty, costUsd: estimateUsd, estimated: true }
+  }
+}
+
 async function runCase(client, evalCase, model) {
-  const startedAt = Date.now()
   const created = await client.json('/api/v1/chats/new', {
     method: 'PUT',
     body: {
@@ -578,8 +633,21 @@ async function runCase(client, evalCase, model) {
       memoryExcluded: true,
     },
   })
+  const progress = { sendStarted: false }
+
+  try {
+    return await runCreatedCase(client, evalCase, model, created, progress)
+  } catch (exception) {
+    throw attachChatToError(exception, created.slug, progress.sendStarted)
+  }
+}
+
+async function runCreatedCase(client, evalCase, model, created, progress) {
+  const startedAt = Date.now()
   const chat = await client.json(`/api/v1/chats/${created.slug}`)
   const firstMessage = chat.messages.find(message => message.role === 'user')
+  progress.sendStarted = true
+
   let stream = await sendTurn(client, created.slug, model, {
     id: firstMessage.id,
     role: 'user',
@@ -667,6 +735,17 @@ async function runCommand(options) {
   const date = new Date().toISOString().slice(0, 10)
   const rootDir = resolve(options.out ?? DEFAULT_OUTPUT_DIR, date)
   const budgetUsd = Number(options['budget-usd'] ?? 4)
+  const failedCaseEstimateUsd = Number(
+    options['failed-case-estimate-usd'] ?? DEFAULT_FAILED_CASE_ESTIMATE_USD,
+  )
+
+  const amounts = [budgetUsd, failedCaseEstimateUsd]
+
+  if (!amounts.every(isValidUsdAmount)) {
+    console.error('--budget-usd and --failed-case-estimate-usd must be '
+      + 'numbers of 0 or more.')
+    process.exit(1)
+  }
   const client = new SessionClient(options['base-url'])
   let spentUsd = 0
 
@@ -692,17 +771,25 @@ async function runCommand(options) {
           + `$${result.usage.costUsd.toFixed(4)} `
           + `(${result.usage.outputTokens} out, ${result.durationMs} ms)`)
       } catch (exception) {
+        const usage = await recoverFailedCaseUsage((slug) => {
+          return client.json(`/api/v1/chats/${slug}`)
+        }, exception, failedCaseEstimateUsd)
+        const estimateNote = usage.estimated ? ' (estimate)' : ''
+
+        spentUsd += usage.costUsd
         writeEvalResult(rootDir, {
           caseId: evalCase.id,
           model,
+          chatSlug: exception?.chatSlug ?? null,
           status: 'error',
           error: exception instanceof Error
             ? exception.message
             : String(exception),
           checks: {},
-          usage: { costUsd: 0, inputTokens: 0, outputTokens: 0 },
+          usage,
         })
-        console.log(`${model} ${evalCase.id}: error ${exception}`)
+        console.log(`${model} ${evalCase.id}: error ${exception} `
+          + `$${usage.costUsd.toFixed(4)}${estimateNote}`)
       }
     }
   }

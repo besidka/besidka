@@ -574,6 +574,71 @@ describe('createHostConnection UI requests', () => {
     expect(requestDisplayMode).toHaveBeenCalledTimes(1)
     host.destroy()
   })
+
+  it('hands diagram exports to the hook with the host gesture', async () => {
+    let currentTime = 0
+    let hostActivation = true
+    const diagramExport = vi.fn(() => {
+      return { completed: true, extra: 'ignored' }
+    })
+    const { host, runtime } = await connectWith({ diagramExport }, {
+      now: () => {
+        return currentTime
+      },
+      hasUserActivation: () => {
+        return hostActivation
+      },
+    })
+
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
+      action: 'download-svg',
+      userActivation: true,
+    })).resolves.toEqual({ completed: true })
+    expect(diagramExport).toHaveBeenLastCalledWith({
+      source: 'graph TD; A-->B',
+      action: 'download-svg',
+      userActivation: true,
+    })
+
+    currentTime += 1_000
+    hostActivation = false
+
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
+      action: 'copy-drawio',
+      userActivation: true,
+    })).resolves.toEqual({ completed: true })
+    expect(diagramExport).toHaveBeenLastCalledWith({
+      source: 'graph TD; A-->B',
+      action: 'copy-drawio',
+      userActivation: false,
+    })
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
+      action: 'download-exe',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'x'.repeat(64 * 1024 + 1),
+      action: 'download-svg',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(diagramExport).toHaveBeenCalledTimes(2)
+    host.destroy()
+  })
+
+  it('answers method not found for diagram exports without a hook',
+    async () => {
+      const { host, runtime } = await connectWith({})
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-svg',
+        userActivation: true,
+      })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+      host.destroy()
+    })
 })
 
 describe('writeClipboardText', () => {

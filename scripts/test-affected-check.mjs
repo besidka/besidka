@@ -149,6 +149,8 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e-artifacts/code-blocks.spec.ts',
     'tests/e2e-artifacts/design-system.spec.ts',
     'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
+    'tests/e2e-artifacts/html-script-errors.spec.ts',
+    'tests/unit/workers/artifacts-runtime/script-location.spec.ts',
   ]
   const artifactsBridgeServerTests = [
     'tests/integration/api/artifact-complete.spec.ts',
@@ -184,6 +186,7 @@ export function getAffectedTests(changedFiles) {
   const artifactsUiTests = [
     'tests/unit/components/Chat/Artifact/Card.spec.ts',
     'tests/unit/components/Chat/Artifact/Detail.client.spec.ts',
+    'tests/unit/components/Chat/Artifact/CodeView.client.spec.ts',
     'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/composables/artifacts.spec.ts',
@@ -736,6 +739,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/MarkdownSource.spec.ts',
     'tests/unit/utils/sanitize-diagram-svg.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
+  ]
+  const codeHighlightingTests = [
+    'tests/unit/scripts/shiki-token-parity.spec.ts',
+    'tests/unit/components/prose/CodeStream.spec.ts',
+    'tests/unit/components/prose/PreStream.spec.ts',
+    'tests/unit/utils/clipboard-html.spec.ts',
+    'tests/e2e/chat/code-highlighting.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -2406,6 +2416,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/components\/prose\/(PreStream|CodeStream)\.vue|app\/composables\/(md-syntax-highlighter|code-stream)\.ts|app\/utils\/code-highlight\.ts|scripts\/shiki-token-parity\.mjs|server\/utils\/chats\/test\/code-fixture\.ts|server\/api\/v1\/chats\/test\/index\.(get|post)\.ts)$/,
+      tests: codeHighlightingTests,
+    },
+    {
+      pattern:
         /^(server\/db\/schemas\/research-jobs\.ts|server\/utils\/research\/.*\.ts|server\/plugins\/research-job-sweep\.ts|server\/api\/v1\/chats\/research\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/research\/.*\.ts)$/,
       tests: deepResearchTests,
     },
@@ -3128,7 +3143,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client|BridgeConfirm\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/artifact(s|-host-actions|-storage|-bridge)\.ts|app\/utils\/artifact-(export|parts|bridge)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
+        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client|BridgeConfirm\.client|CodeView\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/(artifact(s|-host-actions|-storage|-bridge)|chunked-code-highlight|code-stream)\.ts|app\/utils\/artifact-(export|parts|bridge)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
       tests: artifactsUiTests,
     },
     {

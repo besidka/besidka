@@ -196,6 +196,7 @@ describe('artifact shares API', () => {
   let artifactId: string
 
   beforeEach(async () => {
+    vi.stubGlobal('getRequestURL', () => new URL(BASE_URL))
     testDb = createMemoryExtractionTestDb()
     mocks.storage = createMemoryBlobStore()
     mocks.sessionUserId = 0

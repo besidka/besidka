@@ -81,7 +81,11 @@ node scripts/artifact-evals.mjs rescore --dir=.evals/artifacts/<date>
 Results go to `.evals/artifacts/<date>/<model>/<case>.json` (gitignored).
 They hold the generated content, so do not attach them to a PR. The run
 stops at `--budget-usd` (default $4). Costs come from the stored message
-usage (`messages.usage`), the same numbers the message cost row shows.
+usage (`messages.usage`), the same numbers the message cost row shows. A case
+that fails after its chat exists still counts: the run reads that chat's
+assistant usage, and when it cannot (or a send started and no cost is stored
+yet, as after a timeout) it charges `--failed-case-estimate-usd` (default
+$0.10) so the cap holds.
 
 ### Checks
 

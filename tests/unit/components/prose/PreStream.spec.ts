@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => {
 
   return {
     copy: vi.fn(),
+    loadCodeHighlighter: vi.fn(() => {
+      return new Promise<never>(() => {})
+    }),
     renderAsync: vi.fn(),
     runExportAction: vi.fn(),
     panzoom: vi.fn(() => panzoomInstance),
@@ -40,29 +43,8 @@ mockNuxtImport('useDiagramExport', () => {
   }
 })
 
-const highlighterMock = vi.hoisted(() => {
-  return {
-    getLoadedLanguages: () => [] as string[],
-    codeToTokens: (code: string) => {
-      return {
-        tokens: code.split('\n').map((line) => {
-          return [{ content: line, color: '#ff0000', offset: 0 }]
-        }),
-      }
-    },
-  }
-})
-
-const highlighterState = vi.hoisted(() => {
-  return { loaded: true }
-})
-
-mockNuxtImport('useHighlighter', () => {
-  return async () => highlighterMock
-})
-
-mockNuxtImport('getLoadedHighlighter', () => {
-  return () => highlighterState.loaded ? highlighterMock : null
+mockNuxtImport('loadCodeHighlighter', () => {
+  return mocks.loadCodeHighlighter
 })
 
 mockNuxtImport('useClipboard', () => {
@@ -79,26 +61,6 @@ vi.mock('pele/lazy', async () => {
   return { ...actual, renderAsync: mocks.renderAsync }
 })
 
-vi.mock('shiki-stream/vue', async () => {
-  const { defineComponent, h } = await import('vue')
-
-  return {
-    ShikiCachedRenderer: defineComponent({
-      props: {
-        code: { type: String, default: '' },
-        lang: { type: String, default: '' },
-        theme: { type: String, default: '' },
-        highlighter: { type: Object, default: null },
-      },
-      setup(props) {
-        return () => {
-          return h('code', { 'data-testid': 'shiki-code' }, props.code)
-        }
-      },
-    }),
-  }
-})
-
 const VALID_DIAGRAM = 'flowchart LR\n  A[Start] --> B[Done]\n  B --> C[End]'
 const INVALID_DIAGRAM = 'flowchart LR\n  A[Start --> B\n  B --> C'
 
@@ -110,7 +72,6 @@ async function mountPre(
     language?: string
     context?: MarkdownSourceContext
     attachTo?: HTMLElement
-    sourceOnly?: boolean
   } = {},
 ): Promise<VueWrapper> {
   const provide: Record<symbol, () => MarkdownSourceContext> = {}
@@ -126,7 +87,6 @@ async function mountPre(
     props: {
       code,
       language: options.language ?? 'mermaid',
-      sourceOnly: options.sourceOnly ?? false,
     },
     global: {
       provide,
@@ -393,6 +353,23 @@ describe('prose/PreStream.vue mermaid', () => {
       .toBe(false)
     expect(wrapper.get('[data-testid="shiki-code"]').text())
       .toBe('const answer = 42')
+  })
+
+  it('shows the code as plain lines while the language loads', async () => {
+    const wrapper = await mountPre('const a = 1\nconst b = 2', {
+      language: 'go',
+    })
+
+    await flushPromises()
+
+    const stream = wrapper.get('[data-testid="code-stream"]')
+
+    expect(stream.attributes('data-highlighted')).toBe('false')
+    expect(stream.findAll('code > span').map((line) => {
+      return line.text()
+    })).toEqual(['const a = 1', 'const b = 2'])
+    expect(mocks.loadCodeHighlighter)
+      .toHaveBeenCalledWith('go', 'const a = 1\nconst b = 2')
   })
 
   it('keeps the plain Copy button on non-mermaid blocks', async () => {
@@ -1431,60 +1408,5 @@ describe('prose/PreStream.vue mermaid editing', () => {
         svg: expect.stringContaining('Pending'),
       }),
     )
-  })
-})
-
-describe('prose/PreStream.vue finished code', () => {
-  const ARTIFACT_SOURCE = Array.from({ length: 300 }, (_line, index) => {
-    return `const line${index} = ${index}`
-  }).join('\n')
-
-  afterEach(() => {
-    highlighterState.loaded = true
-  })
-
-  it('shows the plain source before the highlighter has loaded', async () => {
-    highlighterState.loaded = false
-
-    const wrapper = await mountPre(ARTIFACT_SOURCE, {
-      language: 'jsx',
-      sourceOnly: true,
-    })
-    const block = wrapper.get('[data-testid="code-static"]')
-
-    expect(block.attributes('data-highlighted')).toBe('false')
-    expect(block.text()).toBe(ARTIFACT_SOURCE)
-    expect(wrapper.find('[data-testid="shiki-code"]').exists()).toBe(false)
-
-    await vi.waitFor(() => {
-      expect(wrapper.get('[data-testid="code-static"]')
-        .attributes('data-highlighted')).toBe('true')
-    })
-
-    const highlighted = wrapper.get('[data-testid="code-static"]')
-
-    expect(highlighted.text()).toBe(ARTIFACT_SOURCE)
-    expect(highlighted.findAll('span')).toHaveLength(300)
-  })
-
-  it('colours a block it has seen before on the first render', async () => {
-    const first = await mountPre('const cached = 1', {
-      language: 'jsx',
-      sourceOnly: true,
-    })
-
-    await vi.waitFor(() => {
-      expect(first.get('[data-testid="code-static"]')
-        .attributes('data-highlighted')).toBe('true')
-    })
-    first.unmount()
-
-    const second = await mountPre('const cached = 1', {
-      language: 'jsx',
-      sourceOnly: true,
-    })
-
-    expect(second.get('[data-testid="code-static"]')
-      .attributes('data-highlighted')).toBe('true')
   })
 })
