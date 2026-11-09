@@ -153,6 +153,12 @@ describe('artifact share token redaction', () => {
       expect(redactArtifactSharePath('/api/v1/artifact-shares/current'))
         .toBe('/api/v1/artifact-shares/current')
       expect(redactArtifactSharePath(42)).toBe(42)
+      expect(redactArtifactSharePath(`/signup?next=%2Fa%2F${TOKEN}`))
+        .toBe('/signup?next=%2Fa%2F[token]')
+      expect(redactArtifactSharePath(`/signin?next=%2fa%2f${TOKEN}&x=1`))
+        .toBe('/signin?next=%2fa%2f[token]&x=1')
+      expect(redactArtifactSharePath('/data/files'))
+        .toBe('/data/files')
     })
 
   it('keeps the token out of every drained field of a page request', () => {

@@ -120,7 +120,8 @@ send `frame-ancestors 'none'; frame-src ...`.
 
 The SSR request for `/a/<token>` carries the token in its path. The
 `evlog:enrich` hook in `server/plugins/evlog-request-observability.ts` rewrites
-`/a/<anything>` to `/a/[token]` in `request.path` and walks the whole wide event
+`/a/<anything>` (and the percent-encoded `%2Fa%2F<anything>` that sign-in
+and sign-up links carry in `?next=`) to `/a/[token]` in `request.path` and walks the whole wide event
 (path, message, nested error fields, browser-ingested events) before any
 drain (Axiom, console, file) sees it (`redactArtifactShareTokens`). The
 header is never part of a wide event: request headers only reach the drain
@@ -280,7 +281,30 @@ collapses); the plain-text part keeps the line breaks.
   decisions; replay them from Axiom by share id, artifact id and report id
   (`docs/d1-restore-reconciliation.md`, "Artifacts").
 
-## Not in this layer
+## Client
 
-The `/a/` page, the share and report modals, the admin reports page and the
-Web Analytics suppression on `/a/**` (client layer); MCP share tools (A-8).
+- `app/pages/a/[token].vue` in the chrome-free `artifact-share` layout (no
+  sidebar, no promo, no backlink). The API is fetched on the client only
+  with the token in the `x-besidka-artifact-share` header, so SSR serves the
+  neutral title "Shared artifact" and link-preview scrapers never get the
+  artifact title. Banner region with the AI line, "Never enter passwords or
+  payment details here.", the Report button and, only when the link allows
+  saving and the viewer is signed out, "Sign in to save your progress". A
+  visually hidden "Skip to report" link precedes the frame. 404 and 410
+  states render inside the page.
+- The Frame takes the source `public-share` with the token and the link's
+  capabilities: storage and the bridge turn on only for a signed-in viewer
+  with their own flag and a link that allows it; anonymous viewers get
+  memory storage and no handlers, so nothing reaches the server.
+- `app/components/Artifact/ReportModal.client.vue` serves `/a/` and the
+  shared-chat Report button; Turnstile (action `report`) only when signed
+  out and a site key is set.
+- `app/components/Chat/Artifact/ShareModal.client.vue` from the panel's
+  actions menu (owner, `artifacts.share`); default duration one week.
+- `app/pages/admin/artifact-reports.vue`, the report detail in the side
+  panel with a read-only preview (memory storage, no bridge) and the direct
+  takedown form; an admin-only "Content reports" Search popup row.
+- `app/plugins/cloudflare-web-analytics.client.ts` never loads the beacon on
+  `/a/**` or when `?next=` points at `/a/`.
+
+MCP share tools come with A-8.

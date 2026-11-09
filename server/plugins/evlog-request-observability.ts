@@ -64,23 +64,38 @@ export function moveMcpContextToAttributes(event: Record<string, unknown>) {
 
 const QUERY_FREE_PATH_PREFIXES = ['/api/v1/admin/']
 
-const ARTIFACT_SHARE_PATH_PATTERN = /\/a\/[^\s/?#"'<>]+/g
-const ARTIFACT_SHARE_PATH_REPLACEMENT = '/a/[token]'
+const ARTIFACT_SHARE_PATH_PATTERN
+  = /(\/|%2f)a(\/|%2f)[^\s/?#&%"'<>]+/gi
+const ARTIFACT_SHARE_TOKEN_PLACEHOLDER = '[token]'
+const ARTIFACT_SHARE_PATH_MARKERS = ['/a/', '%2fa%2f']
 const REDACTION_MAX_DEPTH = 8
 
 /**
- * Replaces the token of every public artifact link (`/a/<token>`) in a
- * string with `/a/[token]`, so request paths, messages and error text in
- * the wide event carry the route pattern only (DPIA 3.13(d)).
+ * Replaces the token of every public artifact link (`/a/<token>`, also
+ * percent-encoded as in `?next=%2Fa%2F<token>`) in a string with
+ * `[token]`, so request paths, messages and error text in the wide event
+ * carry the route pattern only (DPIA 3.13(d)).
  */
 export function redactArtifactSharePath(value: unknown): unknown {
-  if (typeof value !== 'string' || !value.includes('/a/')) {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const lowerCaseValue = value.toLowerCase()
+  const hasMarker = ARTIFACT_SHARE_PATH_MARKERS.some((marker) => {
+    return lowerCaseValue.includes(marker)
+  })
+
+  if (!hasMarker) {
     return value
   }
 
   return value.replace(
     ARTIFACT_SHARE_PATH_PATTERN,
-    ARTIFACT_SHARE_PATH_REPLACEMENT,
+    (_match, leadingSeparator: string, trailingSeparator: string) => {
+      return `${leadingSeparator}a${trailingSeparator}`
+        + ARTIFACT_SHARE_TOKEN_PLACEHOLDER
+    },
   )
 }
 
