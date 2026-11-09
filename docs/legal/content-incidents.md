@@ -23,14 +23,18 @@
 | Cloudflare abuse email to the account address | Complaints Cloudflare received about a URL it hosts | The controller |
 
 **Phone alert (owner item 3 of the pre-check).** The one-hour rule in section 3
-cannot be met without a push alert on the controller's phone. Mail to `privacy@`, `abuse@`, `security@` and
-`contact@` goes through the `besidka-mail-alerts` Email Worker, which forwards
+cannot be met without a push alert on the controller's phone. Mail to
+`privacy@`, `abuse@`, `security@` and `contact@` goes through the `besidka-mail-alerts` Email Worker, which forwards
 it to the Gmail inbox as before and pushes "New mail to privacy@" with the
 subject to every admin's subscribed devices; removal orders, authority mail
 and breach or security reports push as urgent, at most once per mailbox per
 minute (`docs/mail-alerts.md`). The owner switches the four Email Routing rules with
 the runbook there and turns push on in the installed PWA for the admin
 account.
+**Not covered:** Cloudflare abuse email to the account address still needs a
+phone notification from the mail app (for example a Gmail filter with
+notifications on for that sender). Do this before `artifacts.share` is granted
+to anyone beyond the controller.
 
 **No cover person (owner decision, 2026-11-09).** The owner works alone, so
 nobody covers holidays, travel or nights. The phone push is the only
@@ -42,10 +46,6 @@ in section 3 (Art. 3(7), 3(8)). Revisit this when a second operator exists,
 when Besidka starts to earn money or the owner registers a business
 (`docs/legal/monetisation-readiness.md`), or when the user base grows enough
 to make orders or reports likely.
-**Not covered:** Cloudflare abuse email to the account address still needs a
-phone notification from the mail app (for example a Gmail filter with
-notifications on for that sender). Do this before `artifacts.share` is granted
-to anyone beyond the controller.
 
 ## 2. Triage, in this order
 
