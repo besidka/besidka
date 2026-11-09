@@ -183,14 +183,13 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
         .toContain('overflow-y-auto')
     })
 
-    it('uses rounded-box for the textarea and no pill radius', async () => {
+    it('uses a bordered textarea and no pill radius', async () => {
       const wrapper = await mountSheet()
       const textarea = byTestId(wrapper, 'memory-import-textarea')
 
       expect(textarea.classes()).toEqual(expect.arrayContaining([
         'textarea',
         'textarea-bordered',
-        'rounded-box',
         'resize-none',
         'overflow-y-auto',
         'min-h-48',

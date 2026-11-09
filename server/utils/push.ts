@@ -8,12 +8,24 @@ import { buildPushRequest, isValidVapidPublicKey } from './push-protocol'
 // own push services) and can render on a lock screen — never put generated
 // message content or the user's prompt in title/body, only a fixed generic
 // string. See PushNotificationPayload call site in
-// server/api/v1/chats/[slug]/index.post.ts.
+// server/api/v1/chats/[slug]/index.post.ts. The one exception is the admin
+// mail alert (docs/mail-alerts.md), whose body is a sanitised, truncated
+// subject of mail sent to the controller's own mailboxes.
 export type PushNotificationPayload = {
   title: string
   body: string
   url: string
   tag?: string
+}
+
+export interface PushDeliveryOptions {
+  ttl: number
+  urgency: 'very-low' | 'low' | 'normal' | 'high'
+}
+
+export const DEFAULT_PUSH_DELIVERY: PushDeliveryOptions = {
+  ttl: 300,
+  urgency: 'normal',
 }
 
 export interface VapidKeys {
@@ -189,6 +201,7 @@ async function sendToSubscription(
   subscription: StoredPushSubscription,
   payload: PushNotificationPayload,
   vapid: Required<VapidKeys>,
+  delivery: PushDeliveryOptions,
 ): Promise<SendResult> {
   const host = getEndpointHost(subscription.endpoint)
 
@@ -209,8 +222,8 @@ async function sendToSubscription(
       p256dhKey: subscription.p256dhKey,
       authKey: subscription.authKey,
       payload: JSON.stringify(payload),
-      ttl: 300,
-      urgency: 'normal',
+      ttl: delivery.ttl,
+      urgency: delivery.urgency,
       vapid: {
         publicKey: vapid.publicKey,
         privateKey: vapid.privateKey,
@@ -296,6 +309,7 @@ export async function sendPushNotificationToUser(
   vapid: VapidKeys,
   waitUntil?: (promise: Promise<unknown>) => void,
   targetOrigin?: string,
+  delivery: PushDeliveryOptions = DEFAULT_PUSH_DELIVERY,
 ): Promise<PushSendOutcomes | null> {
   if (!isPushConfigured(vapid)) {
     return null
@@ -341,6 +355,7 @@ export async function sendPushNotificationToUser(
       subscription,
       payload,
       vapid as Required<VapidKeys>,
+      delivery,
     )
 
     outcomes[result.outcome] += 1
