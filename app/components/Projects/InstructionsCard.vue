@@ -27,7 +27,7 @@
       ref="textarea"
       v-model="input"
       class="
-        textarea textarea-bordered rounded-box mt-4 min-h-36 w-full
+        textarea textarea-bordered mt-4 min-h-36 w-full
         resize-none max-h-[min(300px,33dvh)] overflow-y-auto
       "
       placeholder="Example: Always answer as a senior TypeScript engineer.

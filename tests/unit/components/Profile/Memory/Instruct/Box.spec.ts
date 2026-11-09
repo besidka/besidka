@@ -115,7 +115,7 @@ describe('Profile/Memory/Instruct/Box', () => {
     mocks.warning.mockReset()
   })
 
-  it('uses a rounded-box textarea and says it runs on the user\'s key',
+  it('uses a bordered textarea and says it runs on the user\'s key',
     async () => {
       const wrapper = await mountBox({ modelId: 'gpt-unknown-model' })
       const textarea = byTestId(wrapper, 'memory-instruct-text')
@@ -123,7 +123,6 @@ describe('Profile/Memory/Instruct/Box', () => {
       expect(textarea.classes()).toEqual(expect.arrayContaining([
         'textarea',
         'textarea-bordered',
-        'rounded-box',
         'resize-none',
       ]))
       expect(wrapper.html()).not.toContain('rounded-full')
