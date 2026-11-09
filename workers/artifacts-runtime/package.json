@@ -23,6 +23,6 @@
     "react-is": "19.3.1",
     "recharts": "3.10.1",
     "sucrase": "3.35.1",
-    "wrangler": "4.151.1"
+    "wrangler": "4.158.0"
   }
 }
