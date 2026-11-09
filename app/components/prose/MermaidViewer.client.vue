@@ -51,12 +51,12 @@
         >
           <div
             ref="viewportRef"
-            class="js-mermaid-viewport absolute inset-0 flex touch-none items-center justify-center overflow-hidden"
+            class="js-mermaid-viewport absolute inset-0 touch-none overflow-hidden"
             data-testid="mermaid-viewer-viewport"
           >
             <div
               ref="targetRef"
-              class="js-mermaid-target shrink-0"
+              class="js-mermaid-target absolute left-0 top-0 w-max"
               data-testid="mermaid-viewer-target"
               v-html="svg"
             />
@@ -152,7 +152,8 @@ const svg = shallowRef<string>('')
 const renderError = shallowRef<string>('')
 
 let panzoom: PanzoomObject | null = null
-let wheelTarget: HTMLElement | null = null
+let gestureTarget: HTMLElement | null = null
+let lastGestureScale: number = 1
 let resizeObserver: ResizeObserver | null = null
 let fittedScale: number = 1
 let observedWidth: number = 0
@@ -172,14 +173,86 @@ const menuInput = computed<DiagramMenuInput>(() => {
 
 function onWheel(event: WheelEvent) {
   event.preventDefault()
-  panzoom?.zoomWithWheel(event)
+
+  const viewport = viewportRef.value
+  const target = targetRef.value
+
+  if (!panzoom || !viewport || !target) {
+    return
+  }
+
+  const action = getDiagramWheelAction(event)
+
+  if (action.kind === 'zoom') {
+    panzoom.zoomToPoint(panzoom.getScale() * action.factor, event, {
+      animate: false,
+    })
+
+    return
+  }
+
+  const scale = panzoom.getScale()
+  const { x, y } = panzoom.getPan()
+
+  panToClamped(viewport, target, x + action.x / scale, y + action.y / scale)
+}
+
+function onGestureStart(event: Event) {
+  event.preventDefault()
+  lastGestureScale = 1
+}
+
+function onGestureChange(event: Event) {
+  event.preventDefault()
+
+  const gesture = event as Event & {
+    scale: number
+    clientX: number
+    clientY: number
+  }
+
+  if (!panzoom || !gesture.scale) {
+    return
+  }
+
+  const factor = gesture.scale / lastGestureScale
+
+  lastGestureScale = gesture.scale
+  panzoom.zoomToPoint(panzoom.getScale() * factor, gesture, {
+    animate: false,
+  })
+}
+
+function onGestureEnd(event: Event) {
+  event.preventDefault()
+  lastGestureScale = 1
+}
+
+function bindGestureListeners(viewport: HTMLElement) {
+  viewport.addEventListener('wheel', onWheel, { passive: false })
+  gestureTarget = viewport
+
+  if (navigator.maxTouchPoints > 0) {
+    return
+  }
+
+  viewport.addEventListener('gesturestart', onGestureStart)
+  viewport.addEventListener('gesturechange', onGestureChange)
+  viewport.addEventListener('gestureend', onGestureEnd)
+}
+
+function unbindGestureListeners() {
+  gestureTarget?.removeEventListener('wheel', onWheel)
+  gestureTarget?.removeEventListener('gesturestart', onGestureStart)
+  gestureTarget?.removeEventListener('gesturechange', onGestureChange)
+  gestureTarget?.removeEventListener('gestureend', onGestureEnd)
+  gestureTarget = null
 }
 
 function destroyPanzoom() {
   resizeObserver?.disconnect()
   resizeObserver = null
-  wheelTarget?.removeEventListener('wheel', onWheel)
-  wheelTarget = null
+  unbindGestureListeners()
   panzoom?.destroy()
   panzoom = null
 }
@@ -204,6 +277,17 @@ function getFitScale(viewport: HTMLElement, target: HTMLElement): number {
   )
 }
 
+function getCenteredPan(
+  viewport: HTMLElement,
+  target: HTMLElement,
+  scale: number,
+): { x: number, y: number } {
+  return {
+    x: (viewport.clientWidth - target.offsetWidth) / (2 * scale),
+    y: (viewport.clientHeight - target.offsetHeight) / (2 * scale),
+  }
+}
+
 function fitToViewport() {
   const viewport = viewportRef.value
   const target = targetRef.value
@@ -213,24 +297,31 @@ function fitToViewport() {
   }
 
   const fitScale = getFitScale(viewport, target)
+  const centeredPan = getCenteredPan(viewport, target, fitScale)
 
   fittedScale = fitScale
   panzoom.setOptions({
     minScale: Math.min(MIN_SCALE, fitScale),
     startScale: fitScale,
-    startX: 0,
-    startY: 0,
+    startX: centeredPan.x,
+    startY: centeredPan.y,
   })
   panzoom.reset({ animate: false })
 }
 
-function clampPan(viewport: HTMLElement, target: HTMLElement) {
+function panToClamped(
+  viewport: HTMLElement,
+  target: HTMLElement,
+  nextX: number,
+  nextY: number,
+) {
   if (!panzoom) {
     return
   }
 
   const scale = panzoom.getScale()
   const { x, y } = panzoom.getPan()
+  const centeredPan = getCenteredPan(viewport, target, scale)
   const scaledWidth = target.offsetWidth * scale
   const scaledHeight = target.offsetHeight * scale
   const limitX = Math.max(
@@ -241,8 +332,16 @@ function clampPan(viewport: HTMLElement, target: HTMLElement) {
     0,
     (viewport.clientHeight + scaledHeight) / 2 - MIN_VISIBLE_SIZE,
   )
-  const clampedX = Math.min(Math.max(x * scale, -limitX), limitX) / scale
-  const clampedY = Math.min(Math.max(y * scale, -limitY), limitY) / scale
+  const clampedOffsetX = Math.min(
+    Math.max((nextX - centeredPan.x) * scale, -limitX),
+    limitX,
+  )
+  const clampedOffsetY = Math.min(
+    Math.max((nextY - centeredPan.y) * scale, -limitY),
+    limitY,
+  )
+  const clampedX = centeredPan.x + clampedOffsetX / scale
+  const clampedY = centeredPan.y + clampedOffsetY / scale
 
   if (clampedX !== x || clampedY !== y) {
     panzoom.pan(clampedX, clampedY, { animate: false })
@@ -264,14 +363,24 @@ const refitAfterResize = useDebounceFn(() => {
     return
   }
 
+  const scale = panzoom.getScale()
+  const { x, y } = panzoom.getPan()
+  const widthChange = viewport.clientWidth - observedWidth
+  const heightChange = viewport.clientHeight - observedHeight
+
   observedWidth = viewport.clientWidth
   observedHeight = viewport.clientHeight
 
   const isZoomedByUser
-    = Math.abs(panzoom.getScale() - fittedScale) > FIT_SCALE_TOLERANCE
+    = Math.abs(scale - fittedScale) > FIT_SCALE_TOLERANCE
 
   if (isZoomedByUser) {
-    clampPan(viewport, target)
+    panToClamped(
+      viewport,
+      target,
+      x + widthChange / (2 * scale),
+      y + heightChange / (2 * scale),
+    )
 
     return
   }
@@ -308,19 +417,37 @@ function setupPanzoom() {
     touchAction: 'none',
   })
 
-  viewport.addEventListener('wheel', onWheel, { passive: false })
-  wheelTarget = viewport
+  bindGestureListeners(viewport)
 
   fitToViewport()
   observeViewport(viewport)
 }
 
+function zoomAroundViewportCenter(direction: 1 | -1) {
+  const viewport = viewportRef.value
+
+  if (!panzoom || !viewport) {
+    return
+  }
+
+  const rect = viewport.getBoundingClientRect()
+
+  panzoom.zoomToPoint(
+    panzoom.getScale() * Math.exp(direction * ZOOM_STEP),
+    {
+      clientX: rect.left + viewport.clientWidth / 2,
+      clientY: rect.top + viewport.clientHeight / 2,
+    },
+    { animate: false },
+  )
+}
+
 function zoomIn() {
-  panzoom?.zoomIn()
+  zoomAroundViewportCenter(1)
 }
 
 function zoomOut() {
-  panzoom?.zoomOut()
+  zoomAroundViewportCenter(-1)
 }
 
 watch(

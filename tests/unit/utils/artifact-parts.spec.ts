@@ -3,7 +3,9 @@ import {
   collectArtifactVersions,
   countArtifactLines,
   getArtifactPartModel,
+  getRenderedPartKeys,
   isArtifactMessagePart,
+  orderArtifactPartsLast,
 } from '../../../app/utils/artifact-parts'
 
 const OUTPUT = {
@@ -144,5 +146,79 @@ describe('collectArtifactVersions', () => {
 
     expect(versions.art_1).toEqual([1, 3])
     expect(Object.hasOwn(versions, '__proto__')).toBe(true)
+  })
+})
+
+describe('orderArtifactPartsLast', () => {
+  const reasoning = { type: 'reasoning', text: 'thinking' }
+  const firstText = { type: 'text', text: 'one' }
+  const secondText = { type: 'text', text: 'two' }
+  const firstArtifact = { type: 'data-artifact', data: OUTPUT }
+  const secondArtifact = { type: 'tool-update_artifact' }
+
+  it('moves artifact parts after the text and keeps their order', () => {
+    const parts = [
+      reasoning,
+      firstArtifact,
+      firstText,
+      secondArtifact,
+      secondText,
+    ]
+
+    expect(orderArtifactPartsLast(parts)).toEqual([
+      reasoning,
+      firstText,
+      secondText,
+      firstArtifact,
+      secondArtifact,
+    ])
+  })
+
+  it('keeps text part positions stable while text streams in', () => {
+    const streaming = orderArtifactPartsLast([reasoning, firstArtifact])
+    const finished = orderArtifactPartsLast([
+      reasoning,
+      firstArtifact,
+      firstText,
+    ])
+
+    expect(streaming).toEqual([reasoning, firstArtifact])
+    expect(finished.indexOf(firstText)).toBe(1)
+    expect(finished.at(-1)).toBe(firstArtifact)
+  })
+
+  it('returns a new array and leaves the stored parts untouched', () => {
+    const parts = [firstArtifact, firstText]
+    const ordered = orderArtifactPartsLast(parts)
+
+    expect(ordered).not.toBe(parts)
+    expect(parts).toEqual([firstArtifact, firstText])
+    expect(orderArtifactPartsLast([])).toEqual([])
+  })
+})
+
+describe('getRenderedPartKeys', () => {
+  const reasoning = { type: 'reasoning', text: 'thinking' }
+  const text = { type: 'text', text: 'one' }
+  const artifact = { type: 'tool-create_artifact' }
+
+  it('keys artifact parts by their stored position, others by rendered position', () => {
+    expect(getRenderedPartKeys([reasoning, artifact, text]))
+      .toEqual(['part-0', 'part-1', 'artifact-1'])
+  })
+
+  it('keeps the artifact key when the first text arrives', () => {
+    const beforeText = getRenderedPartKeys([reasoning, artifact])
+    const afterText = getRenderedPartKeys([reasoning, artifact, text])
+
+    expect(beforeText).toEqual(['part-0', 'artifact-1'])
+    expect(afterText.at(-1)).toBe(beforeText.at(-1))
+    expect(new Set(afterText).size).toBe(afterText.length)
+  })
+
+  it('gives every artifact its own key', () => {
+    expect(getRenderedPartKeys([artifact, text, artifact]))
+      .toEqual(['part-0', 'artifact-0', 'artifact-2'])
+    expect(getRenderedPartKeys([])).toEqual([])
   })
 })

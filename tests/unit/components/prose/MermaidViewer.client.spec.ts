@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
     reset: vi.fn(),
     destroy: vi.fn(),
     setOptions: vi.fn(),
-    zoomWithWheel: vi.fn(),
+    zoomToPoint: vi.fn(),
     pan: vi.fn(),
     getScale: vi.fn(() => 1),
     getPan: vi.fn(() => ({ x: 0, y: 0 })),
@@ -74,10 +74,12 @@ async function mountViewer(open: boolean = true) {
 }
 
 const RESIZE_DEBOUNCE_MS = 150
+const VIEWPORT_HEIGHT = 600
 
 describe('prose/MermaidViewer.client.vue', () => {
   let originalClientWidth: PropertyDescriptor | undefined
   let viewportWidth: number
+  let originalClientHeight: PropertyDescriptor | undefined
 
   beforeEach(() => {
     viewportWidth = 840
@@ -99,6 +101,14 @@ describe('prose/MermaidViewer.client.vue', () => {
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
       configurable: true,
       get: () => viewportWidth,
+    })
+    originalClientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'clientHeight',
+    )
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => VIEWPORT_HEIGHT,
     })
     mocks.renderDiagram.mockReset()
     mocks.renderDiagram.mockResolvedValue({ svg: SVG })
@@ -125,6 +135,16 @@ describe('prose/MermaidViewer.client.vue', () => {
       )
     } else {
       Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+    }
+
+    if (originalClientHeight) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'clientHeight',
+        originalClientHeight,
+      )
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight')
     }
   })
 
@@ -223,11 +243,27 @@ describe('prose/MermaidViewer.client.vue', () => {
 
     await wrapper.get('[data-testid="mermaid-zoom-in"]').trigger('click')
 
-    expect(mocks.instance.zoomIn).toHaveBeenCalledTimes(1)
+    expect(mocks.instance.zoomToPoint).toHaveBeenCalledTimes(1)
+
+    const [zoomInScale, zoomInPoint, zoomInOptions] = mocks.instance
+      .zoomToPoint.mock.calls[0] as unknown as [
+      number,
+      { clientX: number, clientY: number },
+      object,
+    ]
+
+    expect(zoomInScale).toBeCloseTo(Math.exp(0.3), 5)
+    expect(zoomInPoint).toEqual({
+      clientX: viewportWidth / 2,
+      clientY: VIEWPORT_HEIGHT / 2,
+    })
+    expect(zoomInOptions).toEqual({ animate: false })
 
     await wrapper.get('[data-testid="mermaid-zoom-out"]').trigger('click')
 
-    expect(mocks.instance.zoomOut).toHaveBeenCalledTimes(1)
+    expect(mocks.instance.zoomToPoint).toHaveBeenCalledTimes(2)
+    expect(mocks.instance.zoomToPoint.mock.calls[1]?.[0])
+      .toBeCloseTo(Math.exp(-0.3), 5)
 
     mocks.instance.reset.mockClear()
 
@@ -277,24 +313,172 @@ describe('prose/MermaidViewer.client.vue', () => {
     })
   })
 
-  it('zooms with a plain wheel and prevents page scrolling', async () => {
-    const wrapper = await mountViewer()
+  describe('wheel and gestures', () => {
+    async function mountReadyViewer() {
+      const wrapper = await mountViewer()
 
-    await vi.waitFor(() => {
-      expect(mocks.panzoom).toHaveBeenCalledTimes(1)
+      await vi.waitFor(() => {
+        expect(mocks.panzoom).toHaveBeenCalledTimes(1)
+      })
+
+      const viewport = wrapper.get('[data-testid="mermaid-viewer-viewport"]')
+
+      return { wrapper, viewport }
+    }
+
+    function createWheelEvent(init: WheelEventInit): WheelEvent {
+      const event = new WheelEvent('wheel', {
+        cancelable: true,
+        bubbles: true,
+        ...init,
+      })
+
+      Object.defineProperties(event, {
+        ctrlKey: { value: init.ctrlKey ?? false },
+        clientX: { value: 300 },
+        clientY: { value: 200 },
+      })
+
+      return event
+    }
+
+    it('zooms around the pointer by the size of a trackpad pinch delta',
+      async () => {
+        const { viewport } = await mountReadyViewer()
+        const pinch = createWheelEvent({ deltaY: -10, ctrlKey: true })
+
+        viewport.element.dispatchEvent(pinch)
+
+        expect(mocks.instance.zoomToPoint).toHaveBeenCalledTimes(1)
+
+        const [scale, point, options] = mocks.instance.zoomToPoint.mock
+          .calls[0] as unknown as [number, WheelEvent, object]
+
+        expect(scale).toBeCloseTo(Math.exp(0.1), 5)
+        expect(point).toBe(pinch)
+        expect(options).toEqual({ animate: false })
+        expect(mocks.instance.pan).not.toHaveBeenCalled()
+        expect(pinch.defaultPrevented).toBe(true)
+      })
+
+    it('zooms out for a positive pinch delta and scales from the zoom',
+      async () => {
+        const { viewport } = await mountReadyViewer()
+
+        mocks.instance.getScale.mockReturnValue(2)
+        viewport.element.dispatchEvent(
+          createWheelEvent({ deltaY: 5, ctrlKey: true }),
+        )
+
+        const [scale] = mocks.instance.zoomToPoint.mock
+          .calls[0] as unknown as [number]
+
+        expect(scale).toBeCloseTo(2 * Math.exp(-0.05), 5)
+      })
+
+    it('pans with a two-finger swipe instead of zooming', async () => {
+      const { viewport } = await mountReadyViewer()
+      const swipe = createWheelEvent({ deltaX: 20, deltaY: 40 })
+
+      mocks.instance.getScale.mockReturnValue(2)
+      mocks.instance.getPan.mockReturnValue({ x: 210, y: 150 })
+      viewport.element.dispatchEvent(swipe)
+
+      expect(mocks.instance.zoomToPoint).not.toHaveBeenCalled()
+      expect(mocks.instance.pan).toHaveBeenCalledWith(
+        200,
+        130,
+        { animate: false },
+      )
+      expect(swipe.defaultPrevented).toBe(true)
     })
 
-    const viewport = wrapper.get('[data-testid="mermaid-viewer-viewport"]')
-    const wheelEvent = new WheelEvent('wheel', {
-      deltaY: -100,
-      cancelable: true,
-      bubbles: true,
+    it('keeps a swiped diagram within reach of the viewport', async () => {
+      const { viewport } = await mountReadyViewer()
+
+      mocks.instance.getScale.mockReturnValue(1)
+      mocks.instance.getPan.mockReturnValue({ x: 420, y: 300 })
+      viewport.element.dispatchEvent(createWheelEvent({ deltaX: -5000 }))
+
+      expect(mocks.instance.pan).toHaveBeenCalledWith(
+        420 + 372,
+        300,
+        { animate: false },
+      )
     })
 
-    viewport.element.dispatchEvent(wheelEvent)
+    it('zooms one fixed step per mouse wheel notch', async () => {
+      const { viewport } = await mountReadyViewer()
 
-    expect(mocks.instance.zoomWithWheel).toHaveBeenCalledWith(wheelEvent)
-    expect(wheelEvent.defaultPrevented).toBe(true)
+      viewport.element.dispatchEvent(
+        createWheelEvent({ deltaY: -3, deltaMode: 1 }),
+      )
+      viewport.element.dispatchEvent(
+        createWheelEvent({ deltaY: 3, deltaMode: 1 }),
+      )
+
+      const scales = mocks.instance.zoomToPoint.mock.calls.map((call) => {
+        return call[0] as number
+      })
+
+      expect(scales[0]).toBeCloseTo(Math.exp(0.1), 5)
+      expect(scales[1]).toBeCloseTo(Math.exp(-0.1), 5)
+      expect(mocks.instance.pan).not.toHaveBeenCalled()
+    })
+
+    it('zooms around the pointer for a Safari trackpad pinch', async () => {
+      const { viewport } = await mountReadyViewer()
+      const start = new Event('gesturestart', { cancelable: true })
+      const firstChange = Object.assign(
+        new Event('gesturechange', { cancelable: true }),
+        { scale: 1.1, clientX: 40, clientY: 50 },
+      )
+      const secondChange = Object.assign(
+        new Event('gesturechange', { cancelable: true }),
+        { scale: 1.21, clientX: 40, clientY: 50 },
+      )
+
+      mocks.instance.getScale.mockReturnValue(1)
+      viewport.element.dispatchEvent(start)
+      viewport.element.dispatchEvent(firstChange)
+      mocks.instance.getScale.mockReturnValue(1.1)
+      viewport.element.dispatchEvent(secondChange)
+
+      const scales = mocks.instance.zoomToPoint.mock.calls.map((call) => {
+        return call[0] as number
+      })
+
+      expect(scales[0]).toBeCloseTo(1.1, 5)
+      expect(scales[1]).toBeCloseTo(1.21, 5)
+      expect(mocks.instance.zoomToPoint.mock.calls[0]?.[1]).toBe(firstChange)
+      expect(start.defaultPrevented).toBe(true)
+      expect(firstChange.defaultPrevented).toBe(true)
+    })
+
+    it('anchors the diagram to the viewport corner for pointer zoom',
+      async () => {
+        const { wrapper } = await mountReadyViewer()
+        const viewport = wrapper.get('[data-testid="mermaid-viewer-viewport"]')
+        const target = wrapper.get('[data-testid="mermaid-viewer-target"]')
+
+        expect(viewport.classes()).not.toContain('flex')
+        expect(target.classes()).toEqual(expect.arrayContaining([
+          'absolute',
+          'left-0',
+          'top-0',
+        ]))
+      })
+
+    it('centres the fitted diagram with the start pan', async () => {
+      await mountReadyViewer()
+
+      expect(mocks.instance.setOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startX: viewportWidth / 2,
+          startY: VIEWPORT_HEIGHT / 2,
+        }),
+      )
+    })
   })
 
   it('destroys panzoom and restores focus when the dialog closes',
@@ -322,11 +506,12 @@ describe('prose/MermaidViewer.client.vue', () => {
       expect(document.activeElement).toBe(trigger)
 
       viewport.element.dispatchEvent(new WheelEvent('wheel', {
-        deltaY: -100,
+        deltaY: -10,
+        ctrlKey: true,
         cancelable: true,
       }))
 
-      expect(mocks.instance.zoomWithWheel).not.toHaveBeenCalled()
+      expect(mocks.instance.zoomToPoint).not.toHaveBeenCalled()
 
       trigger.remove()
     })
@@ -503,7 +688,7 @@ describe('prose/MermaidViewer.client.vue', () => {
         const { observer } = await mountReadyViewer()
 
         mocks.instance.getScale.mockReturnValue(3)
-        mocks.instance.getPan.mockReturnValue({ x: 5000, y: 0 })
+        mocks.instance.getPan.mockReturnValue({ x: 5140, y: 100 })
         viewportWidth = 600
         observer.callback()
         await vi.advanceTimersByTimeAsync(RESIZE_DEBOUNCE_MS)
@@ -511,24 +696,29 @@ describe('prose/MermaidViewer.client.vue', () => {
         expect(mocks.instance.reset).not.toHaveBeenCalled()
         expect(mocks.instance.pan).toHaveBeenCalledTimes(1)
         expect(mocks.instance.pan).toHaveBeenCalledWith(
-          84,
-          0,
+          184,
+          100,
           { animate: false },
         )
       })
 
-    it('does not move the pan when it is already within bounds', async () => {
-      const { observer } = await mountReadyViewer()
+    it('keeps the view offset from the centre when the viewport shrinks',
+      async () => {
+        const { observer } = await mountReadyViewer()
 
-      mocks.instance.getScale.mockReturnValue(3)
-      mocks.instance.getPan.mockReturnValue({ x: 10, y: 0 })
-      viewportWidth = 600
-      observer.callback()
-      await vi.advanceTimersByTimeAsync(RESIZE_DEBOUNCE_MS)
+        mocks.instance.getScale.mockReturnValue(3)
+        mocks.instance.getPan.mockReturnValue({ x: 150, y: 100 })
+        viewportWidth = 600
+        observer.callback()
+        await vi.advanceTimersByTimeAsync(RESIZE_DEBOUNCE_MS)
 
-      expect(mocks.instance.reset).not.toHaveBeenCalled()
-      expect(mocks.instance.pan).not.toHaveBeenCalled()
-    })
+        expect(mocks.instance.reset).not.toHaveBeenCalled()
+        expect(mocks.instance.pan).toHaveBeenCalledWith(
+          110,
+          100,
+          { animate: false },
+        )
+      })
 
     it('disconnects the observer when the dialog closes', async () => {
       const { wrapper, observer } = await mountReadyViewer()

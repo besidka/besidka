@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  SIDE_PANEL_ABSOLUTE_MAX_WIDTH,
   SIDE_PANEL_DEFAULT_WIDTH,
+  SIDE_PANEL_DOCK_MIN_VIEWPORT,
+  SIDE_PANEL_MIN_CHAT_WIDTH,
   SIDE_PANEL_MIN_WIDTH,
   SIDE_PANEL_WIDTH_STORAGE_KEY,
   clampSidePanelWidth,
+  clampStoredSidePanelWidth,
   getNextSidePanelWidthPreset,
   getSidePanelMaxWidth,
   useSidePanel,
@@ -51,12 +55,19 @@ function stubViewport(innerWidth: number) {
 
 describe('side-panel width helpers', () => {
   describe('getSidePanelMaxWidth', () => {
-    it('uses 60 percent of the viewport on wide screens', () => {
-      expect(getSidePanelMaxWidth(1440)).toBe(864)
+    it('uses 60 percent of the viewport on very wide screens', () => {
+      expect(getSidePanelMaxWidth(3000)).toBe(1800)
     })
 
-    it('keeps 560px for the chat when 60 percent would eat into it', () => {
-      expect(getSidePanelMaxWidth(1100)).toBe(540)
+    it('keeps 768px for the chat when 60 percent would eat into it', () => {
+      expect(getSidePanelMaxWidth(1440)).toBe(672)
+      expect(getSidePanelMaxWidth(1280)).toBe(512)
+    })
+
+    it('reaches the minimum width exactly where docking starts', () => {
+      expect(getSidePanelMaxWidth(SIDE_PANEL_DOCK_MIN_VIEWPORT))
+        .toBe(SIDE_PANEL_MIN_WIDTH)
+      expect(SIDE_PANEL_DOCK_MIN_VIEWPORT).toBe(1128)
     })
 
     it('never drops below the minimum width', () => {
@@ -71,8 +82,8 @@ describe('side-panel width helpers', () => {
     })
 
     it('lowers a width above the maximum to the viewport limit', () => {
-      expect(clampSidePanelWidth(2000, 1440)).toBe(864)
-      expect(clampSidePanelWidth(2000, 1100)).toBe(540)
+      expect(clampSidePanelWidth(2000, 1440)).toBe(672)
+      expect(clampSidePanelWidth(2000, 1280)).toBe(512)
     })
 
     it('keeps a width inside the range and rounds it', () => {
@@ -108,12 +119,13 @@ describe('side-panel width helpers', () => {
     })
 
     it('dedupes presets that clamp to the same width on small viewports', () => {
-      expect(getSidePanelMaxWidth(1024)).toBe(464)
-      expect(getNextSidePanelWidthPreset(360, 1024)).toBe(464)
-      expect(getNextSidePanelWidthPreset(464, 1024)).toBe(360)
+      expect(getSidePanelMaxWidth(1280)).toBe(512)
+      expect(getNextSidePanelWidthPreset(360, 1280)).toBe(480)
+      expect(getNextSidePanelWidthPreset(480, 1280)).toBe(512)
+      expect(getNextSidePanelWidthPreset(512, 1280)).toBe(360)
 
-      expect(getNextSidePanelWidthPreset(360, 1000)).toBe(440)
-      expect(getNextSidePanelWidthPreset(440, 1000)).toBe(360)
+      expect(getNextSidePanelWidthPreset(360, 1200)).toBe(432)
+      expect(getNextSidePanelWidthPreset(432, 1200)).toBe(360)
     })
 
     it('collapses to a single preset when the viewport only fits the minimum', () => {
@@ -352,12 +364,12 @@ describe('useSidePanel', () => {
       expect(SIDE_PANEL_WIDTH_STORAGE_KEY).toBe('besidka:side-panel-width')
     })
 
-    it('setWidth clamps, remembers the value and does not persist it', () => {
+    it('setWidth bounds to the absolute limits, remembers it, does not persist', () => {
       const panel = useSidePanel()
-      const clamped = panel.setWidth(5000)
 
-      expect(clamped).toBe(864)
-      expect(panel.width.value).toBe(864)
+      expect(panel.setWidth(5000)).toBe(SIDE_PANEL_ABSOLUTE_MAX_WIDTH)
+      expect(panel.width.value).toBe(SIDE_PANEL_ABSOLUTE_MAX_WIDTH)
+      expect(panel.setWidth(100)).toBe(SIDE_PANEL_MIN_WIDTH)
       expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
         .toBeNull()
     })
@@ -371,14 +383,35 @@ describe('useSidePanel', () => {
         .toBe('555')
     })
 
-    it('setWidth clamps against the current viewport', () => {
-      stubViewport(1100)
+    it('setWidth stores the chosen width whatever the current viewport', () => {
+      stubViewport(1280)
 
       const panel = useSidePanel()
 
-      expect(panel.setWidth(900, { persist: true })).toBe(540)
+      expect(panel.setWidth(900, { persist: true })).toBe(900)
       expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
-        .toBe('540')
+        .toBe('900')
+    })
+
+    it('keeps a width chosen on a wide screen when saved on a narrow one', () => {
+      stubViewport(900)
+
+      const panel = useSidePanel()
+
+      panel.setWidth(640, { persist: true })
+
+      expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
+        .toBe('640')
+      expect(clampSidePanelWidth(panel.width.value, 900))
+        .toBe(SIDE_PANEL_MIN_WIDTH)
+      expect(clampSidePanelWidth(panel.width.value, 1920)).toBe(640)
+    })
+
+    it('clampStoredSidePanelWidth replaces a non-finite width', () => {
+      expect(clampStoredSidePanelWidth(Number.NaN))
+        .toBe(SIDE_PANEL_DEFAULT_WIDTH)
+      expect(clampStoredSidePanelWidth(Number.POSITIVE_INFINITY))
+        .toBe(SIDE_PANEL_DEFAULT_WIDTH)
     })
 
     it('persistWidth writes the current width', () => {
@@ -461,9 +494,10 @@ describe('useSidePanelLayout', () => {
   const changeListeners = new Set<() => void>()
 
   function matchesQuery(query: string): boolean {
-    const minWidthRem = Number(/min-width:\s*([\d.]+)rem/.exec(query)?.[1])
+    const [, amount, unit] = /min-width:\s*([\d.]+)(rem|px)/.exec(query) ?? []
+    const minWidth = Number(amount) * (unit === 'rem' ? 16 : 1)
 
-    return viewportWidth >= minWidthRem * 16
+    return viewportWidth >= minWidth
   }
 
   function stubMatchMedia() {
@@ -517,14 +551,22 @@ describe('useSidePanelLayout', () => {
     vi.restoreAllMocks()
   })
 
-  it('docks at 64rem and wider', () => {
-    viewportWidth = 1024
+  it('docks at 1128px and wider', () => {
+    viewportWidth = 1128
+
+    expect(useSidePanelLayout().value).toBe('docked')
+
+    viewportWidth = 1280
 
     expect(useSidePanelLayout().value).toBe('docked')
   })
 
-  it('overlays between 48rem and 64rem', () => {
-    viewportWidth = 1023
+  it('overlays between 48rem and 1128px', () => {
+    viewportWidth = 1127
+
+    expect(useSidePanelLayout().value).toBe('overlay')
+
+    viewportWidth = 1024
 
     expect(useSidePanelLayout().value).toBe('overlay')
 
@@ -532,6 +574,23 @@ describe('useSidePanelLayout', () => {
 
     expect(useSidePanelLayout().value).toBe('overlay')
   })
+
+  it('docks exactly when the chat keeps 768px beside the clamped panel',
+    () => {
+      const savedWidths = [0, 360, 480, 640, 864, 2000]
+
+      for (let width = 768; width <= 1700; width += 7) {
+        viewportWidth = width
+
+        const isDocked = useSidePanelLayout().value === 'docked'
+
+        for (const savedWidth of savedWidths) {
+          const chatWidth = width - clampSidePanelWidth(savedWidth, width)
+
+          expect(isDocked).toBe(chatWidth >= SIDE_PANEL_MIN_CHAT_WIDTH)
+        }
+      }
+    })
 
   it('uses a sheet below 48rem', () => {
     viewportWidth = 767
@@ -555,6 +614,16 @@ describe('useSidePanelLayout', () => {
     expect(layout.value).toBe('sheet')
 
     resizeViewport(1280)
+    await nextTick()
+
+    expect(layout.value).toBe('docked')
+
+    resizeViewport(1127)
+    await nextTick()
+
+    expect(layout.value).toBe('overlay')
+
+    resizeViewport(1128)
     await nextTick()
 
     expect(layout.value).toBe('docked')
