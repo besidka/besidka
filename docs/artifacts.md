@@ -167,6 +167,67 @@ send path and the artifact store (coordinator decision for A-10). A fourth
 provider (DeepSeek, Grok, Kimi or Qwen) needs a key on the test account;
 until then the table covers three providers.
 
+## Design system in artifacts
+
+HTML and React artifacts look like Besidka: the runtime loads Tailwind CSS 4
+and daisyUI 5 with the Besidka light and dark themes (generated from
+`app/assets/css/main.css`) and the Nunito font, and the model writes class
+names instead of a design system of its own (A-15, Linear BES-321). Runtime
+details, the measured JIT-versus-precompiled decision, sizes and integrity:
+`docs/artifacts-runtime.md`, "Design system".
+
+### Why vendored
+
+Artifacts have no network (`connect-src 'none'`, and a CDN would be a
+third-party recipient for the DPIA), so the CSS cannot come from the
+daisyUI CDN pair. The model never fetches or inlines it either: the runtime
+ships it once from its own origin (one lazy chunk, 105 KiB brotli, cached
+`immutable`) and the artifact source stays small. The CSP is unchanged.
+
+### Instruction sheet
+
+`ARTIFACT_DESIGN_INSTRUCTIONS` in `server/utils/ai/artifact-tools.ts` is a
+compact rule and component sheet condensed from the daisyUI 5 component
+reference (llms.txt): no CDN or fonts, class names over CSS, the theme
+colour names and what each is for, no fixed colours or `dark:` variants
+(the host theme switches the frame), the common components with their parts
+and modifiers, one example, padding, a short `<style>` only for what classes
+cannot do, and accessibility. It is appended to the artifact instructions
+only when `html` or `react` is an allowed kind, and those instructions are
+only sent when the artifact tools are registered for the send, so chats
+without artifacts pay nothing. It stays in the cached system-prompt prefix
+(it depends only on the allowed kinds). The `create_artifact` kind
+description now says "styled with daisyUI and Tailwind classes" instead of
+"inline CSS". The MCP `create_artifact` description is unchanged (a
+surface change needs the MCP version bump; follow-up).
+
+Size: 2,544 characters (`artifact-tools.spec.ts` caps it at 4,000).
+Measured token cost per send: see Results below.
+
+### Updating the theme
+
+1. Change the `light` or `dark` `@plugin "daisyui/theme"` block in
+   `app/assets/css/main.css`.
+2. `pnpm run artifacts:theme` regenerates
+   `workers/artifacts-runtime/src/design/theme.generated.ts`. A new token
+   makes the script stop until it is listed in `DAISYUI_TOKENS` (mirrored
+   into artifacts) or `APP_ONLY_TOKENS` (app chrome only) in
+   `workers/artifacts-runtime/scripts/theme.mjs`.
+3. `pnpm vitest run tests/unit/workers/artifacts-runtime/design.spec.ts`
+   (it fails while the generated file is stale) and commit both files.
+
+A new app-wide daisyUI component override in `main.css` (like the textarea
+radius) is copied by hand into `BESIDKA_COMPONENT_OVERRIDES` in
+`workers/artifacts-runtime/src/design/stylesheet.ts`.
+
+Upgrading `tailwindcss`, `daisyui` or `@fontsource/nunito` in the runtime
+fails its build until the new digests are recorded (`pnpm --filter
+artifacts-runtime build --update-integrity`); re-run the evals below first.
+
+### Results
+
+Pending: before/after eval run on the PR preview.
+
 ## Telemetry
 
 - Client (evlog client ingest, `source: 'client'`, `Frame.client.vue`):

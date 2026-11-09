@@ -148,6 +148,8 @@ describe('artifact design stylesheet', () => {
       '--size-selector: .25rem;',
       '--radius-selector: .5rem;',
       '--size-selector: 0.1875rem;',
+      ':where(.textarea) {',
+      'border-radius: var(--radius-box);',
     ]) {
       expect(mainCss).toContain(rule)
       expect(BESIDKA_COMPONENT_OVERRIDES).toContain(rule)

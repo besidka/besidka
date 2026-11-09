@@ -373,6 +373,161 @@ gesture check before a hook runs, and passes only the known fields. Option
 to require focus in the frame, see Copy through the bridge; only `true`
 passes), and `now` exists for tests.
 
+## Design system: daisyUI 5 and Tailwind 4 (A-15, BES-321)
+
+HTML and React artifacts get Tailwind CSS 4, daisyUI 5, the Besidka light
+and dark themes and the Nunito font, so a model writes class names instead
+of CSS. Markdown, SVG and Mermaid artifacts keep the shell styles. The
+model-facing side (instruction sheet, evals) is in `docs/artifacts.md`,
+"Design system in artifacts".
+
+### How it works
+
+`src/design/system.ts` is a lazy chunk that bundles the Tailwind compiler
+(`compile()` from `tailwindcss`), the daisyUI plugin and `daisyui/theme`,
+Tailwind's `index.css` (as text) and eight Nunito woff2 files. On the first
+html or react render the runtime loads it and compiles the input from
+`src/design/stylesheet.ts` once per frame:
+
+```css
+@import "tailwindcss";
+@plugin "daisyui" { themes: false; logs: false; }
+@plugin "daisyui/theme" { name: "light"; default: true; ... }  /* generated */
+@plugin "daisyui/theme" { name: "dark"; ... }                   /* generated */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+@theme { --font-sans: 'Nunito', ui-sans-serif, system-ui, ...; }
+@font-face { ... }  /* 4 subsets x 400/700, unicode-range */
+@layer utilities { /* main.css component overrides */ }
+```
+
+`src/design/index.ts` (in the entry graph, 1.6 KB minified) then:
+
+1. **Before the render** awaits the compiler (`prepareDesignSystem`).
+2. **html**: in the `afterReplace` prelude (same task as the root
+   replacement, so nothing paints unstyled) it puts one
+   `<style data-besidka-design>` first in the new `<head>`, collects every
+   class in the document, calls `build()` and writes the CSS.
+   **react**: the same on the shell document before the component mounts.
+3. Watches the document with a `MutationObserver` (`class` attributes and
+   added subtrees). Classes added later by scripts, `innerHTML` or React
+   state are compiled in the observer callback, a microtask that runs before
+   the next paint. `build()` only adds CSS for candidates it has not seen.
+4. On a markdown, svg or mermaid render and on every shell restore it
+   removes the `<style>` and disconnects the observer.
+
+If the chunk fails to load, the runtime logs a warning and renders the
+artifact without the design system. Code that measures layout synchronously
+in the same task as it adds new classes (before the observer runs) sees the
+unstyled size; nothing in the evals did.
+
+The theme follows the host: `theme.ts` already sets `data-theme="light"` or
+`"dark"` on `<html>`, which is what the daisyUI theme selectors and the
+`dark:` variant above match. The OS preference is not used.
+
+### Cascade and overrides
+
+The compiled CSS starts with
+`@layer besidka-shell, theme, base, components, utilities;`, and the shell
+style (`SHELL_STYLE`) starts with the same statement and wraps its rules in
+`@layer besidka-shell`. So the shell styles always rank below Tailwind and
+daisyUI wherever the `<style>` elements sit, and the artifact's own
+`<style>` (unlayered) always wins over all of them; the e2e spec checks that
+an artifact's `.btn { background }` beats daisyUI. Tailwind's preflight is
+included, as models expect from "Tailwind": an html artifact with its own
+CSS keeps its declared rules, but unstyled elements lose browser defaults
+(heading sizes, list bullets, body margin).
+
+Known side effect: an html artifact written before A-15 that uses a class
+name daisyUI also defines (`progress`, `card`, `badge`, `btn`, `alert`,
+`stat`, `steps`, ...) for its own CSS gets daisyUI's other properties too.
+Seen once in the stored A-10 run (Claude Haiku's quiz: its `.progress`
+header overlapped the bar). Artifacts are internal-only, so these are a
+handful of test artifacts; new ones follow the instruction sheet.
+
+### Theme sync
+
+`scripts/theme.mjs` (`pnpm run artifacts:theme`) reads the `light` and
+`dark` `@plugin "daisyui/theme"` blocks from `app/assets/css/main.css` and
+writes `src/design/theme.generated.ts` with the daisyUI settings and tokens
+(colours, `--radius-*`, `--size-*`, `--border`, `--depth`, `--noise`). The
+values stay `var(--color-stone-800)` and so on: the compile includes
+Tailwind's theme, so they resolve exactly as in the app. App-only tokens
+(`--color-accent-bg`, `--color-text`, skeleton and logo colours) are listed
+in `APP_ONLY_TOKENS` and dropped; any other new token makes the script throw
+until it is added to one of the two lists. `design.spec.ts` fails when the
+generated file differs from what the script would write today, so a
+`main.css` theme change without `pnpm run artifacts:theme` fails CI.
+
+The app-wide component rules that are not tokens are mirrored by hand in
+`BESIDKA_COMPONENT_OVERRIDES`: checkbox and badge selector sizes, the box
+radius on `:where(.textarea)` (#780; the theme's `--radius-field: 2rem`
+would otherwise make textareas pills), tooltip radius and `font-weight: 400`
+on `.btn`. The spec checks those declarations still exist in `main.css`.
+Page-level app styles (glass bubbles, gradients) are not copied.
+
+### Decision: compile in the frame (measured)
+
+The frame has no network (`connect-src 'none'`), so everything is served
+from the runtime origin. Options measured on 2026-11-09 with a daisyUI quiz
+(17 classes plus runtime-added ones), headless Playwright, local server,
+five runs each, time from start to styled first `getComputedStyle`:
+
+| Option | Transfer (gzip / brotli) | Chromium | WebKit |
+| --- | --- | --- | --- |
+| A. Tailwind compiler + daisyUI plugin in the frame (chosen) | 130 / 105 KiB | 67-98 ms (compile 57-78, build 10-20) | 83-121 ms (compile 63-88, build 18-33) |
+| B. Static `daisyui.css` (1,142 KiB raw) + utilities-only compiler | 171 / 113 KiB | 56-62 ms | 105-128 ms |
+| `@tailwindcss/browser` | 74 / 60 KiB for utilities alone | - | - |
+
+`@tailwindcss/browser` was ruled out without timing: its `loadModule`
+throws ("does not support plugins"), so daisyUI cannot load through it, and
+it observes and writes into the `<html>` and `<head>` that existed when it
+loaded, which the html renderer replaces. Option B paints components from a
+static file but ships every daisyUI rule (including responsive copies) to
+every frame and makes each style recalculation walk them; option A is the
+smaller transfer, faster in WebKit, emits only the used components
+(39.7 KB of CSS for the quiz, including preflight and theme variables) and
+keeps one pipeline, so `md:card-side` and other variants of daisyUI classes
+work like any utility. The in-runtime numbers (`performance.measure`
+entries `besidka-design-compile` and `besidka-design-build`, read by
+`design-system.spec.ts`): compile 55-100 ms in Chromium and 63-76 ms in
+WebKit including the chunk fetch, first build 6-12 ms, later builds 2 ms.
+
+### Sizes
+
+| Asset | Raw | gzip | brotli |
+| --- | --- | --- | --- |
+| `chunks/system-*.js` (compiler, daisyUI, `index.css`, theme) | 614.9 KiB | 130.3 KiB | 104.7 KiB |
+| Nunito, 8 woff2 (latin, latin-ext, cyrillic, cyrillic-ext x 400/700) | 101.0 KiB | - | - |
+| Nunito actually fetched for English text (latin 400 + 700) | 31.8 KiB | - | - |
+| Entry graph (main + static imports), every artifact | 26.2 KiB | 11.1 KiB (10.7 before) | 9.7 KiB |
+
+Fonts load only for the `unicode-range` subsets the page uses. Markdown,
+SVG and Mermaid artifacts never load the chunk or the fonts.
+
+### Integrity
+
+`scripts/integrity.mjs` hashes every file of `tailwindcss`, `daisyui` and
+`@fontsource/nunito` that ended up in the bundle (from the esbuild
+metafile): per package, sha256 over the sorted `<path> <sha256>` lines.
+`workers/artifacts-runtime/design-system.integrity.json` records version,
+file count and digest; `scripts/build.mjs` fails when the build differs.
+After a deliberate upgrade (Dependabot included), review the theme, the
+sizes and the instruction sheet, re-run the evals, then record the new
+digests with `pnpm --filter artifacts-runtime build --update-integrity`.
+`design.spec.ts` checks that the recorded versions equal the exact
+`devDependencies` pins and recomputes the Nunito digest from the files.
+The npm tarballs themselves are pinned by `pnpm-lock.yaml` integrity
+hashes.
+
+### Licences
+
+`tailwindcss` and `daisyui` are MIT and appear in the notices like every
+bundled package. Nunito (`@fontsource/nunito`) is under the SIL Open Font
+License 1.1: `OFL-1.1` is in the allowlist in `scripts/licenses.mjs` (the
+fonts are bundled through esbuild's `file` loader, so they are in the
+metafile and the notices carry the OFL text). The OFL allows bundling and
+redistribution with software as long as the font is not sold on its own.
+
 ## Local development
 
 ```bash
