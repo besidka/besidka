@@ -91,6 +91,7 @@ const featureList = [
     title: 'Shared artifacts',
     description: 'Public links to an artifact.',
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.mcp',

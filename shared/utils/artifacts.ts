@@ -24,13 +24,30 @@ export const ARTIFACT_REPORT_REASONS = [
   'phishing',
 ] as const
 
+export const ARTIFACT_REPORT_REASON_LABELS: Record<
+  typeof ARTIFACT_REPORT_REASONS[number],
+  string
+> = {
+  'illegal': 'Illegal content',
+  'copyright': 'Copyright infringement',
+  'privacy': 'Privacy or personal data',
+  'harmful': 'Harmful content',
+  'other': 'Something else',
+  'csam': 'Child sexual abuse material',
+  'terrorism': 'Terrorist content',
+  'threat-to-life': 'Threat to life or safety',
+  'phishing': 'Phishing or fraud',
+}
+
 export const ARTIFACT_REPORT_URGENT_REASONS = [
   'csam',
   'terrorism',
   'threat-to-life',
 ] as const
 
+export const ARTIFACT_REPORT_DETAILS_MIN = 20
 export const ARTIFACT_REPORT_DETAILS_MAX = 2000
+export const ARTIFACT_REPORT_COPYRIGHT_WORK_MAX = 1000
 export const ARTIFACT_REPORT_NAME_MAX = 120
 export const ARTIFACT_REPORT_EMAIL_MAX = 254
 
@@ -43,6 +60,32 @@ export const ARTIFACT_REPORT_DECISIONS = [
   'restricted',
   'no-action',
 ] as const
+
+export const ARTIFACT_SHARE_HEADER = 'x-besidka-artifact-share'
+export const ARTIFACT_SHARE_PATH_PREFIX = '/a/'
+export const ARTIFACT_SHARE_DURATIONS = [
+  'hour',
+  'day',
+  'week',
+  'month',
+  'year',
+  'never',
+] as const
+export const ARTIFACT_SHARE_MAX_ACTIVE = 10
+export const ARTIFACT_SHARE_RECENT_DAYS = 30
+export const ARTIFACT_SHARE_STATUSES = [
+  'active',
+  'expired',
+  'revoked',
+  'taken-down',
+] as const
+export const ARTIFACT_SHARE_LIMIT_CODE = 'artifact_share_limit'
+export const ARTIFACT_TAKEDOWN_STATEMENT_MIN = 20
+export const ARTIFACT_TAKEDOWN_STATEMENT_MAX = 4000
+export const ARTIFACT_TAKEDOWN_SCOPES = ['share', 'artifact', 'user'] as const
+export const ARTIFACT_REPORT_ACTION_SCOPES = ['share', 'all-shares'] as const
+export const ARTIFACT_REPORT_ACTIONS = ['takedown', 'reject'] as const
+export const ARTIFACT_LEGAL_HOLD_MONTHS = 6
 
 export const ARTIFACT_VERSION_MAX_BYTES = 512 * 1024
 export const ARTIFACT_MAX_VERSIONS = 50
@@ -80,6 +123,16 @@ export const ARTIFACT_DATA_PART_TYPE = 'data-artifact'
 
 export type ArtifactKind = typeof ARTIFACT_KINDS[number]
 export type ArtifactReportReason = typeof ARTIFACT_REPORT_REASONS[number]
+export type ArtifactReportStatus = typeof ARTIFACT_REPORT_STATUSES[number]
+export type ArtifactReportPriority = typeof ARTIFACT_REPORT_PRIORITIES[number]
+export type ArtifactReportDecision = typeof ARTIFACT_REPORT_DECISIONS[number]
+export type ArtifactReportAction = typeof ARTIFACT_REPORT_ACTIONS[number]
+export type ArtifactReportActionScope
+  = typeof ARTIFACT_REPORT_ACTION_SCOPES[number]
+export type ArtifactTakedownScope = typeof ARTIFACT_TAKEDOWN_SCOPES[number]
+export type ArtifactShareDuration = typeof ARTIFACT_SHARE_DURATIONS[number]
+export type ArtifactShareStatus = typeof ARTIFACT_SHARE_STATUSES[number]
+export type ArtifactShareCreatedVia = typeof ARTIFACT_SHARE_CREATED_VIA[number]
 export type ArtifactCreatedVia = typeof ARTIFACT_CREATED_VIA[number]
 export type ArtifactVersionCreatedBy
   = typeof ARTIFACT_VERSION_CREATED_BY[number]
@@ -108,6 +161,94 @@ export interface ArtifactDetail extends ArtifactSummary {
   totalBytes: number
   createdAt: string
   versions: ArtifactVersionSummary[]
+}
+
+export interface ArtifactShareSummary {
+  shareId: string
+  url: string | null
+  createdVia: ArtifactShareCreatedVia
+  clientName: string | null
+  pinnedVersion: number | null
+  expiresAt: string | null
+  revokedAt: string | null
+  takedownAt: string | null
+  storageAllowed: boolean
+  bridgeAllowed: boolean
+  createdAt: string
+  status: ArtifactShareStatus
+}
+
+export interface ArtifactShareCapabilities {
+  storageAllowed: boolean
+  bridgeAllowed: boolean
+}
+
+/**
+ * What `GET /api/v1/artifact-shares/current` returns for an active link.
+ * `artifactId` is the public id the viewer sends to the storage and bridge
+ * routes together with the `x-besidka-artifact-share` header.
+ */
+export interface ArtifactSharePublicView {
+  shareId: string
+  artifactId: string
+  title: string
+  kind: ArtifactKind
+  version: number
+  pinned: boolean
+  content: string
+  createdAt: string
+  expiresAt: string | null
+  capabilities: ArtifactShareCapabilities
+}
+
+export interface ArtifactReportCopyrightNotice {
+  work: string
+  signature: string
+  ownerName: string | null
+}
+
+export interface AdminArtifactReportArtifact {
+  id: string
+  title: string
+  kind: ArtifactKind
+  currentVersion: number
+  ownerUserId: number
+  ownerEmail: string | null
+  takedownAt: string | null
+  legalHoldUntil: string | null
+}
+
+export interface AdminArtifactReportShare {
+  id: string
+  status: ArtifactShareStatus
+  pinnedVersion: number | null
+}
+
+export interface AdminArtifactReportSummary {
+  id: number
+  reason: ArtifactReportReason
+  priority: ArtifactReportPriority
+  status: ArtifactReportStatus
+  decision: ArtifactReportDecision | null
+  detailsPreview: string
+  reporterUserId: number | null
+  reporterName: string | null
+  reporterEmail: string | null
+  artifactId: string
+  artifact: AdminArtifactReportArtifact | null
+  share: AdminArtifactReportShare | null
+  chatShareId: string | null
+  createdAt: string
+  decidedAt: string | null
+  resolvedAt: string | null
+}
+
+export interface AdminArtifactReportDetail extends AdminArtifactReportSummary {
+  details: string
+  decisionStatement: string | null
+  receiptSentAt: string | null
+  locationUrl: string | null
+  previewVersion: number | null
 }
 
 export interface ArtifactVersionContent {

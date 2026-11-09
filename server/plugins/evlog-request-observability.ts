@@ -64,6 +64,61 @@ export function moveMcpContextToAttributes(event: Record<string, unknown>) {
 
 const QUERY_FREE_PATH_PREFIXES = ['/api/v1/admin/']
 
+const ARTIFACT_SHARE_PATH_PATTERN = /\/a\/[^\s/?#"'<>]+/g
+const ARTIFACT_SHARE_PATH_REPLACEMENT = '/a/[token]'
+const REDACTION_MAX_DEPTH = 8
+
+/**
+ * Replaces the token of every public artifact link (`/a/<token>`) in a
+ * string with `/a/[token]`, so request paths, messages and error text in
+ * the wide event carry the route pattern only (DPIA 3.13(d)).
+ */
+export function redactArtifactSharePath(value: unknown): unknown {
+  if (typeof value !== 'string' || !value.includes('/a/')) {
+    return value
+  }
+
+  return value.replace(
+    ARTIFACT_SHARE_PATH_PATTERN,
+    ARTIFACT_SHARE_PATH_REPLACEMENT,
+  )
+}
+
+/**
+ * Walks a wide event (plain objects and arrays, bounded depth) and redacts
+ * share tokens in every string, including nested error fields and events
+ * ingested from the browser.
+ */
+export function redactArtifactShareTokens(
+  value: unknown,
+  depth = 0,
+): unknown {
+  if (typeof value === 'string') {
+    return redactArtifactSharePath(value)
+  }
+
+  if (depth >= REDACTION_MAX_DEPTH || !value || typeof value !== 'object') {
+    return value
+  }
+
+  const record = value as Record<string, unknown>
+
+  for (const key of Object.keys(record)) {
+    const current = record[key]
+    const redacted = redactArtifactShareTokens(current, depth + 1)
+
+    if (redacted !== current) {
+      try {
+        record[key] = redacted
+      } catch {
+        continue
+      }
+    }
+  }
+
+  return value
+}
+
 /**
  * Drops the query string from admin API paths, so an admin's user search
  * text (`?q=`) never reaches the wide event (compliance pre-check C15).
@@ -99,6 +154,14 @@ export default defineNitroPlugin((nitroApp) => {
   })
 
   nitroApp.hooks.hook('evlog:enrich', (context) => {
+    if (typeof context.request?.path === 'string') {
+      context.request.path = redactArtifactSharePath(
+        context.request.path,
+      ) as string
+    }
+
+    redactArtifactShareTokens(context.event)
+
     const requestId = context.request?.requestId
     const cfRay = context.headers?.['cf-ray']
     const method = context.request?.method

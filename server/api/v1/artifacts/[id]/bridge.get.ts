@@ -2,6 +2,7 @@ import type { ArtifactBridgeInfo } from '#shared/utils/artifacts'
 import {
   ARTIFACT_BRIDGE_DAILY_LIMIT,
   ARTIFACT_BRIDGE_HOURLY_LIMIT,
+  ARTIFACT_SHARE_HEADER,
 } from '#shared/utils/artifacts'
 import { createError } from 'evlog'
 import { defineEventHandler, getRequestHeader } from 'nuxt/server'
@@ -15,7 +16,6 @@ import {
   listArtifactBridgeModels,
   readArtifactBridgeRemaining,
 } from '~~/server/utils/artifacts/bridge'
-import { ARTIFACT_SHARE_HEADER } from '~~/server/utils/artifacts/viewer-storage-request'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import {

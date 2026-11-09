@@ -7,6 +7,7 @@ import {
   ARTIFACT_BRIDGE_PROMPT_MAX,
   ARTIFACT_BRIDGE_SYSTEM_MAX,
   ARTIFACT_BRIDGE_TIMEOUT_MS,
+  ARTIFACT_SHARE_HEADER,
   buildArtifactBridgeSystem,
 } from '#shared/utils/artifacts'
 import { getModel } from '#shared/utils/model'
@@ -30,10 +31,7 @@ import {
   findArtifactBridgeModel,
   readArtifactBridgeRemaining,
 } from '~~/server/utils/artifacts/bridge'
-import {
-  ARTIFACT_SHARE_HEADER,
-  assertRequestBodyLength,
-} from '~~/server/utils/artifacts/viewer-storage-request'
+import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storage-request'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'

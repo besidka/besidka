@@ -738,6 +738,69 @@ export async function readArtifactVersionForShare(
   )
 }
 
+/**
+ * Reads one version of an artifact row the caller already resolved and
+ * authorised (a public share link, an admin review). Skips the ownership and
+ * takedown checks, so callers must apply their own; 404 for an unknown
+ * version, 410 (`artifact_content_missing`) when the R2 object is gone.
+ */
+export async function readResolvedArtifactVersion(input: {
+  db: DbClient
+  storage: BlobStore
+  artifact: typeof schema.artifacts.$inferSelect
+  version: number
+}): Promise<ArtifactVersionContent> {
+  if (input.version < 1 || input.version > input.artifact.currentVersion) {
+    throw createArtifactNotFoundError()
+  }
+
+  return readStoredVersion(
+    input.db,
+    input.storage,
+    input.artifact,
+    encodeArtifactId(input.artifact.id),
+    input.version,
+    input.artifact.title,
+  )
+}
+
+/**
+ * Admin review read of any user's artifact, taken down or not. The version
+ * defaults to the current one. 404 for an unknown id or version.
+ */
+export async function readArtifactVersionForAdmin(input: {
+  db: DbClient
+  storage: BlobStore
+  artifactId: string
+  version?: number
+}): Promise<ArtifactVersionContent> {
+  const internalId = decodeArtifactId(input.artifactId)
+
+  if (internalId === null) {
+    throw createArtifactNotFoundError()
+  }
+
+  const [artifact] = await input.db
+    .select()
+    .from(schema.artifacts)
+    .where(and(
+      eq(schema.artifacts.id, internalId),
+      gt(schema.artifacts.currentVersion, 0),
+    ))
+    .limit(1)
+
+  if (!artifact) {
+    throw createArtifactNotFoundError()
+  }
+
+  return readResolvedArtifactVersion({
+    db: input.db,
+    storage: input.storage,
+    artifact,
+    version: input.version ?? artifact.currentVersion,
+  })
+}
+
 function chunkIds<T>(ids: T[]): T[][] {
   const chunks: T[][] = []
 

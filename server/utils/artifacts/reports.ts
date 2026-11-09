@@ -1,0 +1,309 @@
+import type { RequestEvent } from 'nuxt/server'
+import type { ArtifactReportReason } from '#shared/utils/artifacts'
+import type { ArtifactReportLocation } from '~~/server/utils/artifacts/report-emails'
+import { eq } from 'drizzle-orm'
+import { createError } from 'evlog'
+import { getRequestHeader, readValidatedBody } from 'nuxt/server'
+import { z } from 'zod'
+import {
+  ARTIFACT_REPORT_COPYRIGHT_WORK_MAX,
+  ARTIFACT_REPORT_DETAILS_MAX,
+  ARTIFACT_REPORT_DETAILS_MIN,
+  ARTIFACT_REPORT_EMAIL_MAX,
+  ARTIFACT_REPORT_NAME_MAX,
+  ARTIFACT_REPORT_REASONS,
+  ARTIFACT_REPORT_URGENT_REASONS,
+} from '#shared/utils/artifacts'
+import * as schema from '~~/server/db/schema'
+import {
+  sendArtifactReportMailboxEmail,
+  sendArtifactReportReceiptEmail,
+} from '~~/server/utils/artifacts/report-emails'
+import { enforceArtifactReportRateLimit } from '~~/server/utils/artifacts/report-rate-limit'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import {
+  TURNSTILE_MISSING_RESPONSE_CODE,
+  verifyTurnstileToken,
+} from '~~/server/utils/turnstile'
+
+export const ARTIFACT_REPORT_TURNSTILE_ACTION = 'report'
+export const TURNSTILE_REQUIRED_CODE = 'turnstile_required'
+export const TURNSTILE_FAILED_CODE = 'turnstile_failed'
+
+const TURNSTILE_TOKEN_MAX = 2048
+
+const emailSchema = z.email()
+
+const copyrightSchema = z.object({
+  work: z.string().trim().min(1).max(ARTIFACT_REPORT_COPYRIGHT_WORK_MAX),
+  signature: z.string().trim().min(1).max(ARTIFACT_REPORT_NAME_MAX),
+  ownerName: z.string().trim().max(ARTIFACT_REPORT_NAME_MAX).optional(),
+  unauthorisedUse: z.literal(true),
+  authority: z.literal(true),
+})
+
+export const artifactReportBodySchema = z.object({
+  reason: z.enum(ARTIFACT_REPORT_REASONS),
+  details: z.string()
+    .trim()
+    .min(ARTIFACT_REPORT_DETAILS_MIN)
+    .max(ARTIFACT_REPORT_DETAILS_MAX),
+  reporterName: z.string().trim().max(ARTIFACT_REPORT_NAME_MAX).optional(),
+  reporterEmail: z.string().trim().max(ARTIFACT_REPORT_EMAIL_MAX).optional(),
+  goodFaith: z.literal(true),
+  turnstileToken: z.string().trim().max(TURNSTILE_TOKEN_MAX).optional(),
+  copyright: copyrightSchema.optional(),
+}).superRefine((body, context) => {
+  const email = body.reporterEmail
+
+  if (email && !emailSchema.safeParse(email).success) {
+    context.addIssue({
+      code: 'custom',
+      path: ['reporterEmail'],
+      message: 'Enter a valid email address',
+    })
+  }
+
+  if (body.reason === 'copyright' && !body.copyright) {
+    context.addIssue({
+      code: 'custom',
+      path: ['copyright'],
+      message: 'A copyright notice needs the work, your signature and both '
+        + 'statements',
+    })
+  }
+
+  if (body.reason === 'csam') {
+    return
+  }
+
+  if (!body.reporterName) {
+    context.addIssue({
+      code: 'custom',
+      path: ['reporterName'],
+      message: 'Your name is required for this kind of report',
+    })
+  }
+
+  if (!body.reporterEmail) {
+    context.addIssue({
+      code: 'custom',
+      path: ['reporterEmail'],
+      message: 'Your email is required for this kind of report',
+    })
+  }
+})
+
+export type ArtifactReportBody = z.infer<typeof artifactReportBodySchema>
+
+export interface ArtifactReportTarget {
+  artifactInternalId: number
+  shareInternalId: number | null
+  chatShareId: string | null
+  location: ArtifactReportLocation
+}
+
+export interface SubmittedArtifactReport {
+  ok: true
+}
+
+export function isUrgentArtifactReportReason(
+  reason: ArtifactReportReason,
+): boolean {
+  return (ARTIFACT_REPORT_URGENT_REASONS as readonly string[]).includes(reason)
+}
+
+/**
+ * The stored and mailed report text: the reporter's own words, then for a
+ * copyright notice the elements of the Terms of Use "Copyright complaints"
+ * section that are not separate fields (signature, the work, the owner,
+ * both statements). Element 3, the exact URL, is the share the server
+ * resolved, never a URL the client sent.
+ */
+export function composeArtifactReportDetails(body: ArtifactReportBody): string {
+  if (body.reason !== 'copyright' || !body.copyright) {
+    return body.details
+  }
+
+  return [
+    body.details,
+    '',
+    'Copyright notice',
+    `Signature: ${body.copyright.signature}`,
+    `Work: ${body.copyright.work}`,
+    `Rights owner: ${body.copyright.ownerName || 'the reporter'}`,
+    'Location: the reported link, filled in by Besidka',
+    'Good-faith statement: the use is not authorised by the owner, its '
+    + 'agent or the law',
+    'Accuracy statement: the notice is accurate and the reporter owns the '
+    + 'right or is authorised to act for the owner',
+  ].join('\n')
+}
+
+async function assertTurnstile(
+  event: RequestEvent,
+  token: string | undefined,
+  logger: ReturnType<typeof useRequestLogger>,
+): Promise<void> {
+  const verification = await verifyTurnstileToken(token, {
+    expectedAction: ARTIFACT_REPORT_TURNSTILE_ACTION,
+    remoteIp: getRequestHeader(event, 'cf-connecting-ip') ?? null,
+  })
+
+  logger.set({
+    attributes: {
+      artifacts: {
+        reportTurnstile: {
+          ok: verification.ok,
+          skipped: verification.skipped,
+          errorCodes: verification.errorCodes,
+        },
+      },
+    },
+  })
+
+  if (verification.ok) {
+    return
+  }
+
+  if (verification.errorCodes.includes(TURNSTILE_MISSING_RESPONSE_CODE)) {
+    throw createError({
+      message: 'Complete the check before sending',
+      status: 400,
+      code: TURNSTILE_REQUIRED_CODE,
+      why: 'Reports from signed-out visitors need the anti-abuse check',
+      fix: 'Complete the check, or sign in and report again',
+    })
+  }
+
+  throw createError({
+    message: 'The anti-abuse check failed',
+    status: 403,
+    code: TURNSTILE_FAILED_CODE,
+    why: 'Turnstile did not accept the check',
+    fix: 'Reload the check and send the report again',
+  })
+}
+
+/**
+ * The report flow shared by artifact share links and artifacts in shared
+ * chats (DSA Art. 16 notice): validates the body, rate limits the reporter
+ * (5 an hour per user or per hashed IP), runs Turnstile for signed-out
+ * reporters, resolves the reported artifact, stores the report without any
+ * IP, emails the privacy mailbox (an `[URGENT]` subject for csam,
+ * terrorism and threat to life) and sends the reporter a receipt when they
+ * gave an email. Email failures are logged and never fail the report. The
+ * share token and the IP never reach the row, the emails or the logs.
+ */
+export async function submitArtifactReport(
+  event: RequestEvent,
+  resolveTarget: () => Promise<ArtifactReportTarget>,
+): Promise<SubmittedArtifactReport> {
+  const logger = useRequestLogger(event)
+  const body = await readValidatedBody(
+    event,
+    artifactReportBodySchema.safeParse,
+  )
+
+  if (!body.success) {
+    throw createError({
+      message: 'Invalid report',
+      status: 400,
+      why: body.error.issues
+        .map((issue) => {
+          return issue.message
+        })
+        .join('; '),
+    })
+  }
+
+  const session = await useUserSession()
+  const reporterUserId = session ? parseInt(session.user.id) : null
+
+  await enforceArtifactReportRateLimit(event, reporterUserId, logger)
+
+  if (reporterUserId === null) {
+    await assertTurnstile(event, body.data.turnstileToken, logger)
+  }
+
+  const target = await resolveTarget()
+  const priority = isUrgentArtifactReportReason(body.data.reason)
+    ? 'urgent'
+    : 'normal'
+  const details = composeArtifactReportDetails(body.data)
+  const reporterName = body.data.reporterName || null
+  const reporterEmail = body.data.reporterEmail || null
+  const db = useDb()
+  const [report] = await db.insert(schema.artifactReports).values({
+    artifactId: target.artifactInternalId,
+    shareId: target.shareInternalId,
+    chatShareId: target.chatShareId,
+    reporterUserId,
+    reporterName,
+    reporterEmail,
+    reason: body.data.reason,
+    details,
+    status: 'open',
+    priority,
+  }).returning({
+    id: schema.artifactReports.id,
+    createdAt: schema.artifactReports.createdAt,
+  })
+
+  if (!report) {
+    throw createError({
+      message: 'Failed to save the report',
+      status: 500,
+    })
+  }
+
+  logger.set({
+    attributes: {
+      artifacts: {
+        operation: 'report',
+        reportId: report.id,
+        artifactId: target.location.artifactId,
+        shareId: target.location.shareId,
+        chatShareId: target.chatShareId,
+        reason: body.data.reason,
+        priority,
+        signedIn: reporterUserId !== null,
+      },
+    },
+  })
+
+  await sendArtifactReportMailboxEmail({
+    reportId: report.id,
+    reason: body.data.reason,
+    priority,
+    location: target.location,
+    reporterUserId,
+    reporterName,
+    reporterEmail,
+    details,
+    createdAt: report.createdAt,
+    logger,
+  })
+
+  if (!reporterEmail) {
+    return { ok: true }
+  }
+
+  const receiptSent = await sendArtifactReportReceiptEmail({
+    to: reporterEmail,
+    reason: body.data.reason,
+    location: target.location,
+    createdAt: report.createdAt,
+    logger,
+  })
+
+  if (receiptSent) {
+    await db.update(schema.artifactReports)
+      .set({ receiptSentAt: new Date() })
+      .where(eq(schema.artifactReports.id, report.id))
+  }
+
+  logger.set({ attributes: { artifacts: { receiptSent } } })
+
+  return { ok: true }
+}

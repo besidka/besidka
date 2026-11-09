@@ -135,3 +135,51 @@ describe('admin path query stripping', () => {
     expect(JSON.stringify(context.event)).not.toContain('jane')
   })
 })
+
+describe('artifact share token redaction', () => {
+  const TOKEN = 'Q2hhbmdlTWVQbGVhc2VJdHNBU2VjcmV0VG9rZW4xMjM0NQ'
+
+  it('replaces the token of a public artifact link with the route pattern',
+    async () => {
+      const { redactArtifactSharePath } = await import(
+        '~~/server/plugins/evlog-request-observability'
+      )
+
+      expect(redactArtifactSharePath(`/a/${TOKEN}`)).toBe('/a/[token]')
+      expect(redactArtifactSharePath(`/a/${TOKEN}/_payload.json?x=1`))
+        .toBe('/a/[token]/_payload.json?x=1')
+      expect(redactArtifactSharePath(`GET https://besidka.com/a/${TOKEN}`))
+        .toBe('GET https://besidka.com/a/[token]')
+      expect(redactArtifactSharePath('/api/v1/artifact-shares/current'))
+        .toBe('/api/v1/artifact-shares/current')
+      expect(redactArtifactSharePath(42)).toBe(42)
+    })
+
+  it('keeps the token out of every drained field of a page request', () => {
+    const context = {
+      request: { method: 'GET', path: `/a/${TOKEN}` },
+      headers: { 'x-besidka-artifact-share': TOKEN, 'cf-ray': 'ray-1' },
+      event: {
+        path: `/a/${TOKEN}`,
+        error: {
+          message: `Render failed for /a/${TOKEN}`,
+          stack: `at render (/a/${TOKEN})`,
+        },
+        attributes: { client: { url: `https://besidka.com/a/${TOKEN}#top` } },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/a/[token]',
+      message: 'GET /a/[token]',
+      requestMeta: { cfRay: 'ray-1' },
+    })
+    expect(context.request.path).toBe('/a/[token]')
+    expect(JSON.stringify(context.event)).not.toContain(TOKEN)
+    expect(JSON.stringify(context.event)).not.toContain(
+      'x-besidka-artifact-share',
+    )
+  })
+})

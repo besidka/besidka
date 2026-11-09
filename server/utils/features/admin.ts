@@ -50,6 +50,9 @@ export type FeatureAdminAction
     | 'role.revoke'
     | 'schedule.create'
     | 'schedule.cancel'
+    | 'artifact.takedown'
+    | 'artifact.restore'
+    | 'artifact-report.reject'
 
 interface FeatureRuleLedgerState {
   enabled: boolean
