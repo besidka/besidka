@@ -211,7 +211,7 @@ artifact instructions (`buildArtifactInstructions`) and in both
 Cost: input tokens of the single-step `no-artifact-snippet` send on pr-784
 grew from 5,206 to 5,304 (Claude Haiku 5.5, +98) and from 2,872 to 2,948
 (GPT-6 Luna, +76). The delta also contains the BES-332 `update_artifact`
-description that merged in at the same time. Gemini was not measurable
+description that merged in at the same time. Gemini was not run
 (below). The text stays in the cached system-prompt prefix.
 
 Run on 2026-11-09 against pr-784 at `7c6b2280`, the full golden set (24
@@ -250,12 +250,11 @@ spec). Spend about **$0.075** (Claude $0.050, GPT $0.025).
   tuning round.
 - `no-artifact-snippet` checks only `no-artifact`: GPT-6 Luna answers the
   one-liner in inline backticks, which is fine.
-- Gemini 3.8 Flash: every send to Google returned HTTP 500
-  ("provider-unavailable") from about 17:45 to 18:05 UTC on pr-784 and
-  pr-781, for Gemini 3.7 and 3.8 Flash alike (also seen by the BES-332
-  agent), so it has no row. Re-run with
-  `--models=gemini-3.8-flash` (about $0.55 for the full set) once Google
-  answers again.
+- Gemini 3.8 Flash: not run. The test account's Google key reached the
+  owner's spend cap (every send returned HTTP 500 "provider-unavailable"
+  from about 17:45 UTC). Owner instruction: no more Gemini sends for
+  evals; Claude Haiku 5.5 is the main eval model (Claude Sonnet 5.5 only
+  when a case needs a stronger model) and GPT-6 Luna the second provider.
 
 ## Design system in artifacts
 
