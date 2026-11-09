@@ -248,6 +248,8 @@ export interface AdminArtifactReportDetail extends AdminArtifactReportSummary {
   decisionStatement: string | null
   receiptSentAt: string | null
   locationUrl: string | null
+  reportedVersion: number | null
+  currentVersion: number | null
   previewVersion: number | null
 }
 

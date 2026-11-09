@@ -801,7 +801,7 @@ export async function readArtifactVersionForAdmin(input: {
   })
 }
 
-function chunkIds<T>(ids: T[]): T[][] {
+export function chunkIds<T>(ids: T[]): T[][] {
   const chunks: T[][] = []
 
   for (let offset = 0; offset < ids.length; offset += ARTIFACT_ID_CHUNK_SIZE) {

@@ -14,7 +14,7 @@ import {
 import * as schema from '~~/server/db/schema'
 import {
   ARTIFACT_ERROR_CODES,
-  ARTIFACT_ID_CHUNK_SIZE,
+  chunkIds,
   assertNotTakenDown,
   createArtifactNotFoundError,
   decodeArtifactId,
@@ -339,7 +339,8 @@ async function findOwnedArtifactOrThrow(
  * taken-down artifact (451), a version that does not exist (400) and an
  * eleventh active link (409 `artifact_share_limit`). The cap is
  * read-then-write, so two concurrent creates can overshoot it by one.
- * The token is returned to the caller and must never be logged.
+ * The title is copied onto the link, so a later rename never reaches
+ * visitors. The token is returned to the caller and must never be logged.
  */
 export async function createArtifactShare(
   input: CreateArtifactShareInput,
@@ -381,6 +382,7 @@ export async function createArtifactShare(
       tokenHash: await hashArtifactShareToken(token),
       tokenEncrypted: await useEncryptText(token),
       createdVia: input.createdVia,
+      title: artifact.title,
       clientId: input.clientId ?? null,
       pinnedVersion: input.pinnedVersion,
       expiresAt: input.expiresAt,
@@ -496,18 +498,6 @@ export async function listArtifactShares(input: {
   })
 }
 
-function chunk<T>(items: T[]): T[][] {
-  const chunks: T[][] = []
-
-  const size = ARTIFACT_ID_CHUNK_SIZE
-
-  for (let offset = 0; offset < items.length; offset += size) {
-    chunks.push(items.slice(offset, offset + size))
-  }
-
-  return chunks
-}
-
 function ownedArtifactIdsSubquery(db: DbClient, userId: number) {
   return db.select({ id: schema.artifacts.id })
     .from(schema.artifacts)
@@ -535,7 +525,7 @@ async function revokeByShareIds(
 
   let revoked = 0
 
-  for (const ids of chunk([...decoded.keys()])) {
+  for (const ids of chunkIds([...decoded.keys()])) {
     const owned = await db
       .select({ id: schema.artifactShares.id })
       .from(schema.artifactShares)
@@ -595,7 +585,7 @@ async function revokeByArtifactIds(
 
   let revoked = 0
 
-  for (const ids of chunk([...decoded.keys()])) {
+  for (const ids of chunkIds([...decoded.keys()])) {
     const owned = await db
       .select({ id: schema.artifacts.id })
       .from(schema.artifacts)

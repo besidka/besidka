@@ -6,6 +6,7 @@ import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { resolveArtifactShareOwnerRequest } from '~~/server/utils/artifacts/share-owner-request'
 import { readArtifactVersion } from '~~/server/utils/artifacts/store'
 import { detectSharePii } from '~~/server/utils/chats/share-pii-check'
+import { assertSameOriginAdminRequest } from '~~/server/utils/features/admin-request'
 import { requireFeature } from '~~/server/utils/features/guards'
 
 const bodySchema = z.object({
@@ -18,6 +19,7 @@ export default defineEventHandler(async (
   await requireFeature(event, 'artifacts.share')
 
   assertNotCrossSiteRequest(event)
+  assertSameOriginAdminRequest(event)
 
   const request = await resolveArtifactShareOwnerRequest(event, 'share-check')
   const body = await readValidatedBody(event, bodySchema.safeParse)

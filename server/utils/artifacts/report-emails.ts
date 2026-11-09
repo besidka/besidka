@@ -14,6 +14,9 @@ import { resolveServerLogger } from '~~/server/utils/files/logger'
 export const ARTIFACT_EMAIL_SIGNATURE = 'Serhii Chernenko, Besidka'
 export const ARTIFACT_TERMS_PROHIBITED_URL_PATH
   = '/terms-of-use#what-you-may-not-do'
+export const ARTIFACT_SHARING_WITHDRAWN_TEXT = 'Link sharing is also turned '
+  + 'off for your account: you cannot create new public links to artifacts '
+  + 'until a person reviews this decision again.'
 
 export type ArtifactEmailKind
   = | 'report-mailbox'
@@ -26,7 +29,6 @@ export interface ArtifactReportLocation {
   artifactId: string
   shareId: string | null
   chatShareId: string | null
-  title: string | null
 }
 
 export type ArtifactDecisionOutcome
@@ -51,6 +53,12 @@ export function formatArtifactEmailDate(date: Date): string {
   return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`
 }
 
+/**
+ * Names the reported content to the reporter by reference id only. The
+ * artifact title is never included: a reporter could otherwise make
+ * Besidka mail text of their choice (a title they wrote and shared) to an
+ * address they typed.
+ */
 export function describeArtifactReportLocation(
   location: ArtifactReportLocation,
 ): string {
@@ -58,9 +66,7 @@ export function describeArtifactReportLocation(
     return `an artifact in a shared chat (reference ${location.artifactId})`
   }
 
-  const title = location.title ? ` "${location.title}"` : ''
-
-  return `the shared artifact${title} (reference ${location.shareId})`
+  return `a shared artifact (reference ${location.shareId})`
 }
 
 /**
@@ -318,6 +324,7 @@ export async function sendArtifactStatementOfReasonsEmail(
       + `${describeTakedownScope(input)}, everywhere, not only in some `
       + 'countries. Duration: until further notice. '
       + describeRetention(input.scope, input.legalHoldUntil),
+      ...(input.scope === 'user' ? [ARTIFACT_SHARING_WITHDRAWN_TEXT] : []),
       `Facts and ground: ${input.statement}`,
       input.followedReport
         ? 'The decision followed a report made under the notice process.'

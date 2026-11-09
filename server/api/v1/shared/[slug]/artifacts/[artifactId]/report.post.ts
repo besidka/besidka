@@ -21,23 +21,24 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return await submitArtifactReport(event, async () => {
+  return await submitArtifactReport(event, async (body) => {
     const artifact = await resolveSharedChatArtifact({
       event,
       slug: params.data.slug,
       artifactId: params.data.artifactId,
+      version: body.version,
     })
 
     return {
       artifactInternalId: artifact.internalId,
       shareInternalId: null,
       chatShareId: artifact.shareId,
+      reportedVersion: body.version ?? null,
       location: {
         kind: 'shared-chat',
         artifactId: params.data.artifactId,
         shareId: null,
         chatShareId: artifact.shareId,
-        title: artifact.referencedTitle,
       },
     }
   })

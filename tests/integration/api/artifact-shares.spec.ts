@@ -212,6 +212,7 @@ describe('artifact shares API', () => {
       turnstileSecretKey: '',
       turnstileEnforced: false,
       authAdditionalAllowedHosts: '',
+      encryptionKey: 'test-encryption-key',
     })
     Object.assign(runtimeConfig.public, {
       baseUrl: BASE_URL,
@@ -372,6 +373,49 @@ describe('artifact shares API', () => {
       })
       expect(JSON.stringify(mocks.logger.set.mock.calls))
         .not.toContain(created.token)
+    })
+
+    it('refuses owner writes from a sibling site', async () => {
+      const created = await createShare()
+      const sameSite = { 'sec-fetch-site': 'same-site' }
+
+      vi.stubGlobal('getRequestURL', () => new URL(BASE_URL))
+      mocks.sessionUserId = ownerId
+
+      await expect(call(handlers.createShare, {
+        params: { id: artifactId },
+        headers: sameSite,
+        body: {
+          duration: 'never',
+          pinnedVersion: null,
+          storageAllowed: false,
+          bridgeAllowed: false,
+        },
+      })).resolves.toMatchObject({ error: { status: 403 } })
+      await expect(call(handlers.checkShare, {
+        params: { id: artifactId },
+        headers: sameSite,
+        body: { pinnedVersion: null },
+      })).resolves.toMatchObject({ error: { status: 403 } })
+      await expect(call(handlers.revokeShare, {
+        params: { id: artifactId, shareId: created.share.shareId },
+        headers: { origin: 'https://evil.example' },
+      })).resolves.toMatchObject({ error: { status: 403 } })
+      await expect(call(handlers.revokeShare, {
+        params: { id: artifactId, shareId: created.share.shareId },
+        headers: { 'sec-fetch-site': 'same-origin' },
+      })).resolves.toMatchObject({ result: { revoked: 1 } })
+    })
+
+    it('keeps the title the link was created with', async () => {
+      const created = await createShare()
+
+      testDb.sqlite.prepare('update artifacts set title = ?')
+        .run('Renamed after sharing')
+
+      await expect(readShare(created.token)).resolves.toMatchObject({
+        result: { title: 'Bank quiz' },
+      })
     })
 
     it('lists, then revokes, a link', async () => {
@@ -770,6 +814,199 @@ describe('artifact shares API', () => {
       expect(await listReports()).toHaveLength(0)
     })
 
+    it('stores the version the link showed and ignores a client version',
+      async () => {
+        const pinned = await createShare({ pinnedVersion: 1 })
+
+        await appendArtifactVersion({
+          db: testDb.db,
+          storage: mocks.storage,
+          userId: ownerId,
+          artifactId,
+          content: '<p>v2</p>',
+          createdBy: 'model',
+        })
+
+        const latest = await createShare()
+
+        await reportShare(pinned.token, { version: 2 })
+        await reportShare(latest.token, {})
+
+        expect((await listReports()).map(row => row.reportedVersion))
+          .toEqual([1, 2])
+      })
+
+    it('keys the IP limit by a hash and never stores the address in KV',
+      async () => {
+        const created = await createShare()
+
+        await reportShare(created.token, {})
+
+        const keys = [...mocks.kv.keys()]
+        const ipKey = keys.find((key) => {
+          return key.startsWith('artifact-report:rate-limit:ip:')
+        })
+
+        expect(ipKey).toMatch(/^artifact-report:rate-limit:ip:[0-9a-f]{64}$/)
+        expect(JSON.stringify([...mocks.kv.entries()])).not.toContain(CLIENT_IP)
+        expect(JSON.stringify([...mocks.kv.entries()]))
+          .not.toContain('ann@example.test')
+      })
+
+    it('answers 429 with Retry-After 1 when the limiter cannot write',
+      async () => {
+        const created = await createShare()
+
+        vi.stubGlobal('useKV', () => ({
+          get: async () => null,
+          put: async () => {
+            throw new Error('KV write failed')
+          },
+          delete: async () => {},
+        }))
+
+        const response = await reportShare(created.token, {})
+
+        expect(response.error).toMatchObject({ status: 429 })
+        expect(response.event.res.headers.get('Retry-After')).toBe('1')
+        expect(await listReports()).toHaveLength(0)
+      })
+
+    it('rejects line breaks and control characters in names', async () => {
+      const created = await createShare()
+
+      await expect(reportShare(created.token, {
+        reporterName: 'Ann\nBcc: victim@example.test',
+      })).resolves.toMatchObject({ error: { status: 400 } })
+      await expect(reportShare(created.token, {
+        reason: 'copyright',
+        copyright: {
+          work: 'My novel',
+          signature: 'Ann\u0007Reporter',
+          unauthorisedUse: true,
+          authority: true,
+        },
+      })).resolves.toMatchObject({ error: { status: 400 } })
+      await expect(reportShare(created.token, {
+        reason: 'copyright',
+        copyright: {
+          work: 'My novel',
+          signature: 'Ann Reporter',
+          ownerName: 'Gazebo\r\nPress',
+          unauthorisedUse: true,
+          authority: true,
+        },
+      })).resolves.toMatchObject({ error: { status: 400 } })
+      expect(await listReports()).toHaveLength(0)
+    })
+
+    it('redacts share links pasted into the details', async () => {
+      const created = await createShare()
+      const other = await createShare()
+
+      await reportShare(created.token, {
+        details: `Same as ${BASE_URL}/a/${other.token} and `
+          + `/signin?next=%252Fa%252F${other.token} here.`,
+      })
+
+      const [row] = await listReports()
+
+      expect(row?.details).toContain(`${BASE_URL}/a/[token]`)
+      expect(row?.details).toContain('%252Fa%252F[token]')
+      expect(row?.details).not.toContain(other.token)
+      expect(emailArguments()).not.toContain(other.token)
+    })
+
+    it('names the content by reference only in the receipt', async () => {
+      const created = await createShare()
+
+      await reportShare(created.token, {})
+
+      const receipt = sentEmails().find((email) => {
+        return email.to === 'ann@example.test'
+      })
+
+      expect(receipt?.text).toContain(created.share.shareId)
+      expect(emailArguments()).not.toContain('Bank quiz')
+    })
+
+    it('sends a signed-in reporter the receipt at the verified account email',
+      async () => {
+        const created = await createShare()
+        const [viewer] = await testDb.db
+          .select({ email: schema.users.email })
+          .from(schema.users)
+          .where(eq(schema.users.id, viewerId))
+
+        mocks.sessionUserId = viewerId
+
+        await reportShare(created.token, {
+          reporterEmail: 'someone-else@example.test',
+        }, {})
+
+        expect(sentEmails().map(email => email.to))
+          .toEqual([PRIVACY_EMAIL, viewer!.email])
+        expect((await listReports())[0]).toMatchObject({
+          reporterEmail: 'someone-else@example.test',
+          receiptSentAt: expect.any(Date),
+        })
+
+        testDb.sqlite.prepare(
+          'update users set email_verified = 0 where id = ?',
+        ).run(viewerId)
+        mocks.sendEmail.mockClear()
+
+        await reportShare(created.token, {}, {})
+
+        expect(sentEmails().map(email => email.to)).toEqual([PRIVACY_EMAIL])
+        expect((await listReports())[1]?.receiptSentAt).toBeNull()
+      })
+
+    it('caps receipts at 3 per address per day and still saves the report',
+      async () => {
+        const created = await createShare()
+
+        for (let index = 0; index < 4; index++) {
+          await expect(reportShare(created.token, {
+            reporterEmail: 'Victim@Example.test',
+          }, { 'cf-connecting-ip': `203.0.113.${index + 10}` }))
+            .resolves.toMatchObject({ result: { ok: true } })
+        }
+
+        const receipts = sentEmails().filter((email) => {
+          return email.to !== PRIVACY_EMAIL
+        })
+
+        expect(receipts).toHaveLength(3)
+        expect(await listReports()).toHaveLength(4)
+        expect((await listReports())[3]?.receiptSentAt).toBeNull()
+      })
+
+    it('skips the receipt when the recipient cap cannot be read',
+      async () => {
+        const created = await createShare()
+        const kv = mocks.kv
+
+        vi.stubGlobal('useKV', () => ({
+          get: async (key: string) => {
+            if (key.startsWith('artifact-report:receipt:')) {
+              throw new Error('KV read failed')
+            }
+
+            return kv.get(key) ?? null
+          },
+          put: async (key: string, value: string) => {
+            kv.set(key, value)
+          },
+          delete: async () => {},
+        }))
+
+        await expect(reportShare(created.token, {}))
+          .resolves.toMatchObject({ result: { ok: true } })
+        expect(sentEmails().map(email => email.to)).toEqual([PRIVACY_EMAIL])
+        expect(await listReports()).toHaveLength(1)
+      })
+
     it('keeps report rows when the artifact is deleted', async () => {
       const created = await createShare()
 
@@ -963,6 +1200,145 @@ describe('artifact shares API', () => {
           .toEqual([ownerEmail, 'bo@example.test'])
       })
 
+    it('stores the shared-chat version and previews it for the admin',
+      async () => {
+        const chat = await seedChat(testDb.db, ownerId)
+
+        await seedMessage(testDb.db, chat.id, 'assistant', [
+          {
+            type: 'data-artifact',
+            data: { artifactId, version: 1, kind: 'html', title: 'Bank quiz' },
+          } as never,
+        ], minutesBefore(5))
+        await testDb.db.insert(schema.chatShares).values({
+          chatId: chat.id,
+          slug: CHAT_SHARE_SLUG,
+        })
+        await appendArtifactVersion({
+          db: testDb.db,
+          storage: mocks.storage,
+          userId: ownerId,
+          artifactId,
+          content: '<p>v2</p>',
+          createdBy: 'model',
+        })
+
+        const report = (version: number) => {
+          return call(handlers.chatReport, {
+            params: { slug: CHAT_SHARE_SLUG, artifactId },
+            headers: { 'cf-connecting-ip': CLIENT_IP },
+            body: {
+              reason: 'illegal',
+              details: DETAILS,
+              reporterName: 'Bo',
+              reporterEmail: 'bo@example.test',
+              goodFaith: true,
+              version,
+            },
+          })
+        }
+
+        await expect(report(2)).resolves.toMatchObject({
+          error: { status: 404 },
+        })
+        await expect(report(1)).resolves.toMatchObject({
+          result: { ok: true },
+        })
+
+        const [row] = await listReports()
+
+        expect(row?.reportedVersion).toBe(1)
+        expect(emailArguments()).not.toContain('Bank quiz')
+
+        asAdmin()
+
+        await expect(call(handlers.adminDetail, {
+          params: { id: String(row!.id) },
+        })).resolves.toMatchObject({
+          result: { reportedVersion: 1, currentVersion: 2, previewVersion: 1 },
+        })
+      })
+
+    it('reopens the report when the takedown batch fails', async () => {
+      const { created, reportId } = await seedReport()
+
+      asAdmin()
+
+      const batch = vi.spyOn(testDb.db, 'batch')
+        .mockRejectedValueOnce(new Error('D1 batch failed'))
+      const failed = await call(handlers.adminAction, {
+        params: { id: reportId },
+        body: { action: 'takedown', statement: STATEMENT, scope: 'share' },
+      })
+
+      batch.mockRestore()
+
+      expect(failed.error?.message).toBe('D1 batch failed')
+      expect((await listReports())[0]).toMatchObject({
+        status: 'open',
+        decision: null,
+        decisionStatement: null,
+        decidedAt: null,
+        resolvedAt: null,
+      })
+      expect(await listAudit()).toHaveLength(0)
+      await expect(readShare(created.token)).resolves.toMatchObject({
+        result: { version: 1 },
+      })
+      expect(mocks.sendEmail).not.toHaveBeenCalled()
+
+      await expect(call(handlers.adminAction, {
+        params: { id: reportId },
+        body: { action: 'takedown', statement: STATEMENT, scope: 'share' },
+      })).resolves.toMatchObject({ result: { newlyTakenDown: true } })
+    })
+
+    it('reopens the report when the reject audit row fails', async () => {
+      const { reportId } = await seedReport()
+
+      asAdmin()
+
+      const insert = vi.spyOn(testDb.db, 'insert')
+        .mockImplementationOnce(() => {
+          throw new Error('Audit insert failed')
+        })
+      const failed = await call(handlers.adminAction, {
+        params: { id: reportId },
+        body: { action: 'reject', statement: STATEMENT, scope: 'share' },
+      })
+
+      insert.mockRestore()
+
+      expect(failed.error?.message).toBe('Audit insert failed')
+      expect((await listReports())[0]).toMatchObject({
+        status: 'open',
+        decision: null,
+        decidedAt: null,
+      })
+      expect(mocks.sendEmail).not.toHaveBeenCalled()
+    })
+
+    it('lets only one of two concurrent decisions act', async () => {
+      const { reportId } = await seedReport()
+
+      asAdmin()
+
+      const decide = (action: string) => {
+        return call(handlers.adminAction, {
+          params: { id: reportId },
+          body: { action, statement: STATEMENT, scope: 'share' },
+        })
+      }
+      const results = await Promise.all([decide('takedown'), decide('reject')])
+
+      expect(results.filter(response => response.error)).toEqual([
+        expect.objectContaining({ error: expect.objectContaining({
+          status: 409,
+        }) }),
+      ])
+      expect(await listAudit()).toHaveLength(1)
+    })
+
     it('rejects a report and only tells the reporter', async () => {
       const { created, reportId } = await seedReport()
 
@@ -1052,8 +1428,27 @@ describe('artifact shares API', () => {
         await expect(takeDown({ target: 'nobody', scope: 'artifact' }))
           .resolves.toMatchObject({ error: { status: 404 } })
 
-        expect((await listAudit()).map(entry => entry.action))
-          .toEqual(Array.from({ length: 5 }, () => 'artifact.takedown'))
+        expect((await listAudit()).map(entry => entry.action)).toEqual([
+          'artifact.takedown',
+          'artifact.takedown',
+          'artifact.takedown',
+          'artifact.takedown',
+          'grant.set',
+          'artifact.takedown',
+          'grant.set',
+        ])
+        expect(await testDb.db.select().from(schema.featureGrants))
+          .toEqual([
+            expect.objectContaining({
+              userId: ownerId,
+              flag: 'artifacts.share',
+              effect: 'deny',
+              expiresAt: null,
+              grantedBy: adminId,
+            }),
+          ])
+        expect(sentEmails().at(-1)?.text)
+          .toContain('Link sharing is also turned off for your account')
         expect(JSON.stringify(await listAudit())).not.toContain(byUrl.token)
         expect(JSON.stringify(mocks.logger.set.mock.calls))
           .not.toContain(byToken.token)
@@ -1099,6 +1494,30 @@ describe('artifact shares API', () => {
       expect((await listAudit()).filter((entry) => {
         return entry.action === 'artifact.restore'
       })).toHaveLength(2)
+    })
+
+    it('writes one restore audit row when two restores race', async () => {
+      const created = await createShare()
+
+      asAdmin()
+      await call(handlers.adminTakedown, {
+        body: { target: created.token, statement: STATEMENT, scope: 'share' },
+      })
+
+      const restore = () => {
+        return call(handlers.adminRestore, {
+          body: { shareId: created.share.shareId },
+        })
+      }
+      const deletes = vi.spyOn(testDb.db, 'delete')
+      const results = await Promise.all([restore(), restore()])
+
+      expect(results.map(response => response.error?.status ?? 200).sort())
+        .toEqual([200, 409])
+      expect(deletes).toHaveBeenCalledTimes(1)
+      expect((await listAudit()).filter((entry) => {
+        return entry.action === 'artifact.restore'
+      })).toHaveLength(1)
     })
   })
 })

@@ -95,6 +95,17 @@ describe('email template rendering', () => {
       expect(html).toContain('First paragraph.\n\nSecond paragraph.')
     })
 
+  it('adds no line break around a one-line body under pre-line',
+    async () => {
+      const { render } = await importRealRender()
+      const html: string = await render(NoticeEmail, noticeEmailProps)
+      const paragraph = html.match(/class="email-text"[^>]*>([\s\S]*?)<\/p>/)
+
+      expect(paragraph?.[1]).toBeDefined()
+      expect(paragraph![1]).not.toContain('\n')
+      expect(paragraph![1].trim()).toBe(noticeEmailProps.body)
+    })
+
   it('renders ActionEmail plain text with heading, body and raw url',
     async () => {
       const { render } = await importRealRender()

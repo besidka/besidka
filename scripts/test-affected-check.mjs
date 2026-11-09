@@ -3050,6 +3050,14 @@ export function getAffectedTests(changedFiles) {
       tests: artifactsSharesTests,
     },
     {
+      pattern:
+        /^(server\/middleware\/02\.artifact-share-path-case\.ts|server\/utils\/artifacts\/share-(redaction|request)\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: [
+        'tests/unit/server/middleware/artifact-share-path-case.spec.ts',
+        'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/(turnstile|auth-hosts)\.ts$/,
       tests: ['tests/unit/server/utils/turnstile.spec.ts'],
     },

@@ -32,7 +32,7 @@ export default defineEventHandler(async (
   return {
     shareId: encodeArtifactShareId(resolved.share.id),
     artifactId: content.artifactId,
-    title: content.title,
+    title: resolved.share.title ?? content.title,
     kind: content.kind,
     version: content.version,
     pinned: resolved.share.pinnedVersion !== null,

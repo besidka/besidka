@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "4e1e84b7-5877-4880-81a3-a92ac6e9c001",
+  "id": "ce453241-c9f8-42d9-b4ad-2915de45bafe",
   "prevIds": [
     "a087a9fc-1590-4f33-aa0b-471dd19056cf"
   ],
@@ -5033,6 +5033,16 @@
       "entityType": "columns"
     },
     {
+      "table": "artifact_reports",
+      "name": "reported_version",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
       "table": "artifact_shares",
       "name": "id",
       "type": "integer",
@@ -5185,6 +5195,16 @@
     {
       "table": "artifact_shares",
       "name": "takedown_reason",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "artifact_shares",
+      "name": "title",
       "type": "text",
       "notNull": false,
       "autoincrement": false,

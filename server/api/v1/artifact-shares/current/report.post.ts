@@ -12,12 +12,12 @@ export default defineEventHandler(async (event) => {
       artifactInternalId: resolved.artifact.id,
       shareInternalId: resolved.share.id,
       chatShareId: null,
+      reportedVersion: resolved.version,
       location: {
         kind: 'artifact-share',
         artifactId: encodeArtifactId(resolved.artifact.id),
         shareId: encodeArtifactShareId(resolved.share.id),
         chatShareId: null,
-        title: resolved.artifact.title,
       },
     }
   })

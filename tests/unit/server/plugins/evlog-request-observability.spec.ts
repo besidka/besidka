@@ -142,7 +142,7 @@ describe('artifact share token redaction', () => {
   it('replaces the token of a public artifact link with the route pattern',
     async () => {
       const { redactArtifactSharePath } = await import(
-        '~~/server/plugins/evlog-request-observability'
+        '~~/server/utils/artifacts/share-redaction'
       )
 
       expect(redactArtifactSharePath(`/a/${TOKEN}`)).toBe('/a/[token]')
@@ -159,6 +159,11 @@ describe('artifact share token redaction', () => {
         .toBe('/signin?next=%2fa%2f[token]&x=1')
       expect(redactArtifactSharePath('/data/files'))
         .toBe('/data/files')
+      expect(redactArtifactSharePath(`/signin?next=%252Fa%252F${TOKEN}`))
+        .toBe('/signin?next=%252Fa%252F[token]')
+      expect(redactArtifactSharePath(`x=%25252fA%25252f${TOKEN}`))
+        .toBe('x=%25252fa%25252f[token]')
+      expect(redactArtifactSharePath(`/A/${TOKEN}`)).toBe('/a/[token]')
     })
 
   it('keeps the token out of every drained field of a page request', () => {
@@ -187,5 +192,7 @@ describe('artifact share token redaction', () => {
     expect(JSON.stringify(context.event)).not.toContain(
       'x-besidka-artifact-share',
     )
+    expect(context.headers).toEqual({ 'cf-ray': 'ray-1' })
+    expect(JSON.stringify(context)).not.toContain(TOKEN)
   })
 })

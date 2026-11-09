@@ -9,6 +9,7 @@ import {
 import { resolveArtifactShareOwnerRequest } from '~~/server/utils/artifacts/share-owner-request'
 import { createArtifactShare } from '~~/server/utils/artifacts/shares'
 import { durationToExpiresAt } from '~~/server/utils/chats/share'
+import { assertSameOriginAdminRequest } from '~~/server/utils/features/admin-request'
 import { requireFeature } from '~~/server/utils/features/guards'
 
 const bodySchema = z.object({
@@ -24,6 +25,7 @@ export default defineEventHandler(async (
   await requireFeature(event, 'artifacts.share')
 
   assertNotCrossSiteRequest(event)
+  assertSameOriginAdminRequest(event)
 
   const request = await resolveArtifactShareOwnerRequest(event, 'share-create')
   const body = await readValidatedBody(event, bodySchema.safeParse)

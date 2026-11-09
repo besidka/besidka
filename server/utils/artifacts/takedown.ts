@@ -30,12 +30,18 @@ import {
   resolveArtifactShareStatus,
 } from '~~/server/utils/artifacts/shares'
 import {
-  ARTIFACT_ID_CHUNK_SIZE,
+  chunkIds,
   decodeArtifactId,
   encodeArtifactId,
 } from '~~/server/utils/artifacts/store'
 import { useDecryptText } from '~~/server/utils/encryption'
-import { buildAuditInsert, throwAdminError } from '~~/server/utils/features/admin'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  buildAuditInsert,
+  logFeatureAccess,
+  throwAdminError,
+  toGrantSnapshot,
+} from '~~/server/utils/features/admin'
 
 type DbClient = ReturnType<typeof useDb>
 type AdminDb = FeatureAdminContext['db']
@@ -43,6 +49,8 @@ type AdminDb = FeatureAdminContext['db']
 const DETAILS_PREVIEW_LENGTH = 200
 const AUDIT_ID_LIST_MAX = 100
 const AUDIT_FLAG = 'artifacts'
+const ARTIFACT_SHARE_FLAG = 'artifacts.share'
+const ARTIFACT_SHARE_DENY_REASON = 'Artifact takedown at user scope'
 
 export interface ListArtifactReportsInput {
   db: DbClient
@@ -239,8 +247,9 @@ async function resolveChatShareUrl(
 /**
  * One report with everything the admin drawer needs: the full details, the
  * decision statement, the exact reported URL (the decrypted `/a/` link, or
- * the shared chat URL) and the version to preview (the pinned one, else the
- * current one). The URL goes to the admin only and is never logged.
+ * the shared chat URL) and the version to preview: the version the reporter
+ * saw, else the link's pinned one, else the current one. The URL goes to
+ * the admin only and is never logged.
  */
 export async function getArtifactReportForAdmin(input: {
   db: DbClient
@@ -269,6 +278,8 @@ export async function getArtifactReportForAdmin(input: {
   }
 
   const summary = toReportSummary(row, now)
+  const reportedVersion = row.report.reportedVersion ?? null
+  const currentVersion = summary.artifact?.currentVersion ?? null
 
   return {
     ...summary,
@@ -276,9 +287,11 @@ export async function getArtifactReportForAdmin(input: {
     decisionStatement: row.report.decisionStatement ?? null,
     receiptSentAt: toIso(row.report.receiptSentAt),
     locationUrl,
-    previewVersion: summary.artifact
-      ? row.share?.pinnedVersion ?? summary.artifact.currentVersion
-      : null,
+    reportedVersion,
+    currentVersion,
+    previewVersion: currentVersion === null
+      ? null
+      : reportedVersion ?? row.share?.pinnedVersion ?? currentVersion,
   }
 }
 
@@ -291,7 +304,6 @@ function reportLocation(row: ReportRow): ArtifactReportLocation {
       artifactId,
       shareId: encodeArtifactShareId(row.share.id),
       chatShareId: null,
-      title: row.artifactTitle ?? null,
     }
   }
 
@@ -300,7 +312,6 @@ function reportLocation(row: ReportRow): ArtifactReportLocation {
     artifactId,
     shareId: null,
     chatShareId: row.report.chatShareId ?? null,
-    title: row.artifactTitle ?? null,
   }
 }
 
@@ -371,6 +382,111 @@ function closeReport(
     .returning({ id: schema.artifactReports.id })
 }
 
+/**
+ * Undoes `closeReport` when the takedown or audit write after it failed, so
+ * the report is open again for a retry. Matches the `decidedAt` just
+ * written, so it never reopens a decision someone else made since. A
+ * failing reopen is logged; the caller rethrows the original error.
+ */
+async function reopenReport(
+  context: FeatureAdminContext,
+  reportId: number,
+  decidedAt: Date,
+): Promise<void> {
+  try {
+    await context.db.update(schema.artifactReports)
+      .set({
+        status: 'open',
+        decision: null,
+        decisionStatement: null,
+        decidedAt: null,
+        resolvedAt: null,
+      })
+      .where(and(
+        eq(schema.artifactReports.id, reportId),
+        eq(schema.artifactReports.decidedAt, decidedAt),
+      ))
+
+    context.logger.set({
+      attributes: { artifacts: { reportReopened: reportId } },
+    })
+  } catch (exception) {
+    context.logger.set({
+      attributes: {
+        artifacts: {
+          reportReopenError: exceptionMessage(exception),
+          reportId,
+        },
+      },
+    })
+  }
+}
+
+async function applyReportDecision(
+  context: FeatureAdminContext,
+  input: {
+    row: ReportRow
+    action: ArtifactReportAction
+    scope: ArtifactReportActionScope
+    statement: string
+    decision: ArtifactReportDecision
+    now: Date
+  },
+): Promise<boolean> {
+  const { row, now } = input
+  const ownerUserId = row.artifactOwnerUserId
+
+  if (input.action === 'reject') {
+    await buildAuditInsert(context, {
+      action: 'artifact-report.reject',
+      flag: AUDIT_FLAG,
+      targetUserId: ownerUserId,
+      before: { reportId: row.report.id, status: 'open' },
+      after: {
+        reportId: row.report.id,
+        status: 'rejected',
+        decision: input.decision,
+      },
+    })
+
+    return false
+  }
+
+  const takedown = input.scope === 'share'
+    ? buildShareTakedown(context.db, row.share!.id, input.statement, now)
+    : context.db.update(schema.artifacts)
+      .set({ takedownAt: now, takedownReason: input.statement })
+      .where(and(
+        eq(schema.artifacts.id, row.report.artifactId),
+        isNull(schema.artifacts.takedownAt),
+      ))
+      .returning({ id: schema.artifacts.id })
+  const before = input.scope === 'share'
+    ? row.share!.takedownAt
+    : row.artifactTakedownAt
+  const [updated] = await context.db.batch([
+    takedown,
+    buildAuditInsert(context, {
+      action: 'artifact.takedown',
+      flag: AUDIT_FLAG,
+      targetUserId: ownerUserId,
+      before: {
+        reportId: row.report.id,
+        ...takedownSnapshot({ takedownAt: before }),
+      },
+      after: {
+        reportId: row.report.id,
+        scope: input.scope,
+        artifactId: encodeArtifactId(row.report.artifactId),
+        shareId: row.share ? encodeArtifactShareId(row.share.id) : null,
+        ...takedownSnapshot({ takedownAt: before ?? now }),
+      },
+    }),
+  ])
+
+  return updated.length > 0
+}
+
 async function findOwnerEmail(
   db: AdminDb,
   userId: number,
@@ -390,8 +506,11 @@ async function findOwnerEmail(
  * it disables the artifact itself, so every link, the shared-chat route and
  * the owner view stop on the next request. `reject` closes the report with
  * no action. The report is closed first (only if it is still open, so two
- * admins deciding at once cannot both act); the takedown and the audit row
- * then go in one D1 batch. The owner gets the statement of reasons when
+ * admins deciding at once cannot both act: the second gets 409); the
+ * takedown and the audit row then go in one D1 batch, and if that batch
+ * (or the reject audit row) fails the report is reopened and the error
+ * rethrown, so it never stays closed with nothing done. The owner gets the
+ * statement of reasons when
  * content was newly taken down (a second report on content already down
  * sends none), the reporter gets the decision when they left an email.
  * Email failures are logged, never thrown.
@@ -422,8 +541,8 @@ export async function decideArtifactReport(
   }
 
   const decision = decisionFor(input.action, input.scope)
-  const ownerUserId = row.artifactOwnerUserId
-  if (input.action === 'takedown' && ownerUserId === null) {
+
+  if (input.action === 'takedown' && row.artifactOwnerUserId === null) {
     throwAdminError(
       409,
       'The reported artifact no longer exists',
@@ -448,60 +567,21 @@ export async function decideArtifactReport(
     now,
   }))
 
-  let newlyTakenDown = false
+  let newlyTakenDown: boolean
 
-  if (input.action === 'reject') {
-    await buildAuditInsert(context, {
-      action: 'artifact-report.reject',
-      flag: AUDIT_FLAG,
-      targetUserId: ownerUserId,
-      before: { reportId: row.report.id, status: 'open' },
-      after: { reportId: row.report.id, status: 'rejected', decision },
+  try {
+    newlyTakenDown = await applyReportDecision(context, {
+      row,
+      action: input.action,
+      scope: input.scope,
+      statement: input.statement,
+      decision,
+      now,
     })
-  } else {
-    const takedown = input.scope === 'share'
-      ? context.db.update(schema.artifactShares)
-        .set({
-          takedownAt: now,
-          takedownReason: input.statement,
-          updatedAt: now,
-        })
-        .where(and(
-          eq(schema.artifactShares.id, row.share!.id),
-          isNull(schema.artifactShares.takedownAt),
-        ))
-        .returning({ id: schema.artifactShares.id })
-      : context.db.update(schema.artifacts)
-        .set({ takedownAt: now, takedownReason: input.statement })
-        .where(and(
-          eq(schema.artifacts.id, row.report.artifactId),
-          isNull(schema.artifacts.takedownAt),
-        ))
-        .returning({ id: schema.artifacts.id })
-    const before = input.scope === 'share'
-      ? row.share!.takedownAt
-      : row.artifactTakedownAt
-    const [updated] = await context.db.batch([
-      takedown,
-      buildAuditInsert(context, {
-        action: 'artifact.takedown',
-        flag: AUDIT_FLAG,
-        targetUserId: ownerUserId,
-        before: {
-          reportId: row.report.id,
-          ...takedownSnapshot({ takedownAt: before }),
-        },
-        after: {
-          reportId: row.report.id,
-          scope: input.scope,
-          artifactId: encodeArtifactId(row.report.artifactId),
-          shareId: row.share ? encodeArtifactShareId(row.share.id) : null,
-          ...takedownSnapshot({ takedownAt: before ?? now }),
-        },
-      }),
-    ])
+  } catch (exception) {
+    await reopenReport(context, row.report.id, now)
 
-    newlyTakenDown = updated.length > 0
+    throw exception
   }
 
   context.logger.set({
@@ -747,25 +827,13 @@ async function findArtifactOwnerByPublicId(
   return artifact?.userId ?? null
 }
 
-function chunk<T>(items: T[]): T[][] {
-  const chunks: T[][] = []
-
-  const size = ARTIFACT_ID_CHUNK_SIZE
-
-  for (let offset = 0; offset < items.length; offset += size) {
-    chunks.push(items.slice(offset, offset + size))
-  }
-
-  return chunks
-}
-
 function buildArtifactTakedowns(
   db: AdminDb,
   artifactIds: number[],
   statement: string,
   now: Date,
 ) {
-  return chunk(artifactIds).map((ids) => {
+  return chunkIds(artifactIds).map((ids) => {
     return db.update(schema.artifacts)
       .set({ takedownAt: now, takedownReason: statement })
       .where(and(
@@ -796,7 +864,7 @@ function buildLegalHolds(
   artifactIds: number[],
   holdUntil: Date,
 ) {
-  return chunk(artifactIds).map((ids) => {
+  return chunkIds(artifactIds).map((ids) => {
     return db.update(schema.artifacts)
       .set({ legalHoldUntil: holdUntil })
       .where(and(
@@ -821,15 +889,73 @@ function collectReturnedIds(results: unknown[]): number[] {
 }
 
 /**
+ * A per-user deny grant for `artifacts.share` (upserted over any existing
+ * grant) and its `grant.set` audit row, for the takedown batch of scope
+ * `user`: the owner cannot publish new links until an admin removes the
+ * deny grant in the features admin.
+ */
+async function buildShareDenial(
+  context: FeatureAdminContext,
+  userId: number,
+  now: Date,
+) {
+  const [existing] = await context.db
+    .select()
+    .from(schema.featureGrants)
+    .where(and(
+      eq(schema.featureGrants.userId, userId),
+      eq(schema.featureGrants.flag, ARTIFACT_SHARE_FLAG),
+    ))
+    .limit(1)
+  const denial = {
+    userId,
+    effect: 'deny' as const,
+    variant: null,
+    expiresAt: null,
+    reason: ARTIFACT_SHARE_DENY_REASON,
+  }
+
+  return [
+    context.db
+      .insert(schema.featureGrants)
+      .values({
+        ...denial,
+        flag: ARTIFACT_SHARE_FLAG,
+        grantedBy: context.actor.userId,
+        createdAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [schema.featureGrants.userId, schema.featureGrants.flag],
+        set: {
+          effect: denial.effect,
+          variant: denial.variant,
+          expiresAt: denial.expiresAt,
+          reason: denial.reason,
+          grantedBy: context.actor.userId,
+          createdAt: now,
+        },
+      }),
+    buildAuditInsert(context, {
+      action: 'grant.set',
+      flag: ARTIFACT_SHARE_FLAG,
+      targetUserId: userId,
+      before: existing ? toGrantSnapshot(existing) : null,
+      after: toGrantSnapshot(denial),
+    }),
+  ]
+}
+
+/**
  * Takes content down without a report (a TCO removal order, an abuse
  * complaint, something the admin found): scope `share` disables one link,
  * `artifact` the artifact and every link to it, `user` every artifact of
- * that user. `legalHold` keeps the artifacts for six months (TCO Art. 6(2))
- * against deletion and the report sweep. The takedown updates, the legal
- * hold and the audit row are one D1 batch, so a failure leaves nothing
- * half-written; the owner's statement of reasons (for what was newly taken
- * down) is sent after it. Takes effect on the next request: every read
- * checks D1 and nothing is cached.
+ * that user and also writes a deny grant for `artifacts.share`, so the
+ * owner cannot republish. `legalHold` keeps the artifacts for six months
+ * (TCO Art. 6(2)) against deletion and the report sweep. The takedown
+ * updates, the legal hold, the deny grant and the audit rows are one D1
+ * batch, so a failure leaves nothing half-written; the owner's statement of
+ * reasons (for what was newly taken down) is sent after it. Takes effect on
+ * the next request: every read checks D1 and nothing is cached.
  */
 export async function takeDownArtifactTarget(
   context: FeatureAdminContext,
@@ -904,11 +1030,26 @@ export async function takeDownArtifactTarget(
       legalHoldUntil: toIso(holdUntil),
     },
   })
+  const shareDenial = input.scope === 'user'
+    ? await buildShareDenial(context, resolved.ownerUserId, now)
+    : []
   const results = await context.db.batch([
     ...takedowns,
     ...holds,
     audit,
+    ...shareDenial,
   ] as unknown as Parameters<AdminDb['batch']>[0])
+
+  if (shareDenial.length > 0) {
+    logFeatureAccess(context, {
+      action: 'grant.set',
+      flag: ARTIFACT_SHARE_FLAG,
+      targetUserId: resolved.ownerUserId,
+      effect: 'deny',
+      expiresAt: null,
+    })
+  }
+
   const returnedIds = collectReturnedIds(
     (results as unknown as unknown[]).slice(0, takedowns.length),
   )
@@ -970,8 +1111,12 @@ export async function takeDownArtifactTarget(
  * person's review of a dispute that runs by email from the privacy mailbox,
  * and the reply to the owner (and, for copyright, the notice to the
  * reporter) is written there. The update and the audit row are one D1
- * batch. Viewer saved progress deleted by the sweep after the takedown does
- * not come back.
+ * batch; the update only clears a takedown that is still set. A D1 batch
+ * cannot make the audit insert depend on it, so when two restores race
+ * past the pre-check the loser deletes its own audit row right after the
+ * batch and answers 409; if that delete fails, one extra audit row stays
+ * (logged). Viewer saved progress deleted by the sweep after the takedown
+ * does not come back.
  */
 export async function restoreArtifactTakedown(
   context: FeatureAdminContext,
@@ -986,6 +1131,30 @@ export async function restoreArtifactTakedown(
 
 function throwNotTakenDown(): never {
   throwAdminError(409, 'This is not taken down', 'not_taken_down')
+}
+
+async function discardRestoreAudit(
+  context: FeatureAdminContext,
+  audited: Array<{ id: number }>,
+): Promise<void> {
+  const ids = audited.map((row) => {
+    return row.id
+  })
+
+  if (ids.length === 0) {
+    return
+  }
+
+  try {
+    await context.db.delete(schema.featureAuditLog)
+      .where(inArray(schema.featureAuditLog.id, ids))
+  } catch (exception) {
+    context.logger.set({
+      attributes: {
+        artifacts: { restoreAuditDiscardError: exceptionMessage(exception) },
+      },
+    })
+  }
 }
 
 async function restoreShare(
@@ -1009,9 +1178,10 @@ async function restoreShare(
     throwNotTakenDown()
   }
 
-  const [updated] = await context.db.batch([
+  const now = context.now ?? new Date()
+  const [updated, audited] = await context.db.batch([
     context.db.update(schema.artifactShares)
-      .set({ takedownAt: null, takedownReason: null, updatedAt: new Date() })
+      .set({ takedownAt: null, takedownReason: null, updatedAt: now })
       .where(and(
         eq(schema.artifactShares.id, share.id),
         isNotNull(schema.artifactShares.takedownAt),
@@ -1023,10 +1193,11 @@ async function restoreShare(
       targetUserId: share.userId,
       before: { shareId: publicShareId, takedownAt: toIso(share.takedownAt) },
       after: { shareId: publicShareId, takedownAt: null },
-    }),
+    }).returning({ id: schema.featureAuditLog.id }),
   ])
 
   if (updated.length === 0) {
+    await discardRestoreAudit(context, audited)
     throwNotTakenDown()
   }
 
@@ -1056,7 +1227,7 @@ async function restoreArtifact(
     throwNotTakenDown()
   }
 
-  const [updated] = await context.db.batch([
+  const [updated, audited] = await context.db.batch([
     context.db.update(schema.artifacts)
       .set({ takedownAt: null, takedownReason: null })
       .where(and(
@@ -1078,10 +1249,11 @@ async function restoreArtifact(
         takedownAt: null,
         legalHoldUntil: toIso(artifact.legalHoldUntil),
       },
-    }),
+    }).returning({ id: schema.featureAuditLog.id }),
   ])
 
   if (updated.length === 0) {
+    await discardRestoreAudit(context, audited)
     throwNotTakenDown()
   }
 

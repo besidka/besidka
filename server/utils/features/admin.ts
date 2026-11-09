@@ -322,7 +322,7 @@ async function requireExistingUser(
   }
 }
 
-function toGrantSnapshot(grant: {
+export function toGrantSnapshot(grant: {
   userId: number
   effect: string
   variant: string | null
