@@ -35,7 +35,8 @@
         class="js-side-panel fixed top-0 bottom-0 right-0 flex flex-col bg-base-100 border-l border-base-300 shadow-xl outline-none pt-[var(--sat)]"
         :class="{
           'z-50': layout === 'docked',
-          'z-[60] w-[70vw]': layout === 'overlay',
+          'z-[60]': layout === 'overlay',
+          'w-[70vw]': layout === 'overlay' && !isLargeViewport,
           'left-0 pr-20': isDockedFullWidth,
         }"
         :style="panelStyle"
@@ -251,6 +252,7 @@ defineProps<{
 }>()
 
 const SCROLL_HOLD_EXTRA_MS = 20
+const OVERLAY_MAX_VIEWPORT_RATIO = 0.7
 const SWIPE_CLOSE_DISTANCE_PX = 80
 const SWIPE_CLOSE_VELOCITY = 0.5
 const FOCUSABLE_SELECTOR = [
@@ -277,6 +279,7 @@ const {
   persistWidth,
 } = useSidePanel()
 const layout = useSidePanelLayout()
+const isLargeViewport = useMediaQuery('(min-width: 64rem)')
 const route = useRoute()
 const { width: viewportWidth } = useWindowSize()
 const reducedMotion = usePreferredReducedMotion()
@@ -360,6 +363,15 @@ const widthPresetLabel = computed<string>(() => {
 })
 
 const panelStyle = computed<StyleValue>(() => {
+  if (layout.value === 'overlay' && isLargeViewport.value) {
+    const savedWidth = Math.max(width.value, SIDE_PANEL_MIN_WIDTH)
+    const maxOverlayWidth = Math.floor(
+      viewportWidth.value * OVERLAY_MAX_VIEWPORT_RATIO,
+    )
+
+    return { width: `${Math.min(savedWidth, maxOverlayWidth)}px` }
+  }
+
   if (!isDockedResizable.value) {
     return {}
   }

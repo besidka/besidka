@@ -18,7 +18,9 @@ export const SIDE_PANEL_WIDTH_STORAGE_KEY = 'besidka:side-panel-width'
 export const SIDE_PANEL_DEFAULT_WIDTH = 480
 export const SIDE_PANEL_MIN_WIDTH = 360
 export const SIDE_PANEL_MAX_VIEWPORT_RATIO = 0.6
-export const SIDE_PANEL_MIN_CHAT_WIDTH = 560
+export const SIDE_PANEL_MIN_CHAT_WIDTH = 768
+export const SIDE_PANEL_DOCK_MIN_VIEWPORT
+  = SIDE_PANEL_MIN_WIDTH + SIDE_PANEL_MIN_CHAT_WIDTH
 export const SIDE_PANEL_KEYBOARD_STEP = 24
 export const SIDE_PANEL_TRANSITION_MS = 300
 export const SIDE_PANEL_WIDTH_PRESETS = [360, 480, 640] as const
@@ -226,12 +228,20 @@ export function useSidePanel() {
   }
 }
 
+/**
+ * Docks only when the chat column keeps at least the md width after the
+ * narrowest panel, which is the same as the clamped panel width leaving
+ * `SIDE_PANEL_MIN_CHAT_WIDTH`. Below that the chat would render its desktop
+ * layout in a mobile-width column, so the panel overlays instead.
+ */
 export function useSidePanelLayout() {
-  const isLarge = useMediaQuery('(min-width: 64rem)')
+  const canDock = useMediaQuery(
+    `(min-width: ${SIDE_PANEL_DOCK_MIN_VIEWPORT}px)`,
+  )
   const isMedium = useMediaQuery('(min-width: 48rem)')
 
   return computed<SidePanelLayout>(() => {
-    if (isLarge.value) {
+    if (canDock.value) {
       return 'docked'
     }
 

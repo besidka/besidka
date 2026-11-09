@@ -52,7 +52,8 @@ export type ArtifactLoadResult<Value>
 
 export const ARTIFACT_VIEW_KEY_PREFIX = 'artifact:'
 export const ARTIFACT_AUTO_OPEN_STORAGE_PREFIX = 'artifacts:auto-opened:'
-export const ARTIFACT_AUTO_OPEN_MEDIA_QUERY = '(min-width: 64rem)'
+export const ARTIFACT_AUTO_OPEN_MEDIA_QUERY
+  = `(min-width: ${SIDE_PANEL_DOCK_MIN_VIEWPORT}px)`
 export const ARTIFACT_LOAD_TIMEOUT_MS = 10_000
 
 const ARTIFACT_AUTO_OPEN_MARKER = '1'

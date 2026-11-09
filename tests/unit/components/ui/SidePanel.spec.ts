@@ -55,10 +55,11 @@ function stubViewport(innerWidth: number) {
   window.innerWidth = innerWidth
 
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-    const minWidthRem = Number(/min-width:\s*([\d.]+)rem/.exec(query)?.[1])
+    const [, amount, unit] = /min-width:\s*([\d.]+)(rem|px)/.exec(query) ?? []
+    const minWidth = Number(amount) * (unit === 'rem' ? 16 : 1)
 
     return {
-      matches: innerWidth >= minWidthRem * 16,
+      matches: innerWidth >= minWidth,
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -195,7 +196,7 @@ describe('ui/SidePanel', () => {
       expect(separator.attributes('tabindex')).toBe('0')
       expect(separator.attributes('aria-valuenow')).toBe('480')
       expect(separator.attributes('aria-valuemin')).toBe('360')
-      expect(separator.attributes('aria-valuemax')).toBe('864')
+      expect(separator.attributes('aria-valuemax')).toBe('672')
       expect(separator.attributes('aria-controls'))
         .toBe(wrapper.get(PANEL).attributes('id'))
     })
@@ -318,7 +319,7 @@ describe('ui/SidePanel', () => {
         await wrapper.get(SEPARATOR).trigger('keydown', { key: 'End' })
 
         expect(wrapper.get(SEPARATOR).attributes('aria-valuenow'))
-          .toBe('864')
+          .toBe('672')
       })
 
       it('stops at the limits', async () => {
@@ -329,7 +330,7 @@ describe('ui/SidePanel', () => {
         await wrapper.get(SEPARATOR).trigger('keydown', { key: 'ArrowLeft' })
 
         expect(wrapper.get(SEPARATOR).attributes('aria-valuenow'))
-          .toBe('864')
+          .toBe('672')
 
         await wrapper.get(SEPARATOR).trigger('keydown', { key: 'Home' })
         await wrapper.get(SEPARATOR).trigger('keydown', { key: 'ArrowRight' })
@@ -643,6 +644,49 @@ describe('ui/SidePanel', () => {
       expect(wrapper.find(WIDTH_PRESET).exists()).toBe(false)
       expect(wrapper.find(FULL_WIDTH).exists()).toBe(false)
       expect(readRootInset()).toBe('0px')
+    })
+
+    it('keeps the 70vw width below lg', async () => {
+      const wrapper = await mountPanel()
+
+      await openPanel()
+
+      const panel = wrapper.get(PANEL)
+
+      expect(panel.classes()).toContain('w-[70vw]')
+      expect(panel.attributes('style') ?? '').not.toContain('width')
+    })
+
+    it('opens as an overlay with the saved width above lg when docking '
+      + 'would leave less than 768px for the chat', async () => {
+      stubViewport(1440)
+      useSidePanel().setWidth(480)
+      stubViewport(1100)
+
+      const wrapper = await mountPanel()
+
+      await openPanel()
+
+      const panel = wrapper.get(PANEL)
+
+      expect(panel.attributes('data-layout')).toBe('overlay')
+      expect(panel.classes()).not.toContain('w-[70vw]')
+      expect(panel.attributes('style')).toContain('width: 480px')
+      expect(wrapper.find(SCRIM).exists()).toBe(true)
+      expect(wrapper.find(SEPARATOR).exists()).toBe(false)
+      expect(readRootInset()).toBe('0px')
+    })
+
+    it('docks again from 1128px and publishes the inset', async () => {
+      stubViewport(1128)
+
+      const wrapper = await mountPanel()
+
+      await openPanel()
+
+      expect(wrapper.get(PANEL).attributes('data-layout')).toBe('docked')
+      expect(wrapper.find(SCRIM).exists()).toBe(false)
+      expect(readRootInset()).toBe('360px')
     })
 
     it('renders a scrim that closes the panel when clicked', async () => {

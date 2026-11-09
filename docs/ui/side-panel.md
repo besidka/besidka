@@ -65,9 +65,20 @@ breakpoint keeps the panel open in the new layout.
 
 | Width | Layout | Behaviour |
 | --- | --- | --- |
-| ≥ 64rem (lg) | `docked` | Fixed `aside` on the right, full height. The chat column narrows, the composer re-centres, the nav pill docks on the seam. Not modal |
-| 48rem to 64rem (md) | `overlay` | `w-[70vw]` over the chat with a `bg-black/40` scrim; scrim click or Esc closes; focus trapped; above the pill (`z-[60]`) |
+| ≥ 1128px | `docked` | Fixed `aside` on the right, full height. The chat column narrows, the composer re-centres, the nav pill docks on the seam. Not modal |
+| 48rem to 1128px | `overlay` | Over the chat with a `bg-black/40` scrim; scrim click or Esc closes; focus trapped; above the pill (`z-[60]`). Width `70vw` below lg (64rem); from lg up the saved panel width, at most `70vw`, so it matches the docked width. `--side-panel-width` stays `0px`, so the chat is not narrowed under the scrim |
 | < 48rem | `sheet` | `<dialog class="modal modal-bottom">`, full screen (`100dvh`, safe areas), tools-sheet chrome (grab handle, title, close) |
+
+The docking threshold is `SIDE_PANEL_DOCK_MIN_VIEWPORT` = the minimum panel
+width (360px) plus the minimum chat width (`SIDE_PANEL_MIN_CHAT_WIDTH`, 768px,
+md, where the chat chrome switches to its desktop layout: tools popover
+instead of the sheet, model picker dropdown). It is the same rule as "dock
+only when the viewport minus the clamped panel width is at least 768px":
+`getSidePanelMaxWidth()` never goes below 360px, so below 1128px the chat
+would be narrower than 768px whatever width is saved, and from 1128px the
+clamp always leaves 768px. A unit test checks the equivalence over a grid of
+viewports and saved widths. The first artifact of a streaming generation
+(`useArtifactAutoOpen()`, docked only) therefore opens panels from 1128px.
 
 ### Docked: the width contract
 
@@ -99,13 +110,34 @@ it, so with the panel closed every value resolves to what it was before:
   drag `<html>` has `side-panel-resizing`, which turns their transitions off.
 
 Width: default 480px, clamped to 360px … `min(60% of the viewport, viewport −
-560px)` so the chat column keeps at least 560px. The panel body and header get
+768px)` so the chat column keeps at least 768px (the maximum is 672px at 1440
+and 512px at 1280). The one clamp serves the seam drag, the keyboard
+Home/End keys and the header width button. The panel body and header get
 `pl-10` while docked, because the pill covers about 28px of the seam.
 
 Full width (Expand): the panel covers the viewport from the left edge to the
 pill gutter (`left-0 pr-20`), the pill returns to its normal place, focus is
 trapped. `--side-panel-width` keeps the docked value, so the chat behind does
 not reflow.
+
+### Why not container queries
+
+Chat, `ChatInput` and the prose components use about 96 `sm:`/`md:`/`lg:`
+variants that follow the viewport, not the column. Letting them follow the
+column with `container-type: inline-size` was rejected (BES-330) for two
+reasons:
+
+- Inline-size containment applies layout containment, which makes the
+  container the containing block for `position: fixed` descendants. The fixed
+  composer and other fixed elements in the column would move.
+- Chat, `ChatInput` and the prose components are reused on `/shared/<id>`
+  and the landing. Every reuse site would need a container ancestor, or its
+  responsive styles would silently stop working.
+
+Revisit only with a narrowly scoped container query on the message list,
+never wrapping the fixed composer, and measure first. Until then the overlay
+threshold above is the fix: the chat never renders its desktop layout in a
+mobile-width column.
 
 ### No scroll jump
 
@@ -129,7 +161,7 @@ next frame.
   to the minimum/maximum.
 - Single pointer without dragging (SC 2.5.7): the header width button
   (`lucide:move-horizontal`) cycles 360 → 480 → 640px, clamped to the
-  viewport. Keyboard arrows alone would not satisfy 2.5.7.
+  viewport (360 → 480 → 512 at 1280). Keyboard arrows alone would not satisfy 2.5.7.
 
 The width is stored with `usePreferenceStorage()` under
 `besidka:side-panel-width`, a **Preferences** key: it is registered in the
@@ -144,7 +176,7 @@ manager view toggle.
 | --- | --- | --- | --- |
 | Docked | Panel (`tabindex="-1"`) | No | Closes, only while focus is inside the panel (Esc in the composer or a picker popover belongs to them) |
 | Docked full width | Panel | Yes | First Esc collapses, second closes |
-| Overlay | Panel | Yes | Closes |
+| Overlay (below 1128px) | Panel | Yes | Closes |
 | Sheet | `modal-box`, explicitly after `showModal()` (iOS ignores `autofocus`, and focusing a field would open the keyboard) | Native dialog | Native `cancel`, handled as close |
 
 Esc is ignored while another `<dialog>` is open (for example the share modal
