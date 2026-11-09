@@ -5,7 +5,11 @@ import {
   enforceArtifactStorageWriteLimit,
   putArtifactStorageValue,
 } from '~~/server/utils/artifacts/viewer-storage'
-import { resolveArtifactStorageRequest } from '~~/server/utils/artifacts/viewer-storage-request'
+import { ARTIFACT_STORAGE_BODY_MAX_BYTES } from '#shared/utils/artifacts'
+import {
+  assertRequestBodyLength,
+  resolveArtifactStorageRequest,
+} from '~~/server/utils/artifacts/viewer-storage-request'
 import { requireFeature } from '~~/server/utils/features/guards'
 
 const bodySchema = z.object({
@@ -30,6 +34,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  assertRequestBodyLength(event, ARTIFACT_STORAGE_BODY_MAX_BYTES)
+  await enforceArtifactStorageWriteLimit(event, scope, logger)
+
   const body = await readValidatedBody(event, bodySchema.safeParse)
 
   if (!body.success) {
@@ -39,8 +46,6 @@ export default defineEventHandler(async (event) => {
       why: body.error.message,
     })
   }
-
-  await enforceArtifactStorageWriteLimit(event, scope)
 
   const totals = await putArtifactStorageValue({
     ...scope,

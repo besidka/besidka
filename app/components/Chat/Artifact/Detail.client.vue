@@ -769,10 +769,13 @@ async function onResetStorage() {
     return
   }
 
+  const reset = resetArtifactStorage(artifactId)
+
+  frameKey.value += 1
+
   try {
-    await resetArtifactStorage(artifactId)
+    await reset
     storageState.value = { ...storageState.value, keys: 0, bytes: 0 }
-    frameKey.value += 1
     useSuccessMessage('Saved progress reset')
   } catch (exception) {
     const parsedException = parseError(exception)

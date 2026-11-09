@@ -716,6 +716,8 @@ describe('createArtifactStorageSession', () => {
       ['a key with a space', 'bad key'],
       ['a key with a slash', 'a/b'],
       ['a key over 128 characters', 'k'.repeat(129)],
+      ['a single dot', '.'],
+      ['two dots', '..'],
     ])('rejects %s without any request', async (_label, key) => {
       const { handlers } = createArtifactStorageSession({
         artifactId: nextArtifactId(),
@@ -789,6 +791,21 @@ describe('createArtifactStorageSession', () => {
         expect((failure as RpcError).code).toBe(ERROR_CODES.invalidParams)
         expect(fetchMock).not.toHaveBeenCalled()
       })
+
+    it.each(['...', '.a', 'a.', '..a', 'a..b'])(
+      'accepts the key %s that only contains dots',
+      async (key) => {
+        fetchMock.mockResolvedValueOnce(snapshotOf())
+        fetchMock.mockResolvedValueOnce({ keys: 1, bytes: 1 })
+
+        const { handlers } = createArtifactStorageSession({
+          artifactId: nextArtifactId(),
+        })
+
+        await expect(handlers.set({ key, value: 1 })).resolves.toEqual({})
+        expect(callsWithMethod('PUT')).toHaveLength(1)
+      },
+    )
 
     it('accepts a key of 128 characters', async () => {
       fetchMock.mockResolvedValueOnce(snapshotOf())

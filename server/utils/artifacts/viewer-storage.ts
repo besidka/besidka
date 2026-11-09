@@ -61,7 +61,13 @@ function createStorageFullError(why: string) {
  * stored.
  */
 export function serializeArtifactStorageValue(value: unknown): string {
-  const serialized = value === undefined ? undefined : JSON.stringify(value)
+  let serialized: string | undefined
+
+  try {
+    serialized = value === undefined ? undefined : JSON.stringify(value)
+  } catch {
+    serialized = undefined
+  }
 
   if (serialized === undefined) {
     throw createError({
@@ -213,20 +219,41 @@ export async function resetArtifactStorage(
 /**
  * 120 writes per minute per viewer and artifact, on the same KV limiter as
  * the key routes, so a busy artifact cannot use the parent as a write
- * amplifier.
+ * amplifier. Workers KV takes at most one write per second per key, so two
+ * quick saves can make the counter update fail; the save then goes ahead
+ * (fail open, noted on the wide event), because the byte and key caps in D1
+ * still bound what one viewer can store.
  */
 export async function enforceArtifactStorageWriteLimit(
   event: Pick<RequestEvent, 'res'>,
   scope: Pick<ArtifactStorageScope, 'artifactInternalId' | 'viewerUserId'>,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<void> {
   const storage = createAuthRateLimitStorage(
     useKV(),
     ARTIFACT_STORAGE_RATE_LIMIT_PREFIX,
   )
-  const result = await storage.consume(
-    `${scope.viewerUserId}:${scope.artifactInternalId}`,
-    ARTIFACT_STORAGE_WRITE_LIMIT,
-  )
+  let result: Awaited<ReturnType<typeof storage.consume>>
+
+  try {
+    result = await storage.consume(
+      `${scope.viewerUserId}:${scope.artifactInternalId}`,
+      ARTIFACT_STORAGE_WRITE_LIMIT,
+    )
+  } catch (exception) {
+    logger?.set({
+      attributes: {
+        artifacts: {
+          storageRateLimit: {
+            skipped: 'kv-error',
+            error: exception instanceof Error ? exception.name : 'unknown',
+          },
+        },
+      },
+    })
+
+    return
+  }
 
   if (result.allowed) {
     return

@@ -64,8 +64,16 @@ Limits per (artifact, viewer), `shared/utils/artifacts.ts`:
 | Keys | 64 | 413 `artifact_storage_full`, `why` "64 of 64 keys are used." |
 | Total | 100 KB of `JSON.stringify(value)` bytes | 413, `why` with used and limit |
 | One value | 32 KB | 413 |
-| Key | `^[A-Za-z0-9._:-]{1,128}$` | 400 |
+| Key | `^(?!\.{1,2}$)[A-Za-z0-9._:-]{1,128}$` (`.` and `..` are refused: the URL parser would turn `storage/.` into `storage/`, the reset route) | 400 |
+| Request body | 40 KB by `Content-Length`, checked before the body is read | 413 |
 | Writes (`PUT`, `DELETE`, reset) | 120 per minute, KV prefix `artifact-storage`, keyed `viewer:artifact` | 429 with `Retry-After` |
+
+The write limiter runs before the body is read. Workers KV accepts one
+write per second per key, so two quick saves can make the counter update
+fail; the save then goes ahead (fail open, noted as
+`storageRateLimit.skipped: 'kv-error'`), because the D1 caps still bound
+what a viewer stores. A value too deeply nested for `JSON.stringify` is a
+400.
 
 Totals are read and checked in the same request before the upsert; two
 concurrent writes can overshoot a cap by one value (accepted in the ticket).
@@ -98,8 +106,9 @@ their own text to artifact code:
 
 The actions menu of the detail view shows **Reset saved progress** when the
 storage is persistent and holds at least one key. It asks for confirmation,
-deletes the viewer's rows and remounts the frame so the artifact starts
-fresh.
+starts the reset (queued behind any write in flight), remounts the frame
+at once so the old frame cannot queue a write after the reset, and the new
+frame's snapshot waits for the reset.
 
 ## Retention
 
