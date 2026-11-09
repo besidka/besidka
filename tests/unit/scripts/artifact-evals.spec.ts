@@ -3,8 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  DEFAULT_FAILED_CASE_ESTIMATE_USD,
   DEFAULT_PROMPTS_PATH,
+  attachChatToError,
   computeUsageCost,
+  recoverFailedCaseUsage,
   findStreamError,
   loadEvalCases,
   parseArtifactWrites,
@@ -334,5 +337,83 @@ describe('result files', () => {
         command: 'run',
         options: { 'models': 'a,b', 'base-url': 'http://x' },
       })
+  })
+})
+
+describe('failed case cost', () => {
+  const billedChat = {
+    messages: [
+      { role: 'user', usage: null },
+      {
+        role: 'assistant',
+        usage: {
+          inputTokens: 100,
+          outputTokens: 50,
+          inputCost: 0.01,
+          outputCost: 0.02,
+        },
+      },
+    ],
+  }
+
+  it('charges nothing when the chat was never created', async () => {
+    const usage = await recoverFailedCaseUsage(async () => {
+      throw new Error('not called')
+    }, new Error('create failed'))
+
+    expect(usage).toEqual({
+      costUsd: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      estimated: false,
+    })
+  })
+
+  it('charges what the chat recorded before the failure', async () => {
+    const error = attachChatToError(new Error('stream error'), 'chat-1', true)
+    const usage = await recoverFailedCaseUsage(async (slug) => {
+      expect(slug).toBe('chat-1')
+
+      return billedChat
+    }, error)
+
+    expect(usage).toEqual({
+      costUsd: 0.03,
+      inputTokens: 100,
+      outputTokens: 50,
+      estimated: false,
+    })
+  })
+
+  it('charges the estimate when the chat cannot be read', async () => {
+    const error = attachChatToError('timeout', 'chat-1', true)
+    const usage = await recoverFailedCaseUsage(async () => {
+      throw new Error('fetch failed')
+    }, error, 0.25)
+
+    expect(error).toBeInstanceOf(Error)
+    expect(usage.costUsd).toBe(0.25)
+    expect(usage.estimated).toBe(true)
+  })
+
+  it('charges the estimate when a send started but no cost is stored yet',
+    async () => {
+      const error = attachChatToError(new Error('timeout'), 'chat-1', true)
+      const usage = await recoverFailedCaseUsage(async () => {
+        return { messages: [{ role: 'user', usage: null }] }
+      }, error)
+
+      expect(usage.costUsd).toBe(DEFAULT_FAILED_CASE_ESTIMATE_USD)
+      expect(usage.estimated).toBe(true)
+    })
+
+  it('charges nothing when the failure came before any send', async () => {
+    const error = attachChatToError(new Error('chat fetch'), 'chat-1', false)
+    const usage = await recoverFailedCaseUsage(async () => {
+      return { messages: [] }
+    }, error)
+
+    expect(usage.costUsd).toBe(0)
+    expect(usage.estimated).toBe(false)
   })
 })
