@@ -149,6 +149,16 @@ describe('pages/a/[token]', () => {
       })
     })
 
+  it('keys the fetch by token, so another link never shows cached data',
+    async () => {
+      await mountPage()
+
+      const [, options] = mocks.useFetch.mock.calls[0]!
+
+      expect(typeof options.key).toBe('function')
+      expect(options.key()).toBe(`artifact-share-current:${TOKEN}`)
+    })
+
   it('is noindex, marked AI-generated and keeps the global canonical',
     () => {
       const source = readPageSource()

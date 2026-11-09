@@ -181,10 +181,9 @@ const shareHeaders = computed<Record<string, string>>(() => {
 const { data: share, error, status, refresh } = await useFetch(
   '/api/v1/artifact-shares/current',
   {
-    key: 'artifact-share-current',
+    key: () => `artifact-share-current:${token.value}`,
     server: false,
     headers: shareHeaders,
-    watch: [token],
   },
 )
 

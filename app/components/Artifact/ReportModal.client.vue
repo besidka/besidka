@@ -508,6 +508,7 @@ const props = defineProps<{
   title: string
   endpoint: string
   headers?: Record<string, string>
+  version?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -603,14 +604,24 @@ const detailsPlaceholder = computed<string>(() => {
 })
 
 const emailHint = computed<string>(() => {
-  return isContactOptional.value
-    ? 'You can report this without your name or email.'
+  if (isContactOptional.value) {
+    return 'You can report this without your name or email.'
+  }
+
+  return loggedIn.value
+    ? 'We send the receipt to your account email and the decision to this '
+    + 'address.'
     : 'We send a receipt and the decision to this address.'
 })
 
 const successText = computed<string>(() => {
+  if (loggedIn.value) {
+    return 'Thank you. A person will review it, and a receipt goes to your '
+      + 'account email.'
+  }
+
   return receiptEmail.value
-    ? `Thank you. A person will review it, and we sent a receipt to `
+    ? `Thank you. A person will review it, and a receipt goes to `
     + `${receiptEmail.value}.`
     : 'Thank you. A person will review it.'
 })
@@ -745,6 +756,7 @@ function buildBody(turnstileToken: string) {
     ...(email ? { reporterEmail: email } : {}),
     goodFaith: true,
     ...(turnstileToken ? { turnstileToken } : {}),
+    ...(props.version ? { version: props.version } : {}),
     ...(reason.value === 'copyright'
       ? {
         copyright: {

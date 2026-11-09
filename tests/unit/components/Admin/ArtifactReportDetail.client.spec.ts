@@ -73,6 +73,8 @@ function createDetail(
     decisionStatement: null,
     receiptSentAt: '2026-11-09T10:00:01.000Z',
     locationUrl: 'https://besidka.test/a/token-1',
+    reportedVersion: null,
+    currentVersion: 2,
     previewVersion: 2,
     ...overrides,
   }
@@ -155,6 +157,32 @@ describe('Admin/ArtifactReportDetail.client', () => {
         title: 'Capitals quiz',
         content: '<p>Quiz</p>',
       })
+    })
+
+  it('opens on the reported version and lets the admin pick another',
+    async () => {
+      const { wrapper } = await mountDetail(createDetail({
+        reportedVersion: 1,
+        previewVersion: 1,
+      }))
+      const select = wrapper.get(
+        '[data-testid="admin-report-preview-version"]',
+      )
+
+      expect(select.findAll('option').map(option => option.text()))
+        .toEqual(['v1 (reported)', 'v2'])
+      expect((select.element as HTMLSelectElement).value).toBe('1')
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/admin/artifacts/ArtifactPublicId1/versions/1',
+      )
+
+      await select.setValue('2')
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        '/api/v1/admin/artifacts/ArtifactPublicId1/versions/2',
+      )
+      expect(mocks.frameProps.at(-1)?.version).toBe(2)
     })
 
   it('sends a takedown decision with the scope and statement', async () => {

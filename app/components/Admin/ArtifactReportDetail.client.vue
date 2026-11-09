@@ -157,24 +157,40 @@
       </section>
 
       <section
-        v-if="report.previewVersion && report.artifact"
+        v-if="selectedPreviewVersion && report.artifact"
         class="grid gap-1"
       >
-        <h3 class="text-sm font-medium">
-          Preview (v{{ report.previewVersion }}, read only)
-        </h3>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-sm font-medium">
+            Preview (read only)
+          </h3>
+          <select
+            v-model.number="selectedPreviewVersion"
+            class="select select-sm w-auto"
+            aria-label="Preview version"
+            data-testid="admin-report-preview-version"
+          >
+            <option
+              v-for="version in previewVersionOptions"
+              :key="version"
+              :value="version"
+            >
+              {{ previewVersionLabel(version) }}
+            </option>
+          </select>
+        </div>
         <div
           class="relative h-80 overflow-hidden rounded-box border border-base-300 bg-base-100"
           data-testid="admin-report-preview"
         >
           <ChatArtifactFrame
             v-if="previewResult"
-            :key="`${report.artifact.id}:${report.previewVersion}`"
+            :key="`${report.artifact.id}:${selectedPreviewVersion}`"
             :title="previewResult.title"
             :result="previewResult"
             :partial="null"
             :artifact-id="null"
-            :version="report.previewVersion"
+            :version="selectedPreviewVersion"
             source="shared"
           />
           <p
@@ -340,6 +356,7 @@ const isActing = shallowRef<boolean>(false)
 const isRestoring = shallowRef<boolean>(false)
 const previewResult = shallowRef<ToolResultContent | null>(null)
 const previewError = shallowRef<string>('')
+const selectedPreviewVersion = shallowRef<number | null>(null)
 
 const { data: report, status, error, refresh } = useLazyFetch(
   () => `/api/v1/admin/artifact-reports/${props.reportId}`,
@@ -365,11 +382,25 @@ const canRestore = computed<boolean>(() => {
   return !!value.artifact.takedownAt || value.share?.status === 'taken-down'
 })
 
+const previewVersionOptions = computed<number[]>(() => {
+  const currentVersion = report.value?.currentVersion ?? 0
+
+  return Array.from({ length: currentVersion }, (_item, index) => {
+    return index + 1
+  })
+})
+
 const restoreLabel = computed<string>(() => {
   return report.value?.artifact?.takedownAt
     ? 'Restore artifact'
     : 'Restore link'
 })
+
+function previewVersionLabel(version: number): string {
+  return version === report.value?.reportedVersion
+    ? `v${version} (reported)`
+    : `v${version}`
+}
 
 function describeOwner(value: AdminArtifactReportDetail): string {
   if (!value.artifact) {
@@ -389,19 +420,26 @@ function describeReporter(value: AdminArtifactReportDetail): string {
   return parts.length > 0 ? parts.join(' · ') : 'Anonymous'
 }
 
-async function loadPreview(value: AdminArtifactReportDetail | null) {
+async function loadPreview(artifactId: string | null, version: number | null) {
   previewResult.value = null
   previewError.value = ''
 
-  if (!value?.artifact || !value.previewVersion) {
+  if (!artifactId || !version) {
     return
   }
 
   try {
     const content = await $fetch<ArtifactVersionContent>(
-      `/api/v1/admin/artifacts/${encodeURIComponent(value.artifact.id)}`
-      + `/versions/${value.previewVersion}`,
+      `/api/v1/admin/artifacts/${encodeURIComponent(artifactId)}`
+      + `/versions/${version}`,
     )
+
+    if (
+      report.value?.artifact?.id !== artifactId
+      || selectedPreviewVersion.value !== version
+    ) {
+      return
+    }
 
     previewResult.value = {
       kind: content.kind,
@@ -419,8 +457,16 @@ watch(report, (value) => {
     scope.value = value.share ? 'share' : 'all-shares'
   }
 
-  loadPreview(value ?? null)
+  selectedPreviewVersion.value = value?.previewVersion ?? null
 }, { immediate: true })
+
+watch(
+  [() => report.value?.artifact?.id ?? null, selectedPreviewVersion],
+  ([artifactId, version]) => {
+    loadPreview(artifactId, version)
+  },
+  { immediate: true },
+)
 
 async function afterChange() {
   await refresh()

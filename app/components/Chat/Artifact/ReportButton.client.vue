@@ -18,6 +18,7 @@
       v-model:open="isOpen"
       :title="title"
       :endpoint="endpoint"
+      :version="version"
     />
   </div>
 </template>
@@ -27,6 +28,7 @@ const props = defineProps<{
   shareSlug: string
   artifactId: string
   title: string
+  version?: number | null
 }>()
 
 const isOpen = shallowRef<boolean>(false)

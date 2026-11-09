@@ -27,6 +27,7 @@
         :share-slug="state.shareSlug"
         :artifact-id="state.artifactId"
         :title="displayTitle"
+        :version="selectedVersion"
       />
     </section>
     <div class="flex shrink-0 flex-wrap items-center gap-2">

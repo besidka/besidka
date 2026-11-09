@@ -13,6 +13,7 @@ mockComponent('ArtifactReportModal', () => {
       title: { type: String, required: true },
       endpoint: { type: String, required: true },
       headers: { type: Object, default: undefined },
+      version: { type: Number, default: null },
     },
     setup(props) {
       return () => h('div', {
@@ -21,6 +22,7 @@ mockComponent('ArtifactReportModal', () => {
         'data-endpoint': props.endpoint,
         'data-title': props.title,
         'data-has-headers': String(!!props.headers),
+        'data-version': String(props.version),
       })
     },
   })
@@ -62,5 +64,15 @@ describe('Chat/Artifact/ReportButton.client', () => {
       )
       expect(modal().attributes('data-title')).toBe('Quiz')
       expect(modal().attributes('data-has-headers')).toBe('false')
+      expect(modal().attributes('data-version')).toBe('null')
     })
+
+  it('passes the version shown in the panel to the modal', async () => {
+    const wrapper = await mountSuspended(ReportButton, {
+      props: { ...props, version: 2 },
+    })
+
+    expect(wrapper.get('[data-testid="report-modal-stub"]')
+      .attributes('data-version')).toBe('2')
+  })
 })

@@ -6,6 +6,8 @@ describe('isArtifactShareLocation', () => {
   it.each([
     [{ path: '/a/token-1' }, true],
     [{ path: '/a/' }, true],
+    [{ path: '/A/token-1' }, true],
+    [{ path: '/signin', query: { next: '/A/token-1' } }, true],
     [{ path: '/signin', query: { next: '/a/token-1' } }, true],
     [{ path: '/signup', query: { next: ['/a/token-1'] } }, true],
     [{ path: '/signin', query: { next: '/chats/new' } }, false],

@@ -44,6 +44,7 @@ function byTestId(testId: string) {
 
 async function mountModal(options: {
   headers?: Record<string, string>
+  version?: number | null
 } = {}) {
   const wrapper = await mountSuspended(ReportModal, {
     props: {
@@ -54,6 +55,7 @@ async function mountModal(options: {
       'title': 'Quiz',
       'endpoint': ENDPOINT,
       'headers': options.headers,
+      'version': options.version,
     },
     global: {
       stubs: {
@@ -211,6 +213,38 @@ describe('Artifact/ReportModal.client', () => {
     expect(wrapper.find(byTestId('artifact-report-success')).text())
       .toContain('ann@example.test')
   })
+
+  it('sends the version shown in the panel', async () => {
+    const wrapper = await mountModal({ version: 3 })
+
+    await fillValidForm(wrapper)
+    await submit(wrapper)
+
+    const [, options] = mocks.fetch.mock.calls[0]!
+
+    expect(options.body.version).toBe(3)
+  })
+
+  it('tells a signed-in reporter the receipt goes to the account email',
+    async () => {
+      loggedIn.value = true
+      user.value = { name: 'Signed In', email: 'signed@example.test' }
+
+      const wrapper = await mountModal()
+
+      expect(wrapper.text()).toContain(
+        'We send the receipt to your account email and the decision to this '
+        + 'address.',
+      )
+
+      await fillValidForm(wrapper)
+      await submit(wrapper)
+
+      expect(wrapper.get(byTestId('artifact-report-success')).text())
+        .toContain('a receipt goes to your account email')
+      expect(wrapper.get(byTestId('artifact-report-success')).text())
+        .not.toContain('ann@example.test')
+    })
 
   it('lets a csam report go without name or email', async () => {
     const wrapper = await mountModal()

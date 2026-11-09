@@ -18,9 +18,12 @@ function readNextQuery(query: AnalyticsLocation['query']): string {
 /**
  * Public artifact links (`/a/<token>`) and pages that carry one in `next`
  * (sign-in from a link) hold the share token in their URL, so analytics
- * must never see them.
+ * must never see them. The prefix is matched in any case, because the
+ * router opens `/A/<token>` as the same page.
  */
 export function isArtifactShareLocation(location: AnalyticsLocation): boolean {
-  return location.path.startsWith(ARTIFACT_SHARE_PATH_PREFIX)
-    || readNextQuery(location.query).startsWith(ARTIFACT_SHARE_PATH_PREFIX)
+  return location.path.toLowerCase().startsWith(ARTIFACT_SHARE_PATH_PREFIX)
+    || readNextQuery(location.query)
+      .toLowerCase()
+      .startsWith(ARTIFACT_SHARE_PATH_PREFIX)
 }
