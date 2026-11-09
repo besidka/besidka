@@ -189,6 +189,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `DEFAULT true` flag question
 - `docs/email.md` - Transactional email (Cloudflare Email Sending binding):
   architecture, config, testing, and the Resend-revert runbook
+- `docs/mail-alerts.md` - Phone push for mail to `privacy@`, `abuse@`,
+  `security@` and `contact@` (TCO one-hour rule, 72-hour breach clock): the
+  `besidka-mail-alerts` Email Worker (`workers/mail-alerts/`) forwards first,
+  exactly like the old Email Routing rule, then calls the HMAC-signed internal
+  route `/api/v1/internal/mail-alert` over a service binding, which pushes to
+  every admin; urgency rules (keywords, DMARC-checked authority domains), the
+  2-minute KV collapse, what is logged (mailbox, urgent, outcome only), the
+  legal note (no Privacy Policy change, no new Art. 30 row), the
+  `MAIL_ALERTS_DEPLOY_ENABLED` CI gate, and the owner runbook (secrets, test
+  rule, `cf email-routing rules update` per mailbox, restore to forward)
 - `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,
   components, Studio local-vs-preview-vs-prod flow, deploy runbook
 - `docs/landing-production-todo.md` - Owner checklist of remaining manual steps

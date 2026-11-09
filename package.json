@@ -18,7 +18,7 @@
 		"generate": "nuxt generate",
 		"dev:prepare": "nuxt prepare",
 		"typecheck": "wrangler types > /dev/null && nuxt typecheck && pnpm run typecheck:artifacts",
-		"typecheck:artifacts": "tsc --noEmit -p packages/artifacts-protocol && tsc --noEmit -p workers/artifacts-runtime",
+		"typecheck:artifacts": "tsc --noEmit -p packages/artifacts-protocol && tsc --noEmit -p workers/artifacts-runtime && tsc --noEmit -p workers/mail-alerts",
 		"artifacts:build": "pnpm --filter artifacts-runtime build",
 		"artifacts:dev": "pnpm --filter artifacts-runtime dev",
 		"test:e2e:artifacts": "playwright test -c playwright.artifacts.config.ts",

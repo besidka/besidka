@@ -145,6 +145,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',
   ]
+  const mailAlertsTests = [
+    'tests/unit/utils/mail-alert-protocol.spec.ts',
+    'tests/unit/workers/mail-alerts/classify.spec.ts',
+    'tests/unit/workers/mail-alerts/main.spec.ts',
+    'tests/unit/server/utils/mail-alerts/notify.spec.ts',
+    'tests/unit/server/api/v1/internal/mail-alert/index.post.spec.ts',
+    'tests/unit/server/utils/features/schedule-notify.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/profile-settings-legal-notices.spec.ts',
@@ -2942,6 +2950,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(workers\/artifacts-runtime\/|packages\/artifacts-protocol\/|tests\/e2e-artifacts\/|playwright\.artifacts\.config\.ts$)/,
       tests: artifactsRuntimeTests,
+    },
+    {
+      pattern:
+        /^(workers\/mail-alerts\/.*|shared\/utils\/mail-alert-protocol\.ts|server\/utils\/mail-alerts\/.*\.ts|server\/api\/v1\/internal\/mail-alert\/.*\.ts|server\/utils\/push\.ts|server\/utils\/features\/(admin-recipients|admin-queries|schedule-notify)\.ts)$/,
+      tests: mailAlertsTests,
     },
     {
       pattern:
