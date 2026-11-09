@@ -201,6 +201,15 @@ is missed first.
   `push/subscribe.post.ts`) specifically to avoid duplicate notifications
   when one account has subscriptions from multiple PR-preview subdomains,
   since all previews share one D1 database.
+- **Delivery options**: `sendPushNotificationToUser` takes an optional last
+  argument `{ ttl, urgency }` (RFC 8030). The default is
+  `DEFAULT_PUSH_DELIVERY` (`ttl: 300`, `urgency: 'normal'`), which every
+  user-facing push keeps.
+- **Mail alerts to admins** (`internal/mail-alert/index.post.ts`, see
+  `docs/mail-alerts.md`): the one push whose body is not a fixed string. It
+  goes only to admins, about mail sent to the controller's own mailboxes, and
+  carries a sanitised subject of at most 80 characters (encrypted end to end
+  like every payload). Urgent mail uses `urgency: 'high'` and `ttl: 600`.
 
 ## Service worker behavior (`app/service-worker/`)
 
