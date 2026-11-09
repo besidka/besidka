@@ -7,6 +7,7 @@ import {
   MAX_COMPLETE_OUTPUT_TOKENS,
   MAX_CLIPBOARD_TEXT_LENGTH,
   MAX_COMPLETE_PROMPT_LENGTH,
+  MAX_COMPLETE_SYSTEM_LENGTH,
   MAX_DIAGRAM_SOURCE_LENGTH,
   MAX_FRAME_HEIGHT,
   MAX_JSON_DEPTH,
@@ -372,11 +373,14 @@ export function isCompleteParams(value: unknown): value is CompleteParams {
     && typeof value.prompt === 'string'
     && value.prompt.length > 0
     && value.prompt.length <= MAX_COMPLETE_PROMPT_LENGTH
-    && (value.maxOutputTokens === undefined
-      || (typeof value.maxOutputTokens === 'number'
-        && Number.isInteger(value.maxOutputTokens)
-        && value.maxOutputTokens > 0
-        && value.maxOutputTokens <= MAX_COMPLETE_OUTPUT_TOKENS))
+    && (value.system === undefined
+      || (typeof value.system === 'string'
+        && value.system.length <= MAX_COMPLETE_SYSTEM_LENGTH))
+      && (value.maxOutputTokens === undefined
+        || (typeof value.maxOutputTokens === 'number'
+          && Number.isInteger(value.maxOutputTokens)
+          && value.maxOutputTokens > 0
+          && value.maxOutputTokens <= MAX_COMPLETE_OUTPUT_TOKENS))
 }
 
 export function isCompleteResult(value: unknown): value is CompleteResult {

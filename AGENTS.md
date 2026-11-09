@@ -595,6 +595,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the per-artifact write queue and error-code mapping, Reset saved progress,
   and the hourly non-owner purge (30 days after the last share ended,
   takedown, deleted artifact)
+- `docs/artifacts/llm-bridge.md` - The artifact LLM bridge (A-6):
+  `window.besidka.complete(prompt, { system, maxOutputTokens })` on the
+  viewer's own direct provider key, who gets it (signed in, flag plus Labs
+  opt-in, own chat), the confirmation modal (full prompt and system text,
+  invisible characters revealed, cost estimate, remaining calls, Cancel
+  focused, keyboard guard, session-only "Don't ask again"), the server order
+  (consent before key before caps before the provider), caps (200 per day,
+  30 per hour per artifact), 502 for provider errors, id-only logging and
+  `artifact_bridge_call` analytics, the `resolve-cheapest-model` extraction
+  from memory, and the JSON-RPC error codes
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a

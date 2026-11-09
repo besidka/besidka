@@ -148,7 +148,13 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e-artifacts/code-blocks.spec.ts',
     'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
   ]
+  const artifactsBridgeServerTests = [
+    'tests/integration/api/artifact-complete.spec.ts',
+    'tests/integration/api/artifact-bridge-models.spec.ts',
+    'tests/unit/server/utils/ai/resolve-cheapest-model.spec.ts',
+  ]
   const artifactsCoreTests = [
+    ...artifactsBridgeServerTests,
     'tests/unit/server/utils/artifacts/store.spec.ts',
     'tests/unit/server/utils/artifacts/access.spec.ts',
     'tests/unit/server/utils/artifacts/viewer-storage-retention.spec.ts',
@@ -172,8 +178,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/composables/artifacts.spec.ts',
     'tests/unit/composables/artifact-storage.spec.ts',
+    'tests/unit/composables/artifact-bridge.spec.ts',
+    'tests/unit/components/Chat/Artifact/BridgeConfirm.client.spec.ts',
     'tests/unit/utils/artifact-export.spec.ts',
     'tests/unit/utils/artifact-parts.spec.ts',
+    'tests/unit/utils/artifact-bridge.spec.ts',
     'tests/e2e/chat/artifacts-panel.spec.ts',
   ]
   const artifactsChatTests = [
@@ -2898,7 +2907,15 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/memory\/catalog-usability\.ts$/,
-      tests: [...memoryModelTests, ...profileSettingsTests],
+      tests: [
+        ...memoryModelTests,
+        ...profileSettingsTests,
+        ...artifactsBridgeServerTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/resolve-cheapest-model\.ts$/,
+      tests: [...memoryModelTests, ...artifactsBridgeServerTests],
     },
     {
       pattern: /^server\/utils\/memory\/validate-model-choice\.ts$/,
@@ -3008,7 +3025,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/artifact(s|-host-actions|-storage)\.ts|app\/utils\/artifact-(export|parts)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
+        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client|BridgeConfirm\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/artifact(s|-host-actions|-storage|-bridge)\.ts|app\/utils\/artifact-(export|parts|bridge)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
       tests: artifactsUiTests,
     },
     {

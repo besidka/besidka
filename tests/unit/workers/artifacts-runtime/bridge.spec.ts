@@ -126,6 +126,141 @@ describe('window.besidka bridge', () => {
     )
   })
 
+  it('sends the system text with the prompt and the token limit', async () => {
+    const connection = createConnection(() => {
+      return { text: 'Answer' }
+    })
+    const api = createBesidkaApi(connection, {
+      storage: 'memory',
+      complete: true,
+    })
+
+    expect(await api.complete('Question', {
+      system: 'Answer in French.',
+      maxOutputTokens: 200,
+    })).toBe('Answer')
+    expect(connection.request).toHaveBeenCalledWith(
+      METHODS.complete,
+      {
+        prompt: 'Question',
+        system: 'Answer in French.',
+        maxOutputTokens: 200,
+      },
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    )
+  })
+
+  it('sends the system text alone without a token limit', async () => {
+    const connection = createConnection(() => {
+      return { text: 'Answer' }
+    })
+    const api = createBesidkaApi(connection, {
+      storage: 'memory',
+      complete: true,
+    })
+
+    await api.complete('Question', { system: 'Be brief' })
+
+    expect(vi.mocked(connection.request).mock.calls[0]![1])
+      .toEqual({ prompt: 'Question', system: 'Be brief' })
+  })
+
+  it('sends only the prompt when no options are given', async () => {
+    const connection = createConnection(() => {
+      return { text: 'Answer' }
+    })
+    const api = createBesidkaApi(connection, {
+      storage: 'memory',
+      complete: true,
+    })
+
+    await api.complete('Question')
+    await api.complete('Question', {})
+    await api.complete('Question', { system: '' })
+
+    for (const [, params] of vi.mocked(connection.request).mock.calls) {
+      expect(params).toEqual({ prompt: 'Question' })
+    }
+  })
+
+  it('accepts a system text of exactly 2000 characters', async () => {
+    const connection = createConnection(() => {
+      return { text: 'Answer' }
+    })
+    const api = createBesidkaApi(connection, {
+      storage: 'memory',
+      complete: true,
+    })
+
+    await expect(api.complete('Question', { system: 'x'.repeat(2000) }))
+      .resolves.toBe('Answer')
+  })
+
+  it('throws a TypeError for a system text over 2000 characters',
+    async () => {
+      const connection = createConnection(() => {
+        return { text: 'Answer' }
+      })
+      const api = createBesidkaApi(connection, {
+        storage: 'memory',
+        complete: true,
+      })
+
+      await expect(api.complete('Question', { system: 'x'.repeat(2001) }))
+        .rejects.toThrow(TypeError)
+      await expect(api.complete('Question', { system: 'x'.repeat(2001) }))
+        .rejects.toThrow('at most 2000 characters')
+      expect(connection.request).not.toHaveBeenCalled()
+    })
+
+  it.each([42, null, ['a'], { text: 'a' }, true])(
+    'throws a TypeError for a system value of %j',
+    async (system) => {
+      const connection = createConnection(() => {
+        return { text: 'Answer' }
+      })
+      const api = createBesidkaApi(connection, {
+        storage: 'memory',
+        complete: true,
+      })
+
+      await expect(api.complete('Question', { system } as never))
+        .rejects.toThrow(TypeError)
+      expect(connection.request).not.toHaveBeenCalled()
+    },
+  )
+
+  it('keeps refusing an invalid prompt or token limit', async () => {
+    const connection = createConnection(() => {
+      return { text: 'Answer' }
+    })
+    const api = createBesidkaApi(connection, {
+      storage: 'memory',
+      complete: true,
+    })
+
+    await expect(api.complete('x'.repeat(8001))).rejects.toThrow(TypeError)
+    await expect(api.complete('Question', { maxOutputTokens: 2001 }))
+      .rejects.toThrow(TypeError)
+    await expect(api.complete('Question', { maxOutputTokens: 0 }))
+      .rejects.toThrow(TypeError)
+    expect(connection.request).not.toHaveBeenCalled()
+  })
+
+  it('does not send anything when completions are unavailable', async () => {
+    const connection = createConnection(() => {
+      return { text: 'Answer' }
+    })
+    const api = createBesidkaApi(connection, {
+      storage: 'memory',
+      complete: false,
+    })
+
+    await expect(api.complete('Question', { system: 'Be brief' }))
+      .rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    expect(connection.request).not.toHaveBeenCalled()
+  })
+
   it('is frozen', () => {
     const api = createBesidkaApi(createConnection(() => {
       return {}

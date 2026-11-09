@@ -112,7 +112,8 @@ The detail view:
   `artifacts.storage` flag and a saved artifact, else `memory`, in which case
   no storage handler is passed and the runtime keeps values in its own memory
   (`docs/artifacts/viewer-storage.md`). `complete` is `false` and
-  `besidka/complete` answers `-32601` until the LLM bridge (A-6).
+  `complete` is `true` with the LLM bridge (`docs/artifacts/llm-bridge.md`),
+  else no handler is passed and `besidka/complete` answers `-32601`.
 - Sends `ui/notifications/tool-input-partial` at most every 250ms while
   streaming and `ui/notifications/tool-result` for a stored version, on the
   same iframe (no reload per version). Theme and display mode changes go out

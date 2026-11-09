@@ -125,6 +125,7 @@ export interface StorageListResult {
 
 export interface CompleteParams {
   prompt: string
+  system?: string
   maxOutputTokens?: number
 }
 
