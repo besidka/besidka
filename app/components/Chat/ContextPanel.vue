@@ -237,25 +237,29 @@
               </button>
             </li>
           </ul>
-          <NuxtLink
+          <div
             v-if="group.id === 'outputs' && hasAllArtifactsLink"
-            to="/chats/artifacts"
-            class="chat-context-row text-sm"
-            data-testid="chat-context-all-artifacts"
-            @click="close"
+            class="mt-2 border-t border-base-300 pt-2"
           >
-            <Icon
-              name="lucide:app-window"
-              size="14"
-              class="shrink-0"
-            />
-            <span class="grow">All artifacts</span>
-            <Icon
-              name="lucide:arrow-right"
-              size="12"
-              class="shrink-0 text-base-content/50"
-            />
-          </NuxtLink>
+            <NuxtLink
+              to="/chats/artifacts"
+              class="chat-context-row min-h-11 text-sm"
+              data-testid="chat-context-all-artifacts"
+              @click="close"
+            >
+              <Icon
+                name="lucide:app-window"
+                size="14"
+                class="shrink-0"
+              />
+              <span class="grow">All artifacts</span>
+              <Icon
+                name="lucide:arrow-right"
+                size="12"
+                class="shrink-0 text-base-content/50"
+              />
+            </NuxtLink>
+          </div>
         </div>
       </section>
     </template>
