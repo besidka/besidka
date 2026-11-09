@@ -1,89 +1,106 @@
-import type { HighlighterGeneric, ThemedToken } from 'shiki'
-// Use `full` when bundle size is not an issue
-// https://shiki.style/guide/bundles
-// import { createHighlighter, bundledLanguages } from 'shiki/bundle/full'
-import { createHighlighter, bundledLanguages } from 'shiki/bundle/web'
-import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import type { ThemedToken } from 'shiki/core'
+import type { ShikiStreamTokenizer } from '@shikijs/stream'
+import type {
+  CodeHighlighterPool,
+  ResolvedCodeHighlighter,
+} from '~/utils/code-highlight'
 
-let highlighter: HighlighterGeneric<any, any> | null = null
+interface ClientHighlighting {
+  pool: CodeHighlighterPool
+  Tokenizer: typeof ShikiStreamTokenizer
+}
 
-let promise: Promise<HighlighterGeneric<any, any>> | null = null
-
-const STATIC_TOKENS_CACHE_LIMIT = 24
-
-const staticTokensCache = new Map<string, ThemedToken[][]>()
+let clientHighlighting: Promise<ClientHighlighting> | null = null
 
 /**
- * The highlighter when it has already loaded, so a component can colour code
- * on its first render instead of waiting a tick.
+ * Shiki is imported only here, dynamically, and only in the client build.
+ * A static import from code the server can reach would ship its grammars
+ * and themes in the Worker, where they never run. See
+ * docs/code-highlighting.md.
  */
-export function getLoadedHighlighter(): HighlighterGeneric<any, any> | null {
-  return highlighter
-}
-
-interface StaticTokensInput {
-  highlighter: HighlighterGeneric<any, any>
-  code: string
-  lang: string
-  theme: string
-}
-
-function getStaticTokensKey(input: StaticTokensInput): string {
-  return `${input.lang}\u0000${input.theme}\u0000${input.code}`
-}
-
-export function getCachedStaticTokens(
-  input: StaticTokensInput,
-): ThemedToken[][] | null {
-  return staticTokensCache.get(getStaticTokensKey(input)) ?? null
-}
-
-/**
- * Tokenizes finished code once and keeps the result for the same code,
- * language and theme. Unlike the streaming renderer, which re-renders once
- * per token and so grows quadratically with the length of a block, this is
- * one pass: use it for code that is complete, such as an artifact version.
- */
-export function highlightStaticCode(
-  input: StaticTokensInput,
-): ThemedToken[][] {
-  const key = getStaticTokensKey(input)
-  const cached = staticTokensCache.get(key)
-
-  if (cached) {
-    return cached
+function importShiki() {
+  if (import.meta.client) {
+    return Promise.all([
+      import('shiki/core'),
+      import('shiki/engine/javascript'),
+      import('shiki/langs'),
+      import('shiki/themes/github-dark-high-contrast.mjs'),
+      import('shiki/themes/github-light-high-contrast.mjs'),
+      import('@shikijs/stream'),
+    ])
   }
 
-  const { tokens } = input.highlighter.codeToTokens(input.code, {
-    lang: input.lang,
-    theme: input.theme,
+  return Promise.reject(new Error('Code highlighting runs only in the browser'))
+}
+
+async function createClientHighlighting(): Promise<ClientHighlighting> {
+  const [
+    { createHighlighterCore },
+    { createJavaScriptRegexEngine },
+    { bundledLanguages },
+    darkTheme,
+    lightTheme,
+    { ShikiStreamTokenizer: Tokenizer },
+  ] = await importShiki()
+  const engine = createJavaScriptRegexEngine()
+  const themes = [darkTheme.default, lightTheme.default]
+  const pool = createCodeHighlighterPool({
+    createHighlighter: () => {
+      return createHighlighterCore({
+        engine,
+        themes,
+        langs: [],
+        warnings: false,
+      })
+    },
+    languageImports: bundledLanguages,
   })
 
-  staticTokensCache.set(key, tokens)
-
-  if (staticTokensCache.size > STATIC_TOKENS_CACHE_LIMIT) {
-    const oldestKey = staticTokensCache.keys().next().value
-
-    if (oldestKey !== undefined) {
-      staticTokensCache.delete(oldestKey)
-    }
-  }
-
-  return tokens
+  return { pool, Tokenizer }
 }
 
-export async function useHighlighter() {
-  if (!promise) {
-    promise = createHighlighter({
-      engine: createJavaScriptRegexEngine(),
-      themes: ['github-dark-high-contrast', 'github-light-high-contrast'],
-      langs: Object.keys(bundledLanguages),
+function useClientHighlighting(): Promise<ClientHighlighting> {
+  if (!clientHighlighting) {
+    clientHighlighting = createClientHighlighting()
+    clientHighlighting.catch(() => {
+      clientHighlighting = null
     })
   }
 
-  if (!highlighter) {
-    highlighter = await promise
-  }
+  return clientHighlighting
+}
 
-  return highlighter
+export async function loadCodeHighlighter(
+  language: string | null | undefined,
+  code: string,
+): Promise<ResolvedCodeHighlighter> {
+  const { pool } = await useClientHighlighting()
+
+  return pool.load(language, code)
+}
+
+export async function createCodeTokenizer(
+  resolved: ResolvedCodeHighlighter,
+  theme: string,
+): Promise<ShikiStreamTokenizer> {
+  const { Tokenizer } = await useClientHighlighting()
+
+  return new Tokenizer({
+    highlighter: resolved.highlighter,
+    lang: resolved.language,
+    theme,
+  })
+}
+
+export async function highlightCode(
+  code: string,
+  language: string | null | undefined,
+  theme: string,
+): Promise<ThemedToken[][]> {
+  const resolved = await loadCodeHighlighter(language, code)
+
+  return resolved.highlighter.codeToTokens(code, {
+    lang: resolved.language,
+    theme,
+  }).tokens
 }

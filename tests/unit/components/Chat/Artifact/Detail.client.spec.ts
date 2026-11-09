@@ -135,19 +135,34 @@ mockComponent('ChatArtifactFrame', () => {
   }
 })
 
-mockComponent('ProsePreStream', () => {
+mockComponent('ChatArtifactCodeView', () => {
   return {
     props: {
       code: String,
       language: String,
-      sourceOnly: Boolean,
-      alwaysExpanded: Boolean,
     },
     template: `
       <pre
         data-testid="code-stub"
+        data-mode="finished"
         :data-language="language"
-        :data-source-only="String(sourceOnly)"
+      >{{ code }}</pre>
+    `,
+  }
+})
+
+mockComponent('ProseCodeStream', () => {
+  return {
+    props: {
+      code: String,
+      language: String,
+      theme: String,
+    },
+    template: `
+      <pre
+        data-testid="code-stub"
+        data-mode="streaming"
+        :data-language="language"
       >{{ code }}</pre>
     `,
   }
@@ -300,7 +315,7 @@ describe('ChatArtifactDetail', () => {
 
     expect(code.text()).toBe('<p>v3</p>')
     expect(code.attributes('data-language')).toBe('html')
-    expect(code.attributes('data-source-only')).toBe('true')
+    expect(code.attributes('data-mode')).toBe('finished')
     expect(wrapper.get('[data-testid="frame-stub"]').element.parentElement
       ?.style.display).toBe('none')
   })

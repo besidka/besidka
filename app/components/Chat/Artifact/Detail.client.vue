@@ -327,12 +327,21 @@
         class="absolute inset-0 overflow-auto px-3"
         data-testid="artifact-code"
       >
-        <ProsePreStream
-          v-if="sourceText"
+        <div
+          v-if="sourceText && isStreaming"
+          class="my-3 overflow-x-auto rounded-box border border-base-300 bg-base-100/50 p-4 text-sm"
+          data-testid="artifact-code-stream"
+        >
+          <ProseCodeStream
+            :code="sourceText"
+            :language="codeLanguage"
+            :theme="codeTheme"
+          />
+        </div>
+        <ChatArtifactCodeView
+          v-else-if="sourceText"
           :code="sourceText"
           :language="codeLanguage"
-          source-only
-          always-expanded
         />
         <UiSidePanelSkeleton v-else />
       </div>
@@ -403,6 +412,7 @@ const CODE_LANGUAGES: Record<ArtifactKind, string> = {
 }
 
 const nuxtApp = useNuxtApp()
+const colorMode = useColorMode()
 const panel = useArtifactPanel()
 const sidePanel = useSidePanel()
 const layout = useSidePanelLayout()
@@ -532,6 +542,10 @@ const sourceText = computed<string>(() => {
 
 const codeLanguage = computed<string>(() => {
   return kind.value ? CODE_LANGUAGES[kind.value] : 'text'
+})
+
+const codeTheme = computed<string>(() => {
+  return colorMode.value === 'dark' ? CODE_THEME_DARK : CODE_THEME_LIGHT
 })
 
 const canDownloadHtml = computed<boolean>(() => {
