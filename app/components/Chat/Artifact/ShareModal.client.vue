@@ -8,7 +8,7 @@
       data-testid="artifact-share-modal"
       @close="onClosed"
     >
-      <div class="modal-box flex max-h-[85dvh] w-full max-w-lg flex-col max-sm:pb-[max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))]">
+      <div class="modal-box sheet-safe-padding flex max-h-[85dvh] w-full max-w-lg flex-col">
         <header class="flex shrink-0 items-start gap-3">
           <div class="min-w-0 grow">
             <h2

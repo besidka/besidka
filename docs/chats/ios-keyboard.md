@@ -250,6 +250,21 @@ global rule fixes all of them instead of each component lifting itself.
   above the keyboard. The text file textarea drops from `min-h-64` to
   `min-h-24` while the keyboard is open so the capped box does not need to
   scroll.
+- **Report modal jump (BES-340):** the artifact report modal
+  (`Artifact/ReportModal.client.vue`, also behind the share-page and
+  shared-chat report buttons) used to add its own `marginBottom: <inset>px`
+  and `maxHeight: viewportHeight - 12px` on its box. The global rules above
+  already lift the dialog by `padding-bottom: var(--keyboard-inset)`, so the
+  box was lifted twice and its top, 12px under `viewportHeight` plus one
+  extra inset, ended up under the status bar. It showed on an invalid submit
+  because that is when the keyboard was open and the inset non-zero while the
+  modal was tall enough to need the cap. The inline style is gone and the box
+  uses `sheet-safe-padding` like the other sheets (the share modal too). The
+  invalid-submit focus now uses `focus({ preventScroll: true })` and
+  `scrollWithin()` (`app/utils/scroll-within.ts`), which scrolls only the
+  form's own scroll container and keeps the field and its error clear of the
+  sticky action row. Never call `scrollIntoView()` or `reportValidity()` in a
+  dialog: on iOS they also scroll the window or pan the visual viewport.
 - **Phone bottom sheets with a text field:** the chat rename, project name,
   file rename and search dialogs are `modal modal-bottom sm:modal-middle`
   like the rest of the app (they were `modal-middle`, which centred the box
