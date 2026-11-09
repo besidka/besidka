@@ -136,6 +136,13 @@ export default defineI18nLocale(() => ({
           + 'applying an update in the background.',
         duration: '5 minutes (this tab)',
       },
+      'artifact-share-return': {
+        description:
+          'Holds the key of a shared artifact link you opened while you '
+          + 'sign in, so you come back to it. Written only when you choose '
+          + 'Sign in on that page, and removed as soon as you are back.',
+        duration: 'Until you are back (this tab)',
+      },
       'last-login-method': {
         description:
           'Remembers which sign-in method (email, Google, GitHub or '

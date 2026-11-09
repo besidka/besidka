@@ -8,8 +8,10 @@ import { createError } from 'evlog'
 import {
   ARTIFACT_SHARE_LIMIT_CODE,
   ARTIFACT_SHARE_MAX_ACTIVE,
-  ARTIFACT_SHARE_PATH_PREFIX,
+  ARTIFACT_SHARE_LINK_PREFIX,
+  ARTIFACT_SHARE_PATH,
   ARTIFACT_SHARE_RECENT_DAYS,
+  isArtifactShareToken,
 } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
 import {
@@ -30,7 +32,6 @@ export type ArtifactRow = typeof schema.artifacts.$inferSelect
 
 export const ARTIFACT_SHARE_ID_PREFIX = 'sh_'
 export const ARTIFACT_SHARE_TOKEN_BYTES = 32
-export const ARTIFACT_SHARE_TOKEN_PATTERN = /^[\w-]{43}$/
 
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1000
 const NEVER_ENDS_SECONDS = 253402300799
@@ -125,10 +126,6 @@ export function generateArtifactShareToken(): string {
   return toBase64Url(bytes)
 }
 
-export function isArtifactShareToken(value: unknown): boolean {
-  return typeof value === 'string' && ARTIFACT_SHARE_TOKEN_PATTERN.test(value)
-}
-
 export async function hashArtifactShareToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
@@ -146,13 +143,39 @@ export function resolveArtifactShareBaseUrl(baseUrl?: string): string {
   return value.replace(/\/$/, '')
 }
 
+/**
+ * The public link keeps the token in the URL fragment (`/a#<token>`), which
+ * browsers never send in a request, so no request path, log or unfurler
+ * sees it.
+ */
 export function buildArtifactShareUrl(token: string, baseUrl?: string): string {
-  return `${resolveArtifactShareBaseUrl(baseUrl)}${ARTIFACT_SHARE_PATH_PREFIX}${token}`
+  return `${resolveArtifactShareBaseUrl(baseUrl)}${ARTIFACT_SHARE_LINK_PREFIX}${token}`
+}
+
+const ARTIFACT_SHARE_RELATIVE_LINK = /^\/?a\/?#([^#?/]+)$/i
+
+function readTokenFromAbsoluteLink(candidate: string): string | null {
+  let url: URL
+
+  try {
+    url = new URL(candidate)
+  } catch {
+    return null
+  }
+
+  const pathname = url.pathname.replace(/\/$/, '').toLowerCase()
+
+  if (pathname !== ARTIFACT_SHARE_PATH) {
+    return null
+  }
+
+  return url.hash.slice(1) || null
 }
 
 /**
- * Pulls the token out of a full `/a/<token>` link (any host) or accepts a
- * bare token. Returns null for anything else.
+ * Pulls the token out of a public link in any of the forms an admin may
+ * paste: `https://<host>/a#<token>`, `/a#<token>`, `a#<token>`, or a bare
+ * token. Returns null for anything else.
  */
 export function extractArtifactShareToken(value: string): string | null {
   const candidate = value.trim()
@@ -161,15 +184,9 @@ export function extractArtifactShareToken(value: string): string | null {
     return candidate
   }
 
-  let pathname: string
-
-  try {
-    pathname = new URL(candidate).pathname
-  } catch {
-    pathname = candidate.split(/[?#]/)[0] ?? ''
-  }
-
-  const token = pathname.match(/^\/a\/([^/]+)\/?$/)?.[1]
+  const token = readTokenFromAbsoluteLink(candidate)
+    ?? candidate.match(ARTIFACT_SHARE_RELATIVE_LINK)?.[1]
+    ?? null
 
   return token && isArtifactShareToken(token) ? token : null
 }

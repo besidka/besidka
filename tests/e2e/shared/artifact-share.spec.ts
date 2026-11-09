@@ -19,9 +19,10 @@ const ARTIFACT_CONTENT = [
   `<h1 id="question">${ARTIFACT_TEXT}</h1>`,
   '</body></html>',
 ].join('\n')
-const SHARE_TOKEN = 'e2eShareToken_0123456789abcdefghijklmnopqrstu'
+const SHARE_TOKEN = 'e2eShareToken_0123456789abcdefghijklmnopqrs'
 const SHARE_ID = 'sh_e2e1'
-const SHARE_PATH = `/a/${SHARE_TOKEN}`
+const SHARE_PATH = `/a#${SHARE_TOKEN}`
+const SHARE_RETURN_STORAGE_KEY = 'artifacts:share-return'
 const SHARE_HEADER = 'x-besidka-artifact-share'
 const TURNSTILE_TOKEN = 'e2e-turnstile-token'
 const CREATED_AT = '2026-11-09T10:00:00.000Z'
@@ -407,6 +408,11 @@ test('owner shares an artifact, a signed-out viewer reports it, and a '
 
   const viewerRequests = await mockViewerRoutes(viewerContext, state)
   const viewer = await viewerContext.newPage()
+  const requestedUrls: string[] = []
+
+  viewer.on('request', (request) => {
+    requestedUrls.push(request.url())
+  })
 
   await viewer.goto(SHARE_PATH)
   await waitForHydration(viewer)
@@ -459,6 +465,20 @@ test('owner shares an artifact, a signed-out viewer reports it, and a '
   await expect(viewer.getByTestId('artifact-share-report')).toBeFocused()
   expect(viewerRequests.storageOrBridge).toEqual([])
 
+  await viewer.getByTestId('artifact-share-sign-in').locator('a').click()
+  await expect(viewer).toHaveURL(/\/signin\?next=(%2F|\/)a$/)
+  expect(await viewer.evaluate((key) => {
+    return window.sessionStorage.getItem(key)
+  }, SHARE_RETURN_STORAGE_KEY)).toBe(SHARE_TOKEN)
+
+  await viewer.goto('/a')
+  await waitForHydration(viewer)
+  await expect(viewer).toHaveURL(new RegExp(`/a#${SHARE_TOKEN}$`))
+  await expect(viewer.getByTestId('artifact-share-banner')).toBeVisible()
+  expect(await viewer.evaluate((key) => {
+    return window.sessionStorage.getItem(key)
+  }, SHARE_RETURN_STORAGE_KEY)).toBeNull()
+
   await page.getByTestId('artifact-share-revoke').click()
   await page.getByTestId('confirmation-action-0').click()
   await expect(page.getByTestId(`artifact-share-row-${SHARE_ID}`))
@@ -469,6 +489,15 @@ test('owner shares an artifact, a signed-out viewer reports it, and a '
   await expect(viewer.getByTestId('artifact-share-not-found'))
     .toContainText('This link is not available')
   await expect(viewer.getByTestId('artifact-frame-iframe')).toHaveCount(0)
+
+  const urlsWithToken = requestedUrls.filter((requestedUrl) => {
+    const { pathname, search } = new URL(requestedUrl)
+
+    return `${pathname}${search}`.includes(SHARE_TOKEN)
+  })
+
+  expect(requestedUrls.length).toBeGreaterThan(0)
+  expect(urlsWithToken).toEqual([])
 
   await viewerContext.close()
 })

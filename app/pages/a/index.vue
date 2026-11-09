@@ -42,8 +42,9 @@
             data-testid="artifact-share-sign-in"
           >
             <NuxtLink
-              :to="signInLocation"
+              :to="SIGN_IN_LOCATION"
               class="link"
+              @click="rememberShareForSignIn"
             >
               Sign in to save your progress
             </NuxtLink>
@@ -148,7 +149,9 @@
 import type { ToolResultContent } from '@besidka/artifacts-protocol'
 import {
   ARTIFACT_SHARE_HEADER,
-  ARTIFACT_SHARE_PATH_PREFIX,
+  ARTIFACT_SHARE_PATH,
+  ARTIFACT_SHARE_RETURN_STORAGE_KEY,
+  isArtifactShareToken,
 } from '#shared/utils/artifacts'
 import {
   ARTIFACT_SHARE_BANNER_TEXT,
@@ -164,30 +167,41 @@ definePageMeta({
 })
 
 const REPORT_ENDPOINT = '/api/v1/artifact-shares/current/report'
+const SIGN_IN_LOCATION = {
+  path: '/signin',
+  query: { next: ARTIFACT_SHARE_PATH },
+}
 
-const route = useRoute('a-token')
+const router = useRouter()
 const { loggedIn } = useAuth()
 const reportButton = useTemplateRef<HTMLButtonElement>('reportButton')
 const isReportOpen = shallowRef<boolean>(false)
-
-const token = computed<string>(() => {
-  return String(route.params.token ?? '')
-})
+const token = shallowRef<string>('')
+const isTokenInvalid = shallowRef<boolean>(false)
 
 const shareHeaders = computed<Record<string, string>>(() => {
   return { [ARTIFACT_SHARE_HEADER]: token.value }
 })
 
-const { data: share, error, status, refresh } = await useFetch(
-  '/api/v1/artifact-shares/current',
-  {
-    key: () => `artifact-share-current:${token.value}`,
-    server: false,
-    headers: shareHeaders,
-  },
-)
+const {
+  data: share,
+  error,
+  status,
+  execute,
+  clear,
+} = await useFetch('/api/v1/artifact-shares/current', {
+  key: 'artifact-share-current',
+  server: false,
+  immediate: false,
+  watch: false,
+  headers: shareHeaders,
+})
 
 const pageState = computed<ArtifactSharePageState>(() => {
+  if (isTokenInvalid.value) {
+    return 'not-found'
+  }
+
   return resolveArtifactSharePageState({
     status: status.value,
     hasData: !!share.value,
@@ -229,13 +243,6 @@ const isSignInCaptionShown = computed<boolean>(() => {
   return !loggedIn.value && share.value?.capabilities.storageAllowed === true
 })
 
-const signInLocation = computed(() => {
-  return {
-    path: '/signin',
-    query: { next: `${ARTIFACT_SHARE_PATH_PREFIX}${token.value}` },
-  }
-})
-
 useSeoMeta({
   title: () => share.value?.title || 'Shared artifact',
   robots: 'noindex, nofollow',
@@ -245,11 +252,88 @@ useHead({
   meta: [{ name: 'ai-generated', content: 'true' }],
 })
 
+function readHashToken(): string {
+  return window.location.hash.slice(1)
+}
+
+function takeReturnToken(): string {
+  try {
+    const value = window.sessionStorage.getItem(
+      ARTIFACT_SHARE_RETURN_STORAGE_KEY,
+    )
+
+    window.sessionStorage.removeItem(ARTIFACT_SHARE_RETURN_STORAGE_KEY)
+
+    return value ?? ''
+  } catch {
+    return ''
+  }
+}
+
+async function restoreReturnToken(returnToken: string): Promise<string> {
+  if (!isArtifactShareToken(returnToken)) {
+    return ''
+  }
+
+  await router.replace({
+    path: ARTIFACT_SHARE_PATH,
+    hash: `#${returnToken}`,
+  })
+
+  return returnToken
+}
+
+async function loadShare(nextToken: string) {
+  clear()
+  token.value = nextToken
+  isTokenInvalid.value = !isArtifactShareToken(nextToken)
+
+  if (isTokenInvalid.value) {
+    return
+  }
+
+  await execute()
+}
+
+async function onHashChange() {
+  const hashToken = readHashToken()
+
+  if (hashToken === token.value) {
+    return
+  }
+
+  await loadShare(hashToken)
+}
+
+function rememberShareForSignIn() {
+  try {
+    window.sessionStorage.setItem(
+      ARTIFACT_SHARE_RETURN_STORAGE_KEY,
+      token.value,
+    )
+  } catch {
+    return
+  }
+}
+
 function focusReportButton() {
   reportButton.value?.focus()
 }
 
 async function retry() {
-  await refresh()
+  await execute()
 }
+
+onMounted(async () => {
+  window.addEventListener('hashchange', onHashChange)
+
+  const hashToken = readHashToken()
+  const returnToken = takeReturnToken()
+
+  await loadShare(hashToken || await restoreReturnToken(returnToken))
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', onHashChange)
+})
 </script>

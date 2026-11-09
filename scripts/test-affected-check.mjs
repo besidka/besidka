@@ -212,7 +212,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/history/artifacts-library.spec.ts',
   ]
   const artifactsShareUiTests = [
-    'tests/unit/pages/a/[token].spec.ts',
+    'tests/unit/pages/a/index.spec.ts',
     'tests/unit/components/Artifact/ReportModal.client.spec.ts',
     'tests/unit/components/Chat/Artifact/ReportButton.client.spec.ts',
     'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
@@ -3081,9 +3081,9 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/middleware\/02\.artifact-share-path-case\.ts|server\/utils\/artifacts\/share-(redaction|request)\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(server\/middleware\/02\.artifact-share-path\.ts|server\/utils\/artifacts\/share-(redaction|request)\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: [
-        'tests/unit/server/middleware/artifact-share-path-case.spec.ts',
+        'tests/unit/server/middleware/artifact-share-path.spec.ts',
         'tests/unit/server/plugins/evlog-request-observability.spec.ts',
       ],
     },
@@ -3116,7 +3116,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/a\/\[token\]\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/artifact-share-(page|location)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/pages\/a\/index\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/artifact-share-(page|location)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsShareUiTests,
     },
     {

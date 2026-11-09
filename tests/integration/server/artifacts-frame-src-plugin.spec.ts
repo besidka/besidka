@@ -52,7 +52,7 @@ describe('artifacts frame-src plugin', () => {
     async () => {
       const { applyArtifactFrameSrc } = await loadPlugin()
 
-      for (const path of ['/a/tokenvalue', '/admin/artifact-reports']) {
+      for (const path of ['/a', '/a?utm_source=x', '/admin/artifact-reports']) {
         const response = { headers: {} as Record<string, string> }
 
         applyArtifactFrameSrc(
@@ -72,7 +72,7 @@ describe('artifacts frame-src plugin', () => {
 
     applyArtifactFrameSrc(
       response as never,
-      createContext('/a/tokenvalue') as never,
+      createContext('/a') as never,
       {
         artifactsOrigin: ARTIFACTS_ORIGIN,
         eventPolicy: 'frame-ancestors \'none\'',
@@ -94,7 +94,7 @@ describe('artifacts frame-src plugin', () => {
 
     applyArtifactFrameSrc(
       response as never,
-      createContext('/a/tokenvalue') as never,
+      createContext('/a') as never,
       {
         artifactsOrigin: ARTIFACTS_ORIGIN,
         eventPolicy: 'frame-ancestors \'none\'',
@@ -109,7 +109,7 @@ describe('artifacts frame-src plugin', () => {
   it('leaves other pages unchanged', async () => {
     const { applyArtifactFrameSrc } = await loadPlugin()
 
-    for (const path of ['/', '/profile/keys', '/chats', '/sharedx', '/signin', '/admin', '/about/a/x']) {
+    for (const path of ['/', '/profile/keys', '/chats', '/sharedx', '/signin', '/admin', '/about/a/x', '/about', '/ab', '/api/v1/x', '/a/tokenvalue']) {
       const response = { headers: { 'content-type': 'text/html' } }
 
       applyArtifactFrameSrc(

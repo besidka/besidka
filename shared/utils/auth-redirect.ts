@@ -16,6 +16,7 @@ export const KEYS_PAGE_TAB_IDS = [
 
 const KEYS_PAGE_PATHNAME = '/profile/keys'
 const NEW_CHAT_PATHNAME = '/chats/new'
+const ARTIFACT_SHARE_PATHNAME = '/a'
 const URL_PARSE_BASE = 'http://localhost'
 const NEXT_MAX_LENGTH = 200
 const LAST_CONTROL_CODE_POINT = 0x1f
@@ -89,7 +90,9 @@ function sanitizeKeysPageQuery(
 /**
  * Open-redirect guard for the post-auth `next` parameter. Accepts only
  * same-origin relative paths whose pathname is allowlisted and rebuilds the
- * query from validated keys, so nothing attacker-controlled survives.
+ * query from validated keys, so nothing attacker-controlled survives. The
+ * public artifact link page comes back as the bare `/a`: its token lives in
+ * the fragment, which is restored from sessionStorage, never in `next`.
  */
 export function resolveSafeNextPath(value: unknown): string | null {
   const candidate = firstValue(value)
@@ -124,6 +127,10 @@ export function resolveSafeNextPath(value: unknown): string | null {
 
   if (parsedUrl.pathname === NEW_CHAT_PATHNAME) {
     return NEW_CHAT_PATHNAME
+  }
+
+  if (parsedUrl.pathname === ARTIFACT_SHARE_PATHNAME) {
+    return ARTIFACT_SHARE_PATHNAME
   }
 
   if (parsedUrl.pathname !== KEYS_PAGE_PATHNAME) {

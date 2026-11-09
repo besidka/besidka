@@ -62,7 +62,10 @@ export const ARTIFACT_REPORT_DECISIONS = [
 ] as const
 
 export const ARTIFACT_SHARE_HEADER = 'x-besidka-artifact-share'
-export const ARTIFACT_SHARE_PATH_PREFIX = '/a/'
+export const ARTIFACT_SHARE_PATH = '/a'
+export const ARTIFACT_SHARE_LINK_PREFIX = '/a#'
+export const ARTIFACT_SHARE_TOKEN_PATTERN = /^[\w-]{43}$/
+export const ARTIFACT_SHARE_RETURN_STORAGE_KEY = 'artifacts:share-return'
 export const ARTIFACT_SHARE_DURATIONS = [
   'hour',
   'day',
@@ -312,6 +315,10 @@ export interface ArtifactUITools {
     input: UpdateArtifactToolInput
     output: ArtifactToolOutput
   }
+}
+
+export function isArtifactShareToken(value: unknown): boolean {
+  return typeof value === 'string' && ARTIFACT_SHARE_TOKEN_PATTERN.test(value)
 }
 
 export function isArtifactKind(value: unknown): value is ArtifactKind {
