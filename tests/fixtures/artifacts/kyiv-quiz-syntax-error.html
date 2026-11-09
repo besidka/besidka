@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тест: історія Києва</title>
+<style>
+:root{color-scheme:light;--ink:#18212f;--muted:#596579;--blue:#2459a6;--pale:#edf3fc;--green:#176b43;--red:#a53333}
+*{box-sizing:border-box}body{margin:0;padding:24px;background:#f5f7fb;color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}.card{max-width:650px;margin:5vh auto;background:white;border-radius:18px;padding:clamp(22px,5vw,38px);box-shadow:0 12px 40px #14233a12}h1{font-size:clamp(1.6rem,4vw,2.2rem);line-height:1.15;margin:0 0 8px}.intro{color:var(--muted);margin:0 0 24px}.progress{font-weight:700;color:var(--blue);margin-bottom:10px}.question{font-size:1.2rem;font-weight:700;margin:0 0 18px}.answers{display:grid;gap:10px}.answers button,.action{border:1px solid #d4dbe7;background:white;color:var(--ink);border-radius:11px;padding:13px 15px;font:inherit;text-align:left;cursor:pointer;transition:.15s}.answers button:hover:not(:disabled){border-color:var(--blue);background:var(--pale)}.answers button:focus-visible,.action:focus-visible{outline:3px solid #8ab4f8;outline-offset:2px}.answers button:disabled{cursor:default}.answers button.correct{border-color:#56a77c;background:#eaf7ef;color:#155c39}.answers button.wrong{border-color:#d68484;background:#fff0f0;color:#8d2929}.feedback{min-height:32px;margin:15px 0 6px;font-weight:700}.feedback.ok{color:var(--green)}.feedback.no{color:var(--red)}.action{display:inline-block;text-align:center;background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;padding:11px 20px}.action:hover{background:#194987}.hidden{display:none}.result{text-align:center}.score{font-size:2rem;font-weight:800;color:var(--blue);margin:12px 0}.result p{color:var(--muted)}
+</style>
+</head>
+<body>
+<main class="card" aria-live="polite">
+  <section id="quiz">
+    <h1>Історія Києва</h1>
+    <p class="intro">6 запитань — обери одну відповідь. Після кожної одразу побачиш, чи маєш рацію.</p>
+    <div class="progress" id="progress"></div>
+    <p class="question" id="question"></p>
+    <div class="answers" id="answers"></div>
+    <p class="feedback" id="feedback" role="status"></p>
+    <button class="action hidden" id="next">Наступне запитання</button>
+  </section>
+  <section id="result" class="result hidden">
+    <h1>Тест завершено!</h1>
+    <div class="score" id="score"></div>
+    <p id="comment"></p>
+    <button class="action" id="restart">Пройти ще раз</button>
+  </section>
+</main>
+<script>
+const questions=[
+ {q:'Яка літописна дата традиційно пов’язується із заснуванням Києва?',a:['882 рік','988 рік','Кінець V — початок VI століття','1240 рік'],correct:2,why:'Археологічні дані вказують на виникнення міста наприкінці V — на початку VI століття; це й відзначають як умовну дату заснування.'},
+ {q:'Який князь, за літописом, об’єднав Київ і Новгород та зробив Київ центром Русі?',a:['Володимир Великий','Олег','Ярослав Мудрий','Святослав'],correct:1,why:'За «Повістю минулих літ», князь Олег захопив Київ 882 року й проголосив його «матір’ю міст руських».'},
+ {q:'За правління якого князя Русь прийняла християнство?',a:['Ігоря','Ярослава Мудрого','Володимира Великого','Володимира Мономаха'],correct:2,why:'Хрещення Русі відбулося за князя Володимира Великого, традиційно датоване 988 роком.'},
+ {q:'Хто збудував Софійський собор у Києві в XI столітті?',a:['Олег','Володимир Великий','Ярослав Мудрий','Данило Галицький'],correct:2,why:'Софійський собор спорудили за князювання Ярослава Мудрого, у першій половині XI століття.'},
+ {q:'У якому році війська хана Батия захопили Київ?',a:['1169','1240','1362','1482'],correct:1,why:'Монгольське військо Батия взяло Київ у 1240 році.'},
+ {q:'У якому році Київ став столицею Української Народної Республіки?',a:['1917','1918','1922','1991'],correct:1,why:'У 1918 році Київ був столицею Української Народної Республіки.'}
+];
+let index=0,score=0,answered=false;
+const progress=document.getElementById('progress'),question=document.getElementById('question'),answers=document.getElementById('answers'),feedback=document.getElementById('feedback'),next=document.getElementById('next');
+function render(){answered=false;const item=questions[index];progress.textContent=`Запитання ${index+1} із ${questions.length}`;question.textContent=item.q;feedback.textContent='';feedback.className='feedback';next.classList.add('hidden');answers.replaceChildren();item.a.forEach((text,i)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.addEventListener('click',()=>choose(i));answers.appendChild(b)});}
+function choose(choice){if(answered)return;answered=true;const item=questions[index];const buttons=[...answers.children];buttons.forEach((b,i)=>{b.disabled=true;if(i===item.correct)b.classList.add('correct');if(i===choice&&i!==item.correct)b.classList.add('wrong')});if(choice===item.correct){score++;feedback.textContent='Правильно! '+item.why;feedback.classList.add('ok')}else{feedback.textContent='Неправильно. '+item.why;feedback.classList.add('no')}next.textContent=index===questions.length-1?'Показати результат':'Наступне запитання';next.classList.remove('hidden');}
+next.addEventListener('click',()=>{if(index<questions.length-1){index++;render()}else finish()});
+function finish(){document.getElementById('quiz').classList.add('hidden');document.getElementById('result').classList.remove('hidden');document.getElementById('score').textContent=`${score} із ${questions.length}`;document.getElementById('comment').textContent=score===6?'Чудовий результат — ти справжній знавець історії Києва!':score>=4?'Дуже добре! Ти добре знаєш історію Києва.':score>=2?'Непогано! Ще трохи — і знатимеш історію Києва ще краще.':'Час відкрити для себе більше захопливих сторінок історії Києва!'};}
+document.getElementById('restart').addEventListener('click',()=>{index=0;score=0;document.getElementById('result').classList.add('hidden');document.getElementById('quiz').classList.remove('hidden');render()});
+render();
+</script>
+</body>
+</html>
