@@ -11,13 +11,27 @@ const HEADER_FOLDING = /\r?\n[ \t]+/g
 
 const COMBINING_MARKS = /\p{M}+/gu
 
-const ADDRESS_DOMAIN = /[^\s<>"'@,;:]+@([a-z0-9.-]+\.[a-z]{2,})/gi
+export const HEADER_MAX_LENGTH = {
+  subject: 1024,
+  from: 512,
+  authenticationResults: 1024,
+} as const
+
+const ANGLE_ADDRESS = /<([^<>]{0,320})>\s*$/
+
+const DOMAIN = /^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,10}$/
 
 const URGENT_PHRASES = [
   'removal order',
   'nakaz usuniecia',
-  'terrorist content',
+  'terrorist',
   'terrorystyczn',
+  'illegal content',
+  'csam',
+  'child sexual',
+  'court order',
+  'subpoena',
+  'takedown',
   '2021/784',
   'policj',
   'prokurat',
@@ -29,6 +43,9 @@ const URGENT_PHRASES = [
   'naruszenie ochrony danych',
   'naruszenia ochrony danych',
   'naruszeniu ochrony danych',
+  'naruszenie danych',
+  'naruszenia danych',
+  'naruszeniu danych',
   'naruszenie bezpieczenstwa',
   'naruszenia bezpieczenstwa',
   'incydent bezpieczenstwa',
@@ -36,21 +53,31 @@ const URGENT_PHRASES = [
   'podatnosc',
 ]
 
-const URGENT_WORDS = ['abw', 'tco', 'cve', 'uodo', 'csirt', 'europol']
+const URGENT_WORDS = [
+  'abw',
+  'tco',
+  'cve',
+  'uodo',
+  'puodo',
+  'csirt',
+  'europol',
+]
 
 const AUTHORITY_SENDER_STEMS = ['policj', 'prokurat']
 
-const AUTHORITY_SENDER_WORDS = ['abw', 'uodo', 'europol']
+const AUTHORITY_SENDER_WORDS = ['abw', 'uodo', 'puodo', 'europol']
 
-const ADDRESS_OR_ANGLE_ADDR = /<[^>]*>|[^\s<>"'@,;:]+@[^\s<>"',;:]+/g
+const ADDRESS_OR_ANGLE_ADDR
+  = /<[^<>]{0,320}>|[^\s<>"'@,;:]{1,64}@[^\s<>"',;:]{1,255}/g
 
 const AUTHORITY_DOMAIN_SUFFIXES = ['.gov.pl', '.europa.eu']
 
 const AUTHORITY_DOMAINS = ['gov.pl', 'europa.eu']
 
-const CLOUDFLARE_AUTHSERV_ID = 'mx.cloudflare.net'
+const CLOUDFLARE_AUTHSERV_ID = /^mx\.cloudflare\.net(?:\s+\d{1,3})?\s*;/i
 
-const AUTHENTICATION_RESULTS_SEPARATOR = /,\s*(?=[a-z0-9.-]+\s*;)/i
+const AUTHENTICATION_RESULTS_SEPARATOR
+  = /,\s*(?=[a-z0-9.-]{1,255}(?:\s+\d{1,3})?\s*;)/i
 
 const DMARC_PASS = /(?:^|[\s;])dmarc=pass\b/i
 
@@ -96,6 +123,13 @@ function decodeQuotedPrintableWord(text: string): Uint8Array {
  * value, so a Polish subject such as "nakaz usunięcia" can be matched and
  * shown. A word that does not decode is kept as it was.
  */
+export function limitHeader(
+  value: string | null,
+  maxLength: number,
+): string {
+  return (value ?? '').slice(0, maxLength)
+}
+
 export function decodeHeaderValue(raw: string): string {
   const unfolded = raw
     .replace(HEADER_FOLDING, ' ')
@@ -144,25 +178,36 @@ export function isDmarcPass(authenticationResults: string | null): boolean {
     return false
   }
 
-  const [firstResult = ''] = authenticationResults
-    .split(AUTHENTICATION_RESULTS_SEPARATOR)
+  const [firstResult = ''] = limitHeader(
+    authenticationResults,
+    HEADER_MAX_LENGTH.authenticationResults,
+  ).split(AUTHENTICATION_RESULTS_SEPARATOR)
   const trimmed = firstResult.trim()
 
-  if (!trimmed.toLowerCase().startsWith(`${CLOUDFLARE_AUTHSERV_ID};`)) {
+  if (!CLOUDFLARE_AUTHSERV_ID.test(trimmed)) {
     return false
   }
 
   return DMARC_PASS.test(trimmed)
 }
 
-export function extractDomains(header: string | null): string[] {
-  if (!header) {
-    return []
+/**
+ * The domain of the From header's address: the last `<addr-spec>` when the
+ * header has one, otherwise the whole value. A domain-like string in the
+ * display name never counts.
+ */
+export function extractSenderDomain(header: string | null): string | null {
+  const value = limitHeader(header, HEADER_MAX_LENGTH.from).trim()
+  const address = ANGLE_ADDRESS.exec(value)?.[1] ?? value
+  const domain = address.slice(address.lastIndexOf('@') + 1)
+    .trim()
+    .toLowerCase()
+
+  if (!address.includes('@') || !DOMAIN.test(domain)) {
+    return null
   }
 
-  return Array.from(header.matchAll(ADDRESS_DOMAIN), (match) => {
-    return (match[1] as string).toLowerCase()
-  })
+  return domain
 }
 
 function isAuthorityDomain(domain: string): boolean {
@@ -186,14 +231,16 @@ export interface UrgencyInput {
  * Cloudflare's own DMARC result passed.
  */
 export function isUrgentMail(input: UrgencyInput): boolean {
-  const subject = normalizeForMatching(input.subject)
+  const subject = normalizeForMatching(
+    limitHeader(input.subject, HEADER_MAX_LENGTH.subject),
+  )
 
   if (looksUrgentText(subject)) {
     return true
   }
 
   const displayName = normalizeForMatching(
-    decodeHeaderValue(input.fromHeader ?? '')
+    decodeHeaderValue(limitHeader(input.fromHeader, HEADER_MAX_LENGTH.from))
       .replace(ADDRESS_OR_ANGLE_ADDR, ' '),
   )
   const namesAuthority = AUTHORITY_SENDER_STEMS.some((stem) => {
@@ -210,7 +257,9 @@ export function isUrgentMail(input: UrgencyInput): boolean {
     return false
   }
 
-  return extractDomains(input.fromHeader).some(isAuthorityDomain)
+  const senderDomain = extractSenderDomain(input.fromHeader)
+
+  return senderDomain !== null && isAuthorityDomain(senderDomain)
 }
 
 /**

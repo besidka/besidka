@@ -54,6 +54,9 @@ function createKv() {
     put: vi.fn(async (key: string, value: string) => {
       store.set(key, value)
     }),
+    delete: vi.fn(async (key: string) => {
+      store.delete(key)
+    }),
   }
 }
 
@@ -136,7 +139,7 @@ describe('notifyMailAlert', () => {
     })
 
     expect(userIds.sort()).toEqual([1, 2])
-    expect(result).toEqual({ outcome: 'sent', recipients: 2, sent: 2 })
+    expect(result).toEqual({ outcome: 'sent', recipients: 2, sent: 2, failed: 0 })
   })
 
   it('sends urgent mail with high urgency and the site origin', async () => {
@@ -190,7 +193,39 @@ describe('notifyMailAlert', () => {
 
     const result = await notifyMailAlert(urgentMail, createInput())
 
-    expect(result).toEqual({ outcome: 'sent', recipients: 2, sent: 1 })
+    expect(result).toEqual({ outcome: 'sent', recipients: 2, sent: 1, failed: 1 })
+  })
+
+  it('releases the window when no push reached anyone', async () => {
+    const kv = createKv()
+
+    mocks.sendPushNotificationToUser.mockRejectedValue(new Error('down'))
+
+    const failed = await notifyMailAlert(normalMail, createInput(kv))
+
+    expect(failed).toEqual({
+      outcome: 'push-failed',
+      recipients: 2,
+      sent: 0,
+      failed: 2,
+    })
+    expect(kv.store.has(mailAlertCollapseKey('privacy'))).toBe(false)
+
+    mocks.sendPushNotificationToUser.mockResolvedValue({ sent: 1 })
+
+    const retried = await notifyMailAlert(normalMail, createInput(kv))
+
+    expect(retried.outcome).toBe('sent')
+  })
+
+  it('fails open when KV refuses the write', async () => {
+    const kv = createKv()
+
+    kv.put.mockRejectedValue(new Error('KV PUT failed: 429'))
+
+    const result = await notifyMailAlert(normalMail, createInput(kv))
+
+    expect(result.outcome).toBe('sent')
   })
 
   it('reports push-not-configured without touching KV', async () => {

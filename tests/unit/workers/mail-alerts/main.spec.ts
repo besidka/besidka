@@ -12,17 +12,19 @@ import {
   type MailAlertsEnv,
 } from '~~/workers/mail-alerts/src/main'
 
-const SECRET = 'test-mail-alert-secret'
+const SECRET = 'test-mail-alert-secret-0123456789abcdef'
 
 function createMessage(input: {
   to?: string
   subject?: string
   from?: string
+  authenticationResults?: string
   forward?: () => Promise<unknown>
 } = {}) {
   const values = new Map([
     ['subject', input.subject ?? 'Hello'],
     ['from', input.from ?? 'Sender <sender@example.com>'],
+    ['authentication-results', input.authenticationResults ?? ''],
   ])
   const headers = {
     get: (name: string) => {
@@ -214,6 +216,23 @@ describe('sendMailAlert', () => {
 })
 
 describe('buildMailAlertPayload', () => {
+  it('reads the Authentication-Results header for authority domains', () => {
+    const fromAuthority = createMessage({
+      subject: 'Pismo nr 15',
+      from: 'Sekretariat <sekretariat@abw.gov.pl>',
+      authenticationResults:
+        'mx.cloudflare.net; dmarc=pass header.from=abw.gov.pl',
+    })
+    const unauthenticated = createMessage({
+      subject: 'Pismo nr 15',
+      from: 'Sekretariat <sekretariat@abw.gov.pl>',
+    })
+
+    expect(buildMailAlertPayload(fromAuthority, 'privacy').urgent).toBe(true)
+    expect(buildMailAlertPayload(unauthenticated, 'privacy').urgent)
+      .toBe(false)
+  })
+
   it('strips tabs and bidi controls and cuts the subject short', () => {
     const message = createMessage({
       subject: `Line one\t\u202Eevil\u202C ${'x'.repeat(200)}`,

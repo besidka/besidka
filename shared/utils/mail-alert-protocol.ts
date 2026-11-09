@@ -20,46 +20,34 @@ export const MAIL_ALERT_MAX_BODY_BYTES = 2048
 
 export const MAIL_ALERT_SUBJECT_MAX_LENGTH = 80
 
+export const MAIL_ALERT_RAW_SUBJECT_MAX_LENGTH = 1024
+
+export const MAIL_ALERT_MIN_SECRET_LENGTH = 32
+
 export interface MailAlertPayload {
   mailbox: MailAlertMailbox
   subject: string
   urgent: boolean
 }
 
-const INVISIBLE_OR_CONTROL_RANGES: ReadonlyArray<readonly [number, number]> = [
-  [0x0000, 0x001F],
-  [0x007F, 0x009F],
-  [0x061C, 0x061C],
-  [0x180E, 0x180E],
-  [0x200B, 0x200F],
-  [0x2028, 0x202E],
-  [0x2060, 0x206F],
-  [0xFEFF, 0xFEFF],
-]
+const INVISIBLE_OR_CONTROL_CHARACTERS
+  = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]/gu
 
 const WHITESPACE_RUN = /\s+/g
 
 const TRUNCATION_MARK = '…'
 
-function isInvisibleOrControl(character: string): boolean {
-  const codePoint = character.codePointAt(0) ?? 0
-
-  return INVISIBLE_OR_CONTROL_RANGES.some(([start, end]) => {
-    return codePoint >= start && codePoint <= end
-  })
-}
-
 /**
  * Turns an untrusted mail subject into one short line that is safe to show
- * on a lock screen: control, bidi and zero-width characters become spaces,
+ * on a lock screen: control, format (bidi, zero-width) and other
+ * default-ignorable characters become spaces,
  * whitespace collapses, and the result is cut to a fixed number of code
  * points.
  */
 export function sanitizeMailSubject(raw: string): string {
-  const flattened = Array.from(raw, (character) => {
-    return isInvisibleOrControl(character) ? ' ' : character
-  })
-    .join('')
+  const flattened = raw
+    .slice(0, MAIL_ALERT_RAW_SUBJECT_MAX_LENGTH)
+    .replace(INVISIBLE_OR_CONTROL_CHARACTERS, ' ')
     .replace(WHITESPACE_RUN, ' ')
     .trim()
   const codePoints = Array.from(flattened)
@@ -138,7 +126,11 @@ export async function verifyMailAlertSignature(input: {
   body: string
   nowSeconds: number
 }): Promise<boolean> {
-  if (!input.secret || !input.timestamp || !input.signature) {
+  if (
+    input.secret.length < MAIL_ALERT_MIN_SECRET_LENGTH
+    || !input.timestamp
+    || !input.signature
+  ) {
     return false
   }
 

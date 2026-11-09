@@ -7,7 +7,7 @@ import {
   signMailAlert,
 } from '#shared/utils/mail-alert-protocol'
 
-const SECRET = 'route-secret'
+const SECRET = 'route-secret-0123456789abcdef0123456789'
 
 const mocks = vi.hoisted(() => ({
   runtimeConfig: {} as Record<string, unknown>,
@@ -118,6 +118,7 @@ describe(`POST ${MAIL_ALERT_ROUTE}`, () => {
       outcome: 'sent',
       recipients: 1,
       sent: 1,
+      failed: 0,
     })
   })
 
@@ -127,6 +128,35 @@ describe(`POST ${MAIL_ALERT_ROUTE}`, () => {
     const result = await callRoute(await createSignedRequest())
 
     expect(result.status).toBe(404)
+    expect(mocks.notifyMailAlert).not.toHaveBeenCalled()
+  })
+
+  it('answers 404 while the secret is too short to be safe', async () => {
+    mocks.runtimeConfig = createRuntimeConfig('short')
+
+    const result = await callRoute(await createSignedRequest({
+      secret: 'short',
+    }))
+
+    expect(result.status).toBe(404)
+    expect(mocks.notifyMailAlert).not.toHaveBeenCalled()
+  })
+
+  it('answers 404 when content-length is over the cap', async () => {
+    const result = await callRoute(await createSignedRequest({
+      headers: { 'content-length': String(MAIL_ALERT_MAX_BODY_BYTES + 1) },
+    }))
+
+    expect(result.status).toBe(404)
+    expect(mocks.notifyMailAlert).not.toHaveBeenCalled()
+  })
+
+  it('answers 400 for a signed body that is not JSON', async () => {
+    const result = await callRoute(await createSignedRequest({
+      body: 'not json',
+    }))
+
+    expect(result.status).toBe(400)
     expect(mocks.notifyMailAlert).not.toHaveBeenCalled()
   })
 

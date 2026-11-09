@@ -9,7 +9,9 @@ import type { RequestEvent } from 'nuxt/server'
 import {
   MAIL_ALERT_MAILBOXES,
   MAIL_ALERT_MAX_BODY_BYTES,
+  MAIL_ALERT_MIN_SECRET_LENGTH,
   MAIL_ALERT_SIGNATURE_HEADER,
+  MAIL_ALERT_SUBJECT_MAX_LENGTH,
   MAIL_ALERT_TIMESTAMP_HEADER,
   verifyMailAlertSignature,
 } from '#shared/utils/mail-alert-protocol'
@@ -26,11 +28,11 @@ type WaitUntilContext = {
   }
 }
 
-const RAW_SUBJECT_MAX_LENGTH = 400
+const SUBJECT_MAX_UTF16_LENGTH = MAIL_ALERT_SUBJECT_MAX_LENGTH * 2
 
 const bodySchema = z.object({
   mailbox: z.enum(MAIL_ALERT_MAILBOXES),
-  subject: z.string().max(RAW_SUBJECT_MAX_LENGTH),
+  subject: z.string().max(SUBJECT_MAX_UTF16_LENGTH),
   urgent: z.boolean(),
 })
 
@@ -113,7 +115,7 @@ export default defineEventHandler(async (event) => {
   const runtimeConfig = useRuntimeConfig()
   const secret = runtimeConfig.mailAlertSecret
 
-  if (!secret) {
+  if (!secret || secret.length < MAIL_ALERT_MIN_SECRET_LENGTH) {
     notFound()
   }
 
@@ -181,6 +183,7 @@ export default defineEventHandler(async (event) => {
         outcome: result.outcome,
         recipients: result.recipients,
         sent: result.sent,
+        failed: result.failed,
       },
     },
   })

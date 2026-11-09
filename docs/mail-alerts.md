@@ -63,14 +63,15 @@ of truth; the push is only a wake-up call.
 reachable from the internet, and the service binding call bypasses the WAF and
 rate limits. Its only guard is the shared secret:
 
-- `NUXT_MAIL_ALERT_SECRET` unset → 404 for every call.
+- `NUXT_MAIL_ALERT_SECRET` unset or shorter than 32 characters → 404 for
+  every call.
 - Missing `x-mail-alert-timestamp` or `x-mail-alert-signature` → 404.
 - Body over 2 KB (read as a bounded stream, before any parsing) → 404.
 - HMAC-SHA256 over `<timestamp>.<body>` checked with `crypto.subtle.verify`
   (constant time), timestamp within ±5 minutes → otherwise 404. A captured
   request cannot be replayed after five minutes.
-- Signed but not matching the schema (`mailbox` from the fixed list,
-  `subject` at most 400 characters, `urgent` boolean) → 400.
+- Signed but not JSON, or not matching the schema (`mailbox` from the
+  fixed list, `subject` at most 160 UTF-16 units, `urgent` boolean) → 400.
 - Valid → 202 with `{ outcome }`.
 
 The Worker classifies urgency itself and sends only `{ mailbox, subject,
@@ -82,7 +83,7 @@ the Worker.
 | | Normal mail | Urgent mail |
 |---|---|---|
 | Title | `New mail to privacy@` | `Urgent: new mail to privacy@` |
-| Body | The subject, decoded, control, bidi and zero-width characters removed, one line, at most 80 characters | Same |
+| Body | The subject, decoded, with control, format (bidi, zero-width) and other default-ignorable characters removed, one line, at most 80 characters | Same |
 | Web Push `urgency`, `TTL` | `normal`, 300 s | `high`, 600 s |
 | Notification `tag` | `besidka-mail-<mailbox>` (a newer one replaces it) | unique per message (never replaced) |
 | Collapse | One push per mailbox per 2 minutes (KV key `mail-alert:collapse:<mailbox>`, `expirationTtl: 120`) | Always sent |
@@ -90,7 +91,11 @@ the Worker.
 
 The collapse window uses KV, which is eventually consistent: two mails a few
 seconds apart that land in different Cloudflare locations can both push. That
-is acceptable for a wake-up call.
+is acceptable for a wake-up call. KV errors fail open (the push is sent), and
+a window whose push reached nobody (`no-recipients`, `push-failed`) is
+released, so the next mail tries again. A spam mail can still use up the
+window just before a real non-urgent one; that mail reaches Gmail without its
+own push.
 
 Recipients are every admin, resolved exactly like scheduled feature changes
 (`listAdminRecipients`): env admins (`NUXT_ADMIN_EMAILS` with a verified email)
@@ -101,29 +106,40 @@ subscribed. One failing admin never blocks the others.
 
 Mail is urgent when any of these holds (after RFC 2047 decoding, lowercasing
 and removing Polish diacritics, so `nakaz usunięcia` and `nakaz usuniecia`
-both match):
+both match). Headers are cut before any matching (subject and
+`Authentication-Results` 1024 characters, From 512) and every regex
+quantifier is bounded, so a huge header cannot burn the Worker's CPU.
 
-- The subject contains a TCO or authority phrase: `removal order`,
-  `nakaz usuniecia`, `terrorist content`, `terrorystyczn…`, `2021/784`,
-  `policj…`, `prokurat…`, or the words `abw`, `tco`, `uodo`, `europol`.
+- The subject contains a TCO, authority or abuse phrase: `removal order`,
+  `nakaz usuniecia`, `terrorist`, `terrorystyczn…`, `2021/784`, `policj…`,
+  `prokurat…`, `illegal content`, `csam`, `child sexual`, `court order`,
+  `subpoena`, `takedown`, or the words `abw`, `tco`, `uodo`, `puodo`,
+  `europol`.
 - The subject looks like a breach or security report: `breach`, `security
   incident`, `security report`, `security issue`, `vulnerability`, `cve`,
-  `csirt`, `naruszenie/naruszenia/naruszeniu ochrony danych`,
+  `csirt`, `naruszenie/naruszenia/naruszeniu (ochrony) danych`,
   `naruszenie bezpieczenstwa`, `incydent bezpieczenstwa`, `wyciek`,
   `podatnosc`.
 - The From display name names an authority (`policj…`, `prokurat…`, `abw`,
-  `uodo`, `europol`). The address part is ignored here.
-- The From address is in `gov.pl` or `europa.eu` (or a subdomain), **and**
-  the first `Authentication-Results` header, the one Cloudflare prepends with
-  authserv-id `mx.cloudflare.net`, says `dmarc=pass`. A header the sender
-  added is never trusted.
+  `uodo`, `puodo`, `europol`). The address part is ignored here.
+- The From address (the last `<addr-spec>`, never a domain-like string in the
+  display name) is in `gov.pl` or `europa.eu` (or a subdomain), **and** the
+  first `Authentication-Results` header, the one Cloudflare prepends with
+  authserv-id `mx.cloudflare.net` (an RFC 8601 version token after it is
+  allowed), says `dmarc=pass`. A header the sender added is never trusted.
+  That Cloudflare passes this header to the Worker first is documented but
+  not yet seen in this deployment; runbook step 5 checks it.
 
 Subjects and display names cannot be authenticated. Anyone can send mail with
 "removal order" in the subject and get an urgent push; urgent pushes are never
 collapsed, so a flood of such mail would ring the phone each time. That is the
 accepted trade-off: a missed removal order costs far more than a noisy hour.
 If it happens, switch the affected rule back to forward (step 7) and tighten
-the rules.
+the rules. A cap (for example a single "N urgent mails" push after five in ten
+minutes) is an open owner decision.
+
+A forward that fails sends no alert: the handler throws before the alert is
+scheduled. The Email Routing activity log is the only signal then.
 
 Mail to an address outside the five mailboxes in
 `MAIL_ALERT_MAILBOXES` (`privacy`, `abuse`, `security`, `contact`,
@@ -134,8 +150,16 @@ forwarded and gets no alert.
 
 - Axiom: the route's wide event carries `attributes.mailAlert` with
   `mailbox` (local part only), `urgent`, `outcome` (`sent`, `collapsed`,
-  `no-recipients`, `push-not-configured`, `push-failed`, `rejected`,
-  `invalid`), `recipients` and `sent`. No addresses, no subject, no body.
+  `no-recipients`, `push-not-configured`, `push-failed`), `recipients`,
+  `sent` and `failed`. A request whose HMAC does not verify logs only
+  `outcome: rejected`, and a signed body that does not parse logs
+  `outcome: invalid`; the other 404 paths (secret unset, headers missing,
+  body too large) log no `mailAlert` attribute. No addresses, no subject, no
+  body.
+- Silent breakage (a mismatched secret, a missing binding) shows only as
+  missing `sent` events or as `rejected`. An Axiom monitor on
+  `attributes.mailAlert.outcome` in (`rejected`, `invalid`, `push-failed`),
+  and a monthly test mail to `mail-alerts-test@`, catch it.
 - The push send loop logs its usual counts (`push.*`, with the admin's user
   id, as for every push).
 - KV holds only `mail-alert:collapse:<mailbox>` = `1` for two minutes.
@@ -182,13 +206,9 @@ repo or into a chat; keep it in a shell variable only.
 
 ### 2. Merge and deploy the app
 
-Merge this PR and let `production.yml` deploy `besidka`. Then check that the
-route is closed:
-
-```bash
-curl -s -o /dev/null -w '%{http_code}\n' -X POST https://besidka.com/api/v1/internal/mail-alert
-# expect 404
-```
+Merge this PR and let `production.yml` deploy `besidka`. An unsigned call
+answers 404 whether or not the route exists, so a `curl` here proves only that
+nothing leaks; the real check is the signed call in step 5.
 
 ### 3. Deploy the Worker (inert until a rule points at it)
 
@@ -247,6 +267,10 @@ Check:
   log: each message shows as delivered to the Worker, none as failed.
 - Axiom `besidka-prod`: `['attributes.mailAlert.outcome']` is `sent`,
   `collapsed`, `sent`.
+- In Gmail, open the first test mail → "Show original" and confirm an
+  `Authentication-Results: mx.cloudflare.net; … dmarc=…` header near the top.
+  If it is missing, the DMARC-checked authority-domain rule never fires
+  (subject and display-name rules still work); report it as a follow-up.
 
 If nothing arrives in Gmail, stop and delete the test rule; the four real
 rules are untouched.

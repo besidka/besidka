@@ -6,7 +6,13 @@ import {
   signMailAlert,
   type MailAlertPayload,
 } from '../../../shared/utils/mail-alert-protocol'
-import { decodeHeaderValue, isUrgentMail, resolveMailbox } from './classify'
+import {
+  HEADER_MAX_LENGTH,
+  decodeHeaderValue,
+  isUrgentMail,
+  limitHeader,
+  resolveMailbox,
+} from './classify'
 
 export interface MailAlertsEnv {
   FORWARD_TO?: string
@@ -14,7 +20,7 @@ export interface MailAlertsEnv {
   APP: Pick<Fetcher, 'fetch'>
 }
 
-export type MailAlertOutcome
+export type MailAlertSendOutcome
   = | 'sent'
     | 'skipped-mailbox'
     | 'skipped-unconfigured'
@@ -27,7 +33,9 @@ export function buildMailAlertPayload(
   message: Pick<ForwardableEmailMessage, 'headers'>,
   mailbox: MailAlertPayload['mailbox'],
 ): MailAlertPayload {
-  const rawSubject = decodeHeaderValue(message.headers.get('subject') ?? '')
+  const rawSubject = decodeHeaderValue(
+    limitHeader(message.headers.get('subject'), HEADER_MAX_LENGTH.subject),
+  )
 
   return {
     mailbox,
@@ -49,7 +57,7 @@ export async function sendMailAlert(
   message: Pick<ForwardableEmailMessage, 'to' | 'headers'>,
   env: MailAlertsEnv,
   nowMilliseconds: number = Date.now(),
-): Promise<MailAlertOutcome> {
+): Promise<MailAlertSendOutcome> {
   try {
     const mailbox = resolveMailbox(message.to)
 

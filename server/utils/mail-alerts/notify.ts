@@ -38,7 +38,7 @@ export type MailAlertOutcome
 
 export interface NotifyMailAlertInput {
   db: ReturnType<typeof useDb>
-  kv: Pick<KVNamespace, 'get' | 'put'>
+  kv: Pick<KVNamespace, 'get' | 'put' | 'delete'>
   config: FeatureEvaluationConfig
   vapid: VapidKeys
   targetOrigin?: string
@@ -50,6 +50,7 @@ export interface MailAlertResult {
   outcome: MailAlertOutcome
   recipients: number
   sent: number
+  failed: number
 }
 
 export function mailAlertCollapseKey(mailbox: string): string {
@@ -80,48 +81,49 @@ export function buildMailAlertPush(
   }
 }
 
+/**
+ * Claims the per-mailbox collapse window. KV errors (for example the
+ * one-write-per-second limit when two mails race) fail open: a duplicate
+ * push is better than a missing one.
+ */
 async function claimCollapseWindow(
   kv: NotifyMailAlertInput['kv'],
   mailbox: string,
 ): Promise<boolean> {
   const key = mailAlertCollapseKey(mailbox)
 
-  if (await kv.get(key)) {
-    return false
-  }
+  try {
+    if (await kv.get(key)) {
+      return false
+    }
 
-  await kv.put(key, '1', { expirationTtl: MAIL_ALERT_COLLAPSE_SECONDS })
+    await kv.put(key, '1', { expirationTtl: MAIL_ALERT_COLLAPSE_SECONDS })
+  } catch {
+    return true
+  }
 
   return true
 }
 
-/**
- * Pushes a mail alert to every admin's subscribed devices. Urgent mail
- * always pushes with high urgency; other mail pushes at most once per
- * mailbox per collapse window (KV is eventually consistent, so a second push
- * can slip through across locations, which is acceptable). The result
- * carries counts only, never the subject or any address.
- */
-export async function notifyMailAlert(
+async function releaseCollapseWindow(
+  kv: NotifyMailAlertInput['kv'],
+  mailbox: string,
+): Promise<void> {
+  try {
+    await kv.delete(mailAlertCollapseKey(mailbox))
+  } catch {
+    return
+  }
+}
+
+async function pushToAdmins(
   payload: MailAlertPayload,
   input: NotifyMailAlertInput,
 ): Promise<MailAlertResult> {
-  if (!isPushConfigured(input.vapid)) {
-    return { outcome: 'push-not-configured', recipients: 0, sent: 0 }
-  }
-
-  if (!payload.urgent) {
-    const claimed = await claimCollapseWindow(input.kv, payload.mailbox)
-
-    if (!claimed) {
-      return { outcome: 'collapsed', recipients: 0, sent: 0 }
-    }
-  }
-
   const recipients = await listAdminRecipients(input.db, input.config)
 
   if (recipients.size === 0) {
-    return { outcome: 'no-recipients', recipients: 0, sent: 0 }
+    return { outcome: 'no-recipients', recipients: 0, sent: 0, failed: 0 }
   }
 
   const push = buildMailAlertPush(payload, input.createTag)
@@ -129,6 +131,7 @@ export async function notifyMailAlert(
     ? URGENT_MAIL_PUSH_DELIVERY
     : MAIL_PUSH_DELIVERY
   let sent = 0
+  let failed = 0
 
   for (const userId of recipients.keys()) {
     try {
@@ -144,7 +147,7 @@ export async function notifyMailAlert(
 
       sent += outcomes?.sent ?? 0
     } catch {
-      continue
+      failed += 1
     }
   }
 
@@ -152,5 +155,46 @@ export async function notifyMailAlert(
     outcome: sent > 0 ? 'sent' : 'push-failed',
     recipients: recipients.size,
     sent,
+    failed,
   }
+}
+
+/**
+ * Pushes a mail alert to every admin's subscribed devices. Urgent mail
+ * always pushes with high urgency; other mail pushes at most once per
+ * mailbox per collapse window (KV is eventually consistent, so a second push
+ * can slip through across locations, which is acceptable). A window whose
+ * push reached nobody is released, so the next mail can try again. The
+ * result carries counts only, never the subject or any address.
+ */
+export async function notifyMailAlert(
+  payload: MailAlertPayload,
+  input: NotifyMailAlertInput,
+): Promise<MailAlertResult> {
+  if (!isPushConfigured(input.vapid)) {
+    return {
+      outcome: 'push-not-configured',
+      recipients: 0,
+      sent: 0,
+      failed: 0,
+    }
+  }
+
+  if (payload.urgent) {
+    return pushToAdmins(payload, input)
+  }
+
+  const claimed = await claimCollapseWindow(input.kv, payload.mailbox)
+
+  if (!claimed) {
+    return { outcome: 'collapsed', recipients: 0, sent: 0, failed: 0 }
+  }
+
+  const result = await pushToAdmins(payload, input)
+
+  if (result.outcome !== 'sent') {
+    await releaseCollapseWindow(input.kv, payload.mailbox)
+  }
+
+  return result
 }

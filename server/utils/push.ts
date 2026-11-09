@@ -8,7 +8,9 @@ import { buildPushRequest, isValidVapidPublicKey } from './push-protocol'
 // own push services) and can render on a lock screen — never put generated
 // message content or the user's prompt in title/body, only a fixed generic
 // string. See PushNotificationPayload call site in
-// server/api/v1/chats/[slug]/index.post.ts.
+// server/api/v1/chats/[slug]/index.post.ts. The one exception is the admin
+// mail alert (docs/mail-alerts.md), whose body is a sanitised, truncated
+// subject of mail sent to the controller's own mailboxes.
 export type PushNotificationPayload = {
   title: string
   body: string

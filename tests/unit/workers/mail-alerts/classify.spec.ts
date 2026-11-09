@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   decodeHeaderValue,
+  extractSenderDomain,
   isDmarcPass,
   isUrgentMail,
   resolveMailbox,
@@ -52,6 +53,11 @@ describe('isUrgentMail', () => {
     'CVE-2026-1234 in the share route',
     'Zgłoszenie naruszenia ochrony danych',
     'Wyciek danych',
+    'Decyzja PUODO',
+    'Zgłoszenie naruszenia danych osobowych',
+    'Illegal content report',
+    'CSAM on a shared link',
+    'Court order',
   ])('flags "%s" as urgent', (subject) => {
     expect(urgent(subject)).toBe(true)
   })
@@ -90,6 +96,23 @@ describe('isUrgentMail', () => {
     )).toBe(true)
   })
 
+  it('ignores an authority-looking address in the display name', () => {
+    expect(urgent(
+      'Pismo',
+      '"x@gov.pl" <a@evil.example>',
+      'mx.cloudflare.net; dmarc=pass header.from=evil.example',
+    )).toBe(false)
+  })
+
+  it('stays fast on a huge From header', () => {
+    const started = performance.now()
+
+    urgent('Pismo', 'a'.repeat(100_000), null)
+    urgent('Pismo', '<'.repeat(100_000), null)
+
+    expect(performance.now() - started).toBeLessThan(200)
+  })
+
   it('ignores a sender-supplied Authentication-Results header', () => {
     const spoofed = 'attacker.example; dmarc=pass, '
       + 'mx.cloudflare.net; dmarc=fail header.from=abw.gov.pl'
@@ -105,6 +128,24 @@ describe('isDmarcPass', () => {
       'mx.cloudflare.net; dmarc=fail, other.example; dmarc=pass',
     )).toBe(false)
     expect(isDmarcPass(null)).toBe(false)
+  })
+
+  it('accepts an RFC 8601 version after the authserv-id', () => {
+    expect(isDmarcPass('mx.cloudflare.net 1; dmarc=pass')).toBe(true)
+  })
+})
+
+describe('extractSenderDomain', () => {
+  it('takes the domain of the angle address or the bare address', () => {
+    expect(extractSenderDomain('Name <a@Sub.Gov.PL>')).toBe('sub.gov.pl')
+    expect(extractSenderDomain('a@example.com')).toBe('example.com')
+    expect(extractSenderDomain('"x@gov.pl" <a@evil.example>'))
+      .toBe('evil.example')
+  })
+
+  it('returns null without a usable address', () => {
+    expect(extractSenderDomain('No address')).toBeNull()
+    expect(extractSenderDomain(null)).toBeNull()
   })
 })
 

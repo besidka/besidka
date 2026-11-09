@@ -7,13 +7,16 @@ import {
   verifyMailAlertSignature,
 } from '#shared/utils/mail-alert-protocol'
 
-const SECRET = 'protocol-secret'
+const SECRET = 'protocol-secret-0123456789abcdef0123'
 const NOW = 1_800_000_000
 const BODY = '{"mailbox":"privacy","subject":"Hi","urgent":false}'
 
 const RIGHT_TO_LEFT_OVERRIDE = String.fromCodePoint(0x202E)
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200B)
 const LINE_SEPARATOR = String.fromCodePoint(0x2028)
+const SOFT_HYPHEN = String.fromCodePoint(0x00AD)
+const HANGUL_FILLER = String.fromCodePoint(0x3164)
+const TAG_LATIN_A = String.fromCodePoint(0xE0041)
 
 async function verify(overrides: Partial<{
   secret: string
@@ -38,9 +41,10 @@ async function verify(overrides: Partial<{
 describe('sanitizeMailSubject', () => {
   it('turns control, bidi and zero-width characters into single spaces', () => {
     const raw = `Hello\r\n\tworld${RIGHT_TO_LEFT_OVERRIDE}fdp.exe`
-      + `${ZERO_WIDTH_SPACE}x${LINE_SEPARATOR}y\u0007z`
+      + `${ZERO_WIDTH_SPACE}x${LINE_SEPARATOR}y\u0007z${SOFT_HYPHEN}`
+      + `${HANGUL_FILLER}${TAG_LATIN_A}end`
 
-    expect(sanitizeMailSubject(raw)).toBe('Hello world fdp.exe x y z')
+    expect(sanitizeMailSubject(raw)).toBe('Hello world fdp.exe x y z end')
   })
 
   it('keeps Polish letters and short subjects unchanged', () => {
@@ -76,7 +80,8 @@ describe('verifyMailAlertSignature', () => {
     await expect(verify({ timestamp: 'abc' })).resolves.toBe(false)
   })
 
-  it('rejects everything when the secret is empty', async () => {
+  it('rejects everything when the secret is empty or short', async () => {
     await expect(verify({ secret: '' })).resolves.toBe(false)
+    await expect(verify({ secret: 'short' })).resolves.toBe(false)
   })
 })
