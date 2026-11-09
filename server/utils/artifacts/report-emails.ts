@@ -266,13 +266,20 @@ function describeTakedownSubject(input: StatementOfReasonsInput): string {
   })`
 }
 
-function describeRetention(legalHoldUntil: Date | null): string {
+function describeRetention(
+  scope: StatementOfReasonsInput['scope'],
+  legalHoldUntil: Date | null,
+): string {
+  const state = scope === 'share'
+    ? 'Only that link is disabled; the artifact itself stays in your '
+    + 'library and on your other links.'
+    : 'The artifact is disabled, not deleted.'
+
   if (!legalHoldUntil) {
-    return 'The artifact is disabled, not deleted, and you can still delete '
-      + 'it.'
+    return `${state} You can still delete it.`
   }
 
-  return 'The artifact is disabled, not deleted. It is held until '
+  return `${state} It is held until `
     + `${formatArtifactEmailDate(legalHoldUntil)} because an authority `
     + 'ordered its removal or asked me to preserve it, so it cannot be '
     + 'deleted before then.'
@@ -310,7 +317,7 @@ export async function sendArtifactStatementOfReasonsEmail(
       + `${formatArtifactEmailDate(input.decidedAt)}. Scope: `
       + `${describeTakedownScope(input)}, everywhere, not only in some `
       + 'countries. Duration: until further notice. '
-      + describeRetention(input.legalHoldUntil),
+      + describeRetention(input.scope, input.legalHoldUntil),
       `Facts and ground: ${input.statement}`,
       input.followedReport
         ? 'The decision followed a report made under the notice process.'

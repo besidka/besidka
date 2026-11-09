@@ -120,6 +120,15 @@ drain (Axiom, console, file) sees it (`redactArtifactShareTokens`). The
 header is never part of a wide event: request headers only reach the drain
 context, and Axiom receives the event alone.
 
+Verified on a dev server: `GET /a/<token>` produces a wide event with
+`path` and `message` `/a/[token]`, and the page response carries
+`content-security-policy: frame-ancestors 'none'; frame-src 'self' <artifacts
+origin> <Turnstile>` plus the noindex, no-referrer and no-store headers.
+
+The page must not throw a fatal Nuxt error for a dead link: Nuxt's own
+console error and the Vue Router "no match" warning print the raw path to
+the Worker console. Render the 404 and 410 states inside the page instead.
+
 Not covered by code: Cloudflare Workers Logs (`observability.enabled` in
 `wrangler.jsonc`) record each invocation's URL on Cloudflare's side, so the
 SSR request's token is visible in the Workers dashboard logs for their
@@ -200,9 +209,11 @@ Report decisions:
   decision `removed`.
 - `reject`: decision `no-action`.
 - The report gets `status` (`actioned`/`rejected`), `decision`,
-  `decision_statement`, `decided_at` and `resolved_at`. The report update, the
-  takedown and the audit row are one D1 batch. A decided report answers 409;
-  a deleted artifact cannot be taken down (409, reject instead).
+  `decision_statement`, `decided_at` and `resolved_at`. The report is closed
+  first, only while it is still `open`, so two admins deciding at once cannot
+  both act (the second gets 409 and nothing else is written); the takedown
+  and the audit row then go in one D1 batch. A deleted artifact cannot be
+  taken down (409, reject instead).
 
 Direct takedowns resolve `target` in this order: a full `/a/<token>` link or a
 bare token (hashed, looked up by `token_hash`; the target is never logged),

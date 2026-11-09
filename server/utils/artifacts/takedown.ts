@@ -389,11 +389,12 @@ async function findOwnerEmail(
  * reported `/a/` link (the share row's takedown fields); with `all-shares`
  * it disables the artifact itself, so every link, the shared-chat route and
  * the owner view stop on the next request. `reject` closes the report with
- * no action. The report, the takedown and the audit row are written in one
- * D1 batch. The owner gets the statement of reasons when content was newly
- * taken down (a second report on content already down sends none), the
- * reporter gets the decision when they left an email. Email failures are
- * logged, never thrown.
+ * no action. The report is closed first (only if it is still open, so two
+ * admins deciding at once cannot both act); the takedown and the audit row
+ * then go in one D1 batch. The owner gets the statement of reasons when
+ * content was newly taken down (a second report on content already down
+ * sends none), the reporter gets the decision when they left an email.
+ * Email failures are logged, never thrown.
  */
 export async function decideArtifactReport(
   context: FeatureAdminContext,
@@ -422,46 +423,42 @@ export async function decideArtifactReport(
 
   const decision = decisionFor(input.action, input.scope)
   const ownerUserId = row.artifactOwnerUserId
-  const closing = closeReport(context.db, row.report.id, {
+  if (input.action === 'takedown' && ownerUserId === null) {
+    throwAdminError(
+      409,
+      'The reported artifact no longer exists',
+      'artifact_deleted',
+      'Reject the report instead; there is nothing left to take down',
+    )
+  }
+
+  if (input.action === 'takedown' && input.scope === 'share' && !row.share) {
+    throwAdminError(
+      400,
+      'This report has no share link to disable',
+      'report_without_share',
+      'Use scope all-shares to disable the artifact itself',
+    )
+  }
+
+  assertReportClosed(await closeReport(context.db, row.report.id, {
     status: input.action === 'reject' ? 'rejected' : 'actioned',
     decision,
     statement: input.statement,
     now,
-  })
+  }))
+
   let newlyTakenDown = false
 
   if (input.action === 'reject') {
-    const [closed] = await context.db.batch([
-      closing,
-      buildAuditInsert(context, {
-        action: 'artifact-report.reject',
-        flag: AUDIT_FLAG,
-        targetUserId: ownerUserId,
-        before: { reportId: row.report.id, status: 'open' },
-        after: { reportId: row.report.id, status: 'rejected', decision },
-      }),
-    ])
-
-    assertReportClosed(closed)
+    await buildAuditInsert(context, {
+      action: 'artifact-report.reject',
+      flag: AUDIT_FLAG,
+      targetUserId: ownerUserId,
+      before: { reportId: row.report.id, status: 'open' },
+      after: { reportId: row.report.id, status: 'rejected', decision },
+    })
   } else {
-    if (ownerUserId === null) {
-      throwAdminError(
-        409,
-        'The reported artifact no longer exists',
-        'artifact_deleted',
-        'Reject the report instead; there is nothing left to take down',
-      )
-    }
-
-    if (input.scope === 'share' && !row.share) {
-      throwAdminError(
-        400,
-        'This report has no share link to disable',
-        'report_without_share',
-        'Use scope all-shares to disable the artifact itself',
-      )
-    }
-
     const takedown = input.scope === 'share'
       ? context.db.update(schema.artifactShares)
         .set({
@@ -484,8 +481,7 @@ export async function decideArtifactReport(
     const before = input.scope === 'share'
       ? row.share!.takedownAt
       : row.artifactTakedownAt
-    const [closed, updated] = await context.db.batch([
-      closing,
+    const [updated] = await context.db.batch([
       takedown,
       buildAuditInsert(context, {
         action: 'artifact.takedown',
@@ -505,7 +501,6 @@ export async function decideArtifactReport(
       }),
     ])
 
-    assertReportClosed(closed)
     newlyTakenDown = updated.length > 0
   }
 
@@ -994,26 +989,25 @@ async function restoreShare(
     throwNotTakenDown()
   }
 
-  const [updated] = await context.db.batch([
-    context.db.update(schema.artifactShares)
-      .set({ takedownAt: null, takedownReason: null, updatedAt: new Date() })
-      .where(and(
-        eq(schema.artifactShares.id, share.id),
-        isNotNull(schema.artifactShares.takedownAt),
-      ))
-      .returning({ id: schema.artifactShares.id }),
-    buildAuditInsert(context, {
-      action: 'artifact.restore',
-      flag: AUDIT_FLAG,
-      targetUserId: share.userId,
-      before: { shareId: publicShareId, takedownAt: toIso(share.takedownAt) },
-      after: { shareId: publicShareId, takedownAt: null },
-    }),
-  ])
+  const updated = await context.db.update(schema.artifactShares)
+    .set({ takedownAt: null, takedownReason: null, updatedAt: new Date() })
+    .where(and(
+      eq(schema.artifactShares.id, share.id),
+      isNotNull(schema.artifactShares.takedownAt),
+    ))
+    .returning({ id: schema.artifactShares.id })
 
   if (updated.length === 0) {
     throwNotTakenDown()
   }
+
+  await buildAuditInsert(context, {
+    action: 'artifact.restore',
+    flag: AUDIT_FLAG,
+    targetUserId: share.userId,
+    before: { shareId: publicShareId, takedownAt: toIso(share.takedownAt) },
+    after: { shareId: publicShareId, takedownAt: null },
+  })
 
   context.logger.set({
     attributes: {
@@ -1041,34 +1035,33 @@ async function restoreArtifact(
     throwNotTakenDown()
   }
 
-  const [updated] = await context.db.batch([
-    context.db.update(schema.artifacts)
-      .set({ takedownAt: null, takedownReason: null })
-      .where(and(
-        eq(schema.artifacts.id, artifact.id),
-        isNotNull(schema.artifacts.takedownAt),
-      ))
-      .returning({ id: schema.artifacts.id }),
-    buildAuditInsert(context, {
-      action: 'artifact.restore',
-      flag: AUDIT_FLAG,
-      targetUserId: artifact.userId,
-      before: {
-        artifactId: publicArtifactId,
-        takedownAt: toIso(artifact.takedownAt),
-        legalHoldUntil: toIso(artifact.legalHoldUntil),
-      },
-      after: {
-        artifactId: publicArtifactId,
-        takedownAt: null,
-        legalHoldUntil: toIso(artifact.legalHoldUntil),
-      },
-    }),
-  ])
+  const updated = await context.db.update(schema.artifacts)
+    .set({ takedownAt: null, takedownReason: null })
+    .where(and(
+      eq(schema.artifacts.id, artifact.id),
+      isNotNull(schema.artifacts.takedownAt),
+    ))
+    .returning({ id: schema.artifacts.id })
 
   if (updated.length === 0) {
     throwNotTakenDown()
   }
+
+  await buildAuditInsert(context, {
+    action: 'artifact.restore',
+    flag: AUDIT_FLAG,
+    targetUserId: artifact.userId,
+    before: {
+      artifactId: publicArtifactId,
+      takedownAt: toIso(artifact.takedownAt),
+      legalHoldUntil: toIso(artifact.legalHoldUntil),
+    },
+    after: {
+      artifactId: publicArtifactId,
+      takedownAt: null,
+      legalHoldUntil: toIso(artifact.legalHoldUntil),
+    },
+  })
 
   context.logger.set({
     attributes: {

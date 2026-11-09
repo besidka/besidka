@@ -869,10 +869,14 @@ describe('artifact shares API', () => {
         expect(emailArguments()).not.toContain(created.token)
         expect(JSON.stringify(await listAudit())).not.toContain(created.token)
 
+        expect(sentEmails()[0]?.text).toContain('Only that link is disabled')
+
         await expect(call(handlers.adminAction, {
           params: { id: reportId },
           body: { action: 'reject', statement: STATEMENT, scope: 'share' },
         })).resolves.toMatchObject({ error: { status: 409 } })
+        expect(await listAudit()).toHaveLength(1)
+        expect((await listReports())[0]?.status).toBe('actioned')
       })
 
     it('takes down the whole artifact from a shared-chat report',
