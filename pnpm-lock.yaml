@@ -598,6 +598,12 @@ importers:
         specifier: 4.151.1
         version: 4.151.1(@cloudflare/workers-types@5.20261018.1)(@types/node@24.19.2)
 
+  workers/mail-alerts:
+    devDependencies:
+      wrangler:
+        specifier: 4.151.1
+        version: 4.151.1(@cloudflare/workers-types@5.20261018.1)(@types/node@24.19.2)
+
 packages:
 
   '@ai-sdk/anthropic@4.0.88':
