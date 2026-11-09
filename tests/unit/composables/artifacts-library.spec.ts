@@ -462,6 +462,36 @@ describe('useArtifactLibrary', () => {
       })
     })
 
+  it('ignores a totals response that arrives after the filters changed',
+    async () => {
+      const library = await setup(createPage(['a1', 'a2'], 2, 1000))
+      let resolveTotals: (value: unknown) => void = () => {}
+
+      mocks.fetch
+        .mockResolvedValueOnce({ deletedIds: ['a1'], heldIds: [] })
+        .mockReturnValueOnce(new Promise((resolve) => {
+          resolveTotals = resolve
+        }))
+
+      const deletion = library.deleteArtifacts(['a1'])
+
+      await vi.waitFor(() => {
+        expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      })
+
+      kind.value = 'html'
+      lazyData.value = createPage(['b1', 'b2', 'b3'], 3, 2000)
+      await nextTick()
+
+      resolveTotals({ items: [], total: 99, usedBytes: 99999 })
+      await deletion
+
+      expect(library.total.value).toBe(3)
+      expect(library.usedBytes.value).toBe(2000)
+      expect(library.items.value.map(item => item.id))
+        .toEqual(['b1', 'b2', 'b3'])
+    })
+
   describe('delete', () => {
     it('removes deleted rows locally, keeps held ones and refreshes the quota',
       async () => {

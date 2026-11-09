@@ -205,6 +205,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/History/ArtifactRow.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/composables/artifacts-library.spec.ts',
+    'tests/unit/server/utils/artifacts/queries.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/integration/api/artifacts.spec.ts',

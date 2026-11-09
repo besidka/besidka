@@ -340,10 +340,16 @@ export function useArtifactLibrary(filters: {
   }
 
   async function refreshTotals() {
+    const requestGeneration = generation
+
     try {
       const response = await $fetch('/api/v1/artifacts', {
         query: { ...requestQuery.value, limit: 1 },
       })
+
+      if (requestGeneration !== generation) {
+        return
+      }
 
       applyServerTotals(response)
     } catch {

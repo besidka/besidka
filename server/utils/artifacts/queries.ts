@@ -46,7 +46,7 @@ function activeShareCountSql(now: Date) {
   )`
 }
 
-function summarySelection(now: Date) {
+export function summarySelection(now: Date) {
   return {
     id: schema.artifacts.id,
     title: schema.artifacts.title,

@@ -39,7 +39,9 @@ matter:
   `artifacts.title` and `chats.title` share a column name and D1 returns rows
   as objects keyed by column name, so an unaliased join made the chat title
   overwrite the artifact title on D1 (better-sqlite3, used by the integration
-  tests, hides it).
+  tests, hides it). Drizzle's D1 `batch()` maps rows by `Object.keys`, so any
+  duplicated result name would shift every later field; `queries.spec.ts`
+  asserts that the names of `summarySelection` stay unique.
 - The first page is `useLazyFetch`, so SSR renders the list. Totals and the
   quota are read from `data` directly, never copied in a watcher: a watcher
   does not run after the server response, which rendered "Using 0 B" on the
@@ -51,7 +53,8 @@ after a delete (counting removed rows skipped artifacts). A delete removes rows
 locally (the list keeps its depth) and re-reads the total and the quota with a
 `limit=1` request that carries the active filters. A total the server sent
 already excludes earlier deletes, so only deletes made after it are subtracted.
-A change to the first page (filter change, retry) drops the appended pages.
+A change to the first page (filter change, retry) drops the appended pages and
+ignores a page or totals response that was still in flight.
 
 ## Rows
 
