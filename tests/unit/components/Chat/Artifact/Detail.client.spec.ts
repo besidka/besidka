@@ -168,12 +168,14 @@ mockComponent('ChatArtifactCodeView', () => {
     props: {
       code: String,
       language: String,
+      cacheKey: String,
     },
     template: `
       <pre
         data-testid="code-stub"
         data-mode="finished"
         :data-language="language"
+        :data-cache-key="cacheKey"
       >{{ code }}</pre>
     `,
   }
@@ -388,6 +390,7 @@ describe('ChatArtifactDetail', () => {
     expect(code.text()).toBe('<p>v3</p>')
     expect(code.attributes('data-language')).toBe('html')
     expect(code.attributes('data-mode')).toBe('finished')
+    expect(code.attributes('data-cache-key')).toMatch(/:3$/)
     expect(wrapper.get('[data-testid="frame-stub"]').element.parentElement
       ?.style.display).toBe('none')
   })

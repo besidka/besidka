@@ -375,6 +375,7 @@
           v-else-if="sourceText"
           :code="sourceText"
           :language="codeLanguage"
+          :cache-key="codeCacheKey"
         />
         <UiSidePanelSkeleton v-else />
       </div>
@@ -581,6 +582,12 @@ const sourceText = computed<string>(() => {
 
 const codeLanguage = computed<string>(() => {
   return kind.value ? CODE_LANGUAGES[kind.value] : 'text'
+})
+
+const codeCacheKey = computed<string | null>(() => {
+  const value = content.value
+
+  return value ? `${value.artifactId}:${value.version}` : null
 })
 
 const isMermaidCodeTab = computed<boolean>(() => {

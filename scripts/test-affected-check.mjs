@@ -185,6 +185,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Artifact/Card.spec.ts',
     'tests/unit/components/Chat/Artifact/Detail.client.spec.ts',
     'tests/unit/components/Chat/Artifact/CodeView.client.spec.ts',
+    'tests/unit/composables/chunked-code-highlight.spec.ts',
     'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/composables/artifacts.spec.ts',
