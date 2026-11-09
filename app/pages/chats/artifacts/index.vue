@@ -16,7 +16,7 @@
           class="flex-1"
         />
         <div
-          role="radiogroup"
+          role="group"
           aria-label="Filter by type"
           class="flex flex-wrap gap-1.5"
           data-testid="artifact-library-kind-filter"
@@ -25,10 +25,9 @@
             v-for="option in ARTIFACT_LIBRARY_KIND_FILTERS"
             :key="option.value"
             type="button"
-            role="radio"
             class="btn btn-sm"
             :class="appliedKind === option.value ? 'btn-primary' : 'btn-soft'"
-            :aria-checked="appliedKind === option.value"
+            :aria-pressed="appliedKind === option.value"
             :data-testid="`artifact-library-kind-${option.value}`"
             @click="setKind(option.value)"
           >
@@ -259,7 +258,7 @@ if (!artifactsFeature.value.active) {
   await navigateTo('/chats/history', { replace: true })
 }
 
-const { search, appliedQuery, appliedKind, setKind, clearSearch }
+const { search, appliedQuery, appliedKind, setKind, clearFilters }
   = useArtifactLibraryFilters()
 
 const {
@@ -410,8 +409,7 @@ async function onDownload(artifact: ArtifactSummary) {
 }
 
 async function onClearFilters() {
-  await clearSearch()
-  await setKind('all')
+  await clearFilters()
 }
 
 function reportDeleteResult(deletedCount: number, heldCount: number) {

@@ -86,6 +86,8 @@ export function useArtifactLibraryFilters() {
 
   const search = shallowRef<string>(parseArtifactSearch(route.query.query))
 
+  let isCommitting = false
+
   async function commitQuery(changes: Record<string, string | undefined>) {
     const query = Object.fromEntries(
       Object.entries({ ...route.query, ...changes }).filter(([, value]) => {
@@ -93,7 +95,13 @@ export function useArtifactLibraryFilters() {
       }),
     )
 
-    await router.push({ path: route.path, query })
+    isCommitting = true
+
+    try {
+      await router.push({ path: route.path, query })
+    } finally {
+      isCommitting = false
+    }
   }
 
   const commitSearch = useDebounceFn(async () => {
@@ -114,10 +122,10 @@ export function useArtifactLibraryFilters() {
     await commitQuery({ kind: kind === 'all' ? undefined : kind })
   }
 
-  async function clearSearch() {
+  async function clearFilters() {
     search.value = ''
 
-    await commitQuery({ query: undefined })
+    await commitQuery({ query: undefined, kind: undefined })
   }
 
   watch(search, () => {
@@ -125,6 +133,10 @@ export function useArtifactLibraryFilters() {
   })
 
   watch(() => route.query.query, (value) => {
+    if (isCommitting) {
+      return
+    }
+
     const fromUrl = parseArtifactSearch(value)
 
     if (toArtifactSearchTerm(search.value) !== toArtifactSearchTerm(fromUrl)) {
@@ -137,7 +149,7 @@ export function useArtifactLibraryFilters() {
     appliedQuery,
     appliedKind,
     setKind,
-    clearSearch,
+    clearFilters,
   }
 }
 
@@ -168,6 +180,7 @@ export function useArtifactLibrary(filters: {
   const removedIds = shallowRef<Set<string>>(new Set())
   const patches = shallowRef<Record<string, Partial<ArtifactSummary>>>({})
   const loadedTotal = shallowRef<number | null>(null)
+  const removedAtLoadedTotal = shallowRef<number>(0)
   const loadedUsedBytes = shallowRef<number | null>(null)
   const isLoadingMore = shallowRef<boolean>(false)
   const isDeleting = shallowRef<boolean>(false)
@@ -214,7 +227,11 @@ export function useArtifactLibrary(filters: {
   const total = computed<number>(() => {
     const knownTotal = loadedTotal.value ?? data.value?.total ?? 0
 
-    return Math.max(knownTotal - removedIds.value.size, 0)
+    const removedSinceKnown = loadedTotal.value === null
+      ? removedIds.value.size
+      : removedIds.value.size - removedAtLoadedTotal.value
+
+    return Math.max(knownTotal - removedSinceKnown, 0)
   })
 
   const usedBytes = computed<number>(() => {
@@ -268,6 +285,7 @@ export function useArtifactLibrary(filters: {
     removedIds.value = new Set()
     patches.value = {}
     loadedTotal.value = null
+    removedAtLoadedTotal.value = 0
     loadedUsedBytes.value = null
   })
 
@@ -286,7 +304,7 @@ export function useArtifactLibrary(filters: {
     }
 
     const requestGeneration = generation
-    const offset = (data.value?.items.length ?? 0) + extraItems.value.length
+    const offset = items.value.length
 
     isLoadingMore.value = true
 
@@ -300,8 +318,7 @@ export function useArtifactLibrary(filters: {
       }
 
       extraItems.value = [...extraItems.value, ...response.items]
-      loadedTotal.value = response.total
-      loadedUsedBytes.value = response.usedBytes
+      applyServerTotals(response)
     } catch (exception) {
       const parsedException = parseError(exception)
 
@@ -316,13 +333,19 @@ export function useArtifactLibrary(filters: {
     }
   }
 
-  async function refreshUsage() {
+  function applyServerTotals(response: { total: number, usedBytes: number }) {
+    loadedTotal.value = response.total
+    removedAtLoadedTotal.value = removedIds.value.size
+    loadedUsedBytes.value = response.usedBytes
+  }
+
+  async function refreshTotals() {
     try {
       const response = await $fetch('/api/v1/artifacts', {
-        query: { limit: 1 },
+        query: { ...requestQuery.value, limit: 1 },
       })
 
-      loadedUsedBytes.value = response.usedBytes
+      applyServerTotals(response)
     } catch {
       return
     }
@@ -358,9 +381,10 @@ export function useArtifactLibrary(filters: {
       }),
     )
 
+    lastSelectedIndex.value = null
+
     if (selectedIds.value.size === 0) {
       isSelectionMode.value = false
-      lastSelectedIndex.value = null
     }
   }
 
@@ -398,7 +422,7 @@ export function useArtifactLibrary(filters: {
 
     if (result.deletedIds.length) {
       removeLocally(result.deletedIds)
-      await refreshUsage()
+      await refreshTotals()
     }
 
     return result

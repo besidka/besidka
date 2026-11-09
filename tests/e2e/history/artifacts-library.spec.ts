@@ -380,7 +380,7 @@ test('filters by kind and search and keeps them in the URL',
 
     await expect(page).not.toHaveURL(/kind=/)
     await expect(page.getByTestId('artifact-library-kind-all'))
-      .toHaveAttribute('aria-checked', 'true')
+      .toHaveAttribute('aria-pressed', 'true')
 
     state.items = []
     await page.getByPlaceholder('Search artifacts...').fill('zzz')

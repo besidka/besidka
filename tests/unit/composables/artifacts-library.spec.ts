@@ -202,19 +202,41 @@ describe('useArtifactLibraryFilters', () => {
     expect(mocks.push).not.toHaveBeenCalled()
   })
 
-  it('clears the search input and the URL parameter', async () => {
-    mockRoute.query = { query: 'quiz', kind: 'svg' }
+  it('clears the search and the kind with one history entry', async () => {
+    mockRoute.query = { query: 'quiz', kind: 'svg', artifact: 'keep' }
 
     const filters = setup()
 
-    await filters.clearSearch()
+    await filters.clearFilters()
 
     expect(filters.search.value).toBe('')
+    expect(mocks.push).toHaveBeenCalledTimes(1)
     expect(mocks.push).toHaveBeenCalledWith({
       path: '/chats/artifacts',
-      query: { kind: 'svg' },
+      query: { artifact: 'keep' },
     })
   })
+
+  it('does not overwrite typing while its own push is in flight',
+    async () => {
+      let finishPush: () => void = () => {}
+
+      mocks.push.mockReturnValue(new Promise<void>((resolve) => {
+        finishPush = resolve
+      }))
+
+      const filters = setup()
+      const pending = filters.setKind('svg')
+
+      filters.search.value = 'abc'
+      mockRoute.query = { kind: 'svg', query: 'ab' }
+      await nextTick()
+
+      expect(filters.search.value).toBe('abc')
+
+      finishPush()
+      await pending
+    })
 
   it('restores the search input when Back changes the URL', async () => {
     mockRoute.query = { query: 'quiz' }
@@ -370,6 +392,74 @@ describe('useArtifactLibrary', () => {
 
       expect(library.items.value.map(item => item.id)).toEqual(['a9'])
       expect(library.total.value).toBe(1)
+    })
+
+  it('loads the next page after a delete at the offset of the rows shown',
+    async () => {
+      const ids = createIds(20)
+      const library = await setup(createPage(ids, 40))
+
+      mocks.fetch
+        .mockResolvedValueOnce({
+          deletedIds: ids.slice(0, 5),
+          heldIds: [],
+        })
+        .mockResolvedValueOnce({ items: [], total: 35, usedBytes: 0 })
+        .mockResolvedValueOnce(createPage(createIds(15, 'b'), 35))
+
+      await library.deleteArtifacts(ids.slice(0, 5))
+
+      expect(library.items.value).toHaveLength(15)
+      expect(library.total.value).toBe(35)
+
+      await library.loadMore()
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/artifacts', {
+        query: { limit: 20, offset: 15 },
+      })
+      expect(library.items.value).toHaveLength(30)
+      expect(library.total.value).toBe(35)
+      expect(library.hasMore.value).toBe(true)
+    })
+
+  it('does not subtract a delete twice from a total read after it',
+    async () => {
+      const library = await setup(createPage(['a1', 'a2', 'a3'], 6))
+
+      mocks.fetch
+        .mockResolvedValueOnce({ deletedIds: ['a1'], heldIds: [] })
+        .mockResolvedValueOnce({ items: [], total: 5, usedBytes: 0 })
+
+      await library.deleteArtifacts(['a1'])
+
+      expect(library.total.value).toBe(5)
+
+      mocks.fetch.mockResolvedValueOnce({
+        deletedIds: ['a2'],
+        heldIds: [],
+      })
+      mocks.fetch.mockRejectedValueOnce(new Error('offline'))
+
+      await library.deleteArtifacts(['a2'])
+
+      expect(library.total.value).toBe(4)
+    })
+
+  it('re-reads the totals with the active filters after a delete',
+    async () => {
+      kind.value = 'html'
+
+      const library = await setup(createPage(['a1'], 1))
+
+      mocks.fetch
+        .mockResolvedValueOnce({ deletedIds: ['a1'], heldIds: [] })
+        .mockResolvedValueOnce({ items: [], total: 0, usedBytes: 0 })
+
+      await library.deleteArtifacts(['a1'])
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/artifacts', {
+        query: { limit: 1, kind: 'html' },
+      })
     })
 
   describe('delete', () => {

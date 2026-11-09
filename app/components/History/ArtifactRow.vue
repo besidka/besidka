@@ -75,6 +75,7 @@
             :to="`/chats/${artifact.originChatSlug}`"
             class="link link-hover max-w-48 truncate"
             :class="{ 'pointer-events-none': isSelectionMode }"
+            :tabindex="isSelectionMode ? -1 : undefined"
             data-testid="artifact-row-origin-link"
           >
             {{ originLabel }}

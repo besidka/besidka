@@ -138,7 +138,7 @@ function createFiltersState() {
     appliedQuery: ref<string>(''),
     appliedKind: ref<string>('all'),
     setKind: vi.fn().mockResolvedValue(undefined),
-    clearSearch: vi.fn().mockResolvedValue(undefined),
+    clearFilters: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -275,8 +275,7 @@ describe('pages/chats/artifacts/index', () => {
 
       await wrapper.get(testId('artifact-library-clear')).trigger('click')
 
-      expect(filters.clearSearch).toHaveBeenCalledTimes(1)
-      expect(filters.setKind).toHaveBeenCalledWith('all')
+      expect(filters.clearFilters).toHaveBeenCalledTimes(1)
     })
 
   it('names the kind in the no-results state of a kind filter', async () => {
@@ -330,9 +329,9 @@ describe('pages/chats/artifacts/index', () => {
 
     const react = wrapper.get(testId('artifact-library-kind-react'))
 
-    expect(react.attributes('aria-checked')).toBe('false')
+    expect(react.attributes('aria-pressed')).toBe('false')
     expect(wrapper.get(testId('artifact-library-kind-all'))
-      .attributes('aria-checked')).toBe('true')
+      .attributes('aria-pressed')).toBe('true')
 
     await react.trigger('click')
 

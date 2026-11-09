@@ -201,6 +201,8 @@ describe('History/ArtifactRow', () => {
       expect(wrapper.emitted('open')).toBeUndefined()
       expect(wrapper.find(testId('artifact-row-actions-trigger')).exists())
         .toBe(false)
+      expect(wrapper.get(testId('artifact-row-origin-link'))
+        .attributes('tabindex')).toBe('-1')
     })
 
   it('marks a taken-down artifact and disables Open, Download and Share',

@@ -45,10 +45,13 @@ matter:
   does not run after the server response, which rendered "Using 0 B" on the
   server and mismatched on hydration.
 
-Further pages are appended with `$fetch` at `offset = rows loaded`. A delete
-removes rows locally (the list keeps its depth) and re-reads the quota with a
-`limit=1` request. A change to the first page (filter change, retry) drops the
-appended pages.
+Further pages are appended with `$fetch` at `offset = rows shown`. The offset
+counts only rows still shown, because the server's own offsets already shifted
+after a delete (counting removed rows skipped artifacts). A delete removes rows
+locally (the list keeps its depth) and re-reads the total and the quota with a
+`limit=1` request that carries the active filters. A total the server sent
+already excludes earlier deletes, so only deletes made after it are subtracted.
+A change to the first page (filter change, retry) drops the appended pages.
 
 ## Rows
 
@@ -93,9 +96,11 @@ search box when Back changes the URL, and a search shorter than
 
 Loading is six skeleton rows shown only after 300 ms; the first response
 before that renders nothing, so a fast load never flashes a skeleton. Empty,
-no results (query or kind, with Clear), error (`alert-error alert-soft` with
-Retry) and the quota line follow the ticket. Selection mode and bulk delete
-reuse `ActionsToolbar.vue` (delete only). Deleting sends ids in sequential
+no results (query or kind, with Clear, one history entry), error (`alert-error alert-soft` with
+Retry) and the quota line follow the ticket. The kind filter is a button group with
+`aria-pressed`, not a radio group: radios need arrow-key navigation, and the
+checked radio style overrode `btn-primary` in dark mode. Selection mode and
+bulk delete reuse `ActionsToolbar.vue` (delete only). Deleting sends ids in sequential
 chunks of `ARTIFACT_BULK_DELETE_MAX` (50), so a selection is not capped. Ids
 the server keeps (`heldIds`, a legal hold after a report) stay in the list and
 raise a warning toast.
