@@ -86,12 +86,13 @@ the Worker.
 | Body | The subject, decoded, with control, format (bidi, zero-width) and other default-ignorable characters removed, one line, at most 80 characters | Same |
 | Web Push `urgency`, `TTL` | `normal`, 300 s | `high`, 600 s |
 | Notification `tag` | `besidka-mail-<mailbox>` (a newer one replaces it) | unique per message (never replaced) |
-| Collapse | One push per mailbox per 2 minutes (KV key `mail-alert:collapse:<mailbox>`, `expirationTtl: 120`) | Always sent |
+| Collapse | One push per mailbox per 2 minutes (KV key `mail-alert:collapse:<mailbox>`, `expirationTtl: 120`) | One push per mailbox per 60 seconds (own key `mail-alert:collapse-urgent:<mailbox>`, `expirationTtl: 60`); a normal window never holds an urgent push back |
 | Tap opens | `/admin` | `/admin` |
 
 The collapse window uses KV, which is eventually consistent: two mails a few
 seconds apart that land in different Cloudflare locations can both push. That
-is acceptable for a wake-up call. KV errors fail open (the push is sent), and
+is acceptable for a wake-up call. KV errors fail open for both kinds (the
+push is sent), and
 a window whose push reached nobody (`no-recipients`, `push-failed`) is
 released, so the next mail tries again. A spam mail can still use up the
 window just before a real non-urgent one; that mail reaches Gmail without its
@@ -131,12 +132,12 @@ quantifier is bounded, so a huge header cannot burn the Worker's CPU.
   not yet seen in this deployment; runbook step 5 checks it.
 
 Subjects and display names cannot be authenticated. Anyone can send mail with
-"removal order" in the subject and get an urgent push; urgent pushes are never
-collapsed, so a flood of such mail would ring the phone each time. That is the
-accepted trade-off: a missed removal order costs far more than a noisy hour.
-If it happens, switch the affected rule back to forward (step 7) and tighten
-the rules. A cap (for example a single "N urgent mails" push after five in ten
-minutes) is an open owner decision.
+"removal order" in the subject and get an urgent push. Urgent pushes are
+therefore capped too, loosely: at most one per mailbox per 60 seconds
+(coordinator decision, 2026-11-09). A stranger cannot flood the phone, and a
+60-second window still leaves the one-hour rule easy to meet; a second urgent
+mail inside the window is in Gmail anyway. If the phone is still too noisy,
+switch the affected rule back to forward (step 7) and tighten the rules.
 
 A forward that fails sends no alert: the handler throws before the alert is
 scheduled. The Email Routing activity log is the only signal then.

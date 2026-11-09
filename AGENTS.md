@@ -195,8 +195,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   exactly like the old Email Routing rule, then calls the HMAC-signed internal
   route `/api/v1/internal/mail-alert` over a service binding, which pushes to
   every admin; urgency rules (keywords, DMARC-checked authority domains), the
-  2-minute KV collapse, what is logged (mailbox, urgent, outcome only), the
-  legal note (no Privacy Policy change, no new Art. 30 row), the
+  KV collapse (2 min, urgent 60 s), what is logged (mailbox, urgent, outcome
+  only), the legal note (no Privacy Policy change, no new Art. 30 row), the
   `MAIL_ALERTS_DEPLOY_ENABLED` CI gate, and the owner runbook (secrets, test
   rule, `cf email-routing rules update` per mailbox, restore to forward)
 - `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,

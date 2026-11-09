@@ -15,6 +15,8 @@ import {
 
 export const MAIL_ALERT_COLLAPSE_SECONDS = 120
 
+export const URGENT_MAIL_ALERT_COLLAPSE_SECONDS = 60
+
 export const MAIL_ALERT_CLICK_URL = '/admin'
 
 export const URGENT_MAIL_PUSH_DELIVERY: PushDeliveryOptions = {
@@ -57,6 +59,24 @@ export function mailAlertCollapseKey(mailbox: string): string {
   return `mail-alert:collapse:${mailbox}`
 }
 
+export function urgentMailAlertCollapseKey(mailbox: string): string {
+  return `mail-alert:collapse-urgent:${mailbox}`
+}
+
+function collapseWindowFor(payload: MailAlertPayload) {
+  if (payload.urgent) {
+    return {
+      key: urgentMailAlertCollapseKey(payload.mailbox),
+      seconds: URGENT_MAIL_ALERT_COLLAPSE_SECONDS,
+    }
+  }
+
+  return {
+    key: mailAlertCollapseKey(payload.mailbox),
+    seconds: MAIL_ALERT_COLLAPSE_SECONDS,
+  }
+}
+
 export function buildMailAlertPush(
   payload: MailAlertPayload,
   createTag: () => string = () => crypto.randomUUID(),
@@ -82,22 +102,20 @@ export function buildMailAlertPush(
 }
 
 /**
- * Claims the per-mailbox collapse window. KV errors (for example the
- * one-write-per-second limit when two mails race) fail open: a duplicate
- * push is better than a missing one.
+ * Claims a collapse window. KV errors (for example the one-write-per-second
+ * limit when two mails race) fail open: a duplicate push is better than a
+ * missing one.
  */
 async function claimCollapseWindow(
   kv: NotifyMailAlertInput['kv'],
-  mailbox: string,
+  window: ReturnType<typeof collapseWindowFor>,
 ): Promise<boolean> {
-  const key = mailAlertCollapseKey(mailbox)
-
   try {
-    if (await kv.get(key)) {
+    if (await kv.get(window.key)) {
       return false
     }
 
-    await kv.put(key, '1', { expirationTtl: MAIL_ALERT_COLLAPSE_SECONDS })
+    await kv.put(window.key, '1', { expirationTtl: window.seconds })
   } catch {
     return true
   }
@@ -107,10 +125,10 @@ async function claimCollapseWindow(
 
 async function releaseCollapseWindow(
   kv: NotifyMailAlertInput['kv'],
-  mailbox: string,
+  window: ReturnType<typeof collapseWindowFor>,
 ): Promise<void> {
   try {
-    await kv.delete(mailAlertCollapseKey(mailbox))
+    await kv.delete(window.key)
   } catch {
     return
   }
@@ -160,12 +178,14 @@ async function pushToAdmins(
 }
 
 /**
- * Pushes a mail alert to every admin's subscribed devices. Urgent mail
- * always pushes with high urgency; other mail pushes at most once per
- * mailbox per collapse window (KV is eventually consistent, so a second push
- * can slip through across locations, which is acceptable). A window whose
- * push reached nobody is released, so the next mail can try again. The
- * result carries counts only, never the subject or any address.
+ * Pushes a mail alert to every admin's subscribed devices, at most once per
+ * mailbox per collapse window: 60 seconds for urgent mail (high urgency, its
+ * own window, so a normal window never holds it back) and 2 minutes for the
+ * rest. The cap keeps a stranger from flooding the phone with keyword mail
+ * while still meeting the one-hour rule. KV is eventually consistent, so a
+ * second push can slip through across locations, which is acceptable. A
+ * window whose push reached nobody is released, so the next mail can try
+ * again. The result carries counts only, never the subject or any address.
  */
 export async function notifyMailAlert(
   payload: MailAlertPayload,
@@ -180,11 +200,8 @@ export async function notifyMailAlert(
     }
   }
 
-  if (payload.urgent) {
-    return pushToAdmins(payload, input)
-  }
-
-  const claimed = await claimCollapseWindow(input.kv, payload.mailbox)
+  const window = collapseWindowFor(payload)
+  const claimed = await claimCollapseWindow(input.kv, window)
 
   if (!claimed) {
     return { outcome: 'collapsed', recipients: 0, sent: 0, failed: 0 }
@@ -193,7 +210,7 @@ export async function notifyMailAlert(
   const result = await pushToAdmins(payload, input)
 
   if (result.outcome !== 'sent') {
-    await releaseCollapseWindow(input.kv, payload.mailbox)
+    await releaseCollapseWindow(input.kv, window)
   }
 
   return result

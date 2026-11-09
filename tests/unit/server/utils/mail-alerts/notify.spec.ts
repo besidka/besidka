@@ -22,11 +22,13 @@ vi.mock('~~/server/utils/push', async (importOriginal) => {
 
 const {
   MAIL_ALERT_COLLAPSE_SECONDS,
+  URGENT_MAIL_ALERT_COLLAPSE_SECONDS,
   MAIL_PUSH_DELIVERY,
   URGENT_MAIL_PUSH_DELIVERY,
   buildMailAlertPush,
   mailAlertCollapseKey,
   notifyMailAlert,
+  urgentMailAlertCollapseKey,
 } = await import('~~/server/utils/mail-alerts/notify')
 
 const config = {
@@ -174,17 +176,37 @@ describe('notifyMailAlert', () => {
       .toEqual(MAIL_PUSH_DELIVERY)
   })
 
-  it('always sends urgent mail, even inside a collapse window', async () => {
+  it('sends urgent mail inside a normal window, once per 60 seconds', async () => {
     const kv = createKv()
 
     kv.store.set(mailAlertCollapseKey('abuse'), '1')
 
     const first = await notifyMailAlert(urgentMail, createInput(kv))
     const second = await notifyMailAlert(urgentMail, createInput(kv))
+    const otherMailbox = await notifyMailAlert(
+      { ...urgentMail, mailbox: 'security' },
+      createInput(kv),
+    )
 
     expect(first.outcome).toBe('sent')
-    expect(second.outcome).toBe('sent')
-    expect(kv.get).not.toHaveBeenCalled()
+    expect(second.outcome).toBe('collapsed')
+    expect(otherMailbox.outcome).toBe('sent')
+    expect(kv.put).toHaveBeenCalledWith(
+      urgentMailAlertCollapseKey('abuse'),
+      '1',
+      { expirationTtl: URGENT_MAIL_ALERT_COLLAPSE_SECONDS },
+    )
+    expect(URGENT_MAIL_ALERT_COLLAPSE_SECONDS).toBe(60)
+  })
+
+  it('sends urgent mail when KV fails', async () => {
+    const kv = createKv()
+
+    kv.get.mockRejectedValue(new Error('KV GET failed'))
+
+    const result = await notifyMailAlert(urgentMail, createInput(kv))
+
+    expect(result.outcome).toBe('sent')
   })
 
   it('keeps going when one admin push throws', async () => {

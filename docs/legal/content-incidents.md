@@ -28,8 +28,8 @@ person who covers absences. Mail to `privacy@`, `abuse@`, `security@` and
 `contact@` goes through the `besidka-mail-alerts` Email Worker, which forwards
 it to the Gmail inbox as before and pushes "New mail to privacy@" with the
 subject to every admin's subscribed devices; removal orders, authority mail
-and breach or security reports push as urgent and are never collapsed
-(`docs/mail-alerts.md`). The owner switches the four Email Routing rules with
+and breach or security reports push as urgent, at most once per mailbox per
+minute (`docs/mail-alerts.md`). The owner switches the four Email Routing rules with
 the runbook there, turns push on in the installed PWA for the admin account,
 and names the cover person (an admin with push on, recorded privately).
 **Not covered:** Cloudflare abuse email to the account address still needs a
