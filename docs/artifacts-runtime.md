@@ -520,17 +520,33 @@ until it is added to one of the two lists. `design.spec.ts` fails when the
 generated file differs from what the script would write today, so a
 `main.css` theme change without `pnpm run artifacts:theme` fails CI.
 
+One deliberate difference (BES-335): `ARTIFACT_THEME_OVERRIDES` in the same
+script replaces four dark tokens. In the app's dark theme `primary` and
+`neutral` equal `base-100` (stone-800); the app gets away with it because
+its surfaces sit on the pink glass background, but an artifact's page is
+plain `base-100`, so `btn-primary`, `bg-primary`, `text-primary` and
+`badge-neutral` vanished. The artifact dark theme inverts `primary` the way
+light works (stone-100 fill, stone-800 content: 13.9:1, and 13.9:1 against
+the page) and lifts `neutral` to stone-700 with stone-100 content (9.4:1;
+1.5:1 against the page, so it reads as a fill, not as text). The app theme
+is unchanged. `design.spec.ts` checks the override tokens, the contrast
+(WCAG ratio computed from Tailwind's OKLCH values) and that the light theme
+and `main.css` are untouched.
+
 The app-wide component rules that are not tokens are mirrored by hand in
 `BESIDKA_COMPONENT_OVERRIDES`: checkbox and badge selector sizes, the box
 radius on `:where(.textarea)` (#780; the theme's `--radius-field: 2rem`
 would otherwise make textareas pills), tooltip radius, `font-weight: 400`
-on `.btn`, and the dark-theme contrast rules: outline `btn-primary`,
-`btn-secondary` and `btn-neutral` use the `*-content` colour (dark
-`--color-primary` is stone-800, the same as `base-100`, so an outline
-primary button would otherwise be invisible), and `text-base-content/60`,
-`/70` and labels are lighter. The spec checks those declarations still
-exist in `main.css`, and the e2e spec checks the outline button and muted
-text in dark. The `.btn-ghost-legacy` utility is app-only and not copied.
+on `.btn`, and the dark-theme contrast rules: outline and focused
+`btn-neutral` use `neutral-content` (stone-700 would be nearly invisible as
+text on the stone-800 page), and `text-base-content/60`, `/70` and labels
+are lighter. The app's matching rules for `btn-primary` and `btn-secondary`
+(their `*-content` colour) are left out on purpose: in the artifact theme
+both are light fills with stone-800 content, so those rules would paint the
+outline button text and the focus ring stone-800 on a stone-800 page. The
+spec checks the mirrored declarations still exist in `main.css` and that
+the two left-out ones stay out, and the e2e spec checks the outline
+primary, secondary and neutral buttons and muted text in dark. The `.btn-ghost-legacy` utility is app-only and not copied.
 Page-level app styles (glass bubbles, gradients) are not copied.
 
 ### Decision: compile in the frame (measured)

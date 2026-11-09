@@ -186,6 +186,10 @@ test.describe('artifact design system', () => {
       kind: 'html',
       content: '<!doctype html><body class="p-4">'
         + '<button id="outline" class="btn btn-outline btn-primary">Next</button>'
+        + '<button id="outline-secondary" class="btn btn-outline btn-secondary">'
+        + 'Back</button>'
+        + '<button id="outline-neutral" class="btn btn-outline btn-neutral">'
+        + 'Skip</button>'
         + '<p id="muted" class="text-base-content/70">Muted</p></body>',
     })
 
@@ -193,10 +197,15 @@ test.describe('artifact design system', () => {
 
     await expect(frame.locator('#outline')).toBeVisible()
 
-    const primaryContent = await themeColor(frame, '--color-primary-content')
+    const pageColor = await themeColor(frame, '--color-base-100')
+    const primary = await themeColor(frame, '--color-primary')
 
-    expect(await computedStyle(frame, '#outline', 'color'))
-      .toBe(primaryContent)
+    expect(primary).not.toBe(pageColor)
+    expect(await computedStyle(frame, '#outline', 'color')).toBe(primary)
+    expect(await computedStyle(frame, '#outline-secondary', 'color'))
+      .toBe(await themeColor(frame, '--color-secondary'))
+    expect(await computedStyle(frame, '#outline-neutral', 'color'))
+      .toBe(await themeColor(frame, '--color-neutral-content'))
     const mutedDark = await frame.locator('html').evaluate((root) => {
       const probe = document.createElement('span')
 
