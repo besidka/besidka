@@ -70,6 +70,13 @@ export function isArtifactMessagePart(part: unknown): boolean {
     || isArtifactToolPartType(record.type)
 }
 
+export function orderArtifactPartsLast<T>(parts: readonly T[]): T[] {
+  const otherParts = parts.filter(part => !isArtifactMessagePart(part))
+  const artifactParts = parts.filter(isArtifactMessagePart)
+
+  return [...otherParts, ...artifactParts]
+}
+
 function getToolPartModel(
   record: Record<string, unknown>,
 ): ArtifactPartModel | null {

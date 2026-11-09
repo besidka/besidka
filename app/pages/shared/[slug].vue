@@ -180,12 +180,12 @@
             :is-turn-thinking-held="false"
           />
           <div
-            v-for="(part, index) in getDisplayMessageParts(m)"
+            v-for="(part, index) in getRenderedMessageParts(m)"
             :key="`message-${m.id}-part-${index}`"
             :class="{
               'mt-4': isTextPartAfterGeneratedImage(
                 m,
-                getDisplayMessageParts(m),
+                getRenderedMessageParts(m),
                 index,
               ),
             }"
@@ -279,6 +279,7 @@ import {
 import {
   collectArtifactVersions,
   isArtifactMessagePart,
+  orderArtifactPartsLast,
 } from '~/utils/artifact-parts'
 
 interface SharedChatMessage {
@@ -415,6 +416,12 @@ const isSharedChatMessageSelected = useState<boolean>(
   'shared-chat-message-selected',
   () => false,
 )
+
+function getRenderedMessageParts(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+): UIMessage['parts'] {
+  return orderArtifactPartsLast(getDisplayMessageParts(message))
+}
 
 function isTextUIPart(
   message: Pick<UIMessage, 'role'>,

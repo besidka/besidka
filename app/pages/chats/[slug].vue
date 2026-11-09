@@ -84,7 +84,7 @@
             :is-turn-thinking-held="isTurnThinkingHeld"
           />
           <div
-            v-for="(part, index) in getDisplayMessageParts(m)"
+            v-for="(part, index) in getRenderedMessageParts(m)"
             :key="`message-${m.id}-part-${index}`"
             :class="{
               'opacity-0': chatSdk.status === 'streaming'
@@ -92,7 +92,7 @@
                 && waitingForDimensions,
               'mt-4': isTextPartAfterGeneratedImage(
                 m,
-                getDisplayMessageParts(m),
+                getRenderedMessageParts(m),
                 index,
               ),
             }"
@@ -286,7 +286,10 @@ import {
   isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
-import { isArtifactMessagePart } from '~/utils/artifact-parts'
+import {
+  isArtifactMessagePart,
+  orderArtifactPartsLast,
+} from '~/utils/artifact-parts'
 
 definePageMeta({
   layout: 'chat',
@@ -774,6 +777,12 @@ const { hapticRigid, hapticSoft } = useHaptics()
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
+
+function getRenderedMessageParts(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+): UIMessage['parts'] {
+  return orderArtifactPartsLast(getDisplayMessageParts(message))
+}
 
 function isTextUIPart(
   message: Pick<UIMessage, 'role'>,
