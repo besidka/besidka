@@ -5,7 +5,7 @@ import type {
   FeatureScheduleNotification,
 } from '~~/server/utils/features/schedules'
 import { getFeatureDefinition } from '#shared/utils/features/registry'
-import { listAdminUserRoles } from '~~/server/utils/features/admin-queries'
+import { listAdminRecipients } from '~~/server/utils/features/admin-recipients'
 import { sendTemplateEmail } from '~~/server/utils/email-template'
 import { getFeatureEvaluationConfig } from '~~/server/utils/features/evaluate'
 import {
@@ -86,26 +86,6 @@ export function buildFeatureScheduleMessage(
   }
 }
 
-async function listRecipients(
-  db: NotifyFeatureAdminsInput['db'],
-  config: FeatureEvaluationConfig,
-) {
-  const { roles, envAdmins } = await listAdminUserRoles(db, config)
-  const recipients = new Map<number, string>()
-
-  for (const admin of envAdmins) {
-    recipients.set(admin.id, admin.email)
-  }
-
-  for (const role of roles) {
-    if (role.role === 'admin' && role.email) {
-      recipients.set(role.userId, role.email)
-    }
-  }
-
-  return recipients
-}
-
 /**
  * Tells every admin (env admins with a verified email and `admin` role
  * holders) that a scheduled change was applied or failed: an email, and a
@@ -119,7 +99,7 @@ export async function notifyFeatureAdmins(
 ): Promise<void> {
   const siteUrl = input.siteUrl || DEFAULT_SITE_URL
   const message = buildFeatureScheduleMessage(notification, siteUrl)
-  const recipients = await listRecipients(input.db, input.config)
+  const recipients = await listAdminRecipients(input.db, input.config)
   let emailsSent = 0
   let pushesAttempted = 0
   let failures = 0

@@ -306,6 +306,25 @@ describe('push utils', () => {
     )
   })
 
+  it('passes a caller-chosen TTL and urgency through to the request', async () => {
+    const { sendPushNotificationToUser } = await importPushUtils()
+    const { db } = createDb([createSubscription()])
+
+    await sendPushNotificationToUser(
+      db as any,
+      1,
+      { title: 't', body: 'b', url: '/admin' },
+      configuredVapid,
+      waitUntilMock,
+      undefined,
+      { ttl: 600, urgency: 'high' },
+    )
+
+    expect(mocks.buildPushRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ ttl: 600, urgency: 'high' }),
+    )
+  })
+
   it('reports unconfigured when the public key is not a raw EC point', async () => {
     const { sendPushNotificationToUser } = await importPushUtils()
     const { db } = createDb([createSubscription()])

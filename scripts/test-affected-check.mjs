@@ -153,6 +153,14 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const mailAlertsTests = [
+    'tests/unit/utils/mail-alert-protocol.spec.ts',
+    'tests/unit/workers/mail-alerts/classify.spec.ts',
+    'tests/unit/workers/mail-alerts/main.spec.ts',
+    'tests/unit/server/utils/mail-alerts/notify.spec.ts',
+    'tests/unit/server/api/v1/internal/mail-alert/index.post.spec.ts',
+    'tests/unit/server/utils/features/schedule-notify.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/profile-settings-legal-notices.spec.ts',
@@ -2955,6 +2963,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/artifacts\/|server\/api\/v1\/artifacts\/|server\/capabilities\/artifacts\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|server\/plugins\/artifact-report-sweep\.ts$|tests\/setup\/helpers\/artifacts-store\.ts$)/,
       tests: artifactsCoreTests,
+    },
+    {
+      pattern:
+        /^(workers\/mail-alerts\/.*|shared\/utils\/mail-alert-protocol\.ts|server\/utils\/mail-alerts\/.*\.ts|server\/api\/v1\/internal\/mail-alert\/.*\.ts|server\/utils\/push\.ts|server\/utils\/features\/(admin-recipients|admin-queries|schedule-notify)\.ts)$/,
+      tests: mailAlertsTests,
     },
     {
       pattern:
