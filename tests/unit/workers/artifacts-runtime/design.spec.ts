@@ -111,8 +111,11 @@ describe('artifact design stylesheet', () => {
     expect(SHELL_STYLE.startsWith(`${LAYER_ORDER}\n@layer besidka-shell {`))
       .toBe(true)
     expect(withLayerOrder('.btn{}')).toBe(`${LAYER_ORDER}\n.btn{}`)
+    expect(LAYER_ORDER.startsWith('@layer properties, besidka-shell,'))
+      .toBe(true)
     expect(LAYER_ORDER.indexOf('besidka-shell'))
       .toBeLessThan(LAYER_ORDER.indexOf('theme'))
+    expect(SHELL_STYLE.endsWith('#root {\n  padding: 16px;\n}')).toBe(true)
   })
 
   it('compiles daisyUI components, arbitrary utilities and the theme', async () => {

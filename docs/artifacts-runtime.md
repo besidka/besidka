@@ -412,6 +412,12 @@ html or react render the runtime loads it and compiles the input from
    added subtrees). Classes added later by scripts, `innerHTML` or React
    state are compiled in the observer callback, a microtask that runs before
    the next paint. `build()` only adds CSS for candidates it has not seen.
+   The first build always runs, even for an artifact without classes, so
+   preflight and the theme variables never depend on whether a class is
+   present. The CSS is cumulative for the frame's lifetime (rules for
+   classes of an earlier version match nothing), and the runtime stops
+   adding candidates after 5,000 (`MAX_DESIGN_CANDIDATES`), so an artifact
+   that generates a new arbitrary class per frame cannot grow it forever.
 4. On a markdown, svg or mermaid render and on every shell restore it
    removes the `<style>` and disconnects the observer.
 
@@ -427,9 +433,16 @@ The theme follows the host: `theme.ts` already sets `data-theme="light"` or
 ### Cascade and overrides
 
 The compiled CSS starts with
-`@layer besidka-shell, theme, base, components, utilities;`, and the shell
-style (`SHELL_STYLE`) starts with the same statement and wraps its rules in
-`@layer besidka-shell`. So the shell styles always rank below Tailwind and
+`@layer properties, besidka-shell, theme, base, components, utilities;`
+(`properties` first, where Tailwind itself declares it, so its
+`--tw-*` fallbacks for older engines stay lowest), and the shell style
+(`SHELL_STYLE`) starts with the same statement and wraps its rules in
+`@layer besidka-shell`. Only `#root { padding: 16px }` stays unlayered,
+because preflight's `* { padding: 0 }` would otherwise remove the React
+page padding the instruction sheet promises; nothing in Tailwind or daisyUI
+targets `#root`. `body { font: inherit }` in the base layer gives React
+artifacts Nunito and preflight's line height instead of the shell's
+`system-ui`. So the shell styles always rank below Tailwind and
 daisyUI wherever the `<style>` elements sit, and the artifact's own
 `<style>` (unlayered) always wins over all of them; the e2e spec checks that
 an artifact's `.btn { background }` beats daisyUI. Tailwind's preflight is

@@ -22,9 +22,6 @@ body {
   font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   overflow-wrap: anywhere;
 }
-#root {
-  padding: 16px;
-}
 a {
   color: var(--besidka-accent);
 }
@@ -104,7 +101,9 @@ a {
 }
 `.trim()
 
-export const SHELL_STYLE = `${LAYER_ORDER}\n@layer besidka-shell {\n${SHELL_RULES}\n}`
+const SHELL_LAYOUT_RULES = `#${ROOT_ELEMENT_ID} {\n  padding: 16px;\n}`
+
+export const SHELL_STYLE = `${LAYER_ORDER}\n@layer besidka-shell {\n${SHELL_RULES}\n}\n${SHELL_LAYOUT_RULES}`
 
 export const SHELL_HEAD = [
   '<meta charset="utf-8">',

@@ -9,6 +9,12 @@ export interface DesignFontFace {
 export const DESIGN_FONT_FAMILY = 'Nunito'
 
 export const BESIDKA_COMPONENT_OVERRIDES = `
+@layer base {
+  body {
+    font: inherit;
+  }
+}
+
 @layer utilities {
   .checkbox {
     --size-selector: .25rem;

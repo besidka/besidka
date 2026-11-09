@@ -197,11 +197,30 @@ test.describe('artifact design system', () => {
     expect(await computedStyle(frame, '#increment', 'background-color'))
       .toBe(accent)
     expect(await computedStyle(frame, '#count', 'font-size')).toBe('30px')
+    expect(await computedStyle(frame, '#root', 'padding-top')).toBe('16px')
+    expect(await computedStyle(frame, 'body', 'font-family'))
+      .toContain('Nunito')
 
     await frame.locator('#increment').click()
     await expect.poll(async () => {
       return computedStyle(frame, '#count', 'color')
     }).toBe(success)
+  })
+
+  test('gives a classless html artifact the same base styles', async ({ page }) => {
+    await mount(page)
+    await render(page, {
+      kind: 'html',
+      content: '<!doctype html><body><h1 id="plain">Plain</h1></body>',
+    })
+
+    const frame = artifactFrame(page)
+
+    await expect(frame.locator('#plain')).toBeVisible()
+    await expect(frame.locator(DESIGN_STYLE_SELECTOR)).toHaveCount(1)
+    expect(await computedStyle(frame, '#plain', 'font-size')).toBe('16px')
+    expect(await computedStyle(frame, '#plain', 'font-family'))
+      .toContain('Nunito')
   })
 
   test('leaves markdown artifacts on the shell styles', async ({ page }) => {

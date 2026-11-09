@@ -10,6 +10,8 @@ export const DESIGN_SYSTEM_KINDS: ReadonlySet<ArtifactKind> = new Set([
 
 const CLASS_SELECTOR = '[class]'
 
+export const MAX_DESIGN_CANDIDATES = 5_000
+
 export const DESIGN_COMPILE_MEASURE = 'besidka-design-compile'
 
 export const DESIGN_BUILD_MEASURE = 'besidka-design-build'
@@ -58,6 +60,10 @@ export async function prepareDesignSystem(): Promise<boolean> {
 
 function addCandidates(element: Element, candidates: string[]) {
   for (const candidate of element.classList) {
+    if (seenCandidates.size >= MAX_DESIGN_CANDIDATES) {
+      return
+    }
+
     if (!seenCandidates.has(candidate)) {
       seenCandidates.add(candidate)
       candidates.push(candidate)
@@ -80,7 +86,9 @@ function writeStyle() {
 }
 
 function buildCandidates(candidates: string[]) {
-  if (!compiler || candidates.length === 0) {
+  const isFirstBuild = compiledCss === ''
+
+  if (!compiler || (candidates.length === 0 && !isFirstBuild)) {
     return
   }
 
@@ -88,10 +96,13 @@ function buildCandidates(candidates: string[]) {
 
   try {
     compiledCss = withLayerOrder(compiler.build(candidates))
-    performance.measure(DESIGN_BUILD_MEASURE, {
-      start: startedAt,
-      detail: { candidates: candidates.length },
-    })
+
+    if (isFirstBuild) {
+      performance.measure(DESIGN_BUILD_MEASURE, {
+        start: startedAt,
+        detail: { candidates: candidates.length },
+      })
+    }
   } catch (exception) {
     reportError(exception, { level: 'warning', showPanel: false })
 

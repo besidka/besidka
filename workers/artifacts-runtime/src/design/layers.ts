@@ -1,6 +1,6 @@
 export const DESIGN_STYLE_ATTRIBUTE = 'data-besidka-design'
 
-export const LAYER_ORDER = '@layer besidka-shell, theme, base, components, utilities;'
+export const LAYER_ORDER = '@layer properties, besidka-shell, theme, base, components, utilities;'
 
 /**
  * Prefixes the compiled CSS with the layer order, so the runtime's own shell

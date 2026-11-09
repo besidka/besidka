@@ -326,8 +326,6 @@ async function main() {
     workerDirectory,
   )
 
-  checkDesignIntegrity(runtimeResult.metafile)
-
   if (disallowed.length > 0) {
     for (const entry of disallowed) {
       console.error(`Licence not allowed: ${entry.name}@${entry.version} (${entry.declaredLicense})`)
@@ -335,6 +333,8 @@ async function main() {
 
     process.exit(1)
   }
+
+  checkDesignIntegrity(runtimeResult.metafile)
 
   const withoutLicenseText = entries.filter((entry) => {
     return !entry.licenseText
