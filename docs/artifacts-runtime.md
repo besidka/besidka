@@ -454,8 +454,14 @@ Known side effect: an html artifact written before A-15 that uses a class
 name daisyUI also defines (`progress`, `card`, `badge`, `btn`, `alert`,
 `stat`, `steps`, ...) for its own CSS gets daisyUI's other properties too.
 Seen once in the stored A-10 run (Claude Haiku's quiz: its `.progress`
-header overlapped the bar). Artifacts are internal-only, so these are a
-handful of test artifacts; new ones follow the instruction sheet.
+header overlapped the bar), and such artifacts also lose browser default
+heading sizes and weights to preflight. Artifacts are internal-only, so
+these are a handful of test artifacts; new ones follow the instruction
+sheet. This was chosen over an opt-out heuristic (skip the design system
+when an html artifact has a large `<style>` or no utility classes): every
+detector misfires on the case the sheet allows, a daisyUI artifact with one
+short `<style>` for keyframes, and would hide a model that ignores the sheet
+instead of surfacing it in the evals, where it belongs to the instructions.
 
 ### Theme sync
 
