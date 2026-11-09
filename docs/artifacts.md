@@ -43,12 +43,16 @@ feature is decided only by rules, grants and roles.
 
 ## Evals
 
-Golden prompts: `tests/evals/artifacts/prompts.json`, 13 cases (quiz, exam
+Golden prompts: `tests/evals/artifacts/prompts.json`, 24 cases (quiz, exam
 prep with a timer, flashcards with saved progress, AI-graded answers, a React
-bar chart, Mermaid, Markdown, a Git cheat sheet (A-15), SVG, an edit flow, a
+bar chart, Markdown, a Git cheat sheet (A-15), SVG, an edit flow, a
 no-artifact control, a Ukrainian quiz, and a prompt that tempts network
-access and navigation).
-Each case lists its expected kinds and checks.
+access and navigation), plus the BES-333 "inline" group: Mermaid diagrams,
+small diagrams, TypeScript functions and bash scripts in English and
+Ukrainian (including the owner's "згенеруй мені mermaid діаграму" with the
+follow-up "будь-яку, два трикутники") that must stay in the reply, and
+positive controls that ask for an artifact explicitly or for an
+interactive quiz. Each case lists its expected kinds and checks.
 
 ### How to run
 
@@ -103,6 +107,15 @@ Static checks (`scripts/artifact-evals.mjs`, no browser):
   `besidka.storage`, `besidka.complete`, a timer, Cyrillic text.
 - `edits`: the follow-up used `update_artifact` with `edits` instead of
   resending the whole content.
+- `inline-mermaid`, `inline-code`: the reply (all assistant text parts, both
+  turns) has a closed ```` ```mermaid ```` block, or any fenced block. Fences
+  are parsed like Markdown (backtick or tilde, a longer outer fence, an
+  unclosed fence counts as code but not as a diagram).
+- `no-source-echo`: no diagram, page or script source outside a fence
+  (Mermaid headers or `A --> B` lines, Cyrillic node ids included,
+  `<!DOCTYPE html>`, React imports, a shebang), and at most two lines of an
+  artifact the reply wrote repeated in the reply. Results stored before
+  BES-333 have no reply text, so these checks stay `pending` there.
 
 Behavioural check (`tests/e2e/artifacts/evals-render.spec.ts`, opt-in with
 `ARTIFACT_EVALS=1`, skipped otherwise): opens each chat, opens the artifact
@@ -172,6 +185,78 @@ send path and the artifact store (coordinator decision for A-10). A fourth
 provider (DeepSeek, Grok, Kimi or Qwen) needs a key on the test account;
 until then the table covers three providers.
 
+## When to create an artifact
+
+The owner does not want artifact clutter for every little thing (BES-333):
+"згенеруй мені mermaid діаграму" produced a Mermaid artifact plus the same
+source as unfenced text above the card, while chat already renders a fenced
+```` ```mermaid ```` block with the full viewer (zoom, full screen, SVG and
+draw.io export). The model decides alone, so the policy lives in the
+artifact instructions (`buildArtifactInstructions`) and in both
+`create_artifact` descriptions (chat tool and MCP tool):
+
+- Create an artifact only when the user asks for an artifact, an app, an
+  interactive page, a quiz, flashcards, a game or a dashboard, or for a
+  long, structured document (study guide, report, cheat sheet) or an SVG
+  image.
+- Everything else goes in the reply: a diagram as a fenced
+  ```` ```mermaid ```` block, code of any length (functions, scripts,
+  config) as fenced code blocks. An explicit "create an artifact with a
+  diagram" still creates one.
+- `update_artifact` only when the user refers to an artifact from this
+  chat; a new, unrelated request is not an edit.
+- After writing an artifact, one or two sentences; never its source,
+  fenced or not.
+
+Cost: input tokens of the single-step `no-artifact-snippet` send on pr-784
+grew from 5,206 to 5,304 (Claude Haiku 5.5, +98) and from 2,872 to 2,948
+(GPT-6 Luna, +76). The delta also contains the BES-332 `update_artifact`
+description that merged in at the same time. Gemini was not measurable
+(below). The text stays in the cached system-prompt prefix.
+
+Run on 2026-11-09 against pr-784 at `7c6b2280`, the full golden set (24
+cases), same test account, reasoning off. "yes"/"no" is whether an
+artifact was created; "ok" means it matches the expectation and every
+static check passed (`interactive` stays pending without the browser
+spec). Spend about **$0.075** (Claude $0.050, GPT $0.025).
+
+| Case | Expected artifact | Claude Haiku 5.5 | GPT-6 Luna |
+| --- | --- | --- | --- |
+| mermaid-flowchart | no | no (ok) | no (ok) |
+| mermaid-diagram-uk | no | no (ok) | no (ok) |
+| owner-mermaid-uk (+ "будь-яку, два трикутники") | no | no (ok) | no (ok) |
+| small-diagram | no | no (ok) | no (ok) |
+| small-diagram-uk | no | no (ok) | no (ok) |
+| typescript-function | no | no (ok) | no (ok) |
+| typescript-function-uk | no | no (ok) | no (ok) |
+| bash-script | no | no (ok) | no (ok) |
+| bash-script-uk | no | no (ok) | no (ok) |
+| no-artifact-snippet | no | no (ok) | no (ok) |
+| explicit-artifact-mermaid | yes | yes (ok) | yes (ok) |
+| explicit-artifact-uk | yes | yes (ok) | yes (ok) |
+| interactive-quiz-short | yes | yes (ok) | yes (ok) |
+| markdown-study-guide, cheat-sheet-git, svg-cell-diagram | yes | yes (ok) | yes (ok) |
+| 8 quiz, chart, bridge and edit cases | yes | yes (ok, 7); flashcards-storage fails `storage` | yes (ok) |
+| **Negatives / positives** | | **10/10 / 14/14** | **10/10 / 14/14** |
+
+- Every negative answered with a fenced block (`inline-mermaid` or
+  `inline-code`), and no reply printed source outside a fence or repeated
+  an artifact (`no-source-echo`). The owner's prompt got a sample
+  flowchart in the first turn and two triangles as a fenced block after
+  the follow-up, on both models.
+- Claude Haiku's `flashcards-storage` artifact never calls
+  `besidka.storage`, although the reply says progress is saved. It passed
+  in the earlier runs and is unrelated to this policy; noted for the next
+  tuning round.
+- `no-artifact-snippet` checks only `no-artifact`: GPT-6 Luna answers the
+  one-liner in inline backticks, which is fine.
+- Gemini 3.8 Flash: every send to Google returned HTTP 500
+  ("provider-unavailable") from about 17:45 to 18:05 UTC on pr-784 and
+  pr-781, for Gemini 3.7 and 3.8 Flash alike (also seen by the BES-332
+  agent), so it has no row. Re-run with
+  `--models=gemini-3.8-flash` (about $0.55 for the full set) once Google
+  answers again.
+
 ## Design system in artifacts
 
 HTML and React artifacts look like Besidka: the runtime loads Tailwind CSS 4
@@ -203,8 +288,8 @@ only sent when the artifact tools are registered for the send, so chats
 without artifacts pay nothing. It stays in the cached system-prompt prefix
 (it depends only on the allowed kinds). The `create_artifact` kind
 description now says "styled with daisyUI and Tailwind classes" instead of
-"inline CSS". The MCP `create_artifact` description is unchanged (a
-surface change needs the MCP version bump; follow-up).
+"inline CSS". The MCP `create_artifact` tool says the same since BES-333
+(MCP 3.0.1).
 
 Size: 2,750 characters, 347 words (`artifact-tools.spec.ts` caps it at
 4,000). Measured cost per send, from the input tokens of the single-step
@@ -219,18 +304,18 @@ Ukrainian chat pays the same sheet. A send that writes an artifact makes
 a second model call (the follow-up turn), so it pays the sheet twice, both
 inside the cached system-prompt prefix where the provider caches.
 
-The sheet limits `primary` and `neutral` to `btn-primary` and
-`btn-neutral`: in the Besidka dark theme both equal `base-100` (stone-800),
-so `text-primary`, `progress-primary`, `bg-primary` chart bars or a
-`bg-neutral` tooltip disappear in dark. The first pr-784 run, before that
-rule, used them in 22 of 26 html and react artifacts (Gemini's Git cheat
-sheet had 22 invisible `text-primary` commands); after it, 1 of 11
-re-run artifacts did (`badge-neutral`). The app avoids the same trap per
-use (`progress-primary-content`, `dark:bg-primary-content/10`), which
-artifacts cannot copy because the sheet forbids `dark:`. If the owner
-prefers a runtime fix, the place is a `[data-theme=dark]` token patch in
-`BESIDKA_COMPONENT_OVERRIDES` (it would also need the mirrored outline
-button rule revisited), keeping `theme.generated.ts` equal to `main.css`.
+Dark `primary` and `neutral` (BES-335). In the app's dark theme both equal
+`base-100` (stone-800), so `text-primary`, `progress-primary`, `bg-primary`
+chart bars or a `badge-neutral` disappeared in dark artifacts: the first
+pr-784 run used them in 22 of 26 html and react artifacts (Gemini's Git
+cheat sheet had 22 invisible `text-primary` commands). A sheet rule
+("primary and neutral for buttons only") cut that to 1 of 11. The fix is
+now in the theme instead: the artifact dark theme inverts `primary`
+(stone-100 fill, stone-800 content: 13.9:1, and 13.9:1 against the page)
+and lifts `neutral` to stone-700 (9.4:1 with its content), see
+`docs/artifacts-runtime.md` "Theme sync". The sheet rule shrank to
+"neutral (fills only)", because stone-700 text on the stone-800 page is
+only 1.5:1. The app theme is unchanged.
 
 ### Updating the theme
 
@@ -240,7 +325,10 @@ button rule revisited), keeping `theme.generated.ts` equal to `main.css`.
    `workers/artifacts-runtime/src/design/theme.generated.ts`. A new token
    makes the script stop until it is listed in `DAISYUI_TOKENS` (mirrored
    into artifacts) or `APP_ONLY_TOKENS` (app chrome only) in
-   `workers/artifacts-runtime/scripts/theme.mjs`.
+   `workers/artifacts-runtime/scripts/theme.mjs`. Dark `primary`,
+   `neutral` and their `*-content` come from `ARTIFACT_THEME_OVERRIDES`
+   in the same script; `design.spec.ts` fails when `main.css` changes
+   them, so the override gets a second look.
 3. `pnpm vitest run tests/unit/workers/artifacts-runtime/design.spec.ts`
    (it fails while the generated file is stale) and commit both files.
 

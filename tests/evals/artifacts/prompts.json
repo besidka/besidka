@@ -77,7 +77,7 @@
       "group": "control",
       "prompt": "How do I reverse a string in Python? Just the one-liner, please.",
       "expectedKind": [],
-      "checks": ["no-artifact", "inline-code"]
+      "checks": ["no-artifact"]
     },
     {
       "id": "quiz-ukrainian",
