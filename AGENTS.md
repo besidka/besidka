@@ -1021,6 +1021,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 
 - ESLint with `@stylistic` plugin enforces 2-space indentation, no semicolons, single quotes
 - Max line length: 80 characters (imports, URLs, strings exempt)
+- Textareas get the box radius globally from `main.css` (`:where(.textarea)`), because the theme's `--radius-field: 2rem` would make them pills; do not add `rounded-*` to a `.textarea` to undo the pill shape.
 - When line length limit requires breaking single-line statements, use explicit braces:
   ```typescript
   // Correct - explicit braces when breaking lines
