@@ -145,7 +145,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',
     'tests/unit/workers/artifacts-runtime/kit.spec.ts',
+    'tests/unit/workers/artifacts-runtime/design.spec.ts',
     'tests/e2e-artifacts/code-blocks.spec.ts',
+    'tests/e2e-artifacts/design-system.spec.ts',
     'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
   ]
   const artifactsBridgeServerTests = [
@@ -3071,6 +3073,10 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(workers\/artifacts-runtime\/|packages\/artifacts-protocol\/|tests\/e2e-artifacts\/|playwright\.artifacts\.config\.ts$)/,
       tests: artifactsRuntimeTests,
+    },
+    {
+      pattern: /^app\/assets\/css\/main\.css$/,
+      tests: ['tests/unit/workers/artifacts-runtime/design.spec.ts'],
     },
     {
       pattern:

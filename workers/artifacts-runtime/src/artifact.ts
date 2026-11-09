@@ -1,4 +1,10 @@
 import type { ArtifactPayload, Theme } from '@besidka/artifacts-protocol'
+import {
+  attachDesignSystem,
+  detachDesignSystem,
+  prepareDesignSystem,
+  usesDesignSystem,
+} from './design/index.ts'
 import { upgradeCodeBlocks } from './kit/upgrade.ts'
 import { installLinkInterception } from './links.ts'
 import { replaceDocument, replaceDocumentRoot } from './render/html.ts'
@@ -48,10 +54,12 @@ function markDocumentAsGenerated() {
 function htmlPrelude() {
   installDocumentHooks()
   markDocumentAsGenerated()
+  attachDesignSystem()
   upgradeCodeBlocks(document)
 }
 
 function restoreShell() {
+  detachDesignSystem()
   replaceDocumentRoot(createShellDocument(getTheme()), installDocumentHooks)
   documentReplaced = false
 }
@@ -112,6 +120,16 @@ export async function renderArtifact(payload: ArtifactPayload) {
       return
     }
 
+    if (usesDesignSystem(payload.kind)) {
+      await prepareDesignSystem()
+
+      if (!isCurrent()) {
+        return
+      }
+    } else {
+      detachDesignSystem()
+    }
+
     if (payload.kind === 'html') {
       documentReplaced = true
       await replaceDocument(payload.content, htmlPrelude, isCurrent)
@@ -135,6 +153,11 @@ export async function renderArtifact(payload: ArtifactPayload) {
     }
 
     document.title = payload.title || DEFAULT_TITLE
+
+    if (usesDesignSystem(payload.kind)) {
+      attachDesignSystem()
+    }
+
     reactMounted = payload.kind === 'react'
     await renderer(payload, { root, theme: getTheme(), isCurrent })
   } catch (exception) {
@@ -174,6 +197,8 @@ async function flushPartial() {
     if (documentReplaced) {
       restoreShell()
     }
+
+    detachDesignSystem()
 
     const root = getRoot()
 

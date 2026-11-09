@@ -1,9 +1,10 @@
 import type { Theme } from '@besidka/artifacts-protocol'
+import { LAYER_ORDER } from './design/layers.ts'
 import { paletteDeclarations } from './palette.ts'
 
 export const ROOT_ELEMENT_ID = 'root'
 
-export const SHELL_STYLE = `
+const SHELL_RULES = `
 :root {
   color-scheme: light;
   ${paletteDeclarations('light')}
@@ -102,6 +103,8 @@ a {
   text-align: center;
 }
 `.trim()
+
+export const SHELL_STYLE = `${LAYER_ORDER}\n@layer besidka-shell {\n${SHELL_RULES}\n}`
 
 export const SHELL_HEAD = [
   '<meta charset="utf-8">',

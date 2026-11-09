@@ -170,7 +170,8 @@ export function buildArtifactKindsDescription(
   allowedKinds: readonly ArtifactKind[],
 ): string {
   const descriptions: Record<ArtifactKind, string> = {
-    html: 'html: one self-contained HTML document with inline CSS and JS',
+    html: 'html: one self-contained HTML document with inline JS, styled '
+      + 'with daisyUI and Tailwind classes',
     react: 'react: one JSX module whose default export is a React component',
     svg: 'svg: one SVG image',
     mermaid: 'mermaid: one Mermaid diagram',
@@ -207,6 +208,67 @@ export function buildArtifactCodeBlocksDescription(
     + '<besidka-code lang="ts">source</besidka-code> and '
     + '<besidka-mermaid>source</besidka-mermaid>, in JSX with the source '
     + 'as a string child, in html with < and & escaped.'
+}
+
+const DESIGN_SYSTEM_KINDS: readonly ArtifactKind[] = ['html', 'react']
+
+export const ARTIFACT_DESIGN_INSTRUCTIONS = [
+  'Design: html and react artifacts already load Tailwind CSS 4 and',
+  'daisyUI 5 with the Besidka theme and the Nunito font. Never link or',
+  'import them (no CDN, no external fonts or icons) and do not set',
+  'font-family. Style with class names (className in JSX), not CSS:',
+  'daisyUI components first, Tailwind utilities for layout and spacing',
+  '(flex, grid, gap-4, p-6, max-w-2xl mx-auto, sm:/md: prefixes);',
+  'arbitrary values such as w-[18rem] work, and classes that scripts or',
+  'React state add later work too.',
+  'Colours: only theme names, so light and dark follow the viewer:',
+  'primary (the one main action), secondary, accent, neutral, base-100',
+  '(page, cards), base-200 and base-300 (sections, borders), base-content',
+  '(text, e.g. text-base-content/70 for muted), info, success, warning,',
+  'error, and *-content for text on a coloured fill. No fixed colours',
+  '(text-gray-700, bg-white, hex) except data colours in charts; no dark:',
+  'variants, no theme switcher, no body background.',
+  'Components (parts; modifiers): btn (btn-primary, btn-accent, btn-ghost,',
+  'btn-outline, btn-soft, btn-sm, btn-lg, btn-block, btn-circle); card',
+  '(card-body, card-title, card-actions; card-border); alert',
+  '(alert-info/success/warning/error, alert-soft); badge (badge-soft,',
+  'badge-outline, colours); progress (progress-accent); radial-progress',
+  '(style --value); input, textarea, select, checkbox, radio, toggle,',
+  'range; fieldset with fieldset-legend and label; tabs (tabs-box; tab,',
+  'tab-active); collapse (collapse-title, collapse-content,',
+  'collapse-arrow); join and join-item; menu; navbar; modal (<dialog',
+  'class="modal"> with modal-box and modal-action, open with showModal());',
+  'table (table-zebra); stats (stat, stat-title, stat-value, stat-desc);',
+  'steps (step, step-primary); timeline; countdown; kbd; loading',
+  '(loading-spinner); tooltip (data-tip); divider; list and list-row;',
+  'hero; swap; rating; avatar; skeleton; toast; indicator; chat',
+  '(chat-bubble).',
+  'Example: <div class="card bg-base-100 border border-base-300"><div',
+  'class="card-body"><h2 class="card-title">Question 1</h2><button',
+  'class="btn btn-outline justify-start">Answer</button><div',
+  'class="card-actions justify-end"><button class="btn btn-primary">Next',
+  '</button></div></div></div>. Give an html body padding (class="p-4");',
+  'a React component already sits in a padded page.',
+  'Write custom CSS only for what classes cannot do (keyframes, exact',
+  'chart sizes), in one short <style> block; it overrides the classes.',
+  'Keep it accessible: real <button> and <label> elements, aria-label on',
+  'icon-only buttons, text on fills with the matching *-content colour.',
+].join(' ')
+
+/**
+ * The compact design-system sheet (daisyUI 5 + Tailwind 4, Besidka theme),
+ * only when a kind that loads it (html, react) is allowed. Its token cost
+ * per provider is recorded in docs/artifacts.md "Design system in
+ * artifacts".
+ */
+export function buildArtifactDesignInstructions(
+  allowedKinds: readonly ArtifactKind[],
+): string {
+  const loadsDesignSystem = allowedKinds.some((kind) => {
+    return DESIGN_SYSTEM_KINDS.includes(kind)
+  })
+
+  return loadsDesignSystem ? ARTIFACT_DESIGN_INSTRUCTIONS : ''
 }
 
 export const ARTIFACT_REACT_IMPORTS = [
@@ -267,6 +329,7 @@ export function buildArtifactInstructions(
     'id; prefer small `edits` over sending the whole content again.',
     'After writing an artifact, add one short paragraph for the user; do',
     'not repeat its content in the reply.',
+    buildArtifactDesignInstructions(allowedKinds),
   ].filter(Boolean).join(' ')
 }
 

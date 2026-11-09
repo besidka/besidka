@@ -7,12 +7,15 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:dev": "node scripts/build.mjs --dev",
+    "theme": "node scripts/theme.mjs",
     "dev": "node scripts/build.mjs --dev && wrangler dev --port 8788",
     "deploy": "node scripts/build.mjs && wrangler deploy",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@besidka/artifacts-protocol": "workspace:*",
+    "@fontsource/nunito": "5.3.0",
+    "daisyui": "5.7.50",
     "es-module-lexer": "3.0.4",
     "esbuild": "0.28.2",
     "lucide-react": "1.70.0",
@@ -24,6 +27,7 @@
     "recharts": "3.10.1",
     "shiki": "4.5.0",
     "sucrase": "3.35.1",
+    "tailwindcss": "4.3.3",
     "wrangler": "4.151.1"
   }
 }
