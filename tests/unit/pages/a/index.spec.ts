@@ -394,6 +394,7 @@ describe('pages/a/index', () => {
       const wrapper = await mountPage()
 
       await wrapper.get(byTestId('artifact-share-report')).trigger('click')
+      await flushPromises()
 
       const props = mocks.modalProps.at(-1)!
 

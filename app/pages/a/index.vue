@@ -57,7 +57,7 @@
           class="btn btn-ghost btn-sm min-h-6 shrink-0"
           aria-haspopup="dialog"
           data-testid="artifact-share-report"
-          @click="isReportOpen = true"
+          @click="openReport"
         >
           <Icon
             name="lucide:flag"
@@ -84,7 +84,8 @@
           display-mode-override="fullscreen"
         />
       </div>
-      <ArtifactReportModal
+      <LazyArtifactReportModal
+        v-if="hasOpenedReport"
         v-model:open="isReportOpen"
         :title="share.title"
         :endpoint="REPORT_ENDPOINT"
@@ -176,6 +177,7 @@ const router = useRouter()
 const { loggedIn } = useAuth()
 const reportButton = useTemplateRef<HTMLButtonElement>('reportButton')
 const isReportOpen = shallowRef<boolean>(false)
+const hasOpenedReport = shallowRef<boolean>(false)
 const token = shallowRef<string>('')
 const isTokenInvalid = shallowRef<boolean>(false)
 
@@ -318,6 +320,11 @@ function rememberShareForSignIn() {
 
 function focusReportButton() {
   reportButton.value?.focus()
+}
+
+function openReport() {
+  hasOpenedReport.value = true
+  isReportOpen.value = true
 }
 
 async function retry() {

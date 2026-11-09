@@ -343,7 +343,7 @@
     >
       AI-generated content
     </p>
-    <ChatArtifactShareModal
+    <LazyChatArtifactShareModal
       v-if="hasOpenedShare && state.artifactId && shareVersion"
       v-model:open="isShareOpen"
       :artifact-id="state.artifactId"

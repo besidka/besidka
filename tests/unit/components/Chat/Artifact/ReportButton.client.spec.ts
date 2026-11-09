@@ -1,5 +1,5 @@
 import { mockComponent, mountSuspended } from '@nuxt/test-utils/runtime'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h } from 'vue'
 import ReportButton from '../../../../../app/components/Chat/Artifact/ReportButton.client.vue'
@@ -53,10 +53,12 @@ describe('Chat/Artifact/ReportButton.client', () => {
         return wrapper.get('[data-testid="report-modal-stub"]')
       }
 
-      expect(modal().attributes('data-open')).toBe('false')
+      expect(wrapper.find('[data-testid="report-modal-stub"]').exists())
+        .toBe(false)
 
       await wrapper.get('[data-testid="artifact-report-button"]')
         .trigger('click')
+      await flushPromises()
 
       expect(modal().attributes('data-open')).toBe('true')
       expect(modal().attributes('data-endpoint')).toBe(
@@ -71,6 +73,10 @@ describe('Chat/Artifact/ReportButton.client', () => {
     const wrapper = await mountSuspended(ReportButton, {
       props: { ...props, version: 2 },
     })
+
+    await wrapper.get('[data-testid="artifact-report-button"]')
+      .trigger('click')
+    await flushPromises()
 
     expect(wrapper.get('[data-testid="report-modal-stub"]')
       .attributes('data-version')).toBe('2')

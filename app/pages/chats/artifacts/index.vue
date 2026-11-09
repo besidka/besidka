@@ -220,7 +220,7 @@
     </p>
   </HistoryPageShell>
 
-  <ChatArtifactShareModal
+  <LazyChatArtifactShareModal
     v-if="shareTarget"
     :key="shareTarget.id"
     v-model:open="isShareOpen"

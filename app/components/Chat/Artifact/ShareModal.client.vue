@@ -716,7 +716,7 @@ function onClosed() {
   }
 }
 
-watch(isOpen, async (open) => {
+async function syncDialog(open: boolean) {
   await nextTick()
 
   const dialog = modal.value
@@ -743,7 +743,13 @@ watch(isOpen, async (open) => {
   resetForm()
   dialog.showModal()
   await Promise.all([loadShares(), runPiiCheck()])
-}, { immediate: true, flush: 'post' })
+}
+
+watch(isOpen, syncDialog, { flush: 'post' })
+
+onMounted(() => {
+  syncDialog(isOpen.value)
+})
 
 watch(pinnedVersion, () => {
   if (isOpen.value) {
