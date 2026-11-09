@@ -181,7 +181,7 @@
           />
           <div
             v-for="(part, index) in getRenderedMessageParts(m)"
-            :key="`message-${m.id}-part-${index}`"
+            :key="`message-${m.id}-${getRenderedPartKey(m, index)}`"
             :class="{
               'mt-4': isTextPartAfterGeneratedImage(
                 m,
@@ -278,6 +278,7 @@ import {
 } from '~/utils/generated-images'
 import {
   collectArtifactVersions,
+  getRenderedPartKeys,
   isArtifactMessagePart,
   orderArtifactPartsLast,
 } from '~/utils/artifact-parts'
@@ -421,6 +422,14 @@ function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
   return orderArtifactPartsLast(getDisplayMessageParts(message))
+}
+
+function getRenderedPartKey(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+  index: number,
+): string {
+  return getRenderedPartKeys(getDisplayMessageParts(message))[index]
+    ?? `part-${index}`
 }
 
 function isTextUIPart(

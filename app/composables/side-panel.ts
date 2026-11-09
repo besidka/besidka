@@ -17,6 +17,7 @@ export interface SidePanelView {
 export const SIDE_PANEL_WIDTH_STORAGE_KEY = 'besidka:side-panel-width'
 export const SIDE_PANEL_DEFAULT_WIDTH = 480
 export const SIDE_PANEL_MIN_WIDTH = 360
+export const SIDE_PANEL_ABSOLUTE_MAX_WIDTH = 2400
 export const SIDE_PANEL_MAX_VIEWPORT_RATIO = 0.6
 export const SIDE_PANEL_MIN_CHAT_WIDTH = 768
 export const SIDE_PANEL_DOCK_MIN_VIEWPORT
@@ -46,6 +47,17 @@ export function clampSidePanelWidth(
   return Math.round(Math.min(
     Math.max(width, SIDE_PANEL_MIN_WIDTH),
     getSidePanelMaxWidth(viewportWidth),
+  ))
+}
+
+export function clampStoredSidePanelWidth(width: number): number {
+  if (!Number.isFinite(width)) {
+    return SIDE_PANEL_DEFAULT_WIDTH
+  }
+
+  return Math.round(Math.min(
+    Math.max(width, SIDE_PANEL_MIN_WIDTH),
+    SIDE_PANEL_ABSOLUTE_MAX_WIDTH,
   ))
 }
 
@@ -184,19 +196,21 @@ export function useSidePanel() {
     isFullWidth.value = !isFullWidth.value
   }
 
+  /**
+   * Remembers the width the user chose, bounded only by the absolute limits.
+   * The per-viewport limit is applied when the width is rendered, so a width
+   * chosen on a wide screen survives a visit on a narrow one.
+   */
   function setWidth(value: number, options: { persist?: boolean } = {}) {
-    const viewportWidth = import.meta.client
-      ? window.innerWidth
-      : Number.POSITIVE_INFINITY
-    const clamped = clampSidePanelWidth(value, viewportWidth)
+    const stored = clampStoredSidePanelWidth(value)
 
-    preferredWidth.value = clamped
+    preferredWidth.value = stored
 
     if (options.persist) {
-      persistWidth(clamped)
+      persistWidth(stored)
     }
 
-    return clamped
+    return stored
   }
 
   function persistWidth(value: number = width.value): void {

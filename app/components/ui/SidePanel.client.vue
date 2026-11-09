@@ -633,7 +633,7 @@ function onSeamPointerMove(event: PointerEvent) {
       return
     }
 
-    setWidth(viewportWidth.value - pendingResizeClientX)
+    setVisibleWidth(viewportWidth.value - pendingResizeClientX)
     pendingResizeClientX = null
   })
 }
@@ -650,7 +650,7 @@ function onSeamPointerUp(event: PointerEvent) {
   }
 
   if (pendingResizeClientX !== null) {
-    setWidth(viewportWidth.value - pendingResizeClientX)
+    setVisibleWidth(viewportWidth.value - pendingResizeClientX)
   }
 
   stopResizing()
@@ -668,7 +668,17 @@ function onSeamKeydown(event: KeyboardEvent) {
   }
 
   event.preventDefault()
-  setWidth(nextWidth, { persist: true })
+  setVisibleWidth(nextWidth, { persist: true })
+}
+
+function setVisibleWidth(value: number, options: { persist?: boolean } = {}) {
+  const visibleWidth = clampSidePanelWidth(value, viewportWidth.value)
+
+  if (visibleWidth === effectiveWidth.value) {
+    return
+  }
+
+  setWidth(visibleWidth, options)
 }
 
 function getKeyboardWidth(key: string): number | null {
@@ -692,7 +702,7 @@ function getKeyboardWidth(key: string): number | null {
 }
 
 function cycleWidthPreset() {
-  setWidth(
+  setVisibleWidth(
     getNextSidePanelWidthPreset(effectiveWidth.value, viewportWidth.value),
     { persist: true },
   )

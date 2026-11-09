@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  SIDE_PANEL_ABSOLUTE_MAX_WIDTH,
   SIDE_PANEL_DEFAULT_WIDTH,
   SIDE_PANEL_DOCK_MIN_VIEWPORT,
   SIDE_PANEL_MIN_CHAT_WIDTH,
   SIDE_PANEL_MIN_WIDTH,
   SIDE_PANEL_WIDTH_STORAGE_KEY,
   clampSidePanelWidth,
+  clampStoredSidePanelWidth,
   getNextSidePanelWidthPreset,
   getSidePanelMaxWidth,
   useSidePanel,
@@ -362,12 +364,12 @@ describe('useSidePanel', () => {
       expect(SIDE_PANEL_WIDTH_STORAGE_KEY).toBe('besidka:side-panel-width')
     })
 
-    it('setWidth clamps, remembers the value and does not persist it', () => {
+    it('setWidth bounds to the absolute limits, remembers it, does not persist', () => {
       const panel = useSidePanel()
-      const clamped = panel.setWidth(5000)
 
-      expect(clamped).toBe(672)
-      expect(panel.width.value).toBe(672)
+      expect(panel.setWidth(5000)).toBe(SIDE_PANEL_ABSOLUTE_MAX_WIDTH)
+      expect(panel.width.value).toBe(SIDE_PANEL_ABSOLUTE_MAX_WIDTH)
+      expect(panel.setWidth(100)).toBe(SIDE_PANEL_MIN_WIDTH)
       expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
         .toBeNull()
     })
@@ -381,14 +383,35 @@ describe('useSidePanel', () => {
         .toBe('555')
     })
 
-    it('setWidth clamps against the current viewport', () => {
+    it('setWidth stores the chosen width whatever the current viewport', () => {
       stubViewport(1280)
 
       const panel = useSidePanel()
 
-      expect(panel.setWidth(900, { persist: true })).toBe(512)
+      expect(panel.setWidth(900, { persist: true })).toBe(900)
       expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
-        .toBe('512')
+        .toBe('900')
+    })
+
+    it('keeps a width chosen on a wide screen when saved on a narrow one', () => {
+      stubViewport(900)
+
+      const panel = useSidePanel()
+
+      panel.setWidth(640, { persist: true })
+
+      expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
+        .toBe('640')
+      expect(clampSidePanelWidth(panel.width.value, 900))
+        .toBe(SIDE_PANEL_MIN_WIDTH)
+      expect(clampSidePanelWidth(panel.width.value, 1920)).toBe(640)
+    })
+
+    it('clampStoredSidePanelWidth replaces a non-finite width', () => {
+      expect(clampStoredSidePanelWidth(Number.NaN))
+        .toBe(SIDE_PANEL_DEFAULT_WIDTH)
+      expect(clampStoredSidePanelWidth(Number.POSITIVE_INFINITY))
+        .toBe(SIDE_PANEL_DEFAULT_WIDTH)
     })
 
     it('persistWidth writes the current width', () => {

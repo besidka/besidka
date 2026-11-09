@@ -112,7 +112,11 @@ it, so with the panel closed every value resolves to what it was before:
 Width: default 480px, clamped to 360px … `min(60% of the viewport, viewport −
 768px)` so the chat column keeps at least 768px (the maximum is 672px at 1440
 and 512px at 1280). The one clamp serves the seam drag, the keyboard
-Home/End keys and the header width button. The panel body and header get
+Home/End keys and the header width button. The clamp is applied when the
+width is rendered and when a visible width is chosen; the stored preference
+is bounded only by 360px and 2400px, so a width chosen on a wide screen
+survives a visit on a narrow one. A key press or preset click that changes
+nothing visible does not write storage. The panel body and header get
 `pl-10` while docked, because the pill covers about 28px of the seam.
 
 Full width (Expand): the panel covers the viewport from the left edge to the

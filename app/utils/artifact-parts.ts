@@ -77,6 +77,23 @@ export function orderArtifactPartsLast<T>(parts: readonly T[]): T[] {
   return [...otherParts, ...artifactParts]
 }
 
+export function getRenderedPartKeys(parts: readonly unknown[]): string[] {
+  const otherKeys: string[] = []
+  const artifactKeys: string[] = []
+
+  parts.forEach((part, sourceIndex) => {
+    if (isArtifactMessagePart(part)) {
+      artifactKeys.push(`artifact-${sourceIndex}`)
+
+      return
+    }
+
+    otherKeys.push(`part-${otherKeys.length}`)
+  })
+
+  return [...otherKeys, ...artifactKeys]
+}
+
 function getToolPartModel(
   record: Record<string, unknown>,
 ): ArtifactPartModel | null {

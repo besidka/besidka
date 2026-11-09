@@ -358,6 +358,64 @@ describe('ui/SidePanel', () => {
           .toBe('504')
       })
 
+      it('keeps a wider stored width when a key press changes nothing', async () => {
+        stubViewport(1300)
+        window.localStorage.setItem(SIDE_PANEL_WIDTH_STORAGE_KEY, '640')
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+
+        expect(wrapper.get(SEPARATOR).attributes('aria-valuenow'))
+          .toBe('532')
+
+        await wrapper.get(SEPARATOR).trigger('keydown', { key: 'ArrowLeft' })
+        await wrapper.get(SEPARATOR).trigger('keydown', { key: 'End' })
+
+        expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
+          .toBe('640')
+
+        await wrapper.get(SEPARATOR).trigger('keydown', { key: 'ArrowRight' })
+
+        expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
+          .toBe('508')
+      })
+
+      it('keeps a wider stored width when a drag ends where it began', async () => {
+        stubViewport(1300)
+        window.localStorage.setItem(SIDE_PANEL_WIDTH_STORAGE_KEY, '640')
+        HTMLElement.prototype.setPointerCapture = () => {}
+        HTMLElement.prototype.hasPointerCapture = () => false
+        HTMLElement.prototype.releasePointerCapture = () => {}
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+
+        const seam = wrapper.get(SEPARATOR).element
+        const startClientX = 1300 - 532
+
+        function dispatchSeamPointer(type: string, clientX: number) {
+          seam.dispatchEvent(new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            clientX,
+          }))
+        }
+
+        dispatchSeamPointer('pointerdown', startClientX)
+        dispatchSeamPointer('pointermove', startClientX - 40)
+        dispatchSeamPointer('pointerup', startClientX)
+        await flushPromises()
+
+        expect(wrapper.get(SEPARATOR).attributes('aria-valuenow'))
+          .toBe('532')
+        expect(window.localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY))
+          .toBe('640')
+        expect(useSidePanel().width.value).toBe(640)
+      })
+
       it('ignores unrelated keys', async () => {
         const wrapper = await mountPanel()
 

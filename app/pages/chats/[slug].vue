@@ -85,7 +85,7 @@
           />
           <div
             v-for="(part, index) in getRenderedMessageParts(m)"
-            :key="`message-${m.id}-part-${index}`"
+            :key="`message-${m.id}-${getRenderedPartKey(m, index)}`"
             :class="{
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
@@ -287,6 +287,7 @@ import {
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
 import {
+  getRenderedPartKeys,
   isArtifactMessagePart,
   orderArtifactPartsLast,
 } from '~/utils/artifact-parts'
@@ -782,6 +783,14 @@ function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
   return orderArtifactPartsLast(getDisplayMessageParts(message))
+}
+
+function getRenderedPartKey(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+  index: number,
+): string {
+  return getRenderedPartKeys(getDisplayMessageParts(message))[index]
+    ?? `part-${index}`
 }
 
 function isTextUIPart(
