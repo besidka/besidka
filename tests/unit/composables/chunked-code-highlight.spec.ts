@@ -42,6 +42,19 @@ describe('composables/chunked-code-highlight', () => {
       })).toBe(true)
     })
 
+    it('records the longest line of each block in columns', () => {
+      const lines = createLines(CODE_BLOCK_LINE_COUNT + 2)
+
+      lines[3] = 'x'.repeat(120)
+
+      const blocks = toPlainCodeBlocks(lines.join('\n'))
+
+      expect(blocks[0]!.columnCount).toBe(120)
+      expect(blocks[1]!.columnCount).toBe(
+        `line ${CODE_BLOCK_LINE_COUNT + 1}`.length,
+      )
+    })
+
     it('keeps a trailing newline and blank lines', () => {
       const code = `${createLines(CODE_BLOCK_LINE_COUNT - 1).join('\n')}\n\n`
       const blocks = toPlainCodeBlocks(code)
@@ -56,7 +69,7 @@ describe('composables/chunked-code-highlight', () => {
 
     it('returns one empty block for empty code', () => {
       expect(toPlainCodeBlocks('')).toEqual([
-        { key: 0, lineCount: 1, text: '', tokens: null },
+        { key: 0, lineCount: 1, columnCount: 0, text: '', tokens: null },
       ])
     })
   })

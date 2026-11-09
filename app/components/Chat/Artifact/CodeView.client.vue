@@ -8,7 +8,10 @@
     :key="block.key"
     v-memo="[block]"
     class="block w-max min-w-full [content-visibility:auto]"
-    :style="{ containIntrinsicBlockSize: `auto ${block.lineCount}lh` }"
+    :style="{
+      containIntrinsicSize:
+        `auto ${block.columnCount}ch auto ${block.lineCount}lh`,
+    }"
     data-testid="artifact-code-block"
   ><template v-if="block.tokens"><span
     v-for="(token, tokenIndex) in block.tokens"

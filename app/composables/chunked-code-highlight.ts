@@ -10,6 +10,7 @@ export interface CodeBlockToken {
 export interface CodeBlock {
   key: number
   lineCount: number
+  columnCount: number
   text: string
   tokens: CodeBlockToken[] | null
 }
@@ -23,6 +24,7 @@ interface ChunkedCodeHighlightOptions {
 
 interface CachedHighlight {
   code: string
+  lineCount: number
   blockTokens: CodeBlockToken[][]
 }
 
@@ -36,12 +38,16 @@ export const CODE_BLOCKS_PER_FRAME = 6
 
 const TOKENIZE_BUDGET_MS = 8
 const HIGHLIGHT_CACHE_LIMIT = 16
+const HIGHLIGHT_CACHE_LINE_LIMIT = 40_000
 const NEWLINE = '\n'
 
 const highlightCache = new Map<string, CachedHighlight>()
 
+let cachedLineCount = 0
+
 export function clearCodeHighlightCache() {
   highlightCache.clear()
+  cachedLineCount = 0
 }
 
 function getCacheKey(
@@ -52,10 +58,18 @@ function getCacheKey(
   return `${language}\u0000${theme}\u0000${identity}`
 }
 
-function readCache(key: string, code: string): CodeBlockToken[][] | null {
+function readCache(
+  key: string,
+  code: string,
+  blockCount: number,
+): CodeBlockToken[][] | null {
   const cached = highlightCache.get(key)
 
-  if (!cached || cached.code !== code) {
+  if (
+    !cached
+    || cached.code !== code
+    || cached.blockTokens.length !== blockCount
+  ) {
     return null
   }
 
@@ -65,22 +79,47 @@ function readCache(key: string, code: string): CodeBlockToken[][] | null {
   return cached.blockTokens
 }
 
+function deleteCacheEntry(key: string) {
+  const cached = highlightCache.get(key)
+
+  if (!cached) {
+    return
+  }
+
+  highlightCache.delete(key)
+  cachedLineCount -= cached.lineCount
+}
+
+function isCacheOverLimit(): boolean {
+  return highlightCache.size > HIGHLIGHT_CACHE_LIMIT
+    || cachedLineCount > HIGHLIGHT_CACHE_LINE_LIMIT
+}
+
+/**
+ * Keeps finished colours in least-recently-used order, bounded both by the
+ * number of entries and by the total number of lines, so a few very large
+ * artifacts cannot hold tens of megabytes of tokens. The newest entry always
+ * stays.
+ */
 function writeCache(
   key: string,
   code: string,
   blockTokens: CodeBlockToken[][],
 ) {
-  highlightCache.delete(key)
-  highlightCache.set(key, { code, blockTokens })
+  const lineCount = code.split(NEWLINE).length
 
-  if (highlightCache.size <= HIGHLIGHT_CACHE_LIMIT) {
-    return
-  }
+  deleteCacheEntry(key)
+  highlightCache.set(key, { code, lineCount, blockTokens })
+  cachedLineCount += lineCount
 
-  const oldestKey = highlightCache.keys().next().value
+  while (highlightCache.size > 1 && isCacheOverLimit()) {
+    const oldestKey = highlightCache.keys().next().value
 
-  if (oldestKey !== undefined) {
-    highlightCache.delete(oldestKey)
+    if (oldestKey === undefined) {
+      return
+    }
+
+    deleteCacheEntry(oldestKey)
   }
 }
 
@@ -100,6 +139,9 @@ export function toPlainCodeBlocks(code: string): CodeBlock[] {
     blocks.push({
       key: blocks.length,
       lineCount: blockLines.length,
+      columnCount: Math.max(...blockLines.map((line) => {
+        return line.length
+      })),
       text: blockLines.join(NEWLINE) + (isLast ? '' : NEWLINE),
       tokens: null,
     })
@@ -196,6 +238,10 @@ export function useChunkedCodeHighlight(
       return
     }
 
+    resetToPlain(code, key)
+  }
+
+  function resetToPlain(code: string, key: string) {
     blocks.value = toPlainCodeBlocks(code)
     blocksSource = code
     blocksKey = key
@@ -220,7 +266,7 @@ export function useChunkedCodeHighlight(
     blocks.value = next
 
     return next.every((block) => {
-      return block.tokens
+      return !!block.tokens
     })
   }
 
@@ -297,7 +343,7 @@ export function useChunkedCodeHighlight(
 
     showPlain(code, key)
 
-    const cached = readCache(key, code)
+    const cached = readCache(key, code, blocks.value.length)
 
     if (cached) {
       await replayCache(cached, isCurrent)
@@ -322,6 +368,10 @@ export function useChunkedCodeHighlight(
     try {
       blockTokens = await tokenizeBlocks(resolved, theme, isCurrent)
     } catch {
+      if (isCurrent()) {
+        resetToPlain(code, key)
+      }
+
       return
     }
 
@@ -337,7 +387,11 @@ export function useChunkedCodeHighlight(
 
   showPlain(initial.code, initial.key)
 
-  const initialCached = readCache(initial.key, initial.code)
+  const initialCached = readCache(
+    initial.key,
+    initial.code,
+    blocks.value.length,
+  )
 
   if (initialCached && applyCached(initialCached, CODE_BLOCKS_PER_FRAME)) {
     isHighlighted.value = true

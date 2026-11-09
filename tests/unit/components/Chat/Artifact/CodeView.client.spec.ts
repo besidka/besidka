@@ -134,6 +134,32 @@ describe('Chat/Artifact/CodeView.client', () => {
     expect(getView(second).element.textContent).toBe(code)
   })
 
+  it('replays cached colours over several frames for a long version',
+    async () => {
+      const code = createReactSource(CODE_BLOCK_LINE_COUNT * 8)
+      const first = await mountSuspended(CodeView, {
+        props: { code, language: 'jsx', cacheKey: 'artifact:2' },
+      })
+
+      await waitForHighlight(first)
+
+      const expected = readTokens(first)
+
+      first.unmount()
+
+      const second = await mountSuspended(CodeView, {
+        props: { code, language: 'jsx', cacheKey: 'artifact:2' },
+      })
+      const firstBlock = second.get('[data-testid="artifact-code-block"]')
+
+      expect(firstBlock.find('span').exists()).toBe(true)
+
+      await waitForHighlight(second)
+
+      expect(readTokens(second)).toEqual(expected)
+      expect(getView(second).element.textContent).toBe(code)
+    })
+
   it('does not reuse colours cached for other code under the same key',
     async () => {
       const code = createReactSource(120)

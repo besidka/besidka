@@ -390,7 +390,7 @@ describe('ChatArtifactDetail', () => {
     expect(code.text()).toBe('<p>v3</p>')
     expect(code.attributes('data-language')).toBe('html')
     expect(code.attributes('data-mode')).toBe('finished')
-    expect(code.attributes('data-cache-key')).toMatch(/:3$/)
+    expect(code.attributes('data-cache-key')).toBe('Art1Art1Art1Art1:3')
     expect(wrapper.get('[data-testid="frame-stub"]').element.parentElement
       ?.style.display).toBe('none')
   })
