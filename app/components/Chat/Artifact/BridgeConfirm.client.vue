@@ -8,7 +8,7 @@
       @cancel.prevent="onCancel"
       @close="onDialogClosed"
     >
-      <div class="modal-box flex max-h-[90dvh] max-w-lg flex-col gap-3 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div class="modal-box flex max-h-[90dvh] max-w-lg flex-col gap-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <div class="shrink-0">
           <h3
             id="artifact-bridge-title"
@@ -49,7 +49,7 @@
               System text sent with it
             </legend>
             <pre
-              class="max-h-32 overflow-y-auto rounded-box bg-base-200 p-3 font-mono text-xs break-words whitespace-pre-wrap"
+              class="max-h-40 overflow-y-auto rounded-box bg-base-200 p-3 font-mono text-xs break-words whitespace-pre-wrap"
               data-testid="artifact-bridge-system"
             >{{ systemPreview }}</pre>
           </fieldset>
