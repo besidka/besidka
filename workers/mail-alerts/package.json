@@ -1,0 +1,14 @@
+{
+  "name": "mail-alerts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}
