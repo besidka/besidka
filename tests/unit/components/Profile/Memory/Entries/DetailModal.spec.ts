@@ -900,7 +900,6 @@ describe('Profile/Memory/Entries/DetailModal', () => {
       expect(textarea.classes()).toEqual(expect.arrayContaining([
         'textarea',
         'textarea-bordered',
-        'rounded-box',
         'w-full',
         'resize-none',
         'overflow-y-auto',

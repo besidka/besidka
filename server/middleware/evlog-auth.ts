@@ -23,6 +23,7 @@ function getIdentify(): Identify {
         '/api/_nuxt_icon/**',
         '/api/v1/stats*',
         '/api/v1/consents*',
+        '/api/v1/internal/mail-alert',
         '/mcp',
         '/.well-known/**',
         '/_nuxt/**',
