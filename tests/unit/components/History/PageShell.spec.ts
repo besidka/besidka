@@ -68,7 +68,7 @@ describe('HistoryPageShell', () => {
   it('keeps every label visible while there are three tabs', async () => {
     const wrapper = await mountShell('chats')
 
-    expect(wrapper.findAll('nav a span.max-sm\\:sr-only')).toHaveLength(0)
+    expect(wrapper.findAll('nav a span.\\@max-md\\:sr-only')).toHaveLength(0)
   })
 
   it('adds the Artifacts tab as the fourth link with the feature on',
@@ -93,7 +93,7 @@ describe('HistoryPageShell', () => {
     const wrapper = await mountShell('shared')
     const labels = wrapper.findAll('nav a span:not(.iconify)')
     const collapsed = labels.filter((label) => {
-      return label.classes().includes('max-sm:sr-only')
+      return label.classes().includes('@max-md:sr-only')
     })
 
     expect(labels).toHaveLength(4)

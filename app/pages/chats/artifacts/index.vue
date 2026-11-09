@@ -26,7 +26,7 @@
             :key="option.value"
             type="button"
             class="btn btn-sm"
-            :class="appliedKind === option.value ? 'btn-primary' : 'btn-soft'"
+            :class="appliedKind === option.value ? 'btn-accent' : 'btn-soft'"
             :aria-pressed="appliedKind === option.value"
             :data-testid="`artifact-library-kind-${option.value}`"
             @click="setKind(option.value)"

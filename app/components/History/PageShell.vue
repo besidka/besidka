@@ -14,7 +14,7 @@
   <UiBubble class="flex flex-col gap-4">
     <nav
       aria-label="History sections"
-      class="tabs tabs-border"
+      class="tabs tabs-border @container"
     >
       <NuxtLink
         v-for="tab in tabs"
@@ -32,7 +32,7 @@
         />
         <span
           :class="{
-            'max-sm:sr-only': hasArtifactsTab && activeTab !== tab.id,
+            '@max-md:sr-only': hasArtifactsTab && activeTab !== tab.id,
           }"
         >
           {{ tab.label }}

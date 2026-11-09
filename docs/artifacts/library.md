@@ -107,8 +107,9 @@ raise a warning toast.
 
 ## Tab bar on small screens
 
-Below `sm`, with four tabs, the inactive tabs hide their label with
-`max-sm:sr-only` and keep an `aria-label`; the active tab shows icon and
+With four tabs, inactive tabs hide their label with `@max-md:sr-only` when
+the tab bar itself is narrower than 28rem (a container query, so it also
+holds when the docked side panel narrows the page at 1024 px) and keep an `aria-label`; the active tab shows icon and
 label. With three tabs (feature off) every label stays visible. Checked at
 375 px and 320 px: no horizontal page scroll.
 
