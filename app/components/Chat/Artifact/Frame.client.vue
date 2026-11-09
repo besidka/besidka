@@ -524,7 +524,7 @@ function onReady() {
 }
 
 function onMessage(params: LogMessageParams) {
-  if (params.level === 'error') {
+  if (params.level === 'error' && !params.data.code) {
     logRuntimeError('script-error')
   }
 

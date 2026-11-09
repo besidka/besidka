@@ -15,7 +15,7 @@ export interface DiagramLimit {
   found?: number
 }
 
-const EDGE_LIMIT_PATTERN = /edge limit exceeded/i
+const EDGE_LIMIT_PATTERN = /^Edge limit exceeded\. \d+ edges found/
 
 const SPLIT_ADVICE = 'Split it into smaller diagrams.'
 

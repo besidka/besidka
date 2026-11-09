@@ -39,6 +39,13 @@ describe('detectMermaidLimit', () => {
     expect(detectMermaidLimit('', source)).toBeNull()
   })
 
+  it('ignores a syntax error that merely quotes the limit text', () => {
+    expect(detectMermaidLimit(
+      'Parse error on line 3: Edge limit exceeded in the label',
+      'flowchart TD',
+    )).toBeNull()
+  })
+
   it('leaves syntax errors alone', () => {
     expect(detectMermaidLimit('Parse error on line 2', 'flowchart TD'))
       .toBeNull()
@@ -126,6 +133,14 @@ describe('diagram limit codes in log messages', () => {
     expect(isLogMessageParams({
       ...valid,
       data: { ...valid.data, found: '5' },
+    })).toBe(false)
+    expect(isLogMessageParams({
+      ...valid,
+      data: { message: 'x', code: 'mermaid-edge-limit' },
+    })).toBe(false)
+    expect(isLogMessageParams({
+      ...valid,
+      data: { message: 'x', limit: 500 },
     })).toBe(false)
   })
 })

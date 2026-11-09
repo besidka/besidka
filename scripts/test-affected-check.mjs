@@ -143,6 +143,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/artifacts-protocol/host.spec.ts',
     'tests/unit/packages/artifacts-protocol/mermaid-limits.spec.ts',
     'tests/unit/workers/artifacts-runtime/diagram-limit.spec.ts',
+    'tests/unit/workers/artifacts-runtime/mermaid-view.spec.ts',
     'tests/unit/workers/artifacts-runtime/render.spec.ts',
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',

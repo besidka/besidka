@@ -57,15 +57,19 @@ function truncate(value: string): string {
 
 export function describeError(error: unknown): LogMessageParams['data'] {
   if (error instanceof DiagramLimitError) {
-    return {
+    const { code, limit, found } = error.diagramLimit
+    const data: LogMessageParams['data'] = {
       message: truncate(error.message),
       stack: truncate(error.rawMessage),
-      code: error.diagramLimit.code,
-      limit: error.diagramLimit.limit,
-      ...error.diagramLimit.found === undefined
-        ? {}
-        : { found: error.diagramLimit.found },
+      code,
+      limit,
     }
+
+    if (found !== undefined) {
+      data.found = found
+    }
+
+    return data
   }
 
   if (error instanceof Error) {
@@ -127,9 +131,7 @@ export function reportError(error: unknown, options: ReportOptions = {}) {
 
   notifyHost?.({ level, data })
 
-  const isDiagramLimit = error instanceof DiagramLimitError
-
-  if (options.showPanel ?? (level === 'error' && !isDiagramLimit)) {
+  if (options.showPanel ?? (level === 'error' && !data.code)) {
     showErrorPanel(data.message)
   }
 }

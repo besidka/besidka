@@ -323,9 +323,18 @@ export function isLogMessageParams(value: unknown): value is LogMessageParams {
     && (value.data.stack === undefined
       || (typeof value.data.stack === 'string'
         && value.data.stack.length <= MAX_LOG_MESSAGE_LENGTH))
-      && (value.data.code === undefined || isDiagramLimitCode(value.data.code))
-      && isOptionalPositiveInteger(value.data.limit)
-      && isOptionalPositiveInteger(value.data.found)
+      && hasValidDiagramLimitFields(value.data)
+}
+
+function hasValidDiagramLimitFields(data: Record<string, unknown>): boolean {
+  if (data.code === undefined) {
+    return data.limit === undefined && data.found === undefined
+  }
+
+  return isDiagramLimitCode(data.code)
+    && typeof data.limit === 'number'
+    && isOptionalPositiveInteger(data.limit)
+    && isOptionalPositiveInteger(data.found)
 }
 
 function isOptionalPositiveInteger(value: unknown): boolean {

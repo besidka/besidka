@@ -451,6 +451,32 @@ describe('ChatArtifactFrame', () => {
     }])
   })
 
+  it('forwards the diagram limit fields and skips the script-error log', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    runtime.notify(METHODS.message, {
+      level: 'error',
+      data: {
+        message: 'This diagram is too large to draw.',
+        stack: 'Edge limit exceeded. 500 edges found, but the limit is 500.',
+        code: 'mermaid-edge-limit',
+        limit: 500,
+      },
+    })
+    await waitForPort()
+
+    expect(wrapper.emitted('runtime-message')?.[0]).toEqual([{
+      level: 'error',
+      message: 'This diagram is too large to draw.',
+      stack: 'Edge limit exceeded. 500 edges found, but the limit is 500.',
+      code: 'mermaid-edge-limit',
+      limit: 500,
+    }])
+    expect(JSON.stringify(warnMock.mock.calls)).not.toContain('script-error')
+  })
+
   it('logs one artifact_open with the kind and no content', async () => {
     const { connection } = await mountFrame()
     const runtime = connectRuntime(connection)

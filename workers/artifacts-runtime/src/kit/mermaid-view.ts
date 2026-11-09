@@ -76,10 +76,6 @@ function renderDiagram(source: string, theme: Theme): Promise<string> {
     mermaid.initialize(createMermaidConfig(theme) as MermaidConfig)
 
     try {
-      if (detectMermaidLimit('', source)) {
-        throw new Error('Maximum text size exceeded')
-      }
-
       const { svg } = await mermaid.render(id, source)
 
       return svg
@@ -224,6 +220,14 @@ export function createMermaidController(element: HTMLElement): KitController {
 
     if (!source) {
       showSource('Couldn\'t render diagram: the diagram is empty')
+
+      return
+    }
+
+    const sizeLimit = detectMermaidLimit('', source)
+
+    if (sizeLimit) {
+      showSource(describeDiagramLimit(sizeLimit))
 
       return
     }

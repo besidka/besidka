@@ -449,6 +449,11 @@ therefore measures the source first and maps the edge message, both into a
 - Ask to fix (`app/utils/artifact-fix-prompt.ts`) asks the model to split the
   diagram into several smaller ones or simplify it under the limit and not to
   change any Mermaid configuration. Other runtime errors keep the old prompt.
+- The text check measures the raw source, while Mermaid measures the source
+  with frontmatter and directives stripped, so a diagram with a very large
+  frontmatter can be refused although Mermaid would draw it. The chat's Pele
+  renderer keeps its own 20,000 character source limit (`SOURCE_LIMIT`), so
+  only the edge limit is shared between chat and artifacts.
 - A `<besidka-mermaid>` block inside a Markdown, HTML or React artifact shows
   the same short message in its own error line.
 
