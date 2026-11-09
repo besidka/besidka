@@ -540,11 +540,11 @@ from the runtime origin. Options measured on 2026-11-09 with a daisyUI quiz
 (17 classes plus runtime-added ones), headless Playwright, local server,
 five runs each, time from start to styled first `getComputedStyle`:
 
-| Option | Transfer (gzip / brotli) | Chromium | WebKit |
-| --- | --- | --- | --- |
-| A. Tailwind compiler + daisyUI plugin in the frame (chosen) | 130 / 105 KiB | 67-98 ms (compile 57-78, build 10-20) | 83-121 ms (compile 63-88, build 18-33) |
-| B. Static `daisyui.css` (1,142 KiB raw) + utilities-only compiler | 171 / 113 KiB | 56-62 ms | 105-128 ms |
-| `@tailwindcss/browser` | 74 / 60 KiB for utilities alone | - | - |
+| Option | Transfer (gzip / brotli) | Chromium | WebKit | Arbitrary values (`w-[123px]`) |
+| --- | --- | --- | --- | --- |
+| A. Tailwind compiler + daisyUI plugin in the frame (chosen) | 130 / 105 KiB | 67-98 ms (compile 57-78, build 10-20) | 83-121 ms (compile 63-88, build 18-33) | yes, also variants of daisyUI classes (`md:card-side`) and classes added later |
+| B. Static `daisyui.css` (1,142 KiB raw) + utilities-only compiler | 171 / 113 KiB | 56-62 ms | 105-128 ms | yes for utilities; daisyUI variants only where the static file has them |
+| `@tailwindcss/browser` | 74 / 60 KiB for utilities alone | - | - | utilities only; no daisyUI (no plugins) |
 
 `@tailwindcss/browser` was ruled out without timing: its `loadModule`
 throws ("does not support plugins"), so daisyUI cannot load through it, and
@@ -559,6 +559,15 @@ work like any utility. The in-runtime numbers (`performance.measure`
 entries `besidka-design-compile` and `besidka-design-build`, read by
 `design-system.spec.ts`): compile 55-100 ms in Chromium and 63-76 ms in
 WebKit including the chunk fetch, first build 6-12 ms, later builds 2 ms.
+
+On the deployed PR preview (pr-784, 2026-11-09, headless Playwright, a new
+browser context per run so nothing is cached, the Claude Haiku Git cheat
+sheet from the evals, five runs per engine): compile 92-209 ms in Chromium
+(median 99) and 78-104 ms in WebKit (median 95), including the chunk fetch
+over the network (served `zstd`); first build 4-6 ms; 22 KB of CSS; the
+frame fetched only Nunito latin 400 and 700. `design-system.spec.ts` checks
+that rendering a styled artifact requests nothing outside the host and
+runtime origins.
 
 ### Sizes
 
