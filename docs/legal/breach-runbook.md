@@ -27,6 +27,9 @@ one can lead to a fine.
 3. Make sure the Cloudflare and Axiom account emails reach a mailbox you read.
 4. Know how the user notice is sent: a BCC batch from the privacy contact
    mailbox (5.2). Check that mailbox's daily sending limit now.
+5. Turn on the phone alert for the privacy and security mailboxes
+   (`docs/mail-alerts.md`): a processor's breach notice or a researcher's
+   report starts the 72 hours, and it then pushes as urgent to every admin.
 
 ## 1. When to use this, and the clock
 

@@ -14,6 +14,10 @@ The app sends transactional email only — there is no marketing or bulk
 email. Keep it that way: Cloudflare Email Sending is for transactional mail
 only.
 
+Inbound mail to the legal and security mailboxes is a separate path (Email
+Routing, the `besidka-mail-alerts` Email Worker and an admin push), described
+in `docs/mail-alerts.md`.
+
 All transactional mail is built from 3 Vue SFC template shapes rendered by
 `nuxt-email-renderer` (see [Templates](#templates) below). The flow counts are
 deliberately not written down here: the list of senders changes, and a hard

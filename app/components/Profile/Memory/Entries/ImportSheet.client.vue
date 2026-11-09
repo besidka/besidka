@@ -82,7 +82,7 @@
                   ref="textarea"
                   v-model="text"
                   class="
-                    textarea textarea-bordered rounded-box min-h-48 w-full
+                    textarea textarea-bordered min-h-48 w-full
                     resize-none max-h-[60dvh] overflow-y-auto
                   "
                   :class="{ 'textarea-error': isOverLimit }"
