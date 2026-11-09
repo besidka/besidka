@@ -196,6 +196,61 @@ describe('ChatArtifactCard', () => {
     expect(wrapper.find('[data-testid="artifact-card"]').exists()).toBe(false)
   })
 
+  it('renders a serialized chat error as a title and a reason', async () => {
+    const wrapper = await mountSuspended(ChatArtifactCard, {
+      props: {
+        part: {
+          type: 'tool-update_artifact',
+          toolCallId: 'call_5',
+          state: 'output-error',
+          input: { artifactId: 'art_1' },
+          errorText: JSON.stringify({
+            code: 'invalid-provider-output',
+            message: 'The model sent an invalid tool call.',
+            why: 'The model called update_artifact with input that does '
+              + 'not match its schema.',
+            fix: 'Retry the message, or pick another model.',
+            status: 422,
+            requestId: 'a57e4bba8acae3a',
+            providerId: 'google',
+            kind: 'invalid-tool-input',
+          }),
+        },
+        source: 'owner',
+      },
+    })
+    const alert = wrapper.get('[data-testid="artifact-card-failed"]')
+
+    expect(wrapper.get('[data-testid="artifact-card-failed-title"]').text())
+      .toBe('The model sent an invalid tool call.')
+    expect(wrapper.get('[data-testid="artifact-card-failed-reason"]').text())
+      .toBe(
+        'The model called update_artifact with input that does not match '
+        + 'its schema.',
+      )
+    expect(alert.text()).not.toContain('{')
+    expect(alert.text()).not.toContain('requestId')
+    expect(alert.text()).not.toContain('a57e4bba8acae3a')
+  })
+
+  it('keeps a plain error sentence under the artifact title', async () => {
+    const wrapper = await mountSuspended(ChatArtifactCard, {
+      props: {
+        part: {
+          type: 'tool-create_artifact',
+          toolCallId: 'call_6',
+          state: 'output-error',
+          input: { kind: 'html', title: 'Broken' },
+          errorText: 'The artifact is too large.',
+        },
+        source: 'owner',
+      },
+    })
+
+    expect(wrapper.get('[data-testid="artifact-card-failed-title"]').text())
+      .toBe('Couldn\'t save "Broken"')
+  })
+
   it('shows unavailable artifacts as muted text', async () => {
     useArtifactPanel().markUnavailable('art_1')
 

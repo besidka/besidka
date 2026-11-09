@@ -1,4 +1,5 @@
 import type { ArtifactKind } from '#shared/utils/artifacts'
+import { parseError } from 'evlog'
 import {
   ARTIFACT_DATA_PART_TYPE,
   isArtifactKind,
@@ -18,6 +19,7 @@ export interface ArtifactPartModel {
   kind: ArtifactKind | null
   title: string
   content: string
+  errorTitle: string
   errorText: string
 }
 
@@ -43,6 +45,12 @@ export const ARTIFACT_KIND_ICONS: Record<ArtifactKind, string> = {
 const STREAMING_STATES = new Set<string>(['input-streaming', 'input-available'])
 const FAILED_STATES = new Set<string>(['output-error', 'output-denied'])
 const DEFAULT_ERROR_TEXT = 'The artifact could not be saved.'
+const MAX_ERROR_PAYLOAD_LENGTH = 4000
+
+interface ArtifactFailureText {
+  title: string
+  reason: string
+}
 
 function readRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -52,6 +60,59 @@ function readRecord(value: unknown): Record<string, unknown> | null {
 
 function readString(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function parseErrorPayload(text: string): Record<string, unknown> | null {
+  if (text.length > MAX_ERROR_PAYLOAD_LENGTH) {
+    return null
+  }
+
+  try {
+    const payload = readRecord(JSON.parse(text))
+
+    return typeof payload?.message === 'string' && payload.message
+      ? payload
+      : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The stream and persisted rows carry a failed call's `errorText` as the
+ * serialized chat error payload (`{ code, message, why, fix, requestId, … }`)
+ * or, for older rows and plain tool errors, as a sentence. A payload becomes
+ * its `message` (title) and `why` (reason), never the raw JSON or the
+ * request id; a sentence stays the reason.
+ */
+export function readArtifactFailureText(
+  errorText: unknown,
+): ArtifactFailureText {
+  const text = readString(errorText).trim()
+
+  if (!text) {
+    return { title: '', reason: DEFAULT_ERROR_TEXT }
+  }
+
+  if (!text.startsWith('{')) {
+    return { title: '', reason: text }
+  }
+
+  const payload = parseErrorPayload(text)
+
+  if (!payload) {
+    return text.length > MAX_ERROR_PAYLOAD_LENGTH || text.endsWith('}')
+      ? { title: '', reason: DEFAULT_ERROR_TEXT }
+      : { title: '', reason: text }
+  }
+
+  const parsedPayload = parseError({ data: payload })
+  const reason = parsedPayload.why || parsedPayload.fix || ''
+
+  return {
+    title: parsedPayload.message,
+    reason: reason === parsedPayload.message ? '' : reason,
+  }
 }
 
 export function isArtifactToolPartType(type: unknown): boolean {
@@ -109,6 +170,7 @@ function getToolPartModel(
     kind: isArtifactKind(input?.kind) ? input.kind : null,
     title: readString(input?.title),
     content: readString(input?.content),
+    errorTitle: '',
     errorText: '',
   }
 
@@ -122,12 +184,15 @@ function getToolPartModel(
   }
 
   if (FAILED_STATES.has(state)) {
+    const failure = readArtifactFailureText(record.errorText)
+
     return {
       ...base,
       state: 'failed',
       artifactId: inputArtifactId,
       version: null,
-      errorText: readString(record.errorText) || DEFAULT_ERROR_TEXT,
+      errorTitle: failure.title,
+      errorText: failure.reason,
     }
   }
 
@@ -174,6 +239,7 @@ export function getArtifactPartModel(part: unknown): ArtifactPartModel | null {
       kind: record.data.kind,
       title: record.data.title,
       content: '',
+      errorTitle: '',
       errorText: '',
     }
   }
