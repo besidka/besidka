@@ -319,26 +319,22 @@
         />
       </div>
       <div
-        v-if="activeTab === 'code'"
+        v-if="hasOpenedCode"
+        v-show="activeTab === 'code'"
         :id="codePanelId"
         role="tabpanel"
         :aria-labelledby="codeTabId"
         class="absolute inset-0 overflow-auto px-3"
         data-testid="artifact-code"
       >
-        <Suspense>
-          <ProsePreStream
-            v-if="sourceText"
-            :code="sourceText"
-            :language="codeLanguage"
-            source-only
-            always-expanded
-          />
-          <template #fallback>
-            <UiSidePanelSkeleton />
-          </template>
-        </Suspense>
-        <UiSidePanelSkeleton v-if="!sourceText" />
+        <ProsePreStream
+          v-if="sourceText"
+          :code="sourceText"
+          :language="codeLanguage"
+          source-only
+          always-expanded
+        />
+        <UiSidePanelSkeleton v-else />
       </div>
     </div>
     <p
@@ -423,6 +419,13 @@ const codePanelId = useId()
 const actionsMenu = useTemplateRef<HTMLDetailsElement>('actionsMenu')
 
 const activeTab = shallowRef<ArtifactTab>('preview')
+const hasOpenedCode = shallowRef<boolean>(false)
+
+watch(activeTab, (tab) => {
+  if (tab === 'code') {
+    hasOpenedCode.value = true
+  }
+}, { immediate: true })
 const isCodeTabForced = shallowRef<boolean>(false)
 const detail = shallowRef<ArtifactDetail | null>(null)
 const content = shallowRef<ArtifactVersionContent | null>(null)

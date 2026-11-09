@@ -40,10 +40,29 @@ mockNuxtImport('useDiagramExport', () => {
   }
 })
 
-mockNuxtImport('useHighlighter', () => {
-  return async () => {
-    return { getLoadedLanguages: () => [] as string[] }
+const highlighterMock = vi.hoisted(() => {
+  return {
+    getLoadedLanguages: () => [] as string[],
+    codeToTokens: (code: string) => {
+      return {
+        tokens: code.split('\n').map((line) => {
+          return [{ content: line, color: '#ff0000', offset: 0 }]
+        }),
+      }
+    },
   }
+})
+
+const highlighterState = vi.hoisted(() => {
+  return { loaded: true }
+})
+
+mockNuxtImport('useHighlighter', () => {
+  return async () => highlighterMock
+})
+
+mockNuxtImport('getLoadedHighlighter', () => {
+  return () => highlighterState.loaded ? highlighterMock : null
 })
 
 mockNuxtImport('useClipboard', () => {
@@ -91,6 +110,7 @@ async function mountPre(
     language?: string
     context?: MarkdownSourceContext
     attachTo?: HTMLElement
+    sourceOnly?: boolean
   } = {},
 ): Promise<VueWrapper> {
   const provide: Record<symbol, () => MarkdownSourceContext> = {}
@@ -106,6 +126,7 @@ async function mountPre(
     props: {
       code,
       language: options.language ?? 'mermaid',
+      sourceOnly: options.sourceOnly ?? false,
     },
     global: {
       provide,
@@ -1410,5 +1431,60 @@ describe('prose/PreStream.vue mermaid editing', () => {
         svg: expect.stringContaining('Pending'),
       }),
     )
+  })
+})
+
+describe('prose/PreStream.vue finished code', () => {
+  const ARTIFACT_SOURCE = Array.from({ length: 300 }, (_line, index) => {
+    return `const line${index} = ${index}`
+  }).join('\n')
+
+  afterEach(() => {
+    highlighterState.loaded = true
+  })
+
+  it('shows the plain source before the highlighter has loaded', async () => {
+    highlighterState.loaded = false
+
+    const wrapper = await mountPre(ARTIFACT_SOURCE, {
+      language: 'jsx',
+      sourceOnly: true,
+    })
+    const block = wrapper.get('[data-testid="code-static"]')
+
+    expect(block.attributes('data-highlighted')).toBe('false')
+    expect(block.text()).toBe(ARTIFACT_SOURCE)
+    expect(wrapper.find('[data-testid="shiki-code"]').exists()).toBe(false)
+
+    await vi.waitFor(() => {
+      expect(wrapper.get('[data-testid="code-static"]')
+        .attributes('data-highlighted')).toBe('true')
+    })
+
+    const highlighted = wrapper.get('[data-testid="code-static"]')
+
+    expect(highlighted.text()).toBe(ARTIFACT_SOURCE)
+    expect(highlighted.findAll('span')).toHaveLength(300)
+  })
+
+  it('colours a block it has seen before on the first render', async () => {
+    const first = await mountPre('const cached = 1', {
+      language: 'jsx',
+      sourceOnly: true,
+    })
+
+    await vi.waitFor(() => {
+      expect(first.get('[data-testid="code-static"]')
+        .attributes('data-highlighted')).toBe('true')
+    })
+    first.unmount()
+
+    const second = await mountPre('const cached = 1', {
+      language: 'jsx',
+      sourceOnly: true,
+    })
+
+    expect(second.get('[data-testid="code-static"]')
+      .attributes('data-highlighted')).toBe('true')
   })
 })

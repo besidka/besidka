@@ -305,6 +305,37 @@ describe('ChatArtifactDetail', () => {
       ?.style.display).toBe('none')
   })
 
+  it('switches to Code on the click and keeps both panels mounted',
+    async () => {
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await flushPromises()
+
+      const mountsBefore = frameMounts.count
+
+      await wrapper.get('[data-testid="artifact-tab-code"]').trigger('click')
+
+      expect(wrapper.get('[data-testid="artifact-tab-code"]').classes())
+        .toContain('tab-active')
+      expect((wrapper.get('[data-testid="artifact-code"]').element as
+        HTMLElement).style.display).toBe('')
+
+      const codeElement = wrapper.get('[data-testid="code-stub"]').element
+
+      await wrapper.get('[data-testid="artifact-tab-preview"]').trigger('click')
+
+      expect((wrapper.get('[data-testid="artifact-code"]').element as
+        HTMLElement).style.display).toBe('none')
+
+      await wrapper.get('[data-testid="artifact-tab-code"]').trigger('click')
+
+      expect(wrapper.get('[data-testid="code-stub"]').element)
+        .toBe(codeElement)
+      expect(frameMounts.count).toBe(mountsBefore)
+    })
+
   it('prefills the composer to fix a runtime error and never sends',
     async () => {
       const prefill = vi.fn()

@@ -161,17 +161,30 @@
         />
         <ProsePre v-else v-bind="props">
           <ShikiCachedRenderer
+            v-if="highlighter && !sourceOnly"
             :key="key"
             :highlighter="highlighter as any"
             :code="effectiveSource"
             :lang="lang"
-            :theme="$colorMode.value === 'dark'
-              ? 'github-dark-high-contrast'
-              : 'github-light-high-contrast'
-            "
+            :theme="shikiTheme"
           >
             Render
           </ShikiCachedRenderer>
+          <pre
+            v-else
+            class="shiki shiki-stream"
+            data-testid="code-static"
+            :data-highlighted="staticTokens ? 'true' : 'false'"
+          ><code v-if="staticTokens"><template
+            v-for="(line, lineIndex) in staticTokens"
+            :key="lineIndex"
+          ><span
+            v-for="(token, tokenIndex) in line"
+            :key="tokenIndex"
+            :style="getTokenStyleObject(token)"
+          >{{ token.content }}</span>{{
+            lineIndex < staticTokens.length - 1 ? '\n' : ''
+          }}</template></code><code v-else>{{ effectiveSource }}</code></pre>
         </ProsePre>
       </ClientOnly>
     </div>
@@ -192,6 +205,8 @@
 
 <script setup lang="ts">
 import { ShikiCachedRenderer } from 'shiki-stream/vue'
+import { getTokenStyleObject } from 'shiki/core'
+import type { HighlighterGeneric, ThemedToken } from 'shiki'
 import type { DiagramRenderError } from '~/types/diagram.d'
 import type { DiagramMenuInput } from '~/types/diagram-export.d'
 
@@ -209,7 +224,10 @@ const EDIT_COMMIT_DELAY_MS: number = 250
 
 const colorMode = useColorMode()
 const clipboard = useClipboard()
-const highlighter = await useHighlighter()
+const highlighter = shallowRef<HighlighterGeneric<any, any> | null>(
+  getLoadedHighlighter(),
+)
+const staticTokens = shallowRef<ThemedToken[][] | null>(null)
 const markdownSource = useMarkdownSource()
 
 const trimmedCode = computed<string>(() => {
@@ -424,13 +442,90 @@ const lang = computed<string>(() => {
       language = props.language
   }
 
-  const loadedLanguages = highlighter.getLoadedLanguages()
+  const loadedLanguages = highlighter.value?.getLoadedLanguages() ?? []
 
   return loadedLanguages.includes(language) ? language : 'text'
 })
 
 const key = computed<string>(() => {
   return `${lang.value}-${colorMode.value}`
+})
+
+const shikiTheme = computed<string>(() => {
+  return colorMode.value === 'dark'
+    ? 'github-dark-high-contrast'
+    : 'github-light-high-contrast'
+})
+
+let staticHighlightRun = 0
+
+function readCachedStaticTokens(): ThemedToken[][] | null {
+  if (!props.sourceOnly || !highlighter.value) {
+    return null
+  }
+
+  return getCachedStaticTokens({
+    highlighter: highlighter.value,
+    code: effectiveSource.value,
+    lang: lang.value,
+    theme: shikiTheme.value,
+  })
+}
+
+/**
+ * Colours finished code after the plain text has painted: wait for a frame,
+ * then a task, so the click that showed this block is never held up by
+ * loading the highlighter or tokenizing. A newer request wins.
+ */
+async function highlightAfterPaint() {
+  const run = ++staticHighlightRun
+
+  staticTokens.value = readCachedStaticTokens()
+
+  if (!props.sourceOnly || staticTokens.value) {
+    return
+  }
+
+  await yieldToNextFrame()
+
+  if (!highlighter.value) {
+    highlighter.value = await useHighlighter()
+  }
+
+  if (run !== staticHighlightRun) {
+    return
+  }
+
+  staticTokens.value = highlightStaticCode({
+    highlighter: highlighter.value,
+    code: effectiveSource.value,
+    lang: lang.value,
+    theme: shikiTheme.value,
+  })
+}
+
+async function yieldToNextFrame() {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      setTimeout(resolve, 0)
+    })
+  })
+}
+
+async function loadStreamingHighlighter() {
+  if (props.sourceOnly || highlighter.value) {
+    return
+  }
+
+  highlighter.value = await useHighlighter()
+}
+
+watch([effectiveSource, shikiTheme], () => {
+  if (!isMounted.value) {
+    return
+  }
+
+  highlightAfterPaint()
 })
 
 const copied = shallowRef(false)
@@ -467,6 +562,8 @@ onBeforeMount(() => {
 
 onMounted(() => {
   isMounted.value = true
+  highlightAfterPaint()
+  loadStreamingHighlighter()
 
   timer.value = setInterval(() => {
     if (props.code.length !== savedCodeState.value.length) {
