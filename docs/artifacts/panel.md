@@ -77,15 +77,33 @@ The detail view:
 
 - Preview tab: the Frame. During a stream only `html`, `svg` and `markdown`
   get partial previews; `react` and `mermaid` wait for the stored version.
-- Code tab: `ChatArtifactCodeView` (`useChunkedCodeHighlight`). The plain
-  source paints at once; colours follow from the chat's lazy Shiki
-  highlighter (`loadCodeHighlighter`, docs/code-highlighting.md), tokenized
-  40 lines at a time with the grammar state carried over and a yield to the
-  browser between chunks, and the result is cached per code, language and
-  theme (24 entries). One pass over a 3,000-line JSX file is about 770 ms in
-  Node, so it would be one long task; a 100-line chunk is about 30 ms. While
-  a version is still streaming the tab uses `ProseCodeStream` instead. The
-  panel stays mounted after the first open, so switching back is instant.
+- Code tab: `ChatArtifactCodeView` (`useChunkedCodeHighlight`). The source
+  is split into blocks of 50 lines, each a `display: block` span with
+  `content-visibility: auto` and `contain-intrinsic-size: auto <longest
+  line>ch auto <lines>lh`, so off-screen blocks skip style, layout and paint
+  (Safari 18+; older browsers just render everything) while keeping their
+  real height and width, and the horizontal scrollbar does not change as
+  you scroll. The plain text paints in the click's
+  frame, one text node per block. Colours follow from the chat's lazy Shiki
+  highlighter (`loadCodeHighlighter`, docs/code-highlighting.md): each
+  animation frame tokenizes blocks for up to 8 ms with the grammar state
+  carried over and swaps at most 6 coloured blocks in; `v-memo` keeps a
+  finished block's DOM untouched; a tokenize error resets the view to plain
+  text. Finished colours are cached (16 entries and at most 40,000 lines in
+  total) per artifact version (`<artifactId>:<version>`, or the code itself),
+  language and theme, and reused only when the cached code equals the
+  current code; reopening a version replays them 6 blocks per frame without
+  tokenizing. Every block but the last ends with its `\n`, so `textContent`
+  and a selection copy equal the source; `innerText` adds a blank line at
+  each block boundary, so never read the code from it (Copy uses the source).
+  While a version is still streaming the tab uses `ProseCodeStream` instead.
+  The panel stays mounted (`v-show`) after the first open and the Preview
+  iframe is never unmounted, so switching tabs only toggles `display`.
+  Measured on a production build (headless Chromium, 3,000-line HTML): text
+  in the click's frame, all colours in about 0.5 s instead of 2.8 s, no long
+  task over 115 ms (the first one is the grammar compiling), Preview to Code
+  about 32 ms instead of 168 ms, reopening a version with no long task.
+  Numbers and the method are in PR #778.
 - Mermaid artifacts on the Code tab get the chat's Fullscreen (zoom and pan
   viewer), Download (SVG, PNG, .drawio) and Copy (code, Markdown, SVG,
   draw.io) next to the tabs, rendered by the parent's own Mermaid. On the
