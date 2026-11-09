@@ -147,6 +147,7 @@ describe('shared chat artifacts API', () => {
     Object.assign(runtimeConfig, {
       turnstileSecretKey: '',
       turnstileEnforced: false,
+      encryptionKey: 'test-encryption-key',
     })
     Object.assign(runtimeConfig.public, {
       baseUrl: 'https://besidka.test',
