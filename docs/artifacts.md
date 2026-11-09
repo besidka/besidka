@@ -86,6 +86,24 @@ assistant usage, and when it cannot (or a send started and no cost is stored
 yet, as after a timeout) it charges `--failed-case-estimate-usd` (default
 $0.10) so the cap holds.
 
+#### Stalled preview requests (BES-336)
+
+"The operation was aborted due to timeout" on a case does not mean the send
+stream never closed. Preview Workers occasionally accept a request and never
+answer it (about 4 to 10 ms of CPU, then `canceled` after the client's
+timeout), on any route: a `GET /api/v1/chats/<slug>` right after a send that
+had finished in 6 s, `PUT /chats/new`, `GET .../context`. Workers
+Observability showed the two "unclosed" Haiku 5.5 runs of 2026-11-09 as
+completed `AI stream completed` events (`finishReason: stop`, wall 6 s and
+15 s) followed by a stalled read. About 140 Haiku sends against pr-781 with
+a per-chunk reader and an immediate chat read found no unclosed stream. The
+harness now names the request that timed out (also for a stalled body read),
+reads with a 20 s timeout and retries a stalled `GET` once ("after 2
+attempts" in the error). Writes (`PUT`, `POST`) are never retried, because a
+stalled `PUT /chats/new` may already have created the chat, so that stall
+still fails its case. A send whose stream really stays open now fails with
+"send stream did not close within 240000 ms".
+
 ### Checks
 
 Static checks (`scripts/artifact-evals.mjs`, no browser):
