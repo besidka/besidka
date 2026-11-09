@@ -8,6 +8,7 @@ import {
 } from '@besidka/artifacts-protocol'
 import type {
   ClipboardFailureReason,
+  DiagramExportAction,
   RuntimeConnection,
 } from '@besidka/artifacts-protocol'
 
@@ -22,6 +23,8 @@ const NOT_AVAILABLE_MESSAGE = 'Not available here.'
 const TOO_LARGE_MESSAGE = 'Too large to send.'
 
 const NEEDS_CLICK_MESSAGE = 'Needs a click in the artifact.'
+
+const EXPORT_NOT_DONE_MESSAGE = 'The diagram was not exported.'
 
 const CLIPBOARD_FAILURE_MESSAGES: Record<ClipboardFailureReason, string> = {
   'gesture-required': 'The browser blocked copying from the artifact.',
@@ -96,6 +99,45 @@ export async function copyThroughHost(
     }
 
     return { ok: false, message: CLIPBOARD_FAILURE_MESSAGES[result.reason] }
+  } catch (exception) {
+    return describeFailure(exception)
+  }
+}
+
+/**
+ * Asks the parent to download or copy a Mermaid diagram the way the chat
+ * does: the parent renders the source with its own Mermaid, builds the SVG,
+ * PNG or draw.io file and saves it or writes the clipboard, because the
+ * sandboxed frame can do neither. Without a gesture the parent asks the
+ * viewer to confirm with a click of its own.
+ */
+export async function exportDiagramThroughHost(
+  source: string,
+  action: DiagramExportAction,
+  event: Event,
+): Promise<HostActionOutcome> {
+  if (!event.isTrusted) {
+    return { ok: false, message: NEEDS_CLICK_MESSAGE }
+  }
+
+  if (!connection) {
+    return { ok: false, message: NOT_AVAILABLE_MESSAGE }
+  }
+
+  if (source.length > MAX_DIAGRAM_SOURCE_LENGTH) {
+    return { ok: false, message: TOO_LARGE_MESSAGE }
+  }
+
+  try {
+    const result = await connection.request(
+      METHODS.diagramExport,
+      { source, action, userActivation: hasUserGesture(event) },
+      { timeoutMs: INTERACTIVE_REQUEST_TIMEOUT_MS },
+    )
+
+    return result.completed
+      ? { ok: true }
+      : { ok: false, message: EXPORT_NOT_DONE_MESSAGE }
   } catch (exception) {
     return describeFailure(exception)
   }

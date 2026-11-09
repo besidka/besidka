@@ -124,6 +124,19 @@ WebKit reports errors thrown by inline scripts of an opaque-origin document as
 `Script error.` without details. The runtime forwards a clarified message;
 the full error is in the browser console.
 
+Script errors name the artifact, not the runtime (`src/render/script-location.ts`).
+Chrome reports a syntax error in a script the runtime inserts as
+"Failed to execute 'replaceWith' on 'Element': Unexpected token '}'" with
+the runtime's stack, which read like a Besidka bug (the 2026-11-09 Kyiv quiz
+from GPT-6 Luna had a stray `}` on line 44 of its own code). Before running
+the scripts the runtime records the source line each `<script>` starts on,
+matched by text; an error raised while a script is inserted (inline) or by its
+`blob:` URL (module) is reported as "SyntaxError in the artifact's script
+(line 44, column 26): Unexpected token '}'", without the runtime stack, so
+**Ask to fix** gives the model the line. In WebKit the muted error names the
+line the failing script starts on. Errors from event handlers that run later
+keep the browser's own message.
+
 ### Allowed imports
 
 React artifacts may import only the vendored modules, resolved by the static
@@ -184,6 +197,7 @@ UI requests below were added this way in A-14). Methods:
 | runtime → host | `ui/clipboard-write` | request `{ text, mimeType?, userActivation }` → `{ copied: true }` or `{ copied: false, reason }` (A-14) |
 | runtime → host | `ui/request-display-mode` | request `{ mode: 'panel' \| 'fullscreen', userActivation }` → `{ displayMode }` (A-14, host wired, no runtime caller yet) |
 | runtime → host | `besidka/open-diagram-viewer` | request `{ source, userActivation }` → `{}` (A-14) |
+| runtime → host | `besidka/diagram-export` | request `{ source, action, userActivation }` → `{ completed }` |
 
 Error codes beyond JSON-RPC's: `-32001` timeout, `-32002` connection closed,
 `-32010` consent required, `-32011` declined by the viewer, `-32012` rate
@@ -359,12 +373,32 @@ requests share a limit of 2 per second. `ui/request-display-mode` (`panel` or
 `fullscreen`) exists for the host to switch the side panel to full width; the
 kit does not send it yet.
 
+### Mermaid exports
+
+Every `<besidka-mermaid>` block (a Mermaid artifact, or a `language-mermaid`
+fence in an HTML or Markdown artifact) has the chat's Download (SVG, PNG,
+.drawio) and Copy (code, Markdown, SVG, draw.io) menus. The menus open as a
+row under the toolbar, because the block's rounded box clips a floating
+dropdown. Copy code uses `ui/clipboard-write`; every other item sends
+`besidka/diagram-export` `{ source, action, userActivation }` and gets
+`{ completed }`. The frame cannot download or reach the clipboard, so the
+parent renders the source with its own Mermaid and runs the chat's export
+code (`useDiagramExport().runExportAction`) against a hidden `pele-theme`
+element, so the files match a chat diagram in light and dark. When both
+sides saw a gesture the parent acts at once; otherwise it shows its own
+"Download …" or "Copy …" confirmation and nothing happens without that
+click (the same rule as the copy fallback). Exports have their own limit of
+5 per 10 seconds, so Fullscreen does not use up their slots. An older host
+answers `-32601` and the button shows "Download failed" with "Not
+available here."
+
 ### Host hooks (`HostHandlers`)
 
 ```ts
 clipboardWrite?: (params: ClipboardWriteParams) => MaybePromise<ClipboardWriteResult>
 requestDisplayMode?: (params: RequestDisplayModeParams) => MaybePromise<RequestDisplayModeResult>
 openDiagramViewer?: (params: OpenDiagramViewerParams) => MaybePromise<EmptyResult | void>
+diagramExport?: (params: DiagramExportParams) => MaybePromise<DiagramExportResult>
 ```
 
 `createHostConnection` validates params, applies the rate limits and the

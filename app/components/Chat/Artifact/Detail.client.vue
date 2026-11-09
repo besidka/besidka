@@ -68,6 +68,39 @@
         </button>
       </div>
       <span class="grow" />
+      <div
+        v-if="isMermaidCodeTab"
+        ref="diagramTheme"
+        class="pele-theme flex items-center gap-1"
+        data-testid="artifact-mermaid-actions"
+      >
+        <UiButton
+          mode="default"
+          ghost
+          icon-name="lucide:maximize"
+          :icon-size="14"
+          size="xs"
+          text="Fullscreen"
+          icon-only-phone
+          :disabled="!mermaidMenuInput.svg"
+          data-testid="artifact-mermaid-fullscreen"
+          @click="isMermaidViewerOpen = true"
+        />
+        <ProseMermaidActionMenu
+          label="Download"
+          icon="lucide:download"
+          test-id="artifact-mermaid-download"
+          :actions="MERMAID_DOWNLOAD_ACTIONS"
+          :input="mermaidMenuInput"
+        />
+        <ProseMermaidActionMenu
+          label="Copy"
+          icon="lucide:copy"
+          test-id="artifact-mermaid-copy"
+          :actions="MERMAID_COPY_ACTIONS"
+          :input="mermaidMenuInput"
+        />
+      </div>
       <span
         v-if="isStreaming"
         class="text-xs text-base-content/60"
@@ -352,6 +385,11 @@
     >
       AI-generated content
     </p>
+    <LazyProseMermaidViewer
+      v-if="isMermaidViewerOpen"
+      v-model:open="isMermaidViewerOpen"
+      :source="sourceText"
+    />
     <LazyChatArtifactShareModal
       v-if="hasOpenedShare && state.artifactId && shareVersion"
       v-model:open="isShareOpen"
@@ -374,6 +412,7 @@ import type {
   ArtifactVersionContent,
 } from '#shared/utils/artifacts'
 import type { ArtifactRuntimeMessage } from '~/composables/artifacts'
+import type { DiagramMenuInput } from '~/types/diagram-export.d'
 import type { ArtifactStorageState } from '~/composables/artifact-storage'
 import { resetArtifactStorage } from '~/composables/artifact-storage'
 import {
@@ -543,6 +582,53 @@ const sourceText = computed<string>(() => {
 const codeLanguage = computed<string>(() => {
   return kind.value ? CODE_LANGUAGES[kind.value] : 'text'
 })
+
+const isMermaidCodeTab = computed<boolean>(() => {
+  return kind.value === 'mermaid'
+    && activeTab.value === 'code'
+    && !isStreaming.value
+    && !!sourceText.value
+})
+
+const mermaidSvg = shallowRef<string>('')
+const isMermaidViewerOpen = shallowRef<boolean>(false)
+const diagramTheme = useTemplateRef<HTMLElement>('diagramTheme')
+const mermaidIdPrefix = `artifact-code-mermaid-${useId()}`
+const { renderDiagram } = useDiagramRenderer()
+
+const mermaidMenuInput = computed<DiagramMenuInput>(() => {
+  return {
+    source: sourceText.value,
+    svg: mermaidSvg.value,
+    themeElement: () => diagramTheme.value,
+  }
+})
+
+watch([isMermaidCodeTab, sourceText], async (
+  [isVisible, source],
+  _previous,
+  onCleanup,
+) => {
+  let isStale = false
+
+  onCleanup(() => {
+    isStale = true
+  })
+
+  if (!isVisible) {
+    return
+  }
+
+  mermaidSvg.value = ''
+
+  const result = await renderDiagram(source, { idPrefix: mermaidIdPrefix })
+
+  if (isStale || 'error' in result) {
+    return
+  }
+
+  mermaidSvg.value = sanitizeDiagramSvg(result.svg)
+}, { immediate: true })
 
 const codeTheme = computed<string>(() => {
   return colorMode.value === 'dark' ? CODE_THEME_DARK : CODE_THEME_LIGHT

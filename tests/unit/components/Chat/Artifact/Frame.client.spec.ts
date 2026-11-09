@@ -39,6 +39,8 @@ const {
   colorMode,
   clipboardMock,
   fetchMock,
+  exportMock,
+  renderMock,
 } = vi.hoisted(() => ({
   colorMode: { value: 'light', preference: 'light' },
   captured: [] as CapturedConnection[],
@@ -47,7 +49,25 @@ const {
   infoMock: vi.fn(),
   clipboardMock: vi.fn(),
   fetchMock: vi.fn(),
+  exportMock: vi.fn(),
+  renderMock: vi.fn(),
 }))
+
+mockNuxtImport('useDiagramRenderer', () => {
+  return () => {
+    return { renderDiagram: renderMock }
+  }
+})
+
+mockNuxtImport('useDiagramExport', () => {
+  return () => {
+    return { runExportAction: exportMock }
+  }
+})
+
+mockNuxtImport('sanitizeDiagramSvg', () => {
+  return (svg: string) => svg
+})
 
 const layout = ref<SidePanelLayout>('docked')
 const isFullWidth = ref<boolean>(false)
@@ -232,6 +252,9 @@ beforeEach(() => {
   warnMock.mockReset()
   infoMock.mockReset()
   clipboardMock.mockReset()
+  exportMock.mockReset()
+  renderMock.mockReset()
+  renderMock.mockResolvedValue({ svg: '<svg id="diagram"></svg>' })
   fetchMock.mockReset()
   loggedIn.value = false
   storageFeature.value = { enabled: true, active: false, variant: null }
@@ -582,6 +605,93 @@ describe('ChatArtifactFrame', () => {
       expect(clipboardMock).toHaveBeenLastCalledWith('graph TD')
       expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
         .toBe(false)
+    })
+
+  it('exports a Mermaid diagram in the parent with the rendered svg',
+    async () => {
+      const { connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      activateFrame(connection)
+      exportMock.mockResolvedValueOnce(true)
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-drawio',
+        userActivation: true,
+      })).resolves.toEqual({ completed: true })
+      expect(renderMock).toHaveBeenCalledWith(
+        'graph TD; A-->B',
+        expect.objectContaining({ idPrefix: expect.any(String) }),
+      )
+      expect(exportMock).toHaveBeenCalledWith('download-drawio', {
+        source: 'graph TD; A-->B',
+        svg: '<svg id="diagram"></svg>',
+        themeElement: expect.any(HTMLElement),
+      })
+      expect(exportMock.mock.calls[0]?.[1].themeElement.classList)
+        .toContain('pele-theme')
+    })
+
+  it('holds a Mermaid export until the parent button is clicked',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      activateFrame(connection)
+      exportMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+      const request = runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'copy-svg',
+        userActivation: true,
+      })
+
+      await waitForPort()
+
+      const fallback = wrapper.get('[data-testid="artifact-export-fallback"]')
+
+      expect(fallback.text()).toContain('Copy SVG from the artifact?')
+      await wrapper.get('[data-testid="artifact-export-fallback-confirm"]')
+        .trigger('click', { detail: 1 })
+
+      await expect(request).resolves.toEqual({ completed: true })
+      expect(exportMock).toHaveBeenCalledTimes(2)
+      expect(wrapper.find('[data-testid="artifact-export-fallback"]')
+        .exists()).toBe(false)
+    })
+
+  it('answers not completed when a Mermaid export is dismissed or fails',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      setHostActivation(false)
+
+      const request = runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-svg',
+        userActivation: true,
+      })
+
+      await waitForPort()
+      expect(exportMock).not.toHaveBeenCalled()
+      await wrapper.get('[data-testid="artifact-export-fallback-dismiss"]')
+        .trigger('click')
+      await expect(request).resolves.toEqual({ completed: false })
+
+      renderMock.mockResolvedValueOnce({ error: { message: 'Parse error' } })
+      activateFrame(connection)
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->',
+        action: 'download-svg',
+        userActivation: true,
+      })).resolves.toEqual({ completed: false })
+      expect(exportMock).not.toHaveBeenCalled()
     })
 
   it('answers denied when the copy fallback is dismissed', async () => {

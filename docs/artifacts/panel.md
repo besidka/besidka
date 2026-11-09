@@ -77,10 +77,20 @@ The detail view:
 
 - Preview tab: the Frame. During a stream only `html`, `svg` and `markdown`
   get partial previews; `react` and `mermaid` wait for the stored version.
-- Code tab: `ProsePreStream` with `source-only` (a mermaid fence stays code,
-  no diagram) and `always-expanded` (no 3-line collapse). This is the chat's
-  Shiki setup (same themes, language label, Copy), which covers item 5 of
-  A-14 (BES-318).
+- Code tab: `ChatArtifactCodeView` (`useChunkedCodeHighlight`). The plain
+  source paints at once; colours follow from the chat's lazy Shiki
+  highlighter (`loadCodeHighlighter`, docs/code-highlighting.md), tokenized
+  40 lines at a time with the grammar state carried over and a yield to the
+  browser between chunks, and the result is cached per code, language and
+  theme (24 entries). One pass over a 3,000-line JSX file is about 770 ms in
+  Node, so it would be one long task; a 100-line chunk is about 30 ms. While
+  a version is still streaming the tab uses `ProseCodeStream` instead. The
+  panel stays mounted after the first open, so switching back is instant.
+- Mermaid artifacts on the Code tab get the chat's Fullscreen (zoom and pan
+  viewer), Download (SVG, PNG, .drawio) and Copy (code, Markdown, SVG,
+  draw.io) next to the tabs, rendered by the parent's own Mermaid. On the
+  Preview tab the same actions are in the diagram's own toolbar inside the
+  frame (see "Mermaid exports" in docs/artifacts-runtime.md).
 - Version select: the owner sees every stored version
   (`GET /api/v1/artifacts/<id>`); a shared viewer sees only versions the
   shared chat references.

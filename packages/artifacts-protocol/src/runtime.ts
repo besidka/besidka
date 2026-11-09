@@ -3,6 +3,7 @@ import { createEndpoint } from './endpoint.ts'
 import type { Endpoint, PortLike, RequestOptions } from './endpoint.ts'
 import {
   isClipboardWriteResult,
+  isDiagramExportResult,
   isCompleteResult,
   isHostContextChangedParams,
   isInitializeResult,
@@ -65,6 +66,7 @@ const RESULT_GUARDS: Partial<
   [METHODS.storageList]: isStorageListResult,
   [METHODS.complete]: isCompleteResult,
   [METHODS.clipboardWrite]: isClipboardWriteResult,
+  [METHODS.diagramExport]: isDiagramExportResult,
   [METHODS.requestDisplayMode]: isRequestDisplayModeResult,
 }
 

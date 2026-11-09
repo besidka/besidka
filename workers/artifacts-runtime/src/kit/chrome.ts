@@ -3,7 +3,7 @@ import { paletteDeclarations } from '../palette.ts'
 import { getTheme, onThemeChange } from '../theme.ts'
 import type { HostActionOutcome } from './host-actions.ts'
 
-export type IconName = 'copy' | 'check' | 'x' | 'fullscreen' | 'expand' | 'collapse'
+export type IconName = 'copy' | 'check' | 'x' | 'fullscreen' | 'expand' | 'collapse' | 'download'
 
 export const FEEDBACK_DURATION_MS = 2_000
 
@@ -13,6 +13,7 @@ const ICON_PATHS: Record<IconName, string> = {
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   fullscreen: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
   expand: '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/>',
+  download: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
   collapse: '<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>',
 }
 
@@ -101,6 +102,25 @@ button svg {
   height: 14px;
   flex-shrink: 0;
 }
+.menu {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  padding: 0 1rem 0.375rem;
+}
+.menu[hidden] {
+  display: none;
+}
+.menu-title {
+  align-self: center;
+  margin-right: auto;
+  color: var(--besidka-muted);
+  font-size: 12px;
+}
+button[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--besidka-fg) 10%, transparent);
+}
 .body {
   padding: 1rem;
   overflow-x: auto;
@@ -183,6 +203,81 @@ export function createButton(
   set(icon, text)
 
   return { element, set }
+}
+
+export interface KitMenuItem<Action extends string> {
+  action: Action
+  label: string
+}
+
+export interface KitMenu {
+  trigger: KitButton
+  panel: HTMLDivElement
+  close: () => void
+}
+
+/**
+ * A toolbar button that shows its choices in a row under the toolbar
+ * instead of a floating dropdown, which the block's rounded, clipped box
+ * would cut off. One open menu per block: opening one closes the others.
+ */
+export function createMenu<Action extends string>(
+  testId: string,
+  icon: IconName,
+  text: string,
+  items: KitMenuItem<Action>[],
+  onSelect: (action: Action, event: MouseEvent) => void,
+): KitMenu {
+  const trigger = createButton(testId, icon, text)
+  const panel = document.createElement('div')
+  const title = document.createElement('span')
+
+  panel.className = 'menu'
+  panel.hidden = true
+  panel.dataset.testid = `${testId}-menu`
+  panel.setAttribute('role', 'group')
+  panel.setAttribute('aria-label', text)
+  title.className = 'menu-title'
+  title.textContent = text
+  panel.append(title)
+  trigger.element.setAttribute('aria-expanded', 'false')
+
+  function close() {
+    panel.hidden = true
+    trigger.element.setAttribute('aria-expanded', 'false')
+  }
+
+  for (const item of items) {
+    const option = document.createElement('button')
+
+    option.type = 'button'
+    option.textContent = item.label
+    option.dataset.testid = `${testId}-${item.action}`
+    option.addEventListener('click', (event) => {
+      close()
+      onSelect(item.action, event)
+    })
+    panel.append(option)
+  }
+
+  trigger.element.addEventListener('click', () => {
+    const isOpening = panel.hidden
+
+    for (const sibling of panel.parentElement?.querySelectorAll('.menu') ?? []) {
+      (sibling as HTMLElement).hidden = true
+    }
+
+    for (const button of trigger.element.parentElement?.querySelectorAll(
+      'button[aria-expanded]',
+    ) ?? []) {
+      button.setAttribute('aria-expanded', 'false')
+    }
+
+    panel.hidden = !isOpening
+    trigger.element.setAttribute('aria-expanded', String(isOpening))
+  })
+
+  return { trigger, panel, close }
 }
 
 const outcomeResetTimers = new WeakMap<
