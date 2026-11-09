@@ -1,6 +1,6 @@
 import { createError, useLogger } from 'evlog'
 
-export function useUnauthorizedError() {
+export function useUnauthorizedError(): never {
   throw createError({
     message: `You don't have access to this resource. Try to sign out and sign in again.`,
     status: 401,

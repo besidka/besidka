@@ -248,7 +248,9 @@ export function buildArtifactInstructions(
       + `${ARTIFACT_REACT_IMPORTS.join(', ')}; any other import fails.`
       : '',
     runtimeFeatures.storage
-      ? 'To keep data between visits use `window.besidka.storage`.'
+      ? 'To keep data between visits use `window.besidka.storage`'
+      + ' (async get/set/delete/list; keys of letters, digits and . _ : -,'
+      + ' at most 64 keys, 32 KB per value, 100 KB in total).'
       : 'Artifacts cannot keep data between visits.',
     runtimeFeatures.modelBridge
       ? 'Call `window.besidka.complete()` only when the user asked for AI'

@@ -150,6 +150,19 @@
                 Download as HTML
               </button>
             </li>
+            <li v-if="canResetStorage">
+              <button
+                type="button"
+                data-testid="artifact-action-reset-storage"
+                @click="onResetStorage"
+              >
+                <Icon
+                  name="lucide:rotate-ccw"
+                  size="14"
+                />
+                Reset saved progress
+              </button>
+            </li>
             <li v-if="layout === 'docked'">
               <button
                 type="button"
@@ -280,12 +293,15 @@
         class="absolute inset-0"
       >
         <ChatArtifactFrame
+          :key="frameKey"
           :title="displayTitle"
           :result="frameResult"
           :partial="framePartial"
           :artifact-id="state.artifactId"
           :version="selectedVersion"
+          :source="state.source"
           @runtime-message="onRuntimeMessage"
+          @storage-change="onStorageChange"
         />
       </div>
       <div
@@ -325,12 +341,15 @@ import type {
   ArtifactPayload,
   ToolResultContent,
 } from '@besidka/artifacts-protocol'
+import { parseError } from 'evlog'
 import type {
   ArtifactDetail,
   ArtifactKind,
   ArtifactVersionContent,
 } from '#shared/utils/artifacts'
 import type { ArtifactRuntimeMessage } from '~/composables/artifacts'
+import type { ArtifactStorageState } from '~/composables/artifact-storage'
+import { resetArtifactStorage } from '~/composables/artifact-storage'
 import {
   isArtifactUnavailableStatus,
   loadArtifactDetail,
@@ -356,6 +375,7 @@ const SHARED_BANNER_TEXT
 const SHARED_BANNER_WARNING = 'Never enter passwords or payment details here.'
 const MAX_RUNTIME_ERRORS = 5
 const STREAM_FAILED_TEXT = 'The artifact could not be saved.'
+const RESET_STORAGE_ACTION = 'Reset progress'
 const PARTIAL_PREVIEW_KINDS = new Set<ArtifactKind>(['html', 'svg', 'markdown'])
 const CODE_LANGUAGES: Record<ArtifactKind, string> = {
   html: 'html',
@@ -386,6 +406,12 @@ const detail = shallowRef<ArtifactDetail | null>(null)
 const content = shallowRef<ArtifactVersionContent | null>(null)
 const loadError = shallowRef<LoadError | null>(null)
 const runtimeErrors = shallowRef<ArtifactRuntimeMessage[]>([])
+const storageState = shallowRef<ArtifactStorageState>({
+  persistent: false,
+  keys: 0,
+  bytes: 0,
+})
+const frameKey = shallowRef<number>(0)
 
 let contentRequestId = 0
 let detailRequestId = 0
@@ -483,6 +509,13 @@ const codeLanguage = computed<string>(() => {
 
 const canDownloadHtml = computed<boolean>(() => {
   return !!kind.value && canExportStandaloneHtml(kind.value)
+})
+
+const canResetStorage = computed<boolean>(() => {
+  return isOwner.value
+    && !!state.value?.artifactId
+    && storageState.value.persistent
+    && storageState.value.keys > 0
 })
 
 const isUnavailableError = computed<boolean>(() => {
@@ -708,6 +741,47 @@ function onDownloadHtml() {
   downloadArtifactFile(buildStandaloneArtifactFile(value.kind, value.content, {
     title: value.title,
   }))
+}
+
+function onStorageChange(value: ArtifactStorageState) {
+  storageState.value = value
+}
+
+async function onResetStorage() {
+  closeActionsMenu()
+
+  const artifactId = state.value?.artifactId
+
+  if (!artifactId || !canResetStorage.value) {
+    return
+  }
+
+  const result = await useConfirm({
+    text: 'Reset saved progress?',
+    subtitle: `Everything "${displayTitle.value}" saved for you, such as `
+      + 'answers and scores, is deleted. This cannot be undone.',
+    alert: true,
+    actions: [RESET_STORAGE_ACTION],
+    labelDecline: 'Cancel',
+  })
+
+  if (result?.label !== RESET_STORAGE_ACTION) {
+    return
+  }
+
+  try {
+    await resetArtifactStorage(artifactId)
+    storageState.value = { ...storageState.value, keys: 0, bytes: 0 }
+    frameKey.value += 1
+    useSuccessMessage('Saved progress reset')
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Could not reset saved progress',
+      parsedException.why,
+    )
+  }
 }
 
 function onToggleFullWidth() {

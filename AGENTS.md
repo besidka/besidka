@@ -587,6 +587,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   meta tag for client-side navigation (and why), the standalone export rule
   (no third-party hosts, React and Mermaid as source only), and the open
   items (report share id not stored, MCP `get_chat` omits artifacts)
+- `docs/artifacts/viewer-storage.md` - Saved progress for artifacts (A-5):
+  who gets `persistent` storage (signed in, `artifacts.storage`, own chat,
+  saved artifact) and why shared chats stay in memory until A-7, the owner
+  resolver, the four routes (reset is `DELETE storage`, not `reset.post`),
+  limits (64 keys, 100 KB, 32 KB per value, key pattern, 120 writes/min),
+  the per-artifact write queue and error-code mapping, Reset saved progress,
+  and the hourly non-owner purge (30 days after the last share ended,
+  takedown, deleted artifact)
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a

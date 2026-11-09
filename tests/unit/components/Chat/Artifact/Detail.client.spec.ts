@@ -15,17 +15,44 @@ import { useSidePanel } from '../../../../../app/composables/side-panel'
 
 enableAutoUnmount(afterEach)
 
-const { fetchMock, downloadMock, layout, frameMounts } = vi.hoisted(() => ({
+const {
+  fetchMock,
+  downloadMock,
+  layout,
+  frameMounts,
+  confirmMock,
+  resetStorageMock,
+  successMessageMock,
+  errorMessageMock,
+} = vi.hoisted(() => ({
   fetchMock: vi.fn(),
   downloadMock: vi.fn(),
   layout: { value: 'docked' as 'docked' | 'overlay' | 'sheet' },
   frameMounts: { count: 0 },
+  confirmMock: vi.fn(),
+  resetStorageMock: vi.fn(),
+  successMessageMock: vi.fn(),
+  errorMessageMock: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => fetchMock)
 
+mockNuxtImport('useConfirm', () => confirmMock)
+
+mockNuxtImport('useSuccessMessage', () => successMessageMock)
+
+mockNuxtImport('useErrorMessage', () => errorMessageMock)
+
 mockNuxtImport('useSidePanelLayout', () => {
   return () => layout
+})
+
+vi.mock('~/composables/artifact-storage', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../../../../app/composables/artifact-storage')
+  >()
+
+  return { ...actual, resetArtifactStorage: resetStorageMock }
 })
 
 vi.mock('~/utils/artifact-export', async (importOriginal) => {
@@ -38,8 +65,8 @@ vi.mock('~/utils/artifact-export', async (importOriginal) => {
 
 mockComponent('ChatArtifactFrame', () => {
   return {
-    props: ['title', 'result', 'partial', 'artifactId', 'version'],
-    emits: ['runtime-message', 'ready'],
+    props: ['title', 'result', 'partial', 'artifactId', 'version', 'source'],
+    emits: ['runtime-message', 'ready', 'storage-change'],
     setup() {
       frameMounts.count += 1
     },
@@ -48,12 +75,41 @@ mockComponent('ChatArtifactFrame', () => {
         data-testid="frame-stub"
         :data-content="result?.content ?? ''"
         :data-partial="partial?.content ?? ''"
+        :data-source="source"
         @click="$emit('runtime-message', {
           level: 'error',
           message: 'ReferenceError: x is not defined',
           stack: 'at render',
         })"
-      />
+      >
+        <button
+          type="button"
+          data-testid="frame-storage-stub"
+          @click.stop="$emit('storage-change', {
+            persistent: true,
+            keys: 2,
+            bytes: 10,
+          })"
+        />
+        <button
+          type="button"
+          data-testid="frame-storage-memory-stub"
+          @click.stop="$emit('storage-change', {
+            persistent: false,
+            keys: 0,
+            bytes: 0,
+          })"
+        />
+        <button
+          type="button"
+          data-testid="frame-storage-empty-stub"
+          @click.stop="$emit('storage-change', {
+            persistent: true,
+            keys: 0,
+            bytes: 0,
+          })"
+        />
+      </div>
     `,
   }
 })
@@ -160,6 +216,10 @@ beforeEach(() => {
   resetState()
   fetchMock.mockReset()
   downloadMock.mockReset()
+  confirmMock.mockReset()
+  resetStorageMock.mockReset()
+  successMessageMock.mockReset()
+  errorMessageMock.mockReset()
   frameMounts.count = 0
   layout.value = 'docked'
   respond()
@@ -485,4 +545,170 @@ describe('ChatArtifactDetail', () => {
       .toContain('The artifact is too large.')
     expect(fetchMock).not.toHaveBeenCalled()
   })
+})
+
+describe('ChatArtifactDetail saved progress', () => {
+  const RESET_ITEM = '[data-testid="artifact-action-reset-storage"]'
+
+  async function emitStorage(
+    wrapper: Awaited<ReturnType<typeof mountDetail>>,
+    kind: 'frame-storage-stub' | 'frame-storage-memory-stub'
+      | 'frame-storage-empty-stub' = 'frame-storage-stub',
+  ) {
+    await wrapper.get(`[data-testid="${kind}"]`).trigger('click')
+    await flushPromises()
+  }
+
+  it('passes the panel source to the frame', async () => {
+    openTarget()
+
+    const owner = await mountDetail()
+
+    expect(owner.get('[data-testid="frame-stub"]').attributes('data-source'))
+      .toBe('owner')
+
+    resetState()
+    useSharedArtifactVersions().value = { Art1Art1Art1Art1: [1, 3] }
+    openTarget({ source: 'shared', shareSlug: 'share_1' })
+
+    const shared = await mountDetail()
+
+    expect(shared.get('[data-testid="frame-stub"]').attributes('data-source'))
+      .toBe('shared')
+  })
+
+  it('hides Reset saved progress until the frame reports saved keys',
+    async () => {
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      expect(wrapper.find(RESET_ITEM).exists()).toBe(false)
+    })
+
+  it('shows Reset saved progress for persistent storage with keys',
+    async () => {
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await emitStorage(wrapper)
+
+      expect(wrapper.get(RESET_ITEM).text()).toBe('Reset saved progress')
+    })
+
+  it('hides it when persistent storage holds no keys', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await emitStorage(wrapper)
+    expect(wrapper.find(RESET_ITEM).exists()).toBe(true)
+
+    await emitStorage(wrapper, 'frame-storage-empty-stub')
+    expect(wrapper.find(RESET_ITEM).exists()).toBe(false)
+  })
+
+  it('hides it when the frame runs in memory mode', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await emitStorage(wrapper)
+    await emitStorage(wrapper, 'frame-storage-memory-stub')
+
+    expect(wrapper.find(RESET_ITEM).exists()).toBe(false)
+  })
+
+  it('never offers it on a shared chat', async () => {
+    useSharedArtifactVersions().value = { Art1Art1Art1Art1: [1, 3] }
+    openTarget({ source: 'shared', shareSlug: 'share_1' })
+
+    const wrapper = await mountDetail()
+
+    await emitStorage(wrapper)
+
+    expect(wrapper.find(RESET_ITEM).exists()).toBe(false)
+  })
+
+  it('resets after confirmation, remounts the frame and hides the item',
+    async () => {
+      confirmMock.mockResolvedValue({ label: 'Reset progress' })
+      resetStorageMock.mockResolvedValue(undefined)
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await emitStorage(wrapper)
+      expect(frameMounts.count).toBe(1)
+
+      await wrapper.get(RESET_ITEM).trigger('click')
+      await flushPromises()
+
+      expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({
+        text: 'Reset saved progress?',
+        alert: true,
+        actions: ['Reset progress'],
+        labelDecline: 'Cancel',
+      }))
+      expect(resetStorageMock).toHaveBeenCalledTimes(1)
+      expect(resetStorageMock).toHaveBeenCalledWith('Art1Art1Art1Art1')
+      expect(frameMounts.count).toBe(2)
+      expect(wrapper.find(RESET_ITEM).exists()).toBe(false)
+      expect(successMessageMock).toHaveBeenCalledWith('Saved progress reset')
+      expect(errorMessageMock).not.toHaveBeenCalled()
+    })
+
+  it('does nothing when the confirmation is dismissed', async () => {
+    confirmMock.mockResolvedValue(null)
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await emitStorage(wrapper)
+    await wrapper.get(RESET_ITEM).trigger('click')
+    await flushPromises()
+
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    expect(resetStorageMock).not.toHaveBeenCalled()
+    expect(frameMounts.count).toBe(1)
+    expect(wrapper.find(RESET_ITEM).exists()).toBe(true)
+    expect(successMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when the user picks Cancel', async () => {
+    confirmMock.mockResolvedValue({ label: 'Cancel' })
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await emitStorage(wrapper)
+    await wrapper.get(RESET_ITEM).trigger('click')
+    await flushPromises()
+
+    expect(resetStorageMock).not.toHaveBeenCalled()
+    expect(frameMounts.count).toBe(1)
+  })
+
+  it('keeps the frame and shows the error when the reset fails',
+    async () => {
+      confirmMock.mockResolvedValue({ label: 'Reset progress' })
+      resetStorageMock.mockRejectedValue(new Error('Reset failed'))
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await emitStorage(wrapper)
+      await wrapper.get(RESET_ITEM).trigger('click')
+      await flushPromises()
+
+      expect(resetStorageMock).toHaveBeenCalledTimes(1)
+      expect(errorMessageMock).toHaveBeenCalledWith(
+        'Reset failed',
+        undefined,
+      )
+      expect(successMessageMock).not.toHaveBeenCalled()
+      expect(frameMounts.count).toBe(1)
+      expect(wrapper.find(RESET_ITEM).exists()).toBe(true)
+    })
 })

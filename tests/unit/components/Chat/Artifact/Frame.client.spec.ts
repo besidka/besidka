@@ -37,12 +37,14 @@ const {
   warnMock,
   colorMode,
   clipboardMock,
+  fetchMock,
 } = vi.hoisted(() => ({
   colorMode: { value: 'light', preference: 'light' },
   captured: [] as CapturedConnection[],
   confirmMock: vi.fn(),
   warnMock: vi.fn(),
   clipboardMock: vi.fn(),
+  fetchMock: vi.fn(),
 }))
 
 const layout = ref<SidePanelLayout>('docked')
@@ -50,6 +52,8 @@ const isFullWidth = ref<boolean>(false)
 const toggleFullWidth = vi.fn(() => {
   isFullWidth.value = !isFullWidth.value
 })
+const loggedIn = ref<boolean>(false)
+const storageFeature = ref({ enabled: true, active: false, variant: null })
 
 vi.mock('@besidka/artifacts-protocol', async (importOriginal) => {
   const actual = await importOriginal<
@@ -112,6 +116,16 @@ vi.mock('evlog/client', () => ({
 }))
 
 mockNuxtImport('useConfirm', () => confirmMock)
+
+mockNuxtImport('$fetch', () => fetchMock)
+
+mockNuxtImport('useAuth', () => {
+  return () => ({ loggedIn })
+})
+
+mockNuxtImport('useFeature', () => {
+  return () => storageFeature
+})
 
 mockNuxtImport('useColorMode', () => {
   return () => colorMode
@@ -212,6 +226,9 @@ beforeEach(() => {
   confirmMock.mockReset()
   warnMock.mockReset()
   clipboardMock.mockReset()
+  fetchMock.mockReset()
+  loggedIn.value = false
+  storageFeature.value = { enabled: true, active: false, variant: null }
   toggleFullWidth.mockClear()
   layout.value = 'docked'
   isFullWidth.value = false
@@ -816,5 +833,213 @@ describe('ChatArtifactFrame', () => {
     wrapper.unmount()
 
     expect(connection.element.isConnected).toBe(false)
+  })
+})
+
+describe('ChatArtifactFrame storage capability', () => {
+  const PERSISTENT_CAPABILITIES = { storage: 'persistent', complete: false }
+  const MEMORY_CAPABILITIES = { storage: 'memory', complete: false }
+
+  function allowStorage() {
+    loggedIn.value = true
+    storageFeature.value = { enabled: true, active: true, variant: null }
+    fetchMock.mockResolvedValue({
+      items: [{ key: 'score', value: 3 }],
+      keys: 1,
+      bytes: 1,
+    })
+  }
+
+  async function capabilitiesOf(connection: CapturedConnection) {
+    const runtime = connectRuntime(connection)
+    const result = await initialize(runtime)
+
+    return { runtime, capabilities: result.hostContext.capabilities }
+  }
+
+  it('advertises memory storage to a signed-out viewer', async () => {
+    storageFeature.value = { enabled: true, active: true, variant: null }
+
+    const { wrapper, connection } = await mountFrame()
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities).toEqual(MEMORY_CAPABILITIES)
+    expect(connection.handlers.storage).toBeUndefined()
+    expect(wrapper.emitted('storage-change')).toEqual([
+      [{ persistent: false, keys: 0, bytes: 0 }],
+    ])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('advertises memory storage when the artifacts.storage flag is off',
+    async () => {
+      loggedIn.value = true
+
+      const { connection } = await mountFrame()
+      const { capabilities } = await capabilitiesOf(connection)
+
+      expect(capabilities).toEqual(MEMORY_CAPABILITIES)
+      expect(connection.handlers.storage).toBeUndefined()
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+  it('advertises memory storage for an artifact from a shared chat',
+    async () => {
+      allowStorage()
+
+      const { wrapper, connection } = await mountFrame({ source: 'shared' })
+      const { capabilities } = await capabilitiesOf(connection)
+
+      expect(capabilities).toEqual(MEMORY_CAPABILITIES)
+      expect(connection.handlers.storage).toBeUndefined()
+      expect(wrapper.emitted('storage-change')).toEqual([
+        [{ persistent: false, keys: 0, bytes: 0 }],
+      ])
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+  it('advertises memory storage without an artifact id', async () => {
+    allowStorage()
+
+    const { connection } = await mountFrame({ artifactId: null })
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities).toEqual(MEMORY_CAPABILITIES)
+    expect(connection.handlers.storage).toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('answers storage requests with method-not-found in memory mode',
+    async () => {
+      const { connection } = await mountFrame()
+      const { runtime } = await capabilitiesOf(connection)
+
+      await expect(runtime.request(METHODS.storageGet, { key: 'score' }))
+        .rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+      await expect(runtime.request(METHODS.storageSet, {
+        key: 'score',
+        value: 1,
+      })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    })
+
+  it('advertises persistent storage to a signed-in owner with the flag on',
+    async () => {
+      allowStorage()
+
+      const { connection } = await mountFrame({ source: 'owner' })
+      const { capabilities } = await capabilitiesOf(connection)
+
+      expect(capabilities).toEqual(PERSISTENT_CAPABILITIES)
+      expect(connection.handlers.storage).toBeDefined()
+    })
+
+  it('treats a missing source as the owner', async () => {
+    allowStorage()
+
+    const { connection } = await mountFrame()
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities).toEqual(PERSISTENT_CAPABILITIES)
+    expect(connection.handlers.storage).toBeDefined()
+  })
+
+  it('loads the saved progress at mount and reports the totals',
+    async () => {
+      allowStorage()
+
+      const { wrapper } = await mountFrame()
+
+      await flushPromises()
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/artifacts/art_1/storage',
+        { headers: {} },
+      )
+      expect(wrapper.emitted('storage-change')).toEqual([
+        [{ persistent: true, keys: 1, bytes: 1 }],
+      ])
+    })
+
+  it('serves storage requests from the runtime through the session',
+    async () => {
+      allowStorage()
+
+      const { connection } = await mountFrame()
+      const { runtime } = await capabilitiesOf(connection)
+
+      await expect(runtime.request(METHODS.storageGet, { key: 'score' }))
+        .resolves.toEqual({ value: 3 })
+      await expect(runtime.request(METHODS.storageList, {}))
+        .resolves.toEqual({ keys: ['score'] })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+  it('maps a refused storage load to a runtime error without breaking '
+    + 'the frame', async () => {
+    allowStorage()
+    fetchMock.mockRejectedValue(Object.assign(new Error('Forbidden'), {
+      statusCode: 403,
+      data: { data: { reason: 'legal-consent' } },
+    }))
+
+    const { wrapper, connection } = await mountFrame()
+    const { runtime } = await capabilitiesOf(connection)
+
+    await expect(runtime.request(METHODS.storageGet, { key: 'score' }))
+      .rejects.toMatchObject({ code: ERROR_CODES.consentRequired })
+    expect(wrapper.emitted('ready')).toHaveLength(1)
+  })
+
+  it('remounts the frame when storage becomes available after mount',
+    async () => {
+      const { connection } = await mountFrame()
+
+      expect(connection.handlers.storage).toBeUndefined()
+      allowStorage()
+      await flushPromises()
+
+      expect(captured).toHaveLength(2)
+
+      const { capabilities } = await capabilitiesOf(captured.at(-1)!)
+
+      expect(capabilities).toEqual(PERSISTENT_CAPABILITIES)
+      expect(captured.at(-1)!.handlers.storage).toBeDefined()
+    })
+
+  it('remounts the frame when the viewer signs out', async () => {
+    allowStorage()
+
+    await mountFrame()
+    loggedIn.value = false
+    await flushPromises()
+
+    expect(captured).toHaveLength(2)
+    expect(captured.at(-1)!.handlers.storage).toBeUndefined()
+  })
+
+  it('remounts with a new session for another artifact in persistent mode',
+    async () => {
+      allowStorage()
+
+      const { wrapper } = await mountFrame()
+
+      await wrapper.setProps({ artifactId: 'art_2' })
+      await flushPromises()
+
+      expect(captured).toHaveLength(2)
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/artifacts/art_2/storage',
+        { headers: {} },
+      )
+    })
+
+  it('keeps the frame for another artifact id in memory mode', async () => {
+    const { wrapper } = await mountFrame()
+
+    await wrapper.setProps({ artifactId: 'art_2' })
+    await flushPromises()
+
+    expect(captured).toHaveLength(1)
   })
 })
