@@ -9,6 +9,10 @@ import { MCP_PRIVATE_TOOL_SCOPES } from '~~/server/utils/mcp/tool-scopes'
 
 const API_ROUTES_DIRECTORY = 'server/api/v1'
 const MCP_TOOLS_DIRECTORY = 'server/mcp/tools'
+const GLOBAL_RULE_ONLY_ROUTES = new Set([
+  'server/api/v1/artifacts/[id]/shares/index.get.ts',
+  'server/api/v1/artifacts/[id]/shares/[shareId]/revoke.post.ts',
+])
 
 function readRepositoryRouteFiles(prefix: string): CapabilitySourceFile[] {
   const directory = join(API_ROUTES_DIRECTORY, prefix)
@@ -113,9 +117,25 @@ describe('capability conformance', () => {
 
     const violations = listCapabilities().flatMap((capability) => {
       return checkCapabilityConformance(capability, repositoryReaders)
+    }).filter((violation) => {
+      return !(
+        violation.rule === 'route_without_feature_guard'
+        && GLOBAL_RULE_ONLY_ROUTES.has(violation.detail)
+      )
     })
 
     expect(violations).toEqual([])
+  })
+
+  it('guards share list and revoke with the global artifacts rule only, so '
+    + 'an owner who loses artifacts.share can still see and revoke live '
+    + 'links', () => {
+    for (const path of GLOBAL_RULE_ONLY_ROUTES) {
+      const source = readFileSync(path, 'utf-8')
+
+      expect(source).toContain('await requireGlobalFeature(event, \'artifacts\')')
+      expect(source).not.toContain('requireFeature(')
+    }
   })
 
   it('reads the real route tree and MCP tool files', () => {

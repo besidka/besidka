@@ -53,19 +53,28 @@ describe('verifyTurnstileToken', () => {
     expect(mocks.ship).not.toHaveBeenCalled()
   })
 
-  it('logs once when enforced but the keys are missing', async () => {
-    const options = {
-      expectedAction: 'report',
-      config: config({ secret: '', enforced: true }),
-      fetcher: respond({}),
-    }
+  it('fails closed and logs once when enforced but the keys are missing',
+    async () => {
+      const options = {
+        expectedAction: 'report',
+        config: config({ secret: '', enforced: true }),
+        fetcher: respond({ success: true }),
+      }
+      const failure = {
+        ok: false,
+        skipped: false,
+        errorCodes: ['misconfigured'],
+      }
 
-    await verifyTurnstileToken(TOKEN, options)
-    await verifyTurnstileToken(TOKEN, options)
+      await expect(verifyTurnstileToken(TOKEN, options))
+        .resolves.toEqual(failure)
+      await expect(verifyTurnstileToken(undefined, options))
+        .resolves.toEqual(failure)
 
-    expect(mocks.ship).toHaveBeenCalledTimes(1)
-    expect(JSON.stringify(mocks.ship.mock.calls)).not.toContain(TOKEN)
-  })
+      expect(options.fetcher).not.toHaveBeenCalled()
+      expect(mocks.ship).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(mocks.ship.mock.calls)).not.toContain(TOKEN)
+    })
 
   it('fails without a token when configured', async () => {
     const fetcher = respond({ success: true })

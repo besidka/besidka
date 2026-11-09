@@ -22,6 +22,7 @@ import {
 import { enforceArtifactReportRateLimit } from '~~/server/utils/artifacts/report-rate-limit'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import {
+  TURNSTILE_MISCONFIGURED_CODE,
   TURNSTILE_MISSING_RESPONSE_CODE,
   verifyTurnstileToken,
 } from '~~/server/utils/turnstile'
@@ -29,6 +30,7 @@ import {
 export const ARTIFACT_REPORT_TURNSTILE_ACTION = 'report'
 export const TURNSTILE_REQUIRED_CODE = 'turnstile_required'
 export const TURNSTILE_FAILED_CODE = 'turnstile_failed'
+export const TURNSTILE_UNAVAILABLE_CODE = 'turnstile_unavailable'
 
 const TURNSTILE_TOKEN_MAX = 2048
 
@@ -164,6 +166,17 @@ async function assertTurnstile(
 
   if (verification.ok) {
     return
+  }
+
+  if (verification.errorCodes.includes(TURNSTILE_MISCONFIGURED_CODE)) {
+    throw createError({
+      message: 'Reports from signed-out visitors are unavailable',
+      status: 503,
+      code: TURNSTILE_UNAVAILABLE_CODE,
+      why: 'The anti-abuse check is required but not configured',
+      fix: 'Sign in and report again, or email the privacy address on the '
+        + 'Privacy Policy',
+    })
   }
 
   if (verification.errorCodes.includes(TURNSTILE_MISSING_RESPONSE_CODE)) {

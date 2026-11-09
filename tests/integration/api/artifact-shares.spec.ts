@@ -425,13 +425,48 @@ describe('artifact shares API', () => {
       })).resolves.toMatchObject({ error: { status: 404 } })
     })
 
-    it('answers 404 when artifacts.share is off', async () => {
+    it('stops creating links when artifacts.share is off but still lists '
+      + 'and revokes the live ones', async () => {
+      const created = await createShare()
+
       mocks.sessionUserId = ownerId
       mocks.flagActive = false
 
+      await expect(call(handlers.createShare, {
+        params: { id: artifactId },
+        body: {
+          duration: 'never',
+          pinnedVersion: null,
+          storageAllowed: false,
+          bridgeAllowed: false,
+        },
+      })).resolves.toMatchObject({ error: { status: 404 } })
+      await expect(call(handlers.checkShare, {
+        params: { id: artifactId },
+        body: { pinnedVersion: null },
+      })).resolves.toMatchObject({ error: { status: 404 } })
       await expect(call(handlers.listShares, { params: { id: artifactId } }))
-        .resolves.toMatchObject({ error: { status: 404 } })
+        .resolves.toMatchObject({
+          result: { shares: [expect.objectContaining({ status: 'active' })] },
+        })
+      await expect(call(handlers.revokeShare, {
+        params: { id: artifactId, shareId: created.share.shareId },
+      })).resolves.toMatchObject({ result: { revoked: 1 } })
     })
+
+    it('answers 404 to list and revoke when the global rule is off',
+      async () => {
+        const created = await createShare()
+
+        mocks.sessionUserId = ownerId
+        mocks.featuresDisabled = 'artifacts'
+
+        await expect(call(handlers.listShares, { params: { id: artifactId } }))
+          .resolves.toMatchObject({ error: { status: 404 } })
+        await expect(call(handlers.revokeShare, {
+          params: { id: artifactId, shareId: created.share.shareId },
+        })).resolves.toMatchObject({ error: { status: 404 } })
+      })
 
     it('rejects a pinned version that does not exist', async () => {
       await expect(createShare({ pinnedVersion: 3 }))
@@ -618,6 +653,26 @@ describe('artifact shares API', () => {
           turnstileToken: 'good',
         })).resolves.toMatchObject({ result: { ok: true } })
         expect(await listReports()).toHaveLength(1)
+      })
+
+    it('refuses signed-out reports when Turnstile is enforced but missing',
+      async () => {
+        const created = await createShare()
+
+        Object.assign(runtimeConfig, { turnstileEnforced: true })
+
+        await expect(reportShare(created.token, {
+          turnstileToken: 'any',
+        })).resolves.toMatchObject({
+          error: { status: 503, data: { code: 'turnstile_unavailable' } },
+        })
+        expect(mocks.fetch).not.toHaveBeenCalled()
+        expect(await listReports()).toHaveLength(0)
+
+        mocks.sessionUserId = viewerId
+
+        await expect(reportShare(created.token, {}, {}))
+          .resolves.toMatchObject({ result: { ok: true } })
       })
 
     it('lets a signed-in reporter skip Turnstile', async () => {

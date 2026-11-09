@@ -28,7 +28,13 @@ a report about an artifact inside a shared chat uses the same report helper.
 
 ## Routes
 
-### Owner (session and `requireFeature(event, 'artifacts.share')`)
+### Owner (session and ownership)
+
+Create and check require `requireFeature(event, 'artifacts.share')`.
+List and revoke require only the global `artifacts` rule
+(`requireGlobalFeature`), so an owner who loses `artifacts.share` can
+still see and revoke links that are live. The conformance spec lists
+those two routes as guarded by the global rule.
 
 | Route | Body | Response |
 | --- | --- | --- |
@@ -168,7 +174,8 @@ as labelled lines under the reporter's text in `details` (no extra columns).
 Order: body validation (400) → session → rate limit (5 an hour per user or per
 hashed IP, `enforceArtifactReportRateLimit`, 429) → Turnstile for signed-out
 reporters (400 `turnstile_required` without a token, 403 `turnstile_failed`
-when Siteverify refuses) → target resolution (404, 410) → insert → emails.
+when Siteverify refuses, 503 `turnstile_unavailable` when Turnstile is
+enforced but its keys are missing) → target resolution (404, 410) → insert → emails.
 On the `/a/` route the link is resolved first, so a dead link answers 404 or
 410 before anything else.
 
@@ -176,9 +183,9 @@ The row stores the link (`share_id`) or the chat share (`chat_share_id`),
 `priority` (`urgent` for csam, terrorism and threat to life) and no IP.
 
 `verifyTurnstileToken` (`server/utils/turnstile.ts`) posts to Siteverify with
-`turnstileSecretKey`. It is skipped when Turnstile is not configured (as on
-Cloudflare Previews); `turnstileEnforced` without keys is logged once, like
-the auth captcha. When enforced, the action must be `report` and the
+`turnstileSecretKey`. It is skipped when Turnstile is not configured and
+not enforced (as on Cloudflare Previews). `turnstileEnforced` without keys
+fails closed (signed-out reports answer 503) and is logged once. When enforced, the action must be `report` and the
 hostname one of the auth allowed hosts (the dummy test keys answer with
 neither, so those checks are off locally). A network error fails closed.
 
@@ -222,9 +229,12 @@ artifact public id. `share` disables one link, `artifact` the artifact,
 `user` every artifact of the owner. `legalHold` sets `legal_hold_until` to
 six months from now (TCO Art. 6(2)), never shortening an existing hold, on
 the artifact(s) even for `share`. Content already taken down is counted in
-`alreadyTakenDown` and gets no second email.
+`alreadyTakenDown` and gets no second email. The takedown updates, the
+legal hold and the audit row are one D1 batch; the statement of reasons is
+sent after it.
 
-Restore clears the takedown fields, keeps the legal hold and sends no email:
+Restore clears the takedown fields (the update and the audit row are one
+D1 batch), keeps the legal hold and sends no email:
 a restore follows a dispute handled by email from the privacy mailbox, and the
 answer to the owner (and, for copyright, to the reporter) is written there.
 Viewer progress deleted by the sweep after a takedown does not come back.

@@ -759,38 +759,45 @@ function chunk<T>(items: T[]): T[][] {
   return chunks
 }
 
-async function takeDownArtifactRows(
+function buildArtifactTakedowns(
   db: AdminDb,
   artifactIds: number[],
   statement: string,
   now: Date,
-): Promise<number[]> {
-  const takenDown: number[] = []
-
-  for (const ids of chunk(artifactIds)) {
-    const rows = await db.update(schema.artifacts)
+) {
+  return chunk(artifactIds).map((ids) => {
+    return db.update(schema.artifacts)
       .set({ takedownAt: now, takedownReason: statement })
       .where(and(
         inArray(schema.artifacts.id, ids),
         isNull(schema.artifacts.takedownAt),
       ))
       .returning({ id: schema.artifacts.id })
-
-    takenDown.push(...rows.map((row) => {
-      return row.id
-    }))
-  }
-
-  return takenDown
+  })
 }
 
-async function setLegalHold(
+function buildShareTakedown(
+  db: AdminDb,
+  shareId: number,
+  statement: string,
+  now: Date,
+) {
+  return db.update(schema.artifactShares)
+    .set({ takedownAt: now, takedownReason: statement, updatedAt: now })
+    .where(and(
+      eq(schema.artifactShares.id, shareId),
+      isNull(schema.artifactShares.takedownAt),
+    ))
+    .returning({ id: schema.artifactShares.id })
+}
+
+function buildLegalHolds(
   db: AdminDb,
   artifactIds: number[],
   holdUntil: Date,
-): Promise<void> {
-  for (const ids of chunk(artifactIds)) {
-    await db.update(schema.artifacts)
+) {
+  return chunk(artifactIds).map((ids) => {
+    return db.update(schema.artifacts)
       .set({ legalHoldUntil: holdUntil })
       .where(and(
         inArray(schema.artifacts.id, ids),
@@ -798,7 +805,19 @@ async function setLegalHold(
           Math.floor(holdUntil.getTime() / 1000)
         }`,
       ))
-  }
+  })
+}
+
+function collectReturnedIds(results: unknown[]): number[] {
+  return results.flatMap((result) => {
+    if (!Array.isArray(result)) {
+      return []
+    }
+
+    return result.map((row: { id: number }) => {
+      return row.id
+    })
+  })
 }
 
 /**
@@ -806,9 +825,11 @@ async function setLegalHold(
  * complaint, something the admin found): scope `share` disables one link,
  * `artifact` the artifact and every link to it, `user` every artifact of
  * that user. `legalHold` keeps the artifacts for six months (TCO Art. 6(2))
- * against deletion and the report sweep. Takes effect on the next request:
- * every read checks D1 and nothing is cached. Writes one audit row and
- * sends the owner one statement of reasons for what was newly taken down.
+ * against deletion and the report sweep. The takedown updates, the legal
+ * hold and the audit row are one D1 batch, so a failure leaves nothing
+ * half-written; the owner's statement of reasons (for what was newly taken
+ * down) is sent after it. Takes effect on the next request: every read
+ * checks D1 and nothing is cached.
  */
 export async function takeDownArtifactTarget(
   context: FeatureAdminContext,
@@ -831,35 +852,11 @@ export async function takeDownArtifactTarget(
   const holdUntil = input.legalHold
     ? addMonths(now, ARTIFACT_LEGAL_HOLD_MONTHS)
     : null
-  let newlyTakenDownIds: number[]
-
-  if (resolved.share) {
-    const rows = await context.db.update(schema.artifactShares)
-      .set({
-        takedownAt: now,
-        takedownReason: input.statement,
-        updatedAt: now,
-      })
-      .where(and(
-        eq(schema.artifactShares.id, resolved.share.id),
-        isNull(schema.artifactShares.takedownAt),
-      ))
-      .returning({ id: schema.artifactShares.id })
-
-    newlyTakenDownIds = rows.length > 0 ? artifactIds : []
-  } else {
-    newlyTakenDownIds = await takeDownArtifactRows(
-      context.db,
-      artifactIds,
-      input.statement,
-      now,
-    )
-  }
-
-  if (holdUntil) {
-    await setLegalHold(context.db, artifactIds, holdUntil)
-  }
-
+  const pendingCount = resolved.share
+    ? Number(!resolved.share.takedownAt)
+    : resolved.artifacts.filter((artifact) => {
+      return !artifact.takedownAt
+    }).length
   const publicArtifactIds = artifactIds.map(encodeArtifactId)
   const shareId = resolved.share
     ? encodeArtifactShareId(resolved.share.id)
@@ -879,10 +876,20 @@ export async function takeDownArtifactTarget(
       })
       : {
         artifactCount: artifactIds.length,
-        alreadyTakenDown: artifactIds.length - newlyTakenDownIds.length,
+        alreadyTakenDown: artifactIds.length - pendingCount,
       }
-
-  await buildAuditInsert(context, {
+  const takedowns = resolved.share
+    ? [buildShareTakedown(
+      context.db,
+      resolved.share.id,
+      input.statement,
+      now,
+    )]
+    : buildArtifactTakedowns(context.db, artifactIds, input.statement, now)
+  const holds = holdUntil
+    ? buildLegalHolds(context.db, artifactIds, holdUntil)
+    : []
+  const audit = buildAuditInsert(context, {
     action: 'artifact.takedown',
     flag: AUDIT_FLAG,
     targetUserId: resolved.ownerUserId,
@@ -892,11 +899,23 @@ export async function takeDownArtifactTarget(
       shareId,
       artifactIds: publicArtifactIds.slice(0, AUDIT_ID_LIST_MAX),
       artifactCount: artifactIds.length,
-      takenDown: newlyTakenDownIds.length,
+      takenDown: pendingCount,
       takedownAt: now.toISOString(),
       legalHoldUntil: toIso(holdUntil),
     },
   })
+  const results = await context.db.batch([
+    ...takedowns,
+    ...holds,
+    audit,
+  ] as unknown as Parameters<AdminDb['batch']>[0])
+  const returnedIds = collectReturnedIds(
+    (results as unknown as unknown[]).slice(0, takedowns.length),
+  )
+  const shareTakenDown = resolved.share !== null && returnedIds.length > 0
+  const newlyTakenDownIds = resolved.share
+    ? shareTakenDown ? artifactIds : []
+    : returnedIds
 
   context.logger.set({
     attributes: {
@@ -950,8 +969,9 @@ export async function takeDownArtifactTarget(
  * fields and keeps any legal hold. Sends no email: a restore follows a
  * person's review of a dispute that runs by email from the privacy mailbox,
  * and the reply to the owner (and, for copyright, the notice to the
- * reporter) is written there. Viewer saved progress deleted by the sweep
- * after the takedown does not come back.
+ * reporter) is written there. The update and the audit row are one D1
+ * batch. Viewer saved progress deleted by the sweep after the takedown does
+ * not come back.
  */
 export async function restoreArtifactTakedown(
   context: FeatureAdminContext,
@@ -989,25 +1009,26 @@ async function restoreShare(
     throwNotTakenDown()
   }
 
-  const updated = await context.db.update(schema.artifactShares)
-    .set({ takedownAt: null, takedownReason: null, updatedAt: new Date() })
-    .where(and(
-      eq(schema.artifactShares.id, share.id),
-      isNotNull(schema.artifactShares.takedownAt),
-    ))
-    .returning({ id: schema.artifactShares.id })
+  const [updated] = await context.db.batch([
+    context.db.update(schema.artifactShares)
+      .set({ takedownAt: null, takedownReason: null, updatedAt: new Date() })
+      .where(and(
+        eq(schema.artifactShares.id, share.id),
+        isNotNull(schema.artifactShares.takedownAt),
+      ))
+      .returning({ id: schema.artifactShares.id }),
+    buildAuditInsert(context, {
+      action: 'artifact.restore',
+      flag: AUDIT_FLAG,
+      targetUserId: share.userId,
+      before: { shareId: publicShareId, takedownAt: toIso(share.takedownAt) },
+      after: { shareId: publicShareId, takedownAt: null },
+    }),
+  ])
 
   if (updated.length === 0) {
     throwNotTakenDown()
   }
-
-  await buildAuditInsert(context, {
-    action: 'artifact.restore',
-    flag: AUDIT_FLAG,
-    targetUserId: share.userId,
-    before: { shareId: publicShareId, takedownAt: toIso(share.takedownAt) },
-    after: { shareId: publicShareId, takedownAt: null },
-  })
 
   context.logger.set({
     attributes: {
@@ -1035,33 +1056,34 @@ async function restoreArtifact(
     throwNotTakenDown()
   }
 
-  const updated = await context.db.update(schema.artifacts)
-    .set({ takedownAt: null, takedownReason: null })
-    .where(and(
-      eq(schema.artifacts.id, artifact.id),
-      isNotNull(schema.artifacts.takedownAt),
-    ))
-    .returning({ id: schema.artifacts.id })
+  const [updated] = await context.db.batch([
+    context.db.update(schema.artifacts)
+      .set({ takedownAt: null, takedownReason: null })
+      .where(and(
+        eq(schema.artifacts.id, artifact.id),
+        isNotNull(schema.artifacts.takedownAt),
+      ))
+      .returning({ id: schema.artifacts.id }),
+    buildAuditInsert(context, {
+      action: 'artifact.restore',
+      flag: AUDIT_FLAG,
+      targetUserId: artifact.userId,
+      before: {
+        artifactId: publicArtifactId,
+        takedownAt: toIso(artifact.takedownAt),
+        legalHoldUntil: toIso(artifact.legalHoldUntil),
+      },
+      after: {
+        artifactId: publicArtifactId,
+        takedownAt: null,
+        legalHoldUntil: toIso(artifact.legalHoldUntil),
+      },
+    }),
+  ])
 
   if (updated.length === 0) {
     throwNotTakenDown()
   }
-
-  await buildAuditInsert(context, {
-    action: 'artifact.restore',
-    flag: AUDIT_FLAG,
-    targetUserId: artifact.userId,
-    before: {
-      artifactId: publicArtifactId,
-      takedownAt: toIso(artifact.takedownAt),
-      legalHoldUntil: toIso(artifact.legalHoldUntil),
-    },
-    after: {
-      artifactId: publicArtifactId,
-      takedownAt: null,
-      legalHoldUntil: toIso(artifact.legalHoldUntil),
-    },
-  })
 
   context.logger.set({
     attributes: {

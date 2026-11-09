@@ -6,6 +6,7 @@ export const TURNSTILE_SITEVERIFY_URL
   = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 export const TURNSTILE_TIMEOUT_MS = 5000
 export const TURNSTILE_MISSING_RESPONSE_CODE = 'missing-input-response'
+export const TURNSTILE_MISCONFIGURED_CODE = 'misconfigured'
 
 export interface TurnstileRuntimeConfig {
   turnstileSecretKey?: string
@@ -108,9 +109,10 @@ function failed(...errorCodes: string[]): TurnstileVerification {
 
 /**
  * Checks a Turnstile token with Siteverify. Skipped (`ok`, `skipped`) when
- * Turnstile is not configured, as on Cloudflare Previews; a configuration
- * that says `turnstileEnforced` but lacks keys is logged once, like the
- * auth captcha. When enforced, the action must equal `expectedAction` and
+ * Turnstile is not configured and not enforced, as on Cloudflare Previews. A
+ * configuration that says `turnstileEnforced` but lacks keys fails closed
+ * (`misconfigured`) and is logged once. When enforced, the action must
+ * equal `expectedAction` and
  * the hostname must be one of the auth allowed hosts; the dummy test keys
  * used locally answer with neither, so those checks run only when enforced.
  * A network failure or timeout fails closed. The token is never logged.
@@ -123,11 +125,13 @@ export async function verifyTurnstileToken(
     ?? useRuntimeConfig() as unknown as TurnstileRuntimeConfig
 
   if (!isTurnstileConfigured(config)) {
-    if (isEnforced(config)) {
-      logTurnstileMisconfigured(config)
+    if (!isEnforced(config)) {
+      return { ok: true, skipped: true, errorCodes: [] }
     }
 
-    return { ok: true, skipped: true, errorCodes: [] }
+    logTurnstileMisconfigured(config)
+
+    return failed(TURNSTILE_MISCONFIGURED_CODE)
   }
 
   if (!token) {

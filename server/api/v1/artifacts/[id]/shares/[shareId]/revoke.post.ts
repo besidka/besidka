@@ -5,12 +5,12 @@ import {
   revokeArtifactShares,
 } from '~~/server/utils/artifacts/shares'
 import { createArtifactNotFoundError, decodeArtifactId } from '~~/server/utils/artifacts/store'
-import { requireFeature } from '~~/server/utils/features/guards'
+import { requireGlobalFeature } from '~~/server/utils/features/global'
 import * as schema from '~~/server/db/schema'
 import { and, eq } from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
-  await requireFeature(event, 'artifacts.share')
+  await requireGlobalFeature(event, 'artifacts')
 
   assertNotCrossSiteRequest(event)
 
