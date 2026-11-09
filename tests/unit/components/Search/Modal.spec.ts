@@ -236,7 +236,7 @@ describe('Search/Modal.client', () => {
     ])
   })
 
-  it('shows the Admin row last in Settings only to admins', async () => {
+  it('shows the Admin rows last in Settings only to admins', async () => {
     isAdmin.value = true
     useSearchModal().isModalOpen.value = true
 
@@ -254,7 +254,10 @@ describe('Search/Modal.client', () => {
     const ids = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
 
-    expect(ids.at(-1)).toBe('search-option-admin')
+    expect(ids.slice(-2)).toEqual([
+      'search-option-admin',
+      'search-option-admin-reports',
+    ])
     expect(wrapper.get('#search-option-admin').text()).toBe('Admin')
     expect(wrapper.get('#search-option-admin .iconify').classes())
       .toContain('i-lucide:shield-ellipsis')
@@ -265,13 +268,32 @@ describe('Search/Modal.client', () => {
     expect(mocks.navigateToMock).toHaveBeenCalledWith('/admin')
   })
 
-  it('hides the Admin row from non-admins', async () => {
+  it('opens the content reports page from its admin row', async () => {
+    isAdmin.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.get('#search-option-admin-reports').text())
+      .toBe('Content reports')
+    expect(wrapper.get('#search-option-admin-reports .iconify').classes())
+      .toContain('i-lucide:flag-triangle-right')
+
+    await wrapper.find('#search-option-admin-reports').trigger('click')
+
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/admin/artifact-reports')
+  })
+
+  it('hides the Admin rows from non-admins', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
     await nextTick()
 
     expect(wrapper.find('#search-option-admin').exists()).toBe(false)
+    expect(wrapper.find('#search-option-admin-reports').exists()).toBe(false)
   })
 
   it('groups Projects under Chat and Memory under Settings with icons', async () => {

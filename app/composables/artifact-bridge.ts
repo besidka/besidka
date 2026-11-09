@@ -10,16 +10,17 @@ import type {
 import {
   ARTIFACT_BRIDGE_DEFAULT_OUTPUT_TOKENS,
   ARTIFACT_BRIDGE_NO_KEY_CODE,
+  ARTIFACT_SHARE_HEADER,
 } from '#shared/utils/artifacts'
 import { parseError } from 'evlog'
 import type { ArtifactPanelSource } from '~/composables/artifacts'
-import { ARTIFACT_SHARE_HEADER } from '~/composables/artifact-storage'
 
 export interface ArtifactBridgeModeInput {
   loggedIn: boolean
   featureActive: boolean
   source: ArtifactPanelSource
   artifactId: string | null | undefined
+  shareAllowed?: boolean
 }
 
 export interface ArtifactBridgeError {
@@ -56,18 +57,23 @@ interface PendingHandle {
 }
 
 /**
- * `complete()` is offered only to a signed-in viewer with the
+ * `complete()` is offered only to a signed-in viewer with their own
  * `artifacts.llm-bridge` flag (and its Labs opt-in), for a saved artifact
- * opened from their own chat. Shared chats get no bridge until artifact
- * share links (A-7) let the owner allow it per link.
+ * opened from their own chat or through a public link whose owner allowed
+ * AI features. Shared chats and anonymous link viewers get no bridge.
  */
 export function resolveArtifactBridgeEnabled(
   input: ArtifactBridgeModeInput,
 ): boolean {
-  return input.loggedIn
-    && input.featureActive
-    && input.source === 'owner'
-    && !!input.artifactId
+  if (!input.loggedIn || !input.featureActive || !input.artifactId) {
+    return false
+  }
+
+  if (input.source === 'owner') {
+    return true
+  }
+
+  return input.source === 'public-share' && input.shareAllowed === true
 }
 
 function readStatus(exception: unknown): number {

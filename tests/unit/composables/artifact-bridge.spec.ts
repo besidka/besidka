@@ -5,7 +5,7 @@ import { ERROR_CODES, RpcError } from '@besidka/artifacts-protocol'
 import type { ArtifactBridgeInfo } from '#shared/utils/artifacts'
 import { ARTIFACT_BRIDGE_DEFAULT_OUTPUT_TOKENS } from '#shared/utils/artifacts'
 import type { ArtifactPanelSource } from '../../../app/composables/artifacts'
-import { ARTIFACT_SHARE_HEADER } from '../../../app/composables/artifact-storage'
+import { ARTIFACT_SHARE_HEADER } from '../../../shared/utils/artifacts'
 import {
   resolveArtifactBridgeEnabled,
   toBridgeRpcError,
@@ -170,6 +170,27 @@ describe('resolveArtifactBridgeEnabled', () => {
   it.each([null, undefined, ''])('is off for the artifact id %j', (id) => {
     expect(resolveArtifactBridgeEnabled({ ...allowed, artifactId: id }))
       .toBe(false)
+  })
+
+  describe('through a public link', () => {
+    const publicShare = {
+      ...allowed,
+      source: 'public-share' as ArtifactPanelSource,
+      shareAllowed: true,
+    }
+
+    it('is on when the link allows AI and the viewer has the flag', () => {
+      expect(resolveArtifactBridgeEnabled(publicShare)).toBe(true)
+    })
+
+    it.each([
+      ['the link does not allow AI', { shareAllowed: false }],
+      ['the viewer is signed out', { loggedIn: false }],
+      ['the viewer has no bridge flag', { featureActive: false }],
+    ])('is off when %s', (_label, override) => {
+      expect(resolveArtifactBridgeEnabled({ ...publicShare, ...override }))
+        .toBe(false)
+    })
   })
 })
 
@@ -846,8 +867,14 @@ describe('useArtifactBridge', () => {
       await rejectionOf(second)
     })
 
-    it('does not offer or keep the choice for a shared chat', async () => {
-      const bridge = createBridge({ source: 'shared' })
+    it.each([
+      ['a shared chat', 'shared'],
+      ['a public link', 'public-share'],
+    ] as const)('does not offer or keep the choice for %s', async (
+      _label,
+      source,
+    ) => {
+      const bridge = createBridge({ source, shareToken: 'tok_1' })
       const first = bridge.complete({ prompt: 'First' })
 
       expect(bridge.pending.value?.allowRemember).toBe(false)

@@ -1412,3 +1412,144 @@ describe('ChatArtifactFrame bridge capability', () => {
       expect(captured).toHaveLength(1)
     })
 })
+
+describe('ChatArtifactFrame through a public link', () => {
+  const SHARE_TOKEN = 'share-token-1'
+  const ALL_ALLOWED = { storageAllowed: true, bridgeAllowed: true }
+
+  function mountPublicShare(props: Record<string, unknown> = {}) {
+    return mountFrame({
+      source: 'public-share',
+      shareToken: SHARE_TOKEN,
+      shareCapabilities: ALL_ALLOWED,
+      displayModeOverride: 'fullscreen',
+      ...props,
+    })
+  }
+
+  async function hostContextOf(connection: CapturedConnection) {
+    const runtime = connectRuntime(connection)
+    const result = await initialize(runtime)
+
+    return { runtime, hostContext: result.hostContext }
+  }
+
+  function storageAndBridgeCalls() {
+    return fetchMock.mock.calls.filter(([url]) => {
+      return /\/(storage|bridge|complete)(\/|$)/.test(String(url))
+    })
+  }
+
+  beforeEach(() => {
+    fetchMock.mockResolvedValue({ items: [], keys: 0, bytes: 0 })
+  })
+
+  it('never reaches the server for an anonymous viewer, even when the '
+    + 'link allows everything', async () => {
+    storageFeature.value = { enabled: true, active: true, variant: null }
+    bridgeFeature.value = { enabled: true, active: true, variant: null }
+
+    const { connection } = await mountPublicShare()
+    const { runtime, hostContext } = await hostContextOf(connection)
+
+    expect(hostContext.capabilities).toEqual({
+      storage: 'memory',
+      complete: false,
+    })
+    expect(connection.handlers.storage).toBeUndefined()
+    expect(connection.handlers.complete).toBeUndefined()
+
+    await expect(runtime.request(METHODS.storageSet, {
+      key: 'score',
+      value: 1,
+    })).rejects.toBeDefined()
+    await expect(runtime.request(METHODS.complete, { prompt: 'Hi' }))
+      .rejects.toBeDefined()
+    await flushPromises()
+
+    expect(storageAndBridgeCalls()).toHaveLength(0)
+  })
+
+  it('uses the display mode the page asks for', async () => {
+    layout.value = 'docked'
+    isFullWidth.value = false
+
+    const { connection } = await mountPublicShare()
+    const { hostContext } = await hostContextOf(connection)
+
+    expect(hostContext.displayMode).toBe('fullscreen')
+  })
+
+  it('saves progress through the link for a signed-in viewer with the '
+    + 'flag', async () => {
+    loggedIn.value = true
+    storageFeature.value = { enabled: true, active: true, variant: null }
+
+    const { connection } = await mountPublicShare()
+    const { hostContext } = await hostContextOf(connection)
+
+    expect(hostContext.capabilities.storage).toBe('persistent')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/artifacts/art_1/storage',
+      { headers: { 'x-besidka-artifact-share': SHARE_TOKEN } },
+    )
+  })
+
+  it('keeps memory storage when the link does not allow saving',
+    async () => {
+      loggedIn.value = true
+      storageFeature.value = { enabled: true, active: true, variant: null }
+      bridgeFeature.value = { enabled: true, active: true, variant: null }
+
+      const { connection } = await mountPublicShare({
+        shareCapabilities: { storageAllowed: false, bridgeAllowed: false },
+      })
+      const { hostContext } = await hostContextOf(connection)
+
+      expect(hostContext.capabilities).toEqual({
+        storage: 'memory',
+        complete: false,
+      })
+      expect(storageAndBridgeCalls()).toHaveLength(0)
+    })
+
+  it('keeps memory storage when the viewer lacks the storage flag',
+    async () => {
+      loggedIn.value = true
+
+      const { connection } = await mountPublicShare()
+      const { hostContext } = await hostContextOf(connection)
+
+      expect(hostContext.capabilities.storage).toBe('memory')
+      expect(storageAndBridgeCalls()).toHaveLength(0)
+    })
+
+  it('offers completions only when the link and the viewer allow them',
+    async () => {
+      loggedIn.value = true
+      bridgeFeature.value = { enabled: true, active: true, variant: null }
+
+      const { connection } = await mountPublicShare({
+        shareCapabilities: { storageAllowed: false, bridgeAllowed: true },
+      })
+      const { hostContext } = await hostContextOf(connection)
+
+      expect(hostContext.capabilities).toEqual({
+        storage: 'memory',
+        complete: true,
+      })
+      expect(connection.handlers.complete).toBeTypeOf('function')
+    })
+
+  it('sends no share header for a shared chat even with a token',
+    async () => {
+      loggedIn.value = true
+      storageFeature.value = { enabled: true, active: true, variant: null }
+
+      const { connection } = await mountPublicShare({ source: 'shared' })
+      const { hostContext } = await hostContextOf(connection)
+
+      expect(hostContext.capabilities.storage).toBe('memory')
+      expect(storageAndBridgeCalls()).toHaveLength(0)
+    })
+})
