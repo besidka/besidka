@@ -296,10 +296,14 @@ export function buildArtifactInstructions(
 ): string {
   return [
     'Artifacts are available through `create_artifact` and',
-    '`update_artifact`. Use an artifact for self-contained content longer',
-    'than about 20 lines that the user will view, run or reuse: quizzes,',
-    'flashcards, small apps and games, diagrams, documents and reports.',
-    'Keep short answers and short code snippets in the normal reply.',
+    '`update_artifact`. Create one only when the user asks for an',
+    'artifact, an app, an interactive page, a quiz, flashcards, a game or a',
+    'dashboard, or for a standalone document (study guide, report, cheat',
+    'sheet) or an SVG image to keep, download or share. Everything else',
+    'goes in the reply: a diagram as a fenced ```mermaid block (chat',
+    'renders it with zoom and export) and code of any length (functions,',
+    'scripts, config) as fenced code blocks, unless the user asks for an',
+    'artifact or a runnable page.',
     `Allowed kinds: ${buildArtifactKindsDescription(allowedKinds)}.`,
     'Artifacts run in a sandbox without network access: no fetch, no',
     'remote scripts, styles, fonts or images (use inline SVG or data URIs),',
@@ -327,10 +331,11 @@ export function buildArtifactInstructions(
       + ' confirms each call and may decline, so catch errors and show a'
       + ' short message.'
       : 'Artifacts cannot call a model.',
-    'To change an artifact from this chat call `update_artifact` with its',
-    'id; prefer small `edits` over sending the whole content again.',
-    'After writing an artifact, add one short paragraph for the user; do',
-    'not repeat its content in the reply.',
+    'When the user refers to an artifact from this chat, change it with',
+    '`update_artifact` and its id; prefer small `edits` over sending the',
+    'whole content again. A new, unrelated request is not an edit.',
+    'After writing an artifact, add one or two sentences for the user;',
+    'never repeat its source or content in the reply, fenced or not.',
     buildArtifactDesignInstructions(allowedKinds),
   ].filter(Boolean).join(' ')
 }
@@ -388,7 +393,10 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
   return {
     [CREATE_ARTIFACT_TOOL_NAME]: withFollowUpTurn(tool({
       description: [
-        'Create a new artifact shown to the user next to the chat.',
+        'Create a new artifact shown to the user next to the chat, only',
+        'when the user asked for an artifact, app, interactive page, quiz,',
+        'game or a document to keep; never for a diagram or code that fits',
+        'a fenced block in the reply.',
         `Kinds: ${buildArtifactKindsDescription(input.allowedKinds)}.`,
         `The content is at most ${ARTIFACT_VERSION_MAX_BYTES} bytes.`,
         buildArtifactCodeBlocksDescription(input.allowedKinds),

@@ -10,10 +10,10 @@ import { withMcpPrivateTool } from '~~/server/utils/mcp/private-tool'
 const inputSchema = {
   kind: z
     .enum(ARTIFACT_KINDS)
-    .describe('html: one self-contained HTML document with inline CSS and '
-      + 'JS; react: one JSX module whose default export is a component; '
-      + 'svg: one SVG image; mermaid: one Mermaid diagram; markdown: a '
-      + 'Markdown document'),
+    .describe('html: one self-contained HTML document with inline JS, '
+      + 'styled with daisyUI and Tailwind classes; react: one JSX module '
+      + 'whose default export is a component; svg: one SVG image; mermaid: '
+      + 'one Mermaid diagram; markdown: a Markdown document'),
   title: z
     .string()
     .trim()
@@ -35,10 +35,15 @@ export default defineMcpTool({
   title: 'Create an artifact',
   description: 'Save content you wrote as a new Besidka artifact (version 1) '
     + 'in your library and return its id and a link to open it in Besidka. '
-    + 'Artifacts run in a sandbox without network access, so the content '
-    + 'must be self-contained. It counts against your artifact storage and '
-    + 'uses none of your API keys. React artifacts need the React artifacts '
-    + 'feature. Requires signing in (artifacts:write).',
+    + 'Use it only when the user asks for an artifact or for an app, '
+    + 'interactive page, quiz, game or document to keep in Besidka; answer '
+    + 'diagrams and code in your reply otherwise. Artifacts run in a sandbox '
+    + 'without network access, so the content must be self-contained. html '
+    + 'and react artifacts already load Tailwind CSS 4 and daisyUI 5 with '
+    + 'the Besidka theme: style with their class names and theme colours, '
+    + 'never link a CDN or external fonts. It counts against your artifact '
+    + 'storage and uses none of your API keys. React artifacts need the '
+    + 'React artifacts feature. Requires signing in (artifacts:write).',
   inputSchema,
   annotations: {
     readOnlyHint: false,

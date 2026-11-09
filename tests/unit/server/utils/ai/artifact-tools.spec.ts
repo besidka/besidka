@@ -146,6 +146,13 @@ describe('artifact tools', () => {
       .tools.create_artifact!.description)).not.toContain('besidka-code')
   })
 
+  it('creates an artifact only when one is warranted', () => {
+    const description = String(buildTools().tools.create_artifact!.description)
+
+    expect(description).toContain('only when the user asked for an artifact')
+    expect(description).toContain('never for a diagram or code that fits')
+  })
+
   it('validates the title length and a non-empty content', () => {
     const schema = inputSchemaOf(buildTools().tools, 'create_artifact')
 
@@ -465,6 +472,19 @@ describe('buildArtifactInstructions', () => {
     expect(text).toContain('passwords')
     expect(text).toContain('cannot keep data between visits')
     expect(text).toContain('cannot call a model')
+  })
+
+  it('keeps diagrams and code inline unless an artifact is asked for', () => {
+    const text = buildArtifactInstructions(ALL_KINDS, {
+      storage: false,
+      modelBridge: false,
+    })
+    expect(text).toContain('Create one only when the user asks for an')
+    expect(text).toContain('a diagram as a fenced ```mermaid block')
+    expect(text).toContain('code of any length')
+    expect(text).toContain('A new, unrelated request is not an edit')
+    expect(text).toContain('never repeat its source or content')
+    expect(text).not.toContain('about 20 lines')
   })
 
   it('mentions storage and the model bridge only when they are on', () => {
