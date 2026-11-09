@@ -740,9 +740,10 @@ export default defineNuxtConfig({
         'ai',
         '@ai-sdk/vue',
         'ulid',
-        'shiki-stream/vue',
-        'shiki/bundle/web',
+        '@shikijs/stream',
+        'shiki/core',
         'shiki/engine/javascript',
+        'shiki/langs',
       ],
       // mediabunny spawns a Web Worker for UrlSource range reads; Vite's dep
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`
