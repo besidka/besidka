@@ -422,6 +422,65 @@ describe('useArtifactLibrary', () => {
       expect(library.hasMore.value).toBe(true)
     })
 
+  it('does not load the next page while a delete runs', async () => {
+    const ids = createIds(20)
+    const library = await setup(createPage(ids, 40))
+    let resolveDelete: (value: unknown) => void = () => {}
+
+    mocks.fetch
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveDelete = resolve
+      }))
+      .mockResolvedValueOnce({ items: [], total: 35, usedBytes: 0 })
+      .mockResolvedValueOnce(createPage(createIds(15, 'b'), 35))
+
+    const deletion = library.deleteArtifacts(ids.slice(0, 5))
+
+    await library.loadMore()
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+
+    resolveDelete({ deletedIds: ids.slice(0, 5), heldIds: [] })
+    await deletion
+    await library.loadMore()
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/artifacts', {
+      query: { limit: 20, offset: 15 },
+    })
+    expect(library.items.value).toHaveLength(30)
+  })
+
+  it('drops a page that was in flight when a delete started', async () => {
+    const ids = createIds(20)
+    const library = await setup(createPage(ids, 40))
+    let resolvePage: (value: unknown) => void = () => {}
+
+    mocks.fetch
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolvePage = resolve
+      }))
+      .mockResolvedValueOnce({ deletedIds: ids.slice(0, 5), heldIds: [] })
+      .mockResolvedValueOnce({ items: [], total: 35, usedBytes: 0 })
+      .mockResolvedValueOnce(createPage(createIds(15, 'c'), 35))
+
+    const staleLoad = library.loadMore()
+
+    await library.deleteArtifacts(ids.slice(0, 5))
+
+    resolvePage(createPage(createIds(20, 'b'), 40))
+    await staleLoad
+
+    expect(library.items.value).toHaveLength(15)
+
+    await library.loadMore()
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/artifacts', {
+      query: { limit: 20, offset: 15 },
+    })
+    expect(library.items.value.map(item => item.id))
+      .toEqual([...ids.slice(5), ...createIds(15, 'c')])
+  })
+
   it('does not subtract a delete twice from a total read after it',
     async () => {
       const library = await setup(createPage(['a1', 'a2', 'a3'], 6))

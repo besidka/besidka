@@ -199,7 +199,7 @@
       <button
         type="button"
         class="btn btn-ghost btn-sm"
-        :disabled="isLoadingMore"
+        :disabled="isLoadingMore || isDeleting"
         data-testid="artifact-library-load-more"
         @click="loadMore"
       >

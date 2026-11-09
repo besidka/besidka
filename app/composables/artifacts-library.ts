@@ -299,7 +299,7 @@ export function useArtifactLibrary(filters: {
   onScopeDispose(clearSkeletonTimer)
 
   async function loadMore() {
-    if (isLoadingMore.value || !hasMore.value) {
+    if (isLoadingMore.value || isDeleting.value || !hasMore.value) {
       return
     }
 
@@ -402,6 +402,7 @@ export function useArtifactLibrary(filters: {
     }
 
     isDeleting.value = true
+    generation++
 
     try {
       for (const chunk of chunkIds(ids)) {
