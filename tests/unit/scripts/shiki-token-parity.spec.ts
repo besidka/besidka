@@ -65,9 +65,11 @@ describe('code highlighter pool', () => {
     async () => {
       const pool = createLazyPool()
       const before = await pool.load('markdown', '# Title')
+      const cutFence = await pool.load('markdown', '# Title\n```jav')
       const after = await pool.load('markdown', '```python\nprint(1)\n```')
       const again = await pool.load('markdown', '```py\nprint(2)\n```')
 
+      expect(cutFence.highlighter).toBe(before.highlighter)
       expect(after.highlighter).not.toBe(before.highlighter)
       expect(again.highlighter).toBe(after.highlighter)
     })

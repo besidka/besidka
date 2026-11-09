@@ -231,11 +231,58 @@ export function createCodeHighlighterPool(
     }
   }
 
-  function getRootState(rootName: string): RootState {
+  /**
+   * Lazily embedded languages the code names that are not loaded yet. Only
+   * complete lines count, so a fence info string cut mid-stream (`java` on
+   * the way to `javascript`) never loads the wrong grammar.
+   */
+  async function findMissingEmbeddedLanguages(
+    lazyLanguages: ReadonlySet<string>,
+    loadedLanguages: ReadonlySet<string>,
+    code: string,
+  ): Promise<string[]> {
+    if (!lazyLanguages.size) {
+      return []
+    }
+
+    const completeLines = code.slice(0, code.lastIndexOf('\n') + 1)
+    const missing = new Set<string>()
+
+    for (const candidate of findEmbeddedLanguageCandidates(completeLines)) {
+      if (!isKnownLanguage(candidate)) {
+        continue
+      }
+
+      const name = await getRootName(candidate)
+
+      if (lazyLanguages.has(name) && !loadedLanguages.has(name)) {
+        missing.add(name)
+      }
+    }
+
+    return [...missing]
+  }
+
+  async function createFirstRoot(
+    rootName: string,
+    code: string,
+  ): Promise<RootHighlighter> {
+    const rootRegistrations = await importRegistrations(rootName)
+    const lazyLanguages = new Set(rootRegistrations.flatMap((registration) => {
+      return registration.embeddedLangsLazy ?? []
+    }))
+
+    return createRoot(
+      rootName,
+      await findMissingEmbeddedLanguages(lazyLanguages, new Set(), code),
+    )
+  }
+
+  function getRootState(rootName: string, code: string): RootState {
     let state = roots.get(rootName)
 
     if (!state) {
-      const current = createRoot(rootName, [])
+      const current = createFirstRoot(rootName, code)
 
       state = { current, queue: current }
       roots.set(rootName, state)
@@ -247,38 +294,17 @@ export function createCodeHighlighterPool(
     return state
   }
 
-  async function findMissingEmbeddedLanguages(
-    root: RootHighlighter,
-    code: string,
-  ): Promise<string[]> {
-    if (!root.lazyLanguages.size) {
-      return []
-    }
-
-    const missing = new Set<string>()
-
-    for (const candidate of findEmbeddedLanguageCandidates(code)) {
-      if (!isKnownLanguage(candidate)) {
-        continue
-      }
-
-      const name = await getRootName(candidate)
-
-      if (root.lazyLanguages.has(name) && !root.loadedLanguages.has(name)) {
-        missing.add(name)
-      }
-    }
-
-    return [...missing]
-  }
-
   async function resolveRoot(
     rootName: string,
     state: RootState,
     code: string,
   ): Promise<RootHighlighter> {
     const root = await state.current
-    const missing = await findMissingEmbeddedLanguages(root, code)
+    const missing = await findMissingEmbeddedLanguages(
+      root.lazyLanguages,
+      root.loadedLanguages,
+      code,
+    )
 
     if (!missing.length) {
       return root
@@ -320,7 +346,7 @@ export function createCodeHighlighterPool(
     }
 
     const rootName = await getRootName(normalized)
-    const state = getRootState(rootName)
+    const state = getRootState(rootName, code)
     const resolved = state.queue.then(() => {
       return resolveRoot(rootName, state, code)
     }, () => {
@@ -337,6 +363,11 @@ export function createCodeHighlighterPool(
   return { load }
 }
 
+/**
+ * The same styles as `getTokenStyleObject` from `@shikijs/core`, written out
+ * so this module needs no runtime shiki import (see the server-bundle rule in
+ * docs/code-highlighting.md).
+ */
 export function getCodeTokenStyle(
   token: ThemedToken,
 ): Record<string, string> | undefined {

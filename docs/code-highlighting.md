@@ -102,8 +102,16 @@ spans).
 - While a block streams, only the appended text is fed to
   `ShikiStreamTokenizer.enqueue()`. Finished lines are tokenized once and keep
   the same object; `v-memo` keeps their DOM nodes untouched. Only the
-  incomplete last line is re-tokenized and re-rendered per chunk. Work per
-  chunk is the number of new lines plus one `codeToTokens` call.
+  incomplete last line is re-tokenized and re-rendered per chunk.
+  Tokenizing a chunk costs one `codeToTokens` call per new line plus one;
+  rendering still walks the line list once (an identity check per line), which
+  is cheap but grows with the block.
+- Embedded languages are detected on complete lines only, so a fence info
+  string cut mid-stream (`java` on the way to `javascript`) loads nothing.
+  Each rebuild of a root highlighter leaves the previous one to the garbage
+  collector once no block uses it; blocks that tokenized with it keep it
+  until they unmount. That is bounded by the number of embedded languages a
+  root sees in one session.
 - An edit that is not an append (mermaid Edit/Reset, regenerate), a theme
   switch or a rebuilt highlighter starts the tokenizer over; every line whose
   colours did not change keeps its object and DOM node.

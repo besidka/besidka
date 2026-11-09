@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
+import type { CodeLine } from '../../../../app/composables/code-stream'
 import CodeStream from '../../../../app/components/prose/CodeStream.vue'
 import {
   CODE_THEME_DARK,
@@ -70,6 +71,10 @@ function splitIntoChunks(code: string): string[] {
 
 function getLineElements(wrapper: VueWrapper): HTMLElement[] {
   return [...wrapper.element.querySelectorAll<HTMLElement>('code > span')]
+}
+
+function getLineObjects(wrapper: VueWrapper): CodeLine[] {
+  return (wrapper.vm as unknown as { lines: CodeLine[] }).lines
 }
 
 function getCodeText(wrapper: VueWrapper): string {
@@ -167,6 +172,8 @@ describe('prose/CodeStream.vue', () => {
       await waitForHighlight(wrapper, SHORT_BLOCK)
 
       const firstLine = getLineElements(wrapper)[0]
+      const firstLineObject = getLineObjects(wrapper)[0]
+      const lastLineObject = getLineObjects(wrapper)[5]
       const edited = SHORT_BLOCK.replace('3].reduce', '4].reduce')
 
       await wrapper.setProps({ code: edited })
@@ -176,6 +183,8 @@ describe('prose/CodeStream.vue', () => {
         await describeTokens(edited, 'typescript', CODE_THEME_DARK),
       )
       expect(getLineElements(wrapper)[0]).toBe(firstLine)
+      expect(getLineObjects(wrapper)[0]).toBe(firstLineObject)
+      expect(getLineObjects(wrapper)[5]).not.toBe(lastLineObject)
     })
 
   it('streams a long block without touching finished lines', async () => {
@@ -223,6 +232,7 @@ describe('prose/CodeStream.vue', () => {
       const finishedMarkup = finishedElements.map((line) => {
         return line.innerHTML
       })
+      const finishedObjects = getLineObjects(wrapper).slice(0, finishedBefore)
 
       codeToTokens.mockClear()
       mutatedLines.clear()
@@ -239,7 +249,13 @@ describe('prose/CodeStream.vue', () => {
 
       totalCalls += codeToTokens.mock.calls.length
       expect(codeToTokens.mock.calls.length).toBeLessThanOrEqual(newlines + 1)
+
       const lineElements = getLineElements(wrapper)
+      const lineObjects = getLineObjects(wrapper)
+
+      expect(finishedObjects.every((line, index) => {
+        return lineObjects[index] === line
+      })).toBe(true)
 
       expect(finishedElements.every((line, index) => {
         return lineElements[index] === line
@@ -259,6 +275,7 @@ describe('prose/CodeStream.vue', () => {
     expect(totalCalls).toBeLessThanOrEqual(
       chunks.length + code.split('\n').length,
     )
+    expect(totalCalls).toBeGreaterThanOrEqual(code.split('\n').length)
     expect(describeSpans(wrapper)).toEqual(
       await describeTokens(code, 'typescript', CODE_THEME_DARK),
     )

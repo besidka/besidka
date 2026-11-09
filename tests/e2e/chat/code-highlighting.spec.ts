@@ -73,6 +73,13 @@ test.describe('Code highlighting', () => {
     await expect(stream).toHaveAttribute('data-highlighted', 'true', {
       timeout: 30_000,
     })
+
+    const linesWhileStreaming = (await stream.locator('code').textContent())
+      ?.split('\n').length ?? 0
+
+    expect(linesWhileStreaming).toBeLessThan(TEST_CODE_STREAM_LINES)
+    expect(await getDistinctColours(stream)).toBeGreaterThan(2)
+
     await expect(
       page.locator('button[data-testid="stop-generation"]').first(),
     ).toBeHidden({ timeout: 60_000 })

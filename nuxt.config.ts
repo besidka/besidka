@@ -744,6 +744,8 @@ export default defineNuxtConfig({
         'shiki/core',
         'shiki/engine/javascript',
         'shiki/langs',
+        'shiki/themes/github-dark-high-contrast.mjs',
+        'shiki/themes/github-light-high-contrast.mjs',
       ],
       // mediabunny spawns a Web Worker for UrlSource range reads; Vite's dep
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`
