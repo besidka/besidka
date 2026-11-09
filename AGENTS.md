@@ -562,6 +562,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   decision log (section 7: no expiry, singletons, entry caps, the write lock,
   the pending Anthropic token factor, non-atomic leases, deferred issues
   #537 to #540)
+- `docs/artifacts.md` - Artifacts entry point (A-10): the six `artifacts.*`
+  flags and their rollout rules, the golden-prompt evals
+  (`tests/evals/artifacts/prompts.json`, `scripts/artifact-evals.mjs` run
+  through a preview as the test account, the opt-in render spec
+  `tests/e2e/artifacts/evals-render.spec.ts`), the results per model with
+  cost, the client `artifact_open`/`artifact_runtime_error` events, the Axiom
+  dashboard `besidka-artifacts` and `scripts/artifact-rollout-report.mjs`,
+  the staged rollout tied to the 2026-12-19 notices with the P0-16 schedule
+  to enter in the admin UI, and the stop rules
 - `docs/artifacts-runtime.md` - The sandboxed artifacts runtime Worker
   `besidka-artifacts` (`workers/artifacts-runtime`, assets only, no bindings)
   and `packages/artifacts-protocol` (JSON-RPC over one MessagePort, shaped
