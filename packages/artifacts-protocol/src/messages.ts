@@ -10,6 +10,7 @@ import type {
   STORAGE_MODES,
   THEMES,
 } from './constants.ts'
+import type { DiagramLimitCode } from './mermaid-limits.ts'
 
 export type ArtifactKind = typeof ARTIFACT_KINDS[number]
 
@@ -102,6 +103,9 @@ export interface LogMessageParams {
   data: {
     message: string
     stack?: string
+    code?: DiagramLimitCode
+    limit?: number
+    found?: number
   }
 }
 

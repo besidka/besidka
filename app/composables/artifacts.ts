@@ -1,5 +1,6 @@
 import { parseError } from 'evlog'
 import { LazyChatArtifactDetail } from '#components'
+import type { DiagramLimitCode } from '@besidka/artifacts-protocol'
 import type {
   ArtifactDetail,
   ArtifactKind,
@@ -37,6 +38,9 @@ export interface ArtifactRuntimeMessage {
   level: 'error' | 'warning'
   message: string
   stack?: string
+  code?: DiagramLimitCode
+  limit?: number
+  found?: number
 }
 
 export interface ArtifactVersionRequest {

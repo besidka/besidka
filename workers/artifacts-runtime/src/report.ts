@@ -1,5 +1,6 @@
 import { MAX_LOG_MESSAGE_LENGTH } from '@besidka/artifacts-protocol'
 import type { LogLevel, LogMessageParams } from '@besidka/artifacts-protocol'
+import { DiagramLimitError } from './render/diagram-limit.ts'
 import {
   describeArtifactScriptError,
   getExecutingScriptStartLine,
@@ -55,6 +56,18 @@ function truncate(value: string): string {
 }
 
 export function describeError(error: unknown): LogMessageParams['data'] {
+  if (error instanceof DiagramLimitError) {
+    return {
+      message: truncate(error.message),
+      stack: truncate(error.rawMessage),
+      code: error.diagramLimit.code,
+      limit: error.diagramLimit.limit,
+      ...error.diagramLimit.found === undefined
+        ? {}
+        : { found: error.diagramLimit.found },
+    }
+  }
+
   if (error instanceof Error) {
     const message = truncate(`${error.name}: ${error.message}`)
 
@@ -114,7 +127,9 @@ export function reportError(error: unknown, options: ReportOptions = {}) {
 
   notifyHost?.({ level, data })
 
-  if (options.showPanel ?? level === 'error') {
+  const isDiagramLimit = error instanceof DiagramLimitError
+
+  if (options.showPanel ?? (level === 'error' && !isDiagramLimit)) {
     showErrorPanel(data.message)
   }
 }

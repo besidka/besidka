@@ -1,3 +1,7 @@
+import {
+  MERMAID_MAX_EDGES,
+  MERMAID_MAX_TEXT_SIZE,
+} from '@besidka/artifacts-protocol'
 import type { Theme } from '@besidka/artifacts-protocol'
 
 export const MERMAID_DEFAULT_LAYOUT = 'dagre'
@@ -7,6 +11,8 @@ export interface RuntimeMermaidConfig {
   securityLevel: 'strict'
   theme: 'dark' | 'default'
   layout: typeof MERMAID_DEFAULT_LAYOUT
+  maxEdges: number
+  maxTextSize: number
   state: { layout: typeof MERMAID_DEFAULT_LAYOUT }
 }
 
@@ -20,6 +26,8 @@ export function createMermaidConfig(theme: Theme): RuntimeMermaidConfig {
     securityLevel: 'strict',
     theme: theme === 'dark' ? 'dark' : 'default',
     layout: MERMAID_DEFAULT_LAYOUT,
+    maxEdges: MERMAID_MAX_EDGES,
+    maxTextSize: MERMAID_MAX_TEXT_SIZE,
     state: { layout: MERMAID_DEFAULT_LAYOUT },
   }
 }

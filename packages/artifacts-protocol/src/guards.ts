@@ -22,6 +22,7 @@ import {
   THEMES,
 } from './constants.ts'
 import { isRecord } from './jsonrpc.ts'
+import { isDiagramLimitCode } from './mermaid-limits.ts'
 import type {
   ArtifactKind,
   ArtifactPayload,
@@ -322,6 +323,14 @@ export function isLogMessageParams(value: unknown): value is LogMessageParams {
     && (value.data.stack === undefined
       || (typeof value.data.stack === 'string'
         && value.data.stack.length <= MAX_LOG_MESSAGE_LENGTH))
+      && (value.data.code === undefined || isDiagramLimitCode(value.data.code))
+      && isOptionalPositiveInteger(value.data.limit)
+      && isOptionalPositiveInteger(value.data.found)
+}
+
+function isOptionalPositiveInteger(value: unknown): boolean {
+  return value === undefined
+    || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
 }
 
 export function isStorageKey(value: unknown): value is string {

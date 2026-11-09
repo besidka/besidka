@@ -359,6 +359,37 @@ export default function Chart() {
       .first()).toBeVisible({ timeout: 15_000 })
   })
 
+  test('reports a Mermaid diagram over the edge limit once, with a neutral placeholder', async ({ page }) => {
+    await mount(page)
+
+    const edges = Array.from({ length: 520 }, (_unused, index) => {
+      return `  N${index} --> N${index + 1}`
+    })
+
+    await render(page, {
+      kind: 'mermaid',
+      content: `flowchart TD\n${edges.join('\n')}`,
+    })
+
+    const frame = artifactFrame(page)
+
+    await expect(frame.getByTestId('besidka-diagram-limit'))
+      .toHaveText('This diagram is too large to draw.')
+    await expect.poll(async () => {
+      return (await harnessState(page)).messages.length
+    }).toBe(1)
+
+    const [message] = (await harnessState(page)).messages
+
+    expect(message.level).toBe('error')
+    expect(message.data.code).toBe('mermaid-edge-limit')
+    expect(message.data.limit).toBe(500)
+    expect(message.data.message).toContain('This diagram is too large to draw')
+    expect(message.data.message).not.toMatch(/initialize|maxEdges/i)
+    expect(message.data.stack).toContain('Edge limit exceeded')
+    await expect(frame.locator('#besidka-runtime-error')).toHaveCount(0)
+  })
+
   test('rejects an unknown bare import with an in-frame error and no request', async ({ page }) => {
     const requestedUrls: string[] = []
 

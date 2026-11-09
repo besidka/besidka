@@ -1,3 +1,4 @@
+import { MERMAID_MAX_EDGES } from '@besidka/artifacts-protocol/mermaid-limits'
 import type { DiagramRenderError } from '~/types/diagram.d'
 
 type PeleModule = typeof import('pele/lazy')
@@ -10,7 +11,7 @@ const FONT_FAMILY: string = `'${DIAGRAM_FONT_NAME}', sans-serif`
 const FONT_FAMILY_MONO: string = `'${DIAGRAM_FONT_MONO_NAME}', monospace`
 const SOURCE_LIMIT: number = 20_000
 const OUTPUT_LIMIT: number = 1_000_000
-const EDGES_LIMIT: number = 500
+const EDGES_LIMIT: number = MERMAID_MAX_EDGES
 const DIRECTION_BREAKPOINT: number = 480
 
 let peleModulePromise: Promise<PeleModule> | null = null

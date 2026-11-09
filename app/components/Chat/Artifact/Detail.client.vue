@@ -957,7 +957,7 @@ async function onAskToFix() {
     return
   }
 
-  const text = `Fix the error in "${displayTitle.value}": ${error.message}`
+  const text = buildArtifactFixPrompt(displayTitle.value, error)
 
   if (layout.value !== 'docked') {
     sidePanel.close()

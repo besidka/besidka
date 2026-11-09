@@ -398,6 +398,60 @@ a pending confirmation and any export still rendering. Exports have their own li
 answers `-32601` and the button shows "Download failed" with "Not
 available here."
 
+### Mermaid limits (BES-341)
+
+`MERMAID_MAX_EDGES = 500` and `MERMAID_MAX_TEXT_SIZE = 50,000` live in
+`packages/artifacts-protocol/src/mermaid-limits.ts`. The runtime passes both
+to `mermaid.initialize` (`createMermaidConfig`), and the chat's diagram
+renderer (`app/utils/diagram-render-core.ts`, which renders with Pele, not
+Mermaid) imports the same edge constant through the
+`@besidka/artifacts-protocol/mermaid-limits` subpath, so the two cannot drift.
+
+**Why 500.** Measured 2026-11-09 with the vendored Mermaid 12.3.0
+(`mermaid.min.js`), dagre layout, `securityLevel: 'strict'`, a random layered
+flowchart with 0.67 nodes per edge (13.9, 28.4 and 58.9 thousand characters
+for 500, 1,000 and 2,000 edges), headless Playwright on the development Mac,
+`parse` plus `render`, best of two runs, the viewport width (1440 or 375 px)
+made no difference:
+
+| Edges | Chromium `parse` | Chromium total | WebKit `parse` | WebKit total | SVG |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 | 0.15 s | 1.2 to 1.3 s | 0.08 s | 0.9 to 1.0 s | 0.7 MB |
+| 1,000 | 0.30 s | 3.3 s | 0.14 s | 2.9 to 3.0 s | 1.4 MB |
+| 2,000 | 0.59 s | 10.2 to 10.4 s | 0.31 s | 10.0 to 10.3 s | 2.9 MB |
+
+Layout time grows faster than the edge count (about 2.8x for the first
+doubling, 3.1x for the second), so 1,000 edges already misses the 2 second
+target on a fast desktop, and a phone is slower than that. The limit stays
+at 500. Raise it only with a faster layout, not a bigger number. Mermaid
+`maxTextSize` is no tighter than that: 500 edges is about 14,000 characters,
+well under 50,000.
+
+**What the reader sees.** Mermaid reports the edge limit from `parse` with a
+developer message ("Initialize mermaid with maxEdges ..."), and its `render`
+quietly swaps a source over `maxTextSize` for a stub diagram that says
+"Maximum text size in diagram exceeded" without throwing. `render/mermaid.ts`
+therefore measures the source first and maps the edge message, both into a
+`DiagramLimitError`:
+
+- The runtime reports it once through `besidka/message` with
+  `data: { message, stack, code, limit, found? }`. `message` is the short
+  text ("This diagram is too large to draw: it has more than 500 connections,
+  the limit is 500. Split it into smaller diagrams."), `stack` is Mermaid's
+  raw text, `code` is `mermaid-edge-limit` or `mermaid-text-limit`. The
+  guard `isLogMessageParams` validates the three new fields.
+- No red panel in the frame (`reportError` skips it for these errors); the
+  frame shows a neutral "This diagram is too large to draw." instead, and the
+  host banner shows the message with the raw text under Details.
+- Mermaid stops counting at the limit, so the edge count in its message is
+  always the limit and the real total is unknown. The message says "more than
+  500 connections"; only the text limit carries a measured size (`found`).
+- Ask to fix (`app/utils/artifact-fix-prompt.ts`) asks the model to split the
+  diagram into several smaller ones or simplify it under the limit and not to
+  change any Mermaid configuration. Other runtime errors keep the old prompt.
+- A `<besidka-mermaid>` block inside a Markdown, HTML or React artifact shows
+  the same short message in its own error line.
+
 ### Host hooks (`HostHandlers`)
 
 ```ts

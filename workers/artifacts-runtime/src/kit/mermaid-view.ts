@@ -1,3 +1,7 @@
+import {
+  describeDiagramLimit,
+  detectMermaidLimit,
+} from '@besidka/artifacts-protocol'
 import type {
   DiagramExportAction,
   Theme,
@@ -72,6 +76,10 @@ function renderDiagram(source: string, theme: Theme): Promise<string> {
     mermaid.initialize(createMermaidConfig(theme) as MermaidConfig)
 
     try {
+      if (detectMermaidLimit('', source)) {
+        throw new Error('Maximum text size exceeded')
+      }
+
       const { svg } = await mermaid.render(id, source)
 
       return svg
@@ -85,10 +93,16 @@ function renderDiagram(source: string, theme: Theme): Promise<string> {
   return task
 }
 
-function describeError(exception: unknown): string {
+function describeError(exception: unknown, source: string): string {
   const message = exception instanceof Error
     ? exception.message
     : String(exception)
+  const diagramLimit = detectMermaidLimit(message, source)
+
+  if (diagramLimit) {
+    return describeDiagramLimit(diagramLimit)
+  }
+
   const shortened = message.length > ERROR_MESSAGE_LIMIT
     ? `${message.slice(0, ERROR_MESSAGE_LIMIT)}…`
     : message
@@ -229,7 +243,7 @@ export function createMermaidController(element: HTMLElement): KitController {
       rendered = true
     } catch (exception) {
       if (sequence === renderSequence) {
-        showSource(describeError(exception))
+        showSource(describeError(exception, source))
       }
     }
   }

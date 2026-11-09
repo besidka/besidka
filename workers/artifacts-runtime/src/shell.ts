@@ -93,6 +93,11 @@ a {
   background: var(--besidka-surface);
   border-radius: 6px;
 }
+.besidka-diagram-limit {
+  margin: 8vh auto;
+  color: var(--besidka-muted);
+  text-align: center;
+}
 .besidka-standalone {
   max-width: 32rem;
   margin: 15vh auto;

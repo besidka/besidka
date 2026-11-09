@@ -532,6 +532,9 @@ function onMessage(params: LogMessageParams) {
     level: params.level,
     message: params.data.message,
     stack: params.data.stack,
+    code: params.data.code,
+    limit: params.data.limit,
+    found: params.data.found,
   })
 }
 

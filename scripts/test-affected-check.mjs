@@ -141,6 +141,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/artifacts-protocol/jsonrpc.spec.ts',
     'tests/unit/packages/artifacts-protocol/connection.spec.ts',
     'tests/unit/packages/artifacts-protocol/host.spec.ts',
+    'tests/unit/packages/artifacts-protocol/mermaid-limits.spec.ts',
+    'tests/unit/workers/artifacts-runtime/diagram-limit.spec.ts',
     'tests/unit/workers/artifacts-runtime/render.spec.ts',
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',
@@ -150,6 +152,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e-artifacts/design-system.spec.ts',
     'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
     'tests/e2e-artifacts/html-script-errors.spec.ts',
+    'tests/e2e-artifacts/runtime-sandbox.spec.ts',
     'tests/unit/workers/artifacts-runtime/script-location.spec.ts',
   ]
   const artifactsBridgeServerTests = [
@@ -197,6 +200,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/artifact-export.spec.ts',
     'tests/unit/utils/artifact-parts.spec.ts',
     'tests/unit/utils/artifact-bridge.spec.ts',
+    'tests/unit/utils/artifact-fix-prompt.spec.ts',
     'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
     'tests/e2e/chat/artifacts-panel.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
