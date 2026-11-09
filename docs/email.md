@@ -17,8 +17,9 @@ only.
 All transactional mail is built from 3 Vue SFC template shapes rendered by
 `nuxt-email-renderer` (see [Templates](#templates) below). The flow counts are
 deliberately not written down here: the list of senders changes, and a hard
-number drifts. The sources of truth are `server/utils/auth.ts` and
-`server/utils/account/security-emails.ts`.
+number drifts. The sources of truth are `server/utils/auth.ts`,
+`server/utils/account/security-emails.ts` and, for content reports and
+takedowns, `server/utils/artifacts/report-emails.ts`.
 
 The list of emails Besidka sends is `shared/utils/account-emails.ts`, one
 entry per email, with the exact phrase the Privacy Policy uses for it
@@ -62,6 +63,7 @@ exactly like the `DB`, `KV`, and `DATA_BUCKET` bindings.
 | `app/emails/**` | The three Vue SFC templates (`ActionEmail.vue`, `NoticeEmail.vue`, `LegalNoticeEmail.vue`) plus shared layout pieces (`components/EmailLayout.vue`, `EmailHeader.vue`, `EmailFooter.vue`, `theme.ts`) |
 | `server/utils/auth.ts` | Better Auth `sendResetPassword` / `sendVerificationEmail` / `sendChangeEmailConfirmation` / `sendDeleteAccountVerification` callers, all via `sendTemplateEmail()` with `ActionEmail` |
 | `server/utils/account/security-emails.ts` | The security-notice senders, all via `sendTemplateEmail()`: `NoticeEmail` for the plain notices, `ActionEmail` for the connected-app notice (it carries a "Review connected apps" link) |
+| `server/utils/artifacts/report-emails.ts` | Artifact report and takedown emails (A-7, `docs/artifacts/shares.md`): the privacy-mailbox notice, the receipt and decision to the reporter, and the statement of reasons to the owner. Renders `NoticeEmail` for HTML, sends its own plain-text part through `sendRenderedEmail()`, and sets `replyTo` to the privacy mailbox (`useEmail().send()` and `sendRenderedEmail()` accept `replyTo`, passed to the binding only when set) |
 | `wrangler.jsonc` | `send_email` binding + `NUXT_EMAIL_SENDER_*` vars (preview + production) |
 | `nuxt.config.ts` / `index.d.ts` | `emailNoopEnabled`, `emailSenderNoreply`, `emailSenderPersonalized` runtime config; the `nuxtEmailRenderer` module options block and the `forceInlineVueI18nForEmailRenderer` local module (see [Templates](#templates)) |
 | `.dev.vars.example` | documents `NUXT_EMAIL_NOOP_ENABLED` |
