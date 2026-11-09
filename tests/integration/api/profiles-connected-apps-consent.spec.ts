@@ -402,6 +402,27 @@ describe('connected apps consent form API', () => {
       })
   })
 
+  it('grants the artifact scopes the user ticked and drops the rest', async () => {
+    const handler = await getHandler()
+    const oauthQuery = signedQuery({
+      scope: 'openid offline_access artifacts:read artifacts:write '
+        + 'artifacts:share data:delete',
+    })
+
+    await handler(createEvent(validBody({
+      oauth_query: oauthQuery,
+      scope: ['artifacts:read', 'artifacts:share'],
+    })))
+
+    const request = authHandler.mock.calls[0]![0] as Request
+    const payload = await request.json() as { scope: string }
+
+    expect(payload.scope)
+      .toBe('openid offline_access artifacts:read artifacts:share')
+    expect(payload.scope).not.toContain('artifacts:write')
+    expect(payload.scope).not.toContain('data:delete')
+  })
+
   it('forwards a single scope sent as a plain string', async () => {
     const handler = await getHandler()
 

@@ -99,6 +99,7 @@ const featureList = [
     description: 'Artifact tools on the MCP server.',
     exposeToClient: false,
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'documents',

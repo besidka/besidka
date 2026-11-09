@@ -13,11 +13,14 @@ const ALL_SCOPES = [
   'memory:read',
   'files:read',
   'settings:read',
+  'artifacts:read',
   'projects:write',
   'memory:write',
   'chats:write',
   'files:write',
   'settings:write',
+  'artifacts:write',
+  'artifacts:share',
   'data:delete',
 ]
 
@@ -85,7 +88,50 @@ describe('OAuth scope picker', () => {
       'memory:read',
       'files:read',
       'settings:read',
+      'artifacts:read',
     ])
+  })
+
+  it('leaves the artifact write scopes unticked with the warning style',
+    async () => {
+      const wrapper = await mountSuspended(ScopePicker, {
+        props: { scopes: ALL_SCOPES, modelValue: [] },
+      })
+
+      await wrapper.setProps({ modelValue: lastSelection(wrapper) })
+
+      for (const scope of ['artifacts:write', 'artifacts:share']) {
+        const checkbox = wrapper.get(`[data-testid="oauth-scope-${scope}"]`)
+
+        expect((checkbox.element as HTMLInputElement).checked, scope)
+          .toBe(false)
+        expect(checkbox.classes(), scope).toContain('checkbox-warning')
+      }
+
+      const readCheckbox = wrapper.get(
+        '[data-testid="oauth-scope-artifacts:read"]',
+      )
+
+      expect((readCheckbox.element as HTMLInputElement).checked).toBe(true)
+      expect(wrapper.text())
+        .toContain('Read your artifacts and their share links')
+      expect(wrapper.text()).toContain('Create and edit your artifacts')
+      expect(wrapper.text())
+        .toContain('Publish artifacts as public links (up to 30 days)')
+      expect(wrapper.get('[data-testid="oauth-write-warning"]').text())
+        .toContain('public link')
+    })
+
+  it('adds artifacts:share only when the user ticks it', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: ALL_SCOPES, modelValue: [] },
+    })
+
+    await wrapper.setProps({ modelValue: lastSelection(wrapper) })
+    await wrapper.find('[data-testid="oauth-scope-artifacts:share"]')
+      .trigger('change')
+
+    expect(lastSelection(wrapper)).toContain('artifacts:share')
   })
 
   it('renders write scope checkboxes unchecked', async () => {

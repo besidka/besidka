@@ -943,7 +943,7 @@ endpoint. `mcp()` from `@better-auth/mcp` (built on
 | Setting | Value | Why |
 | --- | --- | --- |
 | `resource` | `${siteUrl}/mcp` | RFC 8707 resource; becomes the JWT `aud` |
-| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `data:delete`, `admin:features` |
+| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `artifacts:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `artifacts:write`, `artifacts:share`, `data:delete`, `admin:features` |
 | `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline; disconnecting is still immediate because `/mcp` also checks the consent row |
 | `refreshTokenExpiresIn` | 2,592,000 (30 days) | library default, set explicitly; rotated on every refresh, 30s reuse overlap from `mcp()` |
 | PKCE | required, S256 only | library default |
