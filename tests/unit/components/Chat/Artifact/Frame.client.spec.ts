@@ -235,6 +235,37 @@ describe('ChatArtifactFrame', () => {
       ])
     })
 
+  it('keeps the skeleton over a ready runtime until content arrives',
+    async () => {
+      const { wrapper, connection } = await mountFrame({ result: null })
+      const notifications: Array<[string, unknown]> = []
+      const runtime = connectRuntime(connection, (method, params) => {
+        notifications.push([method, params])
+      })
+
+      await initialize(runtime)
+
+      expect(wrapper.emitted('ready')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(true)
+      expect(connection.element.parentElement?.classList.contains('invisible'))
+        .toBe(true)
+      expect(notifications.map(([method]) => method))
+        .not.toContain(METHODS.toolResult)
+
+      await wrapper.setProps({ result: RESULT })
+      await waitForPort()
+
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(false)
+      expect(connection.element.parentElement?.classList.contains('invisible'))
+        .toBe(false)
+      expect(notifications).toContainEqual([
+        METHODS.toolResult,
+        { structuredContent: RESULT },
+      ])
+    })
+
   it('answers unknown methods with -32601', async () => {
     const { connection } = await mountFrame()
     const runtime = connectRuntime(connection)

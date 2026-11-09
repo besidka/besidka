@@ -7,10 +7,10 @@
     <div
       ref="host"
       class="absolute inset-0"
-      :class="{ invisible: status !== 'ready' }"
+      :class="{ invisible: !isShowingContent }"
     />
     <div
-      v-if="status === 'loading'"
+      v-if="isLoading"
       class="absolute inset-0 flex flex-col gap-3 p-4"
       aria-busy="true"
       data-testid="artifact-frame-loading"
@@ -140,6 +140,19 @@ const displayMode = computed<DisplayMode>(() => {
   return layout.value === 'docked' && isFullWidth.value
     ? 'fullscreen'
     : 'panel'
+})
+
+const hasContent = computed<boolean>(() => {
+  return !!props.result || !!props.partial
+})
+
+const isShowingContent = computed<boolean>(() => {
+  return status.value === 'ready' && hasContent.value
+})
+
+const isLoading = computed<boolean>(() => {
+  return status.value === 'loading'
+    || (status.value === 'ready' && !hasContent.value)
 })
 
 const errorCopy = computed(() => {

@@ -176,9 +176,13 @@ describe('ChatArtifactDetail', () => {
       '[data-testid="artifact-version-select"] option',
     )
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/artifacts/Art1Art1Art1Art1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/artifacts/Art1Art1Art1Art1',
+      expect.anything(),
+    )
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/artifacts/Art1Art1Art1Art1/versions/3',
+      expect.anything(),
     )
     expect(options.map(option => option.text())).toEqual(['v3', 'v2', 'v1'])
     expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-content'))
@@ -270,8 +274,12 @@ describe('ChatArtifactDetail', () => {
 
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/shared/share_1/artifacts/Art1Art1Art1Art1/versions/3',
+        expect.anything(),
       )
-      expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/artifacts/Art1Art1Art1Art1')
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        '/api/v1/artifacts/Art1Art1Art1Art1',
+        expect.anything(),
+      )
       expect(wrapper.findAll('[data-testid="artifact-version-select"] option')
         .map(option => option.text())).toEqual(['v3', 'v1'])
       expect(wrapper.get('[data-testid="artifact-shared-banner"]').text())
@@ -304,6 +312,48 @@ describe('ChatArtifactDetail', () => {
     expect(wrapper.find('[data-testid="artifact-unavailable"]').exists())
       .toBe(true)
     expect(useArtifactPanel().isUnavailable('Art1Art1Art1Art1')).toBe(true)
+  })
+
+  it('offers a retry when the version request times out', async () => {
+    const timeoutError = Object.assign(new Error('timeout'), {
+      name: 'TimeoutError',
+    })
+    let hasTimedOut = false
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/v1/artifacts/Art1Art1Art1Art1') {
+        return DETAIL
+      }
+
+      if (!hasTimedOut) {
+        hasTimedOut = true
+
+        throw Object.assign(new Error('<no response>'), {
+          name: 'FetchError',
+          cause: timeoutError,
+        })
+      }
+
+      return versionContent(3)
+    })
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    expect(wrapper.find('[data-testid="artifact-load-error"]').text())
+      .toContain('The artifact took too long to load')
+    expect(wrapper.find('[data-testid="frame-stub"]').attributes(
+      'data-content',
+    )).toBe('')
+
+    await wrapper.find('[data-testid="artifact-load-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="artifact-load-error"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="frame-stub"]').attributes(
+      'data-content',
+    )).toBe('<p>v3</p>')
   })
 
   it('streams react source in the Code tab, then previews the stored '

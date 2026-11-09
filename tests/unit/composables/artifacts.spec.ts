@@ -3,6 +3,7 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ARTIFACT_AUTO_OPEN_STORAGE_PREFIX,
+  ARTIFACT_LOAD_TIMEOUT_MS,
   getArtifactAutoOpenKey,
   getArtifactVersionUrl,
   getArtifactViewKey,
@@ -303,8 +304,49 @@ describe('loadArtifactVersion', () => {
       source: 'owner',
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/artifacts/Art1Art1Art1Art1/versions/2')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/artifacts/Art1Art1Art1Art1/versions/2',
+      { timeout: ARTIFACT_LOAD_TIMEOUT_MS },
+    )
     expect(result).toEqual({ ok: true, value: content })
+  })
+
+  it('gives up on a request that never answers', async () => {
+    const timeoutError = new Error(
+      '[TimeoutError]: The operation was aborted due to timeout',
+    )
+
+    timeoutError.name = 'TimeoutError'
+    fetchMock.mockRejectedValueOnce(Object.assign(
+      new Error('[GET] "/api/v1/artifacts/Art1Art1Art1Art1/versions/2": '
+        + '<no response> [TimeoutError]: The operation was aborted due to '
+        + 'timeout'),
+      { name: 'FetchError', cause: timeoutError },
+    ))
+
+    const result = await loadArtifactVersion({
+      artifactId: 'Art1Art1Art1Art1',
+      version: 2,
+      source: 'owner',
+    }, { notify: false })
+
+    expect(result).toEqual({
+      ok: false,
+      status: 408,
+      message: 'The artifact took too long to load',
+    })
+    expect(errorMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('applies the same deadline to the artifact detail', async () => {
+    fetchMock.mockResolvedValueOnce({ id: 'Art1Art1Art1Art1' })
+
+    await loadArtifactDetail('Art1Art1Art1Art1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/artifacts/Art1Art1Art1Art1',
+      { timeout: ARTIFACT_LOAD_TIMEOUT_MS },
+    )
   })
 
   it('reports unexpected failures through a toast', async () => {

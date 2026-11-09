@@ -53,12 +53,16 @@ export type ArtifactLoadResult<Value>
 export const ARTIFACT_VIEW_KEY_PREFIX = 'artifact:'
 export const ARTIFACT_AUTO_OPEN_STORAGE_PREFIX = 'artifacts:auto-opened:'
 export const ARTIFACT_AUTO_OPEN_MEDIA_QUERY = '(min-width: 64rem)'
+export const ARTIFACT_LOAD_TIMEOUT_MS = 10_000
 
 const ARTIFACT_AUTO_OPEN_MARKER = '1'
 const UNAVAILABLE_STATUSES = new Set<number>([403, 404, 410])
 const ARTIFACT_PUBLIC_ID_PATTERN = /^[A-Za-z0-9]{16,32}$/
 const UNAVAILABLE_STATUS = 404
 const UNAVAILABLE_MESSAGE = 'Artifact unavailable'
+const TIMEOUT_STATUS = 408
+const TIMEOUT_MESSAGE = 'The artifact took too long to load'
+const TIMEOUT_ERROR_NAME = 'TimeoutError'
 
 export function getArtifactViewKey(
   target: Pick<ArtifactPanelTarget, 'artifactId' | 'toolCallId'>,
@@ -321,30 +325,50 @@ export function useArtifactAutoOpen() {
   return { tryAutoOpen }
 }
 
+function isTimeoutError(exception: unknown): boolean {
+  if (!(exception instanceof Error)) {
+    return false
+  }
+
+  const cause = exception.cause
+
+  return exception.name === TIMEOUT_ERROR_NAME
+    || (cause instanceof Error && cause.name === TIMEOUT_ERROR_NAME)
+}
+
+function toFailure(exception: unknown): { status: number, message: string } {
+  if (isTimeoutError(exception)) {
+    return { status: TIMEOUT_STATUS, message: TIMEOUT_MESSAGE }
+  }
+
+  const parsedException = parseError(exception)
+
+  return {
+    status: parsedException.status || 500,
+    message: parsedException.message || 'Could not load the artifact',
+  }
+}
+
 async function loadArtifactResource<Value>(
   url: string,
   options: { notify?: boolean } = {},
 ): Promise<ArtifactLoadResult<Value>> {
   try {
-    const value = await $fetch<Value>(url)
+    const value = await $fetch<Value>(url, {
+      timeout: ARTIFACT_LOAD_TIMEOUT_MS,
+    })
 
     return { ok: true, value }
   } catch (exception) {
-    const parsedException = parseError(exception)
-    const status = parsedException.status || 500
+    const failure = toFailure(exception)
+    const shouldNotify = options.notify !== false
+      && !isArtifactUnavailableStatus(failure.status)
 
-    if (options.notify !== false && !isArtifactUnavailableStatus(status)) {
-      useErrorMessage(
-        parsedException.message || 'Could not load the artifact',
-        parsedException.why,
-      )
+    if (shouldNotify) {
+      useErrorMessage(failure.message, parseError(exception).why)
     }
 
-    return {
-      ok: false,
-      status,
-      message: parsedException.message || 'Could not load the artifact',
-    }
+    return { ok: false, ...failure }
   }
 }
 
