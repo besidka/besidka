@@ -35,9 +35,10 @@ export default defineMcpTool({
   title: 'Create an artifact',
   description: 'Save content you wrote as a new Besidka artifact (version 1) '
     + 'in your library and return its id and a link to open it in Besidka. '
-    + 'Use it only when the user asks for an artifact or for an app, '
-    + 'interactive page, quiz, game or document to keep in Besidka; answer '
-    + 'diagrams and code in your reply otherwise. Artifacts run in a sandbox '
+    + 'Use it when the user asks for an artifact, asks to save content in '
+    + 'Besidka, or wants an app, interactive page, quiz, game or document '
+    + 'to keep there; otherwise answer diagrams and code in your reply. '
+    + 'Artifacts run in a sandbox '
     + 'without network access, so the content must be self-contained. html '
     + 'and react artifacts already load Tailwind CSS 4 and daisyUI 5 with '
     + 'the Besidka theme: style with their class names and theme colours, '

@@ -52,7 +52,7 @@ function readThemeToken(themeName: string, token: string): string {
   return declaration?.[1] ?? ''
 }
 
-function toLinearChannel(value: number): number {
+function clampChannel(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
@@ -75,13 +75,13 @@ function relativeLuminance(colourReference: string): number {
   const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
   const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
   const s = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
-  const red = toLinearChannel(
+  const red = clampChannel(
     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
   )
-  const green = toLinearChannel(
+  const green = clampChannel(
     -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
   )
-  const blue = toLinearChannel(
+  const blue = clampChannel(
     -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
   )
 
@@ -93,6 +93,26 @@ function contrastRatio(first: string, second: string): number {
     .sort((left, right) => right - left) as [number, number]
 
   return (luminances[0] + 0.05) / (luminances[1] + 0.05)
+}
+
+const APP_DARK_VALUES_UNDER_OVERRIDE = {
+  '--color-primary': 'var(--color-stone-800)',
+  '--color-primary-content': 'var(--color-stone-100)',
+  '--color-neutral': 'var(--color-stone-800)',
+  '--color-neutral-content': 'var(--color-stone-100)',
+}
+
+function extractAppDarkTokens(mainCss: string): Record<string, string> {
+  const darkBlock = mainCss.slice(mainCss.indexOf('name: "dark"'))
+  const tokens: Record<string, string> = {}
+
+  for (const token of Object.keys(APP_DARK_VALUES_UNDER_OVERRIDE)) {
+    const match = new RegExp(`${token}:\\s*([^;]+);`).exec(darkBlock)
+
+    tokens[token] = match?.[1]?.trim() ?? ''
+  }
+
+  return tokens
 }
 
 function minimalTheme(name: string, extra = '') {
@@ -176,6 +196,10 @@ describe('Besidka theme for artifacts', () => {
     }
 
     expect(mainCss).toContain('--color-primary: var(--color-stone-800);')
+    expect(
+      extractAppDarkTokens(mainCss),
+      'main.css dark primary or neutral changed: revisit ARTIFACT_THEME_OVERRIDES',
+    ).toEqual(APP_DARK_VALUES_UNDER_OVERRIDE)
     expect(readThemeToken('light', '--color-primary'))
       .toBe('var(--color-stone-800)')
     expect(

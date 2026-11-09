@@ -12,6 +12,7 @@ import {
   findEchoedSourceLines,
   findStreamError,
   loadEvalCases,
+  parseFencedBlocks,
   parseArtifactWrites,
   parseCliArguments,
   readEvalResults,
@@ -289,12 +290,49 @@ describe('reply text checks', () => {
     })['no-source-echo'].status).toBe('pass')
   })
 
-  it('skips the text checks of a result stored without reply text', () => {
+  it('leaves the text checks pending without stored reply text', () => {
     expect(scoreStaticChecks(inlineCase, { writes: [], artifacts: [] }))
       .toMatchObject({
-        'inline-mermaid': { status: 'skipped' },
-        'no-source-echo': { status: 'skipped' },
+        'inline-mermaid': { status: 'pending' },
+        'no-source-echo': { status: 'pending' },
       })
+  })
+
+  it('reads fences the way Markdown does', () => {
+    const nested = '````md\n```mermaid\nflowchart TD\n```\n````\nDone.'
+
+    expect(parseFencedBlocks(nested)).toEqual({
+      blocks: [{ info: 'md', closed: true }],
+      outside: 'Done.',
+    })
+    expect(parseFencedBlocks('~~~bash\necho hi\n~~~').blocks)
+      .toEqual([{ info: 'bash', closed: true }])
+    expect(parseFencedBlocks('```ts\nconst a = 1').blocks)
+      .toEqual([{ info: 'ts', closed: false }])
+    expect(scoreStaticChecks(inlineCase, {
+      writes: [],
+      artifacts: [],
+      replyText: 'Use a ```mermaid fence:\r\n```mermaid\r\ngraph LR\r\n'
+        + '  A --> B\r\n```',
+    })).toMatchObject({
+      'inline-mermaid': { status: 'pass' },
+      'no-source-echo': { status: 'pass' },
+    })
+  })
+
+  it('catches Cyrillic node ids and ignores prose about diagrams', () => {
+    const echoOf = (replyText: string) => {
+      return scoreStaticChecks(inlineCase, {
+        writes: [],
+        artifacts: [],
+        replyText,
+      })['no-source-echo'].status
+    }
+
+    expect(echoOf('Початок --> Кінець')).toBe('fail')
+    expect(echoOf('Кошик[Кошик] -->|оплата| Оплата')).toBe('fail')
+    expect(echoOf('Wrap the page in an `<html>` element.')).toBe('pass')
+    expect(echoOf('The arrow --> means "leads to".')).toBe('pass')
   })
 
   it('reads only the visible assistant text of every turn', () => {
