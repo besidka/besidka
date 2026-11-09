@@ -542,6 +542,7 @@ const FIELD_HOOK_CLASSES: Record<ReportField, string> = {
 }
 
 const { loggedIn, user } = useAuth()
+const { bottomInset } = useVisualViewportInset()
 const turnstileSiteKey = useRuntimeConfig().public.turnstileSiteKey
 
 const formId = useId()
@@ -569,6 +570,7 @@ const isSubmitted = shallowRef<boolean>(false)
 const receiptEmail = shallowRef<string>('')
 
 let returnFocusTarget: HTMLElement | null = null
+let stopRevealAfterKeyboard: (() => void) | null = null
 
 const reasonOptions = ARTIFACT_REPORT_REASONS.map((value) => {
   return { value, label: ARTIFACT_REPORT_REASON_LABELS[value] }
@@ -729,13 +731,21 @@ async function focusFirstError(found: Partial<Record<ReportField, string>>) {
   }
 
   target.focus({ preventScroll: true })
+  revealField(target, field)
+  stopRevealAfterKeyboard?.()
+  stopRevealAfterKeyboard = watch(bottomInset, () => {
+    revealField(target, field)
+  }, { once: true })
+}
 
+function revealField(target: HTMLElement, field: ReportField) {
   if (!form.value) {
     return
   }
 
   scrollWithin(form.value, target, {
-    trailingElement: document.getElementById(`${formId}-${field}-error`),
+    trailingElement: form.value
+      .querySelector(`[id="${formId}-${field}-error"]`),
     reservedBottomPx: form.value
       .querySelector<HTMLElement>('.modal-action')?.offsetHeight ?? 0,
   })
@@ -836,6 +846,7 @@ function onCancel(event: Event) {
 }
 
 function onClosed() {
+  stopRevealAfterKeyboard?.()
   isOpen.value = false
   resetForm()
 

@@ -263,11 +263,15 @@ describe('Artifact/ReportModal.client', () => {
           const testId = this.getAttribute('data-testid')
 
           if (testId === 'artifact-report-form') {
-            return { top: 100, bottom: 300 } as DOMRect
+            return { top: 100, bottom: 400 } as DOMRect
           }
 
           if (testId === 'artifact-report-details') {
             return { top: 500, bottom: 560 } as DOMRect
+          }
+
+          if (testId === 'artifact-report-details-error') {
+            return { top: 580, bottom: 700 } as DOMRect
           }
 
           return { top: 0, bottom: 0 } as DOMRect
@@ -295,7 +299,7 @@ describe('Artifact/ReportModal.client', () => {
       expect(scrolledElements).toHaveLength(1)
       expect(scrolledElements[0]![0].dataset.testid)
         .toBe('artifact-report-form')
-      expect(scrolledElements[0]![1]).toBeGreaterThan(0)
+      expect(scrolledElements[0]![1]).toBe(700 + 8 - 400)
     })
 
   it('leaves the sheet lift to the global dialog rules', async () => {
