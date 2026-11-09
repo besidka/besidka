@@ -482,6 +482,7 @@ export default defineNuxtConfig({
       'Product documentation and a blog are planned as separate apps at /docs and /blog, each with its own llms.txt. They are not published yet.',
       'Besidka has no public application API: application endpoints require a signed-in session. The MCP server at /mcp has public read-only tools, and per-user tools behind OAuth.',
       'Content signals in robots.txt allow search and AI input and disallow AI training.',
+      'Artifacts (interactive apps, quizzes, charts and documents that a model builds in a chat, shareable by a link that is never indexed) are in testing and roll out to accounts no earlier than 19 December 2026. The home page FAQ describes them.',
     ],
     sections: [
       {
