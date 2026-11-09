@@ -456,8 +456,11 @@ html or react render the runtime loads it and compiles the input from
    preflight and the theme variables never depend on whether a class is
    present. The CSS is cumulative for the frame's lifetime (rules for
    classes of an earlier version match nothing), and the runtime stops
-   adding candidates after 5,000 (`MAX_DESIGN_CANDIDATES`), so an artifact
-   that generates a new arbitrary class per frame cannot grow it forever.
+   adding candidates after 5,000 (`MAX_DESIGN_CANDIDATES`, reported once as
+   a warning) and skips class names longer than 200 characters, so an
+   artifact that generates a new arbitrary class per frame cannot grow it
+   forever. A batch whose build throws is forgotten, so the next mutation
+   retries it.
 4. On a markdown, svg or mermaid render and on every shell restore it
    removes the `<style>` and disconnects the observer.
 
@@ -520,8 +523,14 @@ generated file differs from what the script would write today, so a
 The app-wide component rules that are not tokens are mirrored by hand in
 `BESIDKA_COMPONENT_OVERRIDES`: checkbox and badge selector sizes, the box
 radius on `:where(.textarea)` (#780; the theme's `--radius-field: 2rem`
-would otherwise make textareas pills), tooltip radius and `font-weight: 400`
-on `.btn`. The spec checks those declarations still exist in `main.css`.
+would otherwise make textareas pills), tooltip radius, `font-weight: 400`
+on `.btn`, and the dark-theme contrast rules: outline `btn-primary`,
+`btn-secondary` and `btn-neutral` use the `*-content` colour (dark
+`--color-primary` is stone-800, the same as `base-100`, so an outline
+primary button would otherwise be invisible), and `text-base-content/60`,
+`/70` and labels are lighter. The spec checks those declarations still
+exist in `main.css`, and the e2e spec checks the outline button and muted
+text in dark. The `.btn-ghost-legacy` utility is app-only and not copied.
 Page-level app styles (glass bubbles, gradients) are not copied.
 
 ### Decision: compile in the frame (measured)
@@ -555,7 +564,7 @@ WebKit including the chunk fetch, first build 6-12 ms, later builds 2 ms.
 
 | Asset | Raw | gzip | brotli |
 | --- | --- | --- | --- |
-| `chunks/system-*.js` (compiler, daisyUI, `index.css`, theme) | 614.9 KiB | 130.3 KiB | 104.7 KiB |
+| `chunks/system-*.js` (compiler, daisyUI, `index.css`, theme) | 616.6 KiB | 130.6 KiB | 105.1 KiB |
 | Nunito, 8 woff2 (latin, latin-ext, cyrillic, cyrillic-ext x 400/700) | 101.0 KiB | - | - |
 | Nunito actually fetched for English text (latin 400 + 700) | 31.8 KiB | - | - |
 | Entry graph (main + static imports), every artifact | 26.2 KiB | 11.1 KiB (10.7 before) | 9.7 KiB |

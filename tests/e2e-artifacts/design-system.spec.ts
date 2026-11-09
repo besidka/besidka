@@ -180,6 +180,40 @@ test.describe('artifact design system', () => {
     expect(await frame.locator('html').getAttribute('data-theme')).toBe('dark')
   })
 
+  test('keeps outline buttons and muted text readable in dark', async ({ page }) => {
+    await mount(page, 'dark')
+    await render(page, {
+      kind: 'html',
+      content: '<!doctype html><body class="p-4">'
+        + '<button id="outline" class="btn btn-outline btn-primary">Next</button>'
+        + '<p id="muted" class="text-base-content/70">Muted</p></body>',
+    })
+
+    const frame = artifactFrame(page)
+
+    await expect(frame.locator('#outline')).toBeVisible()
+
+    const primaryContent = await themeColor(frame, '--color-primary-content')
+
+    expect(await computedStyle(frame, '#outline', 'color'))
+      .toBe(primaryContent)
+    const mutedDark = await frame.locator('html').evaluate((root) => {
+      const probe = document.createElement('span')
+
+      probe.style.color
+        = 'color-mix(in oklab, var(--color-base-content) 85%, transparent)'
+      root.querySelector('body')?.append(probe)
+
+      const color = getComputedStyle(probe).color
+
+      probe.remove()
+
+      return color
+    })
+
+    expect(await computedStyle(frame, '#muted', 'color')).toBe(mutedDark)
+  })
+
   test('lets the artifact\'s own CSS win over daisyUI', async ({ page }) => {
     await mount(page)
     await render(page, { kind: 'html', content: OVERRIDE_HTML })

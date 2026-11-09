@@ -153,6 +153,12 @@ describe('artifact design stylesheet', () => {
       '--size-selector: 0.1875rem;',
       ':where(.textarea) {',
       'border-radius: var(--radius-box);',
+      'outline-color: var(--custom-outline-color, var(--btn-color));',
+      '--custom-outline-color: var(--color-primary-content);',
+      '--btn-color: var(--color-primary-content);',
+      '--btn-color: var(--color-neutral-content);',
+      'color: color-mix(in oklab, var(--color-base-content) 85%, transparent);',
+      ':where([data-theme="dark"]) :is(.label, .fieldset-label) {',
     ]) {
       expect(mainCss).toContain(rule)
       expect(BESIDKA_COMPONENT_OVERRIDES).toContain(rule)

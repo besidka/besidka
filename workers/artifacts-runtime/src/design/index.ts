@@ -12,6 +12,8 @@ const CLASS_SELECTOR = '[class]'
 
 export const MAX_DESIGN_CANDIDATES = 5_000
 
+export const MAX_DESIGN_CANDIDATE_LENGTH = 200
+
 export const DESIGN_COMPILE_MEASURE = 'besidka-design-compile'
 
 export const DESIGN_BUILD_MEASURE = 'besidka-design-build'
@@ -21,6 +23,7 @@ let compiler: DesignCompiler | null = null
 let observer: MutationObserver | null = null
 let styleElement: HTMLStyleElement | null = null
 let compiledCss = ''
+let candidateCapReported = false
 
 const seenCandidates = new Set<string>()
 
@@ -32,8 +35,8 @@ async function createCompiler(): Promise<DesignCompiler | null> {
   const startedAt = performance.now()
 
   try {
-    const module = await import('./system.ts')
-    const created = await module.createDesignCompiler()
+    const systemModule = await import('./system.ts')
+    const created = await systemModule.createDesignCompiler()
 
     performance.measure(DESIGN_COMPILE_MEASURE, { start: startedAt })
 
@@ -58,10 +61,31 @@ export async function prepareDesignSystem(): Promise<boolean> {
   return compiler !== null
 }
 
+function reportCandidateCap() {
+  if (candidateCapReported) {
+    return
+  }
+
+  candidateCapReported = true
+  reportError(
+    new Error(
+      `Design system stopped at ${MAX_DESIGN_CANDIDATES} class names; `
+      + 'classes added later are not styled.',
+    ),
+    { level: 'warning', showPanel: false },
+  )
+}
+
 function addCandidates(element: Element, candidates: string[]) {
   for (const candidate of element.classList) {
     if (seenCandidates.size >= MAX_DESIGN_CANDIDATES) {
+      reportCandidateCap()
+
       return
+    }
+
+    if (candidate.length > MAX_DESIGN_CANDIDATE_LENGTH) {
+      continue
     }
 
     if (!seenCandidates.has(candidate)) {
@@ -104,6 +128,10 @@ function buildCandidates(candidates: string[]) {
       })
     }
   } catch (exception) {
+    for (const candidate of candidates) {
+      seenCandidates.delete(candidate)
+    }
+
     reportError(exception, { level: 'warning', showPanel: false })
 
     return

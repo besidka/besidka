@@ -36,6 +36,65 @@ export const BESIDKA_COMPONENT_OVERRIDES = `
   .btn {
     font-weight: 400;
   }
+
+  .btn {
+    outline-color: var(--custom-outline-color, var(--btn-color));
+
+    @variant dark {
+      &.btn-primary {
+        --custom-outline-color: var(--color-primary-content);
+      }
+      &.btn-secondary {
+        --custom-outline-color: var(--color-secondary-content);
+      }
+      &.btn-neutral {
+        --custom-outline-color: var(--color-neutral-content);
+      }
+    }
+    &.btn-outline {
+      &:not(:hover):not(:focus-visible):not(:active) {
+        @variant dark {
+          &.btn-primary {
+            --btn-color: var(--color-primary-content);
+          }
+          &.btn-secondary {
+            --btn-color: var(--color-secondary-content);
+          }
+          &.btn-neutral {
+            --btn-color: var(--color-neutral-content);
+          }
+        }
+      }
+
+      @media (hover: none) {
+        &:hover:not(:focus-visible):not(:active) {
+          @variant dark {
+            &.btn-primary {
+              --btn-color: var(--color-primary-content);
+            }
+            &.btn-secondary {
+              --btn-color: var(--color-secondary-content);
+            }
+            &.btn-neutral {
+              --btn-color: var(--color-neutral-content);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  :where([data-theme="dark"]) .text-base-content\\/60 {
+    color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+  }
+
+  :where([data-theme="dark"]) .text-base-content\\/70 {
+    color: color-mix(in oklab, var(--color-base-content) 85%, transparent);
+  }
+
+  :where([data-theme="dark"]) :is(.label, .fieldset-label) {
+    color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+  }
 }
 `.trim()
 
