@@ -284,6 +284,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `esbuild`: a Vite 8 default-change + DaisyUI/Lightning CSS `:is()`
   specificity bug that broke the light theme in production builds only;
   when to prefer lightningcss vs esbuild, and revert criteria
+- `docs/code-highlighting.md` - Chat code highlighting: shiki core loaded
+  only in the browser (the rule that shiki is never imported statically from
+  server-reachable code, and the grep that checks the Worker), the JavaScript
+  regex engine, grammars from `shiki/langs` on first use, one highlighter per
+  root language (shiki freezes injections and lazy embeds at first
+  reference), the line-by-line `ProseCodeStream` renderer on
+  `@shikijs/stream`, the byte-for-byte parity script against the old
+  `shiki/bundle/web` (`pnpm run shiki:parity`), before/after numbers (Worker,
+  first highlight, streaming 1,047 lines), why rangi was rejected, and when to
+  revisit
 - `docs/nuxt-icon-collections.md` - Why `icon.collections`/
   `icon.serverBundle.collections` are pinned to four prefixes: `@nuxt/icon`'s
   per-`<Icon>` reactive-array sort over the default ~220-entry catalog, the
