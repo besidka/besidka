@@ -95,7 +95,12 @@ describe('list_artifact_shares tool', () => {
       idempotentHint: true,
       openWorldHint: false,
     },
-    descriptionIncludes: ['active public links', 'capabilities'],
+    descriptionIncludes: [
+      'active public links',
+      'capabilities',
+      'artifacts:share',
+      'Requires signing in (artifacts:read).',
+    ],
     validInput: VALID_INPUT,
     mocks,
     domainMock: mocks.listMcpArtifactShares,
@@ -117,12 +122,29 @@ describe('list_artifact_shares tool', () => {
     const tool = await loadTool({ mcpAuth: authWithScopes([SCOPE]) })
     const result = await tool.handler(VALID_INPUT)
 
-    expect(mocks.listMcpArtifactShares)
-      .toHaveBeenCalledWith(EXPECTED_CONTEXT, VALID_INPUT)
+    expect(mocks.listMcpArtifactShares).toHaveBeenCalledWith(
+      EXPECTED_CONTEXT,
+      VALID_INPUT,
+      { includeUrls: false },
+    )
     expect(parseToolResult(result)).toEqual(RESULT)
     expect(mocks.logger.set).toHaveBeenCalledWith({
       mcp: { artifact_id: 'a1', result_count: 1 },
     })
+  })
+
+  it('asks for the links only when the token has artifacts:share', async () => {
+    const tool = await loadTool({
+      mcpAuth: authWithScopes([SCOPE, 'artifacts:share']),
+    })
+
+    await tool.handler(VALID_INPUT)
+
+    expect(mocks.listMcpArtifactShares).toHaveBeenCalledWith(
+      EXPECTED_CONTEXT,
+      VALID_INPUT,
+      { includeUrls: true },
+    )
   })
 
   it('passes a client error of the logic through', async () => {

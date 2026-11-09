@@ -163,7 +163,11 @@ describe('MCP artifact logic', () => {
         const calls = [
           () => listMcpArtifacts(context(), {}),
           () => getMcpArtifact(context(), { id: artifact.artifactId }),
-          () => listMcpArtifactShares(context(), { id: artifact.artifactId }),
+          () => listMcpArtifactShares(
+            context(),
+            { id: artifact.artifactId },
+            { includeUrls: true },
+          ),
           () => createMcpArtifact(context(), {
             kind: 'html',
             title: 'New',
@@ -240,7 +244,7 @@ describe('MCP artifact logic', () => {
       })
       await expect(listMcpArtifactShares(context(), {
         id: artifact.artifactId,
-      })).resolves.toEqual([])
+      }, { includeUrls: true })).resolves.toEqual([])
       expect(countRows('artifact_shares')).toBe(0)
     })
 
@@ -683,18 +687,69 @@ describe('MCP artifact logic', () => {
       expect(countRows('artifact_shares')).toBe(0)
     })
 
-    it('answers 404 for foreign ids and unknown versions', async () => {
+    it('answers 404 for foreign ids', async () => {
       const artifact = await createOwned()
 
       await expect(shareMcpArtifact(context(strangerId), {
         id: artifact.artifactId,
         expiresInDays: 7,
       })).rejects.toMatchObject({ status: 404 })
-      await expect(shareMcpArtifact(context(), {
+      expect(countRows('artifact_shares')).toBe(0)
+    })
+
+    it('answers 400 for a pinned version that does not exist', async () => {
+      const artifact = await createOwned()
+      const exception = await shareMcpArtifact(context(), {
         id: artifact.artifactId,
         expiresInDays: 7,
         pinnedVersion: 5,
-      })).rejects.toMatchObject({ status: 404 })
+      }).catch((error) => {
+        return error
+      })
+
+      expect(exception).toMatchObject({ status: 400 })
+      expect(exception.message).toContain('Version 5 does not exist')
+      expect(countRows('artifact_shares')).toBe(0)
+      expect(kv.put).not.toHaveBeenCalled()
+    })
+
+    it('does not spend the allowance when the artifact is full', async () => {
+      const artifact = await createOwned()
+
+      for (let index = 0; index < 10; index += 1) {
+        await shareMcpArtifact(context(), {
+          id: artifact.artifactId,
+          expiresInDays: 7,
+        })
+      }
+
+      kv.put.mockClear()
+
+      await expect(shareMcpArtifact(context(), {
+        id: artifact.artifactId,
+        expiresInDays: 7,
+      })).rejects.toMatchObject({ status: 409 })
+      expect(kv.put).not.toHaveBeenCalled()
+      expect(countRows('artifact_shares')).toBe(10)
+    })
+
+    it('answers a retry-after of one second when the counter write fails', async () => {
+      const artifact = await createOwned()
+
+      kv.put.mockRejectedValueOnce(new Error('KV PUT failed: 429'))
+
+      const exception = await shareMcpArtifact(context(), {
+        id: artifact.artifactId,
+        expiresInDays: 7,
+      }).catch((error) => {
+        return error
+      })
+
+      expect(exception).toMatchObject({
+        status: 429,
+        data: { retryAfter: 1 },
+      })
+      expect(exception.message).toContain('1 second')
       expect(countRows('artifact_shares')).toBe(0)
     })
 
@@ -777,10 +832,11 @@ describe('MCP artifact logic', () => {
       })
       const shares = await listMcpArtifactShares(context(), {
         id: artifact.artifactId,
-      })
+      }, { includeUrls: true })
 
       expect(shares).toEqual([{
         shareId: shared.shareId,
+        status: 'active',
         url: shared.url,
         createdVia: 'mcp',
         createdByApp: 'Claude',
@@ -791,7 +847,25 @@ describe('MCP artifact logic', () => {
       }])
       await expect(listMcpArtifactShares(context(strangerId), {
         id: artifact.artifactId,
-      })).rejects.toMatchObject({ status: 404 })
+      }, { includeUrls: true })).rejects.toMatchObject({ status: 404 })
+    })
+
+    it('hides the link from a caller without the share scope', async () => {
+      const artifact = await createOwned()
+      const shared = await shareMcpArtifact(context(), {
+        id: artifact.artifactId,
+        expiresInDays: 3,
+      })
+      const shares = await listMcpArtifactShares(context(), {
+        id: artifact.artifactId,
+      }, { includeUrls: false })
+
+      expect(shares).toHaveLength(1)
+      expect(shares[0]).toMatchObject({
+        shareId: shared.shareId,
+        status: 'active',
+        url: null,
+      })
     })
 
     it('revokes by share id and reports foreign and unknown ids', async () => {
@@ -809,7 +883,7 @@ describe('MCP artifact logic', () => {
       })).resolves.toEqual({ revoked: 1, notFound: ['sh_missing'] })
       await expect(listMcpArtifactShares(context(), {
         id: artifact.artifactId,
-      })).resolves.toEqual([])
+      }, { includeUrls: true })).resolves.toEqual([])
     })
 
     it('revokes every link of the named artifacts', async () => {

@@ -21,11 +21,13 @@ export default defineMcpTool({
   name: 'list_artifact_shares',
   title: 'List artifact share links',
   description: 'List the active public links of one Besidka artifact: the '
-    + 'link, which app created it (null when you created it in Besidka), '
+    + 'status, which app created it (null when you created it in Besidka), '
     + 'the pinned version, the expiry and whether visitors may save '
     + 'progress or use AI features. Links are capabilities: anyone who has '
-    + 'one can open the artifact. Ended links are not listed. Requires '
-    + 'signing in (artifacts:read).',
+    + 'one can open the artifact, so the link itself (url) is returned only '
+    + 'when this app was also granted artifacts:share, and is null '
+    + 'otherwise. Ended links are not listed. Requires signing in '
+    + '(artifacts:read).',
   inputSchema,
   annotations: {
     readOnlyHint: true,
@@ -38,6 +40,7 @@ export default defineMcpTool({
       const result = await listMcpArtifactShares(
         buildMcpArtifactContext(context),
         input,
+        { includeUrls: context.scopes.includes('artifacts:share') },
       )
 
       context.log({ artifact_id: input.id, result_count: result.length })

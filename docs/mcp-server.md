@@ -269,18 +269,24 @@ Deleting sits on the existing `data:delete`.
   24-hour window on the KV limiter, key
   `mcp:rate-limit:artifact-share:<userId>`, `MCP_ARTIFACT_SHARE_DAILY_LIMIT`),
   answered as a 429 tool error, on top of the 10 active links per artifact.
-  The order is flags, then reading the shared version (404 for an unknown id
-  or version, 451 for a taken-down one), then the daily counter, then the
-  insert, so a call refused early (flags, unknown id or version, taken
-  down) never spends the allowance; a 409 from the 10-active-links cap of one
-  artifact comes after the counter and does spend one. MCP shares are
-  always `noindex`: the `/a/**` route rule applies to every artifact link and
+  The order is flags, then `assertArtifactShareable` (404 for an unknown id,
+  451 for a taken-down artifact, 400 "Version N does not exist" for a pinned
+  version above the latest, the same wording as the UI route, and 409 for the
+  10-active-links cap of one artifact), then reading the shared version for
+  the personal-data check, then the daily counter, then the insert, so a call
+  refused for any of those reasons never spends the allowance. A KV write
+  failure on the counter (Workers KV allows one write per second per key) is
+  answered as a 429 with a retry-after of one second instead of a 500. MCP
+  shares are always `noindex`: the `/a/**` route rule applies to every artifact link and
   there is no switch. The link and its token are never logged (`share_id`
   only). A version pinned at creation is the one that was checked; a link
   that follows the latest version shows later versions that were not.
-- **`list_artifact_shares`** returns the active links with their URLs (a link
-  is a capability, like the owner's own list), `createdVia`, `createdByApp`,
-  `pinnedVersion`, `expiresAt`, `storageAllowed` and `bridgeAllowed`.
+- **`list_artifact_shares`** returns the active links with `shareId`,
+  `status` (`active`, `expired`, `revoked` or `taken-down`), `createdVia`,
+  `createdByApp`, `pinnedVersion`, `expiresAt`, `storageAllowed` and
+  `bridgeAllowed`. A link is a bearer capability, so `url` is filled only
+  when the token also carries `artifacts:share` (the effective scopes of the
+  private tool context) and is `null` for a read-only client.
   `revoke_artifact_shares` takes exactly one of `shareIds` or `artifactIds`
   (1 to 50) and is a soft revoke (`revokedAt`), so the rows that viewer
   saved-progress retention and takedown depend on stay.

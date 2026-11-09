@@ -333,19 +333,18 @@ async function findOwnedArtifactOrThrow(
 }
 
 /**
- * Creates a public link to an owned artifact: 32 random bytes as a base64url
- * token, looked up by its sha256 (`tokenHash`) and kept encrypted
- * (`tokenEncrypted`) only so the owner can copy the link again. Refuses a
- * taken-down artifact (451), a version that does not exist (400) and an
- * eleventh active link (409 `artifact_share_limit`). The cap is
- * read-then-write, so two concurrent creates can overshoot it by one.
- * The title is copied onto the link, so a later rename never reaches
- * visitors. The token is returned to the caller and must never be logged.
+ * Runs every refusal a new link can meet before anything is written, in this
+ * order: unknown artifact (404), taken-down artifact (451), a pinned version
+ * that does not exist (400) and an eleventh active link (409
+ * `artifact_share_limit`). Returns the owned artifact row.
  */
-export async function createArtifactShare(
-  input: CreateArtifactShareInput,
-): Promise<CreatedArtifactShare> {
-  const now = input.now ?? new Date()
+export async function assertArtifactShareable(input: {
+  db: DbClient
+  userId: number
+  artifactId: string
+  pinnedVersion: number | null
+  now?: Date
+}): Promise<ArtifactRow> {
   const artifact = await findOwnedArtifactOrThrow(
     input.db,
     input.userId,
@@ -358,7 +357,7 @@ export async function createArtifactShare(
   const activeCount = await countActiveArtifactShares({
     db: input.db,
     artifactInternalId: artifact.id,
-    now,
+    now: input.now,
   })
 
   if (activeCount >= ARTIFACT_SHARE_MAX_ACTIVE) {
@@ -372,6 +371,31 @@ export async function createArtifactShare(
       fix: 'Revoke a link you no longer need, then create a new one',
     })
   }
+
+  return artifact
+}
+
+/**
+ * Creates a public link to an owned artifact: 32 random bytes as a base64url
+ * token, looked up by its sha256 (`tokenHash`) and kept encrypted
+ * (`tokenEncrypted`) only so the owner can copy the link again. Refuses a
+ * taken-down artifact (451), a version that does not exist (400) and an
+ * eleventh active link (409 `artifact_share_limit`). The cap is
+ * read-then-write, so two concurrent creates can overshoot it by one.
+ * The title is copied onto the link, so a later rename never reaches
+ * visitors. The token is returned to the caller and must never be logged.
+ */
+export async function createArtifactShare(
+  input: CreateArtifactShareInput,
+): Promise<CreatedArtifactShare> {
+  const now = input.now ?? new Date()
+  const artifact = await assertArtifactShareable({
+    db: input.db,
+    userId: input.userId,
+    artifactId: input.artifactId,
+    pinnedVersion: input.pinnedVersion,
+    now,
+  })
 
   const token = generateArtifactShareToken()
   const [share] = await input.db

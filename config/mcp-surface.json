@@ -764,7 +764,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "List the active public links of one Besidka artifact: the link, which app created it (null when you created it in Besidka), the pinned version, the expiry and whether visitors may save progress or use AI features. Links are capabilities: anyone who has one can open the artifact. Ended links are not listed. Requires signing in (artifacts:read).",
+      "description": "List the active public links of one Besidka artifact: the status, which app created it (null when you created it in Besidka), the pinned version, the expiry and whether visitors may save progress or use AI features. Links are capabilities: anyone who has one can open the artifact, so the link itself (url) is returned only when this app was also granted artifacts:share, and is null otherwise. Ended links are not listed. Requires signing in (artifacts:read).",
       "inputSchema": {
         "properties": {
           "id": {

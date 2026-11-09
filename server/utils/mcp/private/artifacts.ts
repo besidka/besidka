@@ -12,6 +12,7 @@ import {
   listArtifacts,
 } from '~~/server/utils/artifacts/queries'
 import {
+  assertArtifactShareable,
   buildArtifactShareUrl,
   createArtifactShare,
   listArtifactShares,
@@ -57,6 +58,7 @@ export const MCP_ARTIFACT_UNAVAILABLE_MESSAGE
 
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1000
 const ARTIFACT_SHARE_LIMIT_KEY_PREFIX = 'mcp:rate-limit:artifact-share'
+const SHARE_BUSY_RETRY_AFTER_SECONDS = 1
 const LIST_CURSOR_PREFIX = 'artifacts:'
 const MAX_LIST_OFFSET = 100_000
 
@@ -283,6 +285,7 @@ export async function getMcpArtifact(
 export async function listMcpArtifactShares(
   context: McpArtifactContext,
   input: { id: string },
+  options: { includeUrls: boolean },
 ) {
   await assertMcpArtifactsAvailable(context, { active: true, flags: [] })
 
@@ -297,7 +300,8 @@ export async function listMcpArtifactShares(
   return shares.map((share) => {
     return {
       shareId: share.shareId,
-      url: share.url,
+      status: share.status,
+      url: options.includeUrls ? share.url : null,
       createdVia: share.createdVia,
       createdByApp: share.clientName,
       pinnedVersion: share.pinnedVersion,
@@ -461,16 +465,38 @@ export async function revokeMcpArtifactShares(
   })
 }
 
-function createShareLimitError(retryAfter: number | null) {
-  const wait = retryAfter === null
-    ? 'a few hours'
-    : `${Math.ceil(retryAfter / 3600)} hours`
+function formatShareRetryWait(retryAfter: number | null): string {
+  if (retryAfter === null) {
+    return 'a few hours'
+  }
 
+  if (retryAfter < 60) {
+    return `${retryAfter} ${retryAfter === 1 ? 'second' : 'seconds'}`
+  }
+
+  if (retryAfter < 3600) {
+    return `${Math.ceil(retryAfter / 60)} minutes`
+  }
+
+  return `${Math.ceil(retryAfter / 3600)} hours`
+}
+
+function createShareLimitError(retryAfter: number | null) {
   return createError({
     status: 429,
     message: 'Connected apps can create at most '
       + `${MCP_ARTIFACT_SHARE_DAILY_LIMIT.max} public artifact links a day. `
-      + `Try again in about ${wait}, or create the link in Besidka.`,
+      + `Try again in about ${formatShareRetryWait(retryAfter)}, or create `
+      + 'the link in Besidka.',
+  })
+}
+
+function createShareTooFastError() {
+  return createError({
+    status: 429,
+    message: 'Share requests came too close together. Try again in '
+      + `${formatShareRetryWait(SHARE_BUSY_RETRY_AFTER_SECONDS)}.`,
+    data: { retryAfter: SHARE_BUSY_RETRY_AFTER_SECONDS },
   })
 }
 
@@ -481,10 +507,16 @@ async function consumeDailyShareAllowance(
     context.kv as KVNamespace,
     ARTIFACT_SHARE_LIMIT_KEY_PREFIX,
   )
-  const result = await limiter.consume(
-    String(context.userId),
-    MCP_ARTIFACT_SHARE_DAILY_LIMIT,
-  )
+  let result: Awaited<ReturnType<typeof limiter.consume>>
+
+  try {
+    result = await limiter.consume(
+      String(context.userId),
+      MCP_ARTIFACT_SHARE_DAILY_LIMIT,
+    )
+  } catch {
+    throw createShareTooFastError()
+  }
 
   if (!result.allowed) {
     throw createShareLimitError(result.retryAfter)
@@ -518,6 +550,15 @@ export async function shareMcpArtifact(
       + `${MCP_ARTIFACT_SHARE_MAX_DAYS}.`,
     )
   }
+
+  await readable(() => {
+    return assertArtifactShareable({
+      db: context.db,
+      userId: context.userId,
+      artifactId: input.id,
+      pinnedVersion: input.pinnedVersion ?? null,
+    })
+  })
 
   const shared = await readable(() => {
     return readArtifactVersion({
