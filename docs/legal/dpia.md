@@ -875,12 +875,18 @@ below as `planned` unless it says `built`.
   Retention: reset, artifact deletion, account deletion; for non-owner
   viewers also 30 days after the last active link ends and at once on
   takedown (default; owner item 4 of the pre-check may change it).
-- **(d) Public links (A-7, A-8).** `besidka.com/a/<token>`; the token is 32
+- **(d) Public links (A-7, A-8).** `besidka.com/a#<token>`; the token is 32
   random bytes, stored as a SHA-256 hash for lookup and encrypted
-  (`useEncryptText`) so the owner can copy the link again. The pre-check bans
-  the raw token from logs on `/a/**`; A-7 must also log the
-  `/api/v1/artifact-shares/[token]/**` routes by route pattern (or move the
-  token out of the path), because request logs carry the path.
+  (`useEncryptText`) so the owner can copy the link again. The token is the
+  URL fragment, which browsers never send in an HTTP request (owner decision
+  of 2026-11-09), so request logs, Workers Logs, traces, the `Referer` and
+  link unfurlers see only `/a`; the page sends the token only in the
+  `x-besidka-artifact-share` header, and sign-in returns to the link through
+  a `sessionStorage` key, never a `next` query. The pre-check's ban on the
+  raw token in logs is kept as defence in depth: wide events, browser-ingested
+  events and report details redact every link form (`/a#<token>`,
+  `/a/<token>`, percent-encoded) to `[token]`, and `/a/<anything>` answers a
+  plain 404.
   At most 10 active links an artifact; expiry from 1 hour to never; latest or
   pinned version; `storageAllowed` and `bridgeAllowed` start off.
   `X-Robots-Tag: noindex, nofollow`, robots meta, not in the sitemap and not
@@ -911,7 +917,7 @@ below as `planned` unless it says `built`.
   most 3 per address per 24 hours, and name the content by reference id,
   never its title, so the form cannot be used to mail chosen text to a
   third party. Names refuse line breaks; share links pasted into the details
-  are reduced to `/a/[token]`. A user-scope takedown also writes a deny
+  are reduced to `/a#[token]`. A user-scope takedown also writes a deny
   grant for `artifacts.share`. `threat-to-life`
   and `terrorism` set a priority and a subject prefix on the mailbox email.
   Emails: receipt to the reporter (DSA Art. 16(4)), decision with redress
@@ -1315,8 +1321,9 @@ the Privacy Policy or should be.
     `CURRENT_CONSENT_VERSION`, which re-prompts every user once; (B) rely on
     the current text (rejected here: specific and informed consent is the
     point); (C) a separate first-use consent for storage and the bridge.
-    Recommendation: A, timed with the rollout beyond `internal`. Until it is
-    decided, the operating rule in section 3.13 (i) applies (risk row 59).
+    Recommendation: A; `CURRENT_CONSENT_VERSION` is bumped once, after all
+    agentic-capabilities phases ship (owner decision, 2026-11-09). Until the
+    bump ships, the operating rule in section 3.13 (i) applies (risk row 59).
 21. **A frame may still send data out (risk 51).** The `frame-src` header
     blocks self-navigation in the engines tested (Chromium, WebKit); in other
     browsers, or on a page that misses the header, the tripwire limits a

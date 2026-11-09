@@ -1,6 +1,6 @@
 # Artifact share links, reports and takedown (A-7, BES-269)
 
-Public links to one artifact at `besidka.com/a/<token>`, the report flow for
+Public links to one artifact at `besidka.com/a#<token>`, the report flow for
 everyone who sees them (DSA Art. 16 notice), and the admin decisions and
 direct takedowns with a statement of reasons (DSA Art. 17). This page is the
 server half: tokens, routes, states, gates, logging, emails and retention.
@@ -18,9 +18,15 @@ a report about an artifact inside a shared chat uses the same report helper.
   the link again. A leak of `NUXT_ENCRYPTION_KEY` plus a D1 read exposes every
   active link; key rotation needs a re-encryption step for
   `artifact_shares.token_encrypted` (breach runbook section 2.5).
-- The token never travels in an API path. The page is `/a/<token>`; its API
-  calls send the token in the `x-besidka-artifact-share` header
-  (`ARTIFACT_SHARE_HEADER` in `shared/utils/artifacts.ts`).
+- The token never reaches the server in a URL. The link is `/a#<token>`:
+  the token is the URL fragment, which browsers never send in an HTTP
+  request, so the request path, Workers Logs, traces, the `Referer` and
+  link unfurlers see only `/a` (owner decision, 2026-11-09). The page reads
+  the fragment on the client and its API calls send the token in the
+  `x-besidka-artifact-share` header (`ARTIFACT_SHARE_HEADER` in
+  `shared/utils/artifacts.ts`). The link is built by `buildArtifactShareUrl`
+  (`server/utils/artifacts/shares.ts`) for the owner modal, MCP
+  `share_artifact` and `list_artifact_shares`, and the admin `locationUrl`.
 - Public share ids are `sh_` plus the Hashids encoding of the row id
   (`encodeArtifactShareId`). `_` is outside the Hashids alphabet, so a share id
   never looks like an artifact id. Logs, audit rows and emails carry share ids
@@ -115,58 +121,69 @@ never reach those routes (they need a session).
 
 ## Pages and headers
 
-`nuxt.config.ts` `routeRules['/a/**']`: `cache: false`,
-`Cache-Control: private, no-store`, `Content-Security-Policy:
-frame-ancestors 'none'`, `Referrer-Policy: no-referrer`,
-`X-Robots-Tag: noindex, nofollow`. `/a/**` is in the sitemap `exclude` and
-deliberately **not** in `robots.disallow`: a disallowed URL is never fetched,
-so its noindex would never be read (`docs/seo.md`).
+`nuxt.config.ts` sets the same route rule on `/a` and on `/a/**`:
+`cache: false`, `Cache-Control: private, no-store`,
+`Content-Security-Policy: frame-ancestors 'none'`,
+`Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`. `/a` and
+`/a/**` are in the sitemap `exclude` and deliberately **not** in
+`robots.disallow`: a disallowed URL is never fetched, so its noindex would
+never be read (`docs/seo.md`).
 
-Vue Router matches pages without regard to case, but route rules match
-`/a/` only, so `/A/<token>` would render the link page without those
-headers. `server/middleware/02.artifact-share-path-case.ts` answers a plain
-404 (with the no-store, no-referrer and noindex headers) to any path that
-matches `/^\/a\//i` but does not start with `/a/`, and
-`isArtifactShareLocation` (`app/utils/artifact-share-location.ts`) compares
-the prefix in lower case, so analytics never loads there either.
+`/a` is the only page. Vue Router matches pages without regard to case, but
+the route rules match `/a` exactly, so `/A` would render the link page
+without those headers, and an old `/a/<token>` link would carry its token in
+the path. `server/middleware/02.artifact-share-path.ts`
+(`isNonCanonicalArtifactSharePath`) answers a plain-text 404 with the
+no-store, no-referrer, noindex and `frame-ancestors 'none'` headers to every
+path that matches `/^\/a(\/.*)?$/i` (query ignored) except `/a` itself:
+`/A`, `/A/...`, `/a/` and `/a/<anything>`. `isArtifactShareLocation`
+(`app/utils/artifact-share-location.ts`) matches `/a` (and `/a/...`) in any
+case, and `?next=/a`, so analytics never loads there either.
 
 `server/plugins/artifacts-frame-src.ts` adds `frame-src 'self' <artifacts
-origin> <Turnstile>` on `/chats/`, `/shared/`, `/a/` and `/admin/` (the admin
-report drawer frames artifacts). Nitro sets route-rule headers on the event
-before rendering and the renderer then overwrites them with its own, so the
-plugin merges into the event's policy when the renderer has none: `/a/` pages
-send `frame-ancestors 'none'; frame-src ...`.
+origin> <Turnstile>` on `/chats/`, `/shared/` and `/admin/` (prefixes; the
+admin report drawer frames artifacts) and on `/a` (exact, so `/about` and
+`/api` never match). Nitro sets route-rule headers on the event before
+rendering and the renderer then overwrites them with its own, so the plugin
+merges into the event's policy when the renderer has none: the `/a` page
+sends `frame-ancestors 'none'; frame-src ...`.
 
 ## Log redaction
 
-The SSR request for `/a/<token>` carries the token in its path. The
-`evlog:enrich` hook in `server/plugins/evlog-request-observability.ts` rewrites
-`/a/<anything>` (in any case, and percent-encoded once or more: the
-`%2Fa%2F<anything>` that sign-in and sign-up links carry in `?next=`, or a
-double-encoded `%252Fa%252F<anything>`) to `/a/[token]` in `request.path`
-and walks the whole wide event (path, message, nested error fields,
-browser-ingested events) before any drain (Axiom, console, file) sees it.
-The helpers live in `server/utils/artifacts/share-redaction.ts`
+No request carries the token in its URL: the page request is `GET /a` and
+the API calls send the header. Redaction stays as defence in depth, because
+a browser-ingested evlog event or a client error report can carry the page
+address (`location.href`, or the error boundary's `route.fullPath` in
+`app/app.vue`), and a reporter can paste a link into a report. The
+`evlog:enrich` hook in `server/plugins/evlog-request-observability.ts`
+rewrites the token of every link form to `[token]`: the fragment form
+`/a#<anything>` (in any case, and percent-encoded once or more:
+`%2Fa%23<anything>`, `%252Fa%2523<anything>`) and the old path form
+`/a/<anything>` (`%2Fa%2F<anything>`, `%252Fa%252F<anything>`). It does
+so in `request.path` and walks the whole wide event (path, message, nested
+error fields, browser-ingested events from `/api/_evlog/ingest`, whose
+enrich hook runs before any output) before any drain (Axiom, console,
+file) sees it. The helpers live in `server/utils/artifacts/share-redaction.ts`
 (`redactArtifactSharePath`, `redactArtifactShareTokens`); the report flow
 uses the same function on the report details. The header is never part of
 a wide event, and the hook also deletes `x-besidka-artifact-share` from the
 hook context's request headers, which is the same object the drain context
-receives, so no drain or later hook sees it.
+receives, so no drain or later hook sees it. The chat client error report
+(`/api/v1/chats/client-errors`) takes only fixed fields (message, codes,
+ids), never a URL.
 
-Verified on a dev server: `GET /a/<token>` produces a wide event with
-`path` and `message` `/a/[token]`, and the page response carries
-`content-security-policy: frame-ancestors 'none'; frame-src 'self' <artifacts
-origin> <Turnstile>` plus the noindex, no-referrer and no-store headers.
+The page response carries `content-security-policy: frame-ancestors 'none';
+frame-src 'self' <artifacts origin> <Turnstile>` plus the noindex,
+no-referrer and no-store headers.
 
 The page must not throw a fatal Nuxt error for a dead link: Nuxt's own
 console error and the Vue Router "no match" warning print the raw path to
 the Worker console. Render the 404 and 410 states inside the page instead.
 
-Not covered by code: Cloudflare Workers Logs (`observability.enabled` in
-`wrangler.jsonc`) record each invocation's URL on Cloudflare's side, so the
-SSR request's token is visible in the Workers dashboard logs for their
-retention period. Turning that off needs `observability.logs.invocation_logs:
-false` or a Logpush filter; that is an owner decision, not part of this layer.
+Cloudflare Workers Logs (`observability.enabled` in `wrangler.jsonc`) record
+each invocation's URL on Cloudflare's side. Since the token moved to the
+fragment, those URLs show only `/a`, so no Workers Logs setting has to
+change for this layer.
 
 ## Reports
 
@@ -196,10 +213,11 @@ false` or a Logpush filter; that is an owner decision, not part of this layer.
 
 `reporterName`, `copyright.signature` and `copyright.ownerName` refuse line
 breaks and other control characters (`/^[^\p{Cc}]*$/u`, 400), so a name
-cannot add lines to the mailbox email. Any `/a/<token>` link pasted into
-`details` (or the copyright work), encoded or not, is reduced to
-`/a/[token]` with `redactArtifactSharePath` before the row is written and
-the mailbox email is sent.
+cannot add lines to the mailbox email. Any `/a#<token>` link (or an old
+`/a/<token>` one) pasted into `details` (or the copyright work), encoded or
+not, is reduced to `/a#[token]` (or `/a/[token]`) with
+`redactArtifactSharePath` before the row is written and the mailbox email
+is sent.
 
 Element 3 of the Terms of Use "Copyright complaints" section, the exact URL,
 is the link or shared chat the server resolved, never a URL from the client;
@@ -207,7 +225,7 @@ element 4 is the reporter's name and email. The copyright elements are stored
 as labelled lines under the reporter's text in `details` (no extra columns).
 
 The reported version (`artifact_reports.reported_version`) is evidence of
-what the reporter saw. The `/a/` route stores the version the link resolved
+what the reporter saw. The `/a` link route stores the version the link resolved
 (its pinned one, else the current one) and ignores any `version` in the
 body. The shared-chat route takes the optional `version` and checks it with
 `resolveSharedChatArtifact({ version })`, the same membership check as the
@@ -219,7 +237,7 @@ IP, `enforceArtifactReportRateLimit`, 429) → Turnstile for signed-out
 reporters (400 `turnstile_required` without a token, 403 `turnstile_failed`
 when Siteverify refuses, 503 `turnstile_unavailable` when Turnstile is
 enforced but its keys are missing) → target resolution (404, 410) → insert → emails.
-On the `/a/` route the link is resolved first, so a dead link answers 404 or
+On the `/a` link route the link is resolved first, so a dead link answers 404 or
 410 before anything else.
 
 The row stores the link (`share_id`) or the chat share (`chat_share_id`),
@@ -262,7 +280,7 @@ the report id and public ids; never content, statements or tokens.
 | Route | Body or query | Response |
 | --- | --- | --- |
 | `GET /api/v1/admin/artifact-reports` | `?status=open\|actioned\|rejected&offset&limit` (max 100) | `{ items: AdminArtifactReportSummary[], total }`: open urgent first, then open, then closed, newest first |
-| `GET /api/v1/admin/artifact-reports/[id]` | | `AdminArtifactReportDetail`: the summary plus `details`, `decisionStatement`, `receiptSentAt`, `locationUrl` (the decrypted `/a/` link or the shared chat URL), `reportedVersion`, `currentVersion` and `previewVersion` (`reportedVersion ?? pinnedVersion ?? currentVersion`) |
+| `GET /api/v1/admin/artifact-reports/[id]` | | `AdminArtifactReportDetail`: the summary plus `details`, `decisionStatement`, `receiptSentAt`, `locationUrl` (the decrypted `/a#<token>` link or the shared chat URL), `reportedVersion`, `currentVersion` and `previewVersion` (`reportedVersion ?? pinnedVersion ?? currentVersion`) |
 | `GET /api/v1/admin/artifacts/[id]/versions/[version]` | | `ArtifactVersionContent` of any user's artifact, taken down or not |
 | `POST /api/v1/admin/artifact-reports/[id]/action` | `{ action: 'takedown' \| 'reject', statement: 20..4000, scope: 'share' \| 'all-shares' }` | `{ reportId, status, decision, newlyTakenDown }` |
 | `POST /api/v1/admin/artifact-takedowns` | `{ target, statement: 20..4000, scope: 'share' \| 'artifact' \| 'user', legalHold?: boolean }` | `{ scope, takenDown, alreadyTakenDown, artifactIds, shareId, ownerUserId, legalHoldUntil }` |
@@ -271,9 +289,9 @@ the report id and public ids; never content, statements or tokens.
 Report decisions:
 
 - `takedown` + `share`: sets the link's `takedown_at`/`takedown_reason`;
-  decision `restricted`. Needs a report about an `/a/` link: a shared-chat
+  decision `restricted`. Needs a report about an `/a#` link: a shared-chat
   report answers 400 `report_without_share` (use `all-shares`).
-- `takedown` + `all-shares`: sets the artifact's fields, so `/a/`, the
+- `takedown` + `all-shares`: sets the artifact's fields, so `/a` links, the
   shared-chat route and the owner view all stop on the next request;
   decision `removed`.
 - `reject`: decision `no-action`.
@@ -288,8 +306,10 @@ Report decisions:
   never left closed with nothing done; no email is sent. A deleted artifact
   cannot be taken down (409, reject instead).
 
-Direct takedowns resolve `target` in this order: a full `/a/<token>` link or a
-bare token (hashed, looked up by `token_hash`; the target is never logged),
+Direct takedowns resolve `target` in this order: a link in any pasted form
+(`https://<host>/a#<token>`, `/a#<token>`, `a#<token>`) or a bare token
+(`extractArtifactShareToken`; hashed, looked up by `token_hash`; the target is
+never logged; the old `/a/<token>` path form is no longer accepted),
 then for `user` a numeric user id or an email (case-insensitive), then an
 artifact public id. `share` disables one link, `artifact` the artifact,
 `user` every artifact of the owner. `legalHold` sets `legal_hold_until` to
@@ -336,7 +356,7 @@ report or the decision.
 | T2 decision (Art. 16(5)) | The reporter | Every decision, when they gave an email (the stored contact) |
 | T3 statement of reasons (Art. 17) | The owner | When content is newly taken down, by a report or directly |
 
-No email contains a token, the `/a/` URL or an IP. T1 and T2 name the
+No email contains a token, the `/a#` link or an IP. T1 and T2 name the
 content by reference id only (the share id, or the artifact id for a shared
 chat), never the artifact title: a reporter could otherwise make Besidka
 mail text of their choice to an address they typed. T3 goes to the owner
@@ -371,22 +391,40 @@ condensed by the Vue compiler, so they render as before (checked in
 
 ## Client
 
-- `app/pages/a/[token].vue` in the chrome-free `artifact-share` layout (no
-  sidebar, no promo, no backlink). The API is fetched on the client only
-  with the token in the `x-besidka-artifact-share` header, so SSR serves the
-  neutral title "Shared artifact" and link-preview scrapers never get the
-  artifact title. Banner region with the AI line, "Never enter passwords or
-  payment details here.", the Report button and, only when the link allows
-  saving and the viewer is signed out, "Sign in to save your progress". A
-  visually hidden "Skip to report" link precedes the frame. 404 and 410
-  states render inside the page. The fetch key includes the token, so a
-  client-side move from `/a/x` to `/a/y` starts from an empty state and
-  never shows the previous artifact.
+- `app/pages/a/index.vue` (route `/a`) in the chrome-free `artifact-share`
+  layout (no sidebar, no promo, no backlink). SSR never sees the token and
+  never fetches: it renders the loading state with the neutral title
+  "Shared artifact", so link-preview scrapers never get the artifact title.
+  On mount the page reads `location.hash`, strips the `#` and checks it
+  against `ARTIFACT_SHARE_TOKEN_PATTERN` (`^[A-Za-z0-9_-]{43}$`); anything
+  else shows "This link is not available" without a request. A valid token
+  is sent only in the `x-besidka-artifact-share` header (`useFetch` with
+  `server: false`, `immediate: false`, `watch: false`, a fixed key and
+  `execute()`). A `hashchange` clears the data and fetches again, and the
+  Frame is keyed by the token, so moving from one link to another never
+  shows the previous artifact. Banner region with the AI line, "Never enter
+  passwords or payment details here.", the Report button and, only when the
+  link allows saving and the viewer is signed out, "Sign in to save your
+  progress". A visually hidden "Skip to report" link precedes the frame. 404
+  and 410 states render inside the page. The token is never in the title or
+  any head tag.
+- Sign in from a link: the caption goes to `/signin?next=/a` and, on click,
+  writes the token to `sessionStorage` under `artifacts:share-return`
+  (`ARTIFACT_SHARE_RETURN_STORAGE_KEY`, wrapped in try/catch), so the token
+  is never in a query string. `resolveSafeNextPath`
+  (`shared/utils/auth-redirect.ts`) accepts `/a` (exactly, query and hash
+  dropped) for sign-in, sign-up, 2FA, OAuth `callbackURL` and the signed-in
+  guest redirect. Back on `/a` without a fragment the page reads the key
+  once, removes it, puts the token back in the address with
+  `router.replace({ path: '/a', hash })` (a `history.replaceState` that
+  also keeps Vue Router's current location in step) and loads the link. A
+  leftover key is removed even when the address already has a fragment. The
+  key is listed in the cookie dialog (necessary) and in the Cookie Policy.
 - The Frame takes the source `public-share` with the token and the link's
   capabilities: storage and the bridge turn on only for a signed-in viewer
   with their own flag and a link that allows it; anonymous viewers get
   memory storage and no handlers, so nothing reaches the server.
-- `app/components/Artifact/ReportModal.client.vue` serves `/a/` and the
+- `app/components/Artifact/ReportModal.client.vue` serves `/a` and the
   shared-chat Report button; Turnstile (action `report`) only when signed
   out and a site key is set. Its optional `version` prop goes into the body;
   the shared-chat button passes the version the panel shows. A signed-in
@@ -399,7 +437,7 @@ condensed by the Vue compiler, so they render as before (checked in
   preview has a version select (v1 to the current version, opening on
   `previewVersion`, the reported one marked "(reported)").
 - `app/plugins/cloudflare-web-analytics.client.ts` never loads the beacon on
-  `/a/**` (any case) or when `?next=` points at `/a/`.
+  `/a` (any case, also `/a/...`) or when `?next=` points at `/a`.
 
 ## MCP (A-8)
 

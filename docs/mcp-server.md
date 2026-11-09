@@ -277,9 +277,10 @@ Deleting sits on the existing `data:delete`.
   refused for any of those reasons never spends the allowance. A KV write
   failure on the counter (Workers KV allows one write per second per key) is
   answered as a 429 with a retry-after of one second instead of a 500. MCP
-  shares are always `noindex`: the `/a/**` route rule applies to every artifact link and
+  shares are always `noindex`: the `/a` route rule applies to every artifact link and
   there is no switch. The link and its token are never logged (`share_id`
-  only). A version pinned at creation is the one that was checked; a link
+  only); the token is in the link's fragment (`/a#<token>`), so it never
+  reaches the server in a request URL. A version pinned at creation is the one that was checked; a link
   that follows the latest version shows later versions that were not.
 - **`list_artifact_shares`** returns the active links with `shareId`,
   `status` (`active`, `expired`, `revoked` or `taken-down`), `createdVia`,
@@ -1108,8 +1109,8 @@ tools ship.
      page, so no existing grant reaches it (consent is stored by scope name,
      see [Scope upgrades for existing clients](#scope-upgrades-for-existing-clients));
    - a share created over MCP always expires within 30 days (`expiresInDays`
-     is required, 1 to 30), is always `noindex` (the `/a/**` route rule, no
-     switch), and has the viewer storage and the LLM bridge switched off
+     is required, 1 to 30), is always `noindex` (the `/a` route rule, no
+     switch), returns the link as `https://<host>/a#<token>`, and has the viewer storage and the LLM bridge switched off
      (neither is an input);
    - at most 10 links a day per user can be created over MCP, on top of the
      10 active links per artifact;

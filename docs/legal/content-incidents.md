@@ -4,7 +4,7 @@
 > What to do when someone reports published content, when an authority sends a
 > removal order, when a report points to a threat to someone's life, and when
 > Cloudflare forwards an abuse complaint. Written for public artifact links
-> (`/a/<token>`) and the artifacts inside shared chats, and it applies to
+> (`/a#<token>`) and the artifacts inside shared chats, and it applies to
 > shared chats as well. Most of the tooling it names is planned in A-1, A-4 and
 > A-7; until it ships, use the fallbacks marked **Fallback**.
 >
@@ -18,7 +18,7 @@
 
 | Channel | What arrives | Who sees it |
 |---|---|---|
-| Report form on `/a/<token>` and next to artifacts in shared chats (A-7) | Name, email (both required except for `csam`), reason, details, good-faith statement, the URL filled in by the form, the reporter's account if signed in | The admin reports list, and an email to the privacy mailbox. `threat-to-life` and `terrorism` reports carry a priority flag and a subject prefix |
+| Report form on `/a#<token>` and next to artifacts in shared chats (A-7) | Name, email (both required except for `csam`), reason, details, good-faith statement, the URL filled in by the form, the reporter's account if signed in | The admin reports list, and an email to the privacy mailbox. `threat-to-life` and `terrorism` reports carry a priority flag and a subject prefix |
 | Privacy mailbox (the address the `:privacy-email-link{}` component renders on every legal page) | Email reports, copyright notices, disputes, TCO removal orders, authority requests, Cloudflare abuse forwards | The controller |
 | Cloudflare abuse email to the account address | Complaints Cloudflare received about a URL it hosts | The controller |
 
@@ -154,7 +154,11 @@ option C). Cloudflare's Self-Serve Subscription Agreement lets it suspend all or
 part of the services; its abuse policy says terminating all services is not
 normally the response, but repeated hosting of violating content with "no
 meaningful steps" can lead to suspension of hosting services (Workers, R2, D1).
-A complaint will usually name `besidka.com/a/<token>`.
+A complaint will usually name `besidka.com/a#<token>`. The token is the
+part after `#`; the admin takedown form accepts the full link,
+`/a#<token>`, `a#<token>` or the bare token. The token never reaches the
+server in a request, so it is not in any request log; ask the complainant
+for the full link if they quote only `besidka.com/a`.
 
 1. Read the complaint the same day. Open the URL in a private window.
 2. If it breaches the Terms or the law, take it down (section 5) and send the

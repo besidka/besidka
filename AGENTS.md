@@ -611,8 +611,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   header), owner, public and admin routes with bodies and error codes, the
   404 versus 410 states, the kill-switch and flag gates, share mode in the
   viewer resolver (403 when a link does not allow storage or the bridge), the
-  `/a/**` route rules and the merged `frame-src` CSP, `/a/<token>` log
-  redaction and the Workers Logs gap, the report flow (Turnstile, rate limit,
+  link token in the URL fragment (`/a#<token>`, never sent to the server;
+  sign-in returns through a `sessionStorage` key, not `next`), the `/a`
+  route rules, the 404 for `/a/<anything>` and mis-cased paths, the merged
+  `frame-src` CSP, defence-in-depth log redaction of every link form, the
+  report flow (Turnstile, rate limit,
   copyright notice elements, no IP), report decisions, direct takedowns by
   link, token, artifact or user with the six-month legal hold, restore
   without email, the T1 to T3 emails, soft revoke and D1 restore replay
