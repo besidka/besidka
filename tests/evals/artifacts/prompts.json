@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "quiz-photosynthesis",
+      "group": "quiz",
+      "prompt": "Make me a 10-question multiple-choice quiz about photosynthesis for a high-school biology test. Show one question at a time, tell me right away whether my answer was correct with a one-line explanation, and show my score at the end.",
+      "expectedKind": ["html", "react"],
+      "checks": ["artifact", "kind", "size", "no-network", "interactive"]
+    },
+    {
+      "id": "exam-prep-timer",
+      "group": "quiz",
+      "prompt": "I have a chemistry exam on acids and bases. Build an exam-prep quiz with 8 multiple-choice questions, a 5-minute countdown timer, and at the end a review screen that lists only the questions I got wrong with the correct answers.",
+      "expectedKind": ["html", "react"],
+      "checks": ["artifact", "kind", "size", "no-network", "interactive", "timer"]
+    },
+    {
+      "id": "flashcards-storage",
+      "group": "quiz",
+      "prompt": "Create flashcards for 12 common Spanish verbs (infinitive on the front, English meaning and the yo-form on the back). Let me mark each card as known or not known and remember my progress between visits.",
+      "expectedKind": ["html", "react"],
+      "checks": ["artifact", "kind", "size", "no-network", "interactive", "storage"]
+    },
+    {
+      "id": "graded-free-text",
+      "group": "bridge",
+      "prompt": "Build a short practice tool with 3 open questions about the causes of the First World War. I type my answer in a text box and an AI grades it from 0 to 10 with one sentence of feedback.",
+      "expectedKind": ["html", "react"],
+      "checks": ["artifact", "kind", "size", "no-network", "bridge"]
+    },
+    {
+      "id": "bar-chart-csv",
+      "group": "visual",
+      "prompt": "Turn this CSV into an interactive bar chart as a React component with a tooltip on hover:\nmonth,visitors\nJan,1200\nFeb,1350\nMar,1610\nApr,1480\nMay,1720\nJun,1905",
+      "expectedKind": ["react"],
+      "checks": ["artifact", "kind", "size", "no-network"]
+    },
+    {
+      "id": "mermaid-flowchart",
+      "group": "visual",
+      "prompt": "Draw a Mermaid flowchart of how a library book is borrowed and returned, including the late-return branch.",
+      "expectedKind": ["mermaid"],
+      "checks": ["artifact", "kind", "size"]
+    },
+    {
+      "id": "markdown-study-guide",
+      "group": "visual",
+      "prompt": "Write a one-page study guide in Markdown on the water cycle: key terms, the four stages, and five self-check questions with answers at the end.",
+      "expectedKind": ["markdown"],
+      "checks": ["artifact", "kind", "size"]
+    },
+    {
+      "id": "svg-cell-diagram",
+      "group": "visual",
+      "prompt": "Make an SVG diagram of an animal cell with labels for the nucleus, mitochondria, cell membrane, ribosomes and the endoplasmic reticulum.",
+      "expectedKind": ["svg"],
+      "checks": ["artifact", "kind", "size"]
+    },
+    {
+      "id": "edit-flow",
+      "group": "quiz",
+      "prompt": "Make a 5-question multiple-choice quiz about the planets of the solar system with a score at the end.",
+      "followUp": "Make question 3 harder.",
+      "expectedKind": ["html", "react"],
+      "checks": ["artifact", "kind", "size", "no-network", "edits"]
+    },
+    {
+      "id": "no-artifact-snippet",
+      "group": "control",
+      "prompt": "How do I reverse a string in Python? Just the one-liner, please.",
+      "expectedKind": [],
+      "checks": ["no-artifact"]
+    },
+    {
+      "id": "quiz-ukrainian",
+      "group": "quiz",
+      "prompt": "Зроби тест з 6 запитань з варіантами відповідей про історію Києва. Після кожної відповіді покажи, чи вона правильна, а наприкінці — мій результат.",
+      "expectedKind": ["html", "react"],
+      "checks": ["artifact", "kind", "size", "no-network", "interactive", "cyrillic"]
+    },
+    {
+      "id": "network-temptation",
+      "group": "quiz",
+      "prompt": "Build a trivia quiz that loads its questions from the Open Trivia DB API (https://opentdb.com/api.php?amount=5) and has a button that opens the Open Trivia DB website so I can find more quizzes.",
+      "expectedKind": ["html", "react"],
+      "checks": ["artifact", "kind", "size", "no-network", "no-navigation", "interactive"]
+    }
+  ]
+}

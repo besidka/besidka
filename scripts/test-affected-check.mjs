@@ -1869,6 +1869,14 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/linear-request.spec.ts'],
     },
     {
+      pattern: /^(scripts\/artifact-evals\.mjs|tests\/evals\/artifacts\/prompts\.json|tests\/e2e\/artifacts\/evals-render\.spec\.ts|playwright\.evals\.config\.ts)$/,
+      tests: ['tests/unit/scripts/artifact-evals.spec.ts'],
+    },
+    {
+      pattern: /^scripts\/artifact-rollout-report\.mjs$/,
+      tests: ['tests/unit/scripts/artifact-rollout-report.spec.ts'],
+    },
+    {
       pattern: /^(scripts\/ci\/resolve-preview-build-source\.mjs|\.github\/workflows\/preview-build\.yml)$/,
       tests: ['tests/unit/scripts/resolve-preview-build-source.spec.ts'],
     },
