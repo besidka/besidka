@@ -291,8 +291,9 @@ description now says "styled with daisyUI and Tailwind classes" instead of
 "inline CSS". The MCP `create_artifact` tool says the same since BES-333
 (MCP 3.0.1).
 
-Size: 2,750 characters, 347 words (`artifact-tools.spec.ts` caps it at
-4,000). Measured cost per send, from the input tokens of the single-step
+Size: 2,750 characters, 347 words when measured below; about 2,535 since
+BES-335 dropped the dark `primary`/`neutral` sentence
+(`artifact-tools.spec.ts` caps it at 4,000). Measured cost per send, from the input tokens of the single-step
 `no-artifact-snippet` case (artifact tools on, no artifact written) on
 pr-773 (before) and pr-784 (after): the artifact instructions grew by
 3,197 characters, 2,750 of them the sheet, and input tokens grew by 1,168
