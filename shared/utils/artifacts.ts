@@ -52,7 +52,9 @@ export const ARTIFACT_STORAGE_MAX_BYTES = 100 * 1024
 export const ARTIFACT_STORAGE_MAX_KEYS = 64
 export const ARTIFACT_STORAGE_MAX_VALUE_BYTES = 32 * 1024
 export const ARTIFACT_STORAGE_KEY_MAX_LENGTH = 128
-export const ARTIFACT_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/
+export const ARTIFACT_STORAGE_KEY_PATTERN
+  = /^(?!\.{1,2}$)[A-Za-z0-9._:-]{1,128}$/
+export const ARTIFACT_STORAGE_BODY_MAX_BYTES = 40 * 1024
 export const ARTIFACT_STORAGE_WRITE_LIMIT = { window: 60, max: 120 } as const
 export const ARTIFACT_STORAGE_VIEWER_RETENTION_DAYS = 30
 export const ARTIFACT_STORAGE_FULL_CODE = 'artifact_storage_full'

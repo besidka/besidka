@@ -14,6 +14,29 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export const ARTIFACT_SHARE_HEADER = 'x-besidka-artifact-share'
 
+/**
+ * Refuses a request body larger than `maxBytes` by its `Content-Length`
+ * before it is read, so a direct API call cannot make the Worker parse
+ * megabytes that validation would reject anyway.
+ */
+export function assertRequestBodyLength(
+  event: RequestEvent,
+  maxBytes: number,
+): void {
+  const length = Number(getRequestHeader(event, 'content-length') ?? 0)
+
+  if (!Number.isFinite(length) || length <= maxBytes) {
+    return
+  }
+
+  throw createError({
+    message: 'Request too large',
+    status: 413,
+    why: `The request body is ${length} bytes; at most ${maxBytes} are `
+      + 'accepted.',
+  })
+}
+
 export type ArtifactStorageOperation = 'list' | 'set' | 'delete' | 'reset'
 
 const paramsSchema = z.object({

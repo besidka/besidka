@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await enforceArtifactStorageWriteLimit(event, scope)
+  await enforceArtifactStorageWriteLimit(event, scope, logger)
 
   const totals = await deleteArtifactStorageValue({ ...scope, key })
 

@@ -690,10 +690,14 @@ describe('ChatArtifactDetail saved progress', () => {
     expect(frameMounts.count).toBe(1)
   })
 
-  it('keeps the frame and shows the error when the reset fails',
+  it('remounts the frame at once, before the reset has settled',
     async () => {
+      let finishReset: () => void = () => {}
+
       confirmMock.mockResolvedValue({ label: 'Reset progress' })
-      resetStorageMock.mockRejectedValue(new Error('Reset failed'))
+      resetStorageMock.mockReturnValue(new Promise<void>((resolve) => {
+        finishReset = resolve
+      }))
       openTarget()
 
       const wrapper = await mountDetail()
@@ -703,12 +707,37 @@ describe('ChatArtifactDetail saved progress', () => {
       await flushPromises()
 
       expect(resetStorageMock).toHaveBeenCalledTimes(1)
-      expect(errorMessageMock).toHaveBeenCalledWith(
-        'Reset failed',
-        undefined,
-      )
+      expect(frameMounts.count).toBe(2)
       expect(successMessageMock).not.toHaveBeenCalled()
-      expect(frameMounts.count).toBe(1)
       expect(wrapper.find(RESET_ITEM).exists()).toBe(true)
+
+      finishReset()
+      await flushPromises()
+
+      expect(frameMounts.count).toBe(2)
+      expect(successMessageMock).toHaveBeenCalledWith('Saved progress reset')
+      expect(wrapper.find(RESET_ITEM).exists()).toBe(false)
     })
+
+  it('has already remounted the frame and shows the error when the '
+    + 'reset fails', async () => {
+    confirmMock.mockResolvedValue({ label: 'Reset progress' })
+    resetStorageMock.mockRejectedValue(new Error('Reset failed'))
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    await emitStorage(wrapper)
+    await wrapper.get(RESET_ITEM).trigger('click')
+    await flushPromises()
+
+    expect(resetStorageMock).toHaveBeenCalledTimes(1)
+    expect(errorMessageMock).toHaveBeenCalledWith(
+      'Reset failed',
+      undefined,
+    )
+    expect(successMessageMock).not.toHaveBeenCalled()
+    expect(frameMounts.count).toBe(2)
+    expect(wrapper.find(RESET_ITEM).exists()).toBe(true)
+  })
 })

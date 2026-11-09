@@ -158,6 +158,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/artifacts/store.spec.ts',
     'tests/unit/server/utils/artifacts/access.spec.ts',
     'tests/unit/server/utils/artifacts/viewer-storage-retention.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-request.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-limit.spec.ts',
     'tests/integration/api/artifacts.spec.ts',
     'tests/integration/api/artifact-storage.spec.ts',
     'tests/integration/server/artifact-storage-sweep-plugin.spec.ts',

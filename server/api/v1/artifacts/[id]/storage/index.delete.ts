@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
     'reset',
   )
 
-  await enforceArtifactStorageWriteLimit(event, scope)
+  await enforceArtifactStorageWriteLimit(event, scope, logger)
 
   const deleted = await resetArtifactStorage(scope)
 

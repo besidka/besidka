@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
+  ARTIFACT_STORAGE_BODY_MAX_BYTES,
   ARTIFACT_STORAGE_MAX_BYTES,
   ARTIFACT_STORAGE_MAX_KEYS,
   ARTIFACT_STORAGE_MAX_VALUE_BYTES,
@@ -519,6 +520,8 @@ describe('artifact viewer storage API', () => {
       ['a unicode letter', 'résumé'],
       ['129 characters', 'k'.repeat(129)],
       ['an empty key', ''],
+      ['a single dot', '.'],
+      ['two dots', '..'],
     ])('answers 400 for a key with %s', async (_label, key) => {
       await expect(put(key, 1)).rejects.toMatchObject({ status: 400 })
       await expect(call('remove', { key }))
@@ -529,6 +532,47 @@ describe('artifact viewer storage API', () => {
       const { result } = await put('k'.repeat(128), 1)
 
       expect(result.keys).toBe(1)
+    })
+
+    it.each(['...', '.a', 'a.', 'a..b'])(
+      'accepts the key %s that contains dots next to other characters',
+      async (key) => {
+        const { result } = await put(key, 1)
+
+        expect(result.keys).toBe(1)
+      },
+    )
+
+    it('answers 400 for a dot key without touching the database or KV',
+      async () => {
+        await expect(put('..', 1)).rejects.toMatchObject({ status: 400 })
+        await expect(readRows(ownerId)).resolves.toHaveLength(0)
+        expect(kv.put).not.toHaveBeenCalled()
+      })
+
+    it('answers 400 for a value JSON.stringify throws on', async () => {
+      let deep: unknown = 'leaf'
+
+      for (let depth = 0; depth < 1_000_000; depth++) {
+        deep = [deep]
+      }
+
+      await expect(put('deep', deep)).rejects.toMatchObject({ status: 400 })
+      await expect(readRows(ownerId)).resolves.toHaveLength(0)
+    })
+
+    it('answers 400 for a circular value', () => {
+      const circular: Record<string, unknown> = {}
+
+      circular.self = circular
+
+      expect(() => serializeArtifactStorageValue(circular))
+        .toThrowError(expect.objectContaining({ status: 400 }))
+    })
+
+    it('answers 400 for a BigInt value', () => {
+      expect(() => serializeArtifactStorageValue(10n))
+        .toThrowError(expect.objectContaining({ status: 400 }))
     })
 
     it.each([
@@ -643,6 +687,177 @@ describe('artifact viewer storage API', () => {
 
       await expect(put('score', 1)).resolves.toBeDefined()
     })
+  })
+
+  describe('request body size', () => {
+    function stubContentLength(value: string | undefined) {
+      vi.stubGlobal('getRequestHeader', (_event: unknown, name: string) => {
+        return name === 'content-length' ? value : undefined
+      })
+    }
+
+    it('answers 413 for a body over 40 KB before reading it', async () => {
+      const readBody = vi.fn()
+
+      stubContentLength(String(ARTIFACT_STORAGE_BODY_MAX_BYTES + 1))
+      vi.stubGlobal('readValidatedBody', readBody)
+
+      await expect(put('score', 1)).rejects.toMatchObject({ status: 413 })
+      expect(readBody).not.toHaveBeenCalled()
+      await expect(readRows(ownerId)).resolves.toHaveLength(0)
+    })
+
+    it('accepts a body of exactly 40 KB', async () => {
+      stubContentLength(String(ARTIFACT_STORAGE_BODY_MAX_BYTES))
+
+      await expect(put('score', 1)).resolves.toBeDefined()
+    })
+
+    it('does not refuse a request without a usable Content-Length',
+      async () => {
+        stubContentLength(undefined)
+        await expect(put('first', 1)).resolves.toBeDefined()
+
+        stubContentLength('not-a-number')
+        await expect(put('second', 2)).resolves.toBeDefined()
+      })
+
+    it('does not check the size on delete, reset or list', async () => {
+      stubContentLength(String(ARTIFACT_STORAGE_BODY_MAX_BYTES * 10))
+
+      await expect(call('list')).resolves.toBeDefined()
+      await expect(call('remove', { key: 'score' })).resolves.toBeDefined()
+      await expect(call('reset')).resolves.toBeDefined()
+    })
+
+    it('takes the write slot before the body is read', async () => {
+      const readBody = vi.fn(async (
+        event: { body: unknown },
+        validate: (value: unknown) => unknown,
+      ) => validate(event.body))
+
+      vi.stubGlobal('readValidatedBody', readBody)
+
+      await put('score', 1)
+
+      const stored = JSON.parse(
+        kv.entries.get(`artifact-storage:${ownerId}:${internalId}`)!,
+      )
+
+      expect(stored.count).toBe(1)
+      expect(kv.put.mock.invocationCallOrder[0])
+        .toBeLessThan(readBody.mock.invocationCallOrder[0]!)
+    })
+
+    it('answers 429 without reading the body when the limit is used up',
+      async () => {
+        const now = Date.now()
+        const readBody = vi.fn()
+
+        kv.entries.set(
+          `artifact-storage:${ownerId}:${internalId}`,
+          JSON.stringify({
+            key: `${ownerId}:${internalId}`,
+            count: ARTIFACT_STORAGE_WRITE_LIMIT.max,
+            lastRequest: now,
+            windowStart: now,
+          }),
+        )
+        vi.stubGlobal('readValidatedBody', readBody)
+
+        await expect(put('score', 1)).rejects.toMatchObject({ status: 429 })
+        expect(readBody).not.toHaveBeenCalled()
+      })
+
+    it('does not take a write slot for an oversized body',
+      async () => {
+        stubContentLength(String(ARTIFACT_STORAGE_BODY_MAX_BYTES + 1))
+
+        await expect(put('score', 1)).rejects.toMatchObject({ status: 413 })
+
+        expect(kv.put).not.toHaveBeenCalled()
+      })
+  })
+
+  describe('write limiter failure', () => {
+    it('saves the value when the KV counter write fails', async () => {
+      kv.put.mockRejectedValue(new Error('KV PUT failed: 429 Too Many'))
+
+      const { result } = await put('score', 3)
+
+      expect(result).toEqual({ keys: 1, bytes: 1 })
+      await expect(readRows(ownerId)).resolves.toHaveLength(1)
+    })
+
+    it('notes the skipped limit on the request logger', async () => {
+      kv.put.mockRejectedValue(new Error('KV PUT failed: 429 Too Many'))
+
+      await put('score', 3)
+
+      expect(mocks.logger.set).toHaveBeenCalledWith({
+        attributes: {
+          artifacts: {
+            storageRateLimit: { skipped: 'kv-error', error: 'Error' },
+          },
+        },
+      })
+    })
+
+    it('saves the value when the KV counter read fails', async () => {
+      kv.get.mockRejectedValue(new TypeError('KV GET failed'))
+
+      const { result } = await put('score', 3)
+
+      expect(result.keys).toBe(1)
+      expect(mocks.logger.set).toHaveBeenCalledWith({
+        attributes: {
+          artifacts: {
+            storageRateLimit: { skipped: 'kv-error', error: 'TypeError' },
+          },
+        },
+      })
+    })
+
+    it('names an unknown thrown value as unknown', async () => {
+      kv.put.mockRejectedValue('boom')
+
+      await put('score', 3)
+
+      expect(mocks.logger.set).toHaveBeenCalledWith({
+        attributes: {
+          artifacts: {
+            storageRateLimit: { skipped: 'kv-error', error: 'unknown' },
+          },
+        },
+      })
+    })
+
+    it('lets delete and reset go ahead when the KV counter fails',
+      async () => {
+        await put('score', 1)
+        kv.put.mockRejectedValue(new Error('KV PUT failed'))
+
+        await expect(call('remove', { key: 'score' }))
+          .resolves.toMatchObject({ result: { keys: 0, bytes: 0 } })
+        await expect(call('reset')).resolves.toBeDefined()
+        expect(mocks.logger.set).toHaveBeenCalledWith({
+          attributes: {
+            artifacts: {
+              storageRateLimit: { skipped: 'kv-error', error: 'Error' },
+            },
+          },
+        })
+      })
+
+    it('still enforces the byte and key caps while the limiter is down',
+      async () => {
+        kv.put.mockRejectedValue(new Error('KV PUT failed'))
+        await seedRows(ownerId, ARTIFACT_STORAGE_MAX_KEYS)
+
+        await expect(put('one-more', 1)).rejects.toMatchObject({
+          status: 413,
+        })
+      })
   })
 
   describe('feature flag', () => {
