@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   featuresDisabled: '',
   rules: {} as Record<string, unknown>,
   kv: new Map<string, string>(),
+  sendEmail: vi.fn(async () => ({ messageId: 'message-1' })),
 }))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
@@ -40,6 +41,11 @@ vi.mock('~~/server/utils/logging/request-logger', () => ({
 
 vi.mock('~~/server/utils/artifacts/blob-store', () => ({
   useArtifactBlobStore: () => mocks.storage,
+}))
+
+vi.mock('~~/server/utils/email-template', () => ({
+  renderTemplateEmail: async () => ({ html: '<p>email</p>', text: 'email' }),
+  sendRenderedEmail: mocks.sendEmail,
 }))
 
 vi.mock('~~/server/utils/features/context', async () => {
@@ -63,6 +69,8 @@ vi.mock('~~/server/utils/features/context', async () => {
   }
 })
 
+const runtimeConfig = (await import('#app/nuxt')).useRuntimeConfig() as
+  unknown as Record<string, unknown> & { public: Record<string, unknown> }
 const {
   appendArtifactVersion,
   createArtifact,
@@ -132,9 +140,19 @@ describe('shared chat artifacts API', () => {
     mocks.rules = {}
     mocks.kv = new Map()
     mocks.logger.set.mockClear()
+    mocks.sendEmail.mockClear()
 
     vi.stubGlobal('useDb', () => testDb.db)
     vi.stubGlobal('useEvent', () => ({ context: {} }))
+    Object.assign(runtimeConfig, {
+      turnstileSecretKey: '',
+      turnstileEnforced: false,
+    })
+    Object.assign(runtimeConfig.public, {
+      baseUrl: 'https://besidka.test',
+      privacyEmail: 'privacy@besidka.test',
+      turnstileSiteKey: '',
+    })
     vi.stubGlobal('useKV', () => ({
       get: async (key: string) => mocks.kv.get(key) ?? null,
       put: async (key: string, value: string) => {
@@ -426,9 +444,10 @@ describe('shared chat artifacts API', () => {
       const { quiz } = await seedSharedChat()
       const { result } = await report(quiz.artifactId, {
         reason: 'phishing',
-        details: '  Asks for a bank password  ',
+        details: '  Asks for a bank password on a fake login form  ',
         reporterName: 'Ann',
         reporterEmail: 'ann@example.test',
+        goodFaith: true,
       })
 
       await expect(result).resolves.toEqual({ ok: true })
@@ -438,14 +457,17 @@ describe('shared chat artifacts API', () => {
       expect(row).toMatchObject({
         artifactId: Number(quiz.artifactId.slice(4)),
         shareId: null,
+        chatShareId: expect.any(String),
         reporterUserId: null,
         reporterName: 'Ann',
         reporterEmail: 'ann@example.test',
         reason: 'phishing',
-        details: 'Asks for a bank password',
+        details: 'Asks for a bank password on a fake login form',
         status: 'open',
         priority: 'normal',
+        receiptSentAt: expect.any(Date),
       })
+      expect(mocks.sendEmail).toHaveBeenCalledTimes(2)
     })
 
     it('marks csam, terrorism and threat-to-life urgent', async () => {
@@ -453,13 +475,15 @@ describe('shared chat artifacts API', () => {
 
       await (await report(quiz.artifactId, {
         reason: 'csam',
-        details: 'Abuse material',
+        details: 'Abuse material in the shared artifact',
+        goodFaith: true,
       })).result
       await (await report(quiz.artifactId, {
         reason: 'threat-to-life',
-        details: 'Threatens a person',
+        details: 'Threatens a named person with violence',
         reporterName: 'Bo',
         reporterEmail: 'bo@example.test',
+        goodFaith: true,
       })).result
 
       const rows = await listReports()
@@ -479,9 +503,10 @@ describe('shared chat artifacts API', () => {
 
       await (await report(quiz.artifactId, {
         reason: 'other',
-        details: 'Spam',
+        details: 'Spam that links to a scam site',
         reporterName: 'Cy',
         reporterEmail: 'cy@example.test',
+        goodFaith: true,
       }, {})).result
 
       const [row] = await listReports()
@@ -491,18 +516,36 @@ describe('shared chat artifacts API', () => {
 
     it('rejects invalid bodies', async () => {
       const { quiz } = await seedSharedChat()
+      const details = 'This artifact breaks the rules'
       const invalidBodies = [
-        { reason: 'spam', details: 'x', reporterName: 'A', reporterEmail: 'a@b.co' },
-        { reason: 'illegal', details: 'x' },
-        { reason: 'illegal', details: 'x', reporterName: 'A' },
+        {
+          reason: 'spam',
+          details,
+          reporterName: 'A',
+          reporterEmail: 'a@b.co',
+          goodFaith: true,
+        },
+        { reason: 'illegal', details, goodFaith: true },
+        { reason: 'illegal', details, reporterName: 'A', goodFaith: true },
         {
           reason: 'illegal',
-          details: 'x',
+          details,
           reporterName: 'A',
           reporterEmail: 'not-an-email',
+          goodFaith: true,
         },
-        { reason: 'csam', details: '   ' },
-        { reason: 'csam', details: 'x'.repeat(2001) },
+        { reason: 'csam', details: '   ', goodFaith: true },
+        { reason: 'csam', details: 'too short', goodFaith: true },
+        { reason: 'csam', details: 'x'.repeat(2001), goodFaith: true },
+        { reason: 'csam', details },
+        { reason: 'csam', details, goodFaith: false },
+        {
+          reason: 'copyright',
+          details,
+          reporterName: 'A',
+          reporterEmail: 'a@b.co',
+          goodFaith: true,
+        },
       ]
 
       for (const body of invalidBodies) {
@@ -519,11 +562,13 @@ describe('shared chat artifacts API', () => {
 
         await expect((await report(foreign.artifactId, {
           reason: 'csam',
-          details: 'x',
+          details: 'x'.repeat(20),
+          goodFaith: true,
         })).result).rejects.toMatchObject({ status: 404 })
         await expect((await report('pub-9999', {
           reason: 'csam',
-          details: 'x',
+          details: 'x'.repeat(20),
+          goodFaith: true,
         })).result).rejects.toMatchObject({ status: 404 })
         expect(await listReports()).toHaveLength(0)
       })
@@ -535,13 +580,18 @@ describe('shared chat artifacts API', () => {
 
       await expect((await report(quiz.artifactId, {
         reason: 'csam',
-        details: 'x',
+        details: 'x'.repeat(20),
+        goodFaith: true,
       })).result).rejects.toMatchObject({ status: 404 })
     })
 
     it('rate limits reports per client IP', async () => {
       const { quiz } = await seedSharedChat()
-      const body = { reason: 'csam', details: 'x' }
+      const body = {
+        reason: 'csam',
+        details: 'x'.repeat(20),
+        goodFaith: true,
+      }
 
       for (let index = 0; index < ARTIFACT_REPORT_RATE_LIMIT.max; index++) {
         await expect((await report(quiz.artifactId, body)).result)

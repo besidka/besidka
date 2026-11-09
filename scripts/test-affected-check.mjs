@@ -168,6 +168,12 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const artifactsSharesTests = [
+    'tests/unit/server/utils/artifacts/shares.spec.ts',
+    'tests/unit/server/utils/artifacts/access.spec.ts',
+    'tests/integration/api/artifact-shares.spec.ts',
+    'tests/integration/api/shared-artifacts.spec.ts',
+  ]
   const artifactsSharedChatTests = [
     'tests/integration/api/shared-artifacts.spec.ts',
     'tests/unit/server/api/shared-context.spec.ts',
@@ -3015,6 +3021,15 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/api\/v1\/shared\/\[slug\]\/artifacts\/|server\/utils\/artifacts\/(store|shared-chat|report-rate-limit)\.ts$|server\/utils\/features\/global\.ts$|server\/utils\/chats\/share\.ts$|shared\/utils\/artifacts\.ts$|app\/components\/Chat\/Artifact\/ReportButton\.client\.vue$|tests\/setup\/helpers\/(artifacts-store|memory-extraction-db)\.ts$)/,
       tests: artifactsSharedChatTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/artifacts\/|server\/api\/v1\/(artifact-shares|artifacts\/\[id\]\/shares|admin\/(artifact-reports|artifact-takedowns|artifacts))\/|server\/api\/v1\/shared\/\[slug\]\/artifacts\/|server\/utils\/(turnstile|email|email-template)\.ts$|server\/utils\/features\/(admin|admin-request|global|guards)\.ts$|server\/utils\/chats\/(share|share-pii-check)\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|tests\/setup\/helpers\/(artifacts-store|memory-extraction-db|public-id-mock)\.ts$)/,
+      tests: artifactsSharesTests,
+    },
+    {
+      pattern: /^server\/utils\/(turnstile|auth-hosts)\.ts$/,
+      tests: ['tests/unit/server/utils/turnstile.spec.ts'],
     },
     {
       pattern:

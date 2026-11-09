@@ -66,8 +66,9 @@ differs; it does.
 ## Server
 
 `complete.post.ts` order: `requireFeature('artifacts.llm-bridge')` →
-session → params and body (zod) → `resolveArtifactViewerAccess` (owner only
-until A-7; `bridgeAllowed`) → `readLegalConsent` + `assertLegalConsent` →
+session → params and body (zod) → `resolveArtifactViewerAccess` (owner, or
+a viewer with an active share link token, A-7; `bridgeAllowed`, 403 when the
+link does not allow it) → `readLegalConsent` + `assertLegalConsent` →
 model must be a direct provider (`getModel`; gateways and unknown ids fail)
 → `assertProviderTransferConsent` (DeepSeek, Moonshot AI, Qwen) → saved key
 for that provider (`readAvailableKeys`, `findArtifactBridgeModel`) else 400
@@ -133,6 +134,8 @@ use the codes above.
 
 ## Not in this layer
 
-Share links (`bridgeAllowed` per share, no "Don't ask again" there): A-7.
+Share links resolve on the server since A-7 (`bridgeAllowed` per link, see
+`docs/artifacts/shares.md`); the client side of a shared bridge, with no
+"Don't ask again", ships with the A-7 client layer.
 Streaming, tools, images, gateways, a host-paid model and MCP access are out
 of scope (MCP never spends keys).

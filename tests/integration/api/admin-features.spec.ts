@@ -155,6 +155,12 @@ describe('admin API routes', () => {
 
   it('covers every documented route', () => {
     expect(listAdminRouteFiles()).toEqual([
+      'artifact-reports/[id]/action.post.ts',
+      'artifact-reports/[id]/index.get.ts',
+      'artifact-reports/index.get.ts',
+      'artifact-takedowns/index.post.ts',
+      'artifact-takedowns/restore.post.ts',
+      'artifacts/[id]/versions/[version].get.ts',
       'audit/index.get.ts',
       'features/[flag]/grants/index.get.ts',
       'features/[flag]/grants/index.post.ts',

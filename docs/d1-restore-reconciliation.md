@@ -192,10 +192,16 @@ object key is stored in `artifact_versions.r2_key`
 (`artifacts/<userId>/<id>/v<n>-<uuid>`) and never re-derived. Reconcile before `/a/` is reachable again: turn the
 global `artifacts` rule off in `/admin` until the steps below are done.
 
-- **Revocations and takedowns first.** Replay from Axiom every share revoke
-  and every takedown in the window by share id and artifact id (A-7 logs ids,
-  never tokens): set `revoked_at`, `takedown_at` and `takedown_reason` again.
-  A takedown that was undone is a notice-and-action failure and, for a TCO
+- **Revocations and takedowns first.** Revoked and taken-down artifact links
+  come back live, and a restored takedown comes back too. Replay from Axiom
+  every share revoke (`attributes.artifacts.operation = 'share-revoke'`),
+  every takedown (`report-decision`, `direct-takedown`) and every restore
+  (`restore`) in the window by share id (`sh_...`) and artifact id (A-7 logs
+  ids, never tokens): set `revoked_at`, `takedown_at` and `takedown_reason`
+  again, or clear them for a restore. The admin audit log
+  (`feature_audit_log`, actions `artifact.takedown`, `artifact.restore`,
+  `artifact-report.reject`) is rolled back with D1, so Axiom is the record. A
+  takedown that was undone is a notice-and-action failure and, for a TCO
   order, a breach of the one-hour rule.
 - **Legal holds.** Re-set `legal_hold_until` for every artifact held in the
   window, from the private content-incident record
@@ -204,7 +210,10 @@ global `artifacts` rule off in `/admin` until the steps below are done.
   deleted after the restore point must not be purged by the sweep.
 - **Reports.** Report rows created in the window are gone from D1; the mailbox
   email is the copy. Recreate the open ones by hand, or keep working from the
-  mailbox and the private record.
+  mailbox and the private record. Decisions taken in the window (`status`,
+  `decision`, `decision_statement`, `decided_at`) are rolled back and the
+  report reopens: replay them from Axiom (`report-decision` by report id) and
+  the decision emails already sent, and do not send them again.
 - **Deletions.** Artifacts and viewer storage deleted in the window come back
   as rows. Replay the deletes (artifact ids, viewer resets) from Axiom; their
   R2 objects are already gone, so reads answer 410 until then.

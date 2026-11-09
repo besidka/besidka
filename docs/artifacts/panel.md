@@ -209,10 +209,13 @@ private.
 
 ## Report
 
-`POST /api/v1/shared/<shareSlug>/artifacts/<artifactId>/report` with
-`{ reason, details, reporterName?, reporterEmail? }` (name and email are
-required unless the reason is `csam`). It stores an `artifact_reports` row
-with `priority: 'urgent'` for the urgent reasons. Limit: 5 reports per hour
+`POST /api/v1/shared/<shareSlug>/artifacts/<artifactId>/report` runs the
+shared report helper of A-7 (`submitArtifactReport`, body and emails in
+`docs/artifacts/shares.md`: details of 20 to 2,000 characters, `goodFaith`,
+Turnstile for signed-out reporters, copyright notice elements; name and email
+are required unless the reason is `csam`). It stores an `artifact_reports` row
+with the chat share id (`chat_share_id`) and `priority: 'urgent'` for the
+urgent reasons. Limit: 5 reports per hour
 per signed-in user, otherwise per client IP (IPv6 by /64), in KV; 429 with
 `Retry-After`. Without a user or an IP the limiter fails open and notes it on
 the logger (`attributes.artifacts.reportRateLimit.skipped`).
@@ -307,13 +310,6 @@ drops the root element, which no browser does.
 
 ## Known open items
 
-- Report rows do not store the chat share id: the route writes
-  `shareId: null` and the share the report came from is only in the log
-  (`attributes.artifacts.chatShareId`). Keeping it needs a column for the
-  chat share (additive migration, not done).
-- Reports from anonymous viewers have no Turnstile check. Adding Turnstile
-  there needs a Cookie Policy edit first (Turnstile on a page any shared-chat
-  viewer can open); not done.
 - The report rate limiter reads the KV counter and then writes it, so
   concurrent reports from one client can pass the limit by a few before KV
   catches up (no atomic increment in KV).
