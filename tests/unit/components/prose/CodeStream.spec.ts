@@ -148,7 +148,7 @@ describe('prose/CodeStream.vue', () => {
     }, { timeout: 15000 })
   })
 
-  it('renders an unknown language as plain text in the theme colour',
+  it('renders an unknown language as plain text',
     async () => {
       const code = 'just some words\nand more'
       const wrapper = await mountStream(code, 'no-such-language')

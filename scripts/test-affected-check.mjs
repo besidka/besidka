@@ -628,6 +628,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/prose/CodeStream.spec.ts',
     'tests/unit/components/prose/PreStream.spec.ts',
     'tests/unit/utils/clipboard-html.spec.ts',
+    'tests/e2e/chat/code-highlighting.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -2289,7 +2290,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/prose\/(PreStream|CodeStream)\.vue|app\/composables\/(md-syntax-highlighter|code-stream)\.ts|app\/utils\/code-highlight\.ts|scripts\/shiki-token-parity\.mjs)$/,
+        /^(app\/components\/prose\/(PreStream|CodeStream)\.vue|app\/composables\/(md-syntax-highlighter|code-stream)\.ts|app\/utils\/code-highlight\.ts|scripts\/shiki-token-parity\.mjs|server\/utils\/chats\/test\/code-fixture\.ts|server\/api\/v1\/chats\/test\/index\.(get|post)\.ts)$/,
       tests: codeHighlightingTests,
     },
     {
