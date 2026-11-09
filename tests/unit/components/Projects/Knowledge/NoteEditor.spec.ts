@@ -127,14 +127,13 @@ describe('Projects/Knowledge/NoteEditor', () => {
       )
     })
 
-    it('uses a rounded-box textarea that grows up to 60dvh', async () => {
+    it('uses a textarea that grows up to 60dvh', async () => {
       const wrapper = await mountEditor()
       const classes = byTestId(wrapper, 'knowledge-note-body').classes()
 
       expect(classes).toEqual(expect.arrayContaining([
         'textarea',
         'textarea-bordered',
-        'rounded-box',
         'w-full',
         'resize-none',
         'overflow-y-auto',

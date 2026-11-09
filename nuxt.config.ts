@@ -364,6 +364,7 @@ export default defineNuxtConfig({
     filesRetentionCleanupBatchSize: 100,
     filesRetentionCleanupMaxRuntimeMs: 20000,
     filesMaintenanceToken: '',
+    mailAlertSecret: '',
     researchSweepEnabled: false,
     researchSweepBatchSize: 20,
     researchSweepMaxRuntimeMs: 20000,
