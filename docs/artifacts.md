@@ -43,10 +43,11 @@ feature is decided only by rules, grants and roles.
 
 ## Evals
 
-Golden prompts: `tests/evals/artifacts/prompts.json`, 12 cases (quiz, exam
+Golden prompts: `tests/evals/artifacts/prompts.json`, 13 cases (quiz, exam
 prep with a timer, flashcards with saved progress, AI-graded answers, a React
-bar chart, Mermaid, Markdown, SVG, an edit flow, a no-artifact control, a
-Ukrainian quiz, and a prompt that tempts network access and navigation).
+bar chart, Mermaid, Markdown, a Git cheat sheet (A-15), SVG, an edit flow, a
+no-artifact control, a Ukrainian quiz, and a prompt that tempts network
+access and navigation).
 Each case lists its expected kinds and checks.
 
 ### How to run

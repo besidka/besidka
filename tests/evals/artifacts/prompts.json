@@ -51,6 +51,13 @@
       "checks": ["artifact", "kind", "size"]
     },
     {
+      "id": "cheat-sheet-git",
+      "group": "visual",
+      "prompt": "Make a one-page cheat sheet of the Git commands I use every day, grouped into setup, everyday work, branches and undoing mistakes, with a one-line explanation for each command.",
+      "expectedKind": ["html", "react", "markdown"],
+      "checks": ["artifact", "kind", "size", "no-network"]
+    },
+    {
       "id": "svg-cell-diagram",
       "group": "visual",
       "prompt": "Make an SVG diagram of an animal cell with labels for the nucleus, mitochondria, cell membrane, ribosomes and the endoplasmic reticulum.",
