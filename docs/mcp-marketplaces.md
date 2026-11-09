@@ -364,7 +364,8 @@ codes, no magic links, no sign-up during review.
 - Do not add provider keys to it. The connector does not need them.
 - Once the listing names artifacts, grant the account the `artifacts`,
   `artifacts.mcp` and `artifacts.share` flags in Admin → Features (until
-  artifacts are rolled out to everyone). Without them every artifact tool
+  artifacts are rolled out to everyone), and switch artifacts on for it in
+  Profile → Labs if Labs still lists them. Without them every artifact tool
   answers "Artifacts are not available for your account". Seed one small
   HTML artifact so `list_artifacts` returns something.
 - Sign-in has a Turnstile challenge. It is usually invisible, but a reviewer
