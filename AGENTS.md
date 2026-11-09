@@ -198,7 +198,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   KV collapse (2 min, urgent 60 s), what is logged (mailbox, urgent, outcome
   only), the legal note (no Privacy Policy change, no new Art. 30 row), the
   `MAIL_ALERTS_DEPLOY_ENABLED` CI gate, and the owner runbook (secrets, test
-  rule, `cf email-routing rules update` per mailbox, restore to forward)
+  rule, `cf email-routing rules update` per mailbox, restore to forward), and
+  why there is no cover person (owner works alone, the push is the only
+  safeguard)
 - `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,
   components, Studio local-vs-preview-vs-prod flow, deploy runbook
 - `docs/landing-production-todo.md` - Owner checklist of remaining manual steps
@@ -555,7 +557,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   commands, the per-workflow CI table, merge order and squash semantics, the
   no-build gate in `preview-deploy.yml`, and warnings (the "Add to stack"
   banner, retarget-on-merge firing only `edited`, previews only for the
-  parent/top, unverified stack-event behavior, migrations in children)
+  parent/top, unverified stack-event behavior, migrations in children), and
+  the artifacts-stack lessons (a conflicting layer silently skips CI)
 - `docs/nuxt-entry-import-map.md` - Why `experimental.entryImportMap` is
   pinned to `false`: with it on, lazy chunks keep the same filename while
   their embedded `entry.<hash>.css` preload changes, so immutable-cached
