@@ -5,6 +5,8 @@ const FRAME_SELECTOR = '[data-testid="artifact-frame"]'
 const DESIGN_STYLE_SELECTOR = 'style[data-besidka-design]'
 const COMPILE_MEASURE = 'besidka-design-compile'
 const BUILD_MEASURE = 'besidka-design-build'
+const RUNTIME_ORIGIN = `http://127.0.0.1:${process.env.ARTIFACTS_RUNTIME_PORT || '8788'}`
+const HOST_ORIGIN = `http://127.0.0.1:${process.env.ARTIFACTS_HOST_PORT || '8789'}`
 
 interface ArtifactInput {
   kind: 'html' | 'react' | 'markdown'
@@ -114,6 +116,12 @@ async function themeColor(frame: FrameLocator, token: string) {
 
 test.describe('artifact design system', () => {
   test('styles an html artifact with daisyUI, Tailwind and the Besidka theme', async ({ page }) => {
+    const requestOrigins = new Set<string>()
+
+    page.on('request', (request) => {
+      requestOrigins.add(new URL(request.url()).origin)
+    })
+
     await mount(page)
     await render(page, { kind: 'html', content: QUIZ_HTML })
 
@@ -149,6 +157,8 @@ test.describe('artifact design system', () => {
     })
 
     expect(state.messages).toEqual([])
+    expect([...requestOrigins].sort())
+      .toEqual([HOST_ORIGIN, RUNTIME_ORIGIN].sort())
   })
 
   test('follows the host theme without a reload', async ({ page }) => {

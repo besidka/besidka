@@ -307,9 +307,11 @@ export function buildArtifactInstructions(
     'payment details or other personal data.',
     'When the user asks to load data from an API or a website, write',
     'representative data into the artifact instead and say in the reply',
-    'that artifacts cannot load live data. A plain <a href> link is fine:',
+    'that artifacts cannot load live data; leave fetch and API code out',
+    'of the artifact, comments included. A plain <a href> link is fine:',
     'the viewer confirms before it opens.',
-    'Create one artifact per request unless the user asks for several.',
+    'Create one artifact per request unless the user asks for several,',
+    'and never an empty or placeholder artifact.',
     allowedKinds.includes('react')
       ? 'React artifacts may import only '
       + `${ARTIFACT_REACT_IMPORTS.join(', ')}; any other import fails.`

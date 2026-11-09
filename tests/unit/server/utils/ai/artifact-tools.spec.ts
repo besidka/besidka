@@ -460,6 +460,8 @@ describe('buildArtifactInstructions', () => {
     expect(text).toContain('write representative data into the artifact')
     expect(text).toContain('A plain <a href> link is fine')
     expect(text).toContain('Create one artifact per request')
+    expect(text).toContain('leave fetch and API code out')
+    expect(text).toContain('never an empty or placeholder artifact')
     expect(text).toContain('passwords')
     expect(text).toContain('cannot keep data between visits')
     expect(text).toContain('cannot call a model')
