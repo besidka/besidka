@@ -46,13 +46,13 @@ export const BESIDKA_THEME_CSS = `@plugin "daisyui/theme" {
   --color-base-200: var(--color-stone-900);
   --color-base-300: var(--color-stone-950);
   --color-base-content: var(--color-stone-100);
-  --color-primary: var(--color-stone-800);
-  --color-primary-content: var(--color-stone-100);
+  --color-primary: var(--color-stone-100);
+  --color-primary-content: var(--color-stone-800);
   --color-secondary: var(--color-stone-100);
   --color-secondary-content: var(--color-stone-800);
   --color-accent: var(--color-pink-300);
   --color-accent-content: var(--color-stone-950);
-  --color-neutral: var(--color-stone-800);
+  --color-neutral: var(--color-stone-700);
   --color-neutral-content: var(--color-stone-100);
   --color-info: var(--color-sky-100);
   --color-info-content: var(--color-sky-950);

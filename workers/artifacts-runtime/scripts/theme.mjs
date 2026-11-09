@@ -63,6 +63,23 @@ export const APP_ONLY_TOKENS = [
   '--color-logo-eyes-bg',
 ]
 
+/**
+ * Artifact-only token values that replace the main.css ones. In the app's
+ * dark theme primary and neutral equal the page colour (stone-800), which
+ * works on the app's glass surfaces but hides `btn-primary`, `bg-primary`
+ * and `badge-neutral` on an artifact's plain base-100 page. Dark primary is
+ * inverted the way light works (a light fill with dark text) and neutral is
+ * lifted one step. The app theme stays as it is.
+ */
+export const ARTIFACT_THEME_OVERRIDES = {
+  dark: {
+    '--color-primary': 'var(--color-stone-100)',
+    '--color-primary-content': 'var(--color-stone-800)',
+    '--color-neutral': 'var(--color-stone-700)',
+    '--color-neutral-content': 'var(--color-stone-100)',
+  },
+}
+
 const THEME_BLOCK_START = '@plugin "daisyui/theme" {'
 
 function readThemeBlocks(mainCss) {
@@ -118,6 +135,7 @@ function parseDeclarations(body) {
  * main.css and keeps the daisyUI settings and tokens. Throws on a token the
  * runtime does not know, so a new token in main.css needs a decision here
  * (mirror it or list it as app-only) before the runtime builds again.
+ * `ARTIFACT_THEME_OVERRIDES` then replaces the listed values.
  */
 export function extractThemes(mainCss) {
   const themes = new Map()
@@ -131,13 +149,14 @@ export function extractThemes(mainCss) {
     }
 
     const kept = []
+    const overrides = ARTIFACT_THEME_OVERRIDES[name] ?? {}
 
     for (const [property, value] of declarations) {
       const isKept = THEME_SETTINGS.includes(property)
         || DAISYUI_TOKENS.includes(property)
 
       if (isKept) {
-        kept.push([property, value])
+        kept.push([property, overrides[property] ?? value])
 
         continue
       }

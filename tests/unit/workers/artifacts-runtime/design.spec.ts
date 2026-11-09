@@ -7,6 +7,7 @@ import { compile } from 'tailwindcss'
 import daisyui from 'daisyui'
 import daisyuiTheme from 'daisyui/theme'
 import {
+  ARTIFACT_THEME_OVERRIDES,
   DAISYUI_TOKENS,
   MAIN_CSS_PATH,
   THEME_MODULE_PATH,
@@ -35,6 +36,64 @@ const requireFromWorker = createRequire(
 const TEST_FONT_FACES = [
   { weight: 400, unicodeRange: 'U+0000-00FF', url: '/v1/assets/fonts/a.woff2' },
 ]
+
+const TAILWIND_THEME_CSS = readFileSync(
+  requireFromWorker.resolve('tailwindcss/theme.css'),
+  'utf8',
+)
+
+function readThemeToken(themeName: string, token: string): string {
+  const theme = extractThemes(readFileSync(MAIN_CSS_PATH, 'utf8'))
+    .find(candidate => candidate.name === themeName)
+  const declaration = theme?.declarations.find(([property]) => {
+    return property === token
+  })
+
+  return declaration?.[1] ?? ''
+}
+
+function toLinearChannel(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+function relativeLuminance(colourReference: string): number {
+  const variable = /^var\((--color-[a-z]+-\d+)\)$/.exec(colourReference)?.[1]
+  const pattern = new RegExp(
+    `${variable}: oklch\\(([\\d.]+)% ([\\d.]+) ([\\d.]+)\\)`,
+  )
+  const match = pattern.exec(TAILWIND_THEME_CSS)
+
+  if (!variable || !match) {
+    throw new Error(`No Tailwind OKLCH colour for ${colourReference}`)
+  }
+
+  const lightness = Number(match[1]) / 100
+  const chroma = Number(match[2])
+  const hue = Number(match[3]) * Math.PI / 180
+  const a = chroma * Math.cos(hue)
+  const b = chroma * Math.sin(hue)
+  const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const s = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+  const red = toLinearChannel(
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+  )
+  const green = toLinearChannel(
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+  )
+  const blue = toLinearChannel(
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+  )
+
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+}
+
+function contrastRatio(first: string, second: string): number {
+  const luminances = [relativeLuminance(first), relativeLuminance(second)]
+    .sort((left, right) => right - left) as [number, number]
+
+  return (luminances[0] + 0.05) / (luminances[1] + 0.05)
+}
 
 function minimalTheme(name: string, extra = '') {
   const tokens = DAISYUI_TOKENS.map((token) => {
@@ -104,6 +163,52 @@ describe('Besidka theme for artifacts', () => {
       extractThemes(minimalTheme('light'))
     }).toThrow(/no daisyUI theme named "dark"/)
   })
+
+  it('overrides only known dark tokens and keeps the app theme as is', () => {
+    const mainCss = readFileSync(MAIN_CSS_PATH, 'utf8')
+    const overrides = Object.entries(ARTIFACT_THEME_OVERRIDES.dark)
+
+    expect(Object.keys(ARTIFACT_THEME_OVERRIDES)).toEqual(['dark'])
+
+    for (const [token, value] of overrides) {
+      expect(DAISYUI_TOKENS).toContain(token)
+      expect(readThemeToken('dark', token)).toBe(value)
+    }
+
+    expect(mainCss).toContain('--color-primary: var(--color-stone-800);')
+    expect(readThemeToken('light', '--color-primary'))
+      .toBe('var(--color-stone-800)')
+    expect(
+      createThemeModule(mainCss.replace(
+        '--color-primary: var(--color-stone-800);',
+        '--color-primary: var(--color-stone-700);',
+      )),
+    ).not.toBe(createThemeModule(mainCss))
+  })
+
+  it('keeps primary and neutral readable in the dark artifact theme', () => {
+    const page = readThemeToken('dark', '--color-base-100')
+    const primary = readThemeToken('dark', '--color-primary')
+    const neutral = readThemeToken('dark', '--color-neutral')
+
+    expect(contrastRatio(
+      primary,
+      readThemeToken('dark', '--color-primary-content'),
+    )).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(primary, page)).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio(
+      neutral,
+      readThemeToken('dark', '--color-neutral-content'),
+    )).toBeGreaterThanOrEqual(4.5)
+    expect(neutral).not.toBe(page)
+  })
+
+  it('measures a known Tailwind pair like WCAG does', () => {
+    expect(contrastRatio('var(--color-stone-950)', 'var(--color-stone-50)'))
+      .toBeGreaterThan(15)
+    expect(contrastRatio('var(--color-stone-500)', 'var(--color-stone-500)'))
+      .toBe(1)
+  })
 })
 
 describe('artifact design stylesheet', () => {
@@ -154,14 +259,25 @@ describe('artifact design stylesheet', () => {
       ':where(.textarea) {',
       'border-radius: var(--radius-box);',
       'outline-color: var(--custom-outline-color, var(--btn-color));',
-      '--custom-outline-color: var(--color-primary-content);',
-      '--btn-color: var(--color-primary-content);',
+      '--custom-outline-color: var(--color-neutral-content);',
       '--btn-color: var(--color-neutral-content);',
       'color: color-mix(in oklab, var(--color-base-content) 85%, transparent);',
       ':where([data-theme="dark"]) :is(.label, .fieldset-label) {',
     ]) {
       expect(mainCss).toContain(rule)
       expect(BESIDKA_COMPONENT_OVERRIDES).toContain(rule)
+    }
+  })
+
+  it('leaves out the dark outline rules that the inverted primary and secondary do not need', () => {
+    for (const rule of [
+      '--custom-outline-color: var(--color-primary-content);',
+      '--btn-color: var(--color-primary-content);',
+      '--custom-outline-color: var(--color-secondary-content);',
+      '--btn-color: var(--color-secondary-content);',
+    ]) {
+      expect(readFileSync(MAIN_CSS_PATH, 'utf8')).toContain(rule)
+      expect(BESIDKA_COMPONENT_OVERRIDES).not.toContain(rule)
     }
   })
 })
