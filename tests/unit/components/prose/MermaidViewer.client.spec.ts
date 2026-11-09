@@ -243,11 +243,27 @@ describe('prose/MermaidViewer.client.vue', () => {
 
     await wrapper.get('[data-testid="mermaid-zoom-in"]').trigger('click')
 
-    expect(mocks.instance.zoomIn).toHaveBeenCalledTimes(1)
+    expect(mocks.instance.zoomToPoint).toHaveBeenCalledTimes(1)
+
+    const [zoomInScale, zoomInPoint, zoomInOptions] = mocks.instance
+      .zoomToPoint.mock.calls[0] as unknown as [
+      number,
+      { clientX: number, clientY: number },
+      object,
+    ]
+
+    expect(zoomInScale).toBeCloseTo(Math.exp(0.3), 5)
+    expect(zoomInPoint).toEqual({
+      clientX: viewportWidth / 2,
+      clientY: VIEWPORT_HEIGHT / 2,
+    })
+    expect(zoomInOptions).toEqual({ animate: false })
 
     await wrapper.get('[data-testid="mermaid-zoom-out"]').trigger('click')
 
-    expect(mocks.instance.zoomOut).toHaveBeenCalledTimes(1)
+    expect(mocks.instance.zoomToPoint).toHaveBeenCalledTimes(2)
+    expect(mocks.instance.zoomToPoint.mock.calls[1]?.[0])
+      .toBeCloseTo(Math.exp(-0.3), 5)
 
     mocks.instance.reset.mockClear()
 

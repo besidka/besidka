@@ -112,8 +112,9 @@ raise a warning toast.
 
 With four tabs, inactive tabs hide their label with `@max-md:sr-only` when
 the tab bar itself is narrower than 28rem (a container query, so it also
-holds when the docked side panel narrows the page at 1024 px) and keep an `aria-label`; the active tab shows icon and
-label. With three tabs (feature off) every label stays visible. Checked at
+holds when the docked side panel narrows the page; the panel docks from
+1128 px and leaves the chat at least 768 px) and keep an `aria-label`; the
+active tab shows icon and label. With three tabs (feature off) every label stays visible. Checked at
 375 px and 320 px: no horizontal page scroll.
 
 ## Tests

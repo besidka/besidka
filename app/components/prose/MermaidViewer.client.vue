@@ -225,14 +225,20 @@ function onGestureChange(event: Event) {
 
 function onGestureEnd(event: Event) {
   event.preventDefault()
+  lastGestureScale = 1
 }
 
 function bindGestureListeners(viewport: HTMLElement) {
   viewport.addEventListener('wheel', onWheel, { passive: false })
+  gestureTarget = viewport
+
+  if (navigator.maxTouchPoints > 0) {
+    return
+  }
+
   viewport.addEventListener('gesturestart', onGestureStart)
   viewport.addEventListener('gesturechange', onGestureChange)
   viewport.addEventListener('gestureend', onGestureEnd)
-  gestureTarget = viewport
 }
 
 function unbindGestureListeners() {
@@ -417,12 +423,31 @@ function setupPanzoom() {
   observeViewport(viewport)
 }
 
+function zoomAroundViewportCenter(direction: 1 | -1) {
+  const viewport = viewportRef.value
+
+  if (!panzoom || !viewport) {
+    return
+  }
+
+  const rect = viewport.getBoundingClientRect()
+
+  panzoom.zoomToPoint(
+    panzoom.getScale() * Math.exp(direction * ZOOM_STEP),
+    {
+      clientX: rect.left + viewport.clientWidth / 2,
+      clientY: rect.top + viewport.clientHeight / 2,
+    },
+    { animate: false },
+  )
+}
+
 function zoomIn() {
-  panzoom?.zoomIn()
+  zoomAroundViewportCenter(1)
 }
 
 function zoomOut() {
-  panzoom?.zoomOut()
+  zoomAroundViewportCenter(-1)
 }
 
 watch(

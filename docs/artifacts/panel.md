@@ -252,7 +252,8 @@ the logger (`attributes.artifacts.reportRateLimit.skipped`).
 
 The first artifact of a streaming generation opens next to the chat once per
 chat and tab (`useArtifactAutoOpen`): owner chat, `artifacts` active, docked
-layout (`min-width: 1128px`, `SIDE_PANEL_DOCK_MIN_VIEWPORT`), nothing else open in the panel. The marker is
+layout (`min-width: 1128px`, `SIDE_PANEL_DOCK_MIN_VIEWPORT`),
+nothing else open in the panel. The marker is
 `sessionStorage` key `artifacts:auto-opened:<chat id>` with the value `1`. It
 is strictly necessary (it only stops the panel from opening by itself again),
 holds no artifact data and matches the row in the Cookie Policy

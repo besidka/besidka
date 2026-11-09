@@ -66,7 +66,7 @@ breakpoint keeps the panel open in the new layout.
 | Width | Layout | Behaviour |
 | --- | --- | --- |
 | ≥ 1128px | `docked` | Fixed `aside` on the right, full height. The chat column narrows, the composer re-centres, the nav pill docks on the seam. Not modal |
-| 48rem to 1128px | `overlay` | Over the chat with a `bg-black/40` scrim; scrim click or Esc closes; focus trapped; above the pill (`z-[60]`). Width `70vw` below lg (64rem); from lg up the saved panel width, at most `70vw`, so it matches the docked width. `--side-panel-width` stays `0px`, so the chat is not narrowed under the scrim |
+| 48rem to 1128px | `overlay` | Over the chat with a `bg-black/40` scrim; scrim click or Esc closes; focus trapped; above the pill (`z-[60]`). Width `70vw` below lg (64rem); from lg up the saved panel width, at most `70vw`. `--side-panel-width` stays `0px`, so the chat is not narrowed under the scrim |
 | < 48rem | `sheet` | `<dialog class="modal modal-bottom">`, full screen (`100dvh`, safe areas), tools-sheet chrome (grab handle, title, close) |
 
 The docking threshold is `SIDE_PANEL_DOCK_MIN_VIEWPORT` = the minimum panel
