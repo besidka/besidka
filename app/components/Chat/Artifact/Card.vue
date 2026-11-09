@@ -16,10 +16,17 @@
         class="shrink-0"
       />
       <div class="min-w-0">
-        <p class="font-medium">
-          {{ failedTitle }}
+        <p
+          class="font-medium"
+          data-testid="artifact-card-failed-title"
+        >
+          {{ model.errorTitle || failedTitle }}
         </p>
-        <p class="text-sm break-words">
+        <p
+          v-if="model.errorText"
+          class="text-sm break-words"
+          data-testid="artifact-card-failed-reason"
+        >
           {{ model.errorText }}
         </p>
       </div>
@@ -298,7 +305,13 @@ watch([model, isActive], ([current, active]) => {
     panel.setStream({
       ...panel.stream.value,
       status: finalStatus,
-      ...(finalStatus === 'failed' ? { errorText: current.errorText } : {}),
+      ...(finalStatus === 'failed'
+        ? {
+          errorText: [current.errorTitle, current.errorText]
+            .filter(Boolean)
+            .join(' '),
+        }
+        : {}),
     })
   }
 }, { immediate: true })

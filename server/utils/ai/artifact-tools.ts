@@ -2,7 +2,7 @@ import type { ToolSet } from 'ai'
 import type { ArtifactKind, ArtifactVersionCreatedBy } from '#shared/utils/artifacts'
 import type { BlobStore } from '~~/server/utils/platform/types'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { tool } from 'ai'
+import { jsonSchema, tool, zodSchema } from 'ai'
 import { createError } from 'evlog'
 import { z } from 'zod'
 import {
@@ -116,6 +116,100 @@ function toToolError(exception: unknown): Error {
   )
 }
 
+const INVALID_INPUT_RECOVERY: Record<
+  typeof CREATE_ARTIFACT_TOOL_NAME | typeof UPDATE_ARTIFACT_TOOL_NAME,
+  string
+> = {
+  [CREATE_ARTIFACT_TOOL_NAME]: 'No artifact was created. Fix the input and '
+    + 'call `create_artifact` again, or tell the user it could not be '
+    + 'created.',
+  [UPDATE_ARTIFACT_TOOL_NAME]: 'No change was saved. Call `update_artifact` '
+    + 'again with the full new text in `content` and without `edits`, or '
+    + 'tell the user the change could not be saved. Never say the artifact '
+    + 'was updated unless the tool returned a new version.',
+}
+
+function describeInputIssues(error: z.ZodError): string {
+  return error.issues.slice(0, 5).map((issue) => {
+    const path = issue.path.map(String).join('.') || 'input'
+
+    return `${path}: ${issue.message}`
+  }).join('; ')
+}
+
+/**
+ * Wraps a Zod input schema so the model sees its plain JSON Schema while an
+ * invalid call yields a short, actionable error. The SDK's own message
+ * echoes the whole rejected input, which here can be a large artifact. The
+ * issue summary holds paths and rule messages only, never input values, so
+ * it is safe to log through `onInvalid`.
+ */
+function createToolInputSchema<Schema extends z.ZodType>(
+  schema: Schema,
+  toolName: keyof typeof INVALID_INPUT_RECOVERY,
+  onInvalid: (issues: string) => void,
+) {
+  return jsonSchema<z.output<Schema>>(zodSchema(schema).jsonSchema, {
+    validate(value) {
+      const result = schema.safeParse(value)
+
+      if (result.success) {
+        return { success: true, value: result.data }
+      }
+
+      const issues = describeInputIssues(result.error)
+
+      onInvalid(issues)
+
+      return {
+        success: false,
+        error: new Error(`${issues}. ${INVALID_INPUT_RECOVERY[toolName]}`),
+      }
+    },
+  })
+}
+
+function treatEmptyAsMissing(value: unknown): unknown {
+  const isEmptyArray = Array.isArray(value) && value.length === 0
+
+  return value === null || value === '' || isEmptyArray ? undefined : value
+}
+
+function parseStringifiedJson(value: unknown): unknown {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const trimmed = value.trim()
+
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+    return value
+  }
+
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
+function normalizeEditsInput(value: unknown): unknown {
+  const parsed = parseStringifiedJson(value)
+  const isObject = typeof parsed === 'object'
+    && parsed !== null
+    && !Array.isArray(parsed)
+
+  if (isObject && Object.keys(parsed).length === 0) {
+    return undefined
+  }
+
+  return treatEmptyAsMissing(isObject ? [parsed] : parsed)
+}
+
+function treatNullAsEmptyString(value: unknown): unknown {
+  return value === null ? '' : value
+}
+
 function countOccurrences(content: string, search: string): number {
   let count = 0
   let position = content.indexOf(search)
@@ -141,6 +235,15 @@ export function applyArtifactEdits(
   let current = content
 
   edits.forEach((edit, index) => {
+    if (edit.old_string === '') {
+      throw createToolError(
+        ARTIFACT_TOOL_ERROR_CODES.invalidInput,
+        `Edit ${index + 1} failed: old_string is empty. No change was `
+        + 'saved. Copy the exact text to replace into old_string, or send '
+        + 'the full new text in `content` instead of `edits`.',
+      )
+    }
+
     const matches = countOccurrences(current, edit.old_string)
 
     if (matches !== 1) {
@@ -384,6 +487,12 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
     input.logger.set({ attributes: { artifacts: fields } })
   }
 
+  function logInvalidInput(operation: 'create' | 'update') {
+    return (issues: string) => {
+      logWrite({ operation, error: 'invalid-input', issues })
+    }
+  }
+
   const kindSchema = z.enum(
     input.allowedKinds as [ArtifactKind, ...ArtifactKind[]],
   )
@@ -400,11 +509,11 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
         `The content is at most ${ARTIFACT_VERSION_MAX_BYTES} bytes.`,
         buildArtifactCodeBlocksDescription(input.allowedKinds),
       ].filter(Boolean).join(' '),
-      inputSchema: z.object({
+      inputSchema: createToolInputSchema(z.object({
         kind: kindSchema,
         title: titleSchema,
         content: z.string().min(1),
-      }),
+      }), CREATE_ARTIFACT_TOOL_NAME, logInvalidInput('create')),
       async execute({ kind, title, content }) {
         try {
           claimWrite()
@@ -443,25 +552,34 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
       description: [
         'Write a new version of an artifact from this chat. Send either',
         '`edits` (exact find-and-replace pairs applied in order; each',
-        'old_string must occur exactly once) or `content` (the full new',
-        `content), not both. An artifact keeps at most ${ARTIFACT_MAX_VERSIONS}`,
-        'versions.',
+        'old_string must occur exactly once, and be non-empty) or `content`',
+        '(the full new content), not both. Leave out `title`, `content` and',
+        '`edits` when unused: never send null or empty values. An artifact',
+        `keeps at most ${ARTIFACT_MAX_VERSIONS} versions.`,
       ].join(' '),
-      inputSchema: z.object({
+      inputSchema: createToolInputSchema(z.object({
         artifactId: z.string().min(1).max(64),
-        title: titleSchema.optional(),
-        content: z.string().min(1).optional(),
-        edits: z.array(z.object({
-          old_string: z.string().min(1).max(ARTIFACT_VERSION_MAX_BYTES),
-          new_string: z.string().max(ARTIFACT_VERSION_MAX_BYTES),
-        })).min(1).max(ARTIFACT_EDITS_MAX).optional(),
-      }),
+        title: z.preprocess(treatEmptyAsMissing, titleSchema.optional()),
+        content: z.preprocess(
+          treatEmptyAsMissing,
+          z.string().min(1).optional(),
+        ),
+        edits: z.preprocess(normalizeEditsInput, z.array(z.object({
+          old_string: z.string().max(ARTIFACT_VERSION_MAX_BYTES),
+          new_string: z.preprocess(
+            treatNullAsEmptyString,
+            z.string().max(ARTIFACT_VERSION_MAX_BYTES),
+          ),
+        })).max(ARTIFACT_EDITS_MAX).optional()),
+      }), UPDATE_ARTIFACT_TOOL_NAME, logInvalidInput('update')),
       async execute({ artifactId, title, content, edits }) {
         try {
           if ((content === undefined) === (edits === undefined)) {
             throw createToolError(
               ARTIFACT_TOOL_ERROR_CODES.invalidInput,
-              'Send exactly one of `edits` or `content`.',
+              'Send exactly one of `edits` or `content`. No change was '
+              + 'saved. Call `update_artifact` again with only `content` '
+              + 'holding the full new text.',
             )
           }
 

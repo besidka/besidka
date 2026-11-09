@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { z } from 'zod'
+import { asSchema, simulateReadableStream, stepCountIs, streamText } from 'ai'
+import { MockLanguageModelV4 } from 'ai/test'
 import { ALLOWED_IMPORTS } from '../../../../../workers/artifacts-runtime/src/vendor'
 import {
   createMemoryExtractionTestDb,
@@ -101,8 +102,14 @@ describe('artifact tools', () => {
     }
   }
 
-  function inputSchemaOf(tools: ReturnType<typeof buildTools>['tools'], name: string) {
-    return tools[name]!.inputSchema as unknown as z.ZodType
+  async function validateInput(
+    tools: ReturnType<typeof buildTools>['tools'],
+    name: string,
+    input: unknown,
+  ) {
+    const schema = asSchema(tools[name]!.inputSchema)
+
+    return await schema.validate!(input)
   }
 
   it('marks both tools for a follow-up turn', () => {
@@ -113,22 +120,21 @@ describe('artifact tools', () => {
     expect(toolRequiresFollowUpTurn(tools.update_artifact)).toBe(true)
   })
 
-  it('drops react from the kind enum when it is not allowed', () => {
+  it('drops react from the kind enum when it is not allowed', async () => {
     const { tools } = buildTools({
       allowedKinds: ['html', 'svg', 'mermaid', 'markdown'],
     })
-    const schema = inputSchemaOf(tools, 'create_artifact')
 
-    expect(schema.safeParse({
+    expect((await validateInput(tools, 'create_artifact', {
       kind: 'react',
       title: 'App',
       content: 'export default () => null',
-    }).success).toBe(false)
-    expect(schema.safeParse({
+    })).success).toBe(false)
+    expect((await validateInput(tools, 'create_artifact', {
       kind: 'html',
       title: 'App',
       content: '<p>x</p>',
-    }).success).toBe(true)
+    })).success).toBe(true)
     expect(String(tools.create_artifact!.description)).not.toContain('react:')
   })
 
@@ -153,19 +159,233 @@ describe('artifact tools', () => {
     expect(description).toContain('never for a diagram or code that fits')
   })
 
-  it('validates the title length and a non-empty content', () => {
-    const schema = inputSchemaOf(buildTools().tools, 'create_artifact')
+  it('validates the title length and a non-empty content', async () => {
+    const { tools } = buildTools()
 
-    expect(schema.safeParse({
+    expect((await validateInput(tools, 'create_artifact', {
       kind: 'html',
       title: 'x'.repeat(121),
       content: 'a',
-    }).success).toBe(false)
-    expect(schema.safeParse({
+    })).success).toBe(false)
+    expect((await validateInput(tools, 'create_artifact', {
       kind: 'html',
       title: 'Quiz',
       content: '',
-    }).success).toBe(false)
+    })).success).toBe(false)
+  })
+
+  describe('update_artifact input schema', () => {
+    const artifactId = 'art_1'
+    const edit = { old_string: 'One', new_string: 'Two' }
+
+    it('keeps the plain JSON schema the model has always seen', async () => {
+      const schema = asSchema(buildTools().tools.update_artifact!.inputSchema)
+      const jsonSchema = await schema.jsonSchema as {
+        required: string[]
+        properties: Record<string, Record<string, unknown>>
+      }
+
+      expect(jsonSchema.required).toEqual(['artifactId'])
+      expect(Object.keys(jsonSchema.properties)).toEqual([
+        'artifactId',
+        'title',
+        'content',
+        'edits',
+      ])
+      expect(jsonSchema.properties.edits).toMatchObject({
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['old_string', 'new_string'],
+        },
+      })
+    })
+
+    it('accepts the stored shapes: edits only, content only, title only with edits', async () => {
+      const { tools } = buildTools()
+
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        edits: [edit],
+      })).resolves.toMatchObject({ success: true })
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        content: 'New',
+      })).resolves.toMatchObject({ success: true })
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        title: 'Renamed',
+        edits: [edit],
+      })).resolves.toMatchObject({ success: true })
+    })
+
+    it('treats the null and empty values Gemini sends for unused fields as missing', async () => {
+      const { tools } = buildTools()
+
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        title: null,
+        content: '',
+        edits: [edit],
+      })).resolves.toEqual({
+        success: true,
+        value: { artifactId, edits: [edit] },
+      })
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        title: '',
+        content: 'New',
+        edits: [],
+      })).resolves.toEqual({
+        success: true,
+        value: { artifactId, content: 'New' },
+      })
+    })
+
+    it('reads edits sent as a JSON string or as one object', async () => {
+      const { tools } = buildTools()
+
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        edits: JSON.stringify([edit]),
+      })).resolves.toEqual({
+        success: true,
+        value: { artifactId, edits: [edit] },
+      })
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        edits: edit,
+      })).resolves.toEqual({
+        success: true,
+        value: { artifactId, edits: [edit] },
+      })
+    })
+
+    it('treats an empty edits object as missing', async () => {
+      const { tools } = buildTools()
+
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        content: 'New',
+        edits: {},
+      })).resolves.toEqual({
+        success: true,
+        value: { artifactId, content: 'New' },
+      })
+    })
+
+    it('reads a null new_string as a deletion', async () => {
+      const { tools } = buildTools()
+
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        edits: [{ old_string: 'One', new_string: null }],
+      })).resolves.toEqual({
+        success: true,
+        value: { artifactId, edits: [{ old_string: 'One', new_string: '' }] },
+      })
+    })
+
+    it('rejects with a short actionable error that never echoes the input', async () => {
+      const { tools } = buildTools()
+      const secret = 'S'.repeat(5000)
+      const result = await validateInput(tools, 'update_artifact', {
+        artifactId,
+        content: secret,
+        edits: [{ old_string: 'One' }],
+      })
+
+      expect(result.success).toBe(false)
+
+      const message = (result as { error: Error }).error.message
+
+      expect(message).toContain('edits.0.new_string')
+      expect(message).toContain('No change was saved')
+      expect(message).toContain('`content`')
+      expect(message).not.toContain(secret)
+      expect(message.length).toBeLessThan(600)
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          artifacts: {
+            operation: 'update',
+            error: 'invalid-input',
+            issues: expect.stringContaining('edits.0.new_string'),
+          },
+        },
+      })
+    })
+
+    it('hands the model the actionable error on its next step', async () => {
+      const { tools } = buildTools()
+      const secret = 'S'.repeat(5000)
+      const prompts: unknown[] = []
+      const usage = {
+        inputTokens: { total: 1, noCache: 1 },
+        outputTokens: { total: 1, text: 1 },
+      }
+      const steps = [
+        [
+          {
+            type: 'tool-call',
+            toolCallId: 'call-bad',
+            toolName: 'update_artifact',
+            input: JSON.stringify({
+              artifactId,
+              content: secret,
+              edits: [{ old_string: 'One' }],
+            }),
+          },
+          {
+            type: 'finish',
+            finishReason: { unified: 'tool-calls', raw: undefined },
+            usage,
+          },
+        ],
+        [
+          { type: 'text-start', id: 't1' },
+          { type: 'text-delta', id: 't1', delta: 'The change was not saved.' },
+          { type: 'text-end', id: 't1' },
+          {
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: undefined },
+            usage,
+          },
+        ],
+      ]
+      let call = 0
+      const result = streamText({
+        model: new MockLanguageModelV4({
+          doStream: async (options) => {
+            prompts.push(options.prompt)
+
+            return {
+              stream: simulateReadableStream({
+                chunks: steps[call++] as never,
+              }),
+            }
+          },
+        }),
+        tools,
+        messages: [{ role: 'user', content: 'Change it' }],
+        stopWhen: stepCountIs(3),
+      })
+
+      for await (const part of result.fullStream) {
+        void part
+      }
+
+      const secondPrompt = JSON.stringify(prompts[1])
+
+      expect(prompts).toHaveLength(2)
+      expect(secondPrompt).toContain('edits.0.new_string')
+      expect(secondPrompt).toContain('No change was saved')
+    })
+
+    it('fails an empty old_string with an actionable tool error', () => {
+      expect(() => applyArtifactEdits('One', [
+        { old_string: '', new_string: 'x' },
+      ])).toThrow(/Edit 1 failed: old_string is empty.*`content`/)
+    })
   })
 
   it('creates an artifact with the chat and message as origin', async () => {
