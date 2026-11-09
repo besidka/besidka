@@ -202,7 +202,10 @@ global `artifacts` rule off in `/admin` until the steps below are done.
   (`feature_audit_log`, actions `artifact.takedown`, `artifact.restore`,
   `artifact-report.reject`) is rolled back with D1, so Axiom is the record. A
   takedown that was undone is a notice-and-action failure and, for a TCO
-  order, a breach of the one-hour rule.
+  order, a breach of the one-hour rule. A `direct-takedown` with scope
+  `user` also wrote a deny grant for `artifacts.share` (logged as
+  `attributes.featureAccess` with `action: 'grant.set'`, `effect: 'deny'`);
+  write it again, or the owner can publish new links.
 - **Legal holds.** Re-set `legal_hold_until` for every artifact held in the
   window, from the private content-incident record
   (`docs/legal/content-incidents.md`, section 8). A held artifact deleted
