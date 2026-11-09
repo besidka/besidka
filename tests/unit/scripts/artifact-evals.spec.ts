@@ -1,12 +1,14 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_FAILED_CASE_ESTIMATE_USD,
   DEFAULT_PROMPTS_PATH,
   attachChatToError,
   computeUsageCost,
+  describeTimedOutRequest,
+  isRequestTimeout,
   isValidUsdAmount,
   recoverFailedCaseUsage,
   findEchoedSourceLines,
@@ -17,6 +19,8 @@ import {
   parseCliArguments,
   readEvalResults,
   readReplyText,
+  retryStalledRead,
+  SessionClient,
   rescoreResult,
   scoreStaticChecks,
   summariseCheckStatus,
@@ -591,5 +595,153 @@ describe('failed case cost', () => {
 
     expect(usage.costUsd).toBe(0)
     expect(usage.estimated).toBe(false)
+  })
+})
+
+describe('stalled preview requests', () => {
+  function timeoutError(): Error {
+    const exception = new Error('The operation was aborted due to timeout')
+
+    exception.name = 'TimeoutError'
+
+    return exception
+  }
+
+  it('recognises abort and timeout errors only', () => {
+    expect(isRequestTimeout(timeoutError())).toBe(true)
+    expect(isRequestTimeout(Object.assign(new Error('x'), {
+      name: 'AbortError',
+    }))).toBe(true)
+    expect(isRequestTimeout(new Error('GET /x: 500'))).toBe(false)
+  })
+
+  it('names the request that got no response', () => {
+    expect(describeTimedOutRequest('GET', '/api/v1/chats/abc', 20000))
+      .toBe('GET /api/v1/chats/abc got no response within 20000 ms')
+  })
+
+  it('retries a read that stalled once and returns the second answer',
+    async () => {
+      let calls = 0
+      const result = await retryStalledRead(async () => {
+        calls++
+
+        if (calls === 1) {
+          throw timeoutError()
+        }
+
+        return { ok: true }
+      }, 2)
+
+      expect(calls).toBe(2)
+      expect(result).toEqual({ ok: true })
+    })
+
+  it('gives up with the timeout after the last attempt', async () => {
+    let calls = 0
+
+    await expect(retryStalledRead(async () => {
+      calls++
+
+      throw timeoutError()
+    }, 2)).rejects.toMatchObject({ name: 'TimeoutError' })
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry a read that failed with a status error', async () => {
+    let calls = 0
+
+    await expect(retryStalledRead(async () => {
+      calls++
+
+      throw new Error('GET /x: 404 not found')
+    }, 2)).rejects.toThrow('404')
+    expect(calls).toBe(1)
+  })
+})
+
+describe('session client stalls', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stalledFetchError(): Error {
+    const exception = new Error('The operation was aborted due to timeout')
+
+    exception.name = 'TimeoutError'
+
+    return exception
+  }
+
+  function jsonResponse(body: unknown): Response {
+    return new Response(JSON.stringify(body), { status: 200 })
+  }
+
+  it('retries a GET that stalled and returns the second answer', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(stalledFetchError())
+      .mockResolvedValueOnce(jsonResponse({ slug: 'chat-1' }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = new SessionClient('https://preview.test')
+
+    await expect(client.json('/api/v1/chats/chat-1'))
+      .resolves.toEqual({ slug: 'chat-1' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('names the request and the attempts when every read stalls',
+    async () => {
+      const fetchMock = vi.fn().mockRejectedValue(stalledFetchError())
+
+      vi.stubGlobal('fetch', fetchMock)
+
+      const client = new SessionClient('https://preview.test')
+
+      await expect(client.json('/api/v1/chats/chat-1')).rejects.toMatchObject({
+        name: 'TimeoutError',
+        message: 'GET /api/v1/chats/chat-1 got no response within 20000 ms '
+          + 'after 2 attempts',
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+  it('never retries a write and names it', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(stalledFetchError())
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = new SessionClient('https://preview.test')
+
+    await expect(client.json('/api/v1/chats/new', {
+      method: 'PUT',
+      body: { model: 'm' },
+    })).rejects.toMatchObject({
+      name: 'TimeoutError',
+      message: 'PUT /api/v1/chats/new got no response within 60000 ms',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('names a body read that stalled and retries it', async () => {
+    const stalledBody = {
+      ok: true,
+      json: async () => {
+        throw stalledFetchError()
+      },
+      headers: new Headers(),
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(stalledBody)
+      .mockResolvedValueOnce(jsonResponse({ ok: 1 }))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = new SessionClient('https://preview.test')
+
+    await expect(client.json('/api/v1/artifacts/a/versions/1'))
+      .resolves.toEqual({ ok: 1 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

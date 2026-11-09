@@ -644,13 +644,76 @@ export function parseCliArguments(argumentList) {
   return { command, options }
 }
 
-class SessionClient {
+export const READ_REQUEST_TIMEOUT_MS = 20_000
+export const READ_REQUEST_ATTEMPTS = 2
+export const WRITE_REQUEST_TIMEOUT_MS = 60_000
+
+export function isRequestTimeout(exception) {
+  return exception?.name === 'TimeoutError' || exception?.name === 'AbortError'
+}
+
+export function describeTimedOutRequest(
+  method,
+  path,
+  timeoutMs,
+  attempts = 1,
+) {
+  const attemptNote = attempts > 1 ? ` after ${attempts} attempts` : ''
+
+  return `${method} ${path} got no response within ${timeoutMs} ms`
+    + attemptNote
+}
+
+export function nameTimedOutRequest(
+  exception,
+  method,
+  path,
+  timeoutMs,
+  attempts = 1,
+) {
+  const timeoutError = new Error(
+    describeTimedOutRequest(method, path, timeoutMs, attempts),
+    { cause: exception },
+  )
+
+  timeoutError.name = exception.name
+
+  return timeoutError
+}
+
+/**
+ * Preview Workers occasionally accept a request and never answer it (a few
+ * milliseconds of CPU, then the client gives up after the full timeout).
+ * Reads are safe to repeat, so a stalled one is retried instead of failing a
+ * case that already generated.
+ */
+export async function retryStalledRead(readOnce, attempts) {
+  let lastException
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await readOnce()
+    } catch (exception) {
+      if (!isRequestTimeout(exception)) {
+        throw exception
+      }
+
+      lastException = exception
+    }
+  }
+
+  throw lastException
+}
+
+export class SessionClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
     this.cookies = new Map()
   }
 
   async request(path, init = {}) {
+    const method = init.method ?? 'GET'
+    const timeoutMs = init.timeoutMs ?? WRITE_REQUEST_TIMEOUT_MS
     const headers = {
       origin: this.baseUrl,
       cookie: [...this.cookies].map(([name, value]) => {
@@ -658,12 +721,22 @@ class SessionClient {
       }).join('; '),
       ...(init.body ? { 'content-type': 'application/json' } : {}),
     }
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: init.method ?? 'GET',
-      headers,
-      body: init.body ? JSON.stringify(init.body) : undefined,
-      signal: AbortSignal.timeout(init.timeoutMs ?? 60_000),
-    })
+    let response
+
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        body: init.body ? JSON.stringify(init.body) : undefined,
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    } catch (exception) {
+      if (isRequestTimeout(exception)) {
+        throw nameTimedOutRequest(exception, method, path, timeoutMs)
+      }
+
+      throw exception
+    }
 
     for (const cookie of response.headers.getSetCookie?.() ?? []) {
       const [pair] = cookie.split(';')
@@ -676,14 +749,45 @@ class SessionClient {
   }
 
   async json(path, init) {
-    const response = await this.request(path, init)
+    const method = init?.method ?? 'GET'
+    const isRead = method === 'GET'
+    const timeoutMs = init?.timeoutMs
+      ?? (isRead ? READ_REQUEST_TIMEOUT_MS : WRITE_REQUEST_TIMEOUT_MS)
+    const attempts = isRead ? READ_REQUEST_ATTEMPTS : 1
+    const readOnce = async () => {
+      try {
+        const response = await this.request(path, { ...init, timeoutMs })
 
-    if (!response.ok) {
-      throw new Error(`${init?.method ?? 'GET'} ${path}: ${response.status} `
-        + `${(await response.text()).slice(0, 300)}`)
+        if (!response.ok) {
+          throw new Error(`${method} ${path}: `
+            + `${response.status} ${(await response.text()).slice(0, 300)}`)
+        }
+
+        return await response.json()
+      } catch (exception) {
+        if (isRequestTimeout(exception) && !exception.cause) {
+          throw nameTimedOutRequest(exception, method, path, timeoutMs)
+        }
+
+        throw exception
+      }
     }
 
-    return response.json()
+    try {
+      return await retryStalledRead(readOnce, attempts)
+    } catch (exception) {
+      if (isRequestTimeout(exception) && attempts > 1) {
+        throw nameTimedOutRequest(
+          exception.cause ?? exception,
+          method,
+          path,
+          timeoutMs,
+          attempts,
+        )
+      }
+
+      throw exception
+    }
   }
 }
 
@@ -693,7 +797,18 @@ async function sendTurn(client, slug, model, message) {
     body: { model, tools: [], reasoning: 'off', messages: [message] },
     timeoutMs: SEND_TIMEOUT_MS,
   })
-  const text = await response.text()
+  let text
+
+  try {
+    text = await response.text()
+  } catch (exception) {
+    if (isRequestTimeout(exception)) {
+      throw new Error(`send stream did not close within ${SEND_TIMEOUT_MS} ms`,
+        { cause: exception })
+    }
+
+    throw exception
+  }
 
   if (!response.ok) {
     throw new Error(`send ${response.status}: ${text.slice(0, 300)}`)
