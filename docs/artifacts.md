@@ -152,7 +152,10 @@ Model quirks:
 Tuning (commit "tell models to inline API data and keep one artifact"): the
 instructions now say to write representative data inline when asked to load
 an API or website, that a plain link is fine, and to create one artifact per
-request. Re-run of the failing cases on this PR's preview: RERUN_RESULT
+request. Re-run of the failing cases is pending: the preview of the layer with the
+tuning (#778) had not built when this was written. Command:
+`node scripts/artifact-evals.mjs run --base-url=https://pr-778-besidka.chernenko.workers.dev --models=claude-haiku-5-5,gpt-6-luna,gemini-3.8-flash --cases=network-temptation,mermaid-flowchart,quiz-ukrainian`
+(about $0.10).
 
 Vendored library decision (A-2): React artifacts imported `react` 11 times,
 `lucide-react` 8 times and `recharts` 3 times, and nothing outside
