@@ -252,6 +252,19 @@ describe('artifact tools', () => {
       })
     })
 
+    it('treats an empty edits object as missing', async () => {
+      const { tools } = buildTools()
+
+      await expect(validateInput(tools, 'update_artifact', {
+        artifactId,
+        content: 'New',
+        edits: {},
+      })).resolves.toEqual({
+        success: true,
+        value: { artifactId, content: 'New' },
+      })
+    })
+
     it('reads a null new_string as a deletion', async () => {
       const { tools } = buildTools()
 

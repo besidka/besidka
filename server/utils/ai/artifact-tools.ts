@@ -116,7 +116,10 @@ function toToolError(exception: unknown): Error {
   )
 }
 
-const INVALID_INPUT_RECOVERY: Record<string, string> = {
+const INVALID_INPUT_RECOVERY: Record<
+  typeof CREATE_ARTIFACT_TOOL_NAME | typeof UPDATE_ARTIFACT_TOOL_NAME,
+  string
+> = {
   [CREATE_ARTIFACT_TOOL_NAME]: 'No artifact was created. Fix the input and '
     + 'call `create_artifact` again, or tell the user it could not be '
     + 'created.',
@@ -143,7 +146,7 @@ function describeInputIssues(error: z.ZodError): string {
  */
 function createToolInputSchema<Schema extends z.ZodType>(
   schema: Schema,
-  toolName: string,
+  toolName: keyof typeof INVALID_INPUT_RECOVERY,
   onInvalid: (issues: string) => void,
 ) {
   return jsonSchema<z.output<Schema>>(zodSchema(schema).jsonSchema, {
@@ -192,11 +195,15 @@ function parseStringifiedJson(value: unknown): unknown {
 
 function normalizeEditsInput(value: unknown): unknown {
   const parsed = parseStringifiedJson(value)
-  const isSingleEdit = typeof parsed === 'object'
+  const isObject = typeof parsed === 'object'
     && parsed !== null
     && !Array.isArray(parsed)
 
-  return treatEmptyAsMissing(isSingleEdit ? [parsed] : parsed)
+  if (isObject && Object.keys(parsed).length === 0) {
+    return undefined
+  }
+
+  return treatEmptyAsMissing(isObject ? [parsed] : parsed)
 }
 
 function treatNullAsEmptyString(value: unknown): unknown {
