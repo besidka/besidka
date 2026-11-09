@@ -450,6 +450,25 @@ describe('useArtifactLibrary', () => {
     expect(library.items.value).toHaveLength(30)
   })
 
+  it('loads the next page when a delete empties the loaded rows', async () => {
+    const ids = createIds(20)
+    const library = await setup(createPage(ids, 25))
+
+    mocks.fetch
+      .mockResolvedValueOnce({ deletedIds: ids, heldIds: [] })
+      .mockResolvedValueOnce({ items: [], total: 5, usedBytes: 0 })
+      .mockResolvedValueOnce(createPage(createIds(5, 'b'), 5))
+
+    await library.deleteArtifacts(ids)
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/artifacts', {
+      query: { limit: 20, offset: 0 },
+    })
+    expect(library.items.value.map(item => item.id))
+      .toEqual(createIds(5, 'b'))
+    expect(library.hasMore.value).toBe(false)
+  })
+
   it('drops a page that was in flight when a delete started', async () => {
     const ids = createIds(20)
     const library = await setup(createPage(ids, 40))

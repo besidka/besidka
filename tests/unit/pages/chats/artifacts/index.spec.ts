@@ -305,6 +305,30 @@ describe('pages/chats/artifacts/index', () => {
     expect(wrapper.find(testId('artifact-library-empty')).exists()).toBe(false)
   })
 
+  it('shows no empty state while more artifacts remain to load', async () => {
+    library.items.value = []
+    library.hasMore.value = true
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.find(testId('artifact-library-empty')).exists()).toBe(false)
+    expect(wrapper.find(testId('artifact-library-no-results')).exists())
+      .toBe(false)
+    expect(wrapper.find(testId('artifact-library-load-more')).exists())
+      .toBe(true)
+  })
+
+  it('disables Load more while a delete runs', async () => {
+    library.items.value = [createArtifact()]
+    library.hasMore.value = true
+    library.isDeleting.value = true
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.get(testId('artifact-library-load-more'))
+      .attributes('disabled')).toBeDefined()
+  })
+
   it('lists the artifacts, the quota line and Load more', async () => {
     library.items.value = [
       createArtifact(),

@@ -430,6 +430,10 @@ export function useArtifactLibrary(filters: {
     if (result.deletedIds.length) {
       removeLocally(result.deletedIds)
       await refreshTotals()
+
+      if (!items.value.length && hasMore.value) {
+        await loadMore()
+      }
     }
 
     return result

@@ -146,7 +146,7 @@
     </ul>
 
     <div
-      v-else-if="hasLoaded && isFiltered"
+      v-else-if="hasLoaded && !hasMore && isFiltered"
       class="rounded-box border border-dashed border-base-300 px-6 py-12 text-center"
       data-testid="artifact-library-no-results"
     >
@@ -169,7 +169,7 @@
     </div>
 
     <div
-      v-else-if="hasLoaded"
+      v-else-if="hasLoaded && !hasMore"
       class="rounded-box border border-dashed border-base-300 px-6 py-12 text-center"
       data-testid="artifact-library-empty"
     >
