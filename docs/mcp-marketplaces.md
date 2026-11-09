@@ -279,6 +279,45 @@ Example prompts:
 4. What does Besidka remember about me?
 5. Which Besidka models support reasoning?
 
+#### Artifact additions (3.0.0, after the artifacts rollout)
+
+MCP 3.0.0 adds eight artifact tools under `artifacts:read`,
+`artifacts:write`, `artifacts:share` and `data:delete` (the scope table
+below and `docs/mcp-server.md` arrive with stack #766). Artifacts are behind
+internal feature flags, and the `2026-12-artifacts` legal notice takes
+effect on 19 December 2026, so a directory listing must not mention them
+before 3.0.0 is published to the registry and artifacts are rolled out to
+accounts. Until then, submit the text above unchanged. Afterwards, use these
+replacements and additions in every store, with no pricing:
+
+| Field | Value |
+| --- | --- |
+| One-liner (Claude, up to 200) | Read and organise your Besidka chats, projects, project knowledge, memory, files, artifacts and settings from Claude. |
+| Server description (registry, up to 100) | Change it only in `server.json`, in the 3.0.0 bump or a later one; see "When to publish again". |
+
+Add this sentence to the long description, after "change your Besidka
+settings.":
+
+> Create and update artifacts, such as a quiz, a chart or a small web page,
+> and, with a separate permission that is off until you tick it, publish one
+> as a link that expires within 30 days and is never indexed.
+
+Add example prompt 6:
+
+6. Make a five-question quiz about the solar system as a Besidka artifact.
+
+Reviewer test cases for the artifact tools, on the reviewer account:
+
+- `create_artifact` with kind `html` and a short quiz, then `get_artifact`
+  returns version 1.
+- `update_artifact` with one find-and-replace edit returns version 2;
+  `list_artifacts` shows it.
+- Without `artifacts:share`, `share_artifact` is refused. With it,
+  `share_artifact` (`expiresInDays: 1`) returns a `/a#<token>` link that
+  opens signed out with the AI banner and a Report button, and
+  `revoke_artifact_shares` makes the link stop working (404).
+- `delete_artifacts` needs `data:delete` and `confirm: true`.
+
 ### Tools and scopes
 
 Four public tools need no token: `list_models`, `list_providers`,
@@ -323,6 +362,11 @@ codes, no magic links, no sign-up during review.
 - Seed it with a project named `Demo`, two or three chats (one about a trip
   plan, to match the example prompts), a few memory entries and one text file.
 - Do not add provider keys to it. The connector does not need them.
+- Once the listing names artifacts, grant the account the `artifacts`,
+  `artifacts.mcp` and `artifacts.share` flags in Admin → Features (until
+  artifacts are rolled out to everyone). Without them every artifact tool
+  answers "Artifacts are not available for your account". Seed one small
+  HTML artifact so `list_artifacts` returns something.
 - Sign-in has a Turnstile challenge. It is usually invisible, but a reviewer
   on an unusual network may see a check. Mention it in the reviewer notes.
 - Give the credentials only in each store's private reviewer form, never in
