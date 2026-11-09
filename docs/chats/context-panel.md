@@ -52,7 +52,9 @@ slot 5.
   on desktop the panel stays open.
 - **States**: `UiSidePanelSkeleton` while loading; an `alert-error` with Retry
   on failure; one sentence when the chat has nothing yet.
-- The inline "Not used for memory" line in the chat stays as a reading cue.
+- "Not used for memory" shows only as the header badge and in the history
+  list. The chat page no longer renders a line above the messages (BES-329);
+  shared chats and the new-chat page never had one.
 
 ## Data: `GET /api/v1/chats/[slug]/context`
 

@@ -13,15 +13,6 @@
   >
     <ChatContainer class="!gap-0">
       <UiSidePanelDemoCard v-if="isSidePanelDemoVisible" />
-      <p
-        v-if="isMemoryExcluded"
-        data-testid="chat-memory-excluded-indicator"
-        class="flex items-center justify-center gap-1 text-xs text-base-content/70"
-        :title="CHAT_MEMORY_EXCLUSION_HELPER"
-      >
-        <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="12" />
-        {{ CHAT_MEMORY_EXCLUSION_INDICATOR }}
-      </p>
       <ChatProjectInstructions
         v-if="projectInstructionsText || projectMemoryText"
         :project-id="projectContext?.id || null"
@@ -400,16 +391,9 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-const {
-  isChatMemoryExcluded,
-  rememberChatMemoryExcluded,
-} = useChatMemoryExclusion()
+const { rememberChatMemoryExcluded } = useChatMemoryExclusion()
 
 rememberChatMemoryExcluded(chat.value.slug, chat.value.memoryExcluded)
-
-const isMemoryExcluded = computed<boolean>(() => {
-  return !!chat.value && isChatMemoryExcluded(chat.value.slug)
-})
 
 const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
 
