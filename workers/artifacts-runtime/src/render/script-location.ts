@@ -15,9 +15,14 @@ export interface ArtifactScriptLocation {
   line: number
 }
 
-let executingInlineLine: number | null = null
+export interface ScriptSpan {
+  startLine: number
+  lineCount: number
+}
 
-const moduleScriptLines = new Map<string, number>()
+let executingInline: ScriptSpan | null = null
+
+const moduleScriptSpans = new Map<string, ScriptSpan>()
 
 function countLines(text: string, end: number): number {
   let lines = 1
@@ -60,7 +65,7 @@ export function findInlineScripts(html: string): InlineScriptSource[] {
     const contentEnd = close ? close.index : html.length
 
     scripts.push({
-      content: html.slice(contentStart, contentEnd),
+      content: html.slice(contentStart, contentEnd).replace(/\r\n?/g, '\n'),
       startLine: countLines(html, contentStart),
     })
 
@@ -99,43 +104,49 @@ export function matchScriptLines(
   })
 }
 
-export function beginInlineScript(startLine: number | null) {
-  executingInlineLine = startLine
+export function countScriptLines(content: string): number {
+  return content.split('\n').length
+}
+
+export function beginInlineScript(span: ScriptSpan | null) {
+  executingInline = span
 }
 
 export function endInlineScript() {
-  executingInlineLine = null
+  executingInline = null
 }
 
-export function registerModuleScript(url: string, startLine: number | null) {
-  if (startLine !== null) {
-    moduleScriptLines.set(url, startLine)
+export function registerModuleScript(url: string, span: ScriptSpan | null) {
+  if (span) {
+    moduleScriptSpans.set(url, span)
   }
 }
 
 export function forgetModuleScript(url: string) {
-  moduleScriptLines.delete(url)
+  moduleScriptSpans.delete(url)
 }
 
 /**
  * The artifact source line of an error raised while one of its scripts was
  * being compiled or run for the first time: inline scripts run inside the
  * `replaceWith` that inserts them, module scripts are found by their blob
- * URL. Browsers number those lines from the script's first line.
+ * URL. Browsers number those lines from the script's first line; a line
+ * past the end of that script belongs to another one (a function it called,
+ * a listener it triggered) and is not mapped.
  */
 export function locateScriptError(
   filename: string,
   lineno: number,
   documentUrl: string = globalThis.location?.href ?? '',
 ): ArtifactScriptLocation | null {
-  const inlineLine = filename === documentUrl ? executingInlineLine : null
-  const startLine = moduleScriptLines.get(filename) ?? inlineLine
+  const inlineSpan = filename === documentUrl ? executingInline : null
+  const span = moduleScriptSpans.get(filename) ?? inlineSpan
 
-  if (startLine === null || startLine === undefined || lineno < 1) {
+  if (!span || lineno < 1 || lineno > span.lineCount) {
     return null
   }
 
-  return { line: startLine + lineno - 1 }
+  return { line: span.startLine + lineno - 1 }
 }
 
 /**
@@ -144,7 +155,7 @@ export function locateScriptError(
  * the sandboxed frame), so the report can still point at the script.
  */
 export function getExecutingScriptStartLine(): number | null {
-  return executingInlineLine
+  return executingInline?.startLine ?? null
 }
 
 export function stripBindingPrefix(message: string): string {

@@ -568,6 +568,10 @@ async function sendTurn(client, slug, model, message) {
 
 export const DEFAULT_FAILED_CASE_ESTIMATE_USD = 0.1
 
+export function isValidUsdAmount(value) {
+  return Number.isFinite(value) && value >= 0
+}
+
 /**
  * Tags an error thrown after the eval chat exists with that chat, so the
  * run can still count what the provider billed before the failure.
@@ -734,6 +738,14 @@ async function runCommand(options) {
   const failedCaseEstimateUsd = Number(
     options['failed-case-estimate-usd'] ?? DEFAULT_FAILED_CASE_ESTIMATE_USD,
   )
+
+  const amounts = [budgetUsd, failedCaseEstimateUsd]
+
+  if (!amounts.every(isValidUsdAmount)) {
+    console.error('--budget-usd and --failed-case-estimate-usd must be '
+      + 'numbers of 0 or more.')
+    process.exit(1)
+  }
   const client = new SessionClient(options['base-url'])
   let spentUsd = 0
 

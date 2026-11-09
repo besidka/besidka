@@ -1,12 +1,14 @@
 import { removeNavigatingElements } from './inert.ts'
 import {
   beginInlineScript,
+  countScriptLines,
   endInlineScript,
   findInlineScripts,
   forgetModuleScript,
   matchScriptLines,
   registerModuleScript,
 } from './script-location.ts'
+import type { ScriptSpan } from './script-location.ts'
 
 const DEFERRED_SCRIPT_ATTRIBUTE = 'data-besidka-script-type'
 
@@ -75,17 +77,27 @@ function createRunnableScript(deferred: Element): HTMLScriptElement {
   return script
 }
 
-function readScriptLine(deferred: Element): number | null {
-  const line = Number(deferred.getAttribute(SCRIPT_LINE_ATTRIBUTE))
+function readScriptSpan(deferred: Element): ScriptSpan | null {
+  const startLine = Number(deferred.getAttribute(SCRIPT_LINE_ATTRIBUTE))
 
-  return Number.isSafeInteger(line) && line > 0 ? line : null
+  if (!Number.isSafeInteger(startLine) || startLine < 1) {
+    return null
+  }
+
+  return {
+    startLine,
+    lineCount: countScriptLines(deferred.textContent ?? ''),
+  }
 }
 
 const SCRIPT_WAIT_LIMIT_MS = 5_000
 
 function waitForScript(script: HTMLScriptElement): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, SCRIPT_WAIT_LIMIT_MS)
+    const timer = setTimeout(() => {
+      forgetModuleScript(script.src)
+      resolve()
+    }, SCRIPT_WAIT_LIMIT_MS)
     const finish = () => {
       clearTimeout(timer)
 
@@ -123,13 +135,13 @@ async function runDeferredScripts(isCurrent: () => boolean) {
       && !script.hasAttribute('async')
       && !isModule
     const loaded = isBlockingExternal || isModule ? waitForScript(script) : null
-    const startLine = readScriptLine(deferred)
+    const span = readScriptSpan(deferred)
 
     if (isModule && script.src.startsWith('blob:')) {
-      registerModuleScript(script.src, startLine)
+      registerModuleScript(script.src, span)
     }
 
-    beginInlineScript(script.hasAttribute('src') ? null : startLine)
+    beginInlineScript(script.hasAttribute('src') ? null : span)
 
     try {
       deferred.replaceWith(script)

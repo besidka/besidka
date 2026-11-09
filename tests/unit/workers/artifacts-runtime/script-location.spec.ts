@@ -32,6 +32,13 @@ describe('artifact script locations', () => {
     expect(scripts[0]?.content).toContain('function finish()')
   })
 
+  it('matches scripts written with CRLF line endings', () => {
+    const scripts = findInlineScripts('<p>a</p>\r\n<script>\r\none()\r\n</script>')
+
+    expect(scripts[0]).toEqual({ content: '\none()\n', startLine: 2 })
+    expect(matchScriptLines(scripts, ['\none()\n'])).toEqual([2])
+  })
+
   it('skips commented scripts and reads raw script text to its end', () => {
     const html = [
       '<!-- <script>ignored()</script> -->',
@@ -60,10 +67,11 @@ describe('artifact script locations', () => {
 
   it('maps an error raised while an inline script runs to the artifact line',
     () => {
-      beginInlineScript(30)
+      beginInlineScript({ startLine: 30, lineCount: 20 })
 
       expect(locateScriptError(DOCUMENT_URL, 15, DOCUMENT_URL))
         .toEqual({ line: 44 })
+      expect(locateScriptError(DOCUMENT_URL, 21, DOCUMENT_URL)).toBeNull()
       expect(locateScriptError('https://runtime.example/main.js', 15, DOCUMENT_URL))
         .toBeNull()
 
@@ -73,7 +81,7 @@ describe('artifact script locations', () => {
     })
 
   it('maps a module script error by its blob URL', () => {
-    registerModuleScript('blob:module-1', 10)
+    registerModuleScript('blob:module-1', { startLine: 10, lineCount: 3 })
 
     expect(locateScriptError('blob:module-1', 2, DOCUMENT_URL))
       .toEqual({ line: 11 })

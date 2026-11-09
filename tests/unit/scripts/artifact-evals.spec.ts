@@ -7,6 +7,7 @@ import {
   DEFAULT_PROMPTS_PATH,
   attachChatToError,
   computeUsageCost,
+  isValidUsdAmount,
   recoverFailedCaseUsage,
   findStreamError,
   loadEvalCases,
@@ -341,6 +342,14 @@ describe('result files', () => {
 })
 
 describe('failed case cost', () => {
+  it('accepts only finite, non-negative dollar amounts', () => {
+    expect(isValidUsdAmount(0)).toBe(true)
+    expect(isValidUsdAmount(2.5)).toBe(true)
+    expect(isValidUsdAmount(Number('abc'))).toBe(false)
+    expect(isValidUsdAmount(-1)).toBe(false)
+    expect(isValidUsdAmount(Infinity)).toBe(false)
+  })
+
   const billedChat = {
     messages: [
       { role: 'user', usage: null },

@@ -50,6 +50,8 @@ const DIAGRAM_EXPORT_LABELS: Record<DiagramExportAction, string> = {
 
 const NOT_EXPORTED: DiagramExportResult = { completed: false }
 
+const COPY_ACTION_PREFIX = 'copy-'
+
 const DENIED_COPY: ClipboardWriteResult = { copied: false, reason: 'denied' }
 
 /**
@@ -73,6 +75,7 @@ export function useArtifactHostActions(options: ArtifactHostActionsOptions) {
 
   let pendingCopyTimer: ReturnType<typeof setTimeout> | null = null
   let pendingExportTimer: ReturnType<typeof setTimeout> | null = null
+  let exportEpoch = 0
 
   function takePendingExport(): PendingDiagramExport | null {
     const pending = pendingExport.value
@@ -88,6 +91,7 @@ export function useArtifactHostActions(options: ArtifactHostActionsOptions) {
   }
 
   function dismissPendingExport() {
+    exportEpoch += 1
     takePendingExport()?.resolve(NOT_EXPORTED)
   }
 
@@ -191,17 +195,24 @@ export function useArtifactHostActions(options: ArtifactHostActionsOptions) {
       return waitForParentCopy(text)
     },
     diagramExport: async ({ source, action, userActivation }) => {
+      const epoch = exportEpoch
       const input = await prepareDiagramExport(source)
 
-      if (!input) {
+      if (!input || epoch !== exportEpoch) {
         return NOT_EXPORTED
       }
 
-      if (userActivation && await runExportAction(action, input)) {
+      if (!userActivation) {
+        return waitForParentExport(action, input)
+      }
+
+      if (await runExportAction(action, input)) {
         return { completed: true }
       }
 
-      return waitForParentExport(action, input)
+      return action.startsWith(COPY_ACTION_PREFIX)
+        ? waitForParentExport(action, input)
+        : NOT_EXPORTED
     },
     openDiagramViewer: ({ source }) => {
       viewerSource.value = source

@@ -80,6 +80,7 @@ export function useChunkedCodeHighlight(
   let runId = 0
   let isDisposed = false
   let linesSource = initialCode
+  let linesTheme = toValue(options.theme)
 
   async function highlight() {
     const currentRun = ++runId
@@ -95,14 +96,16 @@ export function useChunkedCodeHighlight(
     if (cached) {
       lines.value = cached
       linesSource = code
+      linesTheme = theme
       isHighlighted.value = true
 
       return
     }
 
-    if (linesSource !== code) {
+    if (linesSource !== code || linesTheme !== theme) {
       lines.value = toPlainCodeLines(code)
       linesSource = code
+      linesTheme = theme
     }
 
     const nextLines = [...lines.value]

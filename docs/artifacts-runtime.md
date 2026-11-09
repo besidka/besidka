@@ -387,7 +387,13 @@ code (`useDiagramExport().runExportAction`) against a hidden `pele-theme`
 element, so the files match a chat diagram in light and dark. When both
 sides saw a gesture the parent acts at once; otherwise it shows its own
 "Download …" or "Copy …" confirmation and nothing happens without that
-click (the same rule as the copy fallback). Exports have their own limit of
+click (the same rule as the copy fallback). An instant download is
+acceptable because artifact code cannot send this request: only the kit's
+own buttons do, and only for a trusted click (`event.isTrusted`), while
+`window.besidka` exposes storage and completion only. A failed download is
+not offered again through the confirmation; a failed copy is, because the
+usual cause is the missing gesture. A new version or a torn-down frame drops
+a pending confirmation and any export still rendering. Exports have their own limit of
 5 per 10 seconds, so Fullscreen does not use up their slots. An older host
 answers `-32601` and the button shows "Download failed" with "Not
 available here."

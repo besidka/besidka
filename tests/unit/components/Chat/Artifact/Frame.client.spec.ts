@@ -692,6 +692,17 @@ describe('ChatArtifactFrame', () => {
         userActivation: true,
       })).resolves.toEqual({ completed: false })
       expect(exportMock).not.toHaveBeenCalled()
+
+      exportMock.mockResolvedValueOnce(false)
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-png',
+        userActivation: true,
+      })).resolves.toEqual({ completed: false })
+      expect(exportMock).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('[data-testid="artifact-export-fallback"]')
+        .exists()).toBe(false)
     })
 
   it('answers denied when the copy fallback is dismissed', async () => {

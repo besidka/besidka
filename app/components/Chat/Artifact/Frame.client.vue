@@ -451,6 +451,7 @@ function clearTimers() {
 
 function teardown() {
   dismissPendingCopy()
+  dismissPendingExport()
   bridge.dispose()
   clearTimers()
   connection?.destroy()
@@ -703,6 +704,7 @@ watch(() => props.result, (result) => {
   }
 
   dismissPendingCopy()
+  dismissPendingExport()
 
   if (!result || !connection) {
     return
