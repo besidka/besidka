@@ -84,7 +84,7 @@
 
         <form
           v-else
-          class="-mx-1 flex min-h-0 flex-col gap-1 overflow-y-auto px-1"
+          class="-mx-1 flex min-h-0 flex-col gap-1 overflow-y-auto px-1 *:shrink-0"
           novalidate
           data-testid="artifact-report-form"
           @submit.prevent="submit"

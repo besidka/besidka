@@ -145,6 +145,23 @@ describe('Artifact/ReportModal.client', () => {
         .toBe('Quiz')
     })
 
+  it('keeps every row at its content height when the form scrolls',
+    async () => {
+      const wrapper = await mountModal()
+      const form = wrapper.get(byTestId('artifact-report-form'))
+      const goodFaithRow = wrapper
+        .get(byTestId('artifact-report-good-faith'))
+        .element
+        .closest('label')
+
+      expect(form.classes()).toEqual(expect.arrayContaining([
+        'overflow-y-auto',
+        '*:shrink-0',
+      ]))
+      expect(goodFaithRow?.parentElement).toBe(form.element)
+      expect(goodFaithRow?.classList.contains('whitespace-normal')).toBe(true)
+    })
+
   it('labels every field', async () => {
     const wrapper = await mountModal()
     const fields = wrapper.findAll(
