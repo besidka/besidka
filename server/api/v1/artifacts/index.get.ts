@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { ARTIFACT_KINDS } from '#shared/utils/artifacts'
 import { defineEventHandler, getQuery } from 'nuxt/server'
 import { listArtifacts } from '~~/server/utils/artifacts/queries'
+import { getArtifactUsageBytes } from '~~/server/utils/artifacts/store'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -39,11 +40,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
-  const result = await listArtifacts({
-    db: useDb(),
-    userId,
-    ...query.data,
-  })
+  const db = useDb()
+  const [result, usedBytes] = await Promise.all([
+    listArtifacts({ db, userId, ...query.data }),
+    getArtifactUsageBytes(db, userId),
+  ])
 
   logger.set({
     userId,
@@ -53,9 +54,10 @@ export default defineEventHandler(async (event) => {
         hasQuery: !!query.data.query?.trim(),
         kind: query.data.kind ?? null,
         total: result.total,
+        usedBytes,
       },
     },
   })
 
-  return result
+  return { ...result, usedBytes }
 })

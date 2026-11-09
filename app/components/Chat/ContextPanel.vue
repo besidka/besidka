@@ -237,6 +237,25 @@
               </button>
             </li>
           </ul>
+          <NuxtLink
+            v-if="group.id === 'outputs' && hasAllArtifactsLink"
+            to="/chats/artifacts"
+            class="chat-context-row text-sm"
+            data-testid="chat-context-all-artifacts"
+            @click="close"
+          >
+            <Icon
+              name="lucide:app-window"
+              size="14"
+              class="shrink-0"
+            />
+            <span class="grow">All artifacts</span>
+            <Icon
+              name="lucide:arrow-right"
+              size="12"
+              class="shrink-0 text-base-content/50"
+            />
+          </NuxtLink>
         </div>
       </section>
     </template>
@@ -279,6 +298,7 @@ const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
 const { close } = useSidePanel()
 const { open: openArtifact } = useArtifactPanel()
+const artifactsFeature = useFeature('artifacts')
 const {
   openShareModal,
   branchOwnedChat,
@@ -375,6 +395,14 @@ const hasHeaderBadges = computed<boolean>(() => {
 
 const hasActions = computed<boolean>(() => {
   return data.value?.kind === 'owned' || canBranchShared.value
+})
+
+const hasAllArtifactsLink = computed<boolean>(() => {
+  return data.value?.kind === 'owned'
+    && artifactsFeature.value.active
+    && data.value.outputs.some((item) => {
+      return item.kind === 'artifact'
+    })
 })
 
 const visibleGroups = computed<ContextGroup[]>(() => {

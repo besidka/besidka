@@ -58,6 +58,8 @@ function summarySelection(now: Date) {
     updatedAt: schema.artifacts.updatedAt,
     takedownAt: schema.artifacts.takedownAt,
     originChatSlug: schema.chats.slug,
+    originChatTitle: sql<string | null>`${schema.chats.title}`
+      .as('origin_chat_title'),
     versionCount: versionCountSql(),
     activeShareCount: activeShareCountSql(now),
   }
@@ -72,6 +74,7 @@ type SummaryRow = {
   updatedAt: Date
   takedownAt: Date | null
   originChatSlug: string | null
+  originChatTitle: string | null
   versionCount: number
   activeShareCount: number
 }
@@ -85,6 +88,7 @@ function toArtifactSummary(row: SummaryRow): ArtifactSummary {
     versionCount: Number(row.versionCount),
     updatedAt: row.updatedAt.toISOString(),
     originChatSlug: row.originChatSlug ?? null,
+    originChatTitle: row.originChatTitle ?? null,
     createdVia: row.createdVia,
     activeShareCount: Number(row.activeShareCount),
     takenDown: row.takedownAt !== null,

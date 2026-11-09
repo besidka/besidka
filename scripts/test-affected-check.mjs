@@ -194,6 +194,21 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
     'tests/e2e/chat/artifacts-panel.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
+    'tests/unit/pages/chats/artifacts/index.spec.ts',
+    'tests/unit/components/History/ArtifactRow.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/composables/artifacts-library.spec.ts',
+    'tests/e2e/history/artifacts-library.spec.ts',
+  ]
+  const artifactsLibraryTests = [
+    'tests/unit/pages/chats/artifacts/index.spec.ts',
+    'tests/unit/components/History/ArtifactRow.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/composables/artifacts-library.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/integration/api/artifacts.spec.ts',
+    'tests/e2e/history/artifacts-library.spec.ts',
   ]
   const artifactsShareUiTests = [
     'tests/unit/pages/a/[token].spec.ts',
@@ -3102,6 +3117,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/pages\/a\/\[token\]\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/artifact-share-(page|location)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsShareUiTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: artifactsLibraryTests,
     },
     {
       pattern:

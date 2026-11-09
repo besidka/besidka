@@ -145,6 +145,7 @@ export interface ArtifactSummary {
   versionCount: number
   updatedAt: string
   originChatSlug: string | null
+  originChatTitle: string | null
   createdVia: ArtifactCreatedVia
   activeShareCount: number
   takenDown: boolean

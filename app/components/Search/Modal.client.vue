@@ -129,6 +129,7 @@ const SEARCH_DEBOUNCE_MS = 180
 const route = useRoute()
 const { loggedIn } = useAuth()
 const isAdmin = useIsAdmin()
+const artifactsFeature = useFeature('artifacts')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
@@ -264,6 +265,14 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Projects',
           run: () => goTo('/chats/projects'),
         },
+        ...(artifactsFeature.value.active
+          ? [{
+            id: 'search-option-artifacts',
+            iconName: 'lucide:app-window',
+            label: 'Artifacts',
+            run: () => goTo('/chats/artifacts'),
+          }]
+          : []),
       ],
     },
     {
