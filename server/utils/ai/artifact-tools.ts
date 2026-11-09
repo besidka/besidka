@@ -243,6 +243,11 @@ export function buildArtifactInstructions(
     'remote scripts, styles, fonts or images (use inline SVG or data URIs),',
     'no navigation or redirects, and no forms that ask for passwords,',
     'payment details or other personal data.',
+    'When the user asks to load data from an API or a website, write',
+    'representative data into the artifact instead and say in the reply',
+    'that artifacts cannot load live data. A plain <a href> link is fine:',
+    'the viewer confirms before it opens.',
+    'Create one artifact per request unless the user asks for several.',
     allowedKinds.includes('react')
       ? 'React artifacts may import only '
       + `${ARTIFACT_REACT_IMPORTS.join(', ')}; any other import fails.`
