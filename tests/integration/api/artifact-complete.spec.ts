@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  ARTIFACT_BRIDGE_BODY_MAX_BYTES,
   ARTIFACT_BRIDGE_DAILY_LIMIT,
   ARTIFACT_BRIDGE_DEFAULT_OUTPUT_TOKENS,
   ARTIFACT_BRIDGE_HOURLY_LIMIT,
@@ -27,7 +28,23 @@ const mocks = vi.hoisted(() => ({
   sessionUserId: 0,
   generateText: vi.fn(),
   writeDataPoint: vi.fn(),
+  findBridgeModelOverride: null as null | ((...args: any[]) => unknown),
 }))
+
+vi.mock('~~/server/utils/artifacts/bridge', async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import('~~/server/utils/artifacts/bridge')
+  >()
+
+  return {
+    ...original,
+    findArtifactBridgeModel: (...args: [ReadonlySet<string>, string]) => {
+      return mocks.findBridgeModelOverride
+        ? mocks.findBridgeModelOverride(...args)
+        : original.findArtifactBridgeModel(...args)
+    },
+  }
+})
 
 vi.mock('ai', async (importOriginal) => {
   const original = await importOriginal<typeof import('ai')>()
@@ -157,6 +174,7 @@ describe('artifact bridge completion API', () => {
     mocks.generateText.mockReset()
     mocks.generateText.mockResolvedValue(completionOf())
     mocks.writeDataPoint.mockReset()
+    mocks.findBridgeModelOverride = null
 
     factories = {}
 
@@ -348,6 +366,49 @@ describe('artifact bridge completion API', () => {
         .rejects.toMatchObject({ status: 404 })
       expect(mocks.generateText).not.toHaveBeenCalled()
     })
+  })
+
+  describe('request body size', () => {
+    function stubContentLength(value: string | undefined) {
+      vi.stubGlobal('getRequestHeader', (_event: unknown, name: string) => {
+        return name === 'content-length' ? value : undefined
+      })
+    }
+
+    it('answers 413 for a body over 64 KB before reading it', async () => {
+      const readBody = vi.fn()
+
+      stubContentLength(String(ARTIFACT_BRIDGE_BODY_MAX_BYTES + 1))
+      vi.stubGlobal('readValidatedBody', readBody)
+
+      await expect(call()).rejects.toMatchObject({ status: 413 })
+      expect(readBody).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
+      expect(kv.entries.size).toBe(0)
+    })
+
+    it('accepts a body of exactly 64 KB', async () => {
+      stubContentLength(String(ARTIFACT_BRIDGE_BODY_MAX_BYTES))
+
+      await expect(call()).resolves.toBeDefined()
+    })
+
+    it('does not refuse a request without a usable Content-Length',
+      async () => {
+        stubContentLength(undefined)
+        await expect(call()).resolves.toBeDefined()
+
+        stubContentLength('not-a-number')
+        await expect(call()).resolves.toBeDefined()
+      })
+
+    it('still refuses a signed-out request before the size check',
+      async () => {
+        mocks.sessionUserId = 0
+        stubContentLength(String(ARTIFACT_BRIDGE_BODY_MAX_BYTES + 1))
+
+        await expect(call()).rejects.toMatchObject({ status: 401 })
+      })
   })
 
   describe('body validation', () => {
@@ -555,6 +616,41 @@ describe('artifact bridge completion API', () => {
           data: { reason: BRIDGE_NO_KEY },
         })
       expect(mocks.generateText).not.toHaveBeenCalled()
+    })
+
+    it('answers 400 bridge_no_key when the catalog model belongs to '
+      + 'another provider than the requested id', async () => {
+      mocks.findBridgeModelOverride = (_keys, modelId) => ({
+        id: modelId,
+        name: 'Impostor',
+        providerId: 'anthropic',
+        providerName: 'Anthropic',
+        inputPricePerMillion: 0.1,
+        outputPricePerMillion: 0.5,
+      })
+
+      await expect(call()).rejects.toMatchObject({
+        status: 400,
+        data: { reason: BRIDGE_NO_KEY },
+      })
+      expect(mocks.generateText).not.toHaveBeenCalled()
+      expect(factories.useAnthropic).not.toHaveBeenCalled()
+      expect(factories.useOpenAI).not.toHaveBeenCalled()
+      expect(kv.entries.size).toBe(0)
+    })
+
+    it('uses the catalog model when its provider matches', async () => {
+      mocks.findBridgeModelOverride = (_keys, modelId) => ({
+        id: modelId,
+        name: 'Luna',
+        providerId: 'openai',
+        providerName: 'OpenAI',
+        inputPricePerMillion: 0.1,
+        outputPricePerMillion: 0.5,
+      })
+
+      await expect(call()).resolves.toBeDefined()
+      expect(mocks.generateText).toHaveBeenCalledTimes(1)
     })
 
     it.each([
@@ -928,7 +1024,84 @@ describe('artifact bridge completion API', () => {
     })
   })
 
+  describe('rate limiter failure', () => {
+    it('answers 429 with Retry-After 1 when the KV write fails', async () => {
+      kv.put.mockRejectedValue(new Error('KV PUT failed: 429 Too Many'))
+
+      const handler = await loadComplete()
+      const event = createEvent({
+        params: { id: artifactId },
+        body: { prompt: 'Explain', modelId: OPENAI_MODEL_ID },
+      })
+
+      await expect(handler(event)).rejects.toMatchObject({
+        status: 429,
+        data: { reason: 'bridge-rate-limit', retryAfter: 1 },
+      })
+      expect(event.res.headers.get('Retry-After')).toBe('1')
+      expect(mocks.generateText).not.toHaveBeenCalled()
+    })
+
+    it('answers 429 when the KV read fails as well', async () => {
+      kv.get.mockRejectedValue(new Error('KV GET failed'))
+
+      await expect(call()).rejects.toMatchObject({
+        status: 429,
+        data: { reason: 'bridge-rate-limit' },
+      })
+      expect(mocks.generateText).not.toHaveBeenCalled()
+    })
+  })
+
   describe('provider failures', () => {
+    it('never puts the provider message into the 502 reason', async () => {
+      mocks.generateText.mockRejectedValue(Object.assign(
+        new Error(`Incorrect API key provided: ${SECRET_ANSWER}`),
+        { statusCode: 401 },
+      ))
+
+      const handler = await loadComplete()
+      const event = createEvent({
+        params: { id: artifactId },
+        body: { prompt: SECRET_PROMPT, modelId: OPENAI_MODEL_ID },
+      })
+      const failure = await handler(event).catch((exception: any) => {
+        return exception
+      })
+
+      expect(failure.status).toBe(502)
+      expect(failure.why).toBe('OpenAI answered with status 401.')
+      expect(JSON.stringify({
+        message: failure.message,
+        why: failure.why,
+        fix: failure.fix,
+        data: failure.data,
+      })).not.toContain(SECRET_ANSWER)
+      expect(JSON.stringify({
+        message: failure.message,
+        why: failure.why,
+        fix: failure.fix,
+        data: failure.data,
+      })).not.toContain(SECRET_PROMPT)
+    })
+
+    it('names only the provider and the status for any failure', async () => {
+      mocks.generateText.mockRejectedValue(
+        new Error(`Provider exploded ${SECRET_ANSWER}`),
+      )
+
+      const failure = await call().catch((exception: any) => exception)
+
+      expect(failure.status).toBe(502)
+      expect(failure.why).toMatch(
+        /^(OpenAI answered with status \d{3}\.|The request to OpenAI failed or timed out\.)$/,
+      )
+      expect(failure.why).not.toContain('exploded')
+      expect(failure.fix).toBe(
+        'Check the key in Profile → API keys or try another model.',
+      )
+    })
+
     it('answers 502 when the provider throws', async () => {
       mocks.generateText.mockRejectedValue(new Error('Provider exploded'))
 

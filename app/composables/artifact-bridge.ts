@@ -146,6 +146,7 @@ export function useArtifactBridge(options: ArtifactBridgeOptions) {
   let handle: PendingHandle | null = null
   let rememberedModelId: string | null = null
   let isBusy = false
+  let generation = 0
 
   function headers(): Record<string, string> {
     const token = options.shareToken?.()
@@ -192,6 +193,7 @@ export function useArtifactBridge(options: ArtifactBridgeOptions) {
       patchPending({
         infoError: toBridgeError(exception),
         isLoadingInfo: false,
+        lastFailure: toBridgeRpcError(exception),
       })
     }
   }
@@ -214,6 +216,8 @@ export function useArtifactBridge(options: ArtifactBridgeOptions) {
     }
 
     if (rememberedModelId) {
+      const callGeneration = generation
+
       isBusy = true
 
       try {
@@ -225,11 +229,15 @@ export function useArtifactBridge(options: ArtifactBridgeOptions) {
 
         return { text: result.text }
       } catch (exception) {
-        rememberedModelId = null
+        if (callGeneration === generation) {
+          rememberedModelId = null
+        }
 
         throw toBridgeRpcError(exception)
       } finally {
-        isBusy = false
+        if (callGeneration === generation) {
+          isBusy = false
+        }
       }
     }
 
@@ -316,6 +324,7 @@ export function useArtifactBridge(options: ArtifactBridgeOptions) {
   }
 
   function dispose() {
+    generation += 1
     handle?.reject(declined())
     settle()
     rememberedModelId = null

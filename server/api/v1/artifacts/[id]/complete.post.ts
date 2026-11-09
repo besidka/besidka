@@ -1,5 +1,6 @@
 import type { ArtifactBridgeCompletion } from '#shared/utils/artifacts'
 import {
+  ARTIFACT_BRIDGE_BODY_MAX_BYTES,
   ARTIFACT_BRIDGE_DEFAULT_OUTPUT_TOKENS,
   ARTIFACT_BRIDGE_MAX_OUTPUT_TOKENS,
   ARTIFACT_BRIDGE_NO_KEY_CODE,
@@ -29,7 +30,10 @@ import {
   findArtifactBridgeModel,
   readArtifactBridgeRemaining,
 } from '~~/server/utils/artifacts/bridge'
-import { ARTIFACT_SHARE_HEADER } from '~~/server/utils/artifacts/viewer-storage-request'
+import {
+  ARTIFACT_SHARE_HEADER,
+  assertRequestBodyLength,
+} from '~~/server/utils/artifacts/viewer-storage-request'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
@@ -109,6 +113,8 @@ export default defineEventHandler(async (
     })
   }
 
+  assertRequestBodyLength(event, ARTIFACT_BRIDGE_BODY_MAX_BYTES)
+
   const body = await readValidatedBody(event, bodySchema.safeParse)
 
   if (!body.success) {
@@ -175,7 +181,7 @@ export default defineEventHandler(async (
     body.data.modelId,
   )
 
-  if (!bridgeModel) {
+  if (!bridgeModel || bridgeModel.providerId !== provider.id) {
     throw createNoKeyError()
   }
 
@@ -224,8 +230,10 @@ export default defineEventHandler(async (
     throw createError({
       message: 'The model request failed',
       status: 502,
-      why: chatError.why || chatError.message,
-      fix: chatError.fix,
+      why: chatError.status && chatError.status !== 500
+        ? `${provider.name} answered with status ${chatError.status}.`
+        : `The request to ${provider.name} failed or timed out.`,
+      fix: 'Check the key in Profile → API keys or try another model.',
     })
   }
 

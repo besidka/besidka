@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  countLines,
   estimateArtifactBridgeMaxCost,
   formatArtifactBridgeCost,
+  formatArtifactBridgePreview,
   revealInvisibleCharacters,
 } from '../../../app/utils/artifact-bridge'
 
@@ -46,6 +48,16 @@ describe('revealInvisibleCharacters', () => {
     ['⁨', '[U+2068]'],
     ['⁩', '[U+2069]'],
     ['﻿', '[U+FEFF]'],
+    ['\u061C', '[U+061C]'],
+    ['\u180B', '[U+180B]'],
+    ['\u180C', '[U+180C]'],
+    ['\u180D', '[U+180D]'],
+    ['\u180E', '[U+180E]'],
+    ['\uFFF9', '[U+FFF9]'],
+    ['\uFFFA', '[U+FFFA]'],
+    ['\uFFFB', '[U+FFFB]'],
+    ['\u{1D173}', '[U+1D173]'],
+    ['\u{1D17A}', '[U+1D17A]'],
   ])('shows %j as a visible marker', (character, marker) => {
     expect(revealInvisibleCharacters(character)).toBe(marker)
   })
@@ -69,12 +81,86 @@ describe('revealInvisibleCharacters', () => {
       .toBe('\u2010\u202F \u2070')
   })
 
+  it('does not touch the characters just outside the new ranges', () => {
+    const text = '\u061B\u061D\u180A\u180F\uFFF8\uFFFC\u{1D172}\u{1D17B}'
+
+    expect(revealInvisibleCharacters(text)).toBe(text)
+  })
+
   it('does not change the original string', () => {
     const original = 'x‮y'
 
     revealInvisibleCharacters(original)
 
     expect(original).toBe('x‮y')
+  })
+})
+
+describe('formatArtifactBridgePreview', () => {
+  it('leaves ordinary text, short gaps and two empty lines unchanged', () => {
+    const text = 'Line one\n\n\nLine  two\twith tab\n  indented'
+
+    expect(formatArtifactBridgePreview(text)).toBe(text)
+  })
+
+  it('returns an empty string for an empty string', () => {
+    expect(formatArtifactBridgePreview('')).toBe('')
+  })
+
+  it('reveals invisible characters', () => {
+    expect(formatArtifactBridgePreview('a\u202Eb\u200Bc'))
+      .toBe('a[U+202E]b[U+200B]c')
+  })
+
+  it('collapses three or more consecutive empty lines', () => {
+    expect(formatArtifactBridgePreview('a\n\n\n\nb'))
+      .toBe('a\n[3 empty lines]\nb')
+    expect(formatArtifactBridgePreview(`a${'\n'.repeat(101)}b`))
+      .toBe('a\n[100 empty lines]\nb')
+  })
+
+  it('counts empty lines that only hold spaces or tabs', () => {
+    expect(formatArtifactBridgePreview('a\n \n\t\n\u00A0\n\u3000\nb'))
+      .toBe('a\n[4 empty lines]\nb')
+  })
+
+  it('collapses every separate run', () => {
+    expect(formatArtifactBridgePreview('a\n\n\n\nb\n\n\n\n\nc'))
+      .toBe('a\n[3 empty lines]\nb\n[4 empty lines]\nc')
+  })
+
+  it('collapses sixteen or more space-like characters', () => {
+    expect(formatArtifactBridgePreview(`a${' '.repeat(16)}b`))
+      .toBe('a[16 spaces]b')
+    expect(formatArtifactBridgePreview(`a${' '.repeat(15)}b`))
+      .toBe(`a${' '.repeat(15)}b`)
+  })
+
+  it('counts mixed space-like characters as one run', () => {
+    expect(formatArtifactBridgePreview(
+      `a${' \t\u00A0\u2003\u3000'.repeat(4)}b`,
+    )).toBe('a[20 spaces]b')
+  })
+
+  it('does not turn a revealed marker into a hidden run', () => {
+    expect(formatArtifactBridgePreview(`a${'\u200B'.repeat(20)}b`))
+      .toBe(`a${'[U+200B]'.repeat(20)}b`)
+  })
+})
+
+describe('countLines', () => {
+  it('counts zero lines for an empty string', () => {
+    expect(countLines('')).toBe(0)
+  })
+
+  it('counts one line without a line break', () => {
+    expect(countLines('x')).toBe(1)
+  })
+
+  it('counts a line per line break plus one', () => {
+    expect(countLines('a\nb\nc')).toBe(3)
+    expect(countLines('a\n\nb')).toBe(3)
+    expect(countLines('a\n')).toBe(2)
   })
 })
 

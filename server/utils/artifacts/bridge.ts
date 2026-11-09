@@ -169,7 +169,21 @@ export async function consumeArtifactBridgeCall(
   ]
 
   for (const [key, limit, reason] of checks) {
-    const result = await limiter.consume(key, limit)
+    let result: Awaited<ReturnType<typeof limiter.consume>>
+
+    try {
+      result = await limiter.consume(key, limit)
+    } catch {
+      event.res.headers.set('Retry-After', '1')
+
+      throw createError({
+        message: 'Too many AI requests from artifacts',
+        status: 429,
+        why: 'Requests came too close together.',
+        fix: 'Wait a second and try again.',
+        data: { reason: 'bridge-rate-limit', retryAfter: 1 },
+      })
+    }
 
     if (result.allowed) {
       continue

@@ -83,6 +83,25 @@ function byTestId(testId: string) {
   return `[data-testid="${testId}"]`
 }
 
+const ARMING_DELAY_MS = 700
+const OPENED_AT = 1_000_000
+
+async function pressAllow(
+  wrapper: Awaited<ReturnType<typeof mountConfirm>>,
+  options: { pointer?: boolean, waitMs?: number } = {},
+) {
+  const { pointer = true, waitMs = ARMING_DELAY_MS + 100 } = options
+  const button = wrapper.find(byTestId('artifact-bridge-allow'))
+
+  vi.setSystemTime(Date.now() + waitMs)
+
+  if (pointer) {
+    await button.trigger('pointerdown')
+  }
+
+  await button.trigger('click', { detail: pointer ? 1 : 0 })
+}
+
 async function mountConfirm(
   overrides: Partial<PendingArtifactCompletion> = {},
 ) {
@@ -103,6 +122,8 @@ async function mountConfirm(
 
 describe('Chat/Artifact/BridgeConfirm.client', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(OPENED_AT)
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
       .mockImplementation(() => {})
     vi.spyOn(HTMLDialogElement.prototype, 'close')
@@ -140,14 +161,67 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
       expect(prompt).toHaveLength(ARTIFACT_BRIDGE_PROMPT_MAX)
       expect(shown).toBe(prompt)
       expect(shown.endsWith('END')).toBe(true)
-      expect(wrapper.text()).toContain('Prompt (8,000 characters)')
+      expect(wrapper.text()).toContain('Prompt (8,000 characters, 1 line)')
     })
 
-    it('counts one character in the singular', async () => {
-      const wrapper = await mountConfirm({ prompt: 'x' })
+    it('counts the lines of the prompt, one in the singular', async () => {
+      const single = await mountConfirm({ prompt: 'x' })
 
-      expect(wrapper.text()).toContain('Prompt (1 character)')
+      expect(single.text()).toContain('1 line)')
+      expect(single.text()).not.toContain('1 lines')
+
+      const multiple = await mountConfirm({ prompt: 'a\nb\nc' })
+
+      expect(multiple.text()).toContain('Prompt (5 characters, 3 lines)')
     })
+
+    it('collapses long runs of empty lines into a visible note', async () => {
+      const wrapper = await mountConfirm({
+        prompt: 'Harmless\n\n\n\n\n\nReal instruction',
+      })
+
+      expect(wrapper.find(byTestId('artifact-bridge-prompt')).text())
+        .toBe('Harmless\n[5 empty lines]\nReal instruction')
+    })
+
+    it('keeps one or two empty lines as they are', async () => {
+      const prompt = 'One\n\nTwo\n\n\nThree'
+      const wrapper = await mountConfirm({ prompt })
+
+      expect(wrapper.find(byTestId('artifact-bridge-prompt')).element
+        .textContent).toBe(prompt)
+    })
+
+    it('collapses a long run of spaces into a visible note', async () => {
+      const wrapper = await mountConfirm({
+        prompt: `Harmless${' '.repeat(40)}Real instruction`,
+        system: `Quiet${'\u00A0'.repeat(20)}text`,
+      })
+
+      expect(wrapper.find(byTestId('artifact-bridge-prompt')).text())
+        .toBe('Harmless[40 spaces]Real instruction')
+      expect(wrapper.find(byTestId('artifact-bridge-system')).text())
+        .toContain('Quiet[20 spaces]text')
+    })
+
+    it('shows the artifact title with hidden characters revealed inside '
+      + 'an isolating wrapper', async () => {
+      const wrapper = await mountConfirm({ title: 'Quiz\u202Egnp.exe' })
+      const shown = wrapper.find(byTestId('artifact-bridge-artifact-title'))
+
+      expect(shown.find('bdi').text()).toBe('Quiz[U+202E]gnp.exe')
+      expect(shown.text()).toContain('wants to ask an AI model')
+    })
+
+    it('shows the newly covered invisible code points as markers',
+      async () => {
+        const wrapper = await mountConfirm({
+          prompt: 'a\u061Cb\u180Bc\uFFF9d\u{1D173}e',
+        })
+
+        expect(wrapper.find(byTestId('artifact-bridge-prompt')).text())
+          .toBe('a[U+061C]b[U+180B]c[U+FFF9]d[U+1D173]e')
+      })
 
     it('keeps the prompt line breaks and spaces', async () => {
       const prompt = 'Line one\n\n  indented line\ttabbed'
@@ -360,6 +434,17 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
         .toBe(true)
     })
 
+    it('says later requests are sent without showing them', async () => {
+      const wrapper = await mountConfirm()
+      const label = wrapper
+        .find('label:has([data-testid="artifact-bridge-remember"])')
+        .text()
+
+      expect(label).toContain('until I close it')
+      expect(label).toContain('sent without showing them')
+      expect(label).toContain('up to 12 more this hour')
+    })
+
     it('is hidden when remembering is not allowed', async () => {
       const wrapper = await mountConfirm({ allowRemember: false })
 
@@ -417,8 +502,7 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
     it('emits allow with the default model and remember off', async () => {
       const wrapper = await mountConfirm()
 
-      await wrapper.find(byTestId('artifact-bridge-allow'))
-        .trigger('click', { detail: 1 })
+      await pressAllow(wrapper)
 
       expect(wrapper.emitted('allow')).toEqual([[HAIKU.id, false]])
     })
@@ -431,8 +515,7 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
           .setValue(LUNA.id)
         await wrapper.find(byTestId('artifact-bridge-remember'))
           .setValue(true)
-        await wrapper.find(byTestId('artifact-bridge-allow'))
-          .trigger('click', { detail: 1 })
+        await pressAllow(wrapper)
 
         expect(wrapper.emitted('allow')).toEqual([[LUNA.id, true]])
       })
@@ -454,58 +537,151 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
     })
   })
 
-  describe('keyboard click guard', () => {
-    function startAt(time: number) {
-      vi.useFakeTimers({ toFake: ['Date'] })
-      vi.setSystemTime(time)
-    }
+  describe('Allow arming', () => {
+    it('ignores a keyboard click within 700 ms of Allow becoming usable',
+      async () => {
+        const wrapper = await mountConfirm()
 
-    it('ignores a keyboard click within 500 ms of opening', async () => {
-      startAt(1_000_000)
+        await pressAllow(wrapper, {
+          pointer: false,
+          waitMs: ARMING_DELAY_MS - 100,
+        })
 
+        expect(wrapper.emitted('allow')).toBeUndefined()
+      })
+
+    it('accepts a keyboard click after 700 ms', async () => {
       const wrapper = await mountConfirm()
 
-      vi.setSystemTime(1_000_100)
-      await wrapper.find(byTestId('artifact-bridge-allow'))
-        .trigger('click', { detail: 0 })
+      await pressAllow(wrapper, { pointer: false })
+
+      expect(wrapper.emitted('allow')).toEqual([[HAIKU.id, false]])
+    })
+
+    it('ignores a pointer click within 700 ms as well', async () => {
+      const wrapper = await mountConfirm()
+
+      await pressAllow(wrapper, { waitMs: ARMING_DELAY_MS - 100 })
 
       expect(wrapper.emitted('allow')).toBeUndefined()
     })
 
-    it('accepts a keyboard click after 500 ms', async () => {
-      startAt(1_000_000)
-
+    it('accepts a pointer click after 700 ms when the press started on '
+      + 'Allow', async () => {
       const wrapper = await mountConfirm()
 
-      vi.setSystemTime(1_000_600)
-      await wrapper.find(byTestId('artifact-bridge-allow'))
-        .trigger('click', { detail: 0 })
+      await pressAllow(wrapper)
 
       expect(wrapper.emitted('allow')).toEqual([[HAIKU.id, false]])
     })
 
-    it('accepts a pointer click straight away', async () => {
-      startAt(1_000_000)
+    it('ignores a pointer click without a pointerdown on Allow',
+      async () => {
+        const wrapper = await mountConfirm()
 
+        vi.setSystemTime(OPENED_AT + 5_000)
+        await wrapper.find(byTestId('artifact-bridge-allow'))
+          .trigger('click', { detail: 1 })
+
+        expect(wrapper.emitted('allow')).toBeUndefined()
+      })
+
+    it('needs a new pointerdown for every pointer click', async () => {
       const wrapper = await mountConfirm()
 
-      vi.setSystemTime(1_000_050)
+      await pressAllow(wrapper)
       await wrapper.find(byTestId('artifact-bridge-allow'))
         .trigger('click', { detail: 1 })
 
-      expect(wrapper.emitted('allow')).toEqual([[HAIKU.id, false]])
+      expect(wrapper.emitted('allow')).toHaveLength(1)
     })
 
-    it('never guards Cancel', async () => {
-      startAt(1_000_000)
-
+    it('starts counting again when Allow becomes usable again', async () => {
       const wrapper = await mountConfirm()
 
-      vi.setSystemTime(1_000_010)
+      vi.setSystemTime(OPENED_AT + 5_000)
+      await wrapper.setProps({ pending: createPending({ isRunning: true }) })
+      await wrapper.setProps({ pending: createPending() })
+      await wrapper.find(byTestId('artifact-bridge-allow'))
+        .trigger('pointerdown')
+      await wrapper.find(byTestId('artifact-bridge-allow'))
+        .trigger('click', { detail: 1 })
+
+      expect(wrapper.emitted('allow')).toBeUndefined()
+
+      await pressAllow(wrapper)
+
+      expect(wrapper.emitted('allow')).toHaveLength(1)
+    })
+
+    it('counts from the moment the models arrive, not from the mount',
+      async () => {
+        const wrapper = await mountConfirm({
+          info: null,
+          isLoadingInfo: true,
+        })
+
+        vi.setSystemTime(OPENED_AT + 10_000)
+        await wrapper.setProps({ pending: createPending() })
+        await wrapper.find(byTestId('artifact-bridge-allow'))
+          .trigger('pointerdown')
+        await wrapper.find(byTestId('artifact-bridge-allow'))
+          .trigger('click', { detail: 0 })
+
+        expect(wrapper.emitted('allow')).toBeUndefined()
+
+        await pressAllow(wrapper)
+
+        expect(wrapper.emitted('allow')).toHaveLength(1)
+      })
+
+    it('never guards Cancel', async () => {
+      const wrapper = await mountConfirm()
+
+      vi.setSystemTime(OPENED_AT + 10)
       await wrapper.find(byTestId('artifact-bridge-cancel'))
         .trigger('click', { detail: 0 })
 
       expect(wrapper.emitted('cancel')).toHaveLength(1)
+    })
+  })
+
+  describe('native close event', () => {
+    it('opens the dialog again while the call runs', async () => {
+      const wrapper = await mountConfirm({ isRunning: true })
+
+      wrapper.find(byTestId('artifact-bridge-modal')).element
+        .dispatchEvent(new Event('close'))
+
+      expect(HTMLDialogElement.prototype.showModal)
+        .toHaveBeenCalledTimes(2)
+      expect(wrapper.emitted('cancel')).toBeUndefined()
+    })
+
+    it('emits cancel when nothing is running', async () => {
+      const wrapper = await mountConfirm()
+
+      wrapper.find(byTestId('artifact-bridge-modal')).element
+        .dispatchEvent(new Event('close'))
+
+      expect(HTMLDialogElement.prototype.showModal)
+        .toHaveBeenCalledTimes(1)
+      expect(wrapper.emitted('cancel')).toHaveLength(1)
+    })
+
+    it('does nothing when the close comes from unmounting', async () => {
+      vi.mocked(HTMLDialogElement.prototype.close)
+        .mockImplementation(function (this: HTMLDialogElement) {
+          this.dispatchEvent(new Event('close'))
+        })
+
+      const wrapper = await mountConfirm()
+
+      wrapper.unmount()
+
+      expect(wrapper.emitted('cancel')).toBeUndefined()
+      expect(HTMLDialogElement.prototype.showModal)
+        .toHaveBeenCalledTimes(1)
     })
   })
 
@@ -556,7 +732,7 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
         info: { ...INFO, models: [], defaultModelId: null },
       })
 
-      await allowButton(wrapper).trigger('click', { detail: 1 })
+      await pressAllow(wrapper)
 
       expect(wrapper.emitted('allow')).toBeUndefined()
     })
@@ -585,6 +761,10 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
           info: { ...INFO, remaining: { hour: 0, day: 0 } },
         })
 
+        vi.setSystemTime(OPENED_AT + 5_000)
+        allowButton(wrapper).element.dispatchEvent(
+          new MouseEvent('pointerdown', { bubbles: true }),
+        )
         allowButton(wrapper).element.dispatchEvent(
           new MouseEvent('click', { detail: 1, bubbles: true }),
         )
@@ -658,8 +838,7 @@ describe('Chat/Artifact/BridgeConfirm.client', () => {
         error: { message: 'The model request failed' },
       })
 
-      await wrapper.find(byTestId('artifact-bridge-allow'))
-        .trigger('click', { detail: 1 })
+      await pressAllow(wrapper)
 
       expect(wrapper.emitted('allow')).toEqual([[HAIKU.id, false]])
     })

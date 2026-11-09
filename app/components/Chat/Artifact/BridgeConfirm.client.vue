@@ -6,6 +6,7 @@
       data-testid="artifact-bridge-modal"
       aria-labelledby="artifact-bridge-title"
       @cancel.prevent="onCancel"
+      @close="onDialogClosed"
     >
       <div class="modal-box flex max-h-[90dvh] max-w-lg flex-col gap-3 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div class="shrink-0">
@@ -19,7 +20,8 @@
             class="text-sm break-words text-base-content/70"
             data-testid="artifact-bridge-artifact-title"
           >
-            “{{ pending.title }}” wants to ask an AI model using your API key.
+            “<bdi>{{ titlePreview }}</bdi>” wants to ask an AI model using your
+            API key.
           </p>
         </div>
 
@@ -34,7 +36,7 @@
 
           <fieldset class="fieldset">
             <legend class="fieldset-legend">
-              Prompt ({{ promptLength }})
+              Prompt ({{ promptSize }})
             </legend>
             <pre
               class="max-h-48 overflow-y-auto rounded-box bg-base-200 p-3 font-mono text-xs break-words whitespace-pre-wrap"
@@ -144,7 +146,9 @@
                 data-testid="artifact-bridge-remember"
                 :disabled="pending.isRunning"
               >
-              Don't ask again for this artifact until I close it
+              Don't ask again for this artifact until I close it. Later
+              requests are sent without showing them, up to
+              {{ pending.info?.remaining.hour ?? 0 }} more this hour.
             </label>
           </template>
 
@@ -191,6 +195,7 @@
             class="btn btn-primary"
             data-testid="artifact-bridge-allow"
             :disabled="!canAllow"
+            @pointerdown="onAllowPointerDown"
             @click="onAllowClick"
           >
             <span
@@ -210,8 +215,10 @@
 import { buildArtifactBridgeSystem } from '#shared/utils/artifacts'
 import type { PendingArtifactCompletion } from '~/composables/artifact-bridge'
 import {
+  countLines,
   estimateArtifactBridgeMaxCost,
   formatArtifactBridgeCost,
+  formatArtifactBridgePreview,
   revealInvisibleCharacters,
 } from '~/utils/artifact-bridge'
 
@@ -224,7 +231,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const KEYBOARD_CLICK_GUARD_MS = 500
+const ALLOW_ARMING_DELAY_MS = 700
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 const cancelButton = useTemplateRef<HTMLButtonElement>('cancelButton')
@@ -232,7 +239,9 @@ const modelSelectId = useId()
 const selectedModelId = shallowRef<string>('')
 const remember = shallowRef<boolean>(false)
 
-let openedAt = 0
+let armedAt = 0
+let pressedAllowSinceOpen = false
+let isUnmounting = false
 
 const models = computed(() => {
   return props.pending.info?.models ?? []
@@ -248,18 +257,26 @@ const systemText = computed<string>(() => {
   return buildArtifactBridgeSystem(props.pending.system)
 })
 
+const titlePreview = computed<string>(() => {
+  return revealInvisibleCharacters(props.pending.title)
+})
+
 const promptPreview = computed<string>(() => {
-  return revealInvisibleCharacters(props.pending.prompt)
+  return formatArtifactBridgePreview(props.pending.prompt)
 })
 
 const systemPreview = computed<string>(() => {
-  return revealInvisibleCharacters(systemText.value)
+  return formatArtifactBridgePreview(systemText.value)
 })
 
-const promptLength = computed<string>(() => {
-  const length = props.pending.prompt.length
+const promptSize = computed<string>(() => {
+  const characterCount = props.pending.prompt.length
+  const lines = countLines(props.pending.prompt)
+  const characters = characterCount === 1
+    ? '1 character'
+    : `${characterCount.toLocaleString('en')} characters`
 
-  return length === 1 ? '1 character' : `${length.toLocaleString('en')} characters`
+  return `${characters}, ${lines} ${lines === 1 ? 'line' : 'lines'}`
 })
 
 const costText = computed<string>(() => {
@@ -296,6 +313,10 @@ const canAllow = computed<boolean>(() => {
     && (props.pending.info?.remaining.day ?? 0) > 0
 })
 
+watch(canAllow, (allowed) => {
+  armedAt = allowed ? Date.now() : 0
+}, { immediate: true })
+
 watch(() => props.pending.info, (info) => {
   if (!info || selectedModel.value) {
     return
@@ -312,28 +333,57 @@ function onCancel() {
   emit('cancel')
 }
 
+function onAllowPointerDown() {
+  pressedAllowSinceOpen = true
+}
+
+function onDialogClosed() {
+  if (isUnmounting) {
+    return
+  }
+
+  if (props.pending.isRunning) {
+    modal.value?.showModal()
+
+    return
+  }
+
+  emit('cancel')
+}
+
+/**
+ * Allow counts only after it has been enabled for a moment, and a pointer
+ * click only when the press also started on Allow after the modal opened,
+ * so a click or tap aimed at the artifact (which may open this modal at
+ * any time) cannot land on Allow by accident.
+ */
 function onAllowClick(event: MouseEvent) {
   const isKeyboardClick = event.detail === 0
 
-  if (isKeyboardClick && Date.now() - openedAt < KEYBOARD_CLICK_GUARD_MS) {
+  if (!canAllow.value || !armedAt) {
     return
   }
 
-  if (!canAllow.value) {
+  if (Date.now() - armedAt < ALLOW_ARMING_DELAY_MS) {
     return
   }
 
+  if (!isKeyboardClick && !pressedAllowSinceOpen) {
+    return
+  }
+
+  pressedAllowSinceOpen = false
   emit('allow', selectedModelId.value, remember.value)
 }
 
 onMounted(async () => {
-  openedAt = Date.now()
   modal.value?.showModal()
   await nextTick()
   cancelButton.value?.focus()
 })
 
 onBeforeUnmount(() => {
+  isUnmounting = true
   modal.value?.close()
 })
 </script>

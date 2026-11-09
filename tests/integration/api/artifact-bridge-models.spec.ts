@@ -196,6 +196,40 @@ describe('artifact bridge models API', () => {
         await expect(read()).rejects.toMatchObject({ status: 404 })
       })
 
+    it('answers 403 with the legal-consent reason without legal consent',
+      async () => {
+        await startAs(null, ['openai'])
+
+        await expect(read()).rejects.toMatchObject({
+          status: 403,
+          data: { reason: 'legal-consent' },
+        })
+      })
+
+    it('answers 403 for a user whose settings row has no consent',
+      async () => {
+        await startAs({
+          termsAcceptedAt: null,
+          termsVersion: null,
+          ageConfirmedAt: null,
+          sensitiveContentConsentAt: null,
+          sensitiveContentConsentVersion: null,
+        }, ['openai'])
+
+        await expect(read()).rejects.toMatchObject({
+          status: 403,
+          data: { reason: 'legal-consent' },
+        })
+      })
+
+    it('does not read the remaining calls before the consent check',
+      async () => {
+        await startAs(null, ['openai'])
+
+        await expect(read()).rejects.toBeDefined()
+        expect(kv.get).not.toHaveBeenCalled()
+      })
+
     it('sends a private no-store header', async () => {
       await startAs({}, ['openai'])
 

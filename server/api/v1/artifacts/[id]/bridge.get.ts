@@ -18,7 +18,10 @@ import {
 import { ARTIFACT_SHARE_HEADER } from '~~/server/utils/artifacts/viewer-storage-request'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
-import { readLegalConsent } from '~~/server/utils/legal/consent'
+import {
+  assertLegalConsent,
+  readLegalConsent,
+} from '~~/server/utils/legal/consent'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const paramsSchema = z.object({
@@ -73,6 +76,8 @@ export default defineEventHandler(async (
   }
 
   const legalConsent = await readLegalConsent(viewerUserId, db)
+
+  assertLegalConsent(legalConsent)
   const availableKeys = await readAvailableKeys(
     viewerUserId,
     db,

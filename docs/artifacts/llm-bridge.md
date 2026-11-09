@@ -48,12 +48,19 @@ differs; it does.
    posts `POST /api/v1/artifacts/<id>/complete` and resolves `{ text }`.
    Errors stay inline in the modal (`Try again` or Cancel, which rejects with
    the mapped code).
-5. Cancel has focus on open, and a keyboard "click" on Allow in the first
-   500 ms is ignored, so an Enter already in flight from the composer cannot
-   confirm.
+5. Cancel has focus on open. Allow counts only after it has been enabled
+   for 700 ms, and a pointer click only when the press also started on
+   Allow after the modal opened, so a click or tap aimed at the artifact
+   (which can open the modal at any moment) cannot land on Allow. A native
+   `close` (a second Esc) while a request runs reopens the modal, so a
+   request is never left without a visible owner. Long runs of blank lines
+   or spaces are collapsed in the preview (`[40 empty lines]`), the size
+   line shows characters and lines, and the title is revealed and isolated
+   with `<bdi>`.
 6. "Don't ask again for this artifact until I close it" (owner chats only,
    never through a share link): later calls in the same frame session skip
-   the modal with the chosen model. A failed remembered call forgets the
+   the modal with the chosen model; the checkbox says that later requests
+   are not shown and how many remain this hour. A failed remembered call forgets the
    choice, so the next call asks again. Nothing is persisted.
 
 ## Server
@@ -73,13 +80,19 @@ history, no web search, `AbortSignal.timeout(30s)`.
 | Per viewer per day | 200 | `day:<viewer>` (checked first) |
 | Per viewer and artifact per hour | 30 | `hour:<viewer>:<artifact>` |
 
-Refusals are 429 with `Retry-After` and a `why` naming the cap. Failed
+Refusals are 429 with `Retry-After` and a `why` naming the cap. When the
+KV counter write fails (one write per second per key), the call is refused
+with 429 and `Retry-After: 1` (fail closed: it spends the viewer's key).
+The body is capped at 64 KB by `Content-Length` before it is read, and
+`bridge` requires current legal consent like `complete`. Failed
 provider calls count against the caps (abuse bound). A call refused by the
 hourly cap has already taken a daily slot; the reverse (a daily refusal
 using an hourly slot) cannot happen.
 
-Provider errors become 502 with the normalised `why`, so a provider 401 or
-429 is never confused with Besidka's own session or caps.
+Provider errors become 502 with fixed text ("OpenAI answered with status
+401." or "The request to OpenAI failed or timed out."), never the
+provider's message, which could echo the prompt; so a provider 401 or 429
+is never confused with Besidka's own session or caps.
 
 Cost: `buildMessageUsage()` with `getModelCostMap()` gives `costUsd` (null
 when the model has no price). The wide event carries

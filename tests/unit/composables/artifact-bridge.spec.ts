@@ -635,6 +635,49 @@ describe('useArtifactBridge', () => {
       })
     })
 
+    it('rejects with the mapped code when loading the models failed',
+      async () => {
+        routeFetch({
+          bridge: () => {
+            throw fetchError(403, 'legal-consent')
+          },
+        })
+
+        const bridge = createBridge()
+        const promise = bridge.complete({ prompt: 'Explain' })
+
+        await flushPromises()
+
+        expect(bridge.pending.value?.lastFailure).toMatchObject({
+          code: ERROR_CODES.consentRequired,
+        })
+
+        bridge.cancel()
+
+        await expect(promise).rejects.toMatchObject({
+          code: ERROR_CODES.consentRequired,
+        })
+      })
+
+    it('maps a failed models request to a rate limit on cancel',
+      async () => {
+        routeFetch({
+          bridge: () => {
+            throw fetchError(429, 'bridge-rate-limit')
+          },
+        })
+
+        const bridge = createBridge()
+        const promise = bridge.complete({ prompt: 'Explain' })
+
+        await flushPromises()
+        bridge.cancel()
+
+        await expect(promise).rejects.toMatchObject({
+          code: ERROR_CODES.rateLimited,
+        })
+      })
+
     it('does not cancel while the call is running', async () => {
       const reply = createDeferred<ReturnType<typeof completion>>()
 
@@ -878,6 +921,69 @@ describe('useArtifactBridge', () => {
 
       reply.resolve(completion())
       await second
+    })
+
+    it('keeps the new session busy when a disposed remembered call '
+      + 'settles late', async () => {
+      const bridge = createBridge()
+
+      await allowAndRemember(bridge)
+
+      const lateReply = createDeferred<ReturnType<typeof completion>>()
+
+      routeFetch({ complete: () => lateReply.promise })
+
+      const stale = bridge.complete({ prompt: 'Stale' })
+
+      bridge.dispose()
+      routeFetch()
+
+      const fresh = bridge.complete({ prompt: 'Fresh' })
+
+      await flushPromises()
+      expect(bridge.pending.value?.prompt).toBe('Fresh')
+
+      lateReply.resolve(completion('Late'))
+      await stale
+      await flushPromises()
+
+      await expect(bridge.complete({ prompt: 'Third' }))
+        .rejects.toMatchObject({ code: ERROR_CODES.rateLimited })
+      expect(bridge.pending.value?.prompt).toBe('Fresh')
+
+      bridge.cancel()
+      await rejectionOf(fresh)
+    })
+
+    it('keeps the new session choice when a disposed remembered call '
+      + 'fails late', async () => {
+      const bridge = createBridge()
+
+      await allowAndRemember(bridge)
+
+      const lateReply = createDeferred<ReturnType<typeof completion>>()
+
+      routeFetch({ complete: () => lateReply.promise })
+
+      const stale = bridge.complete({ prompt: 'Stale' })
+
+      bridge.dispose()
+      routeFetch()
+
+      const fresh = bridge.complete({ prompt: 'Fresh' })
+
+      await flushPromises()
+      bridge.allow('claude-haiku-5-5', true)
+      await fresh
+      fetchMock.mockClear()
+
+      lateReply.reject(fetchError(502))
+      await rejectionOf(stale)
+
+      await expect(bridge.complete({ prompt: 'Next' }))
+        .resolves.toEqual({ text: 'Hello' })
+      expect(bridge.pending.value).toBeNull()
+      expect(completeCalls()).toHaveLength(1)
     })
 
     it('forgets the choice when the frame is disposed', async () => {

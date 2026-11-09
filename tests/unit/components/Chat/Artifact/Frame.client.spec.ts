@@ -1112,9 +1112,18 @@ describe('ChatArtifactFrame bridge capability', () => {
   }
 
   function pressPointerClick(element: HTMLElement | null) {
+    element?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
     element?.dispatchEvent(
       new MouseEvent('click', { bubbles: true, detail: 1 }),
     )
+  }
+
+  async function waitForArmedAllow() {
+    await vi.waitFor(() => {
+      expect(findBridgeElement('artifact-bridge-allow')
+        ?.hasAttribute('disabled')).toBe(false)
+    })
+    vi.setSystemTime(Date.now() + 1000)
   }
 
   beforeEach(() => {
@@ -1126,6 +1135,7 @@ describe('ChatArtifactFrame bridge capability', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   it('does not offer completions to a signed-out viewer', async () => {
@@ -1223,6 +1233,7 @@ describe('ChatArtifactFrame bridge capability', () => {
 
   it('asks the viewer first and answers the runtime after Allow',
     async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
       allowBridge()
 
       const { connection } = await mountFrame()
@@ -1241,6 +1252,12 @@ describe('ChatArtifactFrame bridge capability', () => {
         .toContain('Be brief')
       expect(modelCalls('/complete')).toHaveLength(0)
 
+      pressPointerClick(findBridgeElement('artifact-bridge-allow'))
+      await flushPromises()
+
+      expect(modelCalls('/complete')).toHaveLength(0)
+
+      await waitForArmedAllow()
       pressPointerClick(findBridgeElement('artifact-bridge-allow'))
 
       await expect(pending).resolves.toEqual({ text: 'Plants make sugar' })
