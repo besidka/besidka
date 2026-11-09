@@ -204,6 +204,10 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
     --size-selector: 0.1875rem;
   }
 
+  :where(.textarea) {
+    border-radius: var(--radius-box);
+  }
+
   .tooltip::before {
     --radius-field: .25rem;
   }

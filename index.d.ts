@@ -22,6 +22,7 @@ declare module 'nuxt/schema' {
     filesRetentionCleanupBatchSize: number
     filesRetentionCleanupMaxRuntimeMs: number
     filesMaintenanceToken: string
+    mailAlertSecret: string
   }
 
   interface PublicRuntimeConfig {

@@ -243,6 +243,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/composables/chat.spec.ts',
   ]
+  const mailAlertsTests = [
+    'tests/unit/utils/mail-alert-protocol.spec.ts',
+    'tests/unit/workers/mail-alerts/classify.spec.ts',
+    'tests/unit/workers/mail-alerts/main.spec.ts',
+    'tests/unit/server/utils/mail-alerts/notify.spec.ts',
+    'tests/unit/server/api/v1/internal/mail-alert/index.post.spec.ts',
+    'tests/unit/server/utils/features/schedule-notify.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/profile-settings-legal-notices.spec.ts',
@@ -3141,6 +3149,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/ai\/artifact-tools\.ts$|server\/utils\/artifacts\/|server\/capabilities\/|server\/utils\/features\/send-features\.ts$|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$|server\/utils\/chats\/persist-user-message\.ts$|server\/utils\/ai\/(tool-loop|search-answer-continuation)\.ts$|shared\/utils\/(artifacts|message-metadata)\.ts$)/,
       tests: artifactsChatTests,
+    },
+    {
+      pattern:
+        /^(workers\/mail-alerts\/.*|shared\/utils\/mail-alert-protocol\.ts|server\/utils\/mail-alerts\/.*\.ts|server\/api\/v1\/internal\/mail-alert\/.*\.ts|server\/utils\/push\.ts|server\/utils\/features\/(admin-recipients|admin-queries|schedule-notify)\.ts)$/,
+      tests: mailAlertsTests,
     },
     {
       pattern:
