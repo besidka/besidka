@@ -1099,6 +1099,31 @@ describe('ChatArtifactFrame storage capability', () => {
       )
     })
 
+  it('logs one open when a streamed artifact gets its id and remounts',
+    async () => {
+      allowStorage()
+
+      const { wrapper, connection } = await mountFrame({ artifactId: null })
+
+      await capabilitiesOf(connection)
+      await wrapper.setProps({ artifactId: 'art_1' })
+      await flushPromises()
+
+      expect(captured).toHaveLength(2)
+
+      await capabilitiesOf(captured.at(-1)!)
+
+      expect(infoMock).toHaveBeenCalledTimes(1)
+    })
+
+  it('logs nothing when telemetry is off', async () => {
+    const { connection } = await mountFrame({ telemetryOff: true })
+
+    await capabilitiesOf(connection)
+
+    expect(infoMock).not.toHaveBeenCalled()
+  })
+
   it('keeps the frame for another artifact id in memory mode', async () => {
     const { wrapper } = await mountFrame()
 

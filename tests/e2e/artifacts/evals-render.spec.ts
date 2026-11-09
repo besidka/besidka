@@ -12,6 +12,7 @@ const BASE_URL = process.env.ARTIFACT_EVALS_BASE_URL ?? ''
 const RESULTS_DIR = process.env.ARTIFACT_EVALS_DIR ?? ''
 const INITIALISE_LIMIT_MS = 5_000
 const CLICK_SETTLE_MS = 400
+const CLICKABLE_WAIT_MS = 10_000
 const MAX_CLICKS = 4
 const CLICKABLE_SELECTOR = [
   'button:visible',
@@ -47,8 +48,13 @@ async function signIn(context: BrowserContext) {
     .split('\n')
 
   await context.addCookies([{
-    name: 'cookie_consent',
-    value: 'rejected',
+    name: 'cookies_consent',
+    value: JSON.stringify({
+      v: 2,
+      granted: ['necessary'],
+      id: 'artifact-evals',
+      date: new Date().toISOString(),
+    }),
     url: BASE_URL,
   }])
 
@@ -73,9 +79,9 @@ async function openArtifact(page: Page): Promise<number> {
   const startedAt = Date.now()
   const frame = page.frameLocator('[data-testid="artifact-frame-iframe"]')
 
-  await expect(frame.locator('body *').first()).toBeAttached({
+  await expect.poll(() => readFrameText(frame), {
     timeout: 15_000,
-  })
+  }).not.toBe('')
 
   return Date.now() - startedAt
 }
@@ -85,6 +91,10 @@ async function readFrameText(frame: FrameLocator): Promise<string> {
 }
 
 async function clickThrough(frame: FrameLocator): Promise<boolean> {
+  await expect.poll(() => frame.locator(CLICKABLE_SELECTOR).count(), {
+    timeout: CLICKABLE_WAIT_MS,
+  }).toBeGreaterThan(0).catch(() => {})
+
   const initialText = await readFrameText(frame)
 
   for (let index = 0; index < MAX_CLICKS; index++) {
@@ -155,13 +165,29 @@ test.describe('artifact eval renders', () => {
         }
       })
 
-      await page.goto(`${BASE_URL}/chats/${result.chatSlug}`)
+      let initialiseMs = Number.POSITIVE_INFINITY
+      let changed = false
+      let failure = ''
 
-      const initialiseMs = await openArtifact(page)
-      const frame = page.frameLocator('[data-testid="artifact-frame-iframe"]')
-      const changed = await clickThrough(frame)
+      try {
+        await page.goto(`${BASE_URL}/chats/${result.chatSlug}`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30_000,
+        })
+        initialiseMs = await openArtifact(page)
+        changed = await clickThrough(
+          page.frameLocator('[data-testid="artifact-frame-iframe"]'),
+        )
+      } catch (exception) {
+        failure = exception instanceof Error
+          ? exception.message.split('\n')[0] ?? ''
+          : String(exception)
+      }
       const notes = [
-        `initialised in ${initialiseMs} ms`,
+        failure,
+        Number.isFinite(initialiseMs)
+          ? `initialised in ${initialiseMs} ms`
+          : '',
         storageWrites.length ? `${storageWrites.length} storage write(s)` : '',
         securityMessages.length
           ? `CSP: ${securityMessages[0]}`
@@ -174,10 +200,19 @@ test.describe('artifact eval renders', () => {
           : 'fail',
         note: changed ? notes.join('; ') : `no DOM change; ${notes.join('; ')}`,
       }
+      if (result.checks.interactive.status === 'fail') {
+        await page.screenshot({
+          path: resultPath(RESULTS_DIR, result.model, result.caseId)
+            .replace(/\.json$/, '.png'),
+        })
+      }
+
       writeBack(result)
       await page.close()
-
-      expect(result.checks.interactive.status).toBe('pass')
+      test.info().annotations.push({
+        type: 'interactive',
+        description: result.checks.interactive.status,
+      })
     })
   }
 })

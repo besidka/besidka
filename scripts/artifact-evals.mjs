@@ -13,6 +13,7 @@
  *       --base-url=https://pr-<n>-besidka.chernenko.workers.dev \
  *       --models=claude-haiku-5-5,gpt-6-luna,gemini-3.8-flash \
  *       [--cases=quiz-photosynthesis,edit-flow] [--out=.evals/artifacts]
+ *       [--budget-usd=4]
  *
  *   node scripts/artifact-evals.mjs summary --dir=.evals/artifacts/<date>
  *   node scripts/artifact-evals.mjs rescore --dir=.evals/artifacts/<date>
@@ -61,7 +62,7 @@ const NETWORK_PATTERNS = [
   /@import\s+(?:url\()?['"]?https?:/i,
 ]
 const NAVIGATION_PATTERNS = [
-  /\blocation(?:\.href)?\s*=(?!=)/,
+  /(?<!\b(?:const|let|var)\s+)\blocation(?:\.href)?\s*=(?!=)/,
   /\blocation\.(?:assign|replace)\s*\(/,
   /\bwindow\.open\s*\(/,
   /<form\b[^>]*\baction\s*=\s*['"]https?:/i,
@@ -253,7 +254,7 @@ function scoreStaticCheck(check, context) {
         : update.mode === 'edits'
 
       return verdict(usedEdits, usedEdits
-        ? `${update.input?.edits?.length ?? 'some'} edit(s)`
+        ? `${update.input?.edits?.length ?? (update.edits || 'some')} edit(s)`
         : 'full content resent')
     }
     default:
@@ -325,9 +326,30 @@ export function computeUsageCost(usages) {
   }
 }
 
+export function findStreamError(streamText) {
+  for (const line of streamText.split('\n')) {
+    if (!line.startsWith('data: ')) {
+      continue
+    }
+
+    try {
+      const event = JSON.parse(line.slice(6))
+
+      if (event?.type === 'error') {
+        return String(event.errorText ?? 'stream error')
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
 /**
  * Reads the AI SDK UI message stream (server-sent events) and returns the
- * artifact tool calls with their inputs and outcomes.
+ * artifact tool calls with their inputs and outcomes, including calls whose
+ * input the SDK rejected (`tool-input-error`).
  */
 export function parseArtifactWrites(streamText) {
   const calls = new Map()
@@ -356,6 +378,13 @@ export function parseArtifactWrites(streamText) {
         ...existing,
         toolName: event.toolName,
         input: event.input,
+      })
+    } else if (event.type === 'tool-input-error') {
+      calls.set(event.toolCallId, {
+        ...existing,
+        toolName: event.toolName,
+        input: event.input,
+        error: event.errorText,
       })
     } else if (event.type === 'tool-output-available') {
       calls.set(event.toolCallId, { ...existing, output: event.output })
@@ -565,6 +594,12 @@ async function runCase(client, evalCase, model) {
     })
   }
 
+  const streamError = findStreamError(stream)
+
+  if (streamError) {
+    throw new Error(`stream error: ${streamError}`)
+  }
+
   const writes = parseArtifactWrites(stream)
   const finalChat = await client.json(`/api/v1/chats/${created.slug}`)
   const latestByArtifact = new Map()
@@ -604,6 +639,7 @@ async function runCase(client, evalCase, model) {
     writes: writes.map(write => ({
       toolName: write.toolName,
       mode: write.input?.edits ? 'edits' : 'content',
+      edits: write.input?.edits?.length ?? 0,
       error: write.error ?? null,
     })),
     artifacts,

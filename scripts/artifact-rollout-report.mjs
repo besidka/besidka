@@ -75,14 +75,13 @@ SELECT
   blob2 AS flag,
   blob3 AS variant,
   blob4 AS reason,
-  toDate(timestamp) AS day,
   SUM(_sample_interval) AS exposures
 FROM ${dataset}
 WHERE timestamp > NOW() - INTERVAL '${days}' DAY
   AND blob1 = 'feature_exposure'
   AND (blob2 = '${prefix}' OR startsWith(blob2, '${prefix}.'))
-GROUP BY flag, variant, reason, day
-ORDER BY flag, day
+GROUP BY flag, variant, reason
+ORDER BY flag
 FORMAT JSON`.trim()
 }
 

@@ -172,6 +172,7 @@ const props = defineProps<{
   shareToken?: string | null
   shareCapabilities?: ArtifactShareCapabilities | null
   displayModeOverride?: DisplayMode | null
+  telemetryOff?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -406,7 +407,7 @@ function getArtifactTelemetry() {
 }
 
 function logRuntimeError(reason: string) {
-  if (runtimeErrorLogged) {
+  if (runtimeErrorLogged || props.telemetryOff) {
     return
   }
 
@@ -442,7 +443,7 @@ function onReady() {
   status.value = 'ready'
   emit('ready')
 
-  if (openLogged) {
+  if (openLogged || props.telemetryOff) {
     return
   }
 
@@ -625,7 +626,11 @@ function schedulePartial() {
   partialTimer = setTimeout(flushPartial, PARTIAL_THROTTLE_MS - elapsed)
 }
 
-watch(() => props.artifactId, () => {
+watch(() => props.artifactId, (_artifactId, previousArtifactId) => {
+  if (!previousArtifactId) {
+    return
+  }
+
   openLogged = false
   runtimeErrorLogged = false
 })

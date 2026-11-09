@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_PROMPTS_PATH,
   computeUsageCost,
+  findStreamError,
   loadEvalCases,
   parseArtifactWrites,
   parseCliArguments,
@@ -136,6 +137,22 @@ describe('static checks', () => {
     expect(checks.edits.note).toBe('1 edit(s)')
   })
 
+  it('does not treat a variable named location as navigation', () => {
+    const checks = scoreStaticChecks({
+      ...QUIZ_CASE,
+      checks: ['no-navigation'],
+    }, {
+      writes: [],
+      artifacts: [{ kind: 'html', content: 'const location = "Kyiv"' }],
+    })
+
+    expect(checks['no-navigation'].status).toBe('pass')
+    expect(scoreStaticChecks({ ...QUIZ_CASE, checks: ['no-navigation'] }, {
+      writes: [],
+      artifacts: [{ kind: 'html', content: 'window.location.href = "/x"' }],
+    })['no-navigation'].status).toBe('fail')
+  })
+
   it('fails edits when the model resends the whole content', () => {
     const checks = scoreStaticChecks({ ...QUIZ_CASE, checks: ['edits'] }, {
       writes: [{ toolName: 'update_artifact', input: { content: 'all' } }],
@@ -231,6 +248,27 @@ describe('stream parsing', () => {
       },
       { toolName: 'update_artifact', input: { edits: [] }, error: 'Nope' },
     ])
+  })
+
+  it('keeps calls whose input the SDK rejected', () => {
+    expect(parseArtifactWrites(streamOf([{
+      type: 'tool-input-error',
+      toolCallId: 'bad',
+      toolName: 'create_artifact',
+      input: { kind: 'pdf' },
+      errorText: 'Invalid input',
+    }]))).toEqual([{
+      toolName: 'create_artifact',
+      input: { kind: 'pdf' },
+      error: 'Invalid input',
+    }])
+  })
+
+  it('finds a stream error chunk', () => {
+    expect(findStreamError(streamOf([{ type: 'start' }]))).toBeNull()
+    expect(findStreamError(streamOf([
+      { type: 'error', errorText: 'Provider failed' },
+    ]))).toBe('Provider failed')
   })
 })
 
