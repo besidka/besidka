@@ -35,6 +35,7 @@ const {
   captured,
   confirmMock,
   warnMock,
+  infoMock,
   colorMode,
   clipboardMock,
   fetchMock,
@@ -43,6 +44,7 @@ const {
   captured: [] as CapturedConnection[],
   confirmMock: vi.fn(),
   warnMock: vi.fn(),
+  infoMock: vi.fn(),
   clipboardMock: vi.fn(),
   fetchMock: vi.fn(),
 }))
@@ -113,7 +115,7 @@ vi.mock('@besidka/artifacts-protocol', async (importOriginal) => {
 })
 
 vi.mock('evlog/client', () => ({
-  log: { warn: warnMock, info: vi.fn(), error: vi.fn() },
+  log: { warn: warnMock, info: infoMock, error: vi.fn() },
 }))
 
 mockNuxtImport('useConfirm', () => confirmMock)
@@ -228,6 +230,7 @@ beforeEach(() => {
   captured.length = 0
   confirmMock.mockReset()
   warnMock.mockReset()
+  infoMock.mockReset()
   clipboardMock.mockReset()
   fetchMock.mockReset()
   loggedIn.value = false
@@ -423,6 +426,64 @@ describe('ChatArtifactFrame', () => {
       message: 'ReferenceError: x is not defined',
       stack: 'at x',
     }])
+  })
+
+  it('logs one artifact_open with the kind and no content', async () => {
+    const { connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    infoMock.mockClear()
+    await initialize(runtime)
+
+    expect(infoMock).toHaveBeenCalledTimes(1)
+    expect(infoMock).toHaveBeenCalledWith({
+      action: 'artifact_open',
+      attributes: {
+        artifacts: {
+          clientEvent: 'open',
+          initMs: expect.any(Number),
+          kind: RESULT.kind,
+          protocolVersion: PROTOCOL_VERSION,
+          source: 'owner',
+        },
+      },
+    })
+    expect(JSON.stringify(infoMock.mock.calls)).not.toContain(RESULT.content)
+  })
+
+  it('logs a runtime error once without the message text', async () => {
+    const { connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    warnMock.mockClear()
+    await initialize(runtime)
+
+    for (const message of ['first secret', 'second secret']) {
+      runtime.notify(METHODS.message, {
+        level: 'error',
+        data: { message },
+      })
+    }
+
+    await waitForPort()
+
+    const runtimeErrors = warnMock.mock.calls.filter(([entry]) => {
+      return entry.action === 'artifact_runtime_error'
+    })
+
+    expect(runtimeErrors).toEqual([[{
+      action: 'artifact_runtime_error',
+      attributes: {
+        artifacts: {
+          clientEvent: 'runtime-error',
+          reason: 'script-error',
+          kind: RESULT.kind,
+          protocolVersion: PROTOCOL_VERSION,
+          source: 'owner',
+        },
+      },
+    }]])
+    expect(JSON.stringify(warnMock.mock.calls)).not.toContain('secret')
   })
 
   it('removes the frame after a second load and logs ids only',

@@ -125,6 +125,7 @@
 
 <script setup lang="ts">
 import {
+  PROTOCOL_VERSION,
   RUNTIME_DOCUMENT_PATH,
   createHostConnection,
 } from '@besidka/artifacts-protocol'
@@ -219,6 +220,9 @@ let connection: HostConnection | null = null
 let loadTimer: ReturnType<typeof setTimeout> | null = null
 let partialTimer: ReturnType<typeof setTimeout> | null = null
 let lastPartialAt = 0
+let mountedAt = 0
+let openLogged = false
+let runtimeErrorLogged = false
 let lastSentResult: ToolResultContent | null = null
 let pendingCopyShownAt = 0
 let storageMode: StorageMode = 'memory'
@@ -393,10 +397,40 @@ function teardown() {
   lastSentResult = null
 }
 
+function getArtifactTelemetry() {
+  return {
+    kind: props.result?.kind ?? props.partial?.kind ?? null,
+    protocolVersion: PROTOCOL_VERSION,
+    source: props.source ?? 'owner',
+  }
+}
+
+function logRuntimeError(reason: string) {
+  if (runtimeErrorLogged) {
+    return
+  }
+
+  runtimeErrorLogged = true
+  log.warn({
+    action: 'artifact_runtime_error',
+    attributes: {
+      artifacts: {
+        clientEvent: 'runtime-error',
+        reason,
+        ...getArtifactTelemetry(),
+      },
+    },
+  })
+}
+
 function fail(kind: FrameErrorKind) {
   teardown()
   errorKind.value = kind
   status.value = 'error'
+
+  if (kind === 'timeout') {
+    logRuntimeError('timeout')
+  }
 }
 
 function onReady() {
@@ -407,9 +441,29 @@ function onReady() {
   loadTimer = null
   status.value = 'ready'
   emit('ready')
+
+  if (openLogged) {
+    return
+  }
+
+  openLogged = true
+  log.info({
+    action: 'artifact_open',
+    attributes: {
+      artifacts: {
+        clientEvent: 'open',
+        initMs: Date.now() - mountedAt,
+        ...getArtifactTelemetry(),
+      },
+    },
+  })
 }
 
 function onMessage(params: LogMessageParams) {
+  if (params.level === 'error') {
+    logRuntimeError('script-error')
+  }
+
   emit('runtime-message', {
     level: params.level,
     message: params.data.message,
@@ -500,6 +554,7 @@ function mountFrame() {
 
   teardown()
   status.value = 'loading'
+  mountedAt = Date.now()
   ensureArtifactFramePolicy(runtimeOrigin)
 
   const storage = createStorageHandlers()
@@ -569,6 +624,11 @@ function schedulePartial() {
 
   partialTimer = setTimeout(flushPartial, PARTIAL_THROTTLE_MS - elapsed)
 }
+
+watch(() => props.artifactId, () => {
+  openLogged = false
+  runtimeErrorLogged = false
+})
 
 watch(() => props.result, (result) => {
   if (result && isSameResult(lastSentResult, result)) {
