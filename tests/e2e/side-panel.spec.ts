@@ -89,6 +89,44 @@ test.describe('desktop', () => {
       .not.toHaveAttribute('data-docked', 'true')
   })
 
+  test('full width reserves the pill gutter only while the sidebar is '
+    + 'pinned', async ({ page }) => {
+    async function setSidebarPinned(isPinned: boolean) {
+      const response = await page.request.patch('/api/v1/profiles/settings', {
+        data: { sidebarPinned: isPinned },
+      })
+
+      expect(response.ok()).toBe(true)
+    }
+
+    async function readPanelGutter(): Promise<number> {
+      await page.locator(DEMO_OPEN).click()
+      await page.locator('[data-testid="side-panel-full-width"]').click()
+      await expect(page.locator(PANEL)).toHaveAttribute(
+        'data-full-width',
+        'true',
+      )
+
+      return await page.locator(PANEL).evaluate((element) => {
+        return Number.parseFloat(getComputedStyle(element).paddingRight)
+      })
+    }
+
+    try {
+      await setSidebarPinned(false)
+      await openDemoChat(page)
+      expect(await readPanelGutter()).toBe(0)
+
+      await setSidebarPinned(true)
+      await page.reload()
+      await waitForHydration(page)
+      await expect(page.locator(DEMO_OPEN)).toBeVisible({ timeout: 15_000 })
+      expect(await readPanelGutter()).toBeGreaterThanOrEqual(80)
+    } finally {
+      await setSidebarPinned(false)
+    }
+  })
+
   test('expanding to full width traps focus and Escape collapses it before '
     + 'closing', async ({ page }) => {
     await openDemoChat(page)

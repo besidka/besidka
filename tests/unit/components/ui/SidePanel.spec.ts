@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
-import { defineComponent, h } from 'vue'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { computed, defineComponent, h } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UiSidePanel from '../../../../app/components/ui/SidePanel.client.vue'
@@ -9,6 +9,23 @@ import {
   useSidePanel,
 } from '../../../../app/composables/side-panel'
 import type { SidePanelView } from '../../../../app/composables/side-panel'
+
+const pillState = vi.hoisted(() => ({
+  isPinned: { value: false },
+  isDesktop: { value: true },
+}))
+
+mockNuxtImport('useUserSetting', () => {
+  return () => ({
+    sidebarPinned: computed(() => pillState.isPinned.value),
+  })
+})
+
+mockNuxtImport('useDevice', () => {
+  return () => ({
+    isDesktop: pillState.isDesktop.value,
+  })
+})
 
 enableAutoUnmount(afterEach)
 
@@ -133,6 +150,8 @@ describe('ui/SidePanel', () => {
   })
 
   afterEach(() => {
+    pillState.isPinned.value = false
+    pillState.isDesktop.value = true
     resetSidePanelState()
     document.querySelectorAll('dialog[data-test-extra]').forEach((dialog) => {
       dialog.remove()
@@ -575,6 +594,41 @@ describe('ui/SidePanel', () => {
         expect(panel.attributes('style') ?? '').not.toContain('width')
         expect(wrapper.find(SEPARATOR).exists()).toBe(false)
         expect(wrapper.find(WIDTH_PRESET).exists()).toBe(false)
+      })
+
+      it('gives the content the full width while the pill only peeks',
+        async () => {
+          const wrapper = await mountPanel()
+
+          await openPanel()
+          await wrapper.get(FULL_WIDTH).trigger('click')
+
+          const classes = wrapper.get(PANEL).classes()
+
+          expect(classes).toContain('left-0')
+          expect(classes).not.toContain('pr-20')
+        })
+
+      it('reserves the pill gutter while the sidebar is pinned', async () => {
+        pillState.isPinned.value = true
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+        await wrapper.get(FULL_WIDTH).trigger('click')
+
+        expect(wrapper.get(PANEL).classes()).toContain('pr-20')
+      })
+
+      it('reserves the pill gutter on a device without hover', async () => {
+        pillState.isDesktop.value = false
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+        await wrapper.get(FULL_WIDTH).trigger('click')
+
+        expect(wrapper.get(PANEL).classes()).toContain('pr-20')
       })
 
       it('keeps the docked inset so the chat behind does not reflow', async () => {

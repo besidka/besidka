@@ -39,7 +39,8 @@
           'z-50': layout === 'docked',
           'z-[60]': layout === 'overlay',
           'w-[70vw]': layout === 'overlay' && !isLargeViewport,
-          'left-0 pr-20': isDockedFullWidth,
+          'left-0': isDockedFullWidth,
+          'pr-20': isPillGutterReserved,
           'side-panel-width-follow': layout === 'docked',
           'side-panel-collapsed': isCollapsed,
         }"
@@ -288,6 +289,8 @@ const {
   persistWidth,
 } = useSidePanel()
 const layout = useSidePanelLayout()
+const { sidebarPinned } = useUserSetting()
+const device = useDevice()
 const isLargeViewport = useMediaQuery('(min-width: 64rem)')
 const route = useRoute()
 const { width: viewportWidth } = useWindowSize()
@@ -357,6 +360,10 @@ const dockedInset = computed<number>(() => {
 
 const isDockedFullWidth = computed<boolean>(() => {
   return layout.value === 'docked' && isRenderedFullWidth.value
+})
+
+const isPillGutterReserved = computed<boolean>(() => {
+  return isDockedFullWidth.value && (sidebarPinned.value || !device.isDesktop)
 })
 
 const isDockedResizable = computed<boolean>(() => {
