@@ -36,6 +36,7 @@ export const PALETTE_TOKEN_NAMES = [
   '--color-success',
   '--color-warning',
   '--color-error',
+  '--radius-box',
 ]
 
 export const DARK_DIAGRAM_SERIES_COLORS = [

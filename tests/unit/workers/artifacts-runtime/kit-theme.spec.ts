@@ -66,6 +66,18 @@ describe('runtime palette from the Besidka theme', () => {
     }
   })
 
+  it('takes the block corner radius from the theme like the chat block', () => {
+    const mainCss = readFileSync(MAIN_CSS_PATH, 'utf8')
+    const mainRadius = mainCss.match(/--radius-box:\s*([^;]+);/)?.[1]
+
+    for (const theme of ['light', 'dark'] as const) {
+      expect(PALETTE_TOKENS[theme]['--radius-box']).toBe(mainRadius)
+    }
+
+    expect(KIT_STYLE).toMatch(/\.block \{[^}]*border-radius: var\(--radius-box\)/)
+    expect(KIT_STYLE).not.toMatch(/border-radius: 1rem/)
+  })
+
   it('declares the tokens of both themes and the series colours of dark', () => {
     for (const theme of ['light', 'dark'] as const) {
       expect(Object.keys(PALETTE_TOKENS[theme]))

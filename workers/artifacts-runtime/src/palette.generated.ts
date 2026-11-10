@@ -16,6 +16,7 @@ export const PALETTE_TOKENS: Record<Theme, Record<string, string>> = {
     '--color-success': 'oklch(50.8% 0.118 165.612)',
     '--color-warning': 'oklch(55.5% 0.163 48.998)',
     '--color-error': 'oklch(50.5% 0.213 27.518)',
+    '--radius-box': '.5rem',
   },
   dark: {
     '--color-base-100': 'oklch(26.8% 0.007 34.298)',
@@ -27,6 +28,7 @@ export const PALETTE_TOKENS: Record<Theme, Record<string, string>> = {
     '--color-success': 'oklch(90.5% 0.093 164.15)',
     '--color-warning': 'oklch(96.2% 0.059 95.617)',
     '--color-error': 'oklch(88.5% 0.062 18.334)',
+    '--radius-box': '.5rem',
     '--color-pink-300': 'oklch(82.3% 0.12 346.018)',
     '--color-sky-400': 'oklch(74.6% 0.16 232.661)',
     '--color-emerald-300': 'oklch(84.5% 0.143 164.978)',

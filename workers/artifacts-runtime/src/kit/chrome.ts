@@ -48,7 +48,7 @@ export const KIT_STYLE = `
   color: var(--besidka-fg);
   background: color-mix(in srgb, var(--besidka-bg) 50%, transparent);
   border: 1px solid var(--besidka-border);
-  border-radius: 1rem;
+  border-radius: var(--radius-box);
   box-shadow: 0 1px 3px 0 var(--besidka-shadow), 0 1px 2px -1px var(--besidka-shadow);
   font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -144,7 +144,7 @@ button svg {
   padding: 0.25rem;
   list-style: none;
   background: var(--besidka-bg);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-box);
   box-shadow: 0 10px 15px -3px var(--besidka-shadow), 0 4px 6px -4px var(--besidka-shadow), 0 0 0 1px color-mix(in srgb, var(--besidka-fg) 8%, transparent);
 }
 .dropdown-item {
