@@ -926,3 +926,64 @@ describe('ChatArtifactDetail share link', () => {
       expect(modal.attributes('data-current-version')).toBe('3')
     })
 })
+
+describe('ChatArtifactDetail actions menu', () => {
+  async function openMenu() {
+    openTarget()
+
+    const wrapper = await mountDetail()
+    const menu = wrapper.get('details.dropdown').element as HTMLDetailsElement
+
+    menu.open = true
+
+    return { wrapper, menu }
+  }
+
+  it('closes on a pointer press outside', async () => {
+    const { menu } = await openMenu()
+
+    document.body.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true }),
+    )
+    document.body.click()
+    await flushPromises()
+
+    expect(menu.open).toBe(false)
+  })
+
+  it('closes when focus moves into an iframe', async () => {
+    const { menu } = await openMenu()
+    const iframe = document.createElement('iframe')
+
+    iframe.tabIndex = 0
+    document.body.appendChild(iframe)
+    iframe.focus()
+    window.dispatchEvent(new Event('blur'))
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10)
+    })
+
+    expect(menu.open).toBe(false)
+    iframe.remove()
+  })
+
+  it('closes on Escape and returns focus to the trigger', async () => {
+    const { wrapper, menu } = await openMenu()
+
+    await wrapper.get('details.dropdown').trigger('keydown', { key: 'Escape' })
+
+    expect(menu.open).toBe(false)
+  })
+
+  it('closes when the version changes or the tab switches', async () => {
+    const { wrapper, menu } = await openMenu()
+
+    await wrapper.get('[data-testid="artifact-version-select"]')
+      .setValue('1')
+    expect(menu.open).toBe(false)
+
+    menu.open = true
+    await wrapper.get('[data-testid="artifact-tab-code"]').trigger('click')
+    expect(menu.open).toBe(false)
+  })
+})

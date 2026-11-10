@@ -128,6 +128,7 @@
       <details
         ref="actionsMenu"
         class="dropdown dropdown-end"
+        @keydown.esc="onActionsEscape"
       >
         <summary
           class="btn btn-sm btn-ghost btn-circle"
@@ -468,6 +469,8 @@ const previewPanelId = useId()
 const codePanelId = useId()
 const actionsMenu = useTemplateRef<HTMLDetailsElement>('actionsMenu')
 
+onClickOutside(actionsMenu, closeActionsMenu, { detectIframe: true })
+
 const activeTab = shallowRef<ArtifactTab>('preview')
 const hasOpenedCode = shallowRef<boolean>(false)
 
@@ -717,14 +720,24 @@ useHead({
 })
 
 function selectTab(tab: ArtifactTab) {
+  closeActionsMenu()
   activeTab.value = tab
   isCodeTabForced.value = false
 }
 
 function closeActionsMenu() {
-  if (actionsMenu.value) {
+  if (actionsMenu.value?.open) {
     actionsMenu.value.open = false
   }
+}
+
+function onActionsEscape() {
+  if (!actionsMenu.value?.open) {
+    return
+  }
+
+  closeActionsMenu()
+  actionsMenu.value.querySelector<HTMLElement>('summary')?.focus()
 }
 
 async function loadDetail() {
@@ -834,6 +847,8 @@ watch(kind, (value) => {
 
 function onVersionChange(event: Event) {
   const version = Number((event.target as HTMLSelectElement).value)
+
+  closeActionsMenu()
 
   if (Number.isSafeInteger(version)) {
     panel.selectVersion(version)
