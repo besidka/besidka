@@ -66,6 +66,7 @@
 		"cms:files:upload": "node scripts/cms-bucket-manager.mjs upload",
 		"cms:files:download": "node scripts/cms-bucket-manager.mjs download",
 		"legal:hash": "node scripts/legal-revision-hash.mjs",
+		"shiki:parity": "node scripts/shiki-token-parity.mjs",
 		"mcp:surface": "vitest run tests/unit/config/mcp-surface.spec.ts -u",
 		"mcp:version-guard": "node scripts/mcp-version-guard.mjs",
 		"bench:files-index": "node scripts/bench/files-user-id-index.mjs"
@@ -104,6 +105,7 @@
 		"@nuxtjs/sitemap": "^9.1.0",
 		"@openrouter/ai-sdk-provider": "3.1.0",
 		"@panzoom/panzoom": "4.6.2",
+		"@shikijs/stream": "^4.5.0",
 		"@tailwindcss/vite": "^4.3.3",
 		"@videojs/html": "10.1.0",
 		"@vite-pwa/nuxt": "^1.1.1",
@@ -133,7 +135,6 @@
 		"read-excel-file": "^9.3.12",
 		"remark-breaks": "^4.0.0",
 		"shiki": "^4.5.0",
-		"shiki-stream": "^0.1.5",
 		"tailwindcss": "^4.3.3",
 		"turndown": "^7.2.4",
 		"ulid": "^3.0.2",
