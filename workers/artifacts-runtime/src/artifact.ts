@@ -1,4 +1,8 @@
-import type { ArtifactPayload, Theme } from '@besidka/artifacts-protocol'
+import type {
+  ArtifactPayload,
+  RenderedParams,
+  Theme,
+} from '@besidka/artifacts-protocol'
 import {
   attachDesignSystem,
   detachDesignSystem,
@@ -16,6 +20,13 @@ import {
   reportError,
   resetReportBudget,
 } from './report.ts'
+import {
+  applyVisibility,
+  hideDocument,
+  nextFrame,
+  revealDocument,
+  waitForFinalPaint,
+} from './reveal.ts'
 import { ROOT_ELEMENT_ID, createShellDocument } from './shell.ts'
 import { observeDocumentSize } from './size.ts'
 import { applyThemeToDocument, getTheme, setTheme } from './theme.ts'
@@ -27,8 +38,16 @@ let documentReplaced = false
 let reactMounted = false
 let pendingPartial: ArtifactPayload | null = null
 let partialFrame = 0
+let renderedNotifier: (params: RenderedParams) => void = () => {}
+
+export function setRenderedNotifier(
+  notifier: (params: RenderedParams) => void,
+) {
+  renderedNotifier = notifier
+}
 
 export function installDocumentHooks() {
+  applyVisibility()
   applyThemeToDocument()
   installGlobalErrorHandlers()
   installLinkInterception()
@@ -105,14 +124,10 @@ function startRender(): number {
   return renderSequence
 }
 
-export async function renderArtifact(payload: ArtifactPayload) {
-  cancelPartial()
-
-  const sequence = startRender()
-  const isCurrent = () => {
-    return sequence === renderSequence
-  }
-
+async function renderArtifactContent(
+  payload: ArtifactPayload,
+  isCurrent: () => boolean,
+) {
   try {
     await unmountCurrentReact()
 
@@ -164,10 +179,36 @@ export async function renderArtifact(payload: ArtifactPayload) {
     if (isCurrent()) {
       reportError(exception)
     }
-  } finally {
-    if (isCurrent()) {
-      observeDocumentSize()
-    }
+  }
+}
+
+export async function renderArtifact(payload: ArtifactPayload) {
+  cancelPartial()
+
+  const sequence = startRender()
+  const isCurrent = () => {
+    return sequence === renderSequence
+  }
+
+  hideDocument()
+  await renderArtifactContent(payload, isCurrent)
+
+  if (!isCurrent()) {
+    return
+  }
+
+  await waitForFinalPaint()
+
+  if (!isCurrent()) {
+    return
+  }
+
+  revealDocument()
+  observeDocumentSize()
+  await nextFrame()
+
+  if (isCurrent()) {
+    renderedNotifier({ kind: payload.kind, partial: false })
   }
 }
 
@@ -187,6 +228,8 @@ async function flushPartial() {
     return sequence === renderSequence
   }
 
+  revealDocument()
+
   try {
     await unmountCurrentReact()
 
@@ -204,6 +247,7 @@ async function flushPartial() {
 
     if (payload.kind !== 'markdown') {
       renderSourcePreview(payload, root)
+      renderedNotifier({ kind: payload.kind, partial: true })
 
       return
     }
@@ -220,8 +264,16 @@ async function flushPartial() {
       isCurrent,
       partial: true,
     })
+
+    if (isCurrent()) {
+      renderedNotifier({ kind: payload.kind, partial: true })
+    }
   } catch (exception) {
     reportError(exception, { level: 'warning', showPanel: false })
+
+    if (isCurrent()) {
+      renderedNotifier({ kind: payload.kind, partial: true })
+    }
   } finally {
     observeDocumentSize()
   }

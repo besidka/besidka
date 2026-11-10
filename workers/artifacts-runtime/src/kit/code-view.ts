@@ -105,7 +105,5 @@ export function createCodeController(element: HTMLElement): KitController {
     }
   }
 
-  return createRenderLoop(element, (theme) => {
-    render(theme)
-  })
+  return createRenderLoop(element, render)
 }

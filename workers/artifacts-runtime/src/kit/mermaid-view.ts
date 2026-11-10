@@ -234,9 +234,7 @@ export function createMermaidController(element: HTMLElement): KitController {
     }
   }
 
-  const loop = createRenderLoop(element, (theme) => {
-    render(theme)
-  })
+  const loop = createRenderLoop(element, render)
   const resizeObserver = typeof ResizeObserver === 'undefined'
     ? null
     : new ResizeObserver(() => {
@@ -259,5 +257,6 @@ export function createMermaidController(element: HTMLElement): KitController {
       resizeObserver?.disconnect()
     },
     refresh: loop.refresh,
+    ready: loop.ready,
   }
 }

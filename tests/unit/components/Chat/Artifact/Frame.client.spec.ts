@@ -225,6 +225,15 @@ async function initialize(runtime: Endpoint) {
   return result
 }
 
+async function initializeRendering(runtime: Endpoint) {
+  await runtime.request(METHODS.initialize, {
+    protocolVersion: PROTOCOL_VERSION,
+    appCapabilities: { kinds: ['html'], rendered: true },
+  })
+  runtime.notify(METHODS.initialized, {})
+  await waitForPort()
+}
+
 async function mountFrame(props: Record<string, unknown> = {}) {
   const wrapper = await mountSuspended(ChatArtifactFrame, {
     attachTo: document.body,
@@ -363,6 +372,106 @@ describe('ChatArtifactFrame', () => {
       ])
     })
 
+  it('keeps the skeleton over a ready runtime until it reports a render',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initializeRendering(runtime)
+
+      const frameContainer = connection.element.parentElement
+
+      expect(wrapper.emitted('ready')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(true)
+      expect(frameContainer?.classList.contains('invisible')).toBe(true)
+
+      runtime.notify(METHODS.rendered, { kind: 'html', partial: false })
+      await waitForPort()
+
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(false)
+      expect(frameContainer?.classList.contains('invisible')).toBe(false)
+    })
+
+  it('ignores a malformed render report', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initializeRendering(runtime)
+    runtime.notify(METHODS.rendered, { kind: 'pdf', partial: false })
+    await waitForPort()
+
+    expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+      .toBe(true)
+  })
+
+  it('shows the error state, not the source, when no render is reported',
+    async () => {
+      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout')
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initializeRendering(runtime)
+
+      const renderTimeout = timeoutSpy.mock.calls.find(([, delay]) => {
+        return delay === 20_000
+      })
+
+      timeoutSpy.mockRestore()
+      expect(renderTimeout).toBeDefined()
+      ;(renderTimeout![0] as () => void)()
+      await waitForPort()
+
+      expect(wrapper.find('[data-testid="artifact-frame-error"]').text())
+        .toContain('did not load')
+      expect(connection.element.isConnected).toBe(false)
+    })
+
+  it('holds the skeleton again while another result renders in the same frame',
+    async () => {
+      const { wrapper, connection } = await mountFrame({
+        result: null,
+        partial: { kind: 'html', title: 'Landing page', content: '<p>v' },
+      })
+      const runtime = connectRuntime(connection)
+
+      await initializeRendering(runtime)
+      runtime.notify(METHODS.rendered, { kind: 'html', partial: true })
+      await waitForPort()
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(false)
+
+      await wrapper.setProps({ result: RESULT })
+      await waitForPort()
+
+      expect(captured).toHaveLength(1)
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(true)
+
+      runtime.notify(METHODS.rendered, { kind: 'html', partial: false })
+      await waitForPort()
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(false)
+    })
+
+  it('does not resend or reload for the same content under a new version',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const notifications: Array<[string, unknown]> = []
+      const runtime = connectRuntime(connection, (method, params) => {
+        notifications.push([method, params])
+      })
+
+      await initialize(runtime)
+      notifications.length = 0
+      await wrapper.setProps({ result: { ...RESULT, version: 2 }, version: 2 })
+      await waitForPort()
+
+      expect(captured).toHaveLength(1)
+      expect(notifications).toEqual([])
+    })
+
   it('answers unknown methods with -32601', async () => {
     const { connection } = await mountFrame()
     const runtime = connectRuntime(connection)
@@ -375,12 +484,9 @@ describe('ChatArtifactFrame', () => {
     )).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
   })
 
-  it('sends a new version without reloading the iframe', async () => {
+  it('renders another version in a fresh iframe and realm', async () => {
     const { wrapper, connection } = await mountFrame()
-    const notifications: Array<[string, unknown]> = []
-    const runtime = connectRuntime(connection, (method, params) => {
-      notifications.push([method, params])
-    })
+    const runtime = connectRuntime(connection)
 
     await initialize(runtime)
 
@@ -389,13 +495,49 @@ describe('ChatArtifactFrame', () => {
     await wrapper.setProps({ result: nextResult, version: 2 })
     await waitForPort()
 
-    expect(captured).toHaveLength(1)
-    expect(connection.element.isConnected).toBe(true)
-    expect(notifications).toContainEqual([
+    expect(captured).toHaveLength(2)
+    expect(connection.element.isConnected).toBe(false)
+
+    const nextNotifications: Array<[string, unknown]> = []
+    const nextRuntime = connectRuntime(captured[1]!, (method, params) => {
+      nextNotifications.push([method, params])
+    })
+
+    await initialize(nextRuntime)
+    expect(captured[1]!.element.isConnected).toBe(true)
+    expect(nextNotifications).toContainEqual([
       METHODS.toolResult,
       { structuredContent: nextResult },
     ])
   })
+
+  it('keeps the iframe when the same version is sent again', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    await wrapper.setProps({ result: { ...RESULT }, version: 1 })
+    await waitForPort()
+
+    expect(captured).toHaveLength(1)
+    expect(connection.element.isConnected).toBe(true)
+  })
+
+  it('keeps the iframe when a streamed result arrives for the first time',
+    async () => {
+      const { wrapper, connection } = await mountFrame({
+        result: null,
+        partial: { kind: 'html', title: 'Landing page', content: '<p>v' },
+      })
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      await wrapper.setProps({ result: RESULT })
+      await waitForPort()
+
+      expect(captured).toHaveLength(1)
+      expect(connection.element.isConnected).toBe(true)
+    })
 
   it('asks before opening a link and opens it without an opener',
     async () => {
@@ -807,10 +949,8 @@ describe('ChatArtifactFrame', () => {
         version: 2,
       })
 
-      await expect(second).resolves.toEqual({
-        copied: false,
-        reason: 'denied',
-      })
+      second.catch(() => {})
+      await waitForPort()
       expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
         .toBe(false)
     })

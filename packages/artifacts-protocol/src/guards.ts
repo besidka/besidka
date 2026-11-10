@@ -42,6 +42,7 @@ import type {
   OpenLinkParams,
   RequestDisplayModeParams,
   RequestDisplayModeResult,
+  RenderedParams,
   SizeChangedParams,
   StorageGetResult,
   StorageKeyParams,
@@ -275,6 +276,12 @@ export function isHostContextChangedParams(
   return isRecord(value)
     && (value.theme === undefined || isTheme(value.theme))
     && (value.displayMode === undefined || isDisplayMode(value.displayMode))
+}
+
+export function isRenderedParams(value: unknown): value is RenderedParams {
+  return isRecord(value)
+    && isArtifactKind(value.kind)
+    && typeof value.partial === 'boolean'
 }
 
 export function isSizeChangedParams(

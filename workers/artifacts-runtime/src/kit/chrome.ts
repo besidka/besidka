@@ -1,5 +1,6 @@
 import type { Theme } from '@besidka/artifacts-protocol'
 import { paletteDeclarations } from '../palette.ts'
+import { reportError } from '../report.ts'
 import { getTheme, onThemeChange } from '../theme.ts'
 import type { HostActionOutcome } from './host-actions.ts'
 
@@ -632,6 +633,7 @@ export interface KitController {
   connect: () => void
   disconnect: () => void
   refresh: () => void
+  ready: Promise<void>
 }
 
 /**
@@ -641,13 +643,27 @@ export interface KitController {
  */
 export function createRenderLoop(
   element: HTMLElement,
-  render: (theme: Theme) => void,
+  render: (theme: Theme) => void | Promise<void>,
 ): KitController {
   let frame = 0
+  let markReady = () => {}
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
   let stopThemeListener: (() => void) | null = null
   const observer = new MutationObserver(() => {
     schedule()
   })
+
+  async function renderFirst() {
+    try {
+      await render(getTheme())
+    } catch (exception) {
+      reportError(exception, { level: 'warning', showPanel: false })
+    } finally {
+      markReady()
+    }
+  }
 
   function schedule() {
     if (frame) {
@@ -673,9 +689,10 @@ export function createRenderLoop(
       stopThemeListener ??= onThemeChange(() => {
         schedule()
       })
-      render(getTheme())
+      renderFirst()
     },
     disconnect: () => {
+      markReady()
       observer.disconnect()
       stopThemeListener?.()
       stopThemeListener = null
@@ -687,5 +704,6 @@ export function createRenderLoop(
       frame = 0
     },
     refresh: schedule,
+    ready,
   }
 }

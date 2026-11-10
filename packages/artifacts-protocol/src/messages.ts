@@ -52,6 +52,7 @@ export interface HostContext {
 
 export interface AppCapabilities {
   kinds: ArtifactKind[]
+  rendered?: boolean
 }
 
 export interface InitializeParams {
@@ -90,6 +91,11 @@ export interface HostContextChangedParams {
 
 export interface SizeChangedParams {
   height: number
+}
+
+export interface RenderedParams {
+  kind: ArtifactKind
+  partial: boolean
 }
 
 export interface OpenLinkParams {
@@ -194,6 +200,7 @@ export interface RuntimeRequests {
 export interface RuntimeNotifications {
   [METHODS.initialized]: EmptyResult
   [METHODS.sizeChanged]: SizeChangedParams
+  [METHODS.rendered]: RenderedParams
   [METHODS.message]: LogMessageParams
 }
 

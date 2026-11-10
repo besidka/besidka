@@ -185,8 +185,10 @@ import type {
   HostConnection,
   HostContext,
   HostStorageHandlers,
+  InitializeParams,
   LogMessageParams,
   OpenLinkParams,
+  RenderedParams,
   StorageMode,
   Theme,
   ToolResultContent,
@@ -232,6 +234,7 @@ const emit = defineEmits<{
 }>()
 
 const LOAD_TIMEOUT_MS = 10_000
+const RENDER_TIMEOUT_MS = 20_000
 const COPY_PREVIEW_MAX_LENGTH = 80
 const COPY_KEYBOARD_GUARD_MS = 500
 const PARTIAL_THROTTLE_MS = 250
@@ -265,10 +268,13 @@ const runtimeOrigin = String(useRuntimeConfig().public.artifactsOrigin ?? '')
 const host = useTemplateRef<HTMLDivElement>('host')
 const status = shallowRef<FrameStatus>('loading')
 const errorKind = shallowRef<FrameErrorKind>('timeout')
+const reportsRendered = shallowRef<boolean>(false)
+const isRendered = shallowRef<boolean>(false)
 
 let frame: HTMLIFrameElement | null = null
 let connection: HostConnection | null = null
 let loadTimer: ReturnType<typeof setTimeout> | null = null
+let renderTimer: ReturnType<typeof setTimeout> | null = null
 let partialTimer: ReturnType<typeof setTimeout> | null = null
 let lastPartialAt = 0
 let mountedAt = 0
@@ -302,13 +308,23 @@ const hasContent = computed<boolean>(() => {
   return !!props.result || !!props.partial
 })
 
+const isAwaitingRender = computed<boolean>(() => {
+  return status.value === 'ready'
+    && hasContent.value
+    && reportsRendered.value
+    && !isRendered.value
+})
+
 const isShowingContent = computed<boolean>(() => {
-  return status.value === 'ready' && hasContent.value
+  return status.value === 'ready'
+    && hasContent.value
+    && !isAwaitingRender.value
 })
 
 const isLoading = computed<boolean>(() => {
   return status.value === 'loading'
     || (status.value === 'ready' && !hasContent.value)
+    || isAwaitingRender.value
 })
 
 const {
@@ -418,12 +434,22 @@ function isSameResult(
     && left.content === right.content
 }
 
+function hasSameRenderedContent(
+  left: ToolResultContent | null,
+  right: ToolResultContent,
+): boolean {
+  return !!left
+    && left.kind === right.kind
+    && left.content === right.content
+}
+
 function sendResult(result: ToolResultContent) {
   if (!connection || isSameResult(lastSentResult, result)) {
     return
   }
 
   lastSentResult = toPlainResult(result)
+  isRendered.value = false
   connection.sendToolResult(lastSentResult)
 }
 
@@ -445,8 +471,13 @@ function clearTimers() {
     clearTimeout(partialTimer)
   }
 
+  if (renderTimer) {
+    clearTimeout(renderTimer)
+  }
+
   loadTimer = null
   partialTimer = null
+  renderTimer = null
 }
 
 function teardown() {
@@ -459,6 +490,8 @@ function teardown() {
   connection = null
   frame = null
   lastSentResult = null
+  reportsRendered.value = false
+  isRendered.value = false
 }
 
 function getArtifactTelemetry() {
@@ -521,6 +554,18 @@ function onReady() {
       },
     },
   })
+}
+
+function onInitialized(params: InitializeParams) {
+  reportsRendered.value = params.appCapabilities.rendered === true
+}
+
+function onRendered(params: RenderedParams) {
+  if (params.partial && lastSentResult) {
+    return
+  }
+
+  isRendered.value = true
 }
 
 function onMessage(params: LogMessageParams) {
@@ -640,7 +685,9 @@ function mountFrame() {
 
   connection = createHostConnection(element, {
     getHostContext,
+    onInitialized,
     onReady,
+    onRendered,
     onMessage,
     onOpenLink,
     onUnexpectedNavigation,
@@ -709,7 +756,25 @@ watch(() => props.result, (result) => {
   dismissPendingCopy()
   dismissPendingExport()
 
+  if (result && !connection && status.value === 'error') {
+    mountFrame()
+
+    return
+  }
+
   if (!result || !connection) {
+    return
+  }
+
+  if (lastSentResult && !hasSameRenderedContent(lastSentResult, result)) {
+    mountFrame()
+
+    return
+  }
+
+  if (lastSentResult) {
+    lastSentResult = toPlainResult(result)
+
     return
   }
 
@@ -742,6 +807,25 @@ watch([
   if (sessionChanged && frame) {
     mountFrame()
   }
+})
+
+watch(isAwaitingRender, (isAwaiting) => {
+  if (renderTimer) {
+    clearTimeout(renderTimer)
+    renderTimer = null
+  }
+
+  if (!isAwaiting) {
+    return
+  }
+
+  renderTimer = setTimeout(() => {
+    renderTimer = null
+
+    if (isAwaitingRender.value) {
+      fail('timeout')
+    }
+  }, RENDER_TIMEOUT_MS)
 })
 
 watch(theme, (value) => {
