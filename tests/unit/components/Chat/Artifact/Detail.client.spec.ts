@@ -1471,6 +1471,33 @@ describe('ChatArtifactDetail actions menu', () => {
     iframe.remove()
   })
 
+  it('closes when Tab moves focus out of the menu', async () => {
+    const { wrapper, menu } = await openMenu()
+    const outside = document.createElement('button')
+
+    document.body.appendChild(outside)
+    wrapper.get('details.dropdown').element.dispatchEvent(
+      new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }),
+    )
+
+    expect(menu.open).toBe(false)
+    outside.remove()
+  })
+
+  it('stays open while focus moves between items of the menu', async () => {
+    const { wrapper, menu } = await openMenu()
+    const item = wrapper.get('details.dropdown button').element
+
+    wrapper.get('details.dropdown summary').element.dispatchEvent(
+      new FocusEvent('focusout', { bubbles: true, relatedTarget: item }),
+    )
+    wrapper.get('details.dropdown').element.dispatchEvent(
+      new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
+    )
+
+    expect(menu.open).toBe(true)
+  })
+
   it('closes on Escape and returns focus to the trigger', async () => {
     const { wrapper, menu } = await openMenu()
 

@@ -138,6 +138,7 @@
         ref="actionsMenu"
         class="dropdown dropdown-end"
         @keydown.esc="onActionsEscape"
+        @focusout="onActionsFocusOut"
       >
         <summary
           class="btn btn-sm btn-ghost btn-circle"
@@ -809,6 +810,20 @@ function onActionsEscape(event: KeyboardEvent) {
   event.preventDefault()
   closeActionsMenu()
   actionsMenu.value.querySelector<HTMLElement>('summary')?.focus()
+}
+
+function onActionsFocusOut(event: FocusEvent) {
+  const nextTarget = event.relatedTarget
+
+  if (!(nextTarget instanceof Node)) {
+    return
+  }
+
+  if (actionsMenu.value?.contains(nextTarget)) {
+    return
+  }
+
+  closeActionsMenu()
 }
 
 async function loadDetail(options: { keepCurrent?: boolean } = {}) {
