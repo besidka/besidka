@@ -284,28 +284,28 @@
           </summary>
           <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words">{{ runtimeError.stack }}</pre>
         </details>
-      </div>
-      <div
-        v-if="isOwner && fixOrigin === 'none'"
-        class="flex shrink-0 flex-col items-end gap-2"
-      >
-        <p
-          class="text-xs text-base-content/70"
-          data-testid="artifact-fix-no-chat"
+        <div
+          v-if="isOwner && fixOrigin === 'none'"
+          class="mt-3 flex flex-col items-start gap-2"
         >
-          {{ noOriginChatText }}
-        </p>
-        <button
-          type="button"
-          class="btn btn-sm"
-          data-testid="artifact-start-new-chat"
-          @click="onStartNewChat"
-        >
-          Start a new chat with this artifact
-        </button>
+          <p
+            class="text-sm text-base-content/70"
+            data-testid="artifact-fix-no-chat"
+          >
+            {{ noOriginChatText }}
+          </p>
+          <button
+            type="button"
+            class="btn btn-sm"
+            data-testid="artifact-start-new-chat"
+            @click="onStartNewChat"
+          >
+            Start a new chat with this artifact
+          </button>
+        </div>
       </div>
       <button
-        v-else-if="isOwner"
+        v-if="isOwner && fixOrigin !== 'none'"
         type="button"
         class="btn btn-sm"
         :disabled="fixOrigin === 'unknown'"
