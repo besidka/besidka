@@ -102,37 +102,6 @@ function sharedReactPlugin(ownSpecifier) {
   }
 }
 
-/**
- * Mermaid lazy-loads the ELK layout engine (elkjs, EPL-2.0 or GPL-3.0).
- * The runtime ships only permissively licensed code, so that import resolves
- * to a stub that fails with a clear message; diagrams keep the default
- * layout.
- */
-function excludeElkLayoutPlugin() {
-  return {
-    name: 'besidka-exclude-elk',
-    setup(pluginBuild) {
-      pluginBuild.onResolve({ filter: /^elkjs(\/|$)/ }, (args) => {
-        return { path: args.path, namespace: 'besidka-excluded' }
-      })
-
-      pluginBuild.onLoad({ filter: /.*/, namespace: 'besidka-excluded' }, () => {
-        return {
-          contents: [
-            'export default class UnavailableLayout {',
-            '  constructor() {',
-            '    throw new Error(\'The ELK diagram layout is not available in Besidka artifacts. Remove the elk layout option to use the default layout.\')',
-            '  }',
-            '}',
-            '',
-          ].join('\n'),
-          loader: 'js',
-        }
-      })
-    },
-  }
-}
-
 function createVendorEntrySource(vendorModule) {
   const specifier = JSON.stringify(vendorModule.specifier)
 
@@ -192,7 +161,6 @@ async function buildRuntime() {
     splitting: true,
     absWorkingDir: workerDirectory,
     external: [...SHARED_REACT_SPECIFIERS],
-    plugins: [excludeElkLayoutPlugin()],
   })
   const entryOutput = Object.entries(result.metafile.outputs).find(
     ([, output]) => {

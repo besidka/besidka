@@ -2,18 +2,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MERMAID_MAX_TEXT_SIZE } from '@besidka/artifacts-protocol'
 
-const mermaidMock = vi.hoisted(() => {
+const peleMock = vi.hoisted(() => {
   return {
-    initialize: vi.fn(),
-    render: vi.fn(),
+    renderAsync: vi.fn(),
   }
 })
 
-vi.mock('mermaid', () => {
-  return { default: mermaidMock }
+vi.mock('pele/lazy', () => {
+  return { renderAsync: peleMock.renderAsync }
 })
 
-const EDGE_MESSAGE = 'Edge limit exceeded. 500 edges found, but the limit is 500.\n\nInitialize mermaid with maxEdges set to a higher number.'
+const EDGE_MESSAGE = 'Edge limit exceeded. 500 edges found, but the limit is 500.'
 
 const EDGE_LIMIT_TEXT = 'This diagram is too large to draw: it has more than 500 connections, the limit is 500. Split it into smaller diagrams.'
 
@@ -43,8 +42,7 @@ function readError(element: HTMLElement) {
 
 describe('besidka-mermaid limits', () => {
   beforeEach(() => {
-    mermaidMock.initialize.mockReset()
-    mermaidMock.render.mockReset()
+    peleMock.renderAsync.mockReset()
     document.body.innerHTML = ''
     vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
       callback()
@@ -57,8 +55,8 @@ describe('besidka-mermaid limits', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shows the short message when Mermaid reports the edge limit', async () => {
-    mermaidMock.render.mockRejectedValue(new Error(EDGE_MESSAGE))
+  it('shows the short message when the renderer reports the edge limit', async () => {
+    peleMock.renderAsync.mockRejectedValue(new Error(EDGE_MESSAGE))
 
     const element = await renderBlock('flowchart TD\nA-->B')
 
@@ -77,12 +75,12 @@ describe('besidka-mermaid limits', () => {
       expect(readError(element)?.hidden).toBe(false)
     })
     expect(readError(element)?.textContent)
-      .toMatch(/^This diagram is too large to draw: its source is [\d,]+ characters, the limit is 50,000 characters\./)
-    expect(mermaidMock.render).not.toHaveBeenCalled()
+      .toMatch(/^This diagram is too large to draw: its source is [\d,]+ characters, the limit is 20,000 characters\./)
+    expect(peleMock.renderAsync).not.toHaveBeenCalled()
   })
 
   it('keeps the old wording for other render errors', async () => {
-    mermaidMock.render.mockRejectedValue(new Error('Parse error on line 2'))
+    peleMock.renderAsync.mockRejectedValue(new Error('Parse error on line 2'))
 
     const element = await renderBlock('bad')
 
@@ -91,5 +89,41 @@ describe('besidka-mermaid limits', () => {
     })
     expect(readError(element)?.textContent)
       .toBe('Couldn\'t render diagram: Parse error on line 2')
+  })
+
+  describe('copy and download menus', () => {
+    const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
+
+    function readMenuLabels(element: HTMLElement, testId: string): string[] {
+      const panel = element.shadowRoot?.querySelector(
+        `[data-testid="${testId}-menu"]`,
+      )
+
+      return Array.from(panel?.querySelectorAll('[role="menuitem"]') ?? [])
+        .map(item => item.textContent ?? '')
+    }
+
+    it('lists the chat items in the chat order, with PNG where images can be copied', async () => {
+      vi.stubGlobal('ClipboardItem', { supports: () => true })
+      vi.stubGlobal('navigator', { clipboard: { write: () => {} } })
+      peleMock.renderAsync.mockResolvedValue({ svg: SVG })
+
+      const element = await renderBlock('flowchart TD\nA-->B')
+
+      expect(readMenuLabels(element, 'besidka-mermaid-copy'))
+        .toEqual(['Code', 'Markdown', 'SVG', 'PNG', 'For draw.io'])
+      expect(readMenuLabels(element, 'besidka-mermaid-download'))
+        .toEqual(['SVG', 'PNG', '.drawio'])
+    })
+
+    it('hides the PNG copy item where images cannot be copied', async () => {
+      vi.stubGlobal('ClipboardItem', undefined)
+      peleMock.renderAsync.mockResolvedValue({ svg: SVG })
+
+      const element = await renderBlock('flowchart TD\nA-->B')
+
+      expect(readMenuLabels(element, 'besidka-mermaid-copy'))
+        .toEqual(['Code', 'Markdown', 'SVG', 'For draw.io'])
+    })
   })
 })

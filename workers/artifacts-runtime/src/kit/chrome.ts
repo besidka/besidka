@@ -3,18 +3,35 @@ import { paletteDeclarations } from '../palette.ts'
 import { getTheme, onThemeChange } from '../theme.ts'
 import type { HostActionOutcome } from './host-actions.ts'
 
-export type IconName = 'copy' | 'check' | 'x' | 'fullscreen' | 'expand' | 'collapse' | 'download'
+export type IconName
+  = | 'copy'
+    | 'check'
+    | 'x'
+    | 'fullscreen'
+    | 'expand'
+    | 'collapse'
+    | 'download'
+    | 'code'
+    | 'file-text'
+    | 'file-code'
+    | 'workflow'
+    | 'image'
 
 export const FEEDBACK_DURATION_MS = 2_000
 
 const ICON_PATHS: Record<IconName, string> = {
-  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
-  check: '<path d="M20 6 9 17l-5-5"/>',
-  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-  fullscreen: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
-  expand: '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/>',
-  download: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
-  collapse: '<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>',
+  'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  'check': '<path d="M20 6 9 17l-5-5"/>',
+  'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  'fullscreen': '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  'expand': '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/>',
+  'download': '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+  'collapse': '<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>',
+  'code': '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
+  'file-text': '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  'file-code': '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/>',
+  'workflow': '<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>',
+  'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
 }
 
 export const KIT_STYLE = `
@@ -33,7 +50,6 @@ export const KIT_STYLE = `
   border: 1px solid var(--besidka-border);
   border-radius: 1rem;
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  overflow: hidden;
   font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 .block[data-theme='dark'] {
@@ -102,21 +118,48 @@ button svg {
   height: 14px;
   flex-shrink: 0;
 }
-.menu {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.25rem;
-  padding: 0 1rem 0.375rem;
+.dropdown {
+  position: relative;
+  display: inline-flex;
 }
-.menu[hidden] {
+.dropdown-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  width: 11rem;
+  padding-top: 0.5rem;
+}
+.dropdown-panel[hidden] {
   display: none;
 }
-.menu-title {
-  align-self: center;
-  margin-right: auto;
-  color: var(--besidka-muted);
+.dropdown-panel[data-placement='top'] {
+  top: auto;
+  bottom: 100%;
+  padding-top: 0;
+  padding-bottom: 0.5rem;
+}
+.dropdown-list {
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--besidka-bg);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1), 0 0 0 1px color-mix(in srgb, var(--besidka-fg) 8%, transparent);
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: auto;
+  padding: 0.25rem 0.625rem;
+  color: color-mix(in srgb, var(--besidka-fg) 80%, transparent);
   font-size: 12px;
+  font-weight: 400;
+  line-height: 28px;
+  text-align: start;
+  border-radius: 2rem;
 }
 button[aria-expanded='true'] {
   background: color-mix(in srgb, var(--besidka-fg) 10%, transparent);
@@ -141,9 +184,38 @@ pre code {
   font: inherit;
 }
 .diagram {
+  --pele-bg: var(--besidka-bg);
+  --pele-fg: var(--besidka-fg);
+  --pele-muted: var(--besidka-muted);
+  --pele-line: var(--besidka-fg);
+  --pele-surface: var(--besidka-surface);
+  --pele-surface-alt: color-mix(in srgb, var(--besidka-fg) 14%, var(--besidka-bg));
+  --pele-border: color-mix(in srgb, var(--besidka-fg) 55%, var(--besidka-bg));
+  --pele-accent: var(--besidka-accent);
+  --pele-critical: var(--besidka-danger);
+  --pele-error: var(--besidka-danger);
+  --pele-font: 'Nunito', sans-serif;
+  --pele-font-mono: 'Atkinson Hyperlegible Mono', monospace;
+  --pele-series-1: #be185d;
+  --pele-series-2: #0369a1;
+  --pele-series-3: #047857;
+  --pele-series-4: #b45309;
+  --pele-series-5: #b91c1c;
+  --pele-series-6: var(--besidka-fg);
+  --pele-series-7: color-mix(in srgb, #be185d 50%, #0369a1);
+  --pele-series-8: color-mix(in srgb, #047857 50%, #b45309);
   display: flex;
   justify-content: center;
   cursor: zoom-in;
+}
+.block[data-theme='dark'] .diagram {
+  --pele-series-1: #f9a8d4;
+  --pele-series-2: #38bdf8;
+  --pele-series-3: #6ee7b7;
+  --pele-series-4: #fcd34d;
+  --pele-series-5: #f87171;
+  --pele-series-7: #a78bfa;
+  --pele-series-8: #a3e635;
 }
 .diagram svg {
   max-width: 100%;
@@ -208,18 +280,95 @@ export function createButton(
 export interface KitMenuItem<Action extends string> {
   action: Action
   label: string
+  icon: IconName
 }
 
 export interface KitMenu {
   trigger: KitButton
+  element: HTMLDivElement
   panel: HTMLDivElement
   close: () => void
 }
 
+type FocusTarget = 'first' | 'last' | 'next' | 'previous'
+
+const MENU_ITEM_SELECTOR = '[role="menuitem"]'
+
+const MENU_MOVES: Record<string, FocusTarget> = {
+  ArrowDown: 'next',
+  ArrowUp: 'previous',
+  Home: 'first',
+  End: 'last',
+}
+
+let closeActiveMenu: (() => void) | null = null
+
+function findHost(element: HTMLElement): HTMLElement | undefined {
+  const root = element.getRootNode()
+
+  return root instanceof ShadowRoot ? root.host as HTMLElement : undefined
+}
+
+function focusItem(panel: HTMLElement, target: FocusTarget) {
+  const items = Array.from(
+    panel.querySelectorAll<HTMLButtonElement>(MENU_ITEM_SELECTOR),
+  )
+
+  if (items.length === 0) {
+    return
+  }
+
+  const root = panel.getRootNode() as ShadowRoot | Document
+  const current = items.findIndex((item) => {
+    return item === root.activeElement
+  })
+  const lastIndex = items.length - 1
+  const nextIndex = {
+    first: 0,
+    last: lastIndex,
+    next: current >= lastIndex ? 0 : current + 1,
+    previous: current <= 0 ? lastIndex : current - 1,
+  }[target]
+
+  items[nextIndex]?.focus()
+}
+
 /**
- * A toolbar button that shows its choices in a row under the toolbar
- * instead of a floating dropdown, which the block's rounded, clipped box
- * would cut off. One open menu per block: opening one closes the others.
+ * Keeps an open menu inside the frame. The panel opens below the button
+ * like the chat's dropdown; when the frame's viewport would cut it off it
+ * opens above if there is room, and otherwise the block's host grows by the
+ * missing height until the menu closes, so the frame grows with it.
+ */
+function placePanel(panel: HTMLElement, trigger: HTMLElement) {
+  const host = findHost(trigger)
+
+  panel.dataset.placement = 'bottom'
+  host?.style.removeProperty('padding-bottom')
+
+  const panelRect = panel.getBoundingClientRect()
+  const missing = panelRect.bottom - window.innerHeight
+
+  if (missing <= 0) {
+    return
+  }
+
+  if (trigger.getBoundingClientRect().top - panelRect.height >= 0) {
+    panel.dataset.placement = 'top'
+
+    return
+  }
+
+  host?.style.setProperty('padding-bottom', `${Math.ceil(missing)}px`)
+}
+
+/**
+ * A toolbar button with a dropdown anchored under it, like the chat's
+ * Copy and Download menus: `role="menu"`, opened by click, Enter, Space or
+ * the arrow keys, moved with the arrows, Home and End, closed by Esc
+ * (listened for on the document, because Safari does not focus a clicked
+ * button), Tab, a pick or a pointer press anywhere else in the frame. One
+ * menu is open at a time. The pointer check uses the composed path because
+ * blocks live in shadow roots.
  */
 export function createMenu<Action extends string>(
   testId: string,
@@ -229,55 +378,131 @@ export function createMenu<Action extends string>(
   onSelect: (action: Action, event: MouseEvent) => void,
 ): KitMenu {
   const trigger = createButton(testId, icon, text)
+  const element = document.createElement('div')
   const panel = document.createElement('div')
-  const title = document.createElement('span')
+  const list = document.createElement('ul')
 
-  panel.className = 'menu'
+  element.className = 'dropdown'
+  panel.className = 'dropdown-panel'
   panel.hidden = true
   panel.dataset.testid = `${testId}-menu`
-  panel.setAttribute('role', 'group')
-  panel.setAttribute('aria-label', text)
-  title.className = 'menu-title'
-  title.textContent = text
-  panel.append(title)
+  list.className = 'dropdown-list'
+  list.setAttribute('role', 'menu')
+  list.setAttribute('aria-label', text)
+  trigger.element.setAttribute('aria-haspopup', 'menu')
   trigger.element.setAttribute('aria-expanded', 'false')
 
-  function close() {
+  function close(restoreFocus = false) {
+    if (panel.hidden) {
+      return
+    }
+
     panel.hidden = true
     trigger.element.setAttribute('aria-expanded', 'false')
+    document.removeEventListener('pointerdown', onPointerDown, true)
+    document.removeEventListener('keydown', onDocumentKeyDown, true)
+    findHost(trigger.element)?.style.removeProperty('padding-bottom')
+
+    if (closeActiveMenu === closeWithoutFocus) {
+      closeActiveMenu = null
+    }
+
+    if (restoreFocus) {
+      trigger.element.focus()
+    }
+  }
+
+  function closeWithoutFocus() {
+    close()
+  }
+
+  function onPointerDown(event: Event) {
+    if (!event.composedPath().includes(element)) {
+      close()
+    }
+  }
+
+  function onDocumentKeyDown(event: KeyboardEvent) {
+    if (event.key !== 'Escape') {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    close(true)
+  }
+
+  function open(target: FocusTarget | null) {
+    closeActiveMenu?.()
+    panel.hidden = false
+    trigger.element.setAttribute('aria-expanded', 'true')
+    placePanel(panel, trigger.element)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('keydown', onDocumentKeyDown, true)
+    closeActiveMenu = closeWithoutFocus
+
+    if (target) {
+      focusItem(panel, target)
+    }
   }
 
   for (const item of items) {
+    const entry = document.createElement('li')
     const option = document.createElement('button')
+    const label = document.createElement('span')
 
+    entry.setAttribute('role', 'none')
     option.type = 'button'
-    option.textContent = item.label
+    option.className = 'dropdown-item'
+    option.tabIndex = -1
+    option.setAttribute('role', 'menuitem')
     option.dataset.testid = `${testId}-${item.action}`
+    label.textContent = item.label
+    option.append(createIcon(item.icon), label)
     option.addEventListener('click', (event) => {
-      close()
+      close(true)
       onSelect(item.action, event)
     })
-    panel.append(option)
+    entry.append(option)
+    list.append(entry)
   }
 
-  trigger.element.addEventListener('click', () => {
-    const isOpening = panel.hidden
+  trigger.element.addEventListener('click', (event) => {
+    if (!panel.hidden) {
+      close()
 
-    for (const sibling of panel.parentElement?.querySelectorAll('.menu') ?? []) {
-      (sibling as HTMLElement).hidden = true
+      return
     }
 
-    for (const button of trigger.element.parentElement?.querySelectorAll(
-      'button[aria-expanded]',
-    ) ?? []) {
-      button.setAttribute('aria-expanded', 'false')
-    }
-
-    panel.hidden = !isOpening
-    trigger.element.setAttribute('aria-expanded', String(isOpening))
+    open(event.detail === 0 ? 'first' : null)
   })
 
-  return { trigger, panel, close }
+  trigger.element.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      open(event.key === 'ArrowDown' ? 'first' : 'last')
+    }
+  })
+
+  panel.addEventListener('keydown', (event) => {
+    const move = MENU_MOVES[event.key]
+
+    if (move) {
+      event.preventDefault()
+      focusItem(panel, move)
+
+      return
+    }
+
+    if (event.key === 'Tab') {
+      close()
+    }
+  })
+
+  panel.append(list)
+  element.append(trigger.element, panel)
+
+  return { trigger, element, panel, close: closeWithoutFocus }
 }
 
 const outcomeResetTimers = new WeakMap<

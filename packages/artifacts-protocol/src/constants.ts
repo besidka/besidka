@@ -45,6 +45,7 @@ export const DIAGRAM_EXPORT_ACTIONS = [
   'copy-source',
   'copy-markdown',
   'copy-svg',
+  'copy-png',
   'copy-drawio',
 ] as const
 

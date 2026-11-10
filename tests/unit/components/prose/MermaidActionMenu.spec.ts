@@ -37,6 +37,7 @@ const COPY_ACTION_IDS: DiagramExportAction[] = [
   'copy-source',
   'copy-markdown',
   'copy-svg',
+  'copy-png',
   'copy-drawio',
 ]
 
@@ -118,7 +119,30 @@ describe('prose/MermaidActionMenu.vue', () => {
     }))
     expect(wrapper.findAll('li button').map((button) => {
       return button.text()
+    })).toEqual(['Code', 'Markdown', 'SVG', 'PNG', 'For draw.io'])
+  })
+
+  it('hides the PNG copy item where the browser cannot write images', async () => {
+    vi.stubGlobal('ClipboardItem', undefined)
+
+    const { wrapper } = await mountMenu('copy')
+
+    expect(wrapper.find('[data-testid="mermaid-export-copy-png"]').exists())
+      .toBe(false)
+    expect(wrapper.findAll('li button').map((button) => {
+      return button.text()
     })).toEqual(['Code', 'Markdown', 'SVG', 'For draw.io'])
+    vi.unstubAllGlobals()
+  })
+
+  it('hides the PNG copy item when image/png is reported unsupported', async () => {
+    vi.stubGlobal('ClipboardItem', { supports: () => false })
+
+    const { wrapper } = await mountMenu('copy')
+
+    expect(wrapper.find('[data-testid="mermaid-export-copy-png"]').exists())
+      .toBe(false)
+    vi.unstubAllGlobals()
   })
 
   it('uses icon-only triggers below the sm breakpoint', async () => {

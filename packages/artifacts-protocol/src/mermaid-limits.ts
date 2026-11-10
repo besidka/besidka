@@ -1,6 +1,6 @@
 export const MERMAID_MAX_EDGES = 500
 
-export const MERMAID_MAX_TEXT_SIZE = 50_000
+export const MERMAID_MAX_TEXT_SIZE = 20_000
 
 export const DIAGRAM_LIMIT_CODES = [
   'mermaid-edge-limit',

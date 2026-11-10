@@ -1,13 +1,17 @@
 import {
+  DIAGRAM_COPY_MENU_ITEMS,
+  DIAGRAM_DOWNLOAD_MENU_ITEMS,
+  IMAGE_COPY_ACTION,
   describeDiagramLimit,
   detectMermaidLimit,
+  isImageClipboardSupported,
 } from '@besidka/artifacts-protocol'
 import type {
   DiagramExportAction,
   Theme,
 } from '@besidka/artifacts-protocol'
-import mermaid from 'mermaid'
-import { createMermaidConfig } from '../render/mermaid-config.ts'
+import { DiagramLimitError } from '../render/diagram-limit.ts'
+import { renderDiagramSvg } from '../render/diagram.ts'
 import {
   createButton,
   createMenu,
@@ -23,8 +27,6 @@ import {
   openDiagramViewerThroughHost,
 } from './host-actions.ts'
 import type { HostActionOutcome } from './host-actions.ts'
-
-type MermaidConfig = Parameters<typeof mermaid.initialize>[0]
 
 const ERROR_MESSAGE_LIMIT = 200
 
@@ -44,19 +46,6 @@ const DOWNLOAD_LABELS = {
   failed: 'Download failed',
 } as const
 
-const DOWNLOAD_ITEMS: KitMenuItem<DiagramExportAction>[] = [
-  { action: 'download-svg', label: 'SVG' },
-  { action: 'download-png', label: 'PNG' },
-  { action: 'download-drawio', label: '.drawio' },
-]
-
-const COPY_ITEMS: KitMenuItem<DiagramExportAction>[] = [
-  { action: 'copy-source', label: 'Code' },
-  { action: 'copy-markdown', label: 'Markdown' },
-  { action: 'copy-svg', label: 'SVG' },
-  { action: 'copy-drawio', label: 'draw.io' },
-]
-
 const FULLSCREEN_LABELS = {
   idleIcon: 'fullscreen',
   idle: 'Fullscreen',
@@ -64,40 +53,29 @@ const FULLSCREEN_LABELS = {
   failed: 'Unavailable',
 } as const
 
-let diagramCount = 0
-let renderQueue: Promise<unknown> = Promise.resolve()
+function measureContentWidth(body: HTMLElement): number | undefined {
+  const style = getComputedStyle(body)
+  const padding = Number.parseFloat(style.paddingLeft)
+    + Number.parseFloat(style.paddingRight)
+  const width = body.clientWidth - (Number.isNaN(padding) ? 0 : padding)
 
-function renderDiagram(source: string, theme: Theme): Promise<string> {
-  const task = renderQueue.then(async () => {
-    diagramCount += 1
-
-    const id = `besidka-kit-mermaid-${diagramCount}`
-
-    mermaid.initialize(createMermaidConfig(theme) as MermaidConfig)
-
-    try {
-      const { svg } = await mermaid.render(id, source)
-
-      return svg
-    } finally {
-      document.getElementById(`d${id}`)?.remove()
-    }
-  })
-
-  renderQueue = task.catch(() => {})
-
-  return task
+  return width > 0 ? width : undefined
 }
 
-function describeError(exception: unknown, source: string): string {
+function toMenuItems(items: readonly KitMenuItem<DiagramExportAction>[]) {
+  return items.filter((item) => {
+    return item.action !== IMAGE_COPY_ACTION || isImageClipboardSupported()
+  })
+}
+
+function describeError(exception: unknown): string {
+  if (exception instanceof DiagramLimitError) {
+    return exception.message
+  }
+
   const message = exception instanceof Error
     ? exception.message
     : String(exception)
-  const diagramLimit = detectMermaidLimit(message, source)
-
-  if (diagramLimit) {
-    return describeDiagramLimit(diagramLimit)
-  }
 
   const shortened = message.length > ERROR_MESSAGE_LIMIT
     ? `${message.slice(0, ERROR_MESSAGE_LIMIT)}…`
@@ -107,12 +85,12 @@ function describeError(exception: unknown, source: string): string {
 }
 
 /**
- * Renders `<besidka-mermaid>` like the chat's diagram block: the vendored
- * Mermaid (dagre layout, strict security) themed from the host, with the
- * chat's actions: Fullscreen asks the host to open its own zoomable viewer,
- * Download (SVG, PNG, draw.io) and Copy (code, Markdown, SVG, draw.io) ask
- * the host to build and save or copy the file, since the sandboxed frame
- * can neither download nor reach the clipboard on its own.
+ * Renders `<besidka-mermaid>` like the chat's diagram block: the same Pele
+ * renderer and options, themed from the host, with the chat's actions:
+ * Fullscreen asks the host to open its own zoomable viewer, Download (SVG,
+ * PNG, draw.io) and Copy (code, Markdown, SVG, PNG, draw.io) ask the host to
+ * build and save or copy the file, since the sandboxed frame can neither
+ * download nor reach the clipboard on its own.
  */
 export function createMermaidController(element: HTMLElement): KitController {
   const root = element.shadowRoot ?? element.attachShadow({ mode: 'open' })
@@ -127,6 +105,7 @@ export function createMermaidController(element: HTMLElement): KitController {
   let source = ''
   let rendered = false
   let renderSequence = 0
+  let renderedWidth: number | undefined
 
   shell.block.dataset.testid = 'besidka-mermaid'
   diagram.className = 'diagram'
@@ -179,7 +158,7 @@ export function createMermaidController(element: HTMLElement): KitController {
     'besidka-mermaid-download',
     'download',
     'Download',
-    DOWNLOAD_ITEMS,
+    toMenuItems(DIAGRAM_DOWNLOAD_MENU_ITEMS),
     (action, event) => {
       select(downloadMenu.trigger, DOWNLOAD_LABELS, action, event)
     },
@@ -188,7 +167,7 @@ export function createMermaidController(element: HTMLElement): KitController {
     'besidka-mermaid-copy',
     'copy',
     'Copy',
-    COPY_ITEMS,
+    toMenuItems(DIAGRAM_COPY_MENU_ITEMS),
     (action, event) => {
       select(copyMenu.trigger, COPY_LABELS, action, event)
     },
@@ -196,10 +175,9 @@ export function createMermaidController(element: HTMLElement): KitController {
 
   shell.actions.append(
     fullscreenButton.element,
-    downloadMenu.trigger.element,
-    copyMenu.trigger.element,
+    downloadMenu.element,
+    copyMenu.element,
   )
-  shell.body.before(downloadMenu.panel, copyMenu.panel)
 
   function showSource(message: string) {
     const pre = document.createElement('pre')
@@ -233,12 +211,14 @@ export function createMermaidController(element: HTMLElement): KitController {
     }
 
     try {
-      const svg = await renderDiagram(source, theme)
+      const width = measureContentWidth(shell.body)
+      const svg = await renderDiagramSvg(source, width)
 
       if (sequence !== renderSequence) {
         return
       }
 
+      renderedWidth = width
       diagram.innerHTML = svg
       diagram.dataset.theme = theme
       shell.body.replaceChildren(diagram)
@@ -247,12 +227,33 @@ export function createMermaidController(element: HTMLElement): KitController {
       rendered = true
     } catch (exception) {
       if (sequence === renderSequence) {
-        showSource(describeError(exception, source))
+        showSource(describeError(exception))
       }
     }
   }
 
-  return createRenderLoop(element, (theme) => {
+  const loop = createRenderLoop(element, (theme) => {
     render(theme)
   })
+  const resizeObserver = typeof ResizeObserver === 'undefined'
+    ? null
+    : new ResizeObserver(() => {
+      const width = measureContentWidth(shell.body)
+
+      if (rendered && Math.abs((width ?? 0) - (renderedWidth ?? 0)) > 1) {
+        loop.refresh()
+      }
+    })
+
+  return {
+    connect: () => {
+      loop.connect()
+      resizeObserver?.observe(shell.body)
+    },
+    disconnect: () => {
+      loop.disconnect()
+      resizeObserver?.disconnect()
+    },
+    refresh: loop.refresh,
+  }
 }
