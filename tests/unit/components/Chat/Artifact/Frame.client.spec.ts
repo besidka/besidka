@@ -225,6 +225,15 @@ async function initialize(runtime: Endpoint) {
   return result
 }
 
+async function initializeRendering(runtime: Endpoint) {
+  await runtime.request(METHODS.initialize, {
+    protocolVersion: PROTOCOL_VERSION,
+    appCapabilities: { kinds: ['html'], rendered: true },
+  })
+  runtime.notify(METHODS.initialized, {})
+  await waitForPort()
+}
+
 async function mountFrame(props: Record<string, unknown> = {}) {
   const wrapper = await mountSuspended(ChatArtifactFrame, {
     attachTo: document.body,
@@ -361,6 +370,106 @@ describe('ChatArtifactFrame', () => {
         METHODS.toolResult,
         { structuredContent: RESULT },
       ])
+    })
+
+  it('keeps the skeleton over a ready runtime until it reports a render',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initializeRendering(runtime)
+
+      const frameContainer = connection.element.parentElement
+
+      expect(wrapper.emitted('ready')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(true)
+      expect(frameContainer?.classList.contains('invisible')).toBe(true)
+
+      runtime.notify(METHODS.rendered, { kind: 'html', partial: false })
+      await waitForPort()
+
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(false)
+      expect(frameContainer?.classList.contains('invisible')).toBe(false)
+    })
+
+  it('ignores a malformed render report', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initializeRendering(runtime)
+    runtime.notify(METHODS.rendered, { kind: 'pdf', partial: false })
+    await waitForPort()
+
+    expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+      .toBe(true)
+  })
+
+  it('shows the error state, not the source, when no render is reported',
+    async () => {
+      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout')
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initializeRendering(runtime)
+
+      const renderTimeout = timeoutSpy.mock.calls.find(([, delay]) => {
+        return delay === 20_000
+      })
+
+      timeoutSpy.mockRestore()
+      expect(renderTimeout).toBeDefined()
+      ;(renderTimeout![0] as () => void)()
+      await waitForPort()
+
+      expect(wrapper.find('[data-testid="artifact-frame-error"]').text())
+        .toContain('did not load')
+      expect(connection.element.isConnected).toBe(false)
+    })
+
+  it('holds the skeleton again while another result renders in the same frame',
+    async () => {
+      const { wrapper, connection } = await mountFrame({
+        result: null,
+        partial: { kind: 'html', title: 'Landing page', content: '<p>v' },
+      })
+      const runtime = connectRuntime(connection)
+
+      await initializeRendering(runtime)
+      runtime.notify(METHODS.rendered, { kind: 'html', partial: true })
+      await waitForPort()
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(false)
+
+      await wrapper.setProps({ result: RESULT })
+      await waitForPort()
+
+      expect(captured).toHaveLength(1)
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(true)
+
+      runtime.notify(METHODS.rendered, { kind: 'html', partial: false })
+      await waitForPort()
+      expect(wrapper.find('[data-testid="artifact-frame-loading"]').exists())
+        .toBe(false)
+    })
+
+  it('does not resend or reload for the same content under a new version',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const notifications: Array<[string, unknown]> = []
+      const runtime = connectRuntime(connection, (method, params) => {
+        notifications.push([method, params])
+      })
+
+      await initialize(runtime)
+      notifications.length = 0
+      await wrapper.setProps({ result: { ...RESULT, version: 2 }, version: 2 })
+      await waitForPort()
+
+      expect(captured).toHaveLength(1)
+      expect(notifications).toEqual([])
     })
 
   it('answers unknown methods with -32601', async () => {

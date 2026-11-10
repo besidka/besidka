@@ -107,7 +107,20 @@ tripwire's signal. Replacing the root element keeps the Window, the port and
 Consequences: an artifact that calls `document.write()` after load replaces
 the document and trips the wire (A-3 tells models not to), and timers or
 listeners from a previous version of an HTML artifact keep running after a
-re-render, so the host should mount a fresh frame when it switches versions.
+re-render. The same realm is also the cause of BES-358: classic scripts share
+one global lexical environment per realm, so a second version with a
+top-level `let count` or `class` fails with "Identifier 'count' has already
+been declared" (WebKit hides the message). The host therefore renders every
+different `kind` + `content` in a fresh iframe: `Frame.client.vue` calls
+`mountFrame()` (new iframe, new `MessageChannel` handshake) when a result
+differs from the one it already sent, and only then. A streamed preview
+followed by its first result, a metadata-only change (a new `version` or
+`title` with identical content), Preview/Code toggles and a panel that only
+collapses or restores keep the frame. The chat panel, the `/a#` share page
+and the admin preview all go through that component. The runtime e2e
+`realm-isolation.spec.ts` shows the failure in one frame and the clean
+sequence in fresh frames; `artifacts-panel.spec.ts` drives v1, v2, v1 with
+identical top-level declarations through the real panel.
 Classic scripts run in order (external ones are awaited), inline module
 scripts are loaded from `blob:` URLs so their `load` event can be awaited
 (up to 5 s each) before the synthetic events, and `meta[http-equiv]`
@@ -193,6 +206,7 @@ UI requests below were added this way in A-14). Methods:
 | host → runtime | `ui/notifications/tool-result` | notification (final render) |
 | host → runtime | `ui/notifications/host-context-changed` | notification (`theme`, `displayMode`) |
 | runtime → host | `ui/notifications/size-changed` | notification (`height`, per animation frame) |
+| runtime → host | `besidka/rendered` | notification `{ kind, partial }`: the first final paint of a result (`partial: false`) or of a streaming preview (`partial: true`) (BES-361) |
 | runtime → host | `ui/open-link` | request (host shows the URL, opens it only after a click) |
 | runtime → host | `notifications/message` | notification (`error`/`warning`) |
 | runtime → host | `besidka/storage/get|set|delete|list` | requests (A-5) |
@@ -657,34 +671,82 @@ that file is stale, and when a kit file or the kit or shell styles contain a
 colour literal (hex, `rgb()`, `oklch()`, slate or stone names) or read a
 variable the palette does not declare.
 
-One deliberate difference (BES-335): `ARTIFACT_THEME_OVERRIDES` in the same
-script replaces four dark tokens. In the app's dark theme `primary` and
-`neutral` equal `base-100` (stone-800); the app gets away with it because
-its surfaces sit on the pink glass background, but an artifact's page is
-plain `base-100`, so `btn-primary`, `bg-primary`, `text-primary` and
-`badge-neutral` vanished. The artifact dark theme inverts `primary` the way
-light works (stone-100 fill, stone-800 content: 13.9:1, and 13.9:1 against
-the page) and lifts `neutral` to stone-700 with stone-100 content (9.4:1;
-1.5:1 against the page, so it reads as a fill, not as text). The app theme
-is unchanged. `design.spec.ts` checks the override tokens, the contrast
-(WCAG ratio computed from Tailwind's OKLCH values) and that the light theme
-and `main.css` are untouched.
+Deliberate differences (BES-335, BES-337, BES-359): `ARTIFACT_THEME_OVERRIDES`
+in the same script replaces tokens in both themes, because the app's glass
+surfaces hide pairs that fail on an artifact's plain `base-100` page. Every
+semantic pair (`primary`, `secondary`, `accent`, `neutral`, `info`,
+`success`, `warning`, `error`) must keep its content at 4.5:1 on its fill and
+the fill at 3:1 against `base-100`, and `base-100/200/300` must carry
+`base-content` at 4.5:1; `design.spec.ts` checks all of them in light and
+dark (WCAG ratio computed from Tailwind's OKLCH values).
+
+| Theme | Token | App value | Artifact value | Why |
+| --- | --- | --- | --- | --- |
+| light | `secondary` / content | white / stone-800 | stone-500 / white (4.8:1, 4.8:1) | white on a white page was 1.0:1 |
+| light | `success-content` | emerald-950 | white (5.4:1) | dark green on dark green was 2.8:1 |
+| dark | `primary` / content | stone-800 / stone-100 | stone-100 / stone-800 (13.9:1) | equal to the page |
+| dark | `secondary` / content | stone-100 / stone-800 | stone-400 / stone-950 (7.6:1, 5.9:1) | was identical to the inverted primary (BES-337) |
+| dark | `neutral` / content | stone-800 / stone-100 | stone-500 / white (4.8:1, 3.2:1) | equal to the page, then 1.5:1 as stone-700 |
+
+Known weak spot: dark `neutral` as a text colour (`btn-soft`, `btn-dash`,
+`btn-ghost`, `badge-soft` with `neutral`) is stone-500 on the stone-800 page
+(3.2:1). A lighter neutral would break the mirrored dark outline rule, which
+uses `neutral-content` as the outline colour. The app theme is unchanged.
+`design.spec.ts` also checks that every overridden token still has its
+`main.css` value (so a main.css change forces a decision here) and that
+the light primary is untouched.
 
 The app-wide component rules that are not tokens are mirrored by hand in
 `BESIDKA_COMPONENT_OVERRIDES`: checkbox and badge selector sizes, the box
 radius on `:where(.textarea)` (#780; the theme's `--radius-field: 2rem`
 would otherwise make textareas pills), tooltip radius, `font-weight: 400`
 on `.btn`, and the dark-theme contrast rules: outline and focused
-`btn-neutral` use `neutral-content` (stone-700 would be nearly invisible as
+`btn-neutral` use `neutral-content` (the app's stone-800 neutral would be invisible as
 text on the stone-800 page), and `text-base-content/60`, `/70` and labels
 are lighter. The app's matching rules for `btn-primary` and `btn-secondary`
 (their `*-content` colour) are left out on purpose: in the artifact theme
-both are light fills with stone-800 content, so those rules would paint the
-outline button text and the focus ring stone-800 on a stone-800 page. The
+both are light fills with dark content, so those rules would paint the
+outline button text and the focus ring dark on a stone-800 page. The
 spec checks the mirrored declarations still exist in `main.css` and that
 the two left-out ones stay out, and the e2e spec checks the outline
 primary, secondary and neutral buttons and muted text in dark. The `.btn-ghost-legacy` utility is app-only and not copied.
 Page-level app styles (glass bubbles, gradients) are not copied.
+
+### Reveal: no raw source before the final render (BES-361)
+
+Opening an artifact used to show the skeleton, then the raw source (a
+`<besidka-mermaid>` shows its light-DOM text until its shadow root attaches
+after an async import), then the render. Two layers now close that gap:
+
+- The runtime keeps the document `visibility: hidden` (layout stays, so size
+  measurement works) from the start of a result until the kind's renderer
+  has finished, every `<besidka-code>` and `<besidka-mermaid>` in the
+  document has drawn its first render (`KitController.ready`, the element's
+  `ready` promise and the `data-besidka-ready` attribute; an unready block
+  also hides itself, so blocks that scripts or React add later do not flash
+  either) and the fonts the page asked for have settled. It then reveals,
+  waits one frame and sends `besidka/rendered`. The wait is capped at 6 s
+  (slow reveals late, it does not fail), React waits for its first commit
+  (up to 400 ms), and every terminal path sends the signal, including script
+  errors, the diagram-limit placeholder and render errors, so the error
+  panel and Ask to fix still appear.
+- The host advertises nothing new; the runtime announces
+  `appCapabilities.rendered: true` in `ui/initialize`. A host that sees the
+  flag keeps the skeleton (and the invisible frame) until `besidka/rendered`
+  and shows the existing "did not load" error state after 20 s without it,
+  never the source. A runtime that does not announce the flag is shown as
+  before, so the host and the runtime can deploy in either order and the
+  protocol version stays 1.
+
+A streaming preview ("Writing HTML page...") is raw source on purpose and
+reports `partial: true`, so it shows as soon as it paints. Every new result
+sent into an existing frame (a streamed preview followed by its result) puts
+the skeleton back until the result renders. `no-raw-flash.spec.ts` samples
+the runtime frame on every DOM mutation, animation frame and 4 ms for each
+kind (html and markdown with code and Mermaid blocks, react, svg, mermaid)
+in Chromium and WebKit and fails on any visible unready block, visible
+preview or unstyled page; with the reveal removed it fails for html,
+markdown and mermaid.
 
 ### Decision: compile in the frame (measured)
 

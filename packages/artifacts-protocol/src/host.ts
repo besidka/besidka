@@ -20,6 +20,7 @@ import {
   isOpenLinkParams,
   isRequestDisplayModeParams,
   isRequestDisplayModeResult,
+  isRenderedParams,
   isSizeChangedParams,
   isStorageKeyParams,
   isStorageListParams,
@@ -47,6 +48,7 @@ import type {
   OpenLinkParams,
   RequestDisplayModeParams,
   RequestDisplayModeResult,
+  RenderedParams,
   SizeChangedParams,
   StorageGetResult,
   StorageKeyParams,
@@ -87,6 +89,7 @@ export interface HostHandlers {
   onInitialized?: (params: InitializeParams) => void
   onReady?: () => void
   onSizeChanged?: (params: SizeChangedParams) => void
+  onRendered?: (params: RenderedParams) => void
   onMessage?: (params: LogMessageParams) => void
   onOpenLink?: (params: OpenLinkParams) => MaybePromise<void>
   storage?: HostStorageHandlers
@@ -573,6 +576,12 @@ export function createHostConnection(
 
     if (method === METHODS.sizeChanged && isSizeChangedParams(params)) {
       handlers.onSizeChanged?.(params)
+
+      return
+    }
+
+    if (method === METHODS.rendered && isRenderedParams(params)) {
+      handlers.onRendered?.(params)
 
       return
     }

@@ -157,6 +157,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e-artifacts/design-system.spec.ts',
     'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
     'tests/e2e-artifacts/html-script-errors.spec.ts',
+    'tests/e2e-artifacts/no-raw-flash.spec.ts',
     'tests/e2e-artifacts/realm-isolation.spec.ts',
     'tests/e2e-artifacts/runtime-sandbox.spec.ts',
     'tests/unit/workers/artifacts-runtime/script-location.spec.ts',

@@ -798,6 +798,51 @@ test.describe('artifact versions and menus', () => {
     },
   ]
 
+  test('renders versions that declare the same top-level binding in a fresh '
+    + 'frame and keeps the frame across tab toggles', async ({ page }) => {
+    function declaringContent(label: string) {
+      return [
+        '<!doctype html>',
+        `<html><body><h1 id="greeting">${label}</h1>`,
+        '<script>let count = 1; class Counter {}</script>',
+        '</body></html>',
+      ].join('\n')
+    }
+
+    const versionOne = declaringContent('First')
+    const versionTwo = declaringContent('Second')
+
+    await openStreamedArtifactPanel(page, [
+      {
+        ...VERSION_CONTENT,
+        content: versionOne,
+        sizeBytes: versionOne.length,
+      },
+      {
+        ...VERSION_CONTENT,
+        version: 2,
+        content: versionTwo,
+        sizeBytes: versionTwo.length,
+      },
+    ])
+
+    const select = page.getByTestId('artifact-version-select')
+    const banner = page.getByTestId('artifact-runtime-error')
+    const greeting = getPreviewFrame(page).locator('#greeting')
+
+    await expect(greeting).toHaveText('First', { timeout: 20_000 })
+    await markPreviewFrame(page)
+    await page.getByTestId('artifact-tab-code').click()
+    await page.getByTestId('artifact-tab-preview').click()
+    expect(await isPreviewFrameMarked(page)).toBe(true)
+
+    await select.selectOption('2')
+    await expect(greeting).toHaveText('Second', { timeout: 20_000 })
+    await select.selectOption('1')
+    await expect(greeting).toHaveText('First', { timeout: 20_000 })
+    await expect(banner).toHaveCount(0)
+  })
+
   test('shows a runtime error only on the version that raised it',
     async ({ page }) => {
       await openStreamedArtifactPanel(page, VERSIONS)

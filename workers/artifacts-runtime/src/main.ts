@@ -13,6 +13,7 @@ import {
   installDocumentHooks,
   renderArtifact,
   renderPartial,
+  setRenderedNotifier,
 } from './artifact.ts'
 import { createBesidkaApi, installBesidkaApi } from './bridge.ts'
 import { defineKitElements } from './kit/elements.ts'
@@ -111,6 +112,9 @@ async function boot() {
   setHostNotifier((params) => {
     connection.notify(METHODS.message, params)
   })
+  setRenderedNotifier((params) => {
+    connection.notify(METHODS.rendered, params)
+  })
   setHostActionConnection(connection)
   installLinkInterception((url) => {
     openLinkThroughHost(connection, url)
@@ -121,7 +125,7 @@ async function boot() {
       METHODS.initialize,
       {
         protocolVersion: PROTOCOL_VERSION,
-        appCapabilities: { kinds: [...ARTIFACT_KINDS] },
+        appCapabilities: { kinds: [...ARTIFACT_KINDS], rendered: true },
       },
     )
 

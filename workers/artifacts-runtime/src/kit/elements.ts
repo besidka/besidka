@@ -5,6 +5,8 @@ export const CODE_ELEMENT_NAME = 'besidka-code'
 
 export const MERMAID_ELEMENT_NAME = 'besidka-mermaid'
 
+export const KIT_READY_ATTRIBUTE = 'data-besidka-ready'
+
 type ControllerFactory = (element: HTMLElement) => Promise<KitController>
 
 /**
@@ -20,6 +22,18 @@ function createKitElement(createController: ControllerFactory) {
 
     connecting = false
 
+    markReady: () => void = () => {}
+
+    ready: Promise<void> = new Promise((resolve) => {
+      this.markReady = resolve
+    })
+
+    reveal() {
+      this.style.removeProperty('visibility')
+      this.setAttribute(KIT_READY_ATTRIBUTE, '')
+      this.markReady()
+    }
+
     async connectedCallback() {
       if (this.controller) {
         this.controller.connect()
@@ -32,6 +46,7 @@ function createKitElement(createController: ControllerFactory) {
       }
 
       this.connecting = true
+      this.style.visibility = 'hidden'
 
       try {
         const controller = await createController(this)
@@ -40,11 +55,13 @@ function createKitElement(createController: ControllerFactory) {
 
         if (this.isConnected) {
           controller.connect()
+          await controller.ready
         }
       } catch (exception) {
         reportError(exception, { level: 'warning', showPanel: false })
       } finally {
         this.connecting = false
+        this.reveal()
       }
     }
 
@@ -80,4 +97,19 @@ export function defineKitElements() {
       }),
     )
   }
+}
+
+/**
+ * Resolves once every `<besidka-code>` and `<besidka-mermaid>` in the
+ * document has drawn its first render (or failed to), so the runtime does
+ * not reveal a block that still shows its raw source.
+ */
+export async function whenKitBlocksReady(): Promise<void> {
+  const blocks = document.querySelectorAll<HTMLElement & {
+    ready?: Promise<void>
+  }>(`${CODE_ELEMENT_NAME}, ${MERMAID_ELEMENT_NAME}`)
+
+  await Promise.all([...blocks].map((block) => {
+    return block.ready ?? Promise.resolve()
+  }))
 }

@@ -632,6 +632,7 @@ export interface KitController {
   connect: () => void
   disconnect: () => void
   refresh: () => void
+  ready: Promise<void>
 }
 
 /**
@@ -641,9 +642,13 @@ export interface KitController {
  */
 export function createRenderLoop(
   element: HTMLElement,
-  render: (theme: Theme) => void,
+  render: (theme: Theme) => void | Promise<void>,
 ): KitController {
   let frame = 0
+  let markReady = () => {}
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
   let stopThemeListener: (() => void) | null = null
   const observer = new MutationObserver(() => {
     schedule()
@@ -673,9 +678,10 @@ export function createRenderLoop(
       stopThemeListener ??= onThemeChange(() => {
         schedule()
       })
-      render(getTheme())
+      Promise.resolve(render(getTheme())).catch(() => {}).then(markReady)
     },
     disconnect: () => {
+      markReady()
       observer.disconnect()
       stopThemeListener?.()
       stopThemeListener = null
@@ -687,5 +693,6 @@ export function createRenderLoop(
       frame = 0
     },
     refresh: schedule,
+    ready,
   }
 }

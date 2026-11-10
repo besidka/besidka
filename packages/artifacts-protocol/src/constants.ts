@@ -86,6 +86,7 @@ export const METHODS = {
   toolResult: 'ui/notifications/tool-result',
   hostContextChanged: 'ui/notifications/host-context-changed',
   sizeChanged: 'ui/notifications/size-changed',
+  rendered: 'besidka/rendered',
   openLink: 'ui/open-link',
   clipboardWrite: 'ui/clipboard-write',
   requestDisplayMode: 'ui/request-display-mode',
