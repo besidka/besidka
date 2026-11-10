@@ -1057,9 +1057,16 @@ describe('ChatArtifactDetail actions menu', () => {
   it('closes on Escape and returns focus to the trigger', async () => {
     const { wrapper, menu } = await openMenu()
 
-    await wrapper.get('details.dropdown').trigger('keydown', { key: 'Escape' })
+    const event = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    })
+
+    wrapper.get('details.dropdown').element.dispatchEvent(event)
 
     expect(menu.open).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
   })
 
   it('closes when the version changes or the tab switches', async () => {

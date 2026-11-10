@@ -263,7 +263,18 @@ export function useArtifactPanel() {
       return
     }
 
-    state.value = { ...current, ...changes }
+    const version = changes.version ?? current.version
+    const latestVersion = current.artifactId
+      ? latestVersions.value[current.artifactId] ?? 0
+      : 0
+
+    state.value = {
+      ...current,
+      ...changes,
+      isVersionPinned: 'version' in changes
+        ? version !== null && version < latestVersion
+        : current.isVersionPinned,
+    }
 
     const currentView = sidePanel.currentView.value
 

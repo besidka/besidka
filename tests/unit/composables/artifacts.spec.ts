@@ -446,6 +446,16 @@ describe('useArtifactPanel version tracking', () => {
     expect(panel.getLatestVersion('Art2Art2Art2Art2')).toBeNull()
   })
 
+  it('unpins when the target moves to the latest version', () => {
+    const panel = useArtifactPanel()
+
+    panel.noteVersion('Art1Art1Art1Art1', 4)
+    panel.open(target({ artifactId: 'Art1Art1Art1Art1', version: 2 }))
+    panel.updateTarget(panel.state.value!.viewKey, { version: 4 })
+
+    expect(panel.state.value?.isVersionPinned).toBe(false)
+  })
+
   it('pins a view opened on an older version and unpins on the latest', () => {
     const panel = useArtifactPanel()
 

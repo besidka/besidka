@@ -749,11 +749,12 @@ function closeActionsMenu() {
   }
 }
 
-function onActionsEscape() {
+function onActionsEscape(event: KeyboardEvent) {
   if (!actionsMenu.value?.open) {
     return
   }
 
+  event.preventDefault()
   closeActionsMenu()
   actionsMenu.value.querySelector<HTMLElement>('summary')?.focus()
 }
@@ -874,11 +875,17 @@ function getVersionRefresh() {
 }
 
 watch(latestVersion, async (version) => {
+  const artifactId = state.value?.artifactId
+
   if (!isOwner.value || version === null || getVersionRefresh() === 'none') {
     return
   }
 
   await loadDetail({ keepCurrent: true })
+
+  if (state.value?.artifactId !== artifactId) {
+    return
+  }
 
   if (getVersionRefresh() === 'switch') {
     panel.selectVersion(latestVersion.value ?? version)
