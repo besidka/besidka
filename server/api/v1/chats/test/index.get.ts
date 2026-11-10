@@ -14,6 +14,7 @@ import {
 } from '~~/server/utils/chats/test/image-fixture'
 import { TEST_MARKDOWN_USER_MESSAGE } from '~~/server/utils/chats/test/markdown-fixture'
 import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture'
+import { TEST_CODE_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
 
 const shortMessage = 'Test message'
@@ -30,6 +31,10 @@ function getMessageText(
 ): string {
   if (role === 'assistant' && scenario === 'mermaid') {
     return TEST_MERMAID_MESSAGE
+  }
+
+  if (role === 'assistant' && scenario === 'code') {
+    return TEST_CODE_MESSAGE
   }
 
   if (role === 'user' && scenario === 'markdown') {
