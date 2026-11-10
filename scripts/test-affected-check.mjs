@@ -1334,12 +1334,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/message-metadata.spec.ts',
     'tests/unit/composables/chat-context.spec.ts',
     'tests/unit/composables/chat-route.spec.ts',
+    'tests/unit/composables/chat-pin.spec.ts',
+    'tests/unit/composables/history.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/components/Sidebar/ChatContextButton.spec.ts',
     'tests/unit/components/Sidebar/AuthCta.spec.ts',
     'tests/unit/components/Sidebar/Development.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
     'tests/e2e/chat-context-panel.spec.ts',
+    'tests/e2e/chat-context-pin.spec.ts',
   ]
 
   const messageSearchTests = [
@@ -2287,7 +2290,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
+        /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-pin|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
       tests: chatContextTests,
     },
     {

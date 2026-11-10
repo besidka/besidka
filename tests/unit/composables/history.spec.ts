@@ -3,6 +3,7 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { effectScope, type EffectScope } from 'vue'
 import {
   setHistoryChatPinned,
+  setHistoryChatPinnedBySlug,
   useHistory,
 } from '../../../app/composables/history'
 import {
@@ -630,6 +631,55 @@ describe('useHistory', () => {
     await flushPromises()
 
     expect(history.searchCapped.value).toBe(false)
+  })
+
+  describe('setHistoryChatPinnedBySlug', () => {
+    it('pins a known chat found by slug', () => {
+      const chat = createHistoryChat({ id: 'chat-1', slug: 'slug-1' })
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse({ chats: [chat] }))
+
+      setHistoryChatPinnedBySlug('slug-1', '2026-03-11T09:00:00.000Z')
+
+      expect(history.chats.value).toEqual([])
+      expect(history.pinned.value).toEqual([
+        expect.objectContaining({
+          id: 'chat-1',
+          pinnedAt: '2026-03-11T09:00:00.000Z',
+        }),
+      ])
+    })
+
+    it('unpins a known pinned chat found by slug', () => {
+      const chat = createHistoryChat({
+        id: 'chat-1',
+        slug: 'slug-1',
+        pinnedAt: '2026-03-01T00:00:00.000Z',
+      })
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse({ pinned: [chat] }))
+
+      setHistoryChatPinnedBySlug('slug-1', null)
+
+      expect(history.pinned.value).toEqual([])
+      expect(history.chats.value).toEqual([
+        expect.objectContaining({ id: 'chat-1', pinnedAt: null }),
+      ])
+    })
+
+    it('leaves History alone for a chat it has not loaded', () => {
+      const chat = createHistoryChat({ id: 'chat-1', slug: 'slug-1' })
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse({ chats: [chat] }))
+
+      setHistoryChatPinnedBySlug('other-slug', '2026-03-11T09:00:00.000Z')
+
+      expect(history.pinned.value).toEqual([])
+      expect(history.chats.value.map(known => known.id)).toEqual(['chat-1'])
+    })
   })
 
   describe('setHistoryChatPinned', () => {

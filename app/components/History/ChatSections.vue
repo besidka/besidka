@@ -25,7 +25,10 @@
         </span>
         <div class="flex-1 h-px bg-base-300" />
       </div>
-      <ul class="list">
+      <ul
+        class="list"
+        data-testid="history-pinned-list"
+      >
         <HistoryChatRow
           v-for="(chat, pinnedIndex) in pinned"
           :key="chat.id"

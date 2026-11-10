@@ -49,8 +49,10 @@ export interface ChatContextCost {
 }
 
 export interface ChatContextChat {
+  id: string
   slug: string
   title: string
+  pinnedAt: string | null
   project: { id: string, name: string } | null
   memoryExcluded: boolean
   share: ChatContextShare | null

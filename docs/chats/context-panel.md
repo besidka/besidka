@@ -39,9 +39,25 @@ slot 5.
 - **Header** (scrolls with the content, not sticky): chat title, project badge
   (links to `/chats/projects/<id>`), chat total cost (`formatMessageCost`, `~`
   when estimated, the same total the message menu shows), a Shared badge, the
-  memory-excluded badge, and the actions Branch, Share (opens `ChatShareModal`)
-  and the memory exclusion toggle (same composable, copy and confirmation as
-  before). Shared pages show Branch only when `allowBranch` is on.
+  memory-excluded badge, and the actions Branch, Share (opens `ChatShareModal`),
+  Pin / Unpin and the memory exclusion toggle (same composable, copy and
+  confirmation as before). Shared pages show Branch only when `allowBranch` is
+  on.
+- **Pin / Unpin** (BES-362, owned chats only): `useChatPin()`
+  (`app/composables/chat-pin.ts`) posts to the existing
+  `POST /api/v1/chats/history/pin` with the chat `id` that the context
+  response now carries next to `pinnedAt`. The toggle is optimistic: it
+  patches the shared `chat-context:owned:<slug>` async-data entry first,
+  settles on the server's `pinnedAt` (the endpoint toggles, so the response is
+  the truth) and rolls back with an error toast on failure. On success
+  `setHistoryChatPinnedBySlug()` moves the chat between History's Pinned and
+  chat lists in every loaded cache entry; a chat that is not loaded yet appears
+  when History next refreshes on mount. The search modal reloads its Recent
+  list on every open. In the other direction, `setHistoryChatPinned()` (the
+  search modal's pin toggle) also patches the panel's cached context, so a pin
+  made in quick search shows in the panel without a reload. Icons match
+  History and quick search: `lucide:pin` to pin, `lucide:pin-off` to unpin.
+  MCP already pins through `update_chat` (`pinned`), so no tool was added.
 - **Sections**, each hidden when empty: Outputs, Inputs, Used. Rows show an
   icon (a thumbnail for images), the title and one line of detail.
 - **Clicks**: a generated image opens `ChatImagePreview`; an artifact pushes

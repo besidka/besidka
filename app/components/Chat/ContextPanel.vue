@@ -130,6 +130,20 @@
             v-if="data.kind === 'owned'"
             type="button"
             class="btn btn-sm btn-soft"
+            :disabled="pinSavingSlug === routeSlug"
+            data-testid="chat-context-pin"
+            @click="onTogglePin"
+          >
+            <Icon
+              :name="isPinned ? 'lucide:pin-off' : 'lucide:pin'"
+              size="16"
+            />
+            {{ isPinned ? 'Unpin' : 'Pin' }}
+          </button>
+          <button
+            v-if="data.kind === 'owned'"
+            type="button"
+            class="btn btn-sm btn-soft"
             :disabled="memoryExclusionSavingSlug === routeSlug"
             :title="isMemoryExcluded
               ? CHAT_MEMORY_USE_HINT
@@ -317,6 +331,8 @@ const {
   setChatMemoryExcluded,
 } = useChatMemoryExclusion()
 
+const { savingSlug: pinSavingSlug, toggleChatPin } = useChatPin()
+
 const collapsedOverrides = useState<Record<string, boolean>>(
   'chat-context-collapsed-sections',
   () => ({}),
@@ -360,6 +376,10 @@ const isMemoryExcluded = computed<boolean>(() => {
   }
 
   return isChatMemoryExcluded(routeSlug.value, data.value.chat.memoryExcluded)
+})
+
+const isPinned = computed<boolean>(() => {
+  return data.value?.kind === 'owned' && !!data.value.chat.pinnedAt
 })
 
 const memoryToggleLabel = computed<string>(() => {
@@ -457,6 +477,14 @@ function toggleGroup(group: ContextGroup) {
     ...collapsedOverrides.value,
     [group.id]: !isGroupCollapsed(group),
   }
+}
+
+async function onTogglePin() {
+  if (data.value?.kind !== 'owned') {
+    return
+  }
+
+  await toggleChatPin(data.value.chat)
 }
 
 function onShare() {

@@ -17,6 +17,7 @@ export interface ChatContextTestDb {
     title?: string | null
     projectId?: number | null
     memoryExcluded?: boolean | null
+    pinnedAtSeconds?: number | null
   }) => void
   insertMessage: (input: {
     id: number
@@ -85,6 +86,7 @@ export function createChatContextTestDb(): ChatContextTestDb {
       title text DEFAULT '',
       project_id integer,
       memory_excluded integer,
+      pinned_at integer,
       activity_at integer NOT NULL
     );
 
@@ -162,11 +164,12 @@ export function createChatContextTestDb(): ChatContextTestDb {
     title?: string | null
     projectId?: number | null
     memoryExcluded?: boolean | null
+    pinnedAtSeconds?: number | null
   }): void {
     sqlite.prepare(
       'insert into chats (id, created_at, updated_at, slug, user_id, title,'
-      + ' project_id, memory_excluded, activity_at)'
-      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      + ' project_id, memory_excluded, pinned_at, activity_at)'
+      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       BASE_TIMESTAMP_SECONDS,
@@ -178,6 +181,7 @@ export function createChatContextTestDb(): ChatContextTestDb {
       input.memoryExcluded === undefined || input.memoryExcluded === null
         ? null
         : toFlag(input.memoryExcluded),
+      input.pinnedAtSeconds ?? null,
       BASE_TIMESTAMP_SECONDS,
     )
   }
