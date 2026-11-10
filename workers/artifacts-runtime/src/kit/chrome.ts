@@ -1,5 +1,6 @@
 import type { Theme } from '@besidka/artifacts-protocol'
 import { paletteDeclarations } from '../palette.ts'
+import { reportError } from '../report.ts'
 import { getTheme, onThemeChange } from '../theme.ts'
 import type { HostActionOutcome } from './host-actions.ts'
 
@@ -654,6 +655,16 @@ export function createRenderLoop(
     schedule()
   })
 
+  async function renderFirst() {
+    try {
+      await render(getTheme())
+    } catch (exception) {
+      reportError(exception, { level: 'warning', showPanel: false })
+    } finally {
+      markReady()
+    }
+  }
+
   function schedule() {
     if (frame) {
       return
@@ -678,7 +689,7 @@ export function createRenderLoop(
       stopThemeListener ??= onThemeChange(() => {
         schedule()
       })
-      Promise.resolve(render(getTheme())).catch(() => {}).then(markReady)
+      renderFirst()
     },
     disconnect: () => {
       markReady()

@@ -270,6 +270,10 @@ async function flushPartial() {
     }
   } catch (exception) {
     reportError(exception, { level: 'warning', showPanel: false })
+
+    if (isCurrent()) {
+      renderedNotifier({ kind: payload.kind, partial: true })
+    }
   } finally {
     observeDocumentSize()
   }

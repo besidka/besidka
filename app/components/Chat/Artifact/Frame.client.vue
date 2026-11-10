@@ -188,6 +188,7 @@ import type {
   InitializeParams,
   LogMessageParams,
   OpenLinkParams,
+  RenderedParams,
   StorageMode,
   Theme,
   ToolResultContent,
@@ -559,7 +560,11 @@ function onInitialized(params: InitializeParams) {
   reportsRendered.value = params.appCapabilities.rendered === true
 }
 
-function onRendered() {
+function onRendered(params: RenderedParams) {
+  if (params.partial && lastSentResult) {
+    return
+  }
+
   isRendered.value = true
 }
 
@@ -750,6 +755,12 @@ watch(() => props.result, (result) => {
 
   dismissPendingCopy()
   dismissPendingExport()
+
+  if (result && !connection && status.value === 'error') {
+    mountFrame()
+
+    return
+  }
 
   if (!result || !connection) {
     return
