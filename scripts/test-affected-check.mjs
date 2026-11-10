@@ -146,6 +146,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/workers/artifacts-runtime/diagram-limit.spec.ts',
     'tests/unit/workers/artifacts-runtime/diagram-parity.spec.ts',
     'tests/unit/workers/artifacts-runtime/kit-menu.spec.ts',
+    'tests/unit/workers/artifacts-runtime/kit-theme.spec.ts',
     'tests/unit/workers/artifacts-runtime/mermaid-view.spec.ts',
     'tests/unit/workers/artifacts-runtime/render.spec.ts',
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
@@ -3112,7 +3113,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/assets\/css\/main\.css$/,
-      tests: ['tests/unit/workers/artifacts-runtime/design.spec.ts'],
+      tests: [
+        'tests/unit/workers/artifacts-runtime/design.spec.ts',
+        'tests/unit/workers/artifacts-runtime/kit-theme.spec.ts',
+      ],
     },
     {
       pattern:

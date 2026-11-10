@@ -49,7 +49,7 @@ export const KIT_STYLE = `
   background: color-mix(in srgb, var(--besidka-bg) 50%, transparent);
   border: 1px solid var(--besidka-border);
   border-radius: 1rem;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  box-shadow: 0 1px 3px 0 var(--besidka-shadow), 0 1px 2px -1px var(--besidka-shadow);
   font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 .block[data-theme='dark'] {
@@ -145,7 +145,7 @@ button svg {
   list-style: none;
   background: var(--besidka-bg);
   border-radius: 0.5rem;
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1), 0 0 0 1px color-mix(in srgb, var(--besidka-fg) 8%, transparent);
+  box-shadow: 0 10px 15px -3px var(--besidka-shadow), 0 4px 6px -4px var(--besidka-shadow), 0 0 0 1px color-mix(in srgb, var(--besidka-fg) 8%, transparent);
 }
 .dropdown-item {
   display: flex;
@@ -189,33 +189,35 @@ pre code {
   --pele-muted: var(--besidka-muted);
   --pele-line: var(--besidka-fg);
   --pele-surface: var(--besidka-surface);
-  --pele-surface-alt: color-mix(in srgb, var(--besidka-fg) 14%, var(--besidka-bg));
-  --pele-border: color-mix(in srgb, var(--besidka-fg) 55%, var(--besidka-bg));
+  --pele-surface-alt: color-mix(in oklab, var(--besidka-fg) 14%, var(--besidka-bg));
+  --pele-border: color-mix(in oklab, var(--besidka-fg) 55%, var(--besidka-bg));
   --pele-accent: var(--besidka-accent);
   --pele-critical: var(--besidka-danger);
   --pele-error: var(--besidka-danger);
   --pele-font: 'Nunito', sans-serif;
   --pele-font-mono: 'Atkinson Hyperlegible Mono', monospace;
-  --pele-series-1: #be185d;
-  --pele-series-2: #0369a1;
-  --pele-series-3: #047857;
-  --pele-series-4: #b45309;
-  --pele-series-5: #b91c1c;
+  --pele-series-1: var(--color-accent);
+  --pele-series-2: var(--color-info);
+  --pele-series-3: var(--color-success);
+  --pele-series-4: var(--color-warning);
+  --pele-series-5: var(--color-error);
   --pele-series-6: var(--besidka-fg);
-  --pele-series-7: color-mix(in srgb, #be185d 50%, #0369a1);
-  --pele-series-8: color-mix(in srgb, #047857 50%, #b45309);
+  --pele-series-7: color-mix(in oklab, var(--color-accent) 50%, var(--color-info));
+  --pele-series-8: color-mix(in oklab, var(--color-success) 50%, var(--color-warning));
   display: flex;
   justify-content: center;
   cursor: zoom-in;
 }
 .block[data-theme='dark'] .diagram {
-  --pele-series-1: #f9a8d4;
-  --pele-series-2: #38bdf8;
-  --pele-series-3: #6ee7b7;
-  --pele-series-4: #fcd34d;
-  --pele-series-5: #f87171;
-  --pele-series-7: #a78bfa;
-  --pele-series-8: #a3e635;
+  --pele-surface-alt: color-mix(in oklab, var(--besidka-fg) 22%, var(--besidka-bg));
+  --pele-series-1: var(--color-pink-300);
+  --pele-series-2: var(--color-sky-400);
+  --pele-series-3: var(--color-emerald-300);
+  --pele-series-4: var(--color-amber-300);
+  --pele-series-5: var(--color-red-400);
+  --pele-series-6: var(--color-stone-100);
+  --pele-series-7: var(--color-violet-400);
+  --pele-series-8: var(--color-lime-400);
 }
 .diagram svg {
   max-width: 100%;
@@ -375,7 +377,9 @@ function placePanel(panel: HTMLElement, trigger: HTMLElement) {
 /**
  * A toolbar button with a dropdown anchored under it, like the chat's
  * Copy and Download menus: `role="menu"`, opened by click, Enter, Space or
- * the arrow keys, moved with the arrows, Home and End, closed by Esc
+ * the arrow keys, focusing the first item on every open (a click does not
+ * focus the button in Safari, so the arrows would otherwise never reach the
+ * menu), moved with the arrows, Home and End, closed by Esc
  * (listened for on the document, because Safari does not focus a clicked
  * button), Tab, a pick or a pointer press anywhere else in the frame. One
  * menu is open at a time. The pointer check uses the composed path because
@@ -444,7 +448,7 @@ export function createMenu<Action extends string>(
     close(true)
   }
 
-  function open(target: FocusTarget | null) {
+  function open(target: FocusTarget) {
     closeActiveMenu?.()
     panel.hidden = false
     trigger.element.setAttribute('aria-expanded', 'true')
@@ -453,10 +457,7 @@ export function createMenu<Action extends string>(
     document.addEventListener('keydown', onDocumentKeyDown, true)
     window.addEventListener('blur', closeWithoutFocus)
     closeActiveMenu = closeWithoutFocus
-
-    if (target) {
-      focusItem(panel, target)
-    }
+    focusItem(panel, target)
   }
 
   for (const item of items) {
@@ -480,14 +481,14 @@ export function createMenu<Action extends string>(
     list.append(entry)
   }
 
-  trigger.element.addEventListener('click', (event) => {
+  trigger.element.addEventListener('click', () => {
     if (!panel.hidden) {
       close()
 
       return
     }
 
-    open(event.detail === 0 ? 'first' : null)
+    open('first')
   })
 
   trigger.element.addEventListener('keydown', (event) => {

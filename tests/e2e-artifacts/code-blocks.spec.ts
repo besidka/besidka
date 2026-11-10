@@ -211,6 +211,50 @@ export default function App() {
     })).not.toBe(lightBackground)
   })
 
+  test('moves focus into a diagram menu opened with the mouse', async ({ page }) => {
+    await mount(page)
+    await render(page, { kind: 'markdown', content: MARKDOWN_DOCUMENT })
+
+    const frame = artifactFrame(page)
+    const mermaid = frame.locator('besidka-mermaid')
+
+    await expect(diagramSvg(frame)).toBeVisible({ timeout: 15_000 })
+    await mermaid.getByTestId('besidka-mermaid-copy').click()
+
+    const items = mermaid.getByTestId('besidka-mermaid-copy-menu')
+      .getByRole('menuitem')
+
+    await expect(items.first()).toBeFocused()
+    await page.keyboard.press('ArrowDown')
+    await expect(items.nth(1)).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(mermaid.getByTestId('besidka-mermaid-copy-menu')).toBeHidden()
+    await expect(mermaid.getByTestId('besidka-mermaid-copy')).toBeFocused()
+  })
+
+  test('draws the block chrome with the chat stone palette', async ({ page }) => {
+    await mount(page)
+    await render(page, { kind: 'markdown', content: MARKDOWN_DOCUMENT })
+
+    const frame = artifactFrame(page)
+    const block = frame.locator('besidka-code').first()
+      .getByTestId('besidka-code')
+
+    await expect(block).toBeVisible()
+
+    const readBaseColor = () => block.evaluate((element) => {
+      return getComputedStyle(element).getPropertyValue('--color-base-100')
+        .trim()
+    })
+
+    expect(await readBaseColor()).toBe('#fff')
+
+    await page.evaluate(() => {
+      (window as any).harness.setTheme('dark')
+    })
+    await expect.poll(readBaseColor).toBe('oklch(26.8% 0.007 34.298)')
+  })
+
   test('renders a whole mermaid artifact through the diagram element', async ({ page }) => {
     await mount(page, { viewer: true })
     await render(page, { kind: 'mermaid', content: MERMAID_SOURCE })

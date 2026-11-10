@@ -287,7 +287,9 @@ returns the exact source of a Markdown or React block.
 Both elements render into an open shadow root, so artifact CSS cannot break
 them and React's reconciliation of the light-DOM text is untouched. Colours
 come from the runtime palette (`src/palette.ts`, the same tokens as the
-shell) and switch with `host-context-changed`: code is re-highlighted with
+shell, BES-354: the block chrome reads the theme's `--color-base-*`,
+`--color-accent` and `--color-error`, resolved to the chat's stone values, not
+a separate blue-black set) and switch with `host-context-changed`: code is re-highlighted with
 the other Shiki theme and diagrams are re-rendered. The icons are Lucide path
 data (ISC, already in the notices through `lucide-react`).
 
@@ -644,6 +646,16 @@ in `APP_ONLY_TOKENS` and dropped; any other new token makes the script throw
 until it is added to one of the two lists. `design.spec.ts` fails when the
 generated file differs from what the script would write today, so a
 `main.css` theme change without `pnpm run artifacts:theme` fails CI.
+
+The same script writes `src/palette.generated.ts`: the colour tokens the
+block chrome and the shell need (`base-100/200/300/content`, accent, info,
+success, warning, error, plus the colours dark diagram series use), resolved
+through `tailwindcss/theme.css` so Markdown, SVG and Mermaid artifacts, which
+load neither Tailwind nor daisyUI, still draw with the chat's palette. An HTML
+artifact redeclares the values it already has. `kit-theme.spec.ts` fails when
+that file is stale, and when a kit file or the kit or shell styles contain a
+colour literal (hex, `rgb()`, `oklch()`, slate or stone names) or read a
+variable the palette does not declare.
 
 One deliberate difference (BES-335): `ARTIFACT_THEME_OVERRIDES` in the same
 script replaces four dark tokens. In the app's dark theme `primary` and
