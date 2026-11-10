@@ -23,6 +23,7 @@ const ARTIFACT_CONTENT = [
 const SCROLL_TOLERANCE_PX = 4
 const PANEL_SETTLE_MS = 600
 const STREAM_CHUNK_DELAY_MS = 150
+const MENU_ALIGN_PX = 6
 
 const CODE_BLOCK_SOURCE = 'const answer: number = 42'
 const DIAGRAM_SOURCE = 'graph TD\n  Start --> Done'
@@ -399,6 +400,32 @@ async function readSeamState(page: Page) {
   })
 }
 
+async function expectMenuNextToMessage(page: Page, messageId: string) {
+  const alignment = await page.evaluate((id) => {
+    const message = document.querySelector(
+      `[data-message-id="${CSS.escape(id)}"]`,
+    )
+    const bubble = message?.querySelector('.js-chat-bubble') ?? message
+    const menu = message?.querySelector('ul.menu')
+    const bubbleBox = bubble?.getBoundingClientRect()
+    const menuBox = menu?.getBoundingClientRect()
+
+    if (!bubbleBox || !menuBox) {
+      return null
+    }
+
+    return {
+      rightGap: Math.abs(menuBox.right - bubbleBox.right),
+      isInsideViewport: menuBox.left >= 0
+        && menuBox.right <= window.innerWidth,
+    }
+  }, messageId)
+
+  expect(alignment).not.toBeNull()
+  expect(alignment?.isInsideViewport).toBe(true)
+  expect(alignment?.rightGap ?? Infinity).toBeLessThanOrEqual(MENU_ALIGN_PX)
+}
+
 async function markPreviewFrame(page: Page) {
   await page.getByTestId('artifact-frame-iframe').evaluate((element) => {
     (element as HTMLElement & { __marker?: number }).__marker = 1
@@ -662,6 +689,8 @@ test.describe('message context menu focus mode', () => {
     await expect(page.getByTestId('message-menu-info')).toBeVisible()
     await page.waitForTimeout(PANEL_SETTLE_MS)
 
+    await expectMenuNextToMessage(page, messageId)
+
     const during = await readSeamState(page)
     const topDuring = await getMessageTop(page, messageId)
 
@@ -688,6 +717,12 @@ test.describe('message context menu focus mode', () => {
       'data-layout',
       'docked',
     )
+
+    await selectMessageMenu(page, messageId)
+    await expect(page.getByTestId('message-menu-info')).toBeVisible()
+    await expectMenuNextToMessage(page, messageId)
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('side-panel')).toBeVisible()
   })
 
   test('other menus leave the docked panel and the pill where they are',
@@ -729,6 +764,8 @@ test.describe('message context menu focus mode', () => {
       await expect(page.getByTestId('side-panel')).toBeHidden()
       await expect(page.getByTestId('side-panel-scrim')).toHaveCount(0)
       await expect(page.getByTestId('message-menu-info')).toBeVisible()
+      await page.waitForTimeout(PANEL_SETTLE_MS)
+      await expectMenuNextToMessage(page, messageId)
       expect((await readSeamState(page)).shellInert).toBe(false)
 
       const counts = {
@@ -763,6 +800,8 @@ test.describe('message context menu focus mode', () => {
     await selectMessageMenu(page, messageId)
     await expect(sheet).toBeHidden()
     await expect(page.getByTestId('message-menu-info')).toBeVisible()
+    await page.waitForTimeout(PANEL_SETTLE_MS)
+    await expectMenuNextToMessage(page, messageId)
     await expect(page.getByTestId('artifact-detail')).toHaveCount(1)
 
     const counts = {

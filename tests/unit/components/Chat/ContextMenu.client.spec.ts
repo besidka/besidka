@@ -1,10 +1,11 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
 import { markdownToPlainText } from '#shared/utils/markdown-plain'
 import ContextMenu from '../../../../app/components/Chat/ContextMenu.client.vue'
 import * as messagesComposable from '../../../../app/composables/messages'
+import { useSidePanel } from '../../../../app/composables/side-panel'
 
 enableAutoUnmount(afterEach)
 
@@ -493,6 +494,56 @@ describe('Chat/ContextMenu.client', () => {
       expect(style).toContain('top: 68px')
       expect(style).toContain('right: 48px')
     })
+
+    it('measures the anchor only after the side panel shell stops moving',
+      async () => {
+        window.innerHeight = 800
+        useSidePanel().open({ viewKey: 'test', title: 'Test' })
+        onTestFinished(() => {
+          useSidePanel().close()
+        })
+
+        const shell = document.createElement('div')
+        let finishTransition: () => void = () => {}
+        const transition = new Promise<void>((resolve) => {
+          finishTransition = resolve
+        })
+
+        shell.className = 'side-panel-inset'
+        onTestFinished(() => {
+          shell.remove()
+        })
+        shell.getAnimations = vi.fn(() => {
+          return [{
+            transitionProperty: 'margin-right',
+            finished: transition,
+          }] as unknown as Animation[]
+        })
+        document.body.appendChild(shell)
+
+        const wrapper = await mountSuspended(ContextMenu, {
+          props: {
+            messageId: 'm1',
+            anchorEl,
+          },
+          attachTo: document.body,
+        })
+
+        await vi.waitFor(() => {
+          expect(shell.getAnimations).toHaveBeenCalled()
+        })
+        expect(wrapper.find('ul').attributes('style') ?? '')
+          .not.toContain('top:')
+
+        setAnchorRect({ right: 200, left: -120, width: 320 })
+        finishTransition()
+
+        await vi.waitFor(() => {
+          expect(wrapper.find('ul').attributes('style'))
+            .toContain('right: -72px')
+        })
+        expect(wrapper.find('ul').attributes('style')).toContain('top: 68px')
+      })
 
     it('anchors above the bubble when space below is insufficient but space above fits', async () => {
       setAnchorRect({ bottom: 200 })
