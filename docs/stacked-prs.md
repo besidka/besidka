@@ -190,3 +190,34 @@ How the non-top skip works:
   in `paths-ignore`, so the PR that introduced this setup was not built, and
   `workflow_run` workflows always run the default-branch copy. The first real
   exercise is the first native stack after merge.
+
+## Lessons from the artifacts stack (2026-11)
+
+The artifacts feature ran as a native stack of several layers. These are the
+traps it hit.
+
+- **A conflicting layer silently skips CI.** When a layer's branch conflicts
+  with `main`, GitHub reports `mergeable: UNKNOWN` for that PR and does not
+  start any `pull_request` workflow. Only `pull_request_target` workflows
+  run. No error or banner says why, and the PR looks like it is waiting.
+  The conflict can show only at the top of the stack.
+- **Diagnose with a temporary draft PR.** Open a draft PR from the same
+  branch with base `main`. GitHub computes the real merge state there and
+  shows `dirty` when the branch conflicts. Close the draft when done.
+- **Fix by merging `main` into each layer, bottom-up.** Use merge commits,
+  one layer at a time, starting at the bottom. Do not rebase and
+  force-push a stack that CI already tested.
+- **A stacked PR cannot change its base.** The API answers 422. To move a
+  layer, rebuild the stack.
+- **`gh stack` cannot drop a single layer.** A parked layer above the one you
+  want to ship stays in the stack and blocks the preview of the stack top
+  (only the top layer builds). Workaround: open a temporary draft PR to
+  `main` from the branch you want to preview, and delete its preview Worker
+  when the PR closes.
+- **The artifacts runtime preview step uses `main`'s config.** It deploys
+  with `workers/artifacts-runtime/wrangler.jsonc` as it is on `main`, not the
+  one in the PR. A change to that file is only tested after it merges.
+- **Subagents cannot open PRs.** The `require-pr-writing-skill` hook does
+  not see a Skill call made inside a subagent, so PR creation is blocked
+  there. The subagent pushes the branch and writes the PR body to a file; the
+  coordinator opens the PR from the main session.

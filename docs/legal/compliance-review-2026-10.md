@@ -388,8 +388,10 @@
   - **One hour (Art. 3(3)).** A-7 adds an admin takedown by URL, token,
     artifact id or user that needs no report, works at phone width and takes
     effect on the next request; the global `artifacts` rule off is the
-    fallback. The mailbox needs a phone alert and someone to cover absences
-    (owner item 3 of the pre-check), otherwise the hour cannot be met.
+    fallback. The mailbox needs a phone alert (owner item 3 of the pre-check),
+    otherwise the hour cannot be met. There is no cover person (owner
+    decision 2026-11-09: he works alone), so the push is the only safeguard;
+    see `docs/legal/content-incidents.md`, section 1.
   - **Preservation (Art. 6).** A takedown disables and never deletes;
     `legalHoldUntil` keeps the removed content and the report rows for six
     months after the removal, through artifact and account deletion (A-1).
