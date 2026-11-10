@@ -235,6 +235,24 @@
                 {{ isFullWidth ? 'Exit full width' : 'Full width' }}
               </button>
             </li>
+            <li
+              v-if="canDelete"
+              class="mt-1 border-t border-base-300 pt-1"
+            >
+              <button
+                type="button"
+                class="text-error"
+                :disabled="isDeleting"
+                data-testid="artifact-action-delete"
+                @click="onDeleteArtifact"
+              >
+                <Icon
+                  name="lucide:trash-2"
+                  size="14"
+                />
+                Delete artifact
+              </button>
+            </li>
           </ul>
         </div>
       </details>
@@ -267,10 +285,30 @@
           <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words">{{ runtimeError.stack }}</pre>
         </details>
       </div>
+      <div
+        v-if="isOwner && fixOrigin === 'none'"
+        class="flex shrink-0 flex-col items-end gap-2"
+      >
+        <p
+          class="text-xs text-base-content/70"
+          data-testid="artifact-fix-no-chat"
+        >
+          {{ noOriginChatText }}
+        </p>
+        <button
+          type="button"
+          class="btn btn-sm"
+          data-testid="artifact-start-new-chat"
+          @click="onStartNewChat"
+        >
+          Start a new chat with this artifact
+        </button>
+      </div>
       <button
-        v-if="isOwner"
+        v-else-if="isOwner"
         type="button"
         class="btn btn-sm"
+        :disabled="fixOrigin === 'unknown'"
         data-testid="artifact-ask-to-fix"
         @click="onAskToFix"
       >
@@ -462,7 +500,6 @@ const CODE_LANGUAGES: Record<ArtifactKind, string> = {
   markdown: 'markdown',
 }
 
-const nuxtApp = useNuxtApp()
 const colorMode = useColorMode()
 const panel = useArtifactPanel()
 const sidePanel = useSidePanel()
@@ -472,6 +509,7 @@ const shareFeature = useFeature('artifacts.share')
 const clipboard = useClipboard({ legacy: true })
 const { state, stream } = panel
 const { isFullWidth } = sidePanel
+const { isDeleting, deleteArtifact } = useArtifactDelete()
 
 const previewTabId = useId()
 const codeTabId = useId()
@@ -502,6 +540,7 @@ const storageState = shallowRef<ArtifactStorageState>({
 const frameKey = shallowRef<number>(0)
 const isShareOpen = shallowRef<boolean>(false)
 const hasOpenedShare = shallowRef<boolean>(false)
+const { origin: fixOrigin, askToFix, startNewChat } = useArtifactFix(detail)
 
 let contentRequestId = 0
 let detailRequestId = 0
@@ -684,6 +723,19 @@ const canShare = computed<boolean>(() => {
     && !!shareVersion.value
     && !isStreaming.value
     && !detail.value?.takenDown
+})
+
+const canDelete = computed<boolean>(() => {
+  return isOwner.value
+    && !!state.value?.artifactId
+    && !isStreaming.value
+    && !loadError.value
+})
+
+const noOriginChatText = computed<string>(() => {
+  return detail.value?.createdVia === 'mcp'
+    ? 'A connected app created this artifact, so it has no chat.'
+    : 'The chat that created this artifact was deleted.'
 })
 
 const isUnavailableError = computed<boolean>(() => {
@@ -1018,20 +1070,48 @@ function onToggleFullWidth() {
   sidePanel.toggleFullWidth()
 }
 
-async function onAskToFix() {
+function buildFixPrompt(): string | null {
   const error = runtimeError.value
 
-  if (!error || !isOwner.value) {
+  return error ? buildArtifactFixPrompt(displayTitle.value, error) : null
+}
+
+async function onAskToFix() {
+  const text = buildFixPrompt()
+  const current = state.value
+
+  if (!text || !current || !isOwner.value) {
     return
   }
 
-  const text = buildArtifactFixPrompt(displayTitle.value, error)
+  await askToFix(text, {
+    artifactId: current.artifactId,
+    version: current.version,
+    kind: current.kind,
+    title: current.title,
+    source: 'owner',
+  })
+}
 
-  if (layout.value !== 'docked') {
-    sidePanel.close()
-    await nextTick()
+async function onStartNewChat() {
+  const text = buildFixPrompt()
+
+  if (!text || !isOwner.value) {
+    return
   }
 
-  await nuxtApp.callHook('chat-input:prefill', text)
+  await startNewChat(text)
+}
+
+async function onDeleteArtifact() {
+  closeActionsMenu()
+
+  const artifactId = state.value?.artifactId
+
+  if (!artifactId || !canDelete.value) {
+    return
+  }
+
+  await deleteArtifact({ artifactId, title: displayTitle.value })
 }
 </script>

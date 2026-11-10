@@ -11,6 +11,7 @@ export interface SidePanelView {
   component?: Component
   toolbar?: Component
   headerActions?: Component
+  preserveFocus?: boolean
   props?: Record<string, unknown>
 }
 

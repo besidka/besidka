@@ -65,6 +65,7 @@
           <textarea
             ref="textarea"
             v-model="input"
+            data-testid="chat-input-textarea"
             class="textarea p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
             :placeholder="textareaPlaceholder"
             :disabled="displayStop"
@@ -655,12 +656,35 @@ const { textarea, input } = useTextareaAutosize({
   input: message,
 })
 
-nuxtApp.hook('chat-input:prefill', async (text) => {
+function focusMessageAtEnd() {
+  const element = textarea.value
+
+  if (!element) {
+    return
+  }
+
+  element.focus({ preventScroll: true })
+  element.setSelectionRange(element.value.length, element.value.length)
+}
+
+async function prefillMessage(text: string) {
   const draft = message.value.trimEnd()
 
   message.value = draft ? `${draft}\n\n${text}` : text
   await nextTick()
-  textarea.value?.focus({ preventScroll: true })
+  focusMessageAtEnd()
+}
+
+nuxtApp.hook('chat-input:prefill', prefillMessage)
+
+const chatInputPrefill = useChatInputPrefill()
+
+onMounted(async () => {
+  const pendingText = chatInputPrefill.take()
+
+  if (pendingText) {
+    await prefillMessage(pendingText)
+  }
 })
 
 const {

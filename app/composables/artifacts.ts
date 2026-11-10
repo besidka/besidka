@@ -196,6 +196,10 @@ export function useArtifactPanel() {
     'artifact-panel:unavailable',
     () => ({}),
   )
+  const deletedIds = useState<Record<string, true>>(
+    'artifact-panel:deleted',
+    () => ({}),
+  )
   const latestVersions = useState<Record<string, number>>(
     'artifact-panel:latest-versions',
     () => ({}),
@@ -211,7 +215,7 @@ export function useArtifactPanel() {
 
   function open(
     target: ArtifactPanelTarget,
-    options: { push?: boolean } = {},
+    options: { push?: boolean, preserveFocus?: boolean } = {},
   ): void {
     const viewKey = getArtifactViewKey(target)
 
@@ -232,6 +236,7 @@ export function useArtifactPanel() {
       title: target.title || 'Artifact',
       mode: 'detail' as const,
       component: LazyChatArtifactDetail,
+      preserveFocus: options.preserveFocus,
     }
 
     if (options.push) {
@@ -343,6 +348,21 @@ export function useArtifactPanel() {
     return unavailableIds.value[artifactId] === true
   }
 
+  function markDeleted(artifactIds: string[]): void {
+    const marked = Object.fromEntries(
+      artifactIds.map((artifactId) => {
+        return [artifactId, true as const]
+      }),
+    )
+
+    deletedIds.value = { ...deletedIds.value, ...marked }
+    unavailableIds.value = { ...unavailableIds.value, ...marked }
+  }
+
+  function isDeleted(artifactId: string): boolean {
+    return deletedIds.value[artifactId] === true
+  }
+
   return {
     state,
     stream,
@@ -358,6 +378,8 @@ export function useArtifactPanel() {
     close,
     markUnavailable,
     isUnavailable,
+    markDeleted,
+    isDeleted,
   }
 }
 

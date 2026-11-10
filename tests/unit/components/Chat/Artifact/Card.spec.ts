@@ -45,6 +45,8 @@ function resetState() {
   useArtifactPanel().state.value = null
   useArtifactPanel().latestVersions.value = {}
   useArtifactPanel().stream.value = null
+  useState('artifact-panel:deleted').value = {}
+  useState('artifact-panel:unavailable').value = {}
   window.sessionStorage.clear()
 }
 
@@ -278,6 +280,20 @@ describe('ChatArtifactCard', () => {
 
     expect(wrapper.get('[data-testid="artifact-card-unavailable"]').text())
       .toContain('Artifact unavailable')
+    expect(wrapper.find('[data-testid="artifact-card"]').exists()).toBe(false)
+  })
+
+  it('shows a deleted artifact as a deleted placeholder', async () => {
+    useArtifactPanel().markDeleted(['art_1'])
+
+    const wrapper = await mountSuspended(ChatArtifactCard, {
+      props: { part: READY_PART, source: 'owner' },
+    })
+
+    expect(wrapper.get('[data-testid="artifact-card-deleted"]').text())
+      .toContain('Artifact deleted')
+    expect(wrapper.find('[data-testid="artifact-card-unavailable"]').exists())
+      .toBe(false)
     expect(wrapper.find('[data-testid="artifact-card"]').exists()).toBe(false)
   })
 

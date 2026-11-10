@@ -271,9 +271,13 @@ after a blank line when the composer already holds a draft (trailing
 whitespace of the draft is trimmed first), so a draft is never lost. It then
 waits a tick and focuses the textarea with `preventScroll`. Nothing is sent:
 the user reviews and presses Send. The change assigns the model directly,
-not through the insertion helper, so it is not on the native undo stack. The only caller today is **Ask to fix** in the artifact detail view
-(`docs/artifacts/panel.md`), which closes the side panel first outside the
-docked layout so the composer is visible.
+not through the insertion helper, so it is not on the native undo stack. After
+the text is in, the caret goes to the end. The only caller today is **Ask to
+fix** in the artifact detail view (`docs/artifacts/panel.md`), which closes the
+side panel first outside the docked layout so the composer is visible. The hook
+only reaches a composer that already exists, so an action that navigates first
+queues its text with `useChatInputPrefill().queue()`; the composer takes it
+once on mount.
 
 ## Rendering user messages
 

@@ -207,6 +207,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/artifact-fix-prompt.spec.ts',
     'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
     'tests/e2e/chat/artifacts-panel.spec.ts',
+    'tests/e2e/chat/artifact-actions.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
     'tests/unit/pages/chats/artifacts/index.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
@@ -224,6 +225,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/integration/api/artifacts.spec.ts',
     'tests/e2e/history/artifacts-library.spec.ts',
+    'tests/e2e/chat/artifact-actions.spec.ts',
   ]
   const artifactsShareUiTests = [
     'tests/unit/pages/a/index.spec.ts',
@@ -3156,8 +3158,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client|BridgeConfirm\.client|CodeView\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/(artifact(s|-host-actions|-storage|-bridge)|chunked-code-highlight|code-stream)\.ts|app\/utils\/artifact-(export|parts|bridge)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
+        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client|BridgeConfirm\.client|CodeView\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/(artifact(s|-host-actions|-storage|-bridge|-delete|-fix)|chat-input-prefill|chunked-code-highlight|code-stream)\.ts|app\/utils\/artifact-(export|parts|bridge)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
       tests: artifactsUiTests,
+    },
+    {
+      pattern: /^app\/composables\/chat-input-prefill\.ts$/,
+      tests: ['tests/unit/components/ChatInput.spec.ts'],
     },
     {
       pattern:

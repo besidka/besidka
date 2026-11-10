@@ -246,6 +246,24 @@ describe('ui/SidePanel', () => {
       opener.remove()
     })
 
+    it('leaves focus where it is when the view asks to preserve it',
+      async () => {
+        const composer = document.createElement('textarea')
+
+        document.body.append(composer)
+        composer.focus()
+
+        const wrapper = await mountPanel()
+
+        useSidePanel().open({ ...createView(), preserveFocus: true })
+        await flushPromises()
+
+        expect(wrapper.find(PANEL).exists()).toBe(true)
+        expect(document.activeElement).toBe(composer)
+
+        composer.remove()
+      })
+
     it('shows back only when the stack has more than one view', async () => {
       const wrapper = await mountPanel()
 

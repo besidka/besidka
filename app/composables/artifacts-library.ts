@@ -163,6 +163,7 @@ export function useArtifactLibrary(filters: {
   kind: Ref<ArtifactKindFilter>
 }) {
   const nuxtApp = useNuxtApp()
+  const panel = useArtifactPanel()
 
   const requestQuery = computed(() => {
     return {
@@ -298,6 +299,13 @@ export function useArtifactLibrary(filters: {
 
   onScopeDispose(clearSkeletonTimer)
 
+  const removeDeletedHook = nuxtApp.hook('artifacts:deleted', async (ids) => {
+    removeLocally(ids)
+    await refreshTotals()
+  })
+
+  onScopeDispose(removeDeletedHook)
+
   async function loadMore() {
     if (isLoadingMore.value || isDeleting.value || !hasMore.value) {
       return
@@ -428,6 +436,7 @@ export function useArtifactLibrary(filters: {
     }
 
     if (result.deletedIds.length) {
+      panel.markDeleted(result.deletedIds)
       removeLocally(result.deletedIds)
       await refreshTotals()
 

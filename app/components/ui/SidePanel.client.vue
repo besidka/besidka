@@ -440,7 +440,10 @@ watch(isOpen, async (open) => {
     opener.value = active instanceof HTMLElement ? active : null
 
     await nextTick()
-    focusPanel()
+
+    if (!activeView.value?.preserveFocus) {
+      focusPanel()
+    }
 
     return
   }

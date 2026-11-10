@@ -32,6 +32,18 @@
       </div>
     </div>
     <p
+      v-else-if="isDeleted"
+      class="flex items-center gap-2 rounded-box border border-base-300 px-3 py-2 text-sm text-base-content/60"
+      data-testid="artifact-card-deleted"
+    >
+      <Icon
+        name="lucide:trash-2"
+        size="16"
+        class="shrink-0"
+      />
+      Artifact deleted
+    </p>
+    <p
       v-else-if="isUnavailable"
       class="flex items-center gap-2 rounded-box border border-base-300 px-3 py-2 text-sm text-base-content/60"
       data-testid="artifact-card-unavailable"
@@ -218,6 +230,14 @@ const isActive = computed<boolean>(() => {
 
   return isViewOpen.value
     && (version === null || openVersion === null || openVersion === version)
+})
+
+const isDeleted = computed<boolean>(() => {
+  const artifactId = model.value?.artifactId
+
+  return model.value?.state === 'ready'
+    && !!artifactId
+    && panel.isDeleted(artifactId)
 })
 
 const isUnavailable = computed<boolean>(() => {

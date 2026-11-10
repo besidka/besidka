@@ -3,6 +3,7 @@ import type { EffectScope } from 'vue'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArtifactSummary } from '../../../shared/utils/artifacts'
+import { useArtifactPanel } from '../../../app/composables/artifacts'
 import {
   ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS,
   ARTIFACT_LIBRARY_SKELETON_DELAY_MS,
@@ -571,6 +572,46 @@ describe('useArtifactLibrary', () => {
     })
 
   describe('delete', () => {
+    it('drops a row deleted from the side panel and refreshes the quota',
+      async () => {
+        const library = await setup(createPage(['a1', 'a2'], 2, 9000))
+
+        mocks.fetch.mockResolvedValueOnce({
+          items: [],
+          total: 1,
+          usedBytes: 4000,
+        })
+
+        await useNuxtApp().callHook('artifacts:deleted', ['a1'])
+
+        expect(library.items.value.map(item => item.id)).toEqual(['a2'])
+        expect(library.total.value).toBe(1)
+        expect(library.usedBytes.value).toBe(4000)
+      })
+
+    it('stops listening for panel deletions when the scope ends', async () => {
+      const library = await setup(createPage(['a1', 'a2'], 2))
+
+      scope.stop()
+      scope = effectScope()
+      await useNuxtApp().callHook('artifacts:deleted', ['a1'])
+
+      expect(library.items.value.map(item => item.id)).toEqual(['a1', 'a2'])
+      expect(mocks.fetch).not.toHaveBeenCalled()
+    })
+
+    it('marks deleted rows as deleted for the chat cards', async () => {
+      const library = await setup(createPage(['a1'], 1))
+
+      mocks.fetch
+        .mockResolvedValueOnce({ deletedIds: ['a1'], heldIds: [] })
+        .mockResolvedValueOnce({ items: [], total: 0, usedBytes: 0 })
+
+      await library.deleteArtifacts(['a1'])
+
+      expect(useArtifactPanel().isDeleted('a1')).toBe(true)
+    })
+
     it('removes deleted rows locally, keeps held ones and refreshes the quota',
       async () => {
         const library = await setup(createPage(['a1', 'a2', 'a3'], 3, 9000))
