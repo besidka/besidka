@@ -713,6 +713,12 @@ watch(() => props.result, (result) => {
     return
   }
 
+  if (lastSentResult) {
+    mountFrame()
+
+    return
+  }
+
   if (partialTimer) {
     clearTimeout(partialTimer)
     partialTimer = null

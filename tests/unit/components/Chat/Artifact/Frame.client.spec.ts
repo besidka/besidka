@@ -375,12 +375,9 @@ describe('ChatArtifactFrame', () => {
     )).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
   })
 
-  it('sends a new version without reloading the iframe', async () => {
+  it('renders another version in a fresh iframe and realm', async () => {
     const { wrapper, connection } = await mountFrame()
-    const notifications: Array<[string, unknown]> = []
-    const runtime = connectRuntime(connection, (method, params) => {
-      notifications.push([method, params])
-    })
+    const runtime = connectRuntime(connection)
 
     await initialize(runtime)
 
@@ -389,13 +386,49 @@ describe('ChatArtifactFrame', () => {
     await wrapper.setProps({ result: nextResult, version: 2 })
     await waitForPort()
 
-    expect(captured).toHaveLength(1)
-    expect(connection.element.isConnected).toBe(true)
-    expect(notifications).toContainEqual([
+    expect(captured).toHaveLength(2)
+    expect(connection.element.isConnected).toBe(false)
+
+    const nextNotifications: Array<[string, unknown]> = []
+    const nextRuntime = connectRuntime(captured[1]!, (method, params) => {
+      nextNotifications.push([method, params])
+    })
+
+    await initialize(nextRuntime)
+    expect(captured[1]!.element.isConnected).toBe(true)
+    expect(nextNotifications).toContainEqual([
       METHODS.toolResult,
       { structuredContent: nextResult },
     ])
   })
+
+  it('keeps the iframe when the same version is sent again', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    await wrapper.setProps({ result: { ...RESULT }, version: 1 })
+    await waitForPort()
+
+    expect(captured).toHaveLength(1)
+    expect(connection.element.isConnected).toBe(true)
+  })
+
+  it('keeps the iframe when a streamed result arrives for the first time',
+    async () => {
+      const { wrapper, connection } = await mountFrame({
+        result: null,
+        partial: { kind: 'html', title: 'Landing page', content: '<p>v' },
+      })
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      await wrapper.setProps({ result: RESULT })
+      await waitForPort()
+
+      expect(captured).toHaveLength(1)
+      expect(connection.element.isConnected).toBe(true)
+    })
 
   it('asks before opening a link and opens it without an opener',
     async () => {
@@ -807,10 +840,8 @@ describe('ChatArtifactFrame', () => {
         version: 2,
       })
 
-      await expect(second).resolves.toEqual({
-        copied: false,
-        reason: 'denied',
-      })
+      second.catch(() => {})
+      await waitForPort()
       expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
         .toBe(false)
     })
