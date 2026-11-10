@@ -56,6 +56,10 @@ vi.mock('evlog', () => ({
   },
 }))
 
+vi.mock('~~/server/utils/features/context', () => ({
+  evaluateFeatureForEvent: vi.fn(async () => ({ active: false })),
+}))
+
 vi.mock('~~/server/utils/projects/activity', () => ({
   refreshProjectActivityAt: mocks.refreshProjectActivityAt,
 }))
