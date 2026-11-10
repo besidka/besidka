@@ -469,7 +469,75 @@ describe('ChatArtifactDetail', () => {
       expect(frameMounts.count).toBe(mountsBefore)
     })
 
+  describe('runtime errors per version', () => {
+    const BANNER = '[data-testid="artifact-runtime-error"]'
+
+    async function selectVersion(
+      wrapper: Awaited<ReturnType<typeof mountDetail>>,
+      version: string,
+    ) {
+      await wrapper.get('[data-testid="artifact-version-select"]')
+        .setValue(version)
+      await flushPromises()
+    }
+
+    it('shows only the error of the selected version', async () => {
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await wrapper.get('[data-testid="frame-stub"]').trigger('click')
+      expect(wrapper.find(BANNER).exists()).toBe(true)
+
+      await selectVersion(wrapper, '1')
+      expect(wrapper.find(BANNER).exists()).toBe(false)
+    })
+
+    it('brings a version back without its old error until it recurs',
+      async () => {
+        openTarget()
+
+        const wrapper = await mountDetail()
+
+        await wrapper.get('[data-testid="frame-stub"]').trigger('click')
+        await selectVersion(wrapper, '1')
+        await wrapper.get('[data-testid="frame-stub"]').trigger('click')
+        expect(wrapper.find(BANNER).exists()).toBe(true)
+
+        await selectVersion(wrapper, '3')
+        expect(wrapper.find(BANNER).exists()).toBe(false)
+
+        await selectVersion(wrapper, '1')
+        expect(wrapper.find(BANNER).exists()).toBe(false)
+
+        await wrapper.get('[data-testid="frame-stub"]').trigger('click')
+        expect(wrapper.find(BANNER).exists()).toBe(true)
+      })
+  })
+
   describe('Ask to fix', () => {
+    it('targets the version whose error is shown', async () => {
+      chatRoute.slug = 'origin-chat'
+      chatRoute.isOwned = true
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await wrapper.get('[data-testid="artifact-version-select"]')
+        .setValue('1')
+      await flushPromises()
+      await wrapper.get('[data-testid="frame-stub"]').trigger('click')
+      useSidePanel().close()
+      await wrapper.get('[data-testid="artifact-ask-to-fix"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(useArtifactPanel().state.value).toMatchObject({
+        artifactId: 'Art1Art1Art1Art1',
+        version: 1,
+      })
+    })
+
     async function mountWithRuntimeError() {
       openTarget()
 

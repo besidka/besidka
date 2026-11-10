@@ -532,7 +532,9 @@ const isCodeTabForced = shallowRef<boolean>(false)
 const detail = shallowRef<ArtifactDetail | null>(null)
 const content = shallowRef<ArtifactVersionContent | null>(null)
 const loadError = shallowRef<LoadError | null>(null)
-const runtimeErrors = shallowRef<ArtifactRuntimeMessage[]>([])
+const runtimeErrorsByVersion = shallowRef<
+  Record<string, ArtifactRuntimeMessage[]>
+>({})
 const storageState = shallowRef<ArtifactStorageState>({
   persistent: false,
   keys: 0,
@@ -746,7 +748,16 @@ const isUnavailableError = computed<boolean>(() => {
 })
 
 const runtimeError = computed<ArtifactRuntimeMessage | null>(() => {
-  return runtimeErrors.value.at(-1) ?? null
+  const key = getRuntimeErrorKey(
+    state.value?.artifactId,
+    selectedVersion.value,
+  )
+
+  if (!key) {
+    return null
+  }
+
+  return runtimeErrorsByVersion.value[key]?.at(-1) ?? null
 })
 
 const framePartial = computed<ArtifactPayload | null>(() => {
@@ -856,6 +867,33 @@ async function loadDetail(options: { keepCurrent?: boolean } = {}) {
   }
 }
 
+function getRuntimeErrorKey(
+  artifactId: string | null | undefined,
+  version: number | null | undefined,
+): string | null {
+  if (!artifactId || version === null || version === undefined) {
+    return null
+  }
+
+  return `${artifactId}:${version}`
+}
+
+function clearRuntimeErrors(key: string | null) {
+  if (!key || !runtimeErrorsByVersion.value[key]) {
+    return
+  }
+
+  runtimeErrorsByVersion.value = Object.fromEntries(
+    Object.entries(runtimeErrorsByVersion.value).filter(([entryKey]) => {
+      return entryKey !== key
+    }),
+  )
+}
+
+watch(() => state.value?.artifactId, () => {
+  runtimeErrorsByVersion.value = {}
+})
+
 async function reloadContent() {
   const current = state.value
   const version = selectedVersion.value
@@ -881,7 +919,10 @@ async function reloadContent() {
 
   if (result.ok) {
     content.value = result.value
-    runtimeErrors.value = []
+    clearRuntimeErrors(getRuntimeErrorKey(
+      result.value.artifactId,
+      result.value.version,
+    ))
 
     return
   }
@@ -980,10 +1021,22 @@ function onRuntimeMessage(message: ArtifactRuntimeMessage) {
     return
   }
 
-  runtimeErrors.value = [
-    ...runtimeErrors.value,
-    message,
-  ].slice(-MAX_RUNTIME_ERRORS)
+  const key = getRuntimeErrorKey(
+    frameResult.value?.artifactId,
+    frameResult.value?.version,
+  )
+
+  if (!key) {
+    return
+  }
+
+  runtimeErrorsByVersion.value = {
+    ...runtimeErrorsByVersion.value,
+    [key]: [
+      ...(runtimeErrorsByVersion.value[key] ?? []),
+      message,
+    ].slice(-MAX_RUNTIME_ERRORS),
+  }
 }
 
 async function onCopyCode() {
@@ -1101,7 +1154,7 @@ async function onAskToFix() {
 
   await askToFix(text, {
     artifactId: current.artifactId,
-    version: current.version,
+    version: selectedVersion.value ?? current.version,
     kind: current.kind,
     title: current.title,
     source: 'owner',
