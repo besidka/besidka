@@ -64,10 +64,20 @@ export function useArtifactFix(detail: Ref<ArtifactDetail | null>) {
     return true
   }
 
+  async function closeOverlayPanel() {
+    if (layout.value === 'docked') {
+      return
+    }
+
+    sidePanel.close()
+    await nextTick()
+  }
+
   async function queueAndNavigate(
     text: string,
     path: string,
   ): Promise<boolean> {
+    await closeOverlayPanel()
     prefill.queue(text)
 
     await navigateTo(path)
@@ -82,11 +92,7 @@ export function useArtifactFix(detail: Ref<ArtifactDetail | null>) {
   }
 
   async function fixHere(text: string) {
-    if (layout.value !== 'docked') {
-      sidePanel.close()
-      await nextTick()
-    }
-
+    await closeOverlayPanel()
     await nuxtApp.callHook('chat-input:prefill', text)
   }
 
@@ -107,6 +113,7 @@ export function useArtifactFix(detail: Ref<ArtifactDetail | null>) {
 
   async function startNewChat(text: string) {
     if (route.path === NEW_CHAT_PATH) {
+      await closeOverlayPanel()
       await nuxtApp.callHook('chat-input:prefill', text)
 
       return

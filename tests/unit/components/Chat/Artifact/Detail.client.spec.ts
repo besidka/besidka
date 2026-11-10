@@ -557,7 +557,10 @@ describe('ChatArtifactDetail', () => {
 
       const wrapper = await mountWithRuntimeError()
 
-      useSidePanel().close()
+      navigateMock.mockImplementation(async (path: string) => {
+        expect(useSidePanel().isOpen.value).toBe(false)
+        fakeRoute.path = path
+      })
       await wrapper.get('[data-testid="artifact-ask-to-fix"]')
         .trigger('click')
       await flushPromises()
