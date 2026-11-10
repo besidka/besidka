@@ -57,6 +57,10 @@ function clampChannel(value: number): number {
 }
 
 function relativeLuminance(colourReference: string): number {
+  if (colourReference === 'var(--color-white)') {
+    return 1
+  }
+
   const variable = /^var\((--color-[a-z]+-\d+)\)$/.exec(colourReference)?.[1]
   const pattern = new RegExp(
     `${variable}: oklch\\(([\\d.]+)% ([\\d.]+) ([\\d.]+)\\)`,
@@ -95,19 +99,49 @@ function contrastRatio(first: string, second: string): number {
   return (luminances[0] + 0.05) / (luminances[1] + 0.05)
 }
 
-const APP_DARK_VALUES_UNDER_OVERRIDE = {
-  '--color-primary': 'var(--color-stone-800)',
-  '--color-primary-content': 'var(--color-stone-100)',
-  '--color-neutral': 'var(--color-stone-800)',
-  '--color-neutral-content': 'var(--color-stone-100)',
+const APP_VALUES_UNDER_OVERRIDE = {
+  light: {
+    '--color-secondary': 'var(--color-white)',
+    '--color-secondary-content': 'var(--color-stone-800)',
+    '--color-success-content': 'var(--color-emerald-950)',
+  },
+  dark: {
+    '--color-primary': 'var(--color-stone-800)',
+    '--color-primary-content': 'var(--color-stone-100)',
+    '--color-secondary': 'var(--color-stone-100)',
+    '--color-secondary-content': 'var(--color-stone-800)',
+    '--color-neutral': 'var(--color-stone-800)',
+    '--color-neutral-content': 'var(--color-stone-100)',
+  },
 }
 
-function extractAppDarkTokens(mainCss: string): Record<string, string> {
-  const darkBlock = mainCss.slice(mainCss.indexOf('name: "dark"'))
+const SEMANTIC_COLOURS = [
+  'primary',
+  'secondary',
+  'accent',
+  'neutral',
+  'info',
+  'success',
+  'warning',
+  'error',
+]
+
+const CONTENT_CONTRAST_MINIMUM = 4.5
+const FILL_CONTRAST_MINIMUM = 3
+
+function extractAppThemeTokens(
+  mainCss: string,
+  themeName: 'light' | 'dark',
+): Record<string, string> {
+  const themeStart = mainCss.indexOf(`name: "${themeName}"`)
+  const themeEnd = themeName === 'light'
+    ? mainCss.indexOf('name: "dark"')
+    : mainCss.length
+  const themeBlock = mainCss.slice(themeStart, themeEnd)
   const tokens: Record<string, string> = {}
 
-  for (const token of Object.keys(APP_DARK_VALUES_UNDER_OVERRIDE)) {
-    const match = new RegExp(`${token}:\\s*([^;]+);`).exec(darkBlock)
+  for (const token of Object.keys(APP_VALUES_UNDER_OVERRIDE[themeName])) {
+    const match = new RegExp(`${token}:\\s*([^;]+);`).exec(themeBlock)
 
     tokens[token] = match?.[1]?.trim() ?? ''
   }
@@ -184,22 +218,28 @@ describe('Besidka theme for artifacts', () => {
     }).toThrow(/no daisyUI theme named "dark"/)
   })
 
-  it('overrides only known dark tokens and keeps the app theme as is', () => {
+  it('overrides only known tokens and keeps the app theme as is', () => {
     const mainCss = readFileSync(MAIN_CSS_PATH, 'utf8')
-    const overrides = Object.entries(ARTIFACT_THEME_OVERRIDES.dark)
 
-    expect(Object.keys(ARTIFACT_THEME_OVERRIDES)).toEqual(['dark'])
+    expect(Object.keys(ARTIFACT_THEME_OVERRIDES)).toEqual(['light', 'dark'])
 
-    for (const [token, value] of overrides) {
-      expect(DAISYUI_TOKENS).toContain(token)
-      expect(readThemeToken('dark', token)).toBe(value)
+    for (const themeName of ['light', 'dark'] as const) {
+      const overrides = Object.entries(ARTIFACT_THEME_OVERRIDES[themeName])
+
+      expect(Object.keys(APP_VALUES_UNDER_OVERRIDE[themeName]))
+        .toEqual(Object.keys(ARTIFACT_THEME_OVERRIDES[themeName]))
+
+      for (const [token, value] of overrides) {
+        expect(DAISYUI_TOKENS).toContain(token)
+        expect(readThemeToken(themeName, token)).toBe(value)
+      }
+
+      expect(
+        extractAppThemeTokens(mainCss, themeName),
+        `main.css ${themeName} tokens changed: revisit ARTIFACT_THEME_OVERRIDES`,
+      ).toEqual(APP_VALUES_UNDER_OVERRIDE[themeName])
     }
 
-    expect(mainCss).toContain('--color-primary: var(--color-stone-800);')
-    expect(
-      extractAppDarkTokens(mainCss),
-      'main.css dark primary or neutral changed: revisit ARTIFACT_THEME_OVERRIDES',
-    ).toEqual(APP_DARK_VALUES_UNDER_OVERRIDE)
     expect(readThemeToken('light', '--color-primary'))
       .toBe('var(--color-stone-800)')
     expect(
@@ -210,21 +250,42 @@ describe('Besidka theme for artifacts', () => {
     ).not.toBe(createThemeModule(mainCss))
   })
 
-  it('keeps primary and neutral readable in the dark artifact theme', () => {
-    const page = readThemeToken('dark', '--color-base-100')
-    const primary = readThemeToken('dark', '--color-primary')
-    const neutral = readThemeToken('dark', '--color-neutral')
+  for (const themeName of ['light', 'dark'] as const) {
+    describe(`${themeName} contrast of every semantic pair`, () => {
+      const page = readThemeToken(themeName, '--color-base-100')
 
-    expect(contrastRatio(
-      primary,
-      readThemeToken('dark', '--color-primary-content'),
-    )).toBeGreaterThanOrEqual(4.5)
-    expect(contrastRatio(primary, page)).toBeGreaterThanOrEqual(3)
-    expect(contrastRatio(
-      neutral,
-      readThemeToken('dark', '--color-neutral-content'),
-    )).toBeGreaterThanOrEqual(4.5)
-    expect(neutral).not.toBe(page)
+      for (const colour of SEMANTIC_COLOURS) {
+        const fill = readThemeToken(themeName, `--color-${colour}`)
+        const content = readThemeToken(themeName, `--color-${colour}-content`)
+
+        it(`${colour} content reads on its fill and the fill stands out from the page`, () => {
+          expect(contrastRatio(fill, content))
+            .toBeGreaterThanOrEqual(CONTENT_CONTRAST_MINIMUM)
+          expect(contrastRatio(fill, page))
+            .toBeGreaterThanOrEqual(FILL_CONTRAST_MINIMUM)
+        })
+      }
+
+      for (const surface of ['base-100', 'base-200', 'base-300']) {
+        it(`${surface} carries base-content text`, () => {
+          expect(contrastRatio(
+            readThemeToken(themeName, `--color-${surface}`),
+            readThemeToken(themeName, '--color-base-content'),
+          )).toBeGreaterThanOrEqual(CONTENT_CONTRAST_MINIMUM)
+        })
+      }
+    })
+  }
+
+  it('keeps primary and secondary apart in both themes', () => {
+    for (const themeName of ['light', 'dark'] as const) {
+      expect(readThemeToken(themeName, '--color-primary'))
+        .not.toBe(readThemeToken(themeName, '--color-secondary'))
+      expect(contrastRatio(
+        readThemeToken(themeName, '--color-primary'),
+        readThemeToken(themeName, '--color-secondary'),
+      )).toBeGreaterThanOrEqual(1.5)
+    }
   })
 
   it('measures a known Tailwind pair like WCAG does', () => {

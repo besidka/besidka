@@ -13,8 +13,8 @@ export const BESIDKA_THEME_CSS = `@plugin "daisyui/theme" {
   --color-base-content: var(--color-stone-950);
   --color-primary: var(--color-stone-800);
   --color-primary-content: var(--color-white);
-  --color-secondary: var(--color-white);
-  --color-secondary-content: var(--color-stone-800);
+  --color-secondary: var(--color-stone-500);
+  --color-secondary-content: var(--color-white);
   --color-accent: var(--color-pink-700);
   --color-accent-content: var(--color-white);
   --color-neutral: var(--color-stone-800);
@@ -22,7 +22,7 @@ export const BESIDKA_THEME_CSS = `@plugin "daisyui/theme" {
   --color-info: var(--color-sky-700);
   --color-info-content: var(--color-sky-100);
   --color-success: var(--color-emerald-700);
-  --color-success-content: var(--color-emerald-950);
+  --color-success-content: var(--color-white);
   --color-warning: var(--color-amber-700);
   --color-warning-content: var(--color-amber-100);
   --color-error: var(--color-red-700);
@@ -48,12 +48,12 @@ export const BESIDKA_THEME_CSS = `@plugin "daisyui/theme" {
   --color-base-content: var(--color-stone-100);
   --color-primary: var(--color-stone-100);
   --color-primary-content: var(--color-stone-800);
-  --color-secondary: var(--color-stone-100);
-  --color-secondary-content: var(--color-stone-800);
+  --color-secondary: var(--color-stone-400);
+  --color-secondary-content: var(--color-stone-950);
   --color-accent: var(--color-pink-300);
   --color-accent-content: var(--color-stone-950);
-  --color-neutral: var(--color-stone-700);
-  --color-neutral-content: var(--color-stone-100);
+  --color-neutral: var(--color-stone-500);
+  --color-neutral-content: var(--color-white);
   --color-info: var(--color-sky-100);
   --color-info-content: var(--color-sky-950);
   --color-success: var(--color-emerald-200);

@@ -94,19 +94,30 @@ export const APP_ONLY_TOKENS = [
 ]
 
 /**
- * Artifact-only token values that replace the main.css ones. In the app's
- * dark theme primary and neutral equal the page colour (stone-800), which
- * works on the app's glass surfaces but hides `btn-primary`, `bg-primary`
- * and `badge-neutral` on an artifact's plain base-100 page. Dark primary is
- * inverted the way light works (a light fill with dark text) and neutral is
- * lifted one step. The app theme stays as it is.
+ * Artifact-only token values that replace the main.css ones. The app's
+ * glass surfaces hide some pairs that fail on an artifact's plain base-100
+ * page: dark primary and neutral equal the page colour (stone-800), light
+ * secondary is white on white, dark neutral is one step off the page, and
+ * light `success-content` is dark green on a dark green fill. Every
+ * semantic pair must keep content at 4.5:1 and the fill at 3:1 against
+ * base-100 (the contrast spec checks all of them). Dark primary is inverted
+ * the way light works (a light fill with dark text), dark secondary is a
+ * mid stone so it stays apart from the inverted primary, and neutral is
+ * lifted to stone-500. The app theme stays as it is.
  */
 export const ARTIFACT_THEME_OVERRIDES = {
+  light: {
+    '--color-secondary': 'var(--color-stone-500)',
+    '--color-secondary-content': 'var(--color-white)',
+    '--color-success-content': 'var(--color-white)',
+  },
   dark: {
     '--color-primary': 'var(--color-stone-100)',
     '--color-primary-content': 'var(--color-stone-800)',
-    '--color-neutral': 'var(--color-stone-700)',
-    '--color-neutral-content': 'var(--color-stone-100)',
+    '--color-secondary': 'var(--color-stone-400)',
+    '--color-secondary-content': 'var(--color-stone-950)',
+    '--color-neutral': 'var(--color-stone-500)',
+    '--color-neutral-content': 'var(--color-white)',
   },
 }
 
