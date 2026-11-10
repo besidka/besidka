@@ -112,8 +112,26 @@ The detail view:
 - Version select: the owner sees every stored version
   (`GET /api/v1/artifacts/<id>`); a shared viewer sees only versions the
   shared chat references.
+- New versions written in the chat (BES-342): every owner card that reaches
+  `ready` reports its `artifactId` and version to
+  `useArtifactPanel().noteVersion()` (no polling; the stream's tool result is
+  the signal), which keeps the highest version per artifact in
+  `latestVersions`. An open view of that artifact refreshes its version list
+  and switches to the new version, unless the user picked an older one
+  (`isVersionPinned`: set when the view opens on, or the select or a card
+  chooses, a version below the latest known). A pinned view shows a
+  "vN is available, show" button instead. The cause of the old bug: the new
+  card has its own tool-call view key, so it never counted as the open view
+  and nothing reloaded the version list. A different artifact written in the
+  same chat never steals the panel. The pure rule is
+  `resolveArtifactVersionRefresh()`.
 - Actions menu: Copy code, Download source, Download as HTML (Markdown only),
-  Full width.
+  Full width. It closes on a press outside, on `window` blur when focus moves
+  into the artifact iframe (VueUse `onClickOutside` with `detectIframe`; a
+  click inside the sandboxed frame never reaches the host document), on Esc
+  (focus returns to the trigger), on choosing an item and on switching tab or
+  version. The version select is a native `<select>`, which the browser
+  closes itself.
 - Runtime errors: the last of up to 5 `notifications/message` errors from the
   runtime, with the stack under Details. The owner gets **Ask to fix**, which
   closes the panel outside the docked layout and fires
