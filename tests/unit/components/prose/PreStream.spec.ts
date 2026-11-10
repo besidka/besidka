@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => {
 
   return {
     copy: vi.fn(),
+    loadCodeHighlighter: vi.fn(() => {
+      return new Promise<never>(() => {})
+    }),
     renderAsync: vi.fn(),
     runExportAction: vi.fn(),
     panzoom: vi.fn(() => panzoomInstance),
@@ -40,10 +43,8 @@ mockNuxtImport('useDiagramExport', () => {
   }
 })
 
-mockNuxtImport('useHighlighter', () => {
-  return async () => {
-    return { getLoadedLanguages: () => [] as string[] }
-  }
+mockNuxtImport('loadCodeHighlighter', () => {
+  return mocks.loadCodeHighlighter
 })
 
 mockNuxtImport('useClipboard', () => {
@@ -58,26 +59,6 @@ vi.mock('pele/lazy', async () => {
   )
 
   return { ...actual, renderAsync: mocks.renderAsync }
-})
-
-vi.mock('shiki-stream/vue', async () => {
-  const { defineComponent, h } = await import('vue')
-
-  return {
-    ShikiCachedRenderer: defineComponent({
-      props: {
-        code: { type: String, default: '' },
-        lang: { type: String, default: '' },
-        theme: { type: String, default: '' },
-        highlighter: { type: Object, default: null },
-      },
-      setup(props) {
-        return () => {
-          return h('code', { 'data-testid': 'shiki-code' }, props.code)
-        }
-      },
-    }),
-  }
 })
 
 const VALID_DIAGRAM = 'flowchart LR\n  A[Start] --> B[Done]\n  B --> C[End]'
@@ -372,6 +353,23 @@ describe('prose/PreStream.vue mermaid', () => {
       .toBe(false)
     expect(wrapper.get('[data-testid="shiki-code"]').text())
       .toBe('const answer = 42')
+  })
+
+  it('shows the code as plain lines while the language loads', async () => {
+    const wrapper = await mountPre('const a = 1\nconst b = 2', {
+      language: 'go',
+    })
+
+    await flushPromises()
+
+    const stream = wrapper.get('[data-testid="code-stream"]')
+
+    expect(stream.attributes('data-highlighted')).toBe('false')
+    expect(stream.findAll('code > span').map((line) => {
+      return line.text()
+    })).toEqual(['const a = 1', 'const b = 2'])
+    expect(mocks.loadCodeHighlighter)
+      .toHaveBeenCalledWith('go', 'const a = 1\nconst b = 2')
   })
 
   it('keeps the plain Copy button on non-mermaid blocks', async () => {
