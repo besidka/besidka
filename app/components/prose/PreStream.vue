@@ -160,18 +160,11 @@
           @open="openViewer"
         />
         <ProsePre v-else v-bind="props">
-          <ShikiCachedRenderer
-            :key="key"
-            :highlighter="highlighter as any"
+          <ProseCodeStream
             :code="effectiveSource"
-            :lang="lang"
-            :theme="$colorMode.value === 'dark'
-              ? 'github-dark-high-contrast'
-              : 'github-light-high-contrast'
-            "
-          >
-            Render
-          </ShikiCachedRenderer>
+            :language="language"
+            :theme="codeTheme"
+          />
         </ProsePre>
       </ClientOnly>
     </div>
@@ -191,7 +184,6 @@
 </template>
 
 <script setup lang="ts">
-import { ShikiCachedRenderer } from 'shiki-stream/vue'
 import type { DiagramRenderError } from '~/types/diagram.d'
 import type { DiagramMenuInput } from '~/types/diagram-export.d'
 
@@ -207,7 +199,6 @@ const EDIT_COMMIT_DELAY_MS: number = 250
 
 const colorMode = useColorMode()
 const clipboard = useClipboard()
-const highlighter = await useHighlighter()
 const markdownSource = useMarkdownSource()
 
 const trimmedCode = computed<string>(() => {
@@ -402,33 +393,8 @@ const codeLines = computed<number>(() => {
   return lines ? lines.length + 1 : 1
 })
 
-const lang = computed<string>(() => {
-  let language = props.language
-
-  switch (props.language) {
-    case 'vue':
-      language = 'vue'
-      break
-    case 'javascript':
-      language = 'js'
-      break
-    case 'typescript':
-      language = 'ts'
-      break
-    case 'css':
-      language = 'css'
-      break
-    default:
-      language = props.language
-  }
-
-  const loadedLanguages = highlighter.getLoadedLanguages()
-
-  return loadedLanguages.includes(language) ? language : 'text'
-})
-
-const key = computed<string>(() => {
-  return `${lang.value}-${colorMode.value}`
+const codeTheme = computed<string>(() => {
+  return colorMode.value === 'dark' ? CODE_THEME_DARK : CODE_THEME_LIGHT
 })
 
 const copied = shallowRef(false)
