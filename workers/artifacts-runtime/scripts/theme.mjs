@@ -26,7 +26,7 @@ export const PALETTE_MODULE_PATH = path.join(
 
 export const THEME_NAMES = ['light', 'dark']
 
-export const PALETTE_TOKENS = [
+export const PALETTE_TOKEN_NAMES = [
   '--color-base-100',
   '--color-base-200',
   '--color-base-300',
@@ -256,20 +256,28 @@ export function readTailwindColors() {
   return colors
 }
 
-function resolveColor(value, tailwindColors) {
+function resolveColor(token, value, tailwindColors) {
+  if (typeof value !== 'string') {
+    throw new Error(`The main.css theme has no ${token}`)
+  }
+
   const reference = value.match(/^var\((--color-[a-z0-9-]+)\)$/)
 
   if (!reference) {
+    if (value.includes('var(')) {
+      throw new Error(`${token} is ${value}: the palette only resolves a plain var(--color-*) reference`)
+    }
+
     return value
   }
 
   const resolved = tailwindColors.get(reference[1])
 
   if (!resolved) {
-    throw new Error(`Tailwind has no colour ${reference[1]}, referenced by the main.css theme`)
+    throw new Error(`Tailwind has no colour ${reference[1]}, referenced by ${token}`)
   }
 
-  return resolveColor(resolved, tailwindColors)
+  return resolveColor(token, resolved, tailwindColors)
 }
 
 /**
@@ -284,13 +292,16 @@ export function createPalette(mainCss, tailwindColors = readTailwindColors()) {
 
   for (const theme of extractThemes(mainCss)) {
     const declared = new Map(theme.declarations)
-    const entries = PALETTE_TOKENS.map((token) => {
-      return [token, resolveColor(declared.get(token), tailwindColors)]
+    const entries = PALETTE_TOKEN_NAMES.map((token) => {
+      return [token, resolveColor(token, declared.get(token), tailwindColors)]
     })
 
     if (theme.name === 'dark') {
       for (const token of DARK_DIAGRAM_SERIES_COLORS) {
-        entries.push([token, resolveColor(`var(${token})`, tailwindColors)])
+        entries.push([
+          token,
+          resolveColor(token, `var(${token})`, tailwindColors),
+        ])
       }
     }
 

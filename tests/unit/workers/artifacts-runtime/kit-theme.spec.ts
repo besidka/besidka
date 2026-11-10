@@ -5,7 +5,7 @@ import {
   DARK_DIAGRAM_SERIES_COLORS,
   MAIN_CSS_PATH,
   PALETTE_MODULE_PATH,
-  PALETTE_TOKENS as PALETTE_TOKEN_NAMES,
+  PALETTE_TOKEN_NAMES,
   createPaletteModule,
   readTailwindColors,
 } from '~~/workers/artifacts-runtime/scripts/theme.mjs'
@@ -18,6 +18,14 @@ const KIT_DIRECTORY = path.resolve(
   __dirname,
   '../../../../workers/artifacts-runtime/src/kit',
 )
+
+const OLD_BLUE_BLACK_PALETTE = new RegExp([
+  '#0d1117', '#151b23', '#ffffff', '#1f2328', '#e6edf3', '#59636e',
+  '#9198a1', '#d1d9e0', '#3d444d', '#0969da', '#4493f8', '#cf222e',
+  '#ff7b72', '#ffebe9', '#2d1214',
+].join('|'), 'i')
+
+const DARK_ONLY_RULE = /[^{}]*data-theme='dark'[^{}]*\{[^}]*\}/g
 
 const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}(?![\w-])|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(|(?<!--color-)\b(?:slate|gray|grey|zinc|neutral|stone)-\d{2,3}\b/
 
@@ -54,7 +62,7 @@ describe('runtime palette from the Besidka theme', () => {
       .toBe(tailwind.get('--color-stone-100'))
 
     for (const theme of ['light', 'dark'] as const) {
-      expect(paletteDeclarations(theme)).not.toMatch(/#0d1117|#151b23|#ffffff/i)
+      expect(paletteDeclarations(theme)).not.toMatch(OLD_BLUE_BLACK_PALETTE)
     }
   })
 
@@ -98,21 +106,16 @@ describe('kit and shell styles use theme variables', () => {
   it('only reads variables that both themes declare', () => {
     for (const theme of ['light', 'dark'] as const) {
       const declared = readDeclaredNames(paletteDeclarations(theme))
-      const used = [
-        ...readUsedNames(KIT_STYLE),
-        ...readUsedNames(SHELL_STYLE),
-      ].filter((name) => {
+      const lightStyles = `${KIT_STYLE}${SHELL_STYLE}`
+        .replace(DARK_ONLY_RULE, '')
+      const styles = theme === 'dark'
+        ? `${KIT_STYLE}${SHELL_STYLE}`
+        : lightStyles
+      const used = [...readUsedNames(styles)].filter((name) => {
         return name.startsWith('--besidka-') || name.startsWith('--color-')
       })
 
       for (const name of used) {
-        const isDark = theme === 'dark'
-        const isDarkOnly = DARK_DIAGRAM_SERIES_COLORS.includes(name)
-
-        if (isDarkOnly && !isDark) {
-          continue
-        }
-
         expect(declared.has(name), `${name} is not declared in ${theme}`)
           .toBe(true)
       }

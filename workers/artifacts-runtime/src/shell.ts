@@ -53,7 +53,7 @@ a {
   margin: 0;
   padding: 0 1em;
   color: var(--besidka-muted);
-  border-left: 4px solid var(--besidka-border);
+  border-left: 4px solid var(--besidka-rule);
 }
 .besidka-markdown table {
   border-collapse: collapse;
@@ -61,7 +61,7 @@ a {
 .besidka-markdown th,
 .besidka-markdown td {
   padding: 6px 12px;
-  border: 1px solid var(--besidka-border);
+  border: 1px solid var(--besidka-rule);
 }
 .besidka-markdown img,
 .besidka-svg svg,

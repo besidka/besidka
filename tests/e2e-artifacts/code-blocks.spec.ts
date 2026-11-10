@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { BrowserContext, FrameLocator, Page } from '@playwright/test'
+import { PALETTE_TOKENS } from '../../workers/artifacts-runtime/src/palette.generated'
 
 const HOST_ORIGIN = `http://127.0.0.1:${process.env.ARTIFACTS_HOST_PORT || '8789'}`
 const FRAME_SELECTOR = '[data-testid="artifact-frame"]'
@@ -247,12 +248,13 @@ export default function App() {
         .trim()
     })
 
-    expect(await readBaseColor()).toBe('#fff')
+    expect(await readBaseColor()).toBe(PALETTE_TOKENS.light['--color-base-100'])
 
     await page.evaluate(() => {
       (window as any).harness.setTheme('dark')
     })
-    await expect.poll(readBaseColor).toBe('oklch(26.8% 0.007 34.298)')
+    await expect.poll(readBaseColor)
+      .toBe(PALETTE_TOKENS.dark['--color-base-100'])
   })
 
   test('renders a whole mermaid artifact through the diagram element', async ({ page }) => {
