@@ -15,6 +15,7 @@ import {
 } from '#shared/utils/chat-test-errors'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
 import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture'
+import { TEST_CODE_STREAM_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
 import { PAST_CHAT_PRE_RETRIEVAL_CALL_PREFIX } from '#shared/utils/past-chat-retrieval'
 import {
   defineEventHandler,
@@ -31,6 +32,13 @@ interface TimedChunk {
 
 const INITIAL_DELAY: number = 800
 const TEXT_CHUNK_DELAY: number = 50
+const CODE_CHUNK_DELAY: number = 10
+const CODE_CHUNK_MIN_LENGTH: number = 20
+const CODE_CHUNK_MAX_LENGTH: number = 50
+const CODE_CHUNK_SEED: number = 42
+const LCG_MULTIPLIER: number = 1103515245
+const LCG_INCREMENT: number = 12345
+const LCG_MODULUS: number = 2147483648
 const REASONING_CHUNK_DELAY: number = 100
 const REASONING_STEP_DELAY: number = 300
 
@@ -117,6 +125,42 @@ function buildTextChunks(
   chunks.push({ type: 'text-end', id: partId })
 
   return chunks.map(chunk => ({ chunk }))
+}
+
+/**
+ * Streams text in pieces of 20 to 50 characters, a few tokens each like a
+ * real provider, with a seeded length sequence so every run is the same.
+ */
+function buildCodeChunks(
+  text: string,
+  partId: string,
+): TimedChunk[] {
+  const chunks: TimedChunk[] = [
+    { chunk: { type: 'text-start', id: partId } },
+  ]
+  let seed = CODE_CHUNK_SEED
+
+  for (let index = 0; index < text.length;) {
+    seed = (seed * LCG_MULTIPLIER + LCG_INCREMENT) % LCG_MODULUS
+
+    const lengthRange = CODE_CHUNK_MAX_LENGTH - CODE_CHUNK_MIN_LENGTH + 1
+    const length = CODE_CHUNK_MIN_LENGTH
+      + Math.floor((seed / LCG_MODULUS) * lengthRange)
+
+    chunks.push({
+      chunk: {
+        type: 'text-delta',
+        id: partId,
+        delta: text.slice(index, index + length),
+      },
+      delay: CODE_CHUNK_DELAY,
+    })
+    index += length
+  }
+
+  chunks.push({ chunk: { type: 'text-end', id: partId } })
+
+  return chunks
 }
 
 function buildReasoningChunks(
@@ -353,6 +397,8 @@ function getChunksForScenario(
       return buildGatewayImageGenerationChunks()
     case 'mermaid':
       return buildTextChunks(TEST_MERMAID_MESSAGE, 'test-text-0')
+    case 'code':
+      return buildCodeChunks(TEST_CODE_STREAM_MESSAGE, 'test-text-0')
     default:
       return buildTextChunks(SHORT_TEXT, 'test-text-0')
   }

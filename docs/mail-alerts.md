@@ -192,18 +192,22 @@ forwarded and gets no alert.
 Do the steps in order. Never paste the destination address into a file in the
 repo or into a chat; keep it in a shell variable only.
 
-### 1. Phone and cover
+### 1. Phone, and why there is no cover person
 
 1. On the phone, open the installed Besidka PWA (Add to Home Screen on iOS),
    sign in with the admin account, and turn push on (bell in the sidebar
    dropdown, or Profile). Allow notifications when the system asks. On iOS,
    allow Besidka in any Focus mode you use, otherwise the alert is silenced.
-2. Name a person who covers absences (holidays, travel, nights you cannot be
-   woken). They need a Besidka account with the `admin` role (Admin → Users)
-   or in `NUXT_ADMIN_EMAILS`, the PWA installed and push on, access to the
-   Gmail inbox or a forward of it, and the admin takedown steps in
-   `docs/legal/content-incidents.md`. Record their name and how to reach them
-   in your private incident record, not in this public repo.
+2. There is no cover person (owner decision, 2026-11-09: the owner works
+   alone). Nobody else is woken for holidays, travel or nights. The push to
+   your phone is the only safeguard for the TCO one-hour rule
+   (`docs/legal/content-incidents.md`, section 3). Residual risk: when the
+   phone is off, has no signal, or silences Besidka, or when you are
+   unreachable, an order can run past the hour. Then tell the authority as
+   that document describes. Revisit this when a second operator exists, when
+   Besidka earns money or you register a business, or when the user base
+   grows. A second admin also makes the Privacy Policy "Security" sentence
+   false (`docs/legal/agentic-capabilities-precheck.md`, question 4).
 
 ### 2. Merge and deploy the app
 
