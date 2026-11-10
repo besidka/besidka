@@ -44,7 +44,7 @@ protocol v2 live next to v1.
    ```
 
    There is no third-party host in it. `'unsafe-eval'` is not needed: Sucrase
-   emits text that is loaded as a module from a `blob:` URL, and Mermaid
+   emits text that is loaded as a module from a `blob:` URL, and Pele
    renders without `eval` (both verified in Chromium and WebKit). There is
    no `worker-src`, so `default-src 'none'` blocks workers. `webrtc 'block'`
    is not enforced by Chromium or WebKit today (tested); it stays for the
@@ -97,7 +97,7 @@ Top navigation (`window.top.location = …`) is blocked by the sandbox.
 | `html` | `src/render/html.ts` | Parses the HTML with `DOMParser`, replaces the document's root element and runs the scripts in order, then dispatches synthetic `DOMContentLoaded` and `load`. |
 | `react` | `src/render/react.ts` | Sucrase (`jsx` + `typescript`, automatic runtime) to an ES module loaded from a `blob:` URL; the default export is mounted with `react-dom/client`. |
 | `svg` | `src/render/svg.ts` | Inserted into a `<main>`. |
-| `mermaid` | `src/render/mermaid.ts` | Vendored Mermaid, `securityLevel: 'strict'`, `layout: 'dagre'`, theme from the host. Lazy chunk. |
+| `mermaid` | `src/render/mermaid.ts` | Pele (the chat's renderer) with the shared options, sanitized by DOMPurify, theme from the host. Lazy chunk. |
 | `markdown` | `src/render/markdown.ts` | `marked` with GFM. |
 
 Why the HTML renderer does not use `document.open()/write()`: closing a
@@ -164,10 +164,13 @@ those). Dual licences record the option taken: DOMPurify `(MPL-2.0 OR
 Apache-2.0)` is used under Apache-2.0. `khroma@2.1.0` has no `license` field;
 its shipped file is MIT, recorded in `LICENSE_OVERRIDES`.
 
-Mermaid 12 defaults to the ELK layout, and `elkjs` is `EPL-2.0 OR
-GPL-3.0-or-later`. The runtime does not ship it: the build resolves `elkjs`
-to a stub that throws a clear error, and the Mermaid config selects the MIT
-`dagre` layout. A diagram that asks for `layout: elk` fails with that error.
+The runtime renders Mermaid text with Pele (MIT, no runtime dependencies),
+the same renderer as the chat, and does not ship Mermaid. Mermaid 12 was
+vendored until BES-346, with its ELK layout (`elkjs`, `EPL-2.0 OR
+GPL-3.0-or-later`) replaced by a stub; with Pele there is no ELK to exclude
+and the build no longer carries that plugin. Pele has its own layout, so a
+`layout: elk` or `%%{init}` directive is not honoured, in the chat and in
+artifacts alike.
 
 The generated `/v1/THIRD_PARTY_NOTICES.txt` holds each package's name,
 version, licence and shipped licence text (marked's file includes the John
@@ -251,10 +254,10 @@ Code and diagrams inside artifacts look and behave like the chat's
 | Element | Renders | Buttons |
 | --- | --- | --- |
 | `<besidka-code lang="ts">source</besidka-code>` | Shiki, themes `github-light-high-contrast` / `github-dark-high-contrast` (the chat's), window dots and the language label | Expand/Collapse from three lines on (collapsed to 7.5 rem, like chat), Copy |
-| `<besidka-mermaid>source</besidka-mermaid>` | The vendored Mermaid (dagre, `securityLevel: 'strict'`) themed from the host | Fullscreen (also a click on the diagram), Copy (source) |
+| `<besidka-mermaid>source</besidka-mermaid>` | Pele with the chat's options, themed from the host | Fullscreen (also a click on the diagram), Download and Copy dropdowns like the chat's |
 
-Whole `mermaid` artifacts use the same element: `render/mermaid.ts` runs
-`mermaid.parse()` first (a syntax error still reaches the host as an
+Whole `mermaid` artifacts use the same element: `render/mermaid.ts` renders
+the source once first (a syntax error still reaches the host as an
 artifact error, so the panel's Ask to fix works) and then renders
 `<main class="besidka-mermaid"><besidka-mermaid>`. A theme change no longer
 re-renders the whole artifact; the element re-renders itself.
@@ -288,6 +291,60 @@ shell) and switch with `host-context-changed`: code is re-highlighted with
 the other Shiki theme and diagrams are re-rendered. The icons are Lucide path
 data (ISC, already in the notices through `lucide-react`).
 
+### Same render as the chat (BES-346)
+
+The chat's diagram blocks and the full-screen viewer render with Pele
+(`app/utils/diagram-render-core.ts`). Until BES-346 the runtime rendered the
+same text with vendored Mermaid and its dagre layout, so a diagram got a
+different layout in the artifact preview (edges crossing nodes, detached
+label boxes, stretched subgraphs). Both sides now call `renderAsync` with
+`DIAGRAM_RENDER_OPTIONS` from
+`packages/artifacts-protocol/src/diagram-render.ts` (font families, `images`
+and `links` off, source, output and edge limits, direction breakpoint), and
+sanitize with the same `DIAGRAM_SVG_SANITIZE_CONFIG`. `diagram-parity.spec.ts`
+fails when the two calls differ.
+
+What the frame has to supply itself:
+
+- **Fonts.** Pele measures text on a canvas, so the label boxes are only
+  right when Nunito is loaded. A shadow root cannot declare `@font-face`, so
+  `render/diagram.ts` adds the Nunito faces (`design/fonts.ts`, shared with
+  the design system) to the document and awaits `document.fonts.load` for the
+  400 and 700 subsets of the source before rendering. The mono face
+  (`Atkinson Hyperlegible Mono`) is not vendored: mono labels (class and ER
+  diagrams) fall back to `monospace` and may be boxed slightly differently.
+- **Theme.** `.diagram` in `KIT_STYLE` maps the `--pele-*` variables to the
+  block's palette (`--besidka-*`) and to the chat's series colours in light
+  and dark, like `app/assets/css/diagram-theme.css`.
+- **Width.** The block's content width is passed as `maxWidth`, so the
+  direction switch at 480 px matches the chat; a resize re-renders.
+
+Measured 2026-11-10 with a neutral flowchart (ten nodes, two legend
+subgraphs, coloured labelled edges) in Chromium and WebKit, light and dark, at
+1440 and 375 px: the chat block, the artifact preview and the full-screen
+viewer have the same layout.
+
+Deploy order: the runtime Worker and the app deploy separately. A new frame
+that sends `copy-png` to an older host is rejected by the host's guard, and
+the frame shows "Copy failed"; deploy the app first. The frame decides
+whether to show the PNG item from its own `ClipboardItem` support, on the
+assumption that it equals the host's (same browser).
+
+### Dropdown menus (BES-348)
+
+Download and Copy are dropdowns anchored under their buttons, with the same
+items, order, icons and labels as the chat (`DIAGRAM_DOWNLOAD_MENU_ITEMS` and
+`DIAGRAM_COPY_MENU_ITEMS` in `packages/artifacts-protocol/src/diagram-menus.ts`,
+used by `app/utils/mermaid-menu-actions.ts` and the kit) and the chat's
+daisyUI look (176 px wide, `rounded-box`, pill items). They are `role="menu"`
+lists: click, Enter, Space or the arrow keys open them, the arrows, Home and
+End move, Esc (on the document, because Safari does not focus a clicked
+button), Tab, a pick or a pointer press elsewhere in the frame close them,
+and one menu is open at a time. The block no longer clips with
+`overflow: hidden`, so a menu can leave it; when the frame's viewport would
+cut the menu off it opens upwards if there is room, and otherwise the block's
+host grows by the missing height until it closes.
+
 ### Loading and size
 
 `src/kit/elements.ts` defines both classes at boot (small, in the entry
@@ -308,7 +365,7 @@ Bundle delta (production build, gzip, measured on the A-14 branch):
 | First code block (Shiki core, engine, HTML output) | – | 56.6 KiB |
 | One grammar (TypeScript / JavaScript) | – | 15.4 / 15.8 KiB |
 | Each theme | – | 3.0 KiB |
-| `<besidka-mermaid>` on top of Mermaid | – | 1.1 KiB |
+| `<besidka-mermaid>` on top of Mermaid (since replaced by Pele, BES-346) | – | 1.1 KiB |
 
 The raw total grows by about 3.3 MiB (5,687 to 9,071 KiB), nearly all of it
 grammars that load only on demand; every artifact pays the 1.7 KiB entry
@@ -358,10 +415,8 @@ copy that did not happen. The e2e spec covers the held-open path with the
 harness's `fallback` mode. Verify on iOS Simulator Safari and the
 home-screen PWA (host side, A-4 stack top).
 
-Image copy (PNG) is not offered: a promised `ClipboardItem` would have to be
-created in the parent inside the gesture, which Safari only accepts there,
-and the frame cannot hand over a gesture. The host's diagram viewer can offer
-it, since it renders the source itself.
+Image copy (PNG) is a Mermaid block action, not a text copy: see "Mermaid
+exports".
 
 ### Fullscreen
 
@@ -377,9 +432,8 @@ kit does not send it yet.
 
 Every `<besidka-mermaid>` block (a Mermaid artifact, or a `language-mermaid`
 fence in an HTML or Markdown artifact) has the chat's Download (SVG, PNG,
-.drawio) and Copy (code, Markdown, SVG, draw.io) menus. The menus open as a
-row under the toolbar, because the block's rounded box clips a floating
-dropdown. Copy code uses `ui/clipboard-write`; every other item sends
+.drawio) and Copy (code, Markdown, SVG, PNG, draw.io) menus, as dropdowns
+(see "Dropdown menus"). Copy code uses `ui/clipboard-write`; every other item sends
 `besidka/diagram-export` `{ source, action, userActivation }` and gets
 `{ completed }`. The frame cannot download or reach the clipboard, so the
 parent renders the source with its own Mermaid and runs the chat's export
@@ -398,16 +452,32 @@ a pending confirmation and any export still rendering. Exports have their own li
 answers `-32601` and the button shows "Download failed" with "Not
 available here."
 
+Copy as PNG (BES-345) is the `copy-png` action. The parent builds the same
+PNG as Download PNG (`svgToPngBlob` of the standalone svg, 2x, opaque
+background, light or dark as shown) and writes only `image/png` with
+`navigator.clipboard.write([new ClipboardItem({ 'image/png': promise })])`,
+the item created before any `await` with the rendering inside the Promise,
+and no text fallback: a refused write returns `completed: false`, and the
+parent then asks for its own "Copy PNG" click like the other copies. Safari
+needs the gesture inside the write call, and the parent renders the diagram
+before it acts, so a Safari viewer will usually land on that confirmation.
+The item is hidden in the chat's menus, the viewer and the kit where
+`ClipboardItem` or `clipboard.write` is missing or `ClipboardItem.supports
+('image/png')` is false (`isImageClipboardSupported`).
+
 ### Mermaid limits (BES-341)
 
-`MERMAID_MAX_EDGES = 500` and `MERMAID_MAX_TEXT_SIZE = 50,000` live in
-`packages/artifacts-protocol/src/mermaid-limits.ts`. The runtime passes both
-to `mermaid.initialize` (`createMermaidConfig`), and the chat's diagram
-renderer (`app/utils/diagram-render-core.ts`, which renders with Pele, not
-Mermaid) imports the same edge constant through the
-`@besidka/artifacts-protocol/mermaid-limits` subpath, so the two cannot drift.
+`MERMAID_MAX_EDGES = 500` and `MERMAID_MAX_TEXT_SIZE = 20,000` live in
+`packages/artifacts-protocol/src/mermaid-limits.ts` and reach both renderers
+through `DIAGRAM_RENDER_OPTIONS` (`maxEdges`, `limit`), so the chat, the
+artifact preview and the host's export render all draw or refuse the same
+diagram. Before BES-346 the runtime used 50,000 characters and the chat
+20,000; 500 edges is about 14,000 characters, so the text limit is not the
+tighter one in practice.
 
-**Why 500.** Measured 2026-11-09 with the vendored Mermaid 12.3.0
+**Why 500.** Measured 2026-11-09 with the vendored Mermaid 12.3.0 (the
+numbers are for that renderer and its dagre layout, not for Pele, which is
+what draws now; re-measure before raising the limit)
 (`mermaid.min.js`), dagre layout, `securityLevel: 'strict'`, a random layered
 flowchart with 0.67 nodes per edge (13.9, 28.4 and 58.9 thousand characters
 for 500, 1,000 and 2,000 edges), headless Playwright on the development Mac,
@@ -423,37 +493,33 @@ made no difference:
 Layout time grows faster than the edge count (about 2.8x for the first
 doubling, 3.1x for the second), so 1,000 edges already misses the 2 second
 target on a fast desktop, and a phone is slower than that. The limit stays
-at 500. Raise it only with a faster layout, not a bigger number. Mermaid
-`maxTextSize` is no tighter than that: 500 edges is about 14,000 characters,
-well under 50,000.
+at 500. Raise it only with a faster layout, not a bigger number. The text
+limit (20,000 characters) is no tighter than that: 500 edges is about 14,000
+characters.
 
-**What the reader sees.** Mermaid reports the edge limit from `parse` with a
-developer message ("Initialize mermaid with maxEdges ..."), and its `render`
-quietly swaps a source over `maxTextSize` for a stub diagram that says
-"Maximum text size in diagram exceeded" without throwing. `render/mermaid.ts`
-therefore measures the source first and maps the edge message, both into a
-`DiagramLimitError`:
+**What the reader sees.** Pele reports both limits with a `PeleError` whose
+message matches the old Mermaid edge text ("Edge limit exceeded. 500 edges
+found, but the limit is 500."); `render/diagram.ts` measures the source first
+and maps either into a `DiagramLimitError`:
 
 - The runtime reports it once through `besidka/message` with
   `data: { message, stack, code, limit, found? }`. `message` is the short
   text ("This diagram is too large to draw: it has more than 500 connections,
-  the limit is 500. Split it into smaller diagrams."), `stack` is Mermaid's
-  raw text, `code` is `mermaid-edge-limit` or `mermaid-text-limit`. The
+  the limit is 500. Split it into smaller diagrams."), `stack` is the
+  renderer's raw text, `code` is `mermaid-edge-limit` or `mermaid-text-limit`. The
   guard `isLogMessageParams` validates the three new fields.
 - No red panel in the frame (`reportError` skips it for these errors); the
   frame shows a neutral "This diagram is too large to draw." instead, and the
   host banner shows the message with the raw text under Details.
-- Mermaid stops counting at the limit, so the edge count in its message is
+- The renderer stops counting at the limit, so the edge count in its message is
   always the limit and the real total is unknown. The message says "more than
   500 connections"; only the text limit carries a measured size (`found`).
 - Ask to fix (`app/utils/artifact-fix-prompt.ts`) asks the model to split the
   diagram into several smaller ones or simplify it under the limit and not to
   change any Mermaid configuration. Other runtime errors keep the old prompt.
-- The text check measures the raw source, while Mermaid measures the source
-  with frontmatter and directives stripped, so a diagram with a very large
-  frontmatter can be refused although Mermaid would draw it. The chat's Pele
-  renderer keeps its own 20,000 character source limit (`SOURCE_LIMIT`), so
-  only the edge limit is shared between chat and artifacts.
+- The text check measures the raw source, frontmatter included, so a diagram
+  with a very large frontmatter can be refused. Chat and artifacts use the
+  same 20,000 character limit since BES-346.
 - A `<besidka-mermaid>` block inside a Markdown, HTML or React artifact shows
   the same short message in its own error line.
 

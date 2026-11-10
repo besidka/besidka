@@ -1,4 +1,6 @@
 export * from './constants.ts'
+export * from './diagram-menus.ts'
+export * from './diagram-render.ts'
 export * from './endpoint.ts'
 export * from './guards.ts'
 export * from './host.ts'

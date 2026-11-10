@@ -1,17 +1,12 @@
+import type { DiagramExportAction } from '@besidka/artifacts-protocol'
+
+export type { DiagramExportAction }
+
 export interface DiagramExportInput {
   source: string
   svg: string
   themeElement: HTMLElement
 }
-
-export type DiagramExportAction
-  = | 'copy-source'
-    | 'copy-svg'
-    | 'copy-markdown'
-    | 'copy-drawio'
-    | 'download-svg'
-    | 'download-png'
-    | 'download-drawio'
 
 export interface DiagramMenuAction {
   action: DiagramExportAction

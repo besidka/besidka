@@ -616,6 +616,16 @@ describe('createHostConnection UI requests', () => {
     })
     await expect(runtime.request(METHODS.diagramExport, {
       source: 'graph TD; A-->B',
+      action: 'copy-png',
+      userActivation: true,
+    })).resolves.toEqual({ completed: true })
+    expect(diagramExport).toHaveBeenLastCalledWith({
+      source: 'graph TD; A-->B',
+      action: 'copy-png',
+      userActivation: false,
+    })
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
       action: 'download-exe',
       userActivation: true,
     })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
@@ -624,7 +634,7 @@ describe('createHostConnection UI requests', () => {
       action: 'download-svg',
       userActivation: true,
     })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
-    expect(diagramExport).toHaveBeenCalledTimes(2)
+    expect(diagramExport).toHaveBeenCalledTimes(3)
     host.destroy()
   })
 

@@ -1,12 +1,6 @@
+import { DESIGN_FONT_FAMILY, renderFontFaces } from './fonts.ts'
+import type { DesignFontFace } from './fonts.ts'
 import { BESIDKA_THEME_CSS } from './theme.generated.ts'
-
-export interface DesignFontFace {
-  weight: number
-  unicodeRange: string
-  url: string
-}
-
-export const DESIGN_FONT_FAMILY = 'Nunito'
 
 export const BESIDKA_COMPONENT_OVERRIDES = `
 @layer base {
@@ -84,21 +78,6 @@ const DESIGN_VARIANTS = `
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 @custom-variant light (&:where([data-theme=light], [data-theme=light] *));
 `.trim()
-
-function renderFontFaces(fontFaces: readonly DesignFontFace[]): string {
-  return fontFaces.map((fontFace) => {
-    return [
-      '@font-face {',
-      `  font-family: '${DESIGN_FONT_FAMILY}';`,
-      '  font-style: normal;',
-      '  font-display: swap;',
-      `  font-weight: ${fontFace.weight};`,
-      `  src: url('${fontFace.url}') format('woff2');`,
-      `  unicode-range: ${fontFace.unicodeRange};`,
-      '}',
-    ].join('\n')
-  }).join('\n')
-}
 
 /**
  * The Tailwind input for artifacts: Tailwind 4 (preflight, theme,

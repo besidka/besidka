@@ -1,11 +1,7 @@
-import { detectMermaidLimit } from '@besidka/artifacts-protocol'
-import mermaid from 'mermaid'
 import { MERMAID_ELEMENT_NAME } from '../kit/elements.ts'
 import { DiagramLimitError } from './diagram-limit.ts'
-import { createMermaidConfig } from './mermaid-config.ts'
+import { renderDiagramSvg } from './diagram.ts'
 import type { Renderer } from './types.ts'
-
-type MermaidConfig = Parameters<typeof mermaid.initialize>[0]
 
 const LIMIT_PLACEHOLDER_TEXT = 'This diagram is too large to draw.'
 
@@ -19,46 +15,15 @@ function showLimitPlaceholder(root: HTMLElement) {
 }
 
 /**
- * Mermaid's `render` swaps an oversized source for a stub diagram without an
- * error, and `parse` reports the edge limit with a developer message the
- * reader cannot act on, so both are turned into a `DiagramLimitError`.
- */
-async function parseWithinLimits(source: string) {
-  const sizeLimit = detectMermaidLimit('', source)
-
-  if (sizeLimit) {
-    throw new DiagramLimitError(
-      sizeLimit,
-      `Diagram source is ${source.length} characters.`,
-    )
-  }
-
-  try {
-    await mermaid.parse(source)
-  } catch (exception) {
-    const message = exception instanceof Error
-      ? exception.message
-      : String(exception)
-    const edgeLimit = detectMermaidLimit(message, source)
-
-    if (edgeLimit) {
-      throw new DiagramLimitError(edgeLimit, message)
-    }
-
-    throw exception
-  }
-}
-
-/**
- * Validates the diagram first, so a syntax error still reaches the host as
- * an artifact error, then renders it through `<besidka-mermaid>` for the
- * same Copy and Fullscreen buttons as a diagram inside other artifacts.
+ * Renders the diagram once before showing it, so a syntax error still
+ * reaches the host as an artifact error (the panel's Ask to fix works) and a
+ * source over the shared limits becomes a `DiagramLimitError`. The diagram is
+ * then drawn by `<besidka-mermaid>`, which has the chat's Copy, Download and
+ * Fullscreen actions and renders with the same options as the chat.
  */
 export const renderMermaid: Renderer = async (payload, context) => {
-  mermaid.initialize(createMermaidConfig(context.theme) as MermaidConfig)
-
   try {
-    await parseWithinLimits(payload.content)
+    await renderDiagramSvg(payload.content, undefined)
   } catch (exception) {
     if (exception instanceof DiagramLimitError && context.isCurrent()) {
       showLimitPlaceholder(context.root)

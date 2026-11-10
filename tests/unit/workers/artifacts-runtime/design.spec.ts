@@ -322,7 +322,7 @@ describe('design system integrity', () => {
 
   it('matches the shipped Nunito files byte for byte', () => {
     const systemSource = readFileSync(
-      path.join(WORKER_DIRECTORY, 'src/design/system.ts'),
+      path.join(WORKER_DIRECTORY, 'src/design/fonts.ts'),
       'utf8',
     )
     const fontFiles = [...systemSource.matchAll(

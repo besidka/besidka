@@ -1,10 +1,7 @@
 import DOMPurify from 'dompurify'
+import { DIAGRAM_SVG_SANITIZE_CONFIG } from '@besidka/artifacts-protocol/diagram-render'
 
-export const DIAGRAM_SVG_SANITIZE_CONFIG = {
-  USE_PROFILES: { svg: true, svgFilters: true },
-  FORBID_TAGS: ['foreignObject', 'script'],
-  ADD_ATTR: ['role'],
-}
+export { DIAGRAM_SVG_SANITIZE_CONFIG }
 
 /**
  * Cleans a rendered diagram before it reaches `v-html`. The renderer already

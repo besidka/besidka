@@ -1,18 +1,14 @@
-import { MERMAID_MAX_EDGES } from '@besidka/artifacts-protocol/mermaid-limits'
+import {
+  DIAGRAM_FONT_MONO_NAME,
+  DIAGRAM_FONT_NAME,
+  DIAGRAM_RENDER_OPTIONS,
+} from '@besidka/artifacts-protocol/diagram-render'
 import type { DiagramRenderError } from '~/types/diagram.d'
 
 type PeleModule = typeof import('pele/lazy')
 
-export const DIAGRAM_FONT_NAME: string = 'Nunito'
-export const DIAGRAM_FONT_MONO_NAME: string = 'Atkinson Hyperlegible Mono'
+export { DIAGRAM_FONT_MONO_NAME, DIAGRAM_FONT_NAME }
 export const DIAGRAM_CACHED_ID_PREFIX: string = 'diagram-render-cache-prefix'
-
-const FONT_FAMILY: string = `'${DIAGRAM_FONT_NAME}', sans-serif`
-const FONT_FAMILY_MONO: string = `'${DIAGRAM_FONT_MONO_NAME}', monospace`
-const SOURCE_LIMIT: number = 20_000
-const OUTPUT_LIMIT: number = 1_000_000
-const EDGES_LIMIT: number = MERMAID_MAX_EDGES
-const DIRECTION_BREAKPOINT: number = 480
 
 let peleModulePromise: Promise<PeleModule> | null = null
 
@@ -94,16 +90,9 @@ export async function renderDiagramSvg(
   await waitForFonts()
 
   const { svg } = await pele.renderAsync(source, {
+    ...DIAGRAM_RENDER_OPTIONS,
     idPrefix: DIAGRAM_CACHED_ID_PREFIX,
     maxWidth,
-    fontFamily: FONT_FAMILY,
-    fontFamilyMono: FONT_FAMILY_MONO,
-    images: false,
-    links: false,
-    limit: SOURCE_LIMIT,
-    outputLimit: OUTPUT_LIMIT,
-    maxEdges: EDGES_LIMIT,
-    directionBreakpoint: DIRECTION_BREAKPOINT,
   })
 
   return svg

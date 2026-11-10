@@ -142,7 +142,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/artifacts-protocol/connection.spec.ts',
     'tests/unit/packages/artifacts-protocol/host.spec.ts',
     'tests/unit/packages/artifacts-protocol/mermaid-limits.spec.ts',
+    'tests/unit/packages/artifacts-protocol/diagram-menus.spec.ts',
     'tests/unit/workers/artifacts-runtime/diagram-limit.spec.ts',
+    'tests/unit/workers/artifacts-runtime/diagram-parity.spec.ts',
+    'tests/unit/workers/artifacts-runtime/kit-menu.spec.ts',
     'tests/unit/workers/artifacts-runtime/mermaid-view.spec.ts',
     'tests/unit/workers/artifacts-runtime/render.spec.ts',
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
@@ -746,6 +749,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/MarkdownSource.spec.ts',
     'tests/unit/utils/sanitize-diagram-svg.spec.ts',
     'tests/unit/utils/diagram-wheel.spec.ts',
+    'tests/unit/workers/artifacts-runtime/diagram-parity.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
   ]
   const codeHighlightingTests = [
