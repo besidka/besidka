@@ -1,30 +1,25 @@
 import type { Theme } from '@besidka/artifacts-protocol'
+import { PALETTE_TOKENS } from './palette.generated.ts'
 
-export const PALETTE: Record<Theme, Record<string, string>> = {
-  light: {
-    'bg': '#ffffff',
-    'fg': '#1f2328',
-    'muted': '#59636e',
-    'border': '#d1d9e0',
-    'accent': '#0969da',
-    'surface': '#f6f8fa',
-    'danger': '#cf222e',
-    'danger-bg': '#ffebe9',
-  },
-  dark: {
-    'bg': '#0d1117',
-    'fg': '#e6edf3',
-    'muted': '#9198a1',
-    'border': '#3d444d',
-    'accent': '#4493f8',
-    'surface': '#151b23',
-    'danger': '#ff7b72',
-    'danger-bg': '#2d1214',
-  },
+const PALETTE_ALIASES: Record<string, string> = {
+  bg: 'var(--color-base-100)',
+  fg: 'var(--color-base-content)',
+  muted: 'color-mix(in oklab, var(--color-base-content) 60%, transparent)',
+  border: 'var(--color-base-300)',
+  accent: 'var(--color-accent)',
+  surface: 'var(--color-base-200)',
+  danger: 'var(--color-error)',
+  rule: 'color-mix(in oklab, var(--color-base-content) 45%, var(--color-base-100))',
+  shadow: 'rgb(0 0 0 / 0.1)',
 }
 
 export function paletteDeclarations(theme: Theme): string {
-  return Object.entries(PALETTE[theme]).map(([name, value]) => {
+  const tokens = Object.entries(PALETTE_TOKENS[theme]).map(([name, value]) => {
+    return `${name}: ${value};`
+  })
+  const aliases = Object.entries(PALETTE_ALIASES).map(([name, value]) => {
     return `--besidka-${name}: ${value};`
-  }).join(' ')
+  })
+
+  return [...tokens, ...aliases].join(' ')
 }

@@ -89,6 +89,21 @@ describe('kit dropdown menu', () => {
     expect(first.trigger.element.getAttribute('aria-expanded')).toBe('false')
   })
 
+  it('focuses the first item after a pointer click, as after a keyboard open', () => {
+    first.trigger.element.dispatchEvent(new MouseEvent('click', {
+      detail: 1,
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(first.panel.hidden).toBe(false)
+    expect(shadow.activeElement).toBe(readItems(first)[0])
+
+    pressKey(readItems(first)[0]!, 'ArrowDown')
+
+    expect(shadow.activeElement).toBe(readItems(first)[1])
+  })
+
   it('opens on the arrow keys and focuses the first or last item', () => {
     pressKey(first.trigger.element, 'ArrowDown')
 

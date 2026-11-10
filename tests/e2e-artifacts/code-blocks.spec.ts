@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { BrowserContext, FrameLocator, Page } from '@playwright/test'
+import { PALETTE_TOKENS } from '../../workers/artifacts-runtime/src/palette.generated'
 
 const HOST_ORIGIN = `http://127.0.0.1:${process.env.ARTIFACTS_HOST_PORT || '8789'}`
 const FRAME_SELECTOR = '[data-testid="artifact-frame"]'
@@ -209,6 +210,51 @@ export default function App() {
     expect(await firstCode.getByTestId('besidka-code').evaluate((block) => {
       return getComputedStyle(block).borderColor
     })).not.toBe(lightBackground)
+  })
+
+  test('moves focus into a diagram menu opened with the mouse', async ({ page }) => {
+    await mount(page)
+    await render(page, { kind: 'markdown', content: MARKDOWN_DOCUMENT })
+
+    const frame = artifactFrame(page)
+    const mermaid = frame.locator('besidka-mermaid')
+
+    await expect(diagramSvg(frame)).toBeVisible({ timeout: 15_000 })
+    await mermaid.getByTestId('besidka-mermaid-copy').click()
+
+    const items = mermaid.getByTestId('besidka-mermaid-copy-menu')
+      .getByRole('menuitem')
+
+    await expect(items.first()).toBeFocused()
+    await page.keyboard.press('ArrowDown')
+    await expect(items.nth(1)).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(mermaid.getByTestId('besidka-mermaid-copy-menu')).toBeHidden()
+    await expect(mermaid.getByTestId('besidka-mermaid-copy')).toBeFocused()
+  })
+
+  test('draws the block chrome with the chat stone palette', async ({ page }) => {
+    await mount(page)
+    await render(page, { kind: 'markdown', content: MARKDOWN_DOCUMENT })
+
+    const frame = artifactFrame(page)
+    const block = frame.locator('besidka-code').first()
+      .getByTestId('besidka-code')
+
+    await expect(block).toBeVisible()
+
+    const readBaseColor = () => block.evaluate((element) => {
+      return getComputedStyle(element).getPropertyValue('--color-base-100')
+        .trim()
+    })
+
+    expect(await readBaseColor()).toBe(PALETTE_TOKENS.light['--color-base-100'])
+
+    await page.evaluate(() => {
+      (window as any).harness.setTheme('dark')
+    })
+    await expect.poll(readBaseColor)
+      .toBe(PALETTE_TOKENS.dark['--color-base-100'])
   })
 
   test('renders a whole mermaid artifact through the diagram element', async ({ page }) => {
