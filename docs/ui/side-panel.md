@@ -109,6 +109,20 @@ it, so with the panel closed every value resolves to what it was before:
 - `.side-panel-follow` marks fixed elements that track the seam. During a
   drag `<html>` has `side-panel-resizing`, which turns their transitions off.
 
+Every follower moves with one duration and easing:
+`--side-panel-transition-duration` (300ms, `0ms` under
+`prefers-reduced-motion: reduce`) and `--side-panel-transition-easing`, both on
+`:root` in `main.css`. The panel's own `width` (`.side-panel-width-follow`, only
+while docked), the shell `margin-right` (`.side-panel-inset`), the composer
+`left`/`max-width` (inline list in `ChatInput.client.vue`, built from
+`SIDE_PANEL_TRANSITION_DURATION`/`_EASING`), the nav pill `right`
+(`.side-panel-pill`, its transform properties keep 500ms) and the toasts
+`right` (`.side-panel-seam-right`) all read them. Before BES-343 the panel had
+no width transition at all (it arrived first) and the pill used 500ms
+ease-in-out. `SIDE_PANEL_TRANSITION_MS` must equal the duration, because the
+scroll-anchor hold runs that long; `tests/unit/assets/css/main.spec.ts` checks
+both. A new follower reads the two variables, never a literal duration.
+
 Width: default 480px, clamped to 360px … `min(60% of the viewport, viewport −
 768px)` so the chat column keeps at least 768px (the maximum is 672px at 1440
 and 512px at 1280). The one clamp serves the seam drag, the keyboard

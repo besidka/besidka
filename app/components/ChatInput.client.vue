@@ -203,7 +203,11 @@ import type {
   ToolsSection,
 } from '~/types/chat-input-tools'
 import { LazyChatInputFilesModal } from '#components'
-import { SIDE_PANEL_TRANSITION_MS } from '~/composables/side-panel'
+import {
+  SIDE_PANEL_TRANSITION_DURATION,
+  SIDE_PANEL_TRANSITION_EASING,
+  SIDE_PANEL_TRANSITION_MS,
+} from '~/composables/side-panel'
 
 const props = defineProps<{
   stopped?: boolean
@@ -390,8 +394,8 @@ const COMPOSER_TRANSITIONS = [
   ['bottom', '250ms', 'ease-out'],
 ] as const
 const SIDE_PANEL_FOLLOW_TRANSITIONS = [
-  ['left', `${SIDE_PANEL_TRANSITION_MS}ms`, 'ease-out'],
-  ['max-width', `${SIDE_PANEL_TRANSITION_MS}ms`, 'ease-out'],
+  ['left', SIDE_PANEL_TRANSITION_DURATION, SIDE_PANEL_TRANSITION_EASING],
+  ['max-width', SIDE_PANEL_TRANSITION_DURATION, SIDE_PANEL_TRANSITION_EASING],
 ] as const
 
 const { isOpen: isSidePanelOpen } = useSidePanel()

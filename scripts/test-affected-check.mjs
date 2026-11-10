@@ -1309,6 +1309,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/side-panel.spec.ts',
     'tests/unit/components/ui/SidePanel.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
+    'tests/unit/assets/css/main.spec.ts',
     'tests/e2e/side-panel.spec.ts',
   ]
 
@@ -2270,7 +2271,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
+        /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/assets\/css\/main\.css|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
       tests: sidePanelTests,
     },
     {

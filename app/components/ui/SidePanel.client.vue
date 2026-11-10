@@ -38,6 +38,7 @@
           'z-[60]': layout === 'overlay',
           'w-[70vw]': layout === 'overlay' && !isLargeViewport,
           'left-0 pr-20': isDockedFullWidth,
+          'side-panel-width-follow': layout === 'docked',
         }"
         :style="panelStyle"
         @keydown="onPanelKeydown"

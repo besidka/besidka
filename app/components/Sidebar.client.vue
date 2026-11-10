@@ -2,7 +2,7 @@
   <div
     ref="sidebarRoot"
     data-testid="sidebar"
-    class="side-panel-follow fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 sm:[[data-studio-active='true']_&]:!left-auto max-sm:left-0 z-50 transition-[transform,translate,scale,rotate,right] duration-500 ease-in-out"
+    class="side-panel-follow fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 sm:[[data-studio-active='true']_&]:!left-auto max-sm:left-0 z-50 side-panel-pill"
     :style="dockStyle"
     :data-docked="isDockedOnSeam ? 'true' : undefined"
     :class="{

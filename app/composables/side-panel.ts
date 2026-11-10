@@ -24,6 +24,10 @@ export const SIDE_PANEL_DOCK_MIN_VIEWPORT
   = SIDE_PANEL_MIN_WIDTH + SIDE_PANEL_MIN_CHAT_WIDTH
 export const SIDE_PANEL_KEYBOARD_STEP = 24
 export const SIDE_PANEL_TRANSITION_MS = 300
+export const SIDE_PANEL_TRANSITION_DURATION
+  = 'var(--side-panel-transition-duration)'
+export const SIDE_PANEL_TRANSITION_EASING
+  = 'var(--side-panel-transition-easing)'
 export const SIDE_PANEL_WIDTH_PRESETS = [360, 480, 640] as const
 
 export function getSidePanelMaxWidth(viewportWidth: number): number {
