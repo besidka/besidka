@@ -139,6 +139,23 @@ describe('chat history artifact count', () => {
     const strangerResponse = await handler(createEvent())
 
     expect(strangerResponse.chats).toEqual([])
+
+    const strangerChat = await seedChat(testDb.db, strangerId, {
+      title: 'Theirs',
+    })
+
+    await seedArtifact(strangerId, strangerChat.id)
+    await seedArtifact(strangerId, strangerChat.id)
+
+    const strangerWithChat = await handler(createEvent())
+
+    expect(strangerWithChat.chats[0].artifactCount).toBe(2)
+
+    mocks.sessionUserId = ownerId
+
+    const ownerAgain = await handler(createEvent())
+
+    expect(ownerAgain.chats[0].artifactCount).toBe(1)
   })
 
   it('counts on pinned chats and on title search results', async () => {
@@ -167,6 +184,35 @@ describe('chat history artifact count', () => {
 
     expect(search.pinned[0].artifactCount).toBe(1)
     expect(search.chats[0].artifactCount).toBe(2)
+  })
+
+  it('counts on cursor-paginated pages', async () => {
+    const first = await seedChat(testDb.db, ownerId, {
+      title: 'Newer',
+      activityAt: new Date('2026-10-02T00:00:00.000Z'),
+    })
+    const second = await seedChat(testDb.db, ownerId, {
+      title: 'Older',
+      activityAt: new Date('2026-10-01T00:00:00.000Z'),
+    })
+
+    await seedArtifact(ownerId, first.id)
+    await seedArtifact(ownerId, second.id)
+    await seedArtifact(ownerId, second.id)
+
+    const handler = await getHistoryHandler()
+    const firstPage = await handler(createEvent({ limit: '1' }))
+
+    expect(firstPage.chats[0].artifactCount).toBe(1)
+    expect(firstPage.nextCursor).not.toBeNull()
+
+    const secondPage = await handler(createEvent({
+      limit: '1',
+      cursor: firstPage.nextCursor,
+    }))
+
+    expect(secondPage.chats[0].title).toBe('Older')
+    expect(secondPage.chats[0].artifactCount).toBe(2)
   })
 
   it('omits the count when the user has no artifacts access', async () => {

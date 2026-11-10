@@ -49,7 +49,7 @@ describe('History/ArtifactBadge', () => {
     const wrapper = await mountBadge({ count: 1 })
     const badge = wrapper.get('[data-testid="chat-artifact-badge"]')
 
-    expect(badge.attributes('aria-label')).toBe('1 artifact')
+    expect(badge.attributes('title')).toBe('1 artifact')
     expect(badge.text()).toContain('1 artifact')
     expect(badge.classes()).toContain('badge-soft')
   })
@@ -58,7 +58,7 @@ describe('History/ArtifactBadge', () => {
     const wrapper = await mountBadge({ count: 3 })
     const badge = wrapper.get('[data-testid="chat-artifact-badge"]')
 
-    expect(badge.attributes('aria-label')).toBe('3 artifacts')
+    expect(badge.attributes('title')).toBe('3 artifacts')
     expect(badge.text()).toContain('3 artifacts')
   })
 
@@ -66,8 +66,12 @@ describe('History/ArtifactBadge', () => {
     const wrapper = await mountBadge({ count: 3, compact: true })
     const badge = wrapper.get('[data-testid="chat-artifact-badge"]')
 
-    expect(badge.text()).toBe('3')
-    expect(badge.attributes('aria-label')).toBe('3 artifacts')
+    const visibleTexts = badge.findAll('span[aria-hidden="true"]')
+      .map(node => node.text())
+      .filter(Boolean)
+
+    expect(visibleTexts).toEqual(['3'])
+    expect(badge.get('.sr-only').text()).toBe('3 artifacts')
   })
 
   it('is hidden without artifacts access', async () => {

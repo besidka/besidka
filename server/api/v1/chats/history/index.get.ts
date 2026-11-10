@@ -73,9 +73,24 @@ export default defineEventHandler(async (event) => {
     limit,
   })
 
-  const artifactsFeature = await evaluateFeatureForEvent(event, 'artifacts', {
-    recordExposure: false,
-  })
+  let isArtifactsActive = false
+
+  try {
+    const artifactsFeature = await evaluateFeatureForEvent(
+      event,
+      'artifacts',
+      { recordExposure: false },
+    )
+
+    isArtifactsActive = artifactsFeature.active
+  } catch (exception) {
+    logger.set({
+      artifactCount: {
+        stage: 'feature-evaluation',
+        error: exceptionSummary(exception),
+      },
+    })
+  }
 
   const columns = {
     id: schema.chats.id,
@@ -88,7 +103,7 @@ export default defineEventHandler(async (event) => {
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
     shared: buildChatSharedColumn(),
-    ...(artifactsFeature.active
+    ...(isArtifactsActive
       ? { artifactCount: buildChatArtifactCountColumn(userId) }
       : {}),
   }
