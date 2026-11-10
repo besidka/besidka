@@ -291,6 +291,10 @@ const {
 const layout = useSidePanelLayout()
 const { sidebarPinned } = useUserSetting()
 const device = useDevice()
+const canPillPeek = useMediaQuery(
+  '(min-width: 64rem) and (prefers-reduced-motion: no-preference)'
+  + ' and (hover: hover) and (pointer: fine)',
+)
 const isLargeViewport = useMediaQuery('(min-width: 64rem)')
 const route = useRoute()
 const { width: viewportWidth } = useWindowSize()
@@ -363,7 +367,11 @@ const isDockedFullWidth = computed<boolean>(() => {
 })
 
 const isPillGutterReserved = computed<boolean>(() => {
-  return isDockedFullWidth.value && (sidebarPinned.value || !device.isDesktop)
+  const isPillPeeking = device.isDesktop
+    && !sidebarPinned.value
+    && canPillPeek.value
+
+  return isDockedFullWidth.value && !isPillPeeking
 })
 
 const isDockedResizable = computed<boolean>(() => {

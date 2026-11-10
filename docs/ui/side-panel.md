@@ -133,12 +133,14 @@ survives a visit on a narrow one. A key press or preset click that changes
 nothing visible does not write storage. The panel body and header get
 `pl-10` while docked, because the pill covers about 28px of the seam.
 
-Full width (Expand): the panel covers the viewport from the left edge (`left-0`),
-the pill returns to its normal place, focus is trapped. The right gutter
-(`pr-20`) is reserved only while the pill is fully shown (sidebar pinned, or a
-device without hover); while it only peeks, the content uses the full width
-with the normal edge padding and the peeking pill overlays the edge. `--side-panel-width` keeps the docked value, so the chat behind does
-not reflow.
+Full width (Expand): the panel covers the viewport from the left edge
+(`left-0`), the pill returns to its normal place, focus is trapped. The right
+gutter (`pr-20`) is reserved unless the pill only peeks, using the same
+predicate as the `.sidebar-hoverable` peek (desktop device, sidebar not
+pinned, `hover: hover` and `pointer: fine`, no reduced motion). While it only
+peeks, the content uses the full width with the normal edge padding and the
+peeking pill overlays the edge. `--side-panel-width` keeps the docked value,
+so the chat behind does not reflow.
 
 ### Why not container queries
 

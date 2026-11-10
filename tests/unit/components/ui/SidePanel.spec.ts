@@ -13,6 +13,7 @@ import type { SidePanelView } from '../../../../app/composables/side-panel'
 const pillState = vi.hoisted(() => ({
   isPinned: { value: false },
   isDesktop: { value: true },
+  canPeek: true,
 }))
 
 mockNuxtImport('useUserSetting', () => {
@@ -75,8 +76,10 @@ function stubViewport(innerWidth: number) {
     const [, amount, unit] = /min-width:\s*([\d.]+)(rem|px)/.exec(query) ?? []
     const minWidth = Number(amount) * (unit === 'rem' ? 16 : 1)
 
+    const isPillQuery = query.includes('pointer: fine')
+
     return {
-      matches: innerWidth >= minWidth,
+      matches: innerWidth >= minWidth && (!isPillQuery || pillState.canPeek),
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -152,6 +155,7 @@ describe('ui/SidePanel', () => {
   afterEach(() => {
     pillState.isPinned.value = false
     pillState.isDesktop.value = true
+    pillState.canPeek = true
     resetSidePanelState()
     document.querySelectorAll('dialog[data-test-extra]').forEach((dialog) => {
       dialog.remove()
@@ -611,6 +615,17 @@ describe('ui/SidePanel', () => {
 
       it('reserves the pill gutter while the sidebar is pinned', async () => {
         pillState.isPinned.value = true
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+        await wrapper.get(FULL_WIDTH).trigger('click')
+
+        expect(wrapper.get(PANEL).classes()).toContain('pr-20')
+      })
+
+      it('reserves the pill gutter when the pill cannot peek', async () => {
+        pillState.canPeek = false
 
         const wrapper = await mountPanel()
 
