@@ -23,7 +23,10 @@ export interface ArtifactPanelTarget {
 
 export interface ArtifactPanelState extends ArtifactPanelTarget {
   viewKey: string
+  isVersionPinned: boolean
 }
+
+export type ArtifactVersionRefresh = 'switch' | 'offer' | 'none'
 
 export interface ArtifactStreamState {
   toolCallId: string
@@ -149,6 +152,23 @@ export function getArtifactVersionUrl(
   return `/api/v1/artifacts/${artifactId}/versions/${version}`
 }
 
+export function resolveArtifactVersionRefresh(input: {
+  selectedVersion: number | null
+  latestVersion: number | null
+  isVersionPinned: boolean
+}): ArtifactVersionRefresh {
+  const { selectedVersion, latestVersion } = input
+
+  if (
+    latestVersion === null
+    || (selectedVersion !== null && latestVersion <= selectedVersion)
+  ) {
+    return 'none'
+  }
+
+  return input.isVersionPinned ? 'offer' : 'switch'
+}
+
 function getUnavailableResult<Value>(): ArtifactLoadResult<Value> {
   return {
     ok: false,
@@ -176,6 +196,10 @@ export function useArtifactPanel() {
     'artifact-panel:unavailable',
     () => ({}),
   )
+  const latestVersions = useState<Record<string, number>>(
+    'artifact-panel:latest-versions',
+    () => ({}),
+  )
 
   const isOpen = computed<boolean>(() => {
     return sidePanel.isOpen.value && isArtifactViewKey(sidePanel.viewKey.value)
@@ -191,7 +215,17 @@ export function useArtifactPanel() {
   ): void {
     const viewKey = getArtifactViewKey(target)
 
-    state.value = { ...target, viewKey }
+    const latestVersion = target.artifactId
+      ? latestVersions.value[target.artifactId] ?? null
+      : null
+
+    state.value = {
+      ...target,
+      viewKey,
+      isVersionPinned: target.version !== null
+        && latestVersion !== null
+        && target.version < latestVersion,
+    }
 
     const view = {
       viewKey,
@@ -242,12 +276,40 @@ export function useArtifactPanel() {
     }
   }
 
-  function selectVersion(version: number): void {
-    if (!state.value) {
+  function selectVersion(
+    version: number,
+    knownLatestVersion: number | null = null,
+  ): void {
+    const current = state.value
+
+    if (!current) {
       return
     }
 
-    state.value = { ...state.value, version }
+    const latestVersion = Math.max(
+      current.artifactId ? latestVersions.value[current.artifactId] ?? 0 : 0,
+      knownLatestVersion ?? 0,
+    )
+
+    state.value = {
+      ...current,
+      version,
+      isVersionPinned: version < latestVersion,
+    }
+  }
+
+  function noteVersion(artifactId: string, version: number): void {
+    const known = latestVersions.value[artifactId] ?? 0
+
+    if (version <= known) {
+      return
+    }
+
+    latestVersions.value = { ...latestVersions.value, [artifactId]: version }
+  }
+
+  function getLatestVersion(artifactId: string | null): number | null {
+    return artifactId ? latestVersions.value[artifactId] ?? null : null
   }
 
   function setStream(value: ArtifactStreamState | null): void {
@@ -278,6 +340,9 @@ export function useArtifactPanel() {
     open,
     updateTarget,
     selectVersion,
+    noteVersion,
+    getLatestVersion,
+    latestVersions,
     setStream,
     close,
     markUnavailable,

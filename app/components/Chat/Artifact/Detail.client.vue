@@ -101,6 +101,15 @@
           :input="mermaidMenuInput"
         />
       </div>
+      <button
+        v-if="!isStreaming && newerVersion"
+        type="button"
+        class="btn btn-sm btn-soft btn-primary"
+        data-testid="artifact-newer-version"
+        @click="onShowNewerVersion"
+      >
+        v{{ newerVersion }} is available, show
+      </button>
       <span
         v-if="isStreaming"
         class="text-xs text-base-content/60"
@@ -421,6 +430,7 @@ import {
   isArtifactUnavailableStatus,
   loadArtifactDetail,
   loadArtifactVersion,
+  resolveArtifactVersionRefresh,
   useSharedArtifactVersions,
 } from '~/composables/artifacts'
 import {
@@ -544,6 +554,14 @@ const displayTitle = computed<string>(() => {
 
 const selectedVersion = computed<number | null>(() => {
   return state.value?.version ?? detail.value?.currentVersion ?? null
+})
+
+const latestVersion = computed<number | null>(() => {
+  return panel.getLatestVersion(state.value?.artifactId ?? null)
+})
+
+const newerVersion = computed<number | null>(() => {
+  return getVersionRefresh() === 'offer' ? latestVersion.value : null
 })
 
 const versionOptions = computed<number[]>(() => {
@@ -740,10 +758,12 @@ function onActionsEscape() {
   actionsMenu.value.querySelector<HTMLElement>('summary')?.focus()
 }
 
-async function loadDetail() {
+async function loadDetail(options: { keepCurrent?: boolean } = {}) {
   const artifactId = state.value?.artifactId
 
-  detail.value = null
+  if (!options.keepCurrent) {
+    detail.value = null
+  }
 
   if (!artifactId || !isOwner.value) {
     return
@@ -807,7 +827,7 @@ async function reloadContent() {
 
 watch(
   [() => state.value?.artifactId, () => state.value?.source],
-  loadDetail,
+  () => loadDetail(),
   { immediate: true },
 )
 
@@ -845,13 +865,39 @@ watch(kind, (value) => {
   }
 })
 
+function getVersionRefresh() {
+  return resolveArtifactVersionRefresh({
+    selectedVersion: selectedVersion.value,
+    latestVersion: latestVersion.value,
+    isVersionPinned: !!state.value?.isVersionPinned,
+  })
+}
+
+watch(latestVersion, async (version) => {
+  if (!isOwner.value || version === null || getVersionRefresh() === 'none') {
+    return
+  }
+
+  await loadDetail({ keepCurrent: true })
+
+  if (getVersionRefresh() === 'switch') {
+    panel.selectVersion(latestVersion.value ?? version)
+  }
+})
+
 function onVersionChange(event: Event) {
   const version = Number((event.target as HTMLSelectElement).value)
 
   closeActionsMenu()
 
   if (Number.isSafeInteger(version)) {
-    panel.selectVersion(version)
+    panel.selectVersion(version, detail.value?.currentVersion ?? null)
+  }
+}
+
+function onShowNewerVersion() {
+  if (newerVersion.value) {
+    panel.selectVersion(newerVersion.value)
   }
 }
 

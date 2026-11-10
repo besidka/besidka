@@ -43,6 +43,7 @@ function streamingPart(input?: Record<string, unknown>) {
 function resetState() {
   useSidePanel().close()
   useArtifactPanel().state.value = null
+  useArtifactPanel().latestVersions.value = {}
   useArtifactPanel().stream.value = null
   window.sessionStorage.clear()
 }
@@ -73,6 +74,23 @@ describe('ChatArtifactCard', () => {
       .toBe('v2')
     expect(wrapper.get('.badge-ghost').text()).toBe('AI-generated')
     expect(card.findAll('button')).toHaveLength(0)
+  })
+
+  it('reports the version of an owner card so an open panel can refresh',
+    async () => {
+      await mountSuspended(ChatArtifactCard, {
+        props: { part: READY_PART, source: 'owner' },
+      })
+
+      expect(useArtifactPanel().getLatestVersion('art_1')).toBe(2)
+    })
+
+  it('does not report the version of a shared card', async () => {
+    await mountSuspended(ChatArtifactCard, {
+      props: { part: READY_PART, source: 'shared', shareSlug: 'share_1' },
+    })
+
+    expect(useArtifactPanel().getLatestVersion('art_1')).toBeNull()
   })
 
   it('opens the detail panel on click', async () => {

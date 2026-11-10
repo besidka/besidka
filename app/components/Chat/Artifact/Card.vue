@@ -261,6 +261,19 @@ watch(model, (current) => {
   tryAutoOpen(props.chatId, target.value)
 }, { immediate: true })
 
+watch(model, (current) => {
+  if (
+    props.source !== 'owner'
+    || current?.state !== 'ready'
+    || !current.artifactId
+    || current.version === null
+  ) {
+    return
+  }
+
+  panel.noteVersion(current.artifactId, current.version)
+}, { immediate: true })
+
 watch([model, isActive], ([current, active]) => {
   if (!active || !current?.toolCallId || !viewKey.value) {
     return

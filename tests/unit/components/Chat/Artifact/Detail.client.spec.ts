@@ -236,10 +236,20 @@ function versionContent(version: number, kind = 'html') {
   }
 }
 
-function respond() {
+const DETAIL_WITH_V4 = {
+  ...DETAIL,
+  currentVersion: 4,
+  versionCount: 4,
+  versions: [
+    { version: 4, sizeBytes: 10, createdBy: 'model', createdAt: '' },
+    ...DETAIL.versions,
+  ],
+}
+
+function respond(detail: typeof DETAIL = DETAIL) {
   fetchMock.mockImplementation(async (url: string) => {
     if (url === '/api/v1/artifacts/Art1Art1Art1Art1') {
-      return DETAIL
+      return detail
     }
 
     const match = /\/versions\/(\d+)$/.exec(url)
@@ -275,6 +285,7 @@ function resetState() {
   useSidePanel().close()
   useArtifactPanel().state.value = null
   useArtifactPanel().stream.value = null
+  useArtifactPanel().latestVersions.value = {}
   useSharedArtifactVersions().value = {}
 }
 
@@ -925,6 +936,82 @@ describe('ChatArtifactDetail share link', () => {
       expect(modal.attributes('data-artifact-id')).toBe('Art1Art1Art1Art1')
       expect(modal.attributes('data-current-version')).toBe('3')
     })
+})
+
+describe('ChatArtifactDetail new version written in the chat', () => {
+  it('refreshes the list and switches to the new version', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    respond(DETAIL_WITH_V4)
+    useArtifactPanel().noteVersion('Art1Art1Art1Art1', 4)
+    await flushPromises()
+
+    const options = wrapper.findAll(
+      '[data-testid="artifact-version-select"] option',
+    )
+
+    expect(options.map(option => option.text()))
+      .toEqual(['v4', 'v3', 'v2', 'v1'])
+    expect(useArtifactPanel().state.value?.version).toBe(4)
+    expect(wrapper.get('[data-testid="frame-stub"]').attributes('data-content'))
+      .toBe('<p>v4</p>')
+    expect(wrapper.find('[data-testid="artifact-newer-version"]').exists())
+      .toBe(false)
+  })
+
+  it('keeps an explicitly chosen older version and offers the new one',
+    async () => {
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      await wrapper.get('[data-testid="artifact-version-select"]')
+        .setValue('2')
+      await flushPromises()
+
+      respond(DETAIL_WITH_V4)
+      useArtifactPanel().noteVersion('Art1Art1Art1Art1', 4)
+      await flushPromises()
+
+      const offer = wrapper.get('[data-testid="artifact-newer-version"]')
+
+      expect(useArtifactPanel().state.value?.version).toBe(2)
+      expect(offer.text()).toContain('v4')
+
+      await offer.trigger('click')
+      await flushPromises()
+
+      expect(useArtifactPanel().state.value?.version).toBe(4)
+      expect(wrapper.find('[data-testid="artifact-newer-version"]').exists())
+        .toBe(false)
+    })
+
+  it('treats an older card opened after a newer version as a choice',
+    async () => {
+      useArtifactPanel().noteVersion('Art1Art1Art1Art1', 4)
+      respond(DETAIL_WITH_V4)
+      openTarget()
+
+      const wrapper = await mountDetail()
+
+      expect(wrapper.get('[data-testid="artifact-newer-version"]').text())
+        .toContain('v4')
+    })
+
+  it('ignores a version of another artifact', async () => {
+    openTarget()
+
+    await mountDetail()
+
+    fetchMock.mockClear()
+    useArtifactPanel().noteVersion('Other0Other0Other', 9)
+    await flushPromises()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(useArtifactPanel().state.value?.version).toBe(3)
+  })
 })
 
 describe('ChatArtifactDetail actions menu', () => {
