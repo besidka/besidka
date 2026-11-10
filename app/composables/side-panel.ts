@@ -100,6 +100,7 @@ function readStoredWidth(): number | null {
 export function useSidePanel() {
   const stack = useState<SidePanelView[]>('side-panel:stack', () => [])
   const isFullWidth = useState<boolean>('side-panel:full-width', () => false)
+  const isCollapsed = useState<boolean>('side-panel:collapsed', () => false)
   const preferredWidth = useState<number | null>(
     'side-panel:preferred-width',
     () => null,
@@ -111,6 +112,10 @@ export function useSidePanel() {
 
   const isOpen = computed<boolean>(() => {
     return stack.value.length > 0
+  })
+
+  const isVisible = computed<boolean>(() => {
+    return stack.value.length > 0 && !isCollapsed.value
   })
 
   const mode = computed<SidePanelMode | null>(() => {
@@ -185,6 +190,20 @@ export function useSidePanel() {
   function close(): void {
     stack.value = []
     isFullWidth.value = false
+    isCollapsed.value = false
+  }
+
+  /**
+   * Hides the panel without touching the stack, so the mounted view keeps its
+   * iframe, tab, scroll and data. Used while a focus-mode overlay (the message
+   * context menu) is open; `expand()` brings back the same state.
+   */
+  function collapse(): void {
+    isCollapsed.value = true
+  }
+
+  function expand(): void {
+    isCollapsed.value = false
   }
 
   function toggle(view: SidePanelView): void {
@@ -230,6 +249,8 @@ export function useSidePanel() {
     stack,
     currentView,
     isOpen,
+    isCollapsed,
+    isVisible,
     mode,
     title,
     viewKey,
@@ -240,6 +261,8 @@ export function useSidePanel() {
     push,
     back,
     close,
+    collapse,
+    expand,
     toggle,
     toggleFullWidth,
     setWidth,

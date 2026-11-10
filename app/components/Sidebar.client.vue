@@ -73,7 +73,7 @@ const { sidebarPinned } = useUserSetting()
 const { isModalOpen, openSearchModal } = useSearchModal()
 const { isChatPage } = useChatRoute()
 const {
-  isOpen: isSidePanelOpen,
+  isVisible: isSidePanelVisible,
   isFullWidth: isSidePanelFullWidth,
 } = useSidePanel()
 const sidePanelLayout = useSidePanelLayout()
@@ -81,7 +81,7 @@ const sidebarRoot = useTemplateRef<HTMLElement>('sidebarRoot')
 const { width: sidebarWidth } = useElementSize(sidebarRoot)
 
 const isDockedOnSeam = computed<boolean>(() => {
-  return isSidePanelOpen.value
+  return isSidePanelVisible.value
     && sidePanelLayout.value === 'docked'
     && !isSidePanelFullWidth.value
 })

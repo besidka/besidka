@@ -399,11 +399,11 @@ const SIDE_PANEL_FOLLOW_TRANSITIONS = [
   ['max-width', SIDE_PANEL_TRANSITION_DURATION, SIDE_PANEL_TRANSITION_EASING],
 ] as const
 
-const { isOpen: isSidePanelOpen } = useSidePanel()
-const isFollowingSidePanel = shallowRef<boolean>(isSidePanelOpen.value)
+const { isVisible: isSidePanelVisible } = useSidePanel()
+const isFollowingSidePanel = shallowRef<boolean>(isSidePanelVisible.value)
 
-watch(isSidePanelOpen, (open, _wasOpen, onCleanup) => {
-  if (open) {
+watch(isSidePanelVisible, (visible, _wasVisible, onCleanup) => {
+  if (visible) {
     isFollowingSidePanel.value = true
 
     return

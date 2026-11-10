@@ -167,6 +167,42 @@ every animation frame for the 300ms width transition, so the reader's line
 stays put. With reduced motion, and during a drag, it restores once on the
 next frame.
 
+### Collapsing for the message context menu
+
+The message context menu is a focus mode: everything but the message is
+blurred, so nothing else may stay on screen. While it is open the panel is
+**collapsed**, not closed. `useSidePanel()` has an `isCollapsed` flag (and
+`isVisible` = open and not collapsed, `collapse()`, `expand()`); the view stack
+is untouched, so the mounted view keeps its iframe, tab, version, scroll and
+data, and nothing is refetched or reloaded. `UiSidePanel` listens to the
+existing `chat:message-selected` hook (fired by `/chats/[slug]` and
+`/shared/[slug]`): a message id collapses, `null` expands on the next task, so
+the Escape that closes the menu is not also read as Esc for the panel.
+
+- Docked and overlay: the aside stays mounted with `.side-panel-collapsed`
+  (`translate: 100% 0`, `visibility: hidden`, `pointer-events: none`) and
+  `inert`, with the 300ms seam transition from `.side-panel-collapsible`.
+  `visibility` keeps layout and scroll offsets, which `display: none` would
+  lose, and does not reload the iframe.
+- `dockedInset` is 0 while collapsed, so `--side-panel-width` returns to `0px`:
+  the chat column, composer, toast and pill take their no-panel layout, and
+  `captureScrollAnchor()`/`holdScrollAnchor()` keep the reader's place on the
+  way out and back. `Sidebar` and `ChatInput` follow `isVisible`, not `isOpen`.
+- Overlay: the scrim goes and the focus trap releases (the shell is no longer
+  `inert`) while collapsed, and returns on expand.
+- Sheet: the dialog is closed with `dialog.close()` (the body stays rendered,
+  its scroll offset is saved and restored) and `showModal()` again on expand.
+  A collapse-driven `close` event is ignored, otherwise it would clear the
+  stack.
+- `close()` clears the flag, and a route change closes the panel, so a menu
+  that unmounts with its page cannot leave the panel hidden.
+- Other menus (tools, model picker, dropdowns) do not collapse the panel and
+  must not move the seam.
+
+A real user cannot open the context menu while the overlay or sheet is up
+(the scrim and the modal dialog cover the chat), so those two layouts are
+exercised through the `__besidkaChatTest.selectMessage` e2e hook.
+
 ## Resizing (WCAG 2.2)
 
 - Drag: the 12px seam (`role="separator"`, `aria-orientation="vertical"`,

@@ -507,6 +507,18 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
       var(--side-panel-transition-easing);
   }
 
+  .side-panel-collapsible {
+    transition-property: width, translate, visibility;
+    transition-duration: var(--side-panel-transition-duration);
+    transition-timing-function: var(--side-panel-transition-easing);
+  }
+
+  .side-panel-collapsed {
+    translate: 100% 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .side-panel-seam-right {
     transition: right var(--side-panel-transition-duration)
       var(--side-panel-transition-easing);

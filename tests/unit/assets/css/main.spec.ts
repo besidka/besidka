@@ -17,6 +17,7 @@ const EASING_VARIABLE = '--side-panel-transition-easing'
 const SEAM_FOLLOWER_SELECTORS = [
   '.side-panel-inset',
   '.side-panel-width-follow',
+  '.side-panel-collapsible',
   '.side-panel-seam-right',
   '.side-panel-pill',
 ]

@@ -701,6 +701,117 @@ describe('ui/SidePanel', () => {
     })
   })
 
+  describe('collapsing while a message menu is open', () => {
+    function selectMessage(messageId: string | null) {
+      return useNuxtApp().callHook('chat:message-selected', messageId)
+    }
+
+    async function settleExpand() {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 5)
+      })
+      await flushPromises()
+    }
+
+    it('hides the docked panel, zeroes the inset and keeps the mounted '
+      + 'body', async () => {
+      const wrapper = await mountPanel()
+
+      await openPanel(FieldBody)
+
+      const body = wrapper.get('[data-testid="body-input"]').element
+
+      expect(readRootInset()).toBe('480px')
+
+      await selectMessage('message-1')
+      await flushPromises()
+
+      const panel = wrapper.get(PANEL)
+
+      expect(panel.attributes('data-collapsed')).toBe('true')
+      expect(panel.classes()).toContain('side-panel-collapsed')
+      expect(panel.attributes('inert')).toBeDefined()
+      expect(readRootInset()).toBe('0px')
+      expect(useSidePanel().isOpen.value).toBe(true)
+      expect(wrapper.get('[data-testid="body-input"]').element).toBe(body)
+    })
+
+    it('brings back the same panel and width when the menu closes',
+      async () => {
+        const wrapper = await mountPanel()
+
+        await openPanel(FieldBody)
+
+        const body = wrapper.get('[data-testid="body-input"]').element
+
+        await selectMessage('message-1')
+        await flushPromises()
+        await selectMessage(null)
+        await settleExpand()
+
+        const panel = wrapper.get(PANEL)
+
+        expect(panel.attributes('data-collapsed')).toBeUndefined()
+        expect(panel.attributes('inert')).toBeUndefined()
+        expect(readRootInset()).toBe('480px')
+        expect(wrapper.get('[data-testid="body-input"]').element).toBe(body)
+      })
+
+    it('ignores the Escape that closes the menu', async () => {
+      const closeMenuOnEscape = () => {
+        selectMessage(null)
+      }
+
+      stubViewport(900)
+      document.addEventListener('keydown', closeMenuOnEscape, { once: true })
+      await mountPanel()
+      await openPanel()
+      await selectMessage('message-1')
+      await flushPromises()
+      await pressEscape()
+      await settleExpand()
+
+      expect(useSidePanel().isOpen.value).toBe(true)
+    })
+
+    it('keeps the timer from expanding a re-selected message', async () => {
+      const wrapper = await mountPanel()
+
+      await openPanel()
+      await selectMessage('message-1')
+      await selectMessage(null)
+      await selectMessage('message-2')
+      await settleExpand()
+
+      expect(wrapper.get(PANEL).attributes('data-collapsed')).toBe('true')
+      expect(useSidePanel().isCollapsed.value).toBe(true)
+    })
+
+    it('releases the focus trap while the overlay is collapsed', async () => {
+      stubViewport(900)
+
+      const content = document.createElement('div')
+
+      content.className = 'side-panel-inset'
+      document.body.appendChild(content)
+      await mountPanel()
+      await openPanel()
+
+      expect(content.inert).toBe(true)
+
+      await selectMessage('message-1')
+      await flushPromises()
+
+      expect(content.inert).toBe(false)
+
+      await selectMessage(null)
+      await settleExpand()
+
+      expect(content.inert).toBe(true)
+      content.remove()
+    })
+  })
+
   describe('overlay layout', () => {
     beforeEach(() => {
       stubViewport(900)
@@ -886,6 +997,60 @@ describe('ui/SidePanel', () => {
       expect(document.activeElement).toBe(modalBox)
       expect(document.activeElement)
         .not.toBe(wrapper.get('[data-testid="body-input"]').element)
+    })
+
+    it('hides the dialog while collapsed without closing the panel',
+      async () => {
+        const wrapper = await mountPanel()
+
+        await openPanel(FieldBody)
+
+        const body = wrapper.get('[data-testid="body-input"]').element
+
+        useSidePanel().collapse()
+        await flushPromises()
+
+        expect(closeDialog).toHaveBeenCalledOnce()
+        expect(wrapper.get(SHEET).attributes('open')).toBeUndefined()
+
+        wrapper.get(SHEET).element.dispatchEvent(new Event('close'))
+        await flushPromises()
+
+        expect(useSidePanel().isOpen.value).toBe(true)
+
+        useSidePanel().expand()
+        await flushPromises()
+
+        expect(showModal).toHaveBeenCalledTimes(2)
+        expect(wrapper.get(SHEET).attributes('open')).toBeDefined()
+        expect(wrapper.get('[data-testid="body-input"]').element).toBe(body)
+      })
+
+    it('restores the sheet scroll after a collapse and drops it when the '
+      + 'panel closes while collapsed', async () => {
+      const wrapper = await mountPanel()
+
+      await openPanel(FieldBody)
+
+      const sheetBody = wrapper.get('[data-testid="side-panel-body"]').element
+
+      sheetBody.scrollTop = 120
+      useSidePanel().collapse()
+      await flushPromises()
+      sheetBody.scrollTop = 0
+      useSidePanel().expand()
+      await flushPromises()
+
+      expect(sheetBody.scrollTop).toBe(120)
+
+      useSidePanel().collapse()
+      await flushPromises()
+      useSidePanel().close()
+      await flushPromises()
+      await openPanel(FieldBody)
+
+      expect(wrapper.get('[data-testid="side-panel-body"]').element.scrollTop)
+        .toBe(0)
     })
 
     it('closes the dialog when the panel closes', async () => {
