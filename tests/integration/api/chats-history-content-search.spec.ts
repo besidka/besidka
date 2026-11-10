@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   findChatsMatchingMessageContent: vi.fn(async () => []),
 }))
 
+vi.mock('~~/server/utils/features/context', () => ({
+  evaluateFeatureForEvent: vi.fn(async () => ({ active: false })),
+}))
+
 vi.mock('evlog', () => ({
   useLogger: () => ({
     set: mocks.loggerSet,

@@ -766,6 +766,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ChatRow.spec.ts',
+    'tests/unit/components/History/ArtifactBadge.spec.ts',
+    'tests/integration/api/chats-history-artifact-count.spec.ts',
     'tests/unit/components/Projects/ActionsDropdown.spec.ts',
     'tests/unit/composables/dropdown-placement.spec.ts',
     'tests/unit/composables/history.spec.ts',
@@ -2511,6 +2513,12 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/components\/Projects\/ActionsDropdown\.vue$/,
       tests: historyProjectsTests,
+    },
+    {
+      pattern: /^server\/utils\/artifacts\/chat-artifacts\.ts$/,
+      tests: [
+        'tests/integration/api/chats-history-artifact-count.spec.ts',
+      ],
     },
     {
       pattern: /^app\/pages\/chats\/(history\/index|new)\.vue$/,
