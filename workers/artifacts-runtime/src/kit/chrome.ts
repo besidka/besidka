@@ -303,6 +303,14 @@ const MENU_MOVES: Record<string, FocusTarget> = {
 
 let closeActiveMenu: (() => void) | null = null
 
+const hostsWithReservedSpace = new WeakSet<HTMLElement>()
+
+function releaseHostSpace(host: HTMLElement | undefined) {
+  if (host && hostsWithReservedSpace.delete(host)) {
+    host.style.removeProperty('padding-bottom')
+  }
+}
+
 function findHost(element: HTMLElement): HTMLElement | undefined {
   const root = element.getRootNode()
 
@@ -343,7 +351,7 @@ function placePanel(panel: HTMLElement, trigger: HTMLElement) {
   const host = findHost(trigger)
 
   panel.dataset.placement = 'bottom'
-  host?.style.removeProperty('padding-bottom')
+  releaseHostSpace(host)
 
   const panelRect = panel.getBoundingClientRect()
   const missing = panelRect.bottom - window.innerHeight
@@ -358,7 +366,10 @@ function placePanel(panel: HTMLElement, trigger: HTMLElement) {
     return
   }
 
-  host?.style.setProperty('padding-bottom', `${Math.ceil(missing)}px`)
+  if (host) {
+    hostsWithReservedSpace.add(host)
+    host.style.setProperty('padding-bottom', `${Math.ceil(missing)}px`)
+  }
 }
 
 /**
@@ -401,7 +412,8 @@ export function createMenu<Action extends string>(
     trigger.element.setAttribute('aria-expanded', 'false')
     document.removeEventListener('pointerdown', onPointerDown, true)
     document.removeEventListener('keydown', onDocumentKeyDown, true)
-    findHost(trigger.element)?.style.removeProperty('padding-bottom')
+    window.removeEventListener('blur', closeWithoutFocus)
+    releaseHostSpace(findHost(trigger.element))
 
     if (closeActiveMenu === closeWithoutFocus) {
       closeActiveMenu = null
@@ -439,6 +451,7 @@ export function createMenu<Action extends string>(
     placePanel(panel, trigger.element)
     document.addEventListener('pointerdown', onPointerDown, true)
     document.addEventListener('keydown', onDocumentKeyDown, true)
+    window.addEventListener('blur', closeWithoutFocus)
     closeActiveMenu = closeWithoutFocus
 
     if (target) {
@@ -495,7 +508,7 @@ export function createMenu<Action extends string>(
     }
 
     if (event.key === 'Tab') {
-      close()
+      close(true)
     }
   })
 

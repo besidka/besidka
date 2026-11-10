@@ -105,7 +105,7 @@ export function createMermaidController(element: HTMLElement): KitController {
   let source = ''
   let rendered = false
   let renderSequence = 0
-  let renderedWidth: number | undefined
+  let requestedWidth: number | undefined
 
   shell.block.dataset.testid = 'besidka-mermaid'
   diagram.className = 'diagram'
@@ -212,13 +212,15 @@ export function createMermaidController(element: HTMLElement): KitController {
 
     try {
       const width = measureContentWidth(shell.body)
+
+      requestedWidth = width
+
       const svg = await renderDiagramSvg(source, width)
 
       if (sequence !== renderSequence) {
         return
       }
 
-      renderedWidth = width
       diagram.innerHTML = svg
       diagram.dataset.theme = theme
       shell.body.replaceChildren(diagram)
@@ -240,7 +242,7 @@ export function createMermaidController(element: HTMLElement): KitController {
     : new ResizeObserver(() => {
       const width = measureContentWidth(shell.body)
 
-      if (rendered && Math.abs((width ?? 0) - (renderedWidth ?? 0)) > 1) {
+      if (Math.abs((width ?? 0) - (requestedWidth ?? 0)) > 1) {
         loop.refresh()
       }
     })
@@ -251,6 +253,8 @@ export function createMermaidController(element: HTMLElement): KitController {
       resizeObserver?.observe(shell.body)
     },
     disconnect: () => {
+      downloadMenu.close()
+      copyMenu.close()
       loop.disconnect()
       resizeObserver?.disconnect()
     },

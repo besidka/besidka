@@ -324,6 +324,12 @@ subgraphs, coloured labelled edges) in Chromium and WebKit, light and dark, at
 1440 and 375 px: the chat block, the artifact preview and the full-screen
 viewer have the same layout.
 
+Deploy order: the runtime Worker and the app deploy separately. A new frame
+that sends `copy-png` to an older host is rejected by the host's guard, and
+the frame shows "Copy failed"; deploy the app first. The frame decides
+whether to show the PNG item from its own `ClipboardItem` support, on the
+assumption that it equals the host's (same browser).
+
 ### Dropdown menus (BES-348)
 
 Download and Copy are dropdowns anchored under their buttons, with the same
@@ -487,9 +493,9 @@ made no difference:
 Layout time grows faster than the edge count (about 2.8x for the first
 doubling, 3.1x for the second), so 1,000 edges already misses the 2 second
 target on a fast desktop, and a phone is slower than that. The limit stays
-at 500. Raise it only with a faster layout, not a bigger number. Mermaid
-`maxTextSize` is no tighter than that: 500 edges is about 14,000 characters,
-well under 50,000.
+at 500. Raise it only with a faster layout, not a bigger number. The text
+limit (20,000 characters) is no tighter than that: 500 edges is about 14,000
+characters.
 
 **What the reader sees.** Pele reports both limits with a `PeleError` whose
 message matches the old Mermaid edge text ("Edge limit exceeded. 500 edges

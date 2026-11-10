@@ -4,9 +4,9 @@ export const DIAGRAM_FONT_NAME = 'Nunito'
 
 export const DIAGRAM_FONT_MONO_NAME = 'Atkinson Hyperlegible Mono'
 
-export const DIAGRAM_OUTPUT_LIMIT = 1_000_000
+const DIAGRAM_OUTPUT_LIMIT = 1_000_000
 
-export const DIAGRAM_DIRECTION_BREAKPOINT = 480
+const DIAGRAM_DIRECTION_BREAKPOINT = 480
 
 /**
  * The Pele options the chat and the artifacts runtime both render with, so a

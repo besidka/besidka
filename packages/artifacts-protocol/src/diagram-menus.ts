@@ -1,3 +1,5 @@
+import type { DiagramExportAction } from './messages.ts'
+
 export type DiagramMenuIcon
   = | 'code'
     | 'file-text'
@@ -6,7 +8,7 @@ export type DiagramMenuIcon
     | 'image'
 
 export interface DiagramMenuItem {
-  action: string
+  action: DiagramExportAction
   label: string
   icon: DiagramMenuIcon
   needsSvg: boolean
@@ -41,7 +43,7 @@ export const DIAGRAM_COPY_MENU_ITEMS = [
   },
 ] as const satisfies readonly DiagramMenuItem[]
 
-export const IMAGE_COPY_ACTION = 'copy-png'
+export const IMAGE_COPY_ACTION = 'copy-png' satisfies DiagramExportAction
 
 export function isImageClipboardSupported(): boolean {
   if (typeof ClipboardItem === 'undefined') {

@@ -3,17 +3,14 @@ import {
   DIAGRAM_DOWNLOAD_MENU_ITEMS,
 } from '@besidka/artifacts-protocol/diagram-menus'
 import type { DiagramMenuItem } from '@besidka/artifacts-protocol/diagram-menus'
-import type {
-  DiagramExportAction,
-  DiagramMenuAction,
-} from '~/types/diagram-export.d'
+import type { DiagramMenuAction } from '~/types/diagram-export.d'
 
 function toMenuActions(
   items: readonly DiagramMenuItem[],
 ): DiagramMenuAction[] {
   return items.map((item) => {
     return {
-      action: item.action as DiagramExportAction,
+      action: item.action,
       label: item.label,
       icon: `lucide:${item.icon}`,
       needsSvg: item.needsSvg,
