@@ -245,3 +245,60 @@ describe('artifact share token redaction', () => {
     expect(JSON.stringify(context)).not.toContain(TOKEN)
   })
 })
+
+describe('artifact viewer storage key redaction', () => {
+  const KEY = 'jane.doe@example.com'
+
+  it('keeps the storage key out of every drained field', () => {
+    const context = {
+      request: {
+        method: 'PUT',
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+      },
+      headers: {},
+      event: {
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+        error: {
+          message: `Failed /api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+        },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/api/v1/artifacts/ArtifactId1/storage/[key]',
+      message: 'PUT /api/v1/artifacts/ArtifactId1/storage/[key]',
+    })
+    expect(context.request.path)
+      .toBe('/api/v1/artifacts/ArtifactId1/storage/[key]')
+    expect(JSON.stringify(context)).not.toContain(KEY)
+  })
+
+  it('strips a query string after the key and leaves other paths alone', () => {
+    const context = {
+      request: {
+        method: 'DELETE',
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}?x=1`,
+      },
+      headers: {},
+      event: {} as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event.message)
+      .toBe('DELETE /api/v1/artifacts/ArtifactId1/storage/[key]')
+
+    const other = {
+      request: { method: 'GET', path: '/api/v1/artifacts/ArtifactId1/storage' },
+      headers: {},
+      event: {} as Record<string, unknown>,
+    }
+
+    enrich(other)
+
+    expect(other.event.message)
+      .toBe('GET /api/v1/artifacts/ArtifactId1/storage')
+  })
+})

@@ -1,5 +1,9 @@
 import { ARTIFACT_SHARE_HEADER } from '#shared/utils/artifacts'
 import {
+  redactArtifactStorageKeyPath,
+  redactArtifactStorageKeys,
+} from '~~/server/utils/artifacts/log-redaction'
+import {
   redactArtifactSharePath,
   redactArtifactShareTokens,
 } from '~~/server/utils/artifacts/share-redaction'
@@ -106,12 +110,13 @@ export default defineNitroPlugin((nitroApp) => {
 
   nitroApp.hooks.hook('evlog:enrich', (context) => {
     if (typeof context.request?.path === 'string') {
-      context.request.path = redactArtifactSharePath(
-        context.request.path,
+      context.request.path = redactArtifactStorageKeyPath(
+        redactArtifactSharePath(context.request.path),
       ) as string
     }
 
     redactArtifactShareTokens(context.event)
+    redactArtifactStorageKeys(context.event)
 
     if (context.headers) {
       Reflect.deleteProperty(context.headers, ARTIFACT_SHARE_HEADER)

@@ -3150,9 +3150,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/middleware\/02\.artifact-share-path\.ts|server\/utils\/artifacts\/share-(redaction|request)\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(server\/middleware\/02\.artifact-share-path\.ts|server\/utils\/artifacts\/(share-(redaction|request)|log-redaction)\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: [
         'tests/unit/server/middleware/artifact-share-path.spec.ts',
+        'tests/unit/server/utils/artifacts/log-redaction.spec.ts',
         'tests/unit/server/plugins/evlog-request-observability.spec.ts',
       ],
     },

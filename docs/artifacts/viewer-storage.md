@@ -84,9 +84,17 @@ The protocol still accepts keys up to 256 characters and values up to about
 `-32602` without a request.
 
 Logs carry ids, counts and bytes only (`attributes.artifacts.storageKeys`,
-`storageBytes`, `storageDeleted`), never key names or values. Values are
-opaque JSON: never rendered by the parent, never sent to a model, never
-exposed through MCP, an export or an admin view, not even to the owner.
+`storageBytes`, `storageDeleted`), never key names or values. Key names are
+chosen by artifact code and can carry personal data, and the key is a path
+segment of `PUT|DELETE /api/v1/artifacts/<id>/storage/<key>`, so the
+`evlog:enrich` hook in `server/plugins/evlog-request-observability.ts`
+rewrites it to `/storage/[key]` (`server/utils/artifacts/log-redaction.ts`,
+next to the share-token redaction) in `request.path`, `event.path`, the
+derived `message` and every nested string of the wide event, including
+percent-encoded forms (`%2F`, `%252F`) and a query string after the key.
+Values are opaque JSON: never rendered by the parent, never sent to a model,
+never exposed through MCP, an export or an admin view, not even to the
+owner.
 
 ## Host side
 
