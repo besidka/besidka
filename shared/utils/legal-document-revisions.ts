@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '6f4c969df7ffb6aa81a6154ea30083f78a81c3fff4e04dc9e01bea67bc175bf3',
+    hash: '3bdd563cf5adc2316bb6f316457cf048d1fb211486ee4f1135908f55d224b1e8',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -20,9 +20,10 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'and create_document under the files permission of connected apps. '
       + 'Treated as material on the cautious reading: the provider-side '
       + 'retention is a retention fact users did not have before. The '
-      + 'deletion wording is exact: uploads are deleted when the reply ends, '
-      + 'expire within an hour if it is cut off, and files the Anthropic '
-      + 'sandbox made stay in the user\'s Anthropic account. Body '
+      + 'deletion wording is exact: uploads, the files the sandbox made and '
+      + 'the OpenAI container are deleted when the reply ends; uploads expire '
+      + 'within an hour if it is cut off, and files the Anthropic sandbox '
+      + 'made stay in the user\'s Anthropic account. Body '
       + 'still includes the 2026-11-experimental-features and '
       + '2026-12-artifacts changes, effective 2026-12-19.',
   },
