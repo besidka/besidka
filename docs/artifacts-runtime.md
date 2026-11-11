@@ -73,7 +73,11 @@ protocol v2 live next to v1.
      self-navigation before its request leaves, in Chromium and WebKit; the
      blocked frame then loads an error page, which trips the wire below.
      It also covers targets that never fire `load` (a `204` response, a
-     download, a `load` held open) and `data:` or `blob:` documents.
+     download, a `load` held open) and `data:` or `blob:` documents. When the
+     page already has a policy with `frame-src`, the sources must be merged
+     into that directive: browsers ignore a second `frame-src`, so an
+     appended duplicate would leave the old one in force and block the
+     runtime (`server/plugins/artifacts-frame-src.ts` does this merge).
    - **Tripwire.** `createHostConnection` treats every `load` after the first
      as the frame having left the runtime: it closes the port, removes the
      iframe and calls `onUnexpectedNavigation`.
@@ -159,7 +163,11 @@ Gruber notice). A-9 links it from the `/a/` footer and the Privacy Policy.
 ## Protocol (`@besidka/artifacts-protocol`, version 1)
 
 JSON-RPC 2.0 over the port, shaped like MCP Apps `ui/*` so Phase 4 can render
-MCP `ui://` resources here. Methods (adding one needs a protocol bump):
+MCP `ui://` resources here. Changing a method's shape needs a protocol bump.
+A new runtime → host request whose host hook is optional does not: a host
+without the hook answers `-32601` and the runtime shows "Not available
+here", so an older host and a newer runtime still work together (the three
+UI requests below were added this way in A-14). Methods:
 
 | Direction | Method | Kind |
 | --- | --- | --- |
@@ -173,6 +181,9 @@ MCP `ui://` resources here. Methods (adding one needs a protocol bump):
 | runtime → host | `notifications/message` | notification (`error`/`warning`) |
 | runtime → host | `besidka/storage/get|set|delete|list` | requests (A-5) |
 | runtime → host | `besidka/complete` | request (A-6) |
+| runtime → host | `ui/clipboard-write` | request `{ text, mimeType?, userActivation }` → `{ copied: true }` or `{ copied: false, reason }` (A-14) |
+| runtime → host | `ui/request-display-mode` | request `{ mode: 'panel' \| 'fullscreen', userActivation }` → `{ displayMode }` (A-14, host wired, no runtime caller yet) |
+| runtime → host | `besidka/open-diagram-viewer` | request `{ source, userActivation }` → `{}` (A-14) |
 
 Error codes beyond JSON-RPC's: `-32001` timeout, `-32002` connection closed,
 `-32010` consent required, `-32011` declined by the viewer, `-32012` rate
@@ -216,6 +227,152 @@ text as plain text only.
 `storage.persistent`, `complete(prompt, { maxOutputTokens })`, `theme`,
 `onThemeChange(listener)` (returns an unsubscribe function).
 
+## Code and Mermaid blocks (A-14, BES-318)
+
+Code and diagrams inside artifacts look and behave like the chat's
+(`app/components/prose/PreStream.vue`, `MermaidDiagram.vue`).
+
+### Elements
+
+| Element | Renders | Buttons |
+| --- | --- | --- |
+| `<besidka-code lang="ts">source</besidka-code>` | Shiki, themes `github-light-high-contrast` / `github-dark-high-contrast` (the chat's), window dots and the language label | Expand/Collapse from three lines on (collapsed to 7.5 rem, like chat), Copy |
+| `<besidka-mermaid>source</besidka-mermaid>` | The vendored Mermaid (dagre, `securityLevel: 'strict'`) themed from the host | Fullscreen (also a click on the diagram), Copy (source) |
+
+Whole `mermaid` artifacts use the same element: `render/mermaid.ts` runs
+`mermaid.parse()` first (a syntax error still reaches the host as an
+artifact error, so the panel's Ask to fix works) and then renders
+`<main class="besidka-mermaid"><besidka-mermaid>`. A theme change no longer
+re-renders the whole artifact; the element re-renders itself.
+
+- **Markdown artifacts**: every fenced block is upgraded on the final render
+  (```` ```mermaid ```` becomes `<besidka-mermaid>`, a block without a
+  language becomes plain `<besidka-code>`). Streaming previews stay plain.
+- **HTML artifacts**: `<pre><code class="language-*">` (also `lang-*`) is
+  upgraded before the artifact's scripts run; an untagged `<pre><code>` is
+  left alone. `data-besidka-raw` on the `<pre>`, the `<code>` or any ancestor
+  keeps a block as written. Inside the elements the text is HTML, so `<` and
+  `&` must be escaped, as in `<pre>`.
+- **React artifacts**: use the tags in JSX with the source as a string child,
+  `<besidka-code lang="tsx">{source}</besidka-code>`. The elements watch
+  their own text (a `MutationObserver` on the element only), so a state
+  change re-highlights. No import is needed; the tags are not in the import
+  allowlist because they are custom elements, not modules.
+- The upgrade runs once per render. Blocks that artifact scripts add later
+  stay as they are (no document-wide observer); such scripts can create the
+  elements directly.
+
+Text that starts on its own line (`<besidka-code>` written across lines in
+HTML) loses leading blank lines and common indentation. Text that starts on
+the first line is kept as written apart from trailing whitespace, so Copy
+returns the exact source of a Markdown or React block.
+
+Both elements render into an open shadow root, so artifact CSS cannot break
+them and React's reconciliation of the light-DOM text is untouched. Colours
+come from the runtime palette (`src/palette.ts`, the same tokens as the
+shell) and switch with `host-context-changed`: code is re-highlighted with
+the other Shiki theme and diagrams are re-rendered. The icons are Lucide path
+data (ISC, already in the notices through `lucide-react`).
+
+### Loading and size
+
+`src/kit/elements.ts` defines both classes at boot (small, in the entry
+graph). Shiki (`shiki/core` with `shiki/engine/javascript`, no WASM; the CSP
+has no `wasm-unsafe-eval`), the two themes and each grammar are separate
+lazy chunks, loaded when the first `<besidka-code>` connects; Mermaid is the
+existing lazy chunk. The grammar set mirrors the chat's highlighter
+(`shiki/bundle/web`, 57 languages with aliases); `kit.spec.ts` fails when a
+Shiki bump changes that list. Code longer than 100,000 characters is shown
+plain.
+
+Bundle delta (production build, gzip, measured on the A-14 branch):
+
+| | Before | After |
+| --- | --- | --- |
+| Entry graph (main + static imports) | 8.9 KiB, 4 files | 10.7 KiB, 6 files |
+| All assets | 1,585.6 KiB, 120 files | 2,064.1 KiB, 212 files |
+| First code block (Shiki core, engine, HTML output) | – | 56.6 KiB |
+| One grammar (TypeScript / JavaScript) | – | 15.4 / 15.8 KiB |
+| Each theme | – | 3.0 KiB |
+| `<besidka-mermaid>` on top of Mermaid | – | 1.1 KiB |
+
+The raw total grows by about 3.3 MiB (5,687 to 9,071 KiB), nearly all of it
+grammars that load only on demand; every artifact pays the 1.7 KiB entry
+growth (element classes, upgrade pass, bridge calls).
+
+### Copy through the bridge
+
+The frame has no clipboard (`allow=""`), so Copy sends `ui/clipboard-write`
+over the port and the host writes. The request carries `userActivation`:
+`event.isTrusted && navigator.userActivation.isActive` in the frame. Artifact
+code shares the runtime's realm, so the host treats that only as a claim: it
+also needs its own `navigator.userActivation.isActive` (a click in a child
+frame activates its ancestors in Chromium and WebKit). Without both the host
+answers `{ copied: false, reason: 'gesture-required' }` and never calls its
+hook. The host check fails closed: `hasUserActivation()` must return `true`,
+so an unknown activation (`null`, a browser without
+`navigator.userActivation`) refuses the write. Activation alone is not
+enough either, because typing in the chat composer also activates the parent
+document and an artifact could then write to the clipboard (pastejacking).
+The app's Frame therefore passes `hasUserActivation: () =>
+navigator.userActivation?.isActive === true && document.activeElement ===
+iframe`: the activation must come from the artifact frame, which holds focus
+right after a click in it. With focus anywhere else the request ends as
+`gesture-required` before any hook, so no parent Copy fallback appears. Text is capped at 512 KiB (`MAX_CLIPBOARD_TEXT_LENGTH`, the same as
+`ARTIFACT_VERSION_MAX_BYTES`), at most 5 writes per 10 s (`-32012` beyond),
+plain text only.
+
+Spike (`tests/e2e-artifacts/clipboard-gesture-spike.spec.ts`, kept as an
+engine-behaviour recorder): a click in a `sandbox="allow-scripts"` frame,
+then a message over a `MessagePort`, then `navigator.clipboard.writeText` in
+the parent.
+
+| Engine (Playwright) | Parent `userActivation.isActive` | Write |
+| --- | --- | --- |
+| Chromium, clipboard permission granted | `true` | written, read back |
+| Chromium, no grant | `true` | `NotAllowedError` (headless Playwright denies the permission prompt; desktop Chrome grants `clipboard-write` to an active page) |
+| WebKit | `true` | written, but also written with no click at all, so Playwright's WebKit does not enforce the gesture and proves nothing about Safari |
+
+Because Safari is unproven, the host must handle refusal honestly:
+`writeClipboardText(text)` (exported by the protocol) returns
+`gesture-required` for `NotAllowedError`. The host can then hold the request
+open (the runtime waits up to 5 minutes, like `complete`) and show its own
+Copy button in the parent document, whose click is a real gesture there, and
+answer with that outcome; or answer at once. The frame shows "Copied!" or
+"Copy failed" with the reason in the button's `title`; it never claims a
+copy that did not happen. The e2e spec covers the held-open path with the
+harness's `fallback` mode. Verify on iOS Simulator Safari and the
+home-screen PWA (host side, A-4 stack top).
+
+Image copy (PNG) is not offered: a promised `ClipboardItem` would have to be
+created in the parent inside the gesture, which Safari only accepts there,
+and the frame cannot hand over a gesture. The host's diagram viewer can offer
+it, since it renders the source itself.
+
+### Fullscreen
+
+The frame cannot call `requestFullscreen` (`allow=""`). Fullscreen sends
+`besidka/open-diagram-viewer` with the Mermaid source (at most 64 KiB); the
+host opens its own `MermaidViewer` with it, so zoom, pan and Esc are the
+chat's. The same gesture rule applies, failures are `-32013`, and display
+requests share a limit of 2 per second. `ui/request-display-mode` (`panel` or
+`fullscreen`) exists for the host to switch the side panel to full width; the
+kit does not send it yet.
+
+### Host hooks (`HostHandlers`)
+
+```ts
+clipboardWrite?: (params: ClipboardWriteParams) => MaybePromise<ClipboardWriteResult>
+requestDisplayMode?: (params: RequestDisplayModeParams) => MaybePromise<RequestDisplayModeResult>
+openDiagramViewer?: (params: OpenDiagramViewerParams) => MaybePromise<EmptyResult | void>
+```
+
+`createHostConnection` validates params, applies the rate limits and the
+gesture check before a hook runs, and passes only the known fields. Option
+`hasUserActivation` replaces the host's own activation read (the app uses it
+to require focus in the frame, see Copy through the bridge; only `true`
+passes), and `now` exists for tests.
+
 ## Local development
 
 ```bash
@@ -243,7 +400,13 @@ with no request, size and error notifications, theme switch without reload,
 links through the host, the navigation tripwire, the host `frame-src`
 policy blocking self-navigation before any request, WebRTC removed, the
 `204` navigation residual, storage and completion fallbacks, and TSX
-transpile time.
+transpile time. `code-blocks.spec.ts` covers the A-14 elements in Markdown,
+HTML and React, the opt-out, theme switches, Copy and Fullscreen round trips
+(including the host-side fallback, denial and missing hooks) and forged,
+synthetic and oversized requests. The harness reads the runtime origin from
+the server, so `ARTIFACTS_RUNTIME_PORT`, `ARTIFACTS_HOST_PORT`,
+`ARTIFACTS_OUTSIDE_PORT` and `ARTIFACTS_OUTSIDE_TCP_PORT` move the whole
+suite to other ports when another worktree holds the defaults.
 
 ## CI and deployment
 
@@ -302,3 +465,15 @@ runtime anywhere.
 - A-3: instructions list the allowed imports and forbid navigation,
   `document.write()`, credential or payment forms and remote assets.
 - A-9: notices link, DPIA residual risk for self-navigation.
+- A-14 host side (done, see `docs/artifacts/panel.md`): `Frame.client.vue`
+  passes `clipboardWrite`, `openDiagramViewer` and `requestDisplayMode` from
+  `useArtifactHostActions()`. Copy writes with `writeClipboardText()`; on
+  `gesture-required` (Safari) the request stays open and the panel shows
+  "Copy from the artifact?" with its own Copy button at the top of the
+  Preview body, whose click writes and answers the frame, while dismiss,
+  Escape, a new version or unmount answer `denied`. Fullscreen opens the
+  chat's `MermaidViewer` above the panel and the sheet;
+  `ui/request-display-mode` toggles full width in the docked layout. The
+  panel's Code tab already uses the chat's Shiki setup (`ProsePreStream`).
+  Still to verify: Copy (including the fallback) and Fullscreen on iOS
+  Simulator Safari and the home-screen PWA on the stack-top preview.

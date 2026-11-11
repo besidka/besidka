@@ -1,5 +1,7 @@
 import {
+  CLIPBOARD_WRITE_LIMIT,
   CONNECT_TIMEOUT_MS,
+  DISPLAY_REQUEST_LIMIT,
   ERROR_CODES,
   METHODS,
   PROTOCOL_VERSION,
@@ -7,10 +9,15 @@ import {
 import { createEndpoint } from './endpoint.ts'
 import type { Endpoint, PortLike } from './endpoint.ts'
 import {
+  isClipboardWriteParams,
+  isClipboardWriteResult,
   isCompleteParams,
   isInitializeParams,
   isLogMessageParams,
+  isOpenDiagramViewerParams,
   isOpenLinkParams,
+  isRequestDisplayModeParams,
+  isRequestDisplayModeResult,
   isSizeChangedParams,
   isStorageKeyParams,
   isStorageListParams,
@@ -20,6 +27,8 @@ import {
 import { RpcError, createConnectMessage } from './jsonrpc.ts'
 import type {
   ArtifactPayload,
+  ClipboardWriteParams,
+  ClipboardWriteResult,
   CompleteParams,
   CompleteResult,
   EmptyResult,
@@ -30,7 +39,10 @@ import type {
   InitializeParams,
   InitializeResult,
   LogMessageParams,
+  OpenDiagramViewerParams,
   OpenLinkParams,
+  RequestDisplayModeParams,
+  RequestDisplayModeResult,
   SizeChangedParams,
   StorageGetResult,
   StorageKeyParams,
@@ -75,6 +87,15 @@ export interface HostHandlers {
   onOpenLink?: (params: OpenLinkParams) => MaybePromise<void>
   storage?: HostStorageHandlers
   complete?: (params: CompleteParams) => MaybePromise<CompleteResult>
+  clipboardWrite?: (
+    params: ClipboardWriteParams,
+  ) => MaybePromise<ClipboardWriteResult>
+  requestDisplayMode?: (
+    params: RequestDisplayModeParams,
+  ) => MaybePromise<RequestDisplayModeResult>
+  openDiagramViewer?: (
+    params: OpenDiagramViewerParams,
+  ) => MaybePromise<EmptyResult | void>
   onUnexpectedNavigation?: (details: UnexpectedNavigationDetails) => void
   onConnectTimeout?: () => void
 }
@@ -84,6 +105,22 @@ export interface HostConnectionOptions {
   connectTimeoutMs?: number
   removeFrameOnNavigation?: boolean
   createChannel?: () => MessageChannel
+  hasUserActivation?: () => boolean | null
+  now?: () => number
+}
+
+export interface ClipboardLike {
+  writeText: (text: string) => Promise<void>
+}
+
+interface RateLimit {
+  count: number
+  windowMs: number
+}
+
+interface UserActivationNavigator {
+  userActivation?: { isActive: boolean }
+  clipboard?: ClipboardLike
 }
 
 export interface HostConnection {
@@ -118,6 +155,76 @@ function methodNotFound(method: string): RpcError {
   )
 }
 
+function rateLimited(method: string): RpcError {
+  return new RpcError(ERROR_CODES.rateLimited, `Too many ${method} requests`)
+}
+
+function gestureRequired(method: string): RpcError {
+  return new RpcError(
+    ERROR_CODES.notAllowed,
+    `${method} needs a click in the artifact`,
+  )
+}
+
+function readHostNavigator(): UserActivationNavigator | undefined {
+  return (globalThis as { navigator?: UserActivationNavigator }).navigator
+}
+
+function readHostUserActivation(): boolean | null {
+  return readHostNavigator()?.userActivation?.isActive ?? null
+}
+
+function createRateLimiter(limit: RateLimit, now: () => number) {
+  const timestamps: number[] = []
+
+  return function tryTake(): boolean {
+    const current = now()
+
+    while (
+      timestamps.length > 0
+      && current - (timestamps[0] as number) >= limit.windowMs
+    ) {
+      timestamps.shift()
+    }
+
+    if (timestamps.length >= limit.count) {
+      return false
+    }
+
+    timestamps.push(current)
+
+    return true
+  }
+}
+
+/**
+ * Writes text to the host's clipboard and reports the outcome in the shape
+ * `ui/clipboard-write` returns. Browsers refuse the write without a recent
+ * user activation (`NotAllowedError`), which maps to `gesture-required`, so
+ * a host can then offer its own Copy button in the parent document.
+ */
+export async function writeClipboardText(
+  text: string,
+  clipboard: ClipboardLike | undefined = readHostNavigator()?.clipboard,
+): Promise<ClipboardWriteResult> {
+  if (!clipboard) {
+    return { copied: false, reason: 'unavailable' }
+  }
+
+  try {
+    await clipboard.writeText(text)
+
+    return { copied: true }
+  } catch (exception) {
+    const name = exception instanceof Error ? exception.name : ''
+
+    return {
+      copied: false,
+      reason: name === 'NotAllowedError' ? 'gesture-required' : 'denied',
+    }
+  }
+}
+
 /**
  * Connects the app to a runtime iframe. Create the iframe with its `src`
  * already set, call this, then insert the iframe, all in one task, and never
@@ -140,6 +247,116 @@ export function createHostConnection(
   let initializeAnswered = false
   let ready = false
   let destroyed = false
+  const now = options.now ?? Date.now
+  const takeClipboardSlot = createRateLimiter(CLIPBOARD_WRITE_LIMIT, now)
+  const takeDisplaySlot = createRateLimiter(DISPLAY_REQUEST_LIMIT, now)
+
+  function hasUserGesture(claimedByFrame: boolean): boolean {
+    if (!claimedByFrame) {
+      return false
+    }
+
+    const hostActivation = (options.hasUserActivation
+      ?? readHostUserActivation)()
+
+    return hostActivation === true
+  }
+
+  async function handleClipboardWrite(
+    params: unknown,
+  ): Promise<ClipboardWriteResult> {
+    const method = METHODS.clipboardWrite
+
+    if (!handlers.clipboardWrite) {
+      throw methodNotFound(method)
+    }
+
+    if (!isClipboardWriteParams(params)) {
+      throw invalidParams(method)
+    }
+
+    if (!hasUserGesture(params.userActivation)) {
+      return { copied: false, reason: 'gesture-required' }
+    }
+
+    if (!takeClipboardSlot()) {
+      throw rateLimited(method)
+    }
+
+    const result = await handlers.clipboardWrite({
+      text: params.text,
+      mimeType: 'text/plain',
+      userActivation: true,
+    })
+
+    if (!isClipboardWriteResult(result)) {
+      return { copied: false, reason: 'unavailable' }
+    }
+
+    return result.copied
+      ? { copied: true }
+      : { copied: false, reason: result.reason }
+  }
+
+  async function handleRequestDisplayMode(
+    params: unknown,
+  ): Promise<RequestDisplayModeResult> {
+    const method = METHODS.requestDisplayMode
+
+    if (!handlers.requestDisplayMode) {
+      throw methodNotFound(method)
+    }
+
+    if (!isRequestDisplayModeParams(params)) {
+      throw invalidParams(method)
+    }
+
+    if (!hasUserGesture(params.userActivation)) {
+      throw gestureRequired(method)
+    }
+
+    if (!takeDisplaySlot()) {
+      throw rateLimited(method)
+    }
+
+    const result = await handlers.requestDisplayMode({
+      mode: params.mode,
+      userActivation: true,
+    })
+
+    if (!isRequestDisplayModeResult(result)) {
+      throw new RpcError(ERROR_CODES.internalError, 'Display mode unknown')
+    }
+
+    return { displayMode: result.displayMode }
+  }
+
+  async function handleOpenDiagramViewer(params: unknown) {
+    const method = METHODS.openDiagramViewer
+
+    if (!handlers.openDiagramViewer) {
+      throw methodNotFound(method)
+    }
+
+    if (!isOpenDiagramViewerParams(params)) {
+      throw invalidParams(method)
+    }
+
+    if (!hasUserGesture(params.userActivation)) {
+      throw gestureRequired(method)
+    }
+
+    if (!takeDisplaySlot()) {
+      throw rateLimited(method)
+    }
+
+    await handlers.openDiagramViewer({
+      source: params.source,
+      userActivation: true,
+    })
+
+    return {}
+  }
 
   async function handleStorageRequest(method: string, params: unknown) {
     const storage = handlers.storage
@@ -233,6 +450,18 @@ export function createHostConnection(
       || method === METHODS.storageList
     ) {
       return handleStorageRequest(method, params)
+    }
+
+    if (method === METHODS.clipboardWrite) {
+      return handleClipboardWrite(params)
+    }
+
+    if (method === METHODS.requestDisplayMode) {
+      return handleRequestDisplayMode(params)
+    }
+
+    if (method === METHODS.openDiagramViewer) {
+      return handleOpenDiagramViewer(params)
     }
 
     if (method === METHODS.complete) {

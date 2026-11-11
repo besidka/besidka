@@ -4,7 +4,11 @@ import {
   ERROR_CODES,
   RpcError,
   createConnectMessage,
+  MAX_CLIPBOARD_TEXT_LENGTH,
+  MAX_DIAGRAM_SOURCE_LENGTH,
   isArtifactKind,
+  isClipboardWriteParams,
+  isClipboardWriteResult,
   isCompleteParams,
   isConnectMessage,
   isHostContext,
@@ -13,7 +17,10 @@ import {
   isJsonRpcResponse,
   isJsonValue,
   isLogMessageParams,
+  isOpenDiagramViewerParams,
   isOpenLinkParams,
+  isRequestDisplayModeParams,
+  isRequestDisplayModeResult,
   isSizeChangedParams,
   isStorageSetParams,
   isToolResultParams,
@@ -174,5 +181,55 @@ describe('artifacts protocol params guards', () => {
     expect(isJsonValue(Number.NaN)).toBe(false)
     expect(isJsonValue(new Date())).toBe(false)
     expect(isJsonValue({ nested: { deeper: [null, true, 'x'] } })).toBe(true)
+  })
+
+  it('bounds clipboard, display-mode and diagram viewer params', () => {
+    expect(isClipboardWriteParams({ text: 'a', userActivation: true }))
+      .toBe(true)
+    expect(isClipboardWriteParams({
+      text: '',
+      mimeType: 'text/plain',
+      userActivation: false,
+    })).toBe(true)
+    expect(isClipboardWriteParams({
+      text: 'x'.repeat(MAX_CLIPBOARD_TEXT_LENGTH + 1),
+      userActivation: true,
+    })).toBe(false)
+    expect(isClipboardWriteParams({
+      text: 'a',
+      mimeType: 'image/png',
+      userActivation: true,
+    })).toBe(false)
+    expect(isClipboardWriteParams({ text: 'a' })).toBe(false)
+    expect(isClipboardWriteParams({ text: 1, userActivation: true }))
+      .toBe(false)
+    expect(isClipboardWriteResult({ copied: true })).toBe(true)
+    expect(isClipboardWriteResult({
+      copied: false,
+      reason: 'gesture-required',
+    })).toBe(true)
+    expect(isClipboardWriteResult({ copied: false, reason: 'later' }))
+      .toBe(false)
+    expect(isClipboardWriteResult({ copied: 'yes' })).toBe(false)
+    expect(isRequestDisplayModeParams({
+      mode: 'fullscreen',
+      userActivation: true,
+    })).toBe(true)
+    expect(isRequestDisplayModeParams({
+      mode: 'inline',
+      userActivation: true,
+    })).toBe(false)
+    expect(isRequestDisplayModeResult({ displayMode: 'panel' })).toBe(true)
+    expect(isRequestDisplayModeResult({ displayMode: 'pip' })).toBe(false)
+    expect(isOpenDiagramViewerParams({
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).toBe(true)
+    expect(isOpenDiagramViewerParams({ source: '  ', userActivation: true }))
+      .toBe(false)
+    expect(isOpenDiagramViewerParams({
+      source: 'x'.repeat(MAX_DIAGRAM_SOURCE_LENGTH + 1),
+      userActivation: true,
+    })).toBe(false)
   })
 })

@@ -144,6 +144,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/workers/artifacts-runtime/render.spec.ts',
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',
+    'tests/unit/workers/artifacts-runtime/kit.spec.ts',
+    'tests/e2e-artifacts/code-blocks.spec.ts',
+    'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
   ]
   const artifactsCoreTests = [
     'tests/unit/server/utils/artifacts/store.spec.ts',
@@ -3020,7 +3023,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/PreStream\.vue|app\/composables\/artifacts\.ts|app\/utils\/artifact-(export|parts)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
+        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/artifact(s|-host-actions)\.ts|app\/utils\/artifact-(export|parts)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
       tests: artifactsUiTests,
     },
     {

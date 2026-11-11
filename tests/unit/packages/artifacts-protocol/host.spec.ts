@@ -5,9 +5,11 @@ import {
   PROTOCOL_VERSION,
   createEndpoint,
   createHostConnection,
+  writeClipboardText,
 } from '@besidka/artifacts-protocol'
 import type {
   Endpoint,
+  HostConnectionOptions,
   HostContext,
   HostFrameLike,
   HostHandlers,
@@ -359,5 +361,237 @@ describe('createHostConnection', () => {
     frame.load()
 
     expect(onUnexpectedNavigation).toHaveBeenCalledTimes(1)
+  })
+})
+
+async function connectWith(
+  overrides: Partial<HostHandlers>,
+  options: HostConnectionOptions = {},
+) {
+  const frame = createFakeFrame()
+  const host = createHostConnection(frame, createHandlers(overrides), {
+    hasUserActivation: () => {
+      return true
+    },
+    ...options,
+  })
+
+  frame.load()
+
+  const runtime = connectFakeRuntime(frame)
+
+  await initialize(runtime)
+
+  return { host, runtime }
+}
+
+describe('createHostConnection UI requests', () => {
+  it('answers -32601 when the host has no clipboard or viewer hooks', async () => {
+    const { host, runtime } = await connectWith({})
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'fullscreen',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    host.destroy()
+  })
+
+  it('passes only validated clipboard text to the hook', async () => {
+    const clipboardWrite = vi.fn(() => {
+      return { copied: true as const, extra: 'ignored' }
+    })
+    const { host, runtime } = await connectWith({ clipboardWrite })
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'const a = 1',
+      userActivation: true,
+      injected: '<script>',
+    })).resolves.toEqual({ copied: true })
+    expect(clipboardWrite).toHaveBeenCalledWith({
+      text: 'const a = 1',
+      mimeType: 'text/plain',
+      userActivation: true,
+    })
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'x'.repeat(512 * 1024 + 1),
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(clipboardWrite).toHaveBeenCalledTimes(1)
+    host.destroy()
+  })
+
+  it('never writes without a user gesture from the frame and the host', async () => {
+    const clipboardWrite = vi.fn(() => {
+      return { copied: true as const }
+    })
+    let hostActivation: boolean | null = false
+    const { host, runtime } = await connectWith({ clipboardWrite }, {
+      hasUserActivation: () => {
+        return hostActivation
+      },
+    })
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+
+    hostActivation = true
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: false,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    expect(clipboardWrite).not.toHaveBeenCalled()
+
+    hostActivation = null
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    expect(clipboardWrite).not.toHaveBeenCalled()
+
+    hostActivation = true
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: true })
+    host.destroy()
+  })
+
+  it('maps an invalid hook result to unavailable', async () => {
+    const { host, runtime } = await connectWith({
+      clipboardWrite: () => {
+        return { copied: false, reason: 'mystery' } as never
+      },
+    })
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'unavailable' })
+    host.destroy()
+  })
+
+  it('rate-limits clipboard writes to five per ten seconds', async () => {
+    let currentTime = 1_000
+    const clipboardWrite = vi.fn(() => {
+      return { copied: true as const }
+    })
+    const { host, runtime } = await connectWith({ clipboardWrite }, {
+      now: () => {
+        return currentTime
+      },
+    })
+    const write = () => {
+      return runtime.request(METHODS.clipboardWrite, {
+        text: 'a',
+        userActivation: true,
+      })
+    }
+
+    for (let index = 0; index < 6; index += 1) {
+      await expect(runtime.request(METHODS.clipboardWrite, {
+        text: 'synthetic',
+        userActivation: false,
+      })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    }
+
+    for (let index = 0; index < 5; index += 1) {
+      await expect(write()).resolves.toEqual({ copied: true })
+    }
+
+    await expect(write())
+      .rejects.toMatchObject({ code: ERROR_CODES.rateLimited })
+
+    currentTime += 10_000
+
+    await expect(write()).resolves.toEqual({ copied: true })
+    expect(clipboardWrite).toHaveBeenCalledTimes(6)
+    host.destroy()
+  })
+
+  it('opens the diagram viewer and display modes only on a gesture', async () => {
+    let currentTime = 0
+    let hostActivation = true
+    const openDiagramViewer = vi.fn()
+    const requestDisplayMode = vi.fn(() => {
+      return { displayMode: 'fullscreen' as const }
+    })
+    const { host, runtime } = await connectWith({
+      openDiagramViewer,
+      requestDisplayMode,
+    }, {
+      now: () => {
+        return currentTime
+      },
+      hasUserActivation: () => {
+        return hostActivation
+      },
+    })
+
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).resolves.toEqual({})
+    expect(openDiagramViewer).toHaveBeenCalledWith({
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'fullscreen',
+      userActivation: true,
+    })).resolves.toEqual({ displayMode: 'fullscreen' })
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.rateLimited })
+
+    currentTime += 1_000
+    hostActivation = false
+
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.notAllowed })
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'inline',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(openDiagramViewer).toHaveBeenCalledTimes(1)
+    expect(requestDisplayMode).toHaveBeenCalledTimes(1)
+    host.destroy()
+  })
+})
+
+describe('writeClipboardText', () => {
+  it('reports the clipboard outcome in the protocol shape', async () => {
+    const notAllowed = new Error('No gesture')
+
+    notAllowed.name = 'NotAllowedError'
+
+    await expect(writeClipboardText('a', {
+      writeText: async () => {},
+    })).resolves.toEqual({ copied: true })
+    await expect(writeClipboardText('a', {
+      writeText: async () => {
+        throw notAllowed
+      },
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    await expect(writeClipboardText('a', {
+      writeText: async () => {
+        throw new TypeError('broken')
+      },
+    })).resolves.toEqual({ copied: false, reason: 'denied' })
   })
 })

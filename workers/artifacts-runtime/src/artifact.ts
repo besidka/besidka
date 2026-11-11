@@ -1,4 +1,5 @@
 import type { ArtifactPayload, Theme } from '@besidka/artifacts-protocol'
+import { upgradeCodeBlocks } from './kit/upgrade.ts'
 import { installLinkInterception } from './links.ts'
 import { replaceDocument, replaceDocumentRoot } from './render/html.ts'
 import { selectRenderer } from './render/index.ts'
@@ -18,7 +19,6 @@ const DEFAULT_TITLE = 'Besidka artifact'
 let renderSequence = 0
 let documentReplaced = false
 let reactMounted = false
-let lastPayload: ArtifactPayload | null = null
 let pendingPartial: ArtifactPayload | null = null
 let partialFrame = 0
 
@@ -48,6 +48,7 @@ function markDocumentAsGenerated() {
 function htmlPrelude() {
   installDocumentHooks()
   markDocumentAsGenerated()
+  upgradeCodeBlocks(document)
 }
 
 function restoreShell() {
@@ -103,8 +104,6 @@ export async function renderArtifact(payload: ArtifactPayload) {
   const isCurrent = () => {
     return sequence === renderSequence
   }
-
-  lastPayload = payload
 
   try {
     await unmountCurrentReact()
@@ -190,7 +189,12 @@ async function flushPartial() {
       return
     }
 
-    await renderer(payload, { root, theme: getTheme(), isCurrent })
+    await renderer(payload, {
+      root,
+      theme: getTheme(),
+      isCurrent,
+      partial: true,
+    })
   } catch (exception) {
     reportError(exception, { level: 'warning', showPanel: false })
   } finally {
@@ -211,9 +215,5 @@ export function renderPartial(payload: ArtifactPayload) {
 }
 
 export function changeTheme(theme: Theme) {
-  const changed = setTheme(theme)
-
-  if (changed && lastPayload?.kind === 'mermaid') {
-    renderArtifact(lastPayload)
-  }
+  setTheme(theme)
 }

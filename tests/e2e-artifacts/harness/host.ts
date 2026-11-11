@@ -3,19 +3,26 @@ import {
   createHostConnection,
   ERROR_CODES,
   RpcError,
+  writeClipboardText,
 } from '@besidka/artifacts-protocol'
 import type {
   ArtifactPayload,
+  ClipboardWriteParams,
+  ClipboardWriteResult,
   HostConnection,
   JsonValue,
   LogMessageParams,
   Theme,
 } from '@besidka/artifacts-protocol'
 
+type ClipboardMode = 'write' | 'deny' | 'fallback' | 'absent'
+
 interface MountOptions {
   storage?: boolean
   complete?: boolean
   theme?: Theme
+  clipboard?: ClipboardMode
+  viewer?: boolean
 }
 
 interface HarnessState {
@@ -30,6 +37,8 @@ interface HarnessState {
   storage: Record<string, JsonValue>
   storageWrites: Array<{ key: string, value: JsonValue, receivedAt: number }>
   completePrompts: string[]
+  clipboardWrites: Array<{ text: string, result: ClipboardWriteResult }>
+  diagramViews: string[]
 }
 
 declare global {
@@ -38,7 +47,7 @@ declare global {
   }
 }
 
-const RUNTIME_URL = `${new URLSearchParams(location.search).get('runtime') ?? 'http://127.0.0.1:8788'}/v1/index.html`
+const RUNTIME_URL = `${new URLSearchParams(location.search).get('runtime') ?? document.body.dataset.runtimeOrigin ?? 'http://127.0.0.1:8788'}/v1/index.html`
 
 function createInitialState(): HarnessState {
   return {
@@ -53,7 +62,58 @@ function createInitialState(): HarnessState {
     storage: {},
     storageWrites: [],
     completePrompts: [],
+    clipboardWrites: [],
+    diagramViews: [],
   }
+}
+
+const REFUSING_CLIPBOARD = {
+  writeText: async () => {
+    const exception = new Error('Write permission denied.')
+
+    exception.name = 'NotAllowedError'
+    throw exception
+  },
+}
+
+function waitForHostCopyClick(text: string): Promise<ClipboardWriteResult> {
+  return new Promise((resolve) => {
+    const button = document.createElement('button')
+
+    button.type = 'button'
+    button.className = 'js-host-copy-fallback'
+    button.textContent = 'Copy from artifact'
+    button.dataset.testid = 'host-copy-fallback'
+    button.addEventListener('click', async () => {
+      button.remove()
+      resolve(await writeClipboardText(text))
+    }, { once: true })
+    document.body.prepend(button)
+  })
+}
+
+async function writeForMode(
+  mode: ClipboardMode,
+  params: ClipboardWriteParams,
+): Promise<ClipboardWriteResult> {
+  if (mode === 'deny') {
+    return { copied: false, reason: 'denied' }
+  }
+
+  if (mode === 'write') {
+    return writeClipboardText(params.text)
+  }
+
+  const firstAttempt = await writeClipboardText(
+    params.text,
+    REFUSING_CLIPBOARD,
+  )
+
+  if (firstAttempt.copied || firstAttempt.reason !== 'gesture-required') {
+    return firstAttempt
+  }
+
+  return waitForHostCopyClick(params.text)
 }
 
 function createFrame(): HTMLIFrameElement {
@@ -93,6 +153,7 @@ function createHarness() {
   let theme: Theme = 'light'
 
   function reset() {
+    document.querySelector('.js-host-copy-fallback')?.remove()
     connection?.destroy()
     connection = null
     frame?.remove()
@@ -175,6 +236,23 @@ function createHarness() {
           }
 
           return { text: `echo: ${prompt}` }
+        }
+        : undefined,
+      clipboardWrite: options.clipboard && options.clipboard !== 'absent'
+        ? async (params) => {
+          const result = await writeForMode(
+            options.clipboard as ClipboardMode,
+            params,
+          )
+
+          state.clipboardWrites.push({ text: params.text, result })
+
+          return result
+        }
+        : undefined,
+      openDiagramViewer: options.viewer
+        ? ({ source }) => {
+          state.diagramViews.push(source)
         }
         : undefined,
     })

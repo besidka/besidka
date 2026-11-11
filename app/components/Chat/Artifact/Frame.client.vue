@@ -52,6 +52,68 @@
         </button>
       </div>
     </div>
+    <div
+      v-if="pendingCopy"
+      class="absolute inset-x-2 top-2 z-10 flex justify-center"
+    >
+      <div
+        class="alert alert-horizontal w-auto max-w-full gap-2 py-2 pr-2 pl-3 shadow-lg"
+        role="alert"
+        data-testid="artifact-copy-fallback"
+      >
+        <Icon
+          name="lucide:clipboard"
+          size="16"
+          class="shrink-0"
+        />
+        <div class="min-w-0 grow">
+          <p class="text-sm">
+            Copy from the artifact?
+          </p>
+          <p
+            class="truncate font-mono text-xs text-base-content/70"
+            data-testid="artifact-copy-fallback-preview"
+          >
+            {{ pendingCopyPreview }}
+          </p>
+          <p
+            class="text-xs text-base-content/60"
+            data-testid="artifact-copy-fallback-length"
+          >
+            {{ pendingCopyLength }}
+          </p>
+        </div>
+        <div class="flex shrink-0 items-center gap-1">
+          <button
+            ref="copyFallbackButton"
+            type="button"
+            class="btn btn-sm btn-primary"
+            data-testid="artifact-copy-fallback-copy"
+            @click="onConfirmCopyClick"
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost btn-circle"
+            aria-label="Dismiss"
+            data-testid="artifact-copy-fallback-dismiss"
+            @click="dismissPendingCopy"
+          >
+            <Icon
+              name="lucide:x"
+              size="16"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      </div>
+    </div>
+    <LazyProseMermaidViewer
+      v-if="isViewerOpen"
+      v-model:open="isViewerOpen"
+      :source="viewerSource"
+    />
   </div>
 </template>
 
@@ -92,6 +154,8 @@ const emit = defineEmits<{
 }>()
 
 const LOAD_TIMEOUT_MS = 10_000
+const COPY_PREVIEW_MAX_LENGTH = 80
+const COPY_KEYBOARD_GUARD_MS = 500
 const PARTIAL_THROTTLE_MS = 250
 const LINK_ACTION = 'Open link'
 
@@ -127,6 +191,7 @@ let loadTimer: ReturnType<typeof setTimeout> | null = null
 let partialTimer: ReturnType<typeof setTimeout> | null = null
 let lastPartialAt = 0
 let lastSentResult: ToolResultContent | null = null
+let pendingCopyShownAt = 0
 
 const theme = computed<Theme>(() => {
   return colorMode.value === 'dark' ? 'dark' : 'light'
@@ -153,6 +218,34 @@ const isShowingContent = computed<boolean>(() => {
 const isLoading = computed<boolean>(() => {
   return status.value === 'loading'
     || (status.value === 'ready' && !hasContent.value)
+})
+
+const {
+  handlers: hostActionHandlers,
+  pendingCopy,
+  isViewerOpen,
+  viewerSource,
+  confirmPendingCopy,
+  dismissPendingCopy,
+} = useArtifactHostActions({ layout, displayMode })
+
+const copyFallbackButton = useTemplateRef<HTMLButtonElement>(
+  'copyFallbackButton',
+)
+
+const pendingCopyPreview = computed<string>(() => {
+  const firstLine = pendingCopy.value?.text.split('\n')[0] ?? ''
+  const characters = [...firstLine]
+
+  return characters.length > COPY_PREVIEW_MAX_LENGTH
+    ? `${characters.slice(0, COPY_PREVIEW_MAX_LENGTH - 1).join('')}…`
+    : firstLine
+})
+
+const pendingCopyLength = computed<string>(() => {
+  const length = [...pendingCopy.value?.text ?? ''].length
+
+  return length === 1 ? '1 character' : `${length} characters`
 })
 
 const errorCopy = computed(() => {
@@ -219,6 +312,7 @@ function clearTimers() {
 }
 
 function teardown() {
+  dismissPendingCopy()
   clearTimers()
   connection?.destroy()
   frame?.remove()
@@ -329,6 +423,12 @@ function mountFrame() {
     onMessage,
     onOpenLink,
     onUnexpectedNavigation,
+    ...hostActionHandlers,
+  }, {
+    hasUserActivation: () => {
+      return navigator.userActivation?.isActive === true
+        && document.activeElement === element
+    },
   })
   frame = element
   container.appendChild(element)
@@ -370,6 +470,12 @@ function schedulePartial() {
 }
 
 watch(() => props.result, (result) => {
+  if (result && isSameResult(lastSentResult, result)) {
+    return
+  }
+
+  dismissPendingCopy()
+
   if (!result || !connection) {
     return
   }
@@ -396,6 +502,33 @@ watch(theme, (value) => {
 
 watch(displayMode, (value) => {
   connection?.setHostContext({ displayMode: value })
+})
+
+function onConfirmCopyClick(event: MouseEvent) {
+  const isKeyboardClick = event.detail === 0
+  const elapsed = Date.now() - pendingCopyShownAt
+
+  if (isKeyboardClick && elapsed < COPY_KEYBOARD_GUARD_MS) {
+    return
+  }
+
+  confirmPendingCopy()
+}
+
+watch(pendingCopy, async (pending) => {
+  if (!pending) {
+    return
+  }
+
+  pendingCopyShownAt = Date.now()
+
+  const isFrameFocused = !!frame && document.activeElement === frame
+
+  await nextTick()
+
+  if (isFrameFocused) {
+    copyFallbackButton.value?.focus()
+  }
 })
 
 watch(() => props.title, (title) => {

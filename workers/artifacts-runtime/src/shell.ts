@@ -1,29 +1,16 @@
 import type { Theme } from '@besidka/artifacts-protocol'
+import { paletteDeclarations } from './palette.ts'
 
 export const ROOT_ELEMENT_ID = 'root'
 
 export const SHELL_STYLE = `
 :root {
   color-scheme: light;
-  --besidka-bg: #ffffff;
-  --besidka-fg: #1f2328;
-  --besidka-muted: #59636e;
-  --besidka-border: #d1d9e0;
-  --besidka-accent: #0969da;
-  --besidka-surface: #f6f8fa;
-  --besidka-danger: #cf222e;
-  --besidka-danger-bg: #ffebe9;
+  ${paletteDeclarations('light')}
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --besidka-bg: #0d1117;
-  --besidka-fg: #e6edf3;
-  --besidka-muted: #9198a1;
-  --besidka-border: #3d444d;
-  --besidka-accent: #4493f8;
-  --besidka-surface: #151b23;
-  --besidka-danger: #ff7b72;
-  --besidka-danger-bg: #2d1214;
+  ${paletteDeclarations('dark')}
 }
 html {
   background: var(--besidka-bg);
@@ -88,6 +75,11 @@ a {
 .besidka-mermaid {
   display: flex;
   justify-content: center;
+}
+.besidka-mermaid > besidka-mermaid {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
 }
 .besidka-partial {
   color: var(--besidka-muted);
