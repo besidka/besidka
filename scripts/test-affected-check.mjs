@@ -224,6 +224,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/artifacts-panel.spec.ts',
     'tests/e2e/chat/artifact-actions.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
+    'tests/e2e/shared/artifact-panel-share.spec.ts',
     'tests/unit/pages/chats/artifacts/index.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
@@ -256,6 +257,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/scroll-within.spec.ts',
     'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
+    'tests/e2e/shared/artifact-panel-share.spec.ts',
   ]
   const artifactsAdminReportsTests = [
     'tests/unit/pages/admin/artifact-reports.spec.ts',

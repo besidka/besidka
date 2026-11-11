@@ -1581,6 +1581,19 @@ describe('ChatArtifactDetail actions menu', () => {
     expect(menu.open).toBe(true)
   })
 
+  it('keeps focus on the trigger when a menu item is pressed', async () => {
+    const { wrapper } = await openMenu()
+    const mousedown = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    })
+
+    wrapper.get('[data-testid="artifact-action-copy"]').element
+      .dispatchEvent(mousedown)
+
+    expect(mousedown.defaultPrevented).toBe(true)
+  })
+
   it('closes on Escape and returns focus to the trigger', async () => {
     const { wrapper, menu } = await openMenu()
 
