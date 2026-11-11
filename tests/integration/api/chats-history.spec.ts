@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   refreshProjectActivityAt: vi.fn(async () => undefined),
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  detachArtifactsFromChats: vi.fn(async (_input: unknown) => 0),
   detachChatsFromMemory: vi.fn(async (_input: unknown) => ({
     deleted: 0,
     detached: 0,
@@ -61,6 +62,10 @@ vi.mock('~~/server/utils/projects/activity', () => ({
 
 vi.mock('~~/server/utils/memory/chat-deletion', () => ({
   detachChatsFromMemory: mocks.detachChatsFromMemory,
+}))
+
+vi.mock('~~/server/utils/artifacts/store', () => ({
+  detachArtifactsFromChats: mocks.detachArtifactsFromChats,
 }))
 
 vi.mock('~~/server/utils/search/index-writer', () => ({
@@ -599,6 +604,11 @@ describe('chat history API', () => {
 
         return { deleted: 0, detached: 2 }
       })
+      mocks.detachArtifactsFromChats.mockImplementationOnce(async () => {
+        callOrder.push('detach-artifacts')
+
+        return 1
+      })
       mocks.removeChatsFromSearchIndex.mockImplementationOnce(async () => {
         callOrder.push('search-index')
       })
@@ -611,9 +621,15 @@ describe('chat history API', () => {
       expect(response).toEqual({ success: true })
       expect(callOrder).toEqual([
         'detach-memory',
+        'detach-artifacts',
         'search-index',
         'delete-chats',
       ])
+      expect(mocks.detachArtifactsFromChats).toHaveBeenCalledWith({
+        db,
+        userId: 1,
+        chatIds: ['chat-1', 'chat-3'],
+      })
       expect(mocks.detachChatsFromMemory).toHaveBeenCalledWith(
         expect.objectContaining({
           db,

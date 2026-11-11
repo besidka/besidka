@@ -43,7 +43,7 @@ command below is for the operator, preview first.
 | Revoked roles (`user_roles`), deny grants and grant revocations (`feature_grants`) | Revoked testers and grants work again; deny grants vanish | High | No |
 | Kill switch and rollout changes (`feature_flag_rules`) | Revert to B | Medium | No |
 | `feature_audit_log` | Rolled back with the rows it describes, so it cannot be the replay source; rows anonymised in the window lose their scrub | Medium (erasure) | No |
-| Artifact links revoked or taken down in the window (planned, A-1, A-7) | Public again; a takedown is undone, also inside shared chats | High (privacy, notice-and-action) | No |
+| Artifact links revoked or taken down in the window (A-7 writes them) | Public again; a takedown is undone, also inside shared chats | High (privacy, notice-and-action) | No |
 | Artifacts deleted in the window | Rows return; R2 objects stay gone, so reads answer 410 | Medium (erasure) | No |
 | Artifact reports and decisions in the window | Rolled back or reopened; legal holds set in the window vanish | High (TCO preservation) | No |
 | Viewer storage reset or purged in the window | Old answers return | Medium (erasure) | No |
@@ -182,11 +182,14 @@ purpose. `chats.id` is a plain `INTEGER PRIMARY KEY`, so a chat created in
 the window can have its row id reused after the restore, and replaying a
 logged id would hit someone else's chat. A slug never collides.
 
-## Artifacts (planned, A-1 to A-7)
+## Artifacts
 
 A restore rolls back every artifact table (`artifacts`, `artifact_versions`,
-`artifact_shares`, `artifact_storage`, `artifact_reports`) to the bookmark B.
-R2 keeps its current state. Reconcile before `/a/` is reachable again: turn the
+`artifact_shares`, `artifact_storage`, `artifact_reports`;
+`server/db/schemas/artifacts.ts`, A-1) to the bookmark B. None of them has a
+foreign key, so nothing cascades. R2 keeps its current state; every version's
+object key is stored in `artifact_versions.r2_key`
+(`artifacts/<userId>/<id>/v<n>-<uuid>`) and never re-derived. Reconcile before `/a/` is reachable again: turn the
 global `artifacts` rule off in `/admin` until the steps below are done.
 
 - **Revocations and takedowns first.** Replay from Axiom every share revoke
@@ -214,6 +217,15 @@ global `artifacts` rule off in `/admin` until the steps below are done.
 - **R2.** Diff the `artifacts/` prefix against `artifact_versions.r2_key`:
   objects written in the window have no row after the restore. Delete them
   unless they belong to an artifact under a legal hold.
+- **Pending headers.** A row with `current_version = 0` is a create that was
+  interrupted between its header insert and its version batch. No reader
+  shows it and the quota does not count it; delete it and its objects with
+  the R2 diff.
+- **Chat deletions.** Deleting a chat sets `origin_chat_id` to NULL on its
+  artifacts. A restore brings back both the chat and the link, which is
+  consistent.
+- **Report retention.** Report rows the hourly sweep removed in the window
+  come back and are removed again on its next run.
 
 ### The visibility-flag migrations (closed)
 
@@ -523,6 +535,8 @@ Back up anything you delete with a `SELECT` first. Each `DELETE` here
 removes data that users already asked to delete.
 
 ### 5. Reconcile files and R2
+
+For artifacts, run the R2 diff of the Artifacts section as well.
 
 1. `files` rows whose object is missing: delete those rows. This lowers the
    owners' quota usage.

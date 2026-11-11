@@ -9,6 +9,7 @@ import {
 } from '~~/server/utils/files/chat-deletion-cleanup'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
+import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
 import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -70,6 +71,12 @@ export default defineEventHandler(async (event) => {
     userId,
     chatIds: chats.map(chat => chat.id),
     logger,
+  })
+
+  await detachArtifactsFromChats({
+    db,
+    userId,
+    chatIds: chats.map(chat => chat.id),
   })
 
   await removeChatsFromSearchIndex({

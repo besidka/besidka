@@ -9,6 +9,7 @@ import {
 } from '~~/server/utils/files/chat-deletion-cleanup'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
+import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import {
@@ -226,6 +227,12 @@ export async function deleteChat(
     userId,
     chatIds: [chat.id],
     logger,
+  })
+
+  await detachArtifactsFromChats({
+    db,
+    userId,
+    chatIds: [chat.id],
   })
 
   await removeChatsFromSearchIndex({

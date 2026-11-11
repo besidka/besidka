@@ -273,8 +273,8 @@ describe('capability registry', () => {
   })
 
   it('freezes definitions and lists them in registration order', async () => {
-    const fixtures = await import('./fixtures/demo')
     const { listCapabilities } = await import('~~/server/capabilities/index')
+    const fixtures = await import('./fixtures/demo')
 
     expect(Object.isFrozen(fixtures.demoCompliantCapability)).toBe(true)
     expect(Object.isFrozen(fixtures.demoCompliantCapability.jobs)).toBe(true)
@@ -287,10 +287,12 @@ describe('capability registry', () => {
     const { listCapabilities } = await import('~~/server/capabilities/index')
     const { defineCapability } = await import('~~/server/capabilities/types')
 
+    const registeredBefore = listCapabilities()
+
     defineCapability({ feature: 'skills', clientChunk: 'first' })
     const second = defineCapability({ feature: 'skills', clientChunk: 'second' })
 
-    expect(listCapabilities()).toEqual([second])
+    expect(listCapabilities()).toEqual([...registeredBefore, second])
   })
 
   it('merges chat tools only from capabilities whose flag is active', async () => {

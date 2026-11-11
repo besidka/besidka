@@ -4,6 +4,7 @@ import type {
   CapabilityToolContext,
 } from '~~/server/capabilities/types'
 import { getRegisteredCapabilities } from '~~/server/capabilities/types'
+import '~~/server/capabilities/artifacts'
 
 export function listCapabilities(): readonly Readonly<CapabilityDefinition>[] {
   return getRegisteredCapabilities()
