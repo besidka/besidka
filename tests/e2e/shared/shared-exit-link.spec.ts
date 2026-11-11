@@ -254,7 +254,7 @@ for (const mode of DISPLAY_MODES) {
         page.getByTestId('sidebar').getByRole('link', {
           name: 'Go to home page',
         }),
-      ).toBeVisible()
+      ).toBeInViewport()
       await context.close()
     })
   })
