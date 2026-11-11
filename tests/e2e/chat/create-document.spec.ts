@@ -44,7 +44,14 @@ test.use({
 
 test.describe.configure({ mode: 'serial', timeout: 120_000 })
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }) => {
+  await page.route('**/api/v1/profiles/keys**', async (route) => {
+    await route.fulfill({
+      json: {
+        keys: [{ provider: 'google', hasKey: true }],
+      },
+    })
+  })
   await context.addCookies([
     {
       name: 'cookies_consent',
@@ -160,6 +167,10 @@ async function openGeneratedDocuments(page: Page): Promise<void> {
     name: 'Select existing files',
     exact: true,
   }).check()
+  await page.getByTestId('files-view-mode-list').click()
+  await expect(
+    page.getByRole('radio', { name: 'List', exact: true }),
+  ).toBeChecked()
   await page.getByTestId('files-source-assistant').click()
   await page.getByTestId('files-kind-document').click()
 }
@@ -242,7 +253,9 @@ test.describe('create_document', () => {
         await openGeneratedDocuments(page)
 
         await expect(
-          page.getByTestId('files-modal').locator(`[title="${FILE_NAME}"]`)
+          page.getByTestId('files-modal')
+            .locator(`[title="${FILE_NAME}"]`)
+            .filter({ visible: true })
             .first(),
         ).toBeVisible({ timeout: 15_000 })
       })
