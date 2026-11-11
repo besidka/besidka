@@ -225,6 +225,9 @@ No row is a licence veto. D-1 keeps the technical choice.
    sourced duty requires A; A costs a 33-day wait and an email to every user.
    Revisit if OpenAI's 2026-11-20 intermediary rule is read as requiring flow
    down, or if the owner wants the belt and braces.
+   **Outcome, 2026-11-11 (D-9, BES-302):** the owner chose option A ("Yes, add
+   to Terms"), against the recommendation. The clause is in the Terms, with notice
+   `2026-12-code-and-documents` effective 2026-12-19, the start of the beta.
 2. **Gemini terms: "for professional or business purposes, not for consumer
    use"** (app-wide, already tracked in the Privacy Policy). Options: leave
    as disclosed; or add a pre-key-save notice. Recommendation: leave; no
