@@ -55,7 +55,9 @@
             "
           >
             <div class="flex min-w-0 items-center gap-2">
-              <SharedExitLink class="max-sm:hidden" />
+              <div class="max-sm:hidden">
+                <SharedExitLink />
+              </div>
               <h1
                 data-testid="shared-chat-title"
                 class="text-sm sm:text-base font-semibold truncate"
