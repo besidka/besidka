@@ -1370,6 +1370,25 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
   ]
 
+  const codeExecutionServerTests = [
+    'tests/unit/utils/code-execution/compact.spec.ts',
+    'tests/unit/utils/code-execution/container-files.spec.ts',
+    'tests/unit/utils/code-execution/document-validation.spec.ts',
+    'tests/unit/utils/code-execution/file-types.spec.ts',
+    'tests/unit/utils/code-execution/input-files.spec.ts',
+    'tests/unit/utils/code-execution/message-parts.spec.ts',
+    'tests/unit/utils/code-execution/persist-container-files.spec.ts',
+    'tests/unit/utils/code-execution/provider-cleanup.spec.ts',
+    'tests/unit/utils/code-execution/request-schema.spec.ts',
+    'tests/unit/utils/code-execution/send.spec.ts',
+    'tests/unit/utils/code-execution/shared.spec.ts',
+    'tests/unit/utils/code-execution/stream.spec.ts',
+    'tests/unit/utils/ai/code-execution-cost.spec.ts',
+    'tests/unit/utils/providers/code-execution-models.spec.ts',
+    'tests/unit/utils/providers/code-execution-tools.spec.ts',
+    'tests/integration/api/chats-code-execution.spec.ts',
+  ]
+
   const chatContextTests = [
     'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
     'tests/unit/server/api/chats-context.spec.ts',
@@ -2338,6 +2357,15 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/Chat\/CodeExecution(\/.*)?\.vue|app\/utils\/code-execution-ui\.ts|shared\/utils\/code-execution\.ts)$/,
       tests: [...codeExecutionTests, ...chatInputToolsTests],
+    },
+    {
+      pattern:
+        /^(server\/utils\/code-execution\/.*\.ts|server\/utils\/ai\/code-execution-cost\.ts|server\/utils\/providers\/(anthropic|openai|google)\.ts|server\/utils\/chats\/request-schema\.ts|providers\/(anthropic|openai|google)\.ts|shared\/utils\/code-execution\.ts|nuxt\.config\.ts|wrangler\.jsonc)$/,
+      tests: codeExecutionServerTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$/,
+      tests: ['tests/integration/api/chats-code-execution.spec.ts'],
     },
     {
       pattern:

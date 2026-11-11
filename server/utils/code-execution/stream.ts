@@ -94,6 +94,8 @@ export function createCodeExecutionStream(
     if (ref.provider === 'openai') {
       containerIds.add(ref.containerId)
       input.tracker.trackContainer(ref.containerId)
+    } else {
+      input.tracker.trackFile(ref.fileId)
     }
   }
 
@@ -109,12 +111,6 @@ export function createCodeExecutionStream(
     }
 
     if (!input.filesEnabled) {
-      for (const ref of refs) {
-        if (ref.provider === 'anthropic') {
-          input.tracker.trackFile(ref.fileId)
-        }
-      }
-
       return
     }
 
@@ -159,12 +155,6 @@ export function createCodeExecutionStream(
   }
 
   function discardPendingRefs() {
-    for (const ref of pendingRefs.values()) {
-      if (ref.provider === 'anthropic') {
-        input.tracker.trackFile(ref.fileId)
-      }
-    }
-
     pendingRefs.clear()
   }
 

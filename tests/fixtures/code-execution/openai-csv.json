@@ -1,0 +1,55 @@
+[
+  { "type": "start" },
+  { "type": "start-step" },
+  {
+    "type": "tool-input-start",
+    "toolCallId": "ci_01",
+    "toolName": "code_execution",
+    "providerExecuted": true
+  },
+  {
+    "type": "tool-input-delta",
+    "toolCallId": "ci_01",
+    "inputTextDelta": "{\"containerId\":\"cntr_01\",\"code\":\"print(1)"
+  },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "ci_01",
+    "toolName": "code_execution",
+    "providerExecuted": true,
+    "input": {
+      "code": "print(1)\nopen('/mnt/data/out.csv', 'w').write('a,b\\n1,2\\n')",
+      "containerId": "cntr_01"
+    }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "ci_01",
+    "providerExecuted": true,
+    "output": {
+      "outputs": [
+        { "type": "logs", "logs": "1" },
+        { "type": "image", "url": "https://files.example.invalid/ephemeral.png" }
+      ]
+    }
+  },
+  { "type": "text-start", "id": "text-1" },
+  { "type": "text-delta", "id": "text-1", "delta": "Saved out.csv." },
+  { "type": "text-end", "id": "text-1" },
+  {
+    "type": "source-document",
+    "sourceId": "cntr_01:cfile_01",
+    "mediaType": "text/plain",
+    "title": "out.csv",
+    "filename": "out.csv",
+    "providerMetadata": {
+      "openai": {
+        "type": "container_file_citation",
+        "fileId": "cfile_01",
+        "containerId": "cntr_01"
+      }
+    }
+  },
+  { "type": "finish-step" },
+  { "type": "finish", "finishReason": "stop" }
+]

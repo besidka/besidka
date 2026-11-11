@@ -1029,7 +1029,9 @@ export default defineEventHandler(async (event) => {
             requestedTools,
             reasoningLevel,
             params.data.slug,
-            codeExecutionSession?.uploadedFileIds,
+            ...(codeExecutionSession
+              ? [codeExecutionSession.uploadedFileIds]
+              : []),
           )
 
           instance = openAiInstance
