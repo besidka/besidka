@@ -232,6 +232,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const artifactsLibraryTests = [
     'tests/unit/pages/chats/artifacts/index.spec.ts',
+    'tests/unit/components/Artifact/KindFilter.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/composables/artifacts-library.spec.ts',
@@ -290,6 +291,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const artifactsAttachTests = [
     'tests/unit/components/ChatInput/ArtifactPicker.client.spec.ts',
+    'tests/unit/components/Artifact/KindFilter.spec.ts',
     'tests/unit/components/Chat/ArtifactAttachments.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
@@ -3258,7 +3260,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/components\/Artifact\/KindFilter\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsLibraryTests,
     },
     {
@@ -3273,7 +3275,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/(ChatInput\/ArtifactPicker\.client|Chat\/ArtifactAttachments|History\/ArtifactRow|ChatInput\.client|ChatInput\/ToolsMenu(\.client|\/Content))\.vue|app\/composables\/(artifact-fix|artifacts-library|chat-input-prefill|chat)\.ts|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/pages\/chats\/(new|\[slug\])\.vue|server\/utils\/artifacts\/(attachments|chat-artifacts|context)\.ts|server\/utils\/chats\/(request-schema|share-public-parts)\.ts|server\/utils\/chats\/context\/(artifacts|sections)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post|shares\/\[slug\]\/branch\.post)\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/components\/(Artifact\/KindFilter|ChatInput\/ArtifactPicker\.client|Chat\/ArtifactAttachments|History\/ArtifactRow|ChatInput\.client|ChatInput\/ToolsMenu(\.client|\/Content))\.vue|app\/composables\/(artifact-fix|artifacts-library|chat-input-prefill|chat)\.ts|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/pages\/chats\/(new|\[slug\])\.vue|server\/utils\/artifacts\/(attachments|chat-artifacts|context)\.ts|server\/utils\/chats\/(request-schema|share-public-parts)\.ts|server\/utils\/chats\/context\/(artifacts|sections)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post|shares\/\[slug\]\/branch\.post)\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsAttachTests,
     },
     {

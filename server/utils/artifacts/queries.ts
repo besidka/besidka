@@ -1,7 +1,12 @@
 import type {
   ArtifactDetail,
   ArtifactKind,
+  ArtifactKindCounts,
   ArtifactSummary,
+} from '#shared/utils/artifacts'
+import {
+  createEmptyArtifactKindCounts,
+  isArtifactKind,
 } from '#shared/utils/artifacts'
 import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -131,6 +136,29 @@ export async function listArtifacts(
     items: rows.map(toArtifactSummary),
     total: Number(totalRows[0]?.total ?? 0),
   }
+}
+
+export async function countArtifactsByKind(input: {
+  db: DbClient
+  userId: number
+}): Promise<ArtifactKindCounts> {
+  const rows = await input.db
+    .select({ kind: schema.artifacts.kind, total: count() })
+    .from(schema.artifacts)
+    .where(and(
+      eq(schema.artifacts.userId, input.userId),
+      gt(schema.artifacts.currentVersion, 0),
+    ))
+    .groupBy(schema.artifacts.kind)
+  const counts = createEmptyArtifactKindCounts()
+
+  for (const row of rows) {
+    if (isArtifactKind(row.kind)) {
+      counts[row.kind] = Number(row.total)
+    }
+  }
+
+  return counts
 }
 
 export async function getArtifactDetail(input: {

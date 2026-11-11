@@ -35,6 +35,14 @@ interface LibraryState {
   shareCreated: boolean
 }
 
+const KIND_KEYS = ['html', 'react', 'svg', 'mermaid', 'markdown']
+
+function countKinds(items: SeedArtifact[]): Record<string, number> {
+  return Object.fromEntries(KIND_KEYS.map((kind) => {
+    return [kind, items.filter(item => item.kind === kind).length]
+  }))
+}
+
 function createSeed(): SeedArtifact[] {
   return [
     {
@@ -190,10 +198,19 @@ async function mockLibraryRoutes(page: Page): Promise<LibraryState> {
   await page.route(
     url => url.pathname === '/api/v1/artifacts',
     async (route) => {
+      const url = new URL(route.request().url())
+      const query = url.searchParams.get('query')?.toLowerCase() ?? ''
+      const kind = url.searchParams.get('kind')
+      const matches = state.items.filter((item) => {
+        return (!kind || item.kind === kind)
+          && (!query || item.title.toLowerCase().includes(query))
+      })
+
       await fulfillJson(route, {
-        items: state.items,
-        total: state.items.length,
+        items: matches,
+        total: matches.length,
         usedBytes: state.items.length * 4096,
+        kindCounts: countKinds(state.items),
       })
     },
   )
@@ -368,8 +385,7 @@ test('filters by kind and search and keeps them in the URL',
   async ({ page }) => {
     await signInWithArtifacts(page)
 
-    const state = await mockLibraryRoutes(page)
-
+    await mockLibraryRoutes(page)
     await openLibrary(page)
 
     await page.getByTestId('artifact-library-kind-mermaid').click()
@@ -382,7 +398,6 @@ test('filters by kind and search and keeps them in the URL',
     await expect(page.getByTestId('artifact-library-kind-all'))
       .toHaveAttribute('aria-pressed', 'true')
 
-    state.items = []
     await page.getByPlaceholder('Search artifacts...').fill('zzz')
 
     await expect(page).toHaveURL(/query=zzz/)
@@ -392,6 +407,84 @@ test('filters by kind and search and keeps them in the URL',
     await page.getByTestId('artifact-library-clear').click()
 
     await expect(page).not.toHaveURL(/query=/)
+  })
+
+test('shows only the kinds the user has, each with a count', async ({
+  page,
+}) => {
+  await signInWithArtifacts(page)
+  await mockLibraryRoutes(page)
+  await openLibrary(page)
+
+  await expect(page.getByTestId('artifact-library-kind-filter'))
+    .toBeVisible()
+  await expect(page.getByTestId('artifact-library-kind-all-count'))
+    .toHaveText('3')
+  await expect(page.getByTestId('artifact-library-kind-html-count'))
+    .toHaveText('2')
+  await expect(page.getByTestId('artifact-library-kind-mermaid-count'))
+    .toHaveText('1')
+
+  for (const missing of ['react', 'svg', 'markdown']) {
+    await expect(page.getByTestId(`artifact-library-kind-${missing}`))
+      .toHaveCount(0)
+  }
+})
+
+test('keeps the counts of the whole library while searching', async ({
+  page,
+}) => {
+  await signInWithArtifacts(page)
+  await mockLibraryRoutes(page)
+  await openLibrary(page)
+
+  await page.getByPlaceholder('Search artifacts...').fill('cell')
+
+  await expect(page).toHaveURL(/query=cell/)
+  await expect(page.getByTestId('artifact-row')).toHaveCount(1)
+  await expect(page.getByTestId('artifact-library-kind-all-count'))
+    .toHaveText('3')
+  await expect(page.getByTestId('artifact-library-kind-html-count'))
+    .toHaveText('2')
+})
+
+test('hides the whole filter row when the user has a single kind',
+  async ({ page }) => {
+    await signInWithArtifacts(page)
+
+    const state = await mockLibraryRoutes(page)
+
+    state.items = state.items.filter(item => item.kind === 'mermaid')
+
+    await openLibrary(page)
+
+    await expect(page.getByTestId('artifact-row')).toHaveCount(1)
+    await expect(page.getByTestId('artifact-library-kind-filter'))
+      .toHaveCount(0)
+  })
+
+test('falls back to All when the last artifact of the active kind is deleted',
+  async ({ page }) => {
+    await signInWithArtifacts(page)
+    await mockLibraryRoutes(page)
+    await openLibrary(page)
+
+    await page.getByTestId('artifact-library-kind-mermaid').click()
+
+    await expect(page).toHaveURL(/kind=mermaid/)
+    await expect(page.getByTestId('artifact-row')).toHaveCount(1)
+
+    const row = getRow(page, MCP_ID)
+
+    await row.hover()
+    await row.getByTestId('artifact-row-actions-trigger').click()
+    await row.getByTestId('artifact-action-delete').click()
+    await page.getByTestId('confirmation-action-0').click()
+
+    await expect(page).not.toHaveURL(/kind=/)
+    await expect(page.getByTestId('artifact-library-kind-filter'))
+      .toHaveCount(0)
+    await expect(page.getByTestId('artifact-row')).toHaveCount(2)
   })
 
 test('bulk deletes the selected artifacts after a confirmation',

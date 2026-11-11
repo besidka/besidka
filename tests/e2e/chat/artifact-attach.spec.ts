@@ -101,6 +101,14 @@ async function seedChat(page: Page): Promise<string> {
   return (await response.json()).slug
 }
 
+const KIND_KEYS = ['html', 'react', 'svg', 'mermaid', 'markdown']
+
+function countKinds(items: Array<{ kind: string }>): Record<string, number> {
+  return Object.fromEntries(KIND_KEYS.map((kind) => {
+    return [kind, items.filter(item => item.kind === kind).length]
+  }))
+}
+
 function createSummary(index: number) {
   if (index === 1) {
     return summary(QUIZ_ID, QUIZ_TITLE, 'html', 'Biology help')
@@ -163,6 +171,7 @@ async function mockLibrary(page: Page): Promise<LibraryState> {
         items: matches.slice(offset, offset + limit),
         total: matches.length,
         usedBytes: 4096,
+        kindCounts: countKinds(library),
       })
     },
   )
@@ -208,6 +217,14 @@ test('attaches an artifact from the picker, shows a tile, sends it and '
   await expect(dialog.getByTestId(ARTIFACT_ROW)).toHaveCount(PAGE_SIZE)
   await expect(dialog.getByTestId('artifact-picker-kind-all'))
     .toHaveAttribute('aria-pressed', 'true')
+  await expect(dialog.getByTestId('artifact-picker-kind-all-count'))
+    .toHaveText(String(LIBRARY_SIZE))
+  await expect(dialog.getByTestId('artifact-picker-kind-html-count'))
+    .toHaveText('1')
+  await expect(dialog.getByTestId('artifact-picker-kind-mermaid-count'))
+    .toHaveText('1')
+  await expect(dialog.getByTestId('artifact-picker-kind-react')).toHaveCount(0)
+  await expect(dialog.getByTestId('artifact-picker-kind-svg')).toHaveCount(0)
 
   await dialog.getByTestId('artifact-row-open').first().click()
 
