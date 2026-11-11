@@ -251,3 +251,22 @@ test('the panel menu opens the share dialog without closing first',
     await expect(shareModal).toContainText('Share artifact')
     await expect(shareModal).toContainText(ARTIFACT_TITLE)
   })
+
+test('the share dialog says the link is hidden from search engines',
+  async ({ context, page }) => {
+    await context.addCookies([CONSENT_COOKIE])
+    await signInOwner(page)
+    await mockOwnerRoutes(page)
+    await openArtifactPanel(page)
+
+    await page.getByTestId('artifact-actions').click()
+    await page.getByTestId('artifact-action-share').click()
+
+    const note = page.getByTestId('artifact-share-search-note')
+
+    await expect(note).toBeVisible()
+    await expect(note).toHaveClass(/alert-info/)
+    await expect(note).toContainText('search engines never show it')
+    await expect(page.getByTestId('artifact-share-modal')
+      .locator('input[type="checkbox"]')).toHaveCount(2)
+  })
