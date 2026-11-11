@@ -27,6 +27,8 @@ import {
   isWebSearchTool,
 } from '#shared/utils/message-metadata'
 import { isPastChatPreRetrievalPart } from '#shared/utils/past-chat-retrieval'
+import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import { isArtifactToolPartType } from '~/utils/artifact-parts'
 import {
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
@@ -261,6 +263,12 @@ function hasMeaningfulPersistedAssistantParts(
 
     return part.type === 'file'
       || part.type === 'source-url'
+      || part.type === ARTIFACT_DATA_PART_TYPE
+      || (
+        (part.type === 'tool-create_artifact'
+          || part.type === 'tool-update_artifact')
+        && part.state === 'output-error'
+      )
       || (
         part.type === 'tool-generate_image'
         && (
@@ -444,7 +452,12 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
   }
 
   return message.parts?.some((part) => {
-    if (part.type === 'file' || isVisibleGenerateImageToolPart(part)) {
+    if (
+      part.type === 'file'
+      || part.type === ARTIFACT_DATA_PART_TYPE
+      || isArtifactToolPartType(part.type)
+      || isVisibleGenerateImageToolPart(part)
+    ) {
       return true
     }
 

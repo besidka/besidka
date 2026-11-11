@@ -65,7 +65,6 @@
                 <span
                   :id="`labs-title-${feature.key}`"
                   class="font-bold"
-                  :class="{ 'sr-only': !feature.parent }"
                 >{{ feature.title }}</span>
                 <span class="badge badge-soft badge-sm">
                   {{ getLabsStageLabel(feature.stage) }}
@@ -120,7 +119,6 @@
               </NuxtLink>
             </span>
             <input
-              v-if="feature.optIn === 'required'"
               type="checkbox"
               class="toggle mt-1 shrink-0"
               :aria-labelledby="`labs-title-${feature.key}`"
@@ -130,17 +128,6 @@
               :data-testid="`labs-toggle-${feature.key}`"
               @change="toggleOptIn(feature, $event)"
             >
-            <span
-              v-else
-              class="mt-1 inline-flex shrink-0 items-center gap-1 text-xs text-base-content/60"
-            >
-              <Icon
-                :name="feature.active ? 'lucide:check' : 'lucide:minus'"
-                size="14"
-                aria-hidden="true"
-              />
-              {{ feature.active ? 'On' : 'Off' }}
-            </span>
           </li>
         </ul>
       </ProfileSecuritySectionCard>
@@ -245,7 +232,7 @@ function isSaving(flag: string): boolean {
 }
 
 function findBlockingParentTitle(feature: LabsFeature): string | null {
-  if (feature.optIn !== 'required' || !feature.parent) {
+  if (!feature.parent) {
     return null
   }
 
@@ -253,7 +240,7 @@ function findBlockingParentTitle(feature: LabsFeature): string | null {
     return candidate.key === feature.parent
   })
 
-  if (!parent || parent.optIn !== 'required' || isOptedIn(parent)) {
+  if (!parent || isOptedIn(parent)) {
     return null
   }
 

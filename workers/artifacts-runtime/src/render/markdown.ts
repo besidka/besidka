@@ -1,4 +1,5 @@
 import { marked } from 'marked'
+import { upgradeCodeBlocks } from '../kit/upgrade.ts'
 import { setMarkup } from './inert.ts'
 import type { Renderer } from './types.ts'
 
@@ -11,5 +12,10 @@ export const renderMarkdown: Renderer = (payload, context) => {
 
   article.className = 'besidka-markdown'
   setMarkup(article, markdownToHtml(payload.content))
+
+  if (!context.partial) {
+    upgradeCodeBlocks(article, { includeUnlabelled: true })
+  }
+
   context.root.replaceChildren(article)
 }

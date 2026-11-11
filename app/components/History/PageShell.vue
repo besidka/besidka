@@ -14,47 +14,29 @@
   <UiBubble class="flex flex-col gap-4">
     <nav
       aria-label="History sections"
-      class="tabs tabs-border"
+      class="tabs tabs-border @container"
     >
       <NuxtLink
-        to="/chats/history"
-        class="tab grow"
-        :class="{ 'tab-active': activeTab === 'chats' }"
-        :aria-current="activeTab === 'chats' ? 'page' : undefined"
+        v-for="tab in tabs"
+        :key="tab.id"
+        :to="tab.to"
+        class="tab grow gap-2"
+        :class="{ 'tab-active': activeTab === tab.id }"
+        :aria-current="activeTab === tab.id ? 'page' : undefined"
+        :aria-label="tab.label"
+        :data-testid="`tab-${tab.id}`"
       >
         <Icon
           size="14"
-          name="lucide:message-circle"
-          class="mr-2"
+          :name="tab.icon"
         />
-        Chats
-      </NuxtLink>
-      <NuxtLink
-        to="/chats/projects"
-        class="tab grow"
-        :class="{ 'tab-active': activeTab === 'projects' }"
-        :aria-current="activeTab === 'projects' ? 'page' : undefined"
-      >
-        <Icon
-          name="lucide:folder"
-          size="14"
-          class="mr-2"
-        />
-        Projects
-      </NuxtLink>
-      <NuxtLink
-        to="/chats/shared"
-        class="tab grow"
-        data-testid="tab-shared"
-        :class="{ 'tab-active': activeTab === 'shared' }"
-        :aria-current="activeTab === 'shared' ? 'page' : undefined"
-      >
-        <Icon
-          name="lucide:share-2"
-          size="14"
-          class="mr-2"
-        />
-        Shared
+        <span
+          :class="{
+            '@max-md:sr-only': hasArtifactsTab && activeTab !== tab.id,
+          }"
+        >
+          {{ tab.label }}
+        </span>
       </NuxtLink>
     </nav>
 
@@ -69,7 +51,57 @@
 </template>
 
 <script setup lang="ts">
+type HistoryTab = 'chats' | 'projects' | 'shared' | 'artifacts'
+
 defineProps<{
-  activeTab: 'chats' | 'projects' | 'shared'
+  activeTab: HistoryTab
 }>()
+
+const artifactsFeature = useFeature('artifacts')
+
+const hasArtifactsTab = computed<boolean>(() => {
+  return artifactsFeature.value.active
+})
+
+const tabs = computed<Array<{
+  id: HistoryTab
+  to: string
+  label: string
+  icon: string
+}>>(() => {
+  const baseTabs = [
+    {
+      id: 'chats' as const,
+      to: '/chats/history',
+      label: 'Chats',
+      icon: 'lucide:message-circle',
+    },
+    {
+      id: 'projects' as const,
+      to: '/chats/projects',
+      label: 'Projects',
+      icon: 'lucide:folder',
+    },
+    {
+      id: 'shared' as const,
+      to: '/chats/shared',
+      label: 'Shared',
+      icon: 'lucide:share-2',
+    },
+  ]
+
+  if (!hasArtifactsTab.value) {
+    return baseTabs
+  }
+
+  return [
+    ...baseTabs,
+    {
+      id: 'artifacts' as const,
+      to: '/chats/artifacts',
+      label: 'Artifacts',
+      icon: 'lucide:app-window',
+    },
+  ]
+})
 </script>

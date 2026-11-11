@@ -54,10 +54,11 @@ function stubMatchMedia() {
 
 function stubViewport(viewportWidth: number) {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-    const minWidthRem = Number(/min-width:\s*([\d.]+)rem/.exec(query)?.[1])
+    const [, amount, unit] = /min-width:\s*([\d.]+)(rem|px)/.exec(query) ?? []
+    const minWidth = Number(amount) * (unit === 'rem' ? 16 : 1)
 
     return {
-      matches: viewportWidth >= minWidthRem * 16,
+      matches: viewportWidth >= minWidth,
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -265,6 +266,24 @@ describe('Sidebar.client docked on the side panel seam', () => {
 
     expect(root.attributes('data-docked')).toBeUndefined()
     expect(root.attributes('style') ?? '').not.toContain('right:')
+  })
+
+  it('leaves the seam while the panel is collapsed and returns with it', async () => {
+    useSidePanel().open(sidePanelView)
+
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    useSidePanel().collapse()
+    await nextTick()
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.attributes('style') ?? '').not.toContain('right:')
+
+    useSidePanel().expand()
+    await nextTick()
+
+    expect(root.attributes('data-docked')).toBe('true')
   })
 
   it('has no inline right offset while the panel is closed', async () => {

@@ -17,6 +17,7 @@ export interface ChatContextTestDb {
     title?: string | null
     projectId?: number | null
     memoryExcluded?: boolean | null
+    pinnedAtSeconds?: number | null
   }) => void
   insertMessage: (input: {
     id: number
@@ -38,7 +39,17 @@ export interface ChatContextTestDb {
     showMetadata?: boolean
     allowBranch?: boolean
   }) => void
+  insertArtifact: (input: ChatContextTestArtifact) => void
   close: () => void
+}
+
+export interface ChatContextTestArtifact {
+  id: number
+  userId: number
+  title: string
+  kind?: string
+  currentVersion: number
+  takedownAtSeconds?: number | null
 }
 
 const BASE_TIMESTAMP_SECONDS = 1_790_000_000
@@ -48,11 +59,11 @@ function toFlag(value: boolean): number {
 }
 
 /**
- * An in-memory SQLite DB with the `chats`, `messages`, `projects` and
- * `chat_shares` columns the chat context loaders read, minus the foreign
- * keys, so a spec can seed a chat without a `users` row. Ids go through the
- * `publicIdMockFactory` (`pub-<n>`), so the spec that uses it must mock
- * `~~/server/utils/custom-db-types` with that factory.
+ * An in-memory SQLite DB with the `chats`, `messages`, `projects`,
+ * `chat_shares` and `artifacts` columns the chat context loaders read, minus
+ * the foreign keys, so a spec can seed a chat without a `users` row. Ids go
+ * through the `publicIdMockFactory` (`pub-<n>`), so the spec that uses it
+ * must mock `~~/server/utils/custom-db-types` with that factory.
  */
 export function createChatContextTestDb(): ChatContextTestDb {
   const sqlite = new Database(':memory:')
@@ -75,6 +86,7 @@ export function createChatContextTestDb(): ChatContextTestDb {
       title text DEFAULT '',
       project_id integer,
       memory_excluded integer,
+      pinned_at integer,
       activity_at integer NOT NULL
     );
 
@@ -104,6 +116,23 @@ export function createChatContextTestDb(): ChatContextTestDb {
       show_metadata integer NOT NULL DEFAULT 1,
       show_author_avatar integer NOT NULL DEFAULT 1,
       allow_branch integer NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE artifacts (
+      id integer PRIMARY KEY,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      user_id integer NOT NULL,
+      origin_chat_id integer,
+      origin_message_id text,
+      kind text NOT NULL,
+      title text NOT NULL,
+      current_version integer NOT NULL,
+      total_bytes integer NOT NULL,
+      created_via text NOT NULL,
+      takedown_at integer,
+      takedown_reason text,
+      legal_hold_until integer
     );
   `)
 
@@ -135,11 +164,12 @@ export function createChatContextTestDb(): ChatContextTestDb {
     title?: string | null
     projectId?: number | null
     memoryExcluded?: boolean | null
+    pinnedAtSeconds?: number | null
   }): void {
     sqlite.prepare(
       'insert into chats (id, created_at, updated_at, slug, user_id, title,'
-      + ' project_id, memory_excluded, activity_at)'
-      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      + ' project_id, memory_excluded, pinned_at, activity_at)'
+      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       BASE_TIMESTAMP_SECONDS,
@@ -151,6 +181,7 @@ export function createChatContextTestDb(): ChatContextTestDb {
       input.memoryExcluded === undefined || input.memoryExcluded === null
         ? null
         : toFlag(input.memoryExcluded),
+      input.pinnedAtSeconds ?? null,
       BASE_TIMESTAMP_SECONDS,
     )
   }
@@ -212,6 +243,25 @@ export function createChatContextTestDb(): ChatContextTestDb {
     )
   }
 
+  function insertArtifact(input: ChatContextTestArtifact): void {
+    sqlite.prepare(
+      'insert into artifacts (id, created_at, updated_at, user_id, kind,'
+      + ' title, current_version, total_bytes, created_via, takedown_at)'
+      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      input.id,
+      BASE_TIMESTAMP_SECONDS,
+      BASE_TIMESTAMP_SECONDS,
+      input.userId,
+      input.kind ?? 'html',
+      input.title,
+      input.currentVersion,
+      100,
+      'chat',
+      input.takedownAtSeconds ?? null,
+    )
+  }
+
   return {
     sqlite,
     db,
@@ -219,6 +269,7 @@ export function createChatContextTestDb(): ChatContextTestDb {
     insertChat,
     insertMessage,
     insertShare,
+    insertArtifact,
     close: () => {
       sqlite.close()
     },

@@ -13,15 +13,6 @@
   >
     <ChatContainer class="!gap-0">
       <UiSidePanelDemoCard v-if="isSidePanelDemoVisible" />
-      <p
-        v-if="isMemoryExcluded"
-        data-testid="chat-memory-excluded-indicator"
-        class="flex items-center justify-center gap-1 text-xs text-base-content/70"
-        :title="CHAT_MEMORY_EXCLUSION_HELPER"
-      >
-        <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="12" />
-        {{ CHAT_MEMORY_EXCLUSION_INDICATOR }}
-      </p>
       <ChatProjectInstructions
         v-if="projectInstructionsText || projectMemoryText"
         :project-id="projectContext?.id || null"
@@ -93,15 +84,15 @@
             :is-turn-thinking-held="isTurnThinkingHeld"
           />
           <div
-            v-for="(part, index) in getDisplayMessageParts(m)"
-            :key="`message-${m.id}-part-${index}`"
+            v-for="(part, index) in getRenderedMessageParts(m)"
+            :key="`message-${m.id}-${getRenderedPartKey(m, index)}`"
             :class="{
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
               'mt-4': isTextPartAfterGeneratedImage(
                 m,
-                getDisplayMessageParts(m),
+                getRenderedMessageParts(m),
                 index,
               ),
             }"
@@ -112,6 +103,12 @@
               "
               :message-role="m.role"
               :part="part"
+            />
+            <ChatArtifactCard
+              v-else-if="isArtifactsActive && isArtifactMessagePart(part)"
+              :part="part"
+              source="owner"
+              :chat-id="artifactChatId"
             />
             <div
               v-else-if="isChatErrorTextPart(part)"
@@ -289,6 +286,11 @@ import {
   isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import {
+  getRenderedPartKeys,
+  isArtifactMessagePart,
+  orderArtifactPartsLast,
+} from '~/utils/artifact-parts'
 
 definePageMeta({
   layout: 'chat',
@@ -304,6 +306,12 @@ useSeoMeta({
 
 const route = useRoute('chats-slug')
 const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
+
+const artifactsFeature = useFeature('artifacts')
+
+const isArtifactsActive = computed<boolean>(() => {
+  return artifactsFeature.value.active
+})
 
 const isSidePanelDemoVisible = computed<boolean>(() => {
   return isSidePanelDemoEnabled(route.query)
@@ -387,18 +395,15 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-const {
-  isChatMemoryExcluded,
-  rememberChatMemoryExcluded,
-} = useChatMemoryExclusion()
+const { rememberChatMemoryExcluded } = useChatMemoryExclusion()
 
 rememberChatMemoryExcluded(chat.value.slug, chat.value.memoryExcluded)
 
-const isMemoryExcluded = computed<boolean>(() => {
-  return !!chat.value && isChatMemoryExcluded(chat.value.slug)
-})
-
 const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
+
+const artifactChatId = computed<string>(() => {
+  return chat.value?.id ? String(chat.value.id) : ''
+})
 const projectContext = shallowRef<{ id: string, name: string } | null>(
   projectId.value
     ? {
@@ -773,6 +778,20 @@ const { hapticRigid, hapticSoft } = useHaptics()
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
+
+function getRenderedMessageParts(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+): UIMessage['parts'] {
+  return orderArtifactPartsLast(getDisplayMessageParts(message))
+}
+
+function getRenderedPartKey(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+  index: number,
+): string {
+  return getRenderedPartKeys(getDisplayMessageParts(message))[index]
+    ?? `part-${index}`
+}
 
 function isTextUIPart(
   message: Pick<UIMessage, 'role'>,

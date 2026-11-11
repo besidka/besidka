@@ -8,6 +8,12 @@ const mocks = vi.hoisted(() => {
   return { renderDiagram: vi.fn() }
 })
 
+const { sanitizeDiagramSvgMock } = vi.hoisted(() => ({
+  sanitizeDiagramSvgMock: vi.fn((svg: string) => svg),
+}))
+
+mockNuxtImport('sanitizeDiagramSvg', () => sanitizeDiagramSvgMock)
+
 mockNuxtImport('useDiagramRenderer', () => {
   return () => {
     return { renderDiagram: mocks.renderDiagram }
@@ -46,6 +52,29 @@ describe('prose/MermaidDiagram.vue', () => {
       'flowchart LR\n  A --> B',
       expect.objectContaining({ idPrefix: expect.stringContaining('mermaid') }),
     )
+  })
+
+  it('renders only the sanitized svg', async () => {
+    mocks.renderDiagram.mockResolvedValue({
+      svg: '<svg id="raw" onload="alert(1)"></svg>',
+    })
+    sanitizeDiagramSvgMock.mockReturnValueOnce('<svg id="clean"></svg>')
+
+    const wrapper = await mountSuspended(MermaidDiagram, {
+      props: { code: 'flowchart LR\n  A --> B' },
+    })
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('#clean').exists()).toBe(true)
+    })
+
+    expect(sanitizeDiagramSvgMock).toHaveBeenCalledWith(
+      '<svg id="raw" onload="alert(1)"></svg>',
+    )
+    expect(wrapper.find('#raw').exists()).toBe(false)
+    expect(wrapper.emitted('rendered')?.[0]?.[0]).toMatchObject({
+      svg: '<svg id="clean"></svg>',
+    })
   })
 
   it('emits the error payload when rendering fails', async () => {

@@ -129,8 +129,12 @@ const SEARCH_DEBOUNCE_MS = 180
 const route = useRoute()
 const { loggedIn } = useAuth()
 const isAdmin = useIsAdmin()
+const artifactsFeature = useFeature('artifacts')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
+const { sidebarPinned, setSidebarPinned } = useUserSetting()
+const { showPinToggle } = useSidebarPinToggle()
+const cookieConsentUi = useCookieConsentUi()
 const {
   pendingOpen: pendingFilesModalOpen,
   requestOpen: requestFilesModalOpen,
@@ -185,6 +189,17 @@ async function goTo(path: string) {
 
 function toggleTheme() {
   toggle()
+}
+
+async function toggleSidebarPin() {
+  dismiss()
+
+  await setSidebarPinned(!sidebarPinned.value)
+}
+
+function openCookieSettings() {
+  dismiss()
+  cookieConsentUi.expand()
 }
 
 async function openAttachments() {
@@ -250,6 +265,14 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Projects',
           run: () => goTo('/chats/projects'),
         },
+        ...(artifactsFeature.value.active
+          ? [{
+            id: 'search-option-artifacts',
+            iconName: 'lucide:app-window',
+            label: 'Artifacts',
+            run: () => goTo('/chats/artifacts'),
+          }]
+          : []),
       ],
     },
     {
@@ -298,13 +321,35 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Labs',
           run: () => goTo('/profile/labs'),
         },
-        ...(isAdmin.value
+        ...(showPinToggle.value
           ? [{
-            id: 'search-option-admin',
-            iconName: 'lucide:shield-ellipsis',
-            label: 'Admin',
-            run: () => goTo('/admin'),
+            id: 'search-option-pin-sidebar',
+            iconName: sidebarPinned.value ? 'lucide:pin-off' : 'lucide:pin',
+            label: sidebarPinned.value ? 'Unpin sidebar' : 'Pin sidebar',
+            run: toggleSidebarPin,
           }]
+          : []),
+        {
+          id: 'search-option-cookies',
+          iconName: 'lucide:cookie',
+          label: 'Cookie settings',
+          run: openCookieSettings,
+        },
+        ...(isAdmin.value
+          ? [
+            {
+              id: 'search-option-admin',
+              iconName: 'lucide:shield-ellipsis',
+              label: 'Admin',
+              run: () => goTo('/admin'),
+            },
+            {
+              id: 'search-option-admin-reports',
+              iconName: 'lucide:flag-triangle-right',
+              label: 'Content reports',
+              run: () => goTo('/admin/artifact-reports'),
+            },
+          ]
           : []),
       ],
     },

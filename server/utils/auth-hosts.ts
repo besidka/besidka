@@ -118,3 +118,29 @@ export function getRelyingPartyId(baseUrl: string): string {
 
   return hostname
 }
+
+/**
+ * The origin to put in links the app hands out. A request on one of the
+ * additional allowed hosts (the per-PR Cloudflare Previews) gets its own
+ * origin, because the configured base URL there is the long-lived preview,
+ * which runs `main` and may lack the linked route. Every other request,
+ * including all of production, gets the configured base URL.
+ */
+export function resolvePublicOrigin(
+  requestUrl: URL,
+  baseUrl: string,
+  additionalHosts: string = '',
+): string {
+  const configuredOrigin = baseUrl.replace(/\/$/, '')
+
+  if (requestUrl.protocol !== 'https:') {
+    return configuredOrigin
+  }
+
+  const isAdditionalHost = parseAdditionalHosts(additionalHosts)
+    .some((pattern) => {
+      return matchesHostnamePattern(requestUrl.hostname, pattern)
+    })
+
+  return isAdditionalHost ? requestUrl.origin : configuredOrigin
+}

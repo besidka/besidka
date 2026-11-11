@@ -11,9 +11,22 @@
       aria-hidden="true"
     />
     <span>
-      Gradual rollouts and variants are off until the Privacy notice is in
-      force (<code>NUXT_FEATURES_ROLLOUT_ENABLED</code>). Grant features only
-      to the owner and to testers who were told individually.
+      Gradual rollouts and variants are off.
+      <span data-testid="admin-rollout-notice-gate">
+        {{ gate?.description ?? fallbackDescription }}
+      </span>
+      Until then, grant features only to the owner and to testers who were
+      told individually. Rollout steps you schedule wait and apply on their
+      own.
     </span>
   </div>
 </template>
+<script setup lang="ts">
+import type { AdminRolloutGateView } from '~/utils/admin-schedule'
+
+const fallbackDescription = 'They open once the Privacy notice is in force.'
+
+defineProps<{
+  gate?: AdminRolloutGateView
+}>()
+</script>

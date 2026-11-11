@@ -189,6 +189,18 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `DEFAULT true` flag question
 - `docs/email.md` - Transactional email (Cloudflare Email Sending binding):
   architecture, config, testing, and the Resend-revert runbook
+- `docs/mail-alerts.md` - Phone push for mail to `privacy@`, `abuse@`,
+  `security@` and `contact@` (TCO one-hour rule, 72-hour breach clock): the
+  `besidka-mail-alerts` Email Worker (`workers/mail-alerts/`) forwards first,
+  exactly like the old Email Routing rule, then calls the HMAC-signed internal
+  route `/api/v1/internal/mail-alert` over a service binding, which pushes to
+  every admin; urgency rules (keywords, DMARC-checked authority domains), the
+  KV collapse (2 min, urgent 60 s), what is logged (mailbox, urgent, outcome
+  only), the legal note (no Privacy Policy change, no new Art. 30 row), the
+  `MAIL_ALERTS_DEPLOY_ENABLED` CI gate, and the owner runbook (secrets, test
+  rule, `cf email-routing rules update` per mailbox, restore to forward), and
+  why there is no cover person (owner works alone, the push is the only
+  safeguard)
 - `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,
   components, Studio local-vs-preview-vs-prod flow, deploy runbook
 - `docs/landing-production-todo.md` - Owner checklist of remaining manual steps
@@ -274,6 +286,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `esbuild`: a Vite 8 default-change + DaisyUI/Lightning CSS `:is()`
   specificity bug that broke the light theme in production builds only;
   when to prefer lightningcss vs esbuild, and revert criteria
+- `docs/code-highlighting.md` - Chat code highlighting: shiki core loaded
+  only in the browser (the rule that shiki is never imported statically from
+  server-reachable code, and the grep that checks the Worker), the JavaScript
+  regex engine, grammars from `shiki/langs` on first use, one highlighter per
+  root language (shiki freezes injections and lazy embeds at first
+  reference), the line-by-line `ProseCodeStream` renderer on
+  `@shikijs/stream`, the byte-for-byte parity script against the old
+  `shiki/bundle/web` (`pnpm run shiki:parity`), before/after numbers (Worker,
+  first highlight, streaming 1,047 lines), why rangi was rejected, and when to
+  revisit
 - `docs/nuxt-icon-collections.md` - Why `icon.collections`/
   `icon.serverBundle.collections` are pinned to four prefixes: `@nuxt/icon`'s
   per-`<Icon>` reactive-array sort over the default ~220-entry catalog, the
@@ -391,6 +413,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   2FA, no other users' emails over MCP, the Axiom `featureAccess` replay
   ledger, the side-panel width as a Preferences key, and the exact input list
   for the P0-9 legal records; later track pre-checks append a section here
+- `docs/legal/content-incidents.md` - Content incidents runbook (engineer-drafted,
+  2026-11-08, A-9): triage order for reports, the TCO one-hour removal order
+  (Szef ABW, takedown without a report, six-month `legalHoldUntil`, Annex II
+  confirmation, 1 March duties), the DSA Art. 18 threat-to-life path, takedown
+  and statement-of-reasons steps, the Cloudflare abuse-complaint response on
+  the shared account, the private record, and the email templates T1 to T4
+  (receipt, decision, statement of reasons, TCO owner notice)
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
   only, not legal text, superseded on 2026-10-26 by the published pages (its
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA
@@ -528,7 +557,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   commands, the per-workflow CI table, merge order and squash semantics, the
   no-build gate in `preview-deploy.yml`, and warnings (the "Add to stack"
   banner, retarget-on-merge firing only `edited`, previews only for the
-  parent/top, unverified stack-event behavior, migrations in children)
+  parent/top, unverified stack-event behavior, migrations in children), and
+  the artifacts-stack lessons (a conflicting layer silently skips CI)
 - `docs/nuxt-entry-import-map.md` - Why `experimental.entryImportMap` is
   pinned to `false`: with it on, lazy chunks keep the same filename while
   their embedded `entry.<hash>.css` preload changes, so immutable-cached
@@ -556,6 +586,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the pending Anthropic token factor, non-atomic leases, deferred issues
   #537 to #540), and the cross-project memory proposal (3.20: per-project
   `share_memory`, the `search_other_projects` tool, no entry FTS)
+- `docs/artifacts.md` - Artifacts entry point (A-10): the six `artifacts.*`
+  flags and their rollout rules, the golden-prompt evals
+  (`tests/evals/artifacts/prompts.json`, `scripts/artifact-evals.mjs` run
+  through a preview as the test account, the opt-in render spec
+  `tests/e2e/artifacts/evals-render.spec.ts`), the results per model with
+  cost, the client `artifact_open`/`artifact_runtime_error` events, the Axiom
+  dashboard `besidka-artifacts` and `scripts/artifact-rollout-report.mjs`,
+  the staged rollout tied to the 2026-12-19 notices with the P0-16 schedule
+  to enter in the admin UI, and the stop rules
 - `docs/artifacts-runtime.md` - The sandboxed artifacts runtime Worker
   `besidka-artifacts` (`workers/artifacts-runtime`, assets only, no bindings)
   and `packages/artifacts-protocol` (JSON-RPC over one MessagePort, shaped
@@ -567,6 +606,52 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   consent error codes for A-5/A-6, the separate Playwright sandbox spec, and
   the CI jobs guarded by the `ARTIFACTS_RUNTIME_DEPLOY_ENABLED` variable with
   the owner steps before the first deploy
+- `docs/artifacts/panel.md` - Artifact cards and the artifact side panel
+  (A-4): card states (streaming, ready, failed, unavailable), the detail view
+  (Preview and Code tabs, version select, copy and download, runtime errors
+  with Ask to fix through the `chat-input:prefill` hook), the Frame host end
+  of the protocol (handshake capabilities, 250ms partial throttle, link
+  confirm, tripwire, 10s timeout), capabilities per viewer in v1, the
+  shared-chat read rule (global `artifacts` kill switch, active share,
+  `json_each` membership, artifact owner equals chat owner, 404 vs 410,
+  `private, no-store`), the report route and its 5-per-hour KV limit, the
+  `artifacts:auto-opened:<chat id>` sessionStorage marker and its Cookie
+  Policy row, the `frame-src` CSP as a route header plus a script-inserted
+  meta tag for client-side navigation (and why), the standalone export rule
+  (no third-party hosts, React and Mermaid as source only), and the open
+  items (the non-atomic report limiter, MCP `get_chat` omits artifacts)
+- `docs/artifacts/viewer-storage.md` - Saved progress for artifacts (A-5):
+  who gets `persistent` storage (signed in, `artifacts.storage`, own chat,
+  saved artifact) and why shared chats stay in memory until A-7, the owner
+  resolver, the four routes (reset is `DELETE storage`, not `reset.post`),
+  limits (64 keys, 100 KB, 32 KB per value, key pattern, 120 writes/min),
+  the per-artifact write queue and error-code mapping, Reset saved progress,
+  and the hourly non-owner purge (30 days after the last share ended,
+  takedown, deleted artifact)
+- `docs/artifacts/llm-bridge.md` - The artifact LLM bridge (A-6):
+  `window.besidka.complete(prompt, { system, maxOutputTokens })` on the
+  viewer's own direct provider key, who gets it (signed in, flag plus Labs
+  opt-in, own chat), the confirmation modal (full prompt and system text,
+  invisible characters revealed, cost estimate, remaining calls, Cancel
+  focused, keyboard guard, session-only "Don't ask again"), the server order
+  (consent before key before caps before the provider), caps (200 per day,
+  30 per hour per artifact), 502 for provider errors, id-only logging and
+  `artifact_bridge_call` analytics, the `resolve-cheapest-model` extraction
+  from memory, and the JSON-RPC error codes
+- `docs/artifacts/shares.md` - Public artifact links, reports and takedown
+  (A-7): the token model (32 random bytes, sha256 lookup, encrypted copy for
+  the owner, `sh_` share ids, token only in the `x-besidka-artifact-share`
+  header), owner, public and admin routes with bodies and error codes, the
+  404 versus 410 states, the kill-switch and flag gates, share mode in the
+  viewer resolver (403 when a link does not allow storage or the bridge), the
+  link token in the URL fragment (`/a#<token>`, never sent to the server;
+  sign-in returns through a `sessionStorage` key, not `next`), the `/a`
+  route rules, the 404 for `/a/<anything>` and mis-cased paths, the merged
+  `frame-src` CSP, defence-in-depth log redaction of every link form, the
+  report flow (Turnstile, rate limit,
+  copyright notice elements, no IP), report decisions, direct takedowns by
+  link, token, artifact or user with the six-month legal hold, restore
+  without email, the T1 to T3 emails, soft revoke and D1 restore replay
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
@@ -599,14 +684,17 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (`spend` implies opt-in, variants only on non-spending flags), the
   evaluation precedence (unknown, `NUXT_FEATURES_DISABLED`, host mode, rule
   disabled, anonymous, deny, allow, role, sticky salted-hash rollout gated by
-  `NUXT_FEATURES_ROLLOUT_ENABLED` and the user's experiments objection,
+  the computed rollout gate (the Privacy notice date, `NUXT_FEATURES_ROLLOUT_ENABLED`
+  only as an override) and the user's experiments objection,
   default), KV rules cache and per-request user state, env admins with
   verified email and 2FA (`NUXT_ADMIN_EMAILS` is a secret, tester-only role
   grants in v1), exposure telemetry without a bucket, the Axiom
   `featureAccess` replay ledger, client access and Labs, MCP limits, the
-  Flagship path and the "adding a flag" checklist
+  Flagship path, the "adding a flag" checklist and scheduled rollouts (the
+  `feature_rule_schedules` table, the 5-minute applier, the claim, the
+  notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  32 per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  44 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -1002,6 +1090,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 
 - ESLint with `@stylistic` plugin enforces 2-space indentation, no semicolons, single quotes
 - Max line length: 80 characters (imports, URLs, strings exempt)
+- Textareas get the box radius globally from `main.css` (`:where(.textarea)`), because the theme's `--radius-field: 2rem` would make them pills; do not add `rounded-*` to a `.textarea` to undo the pill shape.
 - When line length limit requires breaking single-line statements, use explicit braces:
   ```typescript
   // Correct - explicit braces when breaking lines

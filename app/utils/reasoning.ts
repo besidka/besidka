@@ -11,7 +11,11 @@ const QUOTE_CLOSERS = new Set(['"', '”', '»'])
 const TITLE_DISPLAY_LIMIT = 30
 const TITLE_DISPLAY_WORD_BOUNDARY_MINIMUM = 20
 const TOOL_PART_TYPE_PREFIX = 'tool-'
-const EXCLUDED_TOOL_STEP_NAMES = new Set<string>(['generate_image'])
+const EXCLUDED_TOOL_STEP_NAMES = new Set<string>([
+  'generate_image',
+  'create_artifact',
+  'update_artifact',
+])
 const PENDING_TOOL_STATES = new Set<string>([
   'input-streaming',
   'input-available',

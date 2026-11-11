@@ -14,6 +14,7 @@ the section it implements with the final API. The roadmap is in
 | 6. `/admin`, 7. Admin ledger writers | P0-6 (BES-242) | Built |
 | 7. Opt-in and objection writers, 8. Labs | P0-7 (BES-246) | Built |
 | 8. MCP | P0-8 (BES-250) | Built |
+| 12. Scheduled rollouts | P0-16 (BES-319) | Built |
 
 This document is the contract for per-user feature access: which account can
 use which experimental feature, how a feature is rolled out to a share of
@@ -68,7 +69,8 @@ migration (`.drizzle/migrations/*_feature_access_tables`) contains only
 | `feature_flag_rules` | `flag` (primary key), `enabled` (boolean, default true), `rollout_bps` (0 to 10000, default 0), `allow_roles` (JSON array, null = registry default), `variants` (JSON `[{ key, weightBps }]`, null = none), `salt` (16 random bytes as hex, Web Crypto), `updated_by`, `created_at`, `updated_at` | primary key |
 | `feature_grants` | `id`, `user_id`, `flag`, `effect` (`allow` or `deny`), `variant` (forced variant), `expires_at`, `reason` (free text; the P0-6 writer caps it at 200 characters), `granted_by`, `created_at` | unique `(user_id, flag)`, index `flag` |
 | `feature_opt_ins` | `id`, `user_id`, `flag`, `opted_in_at`, `opted_out_at` | unique `(user_id, flag)` |
-| `feature_audit_log` | `id`, `actor_user_id` (null for env), `actor_kind` (`ui`, `mcp`, `env`), `client_id` (MCP OAuth client), `action`, `flag`, `target_user_id`, `before` (JSON), `after` (JSON), `created_at` | `created_at`; `(flag, created_at)`; `target_user_id`; `actor_user_id` (account-deletion scrub) |
+| `feature_rule_schedules` | `id`, `flag`, `change` (JSON rule patch), `run_at`, `status` (`pending`, `blocked`, `applying`, `applied`, `failed`, `cancelled`), `requires_notice_id`, `created_by` (nullable admin id, nulled on account deletion), `claimed_at`, `applied_at`, `error`, `created_at` | `(status, run_at)`; `(flag, run_at)` |
+| `feature_audit_log` | `id`, `actor_user_id` (null for env and for a scheduled apply), `actor_kind` (`ui`, `mcp`, `env`, `schedule`), `client_id` (MCP OAuth client), `action`, `flag`, `target_user_id`, `before` (JSON), `after` (JSON), `created_at` | `created_at`; `(flag, created_at)`; `target_user_id`; `actor_user_id` (account-deletion scrub) |
 
 No row in `feature_flag_rules` means "use the registry defaults". Rules are
 created on the first admin write. There are no seed rows.
@@ -131,6 +133,7 @@ table too. The replay source is therefore Axiom, not the audit table
 | `key` | Dotted flag key |
 | `title`, `description` | Plain-English text for Labs and `/admin` |
 | `stage` | `internal`, `beta` or `ga` |
+| `available` | `true` only once the feature's code ships (default `false`). An unavailable flag evaluates to off with reason `NOT_AVAILABLE` whatever the role, grant or rule, so Labs never lists it and an admin never sees a phantom "On"; `/admin` still lists it, marked "Not implemented". Set it to `true` in the registry in the PR that ships the feature |
 | `default` | Value when no rule, grant or role decides |
 | `allowRoles` | Roles that get the feature (default `['admin']`) |
 | `spend` | `none`, `foreground` (spends the user's key when they act) or `background` (spends it without a fresh action) |
@@ -213,22 +216,35 @@ Runtime config: `adminEmails` (`NUXT_ADMIN_EMAILS`, secret),
 `featuresDisabled` (`NUXT_FEATURES_DISABLED`, comma list or `*`, case
 insensitive), `featuresHostMode` (`NUXT_FEATURES_HOST_MODE`, default
 `byok`, unknown values fall back to `off`) and `featuresRolloutEnabled`
-(`NUXT_FEATURES_ROLLOUT_ENABLED`, default `false`). The last three may be
-`wrangler.jsonc` vars.
+(`NUXT_FEATURES_ROLLOUT_ENABLED`, default empty: the rollout gate follows the
+Privacy notice date, see below). The last three may be `wrangler.jsonc` vars.
 
 A feature is **enabled** when the user has access, and **active** when it is
-enabled and, for `optIn: 'required'` features, the user has an active opt-in
-(`opted_in_at` set and newer than any `opted_out_at`).
+enabled and the user's Labs toggle is on. The toggle lives in the same
+opt-in table for every feature: a feature with `optIn: 'required'` is on only
+after the user opted in (`opted_in_at` set and newer than any `opted_out_at`);
+any other feature is on until the user opted out (`opted_out_at` newer than or
+equal to any `opted_in_at`, the same rule as the experiments objection). A
+child is off whenever an ancestor's toggle is off.
 
 There is no targeting on user attributes (country, email domain, usage). The
 evaluator sees only the user id, roles, grants and opt-ins (C14). Adding
 attribute targeting reopens the compliance pre-check, because it would turn
 random assignment into profiling.
 
-**`NUXT_FEATURES_ROLLOUT_ENABLED`** defaults to false. Production turns it on
-only after the Privacy Policy notice from P0-9 has taken effect. Until then,
-production grants go only to the owner and to named testers who were told
-individually what is recorded and how to object (C2).
+**The rollout gate** (C2) is computed, not configured. Rollouts and variants
+run when the Privacy notice `2026-11-experimental-features` (the
+`LEGAL_NOTICES` registry, effective 2026-12-19 at 00:00 UTC) is in force and
+the environment does not force them off:
+`computeFeatureRolloutGate` in `shared/utils/features/rollout-gate.ts`,
+evaluated per request in `getFeatureEvaluationConfig`, so it opens on its own
+at the effective instant with no deploy. `NUXT_FEATURES_ROLLOUT_ENABLED` is
+now only an override: `on`, `true` or `1` force it open (self-host, local
+testing), `off`, `false` or `0` force it closed, an empty value or `auto`
+follows the notice, and any other value (a typo) fails closed. **If production still has the variable set to `false`, the gate never
+opens: unset it.** Until the gate opens, production grants go only to the
+owner and to named testers who were told individually what is recorded and
+how to object (C2).
 
 ### Caching
 
@@ -257,9 +273,9 @@ individually what is recorded and how to object (C2).
 - `requireFeature(event, flag, { active? })` throws evlog `createError` with
   status 404, message `Not found` and `why: 'feature_unavailable'`, and
   otherwise returns the resolution plus `active`. It records the exposure.
-  For a flag with `optIn: 'required'` it also needs an active opt-in **by
-  default**; pass `{ active: false }` only where access without the opt-in is
-  the point. (The Labs opt-in route calls `evaluateFeatureForEvent` with
+  It also needs the user's Labs toggle on (an opt-in for `optIn: 'required'`,
+  no opt-out for the rest) **by default**; pass `{ active: false }` only where
+  access without the toggle is the point. (The Labs opt-in route calls `evaluateFeatureForEvent` with
   `recordExposure: false` instead, so a settings write records no exposure.) An opt-in counts only when every
   ancestor that needs one is opted in too.
 - `requireAdmin(event)` answers 404 to non-admins and 401 to signed-out
@@ -422,7 +438,7 @@ never an email or a reason:
 
 | Writer | Fields |
 |---|---|
-| Admin UI and MCP writes | `{ action, flag, targetUserId, effect, expiresAt, actorKind }`, plus `role` for role writes; MCP writes also carry the client id. `action` is `rule.set`, `grant.set`, `grant.revoke`, `role.set` or `role.revoke`; for a rule write `effect` is `enabled` or `disabled`, and `rule: { before, after }` carries `enabled`, `rolloutBps`, `allowRoles` and `variants` (before is null for a new rule), so a restore can rebuild the rollout share and variants |
+| Admin UI and MCP writes | `{ action, flag, targetUserId, effect, expiresAt, actorKind }`, plus `role` for role writes; MCP writes also carry the client id. `action` is `rule.set`, `grant.set`, `grant.revoke`, `role.set`, `role.revoke`, `schedule.create` or `schedule.cancel` (`scheduleRunAt` lists the step times); a scheduled apply is a `rule.set` with `actorKind: 'schedule'` and `scheduleId`, logged on its own wide event per step; for a rule write `effect` is `enabled` or `disabled`, and `rule: { before, after }` carries `enabled`, `rolloutBps`, `allowRoles` and `variants` (before is null for a new rule), so a restore can rebuild the rollout share and variants |
 | Opt-in route | `{ action: 'opt_in.set', flag, optedIn }` |
 | Objection switch | `{ action: 'experiments.set', objected }` |
 | Admin reads (C15) | `{ action: 'admin.read', resource, resultCount }`, never the search text |
@@ -484,7 +500,8 @@ Search popup row) lists the features the user can access:
 
 - each feature with its stage, a plain description, "Uses your API keys" for
   spend features, and readiness hints that link to `/profile/keys`;
-- an opt-in switch, default OFF, for `optIn: 'required'` features;
+- a switch on every feature: an opt-in, default OFF, for `optIn: 'required'`
+  features, and an opt-out, default ON, for the rest;
 - the switch "Include my account in gradual rollouts and experiments" (on by
   default), with one sentence on the right to object (C3).
 
@@ -498,16 +515,17 @@ As built (P0-7):
   returns `LabsPayload` (`shared/types/features.d.ts`):
   `{ features: LabsFeature[], objectedToExperiments }`. Each feature carries
   `key`, `title`, `description`, `stage`, `spend`, `optIn`,
-  `requires.keyKinds`, `parent`, `optedIn` and `active`. Only flags with
-  `exposeToClient` that the user **has** (`evaluateFeature(...).value`) are
-  listed, so Labs never advertises a feature the user cannot use. It records
+  `requires.keyKinds`, `parent`, `optedIn` (the switch state) and `active`.
+  Only `available` flags with `exposeToClient` that the user **has**
+  (`evaluateFeature(...).value`) are listed, so Labs never advertises a feature the user cannot use. It records
   no exposure.
 - `POST /api/v1/profiles/features/[flag]/opt-in` with `{ optedIn }`:
   same-origin only (`assertSameOriginAdminRequest`), 401 signed out, 404
   `feature_unavailable` when the user lacks the flag **or** the flag has no
   `exposeToClient` (Labs never shows it, so it never takes consent for it;
-  a registry spec asserts every `optIn: 'required'` flag is exposed), 400
-  `opt_in_not_applicable` when the flag has `optIn: 'none'`. It evaluates
+  a registry spec asserts every `optIn: 'required'` flag is exposed). It
+  accepts every listed feature: `optedIn: false` on a non-spending feature
+  records an opt-out. It evaluates
   with `evaluateFeatureForEvent(event, flag, { recordExposure: false })`: a
   settings write is not an exposure. Answers `{ flag, optedIn, active }` read
   back from D1 after the write.
@@ -600,7 +618,8 @@ support.
    off. Register new specs in `scripts/test-affected-check.mjs`.
 7. Update the status table in `docs/agentic-capabilities-roadmap.md`.
 8. Roll out: internal, then named testers (grants), then beta percentage
-   (only once `NUXT_FEATURES_ROLLOUT_ENABLED` is on in production), then GA
+   (only once the rollout gate is open in production, or as a scheduled
+   step, section 12), then GA
    (set `default: true` in the registry, then remove the flag once it is
    stable).
 
@@ -693,3 +712,69 @@ Host portability: a VPS, Vercel or AWS host adds its own `BlobStore` and
 `JobRunner` adapters next to `cloudflare/` and picks them at startup;
 capability code depends only on the interfaces. Durable Objects and the
 Cloudflare Agents SDK are not part of the contract (lock-in).
+
+## 12. Scheduled rollouts (P0-16)
+
+The owner plans feature changes once and they apply on their own, through the
+same audited path as a manual edit.
+
+- **Steps.** `feature_rule_schedules` holds one row per step: a `change` (the
+  `featureRulePatchSchema` fields `enabled`, `rolloutBps`, `allowRoles`,
+  `variants`; there is no `stage` field on a rule) and a `run_at` stored as
+  UTC seconds. The UI shows and takes local time with the time zone named.
+  A step that raises the rollout above 0 or sets variants records
+  `requires_notice_id`.
+- **Validation** (`validateScheduleSteps`, shared by the form and the
+  server): every step changes something, lies in the future, is strictly
+  after the step before it and shares no second with an open step of the
+  flag; at most 12 steps per request and 24 open steps per flag; no further than two
+  years ahead; variants are validated like a manual write. "Give it to
+  all testers" is `grantRoles: ['tester']`, never `admin` (C7); it is stored
+  as `allowRoles: ['admin', 'tester']` because a rule's `allowRoles` replaces
+  the registry default. Testers cannot be removed by a step, only by a
+  manual rule edit.
+- **API** (admin only, same guards and same-origin check as rule writes):
+  `POST /api/v1/admin/features/<flag>/schedules` (`{ steps: [...] }`),
+  `POST .../schedules/<id>/cancel` (only `pending` or `blocked`),
+  `GET /api/v1/admin/features/<flag>` now also returns `schedules` and the
+  computed `rolloutGate`. Create and cancel write `schedule.create` and
+  `schedule.cancel` audit rows and ledger lines. There are no MCP scheduling
+  tools; rollout and global changes stay UI-only.
+- **Applier** (`server/plugins/feature-schedule-applier.ts`, cron
+  `*/5 * * * *`, `applyDueFeatureSchedules` in
+  `server/utils/features/schedules.ts`). It selects `pending` and `blocked`
+  steps with `run_at <= now`, oldest first, and applies each with
+  `setFeatureRule`, the function the `rule.patch` route calls: validation,
+  audit row (`actor_kind 'schedule'`, `actor_user_id` null), the
+  `featureAccess` ledger line (with `scheduleId`) and the KV rules cache
+  bust. It never calls `useEvent()`. Each step has its own wide event and
+  the job has one with the counts.
+- **No double run.** A step is claimed with
+  `UPDATE ... SET status = 'applying' WHERE id = ? AND status IN ('pending',
+  'blocked') AND NOT EXISTS (another 'applying' step of the flag) RETURNING`.
+  Overlapping runs cannot apply a step twice, and steps of one flag never run
+  out of order or race on the rule row. Once a step of a flag is blocked,
+  later due steps of that flag wait behind it, so a 0% rollback cannot
+  overtake an earlier blocked 50%. Status writes are conditional on the
+  expected status, so a cancel is never overwritten. A claim older than 10 minutes means
+  the Worker died mid-write: it becomes `failed` with a note to check the
+  rule and the audit log, and is never re-run.
+- **Failure.** A step that throws becomes `failed` with a short reason (the
+  error `why` code; unexpected errors show a generic text and keep the detail
+  in the wide event) and admins are notified; the cron never retries it. The owner schedules it again.
+- **The gate.** A rollout step that comes due while the gate is closed
+  becomes `blocked` with the reason and is re-checked on every run; once the
+  notice is in force (or the override is `on`) it applies. A forced `off`
+  keeps it blocked. The UI shows "Applies after 2026-12-19" for such a step.
+- **Notifications.** On apply or failure each admin (env admins with a
+  verified email, plus `admin` role holders) gets a `NoticeEmail` and, when
+  push is configured and they subscribed, a web push with a generic body.
+  The message names the flag, the change and the time and links to the audit
+  log; it carries no account id or email.
+- **E2E hook.** `POST /api/v1/admin/features/schedules/apply-due` runs the
+  applier on demand and answers 404 unless
+  `NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED=true`, the flag the Playwright web
+  server and the CI `.dev.vars` already set.
+- **Restore.** The table is rolled back with D1, so replay `schedule.create`
+  and `schedule.cancel` ledger lines (`docs/d1-restore-reconciliation.md`).
+  Account deletion nulls `created_by`.

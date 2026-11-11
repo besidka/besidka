@@ -77,6 +77,10 @@ export async function purgeUserFeatureAccess(
     .update(schema.featureFlagRules)
     .set({ updatedBy: null })
     .where(eq(schema.featureFlagRules.updatedBy, userId))
+  await database
+    .update(schema.featureRuleSchedules)
+    .set({ createdBy: null })
+    .where(eq(schema.featureRuleSchedules.createdBy, userId))
 
   const auditLog = schema.featureAuditLog
   const anonymisedAuditRows = await database

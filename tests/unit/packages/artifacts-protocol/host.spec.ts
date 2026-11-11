@@ -3,11 +3,15 @@ import {
   ERROR_CODES,
   METHODS,
   PROTOCOL_VERSION,
+  RpcError,
   createEndpoint,
   createHostConnection,
+  writeClipboardText,
 } from '@besidka/artifacts-protocol'
 import type {
+  CompleteParams,
   Endpoint,
+  HostConnectionOptions,
   HostContext,
   HostFrameLike,
   HostHandlers,
@@ -359,5 +363,467 @@ describe('createHostConnection', () => {
     frame.load()
 
     expect(onUnexpectedNavigation).toHaveBeenCalledTimes(1)
+  })
+})
+
+async function connectWith(
+  overrides: Partial<HostHandlers>,
+  options: HostConnectionOptions = {},
+) {
+  const frame = createFakeFrame()
+  const host = createHostConnection(frame, createHandlers(overrides), {
+    hasUserActivation: () => {
+      return true
+    },
+    ...options,
+  })
+
+  frame.load()
+
+  const runtime = connectFakeRuntime(frame)
+
+  await initialize(runtime)
+
+  return { host, runtime }
+}
+
+describe('createHostConnection UI requests', () => {
+  it('answers -32601 when the host has no clipboard or viewer hooks', async () => {
+    const { host, runtime } = await connectWith({})
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'fullscreen',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    host.destroy()
+  })
+
+  it('passes only validated clipboard text to the hook', async () => {
+    const clipboardWrite = vi.fn(() => {
+      return { copied: true as const, extra: 'ignored' }
+    })
+    const { host, runtime } = await connectWith({ clipboardWrite })
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'const a = 1',
+      userActivation: true,
+      injected: '<script>',
+    })).resolves.toEqual({ copied: true })
+    expect(clipboardWrite).toHaveBeenCalledWith({
+      text: 'const a = 1',
+      mimeType: 'text/plain',
+      userActivation: true,
+    })
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'x'.repeat(512 * 1024 + 1),
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(clipboardWrite).toHaveBeenCalledTimes(1)
+    host.destroy()
+  })
+
+  it('never writes without a user gesture from the frame and the host', async () => {
+    const clipboardWrite = vi.fn(() => {
+      return { copied: true as const }
+    })
+    let hostActivation: boolean | null = false
+    const { host, runtime } = await connectWith({ clipboardWrite }, {
+      hasUserActivation: () => {
+        return hostActivation
+      },
+    })
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+
+    hostActivation = true
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: false,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    expect(clipboardWrite).not.toHaveBeenCalled()
+
+    hostActivation = null
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    expect(clipboardWrite).not.toHaveBeenCalled()
+
+    hostActivation = true
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: true })
+    host.destroy()
+  })
+
+  it('maps an invalid hook result to unavailable', async () => {
+    const { host, runtime } = await connectWith({
+      clipboardWrite: () => {
+        return { copied: false, reason: 'mystery' } as never
+      },
+    })
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'unavailable' })
+    host.destroy()
+  })
+
+  it('rate-limits clipboard writes to five per ten seconds', async () => {
+    let currentTime = 1_000
+    const clipboardWrite = vi.fn(() => {
+      return { copied: true as const }
+    })
+    const { host, runtime } = await connectWith({ clipboardWrite }, {
+      now: () => {
+        return currentTime
+      },
+    })
+    const write = () => {
+      return runtime.request(METHODS.clipboardWrite, {
+        text: 'a',
+        userActivation: true,
+      })
+    }
+
+    for (let index = 0; index < 6; index += 1) {
+      await expect(runtime.request(METHODS.clipboardWrite, {
+        text: 'synthetic',
+        userActivation: false,
+      })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    }
+
+    for (let index = 0; index < 5; index += 1) {
+      await expect(write()).resolves.toEqual({ copied: true })
+    }
+
+    await expect(write())
+      .rejects.toMatchObject({ code: ERROR_CODES.rateLimited })
+
+    currentTime += 10_000
+
+    await expect(write()).resolves.toEqual({ copied: true })
+    expect(clipboardWrite).toHaveBeenCalledTimes(6)
+    host.destroy()
+  })
+
+  it('opens the diagram viewer and display modes only on a gesture', async () => {
+    let currentTime = 0
+    let hostActivation = true
+    const openDiagramViewer = vi.fn()
+    const requestDisplayMode = vi.fn(() => {
+      return { displayMode: 'fullscreen' as const }
+    })
+    const { host, runtime } = await connectWith({
+      openDiagramViewer,
+      requestDisplayMode,
+    }, {
+      now: () => {
+        return currentTime
+      },
+      hasUserActivation: () => {
+        return hostActivation
+      },
+    })
+
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).resolves.toEqual({})
+    expect(openDiagramViewer).toHaveBeenCalledWith({
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'fullscreen',
+      userActivation: true,
+    })).resolves.toEqual({ displayMode: 'fullscreen' })
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.rateLimited })
+
+    currentTime += 1_000
+    hostActivation = false
+
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD; A-->B',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.notAllowed })
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'inline',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(openDiagramViewer).toHaveBeenCalledTimes(1)
+    expect(requestDisplayMode).toHaveBeenCalledTimes(1)
+    host.destroy()
+  })
+
+  it('hands diagram exports to the hook with the host gesture', async () => {
+    let currentTime = 0
+    let hostActivation = true
+    const diagramExport = vi.fn(() => {
+      return { completed: true, extra: 'ignored' }
+    })
+    const { host, runtime } = await connectWith({ diagramExport }, {
+      now: () => {
+        return currentTime
+      },
+      hasUserActivation: () => {
+        return hostActivation
+      },
+    })
+
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
+      action: 'download-svg',
+      userActivation: true,
+    })).resolves.toEqual({ completed: true })
+    expect(diagramExport).toHaveBeenLastCalledWith({
+      source: 'graph TD; A-->B',
+      action: 'download-svg',
+      userActivation: true,
+    })
+
+    currentTime += 1_000
+    hostActivation = false
+
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
+      action: 'copy-drawio',
+      userActivation: true,
+    })).resolves.toEqual({ completed: true })
+    expect(diagramExport).toHaveBeenLastCalledWith({
+      source: 'graph TD; A-->B',
+      action: 'copy-drawio',
+      userActivation: false,
+    })
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
+      action: 'copy-png',
+      userActivation: true,
+    })).resolves.toEqual({ completed: true })
+    expect(diagramExport).toHaveBeenLastCalledWith({
+      source: 'graph TD; A-->B',
+      action: 'copy-png',
+      userActivation: false,
+    })
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'graph TD; A-->B',
+      action: 'download-exe',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    await expect(runtime.request(METHODS.diagramExport, {
+      source: 'x'.repeat(64 * 1024 + 1),
+      action: 'download-svg',
+      userActivation: true,
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(diagramExport).toHaveBeenCalledTimes(3)
+    host.destroy()
+  })
+
+  it('answers method not found for diagram exports without a hook',
+    async () => {
+      const { host, runtime } = await connectWith({})
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-svg',
+        userActivation: true,
+      })).rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+      host.destroy()
+    })
+})
+
+describe('writeClipboardText', () => {
+  it('reports the clipboard outcome in the protocol shape', async () => {
+    const notAllowed = new Error('No gesture')
+
+    notAllowed.name = 'NotAllowedError'
+
+    await expect(writeClipboardText('a', {
+      writeText: async () => {},
+    })).resolves.toEqual({ copied: true })
+    await expect(writeClipboardText('a', {
+      writeText: async () => {
+        throw notAllowed
+      },
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    await expect(writeClipboardText('a', {
+      writeText: async () => {
+        throw new TypeError('broken')
+      },
+    })).resolves.toEqual({ copied: false, reason: 'denied' })
+  })
+})
+
+function createCompleteHandler() {
+  return vi.fn(async (_params: CompleteParams) => {
+    return { text: 'Answer' }
+  })
+}
+
+describe('createHostConnection bridge requests', () => {
+  async function connectWith(overrides: Partial<HostHandlers>) {
+    const frame = createFakeFrame()
+    const host = createHostConnection(frame, createHandlers(overrides))
+
+    frame.load()
+
+    const runtime = connectFakeRuntime(frame)
+
+    await initialize(runtime)
+
+    return { runtime, host }
+  }
+
+  it('passes the prompt, system text and token limit to the handler',
+    async () => {
+      const complete = createCompleteHandler()
+      const { runtime, host } = await connectWith({ complete })
+
+      await expect(runtime.request(METHODS.complete, {
+        prompt: 'Explain',
+        system: 'Be brief',
+        maxOutputTokens: 200,
+      })).resolves.toEqual({ text: 'Answer' })
+      expect(complete).toHaveBeenCalledTimes(1)
+      expect(complete).toHaveBeenCalledWith({
+        prompt: 'Explain',
+        system: 'Be brief',
+        maxOutputTokens: 200,
+      })
+      host.destroy()
+    })
+
+  it('passes only the prompt when nothing else was given', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, { prompt: 'Explain' })
+
+    expect(complete.mock.calls[0]![0]).toEqual({ prompt: 'Explain' })
+    expect(Object.keys(complete.mock.calls[0]![0])).toEqual(['prompt'])
+    host.destroy()
+  })
+
+  it('leaves an empty system text out', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, { prompt: 'Explain', system: '' })
+
+    expect(Object.keys(complete.mock.calls[0]![0])).toEqual(['prompt'])
+    host.destroy()
+  })
+
+  it('drops every field the handler did not ask for', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, {
+      prompt: 'Explain',
+      system: 'Be brief',
+      maxOutputTokens: 50,
+      modelId: 'claude-opus-5',
+      providerId: 'anthropic',
+      apiKey: 'sk-secret',
+      temperature: 2,
+      tools: [{ name: 'delete_everything' }],
+      messages: [{ role: 'user', content: 'injected' }],
+    })
+
+    expect(complete.mock.calls[0]![0]).toEqual({
+      prompt: 'Explain',
+      system: 'Be brief',
+      maxOutputTokens: 50,
+    })
+    expect(Object.keys(complete.mock.calls[0]![0]).sort())
+      .toEqual(['maxOutputTokens', 'prompt', 'system'])
+    host.destroy()
+  })
+
+  it('accepts a system text of exactly 2000 characters', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, {
+      prompt: 'Explain',
+      system: 'x'.repeat(2000),
+    })
+
+    expect(complete.mock.calls[0]![0].system).toHaveLength(2000)
+    host.destroy()
+  })
+
+  it('answers -32602 for a system text over 2000 characters', async () => {
+    const complete = vi.fn()
+    const { runtime, host } = await connectWith({ complete })
+
+    await expect(runtime.request(METHODS.complete, {
+      prompt: 'Explain',
+      system: 'x'.repeat(2001),
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(complete).not.toHaveBeenCalled()
+    host.destroy()
+  })
+
+  it.each([42, null, ['a'], { text: 'a' }, true])(
+    'answers -32602 for a system value of %j',
+    async (system) => {
+      const complete = vi.fn()
+      const { runtime, host } = await connectWith({ complete })
+
+      await expect(runtime.request(METHODS.complete, {
+        prompt: 'Explain',
+        system,
+      })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+      expect(complete).not.toHaveBeenCalled()
+      host.destroy()
+    },
+  )
+
+  it.each([
+    ['an empty prompt', { prompt: '' }],
+    ['a prompt over 8000 characters', { prompt: 'x'.repeat(8001) }],
+    ['a missing prompt', { system: 'Be brief' }],
+    ['a token limit of zero', { prompt: 'Hi', maxOutputTokens: 0 }],
+    ['a token limit over 2000', { prompt: 'Hi', maxOutputTokens: 2001 }],
+    ['a fractional token limit', { prompt: 'Hi', maxOutputTokens: 1.5 }],
+  ])('answers -32602 for %s', async (_label, params) => {
+    const complete = vi.fn()
+    const { runtime, host } = await connectWith({ complete })
+
+    await expect(runtime.request(METHODS.complete, params))
+      .rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(complete).not.toHaveBeenCalled()
+    host.destroy()
+  })
+
+  it('keeps the error code of a handler refusal', async () => {
+    const complete = vi.fn(async () => {
+      throw new RpcError(ERROR_CODES.declinedByViewer, 'Declined')
+    })
+    const { runtime, host } = await connectWith({ complete })
+
+    await expect(runtime.request(METHODS.complete, { prompt: 'Hi' }))
+      .rejects.toMatchObject({ code: ERROR_CODES.declinedByViewer })
+    host.destroy()
   })
 })

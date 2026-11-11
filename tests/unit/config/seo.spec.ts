@@ -119,6 +119,18 @@ describe('robots and sitemap configuration contract', () => {
   )
 
   it(
+    'keeps public artifact links out of the sitemap but not out of '
+    + 'robots.txt, so crawlers can read their noindex header',
+    () => {
+      expect(configuration.sitemap?.exclude).toContain('/a')
+      expect(configuration.sitemap?.exclude).toContain('/a/**')
+      expect(configuration.robots?.disallow).not.toContain('/a')
+      expect(configuration.robots?.disallow).not.toContain('/a/')
+      expect(configuration.robots?.disallow).not.toContain('/a/**')
+    },
+  )
+
+  it(
     'falls back the canonical site URL to the apex host when '
     + 'NUXT_PUBLIC_BASE_URL is unset',
     () => {
@@ -204,6 +216,21 @@ describe('agent discovery configuration contract', () => {
           'Content-Security-Policy': 'frame-ancestors \'none\'',
           'X-Frame-Options': 'DENY',
         }),
+      })
+    }
+  })
+
+  it('serves public artifact links noindex, unframed, unreferred and '
+    + 'uncached, on the page itself and below it', () => {
+    for (const route of ['/a', '/a/**']) {
+      expect(configuration.routeRules?.[route]).toEqual({
+        cache: false,
+        headers: {
+          'Cache-Control': 'private, no-store',
+          'Content-Security-Policy': 'frame-ancestors \'none\'',
+          'Referrer-Policy': 'no-referrer',
+          'X-Robots-Tag': 'noindex, nofollow',
+        },
       })
     }
   })

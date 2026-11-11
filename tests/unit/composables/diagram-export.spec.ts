@@ -382,6 +382,61 @@ describe('composables/diagram-export', () => {
         svg: '<svg><g></svg>',
       })).resolves.toBe(false)
     })
+
+    describe('copy-png', () => {
+      beforeEach(() => {
+        FakeClipboardItem.supports.mockImplementation((type: string) => {
+          return type === 'image/png'
+        })
+      })
+
+      it('builds the image ClipboardItem and starts the write before any await', () => {
+        const result = useDiagramExport().runExportAction('copy-png', input)
+
+        expect(events).toEqual(['item', 'write'])
+        expect(result).toBeInstanceOf(Promise)
+      })
+
+      it('writes only image/png with the blob the download renders', async () => {
+        const result = await useDiagramExport()
+          .runExportAction('copy-png', input)
+        const items = written[0]?.items ?? {}
+        const blob = await items['image/png']!
+
+        expect(result).toBe(true)
+        expect(Object.keys(items)).toEqual(['image/png'])
+        expect(blob.type).toBe('image/png')
+        expect(vi.mocked(svgToPngBlob)).toHaveBeenCalledWith(
+          expect.stringContaining('<svg'),
+        )
+        expect(writeText).not.toHaveBeenCalled()
+      })
+
+      it('resolves false without a text fallback when the write is refused', async () => {
+        write.mockRejectedValue(new Error('NotAllowedError'))
+
+        await expect(useDiagramExport().runExportAction('copy-png', input))
+          .resolves.toBe(false)
+        expect(writeText).not.toHaveBeenCalled()
+      })
+
+      it('resolves false when the png cannot be rendered', async () => {
+        vi.mocked(svgToPngBlob).mockRejectedValue(new Error('rasterize'))
+
+        await expect(useDiagramExport().runExportAction('copy-png', input))
+          .resolves.toBe(false)
+        expect(writeText).not.toHaveBeenCalled()
+      })
+
+      it('resolves false when the browser cannot write images', async () => {
+        FakeClipboardItem.supports.mockReturnValue(false)
+
+        await expect(useDiagramExport().runExportAction('copy-png', input))
+          .resolves.toBe(false)
+        expect(write).not.toHaveBeenCalled()
+        expect(writeText).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('runExportAction downloads and draw.io', () => {

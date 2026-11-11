@@ -1,6 +1,9 @@
 <template>
   <div class="grid gap-6">
-    <AdminRolloutNotice v-if="data && !data.rolloutEnabled" />
+    <AdminRolloutNotice
+      v-if="data && !data.rolloutEnabled"
+      :gate="data.rolloutGate"
+    />
     <div
       v-if="status === 'pending' && !data"
       class="grid gap-2"

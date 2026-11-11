@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { FEATURE_REGISTRY } from '#shared/utils/features/registry'
 import type {
   FeatureEvaluationConfig,
   FeatureEvaluationContext,
@@ -13,9 +14,13 @@ import {
   hasObjectedToExperiments,
   isAdminUser,
   isFeatureActive,
+  isFeatureToggledOn,
   loadFeatureRules,
   loadUserFeatureState,
 } from '~~/server/utils/features/evaluate'
+import { markAllFeaturesAvailable } from '../../../../setup/helpers/features-available'
+
+await markAllFeaturesAvailable()
 
 const baseConfig: FeatureEvaluationConfig = {
   featuresDisabled: '',
@@ -430,9 +435,94 @@ describe('active state and objections', () => {
   })
 })
 
+describe('opt-out and availability', () => {
+  const on = { value: true }
+  const earlier = new Date('2026-11-01T00:00:00Z')
+  const later = new Date('2026-11-02T00:00:00Z')
+
+  it('keeps a non-spending feature on until the user switches it off', () => {
+    expect(isFeatureActive('artifacts', on, createUserState())).toBe(true)
+    expect(isFeatureActive('artifacts', on, createUserState({
+      optIns: { artifacts: { optedInAt: null, optedOutAt: later } },
+    }))).toBe(false)
+    expect(isFeatureActive('artifacts', on, createUserState({
+      optIns: { artifacts: { optedInAt: earlier, optedOutAt: later } },
+    }))).toBe(false)
+  })
+
+  it('switches a non-spending feature back on with a newer opt-in', () => {
+    expect(isFeatureActive('artifacts', on, createUserState({
+      optIns: { artifacts: { optedInAt: later, optedOutAt: earlier } },
+    }))).toBe(true)
+  })
+
+  it('turns a child off when its non-spending parent is switched off', () => {
+    const state = createUserState({
+      optIns: { artifacts: { optedInAt: null, optedOutAt: later } },
+    })
+
+    expect(isFeatureActive('artifacts.react', on, state)).toBe(false)
+    expect(isFeatureActive('artifacts.react', on, createUserState()))
+      .toBe(true)
+  })
+
+  it('reads the toggle state by opt-in kind', () => {
+    const optOut = { optIn: 'none' } as const
+    const optIn = { optIn: 'required' } as const
+
+    expect(isFeatureToggledOn(optOut, undefined)).toBe(true)
+    expect(isFeatureToggledOn(optIn, undefined)).toBe(false)
+    expect(isFeatureToggledOn(optOut, {
+      optedInAt: earlier,
+      optedOutAt: later,
+    })).toBe(false)
+    expect(isFeatureToggledOn(optIn, {
+      optedInAt: earlier,
+      optedOutAt: later,
+    })).toBe(false)
+    expect(isFeatureToggledOn(optIn, {
+      optedInAt: later,
+      optedOutAt: earlier,
+    })).toBe(true)
+  })
+
+  it('is off for an unavailable feature whatever the role or grant', async () => {
+    const definition = FEATURE_REGISTRY['artifacts']
+
+    definition.available = false
+
+    try {
+      const forAdmin = await evaluateFeature('artifacts', createContext({
+        userState: adminState,
+      }))
+      const forGrant = await evaluateFeature('artifacts', createContext({
+        userState: createUserState({
+          grants: { artifacts: { effect: 'allow', variant: null } },
+        }),
+      }))
+      const forChild = await evaluateFeature('artifacts.react', createContext({
+        userState: adminState,
+      }))
+
+      expect(forAdmin).toMatchObject({ value: false, reason: 'NOT_AVAILABLE' })
+      expect(forGrant).toMatchObject({ value: false, reason: 'NOT_AVAILABLE' })
+      expect(forChild).toMatchObject({
+        value: false,
+        reason: 'NOT_AVAILABLE',
+        flagMetadata: { decidedBy: 'artifacts' },
+      })
+    } finally {
+      definition.available = true
+    }
+  })
+})
+
+const beforeNotice = new Date('2026-11-08T00:00:00Z')
+const afterNotice = new Date('2026-12-19T00:00:00Z')
+
 describe('getFeatureEvaluationConfig', () => {
   it('defaults rollouts off and host mode to byok', () => {
-    expect(getFeatureEvaluationConfig({})).toMatchObject({
+    expect(getFeatureEvaluationConfig({}, beforeNotice)).toMatchObject({
       adminEmails: '',
       featuresDisabled: '',
       featuresHostMode: 'byok',
@@ -440,20 +530,35 @@ describe('getFeatureEvaluationConfig', () => {
     })
   })
 
-  it('ships rollouts off and no admins in nuxt.config defaults', () => {
-    expect(getFeatureEvaluationConfig()).toMatchObject({
+  it('ships rollouts to the notice date and no admins in nuxt.config defaults', () => {
+    expect(getFeatureEvaluationConfig(undefined, beforeNotice)).toMatchObject({
       adminEmails: '',
       featuresDisabled: '',
       featuresHostMode: 'byok',
       featuresRolloutEnabled: false,
     })
+  })
+
+  it('opens the rollout gate by itself when the notice takes effect', () => {
+    expect(getFeatureEvaluationConfig({}, afterNotice)).toMatchObject({
+      featuresRolloutEnabled: true,
+      featuresRolloutGate: { reason: 'notice_in_force' },
+    })
+    expect(getFeatureEvaluationConfig(
+      { featuresRolloutEnabled: 'off' },
+      afterNotice,
+    ).featuresRolloutEnabled).toBe(false)
+    expect(getFeatureEvaluationConfig(
+      { featuresRolloutEnabled: 'on' },
+      beforeNotice,
+    ).featuresRolloutEnabled).toBe(true)
   })
 
   it('reads env string values', () => {
     expect(getFeatureEvaluationConfig({
       featuresRolloutEnabled: 'true',
       featuresHostMode: 'off',
-    })).toMatchObject({
+    }, beforeNotice)).toMatchObject({
       featuresRolloutEnabled: true,
       featuresHostMode: 'off',
     })

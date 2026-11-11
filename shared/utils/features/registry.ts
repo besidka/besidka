@@ -16,6 +16,7 @@ export interface FeatureDefinition {
   title: string
   description: string
   stage: FeatureStage
+  available: boolean
   default: boolean
   allowRoles: FeatureRole[]
   spend: FeatureSpend
@@ -44,6 +45,7 @@ function internalFeature<const Key extends string>(
 
   return {
     stage: 'internal',
+    available: false,
     default: false,
     allowRoles: ['admin'],
     requires: { bindings: [], keyKinds: [] },
@@ -59,18 +61,21 @@ const featureList = [
     key: 'artifacts',
     title: 'Artifacts',
     description: 'Interactive documents and apps rendered next to the chat.',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.react',
     title: 'React artifacts',
     description: 'Artifacts written as React components.',
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.storage',
     title: 'Artifact storage',
     description: 'Artifacts that keep their own data between visits.',
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.llm-bridge',
@@ -79,12 +84,14 @@ const featureList = [
     spend: 'foreground',
     requires: { bindings: [], keyKinds: ['provider'] },
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.share',
     title: 'Shared artifacts',
     description: 'Public links to an artifact.',
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.mcp',
@@ -92,6 +99,7 @@ const featureList = [
     description: 'Artifact tools on the MCP server.',
     exposeToClient: false,
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'documents',
@@ -239,6 +247,7 @@ const featureList = [
     key: 'ui.side-panel-demo',
     title: 'Side panel demo',
     description: 'A demo of the right-hand side panel.',
+    available: true,
   }),
 ] as const
 

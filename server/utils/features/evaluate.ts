@@ -22,6 +22,7 @@ import {
   FEATURE_ROLES,
   getFeatureDefinition,
 } from '#shared/utils/features/registry'
+import { computeFeatureRolloutGate } from '#shared/utils/features/rollout-gate'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -43,17 +44,18 @@ interface FeatureRuntimeConfig {
   featuresRolloutEnabled?: unknown
 }
 
-function isEnabledFlag(value: unknown): boolean {
-  return value === true || value === 'true' || value === '1'
-}
-
 export function isAdminTwoFactorRequired(): boolean {
   return !import.meta.dev && process.env.CI !== 'true'
 }
 
 export function getFeatureEvaluationConfig(
   runtimeConfig: FeatureRuntimeConfig = useRuntimeConfig(),
+  now: Date = new Date(),
 ): FeatureEvaluationConfig {
+  const rolloutGate = computeFeatureRolloutGate(
+    runtimeConfig.featuresRolloutEnabled,
+    now,
+  )
   const hostMode = String(runtimeConfig.featuresHostMode || 'byok')
     .trim()
     .toLowerCase()
@@ -64,9 +66,8 @@ export function getFeatureEvaluationConfig(
     featuresHostMode: featureHostModes.includes(hostMode as FeatureHostMode)
       ? hostMode as FeatureHostMode
       : 'off',
-    featuresRolloutEnabled: isEnabledFlag(
-      runtimeConfig.featuresRolloutEnabled,
-    ),
+    featuresRolloutEnabled: rolloutGate.open,
+    featuresRolloutGate: rolloutGate,
     requireAdminTwoFactor: isAdminTwoFactorRequired(),
   }
 }
@@ -136,20 +137,40 @@ export function isActiveOptIn(optIn: FeatureOptInState | undefined): boolean {
   return optIn.optedOutAt.getTime() < optIn.optedInAt.getTime()
 }
 
-export function hasObjectedToExperiments(
-  userState: FeatureUserState | null,
+export function isWithdrawnOptIn(
+  optIn: FeatureOptInState | undefined,
 ): boolean {
-  const objection = userState?.optIns[EXPERIMENTS_OPT_IN_KEY]
-
-  if (!objection?.optedOutAt) {
+  if (!optIn?.optedOutAt) {
     return false
   }
 
-  if (!objection.optedInAt) {
+  if (!optIn.optedInAt) {
     return true
   }
 
-  return objection.optedOutAt.getTime() >= objection.optedInAt.getTime()
+  return optIn.optedOutAt.getTime() >= optIn.optedInAt.getTime()
+}
+
+export function hasObjectedToExperiments(
+  userState: FeatureUserState | null,
+): boolean {
+  return isWithdrawnOptIn(userState?.optIns[EXPERIMENTS_OPT_IN_KEY])
+}
+
+/**
+ * The state of a feature's Labs toggle: a feature that needs an opt-in is on
+ * only after the user switched it on, any other feature is on until the user
+ * switched it off.
+ */
+export function isFeatureToggledOn(
+  definition: Pick<FeatureDefinition, 'optIn'>,
+  optIn: FeatureOptInState | undefined,
+): boolean {
+  if (definition.optIn === 'required') {
+    return isActiveOptIn(optIn)
+  }
+
+  return !isWithdrawnOptIn(optIn)
 }
 
 export async function computeFeatureBucket(input: string): Promise<number> {
@@ -267,6 +288,10 @@ async function evaluateOwnSteps(
   const { config, userState } = context
   const rule = context.rules[definition.key]
   const hasBinding = context.hasBinding ?? readEnvBinding
+
+  if (!definition.available) {
+    return resolution(false, 'NOT_AVAILABLE')
+  }
 
   if (isFeatureKillSwitched(definition.key, config)) {
     return resolution(false, 'KILL_SWITCH')
@@ -390,10 +415,7 @@ export function isFeatureActive(
   let current: FeatureDefinition | undefined = definition
 
   while (current) {
-    if (
-      current.optIn === 'required'
-      && !isActiveOptIn(userState?.optIns[current.key])
-    ) {
+    if (!isFeatureToggledOn(current, userState?.optIns[current.key])) {
       return false
     }
 

@@ -43,6 +43,11 @@ const scopeDetails: Record<string, ScopeDetails> = {
     title: 'Read your settings',
     description: 'See your preferences and memory switches.',
   },
+  'artifacts:read': {
+    title: 'Read your artifacts and their share links',
+    description: 'See your artifacts, their content and versions, and the '
+      + 'public links that are active.',
+  },
   'projects:write': {
     title: 'Change your projects',
     description: 'Create, rename, pin, archive and edit projects, their '
@@ -67,10 +72,21 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'and chat search switches. It cannot add keys, turn on automatic '
       + 'memory updates or change the models memory uses.',
   },
+  'artifacts:write': {
+    title: 'Create and edit your artifacts',
+    description: 'Create artifacts, add new versions to them and stop their '
+      + 'public links. It cannot publish a link.',
+  },
+  'artifacts:share': {
+    title: 'Publish artifacts as public links (up to 30 days)',
+    description: 'Create a public link to one of your artifacts. Anyone who '
+      + 'has the link can open it and report it. The link expires within 30 '
+      + 'days, you can revoke it, and the app can create only a few a day.',
+  },
   'data:delete': {
     title: 'Delete your data',
     description: 'Permanently delete chats, messages, projects, knowledge, '
-      + 'files and memory, and reset memory. Deleted data cannot be '
+      + 'files, artifacts and memory, and reset memory. Deleted data cannot be '
       + 'restored.',
   },
   'admin:features': {

@@ -239,6 +239,18 @@ const frameProtectionHeaders = {
   'X-Frame-Options': 'DENY',
 }
 
+function createArtifactShareRouteRule() {
+  return {
+    cache: false as const,
+    headers: {
+      'Cache-Control': 'private, no-store',
+      'Content-Security-Policy': 'frame-ancestors \'none\'',
+      'Referrer-Policy': 'no-referrer',
+      'X-Robots-Tag': 'noindex, nofollow',
+    },
+  }
+}
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-28',
   buildId,
@@ -266,6 +278,11 @@ export default defineNuxtConfig({
     ...Object.fromEntries(
       ['/signin', '/signup', '/2fa'].map((route) => {
         return [route, { headers: frameProtectionHeaders }]
+      }),
+    ),
+    ...Object.fromEntries(
+      ['/a', '/a/**'].map((route) => {
+        return [route, createArtifactShareRouteRule()]
       }),
     ),
   },
@@ -364,6 +381,7 @@ export default defineNuxtConfig({
     filesRetentionCleanupBatchSize: 100,
     filesRetentionCleanupMaxRuntimeMs: 20000,
     filesMaintenanceToken: '',
+    mailAlertSecret: '',
     researchSweepEnabled: false,
     researchSweepBatchSize: 20,
     researchSweepMaxRuntimeMs: 20000,
@@ -380,7 +398,7 @@ export default defineNuxtConfig({
     adminEmails: '',
     featuresDisabled: '',
     featuresHostMode: 'byok',
-    featuresRolloutEnabled: false,
+    featuresRolloutEnabled: '',
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
     messageSearchSweepMaxRuntimeMs: 20000,
@@ -613,6 +631,8 @@ export default defineNuxtConfig({
       '/reset-password',
       '/2fa',
       '/oauth/**',
+      '/a',
+      '/a/**',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/**',
@@ -739,9 +759,14 @@ export default defineNuxtConfig({
         'ai',
         '@ai-sdk/vue',
         'ulid',
-        'shiki-stream/vue',
-        'shiki/bundle/web',
+        '@shikijs/stream',
+        'shiki/core',
         'shiki/engine/javascript',
+        '@panzoom/panzoom',
+        'dompurify',
+        'shiki/langs',
+        'shiki/themes/github-dark-high-contrast.mjs',
+        'shiki/themes/github-light-high-contrast.mjs',
       ],
       // mediabunny spawns a Web Worker for UrlSource range reads; Vite's dep
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`
@@ -939,6 +964,11 @@ export default defineNuxtConfig({
           {
             id: 'pwa-auto-refresh-applied',
             name: 'pwa:auto-refresh-applied-until',
+            type: 'sessionStorage',
+          },
+          {
+            id: 'artifact-share-return',
+            name: 'artifacts:share-return',
             type: 'sessionStorage',
           },
         ],

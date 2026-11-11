@@ -2,9 +2,12 @@ import { ERROR_CODES, METHODS } from './constants.ts'
 import { createEndpoint } from './endpoint.ts'
 import type { Endpoint, PortLike, RequestOptions } from './endpoint.ts'
 import {
+  isClipboardWriteResult,
+  isDiagramExportResult,
   isCompleteResult,
   isHostContextChangedParams,
   isInitializeResult,
+  isRequestDisplayModeResult,
   isStorageGetResult,
   isStorageListResult,
   isToolInputPartialParams,
@@ -62,6 +65,9 @@ const RESULT_GUARDS: Partial<
   [METHODS.storageGet]: isStorageGetResult,
   [METHODS.storageList]: isStorageListResult,
   [METHODS.complete]: isCompleteResult,
+  [METHODS.clipboardWrite]: isClipboardWriteResult,
+  [METHODS.diagramExport]: isDiagramExportResult,
+  [METHODS.requestDisplayMode]: isRequestDisplayModeResult,
 }
 
 function dispatchHostNotification(

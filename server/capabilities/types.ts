@@ -8,14 +8,18 @@ import type { McpPrivateToolName } from '~~/server/utils/mcp/tool-scopes'
 /**
  * Everything a capability's chat tools may use, captured by the caller
  * before any parallel work starts. Tool factories never read the request
- * event.
+ * event. `model` is undefined for a gateway send (no curated model), so
+ * `modelId` is the reliable id. `assistantMessageId` is the public id the
+ * reply will be persisted under.
  */
 export interface CapabilityToolContext {
   userId: number
   chatId: string
   db: ReturnType<typeof useDb>
   kv: KVNamespace
-  model: Model
+  model: Model | undefined
+  modelId?: string
+  assistantMessageId?: string
   logger: LoggerLike
   isFeatureActive: (flag: FeatureKey) => boolean
 }

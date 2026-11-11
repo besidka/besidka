@@ -1,5 +1,11 @@
 import { MAX_LOG_MESSAGE_LENGTH } from '@besidka/artifacts-protocol'
 import type { LogLevel, LogMessageParams } from '@besidka/artifacts-protocol'
+import { DiagramLimitError } from './render/diagram-limit.ts'
+import {
+  describeArtifactScriptError,
+  getExecutingScriptStartLine,
+  locateScriptError,
+} from './render/script-location.ts'
 
 type HostNotifier = (params: LogMessageParams) => void
 
@@ -50,6 +56,22 @@ function truncate(value: string): string {
 }
 
 export function describeError(error: unknown): LogMessageParams['data'] {
+  if (error instanceof DiagramLimitError) {
+    const { code, limit, found } = error.diagramLimit
+    const data: LogMessageParams['data'] = {
+      message: truncate(error.message),
+      stack: truncate(error.rawMessage),
+      code,
+      limit,
+    }
+
+    if (found !== undefined) {
+      data.found = found
+    }
+
+    return data
+  }
+
   if (error instanceof Error) {
     const message = truncate(`${error.name}: ${error.message}`)
 
@@ -109,18 +131,37 @@ export function reportError(error: unknown, options: ReportOptions = {}) {
 
   notifyHost?.({ level, data })
 
-  if (options.showPanel ?? level === 'error') {
+  if (options.showPanel ?? (level === 'error' && !data.code)) {
     showErrorPanel(data.message)
   }
 }
 
 const MUTED_SCRIPT_ERROR = 'Script error.'
 
+const MUTED_SCRIPT_ERROR_IN_SCRIPT = 'The error is in the artifact\'s script that starts on line'
+
 const MUTED_SCRIPT_ERROR_HINT = 'Script error. The browser hid the details of this error; the browser console shows the full message.'
 
 function handleWindowError(event: ErrorEvent) {
   if (!event.error && event.message === MUTED_SCRIPT_ERROR) {
-    reportError(MUTED_SCRIPT_ERROR_HINT)
+    const startLine = getExecutingScriptStartLine()
+
+    reportError(startLine === null
+      ? MUTED_SCRIPT_ERROR_HINT
+      : `${MUTED_SCRIPT_ERROR_IN_SCRIPT} ${startLine}. ${MUTED_SCRIPT_ERROR_HINT}`)
+
+    return
+  }
+
+  const location = locateScriptError(event.filename, event.lineno)
+
+  if (location) {
+    reportError(describeArtifactScriptError(
+      event.error instanceof Error ? event.error : null,
+      event.message,
+      location,
+      event.colno,
+    ))
 
     return
   }

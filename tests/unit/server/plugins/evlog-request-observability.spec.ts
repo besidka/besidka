@@ -135,3 +135,170 @@ describe('admin path query stripping', () => {
     expect(JSON.stringify(context.event)).not.toContain('jane')
   })
 })
+
+describe('artifact share token redaction', () => {
+  const TOKEN = 'Q2hhbmdlTWVQbGVhc2VJdHNBU2VjcmV0VG9rZW4xMjM0NQ'
+
+  it('replaces the token of a public artifact link with the route pattern',
+    async () => {
+      const { redactArtifactSharePath } = await import(
+        '~~/server/utils/artifacts/share-redaction'
+      )
+
+      expect(redactArtifactSharePath(`/a/${TOKEN}`)).toBe('/a/[token]')
+      expect(redactArtifactSharePath(`/a/${TOKEN}/_payload.json?x=1`))
+        .toBe('/a/[token]/_payload.json?x=1')
+      expect(redactArtifactSharePath(`GET https://besidka.com/a/${TOKEN}`))
+        .toBe('GET https://besidka.com/a/[token]')
+      expect(redactArtifactSharePath('/api/v1/artifact-shares/current'))
+        .toBe('/api/v1/artifact-shares/current')
+      expect(redactArtifactSharePath(42)).toBe(42)
+      expect(redactArtifactSharePath(`/signup?next=%2Fa%2F${TOKEN}`))
+        .toBe('/signup?next=%2Fa%2F[token]')
+      expect(redactArtifactSharePath(`/signin?next=%2fa%2f${TOKEN}&x=1`))
+        .toBe('/signin?next=%2fa%2f[token]&x=1')
+      expect(redactArtifactSharePath('/data/files'))
+        .toBe('/data/files')
+      expect(redactArtifactSharePath(`/signin?next=%252Fa%252F${TOKEN}`))
+        .toBe('/signin?next=%252Fa%252F[token]')
+      expect(redactArtifactSharePath(`x=%25252fA%25252f${TOKEN}`))
+        .toBe('x=%25252fa%25252f[token]')
+      expect(redactArtifactSharePath(`/A/${TOKEN}`)).toBe('/a/[token]')
+    })
+
+  it('replaces the token of a fragment link, plain or percent-encoded',
+    async () => {
+      const { redactArtifactSharePath } = await import(
+        '~~/server/utils/artifacts/share-redaction'
+      )
+
+      expect(redactArtifactSharePath(`/a#${TOKEN}`)).toBe('/a#[token]')
+      expect(redactArtifactSharePath(`https://besidka.com/a#${TOKEN}`))
+        .toBe('https://besidka.com/a#[token]')
+      expect(redactArtifactSharePath(`Failed on https://besidka.com/A#${TOKEN} x`))
+        .toBe('Failed on https://besidka.com/a#[token] x')
+      expect(redactArtifactSharePath(`x?url=%2Fa%23${TOKEN}&y=1`))
+        .toBe('x?url=%2Fa%23[token]&y=1')
+      expect(redactArtifactSharePath(`x?url=https%3A%2F%2Fb.com%2fa%23${TOKEN}`))
+        .toBe('x?url=https%3A%2F%2Fb.com%2fa%23[token]')
+      expect(redactArtifactSharePath(`x=%252Fa%2523${TOKEN}`))
+        .toBe('x=%252Fa%2523[token]')
+      expect(redactArtifactSharePath('/a')).toBe('/a')
+      expect(redactArtifactSharePath('/signin?next=%2Fa')).toBe('/signin?next=%2Fa')
+      expect(redactArtifactSharePath('/data#files')).toBe('/data#files')
+    })
+
+  it('redacts a browser-ingested error that carries the page address', () => {
+    const context = {
+      request: { method: 'POST', path: '/api/_evlog/ingest' },
+      headers: { 'cf-ray': 'ray-2' },
+      event: {
+        source: 'client',
+        level: 'error',
+        message: `Unhandled error on https://besidka.com/a#${TOKEN}`,
+        attributes: {
+          clientError: {
+            route: `/a#${TOKEN}`,
+            stack: `at onMounted (https://besidka.com/a#${TOKEN}:1:1)`,
+          },
+          client: { href: `https://besidka.com/a#${TOKEN}` },
+        },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(JSON.stringify(context)).not.toContain(TOKEN)
+    expect(context.event.attributes).toMatchObject({
+      clientError: { route: '/a#[token]' },
+      client: { href: 'https://besidka.com/a#[token]' },
+    })
+  })
+
+  it('keeps the token out of every drained field of a page request', () => {
+    const context = {
+      request: { method: 'GET', path: `/a/${TOKEN}` },
+      headers: { 'x-besidka-artifact-share': TOKEN, 'cf-ray': 'ray-1' },
+      event: {
+        path: `/a/${TOKEN}`,
+        error: {
+          message: `Render failed for /a/${TOKEN}`,
+          stack: `at render (/a/${TOKEN})`,
+        },
+        attributes: { client: { url: `https://besidka.com/a/${TOKEN}#top` } },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/a/[token]',
+      message: 'GET /a/[token]',
+      requestMeta: { cfRay: 'ray-1' },
+    })
+    expect(context.request.path).toBe('/a/[token]')
+    expect(JSON.stringify(context.event)).not.toContain(TOKEN)
+    expect(JSON.stringify(context.event)).not.toContain(
+      'x-besidka-artifact-share',
+    )
+    expect(context.headers).toEqual({ 'cf-ray': 'ray-1' })
+    expect(JSON.stringify(context)).not.toContain(TOKEN)
+  })
+})
+
+describe('artifact viewer storage key redaction', () => {
+  const KEY = 'jane.doe@example.com'
+
+  it('keeps the storage key out of every drained field', () => {
+    const context = {
+      request: {
+        method: 'PUT',
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+      },
+      headers: {},
+      event: {
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+        error: {
+          message: `Failed /api/v1/artifacts/ArtifactId1/storage/${KEY}`,
+        },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/api/v1/artifacts/ArtifactId1/storage/[key]',
+      message: 'PUT /api/v1/artifacts/ArtifactId1/storage/[key]',
+    })
+    expect(context.request.path)
+      .toBe('/api/v1/artifacts/ArtifactId1/storage/[key]')
+    expect(JSON.stringify(context)).not.toContain(KEY)
+  })
+
+  it('strips a query string after the key and leaves other paths alone', () => {
+    const context = {
+      request: {
+        method: 'DELETE',
+        path: `/api/v1/artifacts/ArtifactId1/storage/${KEY}?x=1`,
+      },
+      headers: {},
+      event: {} as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event.message)
+      .toBe('DELETE /api/v1/artifacts/ArtifactId1/storage/[key]')
+
+    const other = {
+      request: { method: 'GET', path: '/api/v1/artifacts/ArtifactId1/storage' },
+      headers: {},
+      event: {} as Record<string, unknown>,
+    }
+
+    enrich(other)
+
+    expect(other.event.message)
+      .toBe('GET /api/v1/artifacts/ArtifactId1/storage')
+  })
+})

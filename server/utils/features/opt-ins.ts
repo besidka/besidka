@@ -129,8 +129,9 @@ async function writeOptInTimestamp(
 }
 
 /**
- * The Labs opt-in writer. The caller has already checked that the user has
- * access to `flag` and that it needs an opt-in. Logs the C8 replay-ledger
+ * The Labs toggle writer: an opt-in for a feature that needs one, an opt-out
+ * (`optedIn: false`) for any other. The caller has already checked that the
+ * user has access to `flag`. Logs the C8 replay-ledger
  * line, so a D1 restore can never silently revive a withdrawn opt-in.
  */
 export async function setFeatureOptIn(

@@ -1188,3 +1188,58 @@ describe('summarizeChatContextForMcp', () => {
       expect(summary.inputs).toBe(MCP_CONTEXT_FILES_LIMIT + 5 + 1)
     })
 })
+
+describe('artifacts section', () => {
+  const artifacts = new Map([
+    ['art-1', {
+      title: '  Quiz\n  title  ',
+      kind: 'html' as const,
+      version: 2,
+      latestVersion: 3,
+    }],
+  ])
+
+  function artifactPart(artifactId: string, version: number) {
+    return {
+      type: 'data-artifact',
+      data: { artifactId, version, kind: 'html', title: 'Part title' },
+    }
+  }
+
+  it('lists each loaded artifact once, from its first message', () => {
+    const context = buildChatContext([
+      message('m1', 'assistant', [artifactPart('art-1', 1)]),
+      message('m2', 'assistant', [
+        artifactPart('art-1', 2),
+        artifactPart('art-unknown', 1),
+        { type: 'data-artifact', data: { artifactId: 'art-1' } },
+      ]),
+    ], { visibility: 'public', artifacts })
+
+    expect(context.outputs).toEqual([
+      {
+        id: 'artifact:art-1',
+        sectionId: 'artifacts',
+        kind: 'artifact',
+        title: 'Quiz title',
+        messageId: 'm1',
+        meta: {
+          artifactId: 'art-1',
+          artifactKind: 'html',
+          version: 2,
+          latestVersion: 3,
+        },
+      },
+    ])
+    expect(context.counts.outputs).toBe(1)
+    expect(context.kindCounts).toEqual({ artifact: 1 })
+  })
+
+  it('lists no artifacts when the caller loads none', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [artifactPart('art-1', 1)]),
+    ])
+
+    expect(context.outputs).toEqual([])
+  })
+})

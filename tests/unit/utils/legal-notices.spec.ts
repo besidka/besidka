@@ -20,6 +20,8 @@ const FIRST_NOTICE_ID = '2026-11-legal-notices'
 
 const EXPERIMENTAL_FEATURES_NOTICE_ID = '2026-11-experimental-features'
 
+const ARTIFACTS_NOTICE_ID = '2026-12-artifacts'
+
 function createNotice(overrides: Partial<LegalNotice> = {}): LegalNotice {
   return {
     id: 'test-notice',
@@ -223,7 +225,7 @@ describe('experimental features notice', () => {
   })
 
   it('becomes the banner notice while the earlier one is still active', () => {
-    const now = new Date('2026-11-20T12:00:00Z')
+    const now = new Date('2026-11-15T06:30:00Z')
     const activeIds = getActiveLegalNotices(now).map((activeNotice) => {
       return activeNotice.id
     })
@@ -235,5 +237,48 @@ describe('experimental features notice', () => {
     expect(getActiveLegalNotices(now).at(-1)?.id).toBe(
       EXPERIMENTAL_FEATURES_NOTICE_ID,
     )
+  })
+})
+
+describe('artifacts notice', () => {
+  const notice = getLegalNoticeById(ARTIFACTS_NOTICE_ID)
+
+  it('announces the Privacy Policy and the Terms of Use', () => {
+    expect(notice?.documents).toEqual(['privacy-policy', 'terms-of-use'])
+    expect(notice?.shortNoticeReason).toBeUndefined()
+    expect(notice?.alreadyAvailable).toBeUndefined()
+  })
+
+  it('takes effect together with the feature rollout gate', () => {
+    const experimentalNotice = getLegalNoticeById(
+      EXPERIMENTAL_FEATURES_NOTICE_ID,
+    )
+
+    expect(notice?.effectiveAt).toBe('2026-12-19')
+    expect(notice?.effectiveAt).toBe(experimentalNotice?.effectiveAt)
+  })
+
+  it('publishes after the experimental features notice', () => {
+    const experimentalNotice = getLegalNoticeById(
+      EXPERIMENTAL_FEATURES_NOTICE_ID,
+    )
+
+    expect(Date.parse(notice?.publishedAt ?? '')).toBeGreaterThan(
+      Date.parse(experimentalNotice?.publishedAt ?? ''),
+    )
+  })
+
+  it('becomes the banner notice while the two earlier ones are active', () => {
+    const now = new Date('2026-11-20T12:00:00Z')
+    const activeIds = getActiveLegalNotices(now).map((activeNotice) => {
+      return activeNotice.id
+    })
+
+    expect(activeIds).toEqual([
+      FIRST_NOTICE_ID,
+      EXPERIMENTAL_FEATURES_NOTICE_ID,
+      ARTIFACTS_NOTICE_ID,
+    ])
+    expect(getLatestLegalNotice(now)?.id).toBe(ARTIFACTS_NOTICE_ID)
   })
 })

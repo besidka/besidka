@@ -24,6 +24,10 @@ const mocks = vi.hoisted(() => ({
   searchAdminUsers: vi.fn(),
   listAdminUserRoles: vi.fn(),
   listAdminAuditLog: vi.fn(),
+  createFeatureSchedules: vi.fn(),
+  cancelFeatureSchedule: vi.fn(),
+  applyDueFeatureSchedules: vi.fn(),
+  testHookEnabled: false,
 }))
 
 vi.mock('nuxt/server', () => ({
@@ -69,6 +73,20 @@ vi.mock('~~/server/utils/features/admin', async (importOriginal) => {
     revokeUserRole: mocks.revokeUserRole,
   }
 })
+
+vi.mock('~~/server/utils/features/schedules', () => ({
+  createFeatureSchedules: mocks.createFeatureSchedules,
+  cancelFeatureSchedule: mocks.cancelFeatureSchedule,
+  applyDueFeatureSchedules: mocks.applyDueFeatureSchedules,
+}))
+
+vi.mock('~~/server/utils/features/schedule-test-hook', () => ({
+  isFeatureScheduleTestHookEnabled: () => mocks.testHookEnabled,
+}))
+
+vi.mock('~~/server/utils/features/schedule-notify', () => ({
+  createFeatureScheduleNotifier: () => vi.fn(),
+}))
 
 vi.mock('~~/server/utils/features/admin-queries', () => ({
   listAdminFeatures: mocks.listAdminFeatures,
@@ -128,6 +146,7 @@ describe('admin API routes', () => {
     mocks.body = {}
     mocks.query = {}
     mocks.headers = {}
+    mocks.testHookEnabled = false
   })
 
   afterEach(() => {
@@ -136,13 +155,22 @@ describe('admin API routes', () => {
 
   it('covers every documented route', () => {
     expect(listAdminRouteFiles()).toEqual([
+      'artifact-reports/[id]/action.post.ts',
+      'artifact-reports/[id]/index.get.ts',
+      'artifact-reports/index.get.ts',
+      'artifact-takedowns/index.post.ts',
+      'artifact-takedowns/restore.post.ts',
+      'artifacts/[id]/versions/[version].get.ts',
       'audit/index.get.ts',
       'features/[flag]/grants/index.get.ts',
       'features/[flag]/grants/index.post.ts',
       'features/[flag]/index.get.ts',
       'features/[flag]/rule.patch.ts',
+      'features/[flag]/schedules/[id]/cancel.post.ts',
+      'features/[flag]/schedules/index.post.ts',
       'features/grants/[id]/revoke.post.ts',
       'features/index.get.ts',
+      'features/schedules/apply-due.post.ts',
       'roles/[id]/revoke.post.ts',
       'roles/index.get.ts',
       'roles/index.post.ts',
@@ -288,6 +316,68 @@ describe('admin API routes', () => {
     await expect(callRoute('features/[flag]/rule.patch.ts'))
       .rejects.toMatchObject({ status: 400 })
     expect(mocks.setFeatureRule).not.toHaveBeenCalled()
+  })
+
+  it('schedules steps through the shared writer as the admin', async () => {
+    mocks.body = {
+      steps: [
+        { runAt: '2026-12-19T10:00:00.000Z', grantRoles: ['tester'] },
+        { runAt: '2026-12-26T10:00:00.000Z', rolloutBps: 2500 },
+      ],
+    }
+    mocks.createFeatureSchedules.mockResolvedValue({
+      flag: 'artifacts',
+      ids: [1, 2],
+    })
+
+    const result = await callRoute('features/[flag]/schedules/index.post.ts')
+
+    expect(mocks.assertNotCrossSiteRequest).toHaveBeenCalled()
+    expect(mocks.createFeatureSchedules).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: { userId: 1, kind: 'ui' } }),
+      'artifacts',
+      mocks.body,
+    )
+    expect(result).toEqual({ schedule: { flag: 'artifacts', ids: [1, 2] } })
+  })
+
+  it('rejects a schedule that grants admins or has no steps', async () => {
+    mocks.body = {
+      steps: [{ runAt: '2026-12-19T10:00:00.000Z', grantRoles: ['admin'] }],
+    }
+
+    await expect(callRoute('features/[flag]/schedules/index.post.ts'))
+      .rejects.toMatchObject({ status: 400 })
+
+    mocks.body = { steps: [] }
+
+    await expect(callRoute('features/[flag]/schedules/index.post.ts'))
+      .rejects.toMatchObject({ status: 400 })
+    expect(mocks.createFeatureSchedules).not.toHaveBeenCalled()
+  })
+
+  it('cancels one step of the flag', async () => {
+    mocks.cancelFeatureSchedule.mockResolvedValue({ id: 3, flag: 'artifacts' })
+
+    await callRoute('features/[flag]/schedules/[id]/cancel.post.ts')
+
+    expect(mocks.cancelFeatureSchedule).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: { userId: 1, kind: 'ui' } }),
+      'artifacts',
+      3,
+    )
+  })
+
+  it('keeps the apply-due test hook closed unless it is switched on', async () => {
+    await expect(callRoute('features/schedules/apply-due.post.ts'))
+      .rejects.toMatchObject({ status: 404 })
+    expect(mocks.applyDueFeatureSchedules).not.toHaveBeenCalled()
+
+    mocks.testHookEnabled = true
+    mocks.applyDueFeatureSchedules.mockResolvedValue({ applied: 1 })
+
+    await expect(callRoute('features/schedules/apply-due.post.ts'))
+      .resolves.toEqual({ result: { applied: 1 } })
   })
 
   it('rejects a short user search without logging the text', async () => {

@@ -59,6 +59,10 @@
           <Icon name="lucide:link" size="10" />
           Shared
         </span>
+        <HistoryArtifactBadge
+          :count="chat.artifactCount"
+          compact
+        />
       </div>
     </div>
     <div

@@ -11,6 +11,7 @@ import * as schema from '~~/server/db/schema'
 import { buildActiveShareFilter } from '~~/server/utils/chats/share-management'
 import type { ChatContextItems } from '~~/server/utils/chats/context/build-chat-context'
 import { buildChatContext } from '~~/server/utils/chats/context/build-chat-context'
+import { loadChatContextArtifacts } from '~~/server/utils/chats/context/artifacts'
 import type { ChatContextMessage } from '~~/server/utils/chats/context/sections'
 
 type ContextDb = ReturnType<typeof useDb>
@@ -134,6 +135,7 @@ export async function loadOwnedChatContext(
   db: ContextDb,
   userId: number,
   slug: string,
+  options: { includeArtifacts?: boolean } = {},
 ): Promise<ChatContextResponse | null> {
   const chat = await db.select({
     id: schema.chats.id,
@@ -142,6 +144,7 @@ export async function loadOwnedChatContext(
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
     memoryExcluded: schema.chats.memoryExcluded,
+    pinnedAt: schema.chats.pinnedAt,
   })
     .from(schema.chats)
     .leftJoin(
@@ -170,15 +173,27 @@ export async function loadOwnedChatContext(
     .limit(1)
     .get()
   const { rows, truncated } = await loadChatContextRows(db, chat.id)
-  const context = buildChatContext(toChatContextMessages(rows), {
+  const messages = toChatContextMessages(rows)
+  const artifacts = options.includeArtifacts
+    ? await loadChatContextArtifacts({
+      db,
+      chatOwnerUserId: userId,
+      messages,
+      visibility: 'private',
+    })
+    : undefined
+  const context = buildChatContext(messages, {
     visibility: 'private',
     truncated,
+    artifacts,
   })
 
   return {
     chat: {
+      id: chat.id,
       slug: chat.slug,
       title: chat.title ?? '',
+      pinnedAt: chat.pinnedAt ? chat.pinnedAt.toISOString() : null,
       project: chat.projectId && chat.projectName
         ? { id: String(chat.projectId), name: chat.projectName }
         : null,

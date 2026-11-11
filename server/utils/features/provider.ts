@@ -1,7 +1,9 @@
 import type { FeatureRole } from '#shared/utils/features/registry'
+import type { FeatureRolloutGate } from '#shared/utils/features/rollout-gate'
 
 export type FeatureResolutionReason
   = | 'UNKNOWN'
+    | 'NOT_AVAILABLE'
     | 'KILL_SWITCH'
     | 'HOST_MODE'
     | 'DISABLED'
@@ -64,6 +66,7 @@ export interface FeatureEvaluationConfig {
   featuresDisabled: string
   featuresHostMode: FeatureHostMode
   featuresRolloutEnabled: boolean
+  featuresRolloutGate?: FeatureRolloutGate
   adminEmails: string
   requireAdminTwoFactor: boolean
 }

@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test'
 import {
   authenticateUserByApi,
   createUniqueUser,
+  waitForHydration,
 } from './helpers/auth'
 
 const E2E_ADMIN_EMAIL = 'e2e-admin@example.com'
@@ -65,10 +66,11 @@ test('an admin grants a feature to another account', async ({ browser }) => {
   const memberId = await readUserId(memberPage)
   const before = await memberPage.request.get('/api/v1/features')
 
-  expect((await before.json()).features.artifacts.enabled).toBe(false)
+  expect((await before.json()).features['ui.side-panel-demo'].enabled)
+    .toBe(false)
 
   const grantResponse = await adminPage.request.post(
-    '/api/v1/admin/features/artifacts/grants',
+    '/api/v1/admin/features/ui.side-panel-demo/grants',
     { data: { userId: memberId, effect: 'allow', expiresInDays: 1 } },
   )
 
@@ -76,16 +78,126 @@ test('an admin grants a feature to another account', async ({ browser }) => {
 
   const after = await memberPage.request.get('/api/v1/features')
 
-  expect((await after.json()).features.artifacts).toMatchObject({
+  expect((await after.json()).features['ui.side-panel-demo']).toMatchObject({
     enabled: true,
     active: true,
   })
 
-  await adminPage.goto('/admin/features/artifacts')
+  await adminPage.goto('/admin/features/ui.side-panel-demo')
   await expect(adminPage.getByTestId('admin-grants-list'))
     .toContainText(member.email)
 
   const memberPageResponse = await memberPage.goto('/admin/features')
 
   expect(memberPageResponse?.status()).toBe(404)
+})
+
+function toLocalInputValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
+    + `-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function daysFromNow(days: number): string {
+  return toLocalInputValue(new Date(Date.now() + days * 24 * 60 * 60 * 1000))
+}
+
+function clearSchedules() {
+  execFileSync('pnpm', [
+    'exec',
+    'wrangler',
+    'd1',
+    'execute',
+    'DB',
+    '--local',
+    '--command',
+    'delete from feature_rule_schedules',
+  ], { stdio: 'ignore' })
+}
+
+function movePendingSchedulesToThePast() {
+  const pastSeconds = Math.floor(Date.now() / 1000) - 60
+
+  execFileSync('pnpm', [
+    'exec',
+    'wrangler',
+    'd1',
+    'execute',
+    'DB',
+    '--local',
+    '--command',
+    `update feature_rule_schedules set run_at = ${pastSeconds}`
+    + ' where status = \'pending\'',
+  ], { stdio: 'ignore' })
+}
+
+test('an admin schedules steps, cancels one and the due step applies', async ({
+  browser,
+}) => {
+  const admin = {
+    ...createUniqueUser('e2e-admin'),
+    name: 'E2E Admin',
+    email: E2E_ADMIN_EMAIL,
+  }
+  const adminPage = await openSignedInPage(browser, admin)
+
+  markEmailVerified(E2E_ADMIN_EMAIL)
+  clearSchedules()
+
+  await adminPage.goto('/admin/features/documents')
+  await waitForHydration(adminPage)
+  await expect(adminPage.getByTestId('admin-feature-schedules')).toBeVisible()
+  await expect(adminPage.getByTestId('admin-schedule-empty')).toBeVisible()
+
+  const firstRunAt = adminPage.getByTestId('admin-schedule-run-at-0')
+
+  await expect(async () => {
+    if (await firstRunAt.count() === 0) {
+      await adminPage.getByTestId('admin-schedule-add-step').click()
+    }
+
+    await expect(firstRunAt).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  await firstRunAt.fill(daysFromNow(2))
+  await adminPage.getByTestId('admin-schedule-testers-0').check()
+  await adminPage.getByTestId('admin-schedule-add-step').click()
+  await adminPage.getByTestId('admin-schedule-run-at-1').fill(daysFromNow(3))
+  await adminPage.getByTestId('admin-schedule-enabled-1').selectOption('off')
+  await adminPage.getByTestId('admin-schedule-submit').click()
+  await adminPage.getByTestId('confirmation-action-0').click()
+
+  const list = adminPage.getByTestId('admin-schedule-list')
+
+  await expect(list.locator('li')).toHaveCount(2)
+  await expect(list).toContainText('pending')
+
+  await adminPage.locator('[data-testid^="admin-schedule-cancel-"]')
+    .last()
+    .click()
+  await adminPage.getByTestId('confirmation-action-0').click()
+  await expect(list).toContainText('cancelled')
+
+  movePendingSchedulesToThePast()
+
+  const applyResponse = await adminPage.request.post(
+    '/api/v1/admin/features/schedules/apply-due',
+  )
+
+  expect(applyResponse.status()).toBe(200)
+  expect((await applyResponse.json()).result).toMatchObject({
+    applied: 1,
+    failed: 0,
+  })
+
+  await adminPage.reload()
+  await expect(adminPage.getByTestId('admin-schedule-list'))
+    .toContainText('applied')
+
+  const flagResponse = await adminPage.request.get(
+    '/api/v1/admin/features/documents',
+  )
+
+  expect((await flagResponse.json()).flag.rule.allowRoles)
+    .toEqual(['admin', 'tester'])
 })

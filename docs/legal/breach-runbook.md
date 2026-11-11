@@ -27,6 +27,9 @@ one can lead to a fine.
 3. Make sure the Cloudflare and Axiom account emails reach a mailbox you read.
 4. Know how the user notice is sent: a BCC batch from the privacy contact
    mailbox (5.2). Check that mailbox's daily sending limit now.
+5. Turn on the phone alert for the privacy and security mailboxes
+   (`docs/mail-alerts.md`): a processor's breach notice or a researcher's
+   report starts the 72 hours, and it then pushes as urgent to every admin.
 
 ## 1. When to use this, and the clock
 
@@ -93,7 +96,8 @@ is not a breach. Record it anyway (section 7).
 | `NUXT_BETTER_AUTH_SECRET` leaked | Rotate it, knowing the cost (2.4) |
 | `NUXT_ENCRYPTION_KEY` leaked | Rotate it with a re-encryption plan (2.5) |
 | A share link exposes a private chat | Revoke shares (2.6) |
-| Public or misconfigured R2 object or bucket | Remove public access in Cloudflare R2, then delete or replace the object |
+| A public artifact link exposes personal data, or an artifact is used to phish or leak data (planned, A-1 to A-7) | Take the artifact down or revoke its links (2.6; `docs/legal/content-incidents.md`, section 5). For many artifacts or an unknown scope, revoke all artifact links (2.6). If the runtime origin or its CSP is wrong, turn the global `artifacts` rule off in `/admin` first: it hides every artifact, the panel and `/a/` for everyone |
+| Public or misconfigured R2 object or bucket (including the `artifacts/` prefix) | Remove public access in Cloudflare R2, then delete or replace the object |
 | Vulnerable or abused route, or a flood | Disable the route or block traffic (2.7) |
 | A connected AI app is abused | Delete the grants: tables `oauth_access_tokens`, `oauth_refresh_tokens`, `oauth_consents` (row 10a of the Art. 30 record). Every `/mcp` call checks for a live consent row, so it stops at the next call (`docs/legal/dpia.md`, risk row 33) |
 | Admin account or admin MCP client compromised (feature access, `docs/feature-flags.md`) | Remove the address from the `NUXT_ADMIN_EMAILS` Worker secret and redeploy. Delete any `admin` rows in `user_roles`. Revoke the connected app that holds `admin:features` (its rows in `oauth_access_tokens`, `oauth_refresh_tokens` and `oauth_consents`), then revoke the account's sessions (2.3). If rules were changed, set the `NUXT_FEATURES_DISABLED` var to `*` and redeploy, which turns every feature off for everyone. Review `feature_audit_log` and the Axiom `attributes.featureAccess` lines (actor, targets, `admin.read` counts) to see what was read and changed, and reverse it. The admin search shows every user's email and name, so assess it as an exposure of the account list (section 3) |
@@ -152,6 +156,13 @@ it on `besidka-preview`, take a bookmark, run it. If the keys must be treated as
 exposed anyway (3, row 3), deleting the `keys` rows is simpler. Tell users to
 revoke the old keys at their providers and add new ones.
 
+**Artifact links (planned, A-7).** `artifact_shares.token_encrypted` holds every
+live artifact link, encrypted with the same secret so owners can copy a link
+again. The re-encryption job must cover that column too. A leak of the secret
+plus a read of D1 exposes every live link: treat it as row 9 of section 3 and
+revoke all artifact links (2.6). Lookups use `token_hash` only, which the
+secret does not protect and does not need to.
+
 ### 2.6 Revoke share links
 
 One chat: `POST /api/v1/chats/<slug>/share/revoke`
@@ -166,6 +177,26 @@ npx wrangler d1 execute besidka --env production --remote --command="DELETE FROM
 This also deletes `chat_share_files` (file grants). Count rows before and after
 and write both numbers in the record. Signed file tokens expire after 1 hour.
 Search engines may hold copies of pages that had indexing on: note it.
+
+**All artifact links (planned, A-7).** Revoke softly, so the evidence stays
+(the rows keep the token hash, the artifact and the times), after a bookmark:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="SELECT COUNT(*) FROM artifact_shares WHERE revoked_at IS NULL;"
+npx wrangler d1 execute besidka --env production --remote --command="UPDATE artifact_shares SET revoked_at = unixepoch() WHERE revoked_at IS NULL;"
+```
+
+Count before and after. Check the timestamp unit against the A-1 schema before
+running it (seconds or milliseconds). Artifacts in shared chats follow the chat
+share: revoke those as above. Artifact links are never indexed, so no search
+engine copies are expected.
+
+**Stores to check in an artifact incident** (planned, A-1 to A-7): R2
+`artifacts/<userId>/<artifactId>/v<n>`; D1 `artifacts`, `artifact_versions`,
+`artifact_shares`, `artifact_storage` (viewer answers, possibly
+special-category data), `artifact_reports` (reporters' names and emails); the
+privacy mailbox (report emails); Axiom `attributes.artifacts` and
+`attributes.artifactBridge` (ids only).
 
 ### 2.7 Disable a route or block traffic
 
@@ -201,6 +232,9 @@ para 113; the UODO guide lists it among high-risk factors). Besidka chats can ho
 | 6 | Short outage | EDPB 9/2022 Annex B (iii) | Record only | No | Brief loss of availability, no data lost |
 | 7 | Data lost, no backup | Guidelines 01/2021 Cases 1 and 2 | Yes | Yes if people lose what they cannot recover | D1 Time Travel (30 days) is the backup. If it holds the data, the loss is availability only. Check first |
 | 8 | Logs with IP addresses lost or exposed | None. **Inference** | Likely record only | Likely no | Logs hold route, status, timing and user id, not chat text. Judge duration, volume and harm. Write the reasoning down |
+| 9 | Live artifact links exposed (`token_encrypted` with the secret, or a bulk leak of links) | As row 4 | Judge | Judge, owners of exposed links | Like a share link: the content was meant for whoever had the link, but not for everyone. Look at the content (row 49 of the DPIA), how long, and access in the logs. Revoke all (2.6) |
+| 10 | `artifact_storage` or `artifact_reports` exposed | As row 4; EDPB 9/2022 para 113 for special categories | Yes | Judge | Viewer answers can be health or belief data; reports hold reporters' names and emails, and a reporter may face retaliation. Lean towards telling them |
+| 11 | Runtime origin, CSP or sandbox misconfigured, so artifacts could read the page or the network | None. **Inference** | Judge | Judge | Turn the global `artifacts` rule off first. Then check whether any artifact used it (reports, `runtimeNavigation` lines, unusual traffic). With no evidence of use, record only |
 
 **Art. 34(3): you may skip telling people when** the data was encrypted and the
 key is safe; or you took steps afterwards so that the high risk is no longer

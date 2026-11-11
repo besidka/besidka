@@ -1,4 +1,4 @@
-import { nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,10 +16,15 @@ const mocks = vi.hoisted(() => ({
   fetchMock: vi.fn(),
   navigateToMock: vi.fn(),
   toggleThemeMock: vi.fn(),
+  setSidebarPinnedMock: vi.fn(),
+  expandCookieSettingsMock: vi.fn(),
 }))
 
+const showPinToggle = ref<boolean>(false)
+const sidebarPinned = ref<boolean>(false)
 const loggedIn = ref<boolean>(true)
 const isAdmin = ref<boolean>(false)
+const artifactsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -38,12 +43,37 @@ mockNuxtImport('useAuth', () => {
   })
 })
 
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return {
+      enabled: artifactsActive.value,
+      active: artifactsActive.value,
+      variant: null,
+    }
+  })
+})
+
 mockNuxtImport('useIsAdmin', () => {
   return () => isAdmin
 })
 
 mockNuxtImport('useRoute', () => {
   return () => mockRoute
+})
+
+mockNuxtImport('useSidebarPinToggle', () => {
+  return () => ({ showPinToggle })
+})
+
+mockNuxtImport('useUserSetting', () => {
+  return () => ({
+    sidebarPinned,
+    setSidebarPinned: mocks.setSidebarPinnedMock,
+  })
+})
+
+mockNuxtImport('useCookieConsentUi', () => {
+  return () => ({ expand: mocks.expandCookieSettingsMock })
 })
 
 mockNuxtImport('useThemeToggle', () => {
@@ -95,6 +125,7 @@ describe('Search/Modal.client', () => {
   beforeEach(() => {
     loggedIn.value = true
     isAdmin.value = false
+    artifactsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -103,6 +134,10 @@ describe('Search/Modal.client', () => {
     mocks.navigateToMock.mockReset().mockResolvedValue(undefined)
     mocks.toggleThemeMock.mockReset()
     mocks.errorMessageMock.mockReset()
+    mocks.setSidebarPinnedMock.mockReset().mockResolvedValue(undefined)
+    mocks.expandCookieSettingsMock.mockReset()
+    showPinToggle.value = false
+    sidebarPinned.value = false
 
     useSearchModal().isModalOpen.value = false
     useFilesModalHandoff().clearPendingOpen()
@@ -189,7 +224,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the ten documented command rows in order for an empty query', async () => {
+  it('renders the eleven documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -209,10 +244,47 @@ describe('Search/Modal.client', () => {
       'search-option-preferences',
       'search-option-connected-apps',
       'search-option-labs',
+      'search-option-cookies',
     ])
   })
 
-  it('shows the Admin row last in Settings only to admins', async () => {
+  it('adds the Artifacts row after Projects only with the artifacts feature',
+    async () => {
+      artifactsActive.value = true
+      useSearchModal().isModalOpen.value = true
+
+      const wrapper = await mountModal()
+      await nextTick()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(ids.slice(0, 4)).toEqual([
+        'search-option-history',
+        'search-option-attachments',
+        'search-option-projects',
+        'search-option-artifacts',
+      ])
+      expect(wrapper.get('#search-option-artifacts').text()).toBe('Artifacts')
+      expect(wrapper.get('#search-option-artifacts .iconify').classes())
+        .toContain('i-lucide:app-window')
+
+      await wrapper.find('#search-option-artifacts').trigger('click')
+
+      expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/artifacts')
+      expect(closeSpy).toHaveBeenCalled()
+    })
+
+  it('omits the Artifacts row without the artifacts feature', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-artifacts').exists()).toBe(false)
+  })
+
+  it('shows the Admin rows last in Settings only to admins', async () => {
     isAdmin.value = true
     useSearchModal().isModalOpen.value = true
 
@@ -230,7 +302,10 @@ describe('Search/Modal.client', () => {
     const ids = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
 
-    expect(ids.at(-1)).toBe('search-option-admin')
+    expect(ids.slice(-2)).toEqual([
+      'search-option-admin',
+      'search-option-admin-reports',
+    ])
     expect(wrapper.get('#search-option-admin').text()).toBe('Admin')
     expect(wrapper.get('#search-option-admin .iconify').classes())
       .toContain('i-lucide:shield-ellipsis')
@@ -241,13 +316,32 @@ describe('Search/Modal.client', () => {
     expect(mocks.navigateToMock).toHaveBeenCalledWith('/admin')
   })
 
-  it('hides the Admin row from non-admins', async () => {
+  it('opens the content reports page from its admin row', async () => {
+    isAdmin.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.get('#search-option-admin-reports').text())
+      .toBe('Content reports')
+    expect(wrapper.get('#search-option-admin-reports .iconify').classes())
+      .toContain('i-lucide:flag-triangle-right')
+
+    await wrapper.find('#search-option-admin-reports').trigger('click')
+
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/admin/artifact-reports')
+  })
+
+  it('hides the Admin rows from non-admins', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
     await nextTick()
 
     expect(wrapper.find('#search-option-admin').exists()).toBe(false)
+    expect(wrapper.find('#search-option-admin-reports').exists()).toBe(false)
   })
 
   it('groups Projects under Chat and Memory under Settings with icons', async () => {
@@ -264,7 +358,7 @@ describe('Search/Modal.client', () => {
       return wrapper.get(`#${id} .iconify`).classes()
     }
 
-    expect(rows).toHaveLength(10)
+    expect(rows).toHaveLength(11)
     expect(labelOf('search-option-projects')).toBe('Projects')
     expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
     expect(labelOf('search-option-memory')).toBe('Memory')
@@ -320,12 +414,89 @@ describe('Search/Modal.client', () => {
     expect(closeSpy).toHaveBeenCalled()
   })
 
+  it('offers Pin sidebar only where the pin toggle is available', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const hidden = await mountModal()
+
+    await nextTick()
+
+    expect(hidden.find('#search-option-pin-sidebar').exists()).toBe(false)
+
+    hidden.unmount()
+    showPinToggle.value = true
+
+    const wrapper = await mountModal()
+
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(wrapper.get('#search-option-pin-sidebar').text())
+      .toBe('Pin sidebar')
+    expect(wrapper.get('#search-option-pin-sidebar .iconify').classes())
+      .toContain('i-lucide:pin')
+    expect(ids.indexOf('search-option-pin-sidebar'))
+      .toBeGreaterThan(ids.indexOf('search-option-labs'))
+  })
+
+  it('toggles the pinned sidebar and closes the modal', async () => {
+    useSearchModal().isModalOpen.value = true
+    showPinToggle.value = true
+
+    const wrapper = await mountModal()
+
+    await wrapper.find('#search-option-pin-sidebar').trigger('click')
+
+    expect(mocks.setSidebarPinnedMock).toHaveBeenCalledWith(true)
+    expect(useSearchModal().isModalOpen.value).toBe(false)
+    expect(closeSpy).toHaveBeenCalled()
+  })
+
+  it('offers Unpin sidebar while the sidebar is pinned', async () => {
+    useSearchModal().isModalOpen.value = true
+    showPinToggle.value = true
+    sidebarPinned.value = true
+
+    const wrapper = await mountModal()
+
+    await nextTick()
+
+    expect(wrapper.get('#search-option-pin-sidebar').text())
+      .toBe('Unpin sidebar')
+    expect(wrapper.get('#search-option-pin-sidebar .iconify').classes())
+      .toContain('i-lucide:pin-off')
+
+    await wrapper.find('#search-option-pin-sidebar').trigger('click')
+
+    expect(mocks.setSidebarPinnedMock).toHaveBeenCalledWith(false)
+  })
+
+  it('opens the cookie settings and closes the modal', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+
+    expect(wrapper.get('#search-option-cookies').text())
+      .toBe('Cookie settings')
+    expect(wrapper.get('#search-option-cookies .iconify').classes())
+      .toContain('i-lucide:cookie')
+
+    await wrapper.find('#search-option-cookies').trigger('click')
+
+    expect(mocks.expandCookieSettingsMock).toHaveBeenCalledOnce()
+    expect(useSearchModal().isModalOpen.value).toBe(false)
+    expect(closeSpy).toHaveBeenCalled()
+  })
+
   it('navigates to Labs when it is the active row and Enter is pressed', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
     await nextTick()
 
+    await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await wrapper.find('input').trigger('keydown', { key: 'Enter' })
 
@@ -640,7 +811,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
 
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-labs')
+      .toBe('search-option-cookies')
   })
 
   it('opens the modal on Cmd+K when logged in and no dialog is open', async () => {

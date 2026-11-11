@@ -238,6 +238,9 @@ const oauthScopePhrases: Record<string, string> = {
   'chats:write': 'change your chats',
   'files:write': 'change your files',
   'settings:write': 'change your settings',
+  'artifacts:read': 'read your artifacts and their share links',
+  'artifacts:write': 'create and edit your artifacts',
+  'artifacts:share': 'publish your artifacts as public links (up to 30 days)',
   'data:delete': 'permanently delete your data',
   'admin:features': 'grant or revoke experimental features for '
     + 'individual users (admin)',

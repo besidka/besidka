@@ -18,6 +18,7 @@ const definition: FeatureDefinition = {
   title: 'Experiment',
   description: 'Test entry with variants.',
   stage: 'internal',
+  available: true,
   default: false,
   allowRoles: ['admin'],
   spend: 'none',

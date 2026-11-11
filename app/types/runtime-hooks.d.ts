@@ -17,11 +17,13 @@ declare module '#app' {
     'chat:generation-ready-while-hidden': () => void
     'chat:generation-finished': () => void
     'chat:context-changed': () => void
+    'artifacts:deleted': (artifactIds: string[]) => void
     'chat:message-selected': (messageId: string | null) => void
     'chat:scroll-to-user-message': () => void
     'chat:scroll-to-bottom': () => void
     'chat:init-captured-padding': () => void
     'chat-input:height': (height: number) => void
+    'chat-input:prefill': (text: string) => void
     'chat-input:visibility-changed': (visible: boolean) => void
     'chat-spacer:changed': (height: number) => void
     'device-keyboard:state-changed': (isOpen: boolean) => void

@@ -282,7 +282,7 @@ describe('useLegalNoticeBanner', () => {
     expect(wrapper.vm.notice).toBeNull()
   })
 
-  it('shows only the newest notice while two are active in the registry',
+  it('shows only the newest notice while several are active in the registry',
     async () => {
       registryMode.useRealRegistry = true
       setNow('2026-11-20T12:00:00Z')
@@ -290,7 +290,7 @@ describe('useLegalNoticeBanner', () => {
       try {
         const wrapper = await mountBanner()
 
-        expect(wrapper.vm.notice?.id).toBe('2026-11-experimental-features')
+        expect(wrapper.vm.notice?.id).toBe('2026-12-artifacts')
         expect(wrapper.vm.effectiveDateLabel).toBe('19 December 2026')
       } finally {
         registryMode.useRealRegistry = false

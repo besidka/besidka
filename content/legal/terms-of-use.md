@@ -2,7 +2,7 @@
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
 updatedAt: 2026-10-29
-summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. You may connect an AI app of your choice to your account, and what it does with your data is between you and that app. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it, and rights holders can send a copyright notice to the same address. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
+summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. You may connect an AI app of your choice to your account, and what it does with your data is between you and that app. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Artifact links make an AI-generated artifact openable by anyone who has the link; such pages are never indexed and say they are AI-generated and not reviewed by me, and an artifact must not phish, ask visitors for passwords, payment details, who they are or how to contact them, redirect them, try to spend their keys, target children or serve as website hosting. Anyone can report illegal content to me by email, or with the report form on an artifact, and a person will look at it; rights holders can send a copyright notice to the same address, and the same address takes removal orders for terrorist content. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
 ## Who I am
@@ -73,7 +73,7 @@ This section applies to every key you enter: an AI provider key, an AI gateway k
 
 - You must have the right to use the API key you enter, and you must comply with the terms and usage policies of whoever issued it — your AI provider, AI gateway, search provider or TypeSafe AI. Breaking them is between you and them, but it can also mean Besidka stops working for you.
 - Your key is stored encrypted (see the [Privacy Policy](/privacy-policy)), but you should still treat entering a key anywhere as a decision with risk. Use a key scoped and limited to what you need, and rotate it if you have any doubt.
-- You are responsible for the usage costs your key incurs, including costs from long conversations, large attachments and deep research runs.
+- You are responsible for the usage costs your key incurs, including costs from long conversations, large attachments, deep research runs and the AI requests of artifacts you confirm, also in artifacts other people made.
 - **A search provider key is a separate cost.** Every search your model runs with your Brave or Exa key is billed to your Brave or Exa account, separately from what your AI provider or AI gateway charges for the model usage. One message can run more than one search.
 - **TypeSafe AI is a separate cost too.** Every check you leave on is billed to your TypeSafe AI account, a fraction of a cent each, separately from your model usage. You can switch single checks off, or delete the key to stop all of them.
 - **An AI gateway bills you itself.** If you route a chat through a gateway, the model usage is charged through your gateway account, under the gateway's own pricing and terms.
@@ -88,6 +88,7 @@ You are using an **AI system**. The text, code, summaries, images and reports yo
 - **Deep research reports can be wrong in a specific way.** A deep research report may contain **fabricated or misattributed citations** — sources that do not exist, or real sources that do not say what the report claims. Open and read the sources yourself before citing them.
 - Output is not unique to you. Another user with a similar prompt may receive substantially the same answer.
 - Do not use output to make decisions about other people (hiring, credit, eligibility, discipline) without a human being who is competent to make that decision reviewing it.
+- **Artifacts are AI-generated too.** An artifact is marked as AI-generated in the app, and every public artifact page carries a banner saying it was made by AI for a Besidka user and not reviewed by me, plus a machine-readable `ai-generated` tag. When you download an artifact as an HTML page, the file carries the same tag and a comment that names only the model, where it is recorded; Markdown and SVG downloads carry a one-line comment. Downloads of React components and diagrams as source code carry no mark. Like the image tag, these marks hold no prompt, account or other personal details and disappear when someone edits the file.
 - Images the model generates are labelled as AI-generated in the app and on share pages. Where the provider adds Content Credentials (C2PA) to an image, Besidka keeps them. Otherwise Besidka tries to add a standard IPTC metadata tag that says the image was made by AI and names the model. The mark can be missing from some files, images saved before this was added were not changed, and re-saving an image or taking a screenshot removes it. The tag holds no prompt, account or other personal details. If you publish AI-generated content that could pass for real, label it where the law requires.
 
 ## Memory and project knowledge
@@ -119,6 +120,7 @@ Do not use Besidka to:
 - Present AI output as human-written where doing so deceives someone to their detriment, or impersonate a real person or organisation.
 - Attack the service — no scraping at scale, no brute forcing, no attempt to bypass rate limits or access other users' data, no probing for vulnerabilities beyond good-faith reporting to me.
 - Resell or wrap the hosted service as your own commercial product. You may self-host the code instead; that is what the licence is for.
+- Make or publish an [artifact](#artifact-links) that imitates a sign-in or payment form, asks visitors for passwords or payment details, asks them to identify themselves or for their contact details, account details or age, redirects visitors or tries to navigate its frame to another address (a link the visitor confirms in Besidka is fine), tries to spend visitors' API keys or to get more out of them than the request they confirm, is aimed at children under 13, or uses artifact links as general website hosting, a landing page or advertising.
 
 ## Sensitive information
 
@@ -143,7 +145,7 @@ To run the service, I need a **narrow, limited permission** from you. You grant 
 1. store your content and serve it back to you;
 2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, including your memory, project knowledge and excerpts of your earlier chats; transmit chat text to the model you chose for memory, using your key, when memory is written from your chats as described in the [Privacy Policy](/privacy-policy#memory); and transmit the search queries your model writes from it to the search provider you turned on, using your key; transmit the text the TypeSafe AI checks you left on need to TypeSafe AI, using your key, as described in the [Privacy Policy](/privacy-policy#typesafe-ai-checks);
 3. keep the memory entries and project knowledge you create or allow, and use them as context for your own later chats; and
-4. render your content on a share page **that you yourself created**, for as long as that share is active.
+4. render your content on a share page or an artifact link **that you yourself created**, and in a chat you shared, for as long as that share or link is active, and run the artifacts in it in a sealed frame for the people who open it.
 
 That is the whole licence. It is not perpetual, not transferable and not for any other purpose. It ends for any given content when you delete that content or your account. I do not use your content to train models, to advertise, or to build any other product.
 
@@ -166,15 +168,35 @@ By turning a share on, you confirm that:
 - you have the right to publish everything in that chat, including any content the model produced from material you supplied; and
 - you have a lawful basis to publish **any third party's personal data** that appears in it, and you have considered whether you should be publishing it at all.
 
+### Artifact links
+
+An artifact is a page, component, diagram or document that the assistant, or an AI app you connected, made for you. You can publish one with its own link. Artifacts are an experimental feature, and at first only accounts I invite can publish them. How an artifact runs and what is stored is in the [Privacy Policy](/privacy-policy#artifacts).
+
+- **Anyone with the link can open the artifact, without an account.** It is never offered to search engines for indexing, and there is no switch to change that.
+- Every public artifact page says that the artifact was made by AI for a Besidka user and was not reviewed by me, and has a **Report** button that anyone can use.
+- You choose an expiry (1 hour, 1 day, 1 week, 1 month, 1 year, or never) and whether the link shows the latest version or a fixed one, and you can revoke a link at any time.
+- Two switches let signed-in visitors **save their progress** and use **AI features** in the artifact with their own API key, after they confirm each request. Both start off.
+- A link that an AI app created through your account expires within 30 days and never allows saved progress or AI features. You remain responsible for it as if you had created it.
+- If you share a chat, the artifacts in it can be opened by anyone who has the chat link.
+
+### What you promise when you publish an artifact
+
+By creating an artifact link, or by sharing a chat that contains an artifact, you confirm that:
+
+- you have the right to publish everything in the artifact, including what the model produced from material you supplied;
+- you have a lawful basis to publish **any third party's personal data** in it;
+- the artifact does none of the things listed under [What you may not do](#what-you-may-not-do); and
+- if you switch AI features on, you allow the artifact to send the text it contains to the AI provider of each visitor who confirms the request, with that visitor's key.
+
 ### Revoking is not undoing
 
-Revoking a share stops access through me immediately and deletes the share record. It cannot recall search-engine caches, web archives, screenshots, downloads, branch copies or anything that was scraped while the link was live. I take the reasonable steps in my control; I cannot promise a published chat becomes unseen.
+Revoking a share or an artifact link stops access through me immediately. Revoking a chat share also deletes its record; a revoked artifact link stays listed with the artifact until you delete the artifact. It cannot recall search-engine caches, web archives, screenshots, downloads, branch copies or anything that was scraped while the link was live. I take the reasonable steps in my control; I cannot promise a published chat becomes unseen.
 
 ## Reporting illegal content
 
-Anyone — user or not — can tell me about content on Besidka they believe is illegal. Besidka hosts content that users choose to publish, mainly through share links. I voluntarily follow the notice-and-action rules of the Digital Services Act (Arts. 11, 12, 14, 16, 17 and 18): a single point of contact, reports by email, a decision by a person, and a statement of reasons when I act.
+Anyone — user or not — can tell me about content on Besidka they believe is illegal. Besidka hosts content that users choose to publish, through share links and artifact links. I voluntarily follow the notice-and-action rules of the Digital Services Act (Arts. 11, 12, 14, 16, 17 and 18): a single point of contact, reports by email or by form, a decision by a person, and a statement of reasons when I act.
 
-**Send reports to :privacy-email-link{}.** There is no form to fill in, and the mailbox is read by a person — it is not a bot-only address.
+**Send reports to :privacy-email-link{}.** The mailbox is read by a person — it is not a bot-only address. For an artifact, you can also use the **Report** button on its public page, or next to it in a shared chat. The form fills in the address for you and asks for the reason: child sexual abuse material, terrorist content, a threat to someone's life or safety, phishing or fraud, copyright, privacy, other illegal content, harmful content, or something else. If you are not signed in, it also runs a bot check from Cloudflare.
 
 If the Digital Services Act applies to Besidka, that same address is my single point of contact under its Articles 11 and 12, and I use it that way in any case:
 
@@ -183,18 +205,20 @@ If the Digital Services Act applies to Besidka, that same address is my single p
 
 I accept reports and communications in **English or Polish**.
 
+**Terrorist content.** I do not allow terrorist content, as Regulation (EU) 2021/784 defines it, anywhere on Besidka. The same address is my contact point for removal orders under that regulation, in English or Polish. I act on a removal order within one hour of receiving it, as the regulation requires, and if I cannot, I tell the authority why without undue delay; I keep the removed content and the records about it for six months after the removal, as it also requires; and I tell the user who published it, unless the authority tells me not to.
+
 ### What to put in a report
 
 To let me act quickly, please include:
 
 1. A clear explanation of **why you believe the content is illegal**.
-2. The **exact URL** (or URLs) of the content. For a shared chat, that is the share link.
+2. The **exact URL** (or URLs) of the content. For a shared chat, that is the share link; for an artifact, the artifact link (the report form fills it in).
 3. Your **name and email address**. You may leave them out only if the report concerns child sexual abuse material.
 4. A statement, made in good faith, that the information in your report is **accurate and complete**.
 
 ### What I do with a report
 
-I confirm I received your report, review it, and decide without undue delay whether the content stays up, is removed or is disabled. I tell you the outcome and how you can challenge it in court. Decisions are made by a person, not automatically.
+I confirm I received your report, review it, and decide without undue delay whether the content stays up, is removed or is disabled. I tell you the outcome and how you can challenge it in court. Decisions are made by a person, not automatically. Reports about a threat to someone's life or safety and about terrorist content are handled first. Removing an artifact disables it and all its links, including inside shared chats; it is not deleted, so that I can answer a challenge or an authority.
 
 If your report concerns a **crime involving a threat to someone's life or safety**, I will inform the relevant authorities.
 
@@ -202,7 +226,7 @@ Please do not send reports you know to be false. Reports that are manifestly unf
 
 ### Statement of reasons
 
-If I remove or disable your content, restrict its visibility, suspend a share link, or suspend or terminate your account, I will send you a **statement of reasons**. It will say what I did and to which content, why I did it — the legal ground or the rule in these terms I relied on — the facts I relied on, whether automated means were used, and how you can challenge the decision, including in court.
+If I remove or disable your content, restrict its visibility, suspend a share link or an artifact link, take down an artifact, stop you from publishing artifacts, or suspend or terminate your account, I will send you a **statement of reasons**. It will say what I did and to which content, why I did it — the legal ground or the rule in these terms I relied on — the facts I relied on, whether automated means were used, and how you can challenge the decision, including in court.
 
 I will not send it where the law forbids it, or where I have no way to contact you.
 
@@ -218,7 +242,7 @@ A notice needs all of these, so I can act on it:
 
 1. Your physical or electronic signature, as the owner of the right or as a person authorised to act for the owner.
 2. Which copyrighted work you say is infringed.
-3. Which material you say infringes it, and its **exact URL on besidka.com**, with enough detail for me to find it. For a shared chat, that is the share link.
+3. Which material you say infringes it, and its **exact URL on besidka.com**, with enough detail for me to find it. For a shared chat, that is the share link; for an artifact, the artifact link.
 4. Your name and email address, and, if you act for the owner, the owner's name.
 5. A statement that you believe in good faith that the use is not authorised by the copyright owner, its agent or the law.
 6. A statement that the information in the notice is accurate and that you are the owner of the right or authorised to act for the owner.
@@ -245,12 +269,13 @@ A notice that you know contains false statements can make you liable for the dam
 
 I do not read your private chats and I do not run automated scanning of chat content for moderation. No automatic system reports what you write to me or to anyone else, and none decides anything about your account.
 
-Besidka has two kinds of automatic check on content. Neither is moderation: neither reports anything, and neither acts on you or your account.
+Besidka has a few automatic checks on content. None of them is moderation: none reports anything, and none acts on you or your account.
 
 - **The memory check.** Before text is saved to memory, it is checked so that sensitive topics and never-stored items such as card numbers are kept out, and never-stored items are removed from chat text before it is sent to the memory model. It only decides what memory may keep.
 - **The optional TypeSafe AI checks,** which run only if you add a TypeSafe AI key and leave them on. They decide whether to search the web, whether memory is worth generating from a chat, how search results are ordered, whether to warn you about personal data before you share a chat, and whether a project file or a search result looks like hidden instructions aimed at the AI. A flagged project file waits for your review and a flagged search result is left out of the model's context, but nothing is deleted, nothing is reported to anyone, and there is no effect on your account.
+- **Artifact safety checks.** Before you publish an artifact, Besidka looks for emails, phone numbers and similar identifiers and warns you; it never blocks you. When an artifact tries to navigate its frame to another address, Besidka blocks it, closes the frame for the person viewing it and shows an error. It records only that this happened, by the artifact's id, and it does not take the artifact down.
 
-Moderation is therefore **reactive**. I act on reports, on notices from authorities, and on things I notice while running the service. When I act, I may remove or disable specific content, revoke a share link, restrict a feature for an account, or suspend or terminate an account for serious or repeated breaches of these terms. I aim to act proportionately, and I send a statement of reasons as described above.
+Moderation is therefore **reactive**. I act on reports, on notices from authorities, and on things I notice while running the service. When I act, I may remove or disable specific content, revoke a share link, take down an artifact and its links, restrict a feature for an account, or suspend or terminate an account for serious or repeated breaches of these terms. I aim to act proportionately, and I send a statement of reasons as described above.
 
 ## Availability and changes to the service
 

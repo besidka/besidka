@@ -1,29 +1,17 @@
 import type { Theme } from '@besidka/artifacts-protocol'
+import { LAYER_ORDER } from './design/layers.ts'
+import { paletteDeclarations } from './palette.ts'
 
 export const ROOT_ELEMENT_ID = 'root'
 
-export const SHELL_STYLE = `
+const SHELL_RULES = `
 :root {
   color-scheme: light;
-  --besidka-bg: #ffffff;
-  --besidka-fg: #1f2328;
-  --besidka-muted: #59636e;
-  --besidka-border: #d1d9e0;
-  --besidka-accent: #0969da;
-  --besidka-surface: #f6f8fa;
-  --besidka-danger: #cf222e;
-  --besidka-danger-bg: #ffebe9;
+  ${paletteDeclarations('light')}
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --besidka-bg: #0d1117;
-  --besidka-fg: #e6edf3;
-  --besidka-muted: #9198a1;
-  --besidka-border: #3d444d;
-  --besidka-accent: #4493f8;
-  --besidka-surface: #151b23;
-  --besidka-danger: #ff7b72;
-  --besidka-danger-bg: #2d1214;
+  ${paletteDeclarations('dark')}
 }
 html {
   background: var(--besidka-bg);
@@ -33,9 +21,6 @@ body {
   margin: 0;
   font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   overflow-wrap: anywhere;
-}
-#root {
-  padding: 16px;
 }
 a {
   color: var(--besidka-accent);
@@ -68,7 +53,7 @@ a {
   margin: 0;
   padding: 0 1em;
   color: var(--besidka-muted);
-  border-left: 4px solid var(--besidka-border);
+  border-left: 4px solid var(--besidka-rule);
 }
 .besidka-markdown table {
   border-collapse: collapse;
@@ -76,7 +61,7 @@ a {
 .besidka-markdown th,
 .besidka-markdown td {
   padding: 6px 12px;
-  border: 1px solid var(--besidka-border);
+  border: 1px solid var(--besidka-rule);
 }
 .besidka-markdown img,
 .besidka-svg svg,
@@ -88,6 +73,11 @@ a {
 .besidka-mermaid {
   display: flex;
   justify-content: center;
+}
+.besidka-mermaid > besidka-mermaid {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
 }
 .besidka-partial {
   color: var(--besidka-muted);
@@ -103,6 +93,11 @@ a {
   background: var(--besidka-surface);
   border-radius: 6px;
 }
+.besidka-diagram-limit {
+  margin: 8vh auto;
+  color: var(--besidka-muted);
+  text-align: center;
+}
 .besidka-standalone {
   max-width: 32rem;
   margin: 15vh auto;
@@ -110,6 +105,10 @@ a {
   text-align: center;
 }
 `.trim()
+
+const SHELL_LAYOUT_RULES = `#${ROOT_ELEMENT_ID} {\n  padding: 16px;\n}`
+
+export const SHELL_STYLE = `${LAYER_ORDER}\n@layer besidka-shell {\n${SHELL_RULES}\n}\n${SHELL_LAYOUT_RULES}`
 
 export const SHELL_HEAD = [
   '<meta charset="utf-8">',

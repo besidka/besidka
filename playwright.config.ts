@@ -3,6 +3,10 @@ import { defineConfig, devices } from '@playwright/test'
 const AUTH_STATE_PATH = '.playwright/auth-user.json'
 const E2E_PORT = process.env.E2E_PORT || '3000'
 const E2E_BASE_URL = `http://localhost:${E2E_PORT}`
+const ARTIFACTS_RUNTIME_PORT = process.env.ARTIFACTS_RUNTIME_PORT || '8788'
+const ARTIFACTS_RUNTIME_ORIGIN = `http://127.0.0.1:${ARTIFACTS_RUNTIME_PORT}`
+const ARTIFACTS_RUNTIME_INSPECTOR_PORT
+  = process.env.ARTIFACTS_RUNTIME_INSPECTOR_PORT || '9330'
 const WEBKIT_SPECS = [/new-chat-navigation\.spec\.ts/]
 const WEBKIT_PROJECTS = process.env.E2E_WEBKIT
   ? [
@@ -28,6 +32,8 @@ const WEB_SERVER_ENV = {
   NUXT_BETTER_AUTH_SECRET: 'secret',
   NUXT_EMAIL_NOOP_ENABLED: 'true',
   NUXT_ADMIN_EMAILS: 'e2e-admin@example.com',
+  NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED: 'true',
+  NUXT_PUBLIC_ARTIFACTS_ORIGIN: ARTIFACTS_RUNTIME_ORIGIN,
 }
 
 /**
@@ -115,15 +121,29 @@ export default defineConfig({
     //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
     // },
   ],
-  webServer: {
-    command: process.env.CI
-      ? `pnpm exec wrangler dev --port ${E2E_PORT}`
-      : 'pnpm run db:migrate && pnpm run dev',
-    env: WEB_SERVER_ENV,
-    url: E2E_BASE_URL,
-    timeout: 120_000,
-    reuseExistingServer: !process.env.CI,
-    stdout: process.env.CI ? 'pipe' : 'ignore',
-    stderr: 'pipe',
-  },
+  webServer: [
+    {
+      command: process.env.CI
+        ? `pnpm exec wrangler dev --port ${E2E_PORT}`
+        : 'pnpm run db:migrate && pnpm run dev',
+      env: WEB_SERVER_ENV,
+      url: E2E_BASE_URL,
+      timeout: 120_000,
+      reuseExistingServer: !process.env.CI,
+      stdout: process.env.CI ? 'pipe' : 'ignore',
+      stderr: 'pipe',
+    },
+    {
+      command: 'pnpm --filter artifacts-runtime build:dev'
+        + ' && pnpm --filter artifacts-runtime exec wrangler dev'
+        + ` --port ${ARTIFACTS_RUNTIME_PORT} --ip 127.0.0.1`
+        + ` --inspector-port ${ARTIFACTS_RUNTIME_INSPECTOR_PORT}`,
+      env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
+      url: `${ARTIFACTS_RUNTIME_ORIGIN}/v1/index.html`,
+      timeout: 180_000,
+      reuseExistingServer: !process.env.CI,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
+  ],
 })

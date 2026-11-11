@@ -200,7 +200,7 @@ That is deliberate, even for a one-word description edit.
 Choose the level like this: major for a removed tool, a removed or renamed
 input, a new required input, a changed required scope or a new OAuth scope
 (owner decision for the agentic roadmap: `admin:features` shipped as 2.0.0,
-`artifacts:share` would be the next major if it does not ride along); minor
+the artifacts scopes as 3.0.0); minor
 for an added tool or an added optional input; patch for text-only changes.
 
 Known trade-offs: a zod upgrade that changes the JSON Schema output, or a
@@ -282,7 +282,7 @@ Example prompts:
 ### Tools and scopes
 
 Four public tools need no token: `list_models`, `list_providers`,
-`get_key_guide`, `get_page`. The 32 private tools need these scopes; the
+`get_key_guide`, `get_page`. The 44 private tools need these scopes; the
 consent page lets the user approve each scope separately.
 
 | Scope | Tools |
@@ -297,7 +297,10 @@ consent page lets the user approve each scope separately.
 | `files:write` | `create_file`, `rename_file` |
 | `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
-| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+| `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |
+| `artifacts:write` | `create_artifact`, `update_artifact`, `revoke_artifact_shares` |
+| `artifacts:share` | `share_artifact` (publishes a public link: up to 30 days, never indexed, no saved progress or AI features, 10 a day) |
+| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (Besidka admins only; hidden on the consent page and stripped on the server for everyone else) |
 
 Identity scopes: `openid`, `profile`, `email`, `offline_access`. Every tool
@@ -309,7 +312,11 @@ ChatGPT reviews require. `delete_project` also needs `confirmName` and
 What the connector does not do, useful for compliance questions: it sends no
 chat messages and runs no model, so it spends nothing on the user's provider
 keys; it never reads, returns or stores provider API keys; it does no
-payments, no image, audio or video generation, and no ads. The full list is
+payments, no image, audio or video generation, and no ads. It can publish
+one thing: a public link to an artifact, only with the separate, unticked
+`artifacts:share` scope (expires within 30 days, never indexed, at most 10 a
+day, personal-data warnings returned, revocable and reportable); it cannot
+publish a chat. Tell reviewers so. The full list is
 "What MCP does not do (and why)" in `docs/mcp-server.md`.
 
 ### Reviewer test account

@@ -117,7 +117,37 @@ function updatePinnedState(
   }
 }
 
+export function setHistoryChatPinnedBySlug(
+  slug: string,
+  pinnedAt: string | null,
+) {
+  const cache = useState<Record<string, HistoryCacheEntry>>(
+    'history:cache',
+    () => ({}),
+  )
+
+  for (const entry of Object.values(cache.value)) {
+    const knownChat = [...entry.pinned, ...entry.chats].find((chat) => {
+      return chat.slug === slug
+    })
+
+    if (!knownChat) {
+      continue
+    }
+
+    setHistoryChatPinned({
+      ...knownChat,
+      pinnedAt,
+      activityAt: new Date().toISOString(),
+    })
+
+    return
+  }
+}
+
 export function setHistoryChatPinned(chat: HistoryChat) {
+  setChatContextPinned(chat.slug, chat.pinnedAt)
+
   const cache = useState<Record<string, HistoryCacheEntry>>(
     'history:cache',
     () => ({}),

@@ -130,6 +130,20 @@
             v-if="data.kind === 'owned'"
             type="button"
             class="btn btn-sm btn-soft"
+            :disabled="pinSavingSlug === routeSlug"
+            data-testid="chat-context-pin"
+            @click="onTogglePin"
+          >
+            <Icon
+              :name="isPinned ? 'lucide:pin-off' : 'lucide:pin'"
+              size="16"
+            />
+            {{ isPinned ? 'Unpin' : 'Pin' }}
+          </button>
+          <button
+            v-if="data.kind === 'owned'"
+            type="button"
+            class="btn btn-sm btn-soft"
             :disabled="memoryExclusionSavingSlug === routeSlug"
             :title="isMemoryExcluded
               ? CHAT_MEMORY_USE_HINT
@@ -169,53 +183,98 @@
         :aria-labelledby="`${idPrefix}-${group.id}`"
         :data-testid="`chat-context-section-${group.id}`"
       >
-        <h4
-          :id="`${idPrefix}-${group.id}`"
-          class="flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wide text-base-content/60"
-        >
-          {{ group.label }}
-          <span class="font-normal normal-case tracking-normal">
-            {{ group.total }}
-          </span>
-        </h4>
-        <p
-          v-if="group.total > group.items.length"
-          class="px-2 text-xs text-base-content/60"
-          :data-testid="`chat-context-section-${group.id}-capped`"
-        >
-          Showing the latest {{ group.items.length }}.
-        </p>
-        <ul class="grid gap-0.5">
-          <li
-            v-for="item in group.items"
-            :key="item.id"
+        <h4 :id="`${idPrefix}-${group.id}`">
+          <button
+            type="button"
+            class="chat-context-section-toggle"
+            :aria-expanded="!isGroupCollapsed(group)"
+            :aria-controls="getControlledListId(group)"
+            :data-testid="`chat-context-section-${group.id}-toggle`"
+            @click="toggleGroup(group)"
           >
-            <a
-              v-if="item.href"
-              :href="item.href"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="chat-context-row"
-              :data-testid="`chat-context-item-${item.kind}`"
+            <Icon
+              name="lucide:chevron-right"
+              size="14"
+              class="shrink-0 transition-transform duration-150"
+              :class="{ 'rotate-90': !isGroupCollapsed(group) }"
+              aria-hidden="true"
+            />
+            {{ group.label }}
+            <span class="font-normal normal-case tracking-normal">
+              {{ group.total }}
+            </span>
+          </button>
+        </h4>
+        <div
+          v-if="!isGroupCollapsed(group)"
+          :id="`${idPrefix}-${group.id}-list`"
+          class="grid gap-1"
+        >
+          <p
+            v-if="group.total > group.items.length"
+            class="px-2 text-xs text-base-content/60"
+            :data-testid="`chat-context-section-${group.id}-capped`"
+          >
+            Showing the latest {{ group.items.length }}.
+          </p>
+          <ul
+            class="grid max-h-[500px] gap-0.5 overflow-y-auto"
+            :data-testid="`chat-context-section-${group.id}-list`"
+          >
+            <li
+              v-for="item in group.items"
+              :key="item.id"
             >
-              <ChatContextPanelItem :item="item" />
+              <a
+                v-if="item.href"
+                :href="item.href"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="chat-context-row"
+                :data-testid="`chat-context-item-${item.kind}`"
+              >
+                <ChatContextPanelItem :item="item" />
+                <Icon
+                  name="lucide:arrow-up-right"
+                  size="12"
+                  class="shrink-0 text-base-content/50"
+                />
+              </a>
+              <button
+                v-else
+                type="button"
+                class="chat-context-row"
+                :data-testid="`chat-context-item-${item.kind}`"
+                @click="onItemClick(item)"
+              >
+                <ChatContextPanelItem :item="item" />
+              </button>
+            </li>
+          </ul>
+          <div
+            v-if="group.id === 'outputs' && hasAllArtifactsLink"
+            class="mt-2 border-t border-base-300 pt-2"
+          >
+            <NuxtLink
+              to="/chats/artifacts"
+              class="chat-context-row min-h-11 text-sm"
+              data-testid="chat-context-all-artifacts"
+              @click="close"
+            >
               <Icon
-                name="lucide:arrow-up-right"
+                name="lucide:app-window"
                 size="14"
+                class="shrink-0"
+              />
+              <span class="grow">All artifacts</span>
+              <Icon
+                name="lucide:arrow-right"
+                size="12"
                 class="shrink-0 text-base-content/50"
               />
-            </a>
-            <button
-              v-else
-              type="button"
-              class="chat-context-row"
-              :data-testid="`chat-context-item-${item.kind}`"
-              @click="onItemClick(item)"
-            >
-              <ChatContextPanelItem :item="item" />
-            </button>
-          </li>
-        </ul>
+            </NuxtLink>
+          </div>
+        </div>
       </section>
     </template>
     <LazyChatImagePreview
@@ -237,8 +296,12 @@ import type {
   ChatContextItem,
 } from '#shared/types/chat-context.d'
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
+import { isArtifactKind } from '#shared/utils/artifacts'
 import { formatMessageCost } from '#shared/utils/message-format'
-import { toSafeLocalUrl } from '~/utils/chat-context'
+import {
+  CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
+  toSafeLocalUrl,
+} from '~/utils/chat-context'
 
 interface ContextGroup {
   id: 'outputs' | 'inputs' | 'used'
@@ -252,6 +315,8 @@ const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
 const { close } = useSidePanel()
+const { open: openArtifact } = useArtifactPanel()
+const artifactsFeature = useFeature('artifacts')
 const {
   openShareModal,
   branchOwnedChat,
@@ -266,6 +331,12 @@ const {
   setChatMemoryExcluded,
 } = useChatMemoryExclusion()
 
+const { savingSlug: pinSavingSlug, toggleChatPin } = useChatPin()
+
+const collapsedOverrides = useState<Record<string, boolean>>(
+  'chat-context-collapsed-sections',
+  () => ({}),
+)
 const previewImage = shallowRef<ChatContextItem | null>(null)
 const isImagePreviewOpen = shallowRef<boolean>(false)
 
@@ -307,6 +378,10 @@ const isMemoryExcluded = computed<boolean>(() => {
   return isChatMemoryExcluded(routeSlug.value, data.value.chat.memoryExcluded)
 })
 
+const isPinned = computed<boolean>(() => {
+  return data.value?.kind === 'owned' && !!data.value.chat.pinnedAt
+})
+
 const memoryToggleLabel = computed<string>(() => {
   return isMemoryExcluded.value
     ? CHAT_MEMORY_USE_LABEL
@@ -346,6 +421,14 @@ const hasActions = computed<boolean>(() => {
   return data.value?.kind === 'owned' || canBranchShared.value
 })
 
+const hasAllArtifactsLink = computed<boolean>(() => {
+  return data.value?.kind === 'owned'
+    && artifactsFeature.value.active
+    && data.value.outputs.some((item) => {
+      return item.kind === 'artifact'
+    })
+})
+
 const visibleGroups = computed<ContextGroup[]>(() => {
   if (!data.value) {
     return []
@@ -379,6 +462,31 @@ watch(isShareModalOpen, (open, wasOpen) => {
   }
 })
 
+function isGroupCollapsed(group: ContextGroup): boolean {
+  return collapsedOverrides.value[group.id]
+    ?? (group.id === 'used'
+      && group.total > CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD)
+}
+
+function getControlledListId(group: ContextGroup): string | undefined {
+  return isGroupCollapsed(group) ? undefined : `${idPrefix}-${group.id}-list`
+}
+
+function toggleGroup(group: ContextGroup) {
+  collapsedOverrides.value = {
+    ...collapsedOverrides.value,
+    [group.id]: !isGroupCollapsed(group),
+  }
+}
+
+async function onTogglePin() {
+  if (data.value?.kind !== 'owned') {
+    return
+  }
+
+  await toggleChatPin(data.value.chat)
+}
+
 function onShare() {
   openShareModal(routeSlug.value)
 }
@@ -405,7 +513,35 @@ function scrollToMessage(messageId: string) {
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+function openArtifactItem(item: ChatContextItem): boolean {
+  const meta = item.meta
+  const artifactId = meta?.artifactId
+  const isSharedContext = data.value?.kind === 'shared'
+  const version = isSharedContext
+    ? meta?.version
+    : meta?.latestVersion ?? meta?.version
+
+  if (!artifactId || !version) {
+    return false
+  }
+
+  openArtifact({
+    artifactId,
+    version,
+    kind: isArtifactKind(meta.artifactKind) ? meta.artifactKind : null,
+    title: item.title,
+    source: isSharedContext ? 'shared' : 'owner',
+    shareSlug: isSharedContext ? routeSlug.value : undefined,
+  }, { push: true })
+
+  return true
+}
+
 async function onItemClick(item: ChatContextItem) {
+  if (item.kind === 'artifact' && openArtifactItem(item)) {
+    return
+  }
+
   if (item.kind === 'image' && toSafeLocalUrl(item.meta?.url)) {
     previewImage.value = item
     isImagePreviewOpen.value = true
@@ -425,9 +561,18 @@ async function onItemClick(item: ChatContextItem) {
 <style scoped>
 @reference "~/assets/css/main.css";
 
-.chat-context-row {
-  @apply flex w-full items-center gap-3 rounded-field px-2 py-1.5 text-left
+.chat-context-section-toggle {
+  @apply flex w-full items-center gap-1.5 rounded-field px-2 py-1 text-left
+    text-xs font-semibold uppercase tracking-wide text-base-content/60
     cursor-pointer transition-colors duration-150 hover:bg-base-200
-    focus-visible:outline-2 focus-visible:outline-accent;
+    focus-visible:outline-2 focus-visible:-outline-offset-2
+    focus-visible:outline-accent;
+}
+
+.chat-context-row {
+  @apply flex w-full items-center gap-2 rounded-field px-2 py-1 text-left
+    cursor-pointer transition-colors duration-150 hover:bg-base-200
+    focus-visible:outline-2 focus-visible:-outline-offset-2
+    focus-visible:outline-accent;
 }
 </style>
