@@ -313,7 +313,7 @@ import {
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,
-  orderArtifactPartsLast,
+  orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 
 definePageMeta({
@@ -807,7 +807,7 @@ const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
 function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
-  return orderArtifactPartsLast(getDisplayMessageParts(message))
+  return orderOutputCardPartsLast(getDisplayMessageParts(message))
 }
 
 function getRenderedPartKey(

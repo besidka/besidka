@@ -288,7 +288,7 @@ import {
   collectArtifactVersions,
   getRenderedPartKeys,
   isArtifactMessagePart,
-  orderArtifactPartsLast,
+  orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 
 interface SharedChatMessage {
@@ -429,7 +429,7 @@ const isSharedChatMessageSelected = useState<boolean>(
 function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
-  return orderArtifactPartsLast(getDisplayMessageParts(message))
+  return orderOutputCardPartsLast(getDisplayMessageParts(message))
 }
 
 function getRenderedPartKey(
