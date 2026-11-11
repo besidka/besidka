@@ -61,8 +61,20 @@ function createArtifact(
   }
 }
 
-function setPage(items: ArtifactSummary[], total = items.length) {
-  lazyData.value = { items, total, usedBytes: 0 }
+const MIXED_KIND_COUNTS = {
+  html: 2,
+  react: 0,
+  svg: 1,
+  mermaid: 1,
+  markdown: 0,
+}
+
+function setPage(
+  items: ArtifactSummary[],
+  total = items.length,
+  kindCounts: Record<string, number> = MIXED_KIND_COUNTS,
+) {
+  lazyData.value = { items, total, usedBytes: 0, kindCounts }
 }
 
 function mountPicker(open = true) {
@@ -276,6 +288,84 @@ describe('ChatInput/ArtifactPicker', () => {
     expect(wrapper.get(testId('artifact-picker-kind-mermaid'))
       .attributes('aria-pressed')).toBe('true')
     expect(lastQuery()).toEqual({ limit: 20, kind: 'mermaid' })
+  })
+
+  it('shows only the kinds the user has, with counts', async () => {
+    setPage([createArtifact('a1')])
+
+    const wrapper = await mountPicker()
+
+    expect(wrapper.findAll(
+      `${testId('artifact-picker-kind-filter')} button`,
+    ).map(button => button.attributes('data-testid'))).toEqual([
+      'artifact-picker-kind-all',
+      'artifact-picker-kind-html',
+      'artifact-picker-kind-svg',
+      'artifact-picker-kind-mermaid',
+    ])
+    expect(wrapper.get(testId('artifact-picker-kind-all-count')).text())
+      .toBe('4')
+    expect(wrapper.get(testId('artifact-picker-kind-html-count')).text())
+      .toBe('2')
+    expect(wrapper.get(testId('artifact-picker-kind-svg-count')).text())
+      .toBe('1')
+  })
+
+  it('hides the filter row when the user has a single kind', async () => {
+    setPage([createArtifact('a1')], 1, { ...MIXED_KIND_COUNTS, html: 1,
+      svg: 0, mermaid: 0 })
+
+    const wrapper = await mountPicker()
+
+    expect(wrapper.find(testId('artifact-picker-kind-filter')).exists())
+      .toBe(false)
+  })
+
+  it('hides the filter row for an empty library', async () => {
+    setPage([], 0, {
+      html: 0,
+      react: 0,
+      svg: 0,
+      mermaid: 0,
+      markdown: 0,
+    })
+
+    const wrapper = await mountPicker()
+
+    expect(wrapper.find(testId('artifact-picker-kind-filter')).exists())
+      .toBe(false)
+  })
+
+  it('counts the whole library, not the narrowed list total', async () => {
+    setPage([createArtifact('a1')], 1)
+
+    const wrapper = await mountPicker()
+
+    expect(wrapper.find(testId('artifact-picker-kind-mermaid')).exists())
+      .toBe(true)
+    expect(wrapper.get(testId('artifact-picker-kind-all-count')).text())
+      .toBe('4')
+  })
+
+  it('falls back to All when the filtered kind disappears', async () => {
+    setPage([createArtifact('a1')])
+
+    const wrapper = await mountPicker()
+
+    await wrapper.get(testId('artifact-picker-kind-mermaid'))
+      .trigger('click')
+    await nextTick()
+
+    expect(lastQuery()).toEqual({ limit: 20, kind: 'mermaid' })
+
+    setPage([createArtifact('a1')], 1, { ...MIXED_KIND_COUNTS, mermaid: 0 })
+    await flushPromises()
+
+    expect(lastQuery()).toEqual({ limit: 20 })
+    expect(wrapper.get(testId('artifact-picker-kind-all'))
+      .attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find(testId('artifact-picker-kind-mermaid')).exists())
+      .toBe(false)
   })
 
   it('searches after the debounce and says when nothing matches',

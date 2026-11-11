@@ -2,7 +2,10 @@ import { createError } from 'evlog'
 import { z } from 'zod'
 import { ARTIFACT_KINDS } from '#shared/utils/artifacts'
 import { defineEventHandler, getQuery } from 'nuxt/server'
-import { listArtifacts } from '~~/server/utils/artifacts/queries'
+import {
+  countArtifactsByKind,
+  listArtifacts,
+} from '~~/server/utils/artifacts/queries'
 import { getArtifactUsageBytes } from '~~/server/utils/artifacts/store'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -41,9 +44,10 @@ export default defineEventHandler(async (event) => {
 
   const userId = parseInt(session.user.id)
   const db = useDb()
-  const [result, usedBytes] = await Promise.all([
+  const [result, usedBytes, kindCounts] = await Promise.all([
     listArtifacts({ db, userId, ...query.data }),
     getArtifactUsageBytes(db, userId),
+    countArtifactsByKind({ db, userId }),
   ])
 
   logger.set({
@@ -59,5 +63,5 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  return { ...result, usedBytes }
+  return { ...result, usedBytes, kindCounts }
 })
