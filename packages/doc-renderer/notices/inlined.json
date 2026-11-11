@@ -1,0 +1,45 @@
+[
+  {
+    "name": "@pdf-lib/fontkit",
+    "note": "Declares MIT in package.json and README but ships no LICENSE file; upstream foliojs/fontkit licence applies.",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2014-present Devon Govett"
+  },
+  {
+    "name": "Brotli decoder inlined in @pdf-lib/fontkit (dist/fontkit.umd.js)",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2013 Google Inc. All Rights Reserved.",
+    "textFile": "Apache-2.0.txt"
+  },
+  {
+    "name": "base64-arraybuffer inlined in @pdf-lib/fontkit",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2012 Niklas von Hertzen"
+  },
+  {
+    "name": "events inlined in @pdf-lib/fontkit (Node.js events)",
+    "license": "MIT",
+    "copyright": "Copyright Joyent, Inc. and other Node contributors."
+  },
+  {
+    "name": "fflate inlined in docx",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023 Arjun Barrett"
+  },
+  {
+    "name": "nanoid inlined in docx",
+    "license": "MIT",
+    "copyright": "Copyright 2017 Andrey Sitnik <andrey@sitnik.es>"
+  },
+  {
+    "name": "JSZip (used by pptxgenjs)",
+    "license": "MIT OR GPL-3.0-or-later",
+    "statement": "JSZip is dual-licensed. Besidka uses and redistributes it under the MIT licence."
+  },
+  {
+    "name": "Noto Sans Regular, Bold and Italic (subset to Latin and Cyrillic)",
+    "license": "OFL-1.1",
+    "copyright": "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)",
+    "textFile": "../fonts/OFL.txt"
+  }
+]

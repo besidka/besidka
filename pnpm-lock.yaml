@@ -468,6 +468,9 @@ importers:
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       fflate:
         specifier: 0.8.3
         version: 0.8.3
