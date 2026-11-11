@@ -152,6 +152,7 @@ const props = withDefaults(defineProps<{
 
 const sidePanel = useSidePanel()
 const documentsFeature = useFeature('documents')
+const { refreshFeatures } = useFeatures()
 
 const view = computed(() => {
   return isDocumentPart(props.part) ? getDocumentPartView(props.part) : null
@@ -171,6 +172,21 @@ const flow = useDocumentFlow(flowDocumentId, {
   isStreaming: () => props.isStreaming,
   modelId: () => props.modelId,
 })
+
+const hasRefreshedFeatures = shallowRef<boolean>(false)
+
+watch(() => flow.document.value, async (answeredDocument) => {
+  if (
+    !answeredDocument
+    || documentsFeature.value.active
+    || hasRefreshedFeatures.value
+  ) {
+    return
+  }
+
+  hasRefreshedFeatures.value = true
+  await refreshFeatures()
+}, { immediate: true })
 
 const isOwnerDocument = computed<boolean>(() => {
   return flowDocumentId.value !== null
@@ -201,10 +217,6 @@ const cardState = computed<CardState>(() => {
 
   if (!isOwnerDocument.value) {
     return current.state === 'failed' ? 'failed' : 'shared'
-  }
-
-  if (!documentsFeature.value.active) {
-    return 'unavailable'
   }
 
   if (flow.status.value === 'failed') {
@@ -308,7 +320,6 @@ const failureText = computed<string>(() => {
 
 const canRetry = computed<boolean>(() => {
   return isOwnerDocument.value
-    && documentsFeature.value.active
     && isDocumentErrorRetryable(flow.document.value?.errorCode ?? null)
 })
 

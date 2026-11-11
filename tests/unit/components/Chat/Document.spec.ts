@@ -7,18 +7,30 @@ import { useSidePanel } from '../../../../app/composables/side-panel'
 
 enableAutoUnmount(afterEach)
 
-const { featureState, flowStatus, flowDocument, flowError, flowBusy, retry }
-  = vi.hoisted(() => ({
-    featureState: { enabled: true, active: true, variant: null },
-    flowStatus: { value: 'loading' as string },
-    flowDocument: { value: null as Record<string, unknown> | null },
-    flowError: { value: null as string | null },
-    flowBusy: { value: false },
-    retry: vi.fn(),
-  }))
+const {
+  featureState,
+  flowStatus,
+  flowDocument,
+  flowError,
+  flowBusy,
+  retry,
+  refreshFeatures,
+} = vi.hoisted(() => ({
+  featureState: { enabled: true, active: true, variant: null },
+  flowStatus: { value: 'loading' as string },
+  flowDocument: { value: null as Record<string, unknown> | null },
+  flowError: { value: null as string | null },
+  flowBusy: { value: false },
+  retry: vi.fn(),
+  refreshFeatures: vi.fn(),
+}))
 
 mockNuxtImport('useFeature', () => {
   return () => ref(featureState)
+})
+
+mockNuxtImport('useFeatures', () => {
+  return () => ({ refreshFeatures })
 })
 
 mockNuxtImport('useDocumentFlow', () => {
@@ -98,6 +110,7 @@ beforeEach(() => {
   flowError.value = null
   flowBusy.value = false
   retry.mockReset()
+  refreshFeatures.mockReset()
 })
 
 afterEach(() => {
@@ -391,7 +404,7 @@ describe('ChatDocument', () => {
         .toBe(false)
     })
 
-    it('shows the unavailable card when the documents feature is off',
+    it('keeps a document the server answered for when the client feature flag is stale',
       async () => {
         featureState.active = false
         flowStatus.value = 'ready'
@@ -400,11 +413,35 @@ describe('ChatDocument', () => {
         const wrapper = await mountCard({ part: OWNER_PART })
 
         expect(wrapper.get(testId('document-card')).attributes('data-state'))
+          .toBe('ready')
+        expect(wrapper.find(testId('document-card-download')).exists())
+          .toBe(true)
+        expect(wrapper.find(testId('document-card-preview')).exists())
+          .toBe(true)
+        expect(refreshFeatures).toHaveBeenCalledTimes(1)
+      })
+
+    it('does not refresh the features while the flag is active', async () => {
+      flowStatus.value = 'ready'
+      flowDocument.value = READY_DOCUMENT
+
+      await mountCard({ part: OWNER_PART })
+
+      expect(refreshFeatures).not.toHaveBeenCalled()
+    })
+
+    it('shows the unavailable card when the server reports the feature off',
+      async () => {
+        featureState.active = false
+        flowStatus.value = 'unavailable'
+
+        const wrapper = await mountCard({ part: OWNER_PART })
+
+        expect(wrapper.get(testId('document-card')).attributes('data-state'))
           .toBe('unavailable')
         expect(wrapper.find(testId('document-card-download')).exists())
           .toBe(false)
-        expect(wrapper.find(testId('document-card-preview')).exists())
-          .toBe(false)
+        expect(refreshFeatures).not.toHaveBeenCalled()
       })
   })
 
