@@ -7,8 +7,8 @@
   pages). They work without a token, read only public content and never
   touch user data.
 - **Private tools** (the signed-in user's chats, projects, files, memory and
-  settings: 36 tools that cover what the web UI does except chatting, plus
-  the admin-only feature access tools, see
+  settings, artifacts: 41 tools that cover what the web UI does except
+  chatting, plus the three admin-only feature access tools, see
   [What MCP does not do (and why)](#what-mcp-does-not-do-and-why)). They
   need an OAuth access token issued by Besidka's own authorization server
   (Better Auth `@better-auth/mcp`, see `server/utils/auth.ts`).
@@ -86,7 +86,10 @@ never data.
 | `files:write` | `create_file`, `rename_file` |
 | `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
-| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+| `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |
+| `artifacts:write` | `create_artifact`, `update_artifact`, `revoke_artifact_shares` |
+| `artifacts:share` | `share_artifact` (publishes, see exclusion 2) |
+| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
 The per-user surface has 32 tools: the original thirteen plus 19 added for
@@ -99,7 +102,10 @@ labels in `app/components/OAuth/ScopeLabel.vue`.
 
 #### Planned scopes (Agentic capabilities)
 
-Not built yet. Each is a new scope, so each ships with a major version bump
+`admin:features` shipped in 2.0.0 and the artifacts scopes in 3.0.0 (see
+[The artifacts scopes](#the-artifacts-scopes)); their rows below are kept for
+the design record. The other rows are not built yet.
+Each is a new scope, so each ships with a major version bump
 (consent is stored by scope name, and a new tool under an existing scope
 would reach existing clients silently). The design is in
 `docs/agentic-capabilities-roadmap.md`.
@@ -107,9 +113,9 @@ would reach existing clients silently). The design is in
 | Scope | Class | Planned tools | Ticket |
 | --- | --- | --- | --- |
 | `admin:features` | write, admins only (hidden on the consent page and stripped on the server for non-admins) | `list_feature_flags`, `list_feature_access`, `set_feature_access` (one user at a time, never the rule) | P0-8 |
-| `artifacts:read` | read | `list_artifacts`, `get_artifact`, `list_artifact_shares` | A-8 |
-| `artifacts:write` | write | `create_artifact`, `update_artifact`, `revoke_artifact_shares` | A-8 |
-| `artifacts:share` | write, publishes | `share_artifact` (see exclusion 2) | A-8 |
+| `artifacts:read` | read, built in 3.0.0 | `list_artifacts`, `get_artifact`, `list_artifact_shares` | A-8 |
+| `artifacts:write` | write, built in 3.0.0 | `create_artifact`, `update_artifact`, `revoke_artifact_shares` | A-8 |
+| `artifacts:share` | write, publishes, built in 3.0.0 | `share_artifact` (see exclusion 2) | A-8 |
 | `connectors:read` | read | `list_connectors`, `get_connector` | C-9 |
 | `connectors:write` | write | `add_connector` (created disabled), `update_connector_tools`, `delete_connectors` (destructive) | C-9 |
 | `skills:read` | read | `list_skills`, `get_skill` | S-6 |
@@ -134,9 +140,15 @@ history (the `DESTRUCTIVE_TOOLS` list in the spec): `delete_memory`,
 `delete_chats`, `delete_chat_message`, `revoke_chat_shares`,
 `update_project`, `delete_project`, `update_project_knowledge_item`,
 `delete_project_knowledge_items`, `rename_file`, `delete_files`,
-`reset_memory`, `update_settings` and `set_feature_access`.
+`reset_memory`, `update_settings`, `set_feature_access`,
+`revoke_artifact_shares` and `delete_artifacts`. `update_artifact` is not on
+the list because every earlier version is kept.
 
-Since 2.0.0 the surface has 36 private tools: `list_my_features` under
+Since 3.0.0 the surface has 44 private tools (eight artifact tools under
+`artifacts:read`, `artifacts:write`, `artifacts:share` and `data:delete`).
+
+Since 3.0.0 the surface has 44 private tools (2.0.0 had 36; 3.0.0 adds
+the eight artifact tools). 2.0.0 added `list_my_features` under
 `settings:read`, and three admin tools under the new `admin:features` scope.
 The two admin list tools are reads under a write-class scope:
 `isMcpWriteTool` excludes them (`READ_TOOLS_UNDER_WRITE_SCOPES` in
@@ -195,9 +207,10 @@ for `projects:write` or `memory:write` earlier would silently gain deletion
 if the delete tools stayed behind those scopes. Every deletion therefore sits
 behind its own scope, `data:delete` ("Delete your data" on the consent page):
 `delete_chats`, `delete_chat_message`, `delete_project`,
-`delete_project_knowledge_items`, `delete_files`, `delete_memory` and
-`reset_memory`. `revoke_chat_shares` stays on `chats:write` because the
-chats survive it. `data:delete` is a write scope (`MCP_WRITE_SCOPES`,
+`delete_project_knowledge_items`, `delete_files`, `delete_memory`,
+`reset_memory` and `delete_artifacts`. `revoke_chat_shares` and
+`revoke_artifact_shares` stay on `chats:write` and `artifacts:write` because
+the chats and artifacts survive them. `data:delete` is a write scope (`MCP_WRITE_SCOPES`,
 `isMcpWriteScope`), so it is unticked by default, shows the warning style, and
 `readOnlyHint` is `false` on its tools; `isMcpDeleteScope` and
 `isMcpDeleteTool` pick the delete tools out for the stricter limiter below.
@@ -208,6 +221,90 @@ Each of those tool descriptions ends with `Requires signing in
 connections keep every other tool but lose `delete_memory` (and the other six)
 until the user reconnects, answers the `403 insufficient_scope` step-up and
 ticks "Delete your data". No consent row is rewritten.
+
+#### The artifacts scopes
+
+Artifacts (`docs/artifacts/`) are text the caller supplies; no tool runs a
+model, so none of them spends the user's keys. Consent is stored by scope
+name, so reading, writing and publishing each have their own scope instead
+of riding on `chats:read` or `files:write`: `artifacts:read` is ticked by
+default like the other read scopes, while `artifacts:write` and
+`artifacts:share` are write-class (`MCP_WRITE_SCOPES`) and unticked.
+Deleting sits on the existing `data:delete`.
+
+- **Flags, checked in every handler without a request event**
+  (`assertMcpArtifactsAvailable` in `server/utils/mcp/private/artifacts.ts`,
+  the same evaluator as `list_my_features`): `artifacts` and `artifacts.mcp`
+  always, plus `artifacts.share` for `share_artifact` and `artifacts.react`
+  for the `react` kind (on create, and on update of a react artifact). Every
+  tool is still listed to everyone; a caller without the flags gets the same
+  404 "Artifacts are not available for your account" from every tool, raised
+  before an id is looked at, so no tool reveals whether an id exists. List,
+  get, list shares, create, update and share also need the user's Labs toggle
+  for artifacts to be on (`active`); `revoke_artifact_shares` and
+  `delete_artifacts` only need the flags, like the HTTP routes, so a user who
+  switched artifacts off can still take links down and delete.
+- **Writes** call the artifact store (`createArtifact`,
+  `appendArtifactVersion`) with `createdVia: 'mcp'` and version
+  `createdBy: 'mcp'`. Content is at most 200,000 characters and the store's
+  512 KiB and 25 MB checks still apply. `update_artifact` takes exactly one
+  of `edits` (1 to 20 find-and-replace pairs, `applyArtifactEdits`, the same
+  function and error wording as the in-chat `update_artifact` model tool:
+  "Edit N failed: old_string does not occur..." and nothing is written) or
+  `content`. The edit is computed from the version it read and refused (409)
+  if a newer one appeared. The store's `why` and `fix` are folded into the
+  error message, because an MCP client only shows `message`. The MCP tools
+  named `create_artifact` and `update_artifact` share their names with the
+  in-chat model tools of `server/utils/ai/artifact-tools.ts`, but those are
+  keys of an AI SDK `ToolSet` and these are `defineMcpTool` files, so the two
+  registries never meet.
+- **`share_artifact`** takes `id`, a required `expiresInDays` (whole number,
+  1 to 30) and an optional `pinnedVersion`. It forces `storageAllowed` and
+  `bridgeAllowed` to false (neither is an input), sets `createdVia: 'mcp'`
+  and the OAuth client id, so the owner's link list says the link was
+  created by that connected app (`clientName`). It runs the deterministic
+  `detectSharePii` over the shared version and returns the kinds as
+  `warnings`; the model-based check is skipped because it would spend the
+  key. Creation is capped at **10 links a day per user** over MCP (fixed
+  24-hour window on the KV limiter, key
+  `mcp:rate-limit:artifact-share:<userId>`, `MCP_ARTIFACT_SHARE_DAILY_LIMIT`),
+  answered as a 429 tool error, on top of the 10 active links per artifact.
+  The order is flags, then `assertArtifactShareable` (404 for an unknown id,
+  451 for a taken-down artifact, 400 "Version N does not exist" for a pinned
+  version above the latest, the same wording as the UI route, and 409 for the
+  10-active-links cap of one artifact), then reading the shared version for
+  the personal-data check, then the daily counter, then the insert, so a call
+  refused for any of those reasons never spends the allowance. A KV write
+  failure on the counter (Workers KV allows one write per second per key) is
+  answered as a 429 with a retry-after of one second instead of a 500. MCP
+  shares are always `noindex`: the `/a/**` route rule applies to every artifact link and
+  there is no switch. The link and its token are never logged (`share_id`
+  only). A version pinned at creation is the one that was checked; a link
+  that follows the latest version shows later versions that were not.
+- **`list_artifact_shares`** returns the active links with `shareId`,
+  `status` (`active`, `expired`, `revoked` or `taken-down`), `createdVia`,
+  `createdByApp`, `pinnedVersion`, `expiresAt`, `storageAllowed` and
+  `bridgeAllowed`. A link is a bearer capability, so `url` is filled only
+  when the token also carries `artifacts:share` (the effective scopes of the
+  private tool context) and is `null` for a read-only client.
+  `revoke_artifact_shares` takes exactly one of `shareIds` or `artifactIds`
+  (1 to 50) and is a soft revoke (`revokedAt`), so the rows that viewer
+  saved-progress retention and takedown depend on stay.
+- **`delete_artifacts`** takes 1 to 20 ids and `confirm: true`, counts
+  against the delete limiter, and calls `deleteArtifacts`: versions, links
+  and viewer storage go with the R2 objects, **`artifact_reports` rows never
+  do** (a retention sweep deletes them 12 months after closing, 24 for a
+  copyright removal), and an artifact under a legal hold is not deleted and
+  comes back in `held`. The result is `{ deleted, held, notFound }`, each a
+  list of ids. A test deletes an artifact that has a report and checks the
+  row is still there.
+- **Never exposed over MCP:** viewer storage (what visitors saved), the LLM
+  bridge, reports and takedowns (admin UI only), and anything that would
+  switch either on for a link.
+- **Version.** New scopes are a major bump: `MCP_SERVER_VERSION` 3.0.0,
+  mirrored in `server.json` and both plugin manifests. Existing clients get
+  the new scopes through the scope upgrade below and see them unticked for
+  write and share on the consent page.
 
 #### Why the 401 challenge names every scope
 
@@ -774,6 +871,14 @@ text only and capped.
 | `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email` (an unknown user is a 404 either way); with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`), `truncated: true` when there are more |
 | `set_feature_access` | `admin:features` | yes | Admins only. `access` `allow`, `deny` or `clear` for one user (`userId` or `email`) and one registry flag, optional `expiresInDays` (1 to 365) and `reason` (200 characters, kept in the audit log only). Echoes the user id only (`expiresAt` as an ISO string, while `list_feature_access` uses unix seconds, as the admin API does). Cannot touch rules, rollouts, the kill switch or opt-ins | `setFeatureGrant`, `revokeFeatureGrant` with an MCP actor; 30 per minute and 60 per hour |
 | `update_settings` | `settings:write` | yes | Set `reasoningExpanded`, `reasoningAutoHide`, `defaultReasoningLevel` (`null` clears it), `favoriteModels`, `favoriteGatewayModels`, `sidebarPinned`, `memoryEnabled`, `chatSearchEnabled`. Keys that are not listed are dropped by the tool input schema before the handler runs, not refused (the strict schema in `updateMcpSettings` is a second guard for direct callers). `favoriteModels` and `favoriteGatewayModels` are replaced as a whole, so a client reads `get_settings` first and sends the full list or map. `memoryEnabled: true` is refused while it is off and automatic extraction is on, or any of the user's projects has automatic updates set to `on`, because turning it on would resume that background extraction | `applyUserSettingsUpdate`, the same schemas as `PATCH /profiles/settings` (`shared/utils/user-settings-schemas.ts`) |
+| `list_artifacts` | `artifacts:read` | no | Artifacts by recent change with `id`, `title`, `kind`, `version`, `updatedAt`, `originChatSlug` (null when the chat is gone), `activeShares` and `takenDown`; optional `query` (title), `kind`, `limit` and an opaque `cursor` | `listArtifacts` (the library query). `limit` up to 50; the cursor is a base64 offset, so a page can shift when artifacts change between calls |
+| `get_artifact` | `artifacts:read` | no | One version's full content (latest by default), `title`, `kind` and the list of version numbers | `readArtifactVersion`, `getArtifactDetail`. Content up to 512 KB; a taken-down artifact is refused (451) |
+| `list_artifact_shares` | `artifacts:read` | no | Active public links of one artifact: URL, `createdVia`, `createdByApp`, `pinnedVersion`, `expiresAt`, `storageAllowed`, `bridgeAllowed` | `listArtifactShares` (active only) |
+| `create_artifact` | `artifacts:write` | no | Create an artifact from a `kind`, a `title` (120 characters) and `content`; returns `id`, `version: 1` and `url_in_app` (`/chats/artifacts?artifact=<id>`) | `createArtifact` with `createdVia: 'mcp'`. Content up to 200,000 characters, then the store's 512 KiB and 25 MB checks. `react` needs `artifacts.react` |
+| `update_artifact` | `artifacts:write` | no | New version from exactly one of `edits` (1 to 20 pairs) or `content`; optional `title`. Older versions are kept | `applyArtifactEdits`, `appendArtifactVersion` with `expectedVersion`. At most 50 versions |
+| `revoke_artifact_shares` | `artifacts:write` | yes | Revoke links by `shareIds` or by `artifactIds` (exactly one, 1 to 50); `{ revoked, notFound }` | `revokeArtifactShares` (soft revoke; the artifacts stay) |
+| `share_artifact` | `artifacts:share` | no | Public link for one artifact: `expiresInDays` 1 to 30 (required), optional `pinnedVersion`; returns `shareId`, `url`, `expiresAt`, `warnings`. Storage and bridge forced off, never indexed | `createArtifactShare` with `createdVia: 'mcp'`, `detectSharePii`, 10 creations a day per user (`MCP_ARTIFACT_SHARE_DAILY_LIMIT`), `artifacts.share` flag |
+| `delete_artifacts` | `data:delete` | yes | Delete 1 to 20 artifacts with versions, links and viewer storage; `confirm: true` required; `{ deleted, held, notFound }`. Report rows survive, legal-hold artifacts are `held` | `deleteArtifacts` (`MCP_ARTIFACT_DELETE_MAX_IDS`), the delete limiter |
 
 Notes:
 
@@ -994,21 +1099,31 @@ tools ship.
    outside the agent's reach, for example a draft share the user activates in
    the app.
 
-   **Exception, artifacts only (owner decision 2026-11-07, planned in
-   Phase 1, ticket A-8).** A new scope `artifacts:share` lets an app create a
-   public link to an artifact with `share_artifact`. Chat shares stay
-   excluded. The exception is bounded so that a prompt-injected call does as
-   little harm as possible:
+   **Exception, artifacts only (owner decision 2026-11-07, built in 3.0.0,
+   ticket A-8).** A new scope `artifacts:share` lets an app create a public
+   link to an artifact with `share_artifact`. Chat shares stay excluded. The
+   exception is bounded so that a prompt-injected call does as little harm as
+   possible:
    - `artifacts:share` is its own scope, unticked by default on the consent
      page, so no existing grant reaches it (consent is stored by scope name,
      see [Scope upgrades for existing clients](#scope-upgrades-for-existing-clients));
-   - a share created over MCP is always `noindex`, expires after at most 30
-     days, and has the viewer storage and the LLM bridge switched off;
+   - a share created over MCP always expires within 30 days (`expiresInDays`
+     is required, 1 to 30), is always `noindex` (the `/a/**` route rule, no
+     switch), and has the viewer storage and the LLM bridge switched off
+     (neither is an input);
+   - at most 10 links a day per user can be created over MCP, on top of the
+     10 active links per artifact;
+   - the deterministic personal-data detectors run on the shared version and
+     their kinds are returned as `warnings` (the model-based check would spend
+     the key, so it is skipped), and the tool description says that anyone
+     with the link can open the artifact and report it;
    - the artifact runtime is a separate, sandboxed origin
      (`besidka-artifacts.chernenko.workers.dev`), so a shared artifact cannot
      reach the user's session;
-   - `revoke_artifact_shares` (`artifacts:write`) withdraws it, and the
-     in-app share list shows MCP-created shares.
+   - `revoke_artifact_shares` (`artifacts:write`) withdraws it, the in-app
+     share list shows the link as created by the connected app (its OAuth
+     client name), and every public artifact page has a Report button;
+   - the viewer storage and the model bridge are never exposed over MCP.
 
    Why artifacts and not chats: an artifact is a self-contained output the
    user asked an agent to build and usually means to show, while a chat holds

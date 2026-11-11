@@ -224,6 +224,54 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
+      "description": "Save content you wrote as a new Besidka artifact (version 1) in your library and return its id and a link to open it in Besidka. Artifacts run in a sandbox without network access, so the content must be self-contained. It counts against your artifact storage and uses none of your API keys. React artifacts need the React artifacts feature. Requires signing in (artifacts:write).",
+      "inputSchema": {
+        "properties": {
+          "content": {
+            "description": "The full content, up to 200000 characters",
+            "maxLength": 200000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "description": "html: one self-contained HTML document with inline CSS and JS; react: one JSX module whose default export is a component; svg: one SVG image; mermaid: one Mermaid diagram; markdown: a Markdown document",
+            "enum": [
+              "html",
+              "react",
+              "svg",
+              "mermaid",
+              "markdown"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "description": "A short title, up to 120 characters",
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "content"
+        ],
+        "type": "object"
+      },
+      "name": "create_artifact",
+      "public": false,
+      "requiredScopes": [
+        "artifacts:write"
+      ],
+      "title": "Create an artifact"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
       "description": "Save text as a new file in your Besidka library and return its id. It counts against your storage quota and expires like an upload. The text is not screened for prompt injection, unlike project notes. To give a project the text as knowledge, use add_project_text instead. Requires signing in (files:write).",
       "inputSchema": {
         "properties": {
@@ -281,6 +329,46 @@
         "projects:write"
       ],
       "title": "Create a project"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Permanently delete Besidka artifacts with all their versions, their public links and the progress visitors saved in them. Artifacts under a legal hold are not deleted and come back in `held`; ids that are not yours or do not exist come back in `notFound`. Deleted artifacts cannot be restored. Requires signing in (data:delete).",
+      "inputSchema": {
+        "properties": {
+          "confirm": {
+            "const": true,
+            "description": "Must be true: deleted artifacts cannot be restored",
+            "type": "boolean"
+          },
+          "ids": {
+            "description": "Artifact ids from list_artifacts, up to 20 per call",
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "name": "delete_artifacts",
+      "public": false,
+      "requiredScopes": [
+        "data:delete"
+      ],
+      "title": "Delete artifacts"
     },
     {
       "annotations": {
@@ -499,6 +587,41 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
+      "description": "Read the full content of one version of a Besidka artifact (the latest by default, up to 512 KB) together with its title, kind and the list of version numbers. An artifact taken down after a report is refused. Requires signing in (artifacts:read).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Artifact id from list_artifacts",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "description": "A version number from the versions list; default the latest",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "get_artifact",
+      "public": false,
+      "requiredScopes": [
+        "artifacts:read"
+      ],
+      "title": "Read an artifact"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Read one of your Besidka chats: title, project, whether it is pinned or excluded from memory, its share settings if it has a live share (the share link itself only when the connection can also change chats, chats:write), the models used, a context summary (counts of outputs, inputs, web sources, generated images, research reports and memory actions, plus up to 20 attached files by id and name) and the text of its messages, oldest to newest. Long messages and long chats are truncated; file contents, images and tool output are left out. Requires signing in (chats:read).",
       "inputSchema": {
         "properties": {
@@ -633,6 +756,82 @@
         "settings:read"
       ],
       "title": "Get my settings"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List the active public links of one Besidka artifact: the status, which app created it (null when you created it in Besidka), the pinned version, the expiry and whether visitors may save progress or use AI features. Links are capabilities: anyone who has one can open the artifact, so the link itself (url) is returned only when this app was also granted artifacts:share, and is null otherwise. Ended links are not listed. Requires signing in (artifacts:read).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Artifact id from list_artifacts",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "list_artifact_shares",
+      "public": false,
+      "requiredScopes": [
+        "artifacts:read"
+      ],
+      "title": "List artifact share links"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List your Besidka artifacts (pages, apps, diagrams and documents made in chats or by connected apps), most recently changed first, with the current version, the chat slug they came from (null when that chat is gone) and how many public links are active. Use nextCursor to get the next page. Requires signing in (artifacts:read).",
+      "inputSchema": {
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "kind": {
+            "description": "Only artifacts of this kind",
+            "enum": [
+              "html",
+              "react",
+              "svg",
+              "mermaid",
+              "markdown"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "description": "Page size, 1 to 50, default 20",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "description": "Only artifacts whose title contains this text",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_artifacts",
+      "public": false,
+      "requiredScopes": [
+        "artifacts:read"
+      ],
+      "title": "List artifacts"
     },
     {
       "annotations": {
@@ -1215,6 +1414,48 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
+      "description": "Revoke public artifact links, either by share id or every link of the artifacts you name, so the links stop working at once. The artifacts stay. Reports how many links were revoked and which ids were not yours or not found; copies others already made cannot be recalled. Requires signing in (artifacts:write).",
+      "inputSchema": {
+        "properties": {
+          "artifactIds": {
+            "description": "Artifact ids whose every link is revoked, 1 to 50. Send this or shareIds, not both",
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shareIds": {
+            "description": "Share ids from list_artifact_shares, 1 to 50. Send this or artifactIds, not both",
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "name": "revoke_artifact_shares",
+      "public": false,
+      "requiredScopes": [
+        "artifacts:write"
+      ],
+      "title": "Stop sharing artifacts"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
       "description": "Revoke the public share links of Besidka chats, so the links stop working. The chats themselves stay. Reports the slugs that were revoked and the ones that were not shared or are not your chats. Requires signing in (chats:write).",
       "inputSchema": {
         "properties": {
@@ -1303,6 +1544,113 @@
         "admin:features"
       ],
       "title": "Give or remove a feature for one user (admin)"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Create a public link to one of your Besidka artifacts. Anyone who has the link can open the artifact, no account needed, and can report it; copies others make cannot be recalled. The link expires after the days you give (at most 30), is never indexed by search engines, does not let visitors save progress or use AI features, and shows in your link list as created by this app. At most 10 links a day can be created through connected apps, and an artifact can have 10 active links. The result lists warnings when the shared version seems to contain emails, phone numbers or similar identifiers. Only share what the user asked to publish, and revoke a link with revoke_artifact_shares. Requires signing in (artifacts:share).",
+      "inputSchema": {
+        "properties": {
+          "expiresInDays": {
+            "description": "Days until the link stops working, 1 to 30. Required",
+            "maximum": 30,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "description": "Artifact id from list_artifacts",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pinnedVersion": {
+            "description": "Show this version only; default the latest version, which follows later updates",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "expiresInDays"
+        ],
+        "type": "object"
+      },
+      "name": "share_artifact",
+      "public": false,
+      "requiredScopes": [
+        "artifacts:share"
+      ],
+      "title": "Publish an artifact as a public link"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Write a new version of one of your Besidka artifacts, from either `edits` (find-and-replace pairs; each old_string must occur exactly once, otherwise the call fails naming the edit and nothing is saved) or the full `content`, never both; `title` is optional. Older versions are kept, up to 50 per artifact, and a change computed from an older version than the latest is refused. Public links that follow the latest version show the new one at once. Requires signing in (artifacts:write).",
+      "inputSchema": {
+        "properties": {
+          "content": {
+            "description": "The full new content, up to 200000 characters. Send this or edits, not both",
+            "maxLength": 200000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "edits": {
+            "description": "Exact find-and-replace pairs applied in order to the latest version; each old_string must occur exactly once. Send this or content, not both",
+            "items": {
+              "properties": {
+                "new_string": {
+                  "maxLength": 200000,
+                  "type": "string"
+                },
+                "old_string": {
+                  "maxLength": 200000,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "old_string",
+                "new_string"
+              ],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          },
+          "id": {
+            "description": "Artifact id from list_artifacts or create_artifact",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "description": "A new title for the artifact",
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "update_artifact",
+      "public": false,
+      "requiredScopes": [
+        "artifacts:write"
+      ],
+      "title": "Update an artifact"
     },
     {
       "annotations": {

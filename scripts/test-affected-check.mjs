@@ -259,6 +259,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/auth-oauth-query.spec.ts',
     'tests/unit/middleware/00.auth.global.oauth.spec.ts',
     'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
     'tests/unit/utils/auth-oauth.spec.ts',
     'tests/unit/utils/auth-rate-limit-oauth.spec.ts',
     'tests/unit/utils/account/purge-user-oauth-data.spec.ts',
@@ -285,6 +286,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/connected-apps.spec.ts',
     'tests/unit/components/Profile/ConnectedApps/PermissionsEditor.spec.ts',
     'tests/unit/pages/profile/connected-apps.spec.ts',
+  ]
+  const mcpArtifactTests = [
+    'tests/unit/server/mcp/tools/list-artifacts.spec.ts',
+    'tests/unit/server/mcp/tools/get-artifact.spec.ts',
+    'tests/unit/server/mcp/tools/list-artifact-shares.spec.ts',
+    'tests/unit/server/mcp/tools/create-artifact.spec.ts',
+    'tests/unit/server/mcp/tools/update-artifact.spec.ts',
+    'tests/unit/server/mcp/tools/revoke-artifact-shares.spec.ts',
+    'tests/unit/server/mcp/tools/share-artifact.spec.ts',
+    'tests/unit/server/mcp/tools/delete-artifacts.spec.ts',
+    'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
   ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
@@ -900,6 +913,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-oauth.spec.ts',
     'tests/integration/api/profiles-connected-apps-consent.spec.ts',
     'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
   ]
 
   const featureLabsTests = [
@@ -3078,6 +3092,10 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^server\/utils\/(artifacts\/(store|shares|queries|blob-store)|ai\/artifact-tools|chats\/share-pii-check|features\/evaluate|mcp\/private\/(artifacts|artifact-context))\.ts$/,
+      tests: mcpArtifactTests,
+    },
+    {
       pattern: /^server\/utils\/(turnstile|auth-hosts)\.ts$/,
       tests: ['tests/unit/server/utils/turnstile.spec.ts'],
     },
@@ -3285,6 +3303,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/mcp/tools/create-project.spec.ts',
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
         ...mcpUiParityTests,
+        ...mcpArtifactTests,
       ],
     },
     {
@@ -3303,6 +3322,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/private-access.spec.ts',
         'tests/unit/server/utils/mcp/bounded-body.spec.ts',
         'tests/unit/server/utils/mcp/project-text-body-size.spec.ts',
+        ...mcpArtifactTests,
       ],
     },
     {
@@ -3317,6 +3337,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/project-text-body-size.spec.ts',
         'tests/unit/server/mcp/tools/create-project.spec.ts',
         ...mcpUiParityTests,
+        ...mcpArtifactTests,
       ],
     },
     {
@@ -3343,6 +3364,8 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/(components\/OAuth|pages\/oauth)\/.*$/,
       tests: [
         'tests/unit/components/OAuth/ScopePicker.spec.ts',
+        'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+        'tests/unit/components/OAuth/ScopeLabel.spec.ts',
         'tests/unit/components/Profile/ConnectedApps/PermissionsEditor.spec.ts',
         'tests/e2e/profile/oauth-consent.spec.ts',
       ],
@@ -3457,6 +3480,8 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/integration/api/profiles-connected-apps-consent.spec.ts',
         'tests/unit/components/OAuth/ScopePicker.spec.ts',
+        'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+        'tests/unit/components/OAuth/ScopeLabel.spec.ts',
         'tests/e2e/profile/oauth-consent.spec.ts',
       ],
     },

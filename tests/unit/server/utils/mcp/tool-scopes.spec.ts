@@ -43,6 +43,8 @@ const DESTRUCTIVE_TOOLS = [
   'reset_memory',
   'update_settings',
   'set_feature_access',
+  'revoke_artifact_shares',
+  'delete_artifacts',
 ]
 
 function readToolSources() {
@@ -99,6 +101,7 @@ describe('mcp tool scopes', () => {
       'delete_files',
       'delete_memory',
       'reset_memory',
+      'delete_artifacts',
     ] as const
 
     for (const name of deleteTools) {
@@ -137,6 +140,41 @@ describe('mcp tool scopes', () => {
     expect(isMcpWriteTool('set_feature_access')).toBe(true)
     expect(isMcpWriteTool('list_feature_flags')).toBe(false)
     expect(isMcpWriteTool('list_feature_access')).toBe(false)
+  })
+
+  it('puts the artifact tools behind their own scopes', () => {
+    const readTools = [
+      'list_artifacts',
+      'get_artifact',
+      'list_artifact_shares',
+    ] as const
+    const writeTools = [
+      'create_artifact',
+      'update_artifact',
+      'revoke_artifact_shares',
+    ] as const
+
+    for (const name of readTools) {
+      expect(getMcpToolRequiredScopes(name), name).toEqual(['artifacts:read'])
+      expect(isMcpWriteTool(name), name).toBe(false)
+    }
+
+    for (const name of writeTools) {
+      expect(getMcpToolRequiredScopes(name), name)
+        .toEqual(['artifacts:write'])
+      expect(isMcpWriteTool(name), name).toBe(true)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    expect(getMcpToolRequiredScopes('share_artifact'))
+      .toEqual(['artifacts:share'])
+    expect(isMcpWriteTool('share_artifact')).toBe(true)
+    expect(isMcpDeleteTool('share_artifact')).toBe(false)
+    expect(getMcpToolRequiredScopes('delete_artifacts'))
+      .toEqual(['data:delete'])
+    expect(isMcpWriteScope('artifacts:write')).toBe(true)
+    expect(isMcpWriteScope('artifacts:share')).toBe(true)
+    expect(isMcpWriteScope('artifacts:read')).toBe(false)
   })
 
   it('never lets a tool write feature rules', () => {

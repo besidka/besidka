@@ -28,7 +28,7 @@ research run or anything else that spends a key does not
 | Phase | Scope | Linear | State |
 |---|---|---|---|
 | 0 Foundation | Per-user feature access, admin, rollout and A/B, Labs, shared side panel, chat context panel, larger file manager | BES-224 | In progress: pre-check (P0-14) and this design (P0-1) in review |
-| 1 Artifacts | Sandboxed HTML/React/SVG/Mermaid/Markdown artifacts, versions, per-viewer storage, LLM bridge on the viewer's key, public shares | BES-225 | In progress: A-2 runtime on `main`; native stack `artifacts` in review (A-1 store and owner API, A-3 chat tools); `artifacts` and `artifacts.react` available at stage `internal` |
+| 1 Artifacts | Sandboxed HTML/React/SVG/Mermaid/Markdown artifacts, versions, per-viewer storage, LLM bridge on the viewer's key, public shares | BES-225 | In progress: A-2 runtime on `main`; native stack `artifacts` (#766) in review: A-1 store, A-3 chat tools, A-4 panel, A-14 code blocks, A-5 viewer storage, A-6 LLM bridge, A-7 public links and reports, A-8 MCP tools, A-11 library tab; all `artifacts.*` flags at stage `internal` |
 | 2 Documents | PDF, DOCX, XLSX, PPTX from a validated JSON spec (hybrid renderer); provider-native code execution | BES-226 | Ticketed, after Phase 1 |
 | 3 Research | Custom deep research on any tool-calling model with Brave/Exa, 5 to 10 minutes, about 200 sources, Workflows orchestration | BES-227 | Ticketed, after Phase 2 |
 | 4a Connectors | User-brought remote MCP servers (OAuth client, approvals, registry search) | BES-229 | Ticketed, in parallel with Phase 1 |
