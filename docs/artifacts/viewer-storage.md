@@ -77,8 +77,17 @@ fail; the save then goes ahead (fail open, noted as
 what a viewer stores. A value too deeply nested for `JSON.stringify` is a
 400.
 
-Totals are read and checked in the same request before the upsert; two
-concurrent writes can overshoot a cap by one value (accepted in the ticket).
+The caps are enforced atomically in the statement that writes the row:
+`putArtifactStorageValue` runs one `INSERT ... SELECT ... WHERE` whose
+condition sums the bytes and counts the keys of the viewer's other keys (the
+replaced key does not count against itself), with `ON CONFLICT DO UPDATE`
+for an existing key and `RETURNING key`. D1 runs a statement atomically, so
+parallel writes cannot overshoot a cap; a statement that returns no row means
+a cap refused the value, and the 413 `why` (keys used, or bytes used and
+needed) is then built from a fresh read of the totals. There is no migration:
+the check uses the existing primary key `(artifact_id, viewer_user_id, key)`.
+The response totals are read after the write, so under parallel writes they
+describe the state at that read.
 The protocol still accepts keys up to 256 characters and values up to about
 100 KB (A-2), so the host checks the stricter server rules first and answers
 `-32602` without a request.
