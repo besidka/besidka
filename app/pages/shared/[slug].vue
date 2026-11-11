@@ -206,6 +206,11 @@
               source="shared"
               :share-slug="shareSlug"
             />
+            <ChatDocument
+              v-else-if="isDocumentPart(part)"
+              :part="part"
+              :is-streaming="false"
+            />
             <div
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"

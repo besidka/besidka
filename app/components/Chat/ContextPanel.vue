@@ -291,12 +291,14 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { LazyChatDocumentPreview } from '#components'
 import type {
   ChatContextChat,
   ChatContextItem,
 } from '#shared/types/chat-context.d'
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
 import { isArtifactKind } from '#shared/utils/artifacts'
+import { isDocumentFormat } from '#shared/utils/documents'
 import { formatMessageCost } from '#shared/utils/message-format'
 import {
   CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
@@ -314,7 +316,7 @@ const idPrefix = useId()
 const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
-const { close } = useSidePanel()
+const { close, push: pushSidePanelView } = useSidePanel()
 const { open: openArtifact } = useArtifactPanel()
 const artifactsFeature = useFeature('artifacts')
 const {
@@ -537,7 +539,33 @@ function openArtifactItem(item: ChatContextItem): boolean {
   return true
 }
 
+function openDocumentItem(item: ChatContextItem): boolean {
+  const { documentId, documentFormat } = item.meta ?? {}
+
+  if (!documentId || !isDocumentFormat(documentFormat)) {
+    return false
+  }
+
+  pushSidePanelView({
+    viewKey: `document:${documentId}`,
+    title: item.title,
+    mode: 'detail',
+    component: LazyChatDocumentPreview,
+    props: {
+      documentId,
+      format: documentFormat,
+      title: item.title,
+    },
+  })
+
+  return true
+}
+
 async function onItemClick(item: ChatContextItem) {
+  if (item.kind === 'document' && openDocumentItem(item)) {
+    return
+  }
+
   if (item.kind === 'artifact' && openArtifactItem(item)) {
     return
   }

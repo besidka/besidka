@@ -56,7 +56,6 @@
               ref="selectTabRef"
               :attached-ids="attachedIds"
               :initial-source="selectSource"
-              :is-image-input-supported="isImageInputSupported"
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"

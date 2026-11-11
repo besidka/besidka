@@ -17,6 +17,14 @@ export type FileManagerFile = Pick<
 
 export type ViewMode = 'grid' | 'list'
 export type FileSourceFilter = FileMetadata['source'] | 'project'
+export type FileKind = 'image' | 'document'
+export type FileKindFilter = 'all' | FileKind
+
+export interface FileKindFilterOption {
+  id: FileKindFilter
+  label: string
+  testId: string
+}
 
 interface FileSourceTabBase {
   label: string
@@ -26,7 +34,6 @@ interface FileSourceTabBase {
 export interface BuiltInFileSourceTab extends FileSourceTabBase {
   kind: 'built-in'
   id: FileSourceFilter
-  requiresImageInput?: boolean
 }
 
 export interface ExtraFileSourceTab extends FileSourceTabBase {

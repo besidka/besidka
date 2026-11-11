@@ -4,7 +4,9 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import {
+  filesKindFilters,
   filesSourceFilters,
+  getFilesKindCondition,
   getFilesSourceCondition,
 } from '~~/server/utils/files/source-filter'
 import {
@@ -18,6 +20,7 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   source: z.enum(filesSourceFilters).default('all'),
+  kind: z.enum(filesKindFilters).optional(),
   projectId: z.string().optional(),
 })
 
@@ -39,7 +42,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { offset, limit, search, source, projectId } = query.data
+  const { offset, limit, search, source, kind, projectId } = query.data
   const userId = parseInt(session.user.id)
   const db = useDb()
   const trimmedSearch = search?.trim() ?? ''
@@ -60,6 +63,7 @@ export default defineEventHandler(async (event) => {
   const whereConditions = and(
     eq(schema.files.userId, userId),
     getFilesSourceCondition(source),
+    getFilesKindCondition(kind),
     decodedProjectId === null
       ? undefined
       : isFileLinkedToProjectSql(schema.files.id, decodedProjectId, userId),

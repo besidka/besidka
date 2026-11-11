@@ -29,6 +29,10 @@
         @change="selectSourceTab(tab)"
       >
     </div>
+    <ChatInputFilesModalSelectKindFilter
+      v-if="isKindFilterVisible"
+      v-model="kind"
+    />
 
     <!-- Scrollable Files Area -->
     <div class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
@@ -162,13 +166,10 @@ import type {
   FileSourceTab,
 } from '~/types/file-manager'
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   attachedIds: Set<string>
   initialSource?: FileSourceFilter
-  isImageInputSupported?: boolean
-}>(), {
-  isImageInputSupported: true,
-})
+}>()
 
 const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
@@ -195,6 +196,7 @@ const {
   isDeletingSelected,
   search,
   source,
+  kind,
   viewMode,
   pagination,
   projectGroups,
@@ -228,7 +230,6 @@ const activeExtraTabId = shallowRef<string | null>(null)
 
 const sourceTabs = computed<FileSourceTab[]>(() => {
   return resolveFileManagerSourceTabs({
-    isImageInputSupported: props.isImageInputSupported,
     extraTabs: extraSourceTabs,
   })
 })
@@ -285,17 +286,11 @@ watch(() => props.initialSource, (newSource) => {
   }
 
   activeExtraTabId.value = null
-  source.value = newSource === 'assistant' && !props.isImageInputSupported
-    ? 'upload'
-    : newSource
+  source.value = newSource
 }, { immediate: true })
 
-watch(() => props.isImageInputSupported, (supported) => {
-  if (supported || source.value !== 'assistant') {
-    return
-  }
-
-  source.value = 'upload'
+const isKindFilterVisible = computed<boolean>(() => {
+  return !activeExtraTab.value && source.value === 'assistant'
 })
 
 const isProjectSource = computed<boolean>(() => source.value === 'project')
@@ -319,6 +314,10 @@ const isEmpty = computed<boolean>(() => {
 })
 
 const emptyStateIcon = computed<string>(() => {
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'lucide:file-text'
+  }
+
   if (source.value === 'assistant') {
     return 'lucide:image-plus'
   }
@@ -339,6 +338,14 @@ const emptyStateTitle = computed<string>(() => {
     return 'No files found'
   }
 
+  if (source.value === 'assistant' && kind.value === 'image') {
+    return 'No AI-generated images yet'
+  }
+
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'No AI-generated documents yet'
+  }
+
   if (source.value === 'assistant') {
     return 'No AI-generated files yet'
   }
@@ -355,8 +362,16 @@ const emptyStateDescription = computed<string>(() => {
     return 'Try a different search term or file source'
   }
 
-  if (source.value === 'assistant') {
+  if (source.value === 'assistant' && kind.value === 'image') {
     return 'Images created in chat will appear here'
+  }
+
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'Documents created in chat will appear here'
+  }
+
+  if (source.value === 'assistant') {
+    return 'Images and documents created in chat will appear here'
   }
 
   if (source.value === 'project') {

@@ -1,6 +1,7 @@
 import { parseError } from 'evlog'
 import type {
   FetchFilesResponse,
+  FileKindFilter,
   FileManagerFile,
   FileSourceFilter,
   ViewMode,
@@ -10,6 +11,7 @@ interface FileRequestContext {
   generation: number
   search: string
   source: FileSourceFilter
+  kind: FileKindFilter
 }
 
 export function useFileManager() {
@@ -28,6 +30,7 @@ export function useFileManager() {
   >(null)
   const search = shallowRef<string>('')
   const source = shallowRef<FileSourceFilter>('upload')
+  const kind = shallowRef<FileKindFilter>('all')
   const projectGroupsManager = useFileManagerProjectGroups({ search })
   const projectGroups = projectGroupsManager.groups
   const prefStorage = usePreferenceStorage()
@@ -121,7 +124,16 @@ export function useFileManager() {
       generation: ++fileRequestGeneration,
       search: search.value,
       source: source.value,
+      kind: kind.value,
     }
+  }
+
+  function getKindQuery(context: FileRequestContext) {
+    if (context.source !== 'assistant' || context.kind === 'all') {
+      return {}
+    }
+
+    return { kind: context.kind }
   }
 
   function isCurrentFileRequest(context: FileRequestContext): boolean {
@@ -185,6 +197,7 @@ export function useFileManager() {
           offset: requestOffset,
           limit: pagination.limit,
           source: requestContext.source,
+          ...getKindQuery(requestContext),
           ...(requestContext.search && {
             search: requestContext.search,
           }),
@@ -272,6 +285,7 @@ export function useFileManager() {
           offset,
           limit: Math.min(remainingCount, 100),
           source: requestContext.source,
+          ...getKindQuery(requestContext),
           ...(requestContext.search && {
             search: requestContext.search,
           }),
@@ -634,6 +648,7 @@ export function useFileManager() {
     lastSelectedIndex.value = null
     lastSelectedGroupId.value = null
     search.value = ''
+    kind.value = 'all'
     pagination.offset = 0
     pagination.total = 0
     serverOffset.value = 0
@@ -647,6 +662,16 @@ export function useFileManager() {
       searchDebounceTimeout.value = null
       fetchFiles(true, true)
     }, 300)
+  }, { flush: 'sync' })
+
+  watch(kind, async () => {
+    if (!isFileManagerActive || source.value !== 'assistant') {
+      return
+    }
+
+    invalidateFileRequests()
+    clearSearchDebounce()
+    await fetchFiles(true)
   }, { flush: 'sync' })
 
   watch(source, async () => {
@@ -665,6 +690,7 @@ export function useFileManager() {
     }),
     search,
     source,
+    kind,
     viewMode,
     pagination,
     projectGroups,

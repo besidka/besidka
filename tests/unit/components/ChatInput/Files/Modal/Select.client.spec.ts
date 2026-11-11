@@ -26,6 +26,7 @@ mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 
 const source = shallowRef<'upload' | 'assistant' | 'project'>('upload')
 const search = shallowRef<string>('')
+const kind = shallowRef<'all' | 'image' | 'document'>('all')
 const projectGroups = ref<ProjectFileGroup[]>([])
 const isProjectGroupsLoading = shallowRef<boolean>(false)
 const handleProjectGroupSelect = vi.fn()
@@ -85,6 +86,7 @@ describe('ChatInput/Files/Modal/Select', () => {
   beforeEach(() => {
     source.value = 'upload'
     search.value = ''
+    kind.value = 'all'
     projectGroups.value = []
     isProjectGroupsLoading.value = false
     handleProjectGroupSelect.mockReset()
@@ -109,6 +111,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       isDeletingSelected: shallowRef(false),
       search,
       source,
+      kind,
       viewMode: shallowRef<'grid' | 'list'>('grid'),
       pagination: reactive({ offset: 0, limit: 20, total: 0 }),
       projectGroups,
@@ -208,21 +211,17 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect((generatedTab.element as HTMLInputElement).checked).toBe(true)
   })
 
-  it('hides the generated-by-AI tab when image input is unsupported', async () => {
+  it('keeps the generated-by-AI tab visible without image input gating', async () => {
     const wrapper = await mountSuspended(Select, {
       props: {
         attachedIds: new Set<string>(),
-        isImageInputSupported: false,
       },
       shallow: true,
     })
 
     expect(
       wrapper.find('[data-testid="files-source-assistant"]').exists(),
-    ).toBe(false)
-    expect(
-      wrapper.find('[data-testid="files-source-all"]').exists(),
-    ).toBe(false)
+    ).toBe(true)
     expect(
       wrapper.find('[data-testid="files-source-upload"]').exists(),
     ).toBe(true)
@@ -231,34 +230,88 @@ describe('ChatInput/Files/Modal/Select', () => {
     ).toBe(true)
   })
 
-  it('falls back to upload when handed an assistant initialSource without image support', async () => {
-    await mountSuspended(Select, {
-      props: {
-        attachedIds: new Set<string>(),
-        initialSource: 'assistant',
-        isImageInputSupported: false,
-      },
-      shallow: true,
-    })
-
-    expect(source.value).toBe('upload')
-  })
-
-  it('falls back to upload when image support drops while on the assistant tab', async () => {
+  it('keeps an assistant initialSource without falling back to upload', async () => {
     const wrapper = await mountSuspended(Select, {
       props: {
         attachedIds: new Set<string>(),
         initialSource: 'assistant',
-        isImageInputSupported: true,
       },
       shallow: true,
     })
 
     expect(source.value).toBe('assistant')
+    expect(
+      (wrapper.get('[data-testid="files-source-assistant"]')
+        .element as HTMLInputElement).checked,
+    ).toBe(true)
+  })
 
-    await wrapper.setProps({ isImageInputSupported: false })
+  it('shows the kind filter only on the generated tab', async () => {
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+    const kindFilterName = 'ChatInputFilesModalSelectKindFilter'
 
-    expect(source.value).toBe('upload')
+    expect(wrapper.findComponent({ name: kindFilterName }).exists())
+      .toBe(false)
+
+    source.value = 'assistant'
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: kindFilterName }).exists())
+      .toBe(true)
+
+    source.value = 'project'
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: kindFilterName }).exists())
+      .toBe(false)
+  })
+
+  it('writes the chosen kind to the file manager', async () => {
+    source.value = 'assistant'
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+    const kindFilter = wrapper.findComponent({
+      name: 'ChatInputFilesModalSelectKindFilter',
+    })
+
+    kindFilter.vm.$emit('update:modelValue', 'document')
+    await flushPromises()
+
+    expect(kind.value).toBe('document')
+  })
+
+  it('names the empty state after the chosen kind', async () => {
+    source.value = 'assistant'
+    kind.value = 'document'
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+
+    expect(wrapper.text()).toContain('No AI-generated documents yet')
+
+    kind.value = 'image'
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No AI-generated images yet')
+
+    kind.value = 'all'
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No AI-generated files yet')
   })
 
   it('switches the source filter to project files', async () => {
@@ -277,37 +330,6 @@ describe('ChatInput/Files/Modal/Select', () => {
 
     expect(source.value).toBe('project')
     expect(projectsInput.checked).toBe(true)
-  })
-
-  it('keeps the Projects tab when image input is unsupported', async () => {
-    const wrapper = await mountSuspended(Select, {
-      props: {
-        attachedIds: new Set<string>(),
-        isImageInputSupported: false,
-      },
-      shallow: true,
-    })
-
-    expect(
-      wrapper.find('[data-testid="files-source-project"]').exists(),
-    ).toBe(true)
-  })
-
-  it('keeps the Projects source when image support drops', async () => {
-    const wrapper = await mountSuspended(Select, {
-      props: {
-        attachedIds: new Set<string>(),
-        initialSource: 'project',
-        isImageInputSupported: true,
-      },
-      shallow: true,
-    })
-
-    expect(source.value).toBe('project')
-
-    await wrapper.setProps({ isImageInputSupported: false })
-
-    expect(source.value).toBe('project')
   })
 
   it('shows the project empty state on the Projects tab', async () => {
