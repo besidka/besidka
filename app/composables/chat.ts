@@ -27,6 +27,7 @@ import {
   isWebSearchTool,
 } from '#shared/utils/message-metadata'
 import { isPastChatPreRetrievalPart } from '#shared/utils/past-chat-retrieval'
+import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
 import {
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
@@ -261,6 +262,12 @@ function hasMeaningfulPersistedAssistantParts(
 
     return part.type === 'file'
       || part.type === 'source-url'
+      || part.type === ARTIFACT_DATA_PART_TYPE
+      || (
+        (part.type === 'tool-create_artifact'
+          || part.type === 'tool-update_artifact')
+        && part.state === 'output-error'
+      )
       || (
         part.type === 'tool-generate_image'
         && (

@@ -1,3 +1,4 @@
+import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
 import type { UIMessage } from 'ai'
 import type { RequestEvent } from 'nuxt/server'
 import type { Tools } from '#shared/types/chats.d'
@@ -8,6 +9,7 @@ import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
+import { isArtifactToolPartType } from '~~/server/utils/artifacts/message-parts'
 
 export interface PersistUserMessageInput {
   db: ReturnType<typeof useDb>
@@ -51,6 +53,12 @@ export function hasMeaningfulAssistantParts(
 
     return part.type === 'file'
       || part.type === 'source-url'
+      || part.type === ARTIFACT_DATA_PART_TYPE
+      || (
+        isArtifactToolPartType(part.type)
+        && 'state' in part
+        && part.state === 'output-error'
+      )
       || (
         part.type === 'tool-generate_image'
         && (

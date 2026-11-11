@@ -1320,6 +1320,19 @@ describe('hasVisibleTextAfterLastFollowUpTool', () => {
     })).toBe(false)
   })
 
+  it('treats an artifact after the last follow-up tool as an answer', () => {
+    expect(hasVisibleTextAfterLastFollowUpTool({
+      parts: [
+        searchPart,
+        {
+          type: 'data-artifact',
+          data: { artifactId: 'a', version: 1, kind: 'html', title: 'Quiz' },
+        },
+      ],
+      followUpToolNames,
+    })).toBe(true)
+  })
+
   it('accepts text after the last follow-up tool', () => {
     expect(hasVisibleTextAfterLastFollowUpTool({
       parts: [
@@ -2574,5 +2587,40 @@ describe('project knowledge tool results in the continuation context', () => {
         expect(text).toContain('is untrusted content (web pages and '
           + 'documents the user uploaded to this project)')
       })
+  })
+})
+
+describe('withSearchAnswerGuarantee deliverable tools', () => {
+  it('counts an artifact written after a search as the answer', async () => {
+    const startContinuation = vi.fn()
+    const guarantee = withSearchAnswerGuarantee({
+      stream: createStream([
+        ...createSearchStepChunks('call-1'),
+        { type: 'start-step' },
+        {
+          type: 'tool-input-available',
+          toolCallId: 'call-2',
+          toolName: 'create_artifact',
+          input: { kind: 'html', title: 'Quiz', content: '<p>x</p>' },
+        },
+        {
+          type: 'tool-output-available',
+          toolCallId: 'call-2',
+          output: { artifactId: 'a', version: 1, kind: 'html', title: 'Quiz' },
+        },
+        { type: 'finish-step' },
+        { type: 'finish', finishReason: 'stop' },
+      ]),
+      followUpToolNames: new Set([SEARCH_TOOL_NAME]),
+      deliverableToolNames: new Set(['create_artifact', 'update_artifact']),
+      forcedStepIndex: FORCED_STEP_INDEX,
+      startContinuation,
+      buildFinishMessageMetadata: () => ({}),
+    })
+
+    await readAll(guarantee.stream)
+
+    expect(startContinuation).not.toHaveBeenCalled()
+    expect(guarantee.getOutcome().continuationRan).toBe(false)
   })
 })

@@ -1995,3 +1995,16 @@ describe('useChat request body exaSearchLevel', () => {
     expect(send()).toBe('lite')
   })
 })
+
+describe('isFailureOnlyAssistantMessage with artifacts', () => {
+  it('treats a reply that only holds an artifact as a real answer', () => {
+    expect(isFailureOnlyAssistantMessage({
+      id: 'assistant-artifact',
+      role: 'assistant',
+      parts: [{
+        type: 'data-artifact',
+        data: { artifactId: 'a', version: 1, kind: 'html', title: 'Quiz' },
+      }],
+    } as UIMessage)).toBe(false)
+  })
+})

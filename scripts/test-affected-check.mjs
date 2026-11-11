@@ -153,6 +153,18 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const artifactsChatTests = [
+    'tests/unit/server/utils/ai/artifact-tools.spec.ts',
+    'tests/unit/server/utils/artifacts/message-parts.spec.ts',
+    'tests/unit/server/utils/artifacts/context.spec.ts',
+    'tests/integration/api/chats-artifacts.spec.ts',
+    'tests/unit/server/utils/chats/persist-user-message.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/ai/search-answer-continuation.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+  ]
   const mailAlertsTests = [
     'tests/unit/utils/mail-alert-protocol.spec.ts',
     'tests/unit/workers/mail-alerts/classify.spec.ts',
@@ -2975,6 +2987,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/artifacts\/|server\/api\/v1\/artifacts\/|server\/capabilities\/artifacts\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|server\/plugins\/artifact-report-sweep\.ts$|tests\/setup\/helpers\/artifacts-store\.ts$)/,
       tests: artifactsCoreTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/ai\/artifact-tools\.ts$|server\/utils\/artifacts\/|server\/capabilities\/|server\/utils\/features\/send-features\.ts$|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$|server\/utils\/chats\/persist-user-message\.ts$|server\/utils\/ai\/(tool-loop|search-answer-continuation)\.ts$|shared\/utils\/(artifacts|message-metadata)\.ts$)/,
+      tests: artifactsChatTests,
     },
     {
       pattern:

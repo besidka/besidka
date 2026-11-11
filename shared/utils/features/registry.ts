@@ -68,6 +68,7 @@ const featureList = [
     title: 'React artifacts',
     description: 'Artifacts written as React components.',
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.storage',

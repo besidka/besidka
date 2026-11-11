@@ -770,3 +770,35 @@ describe('tool loop trigger', () => {
       })
   })
 })
+
+describe('untrusted tool results', () => {
+  function stepWith(toolName: string) {
+    return { content: [{ type: 'tool-result', toolName }] }
+  }
+
+  async function runGuard(toolName: string) {
+    const guard = { untrustedResultSeen: false }
+    const resolved = resolveToolLoop({
+      lookup: withFollowUpTurn(tool({
+        description: 'Lookup',
+        inputSchema: z.object({}),
+        execute: async () => ({}),
+      })),
+    }, { guard })
+
+    await resolved?.options.prepareStep({
+      steps: [stepWith(toolName)],
+      stepNumber: 1,
+      model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
+      instructions: undefined,
+    } as any)
+
+    return guard.untrustedResultSeen
+  }
+
+  it('does not treat artifact tool results as untrusted content', async () => {
+    await expect(runGuard('create_artifact')).resolves.toBe(false)
+    await expect(runGuard('update_artifact')).resolves.toBe(false)
+    await expect(runGuard('web_search_brave')).resolves.toBe(true)
+  })
+})

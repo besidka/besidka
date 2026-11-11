@@ -97,6 +97,44 @@ export interface DataArtifactPart {
   data: DataArtifactPartData
 }
 
+export type ArtifactToolOutput = DataArtifactPartData
+
+export interface CreateArtifactToolInput {
+  kind: ArtifactKind
+  title: string
+  content: string
+}
+
+export interface UpdateArtifactToolInput {
+  artifactId: string
+  title?: string
+  content?: string
+  edits?: Array<{ old_string: string, new_string: string }>
+}
+
+/**
+ * Data-part and tool types of an assistant message with artifacts, for a
+ * typed `UIMessage<unknown, ArtifactUIDataTypes, ArtifactUITools>`. While
+ * streaming the UI sees the tool parts; the persisted message holds only
+ * `data-artifact` parts and failed tool parts reduced to kind and title.
+ */
+export interface ArtifactUIDataTypes {
+  [key: string]: unknown
+  artifact: DataArtifactPartData
+}
+
+export interface ArtifactUITools {
+  [key: string]: { input: unknown, output: unknown }
+  create_artifact: {
+    input: CreateArtifactToolInput
+    output: ArtifactToolOutput
+  }
+  update_artifact: {
+    input: UpdateArtifactToolInput
+    output: ArtifactToolOutput
+  }
+}
+
 export function isArtifactKind(value: unknown): value is ArtifactKind {
   return typeof value === 'string'
     && (ARTIFACT_KINDS as readonly string[]).includes(value)
