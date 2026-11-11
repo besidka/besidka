@@ -135,3 +135,64 @@ describe('admin path query stripping', () => {
     expect(JSON.stringify(context.event)).not.toContain('jane')
   })
 })
+
+describe('artifact share token redaction', () => {
+  const TOKEN = 'Q2hhbmdlTWVQbGVhc2VJdHNBU2VjcmV0VG9rZW4xMjM0NQ'
+
+  it('replaces the token of a public artifact link with the route pattern',
+    async () => {
+      const { redactArtifactSharePath } = await import(
+        '~~/server/utils/artifacts/share-redaction'
+      )
+
+      expect(redactArtifactSharePath(`/a/${TOKEN}`)).toBe('/a/[token]')
+      expect(redactArtifactSharePath(`/a/${TOKEN}/_payload.json?x=1`))
+        .toBe('/a/[token]/_payload.json?x=1')
+      expect(redactArtifactSharePath(`GET https://besidka.com/a/${TOKEN}`))
+        .toBe('GET https://besidka.com/a/[token]')
+      expect(redactArtifactSharePath('/api/v1/artifact-shares/current'))
+        .toBe('/api/v1/artifact-shares/current')
+      expect(redactArtifactSharePath(42)).toBe(42)
+      expect(redactArtifactSharePath(`/signup?next=%2Fa%2F${TOKEN}`))
+        .toBe('/signup?next=%2Fa%2F[token]')
+      expect(redactArtifactSharePath(`/signin?next=%2fa%2f${TOKEN}&x=1`))
+        .toBe('/signin?next=%2fa%2f[token]&x=1')
+      expect(redactArtifactSharePath('/data/files'))
+        .toBe('/data/files')
+      expect(redactArtifactSharePath(`/signin?next=%252Fa%252F${TOKEN}`))
+        .toBe('/signin?next=%252Fa%252F[token]')
+      expect(redactArtifactSharePath(`x=%25252fA%25252f${TOKEN}`))
+        .toBe('x=%25252fa%25252f[token]')
+      expect(redactArtifactSharePath(`/A/${TOKEN}`)).toBe('/a/[token]')
+    })
+
+  it('keeps the token out of every drained field of a page request', () => {
+    const context = {
+      request: { method: 'GET', path: `/a/${TOKEN}` },
+      headers: { 'x-besidka-artifact-share': TOKEN, 'cf-ray': 'ray-1' },
+      event: {
+        path: `/a/${TOKEN}`,
+        error: {
+          message: `Render failed for /a/${TOKEN}`,
+          stack: `at render (/a/${TOKEN})`,
+        },
+        attributes: { client: { url: `https://besidka.com/a/${TOKEN}#top` } },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/a/[token]',
+      message: 'GET /a/[token]',
+      requestMeta: { cfRay: 'ray-1' },
+    })
+    expect(context.request.path).toBe('/a/[token]')
+    expect(JSON.stringify(context.event)).not.toContain(TOKEN)
+    expect(JSON.stringify(context.event)).not.toContain(
+      'x-besidka-artifact-share',
+    )
+    expect(context.headers).toEqual({ 'cf-ray': 'ray-1' })
+    expect(JSON.stringify(context)).not.toContain(TOKEN)
+  })
+})

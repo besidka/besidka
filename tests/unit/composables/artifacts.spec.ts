@@ -268,6 +268,14 @@ describe('loadArtifactVersion', () => {
     })).toBe('/api/v1/shared/share%201/artifacts/Art1Art1Art1Art1/versions/2')
   })
 
+  it('never builds a version URL for a public link', () => {
+    expect(getArtifactVersionUrl({
+      artifactId: 'Art1Art1Art1Art1',
+      version: 2,
+      source: 'public-share',
+    })).toBeNull()
+  })
+
   it('treats a malformed id or version as unavailable without fetching',
     async () => {
       const malformed = [

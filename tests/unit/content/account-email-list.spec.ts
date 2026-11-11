@@ -113,7 +113,7 @@ describe('account email registry stays in step with the senders', () => {
 })
 
 describe('buildAccountEmailListItems', () => {
-  it('produces exactly the four items the policy publishes', () => {
+  it('produces exactly the five items the policy publishes', () => {
     expect(buildAccountEmailListItems().map((item) => {
       return item.text
     })).toEqual([
@@ -136,6 +136,9 @@ describe('buildAccountEmailListItems', () => {
       + 'law or security requires it), and emails go out from then on, a '
       + 'limited number a day, so yours can arrive a few days after '
       + 'publication.',
+      'Reports about shared content: a receipt for a report you send about '
+      + 'a shared artifact, the decision on that report and a statement of '
+      + 'reasons when I remove or restrict an artifact you shared.',
     ])
   })
 
@@ -164,6 +167,9 @@ describe('buildAccountEmailListItems', () => {
         /^3\. \*\*Security notices\*\*, when something on your account /,
       ),
       expect.stringMatching(/^4\. \*\*Legal notices:\*\* a notice of a /),
+      expect.stringMatching(
+        /^5\. \*\*Reports about shared content:\*\* a receipt /,
+      ),
     ])
   })
 })

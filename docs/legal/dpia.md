@@ -903,8 +903,16 @@ below as `planned` unless it says `built`.
   required except for `csam`; reasons `csam`, `terrorism`, `threat-to-life`,
   `phishing`, `copyright` (with the six notice elements), `privacy`,
   `illegal`, `harmful`, `other`; details 20 to 2,000 characters; good-faith
-  box; Turnstile for signed-out reporters only; 5 reports an hour per IP or
-  user (hashed, expiring keys); no IP stored with a report. `threat-to-life`
+  box; Turnstile for signed-out reporters only; 5 reports an hour per user,
+  or per IP keyed by an HMAC of the address (keyed with the existing
+  encryption key, so KV never holds the address), expiring keys; no IP
+  stored with a report. Receipts go only to the typed address of a
+  signed-out reporter or the verified account email of a signed-in one, at
+  most 3 per address per 24 hours, and name the content by reference id,
+  never its title, so the form cannot be used to mail chosen text to a
+  third party. Names refuse line breaks; share links pasted into the details
+  are reduced to `/a/[token]`. A user-scope takedown also writes a deny
+  grant for `artifacts.share`. `threat-to-life`
   and `terrorism` set a priority and a subject prefix on the mailbox email.
   Emails: receipt to the reporter (DSA Art. 16(4)), decision with redress
   (Art. 16(5)), statement of reasons to the owner (Art. 17), sent no later

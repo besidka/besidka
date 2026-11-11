@@ -1,3 +1,9 @@
+import { ARTIFACT_SHARE_HEADER } from '#shared/utils/artifacts'
+import {
+  redactArtifactSharePath,
+  redactArtifactShareTokens,
+} from '~~/server/utils/artifacts/share-redaction'
+
 interface MutableLogger {
   set: (data: Record<string, unknown>) => void
 }
@@ -99,6 +105,18 @@ export default defineNitroPlugin((nitroApp) => {
   })
 
   nitroApp.hooks.hook('evlog:enrich', (context) => {
+    if (typeof context.request?.path === 'string') {
+      context.request.path = redactArtifactSharePath(
+        context.request.path,
+      ) as string
+    }
+
+    redactArtifactShareTokens(context.event)
+
+    if (context.headers) {
+      Reflect.deleteProperty(context.headers, ARTIFACT_SHARE_HEADER)
+    }
+
     const requestId = context.request?.requestId
     const cfRay = context.headers?.['cf-ray']
     const method = context.request?.method

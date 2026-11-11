@@ -48,10 +48,68 @@ describe('artifacts frame-src plugin', () => {
       .toBe(`frame-src ${SELF} ${ARTIFACTS_ORIGIN} ${TURNSTILE}`)
   })
 
+  it('limits frames on a public artifact link and the admin pages',
+    async () => {
+      const { applyArtifactFrameSrc } = await loadPlugin()
+
+      for (const path of ['/a/tokenvalue', '/admin/artifact-reports']) {
+        const response = { headers: {} as Record<string, string> }
+
+        applyArtifactFrameSrc(
+          response as never,
+          createContext(path) as never,
+          { artifactsOrigin: ARTIFACTS_ORIGIN },
+        )
+
+        expect(response.headers['content-security-policy'])
+          .toBe(`frame-src ${SELF} ${ARTIFACTS_ORIGIN} ${TURNSTILE}`)
+      }
+    })
+
+  it('keeps the frame-ancestors a route rule set on the event', async () => {
+    const { applyArtifactFrameSrc } = await loadPlugin()
+    const response = { headers: { 'content-type': 'text/html' } }
+
+    applyArtifactFrameSrc(
+      response as never,
+      createContext('/a/tokenvalue') as never,
+      {
+        artifactsOrigin: ARTIFACTS_ORIGIN,
+        eventPolicy: 'frame-ancestors \'none\'',
+      },
+    )
+
+    expect(response.headers).toEqual({
+      'content-type': 'text/html',
+      'content-security-policy': 'frame-ancestors \'none\'; '
+        + `frame-src ${SELF} ${ARTIFACTS_ORIGIN} ${TURNSTILE}`,
+    })
+  })
+
+  it('prefers the renderer policy over the event policy', async () => {
+    const { applyArtifactFrameSrc } = await loadPlugin()
+    const response = {
+      headers: { 'Content-Security-Policy': 'img-src data:' },
+    }
+
+    applyArtifactFrameSrc(
+      response as never,
+      createContext('/a/tokenvalue') as never,
+      {
+        artifactsOrigin: ARTIFACTS_ORIGIN,
+        eventPolicy: 'frame-ancestors \'none\'',
+      },
+    )
+
+    expect(response.headers['Content-Security-Policy']).toBe(
+      `img-src data:; frame-src ${SELF} ${ARTIFACTS_ORIGIN} ${TURNSTILE}`,
+    )
+  })
+
   it('leaves other pages unchanged', async () => {
     const { applyArtifactFrameSrc } = await loadPlugin()
 
-    for (const path of ['/', '/profile/keys', '/chats', '/sharedx', '/signin']) {
+    for (const path of ['/', '/profile/keys', '/chats', '/sharedx', '/signin', '/admin', '/about/a/x']) {
       const response = { headers: { 'content-type': 'text/html' } }
 
       applyArtifactFrameSrc(

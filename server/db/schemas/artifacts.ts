@@ -81,6 +81,7 @@ export const artifactShares = snakeCase.table(
       .$defaultFn(() => false),
     takedownAt: integer({ mode: 'timestamp' }),
     takedownReason: text(),
+    title: text(),
   },
   table => [
     uniqueIndex('uq_artifact_shares_token').on(table.tokenHash),
@@ -116,6 +117,7 @@ export const artifactReports = snakeCase.table(
     ...defaultSchemaIdOnly,
     ...defaultSchemaCreatedAtOnly,
     shareId: integer({ mode: 'number' }),
+    chatShareId: text(),
     artifactId: integer({ mode: 'number' }).notNull(),
     reporterUserId: integer({ mode: 'number' }),
     reporterEmail: text(),
@@ -128,6 +130,8 @@ export const artifactReports = snakeCase.table(
     decision: text({ enum: ARTIFACT_REPORT_DECISIONS }),
     decidedAt: integer({ mode: 'timestamp' }),
     resolvedAt: integer({ mode: 'timestamp' }),
+    decisionStatement: text(),
+    reportedVersion: integer({ mode: 'number' }),
   },
   table => [
     index('idx_artifact_reports_status_created')

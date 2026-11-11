@@ -27,6 +27,7 @@
         :share-slug="state.shareSlug"
         :artifact-id="state.artifactId"
         :title="displayTitle"
+        :version="selectedVersion"
       />
     </section>
     <div class="flex shrink-0 flex-wrap items-center gap-2">
@@ -148,6 +149,19 @@
                   size="14"
                 />
                 Download as HTML
+              </button>
+            </li>
+            <li v-if="canShare">
+              <button
+                type="button"
+                data-testid="artifact-action-share"
+                @click="onOpenShare"
+              >
+                <Icon
+                  name="lucide:link"
+                  size="14"
+                />
+                Share link
               </button>
             </li>
             <li v-if="canResetStorage">
@@ -333,6 +347,13 @@
     >
       AI-generated content
     </p>
+    <ChatArtifactShareModal
+      v-if="hasOpenedShare && state.artifactId && shareVersion"
+      v-model:open="isShareOpen"
+      :artifact-id="state.artifactId"
+      :title="displayTitle"
+      :current-version="shareVersion"
+    />
   </div>
 </template>
 
@@ -390,6 +411,7 @@ const panel = useArtifactPanel()
 const sidePanel = useSidePanel()
 const layout = useSidePanelLayout()
 const sharedVersions = useSharedArtifactVersions()
+const shareFeature = useFeature('artifacts.share')
 const clipboard = useClipboard({ legacy: true })
 const { state, stream } = panel
 const { isFullWidth } = sidePanel
@@ -412,6 +434,8 @@ const storageState = shallowRef<ArtifactStorageState>({
   bytes: 0,
 })
 const frameKey = shallowRef<number>(0)
+const isShareOpen = shallowRef<boolean>(false)
+const hasOpenedShare = shallowRef<boolean>(false)
 
 let contentRequestId = 0
 let detailRequestId = 0
@@ -516,6 +540,19 @@ const canResetStorage = computed<boolean>(() => {
     && !!state.value?.artifactId
     && storageState.value.persistent
     && storageState.value.keys > 0
+})
+
+const shareVersion = computed<number | null>(() => {
+  return detail.value?.currentVersion ?? null
+})
+
+const canShare = computed<boolean>(() => {
+  return isOwner.value
+    && shareFeature.value.active
+    && !!state.value?.artifactId
+    && !!shareVersion.value
+    && !isStreaming.value
+    && !detail.value?.takenDown
 })
 
 const isUnavailableError = computed<boolean>(() => {
@@ -785,6 +822,17 @@ async function onResetStorage() {
       parsedException.why,
     )
   }
+}
+
+function onOpenShare() {
+  closeActionsMenu()
+
+  if (!canShare.value) {
+    return
+  }
+
+  hasOpenedShare.value = true
+  isShareOpen.value = true
 }
 
 function onToggleFullWidth() {

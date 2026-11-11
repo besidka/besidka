@@ -2,9 +2,11 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ERROR_CODES, RpcError } from '@besidka/artifacts-protocol'
-import { ARTIFACT_STORAGE_MAX_VALUE_BYTES } from '#shared/utils/artifacts'
 import {
   ARTIFACT_SHARE_HEADER,
+  ARTIFACT_STORAGE_MAX_VALUE_BYTES,
+} from '#shared/utils/artifacts'
+import {
   createArtifactStorageSession,
   resetArtifactStorage,
   resolveArtifactStorageMode,
@@ -108,6 +110,37 @@ describe('resolveArtifactStorageMode', () => {
   ])('is memory when %s', (_label, override) => {
     expect(resolveArtifactStorageMode({ ...allowed, ...override }))
       .toBe('memory')
+  })
+
+  describe('through a public link', () => {
+    const publicShare = {
+      ...allowed,
+      source: 'public-share' as const,
+      shareAllowed: true,
+    }
+
+    it('is persistent when the link allows saving and the viewer is a '
+      + 'signed-in user with the flag', () => {
+      expect(resolveArtifactStorageMode(publicShare)).toBe('persistent')
+    })
+
+    it.each([
+      ['the link does not allow saving', { shareAllowed: false }],
+      ['the link permission is unknown', { shareAllowed: undefined }],
+      ['the viewer is signed out', { loggedIn: false }],
+      ['the viewer has no storage flag', { featureActive: false }],
+      ['there is no artifact id', { artifactId: null }],
+    ])('is memory when %s', (_label, override) => {
+      expect(resolveArtifactStorageMode({ ...publicShare, ...override }))
+        .toBe('memory')
+    })
+
+    it('ignores the link permission for a shared chat', () => {
+      expect(resolveArtifactStorageMode({
+        ...publicShare,
+        source: 'shared',
+      })).toBe('memory')
+    })
   })
 })
 

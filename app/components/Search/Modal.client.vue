@@ -327,12 +327,20 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           run: openCookieSettings,
         },
         ...(isAdmin.value
-          ? [{
-            id: 'search-option-admin',
-            iconName: 'lucide:shield-ellipsis',
-            label: 'Admin',
-            run: () => goTo('/admin'),
-          }]
+          ? [
+            {
+              id: 'search-option-admin',
+              iconName: 'lucide:shield-ellipsis',
+              label: 'Admin',
+              run: () => goTo('/admin'),
+            },
+            {
+              id: 'search-option-admin-reports',
+              iconName: 'lucide:flag-triangle-right',
+              label: 'Content reports',
+              run: () => goTo('/admin/artifact-reports'),
+            },
+          ]
           : []),
       ],
     },

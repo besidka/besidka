@@ -9,13 +9,12 @@ import type {
   ArtifactStorageTotals,
 } from '#shared/utils/artifacts'
 import {
+  ARTIFACT_SHARE_HEADER,
   ARTIFACT_STORAGE_MAX_VALUE_BYTES,
   getUtf8ByteLength,
   isArtifactStorageKey,
 } from '#shared/utils/artifacts'
 import type { ArtifactPanelSource } from '~/composables/artifacts'
-
-export const ARTIFACT_SHARE_HEADER = 'x-besidka-artifact-share'
 
 export interface ArtifactStorageState extends ArtifactStorageTotals {
   persistent: boolean
@@ -26,6 +25,7 @@ export interface ArtifactStorageModeInput {
   featureActive: boolean
   source: ArtifactPanelSource
   artifactId: string | null | undefined
+  shareAllowed?: boolean
 }
 
 export interface ArtifactStorageSessionInput {
@@ -50,19 +50,24 @@ type StorageRequest = <Result>(
 const writeChains = new Map<string, Promise<unknown>>()
 
 /**
- * Persistent storage is offered only to a signed-in viewer with the
- * `artifacts.storage` flag, for a saved artifact opened from their own chat.
- * Everyone else gets `memory`, so the runtime keeps values in the frame and
- * no storage request reaches the server. Shared chats stay in memory until
- * artifact share links (A-7) let the server resolve a viewer there.
+ * Persistent storage is offered only to a signed-in viewer with their own
+ * `artifacts.storage` flag, for a saved artifact opened from their own chat
+ * or through a public link whose owner allowed saving. Everyone else, shared
+ * chats and anonymous link viewers included, gets `memory`, so the runtime
+ * keeps values in the frame and no storage request reaches the server.
  */
 export function resolveArtifactStorageMode(
   input: ArtifactStorageModeInput,
 ): StorageMode {
-  return input.loggedIn
-    && input.featureActive
-    && input.source === 'owner'
-    && !!input.artifactId
+  if (!input.loggedIn || !input.featureActive || !input.artifactId) {
+    return 'memory'
+  }
+
+  if (input.source === 'owner') {
+    return 'persistent'
+  }
+
+  return input.source === 'public-share' && input.shareAllowed === true
     ? 'persistent'
     : 'memory'
 }

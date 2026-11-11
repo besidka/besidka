@@ -6,7 +6,7 @@ import type {
   ArtifactVersionContent,
 } from '#shared/utils/artifacts'
 
-export type ArtifactPanelSource = 'owner' | 'shared'
+export type ArtifactPanelSource = 'owner' | 'shared' | 'public-share'
 
 export type ArtifactStreamStatus = 'streaming' | 'done' | 'failed'
 
@@ -129,6 +129,10 @@ export function getArtifactVersionUrl(
   }
 
   const { artifactId, version } = request
+
+  if (request.source === 'public-share') {
+    return null
+  }
 
   if (request.source === 'shared') {
     const shareSlug = encodeURIComponent(request.shareSlug ?? '')

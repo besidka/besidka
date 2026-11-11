@@ -34,6 +34,7 @@ defineProps<{
         fontSize: '15px',
         lineHeight: '25px',
         margin: '0',
+        whiteSpace: 'pre-line',
       }"
     >
       {{ body }}

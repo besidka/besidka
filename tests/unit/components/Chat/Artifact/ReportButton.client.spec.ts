@@ -1,128 +1,78 @@
-import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockComponent, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
-import type { VueWrapper } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { defineComponent, h } from 'vue'
 import ReportButton from '../../../../../app/components/Chat/Artifact/ReportButton.client.vue'
-import * as messagesComposable from '../../../../../app/composables/messages'
-
-const { fetchMock } = vi.hoisted(() => {
-  return { fetchMock: vi.fn() }
-})
-
-mockNuxtImport('$fetch', () => {
-  return fetchMock
-})
 
 enableAutoUnmount(afterEach)
 
+mockComponent('ArtifactReportModal', () => {
+  return defineComponent({
+    props: {
+      open: { type: Boolean, required: true },
+      title: { type: String, required: true },
+      endpoint: { type: String, required: true },
+      headers: { type: Object, default: undefined },
+      version: { type: Number, default: null },
+    },
+    setup(props) {
+      return () => h('div', {
+        'data-testid': 'report-modal-stub',
+        'data-open': String(props.open),
+        'data-endpoint': props.endpoint,
+        'data-title': props.title,
+        'data-has-headers': String(!!props.headers),
+        'data-version': String(props.version),
+      })
+    },
+  })
+})
+
 const props = {
-  shareSlug: 'share-1',
+  shareSlug: 'share 1',
   artifactId: 'art-1',
   title: 'Quiz',
 }
 
-function byTestId(testId: string) {
-  return `[data-testid="${testId}"]`
-}
-
-async function fillForm(
-  wrapper: VueWrapper,
-  values: Record<string, string>,
-) {
-  for (const [testId, value] of Object.entries(values)) {
-    await wrapper.find(byTestId(testId)).setValue(value)
-  }
-}
-
 describe('Chat/Artifact/ReportButton.client', () => {
-  beforeEach(() => {
-    fetchMock.mockReset()
-    vi.spyOn(HTMLDialogElement.prototype, 'showModal')
-      .mockImplementation(() => {})
-    vi.spyOn(HTMLDialogElement.prototype, 'close')
-      .mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('opens the report dialog from the ghost button', async () => {
+  it('renders a ghost button that announces a dialog', async () => {
     const wrapper = await mountSuspended(ReportButton, { props })
-    const button = wrapper.find(byTestId('artifact-report-button'))
+    const button = wrapper.get('[data-testid="artifact-report-button"]')
 
     expect(button.classes()).toEqual(
       expect.arrayContaining(['btn', 'btn-ghost', 'btn-sm']),
     )
-
-    await button.trigger('click')
-
-    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalled()
-    expect(wrapper.find(byTestId('artifact-report-modal')).text())
-      .toContain('Quiz')
+    expect(button.attributes('aria-haspopup')).toBe('dialog')
+    expect(button.text()).toBe('Report')
   })
 
-  it('posts the report to the shared chat route', async () => {
-    const successSpy = vi.spyOn(messagesComposable, 'useSuccessMessage')
+  it('opens the shared report modal with the shared chat endpoint',
+    async () => {
+      const wrapper = await mountSuspended(ReportButton, { props })
+      const modal = () => {
+        return wrapper.get('[data-testid="report-modal-stub"]')
+      }
 
-    fetchMock.mockResolvedValue({ ok: true })
+      expect(modal().attributes('data-open')).toBe('false')
 
-    const wrapper = await mountSuspended(ReportButton, { props })
+      await wrapper.get('[data-testid="artifact-report-button"]')
+        .trigger('click')
 
-    await fillForm(wrapper, {
-      'artifact-report-reason': 'phishing',
-      'artifact-report-details': 'Asks for a password',
-      'artifact-report-name': 'Ann',
-      'artifact-report-email': 'ann@example.test',
-    })
-    await wrapper.find('form').trigger('submit')
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/shared/share-1/artifacts/art-1/report',
-      {
-        method: 'POST',
-        body: {
-          reason: 'phishing',
-          details: 'Asks for a password',
-          reporterName: 'Ann',
-          reporterEmail: 'ann@example.test',
-        },
-      },
-    )
-    await vi.waitFor(() => {
-      expect(successSpy).toHaveBeenCalledWith(
-        'Report sent',
-        expect.any(String),
+      expect(modal().attributes('data-open')).toBe('true')
+      expect(modal().attributes('data-endpoint')).toBe(
+        '/api/v1/shared/share%201/artifacts/art-1/report',
       )
+      expect(modal().attributes('data-title')).toBe('Quiz')
+      expect(modal().attributes('data-has-headers')).toBe('false')
+      expect(modal().attributes('data-version')).toBe('null')
     })
-  })
 
-  it('makes contact details optional only for csam reports', async () => {
-    const wrapper = await mountSuspended(ReportButton, { props })
-    const email = wrapper.find(byTestId('artifact-report-email'))
-
-    expect(email.attributes('required')).toBeDefined()
-    expect(wrapper.find('form').text()).not.toContain('(optional)')
-
-    await fillForm(wrapper, { 'artifact-report-reason': 'csam' })
-
-    expect(wrapper.find('form').text()).toContain('Your email (optional)')
-    expect(wrapper.find(byTestId('artifact-report-email')).attributes('required'))
-      .toBeUndefined()
-  })
-
-  it('shows the server error', async () => {
-    const errorSpy = vi.spyOn(messagesComposable, 'useErrorMessage')
-
-    fetchMock.mockRejectedValue(new Error('Too many reports'))
-
-    const wrapper = await mountSuspended(ReportButton, { props })
-
-    await fillForm(wrapper, { 'artifact-report-details': 'x' })
-    await wrapper.find('form').trigger('submit')
-
-    await vi.waitFor(() => {
-      expect(errorSpy).toHaveBeenCalledWith('Too many reports', undefined)
+  it('passes the version shown in the panel to the modal', async () => {
+    const wrapper = await mountSuspended(ReportButton, {
+      props: { ...props, version: 2 },
     })
+
+    expect(wrapper.get('[data-testid="report-modal-stub"]')
+      .attributes('data-version')).toBe('2')
   })
 })

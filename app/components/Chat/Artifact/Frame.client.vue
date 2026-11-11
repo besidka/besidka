@@ -142,6 +142,7 @@ import type {
   UnexpectedNavigationDetails,
 } from '@besidka/artifacts-protocol'
 import { log } from 'evlog/client'
+import type { ArtifactShareCapabilities } from '#shared/utils/artifacts'
 import type {
   ArtifactPanelSource,
   ArtifactRuntimeMessage,
@@ -167,6 +168,9 @@ const props = defineProps<{
   artifactId?: string | null
   version?: number | null
   source?: ArtifactPanelSource
+  shareToken?: string | null
+  shareCapabilities?: ArtifactShareCapabilities | null
+  displayModeOverride?: DisplayMode | null
 }>()
 
 const emit = defineEmits<{
@@ -226,6 +230,10 @@ const theme = computed<Theme>(() => {
 })
 
 const displayMode = computed<DisplayMode>(() => {
+  if (props.displayModeOverride) {
+    return props.displayModeOverride
+  }
+
   if (layout.value === 'sheet') {
     return 'fullscreen'
   }
@@ -280,12 +288,18 @@ const errorCopy = computed(() => {
   return ERROR_COPY[errorKind.value]
 })
 
+const viewerShareToken = computed<string | null>(() => {
+  return props.source === 'public-share' ? props.shareToken ?? null : null
+})
+
 const desiredBridgeEnabled = computed<boolean>(() => {
   return resolveArtifactBridgeEnabled({
     loggedIn: loggedIn.value,
     featureActive: bridgeFeature.value.active,
     source: props.source ?? 'owner',
     artifactId: props.artifactId,
+    shareAllowed: !!viewerShareToken.value
+      && props.shareCapabilities?.bridgeAllowed === true,
   })
 })
 
@@ -293,6 +307,7 @@ const bridge = useArtifactBridge({
   artifactId: () => storageArtifactId,
   title: () => props.title,
   source: () => props.source ?? 'owner',
+  shareToken: () => viewerShareToken.value,
 })
 
 const bridgePending = bridge.pending
@@ -303,6 +318,8 @@ const desiredStorageMode = computed<StorageMode>(() => {
     featureActive: storageFeature.value.active,
     source: props.source ?? 'owner',
     artifactId: props.artifactId,
+    shareAllowed: !!viewerShareToken.value
+      && props.shareCapabilities?.storageAllowed === true,
   })
 })
 
@@ -463,6 +480,7 @@ function createStorageHandlers(): HostStorageHandlers | undefined {
 
   const session = createArtifactStorageSession({
     artifactId: props.artifactId,
+    shareToken: viewerShareToken.value,
     onChange: (state) => {
       emit('storage-change', state)
     },

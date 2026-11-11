@@ -14,6 +14,7 @@ interface SendRenderedEmailOptions extends RenderedEmail {
   to: string
   subject: string
   from?: 'noreply' | 'personalized'
+  replyTo?: string
 }
 
 interface SendTemplateEmailOptions extends RenderTemplateEmailOptions {
@@ -50,6 +51,7 @@ export async function sendRenderedEmail({
   html,
   text,
   from,
+  replyTo,
 }: SendRenderedEmailOptions): Promise<{ messageId: string }> {
   const { send: sendEmail } = useEmail()
 
@@ -59,6 +61,7 @@ export async function sendRenderedEmail({
     html,
     text,
     from,
+    replyTo,
   })
 
   return { messageId: result.messageId }

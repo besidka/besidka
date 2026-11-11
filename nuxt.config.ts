@@ -268,6 +268,15 @@ export default defineNuxtConfig({
         return [route, { headers: frameProtectionHeaders }]
       }),
     ),
+    '/a/**': {
+      cache: false,
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'Content-Security-Policy': 'frame-ancestors \'none\'',
+        'Referrer-Policy': 'no-referrer',
+        'X-Robots-Tag': 'noindex, nofollow',
+      },
+    },
   },
   nitro: {
     preset: 'cloudflare_module',
@@ -614,6 +623,7 @@ export default defineNuxtConfig({
       '/reset-password',
       '/2fa',
       '/oauth/**',
+      '/a/**',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/**',

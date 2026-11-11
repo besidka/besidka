@@ -5,7 +5,7 @@ Quizzes, flashcards and trackers keep progress through
 network (A-2), so every call is a `besidka/storage/*` request on the frame's
 MessagePort, answered by the parent (`Frame.client.vue`) through the API
 below. This page covers the server routes, the host side, limits,
-retention and what is deliberately left for share links (A-7).
+retention and how share links (A-7, `docs/artifacts/shares.md`) reach it.
 
 ## Who gets persistent storage
 
@@ -17,7 +17,7 @@ all of these hold; otherwise `'memory'`:
 | --- | --- |
 | The viewer is signed in | The sandbox has an opaque origin and no identity |
 | `useFeature('artifacts.storage').active` | Per-viewer flag (includes the global `artifacts` rule) |
-| The panel was opened from the viewer's own chat (`source === 'owner'`) | Only the owner resolves on the server until A-7 |
+| The panel was opened from the viewer's own chat (`source === 'owner'`), or from an `/a/` link whose `storageAllowed` is on | The server resolves the owner, or a viewer holding an active link token (A-7) |
 | The artifact is saved (has an id) | A streaming preview has nothing to key rows on |
 
 In memory mode the host passes no storage handler, so the runtime keeps
@@ -36,10 +36,12 @@ link with `storageAllowed` makes sign-in meaningful.
 
 `resolveArtifactViewerAccess()` (`server/utils/artifacts/access.ts`) returns
 `{ mode, artifactInternalId, ownerUserId, viewerUserId, storageAllowed,
-bridgeAllowed }`. Owner mode only: unknown, forged or foreign ids answer 404,
-a taken-down artifact 451. The share token header `x-besidka-artifact-share`
-is read and ignored until A-7 extends the resolver; it is never a query
-string.
+bridgeAllowed, shareId? }`. The owner resolves first (a taken-down artifact
+answers 451). Anyone else needs the share token header
+`x-besidka-artifact-share` of an active link to that artifact (share mode,
+A-7); `storageAllowed` comes from the link and a link without it answers 403.
+Unknown, forged or foreign ids, and dead links, answer 404. The token is
+never a query string. See `docs/artifacts/shares.md`.
 
 Routes (session, `requireFeature('artifacts.storage')`, current legal
 consent per the A-12 pre-check, then the resolver; every route acts on the
@@ -117,14 +119,15 @@ Per the Privacy Policy row "Progress you saved in artifacts" (A-9):
 - Kept until the viewer uses Reset, the artifact is deleted
   (`deleteArtifacts` removes every viewer's rows) or the account is deleted
   (purge by `viewerUserId`).
-- For someone else's artifact (non-owner viewers, which exist only once A-7
-  ships) the hourly sweep `sweepViewerArtifactStorage()`
+- For someone else's artifact (non-owner viewers through a share link, A-7)
+  the hourly sweep `sweepViewerArtifactStorage()`
   (`server/plugins/artifact-storage-sweep.ts`, cron `0 * * * *`) also deletes
   rows 30 days after the last share link to that artifact ended (the
   earliest of revoked, taken down or expired, per link), at the next run
   after a takedown of the artifact, and when the artifact no longer exists.
-  There is no takedown helper in code yet (A-8), so the sweep is the
-  mechanism; "at once" therefore means within the hour.
+  Takedowns (A-7, `server/utils/artifacts/takedown.ts`) only set the
+  takedown fields, so the sweep is the mechanism; "at once" therefore means
+  within the hour.
 - Revoking a share does not delete rows by itself, so re-sharing within the
   30 days keeps progress.
 
@@ -133,7 +136,7 @@ Restored `artifact_storage` rows after a D1 Time Travel restore are harmless
 
 ## Not in this layer
 
-- Share-mode access (`x-besidka-artifact-share`, `storageAllowed`) and the
-  sign-in caption: A-7.
+- The "Sign in to save your progress" caption on `/a/` pages: the A-7
+  client layer.
 - Owner-visible aggregates (leaderboards): never.
 - MCP access to storage: never.

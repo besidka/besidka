@@ -5,6 +5,7 @@ import {
 } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 import ChatArtifactDetail from '../../../../../app/components/Chat/Artifact/Detail.client.vue'
 import {
   useArtifactPanel,
@@ -45,6 +46,26 @@ mockNuxtImport('useErrorMessage', () => errorMessageMock)
 
 mockNuxtImport('useSidePanelLayout', () => {
   return () => layout
+})
+
+const shareFeature = ref({ enabled: true, active: false, variant: null })
+
+mockNuxtImport('useFeature', () => {
+  return () => shareFeature
+})
+
+mockComponent('ChatArtifactShareModal', () => {
+  return {
+    props: ['open', 'artifactId', 'title', 'currentVersion'],
+    template: `
+      <div
+        data-testid="share-modal-stub"
+        :data-open="String(open)"
+        :data-artifact-id="artifactId"
+        :data-current-version="currentVersion"
+      />
+    `,
+  }
 })
 
 vi.mock('~/composables/artifact-storage', async (importOriginal) => {
@@ -222,6 +243,7 @@ beforeEach(() => {
   errorMessageMock.mockReset()
   frameMounts.count = 0
   layout.value = 'docked'
+  shareFeature.value = { enabled: true, active: false, variant: null }
   respond()
 })
 
@@ -740,4 +762,46 @@ describe('ChatArtifactDetail saved progress', () => {
     expect(frameMounts.count).toBe(2)
     expect(wrapper.find(RESET_ITEM).exists()).toBe(true)
   })
+})
+
+describe('ChatArtifactDetail share link', () => {
+  const SHARE_ITEM = '[data-testid="artifact-action-share"]'
+
+  it('is hidden without the artifacts.share flag', async () => {
+    openTarget()
+
+    const wrapper = await mountDetail()
+
+    expect(wrapper.find(SHARE_ITEM).exists()).toBe(false)
+  })
+
+  it('is hidden for a shared chat even with the flag', async () => {
+    shareFeature.value = { enabled: true, active: true, variant: null }
+    useSharedArtifactVersions().value = { Art1Art1Art1Art1: [3] }
+    openTarget({ source: 'shared', shareSlug: 'share_1' })
+
+    const wrapper = await mountDetail()
+
+    expect(wrapper.find(SHARE_ITEM).exists()).toBe(false)
+  })
+
+  it('opens the share modal for the owner with the current version',
+    async () => {
+      shareFeature.value = { enabled: true, active: true, variant: null }
+      openTarget({ version: 1 })
+
+      const wrapper = await mountDetail()
+
+      expect(wrapper.find('[data-testid="share-modal-stub"]').exists())
+        .toBe(false)
+
+      await wrapper.get(SHARE_ITEM).trigger('click')
+      await flushPromises()
+
+      const modal = wrapper.get('[data-testid="share-modal-stub"]')
+
+      expect(modal.attributes('data-open')).toBe('true')
+      expect(modal.attributes('data-artifact-id')).toBe('Art1Art1Art1Art1')
+      expect(modal.attributes('data-current-version')).toBe('3')
+    })
 })

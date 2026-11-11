@@ -1,5 +1,8 @@
 import type { RequestEvent } from 'nuxt/server'
-import { ARTIFACT_STORAGE_KEY_PATTERN } from '#shared/utils/artifacts'
+import {
+  ARTIFACT_SHARE_HEADER,
+  ARTIFACT_STORAGE_KEY_PATTERN,
+} from '#shared/utils/artifacts'
 import { createError } from 'evlog'
 import { getRequestHeader } from 'nuxt/server'
 import { z } from 'zod'
@@ -11,8 +14,6 @@ import type {
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
-
-export const ARTIFACT_SHARE_HEADER = 'x-besidka-artifact-share'
 
 /**
  * Refuses a request body larger than `maxBytes` by its `Content-Length`

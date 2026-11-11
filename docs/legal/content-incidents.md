@@ -156,6 +156,13 @@ For each decision on a report:
    is restored, tell the reporter, and for copyright do not pass on the
    owner's contact details without their consent.
 
+A user-scope takedown (every artifact of one owner, direct takedown with
+scope `user`) also withdraws link sharing: it writes a deny grant for
+`artifacts.share` on that account in the same batch, and the T3 email tells
+the owner. Restoring the artifacts does not lift it; restore link sharing by
+removing the deny grant in Admin → Features → `artifacts.share` once a
+person has reviewed the dispute.
+
 Report rows outlive the artifact: they are deleted 12 months after the matter
 is closed (24 for a copyright removal) by a sweep (A-1), and never by
 `deleteArtifacts` or the account purge.
@@ -203,6 +210,13 @@ send in Polish when the report was in Polish. Never name the reporter to the
 owner, never quote a CSAM report, and never attach the reported material.
 Placeholders are in angle brackets.
 
+In the emails A-7 sends, `<URL>` in T1 and T2 is a reference id (the share
+id, or the artifact id for a shared chat), never the link and never the
+artifact title, because the reporter chooses the address. T1 goes to the
+typed address only for signed-out reporters; a signed-in reporter gets it
+at their verified account email, and each address gets at most 3 receipts a
+day. T3 names the artifact by title and id.
+
 ### T1. Receipt to the reporter (DSA Art. 16(4))
 
 Subject: Your report about <URL> was received
@@ -243,6 +257,10 @@ Subject: Your artifact "<title>" was <removed / restricted>
 > disabled, not deleted, and you can still delete it <unless: it is held until
 > <date> because an authority ordered its removal or asked me to preserve
 > it>.
+>
+> <only after a user-scope takedown: Link sharing is also turned off for your
+> account: you cannot create new public links to artifacts until a person
+> reviews this decision again.>
 >
 > Facts: <what was found, including whether the decision followed a report
 > made under the notice process, without the reporter's name>.

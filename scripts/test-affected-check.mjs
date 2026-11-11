@@ -168,6 +168,12 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const artifactsSharesTests = [
+    'tests/unit/server/utils/artifacts/shares.spec.ts',
+    'tests/unit/server/utils/artifacts/access.spec.ts',
+    'tests/integration/api/artifact-shares.spec.ts',
+    'tests/integration/api/shared-artifacts.spec.ts',
+  ]
   const artifactsSharedChatTests = [
     'tests/integration/api/shared-artifacts.spec.ts',
     'tests/unit/server/api/shared-context.spec.ts',
@@ -185,7 +191,29 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/artifact-export.spec.ts',
     'tests/unit/utils/artifact-parts.spec.ts',
     'tests/unit/utils/artifact-bridge.spec.ts',
+    'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
     'tests/e2e/chat/artifacts-panel.spec.ts',
+    'tests/e2e/shared/artifact-share.spec.ts',
+  ]
+  const artifactsShareUiTests = [
+    'tests/unit/pages/a/[token].spec.ts',
+    'tests/unit/components/Artifact/ReportModal.client.spec.ts',
+    'tests/unit/components/Chat/Artifact/ReportButton.client.spec.ts',
+    'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
+    'tests/unit/components/Chat/Artifact/Detail.client.spec.ts',
+    'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
+    'tests/unit/composables/artifact-storage.spec.ts',
+    'tests/unit/composables/artifact-bridge.spec.ts',
+    'tests/unit/utils/artifact-share-page.spec.ts',
+    'tests/unit/utils/artifact-share-location.spec.ts',
+    'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
+    'tests/e2e/shared/artifact-share.spec.ts',
+  ]
+  const artifactsAdminReportsTests = [
+    'tests/unit/pages/admin/artifact-reports.spec.ts',
+    'tests/unit/components/Admin/ArtifactReportDetail.client.spec.ts',
+    'tests/unit/components/Admin/ArtifactTakedownForm.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
   ]
   const artifactsChatTests = [
     'tests/unit/server/utils/ai/artifact-tools.spec.ts',
@@ -3038,6 +3066,23 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(server\/utils\/artifacts\/|server\/api\/v1\/(artifact-shares|artifacts\/\[id\]\/shares|admin\/(artifact-reports|artifact-takedowns|artifacts))\/|server\/api\/v1\/shared\/\[slug\]\/artifacts\/|server\/utils\/(turnstile|email|email-template)\.ts$|server\/utils\/features\/(admin|admin-request|global|guards)\.ts$|server\/utils\/chats\/(share|share-pii-check)\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|tests\/setup\/helpers\/(artifacts-store|memory-extraction-db|public-id-mock)\.ts$)/,
+      tests: artifactsSharesTests,
+    },
+    {
+      pattern:
+        /^(server\/middleware\/02\.artifact-share-path-case\.ts|server\/utils\/artifacts\/share-(redaction|request)\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: [
+        'tests/unit/server/middleware/artifact-share-path-case.spec.ts',
+        'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/(turnstile|auth-hosts)\.ts$/,
+      tests: ['tests/unit/server/utils/turnstile.spec.ts'],
+    },
+    {
+      pattern:
         /^(server\/plugins\/artifacts-frame-src\.ts|(app|shared)\/utils\/artifact-frame-policy\.ts|app\/components\/Chat\/Artifact\/Frame\.client\.vue)$/,
       tests: [
         'tests/integration/server/artifacts-frame-src-plugin.spec.ts',
@@ -3054,6 +3099,16 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/pages\/(chats|shared)\/\[slug\]\.vue|app\/utils\/reasoning\.ts|app\/composables\/chat\.ts)$/,
       tests: ['tests/e2e/chat/artifacts-panel.spec.ts'],
+    },
+    {
+      pattern:
+        /^(app\/pages\/a\/\[token\]\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/artifact-share-(page|location)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
+      tests: artifactsShareUiTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/admin\/artifact-reports\.vue|app\/components\/Admin\/Artifact(ReportDetail\.client|TakedownForm)\.vue|app\/utils\/admin-artifact-reports\.ts|app\/layouts\/admin\.vue|app\/components\/Search\/Modal\.client\.vue|shared\/utils\/artifacts\.ts)$/,
+      tests: artifactsAdminReportsTests,
     },
     {
       pattern:

@@ -609,7 +609,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   Policy row, the `frame-src` CSP as a route header plus a script-inserted
   meta tag for client-side navigation (and why), the standalone export rule
   (no third-party hosts, React and Mermaid as source only), and the open
-  items (report share id not stored, MCP `get_chat` omits artifacts)
+  items (the non-atomic report limiter, MCP `get_chat` omits artifacts)
 - `docs/artifacts/viewer-storage.md` - Saved progress for artifacts (A-5):
   who gets `persistent` storage (signed in, `artifacts.storage`, own chat,
   saved artifact) and why shared chats stay in memory until A-7, the owner
@@ -628,6 +628,17 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   30 per hour per artifact), 502 for provider errors, id-only logging and
   `artifact_bridge_call` analytics, the `resolve-cheapest-model` extraction
   from memory, and the JSON-RPC error codes
+- `docs/artifacts/shares.md` - Public artifact links, reports and takedown
+  (A-7): the token model (32 random bytes, sha256 lookup, encrypted copy for
+  the owner, `sh_` share ids, token only in the `x-besidka-artifact-share`
+  header), owner, public and admin routes with bodies and error codes, the
+  404 versus 410 states, the kill-switch and flag gates, share mode in the
+  viewer resolver (403 when a link does not allow storage or the bridge), the
+  `/a/**` route rules and the merged `frame-src` CSP, `/a/<token>` log
+  redaction and the Workers Logs gap, the report flow (Turnstile, rate limit,
+  copyright notice elements, no IP), report decisions, direct takedowns by
+  link, token, artifact or user with the six-month legal hold, restore
+  without email, the T1 to T3 emails, soft revoke and D1 restore replay
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
