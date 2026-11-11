@@ -40,6 +40,16 @@ mockNuxtImport('useMediaQuery', () => {
   return () => isPopoverLayout
 })
 
+mockNuxtImport('useFeature', () => {
+  return (key: string) => {
+    return computed(() => {
+      return key === 'artifacts'
+        ? artifactsFeature.value
+        : { enabled: false, active: false, variant: null }
+    })
+  }
+})
+
 mockNuxtImport('useUserSetting', () => {
   return () => ({
     reasoningExpanded: computed(() => false),
@@ -62,6 +72,11 @@ mockNuxtImport('useFeature', () => {
 })
 
 const isPopoverLayout = shallowRef<boolean>(true)
+const artifactsFeature = shallowRef<{
+  enabled: boolean
+  active: boolean
+  variant: string | null
+}>({ enabled: false, active: false, variant: null })
 const defaultReasoningLevel = shallowRef<string | null>(null)
 const keyboardInset = shallowRef<number>(0)
 const safeAreaBottom = shallowRef<number>(0)
@@ -115,6 +130,16 @@ const textFileModalStub = defineComponent({
   template: '<div data-testid="text-file-modal-stub" />',
 })
 
+const artifactPickerStub = defineComponent({
+  name: 'ChatInputArtifactPickerStub',
+  props: {
+    open: { type: Boolean, default: false },
+  },
+  emits: ['update:open', 'pick'],
+  template: '<div data-testid="artifact-picker-stub" '
+    + ':data-open="String(open)" />',
+})
+
 const uiButtonStub = defineComponent({
   name: 'UiButtonStub',
   props: {
@@ -155,6 +180,8 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
         LazyChatInputFilesAttachedPreview: true,
         LazyChatTextFileModal: textFileModalStub,
         ChatTextFileModal: textFileModalStub,
+        LazyChatInputArtifactPicker: artifactPickerStub,
+        ChatInputArtifactPicker: artifactPickerStub,
         LazyChatInputModelsTrigger: true,
         LazyChatInputFilesTrigger: true,
         LazyChatInputReasoningTrigger: true,
@@ -314,6 +341,7 @@ describe('ChatInput.client', () => {
     defaultReasoningLevel.value = null
     keyboardInset.value = 0
     safeAreaBottom.value = 0
+    artifactsFeature.value = { enabled: false, active: false, variant: null }
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
@@ -3580,5 +3608,210 @@ describe('ChatInput.client', () => {
         expect((textarea.element as HTMLTextAreaElement).value)
           .toBe('My unsent draft\n\nFix the error')
       })
+  })
+
+  describe('artifact attachments', () => {
+    const quiz = {
+      id: 'art-1',
+      title: 'Quiz',
+      kind: 'html',
+      currentVersion: 3,
+    }
+    const attachedQuiz = {
+      artifactId: 'art-1',
+      version: 3,
+      kind: 'html',
+      title: 'Quiz',
+    }
+
+    function grantArtifacts() {
+      artifactsFeature.value = { enabled: true, active: true, variant: null }
+    }
+
+    function getPicker(wrapper: ChatInputWrapper) {
+      return wrapper.findComponent({ name: 'ChatInputArtifactPickerStub' })
+    }
+
+    async function openPicker(wrapper: ChatInputWrapper) {
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-action-artifacts"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(getPicker(wrapper).exists()).toBe(true)
+      })
+    }
+
+    function lastAttached(wrapper: ChatInputWrapper) {
+      return wrapper.emitted('update:attachedArtifacts')?.at(-1)?.[0]
+    }
+
+    it('shows nothing new without access: no row, no picker', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'tools-action-library')).toBe(true)
+      expect(hasTestId(wrapper, 'tools-action-artifacts')).toBe(false)
+      expect(getPicker(wrapper).exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Add artifact')
+    })
+
+    it('mounts the picker only after the row is used, with access',
+      async () => {
+        grantArtifacts()
+
+        const wrapper = await mountChatInput()
+
+        expect(getPicker(wrapper).exists()).toBe(false)
+
+        await openPicker(wrapper)
+
+        expect(getPicker(wrapper).attributes('data-open')).toBe('true')
+      })
+
+    it('attaches a picked artifact once and reports it through the model',
+      async () => {
+        grantArtifacts()
+
+        const wrapper = await mountChatInput()
+
+        await openPicker(wrapper)
+        getPicker(wrapper).vm.$emit('pick', quiz)
+        await flushPromises()
+
+        expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+
+        getPicker(wrapper).vm.$emit('pick', quiz)
+        await flushPromises()
+
+        expect(wrapper.emitted('update:attachedArtifacts')).toHaveLength(1)
+      })
+
+    it('refuses a fourth attached artifact with a warning', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput({
+        attachedArtifacts: ['a', 'b', 'c'].map((artifactId) => {
+          return { ...attachedQuiz, artifactId }
+        }),
+      })
+
+      await openPicker(wrapper)
+      getPicker(wrapper).vm.$emit('pick', quiz)
+      await flushPromises()
+
+      expect(wrapper.emitted('update:attachedArtifacts')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'You can attach up to 3 artifacts.',
+        'Remove one to attach another.',
+      )
+    })
+
+    it('attaches through the runtime hook only once there is access',
+      async () => {
+        const wrapper = await mountChatInput()
+
+        await useNuxtApp().callHook('chat-input:attach-artifact', attachedQuiz)
+        await flushPromises()
+
+        expect(wrapper.emitted('update:attachedArtifacts')).toBeUndefined()
+
+        grantArtifacts()
+        await flushPromises()
+
+        expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+      })
+
+    it('takes the artifact queued before it mounted, once', async () => {
+      grantArtifacts()
+      useChatInputPrefill().queue('Fix "Quiz"', attachedQuiz as never)
+
+      const wrapper = await mountChatInput()
+
+      await flushPromises()
+
+      expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+      expect((wrapper.get('textarea').element as HTMLTextAreaElement).value)
+        .toBe('Fix "Quiz"')
+      expect(useChatInputPrefill().takeArtifact()).toBeNull()
+    })
+
+    it('holds a queued artifact until access arrives, never for another '
+      + 'composer', async () => {
+      useChatInputPrefill().queue('Fix "Quiz"', attachedQuiz as never)
+
+      const wrapper = await mountChatInput()
+
+      await flushPromises()
+
+      expect(wrapper.emitted('update:attachedArtifacts')).toBeUndefined()
+      expect(useChatInputPrefill().takeArtifact()).toBeNull()
+
+      grantArtifacts()
+      await flushPromises()
+
+      expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+    })
+
+    it('closes the picker when access disappears', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput()
+
+      await openPicker(wrapper)
+
+      expect(getPicker(wrapper).attributes('data-open')).toBe('true')
+
+      artifactsFeature.value = { enabled: false, active: false, variant: null }
+      await flushPromises()
+      grantArtifacts()
+      await flushPromises()
+
+      expect(getPicker(wrapper).exists()).toBe(true)
+      expect(getPicker(wrapper).attributes('data-open')).toBe('false')
+    })
+
+    it('clears the attached artifacts when the message is sent', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput({
+        attachedArtifacts: [attachedQuiz],
+      })
+
+      await wrapper.get('textarea').setValue('Use the quiz')
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(lastAttached(wrapper)).toEqual([])
+    })
+
+    it('clears the attached artifacts when a deep research model is picked',
+      async () => {
+        grantArtifacts()
+
+        const wrapper = await mountChatInput({
+          attachedArtifacts: [attachedQuiz],
+        })
+
+        ;(mocks.useChatInput() as { isDeepResearchModel: { value: boolean } })
+          .isDeepResearchModel.value = true
+        await flushPromises()
+
+        expect(lastAttached(wrapper)).toEqual([])
+      })
+
+    it('clears the attached artifacts when access disappears', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput({
+        attachedArtifacts: [attachedQuiz],
+      })
+
+      artifactsFeature.value = { enabled: false, active: false, variant: null }
+      await flushPromises()
+
+      expect(lastAttached(wrapper)).toEqual([])
+    })
   })
 })

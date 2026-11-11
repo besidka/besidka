@@ -272,6 +272,46 @@ describe('shared chat branch API', () => {
     })
   })
 
+  it('never copies an artifact the owner attached into the branch', async () => {
+    mocks.resolveActiveShareBySlug.mockResolvedValue({
+      chatId: 'chat-1',
+      allowBranch: true,
+      showFiles: true,
+    })
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb({
+      messages: [{
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Hello' },
+          {
+            type: 'data-artifact-attachment',
+            data: {
+              artifactId: 'art-private',
+              version: 2,
+              kind: 'html',
+              title: 'Private library page',
+            },
+          },
+        ],
+      }],
+    })
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler(event as never)
+
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    })
+  })
+
   it('keeps file parts in branched messages when the share allows files', async () => {
     mocks.resolveActiveShareBySlug.mockResolvedValue({
       chatId: 'chat-1',

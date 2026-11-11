@@ -1,5 +1,8 @@
 import { and, gt, inArray, isNull, eq } from 'drizzle-orm'
-import { isDataArtifactPart } from '#shared/utils/artifacts'
+import {
+  isDataArtifactAttachmentPart,
+  isDataArtifactPart,
+} from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
 import {
   ARTIFACT_ID_CHUNK_SIZE,
@@ -17,8 +20,9 @@ type DbClient = ReturnType<typeof useDb>
 type ReferencedVersions = Map<number, string>
 
 /**
- * Every version of every artifact referenced by a `data-artifact` part, with
- * the title that part carries, keyed by public artifact id.
+ * Every version of every artifact referenced by a `data-artifact` or
+ * `data-artifact-attachment` part, with the title that part carries, keyed
+ * by public artifact id.
  */
 export function collectArtifactReferences(
   messages: readonly ChatContextMessage[],
@@ -27,7 +31,7 @@ export function collectArtifactReferences(
 
   for (const message of messages) {
     for (const part of message.parts) {
-      if (!isDataArtifactPart(part)) {
+      if (!isDataArtifactPart(part) && !isDataArtifactAttachmentPart(part)) {
         continue
       }
 

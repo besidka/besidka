@@ -543,6 +543,16 @@ retention (until the account is deleted).
   move earlier (the registry is ordered by `publishedAt`), so move
   `effectiveAt` later instead and hold any `artifacts.*` rollout by hand until
   then.
+- **Four active notices (decided 2026-11-11).** `2026-12-code-and-documents`
+  (Privacy Policy and Terms) is published at 2026-11-15T08:00Z, after
+  `2026-12-artifacts`, and takes effect on 2026-12-19 as well. It adds a third
+  email to every verified account and shares the 300-a-day cap from
+  2026-11-15: the last notice must land by about 2026-11-19, which leaves about
+  3.6 sending days, so the limit is about 360 verified accounts across three
+  notices. Check the verified account count before 2026-11-15; if it is higher,
+  move `effectiveAt` later (`sendFrom` cannot move earlier) and keep the
+  `documents*` and `code-execution*` flags at `internal` until then. The
+  banner shows only the newest notice, and every email still goes out.
 
 Nothing is written to browser storage for it. The older key
 `legal-notice:dismissed:<user id>:<notice id>` is deleted on load by the

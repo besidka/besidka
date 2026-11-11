@@ -126,6 +126,41 @@ export const LEGAL_NOTICES = [
       + 'they are closed, also after the artifact or the account is deleted.',
     ],
   },
+  {
+    id: '2026-12-code-and-documents',
+    documents: ['privacy-policy', 'terms-of-use'],
+    publishedAt: '2026-11-15T08:00:00Z',
+    sendFrom: '2026-11-15T11:00:00Z',
+    effectiveAt: '2026-12-19',
+    summary: [
+      'The Terms now forbid using Besidka to write or run code that '
+      + 'attacks systems: no malware, no denial-of-service attacks or '
+      + 'botnets, no bypassing security controls without permission, and no '
+      + 'attacks on critical infrastructure such as energy, water, transport, '
+      + 'health or communications networks. This follows the usage '
+      + 'policies of Anthropic and OpenAI for code run on your key.',
+      'If you turn on Run code, the code runs at your own AI provider, on '
+      + 'your key, and the provider\'s usage policy applies to you directly. '
+      + 'I do not run the code and I cannot see or cap what it costs. '
+      + 'Anthropic\'s document skills, if I offer them, are Anthropic\'s, '
+      + 'under your own agreement with Anthropic. I do not license or '
+      + 'distribute them.',
+      'Documents (PDF, Word, PowerPoint and Excel files) and code results '
+      + 'are AI output that I do not check, so check them before you use '
+      + 'them. A file the assistant makes carries a machine-readable mark '
+      + 'with the model\'s name and no personal details. The mark can be '
+      + 'missing, or lost when a file is re-saved, printed or copied.',
+      'Documents and Run code reach accounts step by step, starting with '
+      + 'my own account and testers. The new rules apply from 19 December '
+      + '2026.',
+      'The Privacy Policy now describes documents and Run code. A document '
+      + 'is stored as an outline plus a file and is deleted with the file and '
+      + 'with the chat it was made in. When you use Run code, your attached '
+      + 'files go to your provider\'s sandbox for that turn and I delete what '
+      + 'I upload there afterwards. The provider may keep some data for up to '
+      + '30 days, for example Anthropic container data and OpenAI abuse logs.',
+    ],
+  },
 ] as const satisfies readonly LegalNotice[]
 
 export function parseNoticeInstant(value: string): number {

@@ -97,7 +97,9 @@ is not a breach. Record it anyway (section 7).
 | `NUXT_ENCRYPTION_KEY` leaked | Rotate it with a re-encryption plan (2.5) |
 | A share link exposes a private chat | Revoke shares (2.6) |
 | A public artifact link exposes personal data, or an artifact is used to phish or leak data (planned, A-1 to A-7) | Take the artifact down or revoke its links (2.6; `docs/legal/content-incidents.md`, section 5). For many artifacts or an unknown scope, revoke all artifact links (2.6). If the runtime origin or its CSP is wrong, turn the global `artifacts` rule off in `/admin` first: it hides every artifact, the panel and `/a/` for everyone |
-| Public or misconfigured R2 object or bucket (including the `artifacts/` prefix) | Remove public access in Cloudflare R2, then delete or replace the object |
+| Public or misconfigured R2 object or bucket (including the `artifacts/` and `documents/` prefixes) | Remove public access in Cloudflare R2, then delete or replace the object |
+| A provider API key leaked, and with it the files Besidka uploaded for code execution (planned, D-7; the Anthropic Files API is visible to every key in the workspace) | Tell the user to rotate the key at the provider (Besidka cannot rotate it) and, if the user wants, delete the key in Besidka. Besidka's per-turn deletion and the one-hour expiry on Anthropic uploads limit what sits there; check the user's Axiom `attributes.codeExecution` lines (ids and counts only) for how many files a turn used |
+| A generated document carries active content or is misused (planned, D-3, D-4) | Disable the `documents` flag in `/admin`, which stops new documents, then delete the affected files with the user's file delete path. The renderer Worker `besidka-doc-renderer` has no public route, so no Worker route needs closing |
 | Vulnerable or abused route, or a flood | Disable the route or block traffic (2.7) |
 | A connected AI app is abused | Delete the grants: tables `oauth_access_tokens`, `oauth_refresh_tokens`, `oauth_consents` (row 10a of the Art. 30 record). Every `/mcp` call checks for a live consent row, so it stops at the next call (`docs/legal/dpia.md`, risk row 33) |
 | Admin account or admin MCP client compromised (feature access, `docs/feature-flags.md`) | Remove the address from the `NUXT_ADMIN_EMAILS` Worker secret and redeploy. Delete any `admin` rows in `user_roles`. Revoke the connected app that holds `admin:features` (its rows in `oauth_access_tokens`, `oauth_refresh_tokens` and `oauth_consents`), then revoke the account's sessions (2.3). If rules were changed, set the `NUXT_FEATURES_DISABLED` var to `*` and redeploy, which turns every feature off for everyone. Review `feature_audit_log` and the Axiom `attributes.featureAccess` lines (actor, targets, `admin.read` counts) to see what was read and changed, and reverse it. The admin search shows every user's email and name, so assess it as an exposure of the account list (section 3) |
@@ -190,6 +192,18 @@ Count before and after. Check the timestamp unit against the A-1 schema before
 running it (seconds or milliseconds). Artifacts in shared chats follow the chat
 share: revoke those as above. Artifact links are never indexed, so no search
 engine copies are expected.
+
+**Stores to check in a document or code-execution incident** (planned, D-2 to
+D-8): R2 `documents/<userId>/<documentPublicId>/spec.v<n>.json` (the spec can
+hold any personal data the user discussed, and special-category data) and the
+rendered files in the user's file storage; D1 `documents` (the title may be
+personal) and `files`; Workers Logs of `besidka-doc-renderer` (by design no
+spec text, title or asset bytes; retention not checked); Axiom
+`attributes.documents` and `attributes.codeExecution` (ids, counts and error
+codes only); and, outside Besidka, files and containers at the user's own
+provider (Anthropic Files API objects and container data up to 30 days,
+OpenAI containers and abuse logs up to 30 days). Besidka has no key to the
+provider side, so the user acts there.
 
 **Stores to check in an artifact incident** (planned, A-1 to A-7): R2
 `artifacts/<userId>/<artifactId>/v<n>`; D1 `artifacts`, `artifact_versions`,

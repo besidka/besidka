@@ -154,6 +154,36 @@ export function useArtifactLibraryFilters() {
 }
 
 /**
+ * Search text and kind filter of the artifact picker. Unlike the library
+ * these live in memory only: the picker is a dialog, so no URL changes.
+ */
+export function useArtifactPickerFilters() {
+  const search = shallowRef<string>('')
+  const appliedQuery = shallowRef<string>('')
+  const appliedKind = shallowRef<ArtifactKindFilter>('all')
+
+  const commitSearch = useDebounceFn(() => {
+    appliedQuery.value = toArtifactSearchTerm(search.value)
+  }, ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+  watch(search, () => {
+    commitSearch()
+  })
+
+  function setKind(kind: ArtifactKindFilter) {
+    appliedKind.value = kind
+  }
+
+  function reset() {
+    search.value = ''
+    appliedQuery.value = ''
+    appliedKind.value = 'all'
+  }
+
+  return { search, appliedQuery, appliedKind, setKind, reset }
+}
+
+/**
  * The owner's artifact list: first page through `useLazyFetch`, further
  * pages appended with `$fetch`, local removal after a delete (so the list
  * keeps its depth), selection for the bulk toolbar and the quota figure.
@@ -161,7 +191,7 @@ export function useArtifactLibraryFilters() {
 export function useArtifactLibrary(filters: {
   query: Ref<string>
   kind: Ref<ArtifactKindFilter>
-}) {
+}, options: { key?: string } = {}) {
   const nuxtApp = useNuxtApp()
   const panel = useArtifactPanel()
 
@@ -175,6 +205,7 @@ export function useArtifactLibrary(filters: {
 
   const { data, status, error, refresh } = useLazyFetch('/api/v1/artifacts', {
     query: requestQuery,
+    ...(options.key ? { key: options.key } : {}),
   })
 
   const extraItems = shallowRef<ArtifactSummary[]>([])

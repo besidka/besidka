@@ -1,8 +1,12 @@
 {
-  "version": 0,
-  "kind": "document",
+  "specVersion": 1,
+  "format": "docx",
   "title": "Квартальний звіт / Quarterly report Q3 2026",
   "language": "uk-UA",
+  "theme": {
+    "font": "sans",
+    "accent": "blue"
+  },
   "blocks": [
     {
       "type": "heading",
@@ -11,7 +15,11 @@
     },
     {
       "type": "paragraph",
-      "text": "Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa. Most of the growth came from new customers in the logistics segment. The board approved the 2027 development strategy. We launched a pilot that automates monthly reporting for finance. Daily active users passed thirty thousand for the first time."
+      "runs": [
+        {
+          "text": "Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa. Most of the growth came from new customers in the logistics segment. The board approved the 2027 development strategy. We launched a pilot that automates monthly reporting for finance. Daily active users passed thirty thousand for the first time."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -20,7 +28,11 @@
     },
     {
       "type": "paragraph",
-      "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Щоденна кількість активних користувачів перевищила тридцять тисяч. Ціни на сировину стабілізувалися після різкого зростання навесні. Рада директорів затвердила стратегію розвитку на 2027 рік."
+      "runs": [
+        {
+          "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Щоденна кількість активних користувачів перевищила тридцять тисяч. Ціни на сировину стабілізувалися після різкого зростання навесні. Рада директорів затвердила стратегію розвитку на 2027 рік."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -29,15 +41,27 @@
     },
     {
       "type": "paragraph",
-      "text": "Новий склад у Житомирі дозволив скоротити доставку на один день. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Ми переглянули умови співпраці з трьома ключовими постачальниками. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом."
+      "runs": [
+        {
+          "text": "Новий склад у Житомирі дозволив скоротити доставку на один день. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Ми переглянули умови співпраці з трьома ключовими постачальниками. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Середній чек у категорії «Послуги» становив 1 240 грн. Щоденна кількість активних користувачів перевищила тридцять тисяч. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+      "runs": [
+        {
+          "text": "У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Середній чек у категорії «Послуги» становив 1 240 грн. Щоденна кількість активних користувачів перевищила тридцять тисяч. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Рада директорів затвердила стратегію розвитку на 2027 рік. Новий склад у Житомирі дозволив скоротити доставку на один день. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Команда підтримки скоротила середній час відповіді до чотирьох годин. Частка повторних замовлень досягла сорока семи відсотків."
+      "runs": [
+        {
+          "text": "Рада директорів затвердила стратегію розвитку на 2027 рік. Новий склад у Житомирі дозволив скоротити доставку на один день. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Команда підтримки скоротила середній час відповіді до чотирьох годин. Частка повторних замовлень досягла сорока семи відсотків."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -46,99 +70,191 @@
     },
     {
       "type": "paragraph",
-      "text": "We launched a pilot that automates monthly reporting for finance. A new warehouse shortened delivery times by one day. The support team cut the median first-response time to four hours. The support team cut the median first-response time to four hours. Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa."
+      "runs": [
+        {
+          "text": "We launched a pilot that automates monthly reporting for finance. A new warehouse shortened delivery times by one day. The support team cut the median first-response time to four hours. The support team cut the median first-response time to four hours. Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Обсяг відвантажень у вересні був найбільшим за всю історію компанії. Щоденна кількість активних користувачів перевищила тридцять тисяч. Середній чек у категорії «Послуги» становив 1 240 грн. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Команда підтримки скоротила середній час відповіді до чотирьох годин."
+      "runs": [
+        {
+          "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Обсяг відвантажень у вересні був найбільшим за всю історію компанії. Щоденна кількість активних користувачів перевищила тридцять тисяч. Середній чек у категорії «Послуги» становив 1 240 грн. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Команда підтримки скоротила середній час відповіді до чотирьох годин."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Наступного кварталу плануємо відкрити представництво в Одесі. Новий склад у Житомирі дозволив скоротити доставку на один день. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Команда підтримки скоротила середній час відповіді до чотирьох годин. Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії."
+      "runs": [
+        {
+          "text": "Наступного кварталу плануємо відкрити представництво в Одесі. Новий склад у Житомирі дозволив скоротити доставку на один день. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Команда підтримки скоротила середній час відповіді до чотирьох годин. Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії."
+        }
+      ]
     },
     {
       "type": "list",
       "ordered": true,
       "items": [
         {
-          "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних.",
+          "runs": [
+            {
+              "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+            }
+          ],
           "children": [
             {
-              "text": "A new warehouse shortened delivery times by one day.",
+              "runs": [
+                {
+                  "text": "A new warehouse shortened delivery times by one day."
+                }
+              ],
               "children": [
                 {
-                  "text": "Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів."
+                  "runs": [
+                    {
+                      "text": "Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Daily active users passed thirty thousand for the first time.",
+              "runs": [
+                {
+                  "text": "Daily active users passed thirty thousand for the first time."
+                }
+              ],
               "children": [
                 {
-                  "text": "Ціни на сировину стабілізувалися після різкого зростання навесні."
+                  "runs": [
+                    {
+                      "text": "Ціни на сировину стабілізувалися після різкого зростання навесні."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Частка повторних замовлень досягла сорока семи відсотків.",
+          "runs": [
+            {
+              "text": "Частка повторних замовлень досягла сорока семи відсотків."
+            }
+          ],
           "children": [
             {
-              "text": "Infrastructure costs stayed flat thanks to server consolidation.",
+              "runs": [
+                {
+                  "text": "Infrastructure costs stayed flat thanks to server consolidation."
+                }
+              ],
               "children": [
                 {
-                  "text": "Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів."
+                  "runs": [
+                    {
+                      "text": "Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Currency exposure was partly hedged with forward contracts.",
+              "runs": [
+                {
+                  "text": "Currency exposure was partly hedged with forward contracts."
+                }
+              ],
               "children": [
                 {
-                  "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+                  "runs": [
+                    {
+                      "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Новий склад у Житомирі дозволив скоротити доставку на один день.",
+          "runs": [
+            {
+              "text": "Новий склад у Житомирі дозволив скоротити доставку на один день."
+            }
+          ],
           "children": [
             {
-              "text": "Infrastructure costs stayed flat thanks to server consolidation.",
+              "runs": [
+                {
+                  "text": "Infrastructure costs stayed flat thanks to server consolidation."
+                }
+              ],
               "children": [
                 {
-                  "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+                  "runs": [
+                    {
+                      "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Revenue in the third quarter grew by twelve percent compared with the previous period.",
+              "runs": [
+                {
+                  "text": "Revenue in the third quarter grew by twelve percent compared with the previous period."
+                }
+              ],
               "children": [
                 {
-                  "text": "Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли."
+                  "runs": [
+                    {
+                      "text": "Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Новий склад у Житомирі дозволив скоротити доставку на один день.",
+          "runs": [
+            {
+              "text": "Новий склад у Житомирі дозволив скоротити доставку на один день."
+            }
+          ],
           "children": [
             {
-              "text": "Daily active users passed thirty thousand for the first time.",
+              "runs": [
+                {
+                  "text": "Daily active users passed thirty thousand for the first time."
+                }
+              ],
               "children": [
                 {
-                  "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин."
+                  "runs": [
+                    {
+                      "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Repeat orders reached forty-seven percent of all orders.",
+              "runs": [
+                {
+                  "text": "Repeat orders reached forty-seven percent of all orders."
+                }
+              ],
               "children": [
                 {
-                  "text": "Щоденна кількість активних користувачів перевищила тридцять тисяч."
+                  "runs": [
+                    {
+                      "text": "Щоденна кількість активних користувачів перевищила тридцять тисяч."
+                    }
+                  ]
                 }
               ]
             }
@@ -148,9 +264,9 @@
     },
     {
       "type": "image",
-      "src": "chart-revenue.png",
+      "fileId": "chart-revenue.png",
       "alt": "Стовпчикова діаграма / Bar chart",
-      "widthPt": 360
+      "widthPercent": 75
     },
     {
       "type": "pageBreak"
@@ -162,7 +278,11 @@
     },
     {
       "type": "paragraph",
-      "text": "Revenue in the third quarter grew by twelve percent compared with the previous period. We launched a pilot that automates monthly reporting for finance. Next quarter we plan to open an office in Odesa. Revenue in the third quarter grew by twelve percent compared with the previous period."
+      "runs": [
+        {
+          "text": "Revenue in the third quarter grew by twelve percent compared with the previous period. We launched a pilot that automates monthly reporting for finance. Next quarter we plan to open an office in Odesa. Revenue in the third quarter grew by twelve percent compared with the previous period."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -171,15 +291,27 @@
     },
     {
       "type": "paragraph",
-      "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Наступного кварталу плануємо відкрити представництво в Одесі. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Середній чек у категорії «Послуги» становив 1 240 грн."
+      "runs": [
+        {
+          "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Наступного кварталу плануємо відкрити представництво в Одесі. Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Середній чек у категорії «Послуги» становив 1 240 грн."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Next quarter we plan to open an office in Odesa. Repeat orders reached forty-seven percent of all orders. Currency exposure was partly hedged with forward contracts. Most of the growth came from new customers in the logistics segment. Daily active users passed thirty thousand for the first time."
+      "runs": [
+        {
+          "text": "Next quarter we plan to open an office in Odesa. Repeat orders reached forty-seven percent of all orders. Currency exposure was partly hedged with forward contracts. Most of the growth came from new customers in the logistics segment. Daily active users passed thirty thousand for the first time."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "We launched a pilot that automates monthly reporting for finance. Infrastructure costs stayed flat thanks to server consolidation. The support team cut the median first-response time to four hours. The board approved the 2027 development strategy. Repeat orders reached forty-seven percent of all orders. Repeat orders reached forty-seven percent of all orders."
+      "runs": [
+        {
+          "text": "We launched a pilot that automates monthly reporting for finance. Infrastructure costs stayed flat thanks to server consolidation. The support team cut the median first-response time to four hours. The board approved the 2027 development strategy. Repeat orders reached forty-seven percent of all orders. Repeat orders reached forty-seven percent of all orders."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -188,179 +320,665 @@
     },
     {
       "type": "paragraph",
-      "text": "Daily active users passed thirty thousand for the first time. Infrastructure costs stayed flat thanks to server consolidation. Revenue in the third quarter grew by twelve percent compared with the previous period. The board approved the 2027 development strategy. Infrastructure costs stayed flat thanks to server consolidation. Infrastructure costs stayed flat thanks to server consolidation."
+      "runs": [
+        {
+          "text": "Daily active users passed thirty thousand for the first time. Infrastructure costs stayed flat thanks to server consolidation. Revenue in the third quarter grew by twelve percent compared with the previous period. The board approved the 2027 development strategy. Infrastructure costs stayed flat thanks to server consolidation. Infrastructure costs stayed flat thanks to server consolidation."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Рада директорів затвердила стратегію розвитку на 2027 рік. Середній чек у категорії «Послуги» становив 1 240 грн. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Середній чек у категорії «Послуги» становив 1 240 грн. Наступного кварталу плануємо відкрити представництво в Одесі. Середній чек у категорії «Послуги» становив 1 240 грн."
+      "runs": [
+        {
+          "text": "Рада директорів затвердила стратегію розвитку на 2027 рік. Середній чек у категорії «Послуги» становив 1 240 грн. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Середній чек у категорії «Послуги» становив 1 240 грн. Наступного кварталу плануємо відкрити представництво в Одесі. Середній чек у категорії «Послуги» становив 1 240 грн."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Новий склад у Житомирі дозволив скоротити доставку на один день. Ми переглянули умови співпраці з трьома ключовими постачальниками. Щоденна кількість активних користувачів перевищила тридцять тисяч. Обсяг відвантажень у вересні був найбільшим за всю історію компанії. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Команда підтримки скоротила середній час відповіді до чотирьох годин. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+      "runs": [
+        {
+          "text": "Новий склад у Житомирі дозволив скоротити доставку на один день. Ми переглянули умови співпраці з трьома ключовими постачальниками. Щоденна кількість активних користувачів перевищила тридцять тисяч. Обсяг відвантажень у вересні був найбільшим за всю історію компанії. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Команда підтримки скоротила середній час відповіді до чотирьох годин. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+        }
+      ]
     },
     {
       "type": "table",
       "header": true,
+      "columns": [
+        {
+          "text": "Регіон / Region",
+          "align": "left"
+        },
+        {
+          "text": "Q1",
+          "align": "right"
+        },
+        {
+          "text": "Q2",
+          "align": "right"
+        },
+        {
+          "text": "Q3",
+          "align": "right"
+        },
+        {
+          "text": "Зміна / Change",
+          "align": "right"
+        },
+        {
+          "text": "Коментар / Note",
+          "align": "left"
+        }
+      ],
       "rows": [
         [
-          "Регіон / Region",
-          "Q1",
-          "Q2",
-          "Q3",
-          "Зміна / Change",
-          "Коментар / Note"
+          [
+            {
+              "text": "Київ 1"
+            }
+          ],
+          [
+            {
+              "text": "1178"
+            }
+          ],
+          [
+            {
+              "text": "1137"
+            }
+          ],
+          [
+            {
+              "text": "1053"
+            }
+          ],
+          [
+            {
+              "text": "-10.6%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Київ 1",
-          "1178",
-          "1137",
-          "1053",
-          "-10.6%",
-          "Growth"
+          [
+            {
+              "text": "Львів 1"
+            }
+          ],
+          [
+            {
+              "text": "5640"
+            }
+          ],
+          [
+            {
+              "text": "5350"
+            }
+          ],
+          [
+            {
+              "text": "5436"
+            }
+          ],
+          [
+            {
+              "text": "-3.6%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Львів 1",
-          "5640",
-          "5350",
-          "5436",
-          "-3.6%",
-          "Стабільно"
+          [
+            {
+              "text": "Харків 1"
+            }
+          ],
+          [
+            {
+              "text": "3858"
+            }
+          ],
+          [
+            {
+              "text": "4584"
+            }
+          ],
+          [
+            {
+              "text": "4518"
+            }
+          ],
+          [
+            {
+              "text": "17.1%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Харків 1",
-          "3858",
-          "4584",
-          "4518",
-          "17.1%",
-          "Growth"
+          [
+            {
+              "text": "Одеса 1"
+            }
+          ],
+          [
+            {
+              "text": "2899"
+            }
+          ],
+          [
+            {
+              "text": "3096"
+            }
+          ],
+          [
+            {
+              "text": "3689"
+            }
+          ],
+          [
+            {
+              "text": "27.3%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Одеса 1",
-          "2899",
-          "3096",
-          "3689",
-          "27.3%",
-          "Growth"
+          [
+            {
+              "text": "Дніпро 1"
+            }
+          ],
+          [
+            {
+              "text": "8711"
+            }
+          ],
+          [
+            {
+              "text": "8409"
+            }
+          ],
+          [
+            {
+              "text": "7706"
+            }
+          ],
+          [
+            {
+              "text": "-11.5%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Дніпро 1",
-          "8711",
-          "8409",
-          "7706",
-          "-11.5%",
-          "Стабільно"
+          [
+            {
+              "text": "Житомир 1"
+            }
+          ],
+          [
+            {
+              "text": "5571"
+            }
+          ],
+          [
+            {
+              "text": "6109"
+            }
+          ],
+          [
+            {
+              "text": "7181"
+            }
+          ],
+          [
+            {
+              "text": "28.9%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Житомир 1",
-          "5571",
-          "6109",
-          "7181",
-          "28.9%",
-          "Стабільно"
+          [
+            {
+              "text": "Вінниця 1"
+            }
+          ],
+          [
+            {
+              "text": "4344"
+            }
+          ],
+          [
+            {
+              "text": "4596"
+            }
+          ],
+          [
+            {
+              "text": "4537"
+            }
+          ],
+          [
+            {
+              "text": "4.4%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Вінниця 1",
-          "4344",
-          "4596",
-          "4537",
-          "4.4%",
-          "Стабільно"
+          [
+            {
+              "text": "Полтава 1"
+            }
+          ],
+          [
+            {
+              "text": "6447"
+            }
+          ],
+          [
+            {
+              "text": "7178"
+            }
+          ],
+          [
+            {
+              "text": "6690"
+            }
+          ],
+          [
+            {
+              "text": "3.8%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Полтава 1",
-          "6447",
-          "7178",
-          "6690",
-          "3.8%",
-          "Стабільно"
+          [
+            {
+              "text": "Чернігів 1"
+            }
+          ],
+          [
+            {
+              "text": "5653"
+            }
+          ],
+          [
+            {
+              "text": "5417"
+            }
+          ],
+          [
+            {
+              "text": "5288"
+            }
+          ],
+          [
+            {
+              "text": "-6.5%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Чернігів 1",
-          "5653",
-          "5417",
-          "5288",
-          "-6.5%",
-          "Стабільно"
+          [
+            {
+              "text": "Ужгород 1"
+            }
+          ],
+          [
+            {
+              "text": "4810"
+            }
+          ],
+          [
+            {
+              "text": "4995"
+            }
+          ],
+          [
+            {
+              "text": "5511"
+            }
+          ],
+          [
+            {
+              "text": "14.6%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Ужгород 1",
-          "4810",
-          "4995",
-          "5511",
-          "14.6%",
-          "Growth"
+          [
+            {
+              "text": "Київ 2"
+            }
+          ],
+          [
+            {
+              "text": "9126"
+            }
+          ],
+          [
+            {
+              "text": "8915"
+            }
+          ],
+          [
+            {
+              "text": "8285"
+            }
+          ],
+          [
+            {
+              "text": "-9.2%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Київ 2",
-          "9126",
-          "8915",
-          "8285",
-          "-9.2%",
-          "Growth"
+          [
+            {
+              "text": "Львів 2"
+            }
+          ],
+          [
+            {
+              "text": "5653"
+            }
+          ],
+          [
+            {
+              "text": "5836"
+            }
+          ],
+          [
+            {
+              "text": "6665"
+            }
+          ],
+          [
+            {
+              "text": "17.9%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Львів 2",
-          "5653",
-          "5836",
-          "6665",
-          "17.9%",
-          "Growth"
+          [
+            {
+              "text": "Харків 2"
+            }
+          ],
+          [
+            {
+              "text": "8742"
+            }
+          ],
+          [
+            {
+              "text": "9009"
+            }
+          ],
+          [
+            {
+              "text": "8162"
+            }
+          ],
+          [
+            {
+              "text": "-6.6%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Харків 2",
-          "8742",
-          "9009",
-          "8162",
-          "-6.6%",
-          "Growth"
+          [
+            {
+              "text": "Одеса 2"
+            }
+          ],
+          [
+            {
+              "text": "6981"
+            }
+          ],
+          [
+            {
+              "text": "6950"
+            }
+          ],
+          [
+            {
+              "text": "7679"
+            }
+          ],
+          [
+            {
+              "text": "10.0%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Одеса 2",
-          "6981",
-          "6950",
-          "7679",
-          "10.0%",
-          "Growth"
+          [
+            {
+              "text": "Дніпро 2"
+            }
+          ],
+          [
+            {
+              "text": "7646"
+            }
+          ],
+          [
+            {
+              "text": "8467"
+            }
+          ],
+          [
+            {
+              "text": "7681"
+            }
+          ],
+          [
+            {
+              "text": "0.5%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Дніпро 2",
-          "7646",
-          "8467",
-          "7681",
-          "0.5%",
-          "Стабільно"
+          [
+            {
+              "text": "Житомир 2"
+            }
+          ],
+          [
+            {
+              "text": "4852"
+            }
+          ],
+          [
+            {
+              "text": "5346"
+            }
+          ],
+          [
+            {
+              "text": "5880"
+            }
+          ],
+          [
+            {
+              "text": "21.2%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Житомир 2",
-          "4852",
-          "5346",
-          "5880",
-          "21.2%",
-          "Стабільно"
+          [
+            {
+              "text": "Вінниця 2"
+            }
+          ],
+          [
+            {
+              "text": "5065"
+            }
+          ],
+          [
+            {
+              "text": "4666"
+            }
+          ],
+          [
+            {
+              "text": "4766"
+            }
+          ],
+          [
+            {
+              "text": "-5.9%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Вінниця 2",
-          "5065",
-          "4666",
-          "4766",
-          "-5.9%",
-          "Growth"
+          [
+            {
+              "text": "Полтава 2"
+            }
+          ],
+          [
+            {
+              "text": "3540"
+            }
+          ],
+          [
+            {
+              "text": "3977"
+            }
+          ],
+          [
+            {
+              "text": "3843"
+            }
+          ],
+          [
+            {
+              "text": "8.6%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Полтава 2",
-          "3540",
-          "3977",
-          "3843",
-          "8.6%",
-          "Стабільно"
-        ],
-        [
-          "Чернігів 2",
-          "3190",
-          "3304",
-          "3530",
-          "10.7%",
-          "Стабільно"
+          [
+            {
+              "text": "Чернігів 2"
+            }
+          ],
+          [
+            {
+              "text": "3190"
+            }
+          ],
+          [
+            {
+              "text": "3304"
+            }
+          ],
+          [
+            {
+              "text": "3530"
+            }
+          ],
+          [
+            {
+              "text": "10.7%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ]
       ]
     },
@@ -374,7 +992,11 @@
     },
     {
       "type": "paragraph",
-      "text": "Revenue in the third quarter grew by twelve percent compared with the previous period. Repeat orders reached forty-seven percent of all orders. Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa. Revenue in the third quarter grew by twelve percent compared with the previous period. Next quarter we plan to open an office in Odesa."
+      "runs": [
+        {
+          "text": "Revenue in the third quarter grew by twelve percent compared with the previous period. Repeat orders reached forty-seven percent of all orders. Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa. Revenue in the third quarter grew by twelve percent compared with the previous period. Next quarter we plan to open an office in Odesa."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -383,15 +1005,27 @@
     },
     {
       "type": "paragraph",
-      "text": "Infrastructure costs stayed flat thanks to server consolidation. A new warehouse shortened delivery times by one day. Currency exposure was partly hedged with forward contracts. A new warehouse shortened delivery times by one day."
+      "runs": [
+        {
+          "text": "Infrastructure costs stayed flat thanks to server consolidation. A new warehouse shortened delivery times by one day. Currency exposure was partly hedged with forward contracts. A new warehouse shortened delivery times by one day."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Щоденна кількість активних користувачів перевищила тридцять тисяч. Команда підтримки скоротила середній час відповіді до чотирьох годин. Щоденна кількість активних користувачів перевищила тридцять тисяч."
+      "runs": [
+        {
+          "text": "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Щоденна кількість активних користувачів перевищила тридцять тисяч. Команда підтримки скоротила середній час відповіді до чотирьох годин. Щоденна кількість активних користувачів перевищила тридцять тисяч."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Repeat orders reached forty-seven percent of all orders. Most of the growth came from new customers in the logistics segment. A new warehouse shortened delivery times by one day. Infrastructure costs stayed flat thanks to server consolidation. Next quarter we plan to open an office in Odesa."
+      "runs": [
+        {
+          "text": "Repeat orders reached forty-seven percent of all orders. Most of the growth came from new customers in the logistics segment. A new warehouse shortened delivery times by one day. Infrastructure costs stayed flat thanks to server consolidation. Next quarter we plan to open an office in Odesa."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -400,99 +1034,191 @@
     },
     {
       "type": "paragraph",
-      "text": "Raw material prices stabilised after a sharp rise in spring. Next quarter we plan to open an office in Odesa. Repeat orders reached forty-seven percent of all orders. Currency exposure was partly hedged with forward contracts. A new warehouse shortened delivery times by one day. A new warehouse shortened delivery times by one day."
+      "runs": [
+        {
+          "text": "Raw material prices stabilised after a sharp rise in spring. Next quarter we plan to open an office in Odesa. Repeat orders reached forty-seven percent of all orders. Currency exposure was partly hedged with forward contracts. A new warehouse shortened delivery times by one day. A new warehouse shortened delivery times by one day."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Next quarter we plan to open an office in Odesa. Daily active users passed thirty thousand for the first time. Revenue in the third quarter grew by twelve percent compared with the previous period. Revenue in the third quarter grew by twelve percent compared with the previous period."
+      "runs": [
+        {
+          "text": "Next quarter we plan to open an office in Odesa. Daily active users passed thirty thousand for the first time. Revenue in the third quarter grew by twelve percent compared with the previous period. Revenue in the third quarter grew by twelve percent compared with the previous period."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Щоденна кількість активних користувачів перевищила тридцять тисяч. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Ми переглянули умови співпраці з трьома ключовими постачальниками. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+      "runs": [
+        {
+          "text": "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Щоденна кількість активних користувачів перевищила тридцять тисяч. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Ми переглянули умови співпраці з трьома ключовими постачальниками. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+        }
+      ]
     },
     {
       "type": "list",
       "ordered": false,
       "items": [
         {
-          "text": "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова.",
+          "runs": [
+            {
+              "text": "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+            }
+          ],
           "children": [
             {
-              "text": "Next quarter we plan to open an office in Odesa.",
+              "runs": [
+                {
+                  "text": "Next quarter we plan to open an office in Odesa."
+                }
+              ],
               "children": [
                 {
-                  "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин."
+                  "runs": [
+                    {
+                      "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Next quarter we plan to open an office in Odesa.",
+              "runs": [
+                {
+                  "text": "Next quarter we plan to open an office in Odesa."
+                }
+              ],
               "children": [
                 {
-                  "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+                  "runs": [
+                    {
+                      "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет.",
+          "runs": [
+            {
+              "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+            }
+          ],
           "children": [
             {
-              "text": "We launched a pilot that automates monthly reporting for finance.",
+              "runs": [
+                {
+                  "text": "We launched a pilot that automates monthly reporting for finance."
+                }
+              ],
               "children": [
                 {
-                  "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+                  "runs": [
+                    {
+                      "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "A new warehouse shortened delivery times by one day.",
+              "runs": [
+                {
+                  "text": "A new warehouse shortened delivery times by one day."
+                }
+              ],
               "children": [
                 {
-                  "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+                  "runs": [
+                    {
+                      "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет.",
+          "runs": [
+            {
+              "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+            }
+          ],
           "children": [
             {
-              "text": "Raw material prices stabilised after a sharp rise in spring.",
+              "runs": [
+                {
+                  "text": "Raw material prices stabilised after a sharp rise in spring."
+                }
+              ],
               "children": [
                 {
-                  "text": "У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом."
+                  "runs": [
+                    {
+                      "text": "У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "The board approved the 2027 development strategy.",
+              "runs": [
+                {
+                  "text": "The board approved the 2027 development strategy."
+                }
+              ],
               "children": [
                 {
-                  "text": "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+                  "runs": [
+                    {
+                      "text": "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Рада директорів затвердила стратегію розвитку на 2027 рік.",
+          "runs": [
+            {
+              "text": "Рада директорів затвердила стратегію розвитку на 2027 рік."
+            }
+          ],
           "children": [
             {
-              "text": "Next quarter we plan to open an office in Odesa.",
+              "runs": [
+                {
+                  "text": "Next quarter we plan to open an office in Odesa."
+                }
+              ],
               "children": [
                 {
-                  "text": "Середній чек у категорії «Послуги» становив 1 240 грн."
+                  "runs": [
+                    {
+                      "text": "Середній чек у категорії «Послуги» становив 1 240 грн."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Daily active users passed thirty thousand for the first time.",
+              "runs": [
+                {
+                  "text": "Daily active users passed thirty thousand for the first time."
+                }
+              ],
               "children": [
                 {
-                  "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+                  "runs": [
+                    {
+                      "text": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет."
+                    }
+                  ]
                 }
               ]
             }
@@ -502,9 +1228,9 @@
     },
     {
       "type": "image",
-      "src": "chart-regions.png",
+      "fileId": "chart-regions.png",
       "alt": "Стовпчикова діаграма / Bar chart",
-      "widthPt": 360
+      "widthPercent": 75
     },
     {
       "type": "pageBreak"
@@ -516,7 +1242,11 @@
     },
     {
       "type": "paragraph",
-      "text": "Raw material prices stabilised after a sharp rise in spring. Daily active users passed thirty thousand for the first time. Infrastructure costs stayed flat thanks to server consolidation. A new warehouse shortened delivery times by one day. The support team cut the median first-response time to four hours."
+      "runs": [
+        {
+          "text": "Raw material prices stabilised after a sharp rise in spring. Daily active users passed thirty thousand for the first time. Infrastructure costs stayed flat thanks to server consolidation. A new warehouse shortened delivery times by one day. The support team cut the median first-response time to four hours."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -525,15 +1255,27 @@
     },
     {
       "type": "paragraph",
-      "text": "Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Команда підтримки скоротила середній час відповіді до чотирьох годин. Частка повторних замовлень досягла сорока семи відсотків. Ми переглянули умови співпраці з трьома ключовими постачальниками. Ми переглянули умови співпраці з трьома ключовими постачальниками."
+      "runs": [
+        {
+          "text": "Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. Команда підтримки скоротила середній час відповіді до чотирьох годин. Частка повторних замовлень досягла сорока семи відсотків. Ми переглянули умови співпраці з трьома ключовими постачальниками. Ми переглянули умови співпраці з трьома ключовими постачальниками."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Repeat orders reached forty-seven percent of all orders. Infrastructure costs stayed flat thanks to server consolidation. A new warehouse shortened delivery times by one day. Infrastructure costs stayed flat thanks to server consolidation."
+      "runs": [
+        {
+          "text": "Repeat orders reached forty-seven percent of all orders. Infrastructure costs stayed flat thanks to server consolidation. A new warehouse shortened delivery times by one day. Infrastructure costs stayed flat thanks to server consolidation."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "A new warehouse shortened delivery times by one day. A new warehouse shortened delivery times by one day. Raw material prices stabilised after a sharp rise in spring. Most of the growth came from new customers in the logistics segment."
+      "runs": [
+        {
+          "text": "A new warehouse shortened delivery times by one day. A new warehouse shortened delivery times by one day. Raw material prices stabilised after a sharp rise in spring. Most of the growth came from new customers in the logistics segment."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -542,179 +1284,665 @@
     },
     {
       "type": "paragraph",
-      "text": "Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Середній чек у категорії «Послуги» становив 1 240 грн. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли. Новий склад у Житомирі дозволив скоротити доставку на один день. Наступного кварталу плануємо відкрити представництво в Одесі."
+      "runs": [
+        {
+          "text": "Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Середній чек у категорії «Послуги» становив 1 240 грн. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли. Новий склад у Житомирі дозволив скоротити доставку на один день. Наступного кварталу плануємо відкрити представництво в Одесі."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Ми переглянули умови співпраці з трьома ключовими постачальниками. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Щоденна кількість активних користувачів перевищила тридцять тисяч. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+      "runs": [
+        {
+          "text": "Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Ми переглянули умови співпраці з трьома ключовими постачальниками. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Щоденна кількість активних користувачів перевищила тридцять тисяч. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Revenue in the third quarter grew by twelve percent compared with the previous period. Daily active users passed thirty thousand for the first time. Most of the growth came from new customers in the logistics segment. Daily active users passed thirty thousand for the first time."
+      "runs": [
+        {
+          "text": "Revenue in the third quarter grew by twelve percent compared with the previous period. Daily active users passed thirty thousand for the first time. Most of the growth came from new customers in the logistics segment. Daily active users passed thirty thousand for the first time."
+        }
+      ]
     },
     {
       "type": "table",
       "header": true,
+      "columns": [
+        {
+          "text": "Регіон / Region",
+          "align": "left"
+        },
+        {
+          "text": "Q1",
+          "align": "right"
+        },
+        {
+          "text": "Q2",
+          "align": "right"
+        },
+        {
+          "text": "Q3",
+          "align": "right"
+        },
+        {
+          "text": "Зміна / Change",
+          "align": "right"
+        },
+        {
+          "text": "Коментар / Note",
+          "align": "left"
+        }
+      ],
       "rows": [
         [
-          "Регіон / Region",
-          "Q1",
-          "Q2",
-          "Q3",
-          "Зміна / Change",
-          "Коментар / Note"
+          [
+            {
+              "text": "Київ 1"
+            }
+          ],
+          [
+            {
+              "text": "9866"
+            }
+          ],
+          [
+            {
+              "text": "11535"
+            }
+          ],
+          [
+            {
+              "text": "11304"
+            }
+          ],
+          [
+            {
+              "text": "14.6%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Київ 1",
-          "9866",
-          "11535",
-          "11304",
-          "14.6%",
-          "Стабільно"
+          [
+            {
+              "text": "Львів 1"
+            }
+          ],
+          [
+            {
+              "text": "7687"
+            }
+          ],
+          [
+            {
+              "text": "7920"
+            }
+          ],
+          [
+            {
+              "text": "8308"
+            }
+          ],
+          [
+            {
+              "text": "8.1%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Львів 1",
-          "7687",
-          "7920",
-          "8308",
-          "8.1%",
-          "Стабільно"
+          [
+            {
+              "text": "Харків 1"
+            }
+          ],
+          [
+            {
+              "text": "5626"
+            }
+          ],
+          [
+            {
+              "text": "6216"
+            }
+          ],
+          [
+            {
+              "text": "6979"
+            }
+          ],
+          [
+            {
+              "text": "24.0%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Харків 1",
-          "5626",
-          "6216",
-          "6979",
-          "24.0%",
-          "Стабільно"
+          [
+            {
+              "text": "Одеса 1"
+            }
+          ],
+          [
+            {
+              "text": "7753"
+            }
+          ],
+          [
+            {
+              "text": "6986"
+            }
+          ],
+          [
+            {
+              "text": "7678"
+            }
+          ],
+          [
+            {
+              "text": "-1.0%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Одеса 1",
-          "7753",
-          "6986",
-          "7678",
-          "-1.0%",
-          "Growth"
+          [
+            {
+              "text": "Дніпро 1"
+            }
+          ],
+          [
+            {
+              "text": "9233"
+            }
+          ],
+          [
+            {
+              "text": "9204"
+            }
+          ],
+          [
+            {
+              "text": "10217"
+            }
+          ],
+          [
+            {
+              "text": "10.7%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Дніпро 1",
-          "9233",
-          "9204",
-          "10217",
-          "10.7%",
-          "Growth"
+          [
+            {
+              "text": "Житомир 1"
+            }
+          ],
+          [
+            {
+              "text": "8844"
+            }
+          ],
+          [
+            {
+              "text": "9104"
+            }
+          ],
+          [
+            {
+              "text": "10746"
+            }
+          ],
+          [
+            {
+              "text": "21.5%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Житомир 1",
-          "8844",
-          "9104",
-          "10746",
-          "21.5%",
-          "Growth"
+          [
+            {
+              "text": "Вінниця 1"
+            }
+          ],
+          [
+            {
+              "text": "7328"
+            }
+          ],
+          [
+            {
+              "text": "6624"
+            }
+          ],
+          [
+            {
+              "text": "6743"
+            }
+          ],
+          [
+            {
+              "text": "-8.0%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Вінниця 1",
-          "7328",
-          "6624",
-          "6743",
-          "-8.0%",
-          "Growth"
+          [
+            {
+              "text": "Полтава 1"
+            }
+          ],
+          [
+            {
+              "text": "2579"
+            }
+          ],
+          [
+            {
+              "text": "2703"
+            }
+          ],
+          [
+            {
+              "text": "2762"
+            }
+          ],
+          [
+            {
+              "text": "7.1%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Полтава 1",
-          "2579",
-          "2703",
-          "2762",
-          "7.1%",
-          "Стабільно"
+          [
+            {
+              "text": "Чернігів 1"
+            }
+          ],
+          [
+            {
+              "text": "4724"
+            }
+          ],
+          [
+            {
+              "text": "4388"
+            }
+          ],
+          [
+            {
+              "text": "4881"
+            }
+          ],
+          [
+            {
+              "text": "3.3%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Чернігів 1",
-          "4724",
-          "4388",
-          "4881",
-          "3.3%",
-          "Стабільно"
+          [
+            {
+              "text": "Ужгород 1"
+            }
+          ],
+          [
+            {
+              "text": "2751"
+            }
+          ],
+          [
+            {
+              "text": "3150"
+            }
+          ],
+          [
+            {
+              "text": "3729"
+            }
+          ],
+          [
+            {
+              "text": "35.6%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Ужгород 1",
-          "2751",
-          "3150",
-          "3729",
-          "35.6%",
-          "Growth"
+          [
+            {
+              "text": "Київ 2"
+            }
+          ],
+          [
+            {
+              "text": "1540"
+            }
+          ],
+          [
+            {
+              "text": "1483"
+            }
+          ],
+          [
+            {
+              "text": "1571"
+            }
+          ],
+          [
+            {
+              "text": "2.0%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Київ 2",
-          "1540",
-          "1483",
-          "1571",
-          "2.0%",
-          "Стабільно"
+          [
+            {
+              "text": "Львів 2"
+            }
+          ],
+          [
+            {
+              "text": "8631"
+            }
+          ],
+          [
+            {
+              "text": "10237"
+            }
+          ],
+          [
+            {
+              "text": "11857"
+            }
+          ],
+          [
+            {
+              "text": "37.4%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Львів 2",
-          "8631",
-          "10237",
-          "11857",
-          "37.4%",
-          "Growth"
+          [
+            {
+              "text": "Харків 2"
+            }
+          ],
+          [
+            {
+              "text": "9814"
+            }
+          ],
+          [
+            {
+              "text": "10671"
+            }
+          ],
+          [
+            {
+              "text": "9697"
+            }
+          ],
+          [
+            {
+              "text": "-1.2%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Харків 2",
-          "9814",
-          "10671",
-          "9697",
-          "-1.2%",
-          "Growth"
+          [
+            {
+              "text": "Одеса 2"
+            }
+          ],
+          [
+            {
+              "text": "6244"
+            }
+          ],
+          [
+            {
+              "text": "6074"
+            }
+          ],
+          [
+            {
+              "text": "5592"
+            }
+          ],
+          [
+            {
+              "text": "-10.4%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Одеса 2",
-          "6244",
-          "6074",
-          "5592",
-          "-10.4%",
-          "Growth"
+          [
+            {
+              "text": "Дніпро 2"
+            }
+          ],
+          [
+            {
+              "text": "1902"
+            }
+          ],
+          [
+            {
+              "text": "2156"
+            }
+          ],
+          [
+            {
+              "text": "2461"
+            }
+          ],
+          [
+            {
+              "text": "29.4%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Дніпро 2",
-          "1902",
-          "2156",
-          "2461",
-          "29.4%",
-          "Growth"
+          [
+            {
+              "text": "Житомир 2"
+            }
+          ],
+          [
+            {
+              "text": "6466"
+            }
+          ],
+          [
+            {
+              "text": "7264"
+            }
+          ],
+          [
+            {
+              "text": "8012"
+            }
+          ],
+          [
+            {
+              "text": "23.9%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Житомир 2",
-          "6466",
-          "7264",
-          "8012",
-          "23.9%",
-          "Growth"
+          [
+            {
+              "text": "Вінниця 2"
+            }
+          ],
+          [
+            {
+              "text": "6148"
+            }
+          ],
+          [
+            {
+              "text": "7290"
+            }
+          ],
+          [
+            {
+              "text": "8664"
+            }
+          ],
+          [
+            {
+              "text": "40.9%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Вінниця 2",
-          "6148",
-          "7290",
-          "8664",
-          "40.9%",
-          "Стабільно"
+          [
+            {
+              "text": "Полтава 2"
+            }
+          ],
+          [
+            {
+              "text": "1836"
+            }
+          ],
+          [
+            {
+              "text": "2132"
+            }
+          ],
+          [
+            {
+              "text": "2287"
+            }
+          ],
+          [
+            {
+              "text": "24.6%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Полтава 2",
-          "1836",
-          "2132",
-          "2287",
-          "24.6%",
-          "Стабільно"
-        ],
-        [
-          "Чернігів 2",
-          "1411",
-          "1315",
-          "1314",
-          "-6.9%",
-          "Стабільно"
+          [
+            {
+              "text": "Чернігів 2"
+            }
+          ],
+          [
+            {
+              "text": "1411"
+            }
+          ],
+          [
+            {
+              "text": "1315"
+            }
+          ],
+          [
+            {
+              "text": "1314"
+            }
+          ],
+          [
+            {
+              "text": "-6.9%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ]
       ]
     },
@@ -728,7 +1956,11 @@
     },
     {
       "type": "paragraph",
-      "text": "Рада директорів затвердила стратегію розвитку на 2027 рік. Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Наступного кварталу плануємо відкрити представництво в Одесі. Команда підтримки скоротила середній час відповіді до чотирьох годин. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+      "runs": [
+        {
+          "text": "Рада директорів затвердила стратегію розвитку на 2027 рік. Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Наступного кварталу плануємо відкрити представництво в Одесі. Команда підтримки скоротила середній час відповіді до чотирьох годин. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -737,15 +1969,27 @@
     },
     {
       "type": "paragraph",
-      "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли."
+      "runs": [
+        {
+          "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Next quarter we plan to open an office in Odesa. Next quarter we plan to open an office in Odesa. The board approved the 2027 development strategy. Daily active users passed thirty thousand for the first time."
+      "runs": [
+        {
+          "text": "Next quarter we plan to open an office in Odesa. Next quarter we plan to open an office in Odesa. The board approved the 2027 development strategy. Daily active users passed thirty thousand for the first time."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "We launched a pilot that automates monthly reporting for finance. Raw material prices stabilised after a sharp rise in spring. Next quarter we plan to open an office in Odesa. Infrastructure costs stayed flat thanks to server consolidation."
+      "runs": [
+        {
+          "text": "We launched a pilot that automates monthly reporting for finance. Raw material prices stabilised after a sharp rise in spring. Next quarter we plan to open an office in Odesa. Infrastructure costs stayed flat thanks to server consolidation."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -754,99 +1998,191 @@
     },
     {
       "type": "paragraph",
-      "text": "Новий склад у Житомирі дозволив скоротити доставку на один день. Ціни на сировину стабілізувалися після різкого зростання навесні. Ми переглянули умови співпраці з трьома ключовими постачальниками. Ми переглянули умови співпраці з трьома ключовими постачальниками. Частка повторних замовлень досягла сорока семи відсотків. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+      "runs": [
+        {
+          "text": "Новий склад у Житомирі дозволив скоротити доставку на один день. Ціни на сировину стабілізувалися після різкого зростання навесні. Ми переглянули умови співпраці з трьома ключовими постачальниками. Ми переглянули умови співпраці з трьома ключовими постачальниками. Частка повторних замовлень досягла сорока семи відсотків. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Ми переглянули умови співпраці з трьома ключовими постачальниками. Команда підтримки скоротила середній час відповіді до чотирьох годин. Новий склад у Житомирі дозволив скоротити доставку на один день. Рада директорів затвердила стратегію розвитку на 2027 рік. Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+      "runs": [
+        {
+          "text": "Команда підтримки скоротила середній час відповіді до чотирьох годин. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Ми переглянули умови співпраці з трьома ключовими постачальниками. Команда підтримки скоротила середній час відповіді до чотирьох годин. Новий склад у Житомирі дозволив скоротити доставку на один день. Рада директорів затвердила стратегію розвитку на 2027 рік. Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Середній чек у категорії «Послуги» становив 1 240 грн. Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом."
+      "runs": [
+        {
+          "text": "Середній чек у категорії «Послуги» становив 1 240 грн. Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. Співробітники пройшли навчання з інформаційної безпеки та захисту даних. Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом."
+        }
+      ]
     },
     {
       "type": "list",
       "ordered": true,
       "items": [
         {
-          "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є.",
+          "runs": [
+            {
+              "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+            }
+          ],
           "children": [
             {
-              "text": "Infrastructure costs stayed flat thanks to server consolidation.",
+              "runs": [
+                {
+                  "text": "Infrastructure costs stayed flat thanks to server consolidation."
+                }
+              ],
               "children": [
                 {
-                  "text": "Щоденна кількість активних користувачів перевищила тридцять тисяч."
+                  "runs": [
+                    {
+                      "text": "Щоденна кількість активних користувачів перевищила тридцять тисяч."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "The board approved the 2027 development strategy.",
+              "runs": [
+                {
+                  "text": "The board approved the 2027 development strategy."
+                }
+              ],
               "children": [
                 {
-                  "text": "Обсяг відвантажень у вересні був найбільшим за всю історію компанії."
+                  "runs": [
+                    {
+                      "text": "Обсяг відвантажень у вересні був найбільшим за всю історію компанії."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Обсяг відвантажень у вересні був найбільшим за всю історію компанії.",
+          "runs": [
+            {
+              "text": "Обсяг відвантажень у вересні був найбільшим за всю історію компанії."
+            }
+          ],
           "children": [
             {
-              "text": "We launched a pilot that automates monthly reporting for finance.",
+              "runs": [
+                {
+                  "text": "We launched a pilot that automates monthly reporting for finance."
+                }
+              ],
               "children": [
                 {
-                  "text": "Ціни на сировину стабілізувалися після різкого зростання навесні."
+                  "runs": [
+                    {
+                      "text": "Ціни на сировину стабілізувалися після різкого зростання навесні."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Revenue in the third quarter grew by twelve percent compared with the previous period.",
+              "runs": [
+                {
+                  "text": "Revenue in the third quarter grew by twelve percent compared with the previous period."
+                }
+              ],
               "children": [
                 {
-                  "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+                  "runs": [
+                    {
+                      "text": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами.",
+          "runs": [
+            {
+              "text": "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+            }
+          ],
           "children": [
             {
-              "text": "Raw material prices stabilised after a sharp rise in spring.",
+              "runs": [
+                {
+                  "text": "Raw material prices stabilised after a sharp rise in spring."
+                }
+              ],
               "children": [
                 {
-                  "text": "Ми переглянули умови співпраці з трьома ключовими постачальниками."
+                  "runs": [
+                    {
+                      "text": "Ми переглянули умови співпраці з трьома ключовими постачальниками."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Raw material prices stabilised after a sharp rise in spring.",
+              "runs": [
+                {
+                  "text": "Raw material prices stabilised after a sharp rise in spring."
+                }
+              ],
               "children": [
                 {
-                  "text": "Ціни на сировину стабілізувалися після різкого зростання навесні."
+                  "runs": [
+                    {
+                      "text": "Ціни на сировину стабілізувалися після різкого зростання навесні."
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "text": "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами.",
+          "runs": [
+            {
+              "text": "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+            }
+          ],
           "children": [
             {
-              "text": "Next quarter we plan to open an office in Odesa.",
+              "runs": [
+                {
+                  "text": "Next quarter we plan to open an office in Odesa."
+                }
+              ],
               "children": [
                 {
-                  "text": "Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли."
+                  "runs": [
+                    {
+                      "text": "Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли."
+                    }
+                  ]
                 }
               ]
             },
             {
-              "text": "Revenue in the third quarter grew by twelve percent compared with the previous period.",
+              "runs": [
+                {
+                  "text": "Revenue in the third quarter grew by twelve percent compared with the previous period."
+                }
+              ],
               "children": [
                 {
-                  "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+                  "runs": [
+                    {
+                      "text": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних."
+                    }
+                  ]
                 }
               ]
             }
@@ -864,7 +2200,11 @@
     },
     {
       "type": "paragraph",
-      "text": "Most of the growth came from new customers in the logistics segment. Infrastructure costs stayed flat thanks to server consolidation. Most of the growth came from new customers in the logistics segment. Revenue in the third quarter grew by twelve percent compared with the previous period. Daily active users passed thirty thousand for the first time."
+      "runs": [
+        {
+          "text": "Most of the growth came from new customers in the logistics segment. Infrastructure costs stayed flat thanks to server consolidation. Most of the growth came from new customers in the logistics segment. Revenue in the third quarter grew by twelve percent compared with the previous period. Daily active users passed thirty thousand for the first time."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -873,15 +2213,27 @@
     },
     {
       "type": "paragraph",
-      "text": "Next quarter we plan to open an office in Odesa. Most of the growth came from new customers in the logistics segment. The board approved the 2027 development strategy. Currency exposure was partly hedged with forward contracts."
+      "runs": [
+        {
+          "text": "Next quarter we plan to open an office in Odesa. Most of the growth came from new customers in the logistics segment. The board approved the 2027 development strategy. Currency exposure was partly hedged with forward contracts."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Ціни на сировину стабілізувалися після різкого зростання навесні. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Середній чек у категорії «Послуги» становив 1 240 грн. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів."
+      "runs": [
+        {
+          "text": "Ціни на сировину стабілізувалися після різкого зростання навесні. Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами. Середній чек у категорії «Послуги» становив 1 240 грн. Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом. Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Repeat orders reached forty-seven percent of all orders. Infrastructure costs stayed flat thanks to server consolidation. We launched a pilot that automates monthly reporting for finance. The support team cut the median first-response time to four hours. We launched a pilot that automates monthly reporting for finance. Most of the growth came from new customers in the logistics segment."
+      "runs": [
+        {
+          "text": "Repeat orders reached forty-seven percent of all orders. Infrastructure costs stayed flat thanks to server consolidation. We launched a pilot that automates monthly reporting for finance. The support team cut the median first-response time to four hours. We launched a pilot that automates monthly reporting for finance. Most of the growth came from new customers in the logistics segment."
+        }
+      ]
     },
     {
       "type": "heading",
@@ -890,179 +2242,665 @@
     },
     {
       "type": "paragraph",
-      "text": "Currency exposure was partly hedged with forward contracts. Revenue in the third quarter grew by twelve percent compared with the previous period. Next quarter we plan to open an office in Odesa. Next quarter we plan to open an office in Odesa. Next quarter we plan to open an office in Odesa. Infrastructure costs stayed flat thanks to server consolidation."
+      "runs": [
+        {
+          "text": "Currency exposure was partly hedged with forward contracts. Revenue in the third quarter grew by twelve percent compared with the previous period. Next quarter we plan to open an office in Odesa. Next quarter we plan to open an office in Odesa. Next quarter we plan to open an office in Odesa. Infrastructure costs stayed flat thanks to server consolidation."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "A new warehouse shortened delivery times by one day. Currency exposure was partly hedged with forward contracts. We launched a pilot that automates monthly reporting for finance. The support team cut the median first-response time to four hours. Daily active users passed thirty thousand for the first time. Repeat orders reached forty-seven percent of all orders."
+      "runs": [
+        {
+          "text": "A new warehouse shortened delivery times by one day. Currency exposure was partly hedged with forward contracts. We launched a pilot that automates monthly reporting for finance. The support team cut the median first-response time to four hours. Daily active users passed thirty thousand for the first time. Repeat orders reached forty-seven percent of all orders."
+        }
+      ]
     },
     {
       "type": "paragraph",
-      "text": "Infrastructure costs stayed flat thanks to server consolidation. Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa. Infrastructure costs stayed flat thanks to server consolidation. Revenue in the third quarter grew by twelve percent compared with the previous period."
+      "runs": [
+        {
+          "text": "Infrastructure costs stayed flat thanks to server consolidation. Currency exposure was partly hedged with forward contracts. Next quarter we plan to open an office in Odesa. Infrastructure costs stayed flat thanks to server consolidation. Revenue in the third quarter grew by twelve percent compared with the previous period."
+        }
+      ]
     },
     {
       "type": "table",
       "header": true,
+      "columns": [
+        {
+          "text": "Регіон / Region",
+          "align": "left"
+        },
+        {
+          "text": "Q1",
+          "align": "right"
+        },
+        {
+          "text": "Q2",
+          "align": "right"
+        },
+        {
+          "text": "Q3",
+          "align": "right"
+        },
+        {
+          "text": "Зміна / Change",
+          "align": "right"
+        },
+        {
+          "text": "Коментар / Note",
+          "align": "left"
+        }
+      ],
       "rows": [
         [
-          "Регіон / Region",
-          "Q1",
-          "Q2",
-          "Q3",
-          "Зміна / Change",
-          "Коментар / Note"
+          [
+            {
+              "text": "Київ 1"
+            }
+          ],
+          [
+            {
+              "text": "2935"
+            }
+          ],
+          [
+            {
+              "text": "2996"
+            }
+          ],
+          [
+            {
+              "text": "2913"
+            }
+          ],
+          [
+            {
+              "text": "-0.7%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Київ 1",
-          "2935",
-          "2996",
-          "2913",
-          "-0.7%",
-          "Growth"
+          [
+            {
+              "text": "Львів 1"
+            }
+          ],
+          [
+            {
+              "text": "5678"
+            }
+          ],
+          [
+            {
+              "text": "5288"
+            }
+          ],
+          [
+            {
+              "text": "5489"
+            }
+          ],
+          [
+            {
+              "text": "-3.3%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Львів 1",
-          "5678",
-          "5288",
-          "5489",
-          "-3.3%",
-          "Growth"
+          [
+            {
+              "text": "Харків 1"
+            }
+          ],
+          [
+            {
+              "text": "7434"
+            }
+          ],
+          [
+            {
+              "text": "8512"
+            }
+          ],
+          [
+            {
+              "text": "8227"
+            }
+          ],
+          [
+            {
+              "text": "10.7%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Харків 1",
-          "7434",
-          "8512",
-          "8227",
-          "10.7%",
-          "Growth"
+          [
+            {
+              "text": "Одеса 1"
+            }
+          ],
+          [
+            {
+              "text": "8620"
+            }
+          ],
+          [
+            {
+              "text": "8779"
+            }
+          ],
+          [
+            {
+              "text": "9109"
+            }
+          ],
+          [
+            {
+              "text": "5.7%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Одеса 1",
-          "8620",
-          "8779",
-          "9109",
-          "5.7%",
-          "Стабільно"
+          [
+            {
+              "text": "Дніпро 1"
+            }
+          ],
+          [
+            {
+              "text": "9258"
+            }
+          ],
+          [
+            {
+              "text": "8351"
+            }
+          ],
+          [
+            {
+              "text": "8430"
+            }
+          ],
+          [
+            {
+              "text": "-8.9%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Дніпро 1",
-          "9258",
-          "8351",
-          "8430",
-          "-8.9%",
-          "Growth"
+          [
+            {
+              "text": "Житомир 1"
+            }
+          ],
+          [
+            {
+              "text": "2603"
+            }
+          ],
+          [
+            {
+              "text": "2608"
+            }
+          ],
+          [
+            {
+              "text": "2701"
+            }
+          ],
+          [
+            {
+              "text": "3.8%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Житомир 1",
-          "2603",
-          "2608",
-          "2701",
-          "3.8%",
-          "Growth"
+          [
+            {
+              "text": "Вінниця 1"
+            }
+          ],
+          [
+            {
+              "text": "1312"
+            }
+          ],
+          [
+            {
+              "text": "1332"
+            }
+          ],
+          [
+            {
+              "text": "1376"
+            }
+          ],
+          [
+            {
+              "text": "4.9%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Вінниця 1",
-          "1312",
-          "1332",
-          "1376",
-          "4.9%",
-          "Стабільно"
+          [
+            {
+              "text": "Полтава 1"
+            }
+          ],
+          [
+            {
+              "text": "7981"
+            }
+          ],
+          [
+            {
+              "text": "9566"
+            }
+          ],
+          [
+            {
+              "text": "10880"
+            }
+          ],
+          [
+            {
+              "text": "36.3%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Полтава 1",
-          "7981",
-          "9566",
-          "10880",
-          "36.3%",
-          "Growth"
+          [
+            {
+              "text": "Чернігів 1"
+            }
+          ],
+          [
+            {
+              "text": "2221"
+            }
+          ],
+          [
+            {
+              "text": "2460"
+            }
+          ],
+          [
+            {
+              "text": "2862"
+            }
+          ],
+          [
+            {
+              "text": "28.9%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Чернігів 1",
-          "2221",
-          "2460",
-          "2862",
-          "28.9%",
-          "Growth"
+          [
+            {
+              "text": "Ужгород 1"
+            }
+          ],
+          [
+            {
+              "text": "7832"
+            }
+          ],
+          [
+            {
+              "text": "7231"
+            }
+          ],
+          [
+            {
+              "text": "7247"
+            }
+          ],
+          [
+            {
+              "text": "-7.5%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Ужгород 1",
-          "7832",
-          "7231",
-          "7247",
-          "-7.5%",
-          "Growth"
+          [
+            {
+              "text": "Київ 2"
+            }
+          ],
+          [
+            {
+              "text": "9639"
+            }
+          ],
+          [
+            {
+              "text": "8701"
+            }
+          ],
+          [
+            {
+              "text": "9890"
+            }
+          ],
+          [
+            {
+              "text": "2.6%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Київ 2",
-          "9639",
-          "8701",
-          "9890",
-          "2.6%",
-          "Growth"
+          [
+            {
+              "text": "Львів 2"
+            }
+          ],
+          [
+            {
+              "text": "8968"
+            }
+          ],
+          [
+            {
+              "text": "10535"
+            }
+          ],
+          [
+            {
+              "text": "9632"
+            }
+          ],
+          [
+            {
+              "text": "7.4%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Львів 2",
-          "8968",
-          "10535",
-          "9632",
-          "7.4%",
-          "Стабільно"
+          [
+            {
+              "text": "Харків 2"
+            }
+          ],
+          [
+            {
+              "text": "2393"
+            }
+          ],
+          [
+            {
+              "text": "2838"
+            }
+          ],
+          [
+            {
+              "text": "3307"
+            }
+          ],
+          [
+            {
+              "text": "38.2%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Харків 2",
-          "2393",
-          "2838",
-          "3307",
-          "38.2%",
-          "Growth"
+          [
+            {
+              "text": "Одеса 2"
+            }
+          ],
+          [
+            {
+              "text": "7519"
+            }
+          ],
+          [
+            {
+              "text": "8287"
+            }
+          ],
+          [
+            {
+              "text": "9567"
+            }
+          ],
+          [
+            {
+              "text": "27.2%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Одеса 2",
-          "7519",
-          "8287",
-          "9567",
-          "27.2%",
-          "Growth"
+          [
+            {
+              "text": "Дніпро 2"
+            }
+          ],
+          [
+            {
+              "text": "4373"
+            }
+          ],
+          [
+            {
+              "text": "4295"
+            }
+          ],
+          [
+            {
+              "text": "4219"
+            }
+          ],
+          [
+            {
+              "text": "-3.5%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Дніпро 2",
-          "4373",
-          "4295",
-          "4219",
-          "-3.5%",
-          "Стабільно"
+          [
+            {
+              "text": "Житомир 2"
+            }
+          ],
+          [
+            {
+              "text": "3093"
+            }
+          ],
+          [
+            {
+              "text": "3669"
+            }
+          ],
+          [
+            {
+              "text": "3503"
+            }
+          ],
+          [
+            {
+              "text": "13.3%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Житомир 2",
-          "3093",
-          "3669",
-          "3503",
-          "13.3%",
-          "Стабільно"
+          [
+            {
+              "text": "Вінниця 2"
+            }
+          ],
+          [
+            {
+              "text": "4235"
+            }
+          ],
+          [
+            {
+              "text": "4212"
+            }
+          ],
+          [
+            {
+              "text": "4319"
+            }
+          ],
+          [
+            {
+              "text": "2.0%"
+            }
+          ],
+          [
+            {
+              "text": "Стабільно"
+            }
+          ]
         ],
         [
-          "Вінниця 2",
-          "4235",
-          "4212",
-          "4319",
-          "2.0%",
-          "Стабільно"
+          [
+            {
+              "text": "Полтава 2"
+            }
+          ],
+          [
+            {
+              "text": "8903"
+            }
+          ],
+          [
+            {
+              "text": "9499"
+            }
+          ],
+          [
+            {
+              "text": "9076"
+            }
+          ],
+          [
+            {
+              "text": "1.9%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ],
         [
-          "Полтава 2",
-          "8903",
-          "9499",
-          "9076",
-          "1.9%",
-          "Growth"
-        ],
-        [
-          "Чернігів 2",
-          "9178",
-          "8613",
-          "8409",
-          "-8.4%",
-          "Growth"
+          [
+            {
+              "text": "Чернігів 2"
+            }
+          ],
+          [
+            {
+              "text": "9178"
+            }
+          ],
+          [
+            {
+              "text": "8613"
+            }
+          ],
+          [
+            {
+              "text": "8409"
+            }
+          ],
+          [
+            {
+              "text": "-8.4%"
+            }
+          ],
+          [
+            {
+              "text": "Growth"
+            }
+          ]
         ]
       ]
     }

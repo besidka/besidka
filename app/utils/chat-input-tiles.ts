@@ -8,6 +8,10 @@ import type {
   ChatInputTile,
   ChatInputToolsState,
 } from '~/types/chat-input-tools'
+import {
+  ARTIFACT_KIND_ICONS,
+  ARTIFACT_KIND_LABELS,
+} from '~/utils/artifact-parts'
 import type { WebSearchSelection } from '~/types/web-search'
 import {
   CODE_EXECUTION_TOOL_ICON,
@@ -297,6 +301,34 @@ function buildReasoningTile(
   }
 }
 
+export const ARTIFACT_TILE_ID_PREFIX = 'artifact-'
+
+function buildArtifactTiles(state: ChatInputToolsState): ChatInputTile[] {
+  if (!state.artifacts.visible) {
+    return []
+  }
+
+  return state.artifacts.attached.map((artifact) => {
+    const kindLabel = ARTIFACT_KIND_LABELS[artifact.kind]
+
+    return {
+      id: `${ARTIFACT_TILE_ID_PREFIX}${artifact.artifactId}`,
+      section: 'add',
+      icon: { kind: 'icon', name: ARTIFACT_KIND_ICONS[artifact.kind] },
+      caption: kindLabel,
+      value: artifact.title,
+      chipLabel: `Artifact: ${artifact.title}`,
+      ariaLabel: `Attached artifact: ${artifact.title}, `
+        + `${kindLabel}, version ${artifact.version}`,
+      removeLabel: `Remove ${artifact.title}`,
+      isNeutral: false,
+      isAuto: false,
+      isLocked: false,
+      isDisabled: false,
+    }
+  })
+}
+
 /**
  * The settings that differ from their defaults, in display order. Nothing is
  * returned until the model's capabilities resolve, so a saved choice the
@@ -306,7 +338,7 @@ export function buildChatInputTiles(
   state: ChatInputToolsState,
 ): ChatInputTile[] {
   if (!state.isCapabilityResolved) {
-    return []
+    return buildArtifactTiles(state)
   }
 
   const builders = state.isDeepResearchModel
@@ -320,7 +352,9 @@ export function buildChatInputTiles(
       buildReasoningTile,
     ]
 
-  return builders
+  const settingTiles = builders
     .map(builder => builder(state))
     .filter((tile): tile is ChatInputTile => tile !== null)
+
+  return [...settingTiles, ...buildArtifactTiles(state)]
 }

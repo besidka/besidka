@@ -95,6 +95,7 @@
                 @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
                 @open-files-generated="openFilesModal('select', 'assistant')"
+                @open-artifact-picker="openArtifactPicker"
                 @update:use-memory="setMemoryUsage"
                 @remove-tile="removeTile"
               />
@@ -163,6 +164,11 @@
       @detach="onFilesDetached"
       @upload="uploadFiles"
     />
+    <LazyChatInputArtifactPicker
+      v-if="isArtifactPickerMounted && isArtifactAttachEnabled"
+      v-model:open="isArtifactPickerOpen"
+      @pick="onArtifactPicked"
+    />
     <LazyChatTextFileModal
       v-if="openedPastedText"
       :key="openedPastedText.id"
@@ -198,12 +204,15 @@ import type { PastedText } from '~/utils/pasted-text'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import type {
+  AttachedArtifact,
   ChatInputTile,
   ChatInputTileId,
   ChatInputToolsState,
   ReasoningMode,
   ToolsSection,
 } from '~/types/chat-input-tools'
+import type { ArtifactSummary } from '#shared/utils/artifacts'
+import { ARTIFACT_ATTACHMENTS_MAX } from '#shared/utils/artifacts'
 import { LazyChatInputFilesModal } from '#components'
 import {
   SIDE_PANEL_TRANSITION_DURATION,
@@ -288,6 +297,10 @@ const files = defineModel<FileMetadata[]>('files', {
 
 const memoryExcluded = defineModel<boolean | null>('memoryExcluded', {
   default: null,
+})
+
+const attachedArtifacts = defineModel<AttachedArtifact[]>('attachedArtifacts', {
+  default: () => [],
 })
 
 function setMemoryUsage(isUsed: boolean) {
@@ -683,12 +696,20 @@ nuxtApp.hook('chat-input:prefill', prefillMessage)
 
 const chatInputPrefill = useChatInputPrefill()
 
+const pendingArtifact = shallowRef<AttachedArtifact | null>(
+  chatInputPrefill.takeArtifact(),
+)
+
 onMounted(async () => {
   const pendingText = chatInputPrefill.take()
 
   if (pendingText) {
     await prefillMessage(pendingText)
   }
+})
+
+nuxtApp.hook('chat-input:attach-artifact', (artifact) => {
+  pendingArtifact.value = artifact
 })
 
 const {
@@ -800,6 +821,12 @@ const shouldDisplayProjectPicker = computed<boolean>(() => {
   return !!(props.displayProjectPicker || props.projectContext)
 })
 
+const artifactsFeature = useFeature('artifacts')
+
+const isArtifactAttachEnabled = computed<boolean>(() => {
+  return artifactsFeature.value.active && !isDeepResearchModel.value
+})
+
 const toolsState = computed<ChatInputToolsState>(() => {
   return {
     isNewChat: route.path === '/chats/new',
@@ -837,6 +864,10 @@ const toolsState = computed<ChatInputToolsState>(() => {
       visible: !isDeepResearchModel.value,
       count: files.value.length,
       isImageInputSupported: isImageInputSupported.value,
+    },
+    artifacts: {
+      visible: isArtifactAttachEnabled.value,
+      attached: isArtifactAttachEnabled.value ? attachedArtifacts.value : [],
     },
     project: {
       visible: shouldDisplayProjectPicker.value,
@@ -881,7 +912,13 @@ async function focusAfterTileRemoval() {
 }
 
 function removeTile(id: ChatInputTileId) {
-  if (id === 'project') {
+  if (id.startsWith(ARTIFACT_TILE_ID_PREFIX)) {
+    const artifactId = id.slice(ARTIFACT_TILE_ID_PREFIX.length)
+
+    attachedArtifacts.value = attachedArtifacts.value.filter((artifact) => {
+      return artifact.artifactId !== artifactId
+    })
+  } else if (id === 'project') {
     emit('clear-project-context')
   } else if (id === 'memory') {
     memoryExcluded.value = false
@@ -1415,9 +1452,88 @@ async function sendMessage() {
   emit('submit')
   message.value = ''
   files.value = []
+  attachedArtifacts.value = []
   pastedTexts.value = []
   nuxtApp.callHook('chat:submit', { text })
 }
+
+const isArtifactPickerMounted = shallowRef<boolean>(false)
+const isArtifactPickerOpen = shallowRef<boolean>(false)
+
+function openArtifactPicker() {
+  if (!isArtifactAttachEnabled.value) {
+    return
+  }
+
+  isArtifactPickerMounted.value = true
+  isArtifactPickerOpen.value = true
+}
+
+function attachArtifact(artifact: AttachedArtifact): boolean {
+  if (!isArtifactAttachEnabled.value) {
+    return false
+  }
+
+  const isAlreadyAttached = attachedArtifacts.value.some((attached) => {
+    return attached.artifactId === artifact.artifactId
+  })
+
+  if (isAlreadyAttached) {
+    return true
+  }
+
+  if (attachedArtifacts.value.length >= ARTIFACT_ATTACHMENTS_MAX) {
+    useWarningMessage(
+      `You can attach up to ${ARTIFACT_ATTACHMENTS_MAX} artifacts.`,
+      'Remove one to attach another.',
+    )
+
+    return false
+  }
+
+  attachedArtifacts.value = [...attachedArtifacts.value, {
+    artifactId: artifact.artifactId,
+    version: artifact.version,
+    kind: artifact.kind,
+    title: artifact.title,
+  }]
+
+  return true
+}
+
+function onArtifactPicked(artifact: ArtifactSummary) {
+  attachArtifact({
+    artifactId: artifact.id,
+    version: artifact.currentVersion,
+    kind: artifact.kind,
+    title: artifact.title,
+  })
+}
+
+watch(isArtifactAttachEnabled, (isEnabled) => {
+  if (isEnabled) {
+    return
+  }
+
+  isArtifactPickerOpen.value = false
+
+  if (attachedArtifacts.value.length > 0) {
+    attachedArtifacts.value = []
+  }
+})
+
+watch(
+  [pendingArtifact, isArtifactAttachEnabled],
+  ([artifact, isEnabled]) => {
+    if (!artifact || !isEnabled) {
+      return
+    }
+
+    pendingArtifact.value = null
+    attachArtifact(artifact)
+  },
+  { immediate: true },
+)
 
 const filesModalRef = useTemplateRef<
   InstanceType<typeof LazyChatInputFilesModal>

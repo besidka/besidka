@@ -67,6 +67,7 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     },
     image: { supported: true, enabled: false, required: false },
     files: { visible: true, count: 2, isImageInputSupported: true },
+    artifacts: { visible: false, attached: [] },
     project: { visible: true, context: null },
     memory: { excluded: false },
     research: null,
@@ -82,6 +83,7 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     reasoning: { ...base.reasoning, ...overrides.reasoning },
     image: { ...base.image, ...overrides.image },
     files: { ...base.files, ...overrides.files },
+    artifacts: { ...base.artifacts, ...overrides.artifacts },
     project: { ...base.project, ...overrides.project },
     memory: { ...base.memory, ...overrides.memory },
   } as ChatInputToolsState
@@ -324,6 +326,54 @@ describe('ChatInput/ToolsMenu', () => {
         .attributes('aria-expanded'),
     ).toBe('false')
   })
+
+  it('hides Add artifact for a user without access, in the popover and the sheet',
+    async () => {
+      const popover = await mountMenu()
+
+      await open(popover)
+
+      expect(has(popover, 'tools-action-artifacts')).toBe(false)
+      expect(has(popover, 'tools-action-library')).toBe(true)
+
+      isPopoverLayout.value = false
+
+      const sheet = await mountMenu()
+
+      await open(sheet)
+
+      expect(has(sheet, 'tools-action-artifacts')).toBe(false)
+      expect(has(sheet, 'tools-action-library')).toBe(true)
+    })
+
+  it('closes and asks for the artifact picker with access, in both layouts',
+    async () => {
+      const popover = await mountMenu({
+        artifacts: { visible: true, attached: [] },
+      })
+
+      await open(popover)
+      await popover.get('[data-testid="tools-action-artifacts"]')
+        .trigger('click')
+
+      expect(popover.emitted('open-artifact-picker')).toHaveLength(1)
+      expect(
+        popover.get('[data-testid="chat-input-tools-trigger"]')
+          .attributes('aria-expanded'),
+      ).toBe('false')
+
+      isPopoverLayout.value = false
+
+      const sheet = await mountMenu({
+        artifacts: { visible: true, attached: [] },
+      })
+
+      await open(sheet)
+      await sheet.get('[data-testid="tools-action-artifacts"]')
+        .trigger('click')
+
+      expect(sheet.emitted('open-artifact-picker')).toHaveLength(1)
+    })
 
   it('focuses the first control on open and returns focus on Escape',
     async () => {

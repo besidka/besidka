@@ -31,6 +31,7 @@ function mountRow(
     isSelectionMode?: boolean
     isSelected?: boolean
     canShare?: boolean
+    mode?: 'library' | 'picker'
   } = {},
 ) {
   return mountSuspended(HistoryArtifactRow, {
@@ -234,4 +235,71 @@ describe('History/ArtifactRow', () => {
 
       expect(wrapper.emitted('open')).toBeUndefined()
     })
+
+  describe('picker mode', () => {
+    it('emits pick from the title and has no actions menu or checkbox',
+      async () => {
+        const artifact = createArtifact()
+        const wrapper = await mountRow(artifact, { mode: 'picker' })
+
+        expect(wrapper.find(testId('artifact-row-actions-trigger')).exists())
+          .toBe(false)
+        expect(wrapper.find(testId('artifact-row-checkbox')).exists())
+          .toBe(false)
+
+        await wrapper.get(testId('artifact-row-open')).trigger('click')
+
+        expect(wrapper.emitted('pick')).toEqual([[artifact]])
+        expect(wrapper.emitted('open')).toBeUndefined()
+      })
+
+    it('stretches the title button over the whole row', async () => {
+      const wrapper = await mountRow(createArtifact(), { mode: 'picker' })
+
+      expect(wrapper.get(testId('artifact-row-open')).classes())
+        .toEqual(expect.arrayContaining(['after:absolute', 'after:inset-0']))
+    })
+
+    it('shows the origin as plain text, never a link', async () => {
+      const wrapper = await mountRow(createArtifact(), { mode: 'picker' })
+
+      expect(wrapper.find(testId('artifact-row-origin-link')).exists())
+        .toBe(false)
+      expect(wrapper.get(testId('artifact-row-origin')).text())
+        .toBe('Biology help')
+    })
+
+    it('marks an artifact whose chat was deleted', async () => {
+      const wrapper = await mountRow(
+        createArtifact({ originChatSlug: null, originChatTitle: null }),
+        { mode: 'picker' },
+      )
+
+      expect(wrapper.get(testId('artifact-row-origin')).text())
+        .toBe('Chat deleted')
+    })
+
+    it('cannot pick a taken-down artifact', async () => {
+      const wrapper = await mountRow(
+        createArtifact({ takenDown: true }),
+        { mode: 'picker' },
+      )
+      const open = wrapper.get(testId('artifact-row-open'))
+
+      expect(open.attributes('disabled')).toBeDefined()
+
+      await open.trigger('click')
+
+      expect(wrapper.emitted('pick')).toBeUndefined()
+    })
+
+    it('keeps the library behaviour by default', async () => {
+      const wrapper = await mountRow(createArtifact())
+
+      expect(wrapper.find(testId('artifact-row-actions-trigger')).exists())
+        .toBe(true)
+      expect(wrapper.get(testId('artifact-row-open')).classes())
+        .not.toContain('after:absolute')
+    })
+  })
 })
