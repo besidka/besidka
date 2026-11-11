@@ -2,7 +2,10 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { getDocumentFileName } from '../../../shared/utils/documents'
+import {
+  DOCUMENT_REQUEST_TIMEOUT_MS,
+  getDocumentFileName,
+} from '../../../shared/utils/documents'
 import {
   TEST_DOCUMENT_HEADINGS,
   TEST_DOCUMENT_TITLE,
@@ -324,5 +327,48 @@ test.describe('create_document', () => {
         page,
         card.getByTestId('document-card-download'),
       )
+    })
+
+  test('asks again when the document status request never answers',
+    async ({ page }) => {
+      test.setTimeout(120_000)
+
+      await signInWithDocuments(page)
+      await page.goto(PERSISTED_DOCUMENT_URL)
+      await waitForHydration(page)
+      await expect(page.getByTestId('document-card')).toHaveAttribute(
+        'data-state',
+        'ready',
+        { timeout: READY_TIMEOUT },
+      )
+
+      let statusRequestCount = 0
+
+      await page.route(DOCUMENT_STATUS_PATTERN, async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.continue()
+
+          return
+        }
+
+        statusRequestCount += 1
+
+        if (statusRequestCount === 1) {
+          return
+        }
+
+        await route.continue()
+      })
+
+      await page.reload()
+      await waitForHydration(page)
+
+      const card = page.getByTestId('document-card')
+
+      await expect(card).toHaveAttribute('data-state', 'building')
+      await expect(card).toHaveAttribute('data-state', 'ready', {
+        timeout: DOCUMENT_REQUEST_TIMEOUT_MS + READY_TIMEOUT,
+      })
+      expect(statusRequestCount).toBeGreaterThanOrEqual(2)
     })
 })

@@ -15,12 +15,15 @@ import type {
 import {
   DOCUMENT_POLL_INTERVAL_MS,
   DOCUMENT_POLL_TIMEOUT_MS,
+  DOCUMENT_REQUEST_ATTEMPTS,
+  DOCUMENT_REQUEST_TIMEOUT_MS,
 } from '#shared/utils/documents'
 
 interface FetchInit {
   method?: string
   body?: unknown
   headers?: Record<string, string>
+  signal?: AbortSignal
 }
 
 const { fetchMock, renderMock } = vi.hoisted(() => ({
@@ -779,6 +782,73 @@ describe('useDocumentFlow unavailable documents', () => {
 
     expect(flow.status.value).toBe('unavailable')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('useDocumentFlow requests that never answer', () => {
+  function hangUntilAborted(init?: FetchInit) {
+    return new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(new DOMException('The operation was aborted.', 'AbortError'))
+      })
+    })
+  }
+
+  it('asks again when a status request hangs and shows the ready file', async () => {
+    const id = nextDocumentId()
+    let statusCalls = 0
+
+    fetchMock.mockImplementation((path: string, init?: FetchInit) => {
+      if (path !== `/api/v1/documents/${id}`) {
+        throw new Error(`Unexpected request ${path}`)
+      }
+
+      statusCalls += 1
+
+      return statusCalls === 1
+        ? hangUntilAborted(init)
+        : Promise.resolve(statusResponse(id, 'ready'))
+    })
+
+    const { flow } = start(id)
+
+    await settle()
+
+    expect(flow.status.value).toBe('loading')
+
+    await vi.advanceTimersByTimeAsync(DOCUMENT_REQUEST_TIMEOUT_MS)
+    await settle()
+
+    expect(statusCalls).toBe(2)
+    expect(flow.status.value).toBe('ready')
+    expect(flow.document.value?.file).toEqual(FILE)
+  })
+
+  it('offers a retry once every status attempt hung', async () => {
+    const id = nextDocumentId()
+
+    fetchMock.mockImplementation((_path: string, init?: FetchInit) => {
+      return hangUntilAborted(init)
+    })
+
+    const { flow } = start(id)
+
+    await settle()
+    await vi.advanceTimersByTimeAsync(
+      DOCUMENT_REQUEST_TIMEOUT_MS * DOCUMENT_REQUEST_ATTEMPTS,
+    )
+    await settle()
+
+    expect(callsTo('GET', `/api/v1/documents/${id}`))
+      .toHaveLength(DOCUMENT_REQUEST_ATTEMPTS)
+    expect(flow.status.value).toBe('failed')
+    expect(flow.errorMessage.value).toBe(STUCK_MESSAGE)
+    expect(flow.isBusy.value).toBe(false)
+
+    mockRoutes(id, { statuses: [statusResponse(id, 'ready')] })
+    await flow.retry()
+
+    expect(flow.status.value).toBe('ready')
   })
 })
 

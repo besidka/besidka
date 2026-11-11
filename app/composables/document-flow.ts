@@ -13,6 +13,8 @@ import {
   DOCUMENT_FORMAT_HEADER,
   DOCUMENT_POLL_INTERVAL_MS,
   DOCUMENT_POLL_TIMEOUT_MS,
+  DOCUMENT_REQUEST_ATTEMPTS,
+  DOCUMENT_REQUEST_TIMEOUT_MS,
   isDocumentFormat,
   isDocumentStatus,
 } from '#shared/utils/documents'
@@ -29,7 +31,11 @@ export interface DocumentFileUrls {
   viewUrl: string
 }
 
-type StatusFetchResult = DocumentStatusResponse | 'unavailable' | 'error'
+type StatusFetchResult
+  = | DocumentStatusResponse
+    | 'unavailable'
+    | 'error'
+    | 'timeout'
 type PollOutcome = 'settled' | 'stuck' | 'cancelled'
 type ClientRenderOutcome = 'uploaded' | 'skipped'
 
@@ -41,6 +47,43 @@ const STUCK_ERROR_MESSAGE
   = 'Building this document is taking longer than expected.'
 
 const documentsInFlight = new Set<string>()
+
+class DocumentRequestTimeoutError extends Error {
+  constructor(path: string) {
+    super(`No answer from ${path}`)
+    this.name = 'DocumentRequestTimeoutError'
+  }
+}
+
+/**
+ * A GET that never answers would otherwise hold the card in its loading
+ * state for good, so each attempt is aborted after
+ * `DOCUMENT_REQUEST_TIMEOUT_MS` and tried again up to
+ * `DOCUMENT_REQUEST_ATTEMPTS` times. HTTP errors keep `$fetch`'s own
+ * handling.
+ */
+async function getWithDeadline(path: string): Promise<unknown> {
+  for (let attempt = 1; ; attempt++) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, DOCUMENT_REQUEST_TIMEOUT_MS)
+
+    try {
+      return await $fetch(path, { signal: controller.signal })
+    } catch (exception) {
+      if (!controller.signal.aborted) {
+        throw exception
+      }
+
+      if (attempt >= DOCUMENT_REQUEST_ATTEMPTS) {
+        throw new DocumentRequestTimeoutError(path)
+      }
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+}
 
 const errorMessages: Record<string, string> = {
   [DOCUMENT_ERROR_CODES.quotaExceeded]:
@@ -179,7 +222,7 @@ export function useDocumentFlow(
     run: number,
   ): Promise<StatusFetchResult> {
     try {
-      const payload = await $fetch(`/api/v1/documents/${id}`)
+      const payload = await getWithDeadline(`/api/v1/documents/${id}`)
       const response = readStatusResponse(payload)
 
       if (!response) {
@@ -192,6 +235,10 @@ export function useDocumentFlow(
 
       return response
     } catch (exception) {
+      if (exception instanceof DocumentRequestTimeoutError) {
+        return 'timeout'
+      }
+
       const parsedException = parseError(exception)
 
       if (!isCurrent(run)) {
@@ -234,7 +281,7 @@ export function useDocumentFlow(
         return 'settled'
       }
 
-      if (result !== 'error') {
+      if (result !== 'error' && result !== 'timeout') {
         const isPeerPending = isWaitingForPeer
           && documentsInFlight.has(id)
           && result.status === 'spec_ready'
@@ -298,7 +345,7 @@ export function useDocumentFlow(
     id: string,
     format: DocumentStatusResponse['format'],
   ): Promise<ClientRenderOutcome> {
-    const specPayload = await $fetch(`/api/v1/documents/${id}/spec`)
+    const specPayload = await getWithDeadline(`/api/v1/documents/${id}/spec`)
     const spec = readSpecPayload(specPayload)
 
     if (hasImageBlocks(spec)) {
@@ -409,10 +456,17 @@ export function useDocumentFlow(
 
     const refreshed = await fetchStatus(id, run)
 
-    const isRefreshFailure = refreshed === 'unavailable'
-      || refreshed === 'error'
+    if (!isCurrent(run)) {
+      return
+    }
 
-    if (!isCurrent(run) || isRefreshFailure) {
+    if (refreshed === 'timeout') {
+      markStuck()
+
+      return
+    }
+
+    if (refreshed === 'unavailable' || refreshed === 'error') {
       return
     }
 
@@ -473,6 +527,12 @@ export function useDocumentFlow(
       const result = await fetchStatus(id, run)
 
       if (!isCurrent(run)) {
+        return
+      }
+
+      if (result === 'timeout') {
+        markStuck()
+
         return
       }
 
