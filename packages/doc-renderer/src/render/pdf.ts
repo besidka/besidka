@@ -1,8 +1,8 @@
 import fontkit from '@pdf-lib/fontkit'
 import {
   PDFDocument,
+  PDFHexString,
   PDFName,
-  PDFString,
   rgb,
 } from 'pdf-lib'
 import type { PDFFont, PDFImage, PDFPage } from 'pdf-lib'
@@ -226,7 +226,7 @@ function tokenize(
   for (const run of runs) {
     const style = makeStyle(layout, run, base)
     const text = run.text.replace(/\r\n?/g, '\n')
-    const pattern = /(\n)|([ \t]+)|([^\s]+)/g
+    const pattern = /(\n)|([^\S\n]+)|(\S+)/g
 
     for (const match of text.matchAll(pattern)) {
       if (match[1]) {
@@ -370,6 +370,17 @@ function layoutRuns(
   )
 }
 
+function asciiHex(href: string): string {
+  const ascii = new URL(href).href
+  let hex = ''
+
+  for (const character of ascii) {
+    hex += (character.codePointAt(0) as number).toString(16).padStart(2, '0')
+  }
+
+  return hex
+}
+
 function addLinkAnnotation(
   layout: Layout,
   page: PDFPage,
@@ -382,7 +393,7 @@ function addLinkAnnotation(
     Subtype: 'Link',
     Rect: rect,
     Border: [0, 0, 0],
-    A: { Type: 'Action', S: 'URI', URI: PDFString.of(href) },
+    A: { Type: 'Action', S: 'URI', URI: PDFHexString.of(asciiHex(href)) },
   }))
 
   page.node.addAnnot(annotation)
@@ -931,7 +942,7 @@ export async function renderPdf(
     title: spec.title,
     language: spec.language,
   })
-  const metadata = pdf.context.stream(packet, {
+  const metadata = pdf.context.stream(new TextEncoder().encode(packet), {
     Type: 'Metadata',
     Subtype: 'XML',
   })

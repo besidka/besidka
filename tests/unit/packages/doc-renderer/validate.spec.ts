@@ -1,4 +1,4 @@
-import { strToU8, zipSync } from 'fflate'
+import { strToU8, zipSync, zlibSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
 import { buildOoxmlCustomProps, buildPdfXmp } from '@besidka/doc-renderer/provenance'
 import { parseDocumentSpec } from '@besidka/doc-renderer/spec'
@@ -636,6 +636,10 @@ describe('validate: provenance', () => {
           '/docProps/custom.xml',
           'application/vnd.openxmlformats-officedocument.custom-properties+xml',
         ),
+        rootRelationships: withRootRelationship(
+          'docx',
+          '<Relationship Id="rId7" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/>',
+        ),
         files: { 'docProps/custom.xml': xml },
       })
     }
@@ -827,5 +831,200 @@ describe('validate: PDF', () => {
     )
 
     expectRejected('pdf', bytes, 'pdf_malformed')
+  })
+})
+
+describe('validate: parser evasion (review findings)', () => {
+  const REL_BASE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+  it('reads attributes after a ">" inside an attribute value', () => {
+    expectRejected(
+      'docx',
+      buildPackage('docx', {
+        files: {
+          'word/_rels/document.xml.rels': relationshipsXml(
+            `<Relationship Foo=">" Type="${REL_BASE}/oleObject" Target="x.bin" TargetMode="External"/>`,
+          ),
+        },
+      }),
+      'ooxml_ole_object',
+    )
+  })
+
+  it('handles prefixed elements and CDATA in field instructions', () => {
+    expectRejected(
+      'docx',
+      buildPackage('docx', {
+        documentBody: '<x:fldSimple x:instr="DDEAUTO foo"/>',
+      }),
+      'docx_field_instruction',
+    )
+    expectRejected(
+      'docx',
+      buildPackage('docx', {
+        documentBody:
+          '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><ns:instrText><![CDATA[DDEAUTO foo]]></ns:instrText></w:r></w:p>',
+      }),
+      'docx_field_instruction',
+    )
+  })
+
+  it('decodes entities before matching ppaction', () => {
+    expectRejected(
+      'pptx',
+      buildPackage('pptx', {
+        slideXml: slideXmlWith(
+          '<p:sp><a:hlinkClick action="ppaction&#58;//program"/></p:sp>',
+        ),
+      }),
+      'pptx_action',
+    )
+  })
+
+  it('checks prefixed cells and formulas', () => {
+    expectRejected(
+      'xlsx',
+      buildPackage('xlsx', {
+        sheetXml: sheetXmlWith('<x:c r="A1"><x:f>cmd|\'/c calc\'!A1</x:f></x:c>'),
+      }),
+      'formula_not_allowed',
+    )
+  })
+
+  it('scans parts wherever they sit in the package', () => {
+    const moved = buildPackage('xlsx', {
+      files: {
+        'xl/worksheets/sheet1.xml': null,
+        'xl/ws/sheet1.xml': sheetXmlWith('<c r="A1"><f>FOO(1)</f></c>'),
+        'xl/_rels/workbook.xml.rels': relationshipsXml(
+          `<Relationship Id="rId1" Type="${REL_BASE}/worksheet" Target="ws/sheet1.xml"/>`,
+        ),
+      },
+    })
+
+    expectRejected('xlsx', moved, 'formula_not_allowed')
+    expectRejected(
+      'xlsx',
+      buildPackage('xlsx', {
+        files: { 'xl/misc/other.xml': sheetXmlWith('<c r="A1"><f>FOO(1)</f></c>') },
+      }),
+      'formula_not_allowed',
+    )
+    expectRejected(
+      'docx',
+      buildPackage('docx', {
+        files: { 'word/webExtensions/webExtension1.xml': '<a/>' },
+      }),
+      'ooxml_web_extension',
+    )
+  })
+
+  it('refuses XML that is not UTF-8 or BOM-marked UTF-16', () => {
+    const utf16 = (text: string) => {
+      const bytes = new Uint8Array(text.length * 2)
+
+      for (let index = 0; index < text.length; index += 1) {
+        bytes[index * 2] = text.charCodeAt(index)
+      }
+
+      return bytes
+    }
+
+    expectRejected(
+      'docx',
+      buildPackage('docx', {
+        files: { 'word/other.xml': utf16('<!DOCTYPE x><a/>') },
+      }),
+      'xml_encoding',
+    )
+    expectRejected(
+      'docx',
+      buildPackage('docx', {
+        files: { 'word/other.xml': '\u00ff\u00fe\u0000' },
+      }),
+      'xml_encoding',
+    )
+  })
+
+  it('fails closed instead of throwing on hostile entities', () => {
+    const result = validate('docx', buildPackage('docx', {
+      files: {
+        'docProps/custom.xml': '<Properties><property name="a&#x110000;"/></Properties>',
+      },
+    }))
+
+    expect(result.ok).toBe(true)
+  })
+
+  it('keeps hostile PDF tokens linear', () => {
+    const token = `${'1'.repeat(150000)}x`
+    const started = performance.now()
+    const result = validate('pdf', buildPdf({
+      objects: [
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /X ${token} >>`,
+      ],
+    }))
+
+    expect(result.ok).toBe(true)
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+
+  it('keeps unclosed-cell XLSX parts linear', () => {
+    const cells = '<c a="1234567890abcdef">'.repeat(40000)
+    const started = performance.now()
+
+    validate('xlsx', buildPackage('xlsx', { sheetXml: sheetXmlWith(cells) }))
+
+    expect(performance.now() - started).toBeLessThan(2000)
+  })
+
+  it('finds names in object streams with a decoy /Type or no /Type', () => {
+    const wrap = (dictionary: string) => {
+      const inner = '<< /S /Launch >>'
+      const compressed = zlibSync(strToU8(`4 0 ${inner}`))
+      const prefix = strToU8(
+        '%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+        + '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+        + '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] >>\nendobj\n'
+        + `5 0 obj\n<< ${dictionary} /Filter /FlateDecode /Length ${compressed.length} >>\nstream\n`,
+      )
+      const suffix = strToU8('\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n')
+      const bytes = new Uint8Array(
+        prefix.length + compressed.length + suffix.length,
+      )
+
+      bytes.set(prefix)
+      bytes.set(compressed, prefix.length)
+      bytes.set(suffix, prefix.length + compressed.length)
+
+      return bytes
+    }
+
+    expectRejected('pdf', wrap('/Decoy << /Type /X >> /Type /ObjStm /N 1 /First 4'), 'pdf_launch')
+    expectRejected('pdf', wrap('/N 1 /First 4'), 'pdf_launch')
+    expectRejected(
+      'pdf',
+      wrap('/Type /ObjStm /N 1 /First 4 /DecodeParms << /Predictor 12 /Columns 12 >>'),
+      'pdf_unsupported_filter',
+    )
+  })
+
+  it('denies file attachments through /EF', () => {
+    expectRejected(
+      'pdf',
+      pdfWithCatalogEntry('/Names << /X << /FS << /EF << /F 6 0 R >> >> >> >>'),
+      'pdf_embedded_file',
+    )
+  })
+
+  it('rejects a forged end record and extra central directory records', () => {
+    const base = buildPackage('docx')
+    const withComment = new Uint8Array(base.length + 5)
+
+    withComment.set(base)
+
+    expectRejected('docx', withComment, 'zip_invalid')
   })
 })

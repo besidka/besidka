@@ -22,7 +22,7 @@ export function escapeCsvCell(
 
   const text = value === null || value === undefined ? '' : value
   const needsGuard = FORMULA_TRIGGER_PATTERN.test(text)
-  const needsQuotes = needsGuard || /[",\r\n]/.test(text)
+  const needsQuotes = needsGuard || /[",;\r\n]/.test(text)
 
   if (!needsQuotes) {
     return text

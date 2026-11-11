@@ -1,5 +1,6 @@
 import { checkSpecBounds } from '../spec/bounds.ts'
 import type { DocumentSpec } from '../spec/v1.ts'
+import { validate } from '../validate/index.ts'
 import { RenderError } from './errors.ts'
 import { prepareImages } from './images.ts'
 import type { RenderAssets } from './images.ts'
@@ -42,7 +43,28 @@ export async function render(
   }
 
   const images = prepareImages(spec, assets)
+  const result = await renderFormat(spec, images, options)
+  const validated = validate(
+    spec.format,
+    result.bytes,
+    spec.format === 'xlsx' ? { spec } : {},
+  )
 
+  if (!validated.ok) {
+    throw new RenderError(
+      'validation_failed',
+      `The rendered ${spec.format} failed validation: ${validated.code}`,
+    )
+  }
+
+  return result
+}
+
+function renderFormat(
+  spec: DocumentSpec,
+  images: ReturnType<typeof prepareImages>,
+  options: RenderOptions,
+): Promise<RenderResult> {
   switch (spec.format) {
     case 'docx':
       return renderDocx(spec, images, options)

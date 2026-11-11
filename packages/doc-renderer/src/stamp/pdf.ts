@@ -31,7 +31,7 @@ export async function stampPdf(
   }
 
   const packet = buildPdfXmp(options)
-  const stream = document.context.stream(packet, {
+  const stream = document.context.stream(new TextEncoder().encode(packet), {
     Type: 'Metadata',
     Subtype: 'XML',
   })

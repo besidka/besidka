@@ -1,3 +1,5 @@
+import { parseXml, stripXmlComments, unescapeXml } from './validate/xml.ts'
+
 export const DIGITAL_SOURCE_TYPE = {
   trainedAlgorithmicMedia:
     'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia',
@@ -42,6 +44,8 @@ const AI_SOURCE_TYPE_PATTERN
 const CREATED_VIA_PATTERN = /^[a-z][a-z-]{0,31}$/
 const CUSTOM_PROPERTIES_FORMAT_ID = '{D5CDD505-2E9C-101B-9397-08002B2CF9AE}'
 
+export { unescapeXml }
+
 export function escapeXml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -49,21 +53,6 @@ export function escapeXml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;')
-}
-
-export function unescapeXml(value: string): string {
-  return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, '\'')
-    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex: string) => {
-      return String.fromCodePoint(Number.parseInt(hex, 16))
-    })
-    .replace(/&#(\d+);/g, (_match, decimal: string) => {
-      return String.fromCodePoint(Number.parseInt(decimal, 10))
-    })
-    .replace(/&amp;/g, '&')
 }
 
 export function sanitizeXmlText(value: string, maxLength: number): string {
@@ -191,18 +180,31 @@ export function isAiDigitalSourceType(value: string): boolean {
 
 export function readOoxmlProvenance(customPropertiesXml: string): Provenance {
   const properties = new Map<string, string>()
-  const pattern
-    = /<property\b[^>]*?\bname="([^"]*)"[^>]*>([\s\S]*?)<\/property>/g
+  let currentName: string | null = null
+  let isValue = false
+  let value = ''
 
-  for (const match of customPropertiesXml.matchAll(pattern)) {
-    const valueMatch = /<vt:lpwstr>([\s\S]*?)<\/vt:lpwstr>/.exec(
-      match[2] || '',
-    )
+  try {
+    for (const event of parseXml(customPropertiesXml)) {
+      if (event.type === 'start' && event.name === 'property') {
+        currentName = event.attributes.name ?? null
+        value = ''
+      } else if (event.type === 'start' && event.name === 'lpwstr') {
+        isValue = true
+      } else if (event.type === 'text' && isValue) {
+        value += event.text
+      } else if (event.type === 'end' && event.name === 'lpwstr') {
+        isValue = false
+      } else if (event.type === 'end' && event.name === 'property') {
+        if (currentName !== null) {
+          properties.set(currentName, value)
+        }
 
-    properties.set(
-      unescapeXml(match[1] || ''),
-      unescapeXml(valueMatch?.[1] || ''),
-    )
+        currentName = null
+      }
+    }
+  } catch {
+    return 'missing'
   }
 
   const sourceType = properties.get(PROPERTY_DIGITAL_SOURCE_TYPE)
@@ -215,7 +217,8 @@ export function readOoxmlProvenance(customPropertiesXml: string): Provenance {
   return properties.has(PROPERTY_CREATED_VIA) ? 'channel-only' : 'missing'
 }
 
-export function readXmpProvenance(xmp: string): Provenance {
+export function readXmpProvenance(rawXmp: string): Provenance {
+  const xmp = stripXmlComments(rawXmp)
   const sourceTypePattern
     = /Iptc4xmpExt:DigitalSourceType(?:\s*=\s*["']([^"']*)["']|\s*>\s*([^<]*)<)/g
 

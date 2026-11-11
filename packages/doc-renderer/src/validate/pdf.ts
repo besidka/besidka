@@ -34,8 +34,11 @@ const PROVENANCE_RANK: Record<Provenance, number> = {
 }
 
 class PdfScanError extends Error {
-  constructor(public readonly failure: ValidationFailure) {
+  readonly failure: ValidationFailure
+
+  constructor(failure: ValidationFailure) {
     super(failure.detail)
+    this.failure = failure
   }
 }
 
@@ -94,6 +97,11 @@ function readLiteralString(
   start: number,
 ): { value: string, end: number } {
   const bytes: number[] = []
+  const push = (value: number) => {
+    if (bytes.length < VALIDATION_LIMITS.pdfStringBytesMax) {
+      bytes.push(value)
+    }
+  }
   let depth = 1
   let index = start + 1
 
@@ -106,15 +114,15 @@ function readLiteralString(
       index += 2
 
       if (next === 0x6E) {
-        bytes.push(0x0A)
+        push(0x0A)
       } else if (next === 0x72) {
-        bytes.push(0x0D)
+        push(0x0D)
       } else if (next === 0x74) {
-        bytes.push(0x09)
+        push(0x09)
       } else if (next === 0x62) {
-        bytes.push(0x08)
+        push(0x08)
       } else if (next === 0x66) {
-        bytes.push(0x0C)
+        push(0x0C)
       } else if (next >= 0x30 && next <= 0x37) {
         let octal = next - 0x30
         let digits = 1
@@ -129,13 +137,13 @@ function readLiteralString(
           digits += 1
         }
 
-        bytes.push(octal & 0xFF)
+        push(octal & 0xFF)
       } else if (next === 0x0D) {
         if (data[index] === 0x0A) {
           index += 1
         }
       } else if (next !== 0x0A) {
-        bytes.push(next)
+        push(next)
       }
 
       continue
@@ -152,7 +160,7 @@ function readLiteralString(
       }
     }
 
-    bytes.push(byte)
+    push(byte)
     index += 1
   }
 
@@ -164,6 +172,11 @@ function readHexString(
   start: number,
 ): { value: string, end: number } {
   const bytes: number[] = []
+  const push = (value: number) => {
+    if (bytes.length < VALIDATION_LIMITS.pdfStringBytesMax) {
+      bytes.push(value)
+    }
+  }
   let high = -1
   let index = start + 1
 
@@ -183,7 +196,7 @@ function readHexString(
       if (high < 0) {
         high = nibble
       } else {
-        bytes.push(high * 16 + nibble)
+        push(high * 16 + nibble)
         high = -1
       }
     }
@@ -192,7 +205,7 @@ function readHexString(
   }
 
   if (high >= 0) {
-    bytes.push(high * 16)
+    push(high * 16)
   }
 
   return { value: decodePdfString(bytes), end: index + 1 }
@@ -223,7 +236,10 @@ function scanTokens(
       )
     }
 
-    objectTokens.push(token)
+    if (objectTokens.length < VALIDATION_LIMITS.pdfDictionaryTokensMax) {
+      objectTokens.push(token)
+    }
+
     onToken(token)
   }
 
@@ -315,7 +331,7 @@ function scanTokens(
 
     index = end
 
-    if (/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(word)) {
+    if (word.length <= 32 && /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(word)) {
       emit({ kind: 'number', value: word })
       continue
     }
@@ -366,18 +382,6 @@ function checkUriString(value: string): void {
   }
 }
 
-function dictionaryValue(tokens: Token[], key: string): Token | null {
-  for (let index = 0; index < tokens.length - 1; index += 1) {
-    const token = tokens[index] as Token
-
-    if (token.kind === 'name' && token.value === key) {
-      return tokens[index + 1] as Token
-    }
-  }
-
-  return null
-}
-
 function listFilters(tokens: Token[]): string[] | null {
   const filterIndex = tokens.findIndex((token) => {
     return token.kind === 'name' && token.value === 'Filter'
@@ -419,6 +423,17 @@ function decodeStreamBody(
   body: Uint8Array,
   budget: { inflateBytes: number },
 ): Uint8Array {
+  const predictorIndex = objectTokens.findIndex((token) => {
+    return token.kind === 'name' && token.value === 'Predictor'
+  })
+  const predictor = objectTokens[predictorIndex + 1]
+
+  if (predictorIndex !== -1 && predictor?.value !== '1') {
+    throw new PdfScanError(
+      fail('pdf_unsupported_filter', 'Predictors on scanned streams'),
+    )
+  }
+
   const filters = listFilters(objectTokens)
 
   if (filters === null) {
@@ -456,9 +471,15 @@ function decodeStreamBody(
 }
 
 function tokenKindOfStream(objectTokens: Token[]): string | null {
-  const type = dictionaryValue(objectTokens, 'Type')
+  const names = new Set(
+    objectTokens.filter(token => token.kind === 'name').map(token => token.value),
+  )
 
-  return type?.kind === 'name' ? type.value : null
+  if (names.has('ObjStm') || (names.has('N') && names.has('First'))) {
+    return 'ObjStm'
+  }
+
+  return names.has('Metadata') ? 'Metadata' : null
 }
 
 /**

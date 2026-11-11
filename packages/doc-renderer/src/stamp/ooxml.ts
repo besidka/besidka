@@ -47,10 +47,13 @@ function setDateElement(core: string, tag: string, date: string): string {
   const pattern = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>|<${tag}\\b[^>]*/>`)
 
   if (pattern.test(core)) {
-    return core.replace(pattern, element)
+    return core.replace(pattern, () => element)
   }
 
-  return core.replace('</cp:coreProperties>', `${element}</cp:coreProperties>`)
+  return core.replace(
+    '</cp:coreProperties>',
+    () => `${element}</cp:coreProperties>`,
+  )
 }
 
 function setTextElement(core: string, tag: string, value: string): string {
@@ -58,10 +61,13 @@ function setTextElement(core: string, tag: string, value: string): string {
   const pattern = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>|<${tag}\\b[^>]*/>`)
 
   if (pattern.test(core)) {
-    return core.replace(pattern, element)
+    return core.replace(pattern, () => element)
   }
 
-  return core.replace('</cp:coreProperties>', `${element}</cp:coreProperties>`)
+  return core.replace(
+    '</cp:coreProperties>',
+    () => `${element}</cp:coreProperties>`,
+  )
 }
 
 function buildCoreProperties(): string {
@@ -118,13 +124,13 @@ function addContentTypeOverride(
   partName: string,
   contentType: string,
 ): string {
-  if (contentTypes.includes(`PartName="${partName}"`)) {
+  if (new RegExp(`PartName=["']${partName}["']`).test(contentTypes)) {
     return contentTypes
   }
 
   return contentTypes.replace(
     '</Types>',
-    `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
+    () => `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
   )
 }
 
@@ -134,13 +140,13 @@ function addRootRelationship(
   target: string,
   id: string,
 ): string {
-  if (relationships.includes(`Type="${type}"`)) {
+  if (new RegExp(`Type=["']${type}["']`).test(relationships)) {
     return relationships
   }
 
   return relationships.replace(
     '</Relationships>',
-    `<Relationship Id="${id}" Type="${type}" Target="${target}"/></Relationships>`,
+    () => `<Relationship Id="${id}" Type="${type}" Target="${target}"/></Relationships>`,
   )
 }
 

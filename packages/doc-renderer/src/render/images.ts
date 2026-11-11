@@ -1,3 +1,4 @@
+import { Unzlib } from 'fflate'
 import { collectImageIds } from '../spec/bounds.ts'
 import type { DocumentSpec } from '../spec/v1.ts'
 import { RenderError } from './errors.ts'
@@ -23,7 +24,7 @@ export const IMAGE_LIMITS = {
   bytesEach: 5 * 1024 * 1024,
   bytesTotal: 20 * 1024 * 1024,
   dimensionMax: 16384,
-  pixelsMax: 40_000_000,
+  pixelsMax: 10_000_000,
 } as const
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
@@ -98,6 +99,60 @@ function readJpegSize(bytes: Uint8Array): ImageSize | null {
   return null
 }
 
+class InflateOverflow extends Error {}
+
+const PNG_CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
+
+function pngDecodesWithinBound(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+): boolean {
+  const channels = PNG_CHANNELS[bytes[25] as number]
+  const bitDepth = bytes[24] as number
+
+  if (!channels || !bitDepth) {
+    return false
+  }
+
+  const rowBytes = Math.ceil(width * channels * bitDepth / 8)
+  const bound = height * (1 + rowBytes) + height * 8 + 1024
+  let produced = 0
+  const inflater = new Unzlib((chunk) => {
+    produced += chunk.length
+
+    if (produced > bound) {
+      throw new InflateOverflow()
+    }
+  })
+  let offset = 8
+
+  try {
+    while (offset + 12 <= bytes.length) {
+      const length = readUint32(bytes, offset)
+      const type = String.fromCharCode(
+        ...bytes.subarray(offset + 4, offset + 8),
+      )
+
+      if (type === 'IDAT') {
+        inflater.push(bytes.subarray(offset + 8, offset + 8 + length), false)
+      }
+
+      if (type === 'IEND') {
+        break
+      }
+
+      offset += 12 + length
+    }
+
+    inflater.push(new Uint8Array(0), true)
+  } catch {
+    return false
+  }
+
+  return true
+}
+
 export function prepareImage(fileId: string, asset: ImageAsset): PreparedImage {
   if (asset.mediaType === 'image/webp') {
     throw new RenderError(
@@ -126,6 +181,13 @@ export function prepareImage(fileId: string, asset: ImageAsset): PreparedImage {
 
   if (isTooLarge) {
     throw new RenderError('image_too_large', `Image ${fileId} has too many pixels`)
+  }
+
+  if (isPng && !pngDecodesWithinBound(asset.bytes, size.width, size.height)) {
+    throw new RenderError(
+      'image_too_large',
+      `Image ${fileId} inflates beyond its declared size`,
+    )
   }
 
   return {

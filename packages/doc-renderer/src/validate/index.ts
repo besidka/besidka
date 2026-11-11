@@ -56,19 +56,23 @@ export function validate(
     )
   }
 
-  if (format === 'pdf') {
-    const scanned = scanPdf(bytes)
+  try {
+    if (format === 'pdf') {
+      const scanned = scanPdf(bytes)
 
-    if (!scanned.ok) {
-      return scanned
+      if (!scanned.ok) {
+        return scanned
+      }
+
+      return {
+        ok: true,
+        stats: { bytes: bytes.length, pages: scanned.result.pages },
+        provenance: scanned.result.provenance,
+      }
     }
 
-    return {
-      ok: true,
-      stats: { bytes: bytes.length, pages: scanned.result.pages },
-      provenance: scanned.result.provenance,
-    }
+    return validateOoxml(format, bytes, options)
+  } catch {
+    return fail('validation_error', 'The file could not be validated')
   }
-
-  return validateOoxml(format, bytes, options)
 }

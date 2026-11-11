@@ -254,7 +254,19 @@ export function readZipDirectory(bytes: Uint8Array): ZipDirectoryResult {
     }
   }
 
-  const { declaredEntries, directoryOffset, directoryEnd } = location
+  const { declaredEntries, directoryOffset, directoryEnd, endOffset } = location
+  const commentLength = location.view.getUint16(endOffset + 20, true)
+
+  if (
+    endOffset + END_OF_CENTRAL_DIRECTORY_BYTES + commentLength !== bytes.length
+    || directoryEnd !== endOffset
+  ) {
+    return {
+      ok: false,
+      code: 'zip_invalid',
+      detail: 'Data after the central directory or a forged end record',
+    }
+  }
 
   if (declaredEntries > VALIDATION_LIMITS.zipEntriesMax) {
     return {
@@ -422,7 +434,8 @@ export function readZipDirectory(bytes: Uint8Array): ZipDirectoryResult {
       + localExtraLength
 
     if (
-      localNameLength !== nameLength
+      view.getUint16(localHeaderOffset + 8, true) !== method
+      || localNameLength !== nameLength
       || decodeEntryName(
         bytes,
         localHeaderOffset + LOCAL_HEADER_BYTES,
@@ -455,6 +468,14 @@ export function readZipDirectory(bytes: Uint8Array): ZipDirectoryResult {
     })
 
     offset = nextOffset
+  }
+
+  if (offset !== directoryEnd) {
+    return {
+      ok: false,
+      code: 'zip_invalid',
+      detail: 'Central directory has more records than declared',
+    }
   }
 
   return { ok: true, directory: { entries, totalUncompressedBytes } }

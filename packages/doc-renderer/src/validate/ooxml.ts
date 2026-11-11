@@ -1,4 +1,4 @@
-import { readOoxmlProvenance, unescapeXml } from '../provenance.ts'
+import { readOoxmlProvenance } from '../provenance.ts'
 import type { Provenance } from '../provenance.ts'
 import type { XlsxSpec } from '../spec/v1.ts'
 import { checkFormula } from './formula.ts'
@@ -6,6 +6,7 @@ import { inflateEntry } from './inflate.ts'
 import { fail } from './result.ts'
 import type {
   ValidatedFormat,
+  ValidationFailure,
   ValidationResult,
   ValidationStats,
 } from './result.ts'
@@ -18,6 +19,8 @@ import {
   PPTX_ALLOWED_ACTIONS,
   VALIDATION_LIMITS,
 } from './rules.ts'
+import { XmlError, decodeXmlBytes, parseXml } from './xml.ts'
+import type { XmlEvent } from './xml.ts'
 import { readZipDirectory } from './zip.ts'
 import type { ZipEntry } from './zip.ts'
 
@@ -45,9 +48,10 @@ const MAIN_PARTS: Record<OoxmlFormat, { part: string, contentType: string }> = {
   },
 }
 
-const CONTENT_TYPES_PART = '[Content_Types].xml'
+const CONTENT_TYPES_PART = '[content_types].xml'
 const ROOT_RELATIONSHIPS_PART = '_rels/.rels'
-const CUSTOM_PROPERTIES_PART = 'docProps/custom.xml'
+const CUSTOM_PROPERTIES_PART = 'docprops/custom.xml'
+const CUSTOM_RELATIONSHIP_SUFFIX = '/custom-properties'
 const XML_PART_PATTERN = /\.(?:xml|rels|vml)$/i
 const MACRO_CONTENT_TYPE_PATTERNS: ReadonlyArray<{
   pattern: RegExp
@@ -58,32 +62,25 @@ const MACRO_CONTENT_TYPE_PATTERNS: ReadonlyArray<{
   { pattern: /activeX/i, code: 'ooxml_active_x' },
   { pattern: /oleObject/i, code: 'ooxml_ole_object' },
 ]
+const PPACTION_PATTERN = /ppaction:\/\/[^\s"'<>&]*/gi
+const FORMULA_ELEMENTS = new Set([
+  'formula',
+  'formula1',
+  'formula2',
+  'definedName',
+  'calculatedColumnFormula',
+])
+const ALLOWED_FORMULA_TYPES = ['normal', 'shared', 'array']
 
-interface ParsedAttributes {
-  [name: string]: string
-}
-
-function parseAttributes(source: string): ParsedAttributes {
-  const attributes: ParsedAttributes = {}
-  const pattern = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
-
-  for (const match of source.matchAll(pattern)) {
-    attributes[match[1] as string] = unescapeXml(match[2] ?? match[3] ?? '')
-  }
-
-  return attributes
-}
-
-function decodeXmlBytes(data: Uint8Array): string {
-  if (data[0] === 0xFF && data[1] === 0xFE) {
-    return new TextDecoder('utf-16le').decode(data)
-  }
-
-  if (data[0] === 0xFE && data[1] === 0xFF) {
-    return new TextDecoder('utf-16be').decode(data)
-  }
-
-  return new TextDecoder('utf-8').decode(data)
+interface PackageState {
+  format: OoxmlFormat
+  stats: ValidationStats
+  declared: Map<string, Set<string>> | null
+  sheetPartNames: Map<string, string>
+  contentTypeOverrides: Map<string, string>
+  customPropertiesLinked: boolean
+  customProvenance: Provenance
+  slides: number
 }
 
 function startsWithAllowedProtocol(target: string): boolean {
@@ -134,7 +131,7 @@ function declaredFormulaCells(spec: XlsxSpec): Map<string, Set<string>> {
 
 function normalizePartPath(base: string, target: string): string {
   if (target.startsWith('/')) {
-    return target.slice(1)
+    return target.slice(1).toLowerCase()
   }
 
   const segments = base.split('/').slice(0, -1)
@@ -147,134 +144,11 @@ function normalizePartPath(base: string, target: string): string {
     }
   }
 
-  return segments.join('/')
+  return segments.join('/').toLowerCase()
 }
 
-function checkRelationships(source: string): ValidationResult | null {
-  for (const match of source.matchAll(/<Relationship\b([^>]*?)\/?>/g)) {
-    const attributes = parseAttributes(match[1] || '')
-    const type = attributes.Type || ''
-    const target = attributes.Target || ''
-    const isExternal = attributes.TargetMode === 'External'
-
-    for (const denied of OOXML_DENIED_RELATIONSHIP_TYPES) {
-      if (denied.pattern.test(type)) {
-        return fail(denied.code, `Relationship type ${type.slice(-60)} is not allowed`)
-      }
-    }
-
-    if (isExternal) {
-      const isHyperlink = type.endsWith(HYPERLINK_RELATIONSHIP_TYPE_SUFFIX)
-
-      if (!isHyperlink || !startsWithAllowedProtocol(target)) {
-        return fail(
-          'ooxml_external_relationship',
-          `External relationship to ${target.slice(0, 80)} is not allowed`,
-        )
-      }
-    }
-  }
-
-  return null
-}
-
-function checkContentTypes(
-  source: string,
-  format: OoxmlFormat,
-): ValidationResult | null {
-  const main = MAIN_PARTS[format]
-  const overrides = new Map<string, string>()
-
-  for (const match of source.matchAll(/<(Default|Override)\b([^>]*?)\/?>/g)) {
-    const attributes = parseAttributes(match[2] || '')
-    const contentType = attributes.ContentType || ''
-
-    for (const denied of MACRO_CONTENT_TYPE_PATTERNS) {
-      if (denied.pattern.test(contentType)) {
-        return fail(denied.code, `Content type ${contentType.slice(0, 100)} is not allowed`)
-      }
-    }
-
-    if (match[1] === 'Override') {
-      overrides.set((attributes.PartName || '').replace(/^\//, ''), contentType)
-    }
-  }
-
-  const declared = overrides.get(main.part)
-
-  if (declared !== main.contentType) {
-    return fail(
-      'ooxml_format_mismatch',
-      `Main part ${main.part} has content type ${(declared || 'none').slice(0, 100)}, expected the ${format} main type`,
-    )
-  }
-
-  return null
-}
-
-function checkDocxFields(source: string): ValidationResult | null {
-  const fields: string[] = []
-  let buffer = ''
-  let isCollecting = false
-  const pattern
-    = /<w:fldChar\b([^>]*?)\/?>|<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>|<w:fldSimple\b([^>]*?)\/?>/g
-
-  for (const match of source.matchAll(pattern)) {
-    if (match[1] !== undefined) {
-      const type = parseAttributes(match[1])['w:fldCharType']
-
-      if (type === 'begin') {
-        if (buffer) {
-          fields.push(buffer)
-        }
-
-        buffer = ''
-        isCollecting = true
-      } else if (isCollecting) {
-        if (buffer) {
-          fields.push(buffer)
-        }
-
-        buffer = ''
-        isCollecting = false
-      }
-    } else if (match[2] !== undefined) {
-      buffer += unescapeXml(match[2])
-      isCollecting = true
-    } else if (match[3] !== undefined) {
-      fields.push(parseAttributes(match[3])['w:instr'] || '')
-    }
-  }
-
-  if (isCollecting && buffer) {
-    fields.push(buffer)
-  }
-
-  for (const instruction of fields) {
-    const name = /^\s*"?([A-Za-z]+)/.exec(instruction)?.[1]?.toUpperCase()
-
-    if (name && DOCX_DENIED_FIELDS.includes(name)) {
-      return fail('docx_field_instruction', `Field ${name} is not allowed`)
-    }
-
-    if (name === 'HYPERLINK') {
-      const target = /"([^"]*)"/.exec(instruction)?.[1]
-      const isAnchorOnly = /\\l\s/i.test(instruction) && !target
-
-      if (!isAnchorOnly && (!target || !startsWithAllowedProtocol(target))) {
-        return fail(
-          'docx_field_instruction',
-          'HYPERLINK field target is not allowed',
-        )
-      }
-    }
-  }
-
-  return null
-}
-
-function checkPptxActions(source: string): ValidationResult | null {
-  for (const match of source.matchAll(/ppaction:\/\/[^"'<>\s&]*/gi)) {
+function checkPptxActionText(text: string): ValidationFailure | null {
+  for (const match of text.matchAll(PPACTION_PATTERN)) {
     const action = match[0].toLowerCase()
     const isAllowed = PPTX_ALLOWED_ACTIONS.some((allowed) => {
       return action === allowed || action.startsWith(`${allowed}?`)
@@ -288,75 +162,216 @@ function checkPptxActions(source: string): ValidationResult | null {
   return null
 }
 
-function checkFormulaText(raw: string): ValidationResult | null {
-  const checked = checkFormula(unescapeXml(raw))
+function checkRelationship(
+  partName: string,
+  attributes: Record<string, string>,
+  state: PackageState,
+): ValidationFailure | null {
+  const type = attributes.Type ?? ''
+  const target = attributes.Target ?? ''
+  const isExternal = attributes.TargetMode === 'External'
+
+  for (const denied of OOXML_DENIED_RELATIONSHIP_TYPES) {
+    if (denied.pattern.test(type)) {
+      return fail(
+        denied.code,
+        `Relationship type ${type.slice(-60)} is not allowed`,
+      )
+    }
+  }
+
+  if (isExternal) {
+    const isHyperlink = type.endsWith(HYPERLINK_RELATIONSHIP_TYPE_SUFFIX)
+
+    if (!isHyperlink || !startsWithAllowedProtocol(target)) {
+      return fail(
+        'ooxml_external_relationship',
+        `External relationship to ${target.slice(0, 80)} is not allowed`,
+      )
+    }
+  }
+
+  const isCustomLink = partName === ROOT_RELATIONSHIPS_PART
+    && type.endsWith(CUSTOM_RELATIONSHIP_SUFFIX)
+    && normalizePartPath('x/y', `/${target.replace(/^\//, '')}`)
+    === CUSTOM_PROPERTIES_PART
+
+  if (isCustomLink) {
+    state.customPropertiesLinked = true
+  }
+
+  return state.format === 'pptx' ? checkPptxActionText(target) : null
+}
+
+function checkFieldInstruction(instruction: string): ValidationFailure | null {
+  const name = /^\s*"?([A-Za-z]+)/.exec(instruction)?.[1]?.toUpperCase()
+
+  if (name && DOCX_DENIED_FIELDS.includes(name)) {
+    return fail('docx_field_instruction', `Field ${name} is not allowed`)
+  }
+
+  if (name === 'HYPERLINK') {
+    const target = /"([^"]*)"/.exec(instruction)?.[1]
+    const isBookmark = /\\l(?:\s|$)/i.test(instruction)
+
+    if (!isBookmark && (!target || !startsWithAllowedProtocol(target))) {
+      return fail(
+        'docx_field_instruction',
+        'HYPERLINK field target is not allowed',
+      )
+    }
+  }
+
+  return null
+}
+
+function checkFormulaText(raw: string): ValidationFailure | null {
+  const checked = checkFormula(raw)
 
   return checked.ok ? null : fail(checked.code, checked.detail)
 }
 
-interface SheetCheckContext {
-  sheetName: string | null
-  declared: Map<string, Set<string>> | null
-}
+/**
+ * One pass over a part's events. Every check runs on every XML part whatever
+ * its path, so moving a worksheet or a document body elsewhere in the package
+ * does not hide it.
+ */
+function scanXmlPart(
+  partName: string,
+  events: Generator<XmlEvent>,
+  state: PackageState,
+): ValidationFailure | null {
+  const isRelationships = partName.endsWith('.rels')
+  const sheetName = state.sheetPartNames.get(partName) ?? null
+  const fields: string[] = []
+  let currentCell: string | null = null
+  let formulaDepth = 0
+  let formulaText = ''
+  let isCellFormula = false
+  let isInstruction = false
+  let instructionBuffer = ''
+  let fieldBuffer = ''
+  let isCollectingField = false
 
-function checkSheet(
-  source: string,
-  context: SheetCheckContext,
-  stats: ValidationStats,
-): ValidationResult | null {
-  const cellPattern = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g
+  for (const event of events) {
+    if (event.type === 'text') {
+      if (isInstruction) {
+        instructionBuffer += event.text
+      }
 
-  for (const match of source.matchAll(cellPattern)) {
-    stats.cells = (stats.cells || 0) + 1
+      if (formulaDepth > 0) {
+        formulaText += event.text
+      }
 
-    const body = match[2]
-
-    if (!body || !body.includes('<f')) {
-      continue
-    }
-
-    const formulaMatch = /<f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/f>)/.exec(body)
-
-    if (!formulaMatch) {
-      continue
-    }
-
-    const formulaAttributes = parseAttributes(formulaMatch[1] || '')
-
-    if (
-      formulaAttributes.t !== undefined
-      && formulaAttributes.t !== 'normal'
-      && formulaAttributes.t !== 'shared'
-      && formulaAttributes.t !== 'array'
-    ) {
-      return fail('xlsx_formula_type', `Formula type ${formulaAttributes.t.slice(0, 20)} is not allowed`)
-    }
-
-    if (formulaMatch[2]) {
-      const failure = checkFormulaText(formulaMatch[2])
+      const failure = state.format === 'pptx'
+        ? checkPptxActionText(event.text)
+        : null
 
       if (failure) {
         return failure
       }
+
+      continue
     }
 
-    if (context.declared) {
-      const reference = parseAttributes(match[1] || '').r || ''
-      const references = context.sheetName
-        ? context.declared.get(context.sheetName)
-        : undefined
+    if (event.type === 'end') {
+      if (event.name === 'instrText' && isInstruction) {
+        isInstruction = false
+        fieldBuffer += instructionBuffer
+        isCollectingField = true
+      } else if (
+        formulaDepth > 0
+        && (event.name === 'f' || FORMULA_ELEMENTS.has(event.name))
+      ) {
+        formulaDepth -= 1
 
-      if (!references?.has(reference)) {
-        return fail(
-          'formula_undeclared',
-          `Cell ${reference.slice(0, 12)} has a formula the spec does not declare`,
-        )
+        const failure = formulaText || !isCellFormula
+          ? checkFormulaText(formulaText)
+          : null
+
+        if (failure) {
+          return failure
+        }
+      } else if (event.name === 'c') {
+        currentCell = null
+      }
+
+      continue
+    }
+
+    const { name, attributes } = event
+
+    if (state.format === 'pptx') {
+      for (const value of Object.values(attributes)) {
+        const failure = checkPptxActionText(value)
+
+        if (failure) {
+          return failure
+        }
+      }
+    }
+
+    if (isRelationships && name === 'Relationship') {
+      const failure = checkRelationship(partName, attributes, state)
+
+      if (failure) {
+        return failure
+      }
+    } else if (name === 'fldChar') {
+      if (fieldBuffer) {
+        fields.push(fieldBuffer)
+      }
+
+      fieldBuffer = ''
+      isCollectingField = attributes.fldCharType === 'begin'
+    } else if (name === 'fldSimple') {
+      fields.push(attributes.instr ?? '')
+    } else if (name === 'instrText') {
+      isInstruction = true
+      instructionBuffer = ''
+    } else if (name === 'c' && state.format === 'xlsx') {
+      currentCell = attributes.r ?? ''
+      state.stats.cells = (state.stats.cells ?? 0) + 1
+    } else if (
+      state.format === 'xlsx'
+      && (name === 'f' || FORMULA_ELEMENTS.has(name))
+    ) {
+      formulaDepth += 1
+      formulaText = ''
+      isCellFormula = name === 'f'
+
+      if (name === 'f') {
+        const type = attributes.t
+
+        if (type !== undefined && !ALLOWED_FORMULA_TYPES.includes(type)) {
+          return fail(
+            'xlsx_formula_type',
+            `Formula type ${type.slice(0, 20)} is not allowed`,
+          )
+        }
+
+        const references = sheetName && state.declared
+          ? state.declared.get(sheetName)
+          : undefined
+        const isUndeclared = state.declared !== null
+          && !references?.has(currentCell ?? '')
+
+        if (isUndeclared) {
+          return fail(
+            'formula_undeclared',
+            `Cell ${(currentCell ?? '').slice(0, 12)} has a formula the spec does not declare`,
+          )
+        }
       }
     }
   }
 
-  for (const match of source.matchAll(/<(formula1|formula2|formula)>([\s\S]*?)<\/\1>/g)) {
-    const failure = checkFormulaText(match[2] || '')
+  if (isCollectingField && fieldBuffer) {
+    fields.push(fieldBuffer)
+  }
+
+  for (const instruction of fields) {
+    const failure = checkFieldInstruction(instruction)
 
     if (failure) {
       return failure
@@ -366,64 +381,123 @@ function checkSheet(
   return null
 }
 
-function findEntry(
-  entries: ZipEntry[],
-  name: string,
-): ZipEntry | undefined {
+function findEntry(entries: ZipEntry[], name: string): ZipEntry | undefined {
   const key = name.toLowerCase()
 
   return entries.find(entry => entry.name.toLowerCase() === key)
 }
 
-function readText(
+function readSheetNames(
+  workbook: string,
+  workbookRelationships: string,
+): Map<string, string> {
+  const targets = new Map<string, string>()
+  const names = new Map<string, string>()
+
+  for (const event of parseXml(workbookRelationships)) {
+    if (event.type === 'start' && event.name === 'Relationship') {
+      const { Id, Target } = event.attributes
+
+      if (Id && Target) {
+        targets.set(Id, normalizePartPath('xl/workbook.xml', Target))
+      }
+    }
+  }
+
+  for (const event of parseXml(workbook)) {
+    if (event.type === 'start' && event.name === 'sheet') {
+      const target = targets.get(event.attributes.id ?? '')
+
+      if (target && event.attributes.name) {
+        names.set(target, event.attributes.name)
+      }
+    }
+  }
+
+  return names
+}
+
+function checkContentTypes(
+  state: PackageState,
+  contentTypes: string,
+): ValidationFailure | null {
+  const main = MAIN_PARTS[state.format]
+
+  for (const event of parseXml(contentTypes)) {
+    const isTypeElement = event.type === 'start'
+      && (event.name === 'Default' || event.name === 'Override')
+
+    if (!isTypeElement || event.type !== 'start') {
+      continue
+    }
+
+    const contentType = event.attributes.ContentType ?? ''
+
+    for (const denied of MACRO_CONTENT_TYPE_PATTERNS) {
+      if (denied.pattern.test(contentType)) {
+        return fail(
+          denied.code,
+          `Content type ${contentType.slice(0, 100)} is not allowed`,
+        )
+      }
+    }
+
+    if (event.name === 'Override') {
+      state.contentTypeOverrides.set(
+        (event.attributes.PartName ?? '').replace(/^\//, '').toLowerCase(),
+        contentType,
+      )
+    }
+  }
+
+  const declared = state.contentTypeOverrides.get(main.part)
+
+  if (declared !== main.contentType) {
+    return fail(
+      'ooxml_format_mismatch',
+      `Main part ${main.part} has content type ${(declared ?? 'none').slice(0, 100)}, expected the ${state.format} main type`,
+    )
+  }
+
+  return null
+}
+
+function decodePart(
   archive: Uint8Array,
   entry: ZipEntry,
-): { ok: true, text: string } | ValidationResult {
+): { ok: true, text: string } | ValidationFailure {
+  if (entry.uncompressedSize > VALIDATION_LIMITS.xmlPartBytesMax) {
+    return fail(
+      'xml_part_too_large',
+      `${entry.name.slice(0, 80)} declares ${entry.uncompressedSize} bytes`,
+    )
+  }
+
   const inflated = inflateEntry(archive, entry)
 
   if (!inflated.ok) {
     return fail(inflated.code, inflated.detail)
   }
 
-  return { ok: true, text: decodeXmlBytes(inflated.data) }
+  try {
+    return { ok: true, text: decodeXmlBytes(inflated.data) }
+  } catch (exception) {
+    return fail(
+      exception instanceof XmlError ? exception.code : 'xml_malformed',
+      `${entry.name.slice(0, 80)} cannot be read as XML`,
+    )
+  }
 }
 
-function isFailure(value: unknown): value is ValidationResult {
-  return typeof value === 'object'
-    && value !== null
-    && 'ok' in value
-    && (value as { ok: boolean }).ok === false
-}
-
-function mapSheetNames(
-  workbook: string,
-  workbookRelationships: string,
-): Map<string, string> {
-  const targets = new Map<string, string>()
-
-  for (const match of workbookRelationships.matchAll(/<Relationship\b([^>]*?)\/?>/g)) {
-    const attributes = parseAttributes(match[1] || '')
-
-    if (attributes.Id && attributes.Target) {
-      targets.set(
-        attributes.Id,
-        normalizePartPath('xl/workbook.xml', attributes.Target),
-      )
-    }
+function toFailure(exception: unknown, partName: string): ValidationFailure {
+  if (exception instanceof XmlError) {
+    return fail(
+      exception.code,
+      `${partName.slice(0, 80)}: ${exception.message}`,
+    )
   }
 
-  const names = new Map<string, string>()
-
-  for (const match of workbook.matchAll(/<sheet\b([^>]*?)\/?>/g)) {
-    const attributes = parseAttributes(match[1] || '')
-    const target = targets.get(attributes['r:id'] || '')
-
-    if (target && attributes.name) {
-      names.set(target.toLowerCase(), attributes.name)
-    }
-  }
-
-  return names
+  throw exception
 }
 
 export function validateOoxml(
@@ -438,9 +512,17 @@ export function validateOoxml(
   }
 
   const { entries } = zip.directory
-  const stats: ValidationStats = {
-    bytes: bytes.length,
-    entries: entries.length,
+  const state: PackageState = {
+    format,
+    stats: { bytes: bytes.length, entries: entries.length },
+    declared: format === 'xlsx' && options.spec
+      ? declaredFormulaCells(options.spec)
+      : null,
+    sheetPartNames: new Map(),
+    contentTypeOverrides: new Map(),
+    customPropertiesLinked: false,
+    customProvenance: 'missing',
+    slides: 0,
   }
 
   for (const entry of entries) {
@@ -450,7 +532,10 @@ export function validateOoxml(
 
     for (const denied of OOXML_DENIED_PART_PATTERNS) {
       if (denied.pattern.test(entry.name)) {
-        return fail(denied.code, `Part ${entry.name.slice(0, 80)} is not allowed`)
+        return fail(
+          denied.code,
+          `Part ${entry.name.slice(0, 80)} is not allowed`,
+        )
       }
     }
   }
@@ -461,21 +546,23 @@ export function validateOoxml(
     }
   }
 
-  const contentTypesEntry = findEntry(entries, CONTENT_TYPES_PART) as ZipEntry
-  const contentTypes = readText(bytes, contentTypesEntry)
+  const contentTypes = decodePart(
+    bytes,
+    findEntry(entries, CONTENT_TYPES_PART) as ZipEntry,
+  )
 
-  if (isFailure(contentTypes)) {
+  if (!contentTypes.ok) {
     return contentTypes
   }
 
-  if (/<!DOCTYPE|<!ENTITY/i.test(contentTypes.text)) {
-    return fail('xml_doctype', `${CONTENT_TYPES_PART} declares a DOCTYPE or ENTITY`)
-  }
+  try {
+    const typeFailure = checkContentTypes(state, contentTypes.text)
 
-  const typeFailure = checkContentTypes(contentTypes.text, format)
-
-  if (typeFailure) {
-    return typeFailure
+    if (typeFailure) {
+      return typeFailure
+    }
+  } catch (exception) {
+    return toFailure(exception, CONTENT_TYPES_PART)
   }
 
   const main = MAIN_PARTS[format]
@@ -493,130 +580,86 @@ export function validateOoxml(
     }
   }
 
-  let sheetPartNames = new Map<string, string>()
-  const declared = format === 'xlsx' && options.spec
-    ? declaredFormulaCells(options.spec)
-    : null
-
   if (format === 'xlsx') {
-    const workbookEntry = findEntry(entries, 'xl/workbook.xml') as ZipEntry
-    const relsEntry = findEntry(entries, 'xl/_rels/workbook.xml.rels')
-    const workbook = readText(bytes, workbookEntry)
+    const workbook = decodePart(
+      bytes,
+      findEntry(entries, 'xl/workbook.xml') as ZipEntry,
+    )
+    const relationshipsEntry = findEntry(entries, 'xl/_rels/workbook.xml.rels')
+    const relationships = relationshipsEntry
+      ? decodePart(bytes, relationshipsEntry)
+      : { ok: true as const, text: '<Relationships/>' }
 
-    if (isFailure(workbook)) {
+    if (!workbook.ok) {
       return workbook
     }
 
-    const workbookRelationships = relsEntry ? readText(bytes, relsEntry) : null
-
-    if (workbookRelationships && isFailure(workbookRelationships)) {
-      return workbookRelationships
+    if (!relationships.ok) {
+      return relationships
     }
 
-    sheetPartNames = mapSheetNames(
-      workbook.text,
-      workbookRelationships?.text || '',
-    )
-    stats.sheets = sheetPartNames.size
+    try {
+      state.sheetPartNames = readSheetNames(workbook.text, relationships.text)
+    } catch (exception) {
+      return toFailure(exception, 'xl/workbook.xml')
+    }
+
+    state.stats.sheets = state.sheetPartNames.size
   }
 
-  let provenance: Provenance = 'missing'
-  let slides = 0
+  let totalXmlBytes = 0
 
   for (const entry of entries) {
-    if (entry.name.endsWith('/')) {
-      continue
-    }
-
     const lowerName = entry.name.toLowerCase()
 
-    if (lowerName === CONTENT_TYPES_PART.toLowerCase()) {
+    if (
+      entry.name.endsWith('/')
+      || lowerName === CONTENT_TYPES_PART
+      || !XML_PART_PATTERN.test(entry.name)
+    ) {
       continue
     }
 
-    if (!XML_PART_PATTERN.test(entry.name)) {
-      continue
+    totalXmlBytes += entry.uncompressedSize
+
+    if (totalXmlBytes > VALIDATION_LIMITS.xmlTotalBytesMax) {
+      return fail('xml_part_too_large', 'XML parts exceed the total limit')
     }
 
-    const content = readText(bytes, entry)
+    const content = decodePart(bytes, entry)
 
-    if (isFailure(content)) {
+    if (!content.ok) {
       return content
     }
 
-    const { text } = content
+    try {
+      if (lowerName === CUSTOM_PROPERTIES_PART) {
+        state.customProvenance = readOoxmlProvenance(content.text)
+      }
 
-    if (/<!DOCTYPE|<!ENTITY/i.test(text)) {
-      return fail('xml_doctype', `${entry.name.slice(0, 80)} declares a DOCTYPE or ENTITY`)
-    }
-
-    if (lowerName.endsWith('.rels')) {
-      const failure = checkRelationships(text)
-        ?? (format === 'pptx' ? checkPptxActions(text) : null)
+      const failure = scanXmlPart(lowerName, parseXml(content.text), state)
 
       if (failure) {
         return failure
       }
-
-      continue
+    } catch (exception) {
+      return toFailure(exception, entry.name)
     }
 
-    if (lowerName === CUSTOM_PROPERTIES_PART.toLowerCase()) {
-      if (text.length <= VALIDATION_LIMITS.customPropertiesBytesMax) {
-        provenance = readOoxmlProvenance(text)
-      }
-
-      continue
-    }
-
-    if (format === 'docx' && lowerName.startsWith('word/')) {
-      const failure = checkDocxFields(text)
-
-      if (failure) {
-        return failure
-      }
-    }
-
-    if (format === 'pptx' && lowerName.startsWith('ppt/')) {
-      const failure = checkPptxActions(text)
-
-      if (failure) {
-        return failure
-      }
-
-      if (/^ppt\/slides\/slide\d+\.xml$/.test(lowerName)) {
-        slides += 1
-      }
-    }
-
-    if (format === 'xlsx') {
-      if (lowerName === 'xl/workbook.xml') {
-        for (const match of text.matchAll(/<definedName\b[^>]*>([\s\S]*?)<\/definedName>/g)) {
-          const failure = checkFormulaText(match[1] || '')
-
-          if (failure) {
-            return failure
-          }
-        }
-      }
-
-      if (/^xl\/worksheets\/[^/]+\.xml$/.test(lowerName)) {
-        const failure = checkSheet(
-          text,
-          { sheetName: sheetPartNames.get(lowerName) || null, declared },
-          stats,
-        )
-
-        if (failure) {
-          return failure
-        }
-      }
+    if (format === 'pptx' && /^ppt\/slides\/slide\d+\.xml$/.test(lowerName)) {
+      state.slides += 1
     }
   }
 
   if (format === 'pptx') {
-    stats.slides = slides
+    state.stats.slides = state.slides
   }
 
-  return { ok: true, stats, provenance }
+  return {
+    ok: true,
+    stats: state.stats,
+    provenance: state.customPropertiesLinked
+      ? state.customProvenance
+      : 'missing',
+  }
 }

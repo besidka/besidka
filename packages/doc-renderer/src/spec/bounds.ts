@@ -34,7 +34,22 @@ export function formatIssuePath(path: readonly PropertyKey[]): string {
 }
 
 function runsLength(runs: readonly Run[]): number {
-  return runs.reduce((total, run) => total + run.text.length, 0)
+  return runs.reduce((total, run) => {
+    const lineBreaks = countNewlines(run.text) * CHARACTERS_PER_LINE
+
+    return total + run.text.length + lineBreaks
+  }, 0)
+}
+
+function countNewlines(text: string): number {
+  let count = 0
+
+  for (let index = text.indexOf('\n'); index !== -1;) {
+    count += 1
+    index = text.indexOf('\n', index + 1)
+  }
+
+  return count
 }
 
 function wrappedLines(characters: number, charactersPerLine: number): number {

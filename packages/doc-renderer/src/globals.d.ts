@@ -13,6 +13,7 @@ declare class TextDecoder {
 declare class URL {
   constructor(input: string, base?: string)
   readonly protocol: string
+  readonly href: string
 }
 
 declare function btoa(data: string): string

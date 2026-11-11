@@ -41,10 +41,16 @@ const FORBIDDEN_SHEET_NAME_CHARACTERS = /[[\]:*?/\\]/
 const BCP47_PATTERN = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,4}$/
 const ISO_8601_PATTERN
   = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/
-function hasControlCharacter(value: string): boolean {
+function hasControlCharacter(value: string, allowLayout = false): boolean {
   for (const character of value) {
     const codePoint = character.codePointAt(0) as number
-    if (codePoint < 0x20 || codePoint === 0x7F) {
+    const isLayout = codePoint === 0x09
+      || codePoint === 0x0A
+      || codePoint === 0x0D
+
+    const isControl = codePoint < 0x20 && !(allowLayout && isLayout)
+
+    if (isControl || codePoint === 0x7F) {
       return true
     }
   }
@@ -53,7 +59,11 @@ function hasControlCharacter(value: string): boolean {
 }
 
 export function isAllowedHyperlink(href: string): boolean {
-  if (href.length > 2048 || hasControlCharacter(href)) {
+  if (
+    href.length > 2048
+    || hasControlCharacter(href)
+    || /[\s\\<>"]/.test(href)
+  ) {
     return false
   }
 
@@ -82,12 +92,25 @@ function isRealIsoDate(value: string): boolean {
   const [year, month, day] = value.slice(0, 10).split('-').map(Number)
   const parsed = new Date(Date.UTC(year as number, (month as number) - 1, day))
 
-  return parsed.getUTCFullYear() === year
+  const hasValidDate = parsed.getUTCFullYear() === year
     && parsed.getUTCMonth() === (month as number) - 1
     && parsed.getUTCDate() === day
+
+  if (!hasValidDate || value.length === 10) {
+    return hasValidDate
+  }
+
+  const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+
+  return !Number.isNaN(Date.parse(hasZone ? value : `${value}Z`))
 }
 
-const text = (max: number) => z.string().min(1).max(max)
+const text = (max: number) => {
+  return z.string().min(1).max(max).refine(
+    value => !hasControlCharacter(value, true),
+    { message: 'Control characters are not allowed' },
+  )
+}
 
 const linkSchema = z.strictObject({
   href: z.string().min(1).max(2048).refine(isAllowedHyperlink, {
