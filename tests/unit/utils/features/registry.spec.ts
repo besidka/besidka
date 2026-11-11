@@ -91,6 +91,13 @@ describe('feature registry', () => {
     expect(hidden).toEqual([])
   })
 
+  it('turns documents off wherever the renderer binding is missing', () => {
+    expect(FEATURE_REGISTRY.documents.requires.bindings)
+      .toEqual(['DOC_RENDERER'])
+    expect(FEATURE_REGISTRY['documents.mcp'].requires.bindings)
+      .toEqual(['DOC_RENDERER'])
+  })
+
   it('treats prototype keys as unknown', () => {
     expect(isFeatureKey('constructor')).toBe(false)
     expect(getFeatureDefinition('toString')).toBeUndefined()

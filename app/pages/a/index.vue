@@ -50,22 +50,25 @@
             </NuxtLink>
           </p>
         </div>
-        <button
-          id="artifact-share-report"
-          ref="reportButton"
-          type="button"
-          class="btn btn-ghost btn-sm min-h-6 shrink-0"
-          aria-haspopup="dialog"
-          data-testid="artifact-share-report"
-          @click="openReport"
-        >
-          <Icon
-            name="lucide:flag"
-            size="14"
-            aria-hidden="true"
-          />
-          Report
-        </button>
+        <div class="flex shrink-0 items-center gap-1">
+          <SharedExitLink />
+          <button
+            id="artifact-share-report"
+            ref="reportButton"
+            type="button"
+            class="btn btn-ghost btn-sm min-h-6 shrink-0"
+            aria-haspopup="dialog"
+            data-testid="artifact-share-report"
+            @click="openReport"
+          >
+            <Icon
+              name="lucide:flag"
+              size="14"
+              aria-hidden="true"
+            />
+            Report
+          </button>
+        </div>
       </section>
       <div
         class="relative min-h-[60svh] flex-1 overflow-hidden rounded-box border border-base-300 bg-base-100 sm:min-h-0"
@@ -141,6 +144,7 @@
         >
           Retry
         </button>
+        <SharedExitLink />
       </div>
     </div>
   </div>

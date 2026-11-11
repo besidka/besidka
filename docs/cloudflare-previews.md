@@ -383,6 +383,60 @@ the workflow to build.
 Local equivalents: `pnpm run deploy` builds and updates the long-lived
 `preview`; `pnpm run deploy:prod` deploys production.
 
+## Satellite Worker bindings (`DOC_RENDERER`)
+
+The document renderer (`workers/doc-renderer`, see
+[`chats/documents-renderer-worker.md`](chats/documents-renderer-worker.md)) is
+a separate Worker reached through the `DOC_RENDERER` service binding.
+`env.production` binds `besidka-doc-renderer`; `env.production.previews` binds
+`besidka-doc-renderer-preview`, a long-lived Worker that `deploy-satellites`
+deploys from `main` in the same run as production. Every PR Preview and the
+long-lived `preview` therefore call the renderer of the latest `main`, never the
+renderer of the PR.
+
+A renderer change in a PR is not exercised by its own Preview. This is the
+fallback the ticket named, taken after checking the alternative:
+
+- `wrangler preview` (4.151.1) has `--var`, `--secrets-file`,
+  `--ignore-base-config` and `--worker-name`; it has no way to override a
+  binding for one run. The `previews` block accepts `services`, but it is the
+  static one from the default branch's `wrangler.jsonc`.
+- A Preview is a named deployment of one Worker, not a Worker. A binding names a
+  Worker (`services[].service`), so a renderer for `pr-<n>` would have to be a
+  real throwaway Worker created by `wrangler deploy --name
+  besidka-doc-renderer-pr-<n>` and deleted by `preview-cleanup.yml`. Whether a
+  binding can target another Worker's Preview at all is unverified; the model
+  recorded for this migration says it resolves to the production deployment.
+- The throwaway Worker means `preview-deploy.yml`, which holds the
+  production-capable token, deploys code built from a PR. Its rule is the
+  opposite: it never runs PR code or PR-selected tooling, and the artifacts
+  runtime preview ships static assets only. Changing that is a security
+  decision, not a CI tweak.
+
+What covers a renderer change instead:
+
+- The unit specs (`tests/unit/workers/doc-renderer`,
+  `tests/unit/packages/doc-renderer`) run on the PR's code in CI.
+- Local multi-Worker run before merge: `pnpm run doc-renderer:dev` next to
+  `pnpm run dev`, or `wrangler dev -c wrangler.jsonc -c
+  workers/doc-renderer/wrangler.jsonc`.
+- Spec-version negotiation in `server/utils/documents/renderer.ts`: an app that
+  expects a newer spec than the renderer on the other side of the binding
+  answers `spec_version_unsupported` without rendering, so a staggered deploy
+  degrades instead of failing. Specs are additive.
+- After the merge, `deploy-satellites` updates both Workers before the app and
+  before `deploy-preview`.
+
+A PR that changes `wrangler.jsonc` (this layer included) previews with the
+default branch's file, so its own Preview has no `DOC_RENDERER` binding until
+it merges, and the helper answers 503 there.
+
+Revisit when per-PR renderer previews become necessary: build the Worker bundle
+in `preview-build.yml` (unprivileged), upload it as an artifact, deploy it from
+`preview-deploy.yml` with a fixed name pattern and a config that comes from the
+default branch, and have that job generate the app Preview config with the
+override through `-c`. It needs the security review above first.
+
 ## Gotchas
 
 - **`wrangler preview --json` stdout is not pure JSON.** Wrangler first prints

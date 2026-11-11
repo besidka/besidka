@@ -223,7 +223,7 @@ describe('requireFeature', () => {
     const event = createEvent()
 
     await requireFeature(event, 'artifacts')
-    await requireFeature(event, 'documents')
+    await requireFeature(event, 'artifacts.react')
 
     expect(mocks.batch).toHaveBeenCalledTimes(1)
     expect(mocks.kvGet).toHaveBeenCalledTimes(1)

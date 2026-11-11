@@ -105,6 +105,7 @@ const featureList = [
     key: 'documents',
     title: 'Documents',
     description: 'Generate downloadable documents from a chat.',
+    requires: { bindings: ['DOC_RENDERER'], keyKinds: [] },
   }),
   internalFeature({
     key: 'documents.pdf',
@@ -136,6 +137,7 @@ const featureList = [
     description: 'Document tools on the MCP server.',
     exposeToClient: false,
     parent: 'documents',
+    requires: { bindings: ['DOC_RENDERER'], keyKinds: [] },
   }),
   internalFeature({
     key: 'code-execution',

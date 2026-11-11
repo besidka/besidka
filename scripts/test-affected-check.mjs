@@ -258,6 +258,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/scroll-within.spec.ts',
     'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
+    'tests/unit/components/Shared/ExitLink.spec.ts',
+    'tests/e2e/shared/shared-exit-link.spec.ts',
+  ]
+  const sharedExitLinkTests = [
+    'tests/unit/components/Shared/ExitLink.spec.ts',
+    'tests/e2e/shared/shared-exit-link.spec.ts',
   ]
   const artifactsAdminReportsTests = [
     'tests/unit/pages/admin/artifact-reports.spec.ts',
@@ -276,6 +282,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/composables/chat.spec.ts',
+  ]
+  const documentRendererWorkerTests = [
+    'tests/unit/workers/doc-renderer/index.spec.ts',
+    'tests/unit/workers/doc-renderer/bundle.spec.ts',
+    'tests/unit/utils/documents/renderer.spec.ts',
+    'tests/unit/workflows/production-satellites.spec.ts',
+    'tests/unit/config/wrangler-previews.spec.ts',
   ]
   const artifactsAttachTests = [
     'tests/unit/components/ChatInput/ArtifactPicker.client.spec.ts',
@@ -2393,6 +2406,11 @@ export function getAffectedTests(changedFiles) {
       tests: documentRendererTests,
     },
     {
+      pattern:
+        /^(workers\/doc-renderer\/|packages\/doc-renderer\/|server\/utils\/documents\/renderer\.ts$|wrangler\.jsonc$|tests\/setup\/helpers\/documents\.ts$|\.github\/workflows\/production\.yml$)/,
+      tests: documentRendererWorkerTests,
+    },
+    {
       pattern: /^app\/assets\/css\/main\.css$/,
       tests: [
         'tests/e2e/settings/theme.spec.ts',
@@ -3277,6 +3295,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/pages\/a\/index\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/(artifact-share-(page|location)|scroll-within)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsShareUiTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Shared\/ExitLink\.vue|app\/pages\/shared\/\[slug\]\.vue)$/,
+      tests: sharedExitLinkTests,
     },
     {
       pattern:
