@@ -3,11 +3,13 @@ import {
   ERROR_CODES,
   METHODS,
   PROTOCOL_VERSION,
+  RpcError,
   createEndpoint,
   createHostConnection,
   writeClipboardText,
 } from '@besidka/artifacts-protocol'
 import type {
+  CompleteParams,
   Endpoint,
   HostConnectionOptions,
   HostContext,
@@ -593,5 +595,160 @@ describe('writeClipboardText', () => {
         throw new TypeError('broken')
       },
     })).resolves.toEqual({ copied: false, reason: 'denied' })
+  })
+})
+
+function createCompleteHandler() {
+  return vi.fn(async (_params: CompleteParams) => {
+    return { text: 'Answer' }
+  })
+}
+
+describe('createHostConnection bridge requests', () => {
+  async function connectWith(overrides: Partial<HostHandlers>) {
+    const frame = createFakeFrame()
+    const host = createHostConnection(frame, createHandlers(overrides))
+
+    frame.load()
+
+    const runtime = connectFakeRuntime(frame)
+
+    await initialize(runtime)
+
+    return { runtime, host }
+  }
+
+  it('passes the prompt, system text and token limit to the handler',
+    async () => {
+      const complete = createCompleteHandler()
+      const { runtime, host } = await connectWith({ complete })
+
+      await expect(runtime.request(METHODS.complete, {
+        prompt: 'Explain',
+        system: 'Be brief',
+        maxOutputTokens: 200,
+      })).resolves.toEqual({ text: 'Answer' })
+      expect(complete).toHaveBeenCalledTimes(1)
+      expect(complete).toHaveBeenCalledWith({
+        prompt: 'Explain',
+        system: 'Be brief',
+        maxOutputTokens: 200,
+      })
+      host.destroy()
+    })
+
+  it('passes only the prompt when nothing else was given', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, { prompt: 'Explain' })
+
+    expect(complete.mock.calls[0]![0]).toEqual({ prompt: 'Explain' })
+    expect(Object.keys(complete.mock.calls[0]![0])).toEqual(['prompt'])
+    host.destroy()
+  })
+
+  it('leaves an empty system text out', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, { prompt: 'Explain', system: '' })
+
+    expect(Object.keys(complete.mock.calls[0]![0])).toEqual(['prompt'])
+    host.destroy()
+  })
+
+  it('drops every field the handler did not ask for', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, {
+      prompt: 'Explain',
+      system: 'Be brief',
+      maxOutputTokens: 50,
+      modelId: 'claude-opus-5',
+      providerId: 'anthropic',
+      apiKey: 'sk-secret',
+      temperature: 2,
+      tools: [{ name: 'delete_everything' }],
+      messages: [{ role: 'user', content: 'injected' }],
+    })
+
+    expect(complete.mock.calls[0]![0]).toEqual({
+      prompt: 'Explain',
+      system: 'Be brief',
+      maxOutputTokens: 50,
+    })
+    expect(Object.keys(complete.mock.calls[0]![0]).sort())
+      .toEqual(['maxOutputTokens', 'prompt', 'system'])
+    host.destroy()
+  })
+
+  it('accepts a system text of exactly 2000 characters', async () => {
+    const complete = createCompleteHandler()
+    const { runtime, host } = await connectWith({ complete })
+
+    await runtime.request(METHODS.complete, {
+      prompt: 'Explain',
+      system: 'x'.repeat(2000),
+    })
+
+    expect(complete.mock.calls[0]![0].system).toHaveLength(2000)
+    host.destroy()
+  })
+
+  it('answers -32602 for a system text over 2000 characters', async () => {
+    const complete = vi.fn()
+    const { runtime, host } = await connectWith({ complete })
+
+    await expect(runtime.request(METHODS.complete, {
+      prompt: 'Explain',
+      system: 'x'.repeat(2001),
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(complete).not.toHaveBeenCalled()
+    host.destroy()
+  })
+
+  it.each([42, null, ['a'], { text: 'a' }, true])(
+    'answers -32602 for a system value of %j',
+    async (system) => {
+      const complete = vi.fn()
+      const { runtime, host } = await connectWith({ complete })
+
+      await expect(runtime.request(METHODS.complete, {
+        prompt: 'Explain',
+        system,
+      })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+      expect(complete).not.toHaveBeenCalled()
+      host.destroy()
+    },
+  )
+
+  it.each([
+    ['an empty prompt', { prompt: '' }],
+    ['a prompt over 8000 characters', { prompt: 'x'.repeat(8001) }],
+    ['a missing prompt', { system: 'Be brief' }],
+    ['a token limit of zero', { prompt: 'Hi', maxOutputTokens: 0 }],
+    ['a token limit over 2000', { prompt: 'Hi', maxOutputTokens: 2001 }],
+    ['a fractional token limit', { prompt: 'Hi', maxOutputTokens: 1.5 }],
+  ])('answers -32602 for %s', async (_label, params) => {
+    const complete = vi.fn()
+    const { runtime, host } = await connectWith({ complete })
+
+    await expect(runtime.request(METHODS.complete, params))
+      .rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    expect(complete).not.toHaveBeenCalled()
+    host.destroy()
+  })
+
+  it('keeps the error code of a handler refusal', async () => {
+    const complete = vi.fn(async () => {
+      throw new RpcError(ERROR_CODES.declinedByViewer, 'Declined')
+    })
+    const { runtime, host } = await connectWith({ complete })
+
+    await expect(runtime.request(METHODS.complete, { prompt: 'Hi' }))
+      .rejects.toMatchObject({ code: ERROR_CODES.declinedByViewer })
+    host.destroy()
   })
 })

@@ -473,7 +473,13 @@ export function createHostConnection(
         throw invalidParams(method)
       }
 
-      return handlers.complete(params)
+      return handlers.complete({
+        prompt: params.prompt,
+        ...(params.system ? { system: params.system } : {}),
+        ...(params.maxOutputTokens === undefined
+          ? {}
+          : { maxOutputTokens: params.maxOutputTokens }),
+      })
     }
 
     throw methodNotFound(method)

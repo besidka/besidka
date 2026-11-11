@@ -253,8 +253,10 @@ export function buildArtifactInstructions(
       + ' at most 64 keys, 32 KB per value, 100 KB in total).'
       : 'Artifacts cannot keep data between visits.',
     runtimeFeatures.modelBridge
-      ? 'Call `window.besidka.complete()` only when the user asked for AI'
-      + ' inside the artifact.'
+      ? 'Call `window.besidka.complete(prompt, { system, maxOutputTokens })`'
+      + ' only when the user asked for AI inside the artifact. The viewer'
+      + ' confirms each call and may decline, so catch errors and show a'
+      + ' short message.'
       : 'Artifacts cannot call a model.',
     'To change an artifact from this chat call `update_artifact` with its',
     'id; prefer small `edits` over sending the whole content again.',

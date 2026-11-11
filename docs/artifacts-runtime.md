@@ -224,7 +224,7 @@ text as plain text only.
 
 
 `window.besidka` (frozen): `storage.get/set/delete/list`,
-`storage.persistent`, `complete(prompt, { maxOutputTokens })`, `theme`,
+`storage.persistent`, `complete(prompt, { system, maxOutputTokens })` (`system` at most 2,000 characters, A-6), `theme`,
 `onThemeChange(listener)` (returns an unsubscribe function).
 
 ## Code and Mermaid blocks (A-14, BES-318)

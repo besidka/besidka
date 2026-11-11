@@ -109,6 +109,12 @@
         </div>
       </div>
     </div>
+    <LazyChatArtifactBridgeConfirm
+      v-if="bridgePending"
+      :pending="bridgePending"
+      @allow="bridge.allow"
+      @cancel="bridge.cancel"
+    />
     <LazyProseMermaidViewer
       v-if="isViewerOpen"
       v-model:open="isViewerOpen"
@@ -145,6 +151,10 @@ import {
   createArtifactStorageSession,
   resolveArtifactStorageMode,
 } from '~/composables/artifact-storage'
+import {
+  resolveArtifactBridgeEnabled,
+  useArtifactBridge,
+} from '~/composables/artifact-bridge'
 
 type FrameStatus = 'loading' | 'ready' | 'error'
 
@@ -190,6 +200,7 @@ const nuxtApp = useNuxtApp()
 const colorMode = useColorMode()
 const { loggedIn } = useAuth()
 const storageFeature = useFeature('artifacts.storage')
+const bridgeFeature = useFeature('artifacts.llm-bridge')
 const { isFullWidth } = useSidePanel()
 const layout = useSidePanelLayout()
 const runtimeOrigin = String(useRuntimeConfig().public.artifactsOrigin ?? '')
@@ -208,6 +219,7 @@ let lastSentResult: ToolResultContent | null = null
 let pendingCopyShownAt = 0
 let storageMode: StorageMode = 'memory'
 let storageArtifactId: string | null = null
+let bridgeEnabled = false
 
 const theme = computed<Theme>(() => {
   return colorMode.value === 'dark' ? 'dark' : 'light'
@@ -268,6 +280,23 @@ const errorCopy = computed(() => {
   return ERROR_COPY[errorKind.value]
 })
 
+const desiredBridgeEnabled = computed<boolean>(() => {
+  return resolveArtifactBridgeEnabled({
+    loggedIn: loggedIn.value,
+    featureActive: bridgeFeature.value.active,
+    source: props.source ?? 'owner',
+    artifactId: props.artifactId,
+  })
+})
+
+const bridge = useArtifactBridge({
+  artifactId: () => storageArtifactId,
+  title: () => props.title,
+  source: () => props.source ?? 'owner',
+})
+
+const bridgePending = bridge.pending
+
 const desiredStorageMode = computed<StorageMode>(() => {
   return resolveArtifactStorageMode({
     loggedIn: loggedIn.value,
@@ -319,7 +348,7 @@ function getHostContext(): HostContext {
     theme: theme.value,
     displayMode: displayMode.value,
     locale: navigator.language || 'en',
-    capabilities: { storage: storageMode, complete: false },
+    capabilities: { storage: storageMode, complete: bridgeEnabled },
   }
 }
 
@@ -338,6 +367,7 @@ function clearTimers() {
 
 function teardown() {
   dismissPendingCopy()
+  bridge.dispose()
   clearTimers()
   connection?.destroy()
   frame?.remove()
@@ -456,6 +486,8 @@ function mountFrame() {
 
   const storage = createStorageHandlers()
 
+  bridgeEnabled = desiredBridgeEnabled.value
+
   const element = document.createElement('iframe')
 
   element.src = `${runtimeOrigin}${RUNTIME_DOCUMENT_PATH}`
@@ -474,6 +506,7 @@ function mountFrame() {
     onUnexpectedNavigation,
     ...hostActionHandlers,
     ...(storage ? { storage } : {}),
+    ...(bridgeEnabled ? { complete: bridge.complete } : {}),
   }, {
     hasUserActivation: () => {
       return navigator.userActivation?.isActive === true
@@ -546,9 +579,15 @@ watch(() => props.partial, (partial) => {
   schedulePartial()
 })
 
-watch([desiredStorageMode, () => props.artifactId], ([mode, artifactId]) => {
+watch([
+  desiredStorageMode,
+  desiredBridgeEnabled,
+  () => props.artifactId,
+], ([mode, bridgeAllowed, artifactId]) => {
+  const usesArtifactId = mode === 'persistent' || bridgeAllowed
   const sessionChanged = mode !== storageMode
-    || (mode === 'persistent' && (artifactId ?? null) !== storageArtifactId)
+    || bridgeAllowed !== bridgeEnabled
+    || (usesArtifactId && (artifactId ?? null) !== storageArtifactId)
 
   if (sessionChanged && frame) {
     mountFrame()

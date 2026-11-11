@@ -54,6 +54,7 @@ const toggleFullWidth = vi.fn(() => {
 })
 const loggedIn = ref<boolean>(false)
 const storageFeature = ref({ enabled: true, active: false, variant: null })
+const bridgeFeature = ref({ enabled: true, active: false, variant: null })
 
 vi.mock('@besidka/artifacts-protocol', async (importOriginal) => {
   const actual = await importOriginal<
@@ -124,7 +125,9 @@ mockNuxtImport('useAuth', () => {
 })
 
 mockNuxtImport('useFeature', () => {
-  return () => storageFeature
+  return (key: string) => {
+    return key === 'artifacts.llm-bridge' ? bridgeFeature : storageFeature
+  }
 })
 
 mockNuxtImport('useColorMode', () => {
@@ -229,6 +232,7 @@ beforeEach(() => {
   fetchMock.mockReset()
   loggedIn.value = false
   storageFeature.value = { enabled: true, active: false, variant: null }
+  bridgeFeature.value = { enabled: true, active: false, variant: null }
   toggleFullWidth.mockClear()
   layout.value = 'docked'
   isFullWidth.value = false
@@ -1042,4 +1046,369 @@ describe('ChatArtifactFrame storage capability', () => {
 
     expect(captured).toHaveLength(1)
   })
+})
+
+describe('ChatArtifactFrame bridge capability', () => {
+  const BRIDGE_INFO = {
+    models: [
+      {
+        id: 'gpt-6-luna',
+        name: 'GPT-6 Luna',
+        providerId: 'openai',
+        providerName: 'OpenAI',
+        inputPricePerMillion: 0.1,
+        outputPricePerMillion: 0.5,
+      },
+    ],
+    defaultModelId: 'gpt-6-luna',
+    remaining: { hour: 30, day: 200 },
+    limits: { hour: 30, day: 200 },
+  }
+
+  function allowBridge() {
+    loggedIn.value = true
+    bridgeFeature.value = { enabled: true, active: true, variant: null }
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/bridge')) {
+        return BRIDGE_INFO
+      }
+
+      if (url.endsWith('/complete')) {
+        return {
+          text: 'Plants make sugar',
+          modelId: 'gpt-6-luna',
+          usage: { inputTokens: 5, outputTokens: 4 },
+          costUsd: 0.000001,
+          remaining: { hour: 29, day: 199 },
+        }
+      }
+
+      return { items: [], keys: 0, bytes: 0 }
+    })
+  }
+
+  async function capabilitiesOf(connection: CapturedConnection) {
+    const runtime = connectRuntime(connection)
+    const result = await initialize(runtime)
+
+    return { runtime, capabilities: result.hostContext.capabilities }
+  }
+
+  function findBridgeElement(testId: string): HTMLElement | null {
+    return document.body.querySelector(`[data-testid="${testId}"]`)
+  }
+
+  function modelCalls(suffix: string) {
+    return fetchMock.mock.calls.filter(([url]) => {
+      return String(url).endsWith(suffix)
+    })
+  }
+
+  async function waitForBridgeModal() {
+    await vi.waitFor(() => {
+      expect(findBridgeElement('artifact-bridge-allow')).not.toBeNull()
+    })
+    await flushPromises()
+  }
+
+  function pressPointerClick(element: HTMLElement | null) {
+    element?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    element?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, detail: 1 }),
+    )
+  }
+
+  async function waitForArmedAllow() {
+    await vi.waitFor(() => {
+      expect(findBridgeElement('artifact-bridge-allow')
+        ?.hasAttribute('disabled')).toBe(false)
+    })
+    vi.setSystemTime(Date.now() + 1000)
+  }
+
+  beforeEach(() => {
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+      .mockImplementation(() => {})
+    vi.spyOn(HTMLDialogElement.prototype, 'close')
+      .mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('does not offer completions to a signed-out viewer', async () => {
+    bridgeFeature.value = { enabled: true, active: true, variant: null }
+
+    const { connection } = await mountFrame()
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities.complete).toBe(false)
+    expect(connection.handlers.complete).toBeUndefined()
+  })
+
+  it('does not offer completions when the artifacts.llm-bridge flag is off',
+    async () => {
+      loggedIn.value = true
+      storageFeature.value = { enabled: true, active: true, variant: null }
+
+      const { connection } = await mountFrame()
+      const { capabilities } = await capabilitiesOf(connection)
+
+      expect(capabilities.complete).toBe(false)
+      expect(connection.handlers.complete).toBeUndefined()
+    })
+
+  it('does not offer completions for an artifact from a shared chat',
+    async () => {
+      allowBridge()
+
+      const { connection } = await mountFrame({ source: 'shared' })
+      const { capabilities } = await capabilitiesOf(connection)
+
+      expect(capabilities.complete).toBe(false)
+      expect(connection.handlers.complete).toBeUndefined()
+    })
+
+  it('does not offer completions without an artifact id', async () => {
+    allowBridge()
+
+    const { connection } = await mountFrame({ artifactId: null })
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities.complete).toBe(false)
+    expect(connection.handlers.complete).toBeUndefined()
+  })
+
+  it('offers completions to a signed-in owner with the flag on', async () => {
+    allowBridge()
+
+    const { connection } = await mountFrame()
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities).toEqual({ storage: 'memory', complete: true })
+    expect(connection.handlers.complete).toBeTypeOf('function')
+  })
+
+  it('treats a missing source as the owner', async () => {
+    allowBridge()
+
+    const { connection } = await mountFrame({ source: undefined })
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities.complete).toBe(true)
+  })
+
+  it('offers persistent storage and completions together', async () => {
+    allowBridge()
+    storageFeature.value = { enabled: true, active: true, variant: null }
+
+    const { connection } = await mountFrame()
+    const { capabilities } = await capabilitiesOf(connection)
+
+    expect(capabilities).toEqual({ storage: 'persistent', complete: true })
+  })
+
+  it('answers method-not-found for a completion without the capability',
+    async () => {
+      const { connection } = await mountFrame()
+      const { runtime } = await capabilitiesOf(connection)
+
+      await expect(runtime.request(METHODS.complete, { prompt: 'Hi' }))
+        .rejects.toMatchObject({ code: ERROR_CODES.methodNotFound })
+    })
+
+  it('does not load the models or call the model at mount', async () => {
+    allowBridge()
+
+    const { connection } = await mountFrame()
+
+    await capabilitiesOf(connection)
+    await flushPromises()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(findBridgeElement('artifact-bridge-modal')).toBeNull()
+  })
+
+  it('asks the viewer first and answers the runtime after Allow',
+    async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      allowBridge()
+
+      const { connection } = await mountFrame()
+      const { runtime } = await capabilitiesOf(connection)
+      const pending = runtime.request(METHODS.complete, {
+        prompt: 'Explain photosynthesis',
+        system: 'Be brief',
+        maxOutputTokens: 200,
+      })
+
+      await waitForBridgeModal()
+
+      expect(findBridgeElement('artifact-bridge-prompt')?.textContent)
+        .toBe('Explain photosynthesis')
+      expect(findBridgeElement('artifact-bridge-system')?.textContent)
+        .toContain('Be brief')
+      expect(modelCalls('/complete')).toHaveLength(0)
+
+      pressPointerClick(findBridgeElement('artifact-bridge-allow'))
+      await flushPromises()
+
+      expect(modelCalls('/complete')).toHaveLength(0)
+
+      await waitForArmedAllow()
+      pressPointerClick(findBridgeElement('artifact-bridge-allow'))
+
+      await expect(pending).resolves.toEqual({ text: 'Plants make sugar' })
+
+      const [completeCall] = modelCalls('/complete')
+
+      expect(completeCall![0]).toBe('/api/v1/artifacts/art_1/complete')
+      expect(completeCall![1].body).toEqual({
+        prompt: 'Explain photosynthesis',
+        system: 'Be brief',
+        modelId: 'gpt-6-luna',
+        maxOutputTokens: 200,
+      })
+      await vi.waitFor(() => {
+        expect(findBridgeElement('artifact-bridge-modal')).toBeNull()
+      })
+    })
+
+  it('rejects the runtime as declined when the viewer cancels',
+    async () => {
+      allowBridge()
+
+      const { connection } = await mountFrame()
+      const { runtime } = await capabilitiesOf(connection)
+      const pending = runtime.request(METHODS.complete, { prompt: 'Hi' })
+
+      await waitForBridgeModal()
+      pressPointerClick(findBridgeElement('artifact-bridge-cancel'))
+
+      await expect(pending).rejects.toMatchObject({
+        code: ERROR_CODES.declinedByViewer,
+      })
+      expect(modelCalls('/complete')).toHaveLength(0)
+    })
+
+  it('closes the open modal when the frame is removed', async () => {
+    allowBridge()
+
+    const { wrapper, connection } = await mountFrame()
+    const { runtime } = await capabilitiesOf(connection)
+    const pending = runtime.request(METHODS.complete, { prompt: 'Hi' })
+
+    pending.catch(() => {})
+    await waitForBridgeModal()
+    wrapper.unmount()
+
+    expect(findBridgeElement('artifact-bridge-modal')).toBeNull()
+    expect(modelCalls('/complete')).toHaveLength(0)
+  })
+
+  it('refuses a second completion while the first one waits', async () => {
+    allowBridge()
+
+    const { connection } = await mountFrame()
+    const { runtime } = await capabilitiesOf(connection)
+    const first = runtime.request(METHODS.complete, { prompt: 'First' })
+
+    await waitForBridgeModal()
+
+    await expect(runtime.request(METHODS.complete, { prompt: 'Second' }))
+      .rejects.toMatchObject({ code: ERROR_CODES.rateLimited })
+
+    pressPointerClick(findBridgeElement('artifact-bridge-cancel'))
+    await expect(first).rejects.toMatchObject({
+      code: ERROR_CODES.declinedByViewer,
+    })
+  })
+
+  it('rejects a completion with invalid params before asking the viewer',
+    async () => {
+      allowBridge()
+
+      const { connection } = await mountFrame()
+      const { runtime } = await capabilitiesOf(connection)
+
+      await expect(runtime.request(METHODS.complete, {
+        prompt: 'Hi',
+        system: 'x'.repeat(2001),
+      })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+      expect(findBridgeElement('artifact-bridge-modal')).toBeNull()
+    })
+
+  it('remounts the frame when completions become available after mount',
+    async () => {
+      const { connection } = await mountFrame()
+
+      expect(connection.handlers.complete).toBeUndefined()
+      allowBridge()
+      await flushPromises()
+
+      expect(captured).toHaveLength(2)
+
+      const { capabilities } = await capabilitiesOf(captured.at(-1)!)
+
+      expect(capabilities.complete).toBe(true)
+      expect(captured.at(-1)!.handlers.complete).toBeTypeOf('function')
+    })
+
+  it('remounts the frame when the flag turns off', async () => {
+    allowBridge()
+
+    await mountFrame()
+    bridgeFeature.value = { enabled: true, active: false, variant: null }
+    await flushPromises()
+
+    expect(captured).toHaveLength(2)
+    expect(captured.at(-1)!.handlers.complete).toBeUndefined()
+  })
+
+  it('remounts the frame when the viewer signs out', async () => {
+    allowBridge()
+
+    await mountFrame()
+    loggedIn.value = false
+    await flushPromises()
+
+    expect(captured).toHaveLength(2)
+    expect(captured.at(-1)!.handlers.complete).toBeUndefined()
+  })
+
+  it('remounts with the new artifact id for another artifact', async () => {
+    allowBridge()
+
+    const { wrapper } = await mountFrame()
+
+    await wrapper.setProps({ artifactId: 'art_2' })
+    await flushPromises()
+
+    expect(captured).toHaveLength(2)
+
+    const { runtime } = await capabilitiesOf(captured.at(-1)!)
+    const pending = runtime.request(METHODS.complete, { prompt: 'Hi' })
+
+    await waitForBridgeModal()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/artifacts/art_2/bridge',
+      { headers: {} },
+    )
+
+    pressPointerClick(findBridgeElement('artifact-bridge-cancel'))
+    await expect(pending).rejects.toBeDefined()
+  })
+
+  it('keeps the frame for another artifact id when completions are off',
+    async () => {
+      const { wrapper } = await mountFrame()
+
+      await wrapper.setProps({ artifactId: 'art_2' })
+      await flushPromises()
+
+      expect(captured).toHaveLength(1)
+    })
 })

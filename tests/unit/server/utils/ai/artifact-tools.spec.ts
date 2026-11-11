@@ -467,7 +467,7 @@ describe('buildArtifactInstructions', () => {
     })
 
     expect(text).toContain('window.besidka.storage')
-    expect(text).toContain('window.besidka.complete()')
+    expect(text).toContain('window.besidka.complete(prompt')
     expect(text).not.toContain('React artifacts')
   })
 })

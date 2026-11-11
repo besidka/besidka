@@ -84,6 +84,7 @@ const featureList = [
     spend: 'foreground',
     requires: { bindings: [], keyKinds: ['provider'] },
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.share',

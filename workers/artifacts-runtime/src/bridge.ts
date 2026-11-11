@@ -3,6 +3,7 @@ import {
   INTERACTIVE_REQUEST_TIMEOUT_MS,
   MAX_COMPLETE_OUTPUT_TOKENS,
   MAX_COMPLETE_PROMPT_LENGTH,
+  MAX_COMPLETE_SYSTEM_LENGTH,
   MAX_STORAGE_KEY_LENGTH,
   METHODS,
   RpcError,
@@ -27,6 +28,7 @@ export interface BesidkaStorage {
 }
 
 export interface CompleteOptions {
+  system?: string
   maxOutputTokens?: number
 }
 
@@ -232,7 +234,16 @@ export function createBesidkaApi(
       )
     }
 
-    const maxOutputTokens = options.maxOutputTokens
+    const { system, maxOutputTokens } = options
+
+    if (
+      system !== undefined
+      && (typeof system !== 'string' || system.length > MAX_COMPLETE_SYSTEM_LENGTH)
+    ) {
+      throw new TypeError(
+        `The system text must be a string of at most ${MAX_COMPLETE_SYSTEM_LENGTH} characters.`,
+      )
+    }
 
     if (
       maxOutputTokens !== undefined
@@ -250,9 +261,11 @@ export function createBesidkaApi(
     try {
       const result = await connection.request(
         METHODS.complete,
-        maxOutputTokens === undefined
-          ? { prompt }
-          : { prompt, maxOutputTokens },
+        {
+          prompt,
+          ...(system ? { system } : {}),
+          ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+        },
         { timeoutMs: INTERACTIVE_REQUEST_TIMEOUT_MS },
       )
 
