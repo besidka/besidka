@@ -10,6 +10,7 @@ import type {
   STORAGE_MODES,
   THEMES,
 } from './constants.ts'
+import type { DiagramLimitCode } from './mermaid-limits.ts'
 
 export type ArtifactKind = typeof ARTIFACT_KINDS[number]
 
@@ -51,6 +52,7 @@ export interface HostContext {
 
 export interface AppCapabilities {
   kinds: ArtifactKind[]
+  rendered?: boolean
 }
 
 export interface InitializeParams {
@@ -91,6 +93,11 @@ export interface SizeChangedParams {
   height: number
 }
 
+export interface RenderedParams {
+  kind: ArtifactKind
+  partial: boolean
+}
+
 export interface OpenLinkParams {
   url: string
 }
@@ -102,6 +109,9 @@ export interface LogMessageParams {
   data: {
     message: string
     stack?: string
+    code?: DiagramLimitCode
+    limit?: number
+    found?: number
   }
 }
 
@@ -190,6 +200,7 @@ export interface RuntimeRequests {
 export interface RuntimeNotifications {
   [METHODS.initialized]: EmptyResult
   [METHODS.sizeChanged]: SizeChangedParams
+  [METHODS.rendered]: RenderedParams
   [METHODS.message]: LogMessageParams
 }
 

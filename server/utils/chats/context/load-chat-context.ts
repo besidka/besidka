@@ -144,6 +144,7 @@ export async function loadOwnedChatContext(
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
     memoryExcluded: schema.chats.memoryExcluded,
+    pinnedAt: schema.chats.pinnedAt,
   })
     .from(schema.chats)
     .leftJoin(
@@ -189,8 +190,10 @@ export async function loadOwnedChatContext(
 
   return {
     chat: {
+      id: chat.id,
       slug: chat.slug,
       title: chat.title ?? '',
+      pinnedAt: chat.pinnedAt ? chat.pinnedAt.toISOString() : null,
       project: chat.projectId && chat.projectName
         ? { id: String(chat.projectId), name: chat.projectName }
         : null,

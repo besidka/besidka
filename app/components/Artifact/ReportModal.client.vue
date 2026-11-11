@@ -10,8 +10,7 @@
       @close="onClosed"
     >
       <div
-        class="modal-box flex max-h-[85dvh] w-full max-w-lg flex-col gap-3 [--report-sheet-bottom-padding:max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))] max-sm:pb-[var(--report-sheet-bottom-padding)]"
-        :style="sheetBoxStyle"
+        class="modal-box sheet-safe-padding flex max-h-[85dvh] w-full max-w-lg flex-col gap-3"
         data-testid="artifact-report-box"
       >
         <header class="flex shrink-0 items-start gap-3">
@@ -84,6 +83,7 @@
 
         <form
           v-else
+          ref="form"
           class="-mx-1 flex min-h-0 flex-col gap-1 overflow-y-auto px-1 *:shrink-0"
           novalidate
           data-testid="artifact-report-form"
@@ -474,7 +474,6 @@
 </template>
 
 <script setup lang="ts">
-import type { StyleValue } from 'vue'
 import type { ArtifactReportReason } from '#shared/utils/artifacts'
 import { parseError } from 'evlog'
 import {
@@ -519,8 +518,6 @@ const emit = defineEmits<{
 const isOpen = defineModel<boolean>('open', { required: true })
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const SHEET_KEYBOARD_BOTTOM_PADDING = '0.75rem'
-const SHEET_KEYBOARD_TOP_GAP_PX = 12
 const FIELD_ORDER: ReportField[] = [
   'reason',
   'details',
@@ -545,13 +542,13 @@ const FIELD_HOOK_CLASSES: Record<ReportField, string> = {
 }
 
 const { loggedIn, user } = useAuth()
-const { isKeyboardOpen, bottomInset, viewportHeight }
-  = useVisualViewportInset()
+const { bottomInset } = useVisualViewportInset()
 const turnstileSiteKey = useRuntimeConfig().public.turnstileSiteKey
 
 const formId = useId()
 const headingId = useId()
 const modal = useTemplateRef<HTMLDialogElement>('modal')
+const form = useTemplateRef<HTMLFormElement>('form')
 const doneButton = useTemplateRef<HTMLButtonElement>('doneButton')
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
 const { requestToken } = useCaptcha(() => turnstile.value)
@@ -573,6 +570,7 @@ const isSubmitted = shallowRef<boolean>(false)
 const receiptEmail = shallowRef<string>('')
 
 let returnFocusTarget: HTMLElement | null = null
+let stopRevealAfterKeyboard: (() => void) | null = null
 
 const reasonOptions = ARTIFACT_REPORT_REASONS.map((value) => {
   return { value, label: ARTIFACT_REPORT_REASON_LABELS[value] }
@@ -625,21 +623,6 @@ const successText = computed<string>(() => {
     ? `Thank you. A person will review it, and a receipt goes to `
     + `${receiptEmail.value}.`
     : 'Thank you. A person will review it.'
-})
-
-const sheetBoxStyle = computed<StyleValue>(() => {
-  if (!isOpen.value || !isKeyboardOpen.value) {
-    return {}
-  }
-
-  return {
-    '--report-sheet-bottom-padding': SHEET_KEYBOARD_BOTTOM_PADDING,
-    'marginBottom': `${bottomInset.value}px`,
-    'maxHeight': `${Math.max(
-      0,
-      viewportHeight.value - SHEET_KEYBOARD_TOP_GAP_PX,
-    )}px`,
-  }
 })
 
 function describedBy(
@@ -740,10 +723,32 @@ async function focusFirstError(found: Partial<Record<ReportField, string>>) {
   const hookClass = field === 'reason' && reason.value
     ? `js-artifact-report-reason-${reason.value}`
     : FIELD_HOOK_CLASSES[field]
-
-  modal.value
+  const target = modal.value
     ?.querySelector<HTMLElement>(`.${hookClass}`)
-    ?.focus()
+
+  if (!target) {
+    return
+  }
+
+  target.focus({ preventScroll: true })
+  revealField(target, field)
+  stopRevealAfterKeyboard?.()
+  stopRevealAfterKeyboard = watch(bottomInset, () => {
+    revealField(target, field)
+  }, { once: true })
+}
+
+function revealField(target: HTMLElement, field: ReportField) {
+  if (!form.value) {
+    return
+  }
+
+  scrollWithin(form.value, target, {
+    trailingElement: form.value
+      .querySelector(`[id="${formId}-${field}-error"]`),
+    reservedBottomPx: form.value
+      .querySelector<HTMLElement>('.modal-action')?.offsetHeight ?? 0,
+  })
 }
 
 function buildBody(turnstileToken: string) {
@@ -841,6 +846,7 @@ function onCancel(event: Event) {
 }
 
 function onClosed() {
+  stopRevealAfterKeyboard?.()
   isOpen.value = false
   resetForm()
 

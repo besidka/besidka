@@ -268,6 +268,24 @@ describe('Sidebar.client docked on the side panel seam', () => {
     expect(root.attributes('style') ?? '').not.toContain('right:')
   })
 
+  it('leaves the seam while the panel is collapsed and returns with it', async () => {
+    useSidePanel().open(sidePanelView)
+
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    useSidePanel().collapse()
+    await nextTick()
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.attributes('style') ?? '').not.toContain('right:')
+
+    useSidePanel().expand()
+    await nextTick()
+
+    expect(root.attributes('data-docked')).toBe('true')
+  })
+
   it('has no inline right offset while the panel is closed', async () => {
     const wrapper = await mountSidebar()
     const root = wrapper.get('[data-testid="sidebar"]')

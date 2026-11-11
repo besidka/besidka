@@ -837,7 +837,7 @@ below as `planned` unless it says `built`.
   removed from the frame), `frame-ancestors` limited to Besidka hosts; plus
   `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`. Libraries are
   vendored on that origin (React, ReactDOM, Recharts, lucide-react, Sucrase,
-  Mermaid with dagre, marked, DOMPurify); an unknown import fails in the
+  Pele for Mermaid text, marked, DOMPurify); an unknown import fails in the
   frame and makes no request. **esm.sh is not used** (P5): no third party
   receives the viewer's IP address. A licence scan fails the build on a
   licence outside the allowlist, and `THIRD_PARTY_NOTICES.txt` is served from

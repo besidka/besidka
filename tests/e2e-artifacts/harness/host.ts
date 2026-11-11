@@ -12,6 +12,7 @@ import type {
   HostConnection,
   JsonValue,
   LogMessageParams,
+  RenderedParams,
   Theme,
 } from '@besidka/artifacts-protocol'
 
@@ -30,6 +31,7 @@ interface HarnessState {
   ready: boolean
   loads: number
   sizes: number[]
+  rendered: RenderedParams[]
   messages: LogMessageParams[]
   links: string[]
   navigations: number
@@ -56,6 +58,7 @@ function createInitialState(): HarnessState {
     ready: false,
     loads: 0,
     sizes: [],
+    rendered: [],
     messages: [],
     links: [],
     navigations: 0,
@@ -197,6 +200,9 @@ function createHarness() {
       },
       onSizeChanged: (params) => {
         state.sizes.push(params.height)
+      },
+      onRendered: (params) => {
+        state.rendered.push(params)
       },
       onMessage: (params) => {
         state.messages.push(params)

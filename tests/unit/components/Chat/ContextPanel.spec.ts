@@ -31,6 +31,8 @@ const branchOwnedChat = vi.fn()
 const branchSharedChat = vi.fn()
 const setChatMemoryExcluded = vi.fn()
 const memoryOverride = ref<boolean | null>(null)
+const pinSavingSlug = ref<string | null>(null)
+const toggleChatPin = vi.fn()
 const artifactsActive = ref<boolean>(false)
 
 mockNuxtImport('useFeature', () => {
@@ -64,6 +66,10 @@ mockNuxtImport('useChatShare', () => {
     isBranching,
     isModalOpen: isShareModalOpen,
   })
+})
+
+mockNuxtImport('useChatPin', () => {
+  return () => ({ savingSlug: pinSavingSlug, toggleChatPin })
 })
 
 mockNuxtImport('useChatMemoryExclusion', () => {
@@ -114,8 +120,10 @@ function ownedData(overrides: Record<string, unknown> = {}) {
   return {
     kind: 'owned',
     chat: {
+      id: 'chat-id-1',
       slug: CHAT_SLUG,
       title: 'Roadmap',
+      pinnedAt: null,
       project: null,
       memoryExcluded: false,
       share: { active: false },
@@ -171,6 +179,7 @@ describe('Chat/ContextPanel', () => {
     sharedBranchTarget.value = null
     memoryExclusionSavingSlug.value = null
     memoryOverride.value = null
+    pinSavingSlug.value = null
     artifactsActive.value = false
     refresh.mockReset()
     openShareModal.mockReset()
@@ -178,6 +187,8 @@ describe('Chat/ContextPanel', () => {
     branchSharedChat.mockReset()
     setChatMemoryExcluded.mockReset()
     setChatMemoryExcluded.mockResolvedValue(true)
+    toggleChatPin.mockReset()
+    toggleChatPin.mockResolvedValue(true)
     clearNuxtState('chat-context-collapsed-sections')
     useSidePanel().close()
     document.body.innerHTML = ''
@@ -444,6 +455,58 @@ describe('Chat/ContextPanel', () => {
         .attributes('disabled')).toBeDefined()
     })
 
+    it('offers Pin for an unpinned chat and pins it on click', async () => {
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+      const pin = wrapper.get(testId('chat-context-pin'))
+
+      expect(pin.text()).toBe('Pin')
+      expect(pin.html()).toContain('lucide:pin')
+      expect(pin.html()).not.toContain('lucide:pin-off')
+
+      await pin.trigger('click')
+
+      expect(toggleChatPin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'chat-id-1',
+          slug: CHAT_SLUG,
+          pinnedAt: null,
+        }),
+      )
+    })
+
+    it('offers Unpin with the pin-off icon for a pinned chat', async () => {
+      data.value = ownedData({
+        chat: {
+          ...ownedData().chat,
+          pinnedAt: '2026-11-10T10:00:00.000Z',
+        },
+      })
+
+      const wrapper = await mountPanel()
+      const pin = wrapper.get(testId('chat-context-pin'))
+
+      expect(pin.text()).toBe('Unpin')
+      expect(pin.html()).toContain('lucide:pin-off')
+
+      await pin.trigger('click')
+
+      expect(toggleChatPin).toHaveBeenCalledWith(
+        expect.objectContaining({ pinnedAt: '2026-11-10T10:00:00.000Z' }),
+      )
+    })
+
+    it('disables Pin while the pin request is saving', async () => {
+      pinSavingSlug.value = CHAT_SLUG
+      data.value = ownedData()
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.get(testId('chat-context-pin'))
+        .attributes('disabled')).toBeDefined()
+    })
+
     it('offers to exclude an included chat from memory', async () => {
       data.value = ownedData()
 
@@ -540,6 +603,7 @@ describe('Chat/ContextPanel', () => {
       const wrapper = await mountPanel()
 
       expect(wrapper.find(testId('chat-context-share')).exists()).toBe(false)
+      expect(wrapper.find(testId('chat-context-pin')).exists()).toBe(false)
       expect(wrapper.find(testId('chat-context-memory-exclusion')).exists())
         .toBe(false)
       expect(wrapper.find(testId('chat-context-project')).exists())

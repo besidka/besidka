@@ -45,6 +45,7 @@ export const DIAGRAM_EXPORT_ACTIONS = [
   'copy-source',
   'copy-markdown',
   'copy-svg',
+  'copy-png',
   'copy-drawio',
 ] as const
 
@@ -85,6 +86,7 @@ export const METHODS = {
   toolResult: 'ui/notifications/tool-result',
   hostContextChanged: 'ui/notifications/host-context-changed',
   sizeChanged: 'ui/notifications/size-changed',
+  rendered: 'besidka/rendered',
   openLink: 'ui/open-link',
   clipboardWrite: 'ui/clipboard-write',
   requestDisplayMode: 'ui/request-display-mode',

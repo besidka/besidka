@@ -9,6 +9,7 @@ export const ALLOWED_LICENSES = new Set([
   'CC0-1.0',
   'ISC',
   'MIT',
+  'OFL-1.1',
   'Unlicense',
   'Zlib',
 ])
@@ -39,7 +40,7 @@ export function isAllowedLicense(expression) {
   })
 }
 
-function findPackageDirectory(filePath) {
+export function findPackageDirectory(filePath) {
   let directory = path.dirname(filePath)
 
   while (directory !== path.dirname(directory)) {

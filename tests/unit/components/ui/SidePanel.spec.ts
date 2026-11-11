@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
-import { defineComponent, h } from 'vue'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { computed, defineComponent, h } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UiSidePanel from '../../../../app/components/ui/SidePanel.client.vue'
@@ -9,6 +9,24 @@ import {
   useSidePanel,
 } from '../../../../app/composables/side-panel'
 import type { SidePanelView } from '../../../../app/composables/side-panel'
+
+const pillState = vi.hoisted(() => ({
+  isPinned: { value: false },
+  isDesktop: { value: true },
+  canPeek: true,
+}))
+
+mockNuxtImport('useUserSetting', () => {
+  return () => ({
+    sidebarPinned: computed(() => pillState.isPinned.value),
+  })
+})
+
+mockNuxtImport('useDevice', () => {
+  return () => ({
+    isDesktop: pillState.isDesktop.value,
+  })
+})
 
 enableAutoUnmount(afterEach)
 
@@ -58,8 +76,10 @@ function stubViewport(innerWidth: number) {
     const [, amount, unit] = /min-width:\s*([\d.]+)(rem|px)/.exec(query) ?? []
     const minWidth = Number(amount) * (unit === 'rem' ? 16 : 1)
 
+    const isPillQuery = query.includes('pointer: fine')
+
     return {
-      matches: innerWidth >= minWidth,
+      matches: innerWidth >= minWidth && (!isPillQuery || pillState.canPeek),
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -133,6 +153,9 @@ describe('ui/SidePanel', () => {
   })
 
   afterEach(() => {
+    pillState.isPinned.value = false
+    pillState.isDesktop.value = true
+    pillState.canPeek = true
     resetSidePanelState()
     document.querySelectorAll('dialog[data-test-extra]').forEach((dialog) => {
       dialog.remove()
@@ -245,6 +268,24 @@ describe('ui/SidePanel', () => {
 
       opener.remove()
     })
+
+    it('leaves focus where it is when the view asks to preserve it',
+      async () => {
+        const composer = document.createElement('textarea')
+
+        document.body.append(composer)
+        composer.focus()
+
+        const wrapper = await mountPanel()
+
+        useSidePanel().open({ ...createView(), preserveFocus: true })
+        await flushPromises()
+
+        expect(wrapper.find(PANEL).exists()).toBe(true)
+        expect(document.activeElement).toBe(composer)
+
+        composer.remove()
+      })
 
     it('shows back only when the stack has more than one view', async () => {
       const wrapper = await mountPanel()
@@ -559,6 +600,52 @@ describe('ui/SidePanel', () => {
         expect(wrapper.find(WIDTH_PRESET).exists()).toBe(false)
       })
 
+      it('gives the content the full width while the pill only peeks',
+        async () => {
+          const wrapper = await mountPanel()
+
+          await openPanel()
+          await wrapper.get(FULL_WIDTH).trigger('click')
+
+          const classes = wrapper.get(PANEL).classes()
+
+          expect(classes).toContain('left-0')
+          expect(classes).not.toContain('pr-20')
+        })
+
+      it('reserves the pill gutter while the sidebar is pinned', async () => {
+        pillState.isPinned.value = true
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+        await wrapper.get(FULL_WIDTH).trigger('click')
+
+        expect(wrapper.get(PANEL).classes()).toContain('pr-20')
+      })
+
+      it('reserves the pill gutter when the pill cannot peek', async () => {
+        pillState.canPeek = false
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+        await wrapper.get(FULL_WIDTH).trigger('click')
+
+        expect(wrapper.get(PANEL).classes()).toContain('pr-20')
+      })
+
+      it('reserves the pill gutter on a device without hover', async () => {
+        pillState.isDesktop.value = false
+
+        const wrapper = await mountPanel()
+
+        await openPanel()
+        await wrapper.get(FULL_WIDTH).trigger('click')
+
+        expect(wrapper.get(PANEL).classes()).toContain('pr-20')
+      })
+
       it('keeps the docked inset so the chat behind does not reflow', async () => {
         await mountPanel()
         await openPanel()
@@ -680,6 +767,117 @@ describe('ui/SidePanel', () => {
         expect(wrapper.get(PANEL).attributes('role')).toBeUndefined()
         expect(wrapper.find(SEPARATOR).exists()).toBe(true)
       })
+    })
+  })
+
+  describe('collapsing while a message menu is open', () => {
+    function selectMessage(messageId: string | null) {
+      return useNuxtApp().callHook('chat:message-selected', messageId)
+    }
+
+    async function settleExpand() {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 5)
+      })
+      await flushPromises()
+    }
+
+    it('hides the docked panel, zeroes the inset and keeps the mounted '
+      + 'body', async () => {
+      const wrapper = await mountPanel()
+
+      await openPanel(FieldBody)
+
+      const body = wrapper.get('[data-testid="body-input"]').element
+
+      expect(readRootInset()).toBe('480px')
+
+      await selectMessage('message-1')
+      await flushPromises()
+
+      const panel = wrapper.get(PANEL)
+
+      expect(panel.attributes('data-collapsed')).toBe('true')
+      expect(panel.classes()).toContain('side-panel-collapsed')
+      expect(panel.attributes('inert')).toBeDefined()
+      expect(readRootInset()).toBe('0px')
+      expect(useSidePanel().isOpen.value).toBe(true)
+      expect(wrapper.get('[data-testid="body-input"]').element).toBe(body)
+    })
+
+    it('brings back the same panel and width when the menu closes',
+      async () => {
+        const wrapper = await mountPanel()
+
+        await openPanel(FieldBody)
+
+        const body = wrapper.get('[data-testid="body-input"]').element
+
+        await selectMessage('message-1')
+        await flushPromises()
+        await selectMessage(null)
+        await settleExpand()
+
+        const panel = wrapper.get(PANEL)
+
+        expect(panel.attributes('data-collapsed')).toBeUndefined()
+        expect(panel.attributes('inert')).toBeUndefined()
+        expect(readRootInset()).toBe('480px')
+        expect(wrapper.get('[data-testid="body-input"]').element).toBe(body)
+      })
+
+    it('ignores the Escape that closes the menu', async () => {
+      const closeMenuOnEscape = () => {
+        selectMessage(null)
+      }
+
+      stubViewport(900)
+      document.addEventListener('keydown', closeMenuOnEscape, { once: true })
+      await mountPanel()
+      await openPanel()
+      await selectMessage('message-1')
+      await flushPromises()
+      await pressEscape()
+      await settleExpand()
+
+      expect(useSidePanel().isOpen.value).toBe(true)
+    })
+
+    it('keeps the timer from expanding a re-selected message', async () => {
+      const wrapper = await mountPanel()
+
+      await openPanel()
+      await selectMessage('message-1')
+      await selectMessage(null)
+      await selectMessage('message-2')
+      await settleExpand()
+
+      expect(wrapper.get(PANEL).attributes('data-collapsed')).toBe('true')
+      expect(useSidePanel().isCollapsed.value).toBe(true)
+    })
+
+    it('releases the focus trap while the overlay is collapsed', async () => {
+      stubViewport(900)
+
+      const content = document.createElement('div')
+
+      content.className = 'side-panel-inset'
+      document.body.appendChild(content)
+      await mountPanel()
+      await openPanel()
+
+      expect(content.inert).toBe(true)
+
+      await selectMessage('message-1')
+      await flushPromises()
+
+      expect(content.inert).toBe(false)
+
+      await selectMessage(null)
+      await settleExpand()
+
+      expect(content.inert).toBe(true)
+      content.remove()
     })
   })
 
@@ -868,6 +1066,60 @@ describe('ui/SidePanel', () => {
       expect(document.activeElement).toBe(modalBox)
       expect(document.activeElement)
         .not.toBe(wrapper.get('[data-testid="body-input"]').element)
+    })
+
+    it('hides the dialog while collapsed without closing the panel',
+      async () => {
+        const wrapper = await mountPanel()
+
+        await openPanel(FieldBody)
+
+        const body = wrapper.get('[data-testid="body-input"]').element
+
+        useSidePanel().collapse()
+        await flushPromises()
+
+        expect(closeDialog).toHaveBeenCalledOnce()
+        expect(wrapper.get(SHEET).attributes('open')).toBeUndefined()
+
+        wrapper.get(SHEET).element.dispatchEvent(new Event('close'))
+        await flushPromises()
+
+        expect(useSidePanel().isOpen.value).toBe(true)
+
+        useSidePanel().expand()
+        await flushPromises()
+
+        expect(showModal).toHaveBeenCalledTimes(2)
+        expect(wrapper.get(SHEET).attributes('open')).toBeDefined()
+        expect(wrapper.get('[data-testid="body-input"]').element).toBe(body)
+      })
+
+    it('restores the sheet scroll after a collapse and drops it when the '
+      + 'panel closes while collapsed', async () => {
+      const wrapper = await mountPanel()
+
+      await openPanel(FieldBody)
+
+      const sheetBody = wrapper.get('[data-testid="side-panel-body"]').element
+
+      sheetBody.scrollTop = 120
+      useSidePanel().collapse()
+      await flushPromises()
+      sheetBody.scrollTop = 0
+      useSidePanel().expand()
+      await flushPromises()
+
+      expect(sheetBody.scrollTop).toBe(120)
+
+      useSidePanel().collapse()
+      await flushPromises()
+      useSidePanel().close()
+      await flushPromises()
+      await openPanel(FieldBody)
+
+      expect(wrapper.get('[data-testid="side-panel-body"]').element.scrollTop)
+        .toBe(0)
     })
 
     it('closes the dialog when the panel closes', async () => {

@@ -22,10 +22,12 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 })
 
 const {
+  ARTIFACT_DESIGN_INSTRUCTIONS,
   ARTIFACT_REACT_IMPORTS,
   ARTIFACT_WRITES_PER_TURN,
   applyArtifactEdits,
   buildArtifactCodeBlocksDescription,
+  buildArtifactDesignInstructions,
   buildArtifactInstructions,
   createArtifactTools,
 } = await import('~~/server/utils/ai/artifact-tools')
@@ -148,6 +150,13 @@ describe('artifact tools', () => {
     expect(buildArtifactCodeBlocksDescription(['svg', 'mermaid'])).toBe('')
     expect(String(buildTools({ allowedKinds: ['svg'] })
       .tools.create_artifact!.description)).not.toContain('besidka-code')
+  })
+
+  it('creates an artifact only when one is warranted', () => {
+    const description = String(buildTools().tools.create_artifact!.description)
+
+    expect(description).toContain('only when the user asked for an artifact')
+    expect(description).toContain('never for a diagram or code that fits')
   })
 
   it('validates the title length and a non-empty content', async () => {
@@ -678,9 +687,24 @@ describe('buildArtifactInstructions', () => {
     expect(text).toContain('write representative data into the artifact')
     expect(text).toContain('A plain <a href> link is fine')
     expect(text).toContain('Create one artifact per request')
+    expect(text).toContain('leave fetch and API code out')
+    expect(text).toContain('never an empty or placeholder artifact')
     expect(text).toContain('passwords')
     expect(text).toContain('cannot keep data between visits')
     expect(text).toContain('cannot call a model')
+  })
+
+  it('keeps diagrams and code inline unless an artifact is asked for', () => {
+    const text = buildArtifactInstructions(ALL_KINDS, {
+      storage: false,
+      modelBridge: false,
+    })
+    expect(text).toContain('Create one only when the user asks for an')
+    expect(text).toContain('a diagram as a fenced ```mermaid block')
+    expect(text).toContain('code of any length')
+    expect(text).toContain('A new, unrelated request is not an edit')
+    expect(text).toContain('never repeat its source or content')
+    expect(text).not.toContain('about 20 lines')
   })
 
   it('mentions storage and the model bridge only when they are on', () => {
@@ -692,5 +716,54 @@ describe('buildArtifactInstructions', () => {
     expect(text).toContain('window.besidka.storage')
     expect(text).toContain('window.besidka.complete(prompt')
     expect(text).not.toContain('React artifacts')
+  })
+})
+
+describe('buildArtifactDesignInstructions', () => {
+  const DESIGN_SHEET_MAX_CHARS = 4000
+
+  it('adds the daisyUI sheet only when html or react is allowed', () => {
+    expect(buildArtifactDesignInstructions(['html']))
+      .toBe(ARTIFACT_DESIGN_INSTRUCTIONS)
+    expect(buildArtifactDesignInstructions(['react', 'svg']))
+      .toBe(ARTIFACT_DESIGN_INSTRUCTIONS)
+    expect(buildArtifactDesignInstructions(['svg', 'mermaid', 'markdown']))
+      .toBe('')
+    expect(buildArtifactInstructions(['markdown'], {
+      storage: false,
+      modelBridge: false,
+    })).not.toContain('daisyUI')
+    expect(buildArtifactInstructions(['html'], {
+      storage: false,
+      modelBridge: false,
+    })).toContain(ARTIFACT_DESIGN_INSTRUCTIONS)
+  })
+
+  it('stays a compact sheet well under the 1.5k-token budget', () => {
+    expect(ARTIFACT_DESIGN_INSTRUCTIONS.length)
+      .toBeLessThanOrEqual(DESIGN_SHEET_MAX_CHARS)
+  })
+
+  it('names the theme colours and forbids remote styling', () => {
+    for (const colour of [
+      'primary',
+      'secondary',
+      'accent',
+      'neutral',
+      'base-100',
+      'base-200',
+      'base-content',
+      'success',
+      'error',
+    ]) {
+      expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain(colour)
+    }
+
+    expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain('no CDN')
+    expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain('no external fonts')
+    expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain('no dark:')
+    expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain('neutral (fills only)')
+    expect(ARTIFACT_DESIGN_INSTRUCTIONS).not.toContain('btn-primary only')
+    expect(ARTIFACT_DESIGN_INSTRUCTIONS).not.toContain('step-primary')
   })
 })

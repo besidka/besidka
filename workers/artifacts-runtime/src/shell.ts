@@ -1,9 +1,10 @@
 import type { Theme } from '@besidka/artifacts-protocol'
+import { LAYER_ORDER } from './design/layers.ts'
 import { paletteDeclarations } from './palette.ts'
 
 export const ROOT_ELEMENT_ID = 'root'
 
-export const SHELL_STYLE = `
+const SHELL_RULES = `
 :root {
   color-scheme: light;
   ${paletteDeclarations('light')}
@@ -20,9 +21,6 @@ body {
   margin: 0;
   font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   overflow-wrap: anywhere;
-}
-#root {
-  padding: 16px;
 }
 a {
   color: var(--besidka-accent);
@@ -55,7 +53,7 @@ a {
   margin: 0;
   padding: 0 1em;
   color: var(--besidka-muted);
-  border-left: 4px solid var(--besidka-border);
+  border-left: 4px solid var(--besidka-rule);
 }
 .besidka-markdown table {
   border-collapse: collapse;
@@ -63,7 +61,7 @@ a {
 .besidka-markdown th,
 .besidka-markdown td {
   padding: 6px 12px;
-  border: 1px solid var(--besidka-border);
+  border: 1px solid var(--besidka-rule);
 }
 .besidka-markdown img,
 .besidka-svg svg,
@@ -95,6 +93,11 @@ a {
   background: var(--besidka-surface);
   border-radius: 6px;
 }
+.besidka-diagram-limit {
+  margin: 8vh auto;
+  color: var(--besidka-muted);
+  text-align: center;
+}
 .besidka-standalone {
   max-width: 32rem;
   margin: 15vh auto;
@@ -102,6 +105,10 @@ a {
   text-align: center;
 }
 `.trim()
+
+const SHELL_LAYOUT_RULES = `#${ROOT_ELEMENT_ID} {\n  padding: 16px;\n}`
+
+export const SHELL_STYLE = `${LAYER_ORDER}\n@layer besidka-shell {\n${SHELL_RULES}\n}\n${SHELL_LAYOUT_RULES}`
 
 export const SHELL_HEAD = [
   '<meta charset="utf-8">',

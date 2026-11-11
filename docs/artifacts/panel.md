@@ -43,6 +43,7 @@ artifactId, version, content, toolCallId, errorText }`.
 | `ready` | Title, kind, `vN` badge | Opens that version |
 | `failed` | `alert-error` with "Couldn't save …" and the tool error text | Not clickable |
 | unavailable | "Artifact unavailable" (a ready card whose version answered 403, 404 or 410) | Not clickable |
+| deleted | "Artifact deleted" (a ready card whose artifact the owner deleted from the panel or History in this session, `markDeleted()`) | Not clickable |
 
 The card is `aria-live="polite"` and marks itself active while its view is
 open on its version. Persisted cards of one artifact share the view key
@@ -112,14 +113,64 @@ The detail view:
 - Version select: the owner sees every stored version
   (`GET /api/v1/artifacts/<id>`); a shared viewer sees only versions the
   shared chat references.
+- New versions written in the chat (BES-342): every owner card that reaches
+  `ready` reports its `artifactId` and version to
+  `useArtifactPanel().noteVersion()` (no polling; the stream's tool result is
+  the signal), which keeps the highest version per artifact in
+  `latestVersions`. An open view of that artifact refreshes its version list
+  and switches to the new version, unless the user picked an older one
+  (`isVersionPinned`: set when the view opens on, or the select or a card
+  chooses, a version below the latest known). A pinned view shows a
+  "vN is available, show" button instead. The cause of the old bug: the new
+  card has its own tool-call view key, so it never counted as the open view
+  and nothing reloaded the version list. A different artifact written in the
+  same chat never steals the panel. The pure rule is
+  `resolveArtifactVersionRefresh()`.
 - Actions menu: Copy code, Download source, Download as HTML (Markdown only),
-  Full width.
+  Share link, Reset saved progress, Full width and, last under a divider,
+  **Delete artifact** (owner only, `text-error`). It closes on a press outside, on `window` blur when focus moves
+  into the artifact iframe (VueUse `onClickOutside` with `detectIframe`; a
+  click inside the sandboxed frame never reaches the host document), on Esc
+  (focus returns to the trigger), on choosing an item and on switching tab or
+  version. The version select is a native `<select>`, which the browser
+  closes itself.
 - Runtime errors: the last of up to 5 `notifications/message` errors from the
   runtime, with the stack under Details. The owner gets **Ask to fix**, which
-  closes the panel outside the docked layout and fires
-  `chat-input:prefill` with `Fix the error in "<title>": <message>`. The
-  composer appends that text after a blank line when it already holds a
-  draft, and never sends it.
+  works wherever the panel opens (`useArtifactFix()`). It builds
+  `Fix the error in "<title>": <message>` and only ever fills the composer:
+  nothing is sent and no model runs. The artifact detail decides where the
+  text goes:
+  - Origin chat is the open owned chat: closes the panel outside the docked
+    layout and fires `chat-input:prefill`.
+  - Origin chat exists elsewhere (History → Artifacts, a branched chat):
+    queues the text with `useChatInputPrefill().queue()`, navigates to
+    `/chats/<originChatSlug>`, waits until the route is there and, at the
+    docked layout, reopens the artifact in the panel (the side panel closes on
+    every route change) with `preserveFocus`, so the panel does not take focus
+    from the composer. The composer takes the queued text on mount, focuses
+    and puts the caret at the end. If the route never arrives, the queued text
+    is dropped, so no later composer shows a surprise prompt.
+  - No origin chat (deleted, or `createdVia === 'mcp'`): the button is
+    replaced by a short explanation and **Start a new chat with this
+    artifact**, which queues the text and opens `/chats/new` (or fills the
+    open composer when already there). The artifact is not attached yet;
+    attaching it to a chat is BES-350.
+  Until the artifact detail has loaded the button is disabled, except on an
+  owned chat page, where a failed detail load falls back to filling that
+  chat's composer.
+- **Delete artifact** asks for a confirmation (all versions deleted, active
+  share links stop working, viewers' saved progress removed, the chat message
+  keeps a "deleted artifact" placeholder), then posts the id to
+  `POST /api/v1/artifacts/delete/bulk`, the same route as History → Artifacts
+  and MCP `delete_artifacts`, so quota, R2 objects, shares and storage are
+  cleaned the same way. On success the panel closes, `markDeleted()` turns the
+  artifact's cards into "Artifact deleted", and the `artifacts:deleted` and
+  `chat:context-changed` hooks drop the row from an open History list and
+  refresh the context panel outputs count. A held artifact (`heldIds`) stays
+  and raises the same warning as History; a 404 (already deleted elsewhere)
+  counts as deleted. The panel only closes when it still shows that artifact.
+  The item is hidden for shared
+  chats, `/a#` pages and while the artifact streams.
 - A failed generation (`stream.status === 'failed'`) shows
   `alert alert-error alert-soft` with the tool error text over both tabs
   instead of a skeleton or a partial preview.
@@ -205,7 +256,8 @@ The detail view:
 | Card, detail view, Preview, Code | Yes | Yes |
 | Versions | All stored versions | Only versions referenced by the shared chat |
 | Copy, download | Yes | Yes |
-| Ask to fix | Yes | No |
+| Ask to fix | Yes, from any place the panel opens | No |
+| Delete artifact | Yes | No |
 | Report | No | Yes (no session needed) |
 | Banner | None | "AI-generated by a Besidka user, not reviewed by Besidka. Never enter passwords or payment details here." plus `<meta name="ai-generated">` |
 | Auto-open | First streamed artifact, docked layout only | Never |

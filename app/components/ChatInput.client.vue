@@ -65,6 +65,7 @@
           <textarea
             ref="textarea"
             v-model="input"
+            data-testid="chat-input-textarea"
             class="textarea p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
             :placeholder="textareaPlaceholder"
             :disabled="displayStop"
@@ -203,7 +204,11 @@ import type {
   ToolsSection,
 } from '~/types/chat-input-tools'
 import { LazyChatInputFilesModal } from '#components'
-import { SIDE_PANEL_TRANSITION_MS } from '~/composables/side-panel'
+import {
+  SIDE_PANEL_TRANSITION_DURATION,
+  SIDE_PANEL_TRANSITION_EASING,
+  SIDE_PANEL_TRANSITION_MS,
+} from '~/composables/side-panel'
 
 const props = defineProps<{
   stopped?: boolean
@@ -390,15 +395,15 @@ const COMPOSER_TRANSITIONS = [
   ['bottom', '250ms', 'ease-out'],
 ] as const
 const SIDE_PANEL_FOLLOW_TRANSITIONS = [
-  ['left', `${SIDE_PANEL_TRANSITION_MS}ms`, 'ease-out'],
-  ['max-width', `${SIDE_PANEL_TRANSITION_MS}ms`, 'ease-out'],
+  ['left', SIDE_PANEL_TRANSITION_DURATION, SIDE_PANEL_TRANSITION_EASING],
+  ['max-width', SIDE_PANEL_TRANSITION_DURATION, SIDE_PANEL_TRANSITION_EASING],
 ] as const
 
-const { isOpen: isSidePanelOpen } = useSidePanel()
-const isFollowingSidePanel = shallowRef<boolean>(isSidePanelOpen.value)
+const { isVisible: isSidePanelVisible } = useSidePanel()
+const isFollowingSidePanel = shallowRef<boolean>(isSidePanelVisible.value)
 
-watch(isSidePanelOpen, (open, _wasOpen, onCleanup) => {
-  if (open) {
+watch(isSidePanelVisible, (visible, _wasVisible, onCleanup) => {
+  if (visible) {
     isFollowingSidePanel.value = true
 
     return
@@ -651,12 +656,35 @@ const { textarea, input } = useTextareaAutosize({
   input: message,
 })
 
-nuxtApp.hook('chat-input:prefill', async (text) => {
+function focusMessageAtEnd() {
+  const element = textarea.value
+
+  if (!element) {
+    return
+  }
+
+  element.focus({ preventScroll: true })
+  element.setSelectionRange(element.value.length, element.value.length)
+}
+
+async function prefillMessage(text: string) {
   const draft = message.value.trimEnd()
 
   message.value = draft ? `${draft}\n\n${text}` : text
   await nextTick()
-  textarea.value?.focus({ preventScroll: true })
+  focusMessageAtEnd()
+}
+
+nuxtApp.hook('chat-input:prefill', prefillMessage)
+
+const chatInputPrefill = useChatInputPrefill()
+
+onMounted(async () => {
+  const pendingText = chatInputPrefill.take()
+
+  if (pendingText) {
+    await prefillMessage(pendingText)
+  }
 })
 
 const {

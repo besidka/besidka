@@ -359,7 +359,7 @@ const previewResult = shallowRef<ToolResultContent | null>(null)
 const previewError = shallowRef<string>('')
 const selectedPreviewVersion = shallowRef<number | null>(null)
 
-const { data: report, status, error, refresh } = useLazyFetch(
+const { data: report, status, error, refresh } = await useLazyFetch(
   () => `/api/v1/admin/artifact-reports/${props.reportId}`,
   { key: `admin-artifact-report-${props.reportId}` },
 )

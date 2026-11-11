@@ -109,6 +109,20 @@ it, so with the panel closed every value resolves to what it was before:
 - `.side-panel-follow` marks fixed elements that track the seam. During a
   drag `<html>` has `side-panel-resizing`, which turns their transitions off.
 
+Every follower moves with one duration and easing:
+`--side-panel-transition-duration` (300ms, `0ms` under
+`prefers-reduced-motion: reduce`) and `--side-panel-transition-easing`, both on
+`:root` in `main.css`. The panel's own `width` (`.side-panel-width-follow`, only
+while docked), the shell `margin-right` (`.side-panel-inset`), the composer
+`left`/`max-width` (inline list in `ChatInput.client.vue`, built from
+`SIDE_PANEL_TRANSITION_DURATION`/`_EASING`), the nav pill `right`
+(`.side-panel-pill`, its transform properties keep 500ms) and the toasts
+`right` (`.side-panel-seam-right`) all read them. Before BES-343 the panel had
+no width transition at all (it arrived first) and the pill used 500ms
+ease-in-out. `SIDE_PANEL_TRANSITION_MS` must equal the duration, because the
+scroll-anchor hold runs that long; `tests/unit/assets/css/main.spec.ts` checks
+both. A new follower reads the two variables, never a literal duration.
+
 Width: default 480px, clamped to 360px … `min(60% of the viewport, viewport −
 768px)` so the chat column keeps at least 768px (the maximum is 672px at 1440
 and 512px at 1280). The one clamp serves the seam drag, the keyboard
@@ -119,10 +133,14 @@ survives a visit on a narrow one. A key press or preset click that changes
 nothing visible does not write storage. The panel body and header get
 `pl-10` while docked, because the pill covers about 28px of the seam.
 
-Full width (Expand): the panel covers the viewport from the left edge to the
-pill gutter (`left-0 pr-20`), the pill returns to its normal place, focus is
-trapped. `--side-panel-width` keeps the docked value, so the chat behind does
-not reflow.
+Full width (Expand): the panel covers the viewport from the left edge
+(`left-0`), the pill returns to its normal place, focus is trapped. The right
+gutter (`pr-20`) is reserved unless the pill only peeks, using the same
+predicate as the `.sidebar-hoverable` peek (desktop device, sidebar not
+pinned, `hover: hover` and `pointer: fine`, no reduced motion). While it only
+peeks, the content uses the full width with the normal edge padding and the
+peeking pill overlays the edge. `--side-panel-width` keeps the docked value,
+so the chat behind does not reflow.
 
 ### Why not container queries
 
@@ -152,6 +170,42 @@ other pages) and its offset. `holdScrollAnchor()` then restores that offset on
 every animation frame for the 300ms width transition, so the reader's line
 stays put. With reduced motion, and during a drag, it restores once on the
 next frame.
+
+### Collapsing for the message context menu
+
+The message context menu is a focus mode: everything but the message is
+blurred, so nothing else may stay on screen. While it is open the panel is
+**collapsed**, not closed. `useSidePanel()` has an `isCollapsed` flag (and
+`isVisible` = open and not collapsed, `collapse()`, `expand()`); the view stack
+is untouched, so the mounted view keeps its iframe, tab, version, scroll and
+data, and nothing is refetched or reloaded. `UiSidePanel` listens to the
+existing `chat:message-selected` hook (fired by `/chats/[slug]` and
+`/shared/[slug]`): a message id collapses, `null` expands on the next task, so
+the Escape that closes the menu is not also read as Esc for the panel.
+
+- Docked and overlay: the aside stays mounted with `.side-panel-collapsed`
+  (`translate: 100% 0`, `visibility: hidden`, `pointer-events: none`) and
+  `inert`, with the 300ms seam transition from `.side-panel-collapsible`.
+  `visibility` keeps layout and scroll offsets, which `display: none` would
+  lose, and does not reload the iframe.
+- `dockedInset` is 0 while collapsed, so `--side-panel-width` returns to `0px`:
+  the chat column, composer, toast and pill take their no-panel layout, and
+  `captureScrollAnchor()`/`holdScrollAnchor()` keep the reader's place on the
+  way out and back. `Sidebar` and `ChatInput` follow `isVisible`, not `isOpen`.
+- Overlay: the scrim goes and the focus trap releases (the shell is no longer
+  `inert`) while collapsed, and returns on expand.
+- Sheet: the dialog is closed with `dialog.close()` (the body stays rendered,
+  its scroll offset is saved and restored) and `showModal()` again on expand.
+  A collapse-driven `close` event is ignored, otherwise it would clear the
+  stack.
+- `close()` clears the flag, and a route change closes the panel, so a menu
+  that unmounts with its page cannot leave the panel hidden.
+- Other menus (tools, model picker, dropdowns) do not collapse the panel and
+  must not move the seam.
+
+A real user cannot open the context menu while the overlay or sheet is up
+(the scrim and the modal dialog cover the chat), so those two layouts are
+exercised through the `__besidkaChatTest.selectMessage` e2e hook.
 
 ## Resizing (WCAG 2.2)
 

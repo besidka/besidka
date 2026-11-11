@@ -1,5 +1,6 @@
 import { parseError } from 'evlog'
 import { LazyChatArtifactDetail } from '#components'
+import type { DiagramLimitCode } from '@besidka/artifacts-protocol'
 import type {
   ArtifactDetail,
   ArtifactKind,
@@ -22,7 +23,10 @@ export interface ArtifactPanelTarget {
 
 export interface ArtifactPanelState extends ArtifactPanelTarget {
   viewKey: string
+  isVersionPinned: boolean
 }
+
+export type ArtifactVersionRefresh = 'switch' | 'offer' | 'none'
 
 export interface ArtifactStreamState {
   toolCallId: string
@@ -37,6 +41,9 @@ export interface ArtifactRuntimeMessage {
   level: 'error' | 'warning'
   message: string
   stack?: string
+  code?: DiagramLimitCode
+  limit?: number
+  found?: number
 }
 
 export interface ArtifactVersionRequest {
@@ -145,6 +152,23 @@ export function getArtifactVersionUrl(
   return `/api/v1/artifacts/${artifactId}/versions/${version}`
 }
 
+export function resolveArtifactVersionRefresh(input: {
+  selectedVersion: number | null
+  latestVersion: number | null
+  isVersionPinned: boolean
+}): ArtifactVersionRefresh {
+  const { selectedVersion, latestVersion } = input
+
+  if (
+    latestVersion === null
+    || (selectedVersion !== null && latestVersion <= selectedVersion)
+  ) {
+    return 'none'
+  }
+
+  return input.isVersionPinned ? 'offer' : 'switch'
+}
+
 function getUnavailableResult<Value>(): ArtifactLoadResult<Value> {
   return {
     ok: false,
@@ -172,6 +196,14 @@ export function useArtifactPanel() {
     'artifact-panel:unavailable',
     () => ({}),
   )
+  const deletedIds = useState<Record<string, true>>(
+    'artifact-panel:deleted',
+    () => ({}),
+  )
+  const latestVersions = useState<Record<string, number>>(
+    'artifact-panel:latest-versions',
+    () => ({}),
+  )
 
   const isOpen = computed<boolean>(() => {
     return sidePanel.isOpen.value && isArtifactViewKey(sidePanel.viewKey.value)
@@ -183,17 +215,28 @@ export function useArtifactPanel() {
 
   function open(
     target: ArtifactPanelTarget,
-    options: { push?: boolean } = {},
+    options: { push?: boolean, preserveFocus?: boolean } = {},
   ): void {
     const viewKey = getArtifactViewKey(target)
 
-    state.value = { ...target, viewKey }
+    const latestVersion = target.artifactId
+      ? latestVersions.value[target.artifactId] ?? null
+      : null
+
+    state.value = {
+      ...target,
+      viewKey,
+      isVersionPinned: target.version !== null
+        && latestVersion !== null
+        && target.version < latestVersion,
+    }
 
     const view = {
       viewKey,
       title: target.title || 'Artifact',
       mode: 'detail' as const,
       component: LazyChatArtifactDetail,
+      preserveFocus: options.preserveFocus,
     }
 
     if (options.push) {
@@ -225,7 +268,18 @@ export function useArtifactPanel() {
       return
     }
 
-    state.value = { ...current, ...changes }
+    const version = changes.version ?? current.version
+    const latestVersion = current.artifactId
+      ? latestVersions.value[current.artifactId] ?? 0
+      : 0
+
+    state.value = {
+      ...current,
+      ...changes,
+      isVersionPinned: 'version' in changes
+        ? version !== null && version < latestVersion
+        : current.isVersionPinned,
+    }
 
     const currentView = sidePanel.currentView.value
 
@@ -238,12 +292,40 @@ export function useArtifactPanel() {
     }
   }
 
-  function selectVersion(version: number): void {
-    if (!state.value) {
+  function selectVersion(
+    version: number,
+    knownLatestVersion: number | null = null,
+  ): void {
+    const current = state.value
+
+    if (!current) {
       return
     }
 
-    state.value = { ...state.value, version }
+    const latestVersion = Math.max(
+      current.artifactId ? latestVersions.value[current.artifactId] ?? 0 : 0,
+      knownLatestVersion ?? 0,
+    )
+
+    state.value = {
+      ...current,
+      version,
+      isVersionPinned: version < latestVersion,
+    }
+  }
+
+  function noteVersion(artifactId: string, version: number): void {
+    const known = latestVersions.value[artifactId] ?? 0
+
+    if (version <= known) {
+      return
+    }
+
+    latestVersions.value = { ...latestVersions.value, [artifactId]: version }
+  }
+
+  function getLatestVersion(artifactId: string | null): number | null {
+    return artifactId ? latestVersions.value[artifactId] ?? null : null
   }
 
   function setStream(value: ArtifactStreamState | null): void {
@@ -266,6 +348,21 @@ export function useArtifactPanel() {
     return unavailableIds.value[artifactId] === true
   }
 
+  function markDeleted(artifactIds: string[]): void {
+    const marked = Object.fromEntries(
+      artifactIds.map((artifactId) => {
+        return [artifactId, true as const]
+      }),
+    )
+
+    deletedIds.value = { ...deletedIds.value, ...marked }
+    unavailableIds.value = { ...unavailableIds.value, ...marked }
+  }
+
+  function isDeleted(artifactId: string): boolean {
+    return deletedIds.value[artifactId] === true
+  }
+
   return {
     state,
     stream,
@@ -274,10 +371,15 @@ export function useArtifactPanel() {
     open,
     updateTarget,
     selectVersion,
+    noteVersion,
+    getLatestVersion,
+    latestVersions,
     setStream,
     close,
     markUnavailable,
     isUnavailable,
+    markDeleted,
+    isDeleted,
   }
 }
 

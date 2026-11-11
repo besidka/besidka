@@ -295,6 +295,48 @@ describe('useSidePanel', () => {
     })
   })
 
+  describe('collapse', () => {
+    it('hides the panel without dropping the view stack', () => {
+      const panel = useSidePanel()
+
+      panel.open(createView('a'))
+      panel.push(createView('b'))
+      panel.collapse()
+
+      expect(panel.isCollapsed.value).toBe(true)
+      expect(panel.isOpen.value).toBe(true)
+      expect(panel.isVisible.value).toBe(false)
+      expect(panel.stack.value.map(view => view.viewKey)).toEqual(['a', 'b'])
+      expect(panel.viewKey.value).toBe('b')
+    })
+
+    it('expand restores the same view', () => {
+      const panel = useSidePanel()
+
+      panel.open(createView('a'))
+      panel.collapse()
+      panel.expand()
+
+      expect(panel.isCollapsed.value).toBe(false)
+      expect(panel.isVisible.value).toBe(true)
+      expect(panel.viewKey.value).toBe('a')
+    })
+
+    it('is not visible while closed', () => {
+      expect(useSidePanel().isVisible.value).toBe(false)
+    })
+
+    it('close clears the collapsed state', () => {
+      const panel = useSidePanel()
+
+      panel.open(createView('a'))
+      panel.collapse()
+      panel.close()
+
+      expect(panel.isCollapsed.value).toBe(false)
+    })
+  })
+
   describe('full width', () => {
     it('toggleFullWidth flips the flag', () => {
       const panel = useSidePanel()

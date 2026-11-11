@@ -45,6 +45,7 @@ const DIAGRAM_EXPORT_LABELS: Record<DiagramExportAction, string> = {
   'copy-source': 'Copy code',
   'copy-markdown': 'Copy Markdown',
   'copy-svg': 'Copy SVG',
+  'copy-png': 'Copy PNG',
   'copy-drawio': 'Copy draw.io',
 }
 

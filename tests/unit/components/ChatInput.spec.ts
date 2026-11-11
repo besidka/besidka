@@ -3363,6 +3363,30 @@ describe('ChatInput.client', () => {
         .toBe('Fix the error')
     })
 
+    it('puts the cursor at the end of the prefilled text', async () => {
+      const wrapper = await mountChatInput()
+
+      await useNuxtApp().callHook('chat-input:prefill', 'Fix the error')
+      await flushPromises()
+
+      const element = wrapper.get('textarea').element as HTMLTextAreaElement
+
+      expect(element.selectionStart).toBe('Fix the error'.length)
+      expect(element.selectionEnd).toBe('Fix the error'.length)
+    })
+
+    it('takes the text queued before it mounted, once', async () => {
+      useChatInputPrefill().queue('Fix the error in "Quiz"')
+
+      const wrapper = await mountChatInput()
+
+      await flushPromises()
+
+      expect((wrapper.get('textarea').element as HTMLTextAreaElement).value)
+        .toBe('Fix the error in "Quiz"')
+      expect(useChatInputPrefill().take()).toBeNull()
+    })
+
     it('appends the text after a blank line instead of replacing a draft',
       async () => {
         const wrapper = await mountChatInput()

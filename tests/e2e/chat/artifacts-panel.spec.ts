@@ -23,6 +23,7 @@ const ARTIFACT_CONTENT = [
 const SCROLL_TOLERANCE_PX = 4
 const PANEL_SETTLE_MS = 600
 const STREAM_CHUNK_DELAY_MS = 150
+const MENU_ALIGN_PX = 6
 
 const CODE_BLOCK_SOURCE = 'const answer: number = 42'
 const DIAGRAM_SOURCE = 'graph TD\n  Start --> Done'
@@ -197,7 +198,10 @@ async function mockStreamingChat(page: Page) {
   }, { chunks: buildArtifactChunks(), delayMs: STREAM_CHUNK_DELAY_MS })
 }
 
-async function mockOwnerRoutes(page: Page) {
+async function mockOwnerRoutes(
+  page: Page,
+  versions: Array<typeof VERSION_CONTENT> = [VERSION_CONTENT],
+) {
   await mockStreamingChat(page)
   await page.route('**/api/v1/profiles/keys**', async (route) => {
     await fulfillJson(route, {
@@ -210,8 +214,8 @@ async function mockOwnerRoutes(page: Page) {
       id: ARTIFACT_ID,
       title: ARTIFACT_TITLE,
       kind: 'html',
-      currentVersion: 1,
-      versionCount: 1,
+      currentVersion: versions.length,
+      versionCount: versions.length,
       updatedAt: VERSION_CONTENT.createdAt,
       originChatSlug: null,
       createdVia: 'chat',
@@ -219,21 +223,25 @@ async function mockOwnerRoutes(page: Page) {
       takenDown: false,
       totalBytes: VERSION_CONTENT.sizeBytes,
       createdAt: VERSION_CONTENT.createdAt,
-      versions: [{
-        version: 1,
-        sizeBytes: VERSION_CONTENT.sizeBytes,
-        createdBy: 'model',
-        createdAt: VERSION_CONTENT.createdAt,
-      }],
+      versions: versions.map((entry) => {
+        return {
+          version: entry.version,
+          sizeBytes: entry.sizeBytes,
+          createdBy: 'model',
+          createdAt: entry.createdAt,
+        }
+      }).reverse(),
     })
   })
 
-  await page.route(
-    `**/api/v1/artifacts/${ARTIFACT_ID}/versions/1`,
-    async (route) => {
-      await fulfillJson(route, VERSION_CONTENT)
-    },
-  )
+  for (const entry of versions) {
+    await page.route(
+      `**/api/v1/artifacts/${ARTIFACT_ID}/versions/${entry.version}`,
+      async (route) => {
+        await fulfillJson(route, entry)
+      },
+    )
+  }
 }
 
 async function mockSharedRoutes(
@@ -319,6 +327,132 @@ async function getMessageTop(page: Page, messageId: string) {
 
     return element?.getBoundingClientRect().top ?? null
   }, messageId)
+}
+
+async function openStreamedArtifactPanel(
+  page: Page,
+  versions: Array<typeof VERSION_CONTENT> = [VERSION_CONTENT],
+): Promise<string> {
+  await signInWithArtifacts(page)
+  await mockOwnerRoutes(page, versions)
+  await page.addInitScript((chatId) => {
+    window.sessionStorage.setItem(`artifacts:auto-opened:${chatId}`, '1')
+  }, TEST_CHAT_ID)
+  await page.goto('/chats/test?scenario=short&messages=1')
+  await waitForHydration(page)
+  await sendMessage(page, 'Make a greeting page')
+
+  const card = page.getByTestId('artifact-card')
+
+  await expect(card).toHaveAttribute('data-state', 'ready', {
+    timeout: 20_000,
+  })
+  await expect(page.getByText('Here is your page.')).toBeVisible({
+    timeout: 20_000,
+  })
+
+  const messageId = await card.evaluate((element) => {
+    return element.closest('[data-message-id]')?.getAttribute(
+      'data-message-id',
+    ) ?? ''
+  })
+
+  await card.click()
+  await expect(page.getByTestId('side-panel')).toBeVisible()
+  await expect(page.getByTestId('artifact-frame')).toHaveAttribute(
+    'data-status',
+    'ready',
+    { timeout: 20_000 },
+  )
+  await page.waitForTimeout(PANEL_SETTLE_MS)
+
+  return messageId
+}
+
+async function selectMessageMenu(page: Page, messageId: string) {
+  await page.evaluate((id) => {
+    const testWindow = window as typeof window & {
+      __besidkaChatTest: { selectMessage: (messageId: string) => void }
+    }
+
+    testWindow.__besidkaChatTest.selectMessage(id)
+  }, messageId)
+}
+
+async function readSeamState(page: Page) {
+  return page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="side-panel"]')
+    const pill = document.querySelector('[data-testid="sidebar"]')
+    const panelBox = panel?.getBoundingClientRect()
+    const pillBox = pill?.getBoundingClientRect()
+
+    return {
+      inset: document.documentElement.style.getPropertyValue(
+        '--side-panel-width',
+      ),
+      panel: panelBox
+        ? { x: panelBox.x, width: panelBox.width }
+        : null,
+      pill: pillBox ? { x: pillBox.x, width: pillBox.width } : null,
+      pillDocked: pill?.getAttribute('data-docked') === 'true',
+      shellInert: !!document.querySelector('.side-panel-inset[inert]'),
+    }
+  })
+}
+
+async function expectMenuNextToMessage(page: Page, messageId: string) {
+  const alignment = await page.evaluate((id) => {
+    const message = document.querySelector(
+      `[data-message-id="${CSS.escape(id)}"]`,
+    )
+    const bubble = message?.querySelector('.js-chat-bubble') ?? message
+    const menu = message?.querySelector('ul.menu')
+    const bubbleBox = bubble?.getBoundingClientRect()
+    const menuBox = menu?.getBoundingClientRect()
+
+    if (!bubbleBox || !menuBox) {
+      return null
+    }
+
+    return {
+      rightGap: Math.abs(menuBox.right - bubbleBox.right),
+      isInsideViewport: menuBox.left >= 0
+        && menuBox.right <= window.innerWidth,
+    }
+  }, messageId)
+
+  expect(alignment).not.toBeNull()
+  expect(alignment?.isInsideViewport).toBe(true)
+  expect(alignment?.rightGap ?? Infinity).toBeLessThanOrEqual(MENU_ALIGN_PX)
+}
+
+async function markPreviewFrame(page: Page) {
+  await page.getByTestId('artifact-frame-iframe').evaluate((element) => {
+    (element as HTMLElement & { __marker?: number }).__marker = 1
+  })
+}
+
+async function isPreviewFrameMarked(page: Page): Promise<boolean> {
+  return page.getByTestId('artifact-frame-iframe').evaluate((element) => {
+    return (element as HTMLElement & { __marker?: number }).__marker === 1
+  })
+}
+
+function trackReloads(page: Page) {
+  const tracker = { frameNavigations: 0, versionRequests: 0 }
+
+  page.on('framenavigated', (frame) => {
+    if (frame !== page.mainFrame()) {
+      tracker.frameNavigations += 1
+    }
+  })
+  page.on('request', (request) => {
+    if (request.url().includes('/versions/')) {
+      tracker.versionRequests += 1
+    }
+  })
+
+  return tracker
 }
 
 function getPreviewFrame(page: Page) {
@@ -512,3 +646,290 @@ test('renders artifact code blocks and opens diagrams in the chat viewer',
     await expect(viewer).toBeHidden()
     await expect(page.getByTestId('side-panel')).toBeVisible()
   })
+
+test.describe('message context menu focus mode', () => {
+  async function expectPanelRestored(
+    page: Page,
+    before: Awaited<ReturnType<typeof readSeamState>>,
+    tracker: ReturnType<typeof trackReloads>,
+    counts: { frameNavigations: number, versionRequests: number },
+  ) {
+    await expect(page.getByTestId('side-panel')).toBeVisible()
+    await page.waitForTimeout(PANEL_SETTLE_MS)
+
+    const after = await readSeamState(page)
+
+    expect(after.inset).toBe(before.inset)
+    expect(after.panel?.width).toBeCloseTo(before.panel?.width ?? 0, 0)
+    expect(after.panel?.x).toBeCloseTo(before.panel?.x ?? 0, 0)
+    expect(after.pillDocked).toBe(before.pillDocked)
+    await expect(page.getByTestId('artifact-tab-code'))
+      .toHaveAttribute('aria-selected', 'true')
+    expect(await isPreviewFrameMarked(page)).toBe(true)
+    expect(tracker.frameNavigations).toBe(counts.frameNavigations)
+    expect(tracker.versionRequests).toBe(counts.versionRequests)
+  }
+
+  test('docked at 1440: collapses to the no-panel layout while the menu is '
+    + 'open and restores the same panel after', async ({ page }) => {
+    const messageId = await openStreamedArtifactPanel(page)
+
+    await page.getByTestId('artifact-tab-code').click()
+    await markPreviewFrame(page)
+
+    const tracker = trackReloads(page)
+    const before = await readSeamState(page)
+    const topBefore = await getMessageTop(page, messageId)
+
+    expect(before.inset).toBe('480px')
+    expect(before.pillDocked).toBe(true)
+
+    await selectMessageMenu(page, messageId)
+    await expect(page.getByTestId('side-panel')).toBeHidden()
+    await expect(page.getByTestId('message-menu-info')).toBeVisible()
+    await page.waitForTimeout(PANEL_SETTLE_MS)
+
+    await expectMenuNextToMessage(page, messageId)
+
+    const during = await readSeamState(page)
+    const topDuring = await getMessageTop(page, messageId)
+
+    expect(during.inset).toBe('0px')
+    expect(during.pillDocked).toBe(false)
+    expect(during.panel?.x).toBeGreaterThanOrEqual(1440)
+    expect(Math.abs((topDuring ?? 0) - (topBefore ?? 0)))
+      .toBeLessThanOrEqual(SCROLL_TOLERANCE_PX)
+
+    const counts = {
+      frameNavigations: tracker.frameNavigations,
+      versionRequests: tracker.versionRequests,
+    }
+
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('message-menu-info')).toHaveCount(0)
+    await expectPanelRestored(page, before, tracker, counts)
+
+    const topAfter = await getMessageTop(page, messageId)
+
+    expect(Math.abs((topAfter ?? 0) - (topBefore ?? 0)))
+      .toBeLessThanOrEqual(SCROLL_TOLERANCE_PX)
+    await expect(page.getByTestId('side-panel')).toHaveAttribute(
+      'data-layout',
+      'docked',
+    )
+
+    await selectMessageMenu(page, messageId)
+    await expect(page.getByTestId('message-menu-info')).toBeVisible()
+    await expectMenuNextToMessage(page, messageId)
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('side-panel')).toBeVisible()
+  })
+
+  test('other menus leave the docked panel and the pill where they are',
+    async ({ page }) => {
+      await openStreamedArtifactPanel(page)
+
+      const before = await readSeamState(page)
+
+      await page.getByTestId('chat-input-tools-trigger').click()
+      await expect(page.getByTestId('chat-input-tools-panel').first())
+        .toBeVisible()
+      await page.waitForTimeout(PANEL_SETTLE_MS)
+
+      const during = await readSeamState(page)
+
+      expect(during).toEqual(before)
+      await expect(page.getByTestId('side-panel')).toBeVisible()
+    })
+
+  test('overlay band: collapses the panel and its scrim, then restores',
+    async ({ page }) => {
+      await page.setViewportSize({ width: 1100, height: 800 })
+
+      const messageId = await openStreamedArtifactPanel(page)
+
+      await page.getByTestId('artifact-tab-code').click()
+      await markPreviewFrame(page)
+
+      const tracker = trackReloads(page)
+      const before = await readSeamState(page)
+
+      await expect(page.getByTestId('side-panel')).toHaveAttribute(
+        'data-layout',
+        'overlay',
+      )
+      await expect(page.getByTestId('side-panel-scrim')).toBeVisible()
+
+      await selectMessageMenu(page, messageId)
+      await expect(page.getByTestId('side-panel')).toBeHidden()
+      await expect(page.getByTestId('side-panel-scrim')).toHaveCount(0)
+      await expect(page.getByTestId('message-menu-info')).toBeVisible()
+      await page.waitForTimeout(PANEL_SETTLE_MS)
+      await expectMenuNextToMessage(page, messageId)
+      expect((await readSeamState(page)).shellInert).toBe(false)
+
+      const counts = {
+        frameNavigations: tracker.frameNavigations,
+        versionRequests: tracker.versionRequests,
+      }
+
+      await page.keyboard.press('Escape')
+      await expect(page.getByTestId('message-menu-info')).toHaveCount(0)
+      await expectPanelRestored(page, before, tracker, counts)
+      await expect(page.getByTestId('side-panel-scrim')).toBeVisible()
+      await expect(page.getByTestId('side-panel')).toHaveAttribute(
+        'data-layout',
+        'overlay',
+      )
+    })
+
+  test('mobile sheet at 375: hides the sheet while the menu is open and '
+    + 'reopens the same one', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+
+    const messageId = await openStreamedArtifactPanel(page)
+
+    await page.getByTestId('artifact-tab-code').click()
+    await markPreviewFrame(page)
+
+    const tracker = trackReloads(page)
+    const sheet = page.getByTestId('side-panel-sheet')
+
+    await expect(sheet).toHaveAttribute('open', '')
+
+    await selectMessageMenu(page, messageId)
+    await expect(sheet).toBeHidden()
+    await expect(page.getByTestId('message-menu-info')).toBeVisible()
+    await page.waitForTimeout(PANEL_SETTLE_MS)
+    await expectMenuNextToMessage(page, messageId)
+    await expect(page.getByTestId('artifact-detail')).toHaveCount(1)
+
+    const counts = {
+      frameNavigations: tracker.frameNavigations,
+      versionRequests: tracker.versionRequests,
+    }
+
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('message-menu-info')).toHaveCount(0)
+    await expect(sheet).toHaveAttribute('open', '')
+    await expect(page.getByTestId('artifact-tab-code'))
+      .toHaveAttribute('aria-selected', 'true')
+    expect(await isPreviewFrameMarked(page)).toBe(true)
+    expect(tracker.frameNavigations).toBe(counts.frameNavigations)
+    expect(tracker.versionRequests).toBe(counts.versionRequests)
+  })
+})
+
+test.describe('artifact versions and menus', () => {
+  const FAILING_CONTENT = [
+    '<!doctype html>',
+    '<html><body><h1 id="greeting">Broken</h1>',
+    '<script>throw new Error("version two exploded")</script>',
+    '</body></html>',
+  ].join('\n')
+  const VERSIONS = [
+    VERSION_CONTENT,
+    {
+      ...VERSION_CONTENT,
+      version: 2,
+      content: FAILING_CONTENT,
+      sizeBytes: FAILING_CONTENT.length,
+    },
+  ]
+
+  test('renders versions that declare the same top-level binding in a fresh '
+    + 'frame and keeps the frame across tab toggles', async ({ page }) => {
+    function declaringContent(label: string) {
+      return [
+        '<!doctype html>',
+        `<html><body><h1 id="greeting">${label}</h1>`,
+        '<script>let count = 1; class Counter {}</script>',
+        '</body></html>',
+      ].join('\n')
+    }
+
+    const versionOne = declaringContent('First')
+    const versionTwo = declaringContent('Second')
+
+    await openStreamedArtifactPanel(page, [
+      {
+        ...VERSION_CONTENT,
+        content: versionOne,
+        sizeBytes: versionOne.length,
+      },
+      {
+        ...VERSION_CONTENT,
+        version: 2,
+        content: versionTwo,
+        sizeBytes: versionTwo.length,
+      },
+    ])
+
+    const select = page.getByTestId('artifact-version-select')
+    const banner = page.getByTestId('artifact-runtime-error')
+    const greeting = getPreviewFrame(page).locator('#greeting')
+
+    await expect(greeting).toHaveText('First', { timeout: 20_000 })
+    await markPreviewFrame(page)
+    await page.getByTestId('artifact-tab-code').click()
+    await page.getByTestId('artifact-tab-preview').click()
+    expect(await isPreviewFrameMarked(page)).toBe(true)
+
+    await select.selectOption('2')
+    await expect(greeting).toHaveText('Second', { timeout: 20_000 })
+    await select.selectOption('1')
+    await expect(greeting).toHaveText('First', { timeout: 20_000 })
+    await expect(banner).toHaveCount(0)
+  })
+
+  test('shows a runtime error only on the version that raised it',
+    async ({ page }) => {
+      await openStreamedArtifactPanel(page, VERSIONS)
+
+      const select = page.getByTestId('artifact-version-select')
+      const banner = page.getByTestId('artifact-runtime-error')
+
+      await expect(banner).toHaveCount(0)
+
+      await select.selectOption('2')
+      await expect(banner).toContainText('version two exploded', {
+        timeout: 20_000,
+      })
+
+      await select.selectOption('1')
+      await expect(banner).toHaveCount(0)
+      await expect(getPreviewFrame(page).locator('#greeting'))
+        .toHaveText(ARTIFACT_TEXT, { timeout: 20_000 })
+      await expect(banner).toHaveCount(0)
+
+      await select.selectOption('2')
+      await expect(banner).toContainText('version two exploded', {
+        timeout: 20_000,
+      })
+    })
+
+  test('the actions menu closes when Tab moves focus out of it',
+    async ({ page }) => {
+      await openStreamedArtifactPanel(page)
+
+      const menu = page.locator('details.dropdown:has('
+        + '[data-testid="artifact-actions"])')
+
+      await page.getByTestId('artifact-actions').click()
+      await expect(menu).toHaveAttribute('open', '')
+
+      for (let press = 0; press < 12; press += 1) {
+        await page.keyboard.press('Tab')
+
+        const isFocusInside = await menu.evaluate((element) => {
+          return element.contains(document.activeElement)
+        })
+
+        if (!isFocusInside) {
+          break
+        }
+      }
+
+      await expect(menu).not.toHaveAttribute('open', '')
+    })
+})

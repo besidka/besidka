@@ -32,6 +32,18 @@
       </div>
     </div>
     <p
+      v-else-if="isDeleted"
+      class="flex items-center gap-2 rounded-box border border-base-300 px-3 py-2 text-sm text-base-content/60"
+      data-testid="artifact-card-deleted"
+    >
+      <Icon
+        name="lucide:trash-2"
+        size="16"
+        class="shrink-0"
+      />
+      Artifact deleted
+    </p>
+    <p
       v-else-if="isUnavailable"
       class="flex items-center gap-2 rounded-box border border-base-300 px-3 py-2 text-sm text-base-content/60"
       data-testid="artifact-card-unavailable"
@@ -220,6 +232,14 @@ const isActive = computed<boolean>(() => {
     && (version === null || openVersion === null || openVersion === version)
 })
 
+const isDeleted = computed<boolean>(() => {
+  const artifactId = model.value?.artifactId
+
+  return model.value?.state === 'ready'
+    && !!artifactId
+    && panel.isDeleted(artifactId)
+})
+
 const isUnavailable = computed<boolean>(() => {
   const artifactId = model.value?.artifactId
 
@@ -259,6 +279,19 @@ watch(model, (current) => {
 
   hasTriedAutoOpen = true
   tryAutoOpen(props.chatId, target.value)
+}, { immediate: true })
+
+watch(model, (current) => {
+  if (
+    props.source !== 'owner'
+    || current?.state !== 'ready'
+    || !current.artifactId
+    || current.version === null
+  ) {
+    return
+  }
+
+  panel.noteVersion(current.artifactId, current.version)
 }, { immediate: true })
 
 watch([model, isActive], ([current, active]) => {

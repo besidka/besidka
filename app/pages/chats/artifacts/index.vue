@@ -412,25 +412,6 @@ async function onClearFilters() {
   await clearFilters()
 }
 
-function reportDeleteResult(deletedCount: number, heldCount: number) {
-  if (deletedCount) {
-    useSuccessMessage(
-      deletedCount === 1
-        ? 'Artifact deleted'
-        : `${deletedCount} artifacts deleted`,
-    )
-  }
-
-  if (heldCount) {
-    useWarningMessage(
-      heldCount === 1
-        ? 'One artifact could not be deleted'
-        : `${heldCount} artifacts could not be deleted`,
-      'They are on hold after a report and stay until the hold ends.',
-    )
-  }
-}
-
 function closePanelIfShowing(deletedIds: string[]) {
   const openArtifactId = panel.state.value?.artifactId
 
@@ -458,7 +439,10 @@ async function confirmAndDelete(
   const result = await deleteArtifacts(ids)
 
   closePanelIfShowing(result.deletedIds)
-  reportDeleteResult(result.deletedIds.length, result.heldIds.length)
+  reportArtifactDeleteResult(
+    result.deletedIds.length,
+    result.heldIds.length,
+  )
 }
 
 async function onDelete(artifact: ArtifactSummary) {

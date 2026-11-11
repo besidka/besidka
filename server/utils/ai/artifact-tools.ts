@@ -273,7 +273,8 @@ export function buildArtifactKindsDescription(
   allowedKinds: readonly ArtifactKind[],
 ): string {
   const descriptions: Record<ArtifactKind, string> = {
-    html: 'html: one self-contained HTML document with inline CSS and JS',
+    html: 'html: one self-contained HTML document with inline JS, styled '
+      + 'with daisyUI and Tailwind classes',
     react: 'react: one JSX module whose default export is a React component',
     svg: 'svg: one SVG image',
     mermaid: 'mermaid: one Mermaid diagram',
@@ -312,6 +313,67 @@ export function buildArtifactCodeBlocksDescription(
     + 'as a string child, in html with < and & escaped.'
 }
 
+const DESIGN_SYSTEM_KINDS: readonly ArtifactKind[] = ['html', 'react']
+
+export const ARTIFACT_DESIGN_INSTRUCTIONS = [
+  'Design: html and react artifacts already load Tailwind CSS 4 and',
+  'daisyUI 5 with the Besidka theme and the Nunito font. Never link or',
+  'import them (no CDN, no external fonts or icons) and do not set',
+  'font-family. Style with class names (className in JSX), not CSS:',
+  'daisyUI components first, Tailwind utilities for layout and spacing',
+  '(flex, grid, gap-4, p-6, max-w-2xl mx-auto, sm:/md: prefixes);',
+  'arbitrary values such as w-[18rem] work, and classes that scripts or',
+  'React state add later work too.',
+  'Colours: only theme names, so light and dark follow the viewer:',
+  'primary, secondary, accent, neutral (fills only), base-100 (page,',
+  'cards), base-200 and base-300 (sections, borders), base-content (text,',
+  'e.g. text-base-content/70 for muted), info, success, warning, error,',
+  'and *-content for text on a coloured fill. No fixed colours',
+  '(text-gray-700, bg-white, hex) except data colours in charts; no dark:',
+  'variants, no theme switcher, no body background.',
+  'Components (parts; modifiers): btn (btn-primary, btn-accent, btn-ghost,',
+  'btn-outline, btn-soft, btn-sm, btn-lg, btn-block, btn-circle); card',
+  '(card-body, card-title, card-actions; card-border); alert',
+  '(alert-info/success/warning/error, alert-soft); badge (badge-soft,',
+  'badge-outline, colours); progress (progress-accent); radial-progress',
+  '(style --value); input, textarea, select, checkbox, radio, toggle,',
+  'range; fieldset with fieldset-legend and label; tabs (tabs-box; tab,',
+  'tab-active); collapse (collapse-title, collapse-content,',
+  'collapse-arrow); join and join-item; menu; navbar; modal (<dialog',
+  'class="modal"> with modal-box and modal-action, open with showModal());',
+  'table (table-zebra); stats (stat, stat-title, stat-value, stat-desc);',
+  'steps (step, step-accent); timeline; countdown; kbd; loading',
+  '(loading-spinner); tooltip (data-tip); divider; list and list-row;',
+  'hero; swap; rating; avatar; skeleton; toast; indicator; chat',
+  '(chat-bubble).',
+  'Example: <div class="card bg-base-100 border border-base-300"><div',
+  'class="card-body"><h2 class="card-title">Question 1</h2><button',
+  'class="btn btn-outline justify-start">Answer</button><div',
+  'class="card-actions justify-end"><button class="btn btn-primary">Next',
+  '</button></div></div></div>. Give an html body padding (class="p-4");',
+  'a React component already sits in a padded page.',
+  'Write custom CSS only for what classes cannot do (keyframes, exact',
+  'chart sizes), in one short <style> block; it overrides the classes.',
+  'Keep it accessible: real <button> and <label> elements, aria-label on',
+  'icon-only buttons, text on fills with the matching *-content colour.',
+].join(' ')
+
+/**
+ * The compact design-system sheet (daisyUI 5 + Tailwind 4, Besidka theme),
+ * only when a kind that loads it (html, react) is allowed. Its token cost
+ * per provider is recorded in docs/artifacts.md "Design system in
+ * artifacts".
+ */
+export function buildArtifactDesignInstructions(
+  allowedKinds: readonly ArtifactKind[],
+): string {
+  const loadsDesignSystem = allowedKinds.some((kind) => {
+    return DESIGN_SYSTEM_KINDS.includes(kind)
+  })
+
+  return loadsDesignSystem ? ARTIFACT_DESIGN_INSTRUCTIONS : ''
+}
+
 export const ARTIFACT_REACT_IMPORTS = [
   'react',
   'react/jsx-runtime',
@@ -337,10 +399,13 @@ export function buildArtifactInstructions(
 ): string {
   return [
     'Artifacts are available through `create_artifact` and',
-    '`update_artifact`. Use an artifact for self-contained content longer',
-    'than about 20 lines that the user will view, run or reuse: quizzes,',
-    'flashcards, small apps and games, diagrams, documents and reports.',
-    'Keep short answers and short code snippets in the normal reply.',
+    '`update_artifact`. Create one only when the user asks for an',
+    'artifact, an app, an interactive page, a quiz, flashcards, a game or a',
+    'dashboard, or for a long, structured document (study guide, report,',
+    'cheat sheet) or an SVG image. Everything else goes in the reply: a',
+    'diagram as a fenced ```mermaid block (chat renders it with zoom and',
+    'export) and code of any length (functions, scripts, config) as fenced',
+    'code blocks.',
     `Allowed kinds: ${buildArtifactKindsDescription(allowedKinds)}.`,
     'Artifacts run in a sandbox without network access: no fetch, no',
     'remote scripts, styles, fonts or images (use inline SVG or data URIs),',
@@ -348,9 +413,11 @@ export function buildArtifactInstructions(
     'payment details or other personal data.',
     'When the user asks to load data from an API or a website, write',
     'representative data into the artifact instead and say in the reply',
-    'that artifacts cannot load live data. A plain <a href> link is fine:',
+    'that artifacts cannot load live data; leave fetch and API code out',
+    'of the artifact, comments included. A plain <a href> link is fine:',
     'the viewer confirms before it opens.',
-    'Create one artifact per request unless the user asks for several.',
+    'Create one artifact per request unless the user asks for several,',
+    'and never an empty or placeholder artifact.',
     allowedKinds.includes('react')
       ? 'React artifacts may import only '
       + `${ARTIFACT_REACT_IMPORTS.join(', ')}; any other import fails.`
@@ -366,10 +433,12 @@ export function buildArtifactInstructions(
       + ' confirms each call and may decline, so catch errors and show a'
       + ' short message.'
       : 'Artifacts cannot call a model.',
-    'To change an artifact from this chat call `update_artifact` with its',
-    'id; prefer small `edits` over sending the whole content again.',
-    'After writing an artifact, add one short paragraph for the user; do',
-    'not repeat its content in the reply.',
+    'When the user refers to an artifact from this chat, change it with',
+    '`update_artifact` and its id; prefer small `edits` over sending the',
+    'whole content again. A new, unrelated request is not an edit.',
+    'After writing an artifact, add one or two sentences for the user;',
+    'never repeat its source or content in the reply, fenced or not.',
+    buildArtifactDesignInstructions(allowedKinds),
   ].filter(Boolean).join(' ')
 }
 
@@ -432,7 +501,10 @@ export function createArtifactTools(input: CreateArtifactToolsInput): ToolSet {
   return {
     [CREATE_ARTIFACT_TOOL_NAME]: withFollowUpTurn(tool({
       description: [
-        'Create a new artifact shown to the user next to the chat.',
+        'Create a new artifact shown to the user next to the chat, only',
+        'when the user asked for an artifact, app, interactive page, quiz,',
+        'game or a document to keep; never for a diagram or code that fits',
+        'a fenced block in the reply unless the user asks for an artifact.',
         `Kinds: ${buildArtifactKindsDescription(input.allowedKinds)}.`,
         `The content is at most ${ARTIFACT_VERSION_MAX_BYTES} bytes.`,
         buildArtifactCodeBlocksDescription(input.allowedKinds),

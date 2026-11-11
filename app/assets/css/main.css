@@ -484,17 +484,58 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   max-width: calc(100vw - var(--side-panel-width, 0px));
 }
 
-.side-panel-inset {
-  margin-right: var(--side-panel-width, 0px);
+:root {
+  --side-panel-transition-duration: 300ms;
+  --side-panel-transition-easing: cubic-bezier(0, 0, 0.2, 1);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .side-panel-inset {
-    transition: margin-right 0.3s ease-out;
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --side-panel-transition-duration: 0ms;
   }
 }
 
-.side-panel-resizing :is(.side-panel-inset, .side-panel-follow) {
+.side-panel-inset {
+  margin-right: var(--side-panel-width, 0px);
+  transition: margin-right var(--side-panel-transition-duration)
+    var(--side-panel-transition-easing);
+}
+
+@layer components {
+  .side-panel-width-follow {
+    transition: width var(--side-panel-transition-duration)
+      var(--side-panel-transition-easing);
+  }
+
+  .side-panel-collapsible {
+    transition-property: width, translate, visibility;
+    transition-duration: var(--side-panel-transition-duration);
+    transition-timing-function: var(--side-panel-transition-easing);
+  }
+
+  .side-panel-collapsed {
+    translate: 100% 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .side-panel-seam-right {
+    transition: right var(--side-panel-transition-duration)
+      var(--side-panel-transition-easing);
+  }
+
+  .side-panel-pill {
+    transition-property: transform, translate, scale, rotate, right;
+    transition-duration:
+      500ms, 500ms, 500ms, 500ms, var(--side-panel-transition-duration);
+    transition-timing-function:
+      ease-in-out, ease-in-out, ease-in-out, ease-in-out,
+      var(--side-panel-transition-easing);
+  }
+}
+
+.side-panel-resizing
+:is(.side-panel-inset, .side-panel-follow, .side-panel-width-follow) {
   transition: none !important;
 }
 

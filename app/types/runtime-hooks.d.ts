@@ -17,6 +17,7 @@ declare module '#app' {
     'chat:generation-ready-while-hidden': () => void
     'chat:generation-finished': () => void
     'chat:context-changed': () => void
+    'artifacts:deleted': (artifactIds: string[]) => void
     'chat:message-selected': (messageId: string | null) => void
     'chat:scroll-to-user-message': () => void
     'chat:scroll-to-bottom': () => void

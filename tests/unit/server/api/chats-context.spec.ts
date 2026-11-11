@@ -127,6 +127,24 @@ describe('GET /api/v1/chats/[slug]/context', () => {
     testDb.close()
   })
 
+  it('returns the chat id and its pinned time', async () => {
+    testDb.insertChat({
+      id: 1,
+      userId: OWNER_ID,
+      slug: CHAT_SLUG,
+      pinnedAtSeconds: 1_790_000_000,
+    })
+    stubServerGlobals(testDb, { user: { id: String(OWNER_ID) } })
+
+    const handler = await loadHandler()
+    const response = await handler(createEvent(CHAT_SLUG))
+
+    expect(response.chat.id).toBeTruthy()
+    expect(response.chat.pinnedAt).toBe(
+      new Date(1_790_000_000 * 1000).toISOString(),
+    )
+  })
+
   it('returns the context of the owner\'s chat', async () => {
     seedOwnedChat(testDb)
     stubServerGlobals(testDb, { user: { id: String(OWNER_ID) } })
@@ -137,6 +155,7 @@ describe('GET /api/v1/chats/[slug]/context', () => {
     expect(response.chat).toMatchObject({
       slug: CHAT_SLUG,
       title: 'A chat',
+      pinnedAt: null,
       project: null,
       memoryExcluded: false,
       share: { active: false },

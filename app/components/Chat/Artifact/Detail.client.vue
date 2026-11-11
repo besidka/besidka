@@ -101,6 +101,15 @@
           :input="mermaidMenuInput"
         />
       </div>
+      <button
+        v-if="!isStreaming && newerVersion"
+        type="button"
+        class="btn btn-sm btn-soft btn-primary"
+        data-testid="artifact-newer-version"
+        @click="onShowNewerVersion"
+      >
+        v{{ newerVersion }} is available, show
+      </button>
       <span
         v-if="isStreaming"
         class="text-xs text-base-content/60"
@@ -128,6 +137,8 @@
       <details
         ref="actionsMenu"
         class="dropdown dropdown-end"
+        @keydown.esc="onActionsEscape"
+        @focusout="onActionsFocusOut"
       >
         <summary
           class="btn btn-sm btn-ghost btn-circle"
@@ -225,6 +236,24 @@
                 {{ isFullWidth ? 'Exit full width' : 'Full width' }}
               </button>
             </li>
+            <li
+              v-if="canDelete"
+              class="mt-1 border-t border-base-300 pt-1"
+            >
+              <button
+                type="button"
+                class="text-error"
+                :disabled="isDeleting"
+                data-testid="artifact-action-delete"
+                @click="onDeleteArtifact"
+              >
+                <Icon
+                  name="lucide:trash-2"
+                  size="14"
+                />
+                Delete artifact
+              </button>
+            </li>
           </ul>
         </div>
       </details>
@@ -256,11 +285,31 @@
           </summary>
           <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words">{{ runtimeError.stack }}</pre>
         </details>
+        <div
+          v-if="isOwner && fixOrigin === 'none'"
+          class="mt-3 flex flex-col items-start gap-2"
+        >
+          <p
+            class="text-sm text-base-content/70"
+            data-testid="artifact-fix-no-chat"
+          >
+            {{ noOriginChatText }}
+          </p>
+          <button
+            type="button"
+            class="btn btn-sm"
+            data-testid="artifact-start-new-chat"
+            @click="onStartNewChat"
+          >
+            Start a new chat with this artifact
+          </button>
+        </div>
       </div>
       <button
-        v-if="isOwner"
+        v-if="isOwner && fixOrigin !== 'none'"
         type="button"
         class="btn btn-sm"
+        :disabled="fixOrigin === 'unknown'"
         data-testid="artifact-ask-to-fix"
         @click="onAskToFix"
       >
@@ -420,6 +469,7 @@ import {
   isArtifactUnavailableStatus,
   loadArtifactDetail,
   loadArtifactVersion,
+  resolveArtifactVersionRefresh,
   useSharedArtifactVersions,
 } from '~/composables/artifacts'
 import {
@@ -451,7 +501,6 @@ const CODE_LANGUAGES: Record<ArtifactKind, string> = {
   markdown: 'markdown',
 }
 
-const nuxtApp = useNuxtApp()
 const colorMode = useColorMode()
 const panel = useArtifactPanel()
 const sidePanel = useSidePanel()
@@ -461,12 +510,15 @@ const shareFeature = useFeature('artifacts.share')
 const clipboard = useClipboard({ legacy: true })
 const { state, stream } = panel
 const { isFullWidth } = sidePanel
+const { isDeleting, deleteArtifact } = useArtifactDelete()
 
 const previewTabId = useId()
 const codeTabId = useId()
 const previewPanelId = useId()
 const codePanelId = useId()
 const actionsMenu = useTemplateRef<HTMLDetailsElement>('actionsMenu')
+
+onClickOutside(actionsMenu, closeActionsMenu, { detectIframe: true })
 
 const activeTab = shallowRef<ArtifactTab>('preview')
 const hasOpenedCode = shallowRef<boolean>(false)
@@ -480,7 +532,9 @@ const isCodeTabForced = shallowRef<boolean>(false)
 const detail = shallowRef<ArtifactDetail | null>(null)
 const content = shallowRef<ArtifactVersionContent | null>(null)
 const loadError = shallowRef<LoadError | null>(null)
-const runtimeErrors = shallowRef<ArtifactRuntimeMessage[]>([])
+const runtimeErrorsByVersion = shallowRef<
+  Record<string, ArtifactRuntimeMessage[]>
+>({})
 const storageState = shallowRef<ArtifactStorageState>({
   persistent: false,
   keys: 0,
@@ -489,6 +543,7 @@ const storageState = shallowRef<ArtifactStorageState>({
 const frameKey = shallowRef<number>(0)
 const isShareOpen = shallowRef<boolean>(false)
 const hasOpenedShare = shallowRef<boolean>(false)
+const { origin: fixOrigin, askToFix, startNewChat } = useArtifactFix(detail)
 
 let contentRequestId = 0
 let detailRequestId = 0
@@ -541,6 +596,14 @@ const displayTitle = computed<string>(() => {
 
 const selectedVersion = computed<number | null>(() => {
   return state.value?.version ?? detail.value?.currentVersion ?? null
+})
+
+const latestVersion = computed<number | null>(() => {
+  return panel.getLatestVersion(state.value?.artifactId ?? null)
+})
+
+const newerVersion = computed<number | null>(() => {
+  return getVersionRefresh() === 'offer' ? latestVersion.value : null
 })
 
 const versionOptions = computed<number[]>(() => {
@@ -665,6 +728,19 @@ const canShare = computed<boolean>(() => {
     && !detail.value?.takenDown
 })
 
+const canDelete = computed<boolean>(() => {
+  return isOwner.value
+    && !!state.value?.artifactId
+    && !isStreaming.value
+    && !loadError.value
+})
+
+const noOriginChatText = computed<string>(() => {
+  return detail.value?.createdVia === 'mcp'
+    ? 'A connected app created this artifact, so it has no chat.'
+    : 'The chat that created this artifact was deleted.'
+})
+
 const isUnavailableError = computed<boolean>(() => {
   const error = loadError.value
 
@@ -672,7 +748,16 @@ const isUnavailableError = computed<boolean>(() => {
 })
 
 const runtimeError = computed<ArtifactRuntimeMessage | null>(() => {
-  return runtimeErrors.value.at(-1) ?? null
+  const key = getRuntimeErrorKey(
+    state.value?.artifactId,
+    selectedVersion.value,
+  )
+
+  if (!key) {
+    return null
+  }
+
+  return runtimeErrorsByVersion.value[key]?.at(-1) ?? null
 })
 
 const framePartial = computed<ArtifactPayload | null>(() => {
@@ -717,20 +802,47 @@ useHead({
 })
 
 function selectTab(tab: ArtifactTab) {
+  closeActionsMenu()
   activeTab.value = tab
   isCodeTabForced.value = false
 }
 
 function closeActionsMenu() {
-  if (actionsMenu.value) {
+  if (actionsMenu.value?.open) {
     actionsMenu.value.open = false
   }
 }
 
-async function loadDetail() {
+function onActionsEscape(event: KeyboardEvent) {
+  if (!actionsMenu.value?.open) {
+    return
+  }
+
+  event.preventDefault()
+  closeActionsMenu()
+  actionsMenu.value.querySelector<HTMLElement>('summary')?.focus()
+}
+
+function onActionsFocusOut(event: FocusEvent) {
+  const nextTarget = event.relatedTarget
+
+  if (!(nextTarget instanceof Node)) {
+    return
+  }
+
+  if (actionsMenu.value?.contains(nextTarget)) {
+    return
+  }
+
+  closeActionsMenu()
+}
+
+async function loadDetail(options: { keepCurrent?: boolean } = {}) {
   const artifactId = state.value?.artifactId
 
-  detail.value = null
+  if (!options.keepCurrent) {
+    detail.value = null
+  }
 
   if (!artifactId || !isOwner.value) {
     return
@@ -754,6 +866,33 @@ async function loadDetail() {
     loadError.value = { status: result.status, message: result.message }
   }
 }
+
+function getRuntimeErrorKey(
+  artifactId: string | null | undefined,
+  version: number | null | undefined,
+): string | null {
+  if (!artifactId || version === null || version === undefined) {
+    return null
+  }
+
+  return `${artifactId}:${version}`
+}
+
+function clearRuntimeErrors(key: string | null) {
+  if (!key || !runtimeErrorsByVersion.value[key]) {
+    return
+  }
+
+  runtimeErrorsByVersion.value = Object.fromEntries(
+    Object.entries(runtimeErrorsByVersion.value).filter(([entryKey]) => {
+      return entryKey !== key
+    }),
+  )
+}
+
+watch(() => state.value?.artifactId, () => {
+  runtimeErrorsByVersion.value = {}
+})
 
 async function reloadContent() {
   const current = state.value
@@ -780,7 +919,10 @@ async function reloadContent() {
 
   if (result.ok) {
     content.value = result.value
-    runtimeErrors.value = []
+    clearRuntimeErrors(getRuntimeErrorKey(
+      result.value.artifactId,
+      result.value.version,
+    ))
 
     return
   }
@@ -794,7 +936,7 @@ async function reloadContent() {
 
 watch(
   [() => state.value?.artifactId, () => state.value?.source],
-  loadDetail,
+  () => loadDetail(),
   { immediate: true },
 )
 
@@ -832,11 +974,45 @@ watch(kind, (value) => {
   }
 })
 
+function getVersionRefresh() {
+  return resolveArtifactVersionRefresh({
+    selectedVersion: selectedVersion.value,
+    latestVersion: latestVersion.value,
+    isVersionPinned: !!state.value?.isVersionPinned,
+  })
+}
+
+watch(latestVersion, async (version) => {
+  const artifactId = state.value?.artifactId
+
+  if (!isOwner.value || version === null || getVersionRefresh() === 'none') {
+    return
+  }
+
+  await loadDetail({ keepCurrent: true })
+
+  if (state.value?.artifactId !== artifactId) {
+    return
+  }
+
+  if (getVersionRefresh() === 'switch') {
+    panel.selectVersion(latestVersion.value ?? version)
+  }
+})
+
 function onVersionChange(event: Event) {
   const version = Number((event.target as HTMLSelectElement).value)
 
+  closeActionsMenu()
+
   if (Number.isSafeInteger(version)) {
-    panel.selectVersion(version)
+    panel.selectVersion(version, detail.value?.currentVersion ?? null)
+  }
+}
+
+function onShowNewerVersion() {
+  if (newerVersion.value) {
+    panel.selectVersion(newerVersion.value)
   }
 }
 
@@ -845,10 +1021,22 @@ function onRuntimeMessage(message: ArtifactRuntimeMessage) {
     return
   }
 
-  runtimeErrors.value = [
-    ...runtimeErrors.value,
-    message,
-  ].slice(-MAX_RUNTIME_ERRORS)
+  const key = getRuntimeErrorKey(
+    frameResult.value?.artifactId,
+    frameResult.value?.version,
+  )
+
+  if (!key) {
+    return
+  }
+
+  runtimeErrorsByVersion.value = {
+    ...runtimeErrorsByVersion.value,
+    [key]: [
+      ...(runtimeErrorsByVersion.value[key] ?? []),
+      message,
+    ].slice(-MAX_RUNTIME_ERRORS),
+  }
 }
 
 async function onCopyCode() {
@@ -950,20 +1138,48 @@ function onToggleFullWidth() {
   sidePanel.toggleFullWidth()
 }
 
-async function onAskToFix() {
+function buildFixPrompt(): string | null {
   const error = runtimeError.value
 
-  if (!error || !isOwner.value) {
+  return error ? buildArtifactFixPrompt(displayTitle.value, error) : null
+}
+
+async function onAskToFix() {
+  const text = buildFixPrompt()
+  const current = state.value
+
+  if (!text || !current || !isOwner.value) {
     return
   }
 
-  const text = `Fix the error in "${displayTitle.value}": ${error.message}`
+  await askToFix(text, {
+    artifactId: current.artifactId,
+    version: selectedVersion.value ?? current.version,
+    kind: current.kind,
+    title: current.title,
+    source: 'owner',
+  })
+}
 
-  if (layout.value !== 'docked') {
-    sidePanel.close()
-    await nextTick()
+async function onStartNewChat() {
+  const text = buildFixPrompt()
+
+  if (!text || !isOwner.value) {
+    return
   }
 
-  await nuxtApp.callHook('chat-input:prefill', text)
+  await startNewChat(text)
+}
+
+async function onDeleteArtifact() {
+  closeActionsMenu()
+
+  const artifactId = state.value?.artifactId
+
+  if (!artifactId || !canDelete.value) {
+    return
+  }
+
+  await deleteArtifact({ artifactId, title: displayTitle.value })
 }
 </script>

@@ -44,7 +44,7 @@ protocol v2 live next to v1.
    ```
 
    There is no third-party host in it. `'unsafe-eval'` is not needed: Sucrase
-   emits text that is loaded as a module from a `blob:` URL, and Mermaid
+   emits text that is loaded as a module from a `blob:` URL, and Pele
    renders without `eval` (both verified in Chromium and WebKit). There is
    no `worker-src`, so `default-src 'none'` blocks workers. `webrtc 'block'`
    is not enforced by Chromium or WebKit today (tested); it stays for the
@@ -97,7 +97,7 @@ Top navigation (`window.top.location = …`) is blocked by the sandbox.
 | `html` | `src/render/html.ts` | Parses the HTML with `DOMParser`, replaces the document's root element and runs the scripts in order, then dispatches synthetic `DOMContentLoaded` and `load`. |
 | `react` | `src/render/react.ts` | Sucrase (`jsx` + `typescript`, automatic runtime) to an ES module loaded from a `blob:` URL; the default export is mounted with `react-dom/client`. |
 | `svg` | `src/render/svg.ts` | Inserted into a `<main>`. |
-| `mermaid` | `src/render/mermaid.ts` | Vendored Mermaid, `securityLevel: 'strict'`, `layout: 'dagre'`, theme from the host. Lazy chunk. |
+| `mermaid` | `src/render/mermaid.ts` | Pele (the chat's renderer) with the shared options, sanitized by DOMPurify, theme from the host. Lazy chunk. |
 | `markdown` | `src/render/markdown.ts` | `marked` with GFM. |
 
 Why the HTML renderer does not use `document.open()/write()`: closing a
@@ -107,7 +107,20 @@ tripwire's signal. Replacing the root element keeps the Window, the port and
 Consequences: an artifact that calls `document.write()` after load replaces
 the document and trips the wire (A-3 tells models not to), and timers or
 listeners from a previous version of an HTML artifact keep running after a
-re-render, so the host should mount a fresh frame when it switches versions.
+re-render. The same realm is also the cause of BES-358: classic scripts share
+one global lexical environment per realm, so a second version with a
+top-level `let count` or `class` fails with "Identifier 'count' has already
+been declared" (WebKit hides the message). The host therefore renders every
+different `kind` + `content` in a fresh iframe: `Frame.client.vue` calls
+`mountFrame()` (new iframe, new `MessageChannel` handshake) when a result
+differs from the one it already sent, and only then. A streamed preview
+followed by its first result, a metadata-only change (a new `version` or
+`title` with identical content), Preview/Code toggles and a panel that only
+collapses or restores keep the frame. The chat panel, the `/a#` share page
+and the admin preview all go through that component. The runtime e2e
+`realm-isolation.spec.ts` shows the failure in one frame and the clean
+sequence in fresh frames; `artifacts-panel.spec.ts` drives v1, v2, v1 with
+identical top-level declarations through the real panel.
 Classic scripts run in order (external ones are awaited), inline module
 scripts are loaded from `blob:` URLs so their `load` event can be awaited
 (up to 5 s each) before the synthetic events, and `meta[http-equiv]`
@@ -164,10 +177,13 @@ those). Dual licences record the option taken: DOMPurify `(MPL-2.0 OR
 Apache-2.0)` is used under Apache-2.0. `khroma@2.1.0` has no `license` field;
 its shipped file is MIT, recorded in `LICENSE_OVERRIDES`.
 
-Mermaid 12 defaults to the ELK layout, and `elkjs` is `EPL-2.0 OR
-GPL-3.0-or-later`. The runtime does not ship it: the build resolves `elkjs`
-to a stub that throws a clear error, and the Mermaid config selects the MIT
-`dagre` layout. A diagram that asks for `layout: elk` fails with that error.
+The runtime renders Mermaid text with Pele (MIT, no runtime dependencies),
+the same renderer as the chat, and does not ship Mermaid. Mermaid 12 was
+vendored until BES-346, with its ELK layout (`elkjs`, `EPL-2.0 OR
+GPL-3.0-or-later`) replaced by a stub; with Pele there is no ELK to exclude
+and the build no longer carries that plugin. Pele has its own layout, so a
+`layout: elk` or `%%{init}` directive is not honoured, in the chat and in
+artifacts alike.
 
 The generated `/v1/THIRD_PARTY_NOTICES.txt` holds each package's name,
 version, licence and shipped licence text (marked's file includes the John
@@ -190,6 +206,7 @@ UI requests below were added this way in A-14). Methods:
 | host → runtime | `ui/notifications/tool-result` | notification (final render) |
 | host → runtime | `ui/notifications/host-context-changed` | notification (`theme`, `displayMode`) |
 | runtime → host | `ui/notifications/size-changed` | notification (`height`, per animation frame) |
+| runtime → host | `besidka/rendered` | notification `{ kind, partial }`: the first final paint of a result (`partial: false`) or of a streaming preview (`partial: true`) (BES-361) |
 | runtime → host | `ui/open-link` | request (host shows the URL, opens it only after a click) |
 | runtime → host | `notifications/message` | notification (`error`/`warning`) |
 | runtime → host | `besidka/storage/get|set|delete|list` | requests (A-5) |
@@ -251,10 +268,10 @@ Code and diagrams inside artifacts look and behave like the chat's
 | Element | Renders | Buttons |
 | --- | --- | --- |
 | `<besidka-code lang="ts">source</besidka-code>` | Shiki, themes `github-light-high-contrast` / `github-dark-high-contrast` (the chat's), window dots and the language label | Expand/Collapse from three lines on (collapsed to 7.5 rem, like chat), Copy |
-| `<besidka-mermaid>source</besidka-mermaid>` | The vendored Mermaid (dagre, `securityLevel: 'strict'`) themed from the host | Fullscreen (also a click on the diagram), Copy (source) |
+| `<besidka-mermaid>source</besidka-mermaid>` | Pele with the chat's options, themed from the host | Fullscreen (also a click on the diagram), Download and Copy dropdowns like the chat's |
 
-Whole `mermaid` artifacts use the same element: `render/mermaid.ts` runs
-`mermaid.parse()` first (a syntax error still reaches the host as an
+Whole `mermaid` artifacts use the same element: `render/mermaid.ts` renders
+the source once first (a syntax error still reaches the host as an
 artifact error, so the panel's Ask to fix works) and then renders
 `<main class="besidka-mermaid"><besidka-mermaid>`. A theme change no longer
 re-renders the whole artifact; the element re-renders itself.
@@ -284,9 +301,65 @@ returns the exact source of a Markdown or React block.
 Both elements render into an open shadow root, so artifact CSS cannot break
 them and React's reconciliation of the light-DOM text is untouched. Colours
 come from the runtime palette (`src/palette.ts`, the same tokens as the
-shell) and switch with `host-context-changed`: code is re-highlighted with
+shell, BES-354: the block chrome reads the theme's `--color-base-*`,
+`--color-accent` and `--color-error`, resolved to the chat's stone values, not
+a separate blue-black set) and switch with `host-context-changed`: code is re-highlighted with
 the other Shiki theme and diagrams are re-rendered. The icons are Lucide path
 data (ISC, already in the notices through `lucide-react`).
+
+### Same render as the chat (BES-346)
+
+The chat's diagram blocks and the full-screen viewer render with Pele
+(`app/utils/diagram-render-core.ts`). Until BES-346 the runtime rendered the
+same text with vendored Mermaid and its dagre layout, so a diagram got a
+different layout in the artifact preview (edges crossing nodes, detached
+label boxes, stretched subgraphs). Both sides now call `renderAsync` with
+`DIAGRAM_RENDER_OPTIONS` from
+`packages/artifacts-protocol/src/diagram-render.ts` (font families, `images`
+and `links` off, source, output and edge limits, direction breakpoint), and
+sanitize with the same `DIAGRAM_SVG_SANITIZE_CONFIG`. `diagram-parity.spec.ts`
+fails when the two calls differ.
+
+What the frame has to supply itself:
+
+- **Fonts.** Pele measures text on a canvas, so the label boxes are only
+  right when Nunito is loaded. A shadow root cannot declare `@font-face`, so
+  `render/diagram.ts` adds the Nunito faces (`design/fonts.ts`, shared with
+  the design system) to the document and awaits `document.fonts.load` for the
+  400 and 700 subsets of the source before rendering. The mono face
+  (`Atkinson Hyperlegible Mono`) is not vendored: mono labels (class and ER
+  diagrams) fall back to `monospace` and may be boxed slightly differently.
+- **Theme.** `.diagram` in `KIT_STYLE` maps the `--pele-*` variables to the
+  block's palette (`--besidka-*`) and to the chat's series colours in light
+  and dark, like `app/assets/css/diagram-theme.css`.
+- **Width.** The block's content width is passed as `maxWidth`, so the
+  direction switch at 480 px matches the chat; a resize re-renders.
+
+Measured 2026-11-10 with a neutral flowchart (ten nodes, two legend
+subgraphs, coloured labelled edges) in Chromium and WebKit, light and dark, at
+1440 and 375 px: the chat block, the artifact preview and the full-screen
+viewer have the same layout.
+
+Deploy order: the runtime Worker and the app deploy separately. A new frame
+that sends `copy-png` to an older host is rejected by the host's guard, and
+the frame shows "Copy failed"; deploy the app first. The frame decides
+whether to show the PNG item from its own `ClipboardItem` support, on the
+assumption that it equals the host's (same browser).
+
+### Dropdown menus (BES-348)
+
+Download and Copy are dropdowns anchored under their buttons, with the same
+items, order, icons and labels as the chat (`DIAGRAM_DOWNLOAD_MENU_ITEMS` and
+`DIAGRAM_COPY_MENU_ITEMS` in `packages/artifacts-protocol/src/diagram-menus.ts`,
+used by `app/utils/mermaid-menu-actions.ts` and the kit) and the chat's
+daisyUI look (176 px wide, `rounded-box`, pill items). They are `role="menu"`
+lists: click, Enter, Space or the arrow keys open them, the arrows, Home and
+End move, Esc (on the document, because Safari does not focus a clicked
+button), Tab, a pick or a pointer press elsewhere in the frame close them,
+and one menu is open at a time. The block no longer clips with
+`overflow: hidden`, so a menu can leave it; when the frame's viewport would
+cut the menu off it opens upwards if there is room, and otherwise the block's
+host grows by the missing height until it closes.
 
 ### Loading and size
 
@@ -308,7 +381,7 @@ Bundle delta (production build, gzip, measured on the A-14 branch):
 | First code block (Shiki core, engine, HTML output) | – | 56.6 KiB |
 | One grammar (TypeScript / JavaScript) | – | 15.4 / 15.8 KiB |
 | Each theme | – | 3.0 KiB |
-| `<besidka-mermaid>` on top of Mermaid | – | 1.1 KiB |
+| `<besidka-mermaid>` on top of Mermaid (since replaced by Pele, BES-346) | – | 1.1 KiB |
 
 The raw total grows by about 3.3 MiB (5,687 to 9,071 KiB), nearly all of it
 grammars that load only on demand; every artifact pays the 1.7 KiB entry
@@ -358,10 +431,8 @@ copy that did not happen. The e2e spec covers the held-open path with the
 harness's `fallback` mode. Verify on iOS Simulator Safari and the
 home-screen PWA (host side, A-4 stack top).
 
-Image copy (PNG) is not offered: a promised `ClipboardItem` would have to be
-created in the parent inside the gesture, which Safari only accepts there,
-and the frame cannot hand over a gesture. The host's diagram viewer can offer
-it, since it renders the source itself.
+Image copy (PNG) is a Mermaid block action, not a text copy: see "Mermaid
+exports".
 
 ### Fullscreen
 
@@ -377,9 +448,8 @@ kit does not send it yet.
 
 Every `<besidka-mermaid>` block (a Mermaid artifact, or a `language-mermaid`
 fence in an HTML or Markdown artifact) has the chat's Download (SVG, PNG,
-.drawio) and Copy (code, Markdown, SVG, draw.io) menus. The menus open as a
-row under the toolbar, because the block's rounded box clips a floating
-dropdown. Copy code uses `ui/clipboard-write`; every other item sends
+.drawio) and Copy (code, Markdown, SVG, PNG, draw.io) menus, as dropdowns
+(see "Dropdown menus"). Copy code uses `ui/clipboard-write`; every other item sends
 `besidka/diagram-export` `{ source, action, userActivation }` and gets
 `{ completed }`. The frame cannot download or reach the clipboard, so the
 parent renders the source with its own Mermaid and runs the chat's export
@@ -398,6 +468,77 @@ a pending confirmation and any export still rendering. Exports have their own li
 answers `-32601` and the button shows "Download failed" with "Not
 available here."
 
+Copy as PNG (BES-345) is the `copy-png` action. The parent builds the same
+PNG as Download PNG (`svgToPngBlob` of the standalone svg, 2x, opaque
+background, light or dark as shown) and writes only `image/png` with
+`navigator.clipboard.write([new ClipboardItem({ 'image/png': promise })])`,
+the item created before any `await` with the rendering inside the Promise,
+and no text fallback: a refused write returns `completed: false`, and the
+parent then asks for its own "Copy PNG" click like the other copies. Safari
+needs the gesture inside the write call, and the parent renders the diagram
+before it acts, so a Safari viewer will usually land on that confirmation.
+The item is hidden in the chat's menus, the viewer and the kit where
+`ClipboardItem` or `clipboard.write` is missing or `ClipboardItem.supports
+('image/png')` is false (`isImageClipboardSupported`).
+
+### Mermaid limits (BES-341)
+
+`MERMAID_MAX_EDGES = 500` and `MERMAID_MAX_TEXT_SIZE = 20,000` live in
+`packages/artifacts-protocol/src/mermaid-limits.ts` and reach both renderers
+through `DIAGRAM_RENDER_OPTIONS` (`maxEdges`, `limit`), so the chat, the
+artifact preview and the host's export render all draw or refuse the same
+diagram. Before BES-346 the runtime used 50,000 characters and the chat
+20,000; 500 edges is about 14,000 characters, so the text limit is not the
+tighter one in practice.
+
+**Why 500.** Measured 2026-11-09 with the vendored Mermaid 12.3.0 (the
+numbers are for that renderer and its dagre layout, not for Pele, which is
+what draws now; re-measure before raising the limit)
+(`mermaid.min.js`), dagre layout, `securityLevel: 'strict'`, a random layered
+flowchart with 0.67 nodes per edge (13.9, 28.4 and 58.9 thousand characters
+for 500, 1,000 and 2,000 edges), headless Playwright on the development Mac,
+`parse` plus `render`, best of two runs, the viewport width (1440 or 375 px)
+made no difference:
+
+| Edges | Chromium `parse` | Chromium total | WebKit `parse` | WebKit total | SVG |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 | 0.15 s | 1.2 to 1.3 s | 0.08 s | 0.9 to 1.0 s | 0.7 MB |
+| 1,000 | 0.30 s | 3.3 s | 0.14 s | 2.9 to 3.0 s | 1.4 MB |
+| 2,000 | 0.59 s | 10.2 to 10.4 s | 0.31 s | 10.0 to 10.3 s | 2.9 MB |
+
+Layout time grows faster than the edge count (about 2.8x for the first
+doubling, 3.1x for the second), so 1,000 edges already misses the 2 second
+target on a fast desktop, and a phone is slower than that. The limit stays
+at 500. Raise it only with a faster layout, not a bigger number. The text
+limit (20,000 characters) is no tighter than that: 500 edges is about 14,000
+characters.
+
+**What the reader sees.** Pele reports both limits with a `PeleError` whose
+message matches the old Mermaid edge text ("Edge limit exceeded. 500 edges
+found, but the limit is 500."); `render/diagram.ts` measures the source first
+and maps either into a `DiagramLimitError`:
+
+- The runtime reports it once through `besidka/message` with
+  `data: { message, stack, code, limit, found? }`. `message` is the short
+  text ("This diagram is too large to draw: it has more than 500 connections,
+  the limit is 500. Split it into smaller diagrams."), `stack` is the
+  renderer's raw text, `code` is `mermaid-edge-limit` or `mermaid-text-limit`. The
+  guard `isLogMessageParams` validates the three new fields.
+- No red panel in the frame (`reportError` skips it for these errors); the
+  frame shows a neutral "This diagram is too large to draw." instead, and the
+  host banner shows the message with the raw text under Details.
+- The renderer stops counting at the limit, so the edge count in its message is
+  always the limit and the real total is unknown. The message says "more than
+  500 connections"; only the text limit carries a measured size (`found`).
+- Ask to fix (`app/utils/artifact-fix-prompt.ts`) asks the model to split the
+  diagram into several smaller ones or simplify it under the limit and not to
+  change any Mermaid configuration. Other runtime errors keep the old prompt.
+- The text check measures the raw source, frontmatter included, so a diagram
+  with a very large frontmatter can be refused. Chat and artifacts use the
+  same 20,000 character limit since BES-346.
+- A `<besidka-mermaid>` block inside a Markdown, HTML or React artifact shows
+  the same short message in its own error line.
+
 ### Host hooks (`HostHandlers`)
 
 ```ts
@@ -412,6 +553,272 @@ gesture check before a hook runs, and passes only the known fields. Option
 `hasUserActivation` replaces the host's own activation read (the app uses it
 to require focus in the frame, see Copy through the bridge; only `true`
 passes), and `now` exists for tests.
+
+## Design system: daisyUI 5 and Tailwind 4 (A-15, BES-321)
+
+HTML and React artifacts get Tailwind CSS 4, daisyUI 5, the Besidka light
+and dark themes and the Nunito font, so a model writes class names instead
+of CSS. Markdown, SVG and Mermaid artifacts keep the shell styles. The
+model-facing side (instruction sheet, evals) is in `docs/artifacts.md`,
+"Design system in artifacts".
+
+### How it works
+
+`src/design/system.ts` is a lazy chunk that bundles the Tailwind compiler
+(`compile()` from `tailwindcss`), the daisyUI plugin and `daisyui/theme`,
+Tailwind's `index.css` (as text) and eight Nunito woff2 files. On the first
+html or react render the runtime loads it and compiles the input from
+`src/design/stylesheet.ts` once per frame:
+
+```css
+@import "tailwindcss";
+@plugin "daisyui" { themes: false; logs: false; }
+@plugin "daisyui/theme" { name: "light"; default: true; ... }  /* generated */
+@plugin "daisyui/theme" { name: "dark"; ... }                   /* generated */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+@theme { --font-sans: 'Nunito', ui-sans-serif, system-ui, ...; }
+@font-face { ... }  /* 4 subsets x 400/700, unicode-range */
+@layer utilities { /* main.css component overrides */ }
+```
+
+`src/design/index.ts` (in the entry graph, 1.6 KB minified) then:
+
+1. **Before the render** awaits the compiler (`prepareDesignSystem`).
+2. **html**: in the `afterReplace` prelude (same task as the root
+   replacement, so nothing paints unstyled) it puts one
+   `<style data-besidka-design>` first in the new `<head>`, collects every
+   class in the document, calls `build()` and writes the CSS.
+   **react**: the same on the shell document before the component mounts.
+3. Watches the document with a `MutationObserver` (`class` attributes and
+   added subtrees). Classes added later by scripts, `innerHTML` or React
+   state are compiled in the observer callback, a microtask that runs before
+   the next paint. `build()` only adds CSS for candidates it has not seen.
+   The first build always runs, even for an artifact without classes, so
+   preflight and the theme variables never depend on whether a class is
+   present. The CSS is cumulative for the frame's lifetime (rules for
+   classes of an earlier version match nothing), and the runtime stops
+   adding candidates after 5,000 (`MAX_DESIGN_CANDIDATES`, reported once as
+   a warning) and skips class names longer than 200 characters, so an
+   artifact that generates a new arbitrary class per frame cannot grow it
+   forever. A batch whose build throws is forgotten, so the next mutation
+   retries it.
+4. On a markdown, svg or mermaid render and on every shell restore it
+   removes the `<style>` and disconnects the observer.
+
+If the chunk fails to load, the runtime logs a warning and renders the
+artifact without the design system. Code that measures layout synchronously
+in the same task as it adds new classes (before the observer runs) sees the
+unstyled size; nothing in the evals did.
+
+The theme follows the host: `theme.ts` already sets `data-theme="light"` or
+`"dark"` on `<html>`, which is what the daisyUI theme selectors and the
+`dark:` variant above match. The OS preference is not used.
+
+### Cascade and overrides
+
+The compiled CSS starts with
+`@layer properties, besidka-shell, theme, base, components, utilities;`
+(`properties` first, where Tailwind itself declares it, so its
+`--tw-*` fallbacks for older engines stay lowest), and the shell style
+(`SHELL_STYLE`) starts with the same statement and wraps its rules in
+`@layer besidka-shell`. Only `#root { padding: 16px }` stays unlayered,
+because preflight's `* { padding: 0 }` would otherwise remove the React
+page padding the instruction sheet promises; nothing in Tailwind or daisyUI
+targets `#root`. `body { font: inherit }` in the base layer gives React
+artifacts Nunito and preflight's line height instead of the shell's
+`system-ui`. So the shell styles always rank below Tailwind and
+daisyUI wherever the `<style>` elements sit, and the artifact's own
+`<style>` (unlayered) always wins over all of them; the e2e spec checks that
+an artifact's `.btn { background }` beats daisyUI. Tailwind's preflight is
+included, as models expect from "Tailwind": an html artifact with its own
+CSS keeps its declared rules, but unstyled elements lose browser defaults
+(heading sizes, list bullets, body margin).
+
+Known side effect: an html artifact written before A-15 that uses a class
+name daisyUI also defines (`progress`, `card`, `badge`, `btn`, `alert`,
+`stat`, `steps`, ...) for its own CSS gets daisyUI's other properties too.
+Seen once in the stored A-10 run (Claude Haiku's quiz: its `.progress`
+header overlapped the bar), and such artifacts also lose browser default
+heading sizes and weights to preflight. Artifacts are internal-only, so
+these are a handful of test artifacts; new ones follow the instruction
+sheet. This was chosen over an opt-out heuristic (skip the design system
+when an html artifact has a large `<style>` or no utility classes): every
+detector misfires on the case the sheet allows, a daisyUI artifact with one
+short `<style>` for keyframes, and would hide a model that ignores the sheet
+instead of surfacing it in the evals, where it belongs to the instructions.
+
+### Theme sync
+
+`scripts/theme.mjs` (`pnpm run artifacts:theme`) reads the `light` and
+`dark` `@plugin "daisyui/theme"` blocks from `app/assets/css/main.css` and
+writes `src/design/theme.generated.ts` with the daisyUI settings and tokens
+(colours, `--radius-*`, `--size-*`, `--border`, `--depth`, `--noise`). The
+values stay `var(--color-stone-800)` and so on: the compile includes
+Tailwind's theme, so they resolve exactly as in the app. App-only tokens
+(`--color-accent-bg`, `--color-text`, skeleton and logo colours) are listed
+in `APP_ONLY_TOKENS` and dropped; any other new token makes the script throw
+until it is added to one of the two lists. `design.spec.ts` fails when the
+generated file differs from what the script would write today, so a
+`main.css` theme change without `pnpm run artifacts:theme` fails CI.
+
+The same script writes `src/palette.generated.ts`: the colour tokens the
+block chrome and the shell need (`base-100/200/300/content`, accent, info,
+success, warning, error, plus the colours dark diagram series use), resolved
+through `tailwindcss/theme.css` so Markdown, SVG and Mermaid artifacts, which
+load neither Tailwind nor daisyUI, still draw with the chat's palette. An HTML
+artifact redeclares the values it already has. `kit-theme.spec.ts` fails when
+that file is stale, and when a kit file or the kit or shell styles contain a
+colour literal (hex, `rgb()`, `oklch()`, slate or stone names) or read a
+variable the palette does not declare.
+
+Deliberate differences (BES-335, BES-337, BES-359): `ARTIFACT_THEME_OVERRIDES`
+in the same script replaces tokens in both themes, because the app's glass
+surfaces hide pairs that fail on an artifact's plain `base-100` page. Every
+semantic pair (`primary`, `secondary`, `accent`, `neutral`, `info`,
+`success`, `warning`, `error`) must keep its content at 4.5:1 on its fill and
+the fill at 3:1 against `base-100`, and `base-100/200/300` must carry
+`base-content` at 4.5:1; `design.spec.ts` checks all of them in light and
+dark (WCAG ratio computed from Tailwind's OKLCH values).
+
+| Theme | Token | App value | Artifact value | Why |
+| --- | --- | --- | --- | --- |
+| light | `secondary` / content | white / stone-800 | stone-500 / white (4.8:1, 4.8:1) | white on a white page was 1.0:1 |
+| light | `success-content` | emerald-950 | white (5.4:1) | dark green on dark green was 2.8:1 |
+| dark | `primary` / content | stone-800 / stone-100 | stone-100 / stone-800 (13.9:1) | equal to the page |
+| dark | `secondary` / content | stone-100 / stone-800 | stone-400 / stone-950 (7.6:1, 5.9:1) | was identical to the inverted primary (BES-337) |
+| dark | `neutral` / content | stone-800 / stone-100 | stone-500 / white (4.8:1, 3.2:1) | equal to the page, then 1.5:1 as stone-700 |
+
+Known weak spot: dark `neutral` as a text colour (`btn-soft`, `btn-dash`,
+`btn-ghost`, `badge-soft` with `neutral`) is stone-500 on the stone-800 page
+(3.2:1). A lighter neutral would break the mirrored dark outline rule, which
+uses `neutral-content` as the outline colour. The app theme is unchanged.
+`design.spec.ts` also checks that every overridden token still has its
+`main.css` value (so a main.css change forces a decision here) and that
+the light primary is untouched.
+
+The app-wide component rules that are not tokens are mirrored by hand in
+`BESIDKA_COMPONENT_OVERRIDES`: checkbox and badge selector sizes, the box
+radius on `:where(.textarea)` (#780; the theme's `--radius-field: 2rem`
+would otherwise make textareas pills), tooltip radius, `font-weight: 400`
+on `.btn`, and the dark-theme contrast rules: outline and focused
+`btn-neutral` use `neutral-content` (the app's stone-800 neutral would be invisible as
+text on the stone-800 page), and `text-base-content/60`, `/70` and labels
+are lighter. The app's matching rules for `btn-primary` and `btn-secondary`
+(their `*-content` colour) are left out on purpose: in the artifact theme
+both are light fills with dark content, so those rules would paint the
+outline button text and the focus ring dark on a stone-800 page. The
+spec checks the mirrored declarations still exist in `main.css` and that
+the two left-out ones stay out, and the e2e spec checks the outline
+primary, secondary and neutral buttons and muted text in dark. The `.btn-ghost-legacy` utility is app-only and not copied.
+Page-level app styles (glass bubbles, gradients) are not copied.
+
+### Reveal: no raw source before the final render (BES-361)
+
+Opening an artifact used to show the skeleton, then the raw source (a
+`<besidka-mermaid>` shows its light-DOM text until its shadow root attaches
+after an async import), then the render. Two layers now close that gap:
+
+- The runtime keeps the document `visibility: hidden` (layout stays, so size
+  measurement works) from the start of a result until the kind's renderer
+  has finished, every `<besidka-code>` and `<besidka-mermaid>` in the
+  document has drawn its first render (`KitController.ready`, the element's
+  `ready` promise and the `data-besidka-ready` attribute; an unready block
+  also hides itself, so blocks that scripts or React add later do not flash
+  either) and the fonts the page asked for have settled. It then reveals,
+  waits one frame and sends `besidka/rendered`. The wait is capped at 6 s
+  (slow reveals late, it does not fail), React waits for its first commit
+  (up to 400 ms), and every terminal path sends the signal, including script
+  errors, the diagram-limit placeholder and render errors, so the error
+  panel and Ask to fix still appear.
+- The host advertises nothing new; the runtime announces
+  `appCapabilities.rendered: true` in `ui/initialize`. A host that sees the
+  flag keeps the skeleton (and the invisible frame) until `besidka/rendered`
+  and shows the existing "did not load" error state after 20 s without it,
+  never the source. A runtime that does not announce the flag is shown as
+  before, so the host and the runtime can deploy in either order and the
+  protocol version stays 1.
+
+A streaming preview ("Writing HTML page...") is raw source on purpose and
+reports `partial: true`, so it shows as soon as it paints. Every new result
+sent into an existing frame (a streamed preview followed by its result) puts
+the skeleton back until the result renders. `no-raw-flash.spec.ts` samples
+the runtime frame on every DOM mutation, animation frame and 4 ms for each
+kind (html and markdown with code and Mermaid blocks, react, svg, mermaid)
+in Chromium and WebKit and fails on any visible unready block, visible
+preview or unstyled page; with the reveal removed it fails for html,
+markdown and mermaid.
+
+### Decision: compile in the frame (measured)
+
+The frame has no network (`connect-src 'none'`), so everything is served
+from the runtime origin. Options measured on 2026-11-09 with a daisyUI quiz
+(17 classes plus runtime-added ones), headless Playwright, local server,
+five runs each, time from start to styled first `getComputedStyle`:
+
+| Option | Transfer (gzip / brotli) | Chromium | WebKit | Arbitrary values (`w-[123px]`) |
+| --- | --- | --- | --- | --- |
+| A. Tailwind compiler + daisyUI plugin in the frame (chosen) | 130 / 105 KiB | 67-98 ms (compile 57-78, build 10-20) | 83-121 ms (compile 63-88, build 18-33) | yes, also variants of daisyUI classes (`md:card-side`) and classes added later |
+| B. Static `daisyui.css` (1,142 KiB raw) + utilities-only compiler | 171 / 113 KiB | 56-62 ms | 105-128 ms | yes for utilities; daisyUI variants only where the static file has them |
+| `@tailwindcss/browser` | 74 / 60 KiB for utilities alone | - | - | utilities only; no daisyUI (no plugins) |
+
+`@tailwindcss/browser` was ruled out without timing: its `loadModule`
+throws ("does not support plugins"), so daisyUI cannot load through it, and
+it observes and writes into the `<html>` and `<head>` that existed when it
+loaded, which the html renderer replaces. Option B paints components from a
+static file but ships every daisyUI rule (including responsive copies) to
+every frame and makes each style recalculation walk them; option A is the
+smaller transfer, faster in WebKit, emits only the used components
+(39.7 KB of CSS for the quiz, including preflight and theme variables) and
+keeps one pipeline, so `md:card-side` and other variants of daisyUI classes
+work like any utility. The in-runtime numbers (`performance.measure`
+entries `besidka-design-compile` and `besidka-design-build`, read by
+`design-system.spec.ts`): compile 55-100 ms in Chromium and 63-76 ms in
+WebKit including the chunk fetch, first build 6-12 ms, later builds 2 ms.
+
+On the deployed PR preview (pr-784, 2026-11-09, headless Playwright, a new
+browser context per run so nothing is cached, the Claude Haiku Git cheat
+sheet from the evals, five runs per engine): compile 92-209 ms in Chromium
+(median 99) and 78-104 ms in WebKit (median 95), including the chunk fetch
+over the network (served `zstd`); first build 4-6 ms; 22 KB of CSS; the
+frame fetched only Nunito latin 400 and 700. `design-system.spec.ts` checks
+that rendering a styled artifact requests nothing outside the host and
+runtime origins.
+
+### Sizes
+
+| Asset | Raw | gzip | brotli |
+| --- | --- | --- | --- |
+| `chunks/system-*.js` (compiler, daisyUI, `index.css`, theme) | 616.6 KiB | 130.6 KiB | 105.1 KiB |
+| Nunito, 8 woff2 (latin, latin-ext, cyrillic, cyrillic-ext x 400/700) | 101.0 KiB | - | - |
+| Nunito actually fetched for English text (latin 400 + 700) | 31.8 KiB | - | - |
+| Entry graph (main + static imports), every artifact | 26.2 KiB | 11.1 KiB (10.7 before) | 9.7 KiB |
+
+Fonts load only for the `unicode-range` subsets the page uses. Markdown,
+SVG and Mermaid artifacts never load the chunk or the fonts.
+
+### Integrity
+
+`scripts/integrity.mjs` hashes every file of `tailwindcss`, `daisyui` and
+`@fontsource/nunito` that ended up in the bundle (from the esbuild
+metafile): per package, sha256 over the sorted `<path> <sha256>` lines.
+`workers/artifacts-runtime/design-system.integrity.json` records version,
+file count and digest; `scripts/build.mjs` fails when the build differs.
+After a deliberate upgrade (Dependabot included), review the theme, the
+sizes and the instruction sheet, re-run the evals, then record the new
+digests with `pnpm --filter artifacts-runtime build --update-integrity`.
+`design.spec.ts` checks that the recorded versions equal the exact
+`devDependencies` pins and recomputes the Nunito digest from the files.
+The npm tarballs themselves are pinned by `pnpm-lock.yaml` integrity
+hashes.
+
+### Licences
+
+`tailwindcss` and `daisyui` are MIT and appear in the notices like every
+bundled package. Nunito (`@fontsource/nunito`) is under the SIL Open Font
+License 1.1: `OFL-1.1` is in the allowlist in `scripts/licenses.mjs` (the
+fonts are bundled through esbuild's `file` loader, so they are in the
+metafile and the notices carry the OFL text). The OFL allows bundling and
+redistribution with software as long as the font is not sold on its own.
 
 ## Local development
 

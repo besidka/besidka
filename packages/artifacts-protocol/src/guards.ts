@@ -22,6 +22,7 @@ import {
   THEMES,
 } from './constants.ts'
 import { isRecord } from './jsonrpc.ts'
+import { isDiagramLimitCode } from './mermaid-limits.ts'
 import type {
   ArtifactKind,
   ArtifactPayload,
@@ -41,6 +42,7 @@ import type {
   OpenLinkParams,
   RequestDisplayModeParams,
   RequestDisplayModeResult,
+  RenderedParams,
   SizeChangedParams,
   StorageGetResult,
   StorageKeyParams,
@@ -276,6 +278,12 @@ export function isHostContextChangedParams(
     && (value.displayMode === undefined || isDisplayMode(value.displayMode))
 }
 
+export function isRenderedParams(value: unknown): value is RenderedParams {
+  return isRecord(value)
+    && isArtifactKind(value.kind)
+    && typeof value.partial === 'boolean'
+}
+
 export function isSizeChangedParams(
   value: unknown,
 ): value is SizeChangedParams {
@@ -322,6 +330,23 @@ export function isLogMessageParams(value: unknown): value is LogMessageParams {
     && (value.data.stack === undefined
       || (typeof value.data.stack === 'string'
         && value.data.stack.length <= MAX_LOG_MESSAGE_LENGTH))
+      && hasValidDiagramLimitFields(value.data)
+}
+
+function hasValidDiagramLimitFields(data: Record<string, unknown>): boolean {
+  if (data.code === undefined) {
+    return data.limit === undefined && data.found === undefined
+  }
+
+  return isDiagramLimitCode(data.code)
+    && typeof data.limit === 'number'
+    && isOptionalPositiveInteger(data.limit)
+    && isOptionalPositiveInteger(data.found)
+}
+
+function isOptionalPositiveInteger(value: unknown): boolean {
+  return value === undefined
+    || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
 }
 
 export function isStorageKey(value: unknown): value is string {

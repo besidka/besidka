@@ -7,7 +7,7 @@
       leave-to-class="opacity-0"
     >
       <div
-        v-if="isOpen && layout === 'overlay'"
+        v-if="isVisible && layout === 'overlay'"
         class="fixed inset-0 z-[60] bg-black/40"
         aria-hidden="true"
         data-testid="side-panel-scrim"
@@ -31,13 +31,18 @@
         :aria-label="ariaLabel || title || 'Side panel'"
         :data-layout="layout"
         :data-full-width="isDockedFullWidth ? 'true' : undefined"
+        :data-collapsed="isCollapsed ? 'true' : undefined"
+        :inert="isCollapsed"
         data-testid="side-panel"
-        class="js-side-panel fixed top-0 bottom-0 right-0 flex flex-col bg-base-100 border-l border-base-300 shadow-xl outline-none pt-[var(--sat)]"
+        class="js-side-panel side-panel-collapsible fixed top-0 bottom-0 right-0 flex flex-col bg-base-100 border-l border-base-300 shadow-xl outline-none pt-[var(--sat)]"
         :class="{
           'z-50': layout === 'docked',
           'z-[60]': layout === 'overlay',
           'w-[70vw]': layout === 'overlay' && !isLargeViewport,
-          'left-0 pr-20': isDockedFullWidth,
+          'left-0': isDockedFullWidth,
+          'pr-20': isPillGutterReserved,
+          'side-panel-width-follow': layout === 'docked',
+          'side-panel-collapsed': isCollapsed,
         }"
         :style="panelStyle"
         @keydown="onPanelKeydown"
@@ -139,7 +144,7 @@
     :aria-labelledby="headingId"
     data-testid="side-panel-sheet"
     @cancel.prevent="close"
-    @close="close"
+    @close="onSheetClose"
   >
     <div
       v-if="isOpen"
@@ -252,6 +257,7 @@ defineProps<{
 }>()
 
 const SCROLL_HOLD_EXTRA_MS = 20
+const EXPAND_SETTLE_MS = 0
 const OVERLAY_MAX_VIEWPORT_RATIO = 0.7
 const SWIPE_CLOSE_DISTANCE_PX = 80
 const SWIPE_CLOSE_VELOCITY = 0.5
@@ -269,16 +275,26 @@ const FOCUSABLE_SELECTOR = [
 const {
   currentView: activeView,
   isOpen,
+  isCollapsed,
+  isVisible,
   canGoBack,
   isFullWidth,
   width,
   back,
   close,
+  collapse,
+  expand,
   toggleFullWidth,
   setWidth,
   persistWidth,
 } = useSidePanel()
 const layout = useSidePanelLayout()
+const { sidebarPinned } = useUserSetting()
+const device = useDevice()
+const canPillPeek = useMediaQuery(
+  '(min-width: 64rem) and (prefers-reduced-motion: no-preference)'
+  + ' and (hover: hover) and (pointer: fine)',
+)
 const isLargeViewport = useMediaQuery('(min-width: 64rem)')
 const route = useRoute()
 const { width: viewportWidth } = useWindowSize()
@@ -305,6 +321,9 @@ let resizeFrameId = 0
 let pendingResizeClientX: number | null = null
 let resizeStartWidth = 0
 let releaseScrollHold: () => void = () => {}
+let isSheetHiddenByCollapse = false
+let collapsedSheetScrollTop: number | null = null
+let expandTimeoutId: ReturnType<typeof setTimeout> | undefined
 
 const title = computed<string>(() => {
   return currentView.value?.title ?? ''
@@ -338,11 +357,21 @@ const effectiveWidth = computed<number>(() => {
 })
 
 const dockedInset = computed<number>(() => {
-  return isOpen.value && layout.value === 'docked' ? effectiveWidth.value : 0
+  return isVisible.value && layout.value === 'docked'
+    ? effectiveWidth.value
+    : 0
 })
 
 const isDockedFullWidth = computed<boolean>(() => {
   return layout.value === 'docked' && isRenderedFullWidth.value
+})
+
+const isPillGutterReserved = computed<boolean>(() => {
+  const isPillPeeking = device.isDesktop
+    && !sidebarPinned.value
+    && canPillPeek.value
+
+  return isDockedFullWidth.value && !isPillPeeking
 })
 
 const isDockedResizable = computed<boolean>(() => {
@@ -350,7 +379,7 @@ const isDockedResizable = computed<boolean>(() => {
 })
 
 const isFocusTrapped = computed<boolean>(() => {
-  if (!isOpen.value) {
+  if (!isVisible.value) {
     return false
   }
 
@@ -439,12 +468,17 @@ watch(isOpen, async (open) => {
     opener.value = active instanceof HTMLElement ? active : null
 
     await nextTick()
-    focusPanel()
+
+    if (!activeView.value?.preserveFocus) {
+      focusPanel()
+    }
 
     return
   }
 
   stopResizing()
+  collapsedSheetScrollTop = null
+  isSheetHiddenByCollapse = false
 
   if (opener.value?.isConnected && isFocusInsidePanelOrLost()) {
     opener.value.focus({ preventScroll: true })
@@ -471,11 +505,11 @@ watch(isFocusTrapped, (trapped) => {
   content.inert = trapped
 })
 
-watch([isOpen, layout], async () => {
+watch([isVisible, layout], async () => {
   await nextTick()
 
   const dialog = sheet.value
-  const shouldShowSheet = isOpen.value && layout.value === 'sheet'
+  const shouldShowSheet = isVisible.value && layout.value === 'sheet'
 
   if (!dialog) {
     return
@@ -485,15 +519,37 @@ watch([isOpen, layout], async () => {
     swipeOffset.value = 0
     dialog.showModal()
     await nextTick()
+
+    if (collapsedSheetScrollTop !== null && sheetBody.value) {
+      sheetBody.value.scrollTop = collapsedSheetScrollTop
+    }
+
+    collapsedSheetScrollTop = null
+
     sheetBox.value?.focus({ preventScroll: true })
 
     return
   }
 
   if (!shouldShowSheet && dialog.open) {
+    if (isOpen.value && isCollapsed.value) {
+      isSheetHiddenByCollapse = true
+      collapsedSheetScrollTop = sheetBody.value?.scrollTop ?? null
+    }
+
     dialog.close()
   }
 }, { flush: 'post', immediate: true })
+
+function onSheetClose() {
+  if (isSheetHiddenByCollapse) {
+    isSheetHiddenByCollapse = false
+
+    return
+  }
+
+  close()
+}
 
 watch(() => route.path, (_path, previousPath) => {
   if (previousPath === '/chats/new') {
@@ -581,7 +637,7 @@ useEventListener(document, 'keydown', (event: KeyboardEvent) => {
     event.key !== 'Escape'
     || event.defaultPrevented
     || event.isComposing
-    || !isOpen.value
+    || !isVisible.value
     || layout.value === 'sheet'
     || hasOtherOpenDialog()
   ) {
@@ -757,6 +813,18 @@ function onSwipeCancel() {
   swipeOffset.value = 0
 }
 
+useNuxtApp().hook('chat:message-selected', (messageId) => {
+  clearTimeout(expandTimeoutId)
+
+  if (messageId) {
+    collapse()
+
+    return
+  }
+
+  expandTimeoutId = setTimeout(expand, EXPAND_SETTLE_MS)
+})
+
 useEventListener(window, 'blur', () => {
   if (isResizing.value) {
     stopResizing()
@@ -764,6 +832,7 @@ useEventListener(window, 'blur', () => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(expandTimeoutId)
   releaseScrollHold()
   stopResizing()
   document.documentElement.style.removeProperty('--side-panel-width')

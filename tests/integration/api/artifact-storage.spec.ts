@@ -513,6 +513,92 @@ describe('artifact viewer storage API', () => {
     })
   })
 
+  describe('parallel writes', () => {
+    const TEN_KB_STRING_BYTES = 10 * 1024 - SERIALIZED_QUOTES_BYTES
+
+    it('never lets parallel writes to different keys pass the byte cap',
+      async () => {
+        const outcomes = await Promise.allSettled(
+          Array.from({ length: 30 }, (_item, index) => {
+            return put(`key-${index}`, byteString(TEN_KB_STRING_BYTES))
+          }),
+        )
+        const rows = await readRows(ownerId)
+        const storedBytes = rows.reduce((total, row) => {
+          return total + row.bytes
+        }, 0)
+
+        expect(outcomes.filter(({ status }) => {
+          return status === 'fulfilled'
+        })).toHaveLength(ARTIFACT_STORAGE_MAX_BYTES / (10 * 1024))
+        expect(outcomes.filter(({ status }) => {
+          return status === 'rejected'
+        }).every((outcome) => {
+          return (outcome as PromiseRejectedResult).reason.status === 413
+        })).toBe(true)
+        expect(storedBytes).toBeLessThanOrEqual(ARTIFACT_STORAGE_MAX_BYTES)
+        expect(rows).toHaveLength(ARTIFACT_STORAGE_MAX_BYTES / (10 * 1024))
+      })
+
+    it('never lets parallel writes to different keys pass the key cap',
+      async () => {
+        const outcomes = await Promise.allSettled(
+          Array.from({ length: 100 }, (_item, index) => {
+            return put(`key-${index}`, 'x')
+          }),
+        )
+
+        expect(outcomes.filter(({ status }) => {
+          return status === 'fulfilled'
+        })).toHaveLength(ARTIFACT_STORAGE_MAX_KEYS)
+        expect(outcomes.filter(({ status }) => {
+          return status === 'rejected'
+        }).every((outcome) => {
+          return (outcome as PromiseRejectedResult).reason.status === 413
+        })).toBe(true)
+        await expect(readRows(ownerId))
+          .resolves.toHaveLength(ARTIFACT_STORAGE_MAX_KEYS)
+      })
+
+    it('keeps the byte cap with 60 parallel writes of 32 KB', async () => {
+      const outcomes = await Promise.allSettled(
+        Array.from({ length: 60 }, (_item, index) => {
+          return put(`key-${index}`, byteString(MAX_VALUE_STRING_BYTES))
+        }),
+      )
+      const rows = await readRows(ownerId)
+
+      expect(outcomes.filter(({ status }) => {
+        return status === 'fulfilled'
+      })).toHaveLength(3)
+      expect(rows).toHaveLength(3)
+    })
+
+    it('lets parallel writes to one key replace each other', async () => {
+      const outcomes = await Promise.allSettled(
+        Array.from({ length: 8 }, (_item, index) => {
+          return put('same', byteString(MAX_VALUE_STRING_BYTES - index))
+        }),
+      )
+
+      expect(outcomes.every(({ status }) => {
+        return status === 'fulfilled'
+      })).toBe(true)
+      await expect(readRows(ownerId)).resolves.toHaveLength(1)
+    })
+
+    it('counts parallel writes of two viewers separately', async () => {
+      await seedRows(strangerId, ARTIFACT_STORAGE_MAX_KEYS)
+      await Promise.all(Array.from({ length: 5 }, (_item, index) => {
+        return put(`mine-${index}`, 'x')
+      }))
+
+      await expect(readRows(ownerId)).resolves.toHaveLength(5)
+      await expect(readRows(strangerId))
+        .resolves.toHaveLength(ARTIFACT_STORAGE_MAX_KEYS)
+    })
+  })
+
   describe('request validation', () => {
     it.each([
       ['a space', 'bad key'],

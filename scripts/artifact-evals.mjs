@@ -45,6 +45,9 @@ export const STATIC_CHECKS = [
   'timer',
   'cyrillic',
   'edits',
+  'inline-mermaid',
+  'inline-code',
+  'no-source-echo',
 ]
 export const BEHAVIOURAL_CHECKS = ['interactive']
 export const KNOWN_CHECKS = [...STATIC_CHECKS, ...BEHAVIOURAL_CHECKS]
@@ -71,6 +74,19 @@ const STORAGE_PATTERN = /\bbesidka\.storage\.(?:set|get)\s*\(/
 const BRIDGE_PATTERN = /\bbesidka\.complete\s*\(/
 const TIMER_PATTERN = /\bset(?:Interval|Timeout)\s*\(/
 const CYRILLIC_PATTERN = /[Ѐ-ӿ]/
+const FENCE_OPEN_PATTERN = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)/
+const FENCE_CLOSE_PATTERN = /^ {0,3}(`{3,}|~{3,})\s*$/
+const UNFENCED_SOURCE_PATTERNS = [
+  /^\s*(?:graph|flowchart)\s+(?:TD|TB|LR|RL|BT)\b/m,
+  /^\s*(?:sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|journey|mindmap|gitGraph)\s*$/m,
+  /^\s*[\p{L}\p{N}_]+(?:[[({][^\n]*?[\])}])?\s*-->\s*(?:\|[^|\n]*\|\s*)?[\p{L}\p{N}_]+/mu,
+  /^\s*(?:<!DOCTYPE html|<html\b)/im,
+  /^\s*import\s[^\n]*\sfrom\s+['"][^'"]+['"]/m,
+  /^\s*export\s+default\s+function\b/m,
+  /^#!\/(?:usr\/)?bin\//m,
+]
+const ECHO_LINE_MIN_LENGTH = 16
+const ECHO_LINES_MAX = 2
 
 /**
  * Returns a list of human-readable problems with a parsed prompts file; an
@@ -164,6 +180,7 @@ export function scoreStaticChecks(evalCase, observation) {
   const writes = observation.writes ?? []
   const failedWrites = writes.filter(write => write.error)
   const contents = artifacts.map(artifact => artifact.content ?? '').join('\n')
+  const replyText = observation.replyText
   const results = {}
 
   for (const check of evalCase.checks) {
@@ -179,16 +196,117 @@ export function scoreStaticChecks(evalCase, observation) {
       writes,
       failedWrites,
       contents,
+      replyText,
     })
   }
 
   return results
 }
 
+/**
+ * Splits a Markdown reply into its fenced code blocks (backtick or tilde
+ * fences, CommonMark style: the closing fence uses the same character and
+ * is at least as long; an unclosed fence runs to the end) and the text
+ * outside them.
+ */
+export function parseFencedBlocks(text) {
+  const blocks = []
+  const outside = []
+  let open = null
+
+  for (const line of text.split(/\r?\n/)) {
+    if (open) {
+      const close = FENCE_CLOSE_PATTERN.exec(line)
+      const closes = close
+        && close[1][0] === open.marker[0]
+        && close[1].length >= open.marker.length
+
+      if (closes) {
+        blocks.push({ info: open.info, closed: true })
+        open = null
+      }
+
+      continue
+    }
+
+    const start = FENCE_OPEN_PATTERN.exec(line)
+
+    if (start) {
+      open = { marker: start[1], info: start[2].toLowerCase() }
+
+      continue
+    }
+
+    outside.push(line)
+  }
+
+  if (open) {
+    blocks.push({ info: open.info, closed: false })
+  }
+
+  return { blocks, outside: outside.join('\n') }
+}
+
+/**
+ * Lines of artifact content (at least `ECHO_LINE_MIN_LENGTH` characters
+ * once trimmed) that the reply repeats verbatim, fenced or not.
+ */
+export function findEchoedSourceLines(artifacts, replyText) {
+  const replyLines = new Set(replyText.split('\n').map(line => line.trim()))
+  const echoed = new Set()
+
+  for (const artifact of artifacts) {
+    for (const line of (artifact.content ?? '').split('\n')) {
+      const trimmed = line.trim()
+
+      if (trimmed.length >= ECHO_LINE_MIN_LENGTH && replyLines.has(trimmed)) {
+        echoed.add(trimmed)
+      }
+    }
+  }
+
+  return [...echoed]
+}
+
+/**
+ * Fails a reply that prints diagram or code source outside a fenced block,
+ * or repeats more than `ECHO_LINES_MAX` lines of an artifact it wrote.
+ */
+export function scoreSourceEcho(artifacts, replyText) {
+  const { outside } = parseFencedBlocks(replyText)
+
+  if (matchesAny(UNFENCED_SOURCE_PATTERNS, outside)) {
+    return { pass: false, note: 'source outside a fenced block' }
+  }
+
+  const echoed = findEchoedSourceLines(artifacts, replyText)
+
+  if (echoed.length > ECHO_LINES_MAX) {
+    return {
+      pass: false,
+      note: `${echoed.length} artifact lines repeated in the reply`,
+    }
+  }
+
+  return { pass: true, note: '' }
+}
+
 function scoreStaticCheck(check, context) {
-  const { evalCase, artifacts, writes, failedWrites, contents } = context
+  const {
+    evalCase,
+    artifacts,
+    writes,
+    failedWrites,
+    contents,
+    replyText,
+  } = context
   const verdict = (pass, note) => {
     return { status: pass ? 'pass' : 'fail', ...(note ? { note } : {}) }
+  }
+  const textChecks = ['inline-mermaid', 'inline-code', 'no-source-echo']
+
+  if (textChecks.includes(check) && typeof replyText !== 'string') {
+    return { status: 'pending', note: 'no reply text stored; re-run' }
   }
 
   switch (check) {
@@ -257,6 +375,23 @@ function scoreStaticCheck(check, context) {
         ? `${update.input?.edits?.length ?? (update.edits || 'some')} edit(s)`
         : 'full content resent')
     }
+    case 'inline-mermaid': {
+      const hasMermaid = parseFencedBlocks(replyText).blocks.some((block) => {
+        return block.info === 'mermaid' && block.closed
+      })
+
+      return verdict(hasMermaid, hasMermaid ? '' : 'no ```mermaid block')
+    }
+    case 'inline-code': {
+      const { blocks } = parseFencedBlocks(replyText)
+
+      return verdict(blocks.length > 0, `${blocks.length} fenced block(s)`)
+    }
+    case 'no-source-echo': {
+      const echo = scoreSourceEcho(artifacts, replyText)
+
+      return verdict(echo.pass, echo.note)
+    }
     default:
       return { status: 'skipped', note: `unknown check ${check}` }
   }
@@ -270,6 +405,7 @@ export function rescoreResult(evalCase, result) {
   const checks = scoreStaticChecks(evalCase, {
     writes: result.writes ?? [],
     artifacts: result.artifacts ?? [],
+    replyText: result.replyText,
   })
 
   for (const check of BEHAVIOURAL_CHECKS) {
@@ -737,6 +873,19 @@ export async function recoverFailedCaseUsage(
   }
 }
 
+/**
+ * The text the user sees from every assistant message of the chat, both
+ * turns of a follow-up case included, without reasoning or tool parts.
+ */
+export function readReplyText(messages) {
+  return (messages ?? [])
+    .filter(message => message.role === 'assistant')
+    .flatMap(message => message.parts ?? [])
+    .filter(part => part?.type === 'text' && typeof part.text === 'string')
+    .map(part => part.text)
+    .join('\n\n')
+}
+
 async function runCase(client, evalCase, model) {
   const created = await client.json('/api/v1/chats/new', {
     method: 'PUT',
@@ -809,7 +958,8 @@ async function runCreatedCase(client, evalCase, model, created, progress) {
     })
   }
 
-  const checks = scoreStaticChecks(evalCase, { writes, artifacts })
+  const replyText = readReplyText(finalChat.messages)
+  const checks = scoreStaticChecks(evalCase, { writes, artifacts, replyText })
   const usage = computeUsageCost(finalChat.messages
     .filter(message => message.role === 'assistant')
     .map(message => message.usage))
@@ -826,6 +976,7 @@ async function runCreatedCase(client, evalCase, model, created, progress) {
       error: write.error ?? null,
     })),
     artifacts,
+    replyText,
     checks,
     status: summariseCheckStatus(checks),
     usage,

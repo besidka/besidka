@@ -11,11 +11,14 @@ import {
   isRequestTimeout,
   isValidUsdAmount,
   recoverFailedCaseUsage,
+  findEchoedSourceLines,
   findStreamError,
   loadEvalCases,
+  parseFencedBlocks,
   parseArtifactWrites,
   parseCliArguments,
   readEvalResults,
+  readReplyText,
   retryStalledRead,
   SessionClient,
   rescoreResult,
@@ -43,13 +46,37 @@ describe('prompts file', () => {
   it('loads the committed golden prompts', () => {
     const cases = loadEvalCases(DEFAULT_PROMPTS_PATH)
 
-    expect(cases.length).toBeGreaterThanOrEqual(10)
-    expect(cases.length).toBeLessThanOrEqual(14)
+    expect(cases.length).toBeGreaterThanOrEqual(20)
+    expect(cases.length).toBeLessThanOrEqual(30)
     expect(cases.some(evalCase => evalCase.checks.includes('no-artifact')))
       .toBe(true)
     expect(cases.some(evalCase => evalCase.checks.includes('no-navigation')))
       .toBe(true)
     expect(cases.some(evalCase => evalCase.followUp)).toBe(true)
+  })
+
+  it('keeps diagrams and code inline unless an artifact is asked for', () => {
+    const cases = loadEvalCases(DEFAULT_PROMPTS_PATH)
+    const byId = new Map(cases.map(evalCase => [evalCase.id, evalCase]))
+    const inlineCases = cases.filter((evalCase) => {
+      return evalCase.checks.includes('no-artifact')
+        && evalCase.checks.some((check) => {
+          return check === 'inline-mermaid' || check === 'inline-code'
+        })
+    })
+
+    expect(byId.get('mermaid-flowchart')?.checks)
+      .toEqual(['no-artifact', 'inline-mermaid', 'no-source-echo'])
+    expect(byId.get('owner-mermaid-uk')).toMatchObject({
+      prompt: 'згенеруй мені mermaid діаграму',
+      followUp: 'будь-яку, два трикутники',
+    })
+    expect(inlineCases.length).toBeGreaterThanOrEqual(8)
+    expect(inlineCases.some(evalCase => /[Ѐ-ӿ]/.test(evalCase.prompt)))
+      .toBe(true)
+    expect(byId.get('explicit-artifact-mermaid')?.checks)
+      .toContain('artifact')
+    expect(byId.get('explicit-artifact-uk')?.checks).toContain('artifact')
   })
 
   it('reports schema problems', () => {
@@ -186,6 +213,146 @@ describe('static checks', () => {
       writes: [{ toolName: 'create_artifact', input: {} }],
       artifacts: [],
     })['no-artifact'].status).toBe('fail')
+  })
+})
+
+describe('reply text checks', () => {
+  const inlineCase = {
+    ...QUIZ_CASE,
+    expectedKind: [],
+    checks: ['no-artifact', 'inline-mermaid', 'inline-code', 'no-source-echo'],
+  }
+
+  it('passes a fenced diagram and code without an artifact', () => {
+    const replyText = 'Here it is:\n```mermaid\nflowchart TD\n  A --> B\n```'
+
+    expect(scoreStaticChecks(inlineCase, {
+      writes: [],
+      artifacts: [],
+      replyText,
+    })).toEqual({
+      'no-artifact': { status: 'pass' },
+      'inline-mermaid': { status: 'pass' },
+      'inline-code': { status: 'pass', note: '1 fenced block(s)' },
+      'no-source-echo': { status: 'pass' },
+    })
+  })
+
+  it('fails diagram, page or script source outside a fence', () => {
+    for (const replyText of [
+      'flowchart LR\n  A --> B',
+      'Start[Open] --> End',
+      'sequenceDiagram\n  A->>B: hi',
+      '<!DOCTYPE html><html></html>',
+      '#!/bin/bash\necho hi',
+      'import { useState } from \'react\'',
+    ]) {
+      const checks = scoreStaticChecks(inlineCase, {
+        writes: [],
+        artifacts: [],
+        replyText,
+      })
+
+      expect(checks['no-source-echo'], replyText).toEqual({
+        status: 'fail',
+        note: 'source outside a fenced block',
+      })
+    }
+
+    expect(scoreStaticChecks(inlineCase, {
+      writes: [],
+      artifacts: [],
+      replyText: 'A plain answer that mentions a graph and an import.',
+    })['inline-mermaid'].status).toBe('fail')
+  })
+
+  it('fails a reply that repeats the artifact it wrote', () => {
+    const content = [
+      'flowchart TD',
+      '  open[Pull request opened] --> review[Review]',
+      '  review --> changes[Changes requested]',
+      '  review --> approve[Approved by reviewer]',
+      '  approve --> merge[Merged into main]',
+    ].join('\n')
+    const artifacts = [{ kind: 'mermaid', content }]
+    const echoCase = { ...QUIZ_CASE, checks: ['no-source-echo'] }
+
+    expect(findEchoedSourceLines(artifacts, `\`\`\`\n${content}\n\`\`\``))
+      .toHaveLength(4)
+    expect(scoreStaticChecks(echoCase, {
+      writes: [],
+      artifacts,
+      replyText: `\`\`\`mermaid\n${content}\n\`\`\``,
+    })['no-source-echo']).toEqual({
+      status: 'fail',
+      note: '4 artifact lines repeated in the reply',
+    })
+    expect(scoreStaticChecks(echoCase, {
+      writes: [],
+      artifacts,
+      replyText: 'I made the review flow as a diagram artifact.',
+    })['no-source-echo'].status).toBe('pass')
+  })
+
+  it('leaves the text checks pending without stored reply text', () => {
+    expect(scoreStaticChecks(inlineCase, { writes: [], artifacts: [] }))
+      .toMatchObject({
+        'inline-mermaid': { status: 'pending' },
+        'no-source-echo': { status: 'pending' },
+      })
+  })
+
+  it('reads fences the way Markdown does', () => {
+    const nested = '````md\n```mermaid\nflowchart TD\n```\n````\nDone.'
+
+    expect(parseFencedBlocks(nested)).toEqual({
+      blocks: [{ info: 'md', closed: true }],
+      outside: 'Done.',
+    })
+    expect(parseFencedBlocks('~~~bash\necho hi\n~~~').blocks)
+      .toEqual([{ info: 'bash', closed: true }])
+    expect(parseFencedBlocks('```ts\nconst a = 1').blocks)
+      .toEqual([{ info: 'ts', closed: false }])
+    expect(scoreStaticChecks(inlineCase, {
+      writes: [],
+      artifacts: [],
+      replyText: 'Use a ```mermaid fence:\r\n```mermaid\r\ngraph LR\r\n'
+        + '  A --> B\r\n```',
+    })).toMatchObject({
+      'inline-mermaid': { status: 'pass' },
+      'no-source-echo': { status: 'pass' },
+    })
+  })
+
+  it('catches Cyrillic node ids and ignores prose about diagrams', () => {
+    const echoOf = (replyText: string) => {
+      return scoreStaticChecks(inlineCase, {
+        writes: [],
+        artifacts: [],
+        replyText,
+      })['no-source-echo'].status
+    }
+
+    expect(echoOf('Початок --> Кінець')).toBe('fail')
+    expect(echoOf('Кошик[Кошик] -->|оплата| Оплата')).toBe('fail')
+    expect(echoOf('Wrap the page in an `<html>` element.')).toBe('pass')
+    expect(echoOf('The arrow --> means "leads to".')).toBe('pass')
+  })
+
+  it('reads only the visible assistant text of every turn', () => {
+    expect(readReplyText([
+      { role: 'user', parts: [{ type: 'text', text: 'question' }] },
+      {
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'thinking' },
+          { type: 'text', text: 'first' },
+          { type: 'tool-create_artifact', input: {} },
+        ],
+      },
+      { role: 'assistant', parts: [{ type: 'text', text: 'second' }] },
+    ])).toBe('first\n\nsecond')
+    expect(readReplyText(undefined)).toBe('')
   })
 })
 

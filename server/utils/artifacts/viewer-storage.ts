@@ -122,11 +122,40 @@ export async function listArtifactStorage(
   }
 }
 
+async function describeRefusedStorageWrite(
+  input: PutArtifactStorageValueInput,
+  valueBytes: number,
+) {
+  const [existing] = await input.db
+    .select({ bytes: schema.artifactStorage.bytes })
+    .from(schema.artifactStorage)
+    .where(and(
+      scopeCondition(input),
+      eq(schema.artifactStorage.key, input.key),
+    ))
+    .limit(1)
+  const totals = await readArtifactStorageTotals(input)
+
+  if (!existing && totals.keys >= ARTIFACT_STORAGE_MAX_KEYS) {
+    return createStorageFullError(
+      `${totals.keys} of ${ARTIFACT_STORAGE_MAX_KEYS} keys are used.`,
+    )
+  }
+
+  return createStorageFullError(
+    `${formatKilobytes(totals.bytes)} of `
+    + `${formatKilobytes(ARTIFACT_STORAGE_MAX_BYTES)} are used and this `
+    + `value needs ${formatKilobytes(valueBytes)}.`,
+  )
+}
+
 /**
  * Saves one key for one viewer of one artifact within the per-viewer caps
- * (64 keys, 100 KB in total, 32 KB per value). The totals are read and
- * checked in the same request before the upsert; two concurrent writes can
- * overshoot the cap by one value, which is accepted (BES-260).
+ * (64 keys, 100 KB in total, 32 KB per value). The caps are checked in the
+ * same SQL statement that writes the row (`INSERT ... SELECT ... WHERE`
+ * over the other keys of the viewer, then `ON CONFLICT DO UPDATE`), and D1
+ * runs one statement atomically, so parallel writes cannot overshoot a cap.
+ * A statement that writes no row means a cap refused the value (BES-260).
  */
 export async function putArtifactStorageValue(
   input: PutArtifactStorageValueInput,
@@ -141,55 +170,38 @@ export async function putArtifactStorageValue(
     )
   }
 
-  const [existing] = await input.db
-    .select({ bytes: schema.artifactStorage.bytes })
-    .from(schema.artifactStorage)
-    .where(and(
-      scopeCondition(input),
-      eq(schema.artifactStorage.key, input.key),
-    ))
-    .limit(1)
-  const totals = await readArtifactStorageTotals(input)
-  const nextKeys = existing ? totals.keys : totals.keys + 1
-  const nextBytes = totals.bytes - (existing?.bytes ?? 0) + valueBytes
-
-  if (nextKeys > ARTIFACT_STORAGE_MAX_KEYS) {
-    throw createStorageFullError(
-      `${totals.keys} of ${ARTIFACT_STORAGE_MAX_KEYS} keys are used.`,
+  const timestamp = Math.floor((input.now ?? new Date()).getTime() / 1000)
+  const written = await input.db.all<{ key: string }>(sql`
+    insert into artifact_storage (
+      artifact_id, viewer_user_id, key, value, bytes, updated_at
     )
+    select
+      ${input.artifactInternalId}, ${input.viewerUserId}, ${input.key},
+      ${serialized}, ${valueBytes}, ${timestamp}
+    where (
+      select coalesce(sum(bytes), 0) from artifact_storage
+      where artifact_id = ${input.artifactInternalId}
+        and viewer_user_id = ${input.viewerUserId}
+        and key <> ${input.key}
+    ) + ${valueBytes} <= ${ARTIFACT_STORAGE_MAX_BYTES}
+    and (
+      select count(*) from artifact_storage
+      where artifact_id = ${input.artifactInternalId}
+        and viewer_user_id = ${input.viewerUserId}
+        and key <> ${input.key}
+    ) < ${ARTIFACT_STORAGE_MAX_KEYS}
+    on conflict (artifact_id, viewer_user_id, key) do update set
+      value = excluded.value,
+      bytes = excluded.bytes,
+      updated_at = excluded.updated_at
+    returning key
+  `)
+
+  if (written.length === 0) {
+    throw await describeRefusedStorageWrite(input, valueBytes)
   }
 
-  if (nextBytes > ARTIFACT_STORAGE_MAX_BYTES) {
-    throw createStorageFullError(
-      `${formatKilobytes(totals.bytes)} of `
-      + `${formatKilobytes(ARTIFACT_STORAGE_MAX_BYTES)} are used and this `
-      + `value needs ${formatKilobytes(valueBytes)}.`,
-    )
-  }
-
-  const now = input.now ?? new Date()
-  const storedValue = JSON.parse(serialized) as unknown
-
-  await input.db
-    .insert(schema.artifactStorage)
-    .values({
-      artifactId: input.artifactInternalId,
-      viewerUserId: input.viewerUserId,
-      key: input.key,
-      value: storedValue,
-      bytes: valueBytes,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [
-        schema.artifactStorage.artifactId,
-        schema.artifactStorage.viewerUserId,
-        schema.artifactStorage.key,
-      ],
-      set: { value: storedValue, bytes: valueBytes, updatedAt: now },
-    })
-
-  return { keys: nextKeys, bytes: nextBytes }
+  return readArtifactStorageTotals(input)
 }
 
 export async function deleteArtifactStorageValue(

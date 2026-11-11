@@ -11,6 +11,7 @@ import {
   loadArtifactDetail,
   loadArtifactVersion,
   markArtifactAutoOpened,
+  resolveArtifactVersionRefresh,
   useArtifactAutoOpen,
   useArtifactPanel,
 } from '../../../app/composables/artifacts'
@@ -388,5 +389,83 @@ describe('loadArtifactVersion', () => {
 
     expect(result).toMatchObject({ ok: false, status: 404 })
     expect(errorMessageMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveArtifactVersionRefresh', () => {
+  it('switches to a newer version when nothing is pinned', () => {
+    expect(resolveArtifactVersionRefresh({
+      selectedVersion: 3,
+      latestVersion: 4,
+      isVersionPinned: false,
+    })).toBe('switch')
+  })
+
+  it('offers a newer version when the user pinned an older one', () => {
+    expect(resolveArtifactVersionRefresh({
+      selectedVersion: 2,
+      latestVersion: 4,
+      isVersionPinned: true,
+    })).toBe('offer')
+  })
+
+  it('does nothing when the view is on the latest or nothing is known', () => {
+    expect(resolveArtifactVersionRefresh({
+      selectedVersion: 4,
+      latestVersion: 4,
+      isVersionPinned: false,
+    })).toBe('none')
+    expect(resolveArtifactVersionRefresh({
+      selectedVersion: 3,
+      latestVersion: null,
+      isVersionPinned: false,
+    })).toBe('none')
+  })
+
+  it('switches an unselected view to the latest version', () => {
+    expect(resolveArtifactVersionRefresh({
+      selectedVersion: null,
+      latestVersion: 1,
+      isVersionPinned: false,
+    })).toBe('switch')
+  })
+})
+
+describe('useArtifactPanel version tracking', () => {
+  beforeEach(() => {
+    useArtifactPanel().latestVersions.value = {}
+  })
+
+  it('keeps the highest version noted per artifact', () => {
+    const panel = useArtifactPanel()
+
+    panel.noteVersion('Art1Art1Art1Art1', 3)
+    panel.noteVersion('Art1Art1Art1Art1', 2)
+
+    expect(panel.getLatestVersion('Art1Art1Art1Art1')).toBe(3)
+    expect(panel.getLatestVersion('Art2Art2Art2Art2')).toBeNull()
+  })
+
+  it('unpins when the target moves to the latest version', () => {
+    const panel = useArtifactPanel()
+
+    panel.noteVersion('Art1Art1Art1Art1', 4)
+    panel.open(target({ artifactId: 'Art1Art1Art1Art1', version: 2 }))
+    panel.updateTarget(panel.state.value!.viewKey, { version: 4 })
+
+    expect(panel.state.value?.isVersionPinned).toBe(false)
+  })
+
+  it('pins a view opened on an older version and unpins on the latest', () => {
+    const panel = useArtifactPanel()
+
+    panel.noteVersion('Art1Art1Art1Art1', 4)
+    panel.open(target({ artifactId: 'Art1Art1Art1Art1', version: 2 }))
+
+    expect(panel.state.value?.isVersionPinned).toBe(true)
+
+    panel.selectVersion(4)
+
+    expect(panel.state.value?.isVersionPinned).toBe(false)
   })
 })

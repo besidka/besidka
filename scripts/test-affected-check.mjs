@@ -141,13 +141,25 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/artifacts-protocol/jsonrpc.spec.ts',
     'tests/unit/packages/artifacts-protocol/connection.spec.ts',
     'tests/unit/packages/artifacts-protocol/host.spec.ts',
+    'tests/unit/packages/artifacts-protocol/mermaid-limits.spec.ts',
+    'tests/unit/packages/artifacts-protocol/diagram-menus.spec.ts',
+    'tests/unit/workers/artifacts-runtime/diagram-limit.spec.ts',
+    'tests/unit/workers/artifacts-runtime/diagram-parity.spec.ts',
+    'tests/unit/workers/artifacts-runtime/kit-menu.spec.ts',
+    'tests/unit/workers/artifacts-runtime/kit-theme.spec.ts',
+    'tests/unit/workers/artifacts-runtime/mermaid-view.spec.ts',
     'tests/unit/workers/artifacts-runtime/render.spec.ts',
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',
     'tests/unit/workers/artifacts-runtime/kit.spec.ts',
+    'tests/unit/workers/artifacts-runtime/design.spec.ts',
     'tests/e2e-artifacts/code-blocks.spec.ts',
+    'tests/e2e-artifacts/design-system.spec.ts',
     'tests/e2e-artifacts/clipboard-gesture-spike.spec.ts',
     'tests/e2e-artifacts/html-script-errors.spec.ts',
+    'tests/e2e-artifacts/no-raw-flash.spec.ts',
+    'tests/e2e-artifacts/realm-isolation.spec.ts',
+    'tests/e2e-artifacts/runtime-sandbox.spec.ts',
     'tests/unit/workers/artifacts-runtime/script-location.spec.ts',
   ]
   const artifactsBridgeServerTests = [
@@ -195,8 +207,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/artifact-export.spec.ts',
     'tests/unit/utils/artifact-parts.spec.ts',
     'tests/unit/utils/artifact-bridge.spec.ts',
+    'tests/unit/utils/artifact-fix-prompt.spec.ts',
     'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
     'tests/e2e/chat/artifacts-panel.spec.ts',
+    'tests/e2e/chat/artifact-actions.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
     'tests/unit/pages/chats/artifacts/index.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
@@ -214,6 +228,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/integration/api/artifacts.spec.ts',
     'tests/e2e/history/artifacts-library.spec.ts',
+    'tests/e2e/chat/artifact-actions.spec.ts',
   ]
   const artifactsShareUiTests = [
     'tests/unit/pages/a/index.spec.ts',
@@ -226,6 +241,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/artifact-bridge.spec.ts',
     'tests/unit/utils/artifact-share-page.spec.ts',
     'tests/unit/utils/artifact-share-location.spec.ts',
+    'tests/unit/utils/scroll-within.spec.ts',
     'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
   ]
@@ -738,6 +754,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/MarkdownSource.spec.ts',
     'tests/unit/utils/sanitize-diagram-svg.spec.ts',
     'tests/unit/utils/diagram-wheel.spec.ts',
+    'tests/unit/workers/artifacts-runtime/diagram-parity.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
   ]
   const codeHighlightingTests = [
@@ -751,6 +768,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ChatRow.spec.ts',
+    'tests/unit/components/History/ArtifactBadge.spec.ts',
+    'tests/integration/api/chats-history-artifact-count.spec.ts',
     'tests/unit/components/Projects/ActionsDropdown.spec.ts',
     'tests/unit/composables/dropdown-placement.spec.ts',
     'tests/unit/composables/history.spec.ts',
@@ -1301,6 +1320,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/side-panel.spec.ts',
     'tests/unit/components/ui/SidePanel.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
+    'tests/unit/assets/css/main.spec.ts',
     'tests/e2e/side-panel.spec.ts',
   ]
 
@@ -1314,12 +1334,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/message-metadata.spec.ts',
     'tests/unit/composables/chat-context.spec.ts',
     'tests/unit/composables/chat-route.spec.ts',
+    'tests/unit/composables/chat-pin.spec.ts',
+    'tests/unit/composables/history.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/components/Sidebar/ChatContextButton.spec.ts',
     'tests/unit/components/Sidebar/AuthCta.spec.ts',
     'tests/unit/components/Sidebar/Development.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
     'tests/e2e/chat-context-panel.spec.ts',
+    'tests/e2e/chat-context-pin.spec.ts',
   ]
 
   const messageSearchTests = [
@@ -2262,12 +2285,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
+        /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/assets\/css\/main\.css|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
       tests: sidePanelTests,
     },
     {
       pattern:
-        /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
+        /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-pin|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
       tests: chatContextTests,
     },
     {
@@ -2495,6 +2518,12 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/components\/Projects\/ActionsDropdown\.vue$/,
       tests: historyProjectsTests,
+    },
+    {
+      pattern: /^server\/utils\/artifacts\/chat-artifacts\.ts$/,
+      tests: [
+        'tests/integration/api/chats-history-artifact-count.spec.ts',
+      ],
     },
     {
       pattern: /^app\/pages\/chats\/(history\/index|new)\.vue$/,
@@ -3098,6 +3127,13 @@ export function getAffectedTests(changedFiles) {
       tests: artifactsRuntimeTests,
     },
     {
+      pattern: /^app\/assets\/css\/main\.css$/,
+      tests: [
+        'tests/unit/workers/artifacts-runtime/design.spec.ts',
+        'tests/unit/workers/artifacts-runtime/kit-theme.spec.ts',
+      ],
+    },
+    {
       pattern:
         /^(server\/utils\/artifacts\/|server\/api\/v1\/artifacts\/|server\/capabilities\/artifacts\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|server\/plugins\/artifact-(report|storage)-sweep\.ts$|tests\/setup\/helpers\/artifacts-store\.ts$)/,
       tests: artifactsCoreTests,
@@ -3114,9 +3150,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/middleware\/02\.artifact-share-path\.ts|server\/utils\/artifacts\/share-(redaction|request)\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(server\/middleware\/02\.artifact-share-path\.ts|server\/utils\/artifacts\/(share-(redaction|request)|log-redaction)\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: [
         'tests/unit/server/middleware/artifact-share-path.spec.ts',
+        'tests/unit/server/utils/artifacts/log-redaction.spec.ts',
         'tests/unit/server/plugins/evlog-request-observability.spec.ts',
       ],
     },
@@ -3139,8 +3176,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client|BridgeConfirm\.client|CodeView\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/(artifact(s|-host-actions|-storage|-bridge)|chunked-code-highlight|code-stream)\.ts|app\/utils\/artifact-(export|parts|bridge)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
+        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client|BridgeConfirm\.client|CodeView\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/(artifact(s|-host-actions|-storage|-bridge|-delete|-fix)|chat-input-prefill|chunked-code-highlight|code-stream)\.ts|app\/utils\/artifact-(export|parts|bridge)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
       tests: artifactsUiTests,
+    },
+    {
+      pattern: /^app\/composables\/chat-input-prefill\.ts$/,
+      tests: ['tests/unit/components/ChatInput.spec.ts'],
     },
     {
       pattern:
@@ -3149,7 +3190,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/a\/index\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/artifact-share-(page|location)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/pages\/a\/index\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/(artifact-share-(page|location)|scroll-within)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsShareUiTests,
     },
     {

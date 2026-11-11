@@ -22,6 +22,7 @@
 		"typecheck:mail-alerts": "tsc --noEmit -p workers/mail-alerts",
 		"artifacts:build": "pnpm --filter artifacts-runtime build",
 		"artifacts:dev": "pnpm --filter artifacts-runtime dev",
+		"artifacts:theme": "pnpm --filter artifacts-runtime theme",
 		"test:e2e:artifacts": "playwright test -c playwright.artifacts.config.ts",
 		"analyze": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt analyze",
 		"cf-typegen": "wrangler types",

@@ -1,7 +1,15 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest'
 import { ref } from 'vue'
 import ReportModal from '../../../../app/components/Artifact/ReportModal.client.vue'
 
@@ -209,6 +217,99 @@ describe('Artifact/ReportModal.client', () => {
       expect(wrapper.get(byTestId('artifact-report-good-faith'))
         .attributes('aria-invalid')).toBe('true')
     })
+
+  it('keeps the dialog still on an incomplete submit', async () => {
+    const wrapper = await mountModal()
+    const scrollIntoView = vi.fn()
+    const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+    const windowScroll = vi.spyOn(window, 'scrollTo')
+
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    })
+    onTestFinished(() => {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+    })
+
+    await wrapper.get(byTestId('artifact-report-details')).setValue('four')
+    await wrapper.get(byTestId('artifact-report-reason-phishing'))
+      .setValue(true)
+    await submit(wrapper)
+
+    const details = wrapper.get(byTestId('artifact-report-details'))
+
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+    expect(focusSpy.mock.contexts).toContain(details.element)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(windowScroll).not.toHaveBeenCalled()
+    expect(wrapper.get(byTestId('artifact-report-details-error')).text())
+      .toBe('Write at least 20 characters.')
+    expect(wrapper.get(byTestId('artifact-report-form'))
+      .attributes('novalidate')).toBeDefined()
+  })
+
+  it('scrolls the form, not the page, to the first invalid field',
+    async () => {
+      const wrapper = await mountModal()
+
+      await wrapper.get(byTestId('artifact-report-reason-phishing'))
+        .setValue(true)
+      await wrapper.get(byTestId('artifact-report-details'))
+        .setValue('four')
+
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          const testId = this.getAttribute('data-testid')
+
+          if (testId === 'artifact-report-form') {
+            return { top: 100, bottom: 400 } as DOMRect
+          }
+
+          if (testId === 'artifact-report-details') {
+            return { top: 500, bottom: 560 } as DOMRect
+          }
+
+          if (testId === 'artifact-report-details-error') {
+            return { top: 580, bottom: 700 } as DOMRect
+          }
+
+          return { top: 0, bottom: 0 } as DOMRect
+        })
+
+      const scrollTops = new Map<HTMLElement, number>()
+
+      Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return scrollTops.get(this) ?? 0
+        },
+        set(this: HTMLElement, value: number) {
+          scrollTops.set(this, value)
+        },
+      })
+      onTestFinished(() => {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop')
+      })
+
+      await submit(wrapper)
+
+      const scrolledElements = [...scrollTops.entries()]
+
+      expect(scrolledElements).toHaveLength(1)
+      expect(scrolledElements[0]![0].dataset.testid)
+        .toBe('artifact-report-form')
+      expect(scrolledElements[0]![1]).toBe(700 + 8 - 400)
+    })
+
+  it('leaves the sheet lift to the global dialog rules', async () => {
+    const wrapper = await mountModal()
+    const box = wrapper.get(byTestId('artifact-report-box'))
+
+    expect(box.classes()).toContain('sheet-safe-padding')
+    expect(box.attributes('style') ?? '').not.toContain('margin-bottom')
+    expect(box.attributes('style') ?? '').not.toContain('max-height')
+  })
 
   it('posts a complete report with the share header', async () => {
     const wrapper = await mountModal({ headers: HEADERS })

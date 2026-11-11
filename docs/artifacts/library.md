@@ -106,7 +106,11 @@ checked radio style overrode `btn-primary` in dark mode. Selection mode and
 bulk delete reuse `ActionsToolbar.vue` (delete only). Deleting sends ids in sequential
 chunks of `ARTIFACT_BULK_DELETE_MAX` (50), so a selection is not capped. Ids
 the server keeps (`heldIds`, a legal hold after a report) stay in the list and
-raise a warning toast.
+raise a warning toast. Parity with the panel: delete, share and download for
+one artifact are all in the panel's actions menu too
+(`docs/artifacts/panel.md`). A delete made from the panel reaches an open
+list through the `artifacts:deleted` hook, which `useArtifactLibrary()`
+listens to; a delete made here marks the artifact deleted for chat cards.
 
 ## Tab bar on small screens
 
