@@ -20,7 +20,7 @@ import {
   getContainerFileKey,
   isContainerFileCitationChunk,
   readOpenAiContainerFileCitation,
-  stripContainerFileAnnotations,
+  stripContainerFileReferences,
 } from '~~/server/utils/code-execution/container-files'
 import { persistContainerFiles } from '~~/server/utils/code-execution/persist-container-files'
 import { sanitizeContainerFileName } from '~~/server/utils/code-execution/file-types'
@@ -314,17 +314,11 @@ export function createCodeExecutionStream(
       }
 
       if (
-        (chunk.type === 'text-start'
-          || chunk.type === 'text-delta'
-          || chunk.type === 'text-end')
-        && chunk.providerMetadata
+        chunk.type === 'text-start'
+        || chunk.type === 'text-delta'
+        || chunk.type === 'text-end'
       ) {
-        controller.enqueue({
-          ...chunk,
-          providerMetadata: stripContainerFileAnnotations(
-            chunk.providerMetadata,
-          ),
-        })
+        controller.enqueue(stripContainerFileReferences(chunk))
 
         return
       }

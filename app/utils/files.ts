@@ -164,9 +164,18 @@ const mediaTypeByTextExtension: Record<string, string> = {
   md: 'text/markdown',
   markdown: 'text/markdown',
   txt: 'text/plain',
+  csv: 'text/csv',
+  tsv: 'text/tab-separated-values',
 }
 
 const markdownAliasMediaTypes = new Set(['text/x-markdown'])
+const delimitedTextAliasMediaTypes = new Set([
+  'application/vnd.ms-excel',
+  'application/csv',
+  'text/x-csv',
+  'text/comma-separated-values',
+  'text/x-tab-separated-values',
+])
 
 export const TEXT_FILE_PREVIEW_MAX_BYTES = 512 * 1024
 export const TEXT_FILE_VIEW_MAX_BYTES = 2 * 1024 * 1024
@@ -182,11 +191,18 @@ export function resolveUploadMediaType(file: File): string {
     return 'text/markdown'
   }
 
+  const extension = file.name.split('.').pop()?.toLowerCase() || ''
+
+  if (
+    delimitedTextAliasMediaTypes.has(declaredType)
+    && (extension === 'csv' || extension === 'tsv')
+  ) {
+    return mediaTypeByTextExtension[extension] || declaredType
+  }
+
   if (declaredType) {
     return declaredType
   }
-
-  const extension = file.name.split('.').pop()?.toLowerCase() || ''
 
   return mediaTypeByTextExtension[extension] || ''
 }

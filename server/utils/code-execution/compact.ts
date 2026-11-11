@@ -17,6 +17,8 @@ export interface CompactedCodeExecutionOutput {
 const GOOGLE_OK_OUTCOME = 'OUTCOME_OK'
 const DEFAULT_ERROR_TEXT = 'The provider could not run the code.'
 const ERROR_TEXT_MAX_BYTES = 1024
+const OPENAI_MOUNTED_FILE_PREFIX = /\bfile-[A-Za-z0-9]{16,}-/g
+const PROVIDER_FILE_ID = /\bfile_[A-Za-z0-9]{16,}\b/g
 
 function readRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -60,12 +62,26 @@ function describeEditorInput(record: Record<string, unknown>): string {
   return body ? `${header}\n${body}` : header
 }
 
+/**
+ * OpenAI mounts an uploaded file as `<file id>-<original name>` and Anthropic
+ * names files by their id. Code and output are stored and shown with the
+ * user's original file name and no provider id.
+ */
+export function redactProviderFileNames(text: string): string {
+  return text
+    .replace(OPENAI_MOUNTED_FILE_PREFIX, '')
+    .replace(PROVIDER_FILE_ID, 'file')
+}
+
 function buildInput(
   language: CodeExecutionLanguage,
   code: string,
   wasTruncated = false,
 ): CodeExecutionToolInput {
-  const truncated = truncateUtf8(code, CODE_EXECUTION_CODE_MAX_BYTES)
+  const truncated = truncateUtf8(
+    redactProviderFileNames(code),
+    CODE_EXECUTION_CODE_MAX_BYTES,
+  )
 
   return {
     language,
@@ -115,8 +131,14 @@ function buildOutput(input: {
   stderr: string
   returnCode: number | null
 }): CodeExecutionToolOutput {
-  const stdout = truncateUtf8(input.stdout, CODE_EXECUTION_STREAM_MAX_BYTES)
-  const stderr = truncateUtf8(input.stderr, CODE_EXECUTION_STREAM_MAX_BYTES)
+  const stdout = truncateUtf8(
+    redactProviderFileNames(input.stdout),
+    CODE_EXECUTION_STREAM_MAX_BYTES,
+  )
+  const stderr = truncateUtf8(
+    redactProviderFileNames(input.stderr),
+    CODE_EXECUTION_STREAM_MAX_BYTES,
+  )
 
   return {
     stdout: stdout.text,

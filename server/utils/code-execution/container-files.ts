@@ -120,33 +120,47 @@ export function isContainerFileCitationChunk(chunk: {
 }
 
 /**
- * `@ai-sdk/openai` also reports each `container_file_citation` inside the
- * text part's provider metadata, next to the `source-document` chunk. Those
- * entries carry the provider's container and file ids, so they are removed
- * wherever the stream or a finished message could keep them.
+ * `@ai-sdk/openai` reports each `container_file_citation` more than once: as
+ * the `source-document` chunk, in the text part's `annotations` metadata and
+ * in its `citations` list. All of them carry the provider's container and
+ * file ids, so every list on a text chunk or part is scrubbed of them before
+ * the chunk is streamed or the message is stored.
  */
-export function stripContainerFileAnnotations<TMetadata>(
-  providerMetadata: TMetadata,
-): TMetadata {
-  const metadata = readRecord(providerMetadata)
-  const openai = readRecord(metadata?.openai)
+function isContainerFileReference(value: unknown): boolean {
+  const record = readRecord(value)
 
-  if (!metadata || !openai || !Array.isArray(openai.annotations)) {
-    return providerMetadata
+  if (!record) {
+    return false
   }
 
-  const annotations = openai.annotations.filter((annotation) => {
-    return readRecord(annotation)?.type !== 'container_file_citation'
-  })
-
-  if (annotations.length === openai.annotations.length) {
-    return providerMetadata
+  if (record.type === 'container_file_citation') {
+    return true
   }
 
-  return {
-    ...metadata,
-    openai: { ...openai, annotations },
-  } as TMetadata
+  const sourceMetadata = readRecord(readRecord(record.source)?.providerMetadata)
+
+  return readRecord(sourceMetadata?.openai)?.type === 'container_file_citation'
+    || isContainerFileCitationChunk(record)
+}
+
+export function stripContainerFileReferences<TValue>(value: TValue): TValue {
+  if (Array.isArray(value)) {
+    return value
+      .filter(entry => !isContainerFileReference(entry))
+      .map(entry => stripContainerFileReferences(entry)) as TValue
+  }
+
+  const record = readRecord(value)
+
+  if (!record) {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, entry]) => {
+      return [key, stripContainerFileReferences(entry)]
+    }),
+  ) as TValue
 }
 
 export function getContainerFileKey(ref: ContainerFileRef): string {

@@ -59,6 +59,30 @@ describe('compactCodeExecutionInput', () => {
     expect(compactCodeExecutionInput(once)).toEqual(once)
   })
 
+  it('shows the user\'s own file name instead of the provider\'s mounted name', () => {
+    const compacted = compactCodeExecutionInput({
+      code: 'df = pd.read_csv(\'/mnt/data/file-A1b2C3d4E5f6G7h8I9j0K1-cities.csv\')',
+    })
+
+    expect(compacted.code).toBe('df = pd.read_csv(\'/mnt/data/cities.csv\')')
+    expect(compactCodeExecutionOutput({
+      type: 'code_execution_result',
+      stdout: 'loaded /files/file_011CNha8iCJcU1wXNR6q4V8w',
+      stderr: 'FileNotFoundError: /mnt/data/file-A1b2C3d4E5f6G7h8I9j0K1-cities.csv',
+      return_code: 1,
+    }).output).toEqual({
+      stdout: 'loaded /files/file',
+      stderr: 'FileNotFoundError: /mnt/data/cities.csv',
+      returnCode: 1,
+    })
+  })
+
+  it('leaves ordinary file-like words alone', () => {
+    const code = 'open("file-handling-notes.txt"); print("file_id")'
+
+    expect(compactCodeExecutionInput({ code }).code).toBe(code)
+  })
+
   it('keeps the truncation flag when it compacts a truncated input again', () => {
     const once = compactCodeExecutionInput({
       code: 'a'.repeat(CODE_EXECUTION_CODE_MAX_BYTES * 2),

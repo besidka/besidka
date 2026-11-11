@@ -292,6 +292,54 @@ describe('files upload API', () => {
       .toBeInstanceOf(Date)
   })
 
+  it('accepts CSV and TSV uploads, the main input of code execution', async () => {
+    const handler = await getHandler()
+
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      public: {
+        allowedFileFormats: [
+          'text/plain',
+          'text/csv',
+          'text/tab-separated-values',
+        ],
+        maxFilesPerMessage: 10,
+        maxMessageFilesBytes: 1000 * 1024 * 1024,
+      },
+      filesHardMaxStorageBytes: 5 * 1024 * 1024 * 1024,
+      filesGlobalTransformLimitMonthly: 1000,
+    }))
+
+    for (const [type, extension] of [
+      ['text/csv', 'csv'],
+      ['text/tab-separated-values', 'tsv'],
+    ] as const) {
+      const { db } = createDbMock({
+        insertResult: {
+          id: 'file-1',
+          storageKey: `stored.${extension}`,
+          name: `cities.${extension}`,
+          size: 4,
+          type,
+          source: 'upload',
+          expiresAt: new Date(),
+        },
+      })
+      const put = vi.fn().mockResolvedValue({ key: `stored.${extension}` })
+
+      vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useFileStorage', () => ({ put, delete: vi.fn() }))
+
+      const result = await handler(createEvent({
+        'content-type': type,
+        'x-filename': encodeURIComponent(`cities.${extension}`),
+        'x-filesize': '4',
+      }) as any)
+
+      expect(result.type).toBe(type)
+      expect(put.mock.calls[0]?.[0]).toMatch(new RegExp(`\\.${extension}$`))
+    }
+  })
+
   it('stores vip uploads without expiry date', async () => {
     const handler = await getHandler()
 

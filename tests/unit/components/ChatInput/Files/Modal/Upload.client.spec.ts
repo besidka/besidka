@@ -22,7 +22,7 @@ describe('ChatInput/Files/Modal/Upload', () => {
     const wrapper = await mountSuspended(Upload)
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('image/png,image/jpeg,image/webp,application/pdf,text/plain,text/markdown,.md,.markdown,.txt')
+      .toBe('image/png,image/jpeg,image/webp,application/pdf,text/plain,text/markdown,text/csv,text/tab-separated-values,.md,.markdown,.txt,.csv,.tsv')
     expect(wrapper.text()).toContain('png, jpeg, webp, pdf, plain, markdown')
   })
 
@@ -34,7 +34,7 @@ describe('ChatInput/Files/Modal/Upload', () => {
     })
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('application/pdf,text/plain,text/markdown,.md,.markdown,.txt')
+      .toBe('application/pdf,text/plain,text/markdown,text/csv,text/tab-separated-values,.md,.markdown,.txt,.csv,.tsv')
     expect(wrapper.text()).toContain('pdf, plain, markdown')
     expect(wrapper.text()).not.toContain('png')
   })
@@ -88,7 +88,7 @@ describe('ChatInput/Files/Modal/Upload', () => {
     })
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('image/png,image/jpeg,image/webp,text/plain,text/markdown,.md,.markdown,.txt')
+      .toBe('image/png,image/jpeg,image/webp,text/plain,text/markdown,text/csv,text/tab-separated-values,.md,.markdown,.txt,.csv,.tsv')
     expect(wrapper.text()).not.toContain('pdf')
   })
 
@@ -100,7 +100,7 @@ describe('ChatInput/Files/Modal/Upload', () => {
     })
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('text/plain,text/markdown,.md,.markdown,.txt')
+      .toBe('text/plain,text/markdown,text/csv,text/tab-separated-values,.md,.markdown,.txt,.csv,.tsv')
   })
 
   it('rejects a PDF file selected while PDF input is unsupported', async () => {

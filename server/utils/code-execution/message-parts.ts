@@ -12,7 +12,7 @@ import {
 } from '~~/server/utils/code-execution/compact'
 import {
   isContainerFileCitationChunk,
-  stripContainerFileAnnotations,
+  stripContainerFileReferences,
 } from '~~/server/utils/code-execution/container-files'
 
 type MessagePart = UIMessage['parts'][number]
@@ -119,13 +119,10 @@ export function finalizeCodeExecutionParts(
       continue
     }
 
-    if (record.type === 'text' && record.providerMetadata) {
-      finalized.push({
-        ...record,
-        providerMetadata: stripContainerFileAnnotations(
-          record.providerMetadata,
-        ),
-      } as unknown as MessagePart)
+    if (record.type === 'text') {
+      finalized.push(
+        stripContainerFileReferences(record) as unknown as MessagePart,
+      )
 
       continue
     }

@@ -110,6 +110,22 @@ the container as `container_upload` blocks) and OpenAI (`fileIds`); Gemini
 takes them inline. Maximum 10 files and 20 MB in total; only files the user
 owns. Anthropic bills attached files even when no code runs.
 
+The system instruction names the attached files and tells the model to find
+them with a directory listing and read them in code instead of retyping what it
+saw in the conversation (`buildCodeExecutionInstruction`). CSV and TSV are
+accepted as uploads (`text/csv`, `text/tab-separated-values`, see
+`docs/files.md`), because they are the main input.
+
+OpenAI mounts an uploaded file as `<file id>-<original name>`. Code, stdout and
+stderr are stored and shown with that prefix removed, so the user sees their
+own file name and no provider id (`redactProviderFileNames`); the code that
+ran at the provider still used the mounted name.
+
+Provider ids stay out of the stored message in every place the AI SDK puts
+them: the `source-document` chunk, the text part's `annotations` metadata and
+its `citations` list (`stripContainerFileReferences`). The tool call id
+(`srvtoolu_…`, `ci_…`) and message id (`msg_…`) are kept; they give no access.
+
 ## Cost
 
 Always recorded: `attributes.codeExecution { provider, calls, containers,

@@ -433,6 +433,8 @@ export default defineNuxtConfig({
         'application/pdf',
         'text/plain',
         'text/markdown',
+        'text/csv',
+        'text/tab-separated-values',
       ],
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB

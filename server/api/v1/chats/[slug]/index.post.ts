@@ -285,8 +285,8 @@ import {
 } from '~~/server/utils/artifacts/message-parts'
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
 import {
-  CODE_EXECUTION_INSTRUCTION,
   appendAnthropicContainerUploads,
+  buildCodeExecutionInstruction,
   resolveCodeExecutionGate,
   resolveCodeExecutionRatesFromConfig,
   startCodeExecutionSession,
@@ -1624,6 +1624,7 @@ export default defineEventHandler(async (event) => {
         hasChatSearchTools: chatSearchToolsRegistered,
         memoryInstructions,
         artifactInstructions,
+        codeExecutionInputNames: codeExecutionSession?.uploadedFileNames,
       }),
       artifactContextBlock,
     ].filter(Boolean).join('\n\n') || undefined,
@@ -1941,6 +1942,8 @@ export default defineEventHandler(async (event) => {
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
+              codeExecutionInputNames:
+                codeExecutionSession?.uploadedFileNames,
             }),
             reasoning: reasoningEffort,
             messages: modelMessages,
@@ -3824,6 +3827,7 @@ function buildChatInstructions(input: {
   knowledgeSystemBlock?: string | null
   hasKnowledgeTools?: boolean
   artifactInstructions?: string | null
+  codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
   const {
@@ -3837,6 +3841,7 @@ function buildChatInstructions(input: {
     knowledgeSystemBlock,
     hasKnowledgeTools,
     artifactInstructions,
+    codeExecutionInputNames,
     now = new Date(),
   } = input
   const instructions = [
@@ -3858,7 +3863,7 @@ function buildChatInstructions(input: {
   }
 
   if (requestedTools.includes('code_execution')) {
-    instructions.push(CODE_EXECUTION_INSTRUCTION)
+    instructions.push(buildCodeExecutionInstruction(codeExecutionInputNames))
   }
 
   if (requestedTools.includes('image_generation')) {

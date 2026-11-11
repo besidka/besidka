@@ -1391,6 +1391,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/code-execution/input-files.spec.ts',
     'tests/unit/utils/code-execution/message-parts.spec.ts',
     'tests/unit/utils/code-execution/persist-container-files.spec.ts',
+    'tests/unit/utils/code-execution/openai-citations.spec.ts',
     'tests/unit/utils/code-execution/provider-cleanup.spec.ts',
     'tests/unit/utils/code-execution/request-schema.spec.ts',
     'tests/unit/utils/code-execution/sdk-request-shape.spec.ts',

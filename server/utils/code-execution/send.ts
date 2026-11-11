@@ -20,6 +20,7 @@ import {
   getOwnedFilesByStorageKeys,
 } from '~~/server/utils/files/file-governance'
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
+import { sanitizeContainerFileName } from '~~/server/utils/code-execution/file-types'
 import { createProviderResourceTracker } from '~~/server/utils/code-execution/provider-cleanup'
 import { uploadInputFiles } from '~~/server/utils/code-execution/input-files'
 
@@ -36,6 +37,32 @@ export const CODE_EXECUTION_INSTRUCTION = [
   'Do not paste a file\'s whole content into the reply when it is saved.',
 ].join(' ')
 
+/**
+ * The base instruction plus, when attachments were handed to the sandbox, the
+ * names of those files and how to find them. Without it a model tends to
+ * retype the data it sees in the conversation instead of reading the file.
+ */
+export function buildCodeExecutionInstruction(
+  attachedFileNames: readonly string[] = [],
+): string {
+  if (attachedFileNames.length === 0) {
+    return CODE_EXECUTION_INSTRUCTION
+  }
+
+  const names = attachedFileNames
+    .slice(0, CODE_EXECUTION_MAX_INPUT_FILES)
+    .map(sanitizeContainerFileName)
+    .join(', ')
+
+  return [
+    CODE_EXECUTION_INSTRUCTION,
+    `The user's attached files are available inside the sandbox: ${names}.`,
+    'Find them with a directory listing (OpenAI mounts them under /mnt/data,',
+    'Anthropic in the container, where the name may carry a provider id)',
+    'and read them in code. Do not retype or guess their content.',
+  ].join(' ')
+}
+
 export interface CodeExecutionGate {
   tools: ModelTool[]
   active: boolean
@@ -48,6 +75,7 @@ export interface CodeExecutionSession {
   filesActive: boolean
   tracker: ProviderResourceTracker
   uploadedFileIds: string[]
+  uploadedFileNames: string[]
 }
 
 interface MessagePartLike {
@@ -246,6 +274,7 @@ export async function startCodeExecutionSession(input: {
     filesActive: input.filesActive,
     tracker,
     uploadedFileIds: [],
+    uploadedFileNames: [],
   }
 
   if (!input.filesActive || input.provider === 'google') {
@@ -268,6 +297,7 @@ export async function startCodeExecutionSession(input: {
     })
 
     session.uploadedFileIds = uploaded.map(file => file.fileId)
+    session.uploadedFileNames = uploaded.map(file => file.name)
   } catch (exception) {
     await tracker.cleanup()
     throw exception

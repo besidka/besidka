@@ -573,6 +573,9 @@ describe('chat send pipeline: provider code execution', () => {
       expect(mocks.deleteCalls).toContain(
         'https://api.anthropic.com/v1/files/file_in_1',
       )
+      expect(String(mocks.streamTextOptions[0]?.instructions)).toContain(
+        'attached files are available inside the sandbox: data.csv',
+      )
     })
 
     it('uploads nothing while code-execution.files is off', async () => {

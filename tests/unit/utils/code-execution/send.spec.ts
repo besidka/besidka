@@ -167,6 +167,27 @@ describe('resolveCodeExecutionGate', () => {
   )
 })
 
+describe('buildCodeExecutionInstruction', () => {
+  it('is the base instruction without attachments', async () => {
+    const { CODE_EXECUTION_INSTRUCTION, buildCodeExecutionInstruction }
+      = await loadSend()
+
+    expect(buildCodeExecutionInstruction()).toBe(CODE_EXECUTION_INSTRUCTION)
+  })
+
+  it('names the attached files and tells the model to read them, not retype them', async () => {
+    const { buildCodeExecutionInstruction } = await loadSend()
+    const instruction = buildCodeExecutionInstruction([
+      'cities.csv',
+      '../etc/passwd',
+    ])
+
+    expect(instruction).toContain('cities.csv, passwd')
+    expect(instruction).toContain('/mnt/data')
+    expect(instruction).toContain('Do not retype or guess their content')
+  })
+})
+
 describe('appendAnthropicContainerUploads', () => {
   const messages: ModelMessage[] = [
     { role: 'user', content: 'first' },
