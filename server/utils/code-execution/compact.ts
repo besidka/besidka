@@ -16,6 +16,7 @@ export interface CompactedCodeExecutionOutput {
 
 const GOOGLE_OK_OUTCOME = 'OUTCOME_OK'
 const DEFAULT_ERROR_TEXT = 'The provider could not run the code.'
+const ERROR_TEXT_MAX_BYTES = 1024
 
 function readRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -62,14 +63,19 @@ function describeEditorInput(record: Record<string, unknown>): string {
 function buildInput(
   language: CodeExecutionLanguage,
   code: string,
+  wasTruncated = false,
 ): CodeExecutionToolInput {
   const truncated = truncateUtf8(code, CODE_EXECUTION_CODE_MAX_BYTES)
 
   return {
     language,
     code: truncated.text,
-    ...(truncated.truncated ? { codeTruncated: true } : {}),
+    ...(truncated.truncated || wasTruncated ? { codeTruncated: true } : {}),
   }
+}
+
+export function capErrorText(text: string): string {
+  return truncateUtf8(text, ERROR_TEXT_MAX_BYTES).text
 }
 
 /**
@@ -100,6 +106,7 @@ export function compactCodeExecutionInput(
   return buildInput(
     explicitLanguage ?? 'python',
     readString(record.code),
+    record.codeTruncated === true,
   )
 }
 
@@ -224,7 +231,9 @@ export function compactCodeExecutionOutput(
   ) {
     return {
       output: buildOutput({ stdout: '', stderr: '', returnCode: null }),
-      errorText: readString(record.error_code) || DEFAULT_ERROR_TEXT,
+      errorText: capErrorText(
+        readString(record.error_code) || DEFAULT_ERROR_TEXT,
+      ),
     }
   }
 

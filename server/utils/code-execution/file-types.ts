@@ -21,6 +21,8 @@ const PDF_SIGNATURE = [0x25, 0x50, 0x44, 0x46, 0x2d]
 const RIFF_SIGNATURE = [0x52, 0x49, 0x46, 0x46]
 const WEBP_SIGNATURE = [0x57, 0x45, 0x42, 0x50]
 const TEXT_PROBE_BYTES = 64 * 1024
+const UNSAFE_BIDI_CONTROL_PATTERN
+  = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u
 
 const ALLOWED_TYPES: Record<string, AllowedContainerFileType> = {
   png: { extension: 'png', mediaType: 'image/png', kind: 'image' },
@@ -152,7 +154,9 @@ export function sanitizeContainerFileName(rawName: string): string {
     .filter((character) => {
       const codePoint = character.codePointAt(0) ?? 0
 
-      return codePoint >= 0x20 && codePoint !== 0x7f
+      return codePoint >= 0x20
+        && codePoint !== 0x7f
+        && !UNSAFE_BIDI_CONTROL_PATTERN.test(character)
     })
     .join('')
     .trim()

@@ -80,6 +80,53 @@ export function createProviderResourceTracker(
     }
   }
 
+  let inFlight: Promise<ProviderCleanupSummary> | null = null
+
+  async function deleteTracked(): Promise<ProviderCleanupSummary> {
+    const summary: ProviderCleanupSummary = {
+      deleted: 0,
+      alreadyGone: 0,
+      failed: 0,
+    }
+    const filesUrl = PROVIDER_FILES_URLS[input.provider]
+    const targets = [
+      ...(filesUrl
+        ? [...fileIds].map(fileId => `${filesUrl}/${fileId}`)
+        : []),
+      ...[...containerIds].map((containerId) => {
+        return `${OPENAI_CONTAINERS_URL}/${containerId}`
+      }),
+    ]
+
+    fileIds.clear()
+    containerIds.clear()
+
+    for (const target of targets) {
+      const outcome = await deleteResource(target)
+
+      if (outcome === 'deleted') {
+        summary.deleted += 1
+      } else if (outcome === 'already-gone') {
+        summary.alreadyGone += 1
+      } else {
+        summary.failed += 1
+      }
+    }
+
+    if (targets.length > 0) {
+      input.logger.set({
+        attributes: {
+          codeExecutionCleanup: {
+            provider: input.provider,
+            ...summary,
+          },
+        },
+      })
+    }
+
+    return summary
+  }
+
   return {
     trackFile(fileId) {
       if (SAFE_ID_PATTERN.test(fileId)) {
@@ -94,49 +141,16 @@ export function createProviderResourceTracker(
     hasPending() {
       return fileIds.size > 0 || containerIds.size > 0
     },
-    async cleanup() {
-      const summary: ProviderCleanupSummary = {
-        deleted: 0,
-        alreadyGone: 0,
-        failed: 0,
-      }
-      const filesUrl = PROVIDER_FILES_URLS[input.provider]
-      const targets = [
-        ...(filesUrl
-          ? [...fileIds].map(fileId => `${filesUrl}/${fileId}`)
-          : []),
-        ...[...containerIds].map((containerId) => {
-          return `${OPENAI_CONTAINERS_URL}/${containerId}`
-        }),
-      ]
-
-      fileIds.clear()
-      containerIds.clear()
-
-      for (const target of targets) {
-        const outcome = await deleteResource(target)
-
-        if (outcome === 'deleted') {
-          summary.deleted += 1
-        } else if (outcome === 'already-gone') {
-          summary.alreadyGone += 1
-        } else {
-          summary.failed += 1
-        }
+    cleanup() {
+      if (inFlight) {
+        return inFlight
       }
 
-      if (targets.length > 0) {
-        input.logger.set({
-          attributes: {
-            codeExecutionCleanup: {
-              provider: input.provider,
-              ...summary,
-            },
-          },
-        })
-      }
+      inFlight = deleteTracked().finally(() => {
+        inFlight = null
+      })
 
-      return summary
+      return inFlight
     },
   }
 }

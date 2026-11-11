@@ -77,6 +77,45 @@ describe('finalizeCodeExecutionParts', () => {
     ])
   })
 
+  it('strips container file citations from the metadata of a text part', () => {
+    const [part] = finalizeCodeExecutionParts(parts({
+      type: 'text',
+      text: 'Saved.',
+      providerMetadata: {
+        openai: {
+          itemId: 'msg_1',
+          annotations: [
+            {
+              type: 'container_file_citation',
+              container_id: 'cntr_1',
+              file_id: 'cfile_1',
+            },
+            { type: 'url_citation', url: 'https://example.com' },
+          ],
+        },
+      },
+    })) as unknown as Array<Record<string, any>>
+
+    expect(JSON.stringify(part)).not.toContain('cntr_1')
+    expect(JSON.stringify(part)).not.toContain('cfile_1')
+    expect(part?.providerMetadata.openai.annotations).toEqual([
+      { type: 'url_citation', url: 'https://example.com' },
+    ])
+  })
+
+  it('caps a long error text', () => {
+    const [part] = finalizeCodeExecutionParts(parts({
+      type: 'tool-code_execution',
+      toolCallId: 'a',
+      state: 'output-error',
+      input: {},
+      errorText: 'e'.repeat(5000),
+    })) as unknown as Array<{ errorText: string }>
+
+    expect(new TextEncoder().encode(part?.errorText).byteLength)
+      .toBeLessThanOrEqual(1024)
+  })
+
   it('gives a saved file its name back and drops the stream marker', () => {
     expect(finalizeCodeExecutionParts(parts({
       type: 'file',

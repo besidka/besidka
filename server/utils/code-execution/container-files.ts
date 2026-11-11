@@ -5,6 +5,7 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export const CONTAINER_FILE_DOWNLOAD_TIMEOUT_MS = 30_000
 export const ANTHROPIC_API_VERSION = '2023-06-01'
+export const ANTHROPIC_FILES_BETA = 'files-api-2025-04-14'
 
 const ANTHROPIC_FILES_URL = 'https://api.anthropic.com/v1/files'
 const OPENAI_CONTAINERS_URL = 'https://api.openai.com/v1/containers'
@@ -118,6 +119,36 @@ export function isContainerFileCitationChunk(chunk: {
   return metadata?.type === 'container_file_citation'
 }
 
+/**
+ * `@ai-sdk/openai` also reports each `container_file_citation` inside the
+ * text part's provider metadata, next to the `source-document` chunk. Those
+ * entries carry the provider's container and file ids, so they are removed
+ * wherever the stream or a finished message could keep them.
+ */
+export function stripContainerFileAnnotations<TMetadata>(
+  providerMetadata: TMetadata,
+): TMetadata {
+  const metadata = readRecord(providerMetadata)
+  const openai = readRecord(metadata?.openai)
+
+  if (!metadata || !openai || !Array.isArray(openai.annotations)) {
+    return providerMetadata
+  }
+
+  const annotations = openai.annotations.filter((annotation) => {
+    return readRecord(annotation)?.type !== 'container_file_citation'
+  })
+
+  if (annotations.length === openai.annotations.length) {
+    return providerMetadata
+  }
+
+  return {
+    ...metadata,
+    openai: { ...openai, annotations },
+  } as TMetadata
+}
+
 export function getContainerFileKey(ref: ContainerFileRef): string {
   return ref.provider === 'openai'
     ? `openai:${ref.containerId}:${ref.fileId}`
@@ -132,6 +163,7 @@ export function buildAuthHeaders(
     return {
       'x-api-key': apiKey,
       'anthropic-version': ANTHROPIC_API_VERSION,
+      'anthropic-beta': ANTHROPIC_FILES_BETA,
     }
   }
 

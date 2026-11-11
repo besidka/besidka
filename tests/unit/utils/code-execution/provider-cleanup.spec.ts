@@ -102,6 +102,31 @@ describe('createProviderResourceTracker', () => {
     expect(tracker.hasPending()).toBe(false)
   })
 
+  it('shares one run between callers, so a later cleanup waits for the first', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const fetcher = vi.fn(async () => {
+      await gate
+
+      return new Response(null, { status: 200 })
+    })
+    const { tracker } = createTracker('anthropic', fetcher)
+
+    tracker.trackFile('file_a')
+
+    const first = tracker.cleanup()
+    const second = tracker.cleanup()
+
+    expect(second).toBe(first)
+
+    release()
+
+    expect(await second).toEqual({ deleted: 1, alreadyGone: 0, failed: 0 })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
   it('ignores unsafe ids and tracks no container for Anthropic', async () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 200 }))
     const { tracker } = createTracker('anthropic', fetcher)

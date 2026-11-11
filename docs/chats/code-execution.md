@@ -83,10 +83,18 @@ instruction tells the model both.
 | OpenAI | input uploads (`expires_after` one hour), the container | `DELETE /v1/files/{id}`, `DELETE /v1/containers/{id}` |
 | Gemini | nothing (attachments go inline) | nothing |
 
-Deletion runs at the end of the stream (after the `finish` chunk reached the
-client), in the route's `finally`, and in the provider-setup failure path,
-with the user's key. `cleanup()` is idempotent, never throws and logs counts
-only (`attributes.codeExecutionCleanup`).
+Deletion starts when the stream ends (after the `finish` chunk reached the
+client, without holding persistence), is awaited in the route's `finally`, and
+also runs in the provider-setup failure path, with the user's key. `cleanup()`
+is idempotent, concurrent callers share one run, it never throws, and it logs
+counts only (`attributes.codeExecutionCleanup`). If the Worker is killed
+mid-send (a tab close, see `docs/chats/stuck-generation-guard.md`) or a
+route step between the session start and the stream throws, nothing runs;
+the backstop is the one hour expiry on every upload (Anthropic
+`expires_in_seconds`, OpenAI `expires_after`) and OpenAI's 20 minute idle
+expiry of containers. The files Anthropic's sandbox produces carry no expiry
+Besidka can set, so in that case they stay in the user's Anthropic workspace
+until the user deletes them there.
 
 Not deletable: Anthropic keeps container data up to 30 days and offers no
 container delete. The copy of an uploaded file inside the container is

@@ -6,10 +6,14 @@ import {
   isDataCodeExecutionFilesPart,
 } from '#shared/utils/code-execution'
 import {
+  capErrorText,
   compactCodeExecutionInput,
   compactCodeExecutionOutput,
 } from '~~/server/utils/code-execution/compact'
-import { isContainerFileCitationChunk } from '~~/server/utils/code-execution/container-files'
+import {
+  isContainerFileCitationChunk,
+  stripContainerFileAnnotations,
+} from '~~/server/utils/code-execution/container-files'
 
 type MessagePart = UIMessage['parts'][number]
 
@@ -28,9 +32,11 @@ function compactToolPart(record: Record<string, unknown>): MessagePart | null {
       toolCallId: record.toolCallId,
       state: 'output-error',
       input: compactCodeExecutionInput(record.input),
-      errorText: typeof record.errorText === 'string'
-        ? record.errorText
-        : 'The provider could not run the code.',
+      errorText: capErrorText(
+        typeof record.errorText === 'string'
+          ? record.errorText
+          : 'The provider could not run the code.',
+      ),
     } as unknown as MessagePart
   }
 
@@ -109,6 +115,17 @@ export function finalizeCodeExecutionParts(
 
     if (record.type === 'file') {
       finalized.push(restoreFileName(record))
+
+      continue
+    }
+
+    if (record.type === 'text' && record.providerMetadata) {
+      finalized.push({
+        ...record,
+        providerMetadata: stripContainerFileAnnotations(
+          record.providerMetadata,
+        ),
+      } as unknown as MessagePart)
 
       continue
     }

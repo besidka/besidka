@@ -85,95 +85,104 @@ export async function persistContainerFiles(
       continue
     }
 
-    const download = await downloadContainerFile({
-      ref,
-      apiKey: input.apiKey,
-      fetcher: input.fetcher,
-    }, input.logger)
+    try {
+      const download = await downloadContainerFile({
+        ref,
+        apiKey: input.apiKey,
+        fetcher: input.fetcher,
+      }, input.logger)
 
-    if (!download.ok) {
-      skip(describeRef(ref), download.reason)
-
-      continue
-    }
-
-    const filename = sanitizeContainerFileName(
-      download.filename ?? describeRef(ref),
-    )
-    const fileType = resolveContainerFileType(filename, download.bytes)
-
-    if (!fileType.ok) {
-      skip(filename, 'type-not-allowed')
-
-      continue
-    }
-
-    let fileData = download.bytes
-    const { type } = fileType
-
-    if (type.kind === 'image') {
-      fileData = markAiGeneratedImage({
-        data: download.bytes,
-        mediaType: type.mediaType as 'image/png' | 'image/jpeg' | 'image/webp',
-        model: input.modelId,
-        maxBytes: CODE_EXECUTION_MAX_FILE_BYTES,
-      }).data
-    }
-
-    if (type.kind === 'pdf' || type.kind === 'office') {
-      const check = await checkContainerDocument({
-        format: type.extension as ContainerDocumentFormat,
-        bytes: download.bytes,
-        model: input.modelId,
-      })
-
-      if (!check.ok) {
-        input.logger.set({
-          attributes: {
-            codeExecutionDocument: {
-              format: type.extension,
-              rejected: check.code,
-            },
-          },
-        })
-        skip(filename, 'validation-failed')
+      if (!download.ok) {
+        skip(describeRef(ref), download.reason)
 
         continue
       }
 
-      fileData = check.bytes
+      const filename = sanitizeContainerFileName(
+        download.filename ?? describeRef(ref),
+      )
+      const fileType = resolveContainerFileType(filename, download.bytes)
 
-      if (check.provenance === 'missing') {
-        result.provenanceMissing += 1
+      if (!fileType.ok) {
+        skip(filename, 'type-not-allowed')
+
+        continue
       }
-    }
 
-    try {
-      const persisted = await persistFile({
-        userId: input.userId,
-        fileName: filename,
-        mediaType: type.mediaType,
-        fileData,
-        source: 'assistant',
-        originProvider: input.provider,
-        originModel: input.modelId,
-        logger: input.logger,
-      })
+      let fileData = download.bytes
+      const { type } = fileType
 
-      result.saved.push({
-        fileId: persisted.id,
-        url: markUrlAsGeneratedFile(`/files/${persisted.storageKey}`),
-        filename,
-        mediaType: type.mediaType,
-        bytes: persisted.size,
-      })
+      if (type.kind === 'image') {
+        fileData = markAiGeneratedImage({
+          data: download.bytes,
+          mediaType: type.mediaType as 'image/png' | 'image/jpeg' | 'image/webp',
+          model: input.modelId,
+          maxBytes: CODE_EXECUTION_MAX_FILE_BYTES,
+        }).data
+      }
+
+      if (type.kind === 'pdf' || type.kind === 'office') {
+        const check = await checkContainerDocument({
+          format: type.extension as ContainerDocumentFormat,
+          bytes: download.bytes,
+          model: input.modelId,
+        })
+
+        if (!check.ok) {
+          input.logger.set({
+            attributes: {
+              codeExecutionDocument: {
+                format: type.extension,
+                rejected: check.code,
+              },
+            },
+          })
+          skip(filename, 'validation-failed')
+
+          continue
+        }
+
+        fileData = check.bytes
+
+        if (check.provenance === 'missing') {
+          result.provenanceMissing += 1
+        }
+      }
+
+      try {
+        const persisted = await persistFile({
+          userId: input.userId,
+          fileName: filename,
+          mediaType: type.mediaType,
+          fileData,
+          source: 'assistant',
+          originProvider: input.provider,
+          originModel: input.modelId,
+          logger: input.logger,
+        })
+
+        result.saved.push({
+          fileId: persisted.id,
+          url: markUrlAsGeneratedFile(`/files/${persisted.storageKey}`),
+          filename,
+          mediaType: type.mediaType,
+          bytes: persisted.size,
+        })
+      } catch (exception) {
+        input.logger.set({
+          attributes: {
+            codeExecutionPersist: { error: exceptionMessage(exception) },
+          },
+        })
+        skip(filename, 'storage-failed')
+      }
     } catch (exception) {
       input.logger.set({
         attributes: {
           codeExecutionPersist: { error: exceptionMessage(exception) },
         },
       })
-      skip(filename, 'storage-failed')
+      skip(describeRef(ref), 'validation-failed')
     }
   }
 

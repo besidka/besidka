@@ -11,6 +11,7 @@ import {
 } from '#shared/utils/code-execution'
 import { describeCodeExecutionUsage } from '~~/server/utils/ai/code-execution-cost'
 import {
+  capErrorText,
   compactCodeExecutionInput,
   compactCodeExecutionOutput,
 } from '~~/server/utils/code-execution/compact'
@@ -19,11 +20,15 @@ import {
   getContainerFileKey,
   isContainerFileCitationChunk,
   readOpenAiContainerFileCitation,
+  stripContainerFileAnnotations,
 } from '~~/server/utils/code-execution/container-files'
 import { persistContainerFiles } from '~~/server/utils/code-execution/persist-container-files'
+import { sanitizeContainerFileName } from '~~/server/utils/code-execution/file-types'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export const BESIDKA_FILE_METADATA_KEY = 'besidka'
+
+const CONTAINER_ID_IN_DELTA = /"containerId":"([A-Za-z0-9_-]{1,200})"/
 
 export interface CreateCodeExecutionStreamInput {
   provider: CodeExecutionProvider
@@ -127,7 +132,7 @@ export function createCodeExecutionStream(
         skipped: refs.map((ref) => {
           return {
             filename: ref.provider === 'openai' && ref.filename
-              ? ref.filename
+              ? sanitizeContainerFileName(ref.filename)
               : 'file',
             reason: 'download-failed' as const,
           }
@@ -268,9 +273,20 @@ export function createCodeExecutionStream(
       && codeToolCallIds.has(chunk.toolCallId)
     ) {
       usage.calls += 1
+
+      return { ...chunk, errorText: capErrorText(chunk.errorText) }
     }
 
     return undefined
+  }
+
+  function trackContainerFromInputDelta(delta: string) {
+    const match = CONTAINER_ID_IN_DELTA.exec(delta)
+
+    if (match?.[1]) {
+      containerIds.add(match[1])
+      input.tracker.trackContainer(match[1])
+    }
   }
 
   const transform = new TransformStream<UIMessageChunk, UIMessageChunk>({
@@ -284,6 +300,31 @@ export function createCodeExecutionStream(
         if (ref) {
           addRef(ref)
         }
+
+        return
+      }
+
+      if (
+        chunk.type === 'tool-input-delta'
+        && codeToolCallIds.has(chunk.toolCallId)
+      ) {
+        trackContainerFromInputDelta(chunk.inputTextDelta)
+
+        return
+      }
+
+      if (
+        (chunk.type === 'text-start'
+          || chunk.type === 'text-delta'
+          || chunk.type === 'text-end')
+        && chunk.providerMetadata
+      ) {
+        controller.enqueue({
+          ...chunk,
+          providerMetadata: stripContainerFileAnnotations(
+            chunk.providerMetadata,
+          ),
+        })
 
         return
       }
@@ -307,7 +348,7 @@ export function createCodeExecutionStream(
     async flush() {
       discardPendingRefs()
       await finishSend()
-      await input.tracker.cleanup()
+      input.tracker.cleanup()
     },
   })
 

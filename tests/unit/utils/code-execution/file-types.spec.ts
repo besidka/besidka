@@ -78,6 +78,10 @@ describe('sanitizeContainerFileName', () => {
     expect(sanitizeContainerFileName('bad\u0000name\n.txt')).toBe('badname.txt')
   })
 
+  it('strips bidirectional controls that could disguise the extension', () => {
+    expect(sanitizeContainerFileName('report‮fdp.exe')).toBe('reportfdp.exe')
+  })
+
   it('falls back for an empty or dot name', () => {
     expect(sanitizeContainerFileName('')).toBe('file')
     expect(sanitizeContainerFileName('..')).toBe('file')

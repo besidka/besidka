@@ -7,7 +7,12 @@ import type { CodeExecutionInputFile } from '~~/server/utils/code-execution/inpu
 import type { ProviderResourceTracker } from '~~/server/utils/code-execution/provider-cleanup'
 import { forwardAnthropicContainerIdFromLastStep } from '@ai-sdk/anthropic'
 import { createError } from 'evlog'
-import { isCodeExecutionProvider } from '#shared/utils/code-execution'
+import {
+  CODE_EXECUTION_MAX_INPUT_BYTES,
+  CODE_EXECUTION_MAX_INPUT_FILES,
+  isCodeExecutionProvider,
+} from '#shared/utils/code-execution'
+import { isExternalWebSearchTool } from '#shared/utils/message-metadata'
 import { resolveCodeExecutionRates } from '~~/server/utils/ai/code-execution-cost'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
@@ -17,6 +22,8 @@ import {
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
 import { createProviderResourceTracker } from '~~/server/utils/code-execution/provider-cleanup'
 import { uploadInputFiles } from '~~/server/utils/code-execution/input-files'
+
+export const GEMINI_2_5_MODEL_PREFIX = 'gemini-2.5'
 
 export const CODE_EXECUTION_INSTRUCTION = [
   'Run code is on: the AI provider runs code you write in its own sandbox,',
@@ -70,6 +77,7 @@ export async function resolveCodeExecutionGate(input: {
   requestedTools: ModelTool[]
   gatewayId: unknown
   providerId: unknown
+  modelId?: string
   logger: LoggerLike
 }): Promise<CodeExecutionGate> {
   if (!input.requestedTools.includes('code_execution')) {
@@ -82,6 +90,19 @@ export async function resolveCodeExecutionGate(input: {
       status: 400,
       why: 'Run code is only available on direct Anthropic, OpenAI and Google models.',
       fix: 'Choose one of those models or turn off Run code.',
+    })
+  }
+
+  if (
+    input.providerId === 'google'
+    && input.modelId?.startsWith(GEMINI_2_5_MODEL_PREFIX)
+    && input.requestedTools.some(isExternalWebSearchTool)
+  ) {
+    throw createError({
+      message: 'The selected model does not support the requested tool.',
+      status: 400,
+      why: 'Run code on Gemini 2.5 cannot be combined with Brave or Exa search.',
+      fix: 'Turn off one of them, or choose a Gemini 3 or later model.',
     })
   }
 
@@ -140,12 +161,26 @@ async function loadCurrentMessageFiles(
   const storage = useFileStorage()
   const files: CodeExecutionInputFile[] = []
 
+  let selectedCount = 0
+  let selectedBytes = 0
+
   for (const storageKey of storageKeys) {
     const record = described.get(storageKey)
+    const ownedFile = owned.get(storageKey)
 
-    if (!record || !owned.has(storageKey)) {
+    if (!record || !ownedFile) {
       continue
     }
+
+    if (
+      selectedCount >= CODE_EXECUTION_MAX_INPUT_FILES
+      || selectedBytes + ownedFile.size > CODE_EXECUTION_MAX_INPUT_BYTES
+    ) {
+      continue
+    }
+
+    selectedCount += 1
+    selectedBytes += ownedFile.size
 
     try {
       const object = await storage.get(storageKey)

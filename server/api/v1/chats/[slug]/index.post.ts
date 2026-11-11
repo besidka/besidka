@@ -648,6 +648,7 @@ export default defineEventHandler(async (event) => {
       : [...new Set([...selectedTools, ...requiredTools])],
     gatewayId,
     providerId: provider?.id,
+    modelId: model?.id,
     logger,
   })
   const requestedTools: ModelTool[] = codeExecutionGate.tools

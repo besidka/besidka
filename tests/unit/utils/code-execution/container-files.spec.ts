@@ -131,6 +131,7 @@ describe('downloadContainerFile', () => {
         headers: {
           'x-api-key': 'user-key',
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'files-api-2025-04-14',
         },
       })
     }

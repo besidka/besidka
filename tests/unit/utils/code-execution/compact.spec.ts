@@ -59,6 +59,15 @@ describe('compactCodeExecutionInput', () => {
     expect(compactCodeExecutionInput(once)).toEqual(once)
   })
 
+  it('keeps the truncation flag when it compacts a truncated input again', () => {
+    const once = compactCodeExecutionInput({
+      code: 'a'.repeat(CODE_EXECUTION_CODE_MAX_BYTES * 2),
+    })
+
+    expect(compactCodeExecutionInput(once)).toEqual(once)
+    expect(compactCodeExecutionInput(once).codeTruncated).toBe(true)
+  })
+
   it('survives an unusable input', () => {
     expect(compactCodeExecutionInput(null)).toEqual({
       language: 'python',

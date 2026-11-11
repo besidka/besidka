@@ -127,6 +127,30 @@ describe('resolveCodeExecutionGate', () => {
     },
   )
 
+  it('refuses Run code with Brave or Exa search on Gemini 2.5, where it must run alone', async () => {
+    const { resolveCodeExecutionGate } = await loadSend()
+
+    for (const tool of ['web_search_brave', 'web_search_exa'] as const) {
+      await expect(resolveCodeExecutionGate({
+        event: { context: {} },
+        requestedTools: ['code_execution', tool],
+        gatewayId: undefined,
+        providerId: 'google',
+        modelId: 'gemini-2.5-flash',
+        logger,
+      })).rejects.toMatchObject({ status: 400 })
+    }
+
+    await expect(resolveCodeExecutionGate({
+      event: { context: {} },
+      requestedTools: ['code_execution', 'web_search_brave'],
+      gatewayId: undefined,
+      providerId: 'google',
+      modelId: 'gemini-3.8-flash',
+      logger,
+    })).resolves.toMatchObject({ active: true })
+  })
+
   it.each(['openrouter', 'vercel', 'cloudflare'])(
     'refuses gateway %s even for a provider that has a sandbox',
     async (gatewayId) => {
@@ -310,6 +334,47 @@ describe('startCodeExecutionSession', () => {
       newMessageParts: fileParts,
       logger,
     })).rejects.toMatchObject({ status: 401 })
+  })
+
+  it('reads only the files inside the 10 file and 20 MB cap, never the rest', async () => {
+    const big = 15 * 1024 * 1024
+    const keys = ['a.csv', 'b.csv', 'c.csv']
+
+    mocks.getOwnedFiles.mockResolvedValue(new Map(
+      keys.map((key, index) => {
+        return [key, { id: key, storageKey: key, size: index < 2 ? big : 1 }]
+      }),
+    ))
+
+    const read = vi.fn(async () => ({
+      arrayBuffer: async () => new ArrayBuffer(4),
+    }))
+
+    vi.stubGlobal('useFileStorage', () => ({ get: read }))
+
+    const { startCodeExecutionSession } = await loadSend()
+    const fetcher = vi.fn(async () => {
+      return new Response(JSON.stringify({ id: 'file_up' }), { status: 200 })
+    })
+
+    await startCodeExecutionSession({
+      userId: 3,
+      provider: 'anthropic',
+      filesActive: true,
+      newMessageParts: keys.map((key) => {
+        return {
+          type: 'file',
+          url: `/files/${key}`,
+          filename: key,
+          mediaType: 'text/csv',
+        }
+      }),
+      logger,
+      fetcher: fetcher as unknown as typeof fetch,
+    })
+
+    expect(read.mock.calls.map(call => (call as unknown[])[0]))
+      .toEqual(['a.csv', 'c.csv'])
   })
 
   it('never uploads a file the user does not own', async () => {

@@ -39,6 +39,8 @@ async function collect(
     const { done, value } = await reader.read()
 
     if (done) {
+      await new Promise(resolve => setTimeout(resolve, 0))
+
       return chunks
     }
 
@@ -179,6 +181,7 @@ describe('createCodeExecutionStream', () => {
 
     expect(byType(output, 'source-document')).toHaveLength(0)
     expect(serialized).not.toContain('cfile_01')
+    expect(serialized).not.toContain('cntr_01')
     expect(serialized).not.toContain('ephemeral.png')
     expect(byType(output, 'tool-input-available')[0]).toMatchObject({
       input: { language: 'python' },
@@ -328,6 +331,8 @@ describe('createCodeExecutionStream', () => {
       order.push(value.type)
     }
 
+    await new Promise(resolve => setTimeout(resolve, 0))
+
     expect(order.indexOf('finish')).toBeLessThan(order.indexOf('delete'))
   })
 
@@ -348,6 +353,48 @@ describe('createCodeExecutionStream', () => {
       containers: 1,
       cost: 0.03,
     })
+  })
+
+  it('never forwards the raw input deltas of a run, but still tracks the container they name', async () => {
+    const { codeExecution, fetcher } = createSetup({ provider: 'openai' })
+    const output = await collect(codeExecution.apply(toStream([
+      { type: 'tool-input-start', toolCallId: 'c1', toolName: 'code_execution' },
+      {
+        type: 'tool-input-delta',
+        toolCallId: 'c1',
+        inputTextDelta: '{"containerId":"cntr_early","code":"x',
+      },
+      { type: 'abort' },
+    ])))
+
+    expect(byType(output, 'tool-input-delta')).toHaveLength(0)
+    expect(JSON.stringify(output)).not.toContain('cntr_early')
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      'https://api.openai.com/v1/containers/cntr_early',
+    )
+  })
+
+  it('removes container file citations from the metadata of text chunks', async () => {
+    const { codeExecution } = createSetup({ provider: 'openai' })
+    const output = await collect(codeExecution.apply(toStream([
+      {
+        type: 'text-end',
+        id: 't1',
+        providerMetadata: {
+          openai: {
+            annotations: [{
+              type: 'container_file_citation',
+              container_id: 'cntr_9',
+              file_id: 'cfile_9',
+            }],
+          },
+        },
+      },
+      { type: 'finish' },
+    ])))
+
+    expect(JSON.stringify(output)).not.toContain('cntr_9')
+    expect(JSON.stringify(output)).not.toContain('cfile_9')
   })
 
   it('leaves other tools and text untouched', async () => {

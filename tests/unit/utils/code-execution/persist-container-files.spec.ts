@@ -201,6 +201,26 @@ describe('persistContainerFiles', () => {
     expect(result.saved.map(file => file.filename)).toEqual(['b.png'])
   })
 
+  it('keeps the files already stored when a later file throws unexpectedly', async () => {
+    mocks.checkContainerDocument.mockRejectedValueOnce(new Error('boom'))
+
+    const { result } = await run({
+      files: {
+        file_a: { name: 'a.png', bytes: png },
+        file_b: { name: 'b.pdf', bytes: pdf },
+        file_c: { name: 'c.png', bytes: png },
+      },
+    })
+
+    expect(result.saved.map(file => file.filename)).toEqual([
+      'a.png',
+      'c.png',
+    ])
+    expect(result.skipped).toEqual([
+      { filename: 'file', reason: 'validation-failed' },
+    ])
+  })
+
   it('downloads one file at a time', async () => {
     let active = 0
     let peak = 0
