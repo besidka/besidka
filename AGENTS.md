@@ -98,6 +98,8 @@ Other parent tables with cascade children: `chats` → `messages`, `chat_share_f
 
 `user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymises `feature_audit_log` (see `docs/feature-flags.md`).
 
+`documents` (`server/db/schemas/documents.ts`) has no FK and no cascade: `purgeUserData` deletes its rows and the spec objects under `documents/<userId>/`, and the deletion hooks in `server/utils/documents/cleanup.ts` remove the rest (see `docs/d1-restore-reconciliation.md`).
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:

@@ -47,6 +47,9 @@ command below is for the operator, preview first.
 | Artifacts deleted in the window | Rows return; R2 objects stay gone, so reads answer 410 | Medium (erasure) | No |
 | Artifact reports and decisions in the window | Rolled back or reopened; legal holds set in the window vanish | High (TCO preservation) | No |
 | Viewer storage reset or purged in the window | Old answers return | Medium (erasure) | No |
+| Documents deleted or detached in the window (`documents`) | Rows return; spec objects in R2 stay gone, so a restored row reads `spec_missing`; a deleted chat's rows return with their titles | Medium (erasure) | No |
+| `documents` rows pointing at deleted files | A restored row names a `file_id` whose file row or R2 object is gone | Medium | Partly (the sweep) |
+| Spec objects written in the window | No row, no owner | Medium (privacy) | No |
 | `d1_migrations` | Rolled back, so the next deploy re-applies migrations | **Blocking** | No |
 
 ## Sessions: why a restore revives revoked sessions
@@ -238,6 +241,41 @@ global `artifacts` rule off in `/admin` until the steps below are done.
   consistent.
 - **Report retention.** Report rows the hourly sweep removed in the window
   come back and are removed again on its next run.
+
+## Documents
+
+A restore rolls back the `documents` table (`server/db/schemas/documents.ts`,
+BES-293) to the bookmark B. It has no foreign key to `users`, `chats` or
+`files`, so nothing cascades, and R2 keeps its current state. The spec object
+of a document sits under `documents/<userId>/<documentId>/spec.v<n>.json` and
+is derived from the row, so the row and the object can drift in both
+directions.
+
+- **Deletions come back as rows without objects.** A document whose chat, file
+  or account was deleted in the window returns as a row, with the title the
+  deletion removed. The spec object was deleted with it, so the row reads
+  `spec_missing` when opened. Replay the deletes from Axiom
+  (`attributes.documents.cleanup`, phases `file-delete`, `chat-delete`,
+  `message-delete`, `sweep`, `purge`; counts only, no ids) by chat, file and
+  account events: delete the restored rows of deleted chats and accounts, and
+  for a deleted file set `status = 'failed'`, `error_code = 'file_deleted'`,
+  `file_id = NULL` and `title = NULL`. A restored title of a deleted chat is
+  personal data that the user asked to erase.
+- **Rows pointing at deleted files.** A restored row can name a `file_id`
+  whose file was deleted after B. Find them with
+  `SELECT d.id FROM documents d LEFT JOIN files f ON f.id = d.file_id WHERE d.file_id IS NOT NULL AND f.id IS NULL`
+  and apply the same file-deleted update. The hourly retention cleanup then
+  removes the row once no chat references it (`sweepOrphanedDocuments`).
+- **Spec objects with no row.** Specs written in the window have no row after
+  the restore and no owner. Diff the `documents/` prefix against
+  `documents.spec_r2_key` and delete the strays, as for the `files` diff in
+  step 5.
+- **Render state.** Rows restored as `rendering` hold a lease that has long
+  expired, so the next request claims them again. Nothing to fix.
+- **Ids.** Public document ids are encoded from the integer row id, so a
+  document created in the window can share an id with one created after the
+  restore. Record the sequence before the restore (runbook step 0) and push it
+  past the old high-water mark (step 3).
 
 ### The visibility-flag migrations (closed)
 
@@ -548,7 +586,8 @@ removes data that users already asked to delete.
 
 ### 5. Reconcile files and R2
 
-For artifacts, run the R2 diff of the Artifacts section as well.
+For artifacts and documents, run the R2 diffs of the Artifacts and
+Documents sections as well.
 
 1. `files` rows whose object is missing: delete those rows. This lowers the
    owners' quota usage.

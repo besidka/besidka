@@ -10,6 +10,10 @@ import {
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
+import {
+  cleanupDocumentsForDeletedChats,
+  cleanupDocumentsForDeletedMessage,
+} from '~~/server/utils/documents/cleanup'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import {
@@ -267,6 +271,12 @@ export async function deleteChat(
       },
     })
   }
+
+  await cleanupDocumentsForDeletedChats(db, {
+    userId,
+    chatIds: [chat.id],
+    logger,
+  })
 }
 
 /**
@@ -291,6 +301,7 @@ export async function deleteChatMessage(
     },
     columns: {
       id: true,
+      publicId: true,
     },
   })
 
@@ -349,4 +360,11 @@ export async function deleteChatMessage(
       },
     })
   }
+
+  await cleanupDocumentsForDeletedMessage(db, {
+    userId,
+    messageRowId,
+    messagePublicId: message.publicId ?? null,
+    logger,
+  })
 }

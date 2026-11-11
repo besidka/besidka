@@ -6,6 +6,7 @@ import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { findKnowledgeLinkedFileIds } from '~~/server/utils/knowledge/linked-files'
+import { cleanupDocumentsForDeletedFiles } from '~~/server/utils/documents/cleanup'
 
 const MAX_BATCH_QUERY_PARAMS = 90
 
@@ -211,6 +212,12 @@ export async function cleanupFilesOrphanedByChatDeletion(
         eq(schema.files.userId, userId),
         inArray(schema.files.id, chunk.map(file => file.id)),
       ))
+
+    await cleanupDocumentsForDeletedFiles(db, {
+      userId,
+      fileIds: chunk.map(file => file.id),
+      logger,
+    })
   }
 
   const deletedCount = filesToDelete.length - failedCount

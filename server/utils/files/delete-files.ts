@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage, exceptionSummary } from '~~/server/utils/evlog-attributes'
+import { cleanupDocumentsForDeletedFiles } from '~~/server/utils/documents/cleanup'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   findKnowledgeProjectIdsForFiles,
@@ -186,12 +187,20 @@ async function removeOwnedFile(
 
   const knowledgeTextTargets = await collectKnowledgeTextTargets(file, logger)
 
-  await useDb()
+  const db = useDb()
+
+  await db
     .delete(schema.files)
     .where(and(
       eq(schema.files.id, file.fileId),
       eq(schema.files.userId, file.userId),
     ))
+
+  await cleanupDocumentsForDeletedFiles(db, {
+    userId: file.userId,
+    fileIds: [file.fileId],
+    logger,
+  })
 
   await deleteKnowledgeTextObjects(file, knowledgeTextTargets, logger)
 

@@ -5,6 +5,11 @@ import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
+  cleanupDocumentsForDeletedFiles,
+  sweepOrphanedDocuments,
+} from '~~/server/utils/documents/cleanup'
+import { resolveServerLogger } from '~~/server/utils/files/logger'
+import {
   isFileNotLinkedToKnowledgeSql,
 } from '~~/server/utils/knowledge/linked-files'
 
@@ -27,6 +32,7 @@ export async function cleanupExpiredFiles(
   input: CleanupExpiredFilesInput,
 ): Promise<CleanupExpiredFilesResult> {
   const logger = input.logger
+  const documentLogger = resolveServerLogger(logger)
   const db = useDb()
   const now = input.now || new Date()
   const startedAt = Date.now()
@@ -126,6 +132,12 @@ export async function cleanupExpiredFiles(
       throw exception
     }
 
+    await cleanupDocumentsForDeletedFiles(db, {
+      userId: file.userId,
+      fileIds: [file.id],
+      logger: documentLogger,
+    })
+
     affectedUserIds.add(file.userId)
     deletedCount++
   }
@@ -145,6 +157,8 @@ export async function cleanupExpiredFiles(
       })
     }
   }
+
+  await sweepOrphanedDocuments(db, documentLogger, { now })
 
   const runtimeMs = Date.now() - startedAt
   const hasMore = (

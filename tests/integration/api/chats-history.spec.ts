@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     deletedCount: 0,
     failedCount: 0,
   })),
+  cleanupDocumentsForDeletedChats: vi.fn(async (..._args: unknown[]) => ({})),
 }))
 
 vi.mock('evlog', () => ({
@@ -70,6 +71,10 @@ vi.mock('~~/server/utils/memory/chat-deletion', () => ({
 
 vi.mock('~~/server/utils/artifacts/store', () => ({
   detachArtifactsFromChats: mocks.detachArtifactsFromChats,
+}))
+
+vi.mock('~~/server/utils/documents/cleanup', () => ({
+  cleanupDocumentsForDeletedChats: mocks.cleanupDocumentsForDeletedChats,
 }))
 
 vi.mock('~~/server/utils/search/index-writer', () => ({
@@ -672,6 +677,13 @@ describe('chat history API', () => {
           }
         },
       )
+      mocks.cleanupDocumentsForDeletedChats.mockImplementationOnce(
+        async () => {
+          callOrder.push('document-cleanup')
+
+          return {}
+        },
+      )
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
@@ -680,7 +692,18 @@ describe('chat history API', () => {
 
       expect(response).toEqual({ success: true })
       expect(db.select).toHaveBeenCalledTimes(1)
-      expect(callOrder).toEqual(['delete-chats', 'file-cleanup'])
+      expect(callOrder).toEqual([
+        'delete-chats',
+        'file-cleanup',
+        'document-cleanup',
+      ])
+      expect(mocks.cleanupDocumentsForDeletedChats).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          userId: 1,
+          chatIds: ['chat-1', 'chat-3'],
+        }),
+      )
       expect(mocks.cleanupFilesOrphanedByChatDeletion).toHaveBeenCalledTimes(1)
       expect(mocks.cleanupFilesOrphanedByChatDeletion).toHaveBeenCalledWith(
         originFiles,

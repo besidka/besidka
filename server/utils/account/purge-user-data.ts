@@ -11,6 +11,7 @@ import { buildOAuthGrantDeletes } from '~~/server/utils/account/revoke-user-oaut
 import { purgeUserFeatureAccess } from '~~/server/utils/account/purge-feature-access'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { purgeUserArtifacts } from '~~/server/utils/artifacts/store'
+import { purgeUserDocuments } from '~~/server/utils/documents/cleanup'
 
 const r2BatchDeleteLimit = 1000
 
@@ -40,6 +41,8 @@ export interface PurgeUserDataResult {
   artifactsHeld: number
   artifactObjectsDeleted: number
   artifactViewerStorageDeleted: number
+  documentsDeleted: number
+  documentObjectsDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -66,6 +69,8 @@ export interface PurgeUserDataResult {
  *     `artifacts/<userId>/`, plus the user's own viewer storage on other
  *     artifacts; artifacts under a legal hold and every `artifact_reports`
  *     row stay until their retention ends,
+ *   - documents: the `documents` rows (no FK to `users`) and every spec
+ *     object under `documents/<userId>/`,
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
@@ -200,6 +205,26 @@ export async function purgeUserData(
     throw exception
   }
 
+  let documentPurge: Awaited<ReturnType<typeof purgeUserDocuments>>
+
+  try {
+    documentPurge = await purgeUserDocuments(db, userId, logger)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'documents-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   for (const storageKey of storageKeys) {
     await invalidateFileCache(storageKey, logger)
   }
@@ -303,6 +328,7 @@ export async function purgeUserData(
     storageBatches,
     knowledgeObjectsDeleted: knowledgePurge.objectsDeleted,
     ...artifactPurge,
+    ...documentPurge,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
@@ -318,6 +344,8 @@ export async function purgeUserData(
     artifactsHeld,
     artifactObjectsDeleted,
     artifactViewerStorageDeleted,
+    documentsDeleted,
+    documentObjectsDeleted,
     featureGrantsDeleted,
     featureOptInsDeleted,
     userRolesDeleted,
@@ -340,6 +368,8 @@ export async function purgeUserData(
         artifactsHeld,
         artifactObjectsDeleted,
         artifactViewerStorageDeleted,
+        documentsDeleted,
+        documentObjectsDeleted,
         featureGrantsDeleted,
         featureOptInsDeleted,
         userRolesDeleted,
