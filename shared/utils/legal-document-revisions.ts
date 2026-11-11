@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '522e5ee9a83a601613d6a83b3dba7d4efe1d5d35ac939b7e8a7472b629006cee',
+    hash: '6f4c969df7ffb6aa81a6154ea30083f78a81c3fff4e04dc9e01bea67bc175bf3',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -19,7 +19,10 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + '(what is sent, what Besidka deletes, what each provider keeps), '
       + 'and create_document under the files permission of connected apps. '
       + 'Treated as material on the cautious reading: the provider-side '
-      + 'retention is a retention fact users did not have before. Body '
+      + 'retention is a retention fact users did not have before. The '
+      + 'deletion wording is exact: uploads are deleted when the reply ends, '
+      + 'expire within an hour if it is cut off, and files the Anthropic '
+      + 'sandbox made stay in the user\'s Anthropic account. Body '
       + 'still includes the 2026-11-experimental-features and '
       + '2026-12-artifacts changes, effective 2026-12-19.',
   },
