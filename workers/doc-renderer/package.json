@@ -1,0 +1,19 @@
+{
+  "name": "doc-renderer-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev --port 8789",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@besidka/doc-renderer": "workspace:*",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}

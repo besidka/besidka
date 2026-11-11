@@ -1,0 +1,51 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "besidka-doc-renderer",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-01-28",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"no_nodejs_compat_v2",
+		"nodejs_als"
+	],
+	"workers_dev": false,
+	"preview_urls": false,
+	"limits": {
+		"cpu_ms": 15000
+	},
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"alias": {
+		"node:fs": "./src/shims/empty.ts",
+		"node:https": "./src/shims/empty.ts",
+		"fflate": "./src/shims/fflate.ts"
+	},
+	"rules": [
+		{
+			"type": "Data",
+			"globs": ["**/*.ttf"],
+			"fallthrough": true
+		}
+	],
+	"env": {
+		"preview": {
+			"name": "besidka-doc-renderer-preview",
+			"workers_dev": false,
+			"preview_urls": false,
+			"limits": {
+				"cpu_ms": 15000
+			},
+			"observability": {
+				"enabled": true,
+				"head_sampling_rate": 1
+			},
+			"alias": {
+				"node:fs": "./src/shims/empty.ts",
+				"node:https": "./src/shims/empty.ts",
+				"fflate": "./src/shims/fflate.ts"
+			}
+		}
+	}
+}

@@ -166,7 +166,10 @@ export function readZipSummary(
   return { entries: declaredEntries, uncompressedBytes, largestEntryBytes }
 }
 
-const fatalDecoder = new TextDecoder('utf-8', { fatal: true })
+const fatalDecoder = new TextDecoder('utf-8', {
+  fatal: true,
+  ignoreBOM: false,
+})
 
 function decodeEntryName(
   bytes: Uint8Array,
