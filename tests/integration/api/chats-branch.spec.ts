@@ -328,6 +328,52 @@ describe('chat branch API', () => {
     }))
   })
 
+  it('keeps data-document references and strips document tool parts', async () => {
+    const handler = await getHandler()
+    const documentReference = {
+      type: 'data-document',
+      data: {
+        documentId: 'doc-1',
+        format: 'docx',
+        title: 'Report',
+        specVersion: 1,
+        status: 'ready',
+      },
+    }
+    const messages: BranchTestMessage[] = [{
+      id: 'message-1',
+      publicId: 'public-1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Here is the report.' },
+        documentReference,
+        {
+          type: 'tool-create_document',
+          toolCallId: 'call-1',
+          state: 'output-error',
+          input: { format: 'pdf' },
+          errorText: 'The document could not be created.',
+        },
+      ] as any,
+      tools: [],
+      reasoning: 'off',
+    }]
+    const { db, insertValues } = createDb({ messages })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({
+      body: {
+        chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      },
+    } as never)
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Here is the report.' }, documentReference],
+    }))
+  })
+
   it('keeps a branch of an excluded chat out of memory', async () => {
     const handler = await getHandler()
     const excluded = createDb({ memoryExcluded: true })

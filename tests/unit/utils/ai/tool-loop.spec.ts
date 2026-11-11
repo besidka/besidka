@@ -801,4 +801,9 @@ describe('untrusted tool results', () => {
     await expect(runGuard('update_artifact')).resolves.toBe(false)
     await expect(runGuard('web_search_brave')).resolves.toBe(true)
   })
+
+  it('does not treat a create_document result as untrusted content', async () => {
+    await expect(runGuard('create_document')).resolves.toBe(false)
+    await expect(runGuard('create_documents')).resolves.toBe(true)
+  })
 })

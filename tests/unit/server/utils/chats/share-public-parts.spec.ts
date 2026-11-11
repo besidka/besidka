@@ -40,4 +40,30 @@ describe('filterPublicParts', () => {
       'data-artifact',
     ])
   })
+
+  it('keeps data-document references and drops create_document tool parts', () => {
+    const parts = [
+      {
+        type: 'data-document',
+        data: {
+          documentId: 'doc-1',
+          format: 'pdf',
+          title: 'Report',
+          specVersion: 1,
+          status: 'ready',
+        },
+      },
+      {
+        type: 'tool-create_document',
+        toolCallId: 't1',
+        state: 'output-error',
+        input: { format: 'pdf' },
+        errorText: 'The document could not be created.',
+      },
+    ] as unknown as UIMessage['parts']
+
+    const [message] = filterPublicParts([{ id: 'm1', parts }])
+
+    expect(message?.parts.map(part => part.type)).toEqual(['data-document'])
+  })
 })

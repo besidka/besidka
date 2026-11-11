@@ -312,6 +312,56 @@ describe('shared chat branch API', () => {
     })
   })
 
+  it('never copies a document reference or tool part into the branch', async () => {
+    for (const showFiles of [true, false]) {
+      mocks.resolveActiveShareBySlug.mockResolvedValue({
+        chatId: 'chat-1',
+        allowBranch: true,
+        showFiles,
+      })
+
+      const handler = await getHandler()
+      const { db, insertValues } = createDb({
+        messages: [{
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Here is the report.' },
+            {
+              type: 'data-document',
+              data: {
+                documentId: 'doc-private',
+                format: 'pdf',
+                title: 'Private report',
+                specVersion: 1,
+                status: 'ready',
+              },
+            },
+            {
+              type: 'tool-create_document',
+              toolCallId: 'call-1',
+              state: 'output-error',
+              input: { format: 'pdf' },
+              errorText: 'The document could not be created.',
+            },
+          ],
+        }] as any,
+      })
+      const { event } = createWaitUntilEvent({
+        params: { slug: 'share-slug' },
+      })
+
+      vi.stubGlobal('useDb', () => db)
+
+      await handler(event as never)
+
+      expect(insertValues).toHaveBeenCalledWith({
+        chatId: 'new-chat-id',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Here is the report.' }],
+      })
+    }
+  })
+
   it('keeps file parts in branched messages when the share allows files', async () => {
     mocks.resolveActiveShareBySlug.mockResolvedValue({
       chatId: 'chat-1',

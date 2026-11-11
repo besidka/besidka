@@ -9,6 +9,7 @@ import {
   isWebSearchTool,
   resolveMessageMenuInfo,
   hasArtifactPart,
+  hasDocumentPart,
 } from '../../../shared/utils/message-metadata'
 
 describe('getMessageMetadata', () => {
@@ -1264,5 +1265,47 @@ describe('hasArtifactPart', () => {
     expect(hasArtifactPart({ parts: [{ type: 'text', text: 'hi' }] }))
       .toBe(false)
     expect(hasArtifactPart({})).toBe(false)
+  })
+})
+
+describe('hasDocumentPart', () => {
+  it('finds a persisted reference or a finished create_document part', () => {
+    expect(hasDocumentPart({
+      parts: [{
+        type: 'data-document',
+        data: {
+          documentId: 'd1',
+          format: 'pdf',
+          title: 'Report',
+          specVersion: 1,
+          status: 'spec_ready',
+        },
+      }],
+    })).toBe(true)
+    expect(hasDocumentPart({
+      parts: [{ type: 'tool-create_document', state: 'output-available' }],
+    })).toBe(true)
+  })
+
+  it('ignores unfinished, failed and unrelated parts', () => {
+    expect(hasDocumentPart({
+      parts: [{ type: 'tool-create_document', state: 'input-streaming' }],
+    })).toBe(false)
+    expect(hasDocumentPart({
+      parts: [{ type: 'tool-create_document', state: 'output-error' }],
+    })).toBe(false)
+    expect(hasDocumentPart({
+      parts: [{ type: 'tool-create_artifact', state: 'output-available' }],
+    })).toBe(false)
+    expect(hasDocumentPart({ parts: [{ type: 'text', text: 'hi' }] }))
+      .toBe(false)
+    expect(hasDocumentPart({ parts: [null, 'text'] })).toBe(false)
+    expect(hasDocumentPart({})).toBe(false)
+  })
+
+  it('does not list documents among the used tools', () => {
+    expect(getMessageUsedTools({
+      parts: [{ type: 'tool-create_document', state: 'output-available' }],
+    })).toEqual([])
   })
 })

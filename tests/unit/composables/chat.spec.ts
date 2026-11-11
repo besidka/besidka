@@ -1706,6 +1706,80 @@ describe('hasMeaningfulAssistantParts omitted context files notice', () => {
   })
 })
 
+describe('document parts in assistant messages', () => {
+  const documentReference = {
+    type: 'data-document',
+    data: {
+      documentId: 'doc-1',
+      format: 'docx',
+      title: 'Report',
+      specVersion: 1,
+      status: 'spec_ready',
+    },
+  }
+
+  function assistantWith(parts: unknown[]): UIMessage {
+    return {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts,
+    } as unknown as UIMessage
+  }
+
+  it('counts a live data-document or create_document part as an answer', () => {
+    expect(hasMeaningfulAssistantParts(
+      assistantWith([documentReference]),
+    )).toBe(true)
+    expect(hasMeaningfulAssistantParts(assistantWith([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'input-streaming',
+    }]))).toBe(true)
+  })
+
+  it('treats a persisted data-document reply as a real answer', () => {
+    expect(isFailureOnlyAssistantMessage(
+      assistantWith([documentReference]),
+    )).toBe(false)
+  })
+
+  it('counts a persisted failed create_document call, not an unfinished one', () => {
+    expect(isFailureOnlyAssistantMessage(assistantWith([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'output-error',
+      input: { format: 'pdf' },
+      errorText: 'The document could not be created.',
+    }]))).toBe(false)
+    expect(isFailureOnlyAssistantMessage(assistantWith([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'input-streaming',
+    }]))).toBe(true)
+  })
+
+  it('treats a data-document reference as visible content', () => {
+    expect(hasVisibleAssistantContent(
+      assistantWith([documentReference]),
+    )).toBe(true)
+  })
+
+  it('treats a create_document tool part in any state as visible content', () => {
+    for (const state of [
+      'input-streaming',
+      'input-available',
+      'output-available',
+      'output-error',
+    ]) {
+      expect(hasVisibleAssistantContent(assistantWith([{
+        type: 'tool-create_document',
+        toolCallId: 'call-1',
+        state,
+      }]))).toBe(true)
+    }
+  })
+})
+
 describe('resolveInitialChatTools', () => {
   function userMessage(tools: Message['tools']): Message {
     return { role: 'user', tools, usage: null } as unknown as Message

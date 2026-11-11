@@ -16,6 +16,10 @@ import {
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
 import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture'
 import { TEST_CODE_STREAM_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
+import {
+  buildTestDocumentChunks,
+  createTestDocument,
+} from '~~/server/utils/chats/test/document-scenario'
 import { PAST_CHAT_PRE_RETRIEVAL_CALL_PREFIX } from '#shared/utils/past-chat-retrieval'
 import {
   defineEventHandler,
@@ -404,6 +408,21 @@ function getChunksForScenario(
   }
 }
 
+async function getDocumentChunks(): Promise<TimedChunk[]> {
+  const session = await useUserSession()
+
+  if (!session) {
+    return useUnauthorizedError()
+  }
+
+  const output = await createTestDocument(
+    useDb(),
+    parseInt(String(session.user.id)),
+  )
+
+  return buildTestDocumentChunks(output)
+}
+
 function getErrorChunks(errorText: string): TimedChunk[] {
   return [
     {
@@ -488,12 +507,14 @@ export default defineEventHandler(async (event) => {
       errorId,
       requestId,
     )))
-    : getChunksForScenario(
-      query.data.scenario,
-      query.data.effort,
-      query.data.imageReasoningFirst,
-      query.data.imagePreRetrievalFirst,
-    )
+    : query.data.scenario === 'document'
+      ? await getDocumentChunks()
+      : getChunksForScenario(
+        query.data.scenario,
+        query.data.effort,
+        query.data.imageReasoningFirst,
+        query.data.imagePreRetrievalFirst,
+      )
 
   const stream = createUIMessageStream({
     execute({ writer }) {

@@ -15,6 +15,8 @@ import {
 import { TEST_MARKDOWN_USER_MESSAGE } from '~~/server/utils/chats/test/markdown-fixture'
 import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture'
 import { TEST_CODE_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
+import { findLatestTestDocumentPart } from '~~/server/utils/chats/test/document-scenario'
+import { TEST_DOCUMENT_REPLY } from '~~/server/utils/chats/test/document-fixture'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
 
 const shortMessage = 'Test message'
@@ -42,6 +44,19 @@ function getMessageText(
   }
 
   return fallbackText
+}
+
+async function findOwnLatestDocumentPart() {
+  const session = await useUserSession()
+
+  if (!session) {
+    return null
+  }
+
+  return await findLatestTestDocumentPart(
+    useDb(),
+    parseInt(String(session.user.id)),
+  )
 }
 
 export default defineEventHandler(async (event) => {
@@ -79,6 +94,9 @@ export default defineEventHandler(async (event) => {
   const text = effectiveScenario === 'long'
     ? longMessage
     : shortMessage
+  const documentPart = effectiveScenario === 'document'
+    ? await findOwnLatestDocumentPart()
+    : null
   const reasoningStepsCount = getReasoningStepsCount(effort)
   const reasoningLevel: ReasoningLevel = effectiveScenario === 'reasoning'
     ? effort
@@ -107,6 +125,19 @@ export default defineEventHandler(async (event) => {
           reasoning: 'off' as ReasoningLevel,
           usage: TEST_IMAGE_USAGE,
           createdAt: new Date().toISOString(),
+        }
+      }
+
+      if (effectiveScenario === 'document' && role === 'assistant') {
+        return {
+          id,
+          role,
+          parts: [
+            ...(documentPart ? [documentPart] : []),
+            { type: 'text', text: TEST_DOCUMENT_REPLY } as TextUIPart,
+          ],
+          tools: [],
+          reasoning: 'off' as ReasoningLevel,
         }
       }
 
