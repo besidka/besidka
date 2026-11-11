@@ -2,6 +2,7 @@ import type {
   LanguageModel,
   UIMessage,
   InferUIMessageChunk,
+  UIMessageChunk,
   LanguageModelUsage,
   ModelMessage,
 } from 'ai'
@@ -283,6 +284,17 @@ import {
   rewriteArtifactToolParts,
 } from '~~/server/utils/artifacts/message-parts'
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
+import {
+  CODE_EXECUTION_INSTRUCTION,
+  appendAnthropicContainerUploads,
+  resolveCodeExecutionGate,
+  resolveCodeExecutionRatesFromConfig,
+  startCodeExecutionSession,
+  withAnthropicContainerForwarding,
+} from '~~/server/utils/code-execution/send'
+import type { CodeExecutionSession } from '~~/server/utils/code-execution/send'
+import { createCodeExecutionStream } from '~~/server/utils/code-execution/stream'
+import { finalizeCodeExecutionParts } from '~~/server/utils/code-execution/message-parts'
 import {
   assertModelTransferConsent,
   assertProviderTransferConsent,
@@ -629,9 +641,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const requestedTools: ModelTool[] = gatewayId
-    ? selectedTools
-    : [...new Set([...selectedTools, ...requiredTools])]
+  const codeExecutionGate = await resolveCodeExecutionGate({
+    event,
+    requestedTools: gatewayId
+      ? selectedTools
+      : [...new Set([...selectedTools, ...requiredTools])],
+    gatewayId,
+    providerId: provider?.id,
+    logger,
+  })
+  const requestedTools: ModelTool[] = codeExecutionGate.tools
 
   logger.set({ tools: requestedTools })
 
@@ -957,8 +976,19 @@ export default defineEventHandler(async (event) => {
   let gatewayToolCall: boolean | undefined
   let gatewaySupportsReasoning: boolean | undefined
   const searchRates = resolveSearchRates(useRuntimeConfig().public)
+  let codeExecutionSession: CodeExecutionSession | undefined
 
   try {
+    if (codeExecutionGate.active && provider) {
+      codeExecutionSession = await startCodeExecutionSession({
+        userId,
+        provider: provider.id as CodeExecutionSession['provider'],
+        filesActive: codeExecutionGate.filesActive,
+        newMessageParts: newMessage.parts,
+        logger: aiLogger,
+      })
+    }
+
     if (gatewayId) {
       const gatewayResult = await useGateway(
         gatewayId,
@@ -999,6 +1029,7 @@ export default defineEventHandler(async (event) => {
             requestedTools,
             reasoningLevel,
             params.data.slug,
+            codeExecutionSession?.uploadedFileIds,
           )
 
           instance = openAiInstance
@@ -1272,6 +1303,8 @@ export default defineEventHandler(async (event) => {
       })
     }
   } catch (exception) {
+    await codeExecutionSession?.tracker.cleanup()
+
     const chatError = normalizeChatError({
       error: exception,
       event,
@@ -1648,7 +1681,10 @@ export default defineEventHandler(async (event) => {
       : 0,
     guard: chatSearchBudget,
   })
-  const toolLoopOptions = toolLoop?.options
+  const toolLoopOptions = toolLoop
+    && codeExecutionSession?.provider === 'anthropic'
+    ? withAnthropicContainerForwarding(toolLoop.options)
+    : toolLoop?.options
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
@@ -1878,6 +1914,14 @@ export default defineEventHandler(async (event) => {
           // replay by skipping persist. (Providers also bill and omit usage
           // on abort, so there is no cost to recover here either.)
           modelMessages = await convertToModelMessages(messagesForModel)
+
+          if (codeExecutionSession?.provider === 'anthropic') {
+            modelMessages = appendAnthropicContainerUploads(
+              modelMessages,
+              codeExecutionSession.uploadedFileIds,
+            )
+          }
+
           result = streamText({
             model: instance,
             instructions: buildChatInstructions({
@@ -2180,8 +2224,25 @@ export default defineEventHandler(async (event) => {
             },
           })
           : undefined
-        const answeredUiMessageStream = searchAnswerGuarantee?.stream
+        const guaranteedUiMessageStream = searchAnswerGuarantee?.stream
           ?? correctedUiMessageStream
+        const codeExecutionStream = codeExecutionSession
+          ? createCodeExecutionStream({
+            provider: codeExecutionSession.provider,
+            modelId,
+            userId,
+            apiKey: codeExecutionSession.apiKey,
+            filesEnabled: codeExecutionSession.filesActive,
+            tracker: codeExecutionSession.tracker,
+            rates: resolveCodeExecutionRatesFromConfig(),
+            logger: aiLogger,
+          })
+          : undefined
+        const answeredUiMessageStream = codeExecutionStream
+          ? codeExecutionStream.apply(
+            guaranteedUiMessageStream as ReadableStream<UIMessageChunk>,
+          ) as typeof guaranteedUiMessageStream
+          : guaranteedUiMessageStream
         const [clientStream, persistenceStream] = answeredUiMessageStream.tee()
 
         writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
@@ -2220,6 +2281,7 @@ export default defineEventHandler(async (event) => {
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
+          getCodeExecutionFileIds: codeExecutionStream?.getSavedFileIds,
         })
         const wasPersisted = persistResult.persisted
 
@@ -2379,6 +2441,7 @@ export default defineEventHandler(async (event) => {
           }
         }
       } finally {
+        await codeExecutionSession?.tracker.cleanup()
         await generationGuardHeartbeat.stop()
 
         try {
@@ -3289,6 +3352,7 @@ async function persistAssistantMessageFromStream(input: {
   knowledgeMode?: KnowledgeDecisionMode
   autoWebSearch?: AutoWebSearchOutcome
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
+  getCodeExecutionFileIds?: () => string[]
   pastChatChipPart?: UIMessage['parts'][number]
 }): Promise<PersistAssistantMessageResult> {
   try {
@@ -3339,8 +3403,8 @@ async function persistAssistantMessageFromStream(input: {
       return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
-    const responseParts = rewriteArtifactToolParts(
-      responseMessage.parts as UIMessage['parts'],
+    const responseParts = finalizeCodeExecutionParts(
+      rewriteArtifactToolParts(responseMessage.parts as UIMessage['parts']),
     )
     const gatewayImageResult = input.gatewayId
       ? await persistGatewayGeneratedImageParts({
@@ -3403,6 +3467,7 @@ async function persistAssistantMessageFromStream(input: {
         normalizedParts,
       ),
       ...(gatewayImageResult?.fileIds ?? []),
+      ...(input.getCodeExecutionFileIds?.() ?? []),
     ]
     const usedImageGeneration = responseParts.some((part) => {
       return part.type === 'tool-generate_image'
@@ -3787,6 +3852,10 @@ function buildChatInstructions(input: {
 
   if (artifactInstructions) {
     instructions.push(artifactInstructions)
+  }
+
+  if (requestedTools.includes('code_execution')) {
+    instructions.push(CODE_EXECUTION_INSTRUCTION)
   }
 
   if (requestedTools.includes('image_generation')) {
