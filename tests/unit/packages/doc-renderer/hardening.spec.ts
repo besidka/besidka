@@ -1,4 +1,4 @@
-import { strToU8, unzipSync, zlibSync } from 'fflate'
+import { strToU8, unzipSync, zipSync, zlibSync } from 'fflate'
 import { extractText, getDocumentProxy, getMeta } from 'unpdf'
 import { describe, expect, it } from 'vitest'
 import { parseDocumentSpec } from '@besidka/doc-renderer/spec'
@@ -9,6 +9,12 @@ import {
   loadFonts,
   loadReferenceAssets,
 } from '~~/tests/setup/helpers/documents'
+import {
+  MAIN_CONTENT_TYPES,
+  minimalPackage,
+  relationshipsXml,
+  withContentTypeOverride,
+} from '../../../fixtures/documents/malicious/builders'
 
 const decoder = new TextDecoder()
 
@@ -135,6 +141,62 @@ describe('render hardening', () => {
     await expect(
       render(spec, new Map([['bomb', { bytes: forged, mediaType: 'image/png' }]])),
     ).rejects.toMatchObject({ code: 'image_too_large' })
+  })
+})
+
+describe('relocated main part', () => {
+  const REL_BASE
+    = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+  it.each([
+    ['docx', 'word/document.xml', 'DDEAUTO cmd'],
+    ['pptx', 'ppt/presentation.xml', 'ppaction://program'],
+  ] as const)('refuses an %s whose root points to another part', (
+    format,
+    decoy,
+    payload,
+  ) => {
+    const archive = zipSync({
+      ...minimalPackage(format, {
+        rootRelationships: relationshipsXml(
+          `<Relationship Id="rId1" Type="${REL_BASE}/officeDocument" Target="x/doc.dat"/>`,
+        ),
+        contentTypes: withContentTypeOverride(
+          format,
+          '/x/doc.dat',
+          MAIN_CONTENT_TYPES[format],
+        ),
+      }),
+      'x/doc.dat': strToU8(`<root>${payload}</root>`),
+    })
+    const result = validate(format, archive)
+
+    expect(decoy).toBeTruthy()
+    expect(result.ok).toBe(false)
+
+    if (!result.ok) {
+      expect(result.code).toBe('ooxml_format_mismatch')
+    }
+  })
+
+  it('scans parts that only the content types mark as XML', () => {
+    const archive = zipSync({
+      ...minimalPackage('docx', {
+        contentTypes: withContentTypeOverride(
+          'docx',
+          '/word/blob.dat',
+          'application/xml',
+        ),
+      }),
+      'word/blob.dat': strToU8('<!DOCTYPE x><a/>'),
+    })
+    const result = validate('docx', archive)
+
+    expect(result.ok).toBe(false)
+
+    if (!result.ok) {
+      expect(result.code).toBe('xml_doctype')
+    }
   })
 })
 

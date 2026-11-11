@@ -78,6 +78,7 @@ interface PackageState {
   declared: Map<string, Set<string>> | null
   sheetPartNames: Map<string, string>
   contentTypeOverrides: Map<string, string>
+  contentTypeDefaults: Map<string, string>
   customPropertiesLinked: boolean
   customProvenance: Provenance
   slides: number
@@ -189,6 +190,20 @@ function checkRelationship(
         `External relationship to ${target.slice(0, 80)} is not allowed`,
       )
     }
+  }
+
+  const isMainLink = partName === ROOT_RELATIONSHIPS_PART
+    && type.endsWith('/officeDocument')
+
+  if (
+    isMainLink
+    && normalizePartPath('x/y', `/${target.replace(/^\//, '')}`)
+    !== MAIN_PARTS[state.format].part
+  ) {
+    return fail(
+      'ooxml_format_mismatch',
+      `The main document relationship points to ${target.slice(0, 80)}`,
+    )
   }
 
   const isCustomLink = partName === ROOT_RELATIONSHIPS_PART
@@ -381,6 +396,22 @@ function scanXmlPart(
   return null
 }
 
+function isXmlPart(entry: ZipEntry, state: PackageState): boolean {
+  if (XML_PART_PATTERN.test(entry.name)) {
+    return true
+  }
+
+  const lowerName = entry.name.toLowerCase()
+  const extension = lowerName.includes('.')
+    ? lowerName.slice(lowerName.lastIndexOf('.') + 1)
+    : ''
+  const contentType = state.contentTypeOverrides.get(lowerName)
+    ?? state.contentTypeDefaults.get(extension)
+    ?? ''
+
+  return /xml/i.test(contentType)
+}
+
 function findEntry(entries: ZipEntry[], name: string): ZipEntry | undefined {
   const key = name.toLowerCase()
 
@@ -440,6 +471,13 @@ function checkContentTypes(
           `Content type ${contentType.slice(0, 100)} is not allowed`,
         )
       }
+    }
+
+    if (event.name === 'Default') {
+      state.contentTypeDefaults.set(
+        (event.attributes.Extension ?? '').toLowerCase(),
+        contentType,
+      )
     }
 
     if (event.name === 'Override') {
@@ -520,6 +558,7 @@ export function validateOoxml(
       : null,
     sheetPartNames: new Map(),
     contentTypeOverrides: new Map(),
+    contentTypeDefaults: new Map(),
     customPropertiesLinked: false,
     customProvenance: 'missing',
     slides: 0,
@@ -615,7 +654,7 @@ export function validateOoxml(
     if (
       entry.name.endsWith('/')
       || lowerName === CONTENT_TYPES_PART
-      || !XML_PART_PATTERN.test(entry.name)
+      || !isXmlPart(entry, state)
     ) {
       continue
     }

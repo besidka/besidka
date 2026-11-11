@@ -422,6 +422,7 @@ function decodeStreamBody(
   objectTokens: Token[],
   body: Uint8Array,
   budget: { inflateBytes: number },
+  limit = budget.inflateBytes,
 ): Uint8Array {
   const predictorIndex = objectTokens.findIndex((token) => {
     return token.kind === 'name' && token.value === 'Predictor'
@@ -459,7 +460,7 @@ function decodeStreamBody(
     return body
   }
 
-  const inflated = inflateZlibCapped(body, budget.inflateBytes)
+  const inflated = inflateZlibCapped(body, Math.min(budget.inflateBytes, limit))
 
   if (!inflated.ok) {
     throw new PdfScanError(fail(inflated.code, inflated.detail))
@@ -577,7 +578,12 @@ export function scanPdf(
     }
 
     if (kind === 'Metadata') {
-      const decoded = decodeStreamBody(objectTokens, body, budget)
+      const decoded = decodeStreamBody(
+        objectTokens,
+        body,
+        budget,
+        VALIDATION_LIMITS.xmpBytesMax,
+      )
 
       if (decoded.length <= VALIDATION_LIMITS.xmpBytesMax) {
         const found = readXmpProvenance(new TextDecoder('utf-8').decode(decoded))
