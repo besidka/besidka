@@ -4,14 +4,22 @@ import { isArtifactShareLocation } from '../../../app/utils/artifact-share-locat
 
 describe('isArtifactShareLocation', () => {
   it.each([
-    [{ path: '/a/token-1' }, true],
+    [{ path: '/a' }, true],
+    [{ path: '/A' }, true],
     [{ path: '/a/' }, true],
+    [{ path: '/a/token-1' }, true],
     [{ path: '/A/token-1' }, true],
-    [{ path: '/signin', query: { next: '/A/token-1' } }, true],
+    [{ path: '/signin', query: { next: '/a' } }, true],
+    [{ path: '/signin', query: { next: '/A' } }, true],
     [{ path: '/signin', query: { next: '/a/token-1' } }, true],
-    [{ path: '/signup', query: { next: ['/a/token-1'] } }, true],
+    [{ path: '/signup', query: { next: ['/a'] } }, true],
     [{ path: '/signin', query: { next: '/chats/new' } }, false],
+    [{ path: '/about' }, false],
+    [{ path: '/admin' }, false],
+    [{ path: '/api/v1/artifact-shares/current' }, false],
+    [{ path: '/ab' }, false],
     [{ path: '/about/a/token' }, false],
+    [{ path: '/signin', query: { next: '/about' } }, false],
     [{ path: '/chats/abc' }, false],
     [{ path: '/', query: { next: 42 } }, false],
   ])('%j → %s', (location, expected) => {
@@ -20,7 +28,7 @@ describe('isArtifactShareLocation', () => {
 
   it('matches the sign-up link the sign-in page builds from `next`', () => {
     const url = new URL(
-      appendNextToPath('/signup', '/a/abc_DEF-123'),
+      appendNextToPath('/signup', '/a'),
       'https://besidka.test',
     )
 

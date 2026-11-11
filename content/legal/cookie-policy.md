@@ -59,6 +59,7 @@ These are needed to run the service you asked for. They are not consent-gated un
 | `pwa:refresher-dismissed-until` | sessionStorage | Besidka | Remembers, for the current tab only, that you dismissed the "new version available" prompt, so it does not come straight back | 30 minutes, and gone when the tab closes |
 | `pwa:auto-refresh-applied-until` | sessionStorage | Besidka | Stops the installed app from reloading itself over and over while it applies an update in the background. Current tab only | 5 minutes, and gone when the tab closes |
 | `artifacts:auto-opened:<chat id>` | sessionStorage | Besidka | Created only when artifacts are available to your account. Remembers, for the current tab, that the first artifact of a chat was already opened next to it, so the panel does not open by itself again. Holds a marker, never the artifact | Gone when the tab closes |
+| `artifacts:share-return` | sessionStorage | Besidka | Created only if you choose "Sign in to save your progress" on a shared artifact page. Holds the key of that link while you sign in, so you come back to the same artifact. It is read and deleted as soon as you are back, and it is never put in a web address | Until you are back, and gone when the tab closes |
 
 The cookie settings dialog lists cookies, localStorage keys and sessionStorage keys. The two IndexedDB databases above, `besidka-push` and `besidka-knowledge`, are listed only on this page, because the dialog has no entry type for them. Both are necessary, and neither exists unless you used the feature it belongs to.
 

@@ -227,7 +227,7 @@
   `usługodawca`. A Polish `radca prawny` should confirm.
 - **Artifacts (2026-11-08, A-9; pre-check `docs/legal/prechecks/artifacts.md`,
   row 1).** The conclusion holds, but it gets weaker. Public artifact links at
-  `besidka.com/a/<token>` are treated as "dissemination to the public" (Art.
+  `besidka.com/a#<token>` are treated as "dissemination to the public" (Art.
   3(k), Recital 14) whatever `noindex` says, and a standalone public page fits
   the "minor and purely ancillary feature" carve-out poorly, so do not rely on
   it. The remuneration argument is about the service, not the feature, so

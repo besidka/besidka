@@ -239,6 +239,18 @@ const frameProtectionHeaders = {
   'X-Frame-Options': 'DENY',
 }
 
+function createArtifactShareRouteRule() {
+  return {
+    cache: false as const,
+    headers: {
+      'Cache-Control': 'private, no-store',
+      'Content-Security-Policy': 'frame-ancestors \'none\'',
+      'Referrer-Policy': 'no-referrer',
+      'X-Robots-Tag': 'noindex, nofollow',
+    },
+  }
+}
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-28',
   buildId,
@@ -268,15 +280,11 @@ export default defineNuxtConfig({
         return [route, { headers: frameProtectionHeaders }]
       }),
     ),
-    '/a/**': {
-      cache: false,
-      headers: {
-        'Cache-Control': 'private, no-store',
-        'Content-Security-Policy': 'frame-ancestors \'none\'',
-        'Referrer-Policy': 'no-referrer',
-        'X-Robots-Tag': 'noindex, nofollow',
-      },
-    },
+    ...Object.fromEntries(
+      ['/a', '/a/**'].map((route) => {
+        return [route, createArtifactShareRouteRule()]
+      }),
+    ),
   },
   nitro: {
     preset: 'cloudflare_module',
@@ -623,6 +631,7 @@ export default defineNuxtConfig({
       '/reset-password',
       '/2fa',
       '/oauth/**',
+      '/a',
       '/a/**',
       '/_studio',
       '/__nuxt_studio',
@@ -955,6 +964,11 @@ export default defineNuxtConfig({
           {
             id: 'pwa-auto-refresh-applied',
             name: 'pwa:auto-refresh-applied-until',
+            type: 'sessionStorage',
+          },
+          {
+            id: 'artifact-share-return',
+            name: 'artifacts:share-return',
             type: 'sessionStorage',
           },
         ],

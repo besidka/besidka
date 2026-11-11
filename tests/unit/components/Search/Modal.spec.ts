@@ -1,4 +1,4 @@
-import { nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,6 +24,7 @@ const showPinToggle = ref<boolean>(false)
 const sidebarPinned = ref<boolean>(false)
 const loggedIn = ref<boolean>(true)
 const isAdmin = ref<boolean>(false)
+const artifactsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -39,6 +40,16 @@ mockNuxtImport('useAuth', () => {
     loggedIn,
     user: ref(null),
     fetchSession: async () => {},
+  })
+})
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return {
+      enabled: artifactsActive.value,
+      active: artifactsActive.value,
+      variant: null,
+    }
   })
 })
 
@@ -114,6 +125,7 @@ describe('Search/Modal.client', () => {
   beforeEach(() => {
     loggedIn.value = true
     isAdmin.value = false
+    artifactsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -234,6 +246,42 @@ describe('Search/Modal.client', () => {
       'search-option-labs',
       'search-option-cookies',
     ])
+  })
+
+  it('adds the Artifacts row after Projects only with the artifacts feature',
+    async () => {
+      artifactsActive.value = true
+      useSearchModal().isModalOpen.value = true
+
+      const wrapper = await mountModal()
+      await nextTick()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(ids.slice(0, 4)).toEqual([
+        'search-option-history',
+        'search-option-attachments',
+        'search-option-projects',
+        'search-option-artifacts',
+      ])
+      expect(wrapper.get('#search-option-artifacts').text()).toBe('Artifacts')
+      expect(wrapper.get('#search-option-artifacts .iconify').classes())
+        .toContain('i-lucide:app-window')
+
+      await wrapper.find('#search-option-artifacts').trigger('click')
+
+      expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/artifacts')
+      expect(closeSpy).toHaveBeenCalled()
+    })
+
+  it('omits the Artifacts row without the artifacts feature', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-artifacts').exists()).toBe(false)
   })
 
   it('shows the Admin rows last in Settings only to admins', async () => {

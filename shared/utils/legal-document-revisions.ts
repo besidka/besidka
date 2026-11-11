@@ -31,11 +31,12 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'takedown and its statement of reasons, artifact AI marks.',
   },
   'cookie-policy': {
-    hash: 'cd134d77f65c412a5c76a25d9199c0a62ed13c4cd86fbe889ac31ba73009ac39',
+    hash: 'c7809319c1007ef392fcd62dca5eb0e9880487b76fecced602c0c01cc7118c02',
     classification: 'minor',
     note: 'Turnstile also on the artifact report form for signed-out '
       + 'visitors (same bot-protection purpose and recipient), the '
-      + 'artifacts:auto-opened sessionStorage row, and no Web Analytics on '
-      + 'public artifact pages; no new cookie, purpose or recipient.',
+      + 'artifacts:auto-opened and artifacts:share-return sessionStorage '
+      + 'rows, and no Web Analytics on public artifact pages; no new '
+      + 'cookie, purpose or recipient.',
   },
 } as const satisfies Record<LegalDocumentId, LegalDocumentRevision>

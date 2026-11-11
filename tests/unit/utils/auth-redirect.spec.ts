@@ -76,6 +76,22 @@ describe('resolveSafeNextPath', () => {
       .toBe('/profile/keys')
   })
 
+  it('returns to the public artifact link page as the bare /a', () => {
+    expect(resolveSafeNextPath('/a')).toBe('/a')
+    expect(resolveSafeNextPath('/a?x=1')).toBe('/a')
+    expect(resolveSafeNextPath(`/a#${'t'.repeat(43)}`)).toBe('/a')
+  })
+
+  it.each([
+    ['/a/'],
+    ['/a/token'],
+    ['/A'],
+    ['/ab'],
+    ['/about'],
+  ])('rejects %j next to the artifact link page', (input) => {
+    expect(resolveSafeNextPath(input)).toBeNull()
+  })
+
   it('drops the query and hash from /chats/new', () => {
     expect(resolveSafeNextPath('/chats/new?q=1#top')).toBe('/chats/new')
   })

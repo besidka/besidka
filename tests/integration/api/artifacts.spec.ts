@@ -120,7 +120,7 @@ describe('artifacts owner API', () => {
   })
 
   async function seedArtifacts() {
-    const chat = await seedChat(testDb.db, ownerId)
+    const chat = await seedChat(testDb.db, ownerId, { title: 'Biology help' })
     const quiz = await createArtifact({
       db: testDb.db,
       storage: mocks.storage,
@@ -173,6 +173,7 @@ describe('artifacts owner API', () => {
     const all = await list(createEvent())
 
     expect(all.total).toBe(2)
+    expect(all.usedBytes).toBeGreaterThan(0)
     expect(all.items.map((item: { id: string }) => item.id).sort()).toEqual(
       [quiz.artifactId, diagram.artifactId].sort(),
     )
@@ -186,6 +187,7 @@ describe('artifacts owner API', () => {
       versionCount: 2,
       updatedAt: expect.any(String),
       originChatSlug: chat.slug,
+      originChatTitle: 'Biology help',
       createdVia: 'chat',
       activeShareCount: 0,
       takenDown: false,

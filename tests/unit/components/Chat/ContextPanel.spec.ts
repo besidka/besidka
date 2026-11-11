@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   mockComponent,
   mockNuxtImport,
@@ -31,6 +31,17 @@ const branchOwnedChat = vi.fn()
 const branchSharedChat = vi.fn()
 const setChatMemoryExcluded = vi.fn()
 const memoryOverride = ref<boolean | null>(null)
+const artifactsActive = ref<boolean>(false)
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return {
+      enabled: artifactsActive.value,
+      active: artifactsActive.value,
+      variant: null,
+    }
+  })
+})
 
 mockNuxtImport('useChatRoute', () => {
   return () => ({ routeSlug })
@@ -160,6 +171,7 @@ describe('Chat/ContextPanel', () => {
     sharedBranchTarget.value = null
     memoryExclusionSavingSlug.value = null
     memoryOverride.value = null
+    artifactsActive.value = false
     refresh.mockReset()
     openShareModal.mockReset()
     branchOwnedChat.mockReset()
@@ -1121,6 +1133,53 @@ describe('Chat/ContextPanel', () => {
 
         expect(useSidePanel().viewKey.value).toBe('chat-context')
       })
+
+    it('links to the library from Outputs when artifacts are available',
+      async () => {
+        artifactsActive.value = true
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({ outputs: [artifactItem()] })
+
+        const wrapper = await mountPanel()
+        const link = wrapper.get(testId('chat-context-all-artifacts'))
+
+        expect(link.text()).toContain('All artifacts')
+        expect(link.attributes('to')).toBe('/chats/artifacts')
+
+        await link.trigger('click')
+
+        expect(useSidePanel().isOpen.value).toBe(false)
+      })
+
+    it('hides the library link without the feature, without an artifact '
+      + 'output and on a shared chat', async () => {
+      data.value = ownedData({ outputs: [artifactItem()] })
+
+      const withoutFeature = await mountPanel()
+
+      expect(withoutFeature.find(testId('chat-context-all-artifacts')).exists())
+        .toBe(false)
+
+      artifactsActive.value = true
+      data.value = ownedData({ outputs: [item()] })
+
+      const withoutArtifact = await mountPanel()
+
+      expect(withoutArtifact.find(testId('chat-context-all-artifacts')).exists())
+        .toBe(false)
+
+      routeSlug.value = 'share-slug'
+      data.value = sharedData({ outputs: [artifactItem()] })
+
+      const shared = await mountPanel()
+
+      expect(shared.find(testId('chat-context-all-artifacts')).exists())
+        .toBe(false)
+    })
 
     it('opens the referenced version on a shared chat', async () => {
       routeSlug.value = 'share-slug'

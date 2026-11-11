@@ -166,6 +166,55 @@ describe('artifact share token redaction', () => {
       expect(redactArtifactSharePath(`/A/${TOKEN}`)).toBe('/a/[token]')
     })
 
+  it('replaces the token of a fragment link, plain or percent-encoded',
+    async () => {
+      const { redactArtifactSharePath } = await import(
+        '~~/server/utils/artifacts/share-redaction'
+      )
+
+      expect(redactArtifactSharePath(`/a#${TOKEN}`)).toBe('/a#[token]')
+      expect(redactArtifactSharePath(`https://besidka.com/a#${TOKEN}`))
+        .toBe('https://besidka.com/a#[token]')
+      expect(redactArtifactSharePath(`Failed on https://besidka.com/A#${TOKEN} x`))
+        .toBe('Failed on https://besidka.com/a#[token] x')
+      expect(redactArtifactSharePath(`x?url=%2Fa%23${TOKEN}&y=1`))
+        .toBe('x?url=%2Fa%23[token]&y=1')
+      expect(redactArtifactSharePath(`x?url=https%3A%2F%2Fb.com%2fa%23${TOKEN}`))
+        .toBe('x?url=https%3A%2F%2Fb.com%2fa%23[token]')
+      expect(redactArtifactSharePath(`x=%252Fa%2523${TOKEN}`))
+        .toBe('x=%252Fa%2523[token]')
+      expect(redactArtifactSharePath('/a')).toBe('/a')
+      expect(redactArtifactSharePath('/signin?next=%2Fa')).toBe('/signin?next=%2Fa')
+      expect(redactArtifactSharePath('/data#files')).toBe('/data#files')
+    })
+
+  it('redacts a browser-ingested error that carries the page address', () => {
+    const context = {
+      request: { method: 'POST', path: '/api/_evlog/ingest' },
+      headers: { 'cf-ray': 'ray-2' },
+      event: {
+        source: 'client',
+        level: 'error',
+        message: `Unhandled error on https://besidka.com/a#${TOKEN}`,
+        attributes: {
+          clientError: {
+            route: `/a#${TOKEN}`,
+            stack: `at onMounted (https://besidka.com/a#${TOKEN}:1:1)`,
+          },
+          client: { href: `https://besidka.com/a#${TOKEN}` },
+        },
+      } as Record<string, unknown>,
+    }
+
+    enrich(context)
+
+    expect(JSON.stringify(context)).not.toContain(TOKEN)
+    expect(context.event.attributes).toMatchObject({
+      clientError: { route: '/a#[token]' },
+      client: { href: 'https://besidka.com/a#[token]' },
+    })
+  })
+
   it('keeps the token out of every drained field of a page request', () => {
     const context = {
       request: { method: 'GET', path: `/a/${TOKEN}` },

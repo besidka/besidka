@@ -1,4 +1,4 @@
-import { ARTIFACT_SHARE_PATH_PREFIX } from '#shared/utils/artifacts'
+import { ARTIFACT_SHARE_PATH } from '#shared/utils/artifacts'
 
 export interface AnalyticsLocation {
   path: string
@@ -15,15 +15,21 @@ function readNextQuery(query: AnalyticsLocation['query']): string {
   return typeof value === 'string' ? value : ''
 }
 
+function isArtifactSharePath(value: string): boolean {
+  const pathname = value.split(/[?#]/)[0]?.toLowerCase() ?? ''
+
+  return pathname === ARTIFACT_SHARE_PATH
+    || pathname.startsWith(`${ARTIFACT_SHARE_PATH}/`)
+}
+
 /**
- * Public artifact links (`/a/<token>`) and pages that carry one in `next`
- * (sign-in from a link) hold the share token in their URL, so analytics
- * must never see them. The prefix is matched in any case, because the
- * router opens `/A/<token>` as the same page.
+ * The public artifact link page (`/a`, which holds the share token in the
+ * fragment) and pages that return to it in `next` (sign-in from a link)
+ * must never be seen by analytics. The path is matched in any case,
+ * because the router opens `/A` as the same page, and `/a/...` is matched
+ * too so an old path-form link never reaches the beacon either.
  */
 export function isArtifactShareLocation(location: AnalyticsLocation): boolean {
-  return location.path.toLowerCase().startsWith(ARTIFACT_SHARE_PATH_PREFIX)
-    || readNextQuery(location.query)
-      .toLowerCase()
-      .startsWith(ARTIFACT_SHARE_PATH_PREFIX)
+  return isArtifactSharePath(location.path)
+    || isArtifactSharePath(readNextQuery(location.query))
 }
