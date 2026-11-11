@@ -1163,12 +1163,19 @@ async function onAskToFix() {
 
 async function onStartNewChat() {
   const text = buildFixPrompt()
+  const current = state.value
 
-  if (!text || !isOwner.value) {
+  if (!text || !current || !isOwner.value) {
     return
   }
 
-  await startNewChat(text)
+  await startNewChat(text, {
+    artifactId: current.artifactId,
+    version: selectedVersion.value ?? current.version,
+    kind: current.kind,
+    title: current.title,
+    source: 'owner',
+  })
 }
 
 async function onDeleteArtifact() {

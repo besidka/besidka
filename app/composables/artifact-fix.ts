@@ -1,5 +1,6 @@
 import type { ArtifactDetail } from '#shared/utils/artifacts'
 import type { ArtifactPanelTarget } from '~/composables/artifacts'
+import type { AttachedArtifact } from '~/types/chat-input-tools'
 
 export type ArtifactFixOrigin = 'unknown' | 'here' | 'chat' | 'none'
 
@@ -16,10 +17,26 @@ export function getArtifactOriginChatSlug(
   return detail.originChatSlug
 }
 
+export function toAttachedArtifact(
+  target: ArtifactPanelTarget,
+): AttachedArtifact | null {
+  if (!target.artifactId || !target.kind || !target.version) {
+    return null
+  }
+
+  return {
+    artifactId: target.artifactId,
+    version: target.version,
+    kind: target.kind,
+    title: target.title,
+  }
+}
+
 /**
  * Where "Ask to fix" can put the prompt. `here` is the artifact's own chat
  * already on screen, `chat` an origin chat that exists but is not open, and
- * `none` an artifact whose chat was deleted or that a connected app created.
+ * `none` an artifact whose chat was deleted or that a connected app created:
+ * a new chat opens with the artifact attached and the prompt prefilled.
  * Every path only fills the composer: nothing is sent and no model is called.
  */
 export function useArtifactFix(detail: Ref<ArtifactDetail | null>) {
@@ -76,9 +93,10 @@ export function useArtifactFix(detail: Ref<ArtifactDetail | null>) {
   async function queueAndNavigate(
     text: string,
     path: string,
+    artifact: AttachedArtifact | null = null,
   ): Promise<boolean> {
     await closeOverlayPanel()
-    prefill.queue(text)
+    prefill.queue(text, artifact)
 
     await navigateTo(path)
 
@@ -87,6 +105,7 @@ export function useArtifactFix(detail: Ref<ArtifactDetail | null>) {
     }
 
     prefill.take()
+    prefill.takeArtifact()
 
     return false
   }
@@ -111,15 +130,22 @@ export function useArtifactFix(detail: Ref<ArtifactDetail | null>) {
     panel.open(target, { preserveFocus: true })
   }
 
-  async function startNewChat(text: string) {
+  async function startNewChat(text: string, target: ArtifactPanelTarget) {
+    const artifact = toAttachedArtifact(target)
+
     if (route.path === NEW_CHAT_PATH) {
       await closeOverlayPanel()
+
+      if (artifact) {
+        await nuxtApp.callHook('chat-input:attach-artifact', artifact)
+      }
+
       await nuxtApp.callHook('chat-input:prefill', text)
 
       return
     }
 
-    await queueAndNavigate(text, NEW_CHAT_PATH)
+    await queueAndNavigate(text, NEW_CHAT_PATH, artifact)
   }
 
   async function askToFix(text: string, target: ArtifactPanelTarget) {

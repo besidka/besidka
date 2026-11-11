@@ -48,6 +48,7 @@
   <ChatInput
     v-model:message="message"
     v-model:files="files"
+    v-model:attached-artifacts="attachedArtifacts"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
     v-model:memory-excluded="memoryExcluded"
@@ -73,6 +74,8 @@ import type { TextUIPart, FileUIPart } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { AttachedArtifact } from '~/types/chat-input-tools'
+import { toArtifactAttachmentPart } from '#shared/utils/artifacts'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
@@ -111,6 +114,7 @@ const message = customRef<string>((track, trigger) => ({
   },
 }))
 const files = ref<FileMetadata[]>([])
+const attachedArtifacts = ref<AttachedArtifact[]>([])
 const savedWebSearchTool = prefStorage.getItem('settings_web_search_tool')
 const tools = shallowRef<Tools>(
   isWebSearchTool(savedWebSearchTool) ? [savedWebSearchTool] : [],
@@ -590,6 +594,7 @@ async function onSubmit() {
   // must never lose what the user typed or attached.
   const draft = message.value
   const draftFiles = [...files.value]
+  const draftArtifacts = [...attachedArtifacts.value]
   const draftBackup = useChatDraftBackup()
   const { model } = getModel(userModel.value)
 
@@ -623,6 +628,7 @@ async function onSubmit() {
             }))
             : []
           ),
+          ...draftArtifacts.map(toArtifactAttachmentPart),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         webSearchMode: resolveWebSearchMode(tools.value),
@@ -648,6 +654,7 @@ async function onSubmit() {
     draftBackup.save(draft)
     message.value = draft
     files.value = draftFiles
+    attachedArtifacts.value = draftArtifacts
 
     if (await handleConsentError(exception)) {
       return

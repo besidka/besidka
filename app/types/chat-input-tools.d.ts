@@ -4,6 +4,7 @@ import type {
   ReasoningLevel,
 } from '#shared/types/reasoning.d'
 import type { ModelResearchConfig } from '#shared/types/research.d'
+import type { DataArtifactPartData } from '#shared/utils/artifacts'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type {
   WebSearchOption,
@@ -18,6 +19,8 @@ export type ToolsSection
     | 'project'
     | 'memory'
 
+export type ChatInputArtifactTileId = `artifact-${string}`
+
 export type ChatInputTileId
   = | 'project'
     | 'memory'
@@ -25,6 +28,9 @@ export type ChatInputTileId
     | 'image'
     | 'search'
     | 'reasoning'
+    | ChatInputArtifactTileId
+
+export type AttachedArtifact = DataArtifactPartData
 
 export type ChatInputTileIcon
   = | { kind: 'icon', name: string }
@@ -92,6 +98,10 @@ export interface ChatInputToolsState {
     visible: boolean
     count: number
     isImageInputSupported: boolean
+  }
+  artifacts: {
+    visible: boolean
+    attached: AttachedArtifact[]
   }
   project: {
     visible: boolean
