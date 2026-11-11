@@ -142,6 +142,7 @@ const featureList = [
     description: 'Document tools on the MCP server.',
     exposeToClient: false,
     parent: 'documents',
+    available: true,
     requires: { bindings: ['DOC_RENDERER'], keyKinds: [] },
   }),
   internalFeature({

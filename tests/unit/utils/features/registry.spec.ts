@@ -98,6 +98,10 @@ describe('feature registry', () => {
       .toEqual(['DOC_RENDERER'])
   })
 
+  it('makes documents over MCP available so create_document can run', () => {
+    expect(FEATURE_REGISTRY['documents.mcp'].available).toBe(true)
+  })
+
   it('treats prototype keys as unknown', () => {
     expect(isFeatureKey('constructor')).toBe(false)
     expect(getFeatureDefinition('toString')).toBeUndefined()
