@@ -303,6 +303,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/documents/message-parts.spec.ts',
     'tests/unit/server/utils/documents/share.spec.ts',
     'tests/unit/server/utils/documents/store.spec.ts',
+    'tests/unit/server/mcp/tools/create-document.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
     'tests/unit/utils/document-parts.spec.ts',
     'tests/unit/utils/document-ui.spec.ts',
     'tests/unit/workers/document-render.spec.ts',
@@ -449,6 +451,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/admin-scopes.spec.ts',
     'tests/unit/server/mcp/tools/branch-chat.spec.ts',
     'tests/unit/server/mcp/tools/create-file.spec.ts',
+    'tests/unit/server/mcp/tools/create-document.spec.ts',
     'tests/unit/server/mcp/tools/delete-chat-message.spec.ts',
     'tests/unit/server/mcp/tools/delete-chats.spec.ts',
     'tests/unit/server/mcp/tools/delete-files.spec.ts',
@@ -471,6 +474,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/mcp/tools/update-settings.spec.ts',
     'tests/unit/server/utils/mcp/private-chat-actions.spec.ts',
     'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
     'tests/unit/server/utils/mcp/private-files.spec.ts',
     'tests/unit/server/utils/mcp/private-projects-manage.spec.ts',
     'tests/unit/server/utils/mcp/private-settings.spec.ts',
@@ -3334,6 +3338,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/(artifacts\/(store|shares|queries|blob-store)|ai\/artifact-tools|chats\/share-pii-check|features\/evaluate|mcp\/private\/(artifacts|artifact-context))\.ts$/,
       tests: mcpArtifactTests,
+    },
+    {
+      pattern: /^server\/(mcp\/tools\/create-document|utils\/mcp\/private\/documents)\.ts$/,
+      tests: [
+        'tests/unit/server/mcp/tools/create-document.spec.ts',
+        'tests/unit/server/utils/mcp/private-documents.spec.ts',
+        'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/(turnstile|auth-hosts)\.ts$/,

@@ -2,7 +2,7 @@ export const MCP_SERVER_NAME = 'com.besidka/mcp'
 
 export const MCP_SERVER_TITLE = 'Besidka'
 
-export const MCP_SERVER_VERSION = '3.0.1'
+export const MCP_SERVER_VERSION = '3.1.0'
 
 export const MCP_SERVER_ROUTE = '/mcp'
 
@@ -25,6 +25,16 @@ export const MCP_PRIVATE_DELETE_RATE_LIMIT = {
 export const MCP_ARTIFACT_SHARE_DAILY_LIMIT = {
   window: 86_400,
   max: 10,
+} as const
+
+export const MCP_DOCUMENT_RENDER_MINUTE_LIMIT = {
+  window: 60,
+  max: 10,
+} as const
+
+export const MCP_DOCUMENT_RENDER_DAILY_LIMIT = {
+  window: 86_400,
+  max: 100,
 } as const
 
 export const MCP_PRIVATE_ADMIN_WRITE_RATE_LIMIT = {

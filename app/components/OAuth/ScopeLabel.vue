@@ -64,7 +64,8 @@ const scopeDetails: Record<string, ScopeDetails> = {
   },
   'files:write': {
     title: 'Change your files',
-    description: 'Create text files and rename files.',
+    description: 'Create text files and documents (PDF, Word, PowerPoint, '
+      + 'Excel) and rename files.',
   },
   'settings:write': {
     title: 'Change your settings',

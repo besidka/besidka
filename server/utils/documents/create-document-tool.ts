@@ -9,7 +9,7 @@ import {
   parseDocumentSpec,
   summarizeSpec,
 } from '@besidka/doc-renderer/spec'
-import type { DocumentSpec } from '@besidka/doc-renderer/spec'
+import type { DocumentSpec, SpecIssue } from '@besidka/doc-renderer/spec'
 import {
   DOCUMENT_FORMATS,
   DOCUMENT_FORMAT_LABELS,
@@ -50,13 +50,18 @@ export interface CreateDocumentToolInput {
   assistantMessageId: string
 }
 
-type DocumentSpecCheck
+export type DocumentSpecCheck
   = | { ok: true, spec: DocumentSpec }
-    | { ok: false, code: string, message: string }
+    | {
+      ok: false
+      code: string
+      message: string
+      issues?: readonly SpecIssue[]
+    }
 
 type SpecOption = (typeof documentSpecSchema.options)[number]
 
-const FORMAT_EXAMPLES: Record<DocumentFormat, string> = {
+export const FORMAT_EXAMPLES: Record<DocumentFormat, string> = {
   pdf: '{"specVersion":1,"format":"pdf","title":"Trip plan","language":"en",'
     + '"pageSize":"A4","blocks":[{"type":"heading","level":1,"text":"Trip '
     + 'plan"},{"type":"paragraph","runs":[{"text":"Leave on "},{"text":'
@@ -74,7 +79,7 @@ const FORMAT_EXAMPLES: Record<DocumentFormat, string> = {
     + '["Food",400],["Total",{"formula":"SUM(B2:B3)"}]]}]}',
 }
 
-const FORMAT_RULES: Record<DocumentFormat, string> = {
+export const FORMAT_RULES: Record<DocumentFormat, string> = {
   pdf: 'pdf needs pageSize "A4" or "Letter" and blocks.',
   docx: 'docx needs blocks.',
   pptx: 'pptx needs aspect "16:9" or "4:3" and slides. Slide layouts: '
@@ -91,7 +96,7 @@ const FORMAT_RULES: Record<DocumentFormat, string> = {
     + 'unique, none of [ ] : * ? / \\, not "History".',
 }
 
-const BLOCKS_DESCRIPTION = 'Blocks for pdf and docx: {"type":"heading",'
+export const BLOCKS_DESCRIPTION = 'Blocks for pdf and docx: {"type":"heading",'
   + '"level":1-4,"text"}, {"type":"paragraph","runs":[...],"align?"}, '
   + '{"type":"list","ordered":bool,"items":[{"runs":[...],"children?":'
   + '[...]}]} (three levels at most), {"type":"table","header":bool,'
@@ -365,10 +370,11 @@ export function checkDocumentSpecInput(
       + 'No document was created. Fix these fields and call '
       + `\`${DOCUMENT_TOOL_NAME}\` again, or tell the user it could not be `
       + 'created.',
+    issues: parsed.issues,
   }
 }
 
-function toDocumentStats(spec: DocumentSpec): DocumentStats {
+export function toDocumentStats(spec: DocumentSpec): DocumentStats {
   const summary = summarizeSpec(spec)
 
   return {
