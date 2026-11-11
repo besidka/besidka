@@ -194,6 +194,20 @@ someone else's artifact).
   one on the shared part and `latestVersion` equals `version`, so a shared
   chat never reveals a newer version or a later rename.
 
+### Attached artifacts (BES-350)
+
+The `attached-artifacts` section (Inputs, `private`) lists each artifact a
+**user** message attached from the library (`data-artifact-attachment`
+part, `docs/artifacts/attach.md`), once per artifact, with the artifact's
+current title and the version that was attached (`version`) next to
+`latestVersion`. Clicking a row opens the artifact in the side panel like an
+Outputs row. The `artifacts` section (Outputs) reads only `data-artifact`
+parts, so an attached artifact never shows as an output of the chat.
+`collectArtifactReferences` loads both part types in one query. The section is
+`private`, so the shared route never runs it, and the shared view drops
+attachment parts before the builder sees them. Deleted, taken-down and
+foreign artifacts are left out, like Outputs.
+
 Phase 0 sections: `generated-images` and `research-reports` (Outputs);
 `uploaded-files` and `project-knowledge` (Inputs; knowledge as item ids and
 titles); `memory`, `chat-search` and `web-sources` (Used). The web-search

@@ -273,6 +273,8 @@ import { getCapabilityTools } from '~~/server/capabilities/index'
 import { getAllowedArtifactKinds } from '~~/server/capabilities/artifacts'
 import { buildArtifactInstructions } from '~~/server/utils/ai/artifact-tools'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
+import { collectArtifactAttachments } from '#shared/utils/artifacts'
+import { resolveArtifactAttachmentParts } from '~~/server/utils/artifacts/attachments'
 import { buildArtifactContextBlock } from '~~/server/utils/artifacts/context'
 import {
   ARTIFACT_TOOL_NAMES,
@@ -408,6 +410,20 @@ export default defineEventHandler(async (event) => {
       status: 400,
     })
   }
+
+  const isStoredUserMessage = chat.messages.some((message) => {
+    return message.role === 'user'
+      && (message.publicId ?? message.id) === newMessage.id
+  })
+
+  newMessage.parts = await resolveArtifactAttachmentParts({
+    event,
+    db,
+    userId,
+    parts: newMessage.parts,
+    logger,
+    onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
+  })
 
   const firstUserMessage = chat.messages.length === 1
     && chat.messages[0]?.role === 'user'
@@ -1482,6 +1498,8 @@ export default defineEventHandler(async (event) => {
     aiLogger,
   )
   const artifactsActive = sendFeatures.isFeatureActive('artifacts')
+  const attachedArtifactIds = collectArtifactAttachments(allMessages)
+    .map(attachment => attachment.artifactId)
   const artifactTools = artifactsActive && toolCallingAllowed
     ? await getCapabilityTools({
       userId,
@@ -1491,6 +1509,7 @@ export default defineEventHandler(async (event) => {
       model,
       modelId,
       assistantMessageId: assistantMessagePublicId,
+      attachedArtifactIds,
       logger: aiLogger,
       isFeatureActive: sendFeatures.isFeatureActive,
     })
@@ -1513,6 +1532,7 @@ export default defineEventHandler(async (event) => {
       userId,
       chatId: chat.id,
       artifactIds: collectReferencedArtifactIds(chat.messages),
+      attachedArtifactIds,
       logger: aiLogger,
     })
     : null

@@ -33,6 +33,7 @@
       <button
         type="button"
         class="link no-underline rounded-box block w-full truncate py-1 text-left font-medium disabled:cursor-not-allowed disabled:no-underline disabled:opacity-60"
+        :class="{ 'after:absolute after:inset-0': isPicker }"
         :disabled="isOpenDisabled"
         :title="isOpenDisabled ? TAKEN_DOWN_TOOLTIP : undefined"
         data-testid="artifact-row-open"
@@ -71,7 +72,7 @@
             aria-hidden="true"
           />
           <NuxtLink
-            v-if="artifact.originChatSlug && !isConnectedApp"
+            v-if="artifact.originChatSlug && !isConnectedApp && !isPicker"
             :to="`/chats/${artifact.originChatSlug}`"
             class="link link-hover max-w-48 truncate"
             :class="{ 'pointer-events-none': isSelectionMode }"
@@ -110,7 +111,7 @@
       aria-hidden="true"
     />
     <details
-      v-else
+      v-else-if="!isPicker"
       ref="dropdownRef"
       class="
         dropdown dropdown-end relative z-20 open:z-40
@@ -222,17 +223,22 @@ const UNTITLED_CHAT_LABEL = 'Untitled chat'
 const props = withDefaults(
   defineProps<{
     artifact: ArtifactSummary
-    isSelectionMode: boolean
-    isSelected: boolean
+    isSelectionMode?: boolean
+    isSelected?: boolean
     index: number
     canShare?: boolean
+    mode?: 'library' | 'picker'
   }>(),
   {
+    isSelectionMode: false,
+    isSelected: false,
     canShare: false,
+    mode: 'library',
   },
 )
 
 const emit = defineEmits<{
+  pick: [artifact: ArtifactSummary]
   open: [artifact: ArtifactSummary]
   share: [artifact: ArtifactSummary]
   download: [artifact: ArtifactSummary]
@@ -243,6 +249,10 @@ const emit = defineEmits<{
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
 const { isFlippedUp, updatePlacement } = useDropdownPlacement(dropdownRef)
+
+const isPicker = computed<boolean>(() => {
+  return props.mode === 'picker'
+})
 
 const isConnectedApp = computed<boolean>(() => {
   return props.artifact.createdVia === 'mcp'
@@ -308,6 +318,12 @@ function onToggleSelect(event: MouseEvent) {
 function onTitleClick(event: MouseEvent) {
   if (props.isSelectionMode) {
     onToggleSelect(event)
+
+    return
+  }
+
+  if (isPicker.value) {
+    emit('pick', props.artifact)
 
     return
   }

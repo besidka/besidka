@@ -3,7 +3,10 @@ import type {
   ChatContextItem,
 } from '#shared/types/chat-context.d'
 import type { ArtifactKind } from '#shared/utils/artifacts'
-import { isDataArtifactPart } from '#shared/utils/artifacts'
+import {
+  isDataArtifactAttachmentPart,
+  isDataArtifactPart,
+} from '#shared/utils/artifacts'
 import { isHiddenFilePart } from '#shared/utils/files'
 import {
   MEMORY_FORGET_TOOL_NAME,
@@ -248,6 +251,43 @@ const artifactsSection: ChatContextSection = {
           artifactId: part.data.artifactId,
           artifactKind: artifact.kind,
           version: artifact.version,
+          latestVersion: artifact.latestVersion,
+        },
+      })
+    }
+  },
+}
+
+const attachedArtifactsSection: ChatContextSection = {
+  id: 'attached-artifacts',
+  group: 'inputs',
+  visibility: 'private',
+  collect(message, accumulator, scope) {
+    if (message.role !== 'user') {
+      return
+    }
+
+    for (const part of message.parts) {
+      if (!isDataArtifactAttachmentPart(part)) {
+        continue
+      }
+
+      const artifact = scope.artifacts.get(part.data.artifactId)
+
+      if (!artifact) {
+        continue
+      }
+
+      accumulator.add('inputs', {
+        id: `attached-artifact:${part.data.artifactId}`,
+        sectionId: 'attached-artifacts',
+        kind: 'artifact',
+        title: toTitle(artifact.title) || 'Artifact',
+        messageId: message.id,
+        meta: {
+          artifactId: part.data.artifactId,
+          artifactKind: artifact.kind,
+          version: part.data.version,
           latestVersion: artifact.latestVersion,
         },
       })
@@ -511,6 +551,7 @@ export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   generatedImagesSection,
   researchReportsSection,
   artifactsSection,
+  attachedArtifactsSection,
   uploadedFilesSection,
   projectKnowledgeSection,
   memorySection,

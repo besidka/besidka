@@ -6,6 +6,7 @@ import {
   insertBranchedMessages,
 } from '~~/server/utils/chats/branch'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
+import { filterPublicParts } from '~~/server/utils/chats/share-public-parts'
 import { stripFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 import {
   defineEventHandler,
@@ -148,9 +149,11 @@ export default defineEventHandler(async (event) => {
     messagesToBranch = persistedMessages.slice(0, branchIndex + 1)
   }
 
-  const sharedMessages = share.showFiles
-    ? messagesToBranch
-    : stripFileParts(messagesToBranch)
+  const sharedMessages = filterPublicParts(
+    share.showFiles
+      ? messagesToBranch
+      : stripFileParts(messagesToBranch),
+  )
 
   const title = buildBranchTitle(sourceChat.title)
 

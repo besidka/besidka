@@ -11,7 +11,7 @@ Shared, Artifacts) and has no slot in the nav pill.
 | --- | --- |
 | `app/pages/chats/artifacts/index.vue` | The page: filters, states, row handlers, deep link, delete confirmations |
 | `app/composables/artifacts-library.ts` | `useArtifactLibraryFilters()` (URL-backed search and kind) and `useArtifactLibrary()` (list, pages, delete, selection, quota) |
-| `app/components/History/ArtifactRow.vue` | One row and its actions menu |
+| `app/components/History/ArtifactRow.vue` | One row and its actions menu; `mode="picker"` (BES-350) turns it into a pick button for the composer's artifact picker: no actions menu, no checkbox, no origin link, the whole row clickable |
 | `app/components/History/PageShell.vue` | The tab bar; the Artifacts tab only renders with the `artifacts` feature |
 | `app/components/Search/Modal.client.vue` | Row `search-option-artifacts` in the Chat group, only with the feature |
 | `app/components/Chat/ContextPanel.vue` | "All artifacts" link under Outputs when the chat has an artifact output |
@@ -22,7 +22,9 @@ Shared, Artifacts) and has no slot in the nav pill.
 - `artifacts` gates the tab, the Search row, the context panel link and the
   page. With the feature off the page redirects to `/chats/history`
   (`navigateTo(..., { replace: true })` in setup, so it also works on SSR).
-- `artifacts.share` gates the Share action only.
+- `artifacts.share` gates the Share action only. The composer's artifact
+  picker (`docs/artifacts/attach.md`) reads the same list route through the
+  same `useArtifactLibrary()`, with its own fetch key and in-memory filters.
 - The list route answers `404` to a user without `artifacts`
   (`requireFeature(event, 'artifacts', { active: false })`).
 

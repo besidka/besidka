@@ -196,6 +196,7 @@ const emit = defineEmits<{
   'open-files-select': []
   'open-files-upload': []
   'open-files-generated': []
+  'open-artifact-picker': []
   'update:use-memory': [value: boolean]
   'remove-tile': [id: ChatInputTileId]
 }>()
@@ -318,6 +319,9 @@ const contentListeners = {
   }),
   'onOpenFilesGenerated': closeAfter(() => {
     emit('open-files-generated')
+  }),
+  'onOpenArtifactPicker': closeAfter(() => {
+    emit('open-artifact-picker')
   }),
 }
 

@@ -9,6 +9,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Message, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { AttachedArtifact } from '~/types/chat-input-tools'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
@@ -27,7 +28,10 @@ import {
   isWebSearchTool,
 } from '#shared/utils/message-metadata'
 import { isPastChatPreRetrievalPart } from '#shared/utils/past-chat-retrieval'
-import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import {
+  ARTIFACT_DATA_PART_TYPE,
+  toArtifactAttachmentPart,
+} from '#shared/utils/artifacts'
 import { isArtifactToolPartType } from '~/utils/artifact-parts'
 import {
   isPersistedEmptyAnswerFailureText,
@@ -933,6 +937,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   }))
   const files = ref<FileMetadata[]>([])
+  const attachedArtifacts = ref<AttachedArtifact[]>([])
   const pendingError = shallowRef<ChatErrorPayload | null>(null)
   const transportRequestId = shallowRef<string>()
   const reportedClientErrorIds = new Set<string>()
@@ -1422,6 +1427,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     text: string,
   ): Promise<UIMessage['parts']> {
     const parts: any[] = []
+    const artifactParts = attachedArtifacts.value.map(toArtifactAttachmentPart)
 
     if (text.trim()) {
       parts.push({
@@ -1435,6 +1441,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       parts.push(...fileParts)
     }
+
+    parts.push(...artifactParts)
 
     return parts
   }
@@ -1704,6 +1712,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isLastAssistantMessage,
     shouldDisplayMessage,
     files,
+    attachedArtifacts,
     currentTurnStartedAt,
     currentTurnReasoningAccumulatedMs,
     currentReasoningSegmentStartedAt,
