@@ -376,6 +376,8 @@ async function discardFailedDocument(
     setDocumentLog(context.logger, {
       releaseError: exceptionMessage(exception),
     })
+
+    return
   }
 
   if (claimed.specR2Key === null) {
@@ -520,17 +522,27 @@ async function finishStoredFile(
     }
   }
 
-  const stored = await context.db.select({
-    expiresAt: schema.files.expiresAt,
-  })
-    .from(schema.files)
-    .where(and(
-      eq(schema.files.id, file.id),
-      eq(schema.files.userId, context.userId),
-    ))
-    .get()
+  let expiresAt: Date | null = null
 
-  return { name, expiresAt: toIsoTimestamp(stored?.expiresAt ?? null) }
+  try {
+    const stored = await context.db.select({
+      expiresAt: schema.files.expiresAt,
+    })
+      .from(schema.files)
+      .where(and(
+        eq(schema.files.id, file.id),
+        eq(schema.files.userId, context.userId),
+      ))
+      .get()
+
+    expiresAt = stored?.expiresAt ?? null
+  } catch (exception) {
+    setDocumentLog(context.logger, {
+      cleanupError: exceptionMessage(exception),
+    })
+  }
+
+  return { name, expiresAt: toIsoTimestamp(expiresAt) }
 }
 
 type RenderOutcome

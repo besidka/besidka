@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => {
     optedOutFlags: new Set<string>(),
     renderDocument: vi.fn(),
     persistFile: vi.fn(),
+    deleteOwnedFile: vi.fn(),
     storage: { usedBytes: 900, maxStorageBytes: 1000 },
   }
 })
@@ -79,7 +80,7 @@ vi.mock('~~/server/utils/chats/share', () => {
 })
 
 vi.mock('~~/server/utils/files/delete-files', () => {
-  return { deleteOwnedFile: vi.fn() }
+  return { deleteOwnedFile: mocks.deleteOwnedFile }
 })
 
 const {
@@ -218,6 +219,7 @@ describe('createMcpDocument', () => {
     mocks.storage.maxStorageBytes = 1000
     mocks.renderDocument.mockReset()
     mocks.persistFile.mockReset()
+    mocks.deleteOwnedFile.mockReset()
     mocks.persistFile.mockImplementation(async (file: {
       userId: number
       fileName: string
@@ -841,6 +843,47 @@ describe('createMcpDocument', () => {
 
       expect(statuses).toEqual(['failed', 'ready'])
     })
+
+    it('deletes the stored file when marking the row ready fails',
+      async () => {
+        const store = await import('~~/server/utils/documents/store')
+        const markReady = vi.spyOn(store, 'markDocumentReady')
+          .mockRejectedValueOnce(new Error('D1 unavailable'))
+
+        await expect(createMcpDocument(context(), input()))
+          .rejects.toThrow('D1 unavailable')
+
+        const [stored] = await fileRows()
+
+        expect(mocks.deleteOwnedFile).toHaveBeenCalledWith(
+          expect.objectContaining({ userId, fileId: stored!.id }),
+        )
+        expect((await documentRows())[0]).toMatchObject({
+          status: 'failed',
+          errorCode: 'render_failed',
+          specR2Key: null,
+        })
+
+        markReady.mockRestore()
+      })
+
+    it('keeps the spec object when the row cannot be marked failed',
+      async () => {
+        const store = await import('~~/server/utils/documents/store')
+        const markFailed = vi.spyOn(store, 'markDocumentFailed')
+          .mockRejectedValueOnce(new Error('D1 unavailable'))
+
+        mocks.renderDocument.mockResolvedValue({
+          ok: false,
+          code: 'render_failed',
+        })
+
+        await expect(createMcpDocument(context(), input()))
+          .rejects.toMatchObject({ status: 422 })
+        expect(documentStorage.objects.size).toBe(1)
+
+        markFailed.mockRestore()
+      })
 
     it('leaves no row in rendering when the claim cannot start',
       async () => {

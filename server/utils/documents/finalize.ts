@@ -261,12 +261,20 @@ export async function finalizeRenderedDocument(
     throw exception
   }
 
-  const ready = await markDocumentReady(db, {
-    documentId: row.id,
-    claim: toDocumentClaim(row),
-    fileId: persisted.id,
-    renderedBy,
-  })
+  let ready: DocumentRow | null
+
+  try {
+    ready = await markDocumentReady(db, {
+      documentId: row.id,
+      claim: toDocumentClaim(row),
+      fileId: persisted.id,
+      renderedBy,
+    })
+  } catch (exception) {
+    await discardOrphanedFile(userId, persisted.id, logger)
+
+    throw exception
+  }
 
   if (!ready) {
     await discardOrphanedFile(userId, persisted.id, logger)
