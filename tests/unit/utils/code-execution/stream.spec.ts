@@ -280,6 +280,57 @@ describe('createCodeExecutionStream', () => {
     ])
   })
 
+  it('keeps the stream alive and lists every file as not saved when storing the files throws', async () => {
+    const persistFiles = vi.fn(async () => {
+      throw new Error('policy lookup failed')
+    }) as unknown as PersistFiles
+    const { codeExecution, fetcher } = createSetup({
+      provider: 'anthropic',
+      persistFiles,
+    })
+    const output = await collect(codeExecution.apply(toStream(anthropicChart)))
+
+    expect(output.at(-1)?.type).toBe('finish')
+    expect(byType(output, 'file')).toHaveLength(0)
+    expect(byType(output, 'data-code-execution-files')[0]).toEqual({
+      type: 'data-code-execution-files',
+      data: {
+        savedCount: 0,
+        skipped: [
+          { filename: 'file', reason: 'download-failed' },
+          { filename: 'file', reason: 'download-failed' },
+        ],
+      },
+    })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('delivers the finish chunk before it deletes anything at the provider', async () => {
+    const order: string[] = []
+    const fetcher = vi.fn(async () => {
+      order.push('delete')
+
+      return new Response(null, { status: 204 })
+    })
+    const { codeExecution } = createSetup({
+      provider: 'anthropic',
+      fetcher: fetcher as unknown as ReturnType<typeof createDeleteFetcher>,
+    })
+    const reader = codeExecution.apply(toStream(anthropicChart)).getReader()
+
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) {
+        break
+      }
+
+      order.push(value.type)
+    }
+
+    expect(order.indexOf('finish')).toBeLessThan(order.indexOf('delete'))
+  })
+
   it('logs the usage with the cost the rates allow', async () => {
     logger.set.mockClear()
 

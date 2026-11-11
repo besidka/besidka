@@ -21,6 +21,7 @@ import {
   readOpenAiContainerFileCitation,
 } from '~~/server/utils/code-execution/container-files'
 import { persistContainerFiles } from '~~/server/utils/code-execution/persist-container-files'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export const BESIDKA_FILE_METADATA_KEY = 'besidka'
 
@@ -99,6 +100,43 @@ export function createCodeExecutionStream(
     }
   }
 
+  async function persistFilesSafely(
+    refs: ContainerFileRef[],
+  ): Promise<Awaited<ReturnType<typeof persistContainerFiles>>> {
+    try {
+      return await persistFiles({
+        refs,
+        provider: input.provider,
+        modelId: input.modelId,
+        userId: input.userId,
+        apiKey: input.apiKey,
+        remainingFileSlots: CODE_EXECUTION_MAX_OUTPUT_FILES - usage.files,
+        tracker: input.tracker,
+        logger: input.logger,
+        fetcher: input.fetcher,
+      })
+    } catch (exception) {
+      input.logger.set({
+        attributes: {
+          codeExecutionPersist: { error: exceptionMessage(exception) },
+        },
+      })
+
+      return {
+        saved: [],
+        skipped: refs.map((ref) => {
+          return {
+            filename: ref.provider === 'openai' && ref.filename
+              ? ref.filename
+              : 'file',
+            reason: 'download-failed' as const,
+          }
+        }),
+        provenanceMissing: 0,
+      }
+    }
+  }
+
   async function flushPendingFiles(
     controller: TransformStreamDefaultController<UIMessageChunk>,
   ) {
@@ -114,17 +152,7 @@ export function createCodeExecutionStream(
       return
     }
 
-    const result = await persistFiles({
-      refs,
-      provider: input.provider,
-      modelId: input.modelId,
-      userId: input.userId,
-      apiKey: input.apiKey,
-      remainingFileSlots: CODE_EXECUTION_MAX_OUTPUT_FILES - usage.files,
-      tracker: input.tracker,
-      logger: input.logger,
-      fetcher: input.fetcher,
-    })
+    const result = await persistFilesSafely(refs)
 
     for (const file of result.saved) {
       savedFileIds.push(file.fileId)
@@ -164,7 +192,6 @@ export function createCodeExecutionStream(
     }
 
     isFinished = true
-    await input.tracker.cleanup()
     input.logger.set({
       attributes: {
         codeExecution: {
@@ -280,6 +307,7 @@ export function createCodeExecutionStream(
     async flush() {
       discardPendingRefs()
       await finishSend()
+      await input.tracker.cleanup()
     },
   })
 

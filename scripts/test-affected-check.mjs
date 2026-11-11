@@ -1380,6 +1380,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/code-execution/persist-container-files.spec.ts',
     'tests/unit/utils/code-execution/provider-cleanup.spec.ts',
     'tests/unit/utils/code-execution/request-schema.spec.ts',
+    'tests/unit/utils/code-execution/sdk-request-shape.spec.ts',
     'tests/unit/utils/code-execution/send.spec.ts',
     'tests/unit/utils/code-execution/shared.spec.ts',
     'tests/unit/utils/code-execution/stream.spec.ts',

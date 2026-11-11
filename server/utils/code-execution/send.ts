@@ -22,9 +22,10 @@ export const CODE_EXECUTION_INSTRUCTION = [
   'Run code is on: the AI provider runs code you write in its own sandbox,',
   'which has no internet access. Use it to analyse attached data, calculate',
   'exactly and draw charts, then explain the result in plain language.',
-  'Write files the user should keep (a chart or a table, for example) to the',
-  'sandbox\'s output location as png, jpg, webp, csv, tsv, txt, md, json,',
-  'pdf, docx, xlsx or pptx, at most 10 files; other types are not saved.',
+  'Return files the user should keep (a chart or a table, for example) as',
+  'png, jpg, webp, csv, tsv, txt, md, json, pdf, docx, xlsx or pptx, at most',
+  '10 files; other types are not saved. On Anthropic copy each file into',
+  '$OUTPUT_DIR (top level only); on OpenAI save it under /mnt/data.',
   'Do not paste a file\'s whole content into the reply when it is saved.',
 ].join(' ')
 

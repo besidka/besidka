@@ -3,7 +3,7 @@ import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildAuthHeaders } from '~~/server/utils/code-execution/container-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
-export const PROVIDER_CLEANUP_TIMEOUT_MS = 15_000
+export const PROVIDER_CLEANUP_TIMEOUT_MS = 5_000
 
 const PROVIDER_FILES_URLS: Record<CodeExecutionProvider, string | null> = {
   anthropic: 'https://api.anthropic.com/v1/files',
