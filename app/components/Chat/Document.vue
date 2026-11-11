@@ -41,6 +41,7 @@
     </div>
     <div class="grid gap-2 px-3 pb-3">
       <p
+        v-if="cardState !== 'failed'"
         role="status"
         aria-live="polite"
         class="flex items-center gap-2 text-xs text-base-content/70"
@@ -64,6 +65,7 @@
       />
       <div
         v-if="cardState === 'failed'"
+        role="alert"
         class="alert alert-error alert-soft items-start"
         data-testid="document-card-error"
       >
@@ -276,8 +278,6 @@ const statusText = computed<string>(() => {
       return `Building ${formatLabel.value}...`
     case 'ready':
       return 'Ready'
-    case 'failed':
-      return 'Document could not be created'
     case 'unavailable':
       return 'Document unavailable'
     default:
@@ -292,8 +292,6 @@ const statusIcon = computed<string>(() => {
       return 'lucide:loader-circle'
     case 'ready':
       return 'lucide:check'
-    case 'failed':
-      return 'lucide:circle-alert'
     case 'unavailable':
       return 'lucide:file-x'
     default:

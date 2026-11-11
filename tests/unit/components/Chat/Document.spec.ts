@@ -298,10 +298,14 @@ describe('ChatDocument', () => {
 
       expect(wrapper.get(testId('document-card')).attributes('data-state'))
         .toBe('failed')
-      expect(wrapper.get(testId('document-card-status')).text())
-        .toBe('Document could not be created')
+      expect(wrapper.find(testId('document-card-status')).exists())
+        .toBe(false)
+      expect(wrapper.text()).not.toContain('Document could not be created')
       expect(wrapper.get(testId('document-card-error')).text())
         .toContain('The renderer is busy.')
+      expect(wrapper.get(testId('document-card-error')).attributes('role'))
+        .toBe('alert')
+      expect(wrapper.text().match(/The renderer is busy\./g)).toHaveLength(1)
 
       await wrapper.get(testId('document-card-retry')).trigger('click')
 
