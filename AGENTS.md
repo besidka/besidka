@@ -98,6 +98,8 @@ Other parent tables with cascade children: `chats` → `messages`, `chat_share_f
 
 `user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymises `feature_audit_log` (see `docs/feature-flags.md`).
 
+`documents` (`server/db/schemas/documents.ts`) has no FK and no cascade: `purgeUserData` deletes its rows and the spec objects under `documents/<userId>/`, and the deletion hooks in `server/utils/documents/cleanup.ts` remove the rest (see `docs/d1-restore-reconciliation.md`).
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:
@@ -286,6 +288,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `limits.cpu_ms: 15000`, the local two-process dev setup, the
   `deploy-satellites` order and why the renderer has no opt-in variable, why
   there is no per-PR renderer preview, and the deviations from the ticket
+- `docs/chats/documents-chat.md` - The `create_document` chat tool (D-4,
+  BES-293): the capability and tool, spec in R2, the `data-document` part
+  rewrite, the client Web Worker render with server validation and fallback,
+  the claim lease and its identity, retention and deletion hooks, share and
+  branch handling, the card and side-panel preview, the file manager `kind`
+  filter, flags, deviations and what is not verified
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no

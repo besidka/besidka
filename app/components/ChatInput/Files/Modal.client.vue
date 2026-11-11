@@ -56,7 +56,7 @@
               ref="selectTabRef"
               :attached-ids="attachedIds"
               :initial-source="selectSource"
-              :is-image-input-supported="isImageInputSupported"
+              :can-attach-media-type="canAttachMediaType"
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"
@@ -93,10 +93,8 @@ type SelectTabRef = {
 
 withDefaults(defineProps<{
   attachedIds: Set<string>
-  isImageInputSupported?: boolean
   canAttachMediaType?: (mediaType: string) => boolean
 }>(), {
-  isImageInputSupported: true,
   canAttachMediaType: () => true,
 })
 

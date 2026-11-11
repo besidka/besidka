@@ -272,6 +272,21 @@ import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { getCapabilityTools } from '~~/server/capabilities/index'
 import { getAllowedArtifactKinds } from '~~/server/capabilities/artifacts'
+import { buildDocumentsContextLine } from '~~/server/capabilities/documents'
+import {
+  isDocumentToolName,
+  rewriteDocumentToolParts,
+} from '~~/server/utils/documents/message-parts'
+import {
+  collectMessageDocumentIds,
+  linkDocumentsToMessage,
+} from '~~/server/utils/documents/link-message'
+import { decodePublicId } from '~~/server/utils/custom-db-types'
+import {
+  DOCUMENT_FEATURE_KEYS,
+  DOCUMENT_FORMATS,
+  DOCUMENT_TOOL_NAME,
+} from '#shared/utils/documents'
 import { buildArtifactInstructions } from '~~/server/utils/ai/artifact-tools'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { collectArtifactAttachments } from '#shared/utils/artifacts'
@@ -1530,13 +1545,17 @@ export default defineEventHandler(async (event) => {
       'artifacts.react',
       'artifacts.storage',
       'artifacts.llm-bridge',
+      'documents',
+      ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
   )
   const artifactsActive = sendFeatures.isFeatureActive('artifacts')
+  const documentsActive = sendFeatures.isFeatureActive('documents')
   const attachedArtifactIds = collectArtifactAttachments(allMessages)
     .map(attachment => attachment.artifactId)
-  const artifactTools = artifactsActive && toolCallingAllowed
+  const artifactTools = (artifactsActive || documentsActive)
+    && toolCallingAllowed
     ? await getCapabilityTools({
       userId,
       chatId: chat.id,
@@ -1552,6 +1571,11 @@ export default defineEventHandler(async (event) => {
     : {}
   const artifactToolsRegistered = Object.keys(artifactTools)
     .some(isArtifactToolName)
+  const documentToolsRegistered = Object.keys(artifactTools)
+    .some(isDocumentToolName)
+  const documentsContextLine = documentToolsRegistered
+    ? await buildDocumentsContextLine(db, { userId, chatId: chat.id })
+    : ''
   const allowedArtifactKinds = getAllowedArtifactKinds(
     sendFeatures.isFeatureActive,
   )
@@ -1624,6 +1648,7 @@ export default defineEventHandler(async (event) => {
         hasChatSearchTools: chatSearchToolsRegistered,
         memoryInstructions,
         artifactInstructions,
+        documentsContextLine,
         codeExecutionInputNames: codeExecutionSession?.uploadedFileNames,
       }),
       artifactContextBlock,
@@ -1634,6 +1659,7 @@ export default defineEventHandler(async (event) => {
       memoryToolsRegistered,
       toolCallingAllowed,
       artifactToolsRegistered,
+      documentToolsRegistered,
     ].filter(Boolean).length,
     userMessageText,
     newMessageId: newMessage.id,
@@ -1669,7 +1695,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (artifactToolsRegistered) {
+  if (artifactToolsRegistered || documentToolsRegistered) {
     parsedTools = {
       ...parsedTools,
       tools: { ...parsedTools.tools, ...artifactTools },
@@ -1942,6 +1968,7 @@ export default defineEventHandler(async (event) => {
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
+              documentsContextLine,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
             }),
@@ -2216,7 +2243,11 @@ export default defineEventHandler(async (event) => {
             stream: correctedUiMessageStream,
             followUpToolNames,
             deliverableToolNames: artifactToolsRegistered
-              ? new Set(ARTIFACT_TOOL_NAMES)
+              || documentToolsRegistered
+              ? new Set([
+                ...(artifactToolsRegistered ? ARTIFACT_TOOL_NAMES : []),
+                ...(documentToolsRegistered ? [DOCUMENT_TOOL_NAME] : []),
+              ])
               : undefined,
             forcedStepIndex: toolLoop.maxSteps - 1,
             startContinuation: startSearchAnswerContinuation,
@@ -3410,7 +3441,9 @@ async function persistAssistantMessageFromStream(input: {
     }
 
     const responseParts = finalizeCodeExecutionParts(
-      rewriteArtifactToolParts(responseMessage.parts as UIMessage['parts']),
+      rewriteDocumentToolParts(
+        rewriteArtifactToolParts(responseMessage.parts as UIMessage['parts']),
+      ),
     )
     const gatewayImageResult = input.gatewayId
       ? await persistGatewayGeneratedImageParts({
@@ -3604,6 +3637,17 @@ async function persistAssistantMessageFromStream(input: {
             publicId: input.publicId,
           },
         },
+      })
+    }
+
+    const documentIds = collectMessageDocumentIds(finalParts)
+
+    if (assistantMessage && documentIds.length > 0) {
+      await linkDocumentsToMessage(input.db, {
+        userId: input.userId,
+        messageRowId: decodePublicId(assistantMessage.id),
+        documentIds,
+        logger: input.logger,
       })
     }
 
@@ -3827,6 +3871,7 @@ function buildChatInstructions(input: {
   knowledgeSystemBlock?: string | null
   hasKnowledgeTools?: boolean
   artifactInstructions?: string | null
+  documentsContextLine?: string | null
   codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
@@ -3841,6 +3886,7 @@ function buildChatInstructions(input: {
     knowledgeSystemBlock,
     hasKnowledgeTools,
     artifactInstructions,
+    documentsContextLine,
     codeExecutionInputNames,
     now = new Date(),
   } = input
@@ -3860,6 +3906,10 @@ function buildChatInstructions(input: {
 
   if (artifactInstructions) {
     instructions.push(artifactInstructions)
+  }
+
+  if (documentsContextLine) {
+    instructions.push(documentsContextLine)
   }
 
   if (requestedTools.includes('code_execution')) {

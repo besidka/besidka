@@ -8,6 +8,7 @@ import {
   isDataArtifactPart,
 } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
+import { isDataDocumentPart } from '#shared/utils/documents'
 import { isHiddenFilePart } from '#shared/utils/files'
 import {
   MEMORY_FORGET_TOOL_NAME,
@@ -253,6 +254,31 @@ const artifactsSection: ChatContextSection = {
           artifactKind: artifact.kind,
           version: artifact.version,
           latestVersion: artifact.latestVersion,
+        },
+      })
+    }
+  },
+}
+
+const documentsSection: ChatContextSection = {
+  id: 'documents',
+  group: 'outputs',
+  visibility: 'private',
+  collect(message, accumulator) {
+    for (const part of message.parts) {
+      if (!isDataDocumentPart(part) || part.data.documentId === null) {
+        continue
+      }
+
+      accumulator.add('outputs', {
+        id: `document:${part.data.documentId}`,
+        sectionId: 'documents',
+        kind: 'document',
+        title: toTitle(part.data.title) || 'Document',
+        messageId: message.id,
+        meta: {
+          documentId: part.data.documentId,
+          documentFormat: part.data.format,
         },
       })
     }
@@ -577,6 +603,7 @@ export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   generatedImagesSection,
   researchReportsSection,
   artifactsSection,
+  documentsSection,
   attachedArtifactsSection,
   uploadedFilesSection,
   projectKnowledgeSection,

@@ -5,7 +5,8 @@ import {
   getArtifactPartModel,
   getRenderedPartKeys,
   isArtifactMessagePart,
-  orderArtifactPartsLast,
+  isOutputCardPart,
+  orderOutputCardPartsLast,
   readArtifactFailureText,
 } from '../../../app/utils/artifact-parts'
 
@@ -203,7 +204,17 @@ describe('collectArtifactVersions', () => {
   })
 })
 
-describe('orderArtifactPartsLast', () => {
+describe('isOutputCardPart', () => {
+  it('covers artifact and document parts only', () => {
+    expect(isOutputCardPart({ type: 'data-document' })).toBe(true)
+    expect(isOutputCardPart({ type: 'tool-create_document' })).toBe(true)
+    expect(isOutputCardPart({ type: 'tool-create_artifact' })).toBe(true)
+    expect(isOutputCardPart({ type: 'text', text: 'x' })).toBe(false)
+    expect(isOutputCardPart(null)).toBe(false)
+  })
+})
+
+describe('orderOutputCardPartsLast', () => {
   const reasoning = { type: 'reasoning', text: 'thinking' }
   const firstText = { type: 'text', text: 'one' }
   const secondText = { type: 'text', text: 'two' }
@@ -219,7 +230,7 @@ describe('orderArtifactPartsLast', () => {
       secondText,
     ]
 
-    expect(orderArtifactPartsLast(parts)).toEqual([
+    expect(orderOutputCardPartsLast(parts)).toEqual([
       reasoning,
       firstText,
       secondText,
@@ -228,9 +239,30 @@ describe('orderArtifactPartsLast', () => {
     ])
   })
 
+  it('puts documents after the text and keeps card production order', () => {
+    const documentData = { type: 'data-document', data: {} }
+    const documentTool = { type: 'tool-create_document', state: 'input-streaming' }
+
+    expect(orderOutputCardPartsLast([
+      reasoning,
+      documentTool,
+      firstArtifact,
+      firstText,
+      documentData,
+      secondText,
+    ])).toEqual([
+      reasoning,
+      firstText,
+      secondText,
+      documentTool,
+      firstArtifact,
+      documentData,
+    ])
+  })
+
   it('keeps text part positions stable while text streams in', () => {
-    const streaming = orderArtifactPartsLast([reasoning, firstArtifact])
-    const finished = orderArtifactPartsLast([
+    const streaming = orderOutputCardPartsLast([reasoning, firstArtifact])
+    const finished = orderOutputCardPartsLast([
       reasoning,
       firstArtifact,
       firstText,
@@ -243,11 +275,11 @@ describe('orderArtifactPartsLast', () => {
 
   it('returns a new array and leaves the stored parts untouched', () => {
     const parts = [firstArtifact, firstText]
-    const ordered = orderArtifactPartsLast(parts)
+    const ordered = orderOutputCardPartsLast(parts)
 
     expect(ordered).not.toBe(parts)
     expect(parts).toEqual([firstArtifact, firstText])
-    expect(orderArtifactPartsLast([])).toEqual([])
+    expect(orderOutputCardPartsLast([])).toEqual([])
   })
 })
 
@@ -256,23 +288,32 @@ describe('getRenderedPartKeys', () => {
   const text = { type: 'text', text: 'one' }
   const artifact = { type: 'tool-create_artifact' }
 
-  it('keys artifact parts by their stored position, others by rendered position', () => {
+  it('keys card parts by their stored position, others by rendered position', () => {
     expect(getRenderedPartKeys([reasoning, artifact, text]))
-      .toEqual(['part-0', 'part-1', 'artifact-1'])
+      .toEqual(['part-0', 'part-1', 'card-1'])
   })
 
-  it('keeps the artifact key when the first text arrives', () => {
+  it('keeps the card key when the first text arrives', () => {
     const beforeText = getRenderedPartKeys([reasoning, artifact])
     const afterText = getRenderedPartKeys([reasoning, artifact, text])
 
-    expect(beforeText).toEqual(['part-0', 'artifact-1'])
+    expect(beforeText).toEqual(['part-0', 'card-1'])
     expect(afterText.at(-1)).toBe(beforeText.at(-1))
     expect(new Set(afterText).size).toBe(afterText.length)
   })
 
-  it('gives every artifact its own key', () => {
+  it('keys document parts like artifacts so a streaming card keeps its key', () => {
+    const documentTool = { type: 'tool-create_document' }
+    const beforeText = getRenderedPartKeys([reasoning, documentTool])
+    const afterText = getRenderedPartKeys([reasoning, documentTool, text])
+
+    expect(beforeText).toEqual(['part-0', 'card-1'])
+    expect(afterText).toEqual(['part-0', 'part-1', 'card-1'])
+  })
+
+  it('gives every card its own key', () => {
     expect(getRenderedPartKeys([artifact, text, artifact]))
-      .toEqual(['part-0', 'artifact-0', 'artifact-2'])
+      .toEqual(['part-0', 'card-0', 'card-2'])
     expect(getRenderedPartKeys([])).toEqual([])
   })
 })

@@ -33,6 +33,10 @@ import {
   toArtifactAttachmentPart,
 } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
+import {
+  DOCUMENT_DATA_PART_TYPE,
+  isDocumentToolPartType,
+} from '#shared/utils/documents'
 import { isArtifactToolPartType } from '~/utils/artifact-parts'
 import {
   isPersistedEmptyAnswerFailureText,
@@ -269,6 +273,12 @@ function hasMeaningfulPersistedAssistantParts(
     return part.type === 'file'
       || part.type === 'source-url'
       || part.type === ARTIFACT_DATA_PART_TYPE
+      || part.type === DOCUMENT_DATA_PART_TYPE
+      || (
+        isDocumentToolPartType(part.type)
+        && 'state' in part
+        && part.state === 'output-error'
+      )
       || (
         part.type === CODE_EXECUTION_PART_TYPE
         && (
@@ -468,6 +478,8 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
       part.type === 'file'
       || part.type === ARTIFACT_DATA_PART_TYPE
       || isArtifactToolPartType(part.type)
+      || part.type === DOCUMENT_DATA_PART_TYPE
+      || isDocumentToolPartType(part.type)
       || part.type === CODE_EXECUTION_PART_TYPE
       || isVisibleGenerateImageToolPart(part)
     ) {

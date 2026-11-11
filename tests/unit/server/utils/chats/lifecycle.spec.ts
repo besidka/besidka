@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => {
     findChatOriginFiles: vi.fn(),
     findMessageOriginFiles: vi.fn(),
     cleanupFilesOrphanedByChatDeletion: vi.fn(),
+    cleanupDocumentsForDeletedChats: vi.fn(),
+    cleanupDocumentsForDeletedMessage: vi.fn(),
     detachChatsFromMemory: vi.fn(),
     detachArtifactsFromChats: vi.fn(),
     removeChatsFromSearchIndex: vi.fn(),
@@ -22,6 +24,14 @@ vi.mock('~~/server/utils/files/chat-deletion-cleanup', () => {
     findMessageOriginFiles: mocks.findMessageOriginFiles,
     cleanupFilesOrphanedByChatDeletion:
       mocks.cleanupFilesOrphanedByChatDeletion,
+  }
+})
+
+vi.mock('~~/server/utils/documents/cleanup', () => {
+  return {
+    cleanupDocumentsForDeletedChats: mocks.cleanupDocumentsForDeletedChats,
+    cleanupDocumentsForDeletedMessage:
+      mocks.cleanupDocumentsForDeletedMessage,
   }
 })
 
@@ -66,7 +76,7 @@ const USER_ID = 3
 
 interface FakeDbOptions {
   returnedChat?: { id: string, projectId: string | null }
-  message?: { id: string } | undefined
+  message?: { id: string, publicId?: string | null } | undefined
   deletedMessageRows?: number
   targetProject?: { memoryAutoUpdate: 'on' | 'off' | null }
 }
@@ -137,6 +147,16 @@ describe('chat lifecycle', () => {
     mocks.findChatOriginFiles.mockResolvedValue([])
     mocks.findMessageOriginFiles.mockResolvedValue([])
     mocks.cleanupFilesOrphanedByChatDeletion.mockResolvedValue({})
+    mocks.cleanupDocumentsForDeletedChats.mockImplementation(async () => {
+      mocks.calls.push('document-cleanup')
+
+      return {}
+    })
+    mocks.cleanupDocumentsForDeletedMessage.mockImplementation(async () => {
+      mocks.calls.push('document-cleanup')
+
+      return {}
+    })
     mocks.detachChatsFromMemory.mockImplementation(async () => {
       mocks.calls.push('detach')
     })
@@ -427,7 +447,12 @@ describe('chat lifecycle', () => {
           'delete-row',
           'refresh',
           'stale',
+          'document-cleanup',
         ])
+        expect(mocks.cleanupDocumentsForDeletedChats).toHaveBeenCalledWith(
+          db,
+          { userId: USER_ID, chatIds: ['c1'], logger: mocks.logger },
+        )
         expect(mocks.detachArtifactsFromChats).toHaveBeenCalledWith({
           db,
           userId: USER_ID,
@@ -506,7 +531,9 @@ describe('chat lifecycle', () => {
 
     it('deletes the message, its search rows and its orphaned files',
       async () => {
-        const { db } = createDb({ message: { id: 'row-9' } })
+        const { db } = createDb({
+          message: { id: 'row-9', publicId: 'msg-public' },
+        })
         const originFiles = [{ id: 'f1', storageKey: 'k1' }]
 
         mocks.findMessageOriginFiles.mockResolvedValue(originFiles)
@@ -521,6 +548,15 @@ describe('chat lifecycle', () => {
         })
         expect(mocks.cleanupFilesOrphanedByChatDeletion)
           .toHaveBeenCalledWith(originFiles, USER_ID, mocks.logger)
+        expect(mocks.cleanupDocumentsForDeletedMessage).toHaveBeenCalledWith(
+          db,
+          {
+            userId: USER_ID,
+            messageRowId: 9,
+            messagePublicId: 'msg-public',
+            logger: mocks.logger,
+          },
+        )
       })
 
     it('skips the file lookup for an id that does not decode', async () => {

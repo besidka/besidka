@@ -1,4 +1,5 @@
 import type { ArtifactKind } from '#shared/utils/artifacts'
+import { isDocumentPartType } from '#shared/utils/documents'
 import { parseError } from 'evlog'
 import {
   ARTIFACT_DATA_PART_TYPE,
@@ -131,20 +132,28 @@ export function isArtifactMessagePart(part: unknown): boolean {
     || isArtifactToolPartType(record.type)
 }
 
-export function orderArtifactPartsLast<T>(parts: readonly T[]): T[] {
-  const otherParts = parts.filter(part => !isArtifactMessagePart(part))
-  const artifactParts = parts.filter(isArtifactMessagePart)
+export function isOutputCardPart(part: unknown): boolean {
+  if (isArtifactMessagePart(part)) {
+    return true
+  }
 
-  return [...otherParts, ...artifactParts]
+  return isDocumentPartType(readRecord(part)?.type)
+}
+
+export function orderOutputCardPartsLast<T>(parts: readonly T[]): T[] {
+  const otherParts = parts.filter(part => !isOutputCardPart(part))
+  const cardParts = parts.filter(isOutputCardPart)
+
+  return [...otherParts, ...cardParts]
 }
 
 export function getRenderedPartKeys(parts: readonly unknown[]): string[] {
   const otherKeys: string[] = []
-  const artifactKeys: string[] = []
+  const cardKeys: string[] = []
 
   parts.forEach((part, sourceIndex) => {
-    if (isArtifactMessagePart(part)) {
-      artifactKeys.push(`artifact-${sourceIndex}`)
+    if (isOutputCardPart(part)) {
+      cardKeys.push(`card-${sourceIndex}`)
 
       return
     }
@@ -152,7 +161,7 @@ export function getRenderedPartKeys(parts: readonly unknown[]): string[] {
     otherKeys.push(`part-${otherKeys.length}`)
   })
 
-  return [...otherKeys, ...artifactKeys]
+  return [...otherKeys, ...cardKeys]
 }
 
 function getToolPartModel(

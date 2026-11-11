@@ -1327,6 +1327,78 @@ describe('artifacts section', () => {
   })
 })
 
+describe('documents section', () => {
+  function documentPart(documentId: string | null, title = 'Quarterly report') {
+    return {
+      type: 'data-document',
+      data: {
+        documentId,
+        format: 'docx',
+        title,
+        specVersion: 1,
+        status: 'spec_ready',
+      },
+    }
+  }
+
+  it('lists each document of an owner chat with its id and format', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [documentPart('doc-1', '  Q3\n report  ')]),
+      message('m2', 'assistant', [documentPart('doc-2')]),
+    ])
+
+    expect(context.outputs).toEqual([
+      {
+        id: 'document:doc-1',
+        sectionId: 'documents',
+        kind: 'document',
+        title: 'Q3 report',
+        messageId: 'm1',
+        meta: { documentId: 'doc-1', documentFormat: 'docx' },
+      },
+      {
+        id: 'document:doc-2',
+        sectionId: 'documents',
+        kind: 'document',
+        title: 'Quarterly report',
+        messageId: 'm2',
+        meta: { documentId: 'doc-2', documentFormat: 'docx' },
+      },
+    ])
+    expect(context.counts.outputs).toBe(2)
+    expect(context.kindCounts).toEqual({ document: 2 })
+  })
+
+  it('falls back to a default title for an empty one', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [documentPart('doc-1', '   ')]),
+    ])
+
+    expect(context.outputs[0]?.title).toBe('Document')
+  })
+
+  it('never lists documents for a public share', () => {
+    const context = publicContext([
+      message('m1', 'assistant', [documentPart('doc-1')]),
+    ])
+
+    expect(context.outputs).toEqual([])
+    expect(context.counts.outputs).toBe(0)
+  })
+
+  it('skips a share-shaped part without a document id and malformed parts', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        documentPart(null),
+        { type: 'data-document', data: { documentId: 'doc-1' } },
+        { type: 'tool-create_document', state: 'output-available' },
+      ]),
+    ])
+
+    expect(context.outputs).toEqual([])
+  })
+})
+
 describe('attached artifacts section', () => {
   const artifacts = new Map([
     ['art-1', {

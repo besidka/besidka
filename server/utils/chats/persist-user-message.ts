@@ -1,5 +1,9 @@
 import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
+import {
+  DOCUMENT_DATA_PART_TYPE,
+  isDocumentToolPartType,
+} from '#shared/utils/documents'
 import type { UIMessage } from 'ai'
 import type { RequestEvent } from 'nuxt/server'
 import type { Tools } from '#shared/types/chats.d'
@@ -55,6 +59,12 @@ export function hasMeaningfulAssistantParts(
     return part.type === 'file'
       || part.type === 'source-url'
       || part.type === ARTIFACT_DATA_PART_TYPE
+      || part.type === DOCUMENT_DATA_PART_TYPE
+      || (
+        isDocumentToolPartType(part.type)
+        && 'state' in part
+        && part.state === 'output-error'
+      )
       || (
         part.type === CODE_EXECUTION_PART_TYPE
         && (

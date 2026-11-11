@@ -125,6 +125,14 @@
                 : []"
               :fallback-key="`${m.id}-${index}`"
             />
+            <ChatDocument
+              v-else-if="isDocumentPart(part)"
+              :part="part"
+              :is-streaming="isLastAssistantMessage(messageIndex)
+                && ['submitted', 'streaming'].includes(chatSdk.status)
+              "
+              :model-id="getMessageModelId(m)"
+            />
             <div
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
@@ -305,7 +313,7 @@ import {
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,
-  orderArtifactPartsLast,
+  orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 
 definePageMeta({
@@ -799,7 +807,7 @@ const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
 function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
-  return orderArtifactPartsLast(getDisplayMessageParts(message))
+  return orderOutputCardPartsLast(getDisplayMessageParts(message))
 }
 
 function getRenderedPartKey(

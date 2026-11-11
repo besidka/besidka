@@ -1,4 +1,5 @@
 import type { ArtifactKind } from '#shared/utils/artifacts'
+import type { DocumentFormat } from '#shared/utils/documents'
 
 export type ChatContextGroup = 'outputs' | 'inputs' | 'used'
 
@@ -13,6 +14,7 @@ export type ChatContextItemKind
     | 'web-search'
     | 'artifact'
     | 'code-execution'
+    | 'document'
 
 export interface ChatContextItemMeta {
   url?: string
@@ -26,6 +28,8 @@ export interface ChatContextItemMeta {
   artifactKind?: ArtifactKind
   version?: number
   latestVersion?: number
+  documentId?: string
+  documentFormat?: DocumentFormat
 }
 
 export interface ChatContextItem {

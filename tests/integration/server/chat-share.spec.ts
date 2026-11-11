@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   messagesFindMany: vi.fn(),
   chatShareFilesFindMany: vi.fn(),
   getOwnedFilesByStorageKeys: vi.fn(),
+  listChatDocumentFileIds: vi.fn(),
   insertValues: vi.fn(),
   insertOnConflictDoNothing: vi.fn(),
   dbBatch: vi.fn(),
@@ -43,6 +44,10 @@ vi.mock('~~/server/utils/files/file-governance', async () => {
     getOwnedFilesByStorageKeys: mocks.getOwnedFilesByStorageKeys,
   }
 })
+
+vi.mock('~~/server/utils/documents/chat-files', () => ({
+  listChatDocumentFileIds: mocks.listChatDocumentFileIds,
+}))
 
 function createDb(overrides: Record<string, unknown> = {}) {
   return {
@@ -218,6 +223,7 @@ describe('getActiveShareForChat', () => {
 describe('enumerateChatFileIds', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.listChatDocumentFileIds.mockResolvedValue([])
     vi.stubGlobal('useEvent', () => ({}))
   })
 
@@ -268,11 +274,55 @@ describe('enumerateChatFileIds', () => {
     expect(mocks.getOwnedFilesByStorageKeys).toHaveBeenCalledWith(42, [])
     expect(references).toEqual([])
   })
+
+  it('adds the files of ready documents of the chat', async () => {
+    mocks.messagesFindMany.mockResolvedValue([
+      { parts: [{ type: 'text', text: 'hello' }] },
+    ])
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map())
+    mocks.listChatDocumentFileIds.mockResolvedValue([
+      { fileId: 'file-doc', storageKey: 'report.pdf' },
+    ])
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+
+    const references = await enumerateChatFileIds('chat-1', 42)
+
+    expect(mocks.listChatDocumentFileIds).toHaveBeenCalledWith('chat-1', 42)
+    expect(references).toEqual([
+      { fileId: 'file-doc', storageKey: 'report.pdf' },
+    ])
+  })
+
+  it('lists a document file once when a message part references it too', async () => {
+    mocks.messagesFindMany.mockResolvedValue([
+      { parts: [{ type: 'file', url: '/files/report.pdf' }] },
+    ])
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([
+      ['report.pdf', { id: 'file-doc', storageKey: 'report.pdf', size: 10 }],
+    ]))
+    mocks.listChatDocumentFileIds.mockResolvedValue([
+      { fileId: 'file-doc', storageKey: 'report.pdf' },
+      { fileId: 'file-doc-2', storageKey: 'deck.pptx' },
+    ])
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+
+    const references = await enumerateChatFileIds('chat-1', 42)
+
+    expect(references).toEqual([
+      { fileId: 'file-doc', storageKey: 'report.pdf' },
+      { fileId: 'file-doc-2', storageKey: 'deck.pptx' },
+    ])
+  })
 })
 
 describe('syncChatShareFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.listChatDocumentFileIds.mockResolvedValue([])
     vi.stubGlobal('useEvent', () => ({}))
   })
 
@@ -308,6 +358,29 @@ describe('syncChatShareFiles', () => {
     expect(mocks.dbBatch).toHaveBeenCalledTimes(1)
     expect(mocks.dbBatch.mock.calls[0]?.[0]).toHaveLength(2)
     expect(mocks.dbDelete).not.toHaveBeenCalled()
+  })
+
+  it('grants the file of a ready document that no message part references', async () => {
+    mocks.messagesFindMany.mockResolvedValue([
+      { parts: [{ type: 'text', text: 'hello' }] },
+    ])
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map())
+    mocks.listChatDocumentFileIds.mockResolvedValue([
+      { fileId: 'file-doc', storageKey: 'report.pdf' },
+    ])
+    mocks.chatShareFilesFindMany.mockResolvedValue([])
+    mocks.dbBatch.mockResolvedValue(undefined)
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+
+    await syncChatShareFiles('share-1', 'chat-1', 42, true)
+
+    expect(mocks.insertValues).toHaveBeenCalledWith({
+      chatShareId: 'share-1',
+      fileId: 'file-doc',
+    })
+    expect(mocks.dbBatch).toHaveBeenCalledTimes(1)
   })
 
   it('skips the batch call entirely when the chat has no files', async () => {

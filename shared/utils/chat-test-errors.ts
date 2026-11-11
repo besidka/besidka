@@ -10,6 +10,7 @@ export const chatTestScenarios = [
   'mermaid',
   'markdown',
   'code',
+  'document',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]

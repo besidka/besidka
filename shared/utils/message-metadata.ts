@@ -1,4 +1,8 @@
 import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import {
+  DOCUMENT_DATA_PART_TYPE,
+  DOCUMENT_TOOL_PART_TYPE,
+} from '#shared/utils/documents'
 import { isCodeExecutionToolPart } from '#shared/utils/code-execution'
 import type {
   ChatMessageMetadata,
@@ -199,6 +203,29 @@ export function hasArtifactPart(message: { parts?: unknown }): boolean {
       || part.type === 'tool-update_artifact')
     && 'state' in part
     && part.state === 'output-available'
+  })
+}
+
+/**
+ * Whether a message carries a document: a persisted `data-document`
+ * reference or a finished `create_document` tool part while streaming.
+ * Documents are not a `ModelTool`, so they stay out of `getMessageUsedTools`.
+ */
+export function hasDocumentPart(message: { parts?: unknown }): boolean {
+  const parts = Array.isArray(message.parts) ? message.parts : []
+
+  return parts.some((part) => {
+    if (typeof part !== 'object' || part === null || !('type' in part)) {
+      return false
+    }
+
+    if (part.type === DOCUMENT_DATA_PART_TYPE) {
+      return true
+    }
+
+    return part.type === DOCUMENT_TOOL_PART_TYPE
+      && 'state' in part
+      && part.state === 'output-available'
   })
 }
 

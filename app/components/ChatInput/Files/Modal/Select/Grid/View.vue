@@ -10,9 +10,12 @@
       tabindex="0"
       :data-file-index="index"
       :aria-pressed="selectedIds.has(file.id)"
+      :aria-disabled="unsupportedReasons[file.id] ? true : undefined"
+      :title="unsupportedReasons[file.id]"
       class="group relative aspect-square rounded-box overflow-hidden bg-base-200 hover:ring-2 hover:ring-text/50 transition-all focus:outline-none focus:ring-2 focus:ring-text"
       :class="{
         'ring-2 ring-text': selectedIds.has(file.id),
+        'opacity-40 cursor-not-allowed': unsupportedReasons[file.id],
         'ring-2 ring-secondary-content/50':
           isTouchSelecting && touchedIndices.has(index)
       }"
@@ -134,12 +137,15 @@
 import type { FileManagerFile } from '~/types/file-manager'
 import { formatMessageCost } from '#shared/utils/message-format'
 
-defineProps<{
+withDefaults(defineProps<{
   files: FileManagerFile[]
   selectedIds: Set<string>
   isTouchSelecting: boolean
   touchedIndices: Set<number>
-}>()
+  unsupportedReasons?: Record<string, string>
+}>(), {
+  unsupportedReasons: () => ({}),
+})
 
 const emit = defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]

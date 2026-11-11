@@ -1049,6 +1049,58 @@ describe('Chat/Reasoning', () => {
     expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
   })
 
+  describe('create_document attempts the model got wrong', () => {
+    const invalidAttempt = {
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'output-error',
+      input: { format: 'docx' },
+      errorText: 'The document input did not match the schema.',
+    }
+
+    function mountSteps(parts: unknown[]) {
+      return mountSuspended(Reasoning, {
+        props: {
+          message: createMessage(parts as UIMessage['parts']),
+          status: 'ready',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+      })
+    }
+
+    it('shows an invalid attempt as a failed step', async () => {
+      const wrapper = await mountSteps([invalidAttempt])
+
+      expect(wrapper.get('[data-testid="reasoning-step-title"]').text())
+        .toBe('Document call failed')
+      expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
+    })
+
+    it('hides the attempt when a later call created a document', async () => {
+      const wrapper = await mountSteps([
+        invalidAttempt,
+        {
+          type: 'data-document',
+          data: {
+            documentId: 'doc_1',
+            format: 'docx',
+            title: 'Plan',
+            specVersion: 1,
+            status: 'spec_ready',
+          },
+        },
+      ])
+
+      expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(0)
+      expect(wrapper.findAll('[data-testid="reasoning-step-title"]'))
+        .toHaveLength(0)
+    })
+  })
+
   it('renders a failed title for output-denied, never spinning indefinitely', async () => {
     const wrapper = await mountSuspended(Reasoning, {
       props: {

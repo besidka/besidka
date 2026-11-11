@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   ExtraFileSourceTab,
+  FileManagerFile,
   ProjectFileGroup,
 } from '../../../../../../app/types/file-manager'
 import Select from '../../../../../../app/components/ChatInput/Files/Modal/Select.client.vue'
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   useActiveElement: vi.fn(),
   useFileManager: vi.fn(),
   useLazyFetch: vi.fn(),
+  useWarningMessage: vi.fn(),
 }))
 
 mockNuxtImport(
@@ -23,9 +25,11 @@ mockNuxtImport(
 mockNuxtImport('useActiveElement', () => mocks.useActiveElement)
 mockNuxtImport('useFileManager', () => mocks.useFileManager)
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
+mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
 
 const source = shallowRef<'upload' | 'assistant' | 'project'>('upload')
 const search = shallowRef<string>('')
+const kind = shallowRef<'all' | 'image' | 'document'>('all')
 const projectGroups = ref<ProjectFileGroup[]>([])
 const isProjectGroupsLoading = shallowRef<boolean>(false)
 const handleProjectGroupSelect = vi.fn()
@@ -34,6 +38,9 @@ const loadMoreProjectGroup = vi.fn()
 const toggleProjectGroupSelectAll = vi.fn()
 const resetFileManager = vi.fn()
 const hasSelection = shallowRef<boolean>(false)
+const handleSelect = vi.fn()
+const getSelectedForAttach = vi.fn()
+const managerFiles = ref<FileManagerFile[]>([])
 
 const FakeDriveSource = defineComponent({
   name: 'FakeDriveSource',
@@ -61,6 +68,21 @@ function createExtraTab(
   }
 }
 
+function createManagerFile(
+  overrides: Partial<FileManagerFile> = {},
+): FileManagerFile {
+  return {
+    id: 'file-1',
+    storageKey: 'file-1.png',
+    name: 'File.png',
+    size: 1,
+    type: 'image/png',
+    source: 'assistant',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  } as FileManagerFile
+}
+
 function createProjectGroup(
   overrides: Partial<ProjectFileGroup> = {},
 ): ProjectFileGroup {
@@ -85,6 +107,7 @@ describe('ChatInput/Files/Modal/Select', () => {
   beforeEach(() => {
     source.value = 'upload'
     search.value = ''
+    kind.value = 'all'
     projectGroups.value = []
     isProjectGroupsLoading.value = false
     handleProjectGroupSelect.mockReset()
@@ -93,6 +116,11 @@ describe('ChatInput/Files/Modal/Select', () => {
     toggleProjectGroupSelectAll.mockReset()
     resetFileManager.mockReset()
     hasSelection.value = false
+    handleSelect.mockReset()
+    getSelectedForAttach.mockReset()
+    getSelectedForAttach.mockReturnValue([])
+    managerFiles.value = []
+    mocks.useWarningMessage.mockReset()
     mocks.getFileManagerExtraSourceTabs.mockReset()
     mocks.getFileManagerExtraSourceTabs.mockReturnValue([])
     mocks.fetchFiles.mockReset()
@@ -102,19 +130,20 @@ describe('ChatInput/Files/Modal/Select', () => {
       data: shallowRef(null),
     })
     mocks.useFileManager.mockReturnValue({
-      files: ref([]),
+      files: managerFiles,
       selectedIds: ref(new Set<string>()),
       isLoading: shallowRef(false),
       isSearching: shallowRef(false),
       isDeletingSelected: shallowRef(false),
       search,
       source,
+      kind,
       viewMode: shallowRef<'grid' | 'list'>('grid'),
       pagination: reactive({ offset: 0, limit: 20, total: 0 }),
       projectGroups,
       isProjectGroupsLoading,
       projectLoadedFiles: computed(() => []),
-      loadedFiles: computed(() => []),
+      loadedFiles: computed(() => managerFiles.value),
       hasMore: computed(() => false),
       selectedCount: computed(() => 0),
       hasSelection: computed(() => hasSelection.value),
@@ -125,7 +154,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       loadMoreProjectGroup,
       selectRange: vi.fn(),
       selectProjectGroupRange: vi.fn(),
-      handleSelect: vi.fn(),
+      handleSelect,
       handleProjectGroupSelect,
       toggleProjectGroupSelectAll,
       toggleSelectAll: vi.fn(),
@@ -133,7 +162,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       renameFile: vi.fn(),
       deleteFile: vi.fn(),
       deleteSelected: vi.fn(),
-      getSelectedForAttach: vi.fn(() => []),
+      getSelectedForAttach,
       reset: resetFileManager,
     })
   })
@@ -208,21 +237,17 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect((generatedTab.element as HTMLInputElement).checked).toBe(true)
   })
 
-  it('hides the generated-by-AI tab when image input is unsupported', async () => {
+  it('keeps the generated-by-AI tab visible without image input gating', async () => {
     const wrapper = await mountSuspended(Select, {
       props: {
         attachedIds: new Set<string>(),
-        isImageInputSupported: false,
       },
       shallow: true,
     })
 
     expect(
       wrapper.find('[data-testid="files-source-assistant"]').exists(),
-    ).toBe(false)
-    expect(
-      wrapper.find('[data-testid="files-source-all"]').exists(),
-    ).toBe(false)
+    ).toBe(true)
     expect(
       wrapper.find('[data-testid="files-source-upload"]').exists(),
     ).toBe(true)
@@ -231,34 +256,88 @@ describe('ChatInput/Files/Modal/Select', () => {
     ).toBe(true)
   })
 
-  it('falls back to upload when handed an assistant initialSource without image support', async () => {
-    await mountSuspended(Select, {
-      props: {
-        attachedIds: new Set<string>(),
-        initialSource: 'assistant',
-        isImageInputSupported: false,
-      },
-      shallow: true,
-    })
-
-    expect(source.value).toBe('upload')
-  })
-
-  it('falls back to upload when image support drops while on the assistant tab', async () => {
+  it('keeps an assistant initialSource without falling back to upload', async () => {
     const wrapper = await mountSuspended(Select, {
       props: {
         attachedIds: new Set<string>(),
         initialSource: 'assistant',
-        isImageInputSupported: true,
       },
       shallow: true,
     })
 
     expect(source.value).toBe('assistant')
+    expect(
+      (wrapper.get('[data-testid="files-source-assistant"]')
+        .element as HTMLInputElement).checked,
+    ).toBe(true)
+  })
 
-    await wrapper.setProps({ isImageInputSupported: false })
+  it('shows the kind filter only on the generated tab', async () => {
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+    const kindFilterName = 'ChatInputFilesModalSelectKindFilter'
 
-    expect(source.value).toBe('upload')
+    expect(wrapper.findComponent({ name: kindFilterName }).exists())
+      .toBe(false)
+
+    source.value = 'assistant'
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: kindFilterName }).exists())
+      .toBe(true)
+
+    source.value = 'project'
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: kindFilterName }).exists())
+      .toBe(false)
+  })
+
+  it('writes the chosen kind to the file manager', async () => {
+    source.value = 'assistant'
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+    const kindFilter = wrapper.findComponent({
+      name: 'ChatInputFilesModalSelectKindFilter',
+    })
+
+    kindFilter.vm.$emit('update:modelValue', 'document')
+    await flushPromises()
+
+    expect(kind.value).toBe('document')
+  })
+
+  it('names the empty state after the chosen kind', async () => {
+    source.value = 'assistant'
+    kind.value = 'document'
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+
+    expect(wrapper.text()).toContain('No AI-generated documents yet')
+
+    kind.value = 'image'
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No AI-generated images yet')
+
+    kind.value = 'all'
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No AI-generated files yet')
   })
 
   it('switches the source filter to project files', async () => {
@@ -277,37 +356,6 @@ describe('ChatInput/Files/Modal/Select', () => {
 
     expect(source.value).toBe('project')
     expect(projectsInput.checked).toBe(true)
-  })
-
-  it('keeps the Projects tab when image input is unsupported', async () => {
-    const wrapper = await mountSuspended(Select, {
-      props: {
-        attachedIds: new Set<string>(),
-        isImageInputSupported: false,
-      },
-      shallow: true,
-    })
-
-    expect(
-      wrapper.find('[data-testid="files-source-project"]').exists(),
-    ).toBe(true)
-  })
-
-  it('keeps the Projects source when image support drops', async () => {
-    const wrapper = await mountSuspended(Select, {
-      props: {
-        attachedIds: new Set<string>(),
-        initialSource: 'project',
-        isImageInputSupported: true,
-      },
-      shallow: true,
-    })
-
-    expect(source.value).toBe('project')
-
-    await wrapper.setProps({ isImageInputSupported: false })
-
-    expect(source.value).toBe('project')
   })
 
   it('shows the project empty state on the Projects tab', async () => {
@@ -396,6 +444,131 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect(toggleProjectGroup).toHaveBeenCalledWith('project-a')
     expect(loadMoreProjectGroup).toHaveBeenCalledWith('project-a')
     expect(toggleProjectGroupSelectAll).toHaveBeenCalledWith('project-a')
+  })
+
+  describe('model capability', () => {
+    const imageFile = createManagerFile()
+    const textFile = createManagerFile({
+      id: 'file-2',
+      storageKey: 'file-2.txt',
+      name: 'Notes.txt',
+      type: 'text/plain',
+    })
+    const pdfDocument = createManagerFile({
+      id: 'file-3',
+      storageKey: 'file-3.pdf',
+      name: 'Report.pdf',
+      type: 'application/pdf',
+    })
+    const canAttachWithoutImages = (mediaType: string) => {
+      return !mediaType.startsWith('image/')
+    }
+    const canAttachWithoutPdf = (mediaType: string) => {
+      return mediaType !== 'application/pdf'
+    }
+
+    async function mountWithFiles(
+      canAttachMediaType: (mediaType: string) => boolean,
+    ) {
+      source.value = 'assistant'
+      managerFiles.value = [imageFile, textFile, pdfDocument]
+
+      return await mountSuspended(Select, {
+        props: {
+          attachedIds: new Set<string>(),
+          canAttachMediaType,
+        },
+        shallow: true,
+        global: { stubs: { KeepAlive: false } },
+      })
+    }
+
+    function findFlatView(wrapper: Awaited<ReturnType<typeof mountWithFiles>>) {
+      return wrapper.findComponent({ name: 'AsyncComponentWrapper' })
+    }
+
+    function readReasons(
+      wrapper: Awaited<ReturnType<typeof mountWithFiles>>,
+    ): Record<string, string> {
+      const attributes = findFlatView(wrapper).vm.$attrs
+
+      return (attributes['unsupported-reasons']
+        ?? attributes.unsupportedReasons) as Record<string, string>
+    }
+
+    it('marks generated images as unsupported for a text-only model', async () => {
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+
+      const reasons = readReasons(wrapper)
+
+      expect(Object.keys(reasons)).toEqual(['file-1'])
+      expect(reasons['file-1']).toBe(
+        'This model does not support image input. '
+        + 'Attach a PDF or text file instead, or switch models.',
+      )
+    })
+
+    it('marks generated PDF documents as unsupported without PDF input', async () => {
+      const wrapper = await mountWithFiles(canAttachWithoutPdf)
+      const reasons = readReasons(wrapper)
+
+      expect(Object.keys(reasons)).toEqual(['file-3'])
+      expect(reasons['file-3']).toContain(
+        'This model does not support PDF input.',
+      )
+    })
+
+    it('does not mark anything when the model accepts every file', async () => {
+      const wrapper = await mountWithFiles(() => true)
+
+      expect(readReasons(wrapper)).toEqual({})
+    })
+
+    it('warns instead of selecting an unsupported file', async () => {
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+      const view = findFlatView(wrapper)
+
+      view.vm.$emit('file-click', new MouseEvent('click'), imageFile, 0)
+
+      expect(handleSelect).not.toHaveBeenCalled()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('This model does not support image input.'),
+      )
+
+      view.vm.$emit('file-click', new MouseEvent('click'), textFile, 1)
+
+      expect(handleSelect).toHaveBeenCalledWith('file-2', 1, false)
+    })
+
+    it('attaches only the supported files from a bulk selection', async () => {
+      hasSelection.value = true
+      getSelectedForAttach.mockReturnValue([imageFile, textFile])
+
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+      const toolbar = wrapper.findComponent({
+        name: 'ChatInputFilesModalSelectActionsToolbar',
+      })
+
+      toolbar.vm.$emit('attach')
+
+      expect(wrapper.emitted('attach')).toEqual([[[textFile]]])
+      expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not emit an attach when every selected file is unsupported', async () => {
+      hasSelection.value = true
+      getSelectedForAttach.mockReturnValue([imageFile])
+
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+      const toolbar = wrapper.findComponent({
+        name: 'ChatInputFilesModalSelectActionsToolbar',
+      })
+
+      toolbar.vm.$emit('attach')
+
+      expect(wrapper.emitted('attach')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('renders a registered extra source after the built-in tabs', async () => {

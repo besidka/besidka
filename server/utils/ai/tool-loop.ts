@@ -6,6 +6,7 @@ import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
 import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
 import { isProjectKnowledgeToolName } from '~~/server/utils/ai/knowledge-tools'
 import { isArtifactToolName } from '~~/server/utils/artifacts/message-parts'
+import { isDocumentToolName } from '~~/server/utils/documents/message-parts'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -99,6 +100,7 @@ function isUntrustedToolResultPart(part: unknown): boolean {
     && typeof toolName === 'string'
     && !isMemoryToolName(toolName)
     && !isArtifactToolName(toolName)
+    && !isDocumentToolName(toolName)
 }
 
 function stepHasUntrustedToolResult(step: unknown): boolean {

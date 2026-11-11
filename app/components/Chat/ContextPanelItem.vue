@@ -34,6 +34,10 @@ import type {
   ChatContextItemMeta,
 } from '#shared/types/chat-context.d'
 import { isArtifactKind } from '#shared/utils/artifacts'
+import {
+  DOCUMENT_FORMAT_LABELS,
+  isDocumentFormat,
+} from '#shared/utils/documents'
 
 const props = defineProps<{
   item: ChatContextItem
@@ -50,6 +54,7 @@ const ICONS: Record<ChatContextItemKind, string> = {
   'web-search': 'lucide:search',
   'artifact': 'lucide:app-window',
   'code-execution': 'lucide:square-terminal',
+  'document': 'lucide:file-text',
 }
 
 const DETAILS: Record<ChatContextItemKind, string> = {
@@ -63,6 +68,7 @@ const DETAILS: Record<ChatContextItemKind, string> = {
   'web-search': 'Web search',
   'artifact': 'Artifact',
   'code-execution': 'Code execution',
+  'document': 'Document',
 }
 
 const thumbnailUrl = computed<string | null>(() => {
@@ -83,6 +89,12 @@ function getArtifactDetail(meta: ChatContextItemMeta | undefined): string {
   }
 
   return parts.join(' · ')
+}
+
+function getDocumentDetail(meta: ChatContextItemMeta | undefined): string {
+  return isDocumentFormat(meta?.documentFormat)
+    ? `${DETAILS.document} · ${DOCUMENT_FORMAT_LABELS[meta.documentFormat]}`
+    : DETAILS.document
 }
 
 const iconName = computed<string>(() => {
@@ -106,6 +118,10 @@ const detail = computed<string>(() => {
 
   if (kind === 'artifact') {
     return getArtifactDetail(meta)
+  }
+
+  if (kind === 'document') {
+    return getDocumentDetail(meta)
   }
 
   if ((kind === 'memory' || kind === 'chat-search') && meta?.action) {

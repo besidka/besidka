@@ -206,6 +206,11 @@
               source="shared"
               :share-slug="shareSlug"
             />
+            <ChatDocument
+              v-else-if="isDocumentPart(part)"
+              :part="part"
+              :is-streaming="false"
+            />
             <div
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
@@ -283,7 +288,7 @@ import {
   collectArtifactVersions,
   getRenderedPartKeys,
   isArtifactMessagePart,
-  orderArtifactPartsLast,
+  orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 
 interface SharedChatMessage {
@@ -424,7 +429,7 @@ const isSharedChatMessageSelected = useState<boolean>(
 function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
-  return orderArtifactPartsLast(getDisplayMessageParts(message))
+  return orderOutputCardPartsLast(getDisplayMessageParts(message))
 }
 
 function getRenderedPartKey(

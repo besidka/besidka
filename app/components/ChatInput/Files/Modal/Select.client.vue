@@ -29,6 +29,10 @@
         @change="selectSourceTab(tab)"
       >
     </div>
+    <ChatInputFilesModalSelectKindFilter
+      v-if="isKindFilterVisible"
+      v-model="kind"
+    />
 
     <!-- Scrollable Files Area -->
     <div class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
@@ -74,6 +78,7 @@
         :is-touch-selecting="isTouchSelecting"
         :touched-indices="touchedIndices"
         :touch-group-id="touchGroupId"
+        :unsupported-reasons="unsupportedReasons"
         @toggle="toggleProjectGroup"
         @load-more="loadMoreProjectGroup"
         @file-click="onFileClick"
@@ -91,6 +96,7 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting"
             :touched-indices="touchedIndices"
+            :unsupported-reasons="unsupportedReasons"
             @file-click="onFileClick"
             @rename="openRenameModal"
             @delete="confirmDelete"
@@ -104,6 +110,7 @@
             :touched-indices="touchedIndices"
             :all-selected="allSelected"
             :has-selection="hasSelection"
+            :unsupported-reasons="unsupportedReasons"
             @file-click="onFileClick"
             @rename="openRenameModal"
             @delete="confirmDelete"
@@ -165,9 +172,10 @@ import type {
 const props = withDefaults(defineProps<{
   attachedIds: Set<string>
   initialSource?: FileSourceFilter
-  isImageInputSupported?: boolean
+  canAttachMediaType?: (mediaType: string) => boolean
 }>(), {
-  isImageInputSupported: true,
+  initialSource: undefined,
+  canAttachMediaType: () => true,
 })
 
 const emit = defineEmits<{
@@ -195,6 +203,7 @@ const {
   isDeletingSelected,
   search,
   source,
+  kind,
   viewMode,
   pagination,
   projectGroups,
@@ -223,12 +232,33 @@ const {
   reset: resetFileManager,
 } = useFileManager()
 
+const unsupportedReasons = computed<Record<string, string>>(() => {
+  const reasons: Record<string, string> = {}
+  const reasonsByMediaType = new Map<string, string>()
+
+  for (const file of loadedFiles.value) {
+    if (!isMediaTypeRejectedByModel(file.type, props.canAttachMediaType)) {
+      continue
+    }
+
+    if (!reasonsByMediaType.has(file.type)) {
+      reasonsByMediaType.set(
+        file.type,
+        getUnsupportedInputMessage([file.type], props.canAttachMediaType),
+      )
+    }
+
+    reasons[file.id] = reasonsByMediaType.get(file.type)!
+  }
+
+  return reasons
+})
+
 const extraSourceTabs = getFileManagerExtraSourceTabs()
 const activeExtraTabId = shallowRef<string | null>(null)
 
 const sourceTabs = computed<FileSourceTab[]>(() => {
   return resolveFileManagerSourceTabs({
-    isImageInputSupported: props.isImageInputSupported,
     extraTabs: extraSourceTabs,
   })
 })
@@ -285,17 +315,11 @@ watch(() => props.initialSource, (newSource) => {
   }
 
   activeExtraTabId.value = null
-  source.value = newSource === 'assistant' && !props.isImageInputSupported
-    ? 'upload'
-    : newSource
+  source.value = newSource
 }, { immediate: true })
 
-watch(() => props.isImageInputSupported, (supported) => {
-  if (supported || source.value !== 'assistant') {
-    return
-  }
-
-  source.value = 'upload'
+const isKindFilterVisible = computed<boolean>(() => {
+  return !activeExtraTab.value && source.value === 'assistant'
 })
 
 const isProjectSource = computed<boolean>(() => source.value === 'project')
@@ -319,6 +343,10 @@ const isEmpty = computed<boolean>(() => {
 })
 
 const emptyStateIcon = computed<string>(() => {
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'lucide:file-text'
+  }
+
   if (source.value === 'assistant') {
     return 'lucide:image-plus'
   }
@@ -339,6 +367,14 @@ const emptyStateTitle = computed<string>(() => {
     return 'No files found'
   }
 
+  if (source.value === 'assistant' && kind.value === 'image') {
+    return 'No AI-generated images yet'
+  }
+
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'No AI-generated documents yet'
+  }
+
   if (source.value === 'assistant') {
     return 'No AI-generated files yet'
   }
@@ -355,8 +391,16 @@ const emptyStateDescription = computed<string>(() => {
     return 'Try a different search term or file source'
   }
 
-  if (source.value === 'assistant') {
+  if (source.value === 'assistant' && kind.value === 'image') {
     return 'Images created in chat will appear here'
+  }
+
+  if (source.value === 'assistant' && kind.value === 'document') {
+    return 'Documents created in chat will appear here'
+  }
+
+  if (source.value === 'assistant') {
+    return 'Images and documents created in chat will appear here'
   }
 
   if (source.value === 'project') {
@@ -558,6 +602,14 @@ function onFileClick(
     return
   }
 
+  const unsupportedReason = unsupportedReasons.value[file.id]
+
+  if (unsupportedReason) {
+    useWarningMessage(unsupportedReason)
+
+    return
+  }
+
   const isCurrentlySelected = selectedIds.value.has(file.id)
   const isAttached = props.attachedIds.has(file.id)
   const isShiftClick = event.shiftKey
@@ -637,8 +689,27 @@ async function confirmDeleteSelected() {
 
 function attachSelected() {
   const selected = getSelectedForAttach()
+  const attachable = selected.filter((file) => {
+    return !unsupportedReasons.value[file.id]
+  })
+  const rejected = selected.filter((file) => {
+    return unsupportedReasons.value[file.id]
+  })
 
-  emit('attach', selected)
+  if (rejected.length > 0) {
+    useWarningMessage(
+      getUnsupportedInputMessage(
+        rejected.map(file => file.type),
+        props.canAttachMediaType,
+      ),
+    )
+  }
+
+  if (attachable.length === 0) {
+    return
+  }
+
+  emit('attach', attachable)
 }
 
 function handleDeselectAll() {

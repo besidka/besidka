@@ -2,6 +2,7 @@ import type { RequestEvent } from 'nuxt/server'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { listChatDocumentFileIds } from '~~/server/utils/documents/chat-files'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import {
   extractStorageKeyFromFileUrl,
@@ -158,6 +159,19 @@ export async function enumerateChatFileIds(
       storageKey: file.storageKey,
     }
   })
+  const knownFileIds = new Set(references.map(reference => reference.fileId))
+
+  for (const documentFile of await listChatDocumentFileIds(
+    chatId,
+    ownerUserId,
+  )) {
+    if (!knownFileIds.has(documentFile.fileId)) {
+      references.push({
+        fileId: documentFile.fileId,
+        storageKey: documentFile.storageKey,
+      })
+    }
+  }
 
   useRequestLogger(event).set({
     chatShareFileEnumeration: {
