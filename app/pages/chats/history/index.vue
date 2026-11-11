@@ -14,7 +14,7 @@
           v-model="search"
           :is-searching="isSearching"
           placeholder="Search chats and messages..."
-          class="flex-1"
+          class="flex-1 input-sm sm:input-md"
         />
       </div>
     </template>

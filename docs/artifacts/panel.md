@@ -77,10 +77,38 @@ The detail view:
 
 - Preview tab: the Frame. During a stream only `html`, `svg` and `markdown`
   get partial previews; `react` and `mermaid` wait for the stored version.
-- Code tab: `ProsePreStream` with `source-only` (a mermaid fence stays code,
-  no diagram) and `always-expanded` (no 3-line collapse). This is the chat's
-  Shiki setup (same themes, language label, Copy), which covers item 5 of
-  A-14 (BES-318).
+- Code tab: `ChatArtifactCodeView` (`useChunkedCodeHighlight`). The source
+  is split into blocks of 50 lines, each a `display: block` span with
+  `content-visibility: auto` and `contain-intrinsic-size: auto <longest
+  line>ch auto <lines>lh`, so off-screen blocks skip style, layout and paint
+  (Safari 18+; older browsers just render everything) while keeping their
+  real height and width, and the horizontal scrollbar does not change as
+  you scroll. The plain text paints in the click's
+  frame, one text node per block. Colours follow from the chat's lazy Shiki
+  highlighter (`loadCodeHighlighter`, docs/code-highlighting.md): each
+  animation frame tokenizes blocks for up to 8 ms with the grammar state
+  carried over and swaps at most 6 coloured blocks in; `v-memo` keeps a
+  finished block's DOM untouched; a tokenize error resets the view to plain
+  text. Finished colours are cached (16 entries and at most 40,000 lines in
+  total) per artifact version (`<artifactId>:<version>`, or the code itself),
+  language and theme, and reused only when the cached code equals the
+  current code; reopening a version replays them 6 blocks per frame without
+  tokenizing. Every block but the last ends with its `\n`, so `textContent`
+  and a selection copy equal the source; `innerText` adds a blank line at
+  each block boundary, so never read the code from it (Copy uses the source).
+  While a version is still streaming the tab uses `ProseCodeStream` instead.
+  The panel stays mounted (`v-show`) after the first open and the Preview
+  iframe is never unmounted, so switching tabs only toggles `display`.
+  Measured on a production build (headless Chromium, 3,000-line HTML): text
+  in the click's frame, all colours in about 0.5 s instead of 2.8 s, no long
+  task over 115 ms (the first one is the grammar compiling), Preview to Code
+  about 32 ms instead of 168 ms, reopening a version with no long task.
+  Numbers and the method are in PR #778.
+- Mermaid artifacts on the Code tab get the chat's Fullscreen (zoom and pan
+  viewer), Download (SVG, PNG, .drawio) and Copy (code, Markdown, SVG,
+  draw.io) next to the tabs, rendered by the parent's own Mermaid. On the
+  Preview tab the same actions are in the diagram's own toolbar inside the
+  frame (see "Mermaid exports" in docs/artifacts-runtime.md).
 - Version select: the owner sees every stored version
   (`GET /api/v1/artifacts/<id>`); a shared viewer sees only versions the
   shared chat references.
@@ -224,7 +252,8 @@ the logger (`attributes.artifacts.reportRateLimit.skipped`).
 
 The first artifact of a streaming generation opens next to the chat once per
 chat and tab (`useArtifactAutoOpen`): owner chat, `artifacts` active, docked
-layout (`min-width: 64rem`), nothing else open in the panel. The marker is
+layout (`min-width: 1128px`, `SIDE_PANEL_DOCK_MIN_VIEWPORT`),
+nothing else open in the panel. The marker is
 `sessionStorage` key `artifacts:auto-opened:<chat id>` with the value `1`. It
 is strictly necessary (it only stops the panel from opening by itself again),
 holds no artifact data and matches the row in the Cookie Policy

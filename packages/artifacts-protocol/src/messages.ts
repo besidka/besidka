@@ -2,6 +2,7 @@ import type {
   ARTIFACT_KINDS,
   CLIPBOARD_FAILURE_REASONS,
   CLIPBOARD_MIME_TYPES,
+  DIAGRAM_EXPORT_ACTIONS,
   DISPLAY_MODES,
   REQUESTABLE_DISPLAY_MODES,
   LOG_LEVELS,
@@ -25,6 +26,8 @@ export type ClipboardFailureReason = typeof CLIPBOARD_FAILURE_REASONS[number]
 export type StorageMode = typeof STORAGE_MODES[number]
 
 export type LogLevel = typeof LOG_LEVELS[number]
+
+export type DiagramExportAction = typeof DIAGRAM_EXPORT_ACTIONS[number]
 
 export type JsonValue
   = | string
@@ -157,6 +160,16 @@ export interface OpenDiagramViewerParams {
   userActivation: boolean
 }
 
+export interface DiagramExportParams {
+  source: string
+  action: DiagramExportAction
+  userActivation: boolean
+}
+
+export interface DiagramExportResult {
+  completed: boolean
+}
+
 export interface RuntimeRequests {
   [METHODS.initialize]: [InitializeParams, InitializeResult]
   [METHODS.openLink]: [OpenLinkParams, EmptyResult]
@@ -166,6 +179,7 @@ export interface RuntimeRequests {
     RequestDisplayModeResult,
   ]
   [METHODS.openDiagramViewer]: [OpenDiagramViewerParams, EmptyResult]
+  [METHODS.diagramExport]: [DiagramExportParams, DiagramExportResult]
   [METHODS.storageGet]: [StorageKeyParams, StorageGetResult]
   [METHODS.storageSet]: [StorageSetParams, EmptyResult]
   [METHODS.storageDelete]: [StorageKeyParams, EmptyResult]

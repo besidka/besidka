@@ -11,6 +11,7 @@ import { createArtifactShare } from '~~/server/utils/artifacts/shares'
 import { durationToExpiresAt } from '~~/server/utils/chats/share'
 import { assertSameOriginAdminRequest } from '~~/server/utils/features/admin-request'
 import { requireFeature } from '~~/server/utils/features/guards'
+import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origin'
 
 const bodySchema = z.object({
   duration: z.enum(ARTIFACT_SHARE_DURATIONS),
@@ -47,6 +48,7 @@ export default defineEventHandler(async (
     storageAllowed: body.data.storageAllowed,
     bridgeAllowed: body.data.bridgeAllowed,
     createdVia: 'ui',
+    baseUrl: resolveRequestPublicOrigin(event),
   })
 
   request.logger.set({

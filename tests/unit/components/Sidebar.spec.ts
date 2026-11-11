@@ -54,10 +54,11 @@ function stubMatchMedia() {
 
 function stubViewport(viewportWidth: number) {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-    const minWidthRem = Number(/min-width:\s*([\d.]+)rem/.exec(query)?.[1])
+    const [, amount, unit] = /min-width:\s*([\d.]+)(rem|px)/.exec(query) ?? []
+    const minWidth = Number(amount) * (unit === 'rem' ? 16 : 1)
 
     return {
-      matches: viewportWidth >= minWidthRem * 16,
+      matches: viewportWidth >= minWidth,
       media: query,
       onchange: null,
       addListener: vi.fn(),

@@ -84,7 +84,7 @@
 
         <form
           v-else
-          class="-mx-1 flex min-h-0 flex-col gap-1 overflow-y-auto px-1"
+          class="-mx-1 flex min-h-0 flex-col gap-1 overflow-y-auto px-1 *:shrink-0"
           novalidate
           data-testid="artifact-report-form"
           @submit.prevent="submit"
@@ -113,6 +113,7 @@
                   :name="`${formId}-reason`"
                   :value="option.value"
                   :data-testid="`artifact-report-reason-${option.value}`"
+                  :class="`js-artifact-report-reason-${option.value}`"
                 >
                 <span>{{ option.label }}</span>
               </label>
@@ -156,7 +157,7 @@
               :id="`${formId}-details`"
               ref="detailsField"
               v-model="details"
-              class="textarea w-full"
+              class="js-artifact-report-details textarea w-full"
               rows="4"
               :maxlength="ARTIFACT_REPORT_DETAILS_MAX"
               :placeholder="detailsPlaceholder"
@@ -207,7 +208,7 @@
             <textarea
               :id="`${formId}-work`"
               v-model="copyrightWork"
-              class="textarea w-full"
+              class="js-artifact-report-copyright-work textarea w-full"
               rows="2"
               :maxlength="ARTIFACT_REPORT_COPYRIGHT_WORK_MAX"
               placeholder="Name the work and where the original is."
@@ -240,7 +241,7 @@
               <input
                 v-model="copyrightUnauthorised"
                 type="checkbox"
-                class="checkbox checkbox-sm mt-0.5 shrink-0"
+                class="js-artifact-report-copyright-unauthorised checkbox checkbox-sm mt-0.5 shrink-0"
                 :aria-invalid="errors.unauthorisedUse ? 'true' : undefined"
                 :aria-describedby="describedBy('unauthorisedUse')"
                 data-testid="artifact-report-copyright-unauthorised"
@@ -261,7 +262,7 @@
               <input
                 v-model="copyrightAuthority"
                 type="checkbox"
-                class="checkbox checkbox-sm mt-0.5 shrink-0"
+                class="js-artifact-report-copyright-authority checkbox checkbox-sm mt-0.5 shrink-0"
                 :aria-invalid="errors.authority ? 'true' : undefined"
                 :aria-describedby="describedBy('authority')"
                 data-testid="artifact-report-copyright-authority"
@@ -288,7 +289,7 @@
               :id="`${formId}-signature`"
               v-model="copyrightSignature"
               type="text"
-              class="input w-full"
+              class="js-artifact-report-copyright-signature input w-full"
               autocomplete="name"
               :maxlength="ARTIFACT_REPORT_NAME_MAX"
               :aria-invalid="errors.signature ? 'true' : undefined"
@@ -315,7 +316,7 @@
               :id="`${formId}-name`"
               v-model="reporterName"
               type="text"
-              class="input w-full"
+              class="js-artifact-report-name input w-full"
               autocomplete="name"
               :maxlength="ARTIFACT_REPORT_NAME_MAX"
               :aria-invalid="errors.name ? 'true' : undefined"
@@ -342,7 +343,7 @@
               :id="`${formId}-email`"
               v-model="reporterEmail"
               type="email"
-              class="input w-full"
+              class="js-artifact-report-email input w-full"
               autocomplete="email"
               inputmode="email"
               :maxlength="ARTIFACT_REPORT_EMAIL_MAX"
@@ -369,7 +370,7 @@
             <input
               v-model="goodFaith"
               type="checkbox"
-              class="checkbox checkbox-sm mt-0.5 shrink-0"
+              class="js-artifact-report-good-faith checkbox checkbox-sm mt-0.5 shrink-0"
               :aria-invalid="errors.goodFaith ? 'true' : undefined"
               :aria-describedby="describedBy('goodFaith')"
               data-testid="artifact-report-good-faith"
@@ -531,16 +532,16 @@ const FIELD_ORDER: ReportField[] = [
   'email',
   'goodFaith',
 ]
-const FIELD_TEST_IDS: Record<ReportField, string> = {
-  reason: 'artifact-report-reason-illegal',
-  details: 'artifact-report-details',
-  work: 'artifact-report-copyright-work',
-  unauthorisedUse: 'artifact-report-copyright-unauthorised',
-  authority: 'artifact-report-copyright-authority',
-  signature: 'artifact-report-copyright-signature',
-  name: 'artifact-report-name',
-  email: 'artifact-report-email',
-  goodFaith: 'artifact-report-good-faith',
+const FIELD_HOOK_CLASSES: Record<ReportField, string> = {
+  reason: 'js-artifact-report-reason-illegal',
+  details: 'js-artifact-report-details',
+  work: 'js-artifact-report-copyright-work',
+  unauthorisedUse: 'js-artifact-report-copyright-unauthorised',
+  authority: 'js-artifact-report-copyright-authority',
+  signature: 'js-artifact-report-copyright-signature',
+  name: 'js-artifact-report-name',
+  email: 'js-artifact-report-email',
+  goodFaith: 'js-artifact-report-good-faith',
 }
 
 const { loggedIn, user } = useAuth()
@@ -736,12 +737,12 @@ async function focusFirstError(found: Partial<Record<ReportField, string>>) {
 
   await nextTick()
 
-  const testId = field === 'reason' && reason.value
-    ? `artifact-report-reason-${reason.value}`
-    : FIELD_TEST_IDS[field]
+  const hookClass = field === 'reason' && reason.value
+    ? `js-artifact-report-reason-${reason.value}`
+    : FIELD_HOOK_CLASSES[field]
 
   modal.value
-    ?.querySelector<HTMLElement>(`[data-testid="${testId}"]`)
+    ?.querySelector<HTMLElement>(`.${hookClass}`)
     ?.focus()
 }
 
@@ -852,7 +853,7 @@ function onClosed() {
   }
 }
 
-watch(isOpen, async (open) => {
+async function syncDialog(open: boolean) {
   await nextTick()
 
   const dialog = modal.value
@@ -878,5 +879,11 @@ watch(isOpen, async (open) => {
   if (dialog.open) {
     dialog.close()
   }
-}, { immediate: true, flush: 'post' })
+}
+
+watch(isOpen, syncDialog, { flush: 'post' })
+
+onMounted(() => {
+  syncDialog(isOpen.value)
+})
 </script>

@@ -68,6 +68,39 @@
         </button>
       </div>
       <span class="grow" />
+      <div
+        v-if="isMermaidCodeTab"
+        ref="diagramTheme"
+        class="pele-theme flex items-center gap-1"
+        data-testid="artifact-mermaid-actions"
+      >
+        <UiButton
+          mode="default"
+          ghost
+          icon-name="lucide:maximize"
+          :icon-size="14"
+          size="xs"
+          text="Fullscreen"
+          icon-only-phone
+          :disabled="!mermaidMenuInput.svg"
+          data-testid="artifact-mermaid-fullscreen"
+          @click="isMermaidViewerOpen = true"
+        />
+        <ProseMermaidActionMenu
+          label="Download"
+          icon="lucide:download"
+          test-id="artifact-mermaid-download"
+          :actions="MERMAID_DOWNLOAD_ACTIONS"
+          :input="mermaidMenuInput"
+        />
+        <ProseMermaidActionMenu
+          label="Copy"
+          icon="lucide:copy"
+          test-id="artifact-mermaid-copy"
+          :actions="MERMAID_COPY_ACTIONS"
+          :input="mermaidMenuInput"
+        />
+      </div>
       <span
         v-if="isStreaming"
         class="text-xs text-base-content/60"
@@ -319,26 +352,32 @@
         />
       </div>
       <div
-        v-if="activeTab === 'code'"
+        v-if="hasOpenedCode"
+        v-show="activeTab === 'code'"
         :id="codePanelId"
         role="tabpanel"
         :aria-labelledby="codeTabId"
         class="absolute inset-0 overflow-auto px-3"
         data-testid="artifact-code"
       >
-        <Suspense>
-          <ProsePreStream
-            v-if="sourceText"
+        <div
+          v-if="sourceText && isStreaming"
+          class="my-3 overflow-x-auto rounded-box border border-base-300 bg-base-100/50 p-4 text-sm"
+          data-testid="artifact-code-stream"
+        >
+          <ProseCodeStream
             :code="sourceText"
             :language="codeLanguage"
-            source-only
-            always-expanded
+            :theme="codeTheme"
           />
-          <template #fallback>
-            <UiSidePanelSkeleton />
-          </template>
-        </Suspense>
-        <UiSidePanelSkeleton v-if="!sourceText" />
+        </div>
+        <ChatArtifactCodeView
+          v-else-if="sourceText"
+          :code="sourceText"
+          :language="codeLanguage"
+          :cache-key="codeCacheKey"
+        />
+        <UiSidePanelSkeleton v-else />
       </div>
     </div>
     <p
@@ -347,7 +386,12 @@
     >
       AI-generated content
     </p>
-    <ChatArtifactShareModal
+    <LazyProseMermaidViewer
+      v-if="isMermaidViewerOpen"
+      v-model:open="isMermaidViewerOpen"
+      :source="sourceText"
+    />
+    <LazyChatArtifactShareModal
       v-if="hasOpenedShare && state.artifactId && shareVersion"
       v-model:open="isShareOpen"
       :artifact-id="state.artifactId"
@@ -369,6 +413,7 @@ import type {
   ArtifactVersionContent,
 } from '#shared/utils/artifacts'
 import type { ArtifactRuntimeMessage } from '~/composables/artifacts'
+import type { DiagramMenuInput } from '~/types/diagram-export.d'
 import type { ArtifactStorageState } from '~/composables/artifact-storage'
 import { resetArtifactStorage } from '~/composables/artifact-storage'
 import {
@@ -407,6 +452,7 @@ const CODE_LANGUAGES: Record<ArtifactKind, string> = {
 }
 
 const nuxtApp = useNuxtApp()
+const colorMode = useColorMode()
 const panel = useArtifactPanel()
 const sidePanel = useSidePanel()
 const layout = useSidePanelLayout()
@@ -423,6 +469,13 @@ const codePanelId = useId()
 const actionsMenu = useTemplateRef<HTMLDetailsElement>('actionsMenu')
 
 const activeTab = shallowRef<ArtifactTab>('preview')
+const hasOpenedCode = shallowRef<boolean>(false)
+
+watch(activeTab, (tab) => {
+  if (tab === 'code') {
+    hasOpenedCode.value = true
+  }
+}, { immediate: true })
 const isCodeTabForced = shallowRef<boolean>(false)
 const detail = shallowRef<ArtifactDetail | null>(null)
 const content = shallowRef<ArtifactVersionContent | null>(null)
@@ -529,6 +582,63 @@ const sourceText = computed<string>(() => {
 
 const codeLanguage = computed<string>(() => {
   return kind.value ? CODE_LANGUAGES[kind.value] : 'text'
+})
+
+const codeCacheKey = computed<string | null>(() => {
+  const value = content.value
+
+  return value ? `${value.artifactId}:${value.version}` : null
+})
+
+const isMermaidCodeTab = computed<boolean>(() => {
+  return kind.value === 'mermaid'
+    && activeTab.value === 'code'
+    && !isStreaming.value
+    && !!sourceText.value
+})
+
+const mermaidSvg = shallowRef<string>('')
+const isMermaidViewerOpen = shallowRef<boolean>(false)
+const diagramTheme = useTemplateRef<HTMLElement>('diagramTheme')
+const mermaidIdPrefix = `artifact-code-mermaid-${useId()}`
+const { renderDiagram } = useDiagramRenderer()
+
+const mermaidMenuInput = computed<DiagramMenuInput>(() => {
+  return {
+    source: sourceText.value,
+    svg: mermaidSvg.value,
+    themeElement: () => diagramTheme.value,
+  }
+})
+
+watch([isMermaidCodeTab, sourceText], async (
+  [isVisible, source],
+  _previous,
+  onCleanup,
+) => {
+  let isStale = false
+
+  onCleanup(() => {
+    isStale = true
+  })
+
+  if (!isVisible) {
+    return
+  }
+
+  mermaidSvg.value = ''
+
+  const result = await renderDiagram(source, { idPrefix: mermaidIdPrefix })
+
+  if (isStale || 'error' in result) {
+    return
+  }
+
+  mermaidSvg.value = sanitizeDiagramSvg(result.svg)
+}, { immediate: true })
+
+const codeTheme = computed<string>(() => {
+  return colorMode.value === 'dark' ? CODE_THEME_DARK : CODE_THEME_LIGHT
 })
 
 const canDownloadHtml = computed<boolean>(() => {

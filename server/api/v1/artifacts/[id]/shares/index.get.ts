@@ -3,6 +3,7 @@ import { defineEventHandler } from 'nuxt/server'
 import { resolveArtifactShareOwnerRequest } from '~~/server/utils/artifacts/share-owner-request'
 import { listArtifactShares } from '~~/server/utils/artifacts/shares'
 import { requireGlobalFeature } from '~~/server/utils/features/global'
+import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origin'
 
 export default defineEventHandler(async (
   event,
@@ -15,6 +16,7 @@ export default defineEventHandler(async (
     userId: request.userId,
     artifactId: request.artifactId,
     includeEnded: true,
+    baseUrl: resolveRequestPublicOrigin(event),
   })
 
   request.logger.set({

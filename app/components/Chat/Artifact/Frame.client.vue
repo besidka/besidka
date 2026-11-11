@@ -10,6 +10,11 @@
       :class="{ invisible: !isShowingContent }"
     />
     <div
+      ref="diagramTheme"
+      class="pele-theme hidden"
+      aria-hidden="true"
+    />
+    <div
       v-if="isLoading"
       class="absolute inset-0 flex flex-col gap-3 p-4"
       aria-busy="true"
@@ -109,6 +114,51 @@
         </div>
       </div>
     </div>
+    <div
+      v-if="pendingExport"
+      class="absolute inset-x-2 top-2 z-10 flex justify-center"
+    >
+      <div
+        class="alert alert-horizontal w-auto max-w-full gap-2 py-2 pr-2 pl-3 shadow-lg"
+        role="alert"
+        data-testid="artifact-export-fallback"
+      >
+        <Icon
+          :name="pendingExport.action.startsWith('copy-')
+            ? 'lucide:clipboard'
+            : 'lucide:download'"
+          size="16"
+          class="shrink-0"
+        />
+        <p class="min-w-0 grow text-sm">
+          {{ pendingExport.label }} from the artifact?
+        </p>
+        <div class="flex shrink-0 items-center gap-1">
+          <button
+            ref="exportFallbackButton"
+            type="button"
+            class="btn btn-sm btn-primary"
+            data-testid="artifact-export-fallback-confirm"
+            @click="onConfirmExportClick"
+          >
+            {{ pendingExport.action.startsWith('copy-') ? 'Copy' : 'Download' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost btn-circle"
+            aria-label="Dismiss"
+            data-testid="artifact-export-fallback-dismiss"
+            @click="dismissPendingExport"
+          >
+            <Icon
+              name="lucide:x"
+              size="16"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      </div>
+    </div>
     <LazyChatArtifactBridgeConfirm
       v-if="bridgePending"
       :pending="bridgePending"
@@ -125,6 +175,7 @@
 
 <script setup lang="ts">
 import {
+  PROTOCOL_VERSION,
   RUNTIME_DOCUMENT_PATH,
   createHostConnection,
 } from '@besidka/artifacts-protocol'
@@ -171,6 +222,7 @@ const props = defineProps<{
   shareToken?: string | null
   shareCapabilities?: ArtifactShareCapabilities | null
   displayModeOverride?: DisplayMode | null
+  telemetryOff?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -219,6 +271,9 @@ let connection: HostConnection | null = null
 let loadTimer: ReturnType<typeof setTimeout> | null = null
 let partialTimer: ReturnType<typeof setTimeout> | null = null
 let lastPartialAt = 0
+let mountedAt = 0
+let openLogged = false
+let runtimeErrorLogged = false
 let lastSentResult: ToolResultContent | null = null
 let pendingCopyShownAt = 0
 let storageMode: StorageMode = 'memory'
@@ -263,7 +318,19 @@ const {
   viewerSource,
   confirmPendingCopy,
   dismissPendingCopy,
-} = useArtifactHostActions({ layout, displayMode })
+  pendingExport,
+  confirmPendingExport,
+  dismissPendingExport,
+} = useArtifactHostActions({
+  layout,
+  displayMode,
+  diagramThemeElement: () => diagramTheme.value,
+})
+
+const diagramTheme = useTemplateRef<HTMLElement>('diagramTheme')
+const exportFallbackButton = useTemplateRef<HTMLButtonElement>(
+  'exportFallbackButton',
+)
 
 const copyFallbackButton = useTemplateRef<HTMLButtonElement>(
   'copyFallbackButton',
@@ -384,6 +451,7 @@ function clearTimers() {
 
 function teardown() {
   dismissPendingCopy()
+  dismissPendingExport()
   bridge.dispose()
   clearTimers()
   connection?.destroy()
@@ -393,10 +461,40 @@ function teardown() {
   lastSentResult = null
 }
 
+function getArtifactTelemetry() {
+  return {
+    kind: props.result?.kind ?? props.partial?.kind ?? null,
+    protocolVersion: PROTOCOL_VERSION,
+    source: props.source ?? 'owner',
+  }
+}
+
+function logRuntimeError(reason: string) {
+  if (runtimeErrorLogged || props.telemetryOff) {
+    return
+  }
+
+  runtimeErrorLogged = true
+  log.warn({
+    action: 'artifact_runtime_error',
+    attributes: {
+      artifacts: {
+        clientEvent: 'runtime-error',
+        reason,
+        ...getArtifactTelemetry(),
+      },
+    },
+  })
+}
+
 function fail(kind: FrameErrorKind) {
   teardown()
   errorKind.value = kind
   status.value = 'error'
+
+  if (kind === 'timeout') {
+    logRuntimeError('timeout')
+  }
 }
 
 function onReady() {
@@ -407,9 +505,29 @@ function onReady() {
   loadTimer = null
   status.value = 'ready'
   emit('ready')
+
+  if (openLogged || props.telemetryOff) {
+    return
+  }
+
+  openLogged = true
+  log.info({
+    action: 'artifact_open',
+    attributes: {
+      artifacts: {
+        clientEvent: 'open',
+        initMs: Date.now() - mountedAt,
+        ...getArtifactTelemetry(),
+      },
+    },
+  })
 }
 
 function onMessage(params: LogMessageParams) {
+  if (params.level === 'error') {
+    logRuntimeError('script-error')
+  }
+
   emit('runtime-message', {
     level: params.level,
     message: params.data.message,
@@ -500,6 +618,7 @@ function mountFrame() {
 
   teardown()
   status.value = 'loading'
+  mountedAt = Date.now()
   ensureArtifactFramePolicy(runtimeOrigin)
 
   const storage = createStorageHandlers()
@@ -570,12 +689,22 @@ function schedulePartial() {
   partialTimer = setTimeout(flushPartial, PARTIAL_THROTTLE_MS - elapsed)
 }
 
+watch(() => props.artifactId, (_artifactId, previousArtifactId) => {
+  if (!previousArtifactId) {
+    return
+  }
+
+  openLogged = false
+  runtimeErrorLogged = false
+})
+
 watch(() => props.result, (result) => {
   if (result && isSameResult(lastSentResult, result)) {
     return
   }
 
   dismissPendingCopy()
+  dismissPendingExport()
 
   if (!result || !connection) {
     return
@@ -630,6 +759,35 @@ function onConfirmCopyClick(event: MouseEvent) {
 
   confirmPendingCopy()
 }
+
+let pendingExportShownAt = 0
+
+function onConfirmExportClick(event: MouseEvent) {
+  const isKeyboardClick = event.detail === 0
+  const elapsed = Date.now() - pendingExportShownAt
+
+  if (isKeyboardClick && elapsed < COPY_KEYBOARD_GUARD_MS) {
+    return
+  }
+
+  confirmPendingExport()
+}
+
+watch(pendingExport, async (pending) => {
+  if (!pending) {
+    return
+  }
+
+  pendingExportShownAt = Date.now()
+
+  const isFrameFocused = !!frame && document.activeElement === frame
+
+  await nextTick()
+
+  if (isFrameFocused) {
+    exportFallbackButton.value?.focus()
+  }
+})
 
 watch(pendingCopy, async (pending) => {
   if (!pending) {

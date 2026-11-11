@@ -13,7 +13,7 @@
           v-model="search"
           :is-searching="isRefreshing"
           placeholder="Search artifacts..."
-          class="flex-1"
+          class="input-sm sm:input-md"
         />
         <div
           role="group"
@@ -220,7 +220,7 @@
     </p>
   </HistoryPageShell>
 
-  <ChatArtifactShareModal
+  <LazyChatArtifactShareModal
     v-if="shareTarget"
     :key="shareTarget.id"
     v-model:open="isShareOpen"

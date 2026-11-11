@@ -3,8 +3,22 @@ import {
   collectArtifactVersions,
   countArtifactLines,
   getArtifactPartModel,
+  getRenderedPartKeys,
   isArtifactMessagePart,
+  orderArtifactPartsLast,
+  readArtifactFailureText,
 } from '../../../app/utils/artifact-parts'
+
+const OWNER_REPORTED_ERROR = {
+  code: 'invalid-provider-output',
+  message: 'The model sent an invalid tool call.',
+  why: 'The model called update_artifact with input that does not match its schema.',
+  fix: 'Retry the message, or pick another model.',
+  status: 422,
+  requestId: 'a57e4bba8acae3a',
+  providerId: 'google',
+  kind: 'invalid-tool-input',
+}
 
 const OUTPUT = {
   artifactId: 'art_1',
@@ -98,6 +112,48 @@ describe('getArtifactPartModel', () => {
     })
   })
 
+  it('reads the message and why of a serialized chat error', () => {
+    const model = getArtifactPartModel({
+      type: 'tool-update_artifact',
+      toolCallId: 'call_4',
+      state: 'output-error',
+      input: { artifactId: 'art_1' },
+      errorText: JSON.stringify(OWNER_REPORTED_ERROR),
+    })
+
+    expect(model).toMatchObject({
+      state: 'failed',
+      errorTitle: 'The model sent an invalid tool call.',
+      errorText:
+        'The model called update_artifact with input that does not match '
+        + 'its schema.',
+    })
+  })
+
+  it('falls back to the fix, then to the generic text', () => {
+    expect(readArtifactFailureText(JSON.stringify({
+      message: 'Rate limited.',
+      fix: 'Try again later.',
+    }))).toEqual({ title: 'Rate limited.', reason: 'Try again later.' })
+    expect(readArtifactFailureText(JSON.stringify({
+      message: 'Same.',
+      why: 'Same.',
+    }))).toEqual({ title: 'Same.', reason: '' })
+    expect(readArtifactFailureText(JSON.stringify({ code: 'x' })))
+      .toEqual({ title: '', reason: 'The artifact could not be saved.' })
+  })
+
+  it('keeps plain, malformed and oversized error text readable', () => {
+    expect(readArtifactFailureText('Too large'))
+      .toEqual({ title: '', reason: 'Too large' })
+    expect(readArtifactFailureText('{not json'))
+      .toEqual({ title: '', reason: '{not json' })
+    expect(readArtifactFailureText(undefined))
+      .toEqual({ title: '', reason: 'The artifact could not be saved.' })
+    expect(readArtifactFailureText(`{"message":"${'x'.repeat(5000)}"}`).title)
+      .toBe('')
+  })
+
   it('rejects malformed output and unknown kinds', () => {
     expect(getArtifactPartModel({
       type: 'tool-create_artifact',
@@ -144,5 +200,79 @@ describe('collectArtifactVersions', () => {
 
     expect(versions.art_1).toEqual([1, 3])
     expect(Object.hasOwn(versions, '__proto__')).toBe(true)
+  })
+})
+
+describe('orderArtifactPartsLast', () => {
+  const reasoning = { type: 'reasoning', text: 'thinking' }
+  const firstText = { type: 'text', text: 'one' }
+  const secondText = { type: 'text', text: 'two' }
+  const firstArtifact = { type: 'data-artifact', data: OUTPUT }
+  const secondArtifact = { type: 'tool-update_artifact' }
+
+  it('moves artifact parts after the text and keeps their order', () => {
+    const parts = [
+      reasoning,
+      firstArtifact,
+      firstText,
+      secondArtifact,
+      secondText,
+    ]
+
+    expect(orderArtifactPartsLast(parts)).toEqual([
+      reasoning,
+      firstText,
+      secondText,
+      firstArtifact,
+      secondArtifact,
+    ])
+  })
+
+  it('keeps text part positions stable while text streams in', () => {
+    const streaming = orderArtifactPartsLast([reasoning, firstArtifact])
+    const finished = orderArtifactPartsLast([
+      reasoning,
+      firstArtifact,
+      firstText,
+    ])
+
+    expect(streaming).toEqual([reasoning, firstArtifact])
+    expect(finished.indexOf(firstText)).toBe(1)
+    expect(finished.at(-1)).toBe(firstArtifact)
+  })
+
+  it('returns a new array and leaves the stored parts untouched', () => {
+    const parts = [firstArtifact, firstText]
+    const ordered = orderArtifactPartsLast(parts)
+
+    expect(ordered).not.toBe(parts)
+    expect(parts).toEqual([firstArtifact, firstText])
+    expect(orderArtifactPartsLast([])).toEqual([])
+  })
+})
+
+describe('getRenderedPartKeys', () => {
+  const reasoning = { type: 'reasoning', text: 'thinking' }
+  const text = { type: 'text', text: 'one' }
+  const artifact = { type: 'tool-create_artifact' }
+
+  it('keys artifact parts by their stored position, others by rendered position', () => {
+    expect(getRenderedPartKeys([reasoning, artifact, text]))
+      .toEqual(['part-0', 'part-1', 'artifact-1'])
+  })
+
+  it('keeps the artifact key when the first text arrives', () => {
+    const beforeText = getRenderedPartKeys([reasoning, artifact])
+    const afterText = getRenderedPartKeys([reasoning, artifact, text])
+
+    expect(beforeText).toEqual(['part-0', 'artifact-1'])
+    expect(afterText.at(-1)).toBe(beforeText.at(-1))
+    expect(new Set(afterText).size).toBe(afterText.length)
+  })
+
+  it('gives every artifact its own key', () => {
+    expect(getRenderedPartKeys([artifact, text, artifact]))
+      .toEqual(['part-0', 'artifact-0', 'artifact-2'])
+    expect(getRenderedPartKeys([])).toEqual([])
   })
 })

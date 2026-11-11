@@ -233,6 +233,24 @@ export default function App() {
       return (await harnessState(page)).diagramViews
     }).toEqual([MERMAID_SOURCE])
 
+    await mermaid.getByTestId('besidka-mermaid-download').click()
+    await expect(mermaid.getByTestId('besidka-mermaid-download-menu'))
+      .toBeVisible()
+    await mermaid.getByTestId('besidka-mermaid-download-download-drawio')
+      .click()
+    await mermaid.getByTestId('besidka-mermaid-copy').click()
+    await expect(mermaid.getByTestId('besidka-mermaid-download-menu'))
+      .toBeHidden()
+    await mermaid.getByTestId('besidka-mermaid-copy-copy-svg').click()
+    await expect.poll(async () => {
+      return (await harnessState(page)).diagramExports
+    }).toEqual([
+      { source: MERMAID_SOURCE, action: 'download-drawio' },
+      { source: MERMAID_SOURCE, action: 'copy-svg' },
+    ])
+    await expect(mermaid.getByTestId('besidka-mermaid-copy'))
+      .toContainText('Copied!')
+
     await render(page, { kind: 'mermaid', content: 'graph TD\n  A -->' })
     await expect.poll(async () => {
       return (await harnessState(page)).messages.some((message: any) => {
@@ -275,6 +293,9 @@ export default function App() {
       .getByTestId('besidka-mermaid-copy')
 
     await mermaidCopy.click()
+    await frame.locator('besidka-mermaid')
+      .getByTestId('besidka-mermaid-copy-copy-source')
+      .click()
     await expect.poll(async () => {
       return (await harnessState(page)).clipboardWrites.length
     }).toBe(2)

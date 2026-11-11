@@ -1149,6 +1149,9 @@ describe('Chat/ContextPanel', () => {
 
         expect(link.text()).toContain('All artifacts')
         expect(link.attributes('to')).toBe('/chats/artifacts')
+        expect(link.classes()).toContain('min-h-11')
+        expect(link.element.parentElement?.classList.contains('border-t'))
+          .toBe(true)
 
         await link.trigger('click')
 

@@ -14,6 +14,8 @@ import {
   isCompleteParams,
   isInitializeParams,
   isLogMessageParams,
+  isDiagramExportParams,
+  isDiagramExportResult,
   isOpenDiagramViewerParams,
   isOpenLinkParams,
   isRequestDisplayModeParams,
@@ -39,6 +41,8 @@ import type {
   InitializeParams,
   InitializeResult,
   LogMessageParams,
+  DiagramExportParams,
+  DiagramExportResult,
   OpenDiagramViewerParams,
   OpenLinkParams,
   RequestDisplayModeParams,
@@ -96,6 +100,9 @@ export interface HostHandlers {
   openDiagramViewer?: (
     params: OpenDiagramViewerParams,
   ) => MaybePromise<EmptyResult | void>
+  diagramExport?: (
+    params: DiagramExportParams,
+  ) => MaybePromise<DiagramExportResult>
   onUnexpectedNavigation?: (details: UnexpectedNavigationDetails) => void
   onConnectTimeout?: () => void
 }
@@ -250,6 +257,7 @@ export function createHostConnection(
   const now = options.now ?? Date.now
   const takeClipboardSlot = createRateLimiter(CLIPBOARD_WRITE_LIMIT, now)
   const takeDisplaySlot = createRateLimiter(DISPLAY_REQUEST_LIMIT, now)
+  const takeDiagramExportSlot = createRateLimiter(CLIPBOARD_WRITE_LIMIT, now)
 
   function hasUserGesture(claimedByFrame: boolean): boolean {
     if (!claimedByFrame) {
@@ -358,6 +366,38 @@ export function createHostConnection(
     return {}
   }
 
+  /**
+   * Hands a Mermaid export (download or copy) to the host. Unlike opening
+   * the viewer it does not fail without a gesture: the handler learns
+   * whether both sides saw one and, when not, asks the viewer to confirm
+   * with a click in the parent before anything is written.
+   */
+  async function handleDiagramExport(
+    params: unknown,
+  ): Promise<DiagramExportResult> {
+    const method = METHODS.diagramExport
+
+    if (!handlers.diagramExport) {
+      throw methodNotFound(method)
+    }
+
+    if (!isDiagramExportParams(params)) {
+      throw invalidParams(method)
+    }
+
+    if (!takeDiagramExportSlot()) {
+      throw rateLimited(method)
+    }
+
+    const result = await handlers.diagramExport({
+      source: params.source,
+      action: params.action,
+      userActivation: hasUserGesture(params.userActivation),
+    })
+
+    return { completed: isDiagramExportResult(result) && result.completed }
+  }
+
   async function handleStorageRequest(method: string, params: unknown) {
     const storage = handlers.storage
 
@@ -462,6 +502,10 @@ export function createHostConnection(
 
     if (method === METHODS.openDiagramViewer) {
       return handleOpenDiagramViewer(params)
+    }
+
+    if (method === METHODS.diagramExport) {
+      return handleDiagramExport(params)
     }
 
     if (method === METHODS.complete) {

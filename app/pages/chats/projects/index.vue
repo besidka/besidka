@@ -14,7 +14,7 @@
           v-model="search"
           :is-searching="isSearching"
           placeholder="Search projects..."
-          class="flex-1 grow-2 shrink-0 min-w-48"
+          class="flex-1 grow-2 shrink-0 min-w-48 input-sm sm:input-md"
         />
         <div class="flex gap-2 grow">
           <select

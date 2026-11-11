@@ -1,22 +1,30 @@
-import type { Theme } from '@besidka/artifacts-protocol'
+import type {
+  DiagramExportAction,
+  Theme,
+} from '@besidka/artifacts-protocol'
 import mermaid from 'mermaid'
 import { createMermaidConfig } from '../render/mermaid-config.ts'
 import {
   createButton,
+  createMenu,
   createRenderLoop,
   createShell,
   readSource,
   showOutcome,
 } from './chrome.ts'
-import type { KitController } from './chrome.ts'
+import type { KitButton, KitController, KitMenuItem } from './chrome.ts'
 import {
   copyThroughHost,
+  exportDiagramThroughHost,
   openDiagramViewerThroughHost,
 } from './host-actions.ts'
+import type { HostActionOutcome } from './host-actions.ts'
 
 type MermaidConfig = Parameters<typeof mermaid.initialize>[0]
 
 const ERROR_MESSAGE_LIMIT = 200
+
+const NOT_RENDERED_MESSAGE = 'The diagram has not rendered.'
 
 const COPY_LABELS = {
   idleIcon: 'copy',
@@ -24,6 +32,26 @@ const COPY_LABELS = {
   done: 'Copied!',
   failed: 'Copy failed',
 } as const
+
+const DOWNLOAD_LABELS = {
+  idleIcon: 'download',
+  idle: 'Download',
+  done: 'Downloaded',
+  failed: 'Download failed',
+} as const
+
+const DOWNLOAD_ITEMS: KitMenuItem<DiagramExportAction>[] = [
+  { action: 'download-svg', label: 'SVG' },
+  { action: 'download-png', label: 'PNG' },
+  { action: 'download-drawio', label: '.drawio' },
+]
+
+const COPY_ITEMS: KitMenuItem<DiagramExportAction>[] = [
+  { action: 'copy-source', label: 'Code' },
+  { action: 'copy-markdown', label: 'Markdown' },
+  { action: 'copy-svg', label: 'SVG' },
+  { action: 'copy-drawio', label: 'draw.io' },
+]
 
 const FULLSCREEN_LABELS = {
   idleIcon: 'fullscreen',
@@ -70,9 +98,11 @@ function describeError(exception: unknown): string {
 
 /**
  * Renders `<besidka-mermaid>` like the chat's diagram block: the vendored
- * Mermaid (dagre layout, strict security) themed from the host, Copy of the
- * source and Fullscreen, which asks the host to open its own diagram viewer
- * with the source (the frame itself cannot go full screen).
+ * Mermaid (dagre layout, strict security) themed from the host, with the
+ * chat's actions: Fullscreen asks the host to open its own zoomable viewer,
+ * Download (SVG, PNG, draw.io) and Copy (code, Markdown, SVG, draw.io) ask
+ * the host to build and save or copy the file, since the sandboxed frame
+ * can neither download nor reach the clipboard on its own.
  */
 export function createMermaidController(element: HTMLElement): KitController {
   const root = element.shadowRoot ?? element.attachShadow({ mode: 'open' })
@@ -82,7 +112,6 @@ export function createMermaidController(element: HTMLElement): KitController {
     'fullscreen',
     'Fullscreen',
   )
-  const copyButton = createButton('besidka-mermaid-copy', 'copy', 'Copy')
   const diagram = document.createElement('div')
   const error = document.createElement('p')
   let source = ''
@@ -112,12 +141,55 @@ export function createMermaidController(element: HTMLElement): KitController {
 
   fullscreenButton.element.addEventListener('click', openViewer)
   diagram.addEventListener('click', openViewer)
-  copyButton.element.addEventListener('click', async (event) => {
-    const outcome = await copyThroughHost(source, event)
+  async function runExport(
+    action: DiagramExportAction,
+    event: Event,
+  ): Promise<HostActionOutcome> {
+    if (action === 'copy-source') {
+      return copyThroughHost(source, event)
+    }
 
-    showOutcome(copyButton, outcome, COPY_LABELS)
-  })
-  shell.actions.append(fullscreenButton.element, copyButton.element)
+    if (!rendered) {
+      return { ok: false, message: NOT_RENDERED_MESSAGE }
+    }
+
+    return exportDiagramThroughHost(source, action, event)
+  }
+
+  async function select(
+    button: KitButton,
+    labels: typeof COPY_LABELS | typeof DOWNLOAD_LABELS,
+    action: DiagramExportAction,
+    event: Event,
+  ) {
+    showOutcome(button, await runExport(action, event), labels)
+  }
+
+  const downloadMenu = createMenu(
+    'besidka-mermaid-download',
+    'download',
+    'Download',
+    DOWNLOAD_ITEMS,
+    (action, event) => {
+      select(downloadMenu.trigger, DOWNLOAD_LABELS, action, event)
+    },
+  )
+  const copyMenu = createMenu(
+    'besidka-mermaid-copy',
+    'copy',
+    'Copy',
+    COPY_ITEMS,
+    (action, event) => {
+      select(copyMenu.trigger, COPY_LABELS, action, event)
+    },
+  )
+
+  shell.actions.append(
+    fullscreenButton.element,
+    downloadMenu.trigger.element,
+    copyMenu.trigger.element,
+  )
+  shell.body.before(downloadMenu.panel, copyMenu.panel)
 
   function showSource(message: string) {
     const pre = document.createElement('pre')

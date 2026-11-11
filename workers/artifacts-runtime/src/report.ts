@@ -1,5 +1,10 @@
 import { MAX_LOG_MESSAGE_LENGTH } from '@besidka/artifacts-protocol'
 import type { LogLevel, LogMessageParams } from '@besidka/artifacts-protocol'
+import {
+  describeArtifactScriptError,
+  getExecutingScriptStartLine,
+  locateScriptError,
+} from './render/script-location.ts'
 
 type HostNotifier = (params: LogMessageParams) => void
 
@@ -116,11 +121,30 @@ export function reportError(error: unknown, options: ReportOptions = {}) {
 
 const MUTED_SCRIPT_ERROR = 'Script error.'
 
+const MUTED_SCRIPT_ERROR_IN_SCRIPT = 'The error is in the artifact\'s script that starts on line'
+
 const MUTED_SCRIPT_ERROR_HINT = 'Script error. The browser hid the details of this error; the browser console shows the full message.'
 
 function handleWindowError(event: ErrorEvent) {
   if (!event.error && event.message === MUTED_SCRIPT_ERROR) {
-    reportError(MUTED_SCRIPT_ERROR_HINT)
+    const startLine = getExecutingScriptStartLine()
+
+    reportError(startLine === null
+      ? MUTED_SCRIPT_ERROR_HINT
+      : `${MUTED_SCRIPT_ERROR_IN_SCRIPT} ${startLine}. ${MUTED_SCRIPT_ERROR_HINT}`)
+
+    return
+  }
+
+  const location = locateScriptError(event.filename, event.lineno)
+
+  if (location) {
+    reportError(describeArtifactScriptError(
+      event.error instanceof Error ? event.error : null,
+      event.message,
+      location,
+      event.colno,
+    ))
 
     return
   }

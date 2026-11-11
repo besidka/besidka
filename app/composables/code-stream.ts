@@ -33,7 +33,7 @@ interface TokenizerState {
 
 const NEWLINE_TOKEN = '\n'
 
-function createLine(
+export function createCodeLine(
   key: number,
   spans: CodeSpan[],
   newline: boolean,
@@ -46,11 +46,11 @@ function createLine(
   }
 }
 
-function toPlainLines(code: string): CodeLine[] {
+export function toPlainCodeLines(code: string): CodeLine[] {
   const texts = code.split(NEWLINE_TOKEN)
 
   return texts.map((text, index) => {
-    return createLine(
+    return createCodeLine(
       index,
       text ? [{ content: text, style: undefined }] : [],
       index < texts.length - 1,
@@ -58,7 +58,7 @@ function toPlainLines(code: string): CodeLine[] {
   })
 }
 
-function toSpans(tokens: ThemedToken[]): CodeSpan[] {
+export function toCodeSpans(tokens: ThemedToken[]): CodeSpan[] {
   return tokens.map((token) => {
     return { content: token.content, style: getCodeTokenStyle(token) }
   })
@@ -85,7 +85,7 @@ export function useCodeStream(options: CodeStreamOptions): {
   lines: ShallowRef<CodeLine[]>
   isHighlighted: ShallowRef<boolean>
 } {
-  const lines = shallowRef<CodeLine[]>(toPlainLines(toValue(options.code)))
+  const lines = shallowRef<CodeLine[]>(toPlainCodeLines(toValue(options.code)))
   const isHighlighted = shallowRef<boolean>(false)
 
   let state: TokenizerState | null = null
@@ -127,7 +127,7 @@ export function useCodeStream(options: CodeStreamOptions): {
   function showPlain(code: string) {
     state = null
     isHighlighted.value = false
-    publish(toPlainLines(code))
+    publish(toPlainCodeLines(code))
   }
 
   function isStateCurrent(
@@ -175,17 +175,17 @@ export function useCodeStream(options: CodeStreamOptions): {
         continue
       }
 
-      current.finishedLines.push(createLine(
+      current.finishedLines.push(createCodeLine(
         current.finishedLines.length,
-        toSpans(lineTokens),
+        toCodeSpans(lineTokens),
         true,
       ))
       lineTokens = []
     }
 
-    const tail = createLine(
+    const tail = createCodeLine(
       current.finishedLines.length,
-      toSpans(unstable),
+      toCodeSpans(unstable),
       false,
     )
 
@@ -221,7 +221,7 @@ export function useCodeStream(options: CodeStreamOptions): {
 
   async function sync() {
     if (!state) {
-      publish(toPlainLines(toValue(options.code)))
+      publish(toPlainCodeLines(toValue(options.code)))
     }
 
     if (isSyncing) {

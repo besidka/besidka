@@ -191,6 +191,7 @@
             :partial="null"
             :artifact-id="null"
             :version="selectedPreviewVersion"
+            telemetry-off
             source="shared"
           />
           <p

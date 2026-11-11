@@ -78,11 +78,11 @@ ignores a page or totals response that was still in flight.
   panel and removes the parameter from the URL. An unknown, foreign or
   malformed id (and a taken-down one, with its own text) shows a dismissible
   `alert-warning alert-soft`, never a crash and never a toast.
-- Share: one page-level `ChatArtifactShareModal` driven by the chosen row. It
-  is referenced without the `Lazy` prefix, like `Detail.client.vue` does: with
-  `LazyChatArtifactShareModal` the dialog mounts with `open` already `true`
-  and its immediate watcher runs before the template ref exists, so the
-  dialog never opened. When the modal closes the row is re-read
+- Share: one page-level `LazyChatArtifactShareModal` driven by the chosen
+  row. The share and report modals open their dialog from `onMounted` when
+  they mount with `open` already `true`: an immediate watcher used to run
+  before the template ref existed, so a lazily mounted dialog never opened on
+  first use. When the modal closes the row is re-read
   (`GET /api/v1/artifacts/<id>`) so the "Shared" badge is current.
 - Download: the current version is fetched with `loadArtifactVersion()` and
   written with `buildArtifactSourceFile()` and `downloadArtifactFile()`, the
@@ -112,8 +112,9 @@ raise a warning toast.
 
 With four tabs, inactive tabs hide their label with `@max-md:sr-only` when
 the tab bar itself is narrower than 28rem (a container query, so it also
-holds when the docked side panel narrows the page at 1024 px) and keep an `aria-label`; the active tab shows icon and
-label. With three tabs (feature off) every label stays visible. Checked at
+holds when the docked side panel narrows the page; the panel docks from
+1128 px and leaves the chat at least 768 px) and keep an `aria-label`; the
+active tab shows icon and label. With three tabs (feature off) every label stays visible. Checked at
 375 px and 320 px: no horizontal page scroll.
 
 ## Tests

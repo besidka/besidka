@@ -35,17 +35,39 @@ const {
   captured,
   confirmMock,
   warnMock,
+  infoMock,
   colorMode,
   clipboardMock,
   fetchMock,
+  exportMock,
+  renderMock,
 } = vi.hoisted(() => ({
   colorMode: { value: 'light', preference: 'light' },
   captured: [] as CapturedConnection[],
   confirmMock: vi.fn(),
   warnMock: vi.fn(),
+  infoMock: vi.fn(),
   clipboardMock: vi.fn(),
   fetchMock: vi.fn(),
+  exportMock: vi.fn(),
+  renderMock: vi.fn(),
 }))
+
+mockNuxtImport('useDiagramRenderer', () => {
+  return () => {
+    return { renderDiagram: renderMock }
+  }
+})
+
+mockNuxtImport('useDiagramExport', () => {
+  return () => {
+    return { runExportAction: exportMock }
+  }
+})
+
+mockNuxtImport('sanitizeDiagramSvg', () => {
+  return (svg: string) => svg
+})
 
 const layout = ref<SidePanelLayout>('docked')
 const isFullWidth = ref<boolean>(false)
@@ -113,7 +135,7 @@ vi.mock('@besidka/artifacts-protocol', async (importOriginal) => {
 })
 
 vi.mock('evlog/client', () => ({
-  log: { warn: warnMock, info: vi.fn(), error: vi.fn() },
+  log: { warn: warnMock, info: infoMock, error: vi.fn() },
 }))
 
 mockNuxtImport('useConfirm', () => confirmMock)
@@ -228,7 +250,11 @@ beforeEach(() => {
   captured.length = 0
   confirmMock.mockReset()
   warnMock.mockReset()
+  infoMock.mockReset()
   clipboardMock.mockReset()
+  exportMock.mockReset()
+  renderMock.mockReset()
+  renderMock.mockResolvedValue({ svg: '<svg id="diagram"></svg>' })
   fetchMock.mockReset()
   loggedIn.value = false
   storageFeature.value = { enabled: true, active: false, variant: null }
@@ -425,6 +451,64 @@ describe('ChatArtifactFrame', () => {
     }])
   })
 
+  it('logs one artifact_open with the kind and no content', async () => {
+    const { connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    infoMock.mockClear()
+    await initialize(runtime)
+
+    expect(infoMock).toHaveBeenCalledTimes(1)
+    expect(infoMock).toHaveBeenCalledWith({
+      action: 'artifact_open',
+      attributes: {
+        artifacts: {
+          clientEvent: 'open',
+          initMs: expect.any(Number),
+          kind: RESULT.kind,
+          protocolVersion: PROTOCOL_VERSION,
+          source: 'owner',
+        },
+      },
+    })
+    expect(JSON.stringify(infoMock.mock.calls)).not.toContain(RESULT.content)
+  })
+
+  it('logs a runtime error once without the message text', async () => {
+    const { connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    warnMock.mockClear()
+    await initialize(runtime)
+
+    for (const message of ['first secret', 'second secret']) {
+      runtime.notify(METHODS.message, {
+        level: 'error',
+        data: { message },
+      })
+    }
+
+    await waitForPort()
+
+    const runtimeErrors = warnMock.mock.calls.filter(([entry]) => {
+      return entry.action === 'artifact_runtime_error'
+    })
+
+    expect(runtimeErrors).toEqual([[{
+      action: 'artifact_runtime_error',
+      attributes: {
+        artifacts: {
+          clientEvent: 'runtime-error',
+          reason: 'script-error',
+          kind: RESULT.kind,
+          protocolVersion: PROTOCOL_VERSION,
+          source: 'owner',
+        },
+      },
+    }]])
+    expect(JSON.stringify(warnMock.mock.calls)).not.toContain('secret')
+  })
+
   it('removes the frame after a second load and logs ids only',
     async () => {
       const { wrapper, connection } = await mountFrame()
@@ -521,6 +605,104 @@ describe('ChatArtifactFrame', () => {
       expect(clipboardMock).toHaveBeenLastCalledWith('graph TD')
       expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
         .toBe(false)
+    })
+
+  it('exports a Mermaid diagram in the parent with the rendered svg',
+    async () => {
+      const { connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      activateFrame(connection)
+      exportMock.mockResolvedValueOnce(true)
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-drawio',
+        userActivation: true,
+      })).resolves.toEqual({ completed: true })
+      expect(renderMock).toHaveBeenCalledWith(
+        'graph TD; A-->B',
+        expect.objectContaining({ idPrefix: expect.any(String) }),
+      )
+      expect(exportMock).toHaveBeenCalledWith('download-drawio', {
+        source: 'graph TD; A-->B',
+        svg: '<svg id="diagram"></svg>',
+        themeElement: expect.any(HTMLElement),
+      })
+      expect(exportMock.mock.calls[0]?.[1].themeElement.classList)
+        .toContain('pele-theme')
+    })
+
+  it('holds a Mermaid export until the parent button is clicked',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      activateFrame(connection)
+      exportMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+      const request = runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'copy-svg',
+        userActivation: true,
+      })
+
+      await waitForPort()
+
+      const fallback = wrapper.get('[data-testid="artifact-export-fallback"]')
+
+      expect(fallback.text()).toContain('Copy SVG from the artifact?')
+      await wrapper.get('[data-testid="artifact-export-fallback-confirm"]')
+        .trigger('click', { detail: 1 })
+
+      await expect(request).resolves.toEqual({ completed: true })
+      expect(exportMock).toHaveBeenCalledTimes(2)
+      expect(wrapper.find('[data-testid="artifact-export-fallback"]')
+        .exists()).toBe(false)
+    })
+
+  it('answers not completed when a Mermaid export is dismissed or fails',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      setHostActivation(false)
+
+      const request = runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-svg',
+        userActivation: true,
+      })
+
+      await waitForPort()
+      expect(exportMock).not.toHaveBeenCalled()
+      await wrapper.get('[data-testid="artifact-export-fallback-dismiss"]')
+        .trigger('click')
+      await expect(request).resolves.toEqual({ completed: false })
+
+      renderMock.mockResolvedValueOnce({ error: { message: 'Parse error' } })
+      activateFrame(connection)
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->',
+        action: 'download-svg',
+        userActivation: true,
+      })).resolves.toEqual({ completed: false })
+      expect(exportMock).not.toHaveBeenCalled()
+
+      exportMock.mockResolvedValueOnce(false)
+
+      await expect(runtime.request(METHODS.diagramExport, {
+        source: 'graph TD; A-->B',
+        action: 'download-png',
+        userActivation: true,
+      })).resolves.toEqual({ completed: false })
+      expect(exportMock).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('[data-testid="artifact-export-fallback"]')
+        .exists()).toBe(false)
     })
 
   it('answers denied when the copy fallback is dismissed', async () => {
@@ -1037,6 +1219,31 @@ describe('ChatArtifactFrame storage capability', () => {
         { headers: {} },
       )
     })
+
+  it('logs one open when a streamed artifact gets its id and remounts',
+    async () => {
+      allowStorage()
+
+      const { wrapper, connection } = await mountFrame({ artifactId: null })
+
+      await capabilitiesOf(connection)
+      await wrapper.setProps({ artifactId: 'art_1' })
+      await flushPromises()
+
+      expect(captured).toHaveLength(2)
+
+      await capabilitiesOf(captured.at(-1)!)
+
+      expect(infoMock).toHaveBeenCalledTimes(1)
+    })
+
+  it('logs nothing when telemetry is off', async () => {
+    const { connection } = await mountFrame({ telemetryOff: true })
+
+    await capabilitiesOf(connection)
+
+    expect(infoMock).not.toHaveBeenCalled()
+  })
 
   it('keeps the frame for another artifact id in memory mode', async () => {
     const { wrapper } = await mountFrame()
