@@ -244,7 +244,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/artifact-actions.spec.ts',
   ]
   const artifactsShareUiTests = [
-    'tests/unit/pages/a/index.spec.ts',
+    'tests/unit/pages/artifacts/[token].spec.ts',
     'tests/unit/components/Artifact/ReportModal.client.spec.ts',
     'tests/unit/components/Chat/Artifact/ReportButton.client.spec.ts',
     'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
@@ -3244,7 +3244,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/a\/index\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/(artifact-share-(page|location)|scroll-within)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/pages\/artifacts\/\[token\]\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/(artifact-share-(page|location)|scroll-within)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsShareUiTests,
     },
     {

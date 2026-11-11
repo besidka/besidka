@@ -12,7 +12,7 @@ flags, the eval suite, the results, the rollout plan and the stop rules
 | Cards, side panel, versions, download | `docs/artifacts/panel.md` |
 | Saved progress (`window.besidka.storage`) | `docs/artifacts/viewer-storage.md` |
 | Model calls from an artifact (`window.besidka.complete`) | `docs/artifacts/llm-bridge.md` |
-| Public links (`/a#<token>`), reports, takedown | `docs/artifacts/shares.md` |
+| Public links (`/artifacts/<token>`), reports, takedown | `docs/artifacts/shares.md` |
 | Artifacts library tab | `docs/artifacts/library.md` |
 | Attaching an existing artifact to a chat (BES-350) | `docs/artifacts/attach.md` |
 | Chat tools and instructions | `server/utils/ai/artifact-tools.ts` |
@@ -29,7 +29,7 @@ All six flags are registry stage `internal` and `available: true`.
 | `artifacts.react` | The `react` kind | Follows `artifacts` at 100% of its cohort |
 | `artifacts.storage` | Saved progress | Owner only until the consent text names it and `CURRENT_CONSENT_VERSION` is bumped (A-9, Art. 9(2)(a)) |
 | `artifacts.llm-bridge` | `window.besidka.complete` on the viewer's key | Same as `artifacts.storage` |
-| `artifacts.share` | Public `/a#<token>` links | Grants only until the owner's Cloudflare separation decision (pre-check A-12 item 1) |
+| `artifacts.share` | Public `/artifacts/<token>` links | Grants only until the owner's Cloudflare separation decision (pre-check A-12 item 1) |
 | `artifacts.mcp` | The artifact tools on `/mcp` | One step behind `artifacts` |
 
 A child flag is off whenever its parent is off and uses its own rollout hash

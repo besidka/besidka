@@ -116,7 +116,7 @@ different `kind` + `content` in a fresh iframe: `Frame.client.vue` calls
 differs from the one it already sent, and only then. A streamed preview
 followed by its first result, a metadata-only change (a new `version` or
 `title` with identical content), Preview/Code toggles and a panel that only
-collapses or restores keep the frame. The chat panel, the `/a#` share page
+collapses or restores keep the frame. The chat panel, the `/artifacts/<token>` share page
 and the admin preview all go through that component. The runtime e2e
 `realm-isolation.spec.ts` shows the failure in one frame and the clean
 sequence in fresh frames; `artifacts-panel.spec.ts` drives v1, v2, v1 with

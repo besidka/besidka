@@ -281,7 +281,7 @@ export default defineNuxtConfig({
       }),
     ),
     ...Object.fromEntries(
-      ['/a', '/a/**'].map((route) => {
+      ['/artifacts', '/artifacts/**'].map((route) => {
         return [route, createArtifactShareRouteRule()]
       }),
     ),
@@ -631,8 +631,8 @@ export default defineNuxtConfig({
       '/reset-password',
       '/2fa',
       '/oauth/**',
-      '/a',
-      '/a/**',
+      '/artifacts',
+      '/artifacts/**',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/**',

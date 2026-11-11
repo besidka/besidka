@@ -72,7 +72,7 @@ function createDetail(
     details: 'Copies my book.\n\nCopyright notice\nSignature: Ann',
     decisionStatement: null,
     receiptSentAt: '2026-11-09T10:00:01.000Z',
-    locationUrl: 'https://besidka.test/a#token-1',
+    locationUrl: 'https://besidka.test/artifacts/token-1',
     reportedVersion: null,
     currentVersion: 2,
     previewVersion: 2,
@@ -135,7 +135,7 @@ describe('Admin/ArtifactReportDetail.client', () => {
     expect(wrapper.get('[data-testid="admin-report-detail-details"]').text())
       .toContain('Signature: Ann')
     expect(wrapper.get('[data-testid="admin-report-detail-location"]').text())
-      .toContain('https://besidka.test/a#token-1')
+      .toContain('https://besidka.test/artifacts/token-1')
     expect(wrapper.text()).toContain('owner@example.test')
     expect(wrapper.text()).toContain('Copyright infringement')
   })

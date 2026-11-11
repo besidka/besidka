@@ -212,7 +212,7 @@ async function mockLibraryRoutes(page: Page): Promise<LibraryState> {
     const origin = new URL(route.request().url()).origin
     const share = {
       shareId: 'sh_e2e_lib',
-      url: `${origin}/a/e2eLibraryShareToken`,
+      url: `${origin}/artifacts/e2eLibraryShareToken`,
       createdVia: 'ui',
       clientName: null,
       pinnedVersion: null,

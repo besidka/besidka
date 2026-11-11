@@ -122,11 +122,11 @@ describe('robots and sitemap configuration contract', () => {
     'keeps public artifact links out of the sitemap but not out of '
     + 'robots.txt, so crawlers can read their noindex header',
     () => {
-      expect(configuration.sitemap?.exclude).toContain('/a')
-      expect(configuration.sitemap?.exclude).toContain('/a/**')
-      expect(configuration.robots?.disallow).not.toContain('/a')
-      expect(configuration.robots?.disallow).not.toContain('/a/')
-      expect(configuration.robots?.disallow).not.toContain('/a/**')
+      expect(configuration.sitemap?.exclude).toContain('/artifacts')
+      expect(configuration.sitemap?.exclude).toContain('/artifacts/**')
+      expect(configuration.robots?.disallow).not.toContain('/artifacts')
+      expect(configuration.robots?.disallow).not.toContain('/artifacts/')
+      expect(configuration.robots?.disallow).not.toContain('/artifacts/**')
     },
   )
 
@@ -222,7 +222,7 @@ describe('agent discovery configuration contract', () => {
 
   it('serves public artifact links noindex, unframed, unreferred and '
     + 'uncached, on the page itself and below it', () => {
-    for (const route of ['/a', '/a/**']) {
+    for (const route of ['/artifacts', '/artifacts/**']) {
       expect(configuration.routeRules?.[route]).toEqual({
         cache: false,
         headers: {

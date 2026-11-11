@@ -174,7 +174,7 @@ The detail view:
   and raises the same warning as History; a 404 (already deleted elsewhere)
   counts as deleted. The panel only closes when it still shows that artifact.
   The item is hidden for shared
-  chats, `/a#` pages and while the artifact streams.
+  chats, `/artifacts/<token>` pages and while the artifact streams.
 - A failed generation (`stream.status === 'failed'`) shows
   `alert alert-error alert-soft` with the tool error text over both tabs
   instead of a skeleton or a partial preview.

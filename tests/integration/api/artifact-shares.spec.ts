@@ -309,7 +309,7 @@ describe('artifact shares API', () => {
 
     return {
       ...response.result as { share: Record<string, any>, url: string },
-      token: (response.result.url as string).split('/a#')[1]!,
+      token: (response.result.url as string).split('/artifacts/')[1]!,
     }
   }
 
@@ -357,7 +357,7 @@ describe('artifact shares API', () => {
         storageAllowed: true,
       })
 
-      expect(created.url).toBe(`${BASE_URL}/a#${created.token}`)
+      expect(created.url).toBe(`${BASE_URL}/artifacts/${created.token}`)
       expect(created.token).toMatch(/^[\w-]{43}$/)
       expect(created.share).toMatchObject({
         shareId: expect.stringMatching(/^sh_/),
@@ -906,18 +906,15 @@ describe('artifact shares API', () => {
       const other = await createShare()
 
       await reportShare(created.token, {
-        details: `Same as ${BASE_URL}/a#${other.token} and `
-          + `${BASE_URL}/a/${other.token} and `
-          + `/x?u=%252Fa%2523${other.token} and `
-          + `/signin?next=%252Fa%252F${other.token} here.`,
+        details: `Same as ${BASE_URL}/artifacts/${other.token} and `
+          + `/x?u=%252Fartifacts%252F${other.token} and `
+          + `/signin?next=%252Fartifacts%252F${other.token} here.`,
       })
 
       const [row] = await listReports()
 
-      expect(row?.details).toContain(`${BASE_URL}/a#[token]`)
-      expect(row?.details).toContain(`${BASE_URL}/a/[token]`)
-      expect(row?.details).toContain('%252Fa%2523[token]')
-      expect(row?.details).toContain('%252Fa%252F[token]')
+      expect(row?.details).toContain(`${BASE_URL}/artifacts/[token]`)
+      expect(row?.details).toContain('%252Fartifacts%252F[token]')
       expect(row?.details).not.toContain(other.token)
       expect(emailArguments()).not.toContain(other.token)
     })
@@ -1389,11 +1386,11 @@ describe('artifact shares API', () => {
           result: { version: 1 },
         })
         await expect(takeDown({
-          target: `/a/${byToken.token}`,
+          target: `/a#${byToken.token}`,
           scope: 'share',
         })).resolves.toMatchObject({ error: { status: 404 } })
         await expect(takeDown({
-          target: `a#${byToken.token}`,
+          target: `artifacts/${byToken.token}`,
           scope: 'share',
         })).resolves.toMatchObject({ result: { takenDown: 1 } })
         await expect(takeDown({

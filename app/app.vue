@@ -17,7 +17,7 @@
           [-webkit-overflow-scrolling:touch]
         `]: $route.name !== 'chats-slug',
         'max-sm:pb-[calc(var(--spacing)_*_24_+_var(--sab))]':
-          $route.name !== 'chats-slug' && $route.name !== 'a',
+          $route.name !== 'chats-slug' && $route.name !== 'artifacts-token',
       }"
       :tabindex="$route.name !== 'chats-slug' ? 0 : undefined"
       :role="$route.name !== 'chats-slug' ? 'region' : undefined"

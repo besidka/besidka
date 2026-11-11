@@ -127,6 +127,13 @@ Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
 `/signin`, `/signup`, `/reset-password`, `/new-password`, and shared chats with
 `indexable = false`.
 
+Public artifact links (`/artifacts/<token>`) are always `noindex, nofollow`
+(route rule on `/artifacts` and `/artifacts/**`, plus the page's own robots
+meta), with no per-link switch, and are in the sitemap `exclude`. Like
+`/signin`, they are deliberately not in `robots.disallow`, so a crawler can
+read the noindex. The share dialog says so, and the Links list shows "Hidden
+from search engines" on every link (`docs/artifacts/shares.md`).
+
 `robots.txt` also carries `Content-Signal: search=yes, ai-input=yes,
 ai-train=no` on the `*` group (`robots.groups` in `nuxt.config.ts`, the same
 value as `public/ai.txt`). It lets search engines and AI answers use the

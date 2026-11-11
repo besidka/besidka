@@ -4,21 +4,23 @@ import { isArtifactShareLocation } from '../../../app/utils/artifact-share-locat
 
 describe('isArtifactShareLocation', () => {
   it.each([
-    [{ path: '/a' }, true],
-    [{ path: '/A' }, true],
-    [{ path: '/a/' }, true],
-    [{ path: '/a/token-1' }, true],
-    [{ path: '/A/token-1' }, true],
-    [{ path: '/signin', query: { next: '/a' } }, true],
-    [{ path: '/signin', query: { next: '/A' } }, true],
-    [{ path: '/signin', query: { next: '/a/token-1' } }, true],
-    [{ path: '/signup', query: { next: ['/a'] } }, true],
+    [{ path: '/artifacts' }, true],
+    [{ path: '/Artifacts' }, true],
+    [{ path: '/artifacts/' }, true],
+    [{ path: '/artifacts/token-1' }, true],
+    [{ path: '/Artifacts/token-1' }, true],
+    [{ path: '/signin', query: { next: '/artifacts/return' } }, true],
+    [{ path: '/signin', query: { next: '/Artifacts/return' } }, true],
+    [{ path: '/signin', query: { next: '/artifacts/token-1' } }, true],
+    [{ path: '/signup', query: { next: ['/artifacts/return'] } }, true],
     [{ path: '/signin', query: { next: '/chats/new' } }, false],
     [{ path: '/about' }, false],
     [{ path: '/admin' }, false],
     [{ path: '/api/v1/artifact-shares/current' }, false],
-    [{ path: '/ab' }, false],
-    [{ path: '/about/a/token' }, false],
+    [{ path: '/a' }, false],
+    [{ path: '/chats/artifacts' }, false],
+    [{ path: '/api/v1/artifacts/ArtifactId1/shares' }, false],
+    [{ path: '/about/artifacts/token' }, false],
     [{ path: '/signin', query: { next: '/about' } }, false],
     [{ path: '/chats/abc' }, false],
     [{ path: '/', query: { next: 42 } }, false],
@@ -28,7 +30,7 @@ describe('isArtifactShareLocation', () => {
 
   it('matches the sign-up link the sign-in page builds from `next`', () => {
     const url = new URL(
-      appendNextToPath('/signup', '/a'),
+      appendNextToPath('/signup', '/artifacts/return'),
       'https://besidka.test',
     )
 

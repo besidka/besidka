@@ -1,19 +1,30 @@
-const ARTIFACT_SHARE_PATH_PATTERN
-  = /(\/|%(?:25)*2f)a(\/|#|%(?:25)*2f|%(?:25)*23)[^\s/?#&%"'<>]+/gi
-const ARTIFACT_SHARE_PATH_MARKER
-  = /(?:\/|%(?:25)*2f)a(?:\/|#|%(?:25)*2f|%(?:25)*23)/i
+const ENCODED_SLASH = '%(?:25)*2f'
+const LINK_BOUNDARY = [
+  '^',
+  '[\\s"\'(=,;]',
+  '\\/\\/[^\\s/?#"\'<>]+',
+  `%(?:25)*3a${ENCODED_SLASH}${ENCODED_SLASH}(?:(?!${ENCODED_SLASH})[^\\s/?#"'<>&])+`,
+].join('|')
+const ARTIFACT_SHARE_PATH_PATTERN = new RegExp(
+  `(${LINK_BOUNDARY})(\\/|${ENCODED_SLASH})artifacts(\\/|${ENCODED_SLASH})`
+  + '[^\\s/?#&%"\'<>]+',
+  'gim',
+)
+const ARTIFACT_SHARE_PATH_MARKER = new RegExp(
+  `artifacts(?:\\/|${ENCODED_SLASH})`,
+  'i',
+)
 const ARTIFACT_SHARE_TOKEN_PLACEHOLDER = '[token]'
 const REDACTION_MAX_DEPTH = 8
 
 /**
  * Replaces the token of every public artifact link in a string with
- * `[token]`: the current fragment form (`/a#<token>`, also percent-encoded
- * once or more, as in `%2Fa%23<token>`) that a browser-ingested event or a
- * pasted report may carry in a full `location.href`, and the old path form
- * (`/a/<token>`, `%2Fa%2F<token>`, `%252Fa%252F<token>`). Defence in depth:
- * the fragment never reaches the server in a request, but request paths,
- * messages, error text and stored report details still carry the route
- * pattern only (DPIA 3.13(d)).
+ * `[token]`: `/artifacts/<token>` as a request path, inside a full URL, in a
+ * query value (`next=%2Fartifacts%2F<token>`) and percent-encoded more than
+ * once (`%252Fartifacts%252F<token>`). Only a link whose `artifacts` segment
+ * starts the path counts, so `/api/v1/artifacts/<id>/shares` keeps its id.
+ * The token otherwise reaches request paths, messages, error text, browser
+ * ingested events and stored report details (DPIA 3.13(d)).
  */
 export function redactArtifactSharePath(value: unknown): unknown {
   if (typeof value !== 'string' || !ARTIFACT_SHARE_PATH_MARKER.test(value)) {
@@ -22,8 +33,13 @@ export function redactArtifactSharePath(value: unknown): unknown {
 
   return value.replace(
     ARTIFACT_SHARE_PATH_PATTERN,
-    (_match, leadingSeparator: string, trailingSeparator: string) => {
-      return `${leadingSeparator}a${trailingSeparator}`
+    (
+      _match,
+      boundary: string,
+      leadingSeparator: string,
+      trailingSeparator: string,
+    ) => {
+      return `${boundary}${leadingSeparator}artifacts${trailingSeparator}`
         + ARTIFACT_SHARE_TOKEN_PLACEHOLDER
     },
   )

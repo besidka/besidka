@@ -659,10 +659,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   header), owner, public and admin routes with bodies and error codes, the
   404 versus 410 states, the kill-switch and flag gates, share mode in the
   viewer resolver (403 when a link does not allow storage or the bridge), the
-  link token in the URL fragment (`/a#<token>`, never sent to the server;
-  sign-in returns through a `sessionStorage` key, not `next`), the `/a`
-  route rules, the 404 for `/a/<anything>` and mis-cased paths, the merged
-  `frame-src` CSP, defence-in-depth log redaction of every link form, the
+  link token in the path (`/artifacts/<token>`; the API calls keep it in the
+  header; sign-in returns through a `sessionStorage` key and
+  `next=/artifacts/return`), the `/artifacts` route rules, the 404 for
+  `/artifacts/<token>/<more>` and mis-cased paths, the merged
+  `frame-src` CSP, log redaction of every link form, the
   report flow (Turnstile, rate limit,
   copyright notice elements, no IP), report decisions, direct takedowns by
   link, token, artifact or user with the six-month legal hold, restore

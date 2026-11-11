@@ -17,7 +17,7 @@ all of these hold; otherwise `'memory'`:
 | --- | --- |
 | The viewer is signed in | The sandbox has an opaque origin and no identity |
 | `useFeature('artifacts.storage').active` | Per-viewer flag (includes the global `artifacts` rule) |
-| The panel was opened from the viewer's own chat (`source === 'owner'`), or from an `/a#<token>` link whose `storageAllowed` is on | The server resolves the owner, or a viewer holding an active link token (A-7) |
+| The panel was opened from the viewer's own chat (`source === 'owner'`), or from an `/artifacts/<token>` link whose `storageAllowed` is on | The server resolves the owner, or a viewer holding an active link token (A-7) |
 | The artifact is saved (has an id) | A streaming preview has nothing to key rows on |
 
 In memory mode the host passes no storage handler, so the runtime keeps
@@ -153,7 +153,7 @@ Restored `artifact_storage` rows after a D1 Time Travel restore are harmless
 
 ## Not in this layer
 
-- The "Sign in to save your progress" caption on the `/a` page: the A-7
+- The "Sign in to save your progress" caption on the `/artifacts/<token>` page: the A-7
   client layer.
 - Owner-visible aggregates (leaderboards): never.
 - MCP access to storage: never.

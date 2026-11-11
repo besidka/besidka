@@ -7,10 +7,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h, reactive, ref } from 'vue'
 import type { Ref } from 'vue'
 import type { ArtifactSharePublicView } from '#shared/utils/artifacts'
-import ArtifactSharePage from '../../../../app/pages/a/index.vue'
+import ArtifactSharePage from '../../../../app/pages/artifacts/[token].vue'
 
 enableAutoUnmount(afterEach)
 
@@ -18,6 +18,7 @@ const TOKEN = 'pageShareToken_0123456789abcdefghijklmnopqr'
 const OTHER_TOKEN = 'otherShareToken_0123456789abcdefghijklmnopq'
 const RETURN_STORAGE_KEY = 'artifacts:share-return'
 const SHARE_HEADER = 'x-besidka-artifact-share'
+const RETURN_SEGMENT = 'return'
 
 const mocks = vi.hoisted(() => ({
   useFetch: vi.fn(),
@@ -41,7 +42,14 @@ const response = {
 let replaceSpy: ReturnType<typeof vi.fn>
 const mountedWrappers: Array<{ unmount: () => void }> = []
 
+const routeState = reactive<{ params: { token: string } }>({
+  params: { token: TOKEN },
+})
+
 mockNuxtImport('useFetch', () => mocks.useFetch)
+mockNuxtImport('useRoute', () => {
+  return () => routeState
+})
 mockNuxtImport('useAuth', () => {
   return () => ({ loggedIn })
 })
@@ -95,8 +103,8 @@ function byTestId(testId: string) {
   return `[data-testid="${testId}"]`
 }
 
-function setLocation(url: string) {
-  window.history.replaceState(null, '', url)
+function setRouteToken(token: string) {
+  routeState.params.token = token
 }
 
 function readFetchOptions() {
@@ -123,9 +131,8 @@ function clearShareData() {
   status.value = 'idle'
 }
 
-async function changeHash(url: string) {
-  setLocation(url)
-  window.dispatchEvent(new HashChangeEvent('hashchange'))
+async function changeRouteToken(token: string) {
+  setRouteToken(token)
   await flushPromises()
 }
 
@@ -162,15 +169,15 @@ function readShareReplaceCalls(): unknown[] {
 
 function readPageSource(): string {
   return readFileSync(
-    join(process.cwd(), 'app/pages/a/index.vue'),
+    join(process.cwd(), 'app/pages/artifacts/[token].vue'),
     'utf-8',
   )
 }
 
-describe('pages/a/index', () => {
+describe('pages/artifacts/[token]', () => {
   beforeEach(() => {
     vi.stubGlobal('definePageMeta', vi.fn())
-    setLocation(`/a#${TOKEN}`)
+    setRouteToken(TOKEN)
     window.sessionStorage.clear()
     loggedIn.value = false
     data.value = null
@@ -209,10 +216,10 @@ describe('pages/a/index', () => {
     replaceSpy.mockRestore()
     vi.unstubAllGlobals()
     window.sessionStorage.clear()
-    setLocation('/')
+    setRouteToken(TOKEN)
   })
 
-  it('reads the token from the fragment and sends it only in a header',
+  it('reads the token from the path and sends it only in a header',
     async () => {
       await mountPage()
 
@@ -241,12 +248,12 @@ describe('pages/a/index', () => {
     })
 
   it.each([
-    ['an empty fragment', '/a'],
-    ['a short token', '/a#abc'],
-    ['a token with other characters', `/a#${TOKEN.slice(0, 42)}!`],
-    ['a token that is too long', `/a#${TOKEN}x`],
-  ])('shows "not available" for %s without a request', async (_label, url) => {
-    setLocation(url)
+    ['an empty segment', ''],
+    ['a short token', 'abc'],
+    ['a token with other characters', `${TOKEN.slice(0, 42)}!`],
+    ['a token that is too long', `${TOKEN}x`],
+  ])('shows "not available" for %s without a request', async (_label, value) => {
+    setRouteToken(value)
 
     const wrapper = await mountPage()
 
@@ -256,40 +263,29 @@ describe('pages/a/index', () => {
     expect(mocks.frameProps).toHaveLength(0)
   })
 
-  it('refetches and remounts the frame when the fragment changes',
+  it('refetches and remounts the frame when the path token changes',
     async () => {
       await mountPage()
 
       expect(mocks.frameProps.at(-1)!['share-token']).toBe(TOKEN)
 
-      await changeHash(`/a#${OTHER_TOKEN}`)
+      await changeRouteToken(OTHER_TOKEN)
 
       expect(readSentTokens()).toEqual([TOKEN, OTHER_TOKEN])
       expect(mocks.frameProps.at(-1)!['share-token']).toBe(OTHER_TOKEN)
     })
 
-  it('shows "not available" when the fragment changes to an invalid one',
+  it('shows "not available" when the path token changes to an invalid one',
     async () => {
       const wrapper = await mountPage()
 
-      await changeHash('/a#nope')
+      await changeRouteToken('nope')
 
       expect(wrapper.find(byTestId('artifact-share-not-found')).exists())
         .toBe(true)
       expect(wrapper.find(byTestId('frame-stub')).exists()).toBe(false)
       expect(readSentTokens()).toEqual([TOKEN])
     })
-
-  it('stops listening for fragment changes when it unmounts', async () => {
-    const wrapper = await mountPage()
-    const requestCount = mocks.execute.mock.calls.length
-
-    wrapper.unmount()
-    await changeHash(`/a#${OTHER_TOKEN}`)
-
-    expect(mocks.execute).toHaveBeenCalledTimes(requestCount)
-    expect(readSentTokens()).not.toContain(OTHER_TOKEN)
-  })
 
   it('is noindex, marked AI-generated and keeps the global canonical',
     () => {
@@ -404,28 +400,29 @@ describe('pages/a/index', () => {
     })
 
   describe('sign-in caption', () => {
-    it('signs in with next=/a and keeps the token in sessionStorage only',
-      async () => {
-        response.data = createShare({
-          capabilities: { storageAllowed: true, bridgeAllowed: false },
-        })
-
-        const wrapper = await mountPage()
-        const caption = wrapper.get(byTestId('artifact-share-sign-in'))
-        const link = caption.get('a')
-
-        expect(caption.text()).toBe('Sign in to save your progress')
-        expect(JSON.parse(link.attributes('data-to')!)).toEqual({
-          path: '/signin',
-          query: { next: '/a' },
-        })
-        expect(link.attributes('data-to')).not.toContain(TOKEN)
-
-        await link.trigger('click')
-
-        expect(window.sessionStorage.getItem(RETURN_STORAGE_KEY))
-          .toBe(TOKEN)
+    it('signs in with next=/artifacts/return and keeps the token in '
+      + 'sessionStorage only',
+    async () => {
+      response.data = createShare({
+        capabilities: { storageAllowed: true, bridgeAllowed: false },
       })
+
+      const wrapper = await mountPage()
+      const caption = wrapper.get(byTestId('artifact-share-sign-in'))
+      const link = caption.get('a')
+
+      expect(caption.text()).toBe('Sign in to save your progress')
+      expect(JSON.parse(link.attributes('data-to')!)).toEqual({
+        path: '/signin',
+        query: { next: '/artifacts/return' },
+      })
+      expect(link.attributes('data-to')).not.toContain(TOKEN)
+
+      await link.trigger('click')
+
+      expect(window.sessionStorage.getItem(RETURN_STORAGE_KEY))
+        .toBe(TOKEN)
+    })
 
     it('still navigates when sessionStorage throws', async () => {
       response.data = createShare({
@@ -467,24 +464,21 @@ describe('pages/a/index', () => {
   })
 
   describe('return from sign-in', () => {
-    it('restores the token once and puts it back in the fragment',
-      async () => {
-        setLocation('/a')
-        window.sessionStorage.setItem(RETURN_STORAGE_KEY, TOKEN)
+    it('restores the token once and moves it into the path', async () => {
+      setRouteToken(RETURN_SEGMENT)
+      window.sessionStorage.setItem(RETURN_STORAGE_KEY, TOKEN)
 
-        await mountPage()
+      await mountPage()
 
-        expect(window.sessionStorage.getItem(RETURN_STORAGE_KEY)).toBeNull()
-        expect(readShareReplaceCalls()).toEqual([{
-          path: '/a',
-          hash: `#${TOKEN}`,
-        }])
-        expect(readSentTokens()).toEqual([TOKEN])
-      })
+      expect(window.sessionStorage.getItem(RETURN_STORAGE_KEY)).toBeNull()
+      expect(readShareReplaceCalls()).toEqual([{
+        path: `/artifacts/${TOKEN}`,
+      }])
+    })
 
     it('drops an invalid stored token and shows "not available"',
       async () => {
-        setLocation('/a')
+        setRouteToken(RETURN_SEGMENT)
         window.sessionStorage.setItem(RETURN_STORAGE_KEY, 'not-a-token')
 
         const wrapper = await mountPage()
@@ -496,13 +490,25 @@ describe('pages/a/index', () => {
           .toBe(true)
       })
 
-    it('prefers the fragment and clears a leftover stored token',
+    it('shows "not available" when nothing was stored', async () => {
+      setRouteToken(RETURN_SEGMENT)
+
+      const wrapper = await mountPage()
+
+      expect(readShareReplaceCalls()).toEqual([])
+      expect(mocks.execute).not.toHaveBeenCalled()
+      expect(wrapper.find(byTestId('artifact-share-not-found')).exists())
+        .toBe(true)
+    })
+
+    it('leaves a stored token alone when the path carries a token',
       async () => {
         window.sessionStorage.setItem(RETURN_STORAGE_KEY, OTHER_TOKEN)
 
         await mountPage()
 
-        expect(window.sessionStorage.getItem(RETURN_STORAGE_KEY)).toBeNull()
+        expect(window.sessionStorage.getItem(RETURN_STORAGE_KEY))
+          .toBe(OTHER_TOKEN)
         expect(readShareReplaceCalls()).toEqual([])
         expect(readSentTokens()).toEqual([TOKEN])
       })
