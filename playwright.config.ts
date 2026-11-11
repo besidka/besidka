@@ -148,5 +148,14 @@ export default defineConfig({
       stdout: 'ignore',
       stderr: 'pipe',
     },
+    {
+      command: 'pnpm run doc-renderer:dev',
+      env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
+      port: 8789,
+      timeout: 120_000,
+      reuseExistingServer: !process.env.CI,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
   ],
 })

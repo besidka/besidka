@@ -286,6 +286,47 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/composables/chat.spec.ts',
   ]
+  const documentsChatTests = [
+    'tests/integration/api/chats-documents.spec.ts',
+    'tests/integration/api/documents.spec.ts',
+    'tests/integration/api/files-kind-filter.spec.ts',
+    'tests/integration/api/shared-documents.spec.ts',
+    'tests/unit/components/Chat/Document.spec.ts',
+    'tests/unit/components/Chat/DocumentPreview.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/KindFilter.spec.ts',
+    'tests/unit/composables/document-flow.spec.ts',
+    'tests/unit/composables/document-render.spec.ts',
+    'tests/unit/server/capabilities/documents.spec.ts',
+    'tests/unit/server/utils/documents/claim.spec.ts',
+    'tests/unit/server/utils/documents/cleanup.spec.ts',
+    'tests/unit/server/utils/documents/create-document-tool.spec.ts',
+    'tests/unit/server/utils/documents/message-parts.spec.ts',
+    'tests/unit/server/utils/documents/share.spec.ts',
+    'tests/unit/server/utils/documents/store.spec.ts',
+    'tests/unit/utils/document-parts.spec.ts',
+    'tests/unit/utils/document-ui.spec.ts',
+    'tests/unit/workers/document-render.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/server/utils/chats/persist-user-message.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/integration/api/chats-shares-branch.spec.ts',
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/integration/server/chat-share.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+  const documentsFileManagerTests = [
+    'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/KindFilter.spec.ts',
+    'tests/unit/composables/file-manager.spec.ts',
+    'tests/unit/utils/file-manager-sources.spec.ts',
+    'tests/integration/api/files-kind-filter.spec.ts',
+    'tests/integration/api/files-index-source.spec.ts',
+  ]
   const documentRendererWorkerTests = [
     'tests/unit/workers/doc-renderer/index.spec.ts',
     'tests/unit/workers/doc-renderer/bundle.spec.ts',
@@ -2409,6 +2450,21 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(packages\/doc-renderer\/|tests\/fixtures\/documents\/|tests\/setup\/helpers\/documents\.ts$|scripts\/(third-party-notices|doc-renderer-smoke)\.mjs$|shared\/utils\/files\.ts$|app\/utils\/knowledge-zip\.ts$)/,
       tests: documentRendererTests,
+    },
+    {
+      pattern:
+        /^(app\/(components\/Chat\/(Document|DocumentPreview|Document\/.*)\.vue|composables\/(document-(flow|render)|chat)\.ts|workers\/document-render\.ts|utils\/document-(parts|ui)\.ts|types\/document-render\.d\.ts)|server\/(api\/v1\/documents\/.*|capabilities\/(documents|index)\.ts|db\/schemas\/documents\.ts|utils\/documents\/(?!renderer\.ts$).*|utils\/chats\/(persist-user-message|share|share-public-parts|branch|lifecycle)\.ts|utils\/files\/(chat-deletion-cleanup|cleanup-expired-files|delete-files)\.ts|utils\/ai\/tool-loop\.ts|utils\/account\/purge-user-data\.ts|api\/v1\/shared\/\[slug\]\/index\.get\.ts|api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|api\/v1\/chats\/history\/delete\/bulk\.post\.ts)|shared\/utils\/(documents|message-metadata)\.ts|tests\/setup\/helpers\/documents-db\.ts)$/,
+      tests: documentsChatTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\/.*)?\.vue|app\/composables\/file-manager\.ts|app\/utils\/file-manager-sources\.ts|app\/types\/file-manager\.d\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/utils\/files\/source-filter\.ts)$/,
+      tests: documentsFileManagerTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/chats\/test\/.*\.ts|server\/utils\/chats\/test\/document-.*\.ts|tests\/e2e\/chat\/create-document\.spec\.ts)$/,
+      tests: ['tests/e2e/chat/create-document.spec.ts'],
     },
     {
       pattern:
