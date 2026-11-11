@@ -75,14 +75,14 @@
       </blockquote>
       <pre
         v-else-if="block.type === 'code'"
-        class="m-0 max-w-full overflow-x-auto rounded-field border border-base-300 bg-base-100 p-2 font-mono text-xs whitespace-pre"
+        class="m-0 max-w-full overflow-x-auto rounded-box border border-base-300 bg-base-100 p-2 font-mono text-xs whitespace-pre"
         tabindex="0"
         aria-label="Code"
         data-testid="document-block-code"
       ><code>{{ block.text }}</code></pre>
       <p
         v-else-if="block.type === 'image'"
-        class="flex items-center gap-2 rounded-field border border-dashed border-base-300 bg-base-100 p-3 text-xs text-base-content/70"
+        class="flex items-center gap-2 rounded-box border border-dashed border-base-300 bg-base-100 p-3 text-xs text-base-content/70"
         data-testid="document-block-image"
       >
         <Icon

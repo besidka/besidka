@@ -47,7 +47,7 @@
       </div>
       <p
         v-if="slide.image"
-        class="flex items-center gap-2 rounded-field border border-dashed border-base-300 bg-base-100 p-3 text-xs text-base-content/70"
+        class="flex items-center gap-2 rounded-box border border-dashed border-base-300 bg-base-100 p-3 text-xs text-base-content/70"
         data-testid="document-slide-image"
       >
         <Icon
@@ -81,7 +81,7 @@
       <p
         v-if="isNotesOpen"
         :id="notesId"
-        class="rounded-field bg-base-200 p-2 text-xs whitespace-pre-wrap break-words"
+        class="rounded-box bg-base-200 p-2 text-xs whitespace-pre-wrap break-words"
         data-testid="document-slide-notes"
       >
         {{ slide.notes }}
