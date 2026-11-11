@@ -930,6 +930,7 @@ describe('document deletion hooks', () => {
         const rendering = await seedDocumentWithSpec(testDb.db, storage, {
           userId,
           status: 'rendering',
+          renderLeaseUntil: new Date('2026-11-11T12:01:00.000Z'),
           originChatId: chat.id,
           updatedAt: TEN_DAYS_AGO,
         })
@@ -990,6 +991,63 @@ describe('document deletion hooks', () => {
           },
         })
       })
+
+    it('expires the spec of a render whose claimer vanished', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const abandoned = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'rendering',
+        renderLeaseUntil: new Date('2026-11-01T12:01:00.000Z'),
+        originChatId: chat.id,
+        title: TITLE,
+        updatedAt: TEN_DAYS_AGO,
+      })
+      const result = await sweepOrphanedDocuments(
+        testDb.db,
+        mocks.logger,
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({
+        rowsFound: 1,
+        rowsDetached: 1,
+        specObjectsDeleted: 1,
+      })
+      expect(await readDocument(testDb.db, abandoned.id)).toMatchObject({
+        status: 'failed',
+        errorCode: 'spec_expired',
+        title: null,
+        specR2Key: null,
+        renderLeaseUntil: null,
+        originChatId: chat.id,
+      })
+      expect(storage.objects.has(abandoned.specR2Key!)).toBe(false)
+    })
+
+    it('leaves a render with a live lease untouched', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const live = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'rendering',
+        renderLeaseUntil: new Date('2026-11-11T12:01:00.000Z'),
+        originChatId: chat.id,
+        title: TITLE,
+        updatedAt: TEN_DAYS_AGO,
+      })
+      const result = await sweepOrphanedDocuments(
+        testDb.db,
+        mocks.logger,
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({ rowsFound: 0, rowsDetached: 0 })
+      expect(await readDocument(testDb.db, live.id)).toMatchObject({
+        status: 'rendering',
+        title: TITLE,
+        specR2Key: live.specR2Key,
+      })
+      expect(storage.objects.has(live.specR2Key!)).toBe(true)
+    })
 
     it('does not expire a row twice and keeps expired rows readable',
       async () => {

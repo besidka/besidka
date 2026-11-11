@@ -498,10 +498,12 @@ async function deleteUnreachableFailedRows(
 }
 
 /**
- * Rows that never rendered (`spec_ready`, or `failed` with the spec still
- * stored) and were not touched for the spec retention period lose their spec
- * object. The row stays as `failed`/`spec_expired` with no title, because a
- * persisted `data-document` part still points at it and shows "unavailable".
+ * Rows that never rendered (`spec_ready`, `failed` with the spec still stored,
+ * or `rendering` with an expired lease because the claimer vanished) and were
+ * not touched for the spec retention period lose their spec object. A live
+ * lease is never expired under its claimer. The row stays as
+ * `failed`/`spec_expired` with no title, because a persisted `data-document`
+ * part still points at it and shows "unavailable".
  */
 async function expireUnrenderedSpecs(
   db: DbClient,
@@ -511,6 +513,13 @@ async function expireUnrenderedSpecs(
 ): Promise<DocumentCleanupResult> {
   const result = createEmptyResult()
   const cutoff = new Date(now.getTime() - SPEC_RETENTION_SECONDS * 1000)
+  const isNeverRendered = or(
+    inArray(schema.documents.status, ['spec_ready', 'failed']),
+    and(
+      eq(schema.documents.status, 'rendering'),
+      lt(schema.documents.renderLeaseUntil, now),
+    ),
+  )
 
   try {
     const rows = await db.select({
@@ -520,7 +529,7 @@ async function expireUnrenderedSpecs(
     })
       .from(schema.documents)
       .where(and(
-        inArray(schema.documents.status, ['spec_ready', 'failed']),
+        isNeverRendered,
         isNull(schema.documents.fileId),
         isNotNull(schema.documents.specR2Key),
         lt(schema.documents.updatedAt, cutoff),
@@ -544,7 +553,7 @@ async function expireUnrenderedSpecs(
             inArray(schema.documents.id, chunk.map((row) => {
               return row.id
             })),
-            inArray(schema.documents.status, ['spec_ready', 'failed']),
+            isNeverRendered,
             isNull(schema.documents.fileId),
           ))
           .returning({ id: schema.documents.id })
