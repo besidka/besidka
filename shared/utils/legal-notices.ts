@@ -128,7 +128,7 @@ export const LEGAL_NOTICES = [
   },
   {
     id: '2026-12-code-and-documents',
-    documents: ['terms-of-use'],
+    documents: ['privacy-policy', 'terms-of-use'],
     publishedAt: '2026-11-15T08:00:00Z',
     sendFrom: '2026-11-15T11:00:00Z',
     effectiveAt: '2026-12-19',
@@ -137,8 +137,8 @@ export const LEGAL_NOTICES = [
       + 'attacks systems: no malware, no denial-of-service attacks or '
       + 'botnets, no bypassing security controls without permission, and no '
       + 'attacks on critical infrastructure such as energy, water, transport, '
-      + 'health or communications networks. This mirrors what Anthropic, '
-      + 'OpenAI and Google already forbid for code run on your key.',
+      + 'health or communications networks. This follows the usage '
+      + 'policies of Anthropic and OpenAI for code run on your key.',
       'If you turn on Run code, the code runs at your own AI provider, on '
       + 'your key, and the provider\'s usage policy applies to you directly. '
       + 'I do not run the code and I cannot see or cap what it costs. '
@@ -153,6 +153,12 @@ export const LEGAL_NOTICES = [
       'Documents and Run code reach accounts step by step, starting with '
       + 'my own account and testers. The new rules apply from 19 December '
       + '2026.',
+      'The Privacy Policy now describes documents and Run code. A document '
+      + 'is stored as an outline plus a file and is deleted with the file and '
+      + 'with the chat it was made in. When you use Run code, your attached '
+      + 'files go to your provider\'s sandbox for that turn and I delete what '
+      + 'I upload there afterwards. The provider may keep some data for up to '
+      + '30 days, for example Anthropic container data and OpenAI abuse logs.',
     ],
   },
 ] as const satisfies readonly LegalNotice[]

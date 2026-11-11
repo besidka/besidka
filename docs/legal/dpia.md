@@ -103,12 +103,15 @@ excluded, so the Art. 49(1)(a) consents do not change. The shared package D-2
 is built on `feat/documents-spec-package` (PR #833, not merged); everything
 else is planned. The flags `documents`, `documents.*`, `code-execution`,
 `code-execution.files` and `code-execution.skills` stay at stage `internal`,
-and must not reach `beta`, until the pull request that carries this section is
-merged. The Privacy Policy change is classified minor (Art. 30 record, review
-log, 2026-11-11), with a stated counter-argument. The Terms of Use change is
-material by owner decision of 2026-11-11: a new prohibited use for code and a
-mirror of the providers' usage rules, notice `2026-12-code-and-documents`,
-effective 2026-12-19 (section 6, item 26). `CURRENT_CONSENT_VERSION` is
+and must not reach `beta`, until this section is merged, the code that builds
+each planned control has shipped, and the Privacy Policy and Terms have been
+re-checked against that code (they describe the intended behaviour in the
+present tense) with the provider pages re-read on the day. The Terms of Use change is material by owner decision of 2026-11-11: a new
+prohibited use for code and a mirror of the providers' usage rules. The
+Privacy Policy change is recorded as material on the cautious reading (the
+provider-side retention is a fact users did not have), so one notice,
+`2026-12-code-and-documents`, covers both, effective 2026-12-19 (section 6,
+items 25 and 26). `CURRENT_CONSENT_VERSION` is
 unchanged.
 
 ## 1. Why a DPIA is required
@@ -1018,7 +1021,9 @@ is planned. Read every measure below as `planned` unless it says `built`. The
 flags `documents`, `documents.pdf`, `documents.docx`, `documents.xlsx`,
 `documents.pptx`, `code-execution`, `code-execution.files` and
 `code-execution.skills` stay at stage `internal`, and must not reach `beta`,
-until the pull request that carries this section is merged.
+until this section is merged, the code that builds each planned control has
+shipped, and the Privacy Policy and Terms have been re-checked against that
+code, with the provider pages re-read on the day and the date recorded here.
 
 - **(a) Documents: four paths, one store.**
   1. *Client render (default).* The chat model calls `create_document` on the
@@ -1060,7 +1065,8 @@ until the pull request that carries this section is merged.
   survives, the title and the origin chat id are cleared. A sweep removes rows
   with no file and no chat. A document made over MCP has no chat and lives
   until the file expires. Account deletion deletes the spec objects by prefix
-  `documents/<userId>/` (batched R2 delete) and the rows. Backups: 30 days.
+  `documents/<userId>/` (batched R2 delete) and the rows. D1 Time Travel keeps the database row (title and ids) for up to 30 days;
+  the spec and the file are in R2, which those backups do not cover.
   Spec objects are deleted by the paths `cleanupFilesOrphanedByChatDeletion`
   (single chat, single message and bulk chat delete), retention cleanup, bulk
   file delete and `purgeUserData`, with a test per path (D-4, planned).
@@ -1077,6 +1083,8 @@ until the pull request that carries this section is merged.
     writes and the files the code creates. Gemini takes the input inline.
     Besidka downloads the output files with the user's key, checks them (type
     allowlist, size caps, magic bytes), and stores them as the user's files.
+    The message keeps a compact record of the code and its output (each cut
+    to 32 KB), without provider file ids or encrypted payloads.
     Office and PDF outputs are stored only after `validate()` with a
     structural parse. Images are marked. `gif` is not marked by
     `markAiGeneratedImage`, so D-7 either removes it from the allowlist or
@@ -1150,6 +1158,10 @@ until the pull request that carries this section is merged.
      values but the renderer does not write them, so a viewer that does not
      recalculate shows empty formula cells. This is an accuracy limit, not a
      security one (risk row 71).
+- **(d1) Access and export (Arts. 15 and 20).** Documents are files, so they
+  are in the user's file list and can be downloaded. The specs and the
+  `documents` rows are included in an access or export request by email, like
+  the other data in row 14 of the Art. 30 record.
 - **(e) Third-party code.** Five renderer libraries and one font, all under
   permissive licences, no veto (Q1). `THIRD_PARTY_NOTICES` is generated from
   the real client and Worker bundle graphs and compared by a test; legal
@@ -1371,16 +1383,16 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 58 | Report records are deleted with the artifact or account, defeating the repeat-infringement rule, the retention promise and a TCO preservation duty | Medium | Medium | `deleteArtifacts` and the account purge never delete `artifact_reports`; a sweep deletes them 12 months after closing (24 for copyright); `legalHoldUntil` keeps held content and rows six months (A-1) | planned (A-1) | Low |
 | 59 | Viewer storage or the bridge processes special-category data under a consent text that does not name them | High | Medium | Operating rule: neither flag is granted beyond the controller until owner item 2 ships (a wider text with a `CURRENT_CONSENT_VERSION` bump, or a separate first-use consent); the Privacy Policy says the current text does not name them and that they are not offered until it does; both routes still require a current consent record | operating rule (A-9); consent change open (owner item 2) | Low while the rule holds |
 | 60 | A D1 restore brings back revoked or taken-down artifact links, closed reports or deleted artifacts | Low | High | Takedowns and revocations logged with ids; replay steps in `docs/d1-restore-reconciliation.md` ("Artifacts"); R2 objects of deleted artifacts are gone, so reads return 410 | built (A-1, A-7 log lines), not yet released; runbook built (A-9) | Low |
-| 61 | A generated or provider-made document carries active content (macros, external relationships, formula or DDE injection, PDF JavaScript, launch or open actions, Word field instructions, PowerPoint program actions) and harms whoever opens it (section 3.14) | Medium | High | `validate()` on every document before it is stored, and `render()` re-validates its own output: ZIP bounds, no macro, ActiveX, embedded or OLE parts, external relationships only to `https:` and `mailto:` links, no XML DOCTYPE or entity, tokenised formula allowlist, Word field reassembly (DDE, INCLUDETEXT and similar), PowerPoint `ppaction` checks, structural PDF scan (JavaScript, launch, embedded files, rich media, `/OpenAction`, `/AA`, URI schemes). Strict spec keys, string cells inert. Only validated bytes are persisted, served with `nosniff`. Provider-made PDFs go through `stampDocument` | built (D-2, PR #833, not merged); wiring planned (D-3, D-4, D-7) | Low to medium: the PDF scan ignores the cross-reference table (section 3.14 (d)); the CSV and Excel round trip is open |
-| 62 | A spec or a title outlives the chat or the file that made it (Art. 5(1)(e), Art. 17) | Medium | Medium | Spec and file share one lifetime; spec deletion hooked into chat, message and bulk chat delete, retention cleanup, bulk file delete and `purgeUserData`, one test per path; a branch copy is not a reference; title and origin chat id cleared where a file survives; sweep for rows with no file and no chat. The ticket statement that a deleted chat keeps its documents is corrected | planned (D-4); open until built | Low once built; backups hold a copy up to 30 days |
+| 61 | A generated or provider-made document carries active content (macros, external relationships, formula or DDE injection, PDF JavaScript, launch or open actions, Word field instructions, PowerPoint program actions) and harms whoever opens it (section 3.14) | Medium | High | `validate()` on every document before it is stored, and `render()` re-validates its own output: ZIP bounds, no macro, ActiveX, embedded or OLE parts, external relationships only to `https:` and `mailto:` links, no XML DOCTYPE or entity, tokenised formula allowlist, Word field reassembly (DDE, INCLUDETEXT and similar), PowerPoint `ppaction` checks, structural PDF scan (JavaScript, launch, embedded files, rich media, `/OpenAction`, `/AA`, URI schemes). Strict spec keys, string cells inert. Only validated bytes are persisted, served with `nosniff`. Provider-made PDFs go through `stampDocument` | built on a branch (D-2, PR #833, not merged); wiring planned (D-3, D-4, D-7) | Low to medium: the PDF scan ignores the cross-reference table (section 3.14 (d)); the CSV and Excel round trip is open |
+| 62 | A spec or a title outlives the chat or the file that made it (Art. 5(1)(e), Art. 17) | Medium | Medium | Spec and file share one lifetime; spec deletion hooked into chat, message and bulk chat delete, retention cleanup, bulk file delete and `purgeUserData`, one test per path; a branch copy is not a reference; title and origin chat id cleared where a file survives; sweep for rows with no file and no chat. The ticket statement that a deleted chat keeps its documents is corrected | planned (D-4); open until built | Low once built; the D1 backups hold the row (title, ids) up to 30 days |
 | 63 | Files the user attaches linger at the provider after the turn, in a workspace others can see, or in a container (Anthropic container data up to 30 days, workspace-wide Files API visibility, OpenAI abuse logs up to 30 days) | Medium | Medium | Off for each message; one-time confirmation naming the provider; one-hour expiry on Anthropic uploads; deletion of uploaded and downloaded files and the OpenAI container after the turn, in the end-of-turn hook and in `finally`; inline input where the provider allows; Privacy Policy "Running code" paragraphs state what stays; a leaked provider key is in the breach runbook (Besidka's per-turn deletion limits what sits there) | planned (D-7); policy text built here | Medium, outside Besidka's control (a deleted Anthropic file may persist in active calls; no source says a delete reaches the container copy) |
 | 64 | Code steered by text the model read (a file, a page) sends the user's data out of the sandbox | Medium | Medium | The provider runs the code, never Besidka; no network in Anthropic containers; OpenAI hosted containers have none by default; Besidka never enables network access or sets a `network_policy` (a test); only on a message where the user turned it on; Gemini sandbox network not stated **[U]** | planned (D-7) | Medium until the Gemini sandbox network status is known |
-| 65 | AI output is misattributed or unmarked (Art. 50(2)): provider-made files without a mark, MCP content labelled as AI or not labelled, a mark that is stripped | Medium | Medium | IPTC mark and model id in every rendered file; three states (`ai`, `channel-only`, `missing`); server relabels or rejects `missing` on the chat path; MCP files say "Created by a connected app" unless `aiGenerated`; `stampDocument` for provider files; a published line on how to read the mark; no use of the Art. 111(4) grace for documents | marking built (D-2, PR #833, not merged); labels planned (D-4, D-5) | Medium: one unsigned metadata layer, probably below what Art. 50(2) expects; stripped by re-saving, printing or copy-paste; no text watermark; an orphan XMP stream reads as marked; decision due before 2 Dec 2026 (section 6, item 24) |
+| 65 | AI output is misattributed or unmarked (Art. 50(2)): provider-made files without a mark, MCP content labelled as AI or not labelled, a mark that is stripped | Medium | Medium | IPTC mark and model id in every rendered file; three states (`ai`, `channel-only`, `missing`); server relabels or rejects `missing` on the chat path; MCP files say "Created by a connected app" unless `aiGenerated`; `stampDocument` for provider files; a published line on how to read the mark; no use of the Art. 111(4) grace for documents | marking built on a branch (D-2, PR #833, not merged); labels planned (D-4, D-5) | Medium: one unsigned metadata layer, probably below what Art. 50(2) expects; stripped by re-saving, printing or copy-paste; no text watermark; an orphan XMP stream reads as marked; decision due before 2 Dec 2026 (section 6, item 24) |
 | 66 | Anthropic's document skills are used outside what their terms allow, or an unreviewed skill id is used | Low | Medium | Fixed list of four ids on the user's own Anthropic key; nothing bundled, vendored or redistributed; neutral wording in the UI and the records (hosted terms unverified **[U]**); skills disclosed as not zero-data-retention eligible | planned (D-8) | Low |
 | 67 | The renderer is used as a free compute service, through MCP or repeated sends | Medium | Low | Spec bounds, the 20 MB quota, render and upload rate limits per user (D-4: 10 and 20 a minute), the MCP write limit, a render lease with an attempt count, no public route on the renderer Worker | bounds built (D-2); limits planned (D-4, D-5) | Low |
 | 68 | Unexpected provider spend from code execution | Medium | Low | Off for each message; one-time confirmation with the provider's price from config; the note that Anthropic bills attached files even when no code runs and that free hours depend on the user's organisation; no MCP route to it | planned (D-7) | Low to medium: the user's own balance is unknowable |
-| 69 | Third-party code in the client chunk or the renderer Worker: unmet licence duties, external fetches, supply-chain drift | Low | Medium | Licences read, no veto; notices generated from the real bundle graphs and compared by a test; legal banners kept; pinned versions and a package-boundary test; no network code in the package; same-origin assets and font (as row 26) | built (D-2, PR #833, not merged); serving the notices file planned (D-3, D-4) | Low |
-| 70 | Document content appears in renderer logs or error messages | Low | Medium | No spec text, title or asset bytes in Workers Logs (a test, D-3); `attributes.documents` holds format, status, bytes, duration and error code only; validator codes are stable strings with JSON paths, no values | planned (D-3) | Low; Workers Logs retention not checked **[U]** |
+| 69 | Third-party code in the client chunk or the renderer Worker: unmet licence duties, external fetches, supply-chain drift | Low | Medium | Licences read, no veto; notices generated from the real bundle graphs and compared by a test; legal banners kept; pinned versions and a package-boundary test; no network code in the package; same-origin assets and font (as row 26) | built on a branch (D-2, PR #833, not merged); serving the notices file planned (D-3, D-4) | Low |
+| 70 | Document content appears in renderer logs or error messages | Low | Medium | No spec text, title or asset bytes in Workers Logs (a test, D-3); `attributes.documents` and `attributes.codeExecution` hold formats, counts, bytes, durations and error codes only, never a title, spec text, code, output or file name; validator codes are stable strings with JSON paths, no values | planned (D-3) | Low; Workers Logs retention not checked **[U]** |
 | 71 | A document with wrong content or empty formula cells is used without checking | High | Medium | Card and preview labels ("Preview from the document outline; download for exact layout"); the renderer does not write cached formula values, so non-recalculating viewers show empty cells; Terms wording that Besidka does not review generated documents or code results and that the user checks them (notice `2026-12-code-and-documents`, effective 2026-12-19, section 6, item 26) | behaviour built (D-2); Terms wording in this change, effective 2026-12-19 | Medium |
 | 72 | A D1 restore brings back `documents` rows whose file or spec object was deleted, or documents whose chat was deleted | Low | Medium | D-4 adds the table to `docs/d1-restore-reconciliation.md`; deleted objects are gone from R2, so reads fail closed; a sweep removes rows with no file and no chat | planned (D-4) | Low |
 
@@ -1596,17 +1608,18 @@ beta on the same account, treat row 54 as high and review this DPIA first.
     may persist in active calls, OpenAI abuse logs run up to 30 days, OpenAI
     zero data retention for containers is unverified and Google's sandbox
     retention and network access are not stated. The Privacy Policy says so
-    for each provider. **Materiality is a judgment call:** this is a
+    for each provider. **Materiality was a judgment call:** this is a
     retention fact users did not have before, near the checklist item "a
     longer retention period", but it is the provider's retention and Besidka
-    keeps nothing longer than file retention, so the change is recorded as
-    minor. If the owner prefers the cautious reading, one `LEGAL_NOTICES` entry
-    with 30 days fixes it. The provider pages were read on 2026-11-07 and not
+    keeps nothing longer than file retention. The pre-check expected minor; the
+    checklist says to treat an unclear case as material and a Terms notice goes
+    out anyway, so the Privacy Policy is recorded as material and covered by
+    notice `2026-12-code-and-documents`. The provider pages were read on 2026-11-07 and not
     re-read on 2026-11-11.
 26. **Terms of Use: the mirror of provider prohibitions (decided 2026-11-11).**
     The owner decided on 2026-11-11 ("Yes, add to Terms") to mirror the
     providers' usage rules for code (Anthropic's Usage Policy from 2026-11-12,
-    OpenAI's from 2026-11-20). This is option A of pre-check owner item 1. The
+    OpenAI's from 2026-11-20). This is option A of pre-check owner item 1, against the recommendation. The
     Terms now forbid code run or written through Besidka, including with Run
     code, from attacking systems: no malware, no denial of service or
     botnets, no bypassing security controls without authorisation, no attacks
@@ -1619,7 +1632,7 @@ beta on the same account, treat row 54 as high and review this DPIA first.
     skills run under the user's own Anthropic agreement and are not licensed
     or distributed by Besidka (no word "proprietary"). New user restrictions
     are material under the WP260 checklist, so notice
-    `2026-12-code-and-documents` (Terms only) is published 2026-11-15, sent
+    `2026-12-code-and-documents` (Privacy Policy and Terms) is published 2026-11-15, sent
     from 2026-11-15, and takes effect 2026-12-19. No sourced duty makes
     Besidka a flow-down party, so this is a choice, not a requirement. The
     earlier notice effective 2026-12-04 is unchanged.

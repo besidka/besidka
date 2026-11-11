@@ -529,9 +529,9 @@ publish. Watch the appeal.
    reviewed by Besidka, the AI-mark paragraph extended to documents, Anthropic's
    skills run under the user's own agreement); material, notice
    `2026-12-code-and-documents`, effective 2026-12-19 (`docs/legal/dpia.md`,
-   section 6, item 26); (c) whether the cautious
-   reading of materiality (one `LEGAL_NOTICES` entry) is wanted for the
-   provider-side retention of code execution (item 25).
+   section 6, item 26); (c) the Privacy Policy change for
+   documents and code execution is recorded as material on the cautious
+   reading and covered by the same notice (item 25).
 
 ## 5. Deploying the legal text
 

@@ -48,7 +48,7 @@ Everything below lives in a Cloudflare D1 database, except files, which live in 
 - Your settings, such as your file retention period, your default reasoning effort and whether reasoning is shown expanded, whether the sidebar is pinned, your favourite models, whether links in deep research reports open without a warning, whether you were asked about push notifications and what you answered, which notices about changes to these pages you dismissed in the app, and which TypeSafe AI checks you left on (all of them are on until you switch one off)
 - Deep research jobs, including the request and the resulting report
 - Your documents: the PDF, Word, PowerPoint and Excel files the assistant or a connected app made for you, the outline each was built from, and a short record about each (see [Documents](#documents)). The outline and the file are stored in Cloudflare R2
-- Your artifacts: the pages, components, diagrams and documents the assistant or a connected app made for you, every version of each, and short records about them (see [Artifacts](#artifacts)). The content is stored in Cloudflare R2
+- Your artifacts: the pages, components, diagrams and text documents the assistant or a connected app made for you, every version of each, and short records about them (see [Artifacts](#artifacts)). The content is stored in Cloudflare R2
 - Your memory entries and memory settings (see [Memory](#memory))
 - A record of the legal change notices I sent you: which notice, when, whether it was delivered, and an error code if it failed (see [Email I send you](#email-i-send-you))
 - Your consent record: when you accepted the Terms of Use and confirmed that you are 18 or over, when you gave your consent to store sensitive information and when you withdrew it, if you did, and which version of the text you agreed to (see [Sensitive information in your chats](#sensitive-information-in-your-chats)). If you consent to sending your messages to DeepSeek, Moonshot AI, Qwen, one of the other vendors listed there, or through a router or preset model, I also keep when you gave that consent and when you withdrew it (see [Transfers outside the EU](#transfers-outside-the-eu))
@@ -154,7 +154,7 @@ Some models can run code on the provider's side, for example to read a spreadshe
 - **What is sent.** Your prompt and history as for any message, and the files you attach to that message, which are uploaded to the provider's code sandbox for that turn (up to 10 files and 20 MB). The provider also receives the code the model writes, its output and the files that code creates. All of it goes with your own API key.
 - **What I do with the result.** I download the files the code made, check them (type, size, and for PDF and Office files that they hold no macros or other active content) and save them as your files. I keep the code and its output in the message, cut to 32 KB each.
 - **What I delete.** After the turn I delete the files I uploaded, the files I downloaded and, at OpenAI, the container, as far as the provider allows. Anthropic uploads also carry a one-hour expiry in case a turn is cut short.
-- **Internet access.** I never turn on internet access for the sandbox.
+- **Internet access.** I never turn it on for the sandbox, where the provider lets me choose. Google does not say whether its sandbox has it.
 - **What stays at the provider, outside my control.** See the provider paragraphs below. In short: Anthropic can keep container data for up to 30 days, OpenAI keeps abuse-monitoring logs for up to 30 days, and Google does not say how long its sandbox keeps data.
 - **Cost.** The provider bills your own account for code execution, in addition to the tokens. The "Run code" row shows the provider's price. I cannot see your balance or your free hours, and I cannot cap the spend.
 - **Not through connected apps.** A connected app cannot run code for you, because that spends your key.
@@ -487,7 +487,7 @@ An artifact can ask an AI model a question, for example to explain an answer in 
 
 ## Documents
 
-A document is a PDF, Word, PowerPoint or Excel file that the assistant makes for you in a chat when you ask for one, or that an AI app you connected makes through your account. Documents are an [experimental feature](#experimental-features): they reach accounts step by step, starting with my own account and testers.
+A document is a PDF, Word, PowerPoint or Excel file that the assistant makes for you in a chat when you ask for one, or that an AI app you connected makes through your account. Documents are an [experimental feature](#experimental-features): they reach accounts step by step, starting with my own account and testers. They are not the same as [artifacts](#artifacts): deleting a chat deletes the documents made in it, but keeps its artifacts.
 
 ### What a document holds
 
@@ -498,7 +498,7 @@ A document is a PDF, Word, PowerPoint or Excel file that the assistant makes for
 
 ### Where a document is made
 
-Your browser builds the file on your device. If it cannot, my server builds it, in a separate Cloudflare Worker that only Besidka can reach and that keeps nothing. Every file is checked before it is saved: macros, embedded objects, external links other than web and email links, and other active content are refused. A file that fails the check is not stored.
+Your browser builds the file on your device. If it cannot, my server builds it, in a separate Cloudflare Worker that only Besidka can reach, that stores nothing and that does not log the text, titles or images of your documents. Every file is checked before it is saved: macros, embedded objects, external links other than web and email links, and other active content are refused. A file that fails the check is not stored.
 
 ### Marking and labels
 
@@ -511,7 +511,7 @@ A document that a connected app asked me to make is marked as created by a conne
 - The outline and the file are kept together, as long as the file: 30 days by default, or what you set for your files. Deleting the file deletes the outline.
 - **Deleting a chat deletes the documents made in it**, the file and the outline, unless the file is still used somewhere else, such as in another chat or as project knowledge. Then the file stays, and the title and the link to the deleted chat are removed from its record.
 - A document made by a connected app has no chat. It is kept until its file expires or you delete it.
-- Deleting your account deletes all your documents. Copies can stay for up to 30 days in backups (see [Backups](#backups)).
+- Deleting your account deletes all your documents. The database record (the title and ids) can stay for up to 30 days in backups (see [Backups](#backups)). The outline and the file are in R2, which those backups do not cover.
 - A shared chat shows the title of a document only, unless you choose to show files in that share.
 
 ## Who else receives your data

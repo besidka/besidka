@@ -288,8 +288,8 @@ describe('artifacts notice', () => {
 describe('code and documents notice', () => {
   const notice = getLegalNoticeById(CODE_AND_DOCUMENTS_NOTICE_ID)
 
-  it('announces the Terms of Use only, with the standard period', () => {
-    expect(notice?.documents).toEqual(['terms-of-use'])
+  it('announces the Privacy Policy and the Terms of Use', () => {
+    expect(notice?.documents).toEqual(['privacy-policy', 'terms-of-use'])
     expect(notice?.shortNoticeReason).toBeUndefined()
     expect(notice?.alreadyAvailable).toBeUndefined()
   })
