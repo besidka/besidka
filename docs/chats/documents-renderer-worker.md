@@ -157,10 +157,13 @@ working for version 1.
   and `getRendererCapabilities(logger?)`. A binding call that rejects (renderer
   not running, network) becomes the same 503 with why "The DOC_RENDERER call
   failed" and a message-free error summary in the log.
-- One wide-event block, `attributes.documents.renderer`: `operation`,
-  `format` (only `pdf`, `docx`, `pptx`, `xlsx`), `ok`, `code`, `durationMs`,
-  `bytes`, `rendererVersion`. Never spec text, titles, file ids or asset bytes;
-  a spec asserts it. The Worker itself writes no logs at all (no `console` in
+- One wide-event block per operation, `attributes.documents.renderer.<operation>`
+  (`capabilities`, `render`, `validate`, so a render after a capabilities fetch
+  does not overwrite it): `operation`, `format` (only `pdf`, `docx`, `pptx`,
+  `xlsx`), `ok`, `code`, `durationMs`, `bytes`, `rendererVersion`. Never spec text, titles, file ids or asset bytes;
+  a spec asserts it. `detail` and `issues` of a failed result can echo a file
+  id or a key name from the spec; callers (D-4, D-5) must not log them or pass
+  them to a client verbatim without checking. The Worker itself writes no logs at all (no `console` in
   its sources, asserted), so Workers Logs hold only the invocation records.
 
 ## Local development
@@ -188,10 +191,12 @@ on `main` and never on a dry run. It now holds two independent sets of steps:
 
 - artifacts runtime, gated by `vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED` as
   before (the gate moved from the job to its steps);
-- document renderer, ungated: `wrangler deploy` and `wrangler deploy --env
-  preview` from `workers/doc-renderer` when `workers/doc-renderer/`,
-  `packages/doc-renderer/`, the lockfile or the workspace file changed (or there
-  is no previous commit to compare with).
+- document renderer, ungated and on every run: `wrangler deploy` and
+  `wrangler deploy --env preview` from `workers/doc-renderer`. There is no
+  change detection: the deploy is idempotent, and a skipped deploy after an
+  earlier failed run would leave the app bound to a Worker that was never
+  published (concurrent pushes drop pending runs, so a diff against the
+  previous push cannot be trusted).
 
 There is deliberately no opt-in variable for the renderer. `env.production`
 binds `besidka-doc-renderer`, and `wrangler deploy` of the app fails when the
@@ -209,14 +214,16 @@ Consequences for the merge:
 2. Between the merge and the end of that job, a PR preview deploy (it uses the
    default branch's `wrangler.jsonc`) can fail on the missing
    `besidka-doc-renderer-preview`. Re-run it.
-3. If a satellite deploy is skipped by change detection after an earlier failed
-   run, the Worker stays missing. Re-run with the files touched, or deploy by
-   hand: `cd workers/doc-renderer && pnpm exec wrangler deploy` and
-   `... deploy --env preview`.
+3. To bootstrap by hand (for example before the first merge, so previews
+   resolve the target at once): `cd workers/doc-renderer && pnpm exec wrangler
+   deploy` and `pnpm exec wrangler deploy --env preview`.
 
 ## Not verified
 
 The workflow change was checked by a parser-level spec, not by a run on `main`.
+`tests/unit/workers/doc-renderer/bundle.spec.ts` runs `wrangler deploy
+--dry-run` for both configs, so the aliases, the font rule and the bundle size
+are exercised on every PR rather than first on `main`.
 Production CPU, a real `wrangler deploy` of both Workers, the RPC call on a PR
 preview (the preview of this PR deploys with `main`'s `wrangler.jsonc`, which
 has no binding until it merges) and Workers Logs retention. The per-PR renderer

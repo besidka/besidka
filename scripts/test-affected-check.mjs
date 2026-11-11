@@ -277,6 +277,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const documentRendererWorkerTests = [
     'tests/unit/workers/doc-renderer/index.spec.ts',
+    'tests/unit/workers/doc-renderer/bundle.spec.ts',
     'tests/unit/utils/documents/renderer.spec.ts',
     'tests/unit/workflows/production-satellites.spec.ts',
     'tests/unit/config/wrangler-previews.spec.ts',

@@ -60,10 +60,8 @@ describe('production.yml satellite Workers', () => {
     ])
   })
 
-  it('blocks the app deploy until the satellites are done or skipped', () => {
+  it('makes the app deploy wait for the satellites', () => {
     expect(toList(deploy.needs)).toContain('deploy-satellites')
-    expect(deploy.if).toContain('needs.deploy-satellites.result == \'success\'')
-    expect(deploy.if).toContain('needs.deploy-satellites.result == \'skipped\'')
   })
 
   it('never runs on a dry run and only on main', () => {
@@ -93,23 +91,12 @@ describe('production.yml satellite Workers', () => {
     })
   })
 
-  it('detects document renderer changes in the Worker and the package', () => {
-    const detect = findStep('Detect document renderer changes')
-
-    expect(detect.id).toBe('renderer-changes')
-    expect(detect.run).toContain('workers/doc-renderer/')
-    expect(detect.run).toContain('packages/doc-renderer/')
-    expect(detect.run).toContain('pnpm-lock')
-  })
-
-  it('deploys the production and the preview renderer from workers/doc-renderer', () => {
+  it('deploys the production and the preview renderer on every run', () => {
     const production = findStep('Deploy the document renderer')
     const preview = findStep('Deploy the document renderer for previews')
 
     for (const step of [production, preview]) {
-      expect(step.if).toBe(
-        'steps.renderer-changes.outputs.doc-renderer == \'true\'',
-      )
+      expect(step.if).toBeUndefined()
       expect(step.uses).toMatch(/^cloudflare\/wrangler-action@[0-9a-f]{40}$/)
       expect(step.with?.workingDirectory).toBe('workers/doc-renderer')
       expect(step.with?.wranglerVersion).toBe('4.151.1')
@@ -119,17 +106,23 @@ describe('production.yml satellite Workers', () => {
     expect(preview.with?.command).toBe('deploy --env preview')
   })
 
-  it('deploys the renderer before the app steps could bind to it', () => {
-    const names = satellites.steps.map(step => step.name)
-
-    expect(names.indexOf('Deploy the document renderer'))
-      .toBeLessThan(names.indexOf('Deploy the document renderer for previews'))
-    expect(deploy.needs).toContain('deploy-satellites')
+  it('has no change detection that could leave the binding target missing', () => {
+    expect(satellites.steps.some(step => step.id === 'renderer-changes'))
+      .toBe(false)
   })
 
-  it('sets up the project when only the renderer changed', () => {
-    const setup = findStep('Setup project')
+  it('sets the project up before any deploy step, without a condition', () => {
+    const names = satellites.steps.map(step => step.name)
 
-    expect(setup.if).toContain('steps.renderer-changes.outputs.doc-renderer')
+    expect(findStep('Setup project').if).toBeUndefined()
+    expect(names.indexOf('Setup project'))
+      .toBeLessThan(names.indexOf('Deploy the document renderer'))
+  })
+
+  it('deploys the app only when the satellites succeeded or were skipped', () => {
+    expect(deploy.if).toContain(
+      '&& (needs.deploy-satellites.result == \'success\' '
+      + '|| needs.deploy-satellites.result == \'skipped\')',
+    )
   })
 })

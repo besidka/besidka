@@ -238,8 +238,8 @@ describe('document renderer binding', () => {
       await renderDocument(createRequest(), logger as never)
 
       const renderBlock = logger.set.mock.calls
-        .map(([fields]) => fields.attributes.documents.renderer)
-        .find(block => block.operation === 'render')
+        .map(([fields]) => fields.attributes.documents.renderer.render)
+        .find(Boolean)
 
       expect(renderBlock).toEqual({
         operation: 'render',
@@ -289,12 +289,14 @@ describe('document renderer binding', () => {
       expect(logger.set).toHaveBeenLastCalledWith({
         attributes: {
           documents: {
-            renderer: expect.objectContaining({
-              operation: 'validate',
-              format: 'docx',
-              ok: true,
-              bytes: 77,
-            }),
+            renderer: {
+              validate: expect.objectContaining({
+                operation: 'validate',
+                format: 'docx',
+                ok: true,
+                bytes: 77,
+              }),
+            },
           },
         },
       })

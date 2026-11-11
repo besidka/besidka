@@ -86,7 +86,7 @@ function setRendererLog(
   logger?.set({
     attributes: {
       documents: {
-        renderer: fields,
+        renderer: { [fields.operation]: fields },
       },
     },
   })

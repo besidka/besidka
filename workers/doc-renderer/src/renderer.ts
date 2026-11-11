@@ -207,6 +207,16 @@ function classifySpecFailure(
     return failure('spec_version_unsupported', firstIssue.message, issues)
   }
 
+  if (firstIssue?.path === '$') {
+    return failure(
+      firstIssue.message.startsWith('Spec is')
+        ? 'bounds_exceeded'
+        : 'spec_invalid',
+      `$: ${firstIssue.message}`,
+      issues,
+    )
+  }
+
   const schemaAccepted = documentSpecSchema.safeParse(spec).success
 
   return failure(
@@ -252,12 +262,6 @@ export async function renderDocument(
       return provenanceFailure
     }
 
-    const assetResult = buildAssets(request.assets)
-
-    if (!assetResult.ok) {
-      return assetResult.failure
-    }
-
     const specVersion = readSpecVersion(request.spec)
 
     if (specVersion !== request.specVersion) {
@@ -273,6 +277,12 @@ export async function renderDocument(
 
     if (!parsed.ok) {
       return classifySpecFailure(request.spec, parsed.issues)
+    }
+
+    const assetResult = buildAssets(request.assets)
+
+    if (!assetResult.ok) {
+      return assetResult.failure
     }
 
     const { model, createdVia, aiGenerated } = request.provenance
