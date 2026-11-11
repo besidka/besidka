@@ -13,7 +13,7 @@ import { applyResponseHeaders } from '~~/server/utils/http/apply-response-header
 
 const KEY_GUIDE_RENDITION_SUFFIXES = ['', '-1080', '-360']
 
-const EXPLAINER_VIDEO_IDS = ['memory']
+const EXPLAINER_VIDEO_IDS = ['memory', 'artifacts']
 
 const MCP_DEMO_VIDEO_FILES = [
   'mcp-demo-claude-1080.mp4',

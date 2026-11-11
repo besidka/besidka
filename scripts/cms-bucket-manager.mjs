@@ -36,7 +36,9 @@
  * Optional assets: every `.files/key-guide-<provider id>.mp4` present, plus
  * its `-1080` and `-360` renditions, is uploaded too (uploads only; see
  * docs/key-guides.md), and so is `.files/memory.mp4` with its renditions (the
- * /memory explainer, docs/seo.md). The two reviewer demos of the MCP connector,
+ * /memory explainer, docs/seo.md) and `.files/artifacts.mp4` with its
+ * renditions (the artifacts video on the home page, docs/landing-studio.md).
+ * The two reviewer demos of the MCP connector,
  * `.files/mcp-demo-claude-1080.mp4` and `.files/mcp-demo-chatgpt-1080.mp4`
  * (1080p only, docs/mcp-marketplaces.md), are uploaded the same way. Absent
  * ones are not an error.
@@ -116,7 +118,7 @@ const ASSETS = [
 ]
 
 const KEY_GUIDE_VIDEO_PATTERN
-  = /^(key-guide-[a-z0-9]+|memory)(-1080|-360)?\.mp4$/
+  = /^(key-guide-[a-z0-9]+|memory|artifacts)(-1080|-360)?\.mp4$/
 
 const MCP_DEMO_VIDEO_FILES = [
   'mcp-demo-claude-1080.mp4',

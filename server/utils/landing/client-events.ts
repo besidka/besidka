@@ -25,6 +25,7 @@ export const DEMO_VIDEO_TARGET = 'demo'
 
 export const EXPLAINER_VIDEO_TARGETS: ReadonlySet<string> = new Set([
   'memory',
+  'artifacts',
 ])
 
 const PROVIDER_TARGET_EVENTS = new Set<ClientLandingEventName>([

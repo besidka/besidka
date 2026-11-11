@@ -127,6 +127,22 @@ Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
 `/signin`, `/signup`, `/reset-password`, `/new-password`, and shared chats with
 `indexable = false`.
 
+Public artifact links (`/a#<token>`, artifacts layer, stack #766) are always
+`noindex, nofollow` and have no indexing switch. The token is the URL
+fragment, which browsers never send, so every link is the single path `/a`
+to a crawler, and the page shows nothing without the token. `nuxt.config.ts`
+on the stack sets a route rule on `/a` and `/a/**` (`X-Robots-Tag: noindex,
+nofollow`, `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer`,
+`frame-ancestors 'none'`) and adds both to `sitemap.exclude`. They are
+deliberately **not** in `robots.disallow`, for the same reason as `/signin`
+below: a disallowed URL is never fetched, so its `noindex` would never be
+read. Old `/a/<token>` paths (and `/A`, `/a/`) answer a plain-text 404 with
+the same headers (`server/middleware/02.artifact-share-path.ts`). As of
+2026-11-09 the route and these rules exist only on the stack branch, not on
+`main`; they land with #766. After the production deploy, check
+`curl -sI https://besidka.com/a | grep -i x-robots-tag` and that `/a` is
+absent from `/sitemap.xml`.
+
 `robots.txt` also carries `Content-Signal: search=yes, ai-input=yes,
 ai-train=no` on the `*` group (`robots.groups` in `nuxt.config.ts`, the same
 value as `public/ai.txt`). It lets search engines and AI answers use the
@@ -473,6 +489,33 @@ October 2026". Changes in that pass:
   then. T3 cells are `Not listed by T3`: its public FAQ documents only a
   temporary-chat URL parameter. `priceDate` was not bumped, because the
   existing cells were not re-checked.
+- **The interactive artifacts row was added on 2026-11-09** (artifacts
+  launch content, BES-306). Every competitor cell was checked that day on
+  the vendor's own pages, all added to `comparison.sources`:
+  - ChatGPT Go and Plus: the ChatGPT release notes say canvas left
+    GPT-5.5 Instant and Thinking on 28 May 2026 (paid users keep it on
+    legacy models for a limited time), and that GPT-6 "Intelligent UI"
+    (7 October 2026, Plus first, Free and Go from the next day) builds
+    interactive elements such as calculators and games inside the
+    conversation. Nothing says those can be shared by link, so the cells say
+    `Interactive answers in chat, sharing not stated`. The canvas help
+    article (`/articles/9930697`) now returns 404. `help.openai.com` answers
+    403 to automated fetches; it was read in a browser.
+  - Google AI Plus and AI Pro: the Gemini features-by-plan table ticks
+    Canvas for every tier, Plus included; the Canvas help page covers
+    quizzes, web pages, a preview console and Share & export links.
+  - Claude Pro: artifacts are on every plan, and the sharing article lists
+    "Anyone with the link" for Pro, Max and Ultra.
+  - T3 Chat: neither the FAQ nor the terms mention artifacts, canvas or code
+    preview, so `Not listed by T3`.
+  - Besidka: artifacts are behind internal feature flags and the
+    `2026-12-artifacts` legal notice takes effect on 19 December 2026, so the
+    cell is `In testing, from 19 December 2026`, not `yes`. Change it to
+    `yes` (and the matching FAQ and features copy) once artifacts are rolled
+    out to everyone.
+
+  `priceDate` was not bumped, because the existing cells were not
+  re-checked.
 
 Rules for the next refresh:
 
