@@ -270,6 +270,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (linear XML tokenizer, streaming inflate cap, structural PDF scan),
   provenance `ai | channel-only | missing`, determinism pins, the notices
   collector, the browser Worker smoke, and the deviations from the ticket
+- `docs/chats/documents-renderer-worker.md` - The `DOC_RENDERER` renderer
+  Worker (D-3, BES-286): `workers/doc-renderer` as an RPC `WorkerEntrypoint`
+  with errors returned as values, the contract and payload bounds (32 MiB RPC
+  limit, why bytes and not R2 keys), the code mapping from the package, spec
+  version negotiation in `server/utils/documents/renderer.ts`, the build
+  aliases and `fflate` shim, measured CPU per format against
+  `limits.cpu_ms: 15000`, the local two-process dev setup, the
+  `deploy-satellites` order and why the renderer has no opt-in variable, why
+  there is no per-PR renderer preview, and the deviations from the ticket
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no
@@ -944,6 +953,9 @@ Configured in `wrangler.jsonc`:
 - `KV` - KV namespace binding
 - `DATA_BUCKET` - R2 storage bucket
 - `IMAGES` - Cloudflare Images binding
+- `DOC_RENDERER` - Service binding (RPC `DocRenderer` entrypoint) to the
+  document renderer Worker; missing binding means 503 and the `documents`
+  features off (see `docs/chats/documents-renderer-worker.md`)
 
 **Binding access patterns**:
 ```ts
