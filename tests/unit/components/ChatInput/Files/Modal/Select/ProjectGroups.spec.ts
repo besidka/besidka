@@ -492,4 +492,16 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
       wrapper.get('[data-testid="files-project-groups"]').element,
     )
   })
+
+  it('passes the unsupported reasons down to the file tiles', async () => {
+    const reason = 'This model does not support PDF input.'
+    const wrapper = await mountGroups(
+      [createGroup({ files: [createFile('file-1')] })],
+      { unsupportedReasons: { 'file-1': reason } },
+    )
+    const tile = wrapper.get('[data-file-index="0"]')
+
+    expect(tile.attributes('aria-disabled')).toBe('true')
+    expect(tile.attributes('title')).toBe(reason)
+  })
 })

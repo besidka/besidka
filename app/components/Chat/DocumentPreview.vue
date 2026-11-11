@@ -165,7 +165,7 @@ const {
   status: statusRequest,
   error: statusError,
   refresh: refreshStatus,
-} = useLazyFetch(
+} = await useLazyFetch(
   () => `/api/v1/documents/${encodeURIComponent(props.documentId)}`,
   {
     key: `document-preview-status:${props.documentId}`,
@@ -179,7 +179,7 @@ const {
   status: specRequest,
   error: specError,
   refresh: refreshSpec,
-} = useLazyFetch(
+} = await useLazyFetch(
   () => `/api/v1/documents/${encodeURIComponent(props.documentId)}/spec`,
   {
     key: `document-preview-spec:${props.documentId}`,

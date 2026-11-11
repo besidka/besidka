@@ -4,7 +4,10 @@ import type {
   DocumentStatus,
   DocumentStatusResponse,
 } from '#shared/utils/documents'
+import { collectImageIds } from '@besidka/doc-renderer/spec'
+import type { DocumentSpec } from '@besidka/doc-renderer/spec'
 import { parseError } from 'evlog'
+import { getDocumentErrorCodeMessage } from '~/utils/document-ui'
 import {
   DOCUMENT_ERROR_CODES,
   DOCUMENT_FORMAT_HEADER,
@@ -27,15 +30,19 @@ export interface DocumentFileUrls {
 }
 
 type StatusFetchResult = DocumentStatusResponse | 'unavailable' | 'error'
+type PollOutcome = 'settled' | 'stuck' | 'cancelled'
+type ClientRenderOutcome = 'uploaded' | 'skipped'
 
 const CONFLICT_STATUS = 409
+const SERVER_FALLBACK_BLOCKED_STATUSES: readonly number[] = [507, 429, 413]
 const UNAVAILABLE_STATUSES: readonly number[] = [403, 404]
 const DEFAULT_ERROR_MESSAGE = 'The document could not be created.'
+const STUCK_ERROR_MESSAGE
+  = 'Building this document is taking longer than expected.'
 
 const documentsInFlight = new Set<string>()
 
 const errorMessages: Record<string, string> = {
-  [DOCUMENT_ERROR_CODES.fileDeleted]: 'The document file was deleted.',
   [DOCUMENT_ERROR_CODES.quotaExceeded]:
     'There is not enough storage left for this document.',
   [DOCUMENT_ERROR_CODES.rendererUnavailable]:
@@ -43,7 +50,13 @@ const errorMessages: Record<string, string> = {
 }
 
 export function getDocumentErrorMessage(code: string | null): string {
-  return (code && errorMessages[code]) || DEFAULT_ERROR_MESSAGE
+  if (!code) {
+    return DEFAULT_ERROR_MESSAGE
+  }
+
+  return getDocumentErrorCodeMessage(code)
+    || errorMessages[code]
+    || DEFAULT_ERROR_MESSAGE
 }
 
 export function getDocumentFileUrls(file: DocumentFileRef): DocumentFileUrls {
@@ -72,6 +85,14 @@ function readStatusResponse(payload: unknown): DocumentStatusResponse | null {
   }
 
   return record as unknown as DocumentStatusResponse
+}
+
+function hasImageBlocks(spec: unknown): boolean {
+  try {
+    return collectImageIds(spec as DocumentSpec).length > 0
+  } catch (_exception) {
+    return false
+  }
 }
 
 function readSpecPayload(payload: unknown): unknown {
@@ -192,20 +213,24 @@ export function useDocumentFlow(
     id: string,
     run: number,
     isWaitingForPeer: boolean,
-  ): Promise<void> {
+  ): Promise<PollOutcome> {
     const startedAt = Date.now()
 
     while (true) {
       const shouldContinue = await wait(DOCUMENT_POLL_INTERVAL_MS)
 
       if (!shouldContinue || !isCurrent(run)) {
-        return
+        return 'cancelled'
       }
 
       const result = await fetchStatus(id, run)
 
-      if (!isCurrent(run) || result === 'unavailable') {
-        return
+      if (!isCurrent(run)) {
+        return 'cancelled'
+      }
+
+      if (result === 'unavailable') {
+        return 'settled'
       }
 
       if (result !== 'error') {
@@ -215,26 +240,70 @@ export function useDocumentFlow(
           status.value = 'rendering'
         }
 
+        if (result.status === 'spec_ready' && !isPeerPending) {
+          return 'stuck'
+        }
+
         if (result.status !== 'rendering' && !isPeerPending) {
-          return
+          return 'settled'
         }
       }
 
       if (Date.now() - startedAt >= DOCUMENT_POLL_TIMEOUT_MS) {
         hasTimedOut.value = true
 
-        return
+        return 'stuck'
       }
     }
+  }
+
+  function markStuck(): void {
+    status.value = 'failed'
+    errorMessage.value = STUCK_ERROR_MESSAGE
+  }
+
+  async function pollUntilSettled(
+    id: string,
+    run: number,
+    isWaitingForPeer: boolean,
+  ): Promise<void> {
+    const outcome = await poll(id, run, isWaitingForPeer)
+
+    if (outcome !== 'stuck' || !isCurrent(run)) {
+      return
+    }
+
+    const current = document.value
+    const canAttemptOnce = !hasAutoAttempted
+      && current !== null
+      && !toValue(options.isStreaming)
+      && import.meta.client
+
+    if (!canAttemptOnce) {
+      markStuck()
+
+      return
+    }
+
+    hasAutoAttempted = true
+    hasTimedOut.value = false
+
+    await attemptRender(id, current, run)
   }
 
   async function uploadClientRender(
     id: string,
     format: DocumentStatusResponse['format'],
-  ): Promise<void> {
+  ): Promise<ClientRenderOutcome> {
     const specPayload = await $fetch(`/api/v1/documents/${id}/spec`)
+    const spec = readSpecPayload(specPayload)
+
+    if (hasImageBlocks(spec)) {
+      return 'skipped'
+    }
+
     const output = await documentRender.render({
-      spec: readSpecPayload(specPayload),
+      spec,
       modelId: toValue(options.modelId),
     })
 
@@ -246,6 +315,8 @@ export function useDocumentFlow(
         [DOCUMENT_FORMAT_HEADER]: format,
       },
     })
+
+    return 'uploaded'
   }
 
   async function requestServerRender(
@@ -279,7 +350,7 @@ export function useDocumentFlow(
   ): Promise<void> {
     if (documentsInFlight.has(id)) {
       status.value = 'rendering'
-      await poll(id, run, true)
+      await pollUntilSettled(id, run, true)
 
       return
     }
@@ -290,17 +361,33 @@ export function useDocumentFlow(
 
     let isPeerRendering = false
     let hasClientFailed = false
+    let blockedException: unknown = null
 
     try {
-      await uploadClientRender(id, current.format)
+      const outcome = await uploadClientRender(id, current.format)
+
+      hasClientFailed = outcome === 'skipped'
     } catch (exception) {
-      isPeerRendering = parseError(exception).status === CONFLICT_STATUS
-      hasClientFailed = !isPeerRendering
+      const failureStatus = parseError(exception).status
+
+      isPeerRendering = failureStatus === CONFLICT_STATUS
+
+      if (SERVER_FALLBACK_BLOCKED_STATUSES.includes(failureStatus)) {
+        blockedException = exception
+      } else {
+        hasClientFailed = !isPeerRendering
+      }
     } finally {
       documentsInFlight.delete(id)
     }
 
     if (!isCurrent(run)) {
+      return
+    }
+
+    if (blockedException) {
+      markFailed(blockedException)
+
       return
     }
 
@@ -324,7 +411,7 @@ export function useDocumentFlow(
     }
 
     if (refreshed.status === 'rendering' || isPeerRendering) {
-      await poll(id, run, false)
+      await pollUntilSettled(id, run, false)
     }
   }
 
@@ -339,7 +426,7 @@ export function useDocumentFlow(
     }
 
     if (current.status === 'rendering' && !isRetry) {
-      await poll(id, run, false)
+      await pollUntilSettled(id, run, false)
 
       return
     }

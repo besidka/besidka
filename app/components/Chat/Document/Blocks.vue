@@ -5,7 +5,7 @@
       :key="`block-${blockIndex}`"
     >
       <component
-        :is="`h${block.level}`"
+        :is="HEADING_TAGS[block.level]"
         v-if="block.type === 'heading'"
         class="font-semibold leading-snug break-words"
         :class="HEADING_CLASSES[block.level]"
@@ -108,6 +108,13 @@ import type { Block } from '@besidka/doc-renderer/spec'
 defineProps<{
   blocks: Block[]
 }>()
+
+const HEADING_TAGS: Record<number, string> = {
+  1: 'h4',
+  2: 'h5',
+  3: 'h6',
+  4: 'h6',
+}
 
 const HEADING_CLASSES: Record<number, string> = {
   1: 'text-xl',

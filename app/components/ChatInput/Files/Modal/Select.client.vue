@@ -78,6 +78,7 @@
         :is-touch-selecting="isTouchSelecting"
         :touched-indices="touchedIndices"
         :touch-group-id="touchGroupId"
+        :unsupported-reasons="unsupportedReasons"
         @toggle="toggleProjectGroup"
         @load-more="loadMoreProjectGroup"
         @file-click="onFileClick"
@@ -95,6 +96,7 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting"
             :touched-indices="touchedIndices"
+            :unsupported-reasons="unsupportedReasons"
             @file-click="onFileClick"
             @rename="openRenameModal"
             @delete="confirmDelete"
@@ -108,6 +110,7 @@
             :touched-indices="touchedIndices"
             :all-selected="allSelected"
             :has-selection="hasSelection"
+            :unsupported-reasons="unsupportedReasons"
             @file-click="onFileClick"
             @rename="openRenameModal"
             @delete="confirmDelete"
@@ -166,10 +169,14 @@ import type {
   FileSourceTab,
 } from '~/types/file-manager'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   attachedIds: Set<string>
   initialSource?: FileSourceFilter
-}>()
+  canAttachMediaType?: (mediaType: string) => boolean
+}>(), {
+  initialSource: undefined,
+  canAttachMediaType: () => true,
+})
 
 const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
@@ -224,6 +231,28 @@ const {
   getSelectedForAttach,
   reset: resetFileManager,
 } = useFileManager()
+
+const unsupportedReasons = computed<Record<string, string>>(() => {
+  const reasons: Record<string, string> = {}
+  const reasonsByMediaType = new Map<string, string>()
+
+  for (const file of loadedFiles.value) {
+    if (!isMediaTypeRejectedByModel(file.type, props.canAttachMediaType)) {
+      continue
+    }
+
+    if (!reasonsByMediaType.has(file.type)) {
+      reasonsByMediaType.set(
+        file.type,
+        getUnsupportedInputMessage([file.type], props.canAttachMediaType),
+      )
+    }
+
+    reasons[file.id] = reasonsByMediaType.get(file.type)!
+  }
+
+  return reasons
+})
 
 const extraSourceTabs = getFileManagerExtraSourceTabs()
 const activeExtraTabId = shallowRef<string | null>(null)
@@ -573,6 +602,14 @@ function onFileClick(
     return
   }
 
+  const unsupportedReason = unsupportedReasons.value[file.id]
+
+  if (unsupportedReason) {
+    useWarningMessage(unsupportedReason)
+
+    return
+  }
+
   const isCurrentlySelected = selectedIds.value.has(file.id)
   const isAttached = props.attachedIds.has(file.id)
   const isShiftClick = event.shiftKey
@@ -652,8 +689,27 @@ async function confirmDeleteSelected() {
 
 function attachSelected() {
   const selected = getSelectedForAttach()
+  const attachable = selected.filter((file) => {
+    return !unsupportedReasons.value[file.id]
+  })
+  const rejected = selected.filter((file) => {
+    return unsupportedReasons.value[file.id]
+  })
 
-  emit('attach', selected)
+  if (rejected.length > 0) {
+    useWarningMessage(
+      getUnsupportedInputMessage(
+        rejected.map(file => file.type),
+        props.canAttachMediaType,
+      ),
+    )
+  }
+
+  if (attachable.length === 0) {
+    return
+  }
+
+  emit('attach', attachable)
 }
 
 function handleDeselectAll() {

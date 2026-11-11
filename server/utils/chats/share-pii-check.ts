@@ -5,6 +5,7 @@ import type {
   SharePiiWarning,
 } from '#shared/types/share-pii.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { isDataDocumentPart } from '#shared/utils/documents'
 import { JEV_SHARE_PII_CHECK } from '#shared/utils/jev-policy'
 import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
@@ -105,14 +106,25 @@ function describePart(
     return part.filename
   }
 
+  if (isDataDocumentPart(part)) {
+    const fileName = showFiles && 'file' in part.data
+      ? part.data.file?.name
+      : undefined
+
+    return [part.data.title, fileName]
+      .filter((piece): piece is string => Boolean(piece?.trim()))
+      .join('\n')
+  }
+
   return null
 }
 
 /**
  * The text a public share would show, one segment per message plus the chat
- * title: text and reasoning parts, and file names only when the share shows
- * files. Tool parts are dropped by `filterPublicParts`, the same function the
- * shared view uses.
+ * title: text and reasoning parts, the titles of document cards (a card shows
+ * its title even when files are hidden), and file names, document file names
+ * included, only when the share shows files. Tool parts are dropped by
+ * `filterPublicParts`, the same function the shared view uses.
  */
 export function collectSharedChatSegments(input: {
   title: string | null

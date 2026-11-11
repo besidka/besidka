@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
@@ -166,6 +166,14 @@ export async function deleteDocumentSpecObjects(
   return uniqueKeys.length
 }
 
+async function deleteSpecObjectBestEffort(specR2Key: string): Promise<void> {
+  try {
+    await deleteDocumentSpecObjects([specR2Key])
+  } catch {
+    return
+  }
+}
+
 /**
  * Step one of creating a document: inserts the row without a spec key. The
  * public id is only known after the insert, so the R2 key is derived from the
@@ -229,9 +237,10 @@ export async function attachDocumentSpec(
 }
 
 /**
- * Both steps in one call. When the spec cannot be written the half-created
- * row is deleted again and the error is rethrown, so no row ever points at a
- * missing spec object.
+ * Both steps in one call. When a step fails the half-created row is deleted
+ * again, the spec object is deleted best effort (it may already be written
+ * when only the row update failed) and the error is rethrown, so no row ever
+ * points at a missing spec object and no spec object is left without a row.
  */
 export async function createDocument(
   db: DbClient,
@@ -258,6 +267,9 @@ export async function createDocument(
 
     return attached
   } catch (exception) {
+    await deleteSpecObjectBestEffort(
+      getDocumentSpecKey(inserted.userId, inserted.id, specVersion),
+    )
     await db.delete(schema.documents)
       .where(and(
         eq(schema.documents.id, inserted.id),
@@ -328,14 +340,54 @@ export async function claimDocumentRender(
   return row ?? null
 }
 
+export interface DocumentClaim {
+  renderLeaseUntil: Date
+  renderAttempts: number
+}
+
 /**
- * Completes a claimed render. Only a `rendering` row can become `ready`, so a
- * caller whose lease was taken over cannot overwrite the winner's file.
+ * Reads the identity of a claim from the row `claimDocumentRender` returned.
+ * The lease end and the attempt counter together identify one claim: a later
+ * claim of the same row always changes both.
+ */
+export function toDocumentClaim(
+  row: Pick<DocumentRow, 'renderLeaseUntil' | 'renderAttempts'>,
+): DocumentClaim {
+  if (row.renderLeaseUntil === null) {
+    throw createError({
+      message: 'The document claim has no lease',
+      status: 500,
+      why: 'A claimed row must carry a render lease',
+      fix: 'Pass the row returned by claimDocumentRender',
+    })
+  }
+
+  return {
+    renderLeaseUntil: row.renderLeaseUntil,
+    renderAttempts: row.renderAttempts,
+  }
+}
+
+function matchesClaim(documentId: string, claim: DocumentClaim) {
+  return and(
+    eq(schema.documents.id, documentId),
+    eq(schema.documents.status, 'rendering'),
+    eq(schema.documents.renderLeaseUntil, claim.renderLeaseUntil),
+    eq(schema.documents.renderAttempts, claim.renderAttempts),
+  )
+}
+
+/**
+ * Completes a claimed render. The row only changes while the caller's own
+ * claim (same lease end and attempt number) still holds it, so a caller whose
+ * lease expired and was taken over cannot overwrite the new owner. Returns
+ * null for a lost claim.
  */
 export async function markDocumentReady(
   db: DbClient,
   input: {
     documentId: string
+    claim: DocumentClaim
     fileId: string
     renderedBy: NonNullable<DocumentRow['renderedBy']>
   },
@@ -348,21 +400,20 @@ export async function markDocumentReady(
       errorCode: sql`NULL`,
       renderLeaseUntil: sql`NULL`,
     })
-    .where(and(
-      eq(schema.documents.id, input.documentId),
-      eq(schema.documents.status, 'rendering'),
-    ))
+    .where(matchesClaim(input.documentId, input.claim))
     .returning()
 
   return row ?? null
 }
 
 /**
- * Records a failed render. A `ready` row is never downgraded.
+ * Records a failed render, only while the caller's own claim still holds the
+ * row. Returns null for a lost claim, so a late failure never marks a row
+ * that another caller is rendering or has finished.
  */
 export async function markDocumentFailed(
   db: DbClient,
-  input: { documentId: string, errorCode: string },
+  input: { documentId: string, claim: DocumentClaim, errorCode: string },
 ): Promise<DocumentRow | null> {
   const [row] = await db.update(schema.documents)
     .set({
@@ -370,32 +421,27 @@ export async function markDocumentFailed(
       errorCode: input.errorCode,
       renderLeaseUntil: sql`NULL`,
     })
-    .where(and(
-      eq(schema.documents.id, input.documentId),
-      ne(schema.documents.status, 'ready'),
-    ))
+    .where(matchesClaim(input.documentId, input.claim))
     .returning()
 
   return row ?? null
 }
 
 /**
- * Gives a claim back without counting a failure, for a request rejected
- * before any rendering happened (for example an oversized upload).
+ * Gives the caller's own claim back without counting a failure, for a request
+ * rejected before any rendering happened (for example an oversized upload).
+ * Returns null when the claim was already lost or finished.
  */
 export async function releaseDocumentClaim(
   db: DbClient,
-  input: { documentId: string },
+  input: { documentId: string, claim: DocumentClaim },
 ): Promise<DocumentRow | null> {
   const [row] = await db.update(schema.documents)
     .set({
       status: 'spec_ready',
       renderLeaseUntil: sql`NULL`,
     })
-    .where(and(
-      eq(schema.documents.id, input.documentId),
-      eq(schema.documents.status, 'rendering'),
-    ))
+    .where(matchesClaim(input.documentId, input.claim))
     .returning()
 
   return row ?? null

@@ -1,4 +1,5 @@
 import type { Cell } from '@besidka/doc-renderer/spec'
+import { DOCUMENT_ERROR_CODES } from '#shared/utils/documents'
 import type {
   DocumentFormat,
   DocumentStats,
@@ -11,6 +12,23 @@ export interface SharedDocumentFile {
   name: string
   size: number
   type: string
+}
+
+const SPEC_EXPIRED_ERROR_CODE = 'spec_expired'
+
+const UNRECOVERABLE_ERROR_MESSAGES: Record<string, string> = {
+  [DOCUMENT_ERROR_CODES.fileDeleted]: 'The document file was deleted.',
+  [DOCUMENT_ERROR_CODES.specMissing]:
+    'The content of this document is no longer available.',
+  [SPEC_EXPIRED_ERROR_CODE]: 'The content of this document has expired.',
+}
+
+export function getDocumentErrorCodeMessage(code: string): string | null {
+  return UNRECOVERABLE_ERROR_MESSAGES[code] ?? null
+}
+
+export function isDocumentErrorRetryable(code: string | null): boolean {
+  return !code || !(code in UNRECOVERABLE_ERROR_MESSAGES)
 }
 
 export const DOCUMENT_FORMAT_ICONS: Record<DocumentFormat, string> = {

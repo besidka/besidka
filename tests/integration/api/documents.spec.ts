@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => ({
   renderDocument: vi.fn(),
   persistFile: vi.fn(),
   deleteOwnedFile: vi.fn(),
+  getActiveShareForChat: vi.fn(),
+  syncChatShareFiles: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
@@ -69,6 +71,15 @@ vi.mock('~~/server/utils/documents/renderer', async () => {
 
 vi.mock('~~/server/utils/files/persist-file', () => ({
   persistFile: (...args: unknown[]) => mocks.persistFile(...args),
+}))
+
+vi.mock('~~/server/utils/chats/share', () => ({
+  getActiveShareForChat: (...args: unknown[]) => {
+    return mocks.getActiveShareForChat(...args)
+  },
+  syncChatShareFiles: (...args: unknown[]) => {
+    return mocks.syncChatShareFiles(...args)
+  },
 }))
 
 vi.mock('~~/server/utils/files/delete-files', () => ({
@@ -239,6 +250,10 @@ describe('documents API', () => {
     })
     mocks.deleteOwnedFile.mockReset()
     mocks.deleteOwnedFile.mockResolvedValue('deleted')
+    mocks.getActiveShareForChat.mockReset()
+    mocks.getActiveShareForChat.mockResolvedValue(null)
+    mocks.syncChatShareFiles.mockReset()
+    mocks.syncChatShareFiles.mockResolvedValue(undefined)
     mocks.persistFile.mockReset()
     mocks.persistFile.mockImplementation(async (input: {
       userId: number
@@ -351,6 +366,15 @@ describe('documents API', () => {
     imageObjects.set(file!.storageKey, IMAGE_BYTES)
 
     return file!
+  }
+
+  async function takeOverClaim(documentId: string): Promise<void> {
+    await testDb.db.update(schema.documents)
+      .set({
+        renderLeaseUntil: new Date(Date.now() + 500_000),
+        renderAttempts: 5,
+      })
+      .where(eq(schema.documents.id, documentId))
   }
 
   async function expectRejection(
@@ -707,6 +731,174 @@ describe('documents API', () => {
       )
     })
 
+    it('leaves the row to its new owner when the validation fails late', async () => {
+      const documentId = await createRowWithTool()
+      const handler = await handlers.file()
+
+      mocks.validateDocumentBytes.mockImplementation(async () => {
+        await takeOverClaim(documentId)
+
+        return { ok: false, code: 'validation_failed' }
+      })
+
+      await expectRejection(
+        handler(createUploadEvent(documentId)),
+        { status: 422, why: 'validation_failed' },
+      )
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'rendering',
+        renderAttempts: 5,
+        errorCode: null,
+      })
+    })
+
+    it('does not release the claim of a newer owner after an outage', async () => {
+      const documentId = await createRowWithTool()
+      const handler = await handlers.file()
+
+      mocks.validateDocumentBytes.mockImplementation(async () => {
+        await takeOverClaim(documentId)
+
+        throw createRendererUnavailableError()
+      })
+
+      await expectRejection(
+        handler(createUploadEvent(documentId)),
+        { status: 503 },
+      )
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'rendering',
+        renderAttempts: 5,
+      })
+    })
+
+    it('answers 409 and keeps the new owner when the claim was lost before the file was stored', async () => {
+      const documentId = await createRowWithTool()
+      const handler = await handlers.file()
+
+      mocks.validateDocumentBytes.mockImplementation(async () => {
+        await takeOverClaim(documentId)
+
+        return { ok: true, stats: { bytes: 6 }, provenance: 'ai' }
+      })
+
+      await expectRejection(
+        handler(createUploadEvent(documentId)),
+        { status: 409 },
+      )
+      expect(mocks.deleteOwnedFile).toHaveBeenCalledTimes(1)
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'rendering',
+        renderAttempts: 5,
+        fileId: null,
+      })
+    })
+
+    it('fails a corrupt stored workbook spec as spec_invalid', async () => {
+      const documentId = await createRowWithTool(XLSX_SPEC)
+      const row = await readDocument(testDb.db, documentId)
+
+      storage.objects.set(row!.specR2Key!, '{not json')
+
+      const handler = await handlers.file()
+
+      await expectRejection(
+        handler(createUploadEvent(documentId, { format: 'xlsx' })),
+        { status: 422, why: 'spec_invalid' },
+      )
+      expect(mocks.validateDocumentBytes).not.toHaveBeenCalled()
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'failed',
+        errorCode: 'spec_invalid',
+        renderLeaseUntil: null,
+      })
+    })
+
+    it('grants the file to an active share that shows files', async () => {
+      mocks.getActiveShareForChat.mockResolvedValue({
+        id: 'share-1',
+        showFiles: true,
+      })
+      mocks.syncChatShareFiles.mockImplementation(async () => {
+        const rows = await testDb.db.select()
+          .from(schema.documents)
+
+        expect(rows[0]).toMatchObject({ status: 'ready' })
+        expect(rows[0]!.fileId).not.toBeNull()
+      })
+
+      const documentId = await createRowWithTool()
+      const handler = await handlers.file()
+
+      await handler(createUploadEvent(documentId))
+
+      expect(mocks.getActiveShareForChat).toHaveBeenCalledWith(chatId)
+      expect(mocks.syncChatShareFiles).toHaveBeenCalledTimes(1)
+      expect(mocks.syncChatShareFiles).toHaveBeenCalledWith(
+        'share-1',
+        chatId,
+        ownerId,
+        true,
+      )
+      expect(mocks.syncChatShareFiles.mock.calls[0]).toHaveLength(4)
+    })
+
+    it('grants nothing without a share or when the share hides files', async () => {
+      const handler = await handlers.file()
+      const first = await createRowWithTool()
+
+      await handler(createUploadEvent(first))
+      expect(mocks.syncChatShareFiles).not.toHaveBeenCalled()
+
+      mocks.getActiveShareForChat.mockResolvedValue({
+        id: 'share-1',
+        showFiles: false,
+      })
+
+      const second = await createRowWithTool()
+
+      await handler(createUploadEvent(second))
+      expect(mocks.syncChatShareFiles).not.toHaveBeenCalled()
+    })
+
+    it('does not fail the render when the share sync throws', async () => {
+      mocks.getActiveShareForChat.mockResolvedValue({
+        id: 'share-1',
+        showFiles: true,
+      })
+      mocks.syncChatShareFiles.mockRejectedValue(new Error('D1 busy'))
+
+      const documentId = await createRowWithTool()
+      const result = await (await handlers.file())(
+        createUploadEvent(documentId),
+      )
+
+      expect(result.status).toBe('ready')
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'ready',
+      })
+      expect(JSON.stringify(mocks.logger.set.mock.calls))
+        .toContain('"shareSyncError":"D1 busy"')
+    })
+
+    it('still renders when the rate limit counter cannot be written', async () => {
+      vi.stubGlobal('useKV', () => ({
+        get: async () => null,
+        put: async () => {
+          throw new Error('KV write limit')
+        },
+      }))
+
+      const documentId = await createRowWithTool()
+      const result = await (await handlers.file())(
+        createUploadEvent(documentId),
+      )
+
+      expect(result.status).toBe('ready')
+      expect(JSON.stringify(mocks.logger.set.mock.calls))
+        .toContain('"failedOpen":true')
+    })
+
     it('logs counts and codes but never the title', async () => {
       const documentId = await createRowWithTool()
       const handler = await handlers.file()
@@ -915,6 +1107,62 @@ describe('documents API', () => {
       expect(await readDocument(testDb.db, documentId)).toMatchObject({
         status: 'spec_ready',
         errorCode: null,
+      })
+    })
+
+    it('fails a stored spec that is not JSON as spec_invalid', async () => {
+      const documentId = await createRowWithTool()
+      const row = await readDocument(testDb.db, documentId)
+
+      storage.objects.set(row!.specR2Key!, '{not json')
+
+      await expectRejection(
+        (await handlers.render())(createEvent({ documentId })),
+        { status: 422, why: 'spec_invalid' },
+      )
+      expect(mocks.renderDocument).not.toHaveBeenCalled()
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'failed',
+        errorCode: 'spec_invalid',
+      })
+    })
+
+    it('leaves the row to its new owner when the render fails late', async () => {
+      const documentId = await createRowWithTool()
+
+      mocks.renderDocument.mockImplementation(async () => {
+        await takeOverClaim(documentId)
+
+        return { ok: false, code: 'render_failed', detail: 'late' }
+      })
+
+      await expectRejection(
+        (await handlers.render())(createEvent({ documentId })),
+        { status: 500, why: 'render_failed' },
+      )
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'rendering',
+        renderAttempts: 5,
+        errorCode: null,
+      })
+    })
+
+    it('does not release a newer claim when the renderer throws', async () => {
+      const documentId = await createRowWithTool()
+
+      mocks.renderDocument.mockImplementation(async () => {
+        await takeOverClaim(documentId)
+
+        throw createRendererUnavailableError()
+      })
+
+      await expectRejection(
+        (await handlers.render())(createEvent({ documentId })),
+        { status: 503 },
+      )
+      expect(await readDocument(testDb.db, documentId)).toMatchObject({
+        status: 'rendering',
+        renderAttempts: 5,
       })
     })
 
@@ -1137,6 +1385,18 @@ describe('documents API', () => {
       await expectRejection(
         (await handlers.spec())(createEvent({ documentId })),
         { status: 404 },
+      )
+    })
+
+    it('answers 422 for a stored spec that is not JSON', async () => {
+      const documentId = await createRowWithTool()
+      const row = await readDocument(testDb.db, documentId)
+
+      storage.objects.set(row!.specR2Key!, '{not json')
+
+      await expectRejection(
+        (await handlers.spec())(createEvent({ documentId })),
+        { status: 422, why: 'spec_invalid' },
       )
     })
 

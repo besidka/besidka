@@ -182,6 +182,48 @@ describe('document store', () => {
 
         expect(rows).toEqual([])
       })
+
+    function withFailingUpdate(db: typeof testDb.db): typeof testDb.db {
+      return new Proxy(db, {
+        get(target, property, receiver) {
+          if (property === 'update') {
+            return () => {
+              throw new Error('D1 down')
+            }
+          }
+
+          return Reflect.get(target, property, receiver)
+        },
+      })
+    }
+
+    it('deletes the stored spec object when the row update fails',
+      async () => {
+        await expect(createDocument(withFailingUpdate(testDb.db), {
+          userId,
+          ...baseValues,
+          specJson: '{"version":1}',
+        })).rejects.toThrow('D1 down')
+
+        expect(storage.objects.size).toBe(0)
+        expect(storage.deleteCalls).toHaveLength(1)
+        expect(testDb.sqlite.prepare('select id from documents').all())
+          .toEqual([])
+      })
+
+    it('still removes the row and rethrows the first error when the spec '
+      + 'object cannot be deleted', async () => {
+      storage.delete.mockRejectedValueOnce(new Error('R2 down'))
+
+      await expect(createDocument(withFailingUpdate(testDb.db), {
+        userId,
+        ...baseValues,
+        specJson: '{"version":1}',
+      })).rejects.toThrow('D1 down')
+
+      expect(testDb.sqlite.prepare('select id from documents').all())
+        .toEqual([])
+    })
   })
 
   describe('getOwnedDocument', () => {

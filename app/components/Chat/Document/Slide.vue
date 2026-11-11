@@ -8,8 +8,6 @@
       class="card aspect-video overflow-auto bg-base-200 p-4 text-sm"
       :class="isCentered ? 'items-center justify-center text-center' : ''"
       tabindex="0"
-      role="region"
-      :aria-label="`Slide ${position} content`"
       data-testid="document-slide-card"
     >
       <h4

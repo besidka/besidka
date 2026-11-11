@@ -278,6 +278,11 @@ import {
   rewriteDocumentToolParts,
 } from '~~/server/utils/documents/message-parts'
 import {
+  collectMessageDocumentIds,
+  linkDocumentsToMessage,
+} from '~~/server/utils/documents/link-message'
+import { decodePublicId } from '~~/server/utils/custom-db-types'
+import {
   DOCUMENT_FEATURE_KEYS,
   DOCUMENT_FORMATS,
   DOCUMENT_TOOL_NAME,
@@ -3632,6 +3637,17 @@ async function persistAssistantMessageFromStream(input: {
             publicId: input.publicId,
           },
         },
+      })
+    }
+
+    const documentIds = collectMessageDocumentIds(finalParts)
+
+    if (assistantMessage && documentIds.length > 0) {
+      await linkDocumentsToMessage(input.db, {
+        userId: input.userId,
+        messageRowId: decodePublicId(assistantMessage.id),
+        documentIds,
+        logger: input.logger,
       })
     }
 

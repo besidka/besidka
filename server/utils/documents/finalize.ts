@@ -12,9 +12,14 @@ import type {
 import * as schema from '~~/server/db/schema'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
 import {
+  getActiveShareForChat,
+  syncChatShareFiles,
+} from '~~/server/utils/chats/share'
+import {
   markDocumentFailed,
   markDocumentReady,
   releaseDocumentClaim,
+  toDocumentClaim,
 } from '~~/server/utils/documents/store'
 import type { DocumentRow } from '~~/server/utils/documents/store'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -34,6 +39,7 @@ export interface DocumentLogFields {
   errorCode?: string
   releaseError?: string
   cleanupError?: string
+  shareSyncError?: string
 }
 
 export interface FinalizeRenderedDocumentInput {
@@ -118,15 +124,16 @@ export function toDocumentFileRef(file: DocumentFileRef): DocumentFileRef {
 }
 
 /**
- * Runs the work of a claimed render and gives the claim back when it throws,
- * so a renderer outage, a quota error or a storage failure never leaves the
- * row `rendering` until the lease expires. Releasing only touches a
- * `rendering` row, so it does nothing after the work already marked the row
- * failed or ready.
+ * Runs the work of a claimed render and gives the caller's own claim back when
+ * it throws, so a renderer outage, a quota error or a storage failure never
+ * leaves the row `rendering` until the lease expires. Releasing only touches
+ * the row while that same claim still holds it, so it does nothing after the
+ * work already marked the row failed or ready, and never disturbs a newer
+ * claim taken over after this one expired.
  */
 export async function withClaimRelease<Result>(
   db: DbClient,
-  documentId: string,
+  claimed: DocumentRow,
   logger: LoggerLike,
   work: () => Promise<Result>,
 ): Promise<Result> {
@@ -134,7 +141,10 @@ export async function withClaimRelease<Result>(
     return await work()
   } catch (exception) {
     try {
-      await releaseDocumentClaim(db, { documentId })
+      await releaseDocumentClaim(db, {
+        documentId: claimed.id,
+        claim: toDocumentClaim(claimed),
+      })
     } catch (releaseException) {
       setDocumentLog(logger, {
         releaseError: exceptionMessage(releaseException),
@@ -147,10 +157,14 @@ export async function withClaimRelease<Result>(
 
 export async function failClaimedDocument(
   db: DbClient,
-  documentId: string,
+  claimed: DocumentRow,
   errorCode: string,
 ): Promise<void> {
-  await markDocumentFailed(db, { documentId, errorCode })
+  await markDocumentFailed(db, {
+    documentId: claimed.id,
+    claim: toDocumentClaim(claimed),
+    errorCode,
+  })
 }
 
 async function discardOrphanedFile(
@@ -163,6 +177,41 @@ async function discardOrphanedFile(
   } catch (exception) {
     setDocumentLog(logger, {
       cleanupError: exceptionMessage(exception),
+    })
+  }
+}
+
+/**
+ * A document that becomes ready after its chat was shared with files visible
+ * needs its file granted to that share, or the visitor sees a card without a
+ * download. Best effort: a failed grant never fails the render, and the next
+ * share sync repairs it.
+ */
+async function grantActiveShareAccess(
+  userId: number,
+  row: Pick<DocumentRow, 'originChatId'>,
+  logger: LoggerLike,
+): Promise<void> {
+  if (row.originChatId === null) {
+    return
+  }
+
+  try {
+    const activeShare = await getActiveShareForChat(row.originChatId)
+
+    if (!activeShare?.showFiles) {
+      return
+    }
+
+    await syncChatShareFiles(
+      activeShare.id,
+      row.originChatId,
+      userId,
+      true,
+    )
+  } catch (exception) {
+    setDocumentLog(logger, {
+      shareSyncError: exceptionMessage(exception),
     })
   }
 }
@@ -214,6 +263,7 @@ export async function finalizeRenderedDocument(
 
   const ready = await markDocumentReady(db, {
     documentId: row.id,
+    claim: toDocumentClaim(row),
     fileId: persisted.id,
     renderedBy,
   })
@@ -228,6 +278,8 @@ export async function finalizeRenderedDocument(
       fix: 'Reload the chat to see the finished document',
     })
   }
+
+  await grantActiveShareAccess(userId, ready, logger)
 
   return toDocumentFileRef(persisted)
 }

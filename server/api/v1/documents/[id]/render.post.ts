@@ -19,6 +19,7 @@ import {
   parseDocumentIdParam,
   parseSessionUserId,
 } from '~~/server/utils/documents/route'
+import { parseStoredSpec } from '~~/server/utils/documents/stored-spec'
 import {
   claimDocumentRender,
   getOwnedDocument,
@@ -28,14 +29,6 @@ import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const SPEC_INVALID_CODE = DOCUMENT_ERROR_CODES.specInvalid
-
-function parseStoredSpec(specText: string): unknown {
-  try {
-    return JSON.parse(specText)
-  } catch {
-    return undefined
-  }
-}
 
 export default defineEventHandler(async (event) => {
   const startedAt = Date.now()
@@ -89,7 +82,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return await withClaimRelease(db, documentId, logger, async () => {
+  return await withClaimRelease(db, claimed, logger, async () => {
     const logOutcome = (
       status: 'ready' | 'failed',
       fields: { bytes?: number, errorCode?: string },
@@ -108,7 +101,7 @@ export default defineEventHandler(async (event) => {
       status: number,
       message: string,
     ): Promise<never> => {
-      await failClaimedDocument(db, documentId, errorCode)
+      await failClaimedDocument(db, claimed, errorCode)
       logOutcome('failed', { errorCode })
 
       throw createError({

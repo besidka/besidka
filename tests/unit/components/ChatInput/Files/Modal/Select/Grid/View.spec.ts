@@ -51,6 +51,41 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     expect(wrapper.emitted('file-click')).toHaveLength(2)
   })
 
+  it('dims a tile the model cannot accept and explains why', async () => {
+    const reason = 'This model does not support image input.'
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+        unsupportedReasons: { 'file-1': reason },
+      },
+    })
+    const tile = wrapper.get('[data-file-index="0"]')
+
+    expect(tile.attributes('aria-disabled')).toBe('true')
+    expect(tile.attributes('title')).toBe(reason)
+    expect(tile.classes()).toEqual(
+      expect.arrayContaining(['opacity-40', 'cursor-not-allowed']),
+    )
+  })
+
+  it('leaves a supported tile enabled', async () => {
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+      },
+    })
+    const tile = wrapper.get('[data-file-index="0"]')
+
+    expect(tile.attributes('aria-disabled')).toBeUndefined()
+    expect(tile.classes()).not.toContain('opacity-40')
+  })
+
   it('shows six columns from lg in the wider modal', async () => {
     const wrapper = await mountSuspended(GridView, {
       props: {

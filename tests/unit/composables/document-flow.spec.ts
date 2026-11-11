@@ -43,6 +43,13 @@ const FILE: DocumentFileRef = {
 }
 
 const SPEC = { specVersion: 1, format: 'pdf', title: 'Report', blocks: [] }
+const SPEC_WITH_IMAGE = {
+  specVersion: 1,
+  format: 'pdf',
+  title: 'Report',
+  blocks: [{ type: 'image', fileId: 'file_9', alt: 'Chart' }],
+}
+const STUCK_MESSAGE = 'Building this document is taking longer than expected.'
 const RENDERED_BYTES = new Uint8Array([37, 80, 68, 70])
 
 let documentCounter = 0
@@ -370,7 +377,7 @@ describe('useDocumentFlow fallbacks', () => {
     expect(callsTo('POST', `/api/v1/documents/${id}/render`)).toHaveLength(1)
   })
 
-  it.each([413, 422, 503, 500])(
+  it.each([422, 503, 500])(
     'asks the server to render once when the upload fails with %i',
     async (statusCode) => {
       const id = nextDocumentId()
@@ -392,6 +399,70 @@ describe('useDocumentFlow fallbacks', () => {
       expect(callsTo('POST', `/api/v1/documents/${id}/render`))
         .toHaveLength(1)
       expect(flow.status.value).toBe('ready')
+    },
+  )
+
+  it('skips the client render and asks the server when the spec has images', async () => {
+    const id = nextDocumentId()
+
+    mockRoutes(id, {
+      statuses: [
+        statusResponse(id, 'spec_ready'),
+        statusResponse(id, 'ready', { renderedBy: 'worker' }),
+      ],
+      spec: () => SPEC_WITH_IMAGE,
+    })
+
+    const { flow } = start(id)
+
+    await settle()
+
+    expect(renderMock).not.toHaveBeenCalled()
+    expect(callsTo('POST', `/api/v1/documents/${id}/file`)).toHaveLength(0)
+    expect(callsTo('POST', `/api/v1/documents/${id}/render`)).toHaveLength(1)
+    expect(flow.status.value).toBe('ready')
+  })
+
+  it.each([507, 429, 413])(
+    'shows the error without a server fallback when the upload fails with %i',
+    async (statusCode) => {
+      const id = nextDocumentId()
+      let shouldFail = true
+
+      mockRoutes(id, {
+        statuses: [
+          statusResponse(id, 'spec_ready'),
+          statusResponse(id, 'spec_ready'),
+          statusResponse(id, 'ready'),
+        ],
+        file: () => {
+          if (shouldFail) {
+            throw httpError(statusCode, 'Upload refused')
+          }
+
+          return {}
+        },
+      })
+
+      const { flow } = start(id)
+
+      await settle()
+
+      expect(callsTo('POST', `/api/v1/documents/${id}/render`))
+        .toHaveLength(0)
+      expect(flow.status.value).toBe('failed')
+      expect(flow.errorMessage.value).toBe('Upload refused')
+      expect(flow.isBusy.value).toBe(false)
+
+      shouldFail = false
+      await flow.retry()
+      await settle()
+
+      expect(callsTo('POST', `/api/v1/documents/${id}/render`))
+        .toHaveLength(0)
+      expect(renderMock).toHaveBeenCalledTimes(2)
+      expect(flow.status.value).toBe('ready')
+      expect(flow.errorMessage.value).toBe('')
     },
   )
 
@@ -463,7 +534,7 @@ describe('useDocumentFlow polling', () => {
     expect(flow.status.value).toBe('ready')
   })
 
-  it('stops polling after the timeout and offers a retry', async () => {
+  it('makes one more client attempt after a poll timeout, then offers a retry', async () => {
     const id = nextDocumentId()
 
     mockRoutes(id, { statuses: [statusResponse(id, 'rendering')] })
@@ -473,18 +544,22 @@ describe('useDocumentFlow polling', () => {
     await settle()
     await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_TIMEOUT_MS)
 
-    expect(flow.hasTimedOut.value).toBe(true)
+    expect(renderMock).toHaveBeenCalledTimes(1)
     expect(flow.status.value).toBe('rendering')
+
+    await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_TIMEOUT_MS)
+
+    expect(flow.hasTimedOut.value).toBe(true)
+    expect(flow.status.value).toBe('failed')
+    expect(flow.errorMessage.value).toBe(STUCK_MESSAGE)
     expect(flow.isBusy.value).toBe(false)
+    expect(renderMock).toHaveBeenCalledTimes(1)
 
     const statusCalls = callsTo('GET', `/api/v1/documents/${id}`).length
 
     await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_INTERVAL_MS * 5)
 
     expect(callsTo('GET', `/api/v1/documents/${id}`)).toHaveLength(statusCalls)
-    expect(statusCalls).toBe(
-      1 + Math.ceil(DOCUMENT_POLL_TIMEOUT_MS / DOCUMENT_POLL_INTERVAL_MS),
-    )
   })
 
   it('retries after a timeout and clears the timed-out flag', async () => {
@@ -495,9 +570,10 @@ describe('useDocumentFlow polling', () => {
     const { flow } = start(id)
 
     await settle()
-    await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_TIMEOUT_MS)
+    await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_TIMEOUT_MS * 2)
 
     expect(flow.hasTimedOut.value).toBe(true)
+    expect(flow.status.value).toBe('failed')
 
     statusQueue.splice(
       0,
@@ -510,7 +586,62 @@ describe('useDocumentFlow polling', () => {
 
     expect(flow.hasTimedOut.value).toBe(false)
     expect(flow.status.value).toBe('ready')
+    expect(flow.errorMessage.value).toBe('')
+    expect(renderMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('makes one client attempt when the peer lease expired during polling', async () => {
+    const id = nextDocumentId()
+
+    mockRoutes(id, {
+      statuses: [
+        statusResponse(id, 'rendering'),
+        statusResponse(id, 'spec_ready'),
+        statusResponse(id, 'ready'),
+      ],
+    })
+
+    const { flow } = start(id)
+
+    await settle()
+
+    expect(flow.status.value).toBe('rendering')
+
+    await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_INTERVAL_MS)
+    await settle()
+
     expect(renderMock).toHaveBeenCalledTimes(1)
+    expect(callsTo('POST', `/api/v1/documents/${id}/file`)).toHaveLength(1)
+    expect(flow.status.value).toBe('ready')
+  })
+
+  it('shows the retryable state when polling again ends on spec_ready', async () => {
+    const id = nextDocumentId()
+
+    mockRoutes(id, {
+      statuses: [
+        statusResponse(id, 'spec_ready'),
+        statusResponse(id, 'rendering'),
+        statusResponse(id, 'spec_ready'),
+      ],
+      file: () => {
+        throw httpError(409, 'Rendering')
+      },
+    })
+
+    const { flow } = start(id)
+
+    await settle()
+
+    expect(flow.status.value).toBe('rendering')
+
+    await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_INTERVAL_MS)
+    await settle()
+
+    expect(flow.status.value).toBe('failed')
+    expect(flow.errorMessage.value).toBe(STUCK_MESSAGE)
+    expect(renderMock).toHaveBeenCalledTimes(1)
+    expect(flow.isBusy.value).toBe(false)
   })
 
   it('stops polling when the owning scope is disposed', async () => {
@@ -608,6 +739,12 @@ describe('document file helpers', () => {
   it('maps known error codes to messages with a generic fallback', () => {
     expect(getDocumentErrorMessage('file_deleted')).toBe(
       'The document file was deleted.',
+    )
+    expect(getDocumentErrorMessage('spec_missing')).toBe(
+      'The content of this document is no longer available.',
+    )
+    expect(getDocumentErrorMessage('spec_expired')).toBe(
+      'The content of this document has expired.',
     )
     expect(getDocumentErrorMessage('unknown')).toBe(
       'The document could not be created.',

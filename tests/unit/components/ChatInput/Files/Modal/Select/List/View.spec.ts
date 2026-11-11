@@ -78,4 +78,26 @@ describe('ChatInput/Files/Modal/Select/List/View', () => {
     expect(wideName.text().length).toBeGreaterThan(narrowName.text().length)
     expect(wideName.attributes('title')).toBe(longFile.name)
   })
+
+  it('dims a row the model cannot accept and explains why', async () => {
+    const reason = 'This model does not support PDF input.'
+    const wrapper = await mountListView({
+      unsupportedReasons: { 'file-1': reason },
+    })
+    const row = wrapper.get('[data-file-index="0"]')
+
+    expect(row.attributes('aria-disabled')).toBe('true')
+    expect(row.attributes('title')).toBe(reason)
+    expect(row.classes()).toEqual(
+      expect.arrayContaining(['opacity-40', 'cursor-not-allowed']),
+    )
+  })
+
+  it('leaves a supported row enabled', async () => {
+    const wrapper = await mountListView()
+    const row = wrapper.get('[data-file-index="0"]')
+
+    expect(row.attributes('aria-disabled')).toBeUndefined()
+    expect(row.classes()).not.toContain('opacity-40')
+  })
 })

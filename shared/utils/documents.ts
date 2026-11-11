@@ -34,6 +34,7 @@ export const DOCUMENT_PREVIEW_ROW_LIMIT = 1000
 export const DOCUMENT_RENDER_RATE_LIMIT_PER_MINUTE = 10
 export const DOCUMENT_FILE_RATE_LIMIT_PER_MINUTE = 20
 export const DOCUMENT_CHAT_CONTEXT_LIMIT = 10
+export const DOCUMENT_SPEC_RETENTION_DAYS = 7
 export const DOCUMENT_FORMAT_HEADER = 'x-document-format'
 
 export type DocumentFormat = typeof DOCUMENT_FORMATS[number]
@@ -73,6 +74,7 @@ export const DOCUMENT_ERROR_CODES = {
   rendererUnavailable: 'renderer_unavailable',
   specInvalid: 'spec_invalid',
   specMissing: 'spec_missing',
+  specExpired: 'spec_expired',
   quotaExceeded: 'quota_exceeded',
 } as const
 
@@ -186,6 +188,8 @@ export function isDataDocumentPart(
   return type === DOCUMENT_DATA_PART_TYPE && isDataDocumentPartData(data)
 }
 
+const INVISIBLE_FILE_NAME_CHARACTERS = /[\p{Cf}\u{E0000}-\u{E007F}]/gu
+
 export function getDocumentFileName(
   title: string,
   format: DocumentFormat,
@@ -197,6 +201,7 @@ export function getDocumentFileName(
       return codePoint >= 0x20 && codePoint !== 0x7f
     })
     .join('')
+    .replace(INVISIBLE_FILE_NAME_CHARACTERS, '')
     .replace(/[\\/:*?"<>|]+/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^\.+/, '')

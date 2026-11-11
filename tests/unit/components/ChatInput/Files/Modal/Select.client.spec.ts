@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   ExtraFileSourceTab,
+  FileManagerFile,
   ProjectFileGroup,
 } from '../../../../../../app/types/file-manager'
 import Select from '../../../../../../app/components/ChatInput/Files/Modal/Select.client.vue'
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   useActiveElement: vi.fn(),
   useFileManager: vi.fn(),
   useLazyFetch: vi.fn(),
+  useWarningMessage: vi.fn(),
 }))
 
 mockNuxtImport(
@@ -23,6 +25,7 @@ mockNuxtImport(
 mockNuxtImport('useActiveElement', () => mocks.useActiveElement)
 mockNuxtImport('useFileManager', () => mocks.useFileManager)
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
+mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
 
 const source = shallowRef<'upload' | 'assistant' | 'project'>('upload')
 const search = shallowRef<string>('')
@@ -35,6 +38,9 @@ const loadMoreProjectGroup = vi.fn()
 const toggleProjectGroupSelectAll = vi.fn()
 const resetFileManager = vi.fn()
 const hasSelection = shallowRef<boolean>(false)
+const handleSelect = vi.fn()
+const getSelectedForAttach = vi.fn()
+const managerFiles = ref<FileManagerFile[]>([])
 
 const FakeDriveSource = defineComponent({
   name: 'FakeDriveSource',
@@ -60,6 +66,21 @@ function createExtraTab(
     component: FakeDriveSource,
     ...overrides,
   }
+}
+
+function createManagerFile(
+  overrides: Partial<FileManagerFile> = {},
+): FileManagerFile {
+  return {
+    id: 'file-1',
+    storageKey: 'file-1.png',
+    name: 'File.png',
+    size: 1,
+    type: 'image/png',
+    source: 'assistant',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  } as FileManagerFile
 }
 
 function createProjectGroup(
@@ -95,6 +116,11 @@ describe('ChatInput/Files/Modal/Select', () => {
     toggleProjectGroupSelectAll.mockReset()
     resetFileManager.mockReset()
     hasSelection.value = false
+    handleSelect.mockReset()
+    getSelectedForAttach.mockReset()
+    getSelectedForAttach.mockReturnValue([])
+    managerFiles.value = []
+    mocks.useWarningMessage.mockReset()
     mocks.getFileManagerExtraSourceTabs.mockReset()
     mocks.getFileManagerExtraSourceTabs.mockReturnValue([])
     mocks.fetchFiles.mockReset()
@@ -104,7 +130,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       data: shallowRef(null),
     })
     mocks.useFileManager.mockReturnValue({
-      files: ref([]),
+      files: managerFiles,
       selectedIds: ref(new Set<string>()),
       isLoading: shallowRef(false),
       isSearching: shallowRef(false),
@@ -117,7 +143,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       projectGroups,
       isProjectGroupsLoading,
       projectLoadedFiles: computed(() => []),
-      loadedFiles: computed(() => []),
+      loadedFiles: computed(() => managerFiles.value),
       hasMore: computed(() => false),
       selectedCount: computed(() => 0),
       hasSelection: computed(() => hasSelection.value),
@@ -128,7 +154,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       loadMoreProjectGroup,
       selectRange: vi.fn(),
       selectProjectGroupRange: vi.fn(),
-      handleSelect: vi.fn(),
+      handleSelect,
       handleProjectGroupSelect,
       toggleProjectGroupSelectAll,
       toggleSelectAll: vi.fn(),
@@ -136,7 +162,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       renameFile: vi.fn(),
       deleteFile: vi.fn(),
       deleteSelected: vi.fn(),
-      getSelectedForAttach: vi.fn(() => []),
+      getSelectedForAttach,
       reset: resetFileManager,
     })
   })
@@ -418,6 +444,131 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect(toggleProjectGroup).toHaveBeenCalledWith('project-a')
     expect(loadMoreProjectGroup).toHaveBeenCalledWith('project-a')
     expect(toggleProjectGroupSelectAll).toHaveBeenCalledWith('project-a')
+  })
+
+  describe('model capability', () => {
+    const imageFile = createManagerFile()
+    const textFile = createManagerFile({
+      id: 'file-2',
+      storageKey: 'file-2.txt',
+      name: 'Notes.txt',
+      type: 'text/plain',
+    })
+    const pdfDocument = createManagerFile({
+      id: 'file-3',
+      storageKey: 'file-3.pdf',
+      name: 'Report.pdf',
+      type: 'application/pdf',
+    })
+    const canAttachWithoutImages = (mediaType: string) => {
+      return !mediaType.startsWith('image/')
+    }
+    const canAttachWithoutPdf = (mediaType: string) => {
+      return mediaType !== 'application/pdf'
+    }
+
+    async function mountWithFiles(
+      canAttachMediaType: (mediaType: string) => boolean,
+    ) {
+      source.value = 'assistant'
+      managerFiles.value = [imageFile, textFile, pdfDocument]
+
+      return await mountSuspended(Select, {
+        props: {
+          attachedIds: new Set<string>(),
+          canAttachMediaType,
+        },
+        shallow: true,
+        global: { stubs: { KeepAlive: false } },
+      })
+    }
+
+    function findFlatView(wrapper: Awaited<ReturnType<typeof mountWithFiles>>) {
+      return wrapper.findComponent({ name: 'AsyncComponentWrapper' })
+    }
+
+    function readReasons(
+      wrapper: Awaited<ReturnType<typeof mountWithFiles>>,
+    ): Record<string, string> {
+      const attributes = findFlatView(wrapper).vm.$attrs
+
+      return (attributes['unsupported-reasons']
+        ?? attributes.unsupportedReasons) as Record<string, string>
+    }
+
+    it('marks generated images as unsupported for a text-only model', async () => {
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+
+      const reasons = readReasons(wrapper)
+
+      expect(Object.keys(reasons)).toEqual(['file-1'])
+      expect(reasons['file-1']).toBe(
+        'This model does not support image input. '
+        + 'Attach a PDF or text file instead, or switch models.',
+      )
+    })
+
+    it('marks generated PDF documents as unsupported without PDF input', async () => {
+      const wrapper = await mountWithFiles(canAttachWithoutPdf)
+      const reasons = readReasons(wrapper)
+
+      expect(Object.keys(reasons)).toEqual(['file-3'])
+      expect(reasons['file-3']).toContain(
+        'This model does not support PDF input.',
+      )
+    })
+
+    it('does not mark anything when the model accepts every file', async () => {
+      const wrapper = await mountWithFiles(() => true)
+
+      expect(readReasons(wrapper)).toEqual({})
+    })
+
+    it('warns instead of selecting an unsupported file', async () => {
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+      const view = findFlatView(wrapper)
+
+      view.vm.$emit('file-click', new MouseEvent('click'), imageFile, 0)
+
+      expect(handleSelect).not.toHaveBeenCalled()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('This model does not support image input.'),
+      )
+
+      view.vm.$emit('file-click', new MouseEvent('click'), textFile, 1)
+
+      expect(handleSelect).toHaveBeenCalledWith('file-2', 1, false)
+    })
+
+    it('attaches only the supported files from a bulk selection', async () => {
+      hasSelection.value = true
+      getSelectedForAttach.mockReturnValue([imageFile, textFile])
+
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+      const toolbar = wrapper.findComponent({
+        name: 'ChatInputFilesModalSelectActionsToolbar',
+      })
+
+      toolbar.vm.$emit('attach')
+
+      expect(wrapper.emitted('attach')).toEqual([[[textFile]]])
+      expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not emit an attach when every selected file is unsupported', async () => {
+      hasSelection.value = true
+      getSelectedForAttach.mockReturnValue([imageFile])
+
+      const wrapper = await mountWithFiles(canAttachWithoutImages)
+      const toolbar = wrapper.findComponent({
+        name: 'ChatInputFilesModalSelectActionsToolbar',
+      })
+
+      toolbar.vm.$emit('attach')
+
+      expect(wrapper.emitted('attach')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('renders a registered extra source after the built-in tabs', async () => {

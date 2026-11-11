@@ -5,6 +5,10 @@ import {
   readDocumentSpec,
 } from '~~/server/utils/documents/store'
 import {
+  createInvalidSpecError,
+  parseStoredSpec,
+} from '~~/server/utils/documents/stored-spec'
+import {
   createDocumentNotFoundError,
   parseDocumentIdParam,
   parseSessionUserId,
@@ -60,5 +64,11 @@ export default defineEventHandler(async (event) => {
 
   applyResponseHeaders(event, { 'Cache-Control': 'private, no-store' })
 
-  return JSON.parse(specText)
+  const spec = parseStoredSpec(specText)
+
+  if (spec === undefined) {
+    throw createInvalidSpecError()
+  }
+
+  return spec
 })

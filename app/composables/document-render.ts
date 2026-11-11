@@ -75,7 +75,7 @@ function getWorker(): Worker {
       new URL('../workers/document-render.ts', import.meta.url),
       { type: 'module' },
     )
-  } catch {
+  } catch (_exception) {
     throw new DocumentRenderError('worker_error', 'worker-unavailable')
   }
 
@@ -187,7 +187,7 @@ function runRequest(input: DocumentRenderInput): Promise<DocumentRenderOutput> {
         request,
         request.assets.map(asset => asset.bytes),
       )
-    } catch {
+    } catch (_exception) {
       failWith(new DocumentRenderError('worker_error', 'worker-error'))
     }
   })

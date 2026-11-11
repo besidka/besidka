@@ -122,6 +122,97 @@ describe('collectSharedChatSegments', () => {
     })).toEqual([])
   })
 
+  describe('document cards', () => {
+    function documentPart(
+      title: string,
+      file?: { url: string, name: string, size: number, type: string },
+    ) {
+      return {
+        type: 'data-document',
+        data: {
+          documentId: null,
+          format: 'pdf',
+          title,
+          specVersion: 1,
+          status: file ? 'ready' : 'spec_ready',
+          ...(file ? { file } : {}),
+        },
+      } as unknown as Parameters<
+        typeof collectSharedChatSegments
+      >[0]['messages'][number]['parts'][number]
+    }
+
+    const sharedFile = {
+      url: 'https://example.test/file',
+      name: 'Payslip Anna Kowalska.pdf',
+      size: 10,
+      type: 'application/pdf',
+    }
+
+    it('includes the title of a document card even when files are hidden',
+      () => {
+        const segments = collectSharedChatSegments({
+          title: null,
+          showFiles: false,
+          messages: [{
+            role: 'assistant',
+            parts: [documentPart('CV of anna.kowalska@gmail.com')],
+          }],
+        })
+
+        expect(segments).toEqual([
+          'Assistant: CV of anna.kowalska@gmail.com',
+        ])
+        expect(detectSharePii(segments).kinds).toEqual(['email'])
+      })
+
+    it('includes the shared file name only when the share shows files',
+      () => {
+        const messages = [{
+          role: 'assistant',
+          parts: [documentPart('Payslip', sharedFile)],
+        }]
+
+        expect(collectSharedChatSegments({
+          title: null,
+          messages,
+          showFiles: true,
+        })).toEqual(['Assistant: Payslip\nPayslip Anna Kowalska.pdf'])
+        expect(collectSharedChatSegments({
+          title: null,
+          messages,
+          showFiles: false,
+        })).toEqual(['Assistant: Payslip'])
+      })
+
+    it('keeps document titles next to the text of the same message', () => {
+      const segments = collectSharedChatSegments({
+        title: null,
+        showFiles: false,
+        messages: [{
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Here is your file' },
+            documentPart('Call +48 601 234 567 notes'),
+          ],
+        }],
+      })
+
+      expect(segments).toEqual([
+        'Assistant: Here is your file\nCall +48 601 234 567 notes',
+      ])
+      expect(detectSharePii(segments).kinds).toEqual(['phone'])
+    })
+
+    it('skips a document card with an empty title', () => {
+      expect(collectSharedChatSegments({
+        title: null,
+        showFiles: true,
+        messages: [{ role: 'assistant', parts: [documentPart('  ')] }],
+      })).toEqual([])
+    })
+  })
+
   it('skips an empty title and empty messages', () => {
     expect(collectSharedChatSegments({
       title: '  ',

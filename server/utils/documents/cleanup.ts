@@ -1,7 +1,12 @@
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import {
+  and, eq, inArray, isNotNull, isNull, lt, or, sql,
+} from 'drizzle-orm'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
-import { DOCUMENT_ERROR_CODES } from '#shared/utils/documents'
+import {
+  DOCUMENT_ERROR_CODES,
+  DOCUMENT_SPEC_RETENTION_DAYS,
+} from '#shared/utils/documents'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
@@ -15,18 +20,24 @@ const MAX_BATCH_QUERY_PARAMS = 90
 const ORPHAN_SWEEP_BATCH_LIMIT = 200
 const ORPHAN_SWEEP_GRACE_SECONDS = 24 * 60 * 60
 const LIST_PAGE_LIMIT = 1000
+const SPEC_RETENTION_SECONDS = DOCUMENT_SPEC_RETENTION_DAYS * 24 * 60 * 60
 
 type CleanupPhase
   = | 'file-delete'
     | 'chat-delete'
     | 'message-delete'
     | 'sweep'
+    | 'expire'
+    | 'file-missing'
     | 'purge'
 
 interface CleanupRow {
   id: string
   specR2Key: string | null
-  fileId: string | null
+}
+
+interface OriginRow extends CleanupRow {
+  hasFile: boolean
 }
 
 export interface DocumentCleanupResult {
@@ -66,6 +77,17 @@ function createEmptyResult(): DocumentCleanupResult {
     specObjectsDeleted: 0,
     specDeleteFailed: false,
   }
+}
+
+function mergeResults(
+  target: DocumentCleanupResult,
+  source: DocumentCleanupResult,
+): void {
+  target.rowsFound += source.rowsFound
+  target.rowsDeleted += source.rowsDeleted
+  target.rowsDetached += source.rowsDetached
+  target.specObjectsDeleted += source.specObjectsDeleted
+  target.specDeleteFailed = target.specDeleteFailed || source.specDeleteFailed
 }
 
 function recordCleanup(
@@ -165,9 +187,36 @@ async function deleteRowsById(
   return deleted
 }
 
+async function selectOriginRows(
+  db: DbClient,
+  userId: number,
+  condition: ReturnType<typeof or>,
+): Promise<OriginRow[]> {
+  const rows = await db.select({
+    id: schema.documents.id,
+    specR2Key: schema.documents.specR2Key,
+    fileRowId: schema.files.id,
+  })
+    .from(schema.documents)
+    .leftJoin(schema.files, and(
+      eq(schema.files.id, schema.documents.fileId),
+      eq(schema.files.userId, schema.documents.userId),
+    ))
+    .where(and(eq(schema.documents.userId, userId), condition))
+
+  return rows.map((row) => {
+    return {
+      id: row.id,
+      specR2Key: row.specR2Key,
+      hasFile: row.fileRowId !== null,
+    }
+  })
+}
+
 /**
  * Applies the chat or message deletion rule to origin rows. A row without a
- * file goes away with its spec object. A row whose file survives (the file is
+ * file (no `fileId`, or a `fileId` whose `files` row no longer exists) goes
+ * away with its spec object. A row whose file survives (the file is
  * still referenced elsewhere) keeps the spec, because spec lifetime equals
  * file lifetime, but loses its title and every link to the deleted origin.
  * When the spec object cannot be deleted the row is detached as a failed
@@ -176,14 +225,14 @@ async function deleteRowsById(
 async function resolveOriginRows(
   db: DbClient,
   userId: number,
-  rows: CleanupRow[],
+  rows: OriginRow[],
   result: DocumentCleanupResult,
 ): Promise<void> {
   const withoutFile = rows.filter((row) => {
-    return row.fileId === null
+    return !row.hasFile
   })
   const withFile = rows.filter((row) => {
-    return row.fileId !== null
+    return row.hasFile
   })
 
   if (withoutFile.length > 0) {
@@ -234,7 +283,6 @@ export async function cleanupDocumentsForDeletedFiles(
       const rows = await db.select({
         id: schema.documents.id,
         specR2Key: schema.documents.specR2Key,
-        fileId: schema.documents.fileId,
       })
         .from(schema.documents)
         .where(and(
@@ -306,16 +354,11 @@ export async function cleanupDocumentsForDeletedChats(
       [...new Set(input.chatIds)],
       MAX_BATCH_QUERY_PARAMS,
     )) {
-      const rows = await db.select({
-        id: schema.documents.id,
-        specR2Key: schema.documents.specR2Key,
-        fileId: schema.documents.fileId,
-      })
-        .from(schema.documents)
-        .where(and(
-          eq(schema.documents.userId, input.userId),
-          inArray(schema.documents.originChatId, chunk),
-        ))
+      const rows = await selectOriginRows(
+        db,
+        input.userId,
+        inArray(schema.documents.originChatId, chunk),
+      )
 
       result.rowsFound += rows.length
 
@@ -373,16 +416,11 @@ export async function cleanupDocumentsForDeletedMessage(
   }
 
   try {
-    const rows = await db.select({
-      id: schema.documents.id,
-      specR2Key: schema.documents.specR2Key,
-      fileId: schema.documents.fileId,
-    })
-      .from(schema.documents)
-      .where(and(
-        eq(schema.documents.userId, input.userId),
-        or(...originConditions),
-      ))
+    const rows = await selectOriginRows(
+      db,
+      input.userId,
+      or(...originConditions),
+    )
 
     result.rowsFound += rows.length
 
@@ -405,20 +443,13 @@ export async function cleanupDocumentsForDeletedMessage(
   return result
 }
 
-/**
- * Removes failed rows that no file and no chat can reach any more (a failed
- * file-deleted row whose chat is gone, an MCP document that never rendered).
- * Rows younger than the grace period stay, so a retry of a fresh failure is
- * not lost. A row whose spec object cannot be deleted is kept for the next
- * run. Best effort, never throws.
- */
-export async function sweepOrphanedDocuments(
+async function deleteUnreachableFailedRows(
   db: DbClient,
   logger: LoggerLike,
-  options: SweepOrphanedDocumentsOptions = {},
+  now: Date,
+  options: SweepOrphanedDocumentsOptions,
 ): Promise<DocumentCleanupResult> {
   const result = createEmptyResult()
-  const now = options.now ?? new Date()
   const graceSeconds = options.graceSeconds ?? ORPHAN_SWEEP_GRACE_SECONDS
   const cutoff = new Date(now.getTime() - graceSeconds * 1000)
 
@@ -427,7 +458,6 @@ export async function sweepOrphanedDocuments(
       id: schema.documents.id,
       userId: schema.documents.userId,
       specR2Key: schema.documents.specR2Key,
-      fileId: schema.documents.fileId,
     })
       .from(schema.documents)
       .where(and(
@@ -463,6 +493,164 @@ export async function sweepOrphanedDocuments(
   if (result.rowsFound > 0) {
     recordCleanup(logger, 'sweep', result)
   }
+
+  return result
+}
+
+/**
+ * Rows that never rendered (`spec_ready`, or `failed` with the spec still
+ * stored) and were not touched for the spec retention period lose their spec
+ * object. The row stays as `failed`/`spec_expired` with no title, because a
+ * persisted `data-document` part still points at it and shows "unavailable".
+ */
+async function expireUnrenderedSpecs(
+  db: DbClient,
+  logger: LoggerLike,
+  now: Date,
+  options: SweepOrphanedDocumentsOptions,
+): Promise<DocumentCleanupResult> {
+  const result = createEmptyResult()
+  const cutoff = new Date(now.getTime() - SPEC_RETENTION_SECONDS * 1000)
+
+  try {
+    const rows = await db.select({
+      id: schema.documents.id,
+      userId: schema.documents.userId,
+      specR2Key: schema.documents.specR2Key,
+    })
+      .from(schema.documents)
+      .where(and(
+        inArray(schema.documents.status, ['spec_ready', 'failed']),
+        isNull(schema.documents.fileId),
+        isNotNull(schema.documents.specR2Key),
+        lt(schema.documents.updatedAt, cutoff),
+      ))
+      .limit(options.limit ?? ORPHAN_SWEEP_BATCH_LIMIT)
+
+    result.rowsFound = rows.length
+
+    if (rows.length > 0 && await tryDeleteSpecObjects(rows, result)) {
+      for (const chunk of chunkItems(rows, MAX_BATCH_QUERY_PARAMS)) {
+        const expired = await db.update(schema.documents)
+          .set({
+            title: null,
+            status: 'failed',
+            errorCode: DOCUMENT_ERROR_CODES.specExpired,
+            specR2Key: null,
+            specBytes: null,
+            renderLeaseUntil: null,
+          })
+          .where(and(
+            inArray(schema.documents.id, chunk.map((row) => {
+              return row.id
+            })),
+            inArray(schema.documents.status, ['spec_ready', 'failed']),
+            isNull(schema.documents.fileId),
+          ))
+          .returning({ id: schema.documents.id })
+
+        result.rowsDetached += expired.length
+      }
+    }
+  } catch (exception) {
+    recordCleanup(logger, 'expire', result, exceptionMessage(exception))
+
+    return result
+  }
+
+  if (result.rowsFound > 0) {
+    recordCleanup(logger, 'expire', result)
+  }
+
+  return result
+}
+
+/**
+ * Rows whose `fileId` points at a `files` row that no longer exists (the
+ * delete hook never ran or failed) are treated as having no file: the spec is
+ * deleted and the row becomes `failed`/`file_deleted` with no title.
+ */
+async function repairRowsWithMissingFile(
+  db: DbClient,
+  logger: LoggerLike,
+  options: SweepOrphanedDocumentsOptions,
+): Promise<DocumentCleanupResult> {
+  const result = createEmptyResult()
+
+  try {
+    const rows = await db.select({
+      userId: schema.documents.userId,
+      fileId: schema.documents.fileId,
+    })
+      .from(schema.documents)
+      .leftJoin(schema.files, and(
+        eq(schema.files.id, schema.documents.fileId),
+        eq(schema.files.userId, schema.documents.userId),
+      ))
+      .where(and(
+        isNotNull(schema.documents.fileId),
+        isNull(schema.files.id),
+      ))
+      .limit(options.limit ?? ORPHAN_SWEEP_BATCH_LIMIT)
+
+    const fileIdsByUser = new Map<number, string[]>()
+
+    for (const row of rows) {
+      const fileIds = fileIdsByUser.get(row.userId) ?? []
+
+      fileIds.push(row.fileId!)
+      fileIdsByUser.set(row.userId, fileIds)
+    }
+
+    for (const [userId, fileIds] of fileIdsByUser) {
+      mergeResults(
+        result,
+        await cleanupDocumentsForDeletedFiles(db, {
+          userId,
+          fileIds,
+          logger,
+        }),
+      )
+    }
+  } catch (exception) {
+    recordCleanup(
+      logger,
+      'file-missing',
+      result,
+      exceptionMessage(exception),
+    )
+
+    return result
+  }
+
+  return result
+}
+
+/**
+ * Daily sweep, three independent best-effort passes that never throw:
+ * rows pointing at a vanished `files` row are repaired to `file_deleted`;
+ * failed rows that no file and no chat can reach any more (a failed
+ * file-deleted row whose chat is gone, an MCP document that never rendered)
+ * are deleted after the grace period, so a retry of a fresh failure is not
+ * lost; rows that never rendered lose their spec after the spec retention
+ * period and stay as `spec_expired`. A row whose spec object cannot be
+ * deleted is kept for the next run. The returned counts are the sum of the
+ * passes.
+ */
+export async function sweepOrphanedDocuments(
+  db: DbClient,
+  logger: LoggerLike,
+  options: SweepOrphanedDocumentsOptions = {},
+): Promise<DocumentCleanupResult> {
+  const now = options.now ?? new Date()
+  const result = createEmptyResult()
+
+  mergeResults(result, await repairRowsWithMissingFile(db, logger, options))
+  mergeResults(
+    result,
+    await deleteUnreachableFailedRows(db, logger, now, options),
+  )
+  mergeResults(result, await expireUnrenderedSpecs(db, logger, now, options))
 
   return result
 }

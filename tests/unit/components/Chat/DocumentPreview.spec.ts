@@ -262,7 +262,7 @@ describe('ChatDocumentPreview', () => {
       const wrapper = await mountPreview(props)
       const outline = wrapper.get(testId('document-preview-outline'))
 
-      expect(outline.get('h1').text()).toBe('Overview')
+      expect(outline.get('h4').text()).toBe('Overview')
       expect(outline.get(testId('document-block-paragraph')).text())
         .toContain('Plain bold and italic')
       expect(outline.get('strong, .font-bold').text()).toBe('bold')

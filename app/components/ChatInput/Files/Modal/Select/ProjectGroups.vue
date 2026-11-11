@@ -76,6 +76,7 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
+            :unsupported-reasons="unsupportedReasons"
             @file-click="(
               event: MouseEvent,
               file: FileManagerFile,
@@ -90,6 +91,7 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
+            :unsupported-reasons="unsupportedReasons"
             :sticky-offset="true"
             :all-selected="isGroupAllSelected(group)"
             :has-selection="hasGroupSelection(group)"
@@ -151,14 +153,17 @@ import type {
   ViewMode,
 } from '~/types/file-manager'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   groups: ProjectFileGroup[]
   selectedIds: Set<string>
   viewMode: ViewMode
   isTouchSelecting: boolean
   touchedIndices: Set<number>
   touchGroupId: string | null
-}>()
+  unsupportedReasons?: Record<string, string>
+}>(), {
+  unsupportedReasons: () => ({}),
+})
 
 const emit = defineEmits<{
   'toggle': [groupId: string]

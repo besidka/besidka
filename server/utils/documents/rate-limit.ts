@@ -5,6 +5,8 @@ import {
   DOCUMENT_RENDER_RATE_LIMIT_PER_MINUTE,
 } from '#shared/utils/documents'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export type DocumentRateLimitKind = 'file' | 'render'
 
@@ -24,10 +26,25 @@ const RATE_LIMIT_RULES: Record<
   },
 }
 
+async function consumeRateLimit(
+  userId: number,
+  rule: { keyPrefix: string, max: number },
+) {
+  const storage = createAuthRateLimitStorage(useKV(), rule.keyPrefix)
+
+  return await storage.consume(String(userId), {
+    window: RATE_LIMIT_WINDOW_SECONDS,
+    max: rule.max,
+  })
+}
+
 /**
  * Per-user, per-minute limit on the two document routes that do real work.
  * Each kind has its own KV bucket, so a render fallback never eats into the
- * upload budget.
+ * upload budget. KV allows one write per second per key, so several uploads
+ * of one turn can fail the counter write; that failure fails open (the
+ * request is allowed and the error is logged) instead of becoming a 500,
+ * while a stored count over the limit still answers 429.
  */
 export async function enforceDocumentRateLimit(
   event: RequestEvent,
@@ -35,12 +52,22 @@ export async function enforceDocumentRateLimit(
   kind: DocumentRateLimitKind,
 ): Promise<void> {
   const rule = RATE_LIMIT_RULES[kind]
-  const kv = useKV()
-  const storage = createAuthRateLimitStorage(kv, rule.keyPrefix)
-  const result = await storage.consume(String(userId), {
-    window: RATE_LIMIT_WINDOW_SECONDS,
-    max: rule.max,
-  })
+  let result: Awaited<ReturnType<typeof consumeRateLimit>>
+
+  try {
+    result = await consumeRateLimit(userId, rule)
+  } catch (exception) {
+    useRequestLogger(event).set({
+      attributes: {
+        documents: {
+          rateLimit: { kind, failedOpen: true },
+          rateLimitError: exceptionMessage(exception),
+        },
+      },
+    })
+
+    return
+  }
 
   if (result.allowed) {
     return

@@ -62,6 +62,9 @@ const { cleanupFilesOrphanedByChatDeletion } = await import(
 const TITLE = 'Confidential salary review'
 const NOW = new Date('2026-11-11T12:00:00.000Z')
 const LONG_AGO = new Date('2026-11-01T12:00:00.000Z')
+const TWO_DAYS_AGO = new Date('2026-11-09T12:00:00.000Z')
+const TEN_DAYS_AGO = new Date('2026-11-01T12:00:00.000Z')
+const DANGLING_FILE_ID = 'pub-9999'
 
 function rowId(publicId: string): number {
   return Number(publicId.slice(4))
@@ -366,6 +369,78 @@ describe('document deletion hooks', () => {
 
       expect(result.rowsFound).toBe(0)
       expect(mocks.logger.set).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('rows whose files row is gone', () => {
+    it('deletes the row and its spec when the chat is deleted', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const dangling = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'ready',
+        originChatId: chat.id,
+        fileId: DANGLING_FILE_ID,
+        title: TITLE,
+      })
+      const result = await cleanupDocumentsForDeletedChats(testDb.db, {
+        userId,
+        chatIds: [chat.id],
+        logger: mocks.logger,
+      })
+
+      expect(result).toMatchObject({
+        rowsFound: 1,
+        rowsDeleted: 1,
+        rowsDetached: 0,
+        specObjectsDeleted: 1,
+      })
+      expect(await readDocument(testDb.db, dangling.id)).toBeUndefined()
+      expect(storage.objects.has(dangling.specR2Key!)).toBe(false)
+    })
+
+    it('deletes the row and its spec when its message is deleted',
+      async () => {
+        const dangling = await seedDocumentWithSpec(testDb.db, storage, {
+          userId,
+          status: 'ready',
+          originMessagePublicId: 'msg-gone',
+          fileId: DANGLING_FILE_ID,
+        })
+        const result = await cleanupDocumentsForDeletedMessage(testDb.db, {
+          userId,
+          messageRowId: null,
+          messagePublicId: 'msg-gone',
+          logger: mocks.logger,
+        })
+
+        expect(result).toMatchObject({ rowsDeleted: 1, rowsDetached: 0 })
+        expect(await readDocument(testDb.db, dangling.id)).toBeUndefined()
+        expect(storage.objects.has(dangling.specR2Key!)).toBe(false)
+      })
+
+    it('still detaches a row whose file exists', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const fileId = await seedFile({ userId, storageKey: 'live.pdf' })
+      const live = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'ready',
+        originChatId: chat.id,
+        fileId,
+        title: TITLE,
+      })
+      const result = await cleanupDocumentsForDeletedChats(testDb.db, {
+        userId,
+        chatIds: [chat.id],
+        logger: mocks.logger,
+      })
+
+      expect(result).toMatchObject({ rowsDeleted: 0, rowsDetached: 1 })
+      expect(await readDocument(testDb.db, live.id)).toMatchObject({
+        title: null,
+        originChatId: null,
+        fileId,
+      })
+      expect(storage.objects.has(live.specR2Key!)).toBe(true)
     })
   })
 
@@ -760,7 +835,7 @@ describe('document deletion hooks', () => {
           userId,
           status: 'failed',
           originChatId: chat.id,
-          updatedAt: LONG_AGO,
+          updatedAt: TWO_DAYS_AGO,
         })
         const withFile = await seedDocumentWithSpec(testDb.db, storage, {
           userId,
@@ -771,7 +846,7 @@ describe('document deletion hooks', () => {
         const waiting = await seedDocumentWithSpec(testDb.db, storage, {
           userId,
           status: 'spec_ready',
-          updatedAt: LONG_AGO,
+          updatedAt: TWO_DAYS_AGO,
         })
         const result = await sweepOrphanedDocuments(
           testDb.db,
@@ -804,6 +879,7 @@ describe('document deletion hooks', () => {
         })
 
         storage.delete.mockRejectedValueOnce(new Error('R2 down'))
+        storage.delete.mockRejectedValueOnce(new Error('R2 down'))
 
         const result = await sweepOrphanedDocuments(
           testDb.db,
@@ -812,8 +888,8 @@ describe('document deletion hooks', () => {
         )
 
         expect(result).toMatchObject({
-          rowsFound: 1,
           rowsDeleted: 0,
+          rowsDetached: 0,
           specDeleteFailed: true,
         })
         expect(await readDocument(testDb.db, orphan.id)).toBeDefined()
@@ -824,6 +900,208 @@ describe('document deletion hooks', () => {
         )).resolves.toMatchObject({ rowsDeleted: 1 })
         expect(await readDocument(testDb.db, orphan.id)).toBeUndefined()
       })
+
+    it('expires specs of rows that never rendered after seven days',
+      async () => {
+        const chat = await seedChat(testDb.db, userId)
+        const fileId = await seedFile({ userId, storageKey: 'live.pdf' })
+        const waiting = await seedDocumentWithSpec(testDb.db, storage, {
+          userId,
+          status: 'spec_ready',
+          originChatId: chat.id,
+          title: TITLE,
+          updatedAt: TEN_DAYS_AGO,
+        })
+        const failed = await seedDocumentWithSpec(testDb.db, storage, {
+          userId,
+          status: 'failed',
+          errorCode: 'render_failed',
+          originChatId: chat.id,
+          title: TITLE,
+          updatedAt: TEN_DAYS_AGO,
+        })
+        const young = await seedDocumentWithSpec(testDb.db, storage, {
+          userId,
+          status: 'spec_ready',
+          originChatId: chat.id,
+          title: TITLE,
+          updatedAt: new Date('2026-11-05T12:00:00.000Z'),
+        })
+        const rendering = await seedDocumentWithSpec(testDb.db, storage, {
+          userId,
+          status: 'rendering',
+          originChatId: chat.id,
+          updatedAt: TEN_DAYS_AGO,
+        })
+        const withFile = await seedDocumentWithSpec(testDb.db, storage, {
+          userId,
+          status: 'ready',
+          originChatId: chat.id,
+          fileId,
+          updatedAt: TEN_DAYS_AGO,
+        })
+        const result = await sweepOrphanedDocuments(
+          testDb.db,
+          mocks.logger,
+          { now: NOW },
+        )
+
+        expect(result).toMatchObject({
+          rowsFound: 2,
+          rowsDetached: 2,
+          rowsDeleted: 0,
+          specObjectsDeleted: 2,
+        })
+
+        for (const expired of [waiting, failed]) {
+          expect(await readDocument(testDb.db, expired.id)).toMatchObject({
+            status: 'failed',
+            errorCode: 'spec_expired',
+            title: null,
+            specR2Key: null,
+            specBytes: null,
+            originChatId: chat.id,
+          })
+          expect(storage.objects.has(expired.specR2Key!)).toBe(false)
+        }
+
+        for (const kept of [young, rendering, withFile]) {
+          expect(storage.objects.has(kept.specR2Key!)).toBe(true)
+        }
+
+        expect(await readDocument(testDb.db, young.id)).toMatchObject({
+          status: 'spec_ready',
+          title: TITLE,
+        })
+        expect(loggedText()).not.toContain(TITLE)
+        expect(mocks.logger.set).toHaveBeenCalledWith({
+          attributes: {
+            documents: {
+              cleanup: {
+                expire: {
+                  rowsFound: 2,
+                  rowsDeleted: 0,
+                  rowsDetached: 2,
+                  specObjectsDeleted: 2,
+                  specDeleteFailed: false,
+                },
+              },
+            },
+          },
+        })
+      })
+
+    it('does not expire a row twice and keeps expired rows readable',
+      async () => {
+        const chat = await seedChat(testDb.db, userId)
+        const waiting = await seedDocumentWithSpec(testDb.db, storage, {
+          userId,
+          status: 'spec_ready',
+          originChatId: chat.id,
+          updatedAt: TEN_DAYS_AGO,
+        })
+
+        await sweepOrphanedDocuments(testDb.db, mocks.logger, { now: NOW })
+
+        const second = await sweepOrphanedDocuments(
+          testDb.db,
+          mocks.logger,
+          { now: new Date('2026-11-30T12:00:00.000Z') },
+        )
+
+        expect(second.rowsFound).toBe(0)
+        expect(await readDocument(testDb.db, waiting.id)).toMatchObject({
+          errorCode: 'spec_expired',
+          originChatId: chat.id,
+        })
+      })
+
+    it('keeps the row of an expiry whose spec delete fails', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const waiting = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'spec_ready',
+        originChatId: chat.id,
+        updatedAt: TEN_DAYS_AGO,
+      })
+
+      storage.delete.mockRejectedValueOnce(new Error('R2 down'))
+
+      const result = await sweepOrphanedDocuments(
+        testDb.db,
+        mocks.logger,
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({ rowsDetached: 0, specDeleteFailed: true })
+      expect(await readDocument(testDb.db, waiting.id)).toMatchObject({
+        status: 'spec_ready',
+        specR2Key: waiting.specR2Key,
+      })
+      expect(storage.objects.has(waiting.specR2Key!)).toBe(true)
+    })
+
+    it('repairs a row whose files row no longer exists', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const fileId = await seedFile({ userId, storageKey: 'live.pdf' })
+      const dangling = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'ready',
+        originChatId: chat.id,
+        fileId: DANGLING_FILE_ID,
+        title: TITLE,
+      })
+      const live = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'ready',
+        originChatId: chat.id,
+        fileId,
+        title: TITLE,
+      })
+      const result = await sweepOrphanedDocuments(
+        testDb.db,
+        mocks.logger,
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({ rowsFound: 1, rowsDetached: 1 })
+      expect(await readDocument(testDb.db, dangling.id)).toMatchObject({
+        status: 'failed',
+        errorCode: 'file_deleted',
+        title: null,
+        fileId: null,
+        specR2Key: null,
+        specBytes: null,
+        originChatId: chat.id,
+      })
+      expect(storage.objects.has(dangling.specR2Key!)).toBe(false)
+      expect(await readDocument(testDb.db, live.id)).toMatchObject({
+        status: 'ready',
+        fileId,
+        title: TITLE,
+      })
+      expect(storage.objects.has(live.specR2Key!)).toBe(true)
+    })
+
+    it('does not repair another user\'s file reference', async () => {
+      const foreignFileId = await seedFile({
+        userId: otherUserId,
+        storageKey: 'foreign.pdf',
+      })
+      const document = await seedDocumentWithSpec(testDb.db, storage, {
+        userId,
+        status: 'ready',
+        fileId: foreignFileId,
+      })
+
+      await sweepOrphanedDocuments(testDb.db, mocks.logger, { now: NOW })
+
+      expect(await readDocument(testDb.db, document.id)).toMatchObject({
+        status: 'failed',
+        errorCode: 'file_deleted',
+        fileId: null,
+      })
+    })
 
     it('writes counts to the wide event and never a title', async () => {
       await seedDocumentWithSpec(testDb.db, storage, {

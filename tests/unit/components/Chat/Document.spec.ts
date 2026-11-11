@@ -244,6 +244,28 @@ describe('ChatDocument', () => {
         })
       })
 
+    it('marks the Preview button expanded while its panel is open',
+      async () => {
+        const wrapper = await mountCard({ part: OWNER_PART })
+        const button = wrapper.get(testId('document-card-preview'))
+
+        expect(button.attributes('aria-expanded')).toBe('false')
+        expect(button.attributes('aria-current')).toBeUndefined()
+
+        await button.trigger('click')
+
+        expect(button.attributes('aria-expanded')).toBe('true')
+      })
+
+    it('is a labelled article, not a landmark section', async () => {
+      const wrapper = await mountCard({ part: OWNER_PART })
+      const card = wrapper.get(testId('document-card'))
+
+      expect(card.element.tagName).toBe('ARTICLE')
+      expect(card.attributes('role')).toBeUndefined()
+      expect(card.attributes('aria-label')).toBe('DOCX Quarterly plan')
+    })
+
     it('renders the extra actions slot after Preview and Download',
       async () => {
         const wrapper = await mountCard(
@@ -284,6 +306,41 @@ describe('ChatDocument', () => {
       await wrapper.get(testId('document-card-retry')).trigger('click')
 
       expect(retry).toHaveBeenCalledTimes(1)
+    })
+
+    it.each(['file_deleted', 'spec_missing', 'spec_expired'])(
+      'hides Try again for the unrecoverable code %s',
+      async (errorCode) => {
+        flowStatus.value = 'failed'
+        flowError.value = 'Gone.'
+        flowDocument.value = {
+          ...READY_DOCUMENT,
+          status: 'failed',
+          file: null,
+          errorCode,
+        }
+
+        const wrapper = await mountCard({ part: OWNER_PART })
+
+        expect(wrapper.get(testId('document-card-error')).text())
+          .toContain('Gone.')
+        expect(wrapper.find(testId('document-card-retry')).exists())
+          .toBe(false)
+      },
+    )
+
+    it('keeps Try again for a retryable error code', async () => {
+      flowStatus.value = 'failed'
+      flowDocument.value = {
+        ...READY_DOCUMENT,
+        status: 'failed',
+        file: null,
+        errorCode: 'render_failed',
+      }
+
+      const wrapper = await mountCard({ part: OWNER_PART })
+
+      expect(wrapper.find(testId('document-card-retry')).exists()).toBe(true)
     })
 
     it('disables Try again while a retry is running', async () => {

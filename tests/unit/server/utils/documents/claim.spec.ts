@@ -24,6 +24,7 @@ const {
   markDocumentFailed,
   markDocumentReady,
   releaseDocumentClaim,
+  toDocumentClaim,
 } = await import('~~/server/utils/documents/store')
 
 const START = new Date('2026-11-11T10:00:00.000Z')
@@ -46,6 +47,16 @@ describe('document render claim', () => {
   afterEach(() => {
     testDb.close()
   })
+
+  async function claimAt(documentId: string, now: Date) {
+    const claimed = await claimDocumentRender(testDb.db, {
+      userId,
+      documentId,
+      now,
+    })
+
+    return toDocumentClaim(claimed!)
+  }
 
   it('wins once for a spec_ready row and sets the lease', async () => {
     const document = await seedDocument(testDb.db, { userId })
@@ -189,15 +200,10 @@ describe('document render claim', () => {
   describe('finishing a claim', () => {
     it('marks a claimed row ready with its file and renderer', async () => {
       const document = await seedDocument(testDb.db, { userId })
-
-      await claimDocumentRender(testDb.db, {
-        userId,
-        documentId: document.id,
-        now: START,
-      })
-
+      const claim = await claimAt(document.id, START)
       const ready = await markDocumentReady(testDb.db, {
         documentId: document.id,
+        claim,
         fileId: 'pub-7',
         renderedBy: 'client',
       })
@@ -216,6 +222,7 @@ describe('document render claim', () => {
 
       await expect(markDocumentReady(testDb.db, {
         documentId: document.id,
+        claim: { renderLeaseUntil: secondsAfter(120), renderAttempts: 1 },
         fileId: 'pub-7',
         renderedBy: 'worker',
       })).resolves.toBeNull()
@@ -223,25 +230,24 @@ describe('document render claim', () => {
 
     it('does not let a late finisher overwrite a ready row', async () => {
       const document = await seedDocument(testDb.db, { userId })
+      const claim = await claimAt(document.id, START)
 
-      await claimDocumentRender(testDb.db, {
-        userId,
-        documentId: document.id,
-        now: START,
-      })
       await markDocumentReady(testDb.db, {
         documentId: document.id,
+        claim,
         fileId: 'pub-7',
         renderedBy: 'client',
       })
 
       await expect(markDocumentReady(testDb.db, {
         documentId: document.id,
+        claim,
         fileId: 'pub-8',
         renderedBy: 'worker',
       })).resolves.toBeNull()
       await expect(markDocumentFailed(testDb.db, {
         documentId: document.id,
+        claim,
         errorCode: 'render_failed',
       })).resolves.toBeNull()
 
@@ -252,15 +258,10 @@ describe('document render claim', () => {
 
     it('marks a claimed row failed and clears the lease', async () => {
       const document = await seedDocument(testDb.db, { userId })
-
-      await claimDocumentRender(testDb.db, {
-        userId,
-        documentId: document.id,
-        now: START,
-      })
-
+      const claim = await claimAt(document.id, START)
       const failed = await markDocumentFailed(testDb.db, {
         documentId: document.id,
+        claim,
         errorCode: 'validation_failed',
       })
 
@@ -273,15 +274,10 @@ describe('document render claim', () => {
 
     it('releases a claim without recording a failure', async () => {
       const document = await seedDocument(testDb.db, { userId })
-
-      await claimDocumentRender(testDb.db, {
-        userId,
-        documentId: document.id,
-        now: START,
-      })
-
+      const claim = await claimAt(document.id, START)
       const released = await releaseDocumentClaim(testDb.db, {
         documentId: document.id,
+        claim,
       })
 
       expect(released).toMatchObject({
@@ -290,6 +286,129 @@ describe('document render claim', () => {
         errorCode: null,
         renderAttempts: 1,
       })
+    })
+
+    it('refuses a claim handle without a lease', () => {
+      expect(() => toDocumentClaim({
+        renderLeaseUntil: null,
+        renderAttempts: 0,
+      })).toThrow('The document claim has no lease')
+    })
+  })
+
+  describe('a claim that was taken over', () => {
+    async function seedTakeover() {
+      const document = await seedDocument(testDb.db, { userId })
+      const claimOfA = toDocumentClaim((await claimDocumentRender(testDb.db, {
+        userId,
+        documentId: document.id,
+        now: START,
+      }))!)
+      const claimOfB = toDocumentClaim((await claimDocumentRender(testDb.db, {
+        userId,
+        documentId: document.id,
+        now: secondsAfter(121),
+      }))!)
+
+      return { document, claimOfA, claimOfB }
+    }
+
+    it('gives the two claims different identities', async () => {
+      const { claimOfA, claimOfB } = await seedTakeover()
+
+      expect(claimOfB.renderAttempts).toBe(claimOfA.renderAttempts + 1)
+      expect(claimOfB.renderLeaseUntil.getTime()).toBeGreaterThan(
+        claimOfA.renderLeaseUntil.getTime(),
+      )
+    })
+
+    it('does not let A fail the row B is rendering', async () => {
+      const { document, claimOfA } = await seedTakeover()
+
+      await expect(markDocumentFailed(testDb.db, {
+        documentId: document.id,
+        claim: claimOfA,
+        errorCode: 'render_failed',
+      })).resolves.toBeNull()
+
+      expect(await readDocument(testDb.db, document.id)).toMatchObject({
+        status: 'rendering',
+        errorCode: null,
+        renderAttempts: 2,
+      })
+    })
+
+    it('does not let A release the row B is rendering', async () => {
+      const { document, claimOfA, claimOfB } = await seedTakeover()
+
+      await expect(releaseDocumentClaim(testDb.db, {
+        documentId: document.id,
+        claim: claimOfA,
+      })).resolves.toBeNull()
+
+      const stored = await readDocument(testDb.db, document.id)
+
+      expect(stored).toMatchObject({ status: 'rendering', renderAttempts: 2 })
+      expect(stored!.renderLeaseUntil!.getTime()).toBe(
+        claimOfB.renderLeaseUntil.getTime(),
+      )
+    })
+
+    it('does not let A mark the row ready with its own file', async () => {
+      const { document, claimOfA } = await seedTakeover()
+
+      await expect(markDocumentReady(testDb.db, {
+        documentId: document.id,
+        claim: claimOfA,
+        fileId: 'pub-1',
+        renderedBy: 'client',
+      })).resolves.toBeNull()
+
+      expect(await readDocument(testDb.db, document.id)).toMatchObject({
+        status: 'rendering',
+        fileId: null,
+      })
+    })
+
+    it('still lets B finish after A tried everything', async () => {
+      const { document, claimOfA, claimOfB } = await seedTakeover()
+
+      await markDocumentFailed(testDb.db, {
+        documentId: document.id,
+        claim: claimOfA,
+        errorCode: 'render_failed',
+      })
+      await releaseDocumentClaim(testDb.db, {
+        documentId: document.id,
+        claim: claimOfA,
+      })
+
+      const ready = await markDocumentReady(testDb.db, {
+        documentId: document.id,
+        claim: claimOfB,
+        fileId: 'pub-2',
+        renderedBy: 'worker',
+      })
+
+      expect(ready).toMatchObject({
+        status: 'ready',
+        fileId: 'pub-2',
+        renderedBy: 'worker',
+      })
+    })
+
+    it('does not let a released claim finish later', async () => {
+      const document = await seedDocument(testDb.db, { userId })
+      const claim = await claimAt(document.id, START)
+
+      await releaseDocumentClaim(testDb.db, { documentId: document.id, claim })
+
+      await expect(markDocumentReady(testDb.db, {
+        documentId: document.id,
+        claim,
+        fileId: 'pub-3',
+        renderedBy: 'client',
+      })).resolves.toBeNull()
     })
   })
 })

@@ -1,5 +1,5 @@
 <template>
-  <section
+  <article
     v-if="view"
     class="mt-2 w-full max-w-md rounded-box border border-base-300 bg-base-200"
     :data-state="cardState"
@@ -95,7 +95,7 @@
         v-if="canPreview"
         type="button"
         class="btn btn-sm btn-soft"
-        :aria-current="isPanelOpen ? 'true' : undefined"
+        :aria-expanded="isPanelOpen"
         :aria-label="`Preview ${titleText}`"
         data-testid="document-card-preview"
         @click="onPreview"
@@ -123,7 +123,7 @@
       </a>
       <slot name="extraActions" />
     </div>
-  </section>
+  </article>
 </template>
 
 <script setup lang="ts">
@@ -309,11 +309,17 @@ const failureText = computed<string>(() => {
 })
 
 const canRetry = computed<boolean>(() => {
-  return isOwnerDocument.value && documentsFeature.value.active
+  return isOwnerDocument.value
+    && documentsFeature.value.active
+    && isDocumentErrorRetryable(flow.document.value?.errorCode ?? null)
 })
 
 const isBusy = computed<boolean>(() => {
   return flow.isBusy.value
+})
+
+const fileUrls = computed(() => {
+  return flowFile.value ? getDocumentFileUrls(flowFile.value) : null
 })
 
 const downloadUrl = computed<string>(() => {
@@ -322,10 +328,6 @@ const downloadUrl = computed<string>(() => {
   }
 
   return fileUrls.value?.downloadUrl ?? ''
-})
-
-const fileUrls = computed(() => {
-  return flowFile.value ? getDocumentFileUrls(flowFile.value) : null
 })
 
 const canPreview = computed<boolean>(() => {

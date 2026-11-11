@@ -158,7 +158,6 @@
     <LazyChatInputFilesModal
       ref="filesModalRef"
       :attached-ids="attachedIds"
-      :is-image-input-supported="isImageInputSupported"
       :can-attach-media-type="canAttachMediaType"
       @attach="onFilesAttached"
       @detach="onFilesDetached"

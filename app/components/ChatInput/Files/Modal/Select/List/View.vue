@@ -35,10 +35,13 @@
         v-for="(file, index) in files"
         :key="file.id"
         :data-file-index="index"
+        :aria-disabled="unsupportedReasons[file.id] ? true : undefined"
+        :title="unsupportedReasons[file.id]"
         class="hover cursor-pointer"
         :class="{
           'bg-primary/10 dark:bg-primary-content/10':
-            selectedIds.has(file.id)
+            selectedIds.has(file.id),
+          'opacity-40 cursor-not-allowed': unsupportedReasons[file.id]
         }"
         @click="$emit('file-click', $event, file, index)"
       >
@@ -176,8 +179,10 @@ withDefaults(defineProps<{
   allSelected: boolean
   hasSelection: boolean
   stickyOffset?: boolean
+  unsupportedReasons?: Record<string, string>
 }>(), {
   stickyOffset: false,
+  unsupportedReasons: () => ({}),
 })
 
 defineEmits<{

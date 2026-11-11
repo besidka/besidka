@@ -23,6 +23,10 @@ import {
   parseSessionUserId,
 } from '~~/server/utils/documents/route'
 import {
+  createInvalidSpecError,
+  parseStoredSpec,
+} from '~~/server/utils/documents/stored-spec'
+import {
   claimDocumentRender,
   getOwnedDocument,
   readDocumentSpec,
@@ -104,7 +108,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return await withClaimRelease(db, documentId, logger, async () => {
+  return await withClaimRelease(db, claimed, logger, async () => {
     const bytes = await readBodyBytes(event, DOCUMENT_MAX_FILE_BYTES)
     let spec: unknown
 
@@ -114,7 +118,7 @@ export default defineEventHandler(async (event) => {
       if (specText === null) {
         await failClaimedDocument(
           db,
-          documentId,
+          claimed,
           DOCUMENT_ERROR_CODES.specMissing,
         )
 
@@ -126,7 +130,24 @@ export default defineEventHandler(async (event) => {
         })
       }
 
-      spec = JSON.parse(specText)
+      spec = parseStoredSpec(specText)
+
+      if (spec === undefined) {
+        await failClaimedDocument(
+          db,
+          claimed,
+          DOCUMENT_ERROR_CODES.specInvalid,
+        )
+        setDocumentLog(logger, {
+          format: claimed.format,
+          status: 'failed',
+          renderedBy: 'client',
+          durationMs: Date.now() - startedAt,
+          errorCode: DOCUMENT_ERROR_CODES.specInvalid,
+        })
+
+        throw createInvalidSpecError()
+      }
     }
 
     const validation = await validateDocumentBytes(
@@ -137,7 +158,7 @@ export default defineEventHandler(async (event) => {
     if (!validation.ok) {
       const errorCode = validation.code.slice(0, MAX_STORED_ERROR_CODE_LENGTH)
 
-      await failClaimedDocument(db, documentId, errorCode)
+      await failClaimedDocument(db, claimed, errorCode)
       setDocumentLog(logger, {
         format: claimed.format,
         status: 'failed',
@@ -153,7 +174,7 @@ export default defineEventHandler(async (event) => {
     if (validation.provenance !== 'ai') {
       await failClaimedDocument(
         db,
-        documentId,
+        claimed,
         DOCUMENT_ERROR_CODES.provenanceMissing,
       )
       setDocumentLog(logger, {

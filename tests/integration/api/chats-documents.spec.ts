@@ -226,7 +226,7 @@ function isDocumentsTable(table: unknown): boolean {
 function createDb(documentsDb: MemoryExtractionTestDb['db']) {
   const insertValues = vi.fn()
   const insertGet = vi.fn(async () => ({
-    id: 'message-db-id',
+    id: 'pub-5',
     publicId: 'db-generated-public-id',
   }))
   const updateWhere = vi.fn(async () => undefined)
@@ -458,6 +458,20 @@ describe('document tool on the chat send path', () => {
       type: 'text',
       text: 'Your report is ready.',
     })
+  })
+
+  it('links the document row to the persisted assistant message', async () => {
+    await runSend({
+      documentsDb: testDb.db,
+      steps: [
+        toolCall('call-1', 'create_document', createDocxSpec()),
+        text('Your report is ready.'),
+      ],
+    })
+
+    const [row] = await testDb.db.select().from(schema.documents)
+
+    expect(row).toMatchObject({ originMessageId: 5 })
   })
 
   it('persists a document-only reply without the empty-answer notice', async () => {
