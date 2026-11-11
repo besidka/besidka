@@ -97,7 +97,10 @@
 		// Public, provider-published rate, not a secret. Source:
 		// https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-10-17),
 		// documentation-only, NOT invoice-verified. See docs/providers/deepseek.md.
-		"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75"
+		"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75",
+		"NUXT_PUBLIC_OPENAI_CODE_INTERPRETER_COST_PER_SESSION_USD": "0.03",
+		"NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_COST_PER_HOUR_USD": "0.05",
+		"NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_FREE_HOURS_PER_MONTH": "1550"
 	},
 	"d1_databases": [
 		{
@@ -298,7 +301,10 @@
 				// Public, provider-published rate, not a secret. Source:
 				// https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-10-17),
 				// documentation-only, NOT invoice-verified. See docs/providers/deepseek.md.
-				"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75"
+				"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75",
+				"NUXT_PUBLIC_OPENAI_CODE_INTERPRETER_COST_PER_SESSION_USD": "0.03",
+				"NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_COST_PER_HOUR_USD": "0.05",
+				"NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_FREE_HOURS_PER_MONTH": "1550"
 			},
 			"d1_databases": [
 				{
@@ -414,6 +420,9 @@
 					"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
 					"NUXT_PUBLIC_EXA_DEEP_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "12",
 					"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75",
+					"NUXT_PUBLIC_OPENAI_CODE_INTERPRETER_COST_PER_SESSION_USD": "0.03",
+					"NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_COST_PER_HOUR_USD": "0.05",
+					"NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_FREE_HOURS_PER_MONTH": "1550",
 					"NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS": "*-besidka.chernenko.workers.dev"
 				},
 				"d1_databases": [

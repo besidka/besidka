@@ -8,6 +8,8 @@ export type AllowedFileFormat
     | 'application/pdf'
     | 'text/plain'
     | 'text/markdown'
+    | 'text/csv'
+    | 'text/tab-separated-values'
 
 export type AllowedFileFormats = readonly AllowedFileFormat[]
 

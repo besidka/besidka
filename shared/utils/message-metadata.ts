@@ -1,4 +1,5 @@
 import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import { isCodeExecutionToolPart } from '#shared/utils/code-execution'
 import type {
   ChatMessageMetadata,
   MessageUsage,
@@ -52,6 +53,7 @@ const persistedModelTools: ModelTool[] = [
   'web_search_brave',
   'web_search_exa',
   'image_generation',
+  'code_execution',
 ]
 
 export function isWebSearchTool(
@@ -241,6 +243,8 @@ export function getMessageUsedTools(
     )
   })
 
+  const hasCodeExecutionPart = parts.some(isCodeExecutionToolPart)
+
   // `message.tools` is only ever populated on the persisted *user* message
   // row, never on the assistant row this function is normally called with
   // (see persist-user-message.ts) — so `storedTools` is always `[]` in
@@ -275,6 +279,7 @@ export function getMessageUsedTools(
         && !storedTools.some(isWebSearchTool)
       )
       || (tool === 'image_generation' && hasImageGenerationPart)
+      || (tool === 'code_execution' && hasCodeExecutionPart)
   })
 }
 

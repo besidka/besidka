@@ -107,6 +107,12 @@ NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=
 # results). The real public rate is committed in wrangler.jsonc.
 NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=
 
+# Provider code execution rates shown in the "Run code" note and used for the
+# cost estimate. The real public rates are committed in wrangler.jsonc.
+NUXT_PUBLIC_OPENAI_CODE_INTERPRETER_COST_PER_SESSION_USD=
+NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_COST_PER_HOUR_USD=
+NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_FREE_HOURS_PER_MONTH=
+
 # Brave Search API (owner dev/testing key) — https://api-dashboard.search.brave.com/
 NUXT_BRAVE_SEARCH_API_KEY=
 

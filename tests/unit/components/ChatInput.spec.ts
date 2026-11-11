@@ -40,9 +40,19 @@ mockNuxtImport('useMediaQuery', () => {
   return () => isPopoverLayout
 })
 
+const codeExecutionFeature = reactive({
+  enabled: true,
+  active: false,
+  variant: null,
+})
+
 mockNuxtImport('useFeature', () => {
   return (key: string) => {
     return computed(() => {
+      if (key === 'code-execution') {
+        return codeExecutionFeature
+      }
+
       return key === 'artifacts'
         ? artifactsFeature.value
         : { enabled: false, active: false, variant: null }
@@ -338,6 +348,7 @@ describe('ChatInput.client', () => {
       isToolCallingSupported: shallowRef(false),
       webSearchProviderOptions: shallowRef([]),
       isImageGenerationSupported: shallowRef(false),
+      isCodeExecutionSupported: shallowRef(false),
       isImageGenerationRequired: shallowRef(false),
       isImageInputSupported: shallowRef(true),
       canAttachMediaType: shallowRef(() => true),
@@ -1023,6 +1034,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -1244,6 +1256,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(predicate('image/png')),
         canAttachMediaType,
@@ -1357,6 +1370,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -1392,6 +1406,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -1421,6 +1436,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -1772,6 +1788,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: isToolCallingSupportedRef,
         webSearchProviderOptions: webSearchProviderOptionsRef,
         isImageGenerationSupported: shallowRef(true),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -2259,6 +2276,7 @@ describe('ChatInput.client', () => {
           },
         ]),
         isImageGenerationSupported: shallowRef(true),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -2558,6 +2576,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions,
         isImageGenerationSupported,
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -2769,6 +2788,7 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
@@ -2841,6 +2861,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(
           !!input.isImageGenerationRequired,
         ),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(
           !!input.isImageGenerationRequired,
         ),
@@ -3117,6 +3138,166 @@ describe('ChatInput.client', () => {
 
       showModal.mockRestore()
     })
+  })
+
+  describe('code execution', () => {
+    const isCodeExecutionSupported = shallowRef<boolean>(true)
+
+    function bindTools(initial: string[]) {
+      const wrapperRef: { current: ChatInputWrapper | null } = {
+        current: null,
+      }
+
+      return {
+        wrapperRef,
+        props: {
+          'tools': initial,
+          'onUpdate:tools': (value: string[]) => {
+            wrapperRef.current?.setProps({ tools: value })
+          },
+        },
+      }
+    }
+
+    beforeEach(() => {
+      isCodeExecutionSupported.value = true
+      codeExecutionFeature.active = true
+      useFeatures().features.value = null
+      window.localStorage.setItem(
+        'besidka:code-execution-confirmed:google',
+        'true',
+      )
+
+      const chatInput = mocks.useChatInput() as Record<string, unknown>
+
+      chatInput.isCodeExecutionSupported = isCodeExecutionSupported
+    })
+
+    afterEach(() => {
+      useFeatures().features.value = null
+      window.localStorage.removeItem(
+        'besidka:code-execution-confirmed:google',
+      )
+    })
+
+    it('offers the Run code row only when the model and the feature '
+      + 'allow it', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'tools-code-execution-toggle')).toBe(true)
+
+      codeExecutionFeature.active = false
+
+      const hidden = await mountChatInput()
+
+      await openToolsPanel(hidden)
+
+      expect(hasTestId(hidden, 'tools-code-execution-toggle')).toBe(false)
+    })
+
+    it('adds code_execution when the row is switched on and shows its '
+      + 'tile', async () => {
+      const { wrapperRef, props } = bindTools([])
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-code-execution-toggle"]')
+        .setValue(true)
+      await flushPromises()
+
+      expect(wrapper.props('tools')).toEqual(['code_execution'])
+      expect(tileTitle(wrapper, 'code'))
+        .toBe('Run code is on for the next message')
+    })
+
+    it('removes code_execution from the tile and never saves it as a '
+      + 'default', async () => {
+      const { wrapperRef, props } = bindTools(['code_execution'])
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await flushPromises()
+      await wrapper.get('[data-testid="chat-input-tile-code-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(wrapper.props('tools')).toEqual([])
+      expect(usePreferenceStorage().getItem('settings_web_search_tool'))
+        .toBeNull()
+    })
+
+    it('swaps code_execution for image generation, never combining them',
+      async () => {
+        mocks.useChatInput.mockReturnValue({
+          ...(mocks.useChatInput() as Record<string, unknown>),
+          isImageGenerationSupported: shallowRef(true),
+          isCodeExecutionSupported,
+        })
+
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await openToolsPanel(wrapper)
+        await wrapper.get('[data-testid="tools-image-toggle"]').setValue(true)
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual(['image_generation'])
+        expect(hasTestId(wrapper, 'tools-code-execution-toggle')).toBe(false)
+      })
+
+    it('clears code_execution when the model stops supporting it',
+      async () => {
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual(['code_execution'])
+
+        isCodeExecutionSupported.value = false
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual([])
+      })
+
+    it('clears code_execution once the feature is known to be off',
+      async () => {
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await flushPromises()
+
+        codeExecutionFeature.active = false
+        useFeatures().features.value = { features: {}, isAdmin: false }
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual([])
+      })
+
+    it('keeps code_execution while the feature state is still unknown',
+      async () => {
+        codeExecutionFeature.active = false
+
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual(['code_execution'])
+      })
   })
 
   describe('memory exclusion for a new chat', () => {

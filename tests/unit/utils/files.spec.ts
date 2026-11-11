@@ -198,6 +198,23 @@ describe('files utils', () => {
         .toBe('')
     })
 
+    it('resolves CSV and TSV uploads, including the types Windows browsers report', () => {
+      expect(resolveUploadMediaType(new File(['x'], 'cities.csv')))
+        .toBe('text/csv')
+      expect(resolveUploadMediaType(new File(['x'], 'cities.TSV')))
+        .toBe('text/tab-separated-values')
+      expect(resolveUploadMediaType(
+        new File(['x'], 'cities.csv', { type: 'text/csv' }),
+      )).toBe('text/csv')
+      expect(resolveUploadMediaType(
+        new File(['x'], 'cities.csv', { type: 'application/vnd.ms-excel' }),
+      )).toBe('text/csv')
+      expect(resolveUploadMediaType(
+        new File(['x'], 'sheet.xls', { type: 'application/vnd.ms-excel' }),
+      )).toBe('application/vnd.ms-excel')
+      expect(isTextFileType('text/csv')).toBe(true)
+    })
+
     it('maps the markdown alias and keeps a declared type', () => {
       expect(resolveUploadMediaType(
         new File(['x'], 'a.md', { type: 'text/x-markdown' }),

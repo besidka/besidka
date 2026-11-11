@@ -13,6 +13,7 @@ export const chatToolSchema = z.enum([
   'web_search_brave',
   'web_search_exa',
   'image_generation',
+  'code_execution',
 ])
 
 export const chatToolsSchema = z.array(chatToolSchema)
@@ -22,6 +23,10 @@ export const chatToolsSchema = z.array(chatToolSchema)
   .refine(tools => !(tools.some(isWebSearchTool)
     && tools.includes('image_generation')), {
     message: 'Web search and image generation cannot be combined.',
+  })
+  .refine(tools => !(tools.includes('code_execution')
+    && tools.includes('image_generation')), {
+    message: 'Code execution and image generation cannot be combined.',
   })
 
 export const MAX_USER_MESSAGE_PARTS = 50

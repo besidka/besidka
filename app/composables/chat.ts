@@ -32,6 +32,7 @@ import {
   ARTIFACT_DATA_PART_TYPE,
   toArtifactAttachmentPart,
 } from '#shared/utils/artifacts'
+import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
 import { isArtifactToolPartType } from '~/utils/artifact-parts'
 import {
   isPersistedEmptyAnswerFailureText,
@@ -269,6 +270,13 @@ function hasMeaningfulPersistedAssistantParts(
       || part.type === 'source-url'
       || part.type === ARTIFACT_DATA_PART_TYPE
       || (
+        part.type === CODE_EXECUTION_PART_TYPE
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+      )
+      || (
         (part.type === 'tool-create_artifact'
           || part.type === 'tool-update_artifact')
         && part.state === 'output-error'
@@ -460,6 +468,7 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
       part.type === 'file'
       || part.type === ARTIFACT_DATA_PART_TYPE
       || isArtifactToolPartType(part.type)
+      || part.type === CODE_EXECUTION_PART_TYPE
       || isVisibleGenerateImageToolPart(part)
     ) {
       return true
@@ -879,7 +888,10 @@ export function resolveInitialChatTools(
   messages: Message[],
   preferences: InitialChatToolsPreferences,
 ): Tools {
-  const tools = findLastUserMessageTools(messages)
+  const lastUserTools = findLastUserMessageTools(messages)
+  const tools = messages.at(-1)?.role === 'user'
+    ? lastUserTools
+    : stripCodeExecutionTool(lastUserTools)
   const savedTool = preferences.savedWebSearchTool
 
   if (
@@ -1100,6 +1112,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         isAwaitingGeneration.value = false
         hadInterruptionThisTurn = false
         isStopped.value = true
+        tools.value = stripCodeExecutionTool(tools.value)
         nuxtApp.callHook('chat:context-changed')
         return
       }
@@ -1112,6 +1125,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       wakeLock.release()
       isAwaitingGeneration.value = false
+      tools.value = stripCodeExecutionTool(tools.value)
       nuxtApp.callHook('chat:generation-finished')
 
       if (isError) {

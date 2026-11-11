@@ -7,6 +7,7 @@ import {
   isDataArtifactAttachmentPart,
   isDataArtifactPart,
 } from '#shared/utils/artifacts'
+import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import { isHiddenFilePart } from '#shared/utils/files'
 import {
   MEMORY_FORGET_TOOL_NAME,
@@ -547,6 +548,31 @@ const webSourcesSection: ChatContextSection = {
   },
 }
 
+const codeExecutionSection: ChatContextSection = {
+  id: 'code-execution',
+  group: 'used',
+  visibility: 'private',
+  collect(message, accumulator) {
+    if (message.role !== 'assistant') {
+      return
+    }
+
+    for (const part of message.parts) {
+      if (getContextPartToolName(part) !== CODE_EXECUTION_TOOL_NAME) {
+        continue
+      }
+
+      accumulator.increment('used', {
+        id: 'code-execution',
+        sectionId: 'code-execution',
+        kind: 'code-execution',
+        title: 'Code execution',
+        messageId: message.id,
+      })
+    }
+  },
+}
+
 export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   generatedImagesSection,
   researchReportsSection,
@@ -556,5 +582,6 @@ export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   projectKnowledgeSection,
   memorySection,
   chatSearchSection,
+  codeExecutionSection,
   webSourcesSection,
 ]

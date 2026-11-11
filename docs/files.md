@@ -456,7 +456,12 @@ excluded from the Uploaded and Generated tabs.
 - Requires auth session.
 - Validates required headers and allowed MIME type (`allowedFileFormats` in
   `nuxt.config.ts`: WebP/PNG/JPEG/GIF images, `application/pdf`,
-  `text/plain` and `text/markdown`).
+  `text/plain`, `text/markdown`, `text/csv` and
+  `text/tab-separated-values`). CSV and TSV are the main input of provider code
+  execution (`docs/chats/code-execution.md`); they are read as text for the
+  model like any `text/*` file. `normalizeUploadFile` also maps the types some
+  browsers send for a `.csv` (`application/vnd.ms-excel`, `application/csv`)
+  to `text/csv`.
 - Markdown uploads: browsers often give a `.md` file an empty `File.type` (and
   some send `text/x-markdown`). `normalizeUploadFile` in `app/utils/files.ts`
   resolves the type from the extension (`.md`/`.markdown` to `text/markdown`,

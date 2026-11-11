@@ -9,7 +9,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -22,7 +22,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -33,7 +33,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -45,7 +45,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -56,7 +56,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -67,7 +67,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -78,7 +78,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -89,7 +89,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -100,7 +100,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -112,7 +112,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -124,7 +124,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -136,7 +136,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],

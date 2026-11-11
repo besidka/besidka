@@ -1,0 +1,40 @@
+[
+  { "type": "start" },
+  { "type": "start-step" },
+  {
+    "type": "tool-input-start",
+    "toolCallId": "srvtoolu_01",
+    "toolName": "code_execution",
+    "providerExecuted": true
+  },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "srvtoolu_01",
+    "toolName": "code_execution",
+    "providerExecuted": true,
+    "input": {
+      "type": "programmatic-tool-call",
+      "code": "import matplotlib.pyplot as plt\nplt.plot([1, 2, 3])\nplt.savefig('chart.png')"
+    }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "srvtoolu_01",
+    "providerExecuted": true,
+    "output": {
+      "type": "encrypted_code_execution_result",
+      "encrypted_stdout": "ENCRYPTED-PAYLOAD-MUST-NOT-LEAK",
+      "stderr": "",
+      "return_code": 0,
+      "content": [
+        { "type": "code_execution_output", "file_id": "file_chart" },
+        { "type": "code_execution_output", "file_id": "file_archive" }
+      ]
+    }
+  },
+  { "type": "text-start", "id": "text-1" },
+  { "type": "text-delta", "id": "text-1", "delta": "Here is the chart." },
+  { "type": "text-end", "id": "text-1" },
+  { "type": "finish-step" },
+  { "type": "finish", "finishReason": "stop" }
+]

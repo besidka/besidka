@@ -12,6 +12,7 @@ export type ChatContextItemKind
     | 'web-source'
     | 'web-search'
     | 'artifact'
+    | 'code-execution'
 
 export interface ChatContextItemMeta {
   url?: string

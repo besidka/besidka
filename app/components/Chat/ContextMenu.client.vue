@@ -268,6 +268,7 @@ const TOOL_LABELS: Record<ModelTool | 'deep_research', string> = {
   web_search_brave: 'Web search (Brave)',
   web_search_exa: 'Web search (Exa)',
   image_generation: 'Image generation',
+  code_execution: CODE_EXECUTION_TOOL_LABEL,
   deep_research: 'Deep research',
 }
 

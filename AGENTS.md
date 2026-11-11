@@ -241,6 +241,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   header, the Outputs, Inputs and Used sections, the
   `GET /api/v1/chats/[slug]/context` and shared aggregates, the section
   registry later features add to, and the `get_chat` context summary
+- `docs/chats/code-execution.md` - Provider-native "Run code" (Anthropic,
+  OpenAI, Gemini sandboxes on the user's key): which models, the Labs opt-in
+  gate and the silent drop when off, the stream transform that compacts runs
+  and saves container files, the output allowlist and validation seam over
+  `@besidka/doc-renderer`, what Besidka deletes at each provider and what it
+  cannot (Anthropic container data), input uploads, cost recording, and the
+  known limits (`pause_turn`, cache impact)
 - `docs/chats/model-picker.md` - The chat input model picker: dropdown at
   md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
   the `layout` prop on the shared Panel, inline filter chips, the

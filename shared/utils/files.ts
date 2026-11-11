@@ -74,6 +74,7 @@ const preferredExtensionByMediaType: Record<string, string> = {
   'image/jpeg': 'jpg',
   'text/plain': 'txt',
   'text/markdown': 'md',
+  'text/tab-separated-values': 'tsv',
   'application/pdf': 'pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
     'docx',

@@ -142,13 +142,19 @@ const featureList = [
   internalFeature({
     key: 'code-execution',
     title: 'Code execution',
-    description: 'Run code in a sandbox from a chat.',
+    description: 'Run code in your AI provider\'s sandbox from a chat.',
+    spend: 'foreground',
+    requires: { bindings: [], keyKinds: ['provider'] },
+    available: true,
   }),
   internalFeature({
     key: 'code-execution.files',
     title: 'Code execution with files',
-    description: 'Give the sandbox your chat files.',
+    description: 'Give the sandbox your chat files and save the files it makes.',
+    spend: 'foreground',
+    requires: { bindings: [], keyKinds: ['provider'] },
     parent: 'code-execution',
+    available: true,
   }),
   internalFeature({
     key: 'code-execution.skills',

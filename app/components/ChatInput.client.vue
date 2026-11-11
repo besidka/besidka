@@ -88,6 +88,7 @@
                 @select-exa-search-level="selectExaSearchLevel"
                 @toggle-auto-web-search="setAutoWebSearchPreferred"
                 @toggle-image-generation="toggleImageGeneration"
+                @toggle-code-execution="toggleCodeExecution"
                 @select-reasoning-level="selectReasoningLevel"
                 @save-default-reasoning-level="saveDefaultReasoningLevel"
                 @open-project-picker="emit('open-project-picker')"
@@ -267,7 +268,10 @@ const {
   isSelectedModelUnavailable,
   selectedModelId,
   selectedModelBillingProviderId,
+  isCodeExecutionSupported,
 } = useChatInput()
+const codeExecutionFeature = useFeature('code-execution')
+const { features: loadedFeatures } = useFeatures()
 const { ensureSendConsent } = useLegalConsent()
 const {
   isAvailable: isAutoWebSearchAvailable,
@@ -771,6 +775,20 @@ const isImageGenerationActive = computed<boolean>(() => {
   return isImageGenerationEnabled.value || isImageGenerationRequired.value
 })
 
+const isCodeExecutionEnabled = computed<boolean>(() => {
+  return tools.value.includes('code_execution')
+})
+
+const isCodeExecutionAvailable = computed<boolean>(() => {
+  return isCodeExecutionSupported.value
+    && codeExecutionFeature.value.active
+    && !isDeepResearchModel.value
+})
+
+const isCodeExecutionRowVisible = computed<boolean>(() => {
+  return isCodeExecutionAvailable.value && !isImageGenerationActive.value
+})
+
 const isReasoningSectionVisible = computed<boolean>(() => {
   return (isReasoningSupported.value || isReasoningAlwaysOn.value)
     && !isDeepResearchModel.value
@@ -836,6 +854,11 @@ const toolsState = computed<ChatInputToolsState>(() => {
       supported: isImageGenerationSupported.value,
       enabled: isImageGenerationEnabled.value,
       required: isImageGenerationRequired.value,
+    },
+    codeExecution: {
+      visible: isCodeExecutionRowVisible.value,
+      enabled: isCodeExecutionEnabled.value,
+      providerId: selectedModelBillingProviderId.value,
     },
     files: {
       visible: !isDeepResearchModel.value,
@@ -905,6 +928,8 @@ function removeTile(id: ChatInputTileId) {
     }
   } else if (id === 'search') {
     selectWebSearchProvider('off')
+  } else if (id === 'code') {
+    toggleCodeExecution(false)
   }
 
   focusAfterTileRemoval()
@@ -1125,7 +1150,7 @@ function toggleImageGeneration() {
   if (!isImageGenerationEnabled.value) {
     tools.value = [
       ...tools.value.filter((tool) => {
-        return !isWebSearchTool(tool)
+        return !isWebSearchTool(tool) && tool !== 'code_execution'
       }),
       'image_generation',
     ]
@@ -1137,6 +1162,45 @@ function toggleImageGeneration() {
     return tool !== 'image_generation'
   })
 }
+
+function toggleCodeExecution(isOn: boolean) {
+  const withoutCodeExecution = stripCodeExecutionTool(tools.value)
+
+  if (!isOn) {
+    tools.value = withoutCodeExecution
+
+    return
+  }
+
+  tools.value = [
+    ...withoutCodeExecution.filter((tool) => {
+      return tool !== 'image_generation'
+    }),
+    'code_execution',
+  ]
+}
+
+const isCodeExecutionBlocked = computed<boolean>(() => {
+  const isFeatureKnownInactive = loadedFeatures.value !== null
+    && !codeExecutionFeature.value.active
+
+  return !isCodeExecutionSupported.value
+    || isDeepResearchModel.value
+    || isFeatureKnownInactive
+    || isImageGenerationActive.value
+})
+
+watch(
+  [isCodeExecutionBlocked, isModelCapabilityResolved],
+  ([isBlocked, isResolved]) => {
+    if (!isResolved || !isBlocked || !isCodeExecutionEnabled.value) {
+      return
+    }
+
+    tools.value = stripCodeExecutionTool(tools.value)
+  },
+  { immediate: true, flush: 'post' },
+)
 
 onMounted(async () => {
   await nextTick()

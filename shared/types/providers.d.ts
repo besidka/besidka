@@ -15,6 +15,7 @@ export type ModelTool
     | 'web_search_brave'
     | 'web_search_exa'
     | 'image_generation'
+    | 'code_execution'
 
 export interface ModelImageGenerationCapability {
   controllerModel: string

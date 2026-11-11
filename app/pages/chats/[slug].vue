@@ -114,6 +114,17 @@
               source="owner"
               :chat-id="artifactChatId"
             />
+            <ChatCodeExecution
+              v-else-if="isCodeExecutionPart(part)"
+              :part="part"
+              :skipped-files="isLastCodeExecutionPart(
+                getRenderedMessageParts(m),
+                part,
+              )
+                ? getCodeExecutionSkippedFiles(m.parts)
+                : []"
+              :fallback-key="`${m.id}-${index}`"
+            />
             <div
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"

@@ -94,7 +94,7 @@ const effectiveFileFormats = computed<string[]>(() => {
   })
 })
 
-const TEXT_FILE_EXTENSIONS = ['.md', '.markdown', '.txt']
+const TEXT_FILE_EXTENSIONS = ['.md', '.markdown', '.txt', '.csv', '.tsv']
 
 const acceptAttribute = computed<string>(() => {
   const hasTextFormat = effectiveFileFormats.value.some((format) => {
