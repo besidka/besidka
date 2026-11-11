@@ -256,6 +256,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/scroll-within.spec.ts',
     'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
+    'tests/unit/components/Shared/ExitLink.spec.ts',
+    'tests/e2e/shared/shared-exit-link.spec.ts',
+  ]
+  const sharedExitLinkTests = [
+    'tests/unit/components/Shared/ExitLink.spec.ts',
+    'tests/e2e/shared/shared-exit-link.spec.ts',
   ]
   const artifactsAdminReportsTests = [
     'tests/unit/pages/admin/artifact-reports.spec.ts',
@@ -3244,6 +3250,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/pages\/a\/index\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/(artifact-share-(page|location)|scroll-within)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsShareUiTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Shared\/ExitLink\.vue|app\/pages\/shared\/\[slug\]\.vue)$/,
+      tests: sharedExitLinkTests,
     },
     {
       pattern:

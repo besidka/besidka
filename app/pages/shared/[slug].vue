@@ -54,7 +54,8 @@
               md:flex-row md:items-center md:justify-between
             "
           >
-            <div class="min-w-0">
+            <div class="flex min-w-0 items-center gap-2">
+              <SharedExitLink class="max-sm:hidden" />
               <h1
                 data-testid="shared-chat-title"
                 class="text-sm sm:text-base font-semibold truncate"
