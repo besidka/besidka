@@ -8,12 +8,13 @@ import {
 } from '#shared/utils/documents'
 import type {
   DataDocumentPart,
+  DocumentFormat,
   DocumentStats,
   DocumentToolOutput,
 } from '#shared/utils/documents'
 import {
+  getTestDocumentSpecInput,
   TEST_DOCUMENT_REPLY,
-  TEST_DOCUMENT_SPEC_INPUT,
   TEST_DOCUMENT_TOOL_CALL_ID,
 } from '~~/server/utils/chats/test/document-fixture'
 import { createDocument } from '~~/server/utils/documents/store'
@@ -26,8 +27,8 @@ const TOOL_INPUT_DELAY: number = 400
 const TOOL_OUTPUT_DELAY: number = 600
 const REPLY_DELAY: number = 300
 
-function readTestDocumentSpec(): DocumentSpec {
-  const parsed = parseDocumentSpec(TEST_DOCUMENT_SPEC_INPUT)
+function readTestDocumentSpec(format: DocumentFormat): DocumentSpec {
+  const parsed = parseDocumentSpec(getTestDocumentSpecInput(format))
 
   if (!parsed.ok) {
     throw createError({
@@ -54,8 +55,9 @@ function toTestDocumentStats(spec: DocumentSpec): DocumentStats {
 export async function createTestDocument(
   db: DbClient,
   userId: number,
+  format: DocumentFormat = 'docx',
 ): Promise<DocumentToolOutput> {
-  const spec = readTestDocumentSpec()
+  const spec = readTestDocumentSpec(format)
   const stats = toTestDocumentStats(spec)
   const row = await createDocument(db, {
     userId,
@@ -82,12 +84,14 @@ export async function createTestDocument(
 export async function findLatestTestDocumentPart(
   db: DbClient,
   userId: number,
+  format?: DocumentFormat,
 ): Promise<DataDocumentPart | null> {
   const [row] = await db.select()
     .from(schema.documents)
     .where(and(
       eq(schema.documents.userId, userId),
       eq(schema.documents.createdVia, 'chat'),
+      format ? eq(schema.documents.format, format) : undefined,
     ))
     .orderBy(desc(schema.documents.id))
     .limit(1)
@@ -110,8 +114,10 @@ export async function findLatestTestDocumentPart(
 
 export function buildTestDocumentChunks(
   output: DocumentToolOutput,
+  format: DocumentFormat = 'docx',
 ): { chunk: UIMessageChunk, delay?: number }[] {
-  const inputJson = JSON.stringify(TEST_DOCUMENT_SPEC_INPUT)
+  const specInput = getTestDocumentSpecInput(format)
+  const inputJson = JSON.stringify(specInput)
   const middle = Math.floor(inputJson.length / 2)
 
   return [
@@ -141,7 +147,7 @@ export function buildTestDocumentChunks(
         type: 'tool-input-available',
         toolCallId: TEST_DOCUMENT_TOOL_CALL_ID,
         toolName: DOCUMENT_TOOL_NAME,
-        input: TEST_DOCUMENT_SPEC_INPUT,
+        input: specInput,
       },
       delay: TOOL_INPUT_DELAY,
     },

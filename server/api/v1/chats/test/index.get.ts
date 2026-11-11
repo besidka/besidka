@@ -17,6 +17,8 @@ import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture
 import { TEST_CODE_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
 import { findLatestTestDocumentPart } from '~~/server/utils/chats/test/document-scenario'
 import { TEST_DOCUMENT_REPLY } from '~~/server/utils/chats/test/document-fixture'
+import { DOCUMENT_FORMATS } from '#shared/utils/documents'
+import type { DocumentFormat } from '#shared/utils/documents'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
 
 const shortMessage = 'Test message'
@@ -46,7 +48,7 @@ function getMessageText(
   return fallbackText
 }
 
-async function findOwnLatestDocumentPart() {
+async function findOwnLatestDocumentPart(format: DocumentFormat) {
   const session = await useUserSession()
 
   if (!session) {
@@ -56,6 +58,7 @@ async function findOwnLatestDocumentPart() {
   return await findLatestTestDocumentPart(
     useDb(),
     parseInt(String(session.user.id)),
+    format,
   )
 }
 
@@ -77,6 +80,7 @@ export default defineEventHandler(async (event) => {
     messages: z.string().regex(/^\d+$/).default('1').transform(Number),
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
     error: z.enum(chatTestErrorIds).optional(),
+    format: z.enum(DOCUMENT_FORMATS).default('docx'),
   }).safeParse)
 
   if (query.error) {
@@ -95,7 +99,7 @@ export default defineEventHandler(async (event) => {
     ? longMessage
     : shortMessage
   const documentPart = effectiveScenario === 'document'
-    ? await findOwnLatestDocumentPart()
+    ? await findOwnLatestDocumentPart(query.data.format)
     : null
   const reasoningStepsCount = getReasoningStepsCount(effort)
   const reasoningLevel: ReasoningLevel = effectiveScenario === 'reasoning'

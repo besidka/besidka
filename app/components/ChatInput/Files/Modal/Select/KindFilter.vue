@@ -10,7 +10,7 @@
       :key="option.id"
       type="button"
       class="btn btn-sm join-item flex-1 min-h-11 sm:min-h-8"
-      :class="{ 'btn-active': modelValue === option.id }"
+      :class="{ 'btn-active btn-accent': modelValue === option.id }"
       :aria-pressed="modelValue === option.id"
       :data-testid="option.testId"
       @click="select(option.id)"

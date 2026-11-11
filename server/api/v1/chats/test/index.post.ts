@@ -20,6 +20,8 @@ import {
   buildTestDocumentChunks,
   createTestDocument,
 } from '~~/server/utils/chats/test/document-scenario'
+import { DOCUMENT_FORMATS } from '#shared/utils/documents'
+import type { DocumentFormat } from '#shared/utils/documents'
 import { PAST_CHAT_PRE_RETRIEVAL_CALL_PREFIX } from '#shared/utils/past-chat-retrieval'
 import {
   defineEventHandler,
@@ -408,7 +410,9 @@ function getChunksForScenario(
   }
 }
 
-async function getDocumentChunks(): Promise<TimedChunk[]> {
+async function getDocumentChunks(
+  format: DocumentFormat,
+): Promise<TimedChunk[]> {
   const session = await useUserSession()
 
   if (!session) {
@@ -418,9 +422,10 @@ async function getDocumentChunks(): Promise<TimedChunk[]> {
   const output = await createTestDocument(
     useDb(),
     parseInt(String(session.user.id)),
+    format,
   )
 
-  return buildTestDocumentChunks(output)
+  return buildTestDocumentChunks(output, format)
 }
 
 function getErrorChunks(errorText: string): TimedChunk[] {
@@ -464,6 +469,7 @@ export default defineEventHandler(async (event) => {
     messages: z.string().regex(/^\d+$/).default('1').transform(Number),
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
     error: z.enum(chatTestErrorIds).optional(),
+    format: z.enum(DOCUMENT_FORMATS).default('docx'),
     imageReasoningFirst: z
       .enum(['true', 'false'])
       .default('false')
@@ -508,7 +514,7 @@ export default defineEventHandler(async (event) => {
       requestId,
     )))
     : query.data.scenario === 'document'
-      ? await getDocumentChunks()
+      ? await getDocumentChunks(query.data.format)
       : getChunksForScenario(
         query.data.scenario,
         query.data.effort,
