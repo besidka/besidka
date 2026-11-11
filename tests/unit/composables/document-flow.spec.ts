@@ -661,6 +661,102 @@ describe('useDocumentFlow polling', () => {
   })
 })
 
+describe('useDocumentFlow render hand-over', () => {
+  const RENDER_OUTPUT = {
+    bytes: RENDERED_BYTES,
+    mediaType: 'application/pdf',
+    stats: {},
+  }
+
+  it('keeps the render alive when streaming flips off, on and off again', async () => {
+    const id = nextDocumentId()
+    let releaseRender: (value: unknown) => void = () => {}
+
+    renderMock.mockImplementation(() => {
+      return new Promise((resolve) => {
+        releaseRender = resolve
+      })
+    })
+    let rowStatus: DocumentStatus = 'spec_ready'
+
+    mockRoutes(id, {
+      statuses: [statusResponse(id, 'spec_ready')],
+      file: () => {
+        rowStatus = 'ready'
+
+        return {}
+      },
+    })
+
+    const routeMock = fetchMock.getMockImplementation()!
+
+    fetchMock.mockImplementation(async (path: string, init?: FetchInit) => {
+      if (path === `/api/v1/documents/${id}` && !init?.method) {
+        return statusResponse(id, rowStatus)
+      }
+
+      return routeMock(path, init)
+    })
+
+    const { flow, streaming } = start(id)
+
+    await settle()
+
+    expect(renderMock).toHaveBeenCalledTimes(1)
+
+    streaming.value = true
+    await settle()
+    streaming.value = false
+    await settle()
+
+    releaseRender(RENDER_OUTPUT)
+    await settle()
+
+    expect(renderMock).toHaveBeenCalledTimes(1)
+    expect(callsTo('POST', `/api/v1/documents/${id}/file`)).toHaveLength(1)
+    expect(flow.status.value).toBe('ready')
+  })
+
+  it('renders itself when the card that held the render is gone and failed', async () => {
+    const id = nextDocumentId()
+    let failFirstRender: (error: Error) => void = () => {}
+
+    renderMock.mockImplementationOnce(() => {
+      return new Promise((_resolve, reject) => {
+        failFirstRender = reject
+      })
+    })
+    mockRoutes(id, {
+      statuses: [
+        statusResponse(id, 'spec_ready'),
+        statusResponse(id, 'spec_ready'),
+        statusResponse(id, 'spec_ready'),
+        statusResponse(id, 'ready'),
+      ],
+    })
+
+    const first = start(id)
+
+    await settle()
+    first.scope.stop()
+
+    const second = start(id)
+
+    await settle()
+
+    expect(second.flow.status.value).toBe('rendering')
+    expect(renderMock).toHaveBeenCalledTimes(1)
+
+    failFirstRender(new Error('worker crashed'))
+    await settle()
+    await vi.advanceTimersByTimeAsync(DOCUMENT_POLL_INTERVAL_MS)
+    await settle()
+
+    expect(renderMock).toHaveBeenCalledTimes(2)
+    expect(second.flow.status.value).toBe('ready')
+  })
+})
+
 describe('useDocumentFlow unavailable documents', () => {
   it.each([404, 403])('is unavailable on %i', async (statusCode) => {
     const id = nextDocumentId()

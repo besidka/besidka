@@ -128,6 +128,7 @@ export function useDocumentFlow(
 
   let generation: number = 0
   let hasAutoAttempted: boolean = false
+  let isUploading: boolean = false
   let waitTimeoutId: ReturnType<typeof setTimeout> | null = null
   let cancelWait: (() => void) | null = null
 
@@ -234,7 +235,9 @@ export function useDocumentFlow(
       }
 
       if (result !== 'error') {
-        const isPeerPending = isWaitingForPeer && result.status === 'spec_ready'
+        const isPeerPending = isWaitingForPeer
+          && documentsInFlight.has(id)
+          && result.status === 'spec_ready'
 
         if (isPeerPending) {
           status.value = 'rendering'
@@ -363,6 +366,8 @@ export function useDocumentFlow(
     let hasClientFailed = false
     let blockedException: unknown = null
 
+    isUploading = true
+
     try {
       const outcome = await uploadClientRender(id, current.format)
 
@@ -378,6 +383,7 @@ export function useDocumentFlow(
         hasClientFailed = !isPeerRendering
       }
     } finally {
+      isUploading = false
       documentsInFlight.delete(id)
     }
 
@@ -517,7 +523,7 @@ export function useDocumentFlow(
         const isSettled = status.value === 'ready'
           || status.value === 'unavailable'
 
-        if (!isStreaming && !isSettled) {
+        if (!isStreaming && !isSettled && !isUploading) {
           load(false)
         }
       },
