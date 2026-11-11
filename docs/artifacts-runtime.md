@@ -295,9 +295,10 @@ runtime anywhere.
 
 ## Follow-ups
 
-- A-4: the host component (`Frame.client.vue`) uses `createHostConnection`,
-  shows the tripwire error and logs `attributes.artifacts.runtimeNavigation`
-  (ids only); mount a fresh frame per version.
+- A-4 (done, see `docs/artifacts/panel.md`): the host component
+  (`Frame.client.vue`) uses `createHostConnection`, shows the tripwire error
+  and logs `attributes.artifacts.runtimeNavigation` (ids only). A new version
+  reaches the same frame as a `tool-result`; Retry mounts a fresh frame.
 - A-3: instructions list the allowed imports and forbid navigation,
   `document.write()`, credential or payment forms and remote assets.
 - A-9: notices link, DPIA residual risk for self-navigation.

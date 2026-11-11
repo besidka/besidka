@@ -7,6 +7,7 @@ import {
   hasPendingToolPart,
   hasStreamingReasoningPart,
   isFailedToolPart,
+  isPendingToolPart,
   isThinkingActive,
   isThinkingToolPart,
   normalizeReasoningTitle,
@@ -396,6 +397,23 @@ describe('isThinkingToolPart / getToolPartName', () => {
 
       expect(getToolPartName(part)).toBe('generate_image')
       expect(isThinkingToolPart(part)).toBe(false)
+    }
+  })
+
+  it('never treats an artifact tool part as a thinking part', () => {
+    const states = ['input-streaming', 'input-available', 'output-available', 'output-error']
+
+    for (const name of ['create_artifact', 'update_artifact']) {
+      for (const state of states) {
+        const part = {
+          type: `tool-${name}`,
+          state,
+        } as UIMessage['parts'][number]
+
+        expect(getToolPartName(part)).toBe(name)
+        expect(isThinkingToolPart(part)).toBe(false)
+        expect(isPendingToolPart(part)).toBe(false)
+      }
     }
   })
 

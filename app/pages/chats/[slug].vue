@@ -113,6 +113,12 @@
               :message-role="m.role"
               :part="part"
             />
+            <ChatArtifactCard
+              v-else-if="isArtifactsActive && isArtifactMessagePart(part)"
+              :part="part"
+              source="owner"
+              :chat-id="artifactChatId"
+            />
             <div
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
@@ -289,6 +295,7 @@ import {
   isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { isArtifactMessagePart } from '~/utils/artifact-parts'
 
 definePageMeta({
   layout: 'chat',
@@ -304,6 +311,12 @@ useSeoMeta({
 
 const route = useRoute('chats-slug')
 const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
+
+const artifactsFeature = useFeature('artifacts')
+
+const isArtifactsActive = computed<boolean>(() => {
+  return artifactsFeature.value.active
+})
 
 const isSidePanelDemoVisible = computed<boolean>(() => {
   return isSidePanelDemoEnabled(route.query)
@@ -399,6 +412,10 @@ const isMemoryExcluded = computed<boolean>(() => {
 })
 
 const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
+
+const artifactChatId = computed<string>(() => {
+  return chat.value?.id ? String(chat.value.id) : ''
+})
 const projectContext = shallowRef<{ id: string, name: string } | null>(
   projectId.value
     ? {

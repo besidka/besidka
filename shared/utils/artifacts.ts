@@ -24,6 +24,16 @@ export const ARTIFACT_REPORT_REASONS = [
   'phishing',
 ] as const
 
+export const ARTIFACT_REPORT_URGENT_REASONS = [
+  'csam',
+  'terrorism',
+  'threat-to-life',
+] as const
+
+export const ARTIFACT_REPORT_DETAILS_MAX = 2000
+export const ARTIFACT_REPORT_NAME_MAX = 120
+export const ARTIFACT_REPORT_EMAIL_MAX = 254
+
 export const ARTIFACT_REPORT_STATUSES = ['open', 'actioned', 'rejected'] as const
 
 export const ARTIFACT_REPORT_PRIORITIES = ['normal', 'urgent'] as const
@@ -45,6 +55,7 @@ export const ARTIFACT_BULK_DELETE_MAX = 50
 export const ARTIFACT_DATA_PART_TYPE = 'data-artifact'
 
 export type ArtifactKind = typeof ARTIFACT_KINDS[number]
+export type ArtifactReportReason = typeof ARTIFACT_REPORT_REASONS[number]
 export type ArtifactCreatedVia = typeof ARTIFACT_CREATED_VIA[number]
 export type ArtifactVersionCreatedBy
   = typeof ARTIFACT_VERSION_CREATED_BY[number]

@@ -596,6 +596,20 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   consent error codes for A-5/A-6, the separate Playwright sandbox spec, and
   the CI jobs guarded by the `ARTIFACTS_RUNTIME_DEPLOY_ENABLED` variable with
   the owner steps before the first deploy
+- `docs/artifacts/panel.md` - Artifact cards and the artifact side panel
+  (A-4): card states (streaming, ready, failed, unavailable), the detail view
+  (Preview and Code tabs, version select, copy and download, runtime errors
+  with Ask to fix through the `chat-input:prefill` hook), the Frame host end
+  of the protocol (handshake capabilities, 250ms partial throttle, link
+  confirm, tripwire, 10s timeout), capabilities per viewer in v1, the
+  shared-chat read rule (global `artifacts` kill switch, active share,
+  `json_each` membership, artifact owner equals chat owner, 404 vs 410,
+  `private, no-store`), the report route and its 5-per-hour KV limit, the
+  `artifacts:auto-opened:<chat id>` sessionStorage marker and its Cookie
+  Policy row, the `frame-src` CSP as a route header plus a script-inserted
+  meta tag for client-side navigation (and why), the standalone export rule
+  (no third-party hosts, React and Mermaid as source only), and the open
+  items (report share id not stored, MCP `get_chat` omits artifacts)
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a

@@ -116,6 +116,7 @@
 		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.7.50",
 		"defu": "^6.1.7",
+		"dompurify": "3.4.17",
 		"drizzle-kit": "1.0.0-rc.5",
 		"drizzle-orm": "1.0.0-rc.5",
 		"eslint": "^10.13.0",

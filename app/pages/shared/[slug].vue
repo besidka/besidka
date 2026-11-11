@@ -197,6 +197,12 @@
               :message-role="m.role"
               :part="part"
             />
+            <ChatArtifactCard
+              v-else-if="isArtifactMessagePart(part)"
+              :part="part"
+              source="shared"
+              :share-slug="shareSlug"
+            />
             <div
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
@@ -270,6 +276,10 @@ import {
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import {
+  collectArtifactVersions,
+  isArtifactMessagePart,
+} from '~/utils/artifact-parts'
 
 interface SharedChatMessage {
   id: string
@@ -323,6 +333,12 @@ const { data, error } = await useFetch<SharedChatResponse>(
 const hydratedMessages = computed(() => {
   return (data.value?.messages ?? []).map(hydrateMessageUsage)
 })
+
+const sharedArtifactVersions = useSharedArtifactVersions()
+
+watch(hydratedMessages, (messages) => {
+  sharedArtifactVersions.value = collectArtifactVersions(messages)
+}, { immediate: true })
 
 const isNotFound = computed<boolean>(() => {
   return Boolean(error.value) || !data.value

@@ -3351,4 +3351,29 @@ describe('ChatInput.client', () => {
       removeScrollHook()
     })
   })
+
+  describe('chat-input:prefill', () => {
+    it('fills an empty composer with the text', async () => {
+      const wrapper = await mountChatInput()
+
+      await useNuxtApp().callHook('chat-input:prefill', 'Fix the error')
+      await flushPromises()
+
+      expect((wrapper.get('textarea').element as HTMLTextAreaElement).value)
+        .toBe('Fix the error')
+    })
+
+    it('appends the text after a blank line instead of replacing a draft',
+      async () => {
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('textarea')
+
+        await textarea.setValue('My unsent draft\n')
+        await useNuxtApp().callHook('chat-input:prefill', 'Fix the error')
+        await flushPromises()
+
+        expect((textarea.element as HTMLTextAreaElement).value)
+          .toBe('My unsent draft\n\nFix the error')
+      })
+  })
 })

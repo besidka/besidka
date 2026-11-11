@@ -1,8 +1,9 @@
 # Side panel (`UiSidePanel`)
 
 One shared surface for every "view a result" screen: the chat context panel
-(P0-13), and later artifacts, document previews, research reports, connector
-approvals, MCP Apps and the browser agent. Build new detail views on it
+(P0-13), artifacts (A-4, `docs/artifacts/panel.md`), and later document
+previews, research reports, connector approvals, MCP Apps and the browser
+agent. Build new detail views on it
 instead of adding another drawer. Owner decisions: right side on desktop, the
 nav pill docks on the seam, the pill keeps its 5 slots.
 
@@ -40,7 +41,14 @@ open({
   are stored with `markRaw`.
 - The panel closes on route path change, except the `/chats/new` to
   `/chats/<slug>` hand-off on first send. Opening is always explicit (a
-  click), except the first artifact of a streaming generation (A-4).
+  click), except the first artifact of a streaming generation: it opens once
+  per chat and tab, docked layout only (`useArtifactAutoOpen()`, see
+  `docs/artifacts/panel.md`).
+- The artifact detail view (`Chat/Artifact/Detail.client.vue`) opens with
+  `open()` from a message card and with `push()` from a Context row, so Back
+  returns to Context. Its target lives in `useState`
+  (`useArtifactPanel()`), not in the view props, so a streamed artifact that
+  becomes a stored version keeps the same view and iframe.
 - During the slide-out the panel keeps rendering the last view (a snapshot
   cleared on `after-leave`), so the title and body do not blank mid-animation.
 - Open views only from client code (clicks, hooks). `useState` holds the

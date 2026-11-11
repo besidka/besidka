@@ -743,6 +743,8 @@ export default defineNuxtConfig({
         '@shikijs/stream',
         'shiki/core',
         'shiki/engine/javascript',
+        '@panzoom/panzoom',
+        'dompurify',
         'shiki/langs',
         'shiki/themes/github-dark-high-contrast.mjs',
         'shiki/themes/github-light-high-contrast.mjs',

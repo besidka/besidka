@@ -41,6 +41,12 @@ vi.mock('@panzoom/panzoom', () => {
   return { default: mocks.panzoom }
 })
 
+const { sanitizeDiagramSvgMock } = vi.hoisted(() => ({
+  sanitizeDiagramSvgMock: vi.fn((svg: string) => svg),
+}))
+
+mockNuxtImport('sanitizeDiagramSvg', () => sanitizeDiagramSvgMock)
+
 mockNuxtImport('useDiagramRenderer', () => {
   return () => {
     return { renderDiagram: mocks.renderDiagram }
@@ -138,6 +144,21 @@ describe('prose/MermaidViewer.client.vue', () => {
         maxWidth: 840,
       })
     })
+
+  it('renders only the sanitized svg', async () => {
+    sanitizeDiagramSvgMock.mockReturnValueOnce(
+      '<svg id="viewer-clean" width="160" height="64"></svg>',
+    )
+
+    const wrapper = await mountViewer()
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('#viewer-clean').exists()).toBe(true)
+    })
+
+    expect(sanitizeDiagramSvgMock).toHaveBeenCalledWith(SVG)
+    expect(wrapper.find('#viewer-svg').exists()).toBe(false)
+  })
 
   it('does not render while closed and renders once opened', async () => {
     const wrapper = await mountViewer(false)

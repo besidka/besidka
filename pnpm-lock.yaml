@@ -323,6 +323,9 @@ importers:
       defu:
         specifier: ^6.1.7
         version: 6.1.7
+      dompurify:
+        specifier: 3.4.17
+        version: 3.4.17
       drizzle-kit:
         specifier: 1.0.0-rc.5
         version: 1.0.0-rc.5(drizzle-orm@1.0.0-rc.5(@cloudflare/workers-types@5.20261018.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@9.6.0)(better-sqlite3@13.0.3)(valibot@1.4.2(typescript@6.0.3))(zod@4.6.7))

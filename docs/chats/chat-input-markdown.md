@@ -256,6 +256,25 @@ with a newline can dispatch `insertLineBreak` or `insertParagraph` itself, so
 the composable sets an `isApplyingEdit` flag around every replacement and
 `onBeforeInput` returns early while it is set.
 
+### Prefill from other components (`chat-input:prefill`)
+
+Another component can put a draft into the composer with the runtime hook
+`chat-input:prefill` (`(text: string) => void`, declared in
+`app/types/runtime-hooks.d.ts`):
+
+```ts
+await useNuxtApp().callHook('chat-input:prefill', text)
+```
+
+`ChatInput.client.vue` puts `text` into an empty composer, or appends it
+after a blank line when the composer already holds a draft (trailing
+whitespace of the draft is trimmed first), so a draft is never lost. It then
+waits a tick and focuses the textarea with `preventScroll`. Nothing is sent:
+the user reviews and presses Send. The change assigns the model directly,
+not through the insertion helper, so it is not on the native undo stack. The only caller today is **Ask to fix** in the artifact detail view
+(`docs/artifacts/panel.md`), which closes the side panel first outside the
+docked layout so the composer is visible.
+
 ## Rendering user messages
 
 User messages are Markdown, not HTML and not MDC. `getParserOptions('user')` in
@@ -316,6 +335,12 @@ Nothing in the app injects MDC directive syntax into assistant text. The only
 special syntax is the ```` ```mermaid ```` fence, which is an ordinary code
 fence handled by the `pre` component (`prose/PreStream.vue`), so diagrams still
 render.
+
+`ProsePreStream` has two props for code shown outside a message. `sourceOnly`
+keeps a `mermaid` fence as source code instead of a diagram, and
+`alwaysExpanded` starts expanded and hides the expand button that blocks of 3
+or more lines otherwise get. The artifact detail view's Code tab sets both
+(`docs/artifacts/panel.md`); messages set neither.
 
 `rehype-raw` stays **on** for assistant messages: models emit `<br>`, `<sup>`
 and `<details>` inside tables and prose, and they must keep rendering. A full

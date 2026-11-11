@@ -7,7 +7,9 @@ import type {
 import { CHAT_CONTEXT_MAX_ITEMS_PER_GROUP } from '#shared/utils/chat-context'
 import type {
   ChatContextAccumulator,
+  ChatContextArtifact,
   ChatContextMessage,
+  ChatContextScope,
   ChatContextSection,
   ChatContextVisibility,
 } from '~~/server/utils/chats/context/sections'
@@ -26,6 +28,8 @@ export interface ChatContextItems {
 }
 
 export const MCP_CONTEXT_FILES_LIMIT = 20
+
+const NO_ARTIFACTS: ReadonlyMap<string, ChatContextArtifact> = new Map()
 
 export { CHAT_CONTEXT_MAX_ITEMS_PER_GROUP }
 
@@ -69,6 +73,8 @@ function createAccumulator() {
  * persisted message parts, in message order, deduplicated per item id. The
  * public variant runs only sections that may appear on a shared chat, and the
  * caller must pass parts that already went through `filterPublicParts`.
+ * Artifacts are listed only when the caller passes the artifact rows it
+ * loaded for this chat (`loadChatContextArtifacts`).
  */
 export function buildChatContext(
   messages: readonly ChatContextMessage[],
@@ -76,6 +82,7 @@ export function buildChatContext(
     visibility: ChatContextVisibility
     sections?: readonly ChatContextSection[]
     truncated?: boolean
+    artifacts?: ReadonlyMap<string, ChatContextArtifact>
   },
 ): ChatContextItems {
   const sections = (options.sections ?? CHAT_CONTEXT_SECTIONS)
@@ -84,6 +91,9 @@ export function buildChatContext(
         || section.visibility === 'public'
     })
   const { groups, accumulator } = createAccumulator()
+  const scope: ChatContextScope = {
+    artifacts: options.artifacts ?? NO_ARTIFACTS,
+  }
 
   for (const message of messages) {
     const scopedMessage = options.visibility === 'public'
@@ -91,7 +101,7 @@ export function buildChatContext(
       : message
 
     for (const section of sections) {
-      section.collect(scopedMessage, accumulator)
+      section.collect(scopedMessage, accumulator, scope)
     }
   }
 

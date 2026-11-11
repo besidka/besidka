@@ -359,7 +359,7 @@ watch(
       return
     }
 
-    svg.value = result.svg
+    svg.value = sanitizeDiagramSvg(result.svg)
 
     await nextTick()
 

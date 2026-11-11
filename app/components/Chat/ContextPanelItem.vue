@@ -27,10 +27,13 @@
 
 <script setup lang="ts">
 import { toSafeLocalUrl } from '~/utils/chat-context'
+import { ARTIFACT_KIND_LABELS } from '~/utils/artifact-parts'
 import type {
   ChatContextItem,
   ChatContextItemKind,
+  ChatContextItemMeta,
 } from '#shared/types/chat-context.d'
+import { isArtifactKind } from '#shared/utils/artifacts'
 
 const props = defineProps<{
   item: ChatContextItem
@@ -45,6 +48,7 @@ const ICONS: Record<ChatContextItemKind, string> = {
   'chat-search': 'lucide:messages-square',
   'web-source': 'lucide:globe',
   'web-search': 'lucide:search',
+  'artifact': 'lucide:app-window',
 }
 
 const DETAILS: Record<ChatContextItemKind, string> = {
@@ -56,6 +60,7 @@ const DETAILS: Record<ChatContextItemKind, string> = {
   'chat-search': 'Chat history',
   'web-source': 'Source',
   'web-search': 'Web search',
+  'artifact': 'Artifact',
 }
 
 const thumbnailUrl = computed<string | null>(() => {
@@ -63,6 +68,20 @@ const thumbnailUrl = computed<string | null>(() => {
     ? toSafeLocalUrl(props.item.meta?.url)
     : null
 })
+
+function getArtifactDetail(meta: ChatContextItemMeta | undefined): string {
+  const parts = [
+    isArtifactKind(meta?.artifactKind)
+      ? ARTIFACT_KIND_LABELS[meta.artifactKind]
+      : DETAILS.artifact,
+  ]
+
+  if (meta?.version) {
+    parts.push(`v${meta.version}`)
+  }
+
+  return parts.join(' · ')
+}
 
 const iconName = computed<string>(() => {
   return ICONS[props.item.kind]
@@ -77,6 +96,10 @@ const detail = computed<string>(() => {
 
   if (kind === 'web-source' && meta?.domain) {
     return meta.domain
+  }
+
+  if (kind === 'artifact') {
+    return getArtifactDetail(meta)
   }
 
   if ((kind === 'memory' || kind === 'chat-search') && meta?.action) {
