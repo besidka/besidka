@@ -145,48 +145,49 @@ describe('artifact share token redaction', () => {
         '~~/server/utils/artifacts/share-redaction'
       )
 
-      expect(redactArtifactSharePath(`/a/${TOKEN}`)).toBe('/a/[token]')
-      expect(redactArtifactSharePath(`/a/${TOKEN}/_payload.json?x=1`))
-        .toBe('/a/[token]/_payload.json?x=1')
-      expect(redactArtifactSharePath(`GET https://besidka.com/a/${TOKEN}`))
-        .toBe('GET https://besidka.com/a/[token]')
-      expect(redactArtifactSharePath('/api/v1/artifact-shares/current'))
-        .toBe('/api/v1/artifact-shares/current')
+      expect(redactArtifactSharePath(`/artifacts/${TOKEN}`))
+        .toBe('/artifacts/[token]')
+      expect(redactArtifactSharePath(`/artifacts/${TOKEN}/_payload.json?x=1`))
+        .toBe('/artifacts/[token]/_payload.json?x=1')
+      expect(redactArtifactSharePath(
+        `GET https://besidka.com/artifacts/${TOKEN}`,
+      )).toBe('GET https://besidka.com/artifacts/[token]')
+      expect(redactArtifactSharePath(`https://besidka.com/artifacts/${TOKEN}#x`))
+        .toBe('https://besidka.com/artifacts/[token]#x')
+      expect(redactArtifactSharePath(`Failed on /Artifacts/${TOKEN} x`))
+        .toBe('Failed on /artifacts/[token] x')
       expect(redactArtifactSharePath(42)).toBe(42)
-      expect(redactArtifactSharePath(`/signup?next=%2Fa%2F${TOKEN}`))
-        .toBe('/signup?next=%2Fa%2F[token]')
-      expect(redactArtifactSharePath(`/signin?next=%2fa%2f${TOKEN}&x=1`))
-        .toBe('/signin?next=%2fa%2f[token]&x=1')
-      expect(redactArtifactSharePath('/data/files'))
-        .toBe('/data/files')
-      expect(redactArtifactSharePath(`/signin?next=%252Fa%252F${TOKEN}`))
-        .toBe('/signin?next=%252Fa%252F[token]')
-      expect(redactArtifactSharePath(`x=%25252fA%25252f${TOKEN}`))
-        .toBe('x=%25252fa%25252f[token]')
-      expect(redactArtifactSharePath(`/A/${TOKEN}`)).toBe('/a/[token]')
+      expect(redactArtifactSharePath('/data/files')).toBe('/data/files')
     })
 
-  it('replaces the token of a fragment link, plain or percent-encoded',
-    async () => {
-      const { redactArtifactSharePath } = await import(
-        '~~/server/utils/artifacts/share-redaction'
-      )
+  it('replaces the token of a percent-encoded link', async () => {
+    const { redactArtifactSharePath } = await import(
+      '~~/server/utils/artifacts/share-redaction'
+    )
 
-      expect(redactArtifactSharePath(`/a#${TOKEN}`)).toBe('/a#[token]')
-      expect(redactArtifactSharePath(`https://besidka.com/a#${TOKEN}`))
-        .toBe('https://besidka.com/a#[token]')
-      expect(redactArtifactSharePath(`Failed on https://besidka.com/A#${TOKEN} x`))
-        .toBe('Failed on https://besidka.com/a#[token] x')
-      expect(redactArtifactSharePath(`x?url=%2Fa%23${TOKEN}&y=1`))
-        .toBe('x?url=%2Fa%23[token]&y=1')
-      expect(redactArtifactSharePath(`x?url=https%3A%2F%2Fb.com%2fa%23${TOKEN}`))
-        .toBe('x?url=https%3A%2F%2Fb.com%2fa%23[token]')
-      expect(redactArtifactSharePath(`x=%252Fa%2523${TOKEN}`))
-        .toBe('x=%252Fa%2523[token]')
-      expect(redactArtifactSharePath('/a')).toBe('/a')
-      expect(redactArtifactSharePath('/signin?next=%2Fa')).toBe('/signin?next=%2Fa')
-      expect(redactArtifactSharePath('/data#files')).toBe('/data#files')
-    })
+    expect(redactArtifactSharePath(`/signup?next=%2Fartifacts%2F${TOKEN}`))
+      .toBe('/signup?next=%2Fartifacts%2F[token]')
+    expect(redactArtifactSharePath(`/signin?next=%2fartifacts%2f${TOKEN}&x=1`))
+      .toBe('/signin?next=%2fartifacts%2f[token]&x=1')
+    expect(redactArtifactSharePath(`/signin?next=%252Fartifacts%252F${TOKEN}`))
+      .toBe('/signin?next=%252Fartifacts%252F[token]')
+    expect(redactArtifactSharePath(`x=%25252fArtifacts%25252f${TOKEN}`))
+      .toBe('x=%25252fartifacts%25252f[token]')
+    expect(redactArtifactSharePath(
+      `x?url=https%3A%2F%2Fb.com%2Fartifacts%2F${TOKEN}`,
+    )).toBe('x?url=https%3A%2F%2Fb.com%2Fartifacts%2F[token]')
+  })
+
+  it('leaves artifact API paths and the bare page path alone', async () => {
+    const { redactArtifactSharePath } = await import(
+      '~~/server/utils/artifacts/share-redaction'
+    )
+
+    expect(redactArtifactSharePath('/api/v1/artifacts/Abc123Def456Ghi7/shares'))
+      .toBe('/api/v1/artifacts/Abc123Def456Ghi7/shares')
+    expect(redactArtifactSharePath('/chats/artifacts')).toBe('/chats/artifacts')
+    expect(redactArtifactSharePath('/artifacts')).toBe('/artifacts')
+  })
 
   it('redacts a browser-ingested error that carries the page address', () => {
     const context = {
@@ -195,13 +196,13 @@ describe('artifact share token redaction', () => {
       event: {
         source: 'client',
         level: 'error',
-        message: `Unhandled error on https://besidka.com/a#${TOKEN}`,
+        message: `Unhandled error on https://besidka.com/artifacts/${TOKEN}`,
         attributes: {
           clientError: {
-            route: `/a#${TOKEN}`,
-            stack: `at onMounted (https://besidka.com/a#${TOKEN}:1:1)`,
+            route: `/artifacts/${TOKEN}`,
+            stack: `at onMounted (https://besidka.com/artifacts/${TOKEN}:1:1)`,
           },
-          client: { href: `https://besidka.com/a#${TOKEN}` },
+          client: { href: `https://besidka.com/artifacts/${TOKEN}` },
         },
       } as Record<string, unknown>,
     }
@@ -210,33 +211,33 @@ describe('artifact share token redaction', () => {
 
     expect(JSON.stringify(context)).not.toContain(TOKEN)
     expect(context.event.attributes).toMatchObject({
-      clientError: { route: '/a#[token]' },
-      client: { href: 'https://besidka.com/a#[token]' },
+      clientError: { route: '/artifacts/[token]' },
+      client: { href: 'https://besidka.com/artifacts/[token]' },
     })
   })
 
   it('keeps the token out of every drained field of a page request', () => {
     const context = {
-      request: { method: 'GET', path: `/a/${TOKEN}` },
+      request: { method: 'GET', path: `/artifacts/${TOKEN}` },
       headers: { 'x-besidka-artifact-share': TOKEN, 'cf-ray': 'ray-1' },
       event: {
-        path: `/a/${TOKEN}`,
+        path: `/artifacts/${TOKEN}`,
         error: {
-          message: `Render failed for /a/${TOKEN}`,
-          stack: `at render (/a/${TOKEN})`,
+          message: `Render failed for /artifacts/${TOKEN}`,
+          stack: `at render (/artifacts/${TOKEN})`,
         },
-        attributes: { client: { url: `https://besidka.com/a/${TOKEN}#top` } },
+        attributes: { client: { url: `https://besidka.com/artifacts/${TOKEN}#top` } },
       } as Record<string, unknown>,
     }
 
     enrich(context)
 
     expect(context.event).toMatchObject({
-      path: '/a/[token]',
-      message: 'GET /a/[token]',
+      path: '/artifacts/[token]',
+      message: 'GET /artifacts/[token]',
       requestMeta: { cfRay: 'ray-1' },
     })
-    expect(context.request.path).toBe('/a/[token]')
+    expect(context.request.path).toBe('/artifacts/[token]')
     expect(JSON.stringify(context.event)).not.toContain(TOKEN)
     expect(JSON.stringify(context.event)).not.toContain(
       'x-besidka-artifact-share',

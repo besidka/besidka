@@ -138,9 +138,10 @@ export function isUrgentArtifactReportReason(
  * copyright notice the elements of the Terms of Use "Copyright complaints"
  * section that are not separate fields (signature, the work, the owner,
  * both statements). Element 3, the exact URL, is the share the server
- * resolved, never a URL the client sent. Any `/a#<token>` link the
- * reporter pasted (or an old `/a/<token>` one), encoded or not, is reduced
- * to `/a#[token]`, so a live token never reaches the row or the mailbox.
+ * resolved, never a URL the client sent. Any `/artifacts/<token>`
+ * link the reporter pasted, encoded or not, is reduced to
+ * `/artifacts/[token]`, so a live token never reaches the row or the
+ * mailbox.
  */
 export function composeArtifactReportDetails(body: ArtifactReportBody): string {
   const lines = body.reason === 'copyright' && body.copyright

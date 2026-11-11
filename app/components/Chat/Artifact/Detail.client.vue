@@ -151,7 +151,11 @@
             size="18"
           />
         </summary>
-        <div class="dropdown-content z-50 w-56 pt-2">
+        <div
+          class="dropdown-content z-50 w-56 pt-2"
+          data-testid="artifact-actions-menu"
+          @mousedown.prevent
+        >
           <ul class="menu menu-sm w-full rounded-box bg-base-100 p-1 shadow-lg">
             <li>
               <button

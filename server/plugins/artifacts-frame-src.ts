@@ -5,8 +5,12 @@ import { buildArtifactFrameSrc } from '#shared/utils/artifact-frame-policy'
 const CSP_HEADER = 'content-security-policy'
 const FRAME_SRC = 'frame-src'
 const NONE_SOURCE = '\'none\''
-const ARTIFACT_PAGE_PREFIXES = ['/chats/', '/shared/', '/admin/']
-const ARTIFACT_PAGE_EXACT_PATHS = ['/a']
+const ARTIFACT_PAGE_PREFIXES = [
+  '/chats/',
+  '/shared/',
+  '/admin/',
+  '/artifacts/',
+]
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('render:response', (response, context) => {
@@ -30,10 +34,6 @@ function readEventPolicy(event: H3Event): string | undefined {
 export function isArtifactPagePath(path: string): boolean {
   const pathname = path.split('?')[0] ?? ''
 
-  if (ARTIFACT_PAGE_EXACT_PATHS.includes(pathname)) {
-    return true
-  }
-
   return ARTIFACT_PAGE_PREFIXES.some((prefix) => {
     return pathname.startsWith(prefix)
   })
@@ -51,8 +51,8 @@ export function isArtifactPagePath(path: string): boolean {
  * before their first artifact frame (`ensureArtifactFramePolicy`). An
  * existing policy is extended, never replaced: the renderer's own header,
  * or else the one a route rule already set on the event (`eventPolicy`,
- * for example `frame-ancestors 'none'` on `/a`), which the renderer
- * would otherwise overwrite.
+ * for example `frame-ancestors 'none'` on `/artifacts/<token>`), which the
+ * renderer would otherwise overwrite.
  */
 export function applyArtifactFrameSrc(
   response: Partial<RenderResponse>,

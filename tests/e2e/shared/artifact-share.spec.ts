@@ -21,7 +21,7 @@ const ARTIFACT_CONTENT = [
 ].join('\n')
 const SHARE_TOKEN = 'e2eShareToken_0123456789abcdefghijklmnopqrs'
 const SHARE_ID = 'sh_e2e1'
-const SHARE_PATH = `/a#${SHARE_TOKEN}`
+const SHARE_PATH = `/artifacts/${SHARE_TOKEN}`
 const SHARE_RETURN_STORAGE_KEY = 'artifacts:share-return'
 const SHARE_HEADER = 'x-besidka-artifact-share'
 const TURNSTILE_TOKEN = 'e2e-turnstile-token'
@@ -466,14 +466,16 @@ test('owner shares an artifact, a signed-out viewer reports it, and a '
   expect(viewerRequests.storageOrBridge).toEqual([])
 
   await viewer.getByTestId('artifact-share-sign-in').locator('a').click()
-  await expect(viewer).toHaveURL(/\/signin\?next=(%2F|\/)a$/)
+  await expect(viewer).toHaveURL(
+    /\/signin\?next=(%2F|\/)artifacts(%2F|\/)return$/,
+  )
   expect(await viewer.evaluate((key) => {
     return window.sessionStorage.getItem(key)
   }, SHARE_RETURN_STORAGE_KEY)).toBe(SHARE_TOKEN)
 
-  await viewer.goto('/a')
+  await viewer.goto('/artifacts/return')
   await waitForHydration(viewer)
-  await expect(viewer).toHaveURL(new RegExp(`/a#${SHARE_TOKEN}$`))
+  await expect(viewer).toHaveURL(new RegExp(`/artifacts/${SHARE_TOKEN}$`))
   await expect(viewer.getByTestId('artifact-share-banner')).toBeVisible()
   expect(await viewer.evaluate((key) => {
     return window.sessionStorage.getItem(key)
@@ -490,14 +492,19 @@ test('owner shares an artifact, a signed-out viewer reports it, and a '
     .toContainText('This link is not available')
   await expect(viewer.getByTestId('artifact-frame-iframe')).toHaveCount(0)
 
-  const urlsWithToken = requestedUrls.filter((requestedUrl) => {
+  const apiUrlsWithToken = requestedUrls.filter((requestedUrl) => {
     const { pathname, search } = new URL(requestedUrl)
 
-    return `${pathname}${search}`.includes(SHARE_TOKEN)
+    return pathname.startsWith('/api/')
+      && `${pathname}${search}`.includes(SHARE_TOKEN)
   })
 
   expect(requestedUrls.length).toBeGreaterThan(0)
-  expect(urlsWithToken).toEqual([])
+  expect(apiUrlsWithToken).toEqual([])
+
+  const oldFormResponse = await viewer.goto(`/a#${SHARE_TOKEN}`)
+
+  expect(oldFormResponse?.status()).toBe(404)
 
   await viewerContext.close()
 })

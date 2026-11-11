@@ -476,9 +476,9 @@ describe('cloudflare-web-analytics plugin', () => {
     expect(mocks.navigationGuards).toHaveLength(0)
   })
   describe('on public artifact links', () => {
-    it('never loads the beacon on the /a page, even with consent', () => {
-      stubLocation('/a#secret-token')
-      mocks.routePath = '/a'
+    it('never loads the beacon on the link page, even with consent', () => {
+      stubLocation('/artifacts/secret-token')
+      mocks.routePath = '/artifacts/secret-token'
       mocks.isDecided = true
       mocks.granted = ['necessary', 'analytics']
       mocks.isAnalyticsAllowed = true
@@ -490,23 +490,23 @@ describe('cloudflare-web-analytics plugin', () => {
     })
 
     it('never loads the beacon on sign-in that returns to a link', () => {
-      stubLocation('/signin?next=/a')
+      stubLocation('/signin?next=/artifacts/return')
       mocks.isAnalyticsAllowed = true
 
       install()
       emitConsentChange(grantAnalytics)
-      finishNavigation('/signup?next=/a')
+      finishNavigation('/signup?next=/artifacts/return')
 
       expect(mocks.load).not.toHaveBeenCalled()
     })
 
     it('loads the deferred beacon once the viewer leaves the link', () => {
-      stubLocation('/a#secret-token')
+      stubLocation('/artifacts/secret-token')
       mocks.isAnalyticsAllowed = true
 
       install()
       emitConsentChange(grantAnalytics)
-      finishNavigation('/a#other-token')
+      finishNavigation('/artifacts/other-token')
 
       expect(mocks.load).not.toHaveBeenCalled()
 
@@ -517,7 +517,7 @@ describe('cloudflare-web-analytics plugin', () => {
 
     it('does not load the deferred beacon when consent was withdrawn',
       () => {
-        stubLocation('/a#secret-token')
+        stubLocation('/artifacts/secret-token')
 
         install()
         emitConsentChange(grantAnalytics)
@@ -533,10 +533,10 @@ describe('cloudflare-web-analytics plugin', () => {
       emitConsentChange(grantAnalytics)
       await vi.waitFor(() => expect(mocks.load).toHaveBeenCalledTimes(1))
 
-      expect(resolveNavigation('/a#secret-token')).toBe(false)
-      expect(assign).toHaveBeenCalledWith('/a#secret-token')
-      expect(resolveNavigation('/A')).toBe(false)
-      expect(resolveNavigation('/signin?next=/a')).toBe(false)
+      expect(resolveNavigation('/artifacts/secret-token')).toBe(false)
+      expect(assign).toHaveBeenCalledWith('/artifacts/secret-token')
+      expect(resolveNavigation('/Artifacts/x')).toBe(false)
+      expect(resolveNavigation('/signin?next=/artifacts/return')).toBe(false)
       expect(resolveNavigation('/about')).toBe(true)
       expect(resolveNavigation('/profile')).toBe(true)
     })
@@ -544,7 +544,7 @@ describe('cloudflare-web-analytics plugin', () => {
     it('lets the navigation through when the beacon never loaded', () => {
       install()
 
-      expect(resolveNavigation('/a#secret-token')).toBe(true)
+      expect(resolveNavigation('/artifacts/secret-token')).toBe(true)
       expect(assign).not.toHaveBeenCalled()
     })
   })

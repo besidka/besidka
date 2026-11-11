@@ -76,18 +76,23 @@ describe('resolveSafeNextPath', () => {
       .toBe('/profile/keys')
   })
 
-  it('returns to the public artifact link page as the bare /a', () => {
-    expect(resolveSafeNextPath('/a')).toBe('/a')
-    expect(resolveSafeNextPath('/a?x=1')).toBe('/a')
-    expect(resolveSafeNextPath(`/a#${'t'.repeat(43)}`)).toBe('/a')
+  it('returns to the public artifact link page as /artifacts/return', () => {
+    expect(resolveSafeNextPath('/artifacts/return'))
+      .toBe('/artifacts/return')
+    expect(resolveSafeNextPath('/artifacts/return?x=1'))
+      .toBe('/artifacts/return')
+    expect(resolveSafeNextPath('/artifacts/return#top'))
+      .toBe('/artifacts/return')
   })
 
   it.each([
-    ['/a/'],
-    ['/a/token'],
-    ['/A'],
-    ['/ab'],
-    ['/about'],
+    ['/artifacts'],
+    ['/artifacts/'],
+    ['/artifacts/return/'],
+    [`/artifacts/${'t'.repeat(43)}`],
+    ['/Artifacts/return'],
+    ['/a'],
+    ['/artifactsx'],
   ])('rejects %j next to the artifact link page', (input) => {
     expect(resolveSafeNextPath(input)).toBeNull()
   })

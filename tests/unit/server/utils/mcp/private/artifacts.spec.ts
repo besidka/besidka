@@ -622,7 +622,7 @@ describe('MCP artifact logic', () => {
       })
 
       expect(result.url).toMatch(
-        new RegExp(`^${SITE_URL}/a#[\\w-]{43}$`),
+        new RegExp(`^${SITE_URL}/artifacts/[\\w-]{43}$`),
       )
       expect(result.warnings).toEqual([])
 

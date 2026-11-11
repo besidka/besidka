@@ -7,7 +7,10 @@ const ARTIFACTS_RUNTIME_PORT = process.env.ARTIFACTS_RUNTIME_PORT || '8788'
 const ARTIFACTS_RUNTIME_ORIGIN = `http://127.0.0.1:${ARTIFACTS_RUNTIME_PORT}`
 const ARTIFACTS_RUNTIME_INSPECTOR_PORT
   = process.env.ARTIFACTS_RUNTIME_INSPECTOR_PORT || '9330'
-const WEBKIT_SPECS = [/new-chat-navigation\.spec\.ts/]
+const WEBKIT_SPECS = [
+  /new-chat-navigation\.spec\.ts/,
+  /artifact-panel-share\.spec\.ts/,
+]
 const WEBKIT_PROJECTS = process.env.E2E_WEBKIT
   ? [
     {

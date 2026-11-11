@@ -8,9 +8,9 @@ import { expect, test } from '@playwright/test'
 import { waitForHydration } from '../helpers/auth'
 
 const SHARE_TOKEN = 'e2eExitToken_0123456789abcdefghijklmnopqrst'
-const INVALID_PATH = '/a#not-a-share-token'
+const INVALID_PATH = '/artifacts/not-a-share-token'
 const SHARED_CHAT_PATH = '/shared/test'
-const ARTIFACT_PATH = `/a#${SHARE_TOKEN}`
+const ARTIFACT_PATH = `/artifacts/${SHARE_TOKEN}`
 const ARTIFACT_TITLE = 'Capitals quiz'
 const ARTIFACT_CONTENT = '<!doctype html><html><body><h1>Quiz</h1></body></html>'
 const DESKTOP_VIEWPORT = { width: 1440, height: 900 }
@@ -153,7 +153,7 @@ async function openPage(
     await emulateStandaloneDisplay(page)
   }
 
-  if (path.startsWith('/a#') && path !== INVALID_PATH) {
+  if (path.startsWith('/artifacts/') && path !== INVALID_PATH) {
     await mockArtifactShare(page)
   }
 

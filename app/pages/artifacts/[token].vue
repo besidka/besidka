@@ -155,6 +155,7 @@ import type { ToolResultContent } from '@besidka/artifacts-protocol'
 import {
   ARTIFACT_SHARE_HEADER,
   ARTIFACT_SHARE_PATH,
+  ARTIFACT_SHARE_RETURN_SEGMENT,
   ARTIFACT_SHARE_RETURN_STORAGE_KEY,
   isArtifactShareToken,
 } from '#shared/utils/artifacts'
@@ -174,16 +175,27 @@ definePageMeta({
 const REPORT_ENDPOINT = '/api/v1/artifact-shares/current/report'
 const SIGN_IN_LOCATION = {
   path: '/signin',
-  query: { next: ARTIFACT_SHARE_PATH },
+  query: { next: `${ARTIFACT_SHARE_PATH}/${ARTIFACT_SHARE_RETURN_SEGMENT}` },
 }
 
+const route = useRoute()
 const router = useRouter()
 const { loggedIn } = useAuth()
 const reportButton = useTemplateRef<HTMLButtonElement>('reportButton')
 const isReportOpen = shallowRef<boolean>(false)
 const hasOpenedReport = shallowRef<boolean>(false)
-const token = shallowRef<string>('')
-const isTokenInvalid = shallowRef<boolean>(false)
+
+const routeToken = computed<string>(() => {
+  const value = route.params.token
+
+  return typeof value === 'string' ? value : ''
+})
+const token = computed<string>(() => {
+  return isArtifactShareToken(routeToken.value) ? routeToken.value : ''
+})
+const isTokenInvalid = computed<boolean>(() => {
+  return !token.value
+})
 
 const shareHeaders = computed<Record<string, string>>(() => {
   return { [ARTIFACT_SHARE_HEADER]: token.value }
@@ -258,10 +270,6 @@ useHead({
   meta: [{ name: 'ai-generated', content: 'true' }],
 })
 
-function readHashToken(): string {
-  return window.location.hash.slice(1)
-}
-
 function takeReturnToken(): string {
   try {
     const value = window.sessionStorage.getItem(
@@ -276,39 +284,24 @@ function takeReturnToken(): string {
   }
 }
 
-async function restoreReturnToken(returnToken: string): Promise<string> {
+async function restoreReturnToken() {
+  const returnToken = takeReturnToken()
+
   if (!isArtifactShareToken(returnToken)) {
-    return ''
+    return
   }
 
-  await router.replace({
-    path: ARTIFACT_SHARE_PATH,
-    hash: `#${returnToken}`,
-  })
-
-  return returnToken
+  await router.replace({ path: `${ARTIFACT_SHARE_PATH}/${returnToken}` })
 }
 
-async function loadShare(nextToken: string) {
+async function loadShare() {
   clear()
-  token.value = nextToken
-  isTokenInvalid.value = !isArtifactShareToken(nextToken)
 
   if (isTokenInvalid.value) {
     return
   }
 
   await execute()
-}
-
-async function onHashChange() {
-  const hashToken = readHashToken()
-
-  if (hashToken === token.value) {
-    return
-  }
-
-  await loadShare(hashToken)
 }
 
 function rememberShareForSignIn() {
@@ -335,16 +328,15 @@ async function retry() {
   await execute()
 }
 
+watch(token, loadShare)
+
 onMounted(async () => {
-  window.addEventListener('hashchange', onHashChange)
+  if (routeToken.value === ARTIFACT_SHARE_RETURN_SEGMENT) {
+    await restoreReturnToken()
 
-  const hashToken = readHashToken()
-  const returnToken = takeReturnToken()
+    return
+  }
 
-  await loadShare(hashToken || await restoreReturnToken(returnToken))
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', onHashChange)
+  await loadShare()
 })
 </script>

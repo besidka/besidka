@@ -156,9 +156,13 @@ export const LEGAL_NOTICES = [
       'The Privacy Policy now describes documents and Run code. A document '
       + 'is stored as an outline plus a file and is deleted with the file and '
       + 'with the chat it was made in. When you use Run code, your attached '
-      + 'files go to your provider\'s sandbox for that turn and I delete what '
-      + 'I upload there afterwards. The provider may keep some data for up to '
-      + '30 days, for example Anthropic container data and OpenAI abuse logs.',
+      + 'files go to your provider\'s sandbox for that turn. When the reply '
+      + 'ends I delete the files I uploaded, the files the sandbox made and, '
+      + 'at OpenAI, the container. If a reply is cut off, the upload expires '
+      + 'within an hour, while files the Anthropic sandbox made stay in your '
+      + 'Anthropic account until you delete them there. The '
+      + 'provider may keep some data for up to 30 days, for example '
+      + 'Anthropic container data and OpenAI abuse logs.',
     ],
   },
 ] as const satisfies readonly LegalNotice[]

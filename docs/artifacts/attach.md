@@ -5,7 +5,7 @@ artifact across several chats. Before this, `update_artifact` reached only
 artifacts created in the chat it was called from, so an artifact could not be
 continued anywhere else, and not at all once its origin chat was deleted. The
 **Add artifact** row in the composer's "+" menu attaches up to three of the
-user's own artifacts to a message. Owner chats only: shared chats, `/a#`
+user's own artifacts to a message. Owner chats only: shared chats, `/artifacts/<token>`
 pages and MCP (it has no chat send) are unchanged.
 
 ## What the user sees

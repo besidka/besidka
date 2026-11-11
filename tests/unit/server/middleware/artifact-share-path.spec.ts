@@ -33,26 +33,31 @@ function run(event: ReturnType<typeof createEvent>): unknown {
 
 describe('artifact share path guard', () => {
   it.each([
-    ['/A', true],
-    ['/A?x=1', true],
-    ['/A/token-1', true],
-    ['/A/', true],
-    ['/a/', true],
-    ['/a/token-1', true],
-    ['/a/token-1?x=1', true],
-    ['/a/token-1/_payload.json', true],
+    ['/Artifacts', true],
+    ['/Artifacts?x=1', true],
+    ['/Artifacts/token-1', true],
+    ['/ARTIFACTS/token-1', true],
+    ['/artifacts', true],
+    ['/artifacts/', true],
+    ['/artifacts/token-1/', true],
+    ['/artifacts/token-1/_payload.json', true],
+    ['/artifacts/token-1', false],
+    ['/artifacts/token-1?utm_source=x', false],
+    ['/artifacts/return', false],
     ['/a', false],
-    ['/a?utm_source=x', false],
+    ['/a/token-1', false],
     ['/api/v1/artifact-shares/current', false],
+    ['/api/v1/artifacts/ArtifactId1/shares', false],
+    ['/chats/artifacts', false],
+    ['/artifactsx', false],
     ['/About', false],
     ['/admin', false],
-    ['/ab', false],
     ['/', false],
   ])('%s → %s', (path, expected) => {
     expect(isNonCanonicalArtifactSharePath(path)).toBe(expected)
   })
 
-  it.each(['/A/token-1', '/a/token-1', '/A'])(
+  it.each(['/Artifacts/token-1', '/artifacts/', '/artifacts'])(
     'answers %s with a plain 404 and the link privacy headers',
     (path) => {
       const event = createEvent(path)
@@ -70,7 +75,7 @@ describe('artifact share path guard', () => {
   )
 
   it('lets the link page and every other path through', () => {
-    for (const path of ['/a', '/a?x=1', '/about']) {
+    for (const path of ['/artifacts/token-1', '/artifacts/x?x=1', '/about']) {
       const event = createEvent(path)
 
       expect(run(event)).toBeUndefined()
