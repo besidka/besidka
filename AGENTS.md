@@ -263,6 +263,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   keyboard-open class matrix, the scroll spacer inset, why not
   `interactive-widget` or the VirtualKeyboard API, the deferred focus-pan
   suppression, and the iOS Simulator verification recipe
+- `docs/chats/documents-spec-package.md` - `@besidka/doc-renderer` (D-2,
+  BES-282): the versioned JSON spec, `render()`, `validate()` and the
+  provenance stamp for PDF, DOCX, PPTX and XLSX; subpath exports and weights,
+  the validation code table and how each check avoids the obvious bypass
+  (linear XML tokenizer, streaming inflate cap, structural PDF scan),
+  provenance `ai | channel-only | missing`, determinism pins, the notices
+  collector, the browser Worker smoke, and the deviations from the ticket
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no

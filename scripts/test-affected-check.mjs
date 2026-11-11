@@ -137,6 +137,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/TextFileModal.client.spec.ts',
     'tests/e2e/chat/chat-input-markdown.spec.ts',
   ]
+  const documentRendererTests = [
+    'tests/unit/packages/doc-renderer/spec.spec.ts',
+    'tests/unit/packages/doc-renderer/render.spec.ts',
+    'tests/unit/packages/doc-renderer/validate.spec.ts',
+    'tests/unit/packages/doc-renderer/formula.spec.ts',
+    'tests/unit/packages/doc-renderer/provenance.spec.ts',
+    'tests/unit/packages/doc-renderer/package-boundaries.spec.ts',
+    'tests/unit/packages/doc-renderer/notices.spec.ts',
+    'tests/unit/packages/doc-renderer/hardening.spec.ts',
+    'tests/unit/utils/shared-files.spec.ts',
+    'tests/unit/utils/knowledge-zip.spec.ts',
+  ]
   const artifactsRuntimeTests = [
     'tests/unit/packages/artifacts-protocol/jsonrpc.spec.ts',
     'tests/unit/packages/artifacts-protocol/connection.spec.ts',
@@ -2329,6 +2341,11 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/pages/chats/history/index.spec.ts',
         'tests/unit/utils/search.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(packages\/doc-renderer\/|tests\/fixtures\/documents\/|tests\/setup\/helpers\/documents\.ts$|scripts\/(third-party-notices|doc-renderer-smoke)\.mjs$|shared\/utils\/files\.ts$|app\/utils\/knowledge-zip\.ts$)/,
+      tests: documentRendererTests,
     },
     {
       pattern: /^app\/assets\/css\/main\.css$/,
