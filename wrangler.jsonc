@@ -168,6 +168,13 @@
 			]
 		}
 	],
+	"services": [
+		{
+			"binding": "DOC_RENDERER",
+			"service": "besidka-doc-renderer",
+			"entrypoint": "DocRenderer"
+		}
+	],
 	"triggers": {
 		"crons": [
 			"0 * * * *",
@@ -360,6 +367,13 @@
 					]
 				}
 			],
+			"services": [
+				{
+					"binding": "DOC_RENDERER",
+					"service": "besidka-doc-renderer",
+					"entrypoint": "DocRenderer"
+				}
+			],
 			"previews": {
 				"vars": {
 					"NUXT_PUBLIC_BASE_URL": "https://preview-besidka.chernenko.workers.dev",
@@ -465,6 +479,13 @@
 							"noreply@besidka.com",
 							"serhii@besidka.com"
 						]
+					}
+				],
+				"services": [
+					{
+						"binding": "DOC_RENDERER",
+						"service": "besidka-doc-renderer-preview",
+						"entrypoint": "DocRenderer"
 					}
 				],
 				"observability": {

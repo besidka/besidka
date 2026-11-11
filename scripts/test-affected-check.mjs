@@ -275,6 +275,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/composables/chat.spec.ts',
   ]
+  const documentRendererWorkerTests = [
+    'tests/unit/workers/doc-renderer/index.spec.ts',
+    'tests/unit/workers/doc-renderer/bundle.spec.ts',
+    'tests/unit/utils/documents/renderer.spec.ts',
+    'tests/unit/workflows/production-satellites.spec.ts',
+    'tests/unit/config/wrangler-previews.spec.ts',
+  ]
   const artifactsAttachTests = [
     'tests/unit/components/ChatInput/ArtifactPicker.client.spec.ts',
     'tests/unit/components/Chat/ArtifactAttachments.spec.ts',
@@ -2346,6 +2353,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(packages\/doc-renderer\/|tests\/fixtures\/documents\/|tests\/setup\/helpers\/documents\.ts$|scripts\/(third-party-notices|doc-renderer-smoke)\.mjs$|shared\/utils\/files\.ts$|app\/utils\/knowledge-zip\.ts$)/,
       tests: documentRendererTests,
+    },
+    {
+      pattern:
+        /^(workers\/doc-renderer\/|packages\/doc-renderer\/|server\/utils\/documents\/renderer\.ts$|wrangler\.jsonc$|tests\/setup\/helpers\/documents\.ts$|\.github\/workflows\/production\.yml$)/,
+      tests: documentRendererWorkerTests,
     },
     {
       pattern: /^app\/assets\/css\/main\.css$/,

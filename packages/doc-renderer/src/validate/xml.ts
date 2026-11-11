@@ -111,7 +111,10 @@ export function decodeXmlBytes(data: Uint8Array): string {
   let text: string
 
   try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(data)
+    text = new TextDecoder('utf-8', {
+      fatal: true,
+      ignoreBOM: false,
+    }).decode(data)
   } catch {
     throw new XmlError('xml_encoding', 'XML part is not valid UTF-8')
   }
