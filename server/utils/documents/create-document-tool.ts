@@ -169,25 +169,156 @@ export function buildDocumentToolDescription(
   ].filter(Boolean).join(' ')
 }
 
+const SPEC_SHAPE_RESERVED_KEYS = ['format', 'specVersion']
+
+function collectFormatKeys(
+  options: readonly SpecOption[],
+): Record<string, readonly string[]> {
+  const keysByFormat: Record<string, readonly string[]> = {}
+
+  for (const option of options) {
+    keysByFormat[option.shape.format.value] = Object.keys(option.shape)
+  }
+
+  return keysByFormat
+}
+
+const SPEC_KEYS_BY_FORMAT = collectFormatKeys(documentSpecSchema.options)
+
+function isEmptyToolValue(value: unknown): boolean {
+  return value === null || (Array.isArray(value) && value.length === 0)
+}
+
 /**
- * The input schema for the enabled formats: the spec union filtered by its
- * `format` discriminator, so the model never sees a format it cannot create.
+ * Providers that see one flat object with optional per-format properties
+ * sometimes fill the properties of other formats with null or an empty
+ * array. Those placeholders are dropped before the strict validation; any
+ * real value of a foreign property is still rejected by the spec schema.
  */
-export function buildDocumentToolSpecSchema(
+function dropUnusedPlaceholders(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return input
+  }
+
+  const record = input as Record<string, unknown>
+  const ownKeys = SPEC_KEYS_BY_FORMAT[String(record.format)]
+  const cleaned: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(record)) {
+    const isForeignKey = ownKeys !== undefined && !ownKeys.includes(key)
+
+    if (value === null && !SPEC_SHAPE_RESERVED_KEYS.includes(key)) {
+      continue
+    }
+
+    if (isForeignKey && isEmptyToolValue(value)) {
+      continue
+    }
+
+    cleaned[key] = value
+  }
+
+  return cleaned
+}
+
+/**
+ * The advertised input schema for the enabled formats: one plain object with
+ * a required `format` enum narrowed to the enabled formats and the fields of
+ * every enabled format as optional properties. A top-level union is not
+ * sent: Anthropic requires `type: "object"` at the root, and several other
+ * providers reject or mishandle a root `oneOf`. The strict per-format
+ * validation stays in `checkDocumentSpecInput`, which runs in the tool's
+ * `validate` and again in `execute`.
+ */
+export function buildDocumentToolInputSchema(
   enabledFormats: readonly DocumentFormat[],
-): z.ZodType<DocumentSpec> {
+): z.ZodType {
   const options = documentSpecSchema.options.filter((option: SpecOption) => {
     return enabledFormats.includes(option.shape.format.value)
   })
-
-  if (options.length === documentSpecSchema.options.length) {
-    return documentSpecSchema
+  const commonKeys = Object.keys(options[0]!.shape).filter((key) => {
+    return options.every(option => key in option.shape)
+  })
+  const shape: Record<string, z.ZodType> = {
+    specVersion: options[0]!.shape.specVersion,
+    format: z.enum(options.map(option => option.shape.format.value) as [
+      DocumentFormat,
+      ...DocumentFormat[],
+    ]),
   }
 
-  return z.discriminatedUnion(
-    'format',
-    options as [SpecOption, ...SpecOption[]],
-  ) as unknown as z.ZodType<DocumentSpec>
+  for (const option of options) {
+    for (const [key, value] of Object.entries(option.shape)) {
+      if (SPEC_SHAPE_RESERVED_KEYS.includes(key) || key in shape) {
+        continue
+      }
+
+      shape[key] = commonKeys.includes(key)
+        ? value as z.ZodType
+        : (value as z.ZodType).optional()
+    }
+  }
+
+  return z.object(shape)
+}
+
+type JsonSchemaNode = Record<string, unknown>
+
+function isJsonSchemaNode(value: unknown): value is JsonSchemaNode {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function sanitizeSchemaNode(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(sanitizeSchemaNode)
+  }
+
+  if (!isJsonSchemaNode(node)) {
+    return node
+  }
+
+  const sanitized: JsonSchemaNode = {}
+
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'additionalItems') {
+      continue
+    }
+
+    if (key === 'oneOf') {
+      sanitized.anyOf = sanitizeSchemaNode(value)
+
+      continue
+    }
+
+    if (key === 'items' && Array.isArray(value)) {
+      sanitized.items = sanitizeSchemaNode(value[0])
+
+      continue
+    }
+
+    sanitized[key] = sanitizeSchemaNode(value)
+  }
+
+  if ('const' in sanitized && typeof sanitized.type === 'string') {
+    sanitized.enum = [sanitized.const]
+    delete sanitized.const
+  }
+
+  return sanitized
+}
+
+/**
+ * Reduces the JSON schema of the tool input to the subset every provider
+ * accepts: `oneOf` becomes `anyOf`, a `const` becomes a one-value `enum`,
+ * and a fixed-length tuple (the two slide columns share one item schema)
+ * becomes an array with `minItems` and `maxItems`, because array-valued
+ * `items` is rejected by Anthropic and Gemini. Validation does not depend
+ * on this schema: it only guides the model.
+ */
+export function toProviderSafeJsonSchema(
+  jsonSchemaValue: unknown,
+): Record<string, unknown> {
+  return sanitizeSchemaNode(jsonSchemaValue) as Record<string, unknown>
 }
 
 /**
@@ -196,9 +327,10 @@ export function buildDocumentToolSpecSchema(
  * document text, so it is safe to return to the model and to log.
  */
 export function checkDocumentSpecInput(
-  input: unknown,
+  rawInput: unknown,
   enabledFormats: readonly DocumentFormat[],
 ): DocumentSpecCheck {
+  const input = dropUnusedPlaceholders(rawInput)
   const requestedFormat = readFormat(input)
   const isDisabledFormat = typeof requestedFormat === 'string'
     && (DOCUMENT_FORMATS as readonly string[]).includes(requestedFormat)
@@ -274,13 +406,13 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
     throw createToolError(code, message)
   }
 
-  const specSchema = buildDocumentToolSpecSchema(enabledFormats)
+  const inputSchema = buildDocumentToolInputSchema(enabledFormats)
 
   return {
     [DOCUMENT_TOOL_NAME]: withFollowUpTurn(tool({
       description: buildDocumentToolDescription(enabledFormats),
       inputSchema: jsonSchema<DocumentSpec>(
-        zodSchema(specSchema).jsonSchema,
+        toProviderSafeJsonSchema(zodSchema(inputSchema).jsonSchema),
         {
           validate(value) {
             const checked = checkDocumentSpecInput(value, enabledFormats)

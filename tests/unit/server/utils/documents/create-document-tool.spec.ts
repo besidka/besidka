@@ -37,6 +37,35 @@ const { toolRequiresFollowUpTurn } = await import(
   '~~/server/utils/ai/tool-loop'
 )
 
+const FORMAT_SUBSETS: DocumentFormat[][] = DOCUMENT_FORMATS.reduce<
+  DocumentFormat[][]
+>((subsets, format) => {
+  return [...subsets, ...subsets.map(subset => [...subset, format])]
+}, [[]]).filter(subset => subset.length > 0)
+
+const TOP_LEVEL_FORBIDDEN_KEYWORDS = [
+  'oneOf',
+  'anyOf',
+  'allOf',
+  'not',
+  'enum',
+  '$ref',
+]
+
+function hasTupleItems(node: unknown): boolean {
+  if (Array.isArray(node)) {
+    return node.some(hasTupleItems)
+  }
+
+  if (typeof node !== 'object' || node === null) {
+    return false
+  }
+
+  return Object.entries(node).some(([key, value]) => {
+    return (key === 'items' && Array.isArray(value)) || hasTupleItems(value)
+  })
+}
+
 type ToolExecute = (input: unknown, options: unknown) => Promise<unknown>
 
 const SECRET_TEXT = 'CONFIDENTIAL-QUARTERLY-FIGURES'
@@ -166,15 +195,66 @@ describe('create_document tool', () => {
         .not.toContain('Blocks for pdf and docx')
     })
 
-    it('advertises a JSON schema that only offers enabled formats', () => {
-      const jsonSchema = asSchema(createTool(['pdf', 'docx']).inputSchema)
-        .jsonSchema as { oneOf?: unknown[], anyOf?: unknown[] }
-      const variants = jsonSchema.oneOf ?? jsonSchema.anyOf ?? []
+    describe.each(FORMAT_SUBSETS.map(subset => [subset.join('+'), subset]))(
+      'advertised JSON schema for %s',
+      (_label, subset) => {
+        const formats = subset as DocumentFormat[]
 
-      expect(variants).toHaveLength(2)
-      expect(JSON.stringify(variants)).not.toContain('"xlsx"')
-      expect(JSON.stringify(variants)).not.toContain('"pptx"')
-    })
+        function readSchema(): Record<string, any> {
+          return asSchema(createTool(formats).inputSchema)
+            .jsonSchema as Record<string, any>
+        }
+
+        it('is a plain top-level object', () => {
+          const jsonSchema = readSchema()
+
+          expect(jsonSchema.type).toBe('object')
+          expect(jsonSchema.properties).toBeTypeOf('object')
+
+          for (const keyword of TOP_LEVEL_FORBIDDEN_KEYWORDS) {
+            expect(jsonSchema).not.toHaveProperty(keyword)
+          }
+        })
+
+        it('narrows format to the enabled formats', () => {
+          const jsonSchema = readSchema()
+
+          expect([...jsonSchema.properties.format.enum].sort())
+            .toEqual([...formats].sort())
+          expect(jsonSchema.required).toEqual(
+            expect.arrayContaining(['specVersion', 'format', 'title']),
+          )
+        })
+
+        it('offers the fields of enabled formats only', () => {
+          const properties = Object.keys(readSchema().properties)
+          const offers = (key: string) => properties.includes(key)
+
+          expect(offers('blocks')).toBe(
+            formats.includes('pdf') || formats.includes('docx'),
+          )
+          expect(offers('pageSize')).toBe(formats.includes('pdf'))
+          expect(offers('aspect')).toBe(formats.includes('pptx'))
+          expect(offers('slides')).toBe(formats.includes('pptx'))
+          expect(offers('sheets')).toBe(formats.includes('xlsx'))
+
+          if (formats.length > 1 && formats.includes('pptx')) {
+            expect(readSchema().required).not.toContain('blocks')
+          }
+        })
+
+        it('uses no keyword that a provider rejects, at any depth', () => {
+          const serialized = JSON.stringify(readSchema())
+
+          expect(serialized).not.toContain('"oneOf"')
+          expect(serialized).not.toContain('"allOf"')
+          expect(serialized).not.toContain('"$ref"')
+          expect(serialized).not.toContain('"const"')
+          expect(serialized).not.toContain('"additionalItems"')
+          expect(hasTupleItems(readSchema())).toBe(false)
+        })
+      },
+    )
 
     it('is marked for a follow-up turn', () => {
       expect(toolRequiresFollowUpTurn(createTool())).toBe(true)
@@ -265,6 +345,66 @@ describe('create_document tool', () => {
         .toMatchObject({ message: expect.stringContaining(SECRET_TEXT) })
       expect(await countDocuments()).toBe(0)
       expect(storage.objects.size).toBe(0)
+    })
+
+    it('rejects input that breaks the per-format rules', async () => {
+      const invalidInputs = [
+        { ...PDF_SPEC, pageSize: undefined },
+        { ...PDF_SPEC, pageSize: 'A3' },
+        { ...PDF_SPEC, sheets: XLSX_SPEC.sheets },
+        { specVersion: 1, format: 'pptx', title: 'Deck', blocks: PDF_SPEC.blocks },
+        { ...XLSX_SPEC, sheets: undefined },
+        { ...XLSX_SPEC, specVersion: 2 },
+        { format: 'odt', title: 'Letter', blocks: PDF_SPEC.blocks },
+      ]
+
+      for (const invalidInput of invalidInputs) {
+        await expect(createTool().execute(invalidInput, {})).rejects
+          .toMatchObject({ code: DOCUMENT_TOOL_ERROR_CODES.invalidInput })
+      }
+
+      expect(await countDocuments()).toBe(0)
+    })
+
+    it('rejects a foreign field that carries a real value', async () => {
+      const validate = asSchema(createTool().inputSchema).validate!
+      const result = await validate({
+        ...XLSX_SPEC,
+        pageSize: 'A4',
+        blocks: PDF_SPEC.blocks,
+      })
+
+      expect(result.success).toBe(false)
+    })
+
+    it('ignores null and empty placeholders of other formats', async () => {
+      const validate = asSchema(createTool().inputSchema).validate!
+      const result = await validate({
+        ...XLSX_SPEC,
+        language: null,
+        theme: null,
+        pageSize: null,
+        aspect: null,
+        blocks: [],
+        slides: [],
+      })
+
+      expect(result.success).toBe(true)
+
+      const output = await createTool().execute({
+        ...XLSX_SPEC,
+        blocks: [],
+        pageSize: null,
+      }, {})
+
+      expect(output).toMatchObject({ format: 'xlsx' })
+    })
+
+    it('still rejects an empty array for a field of the chosen format', async () => {
+      await expect(createTool().execute({ ...PDF_SPEC, blocks: [] }, {}))
+        .rejects.toMatchObject({
+          code: DOCUMENT_TOOL_ERROR_CODES.invalidInput,
+        })
     })
 
     it('rejects a format that is not enabled', async () => {

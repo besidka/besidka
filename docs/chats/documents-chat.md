@@ -42,6 +42,23 @@ Renderer Worker: `docs/chats/documents-renderer-worker.md`.
 6. The card polls `GET /api/v1/documents/:id` every 3 s while `rendering`
    and stops after 120 s with a Try again button.
 
+## Tool input schema
+
+The advertised JSON schema is one plain `type: "object"` with a required
+`format` enum narrowed to the enabled formats and the fields of every enabled
+format as optional properties. It is never a top-level union: with ai 7.0.153
+and zod 4.6.7, `zodSchema(z.discriminatedUnion(...))` yields `{ oneOf }` with
+no root `type`, and Anthropic rejects the request
+(`tools.N.custom.input_schema.type: Field required`) before the model runs.
+`toProviderSafeJsonSchema` also turns nested `oneOf` into `anyOf`, `const`
+into a one-value `enum`, and the two-slot slide `columns` tuple into an array
+with `minItems`/`maxItems`, because array-valued `items` is rejected by
+Anthropic and Gemini. The schema only guides the model: the strict
+discriminated-union validation runs in the tool's `validate` and again in
+`execute`, and a field of another format with a real value is still rejected.
+Only `null` and empty-array placeholders for other formats' fields are dropped
+first, as the artifact tools do for their optional fields.
+
 ## State machine
 
 `spec_ready` to `rendering` (claim) to `ready` or `failed`. The claim is one
