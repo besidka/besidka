@@ -20,6 +20,7 @@ export interface CapabilityToolContext {
   model: Model | undefined
   modelId?: string
   assistantMessageId?: string
+  attachedArtifactIds?: readonly string[]
   logger: LoggerLike
   isFeatureActive: (flag: FeatureKey) => boolean
 }
