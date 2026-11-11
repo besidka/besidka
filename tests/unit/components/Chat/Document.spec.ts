@@ -124,6 +124,20 @@ describe('ChatDocument', () => {
     expect(wrapper.find(testId('document-card')).exists()).toBe(false)
   })
 
+  it('renders no card for an attempt whose input broke the schema', async () => {
+    const wrapper = await mountCard({
+      part: {
+        type: 'tool-create_document',
+        toolCallId: 'call_1',
+        state: 'output-error',
+        input: { format: 'docx' },
+        errorText: 'The document input did not match the schema.',
+      },
+    })
+
+    expect(wrapper.find(testId('document-card')).exists()).toBe(false)
+  })
+
   it('shows the streaming outline state with a block count', async () => {
     const wrapper = await mountCard({
       part: streamingPart({

@@ -222,8 +222,15 @@ describe('create_document tool', () => {
           expect([...jsonSchema.properties.format.enum].sort())
             .toEqual([...formats].sort())
           expect(jsonSchema.required).toEqual(
-            expect.arrayContaining(['specVersion', 'format', 'title']),
+            expect.arrayContaining(['format', 'title']),
           )
+        })
+
+        it('does not require specVersion', () => {
+          const jsonSchema = readSchema()
+
+          expect(jsonSchema.properties).toHaveProperty('specVersion')
+          expect(jsonSchema.required).not.toContain('specVersion')
         })
 
         it('offers the fields of enabled formats only', () => {
@@ -364,6 +371,27 @@ describe('create_document tool', () => {
       }
 
       expect(await countDocuments()).toBe(0)
+    })
+
+    it('defaults a missing or null specVersion to the current version', async () => {
+      const validate = asSchema(createTool().inputSchema).validate!
+      const { specVersion: _specVersion, ...withoutVersion } = PDF_SPEC
+
+      for (const candidate of [
+        withoutVersion,
+        { ...withoutVersion, specVersion: null },
+      ]) {
+        const result = await validate(candidate)
+
+        expect(result).toMatchObject({
+          success: true,
+          value: { specVersion: 1 },
+        })
+      }
+
+      const output = await createTool().execute(withoutVersion as never, {})
+
+      expect(output).toMatchObject({ format: 'pdf', specVersion: 1 })
     })
 
     it('rejects a foreign field that carries a real value', async () => {

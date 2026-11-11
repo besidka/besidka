@@ -59,6 +59,19 @@ discriminated-union validation runs in the tool's `validate` and again in
 Only `null` and empty-array placeholders for other formats' fields are dropped
 first, as the artifact tools do for their optional fields.
 
+`specVersion` is optional in the advertised schema and defaults to the current
+version in the validation step: the model cannot know it, and Haiku spent a
+call on it. Any other value is still rejected.
+
+A call whose input fails the schema becomes an `output-error` tool part. The
+live `errorText` is the serialized chat error payload with
+`kind: "invalid-tool-input"`; persistence replaces it with the fixed
+`DOCUMENT_INVALID_INPUT_ERROR_TEXT` so the marker survives a reload
+(`isInvalidDocumentInputErrorText`). The card renders nothing for such an
+attempt: it only shows as a failed step ("Document call failed") in the
+reasoning list, and not even there once a later call in the same message
+created a document. Other tool errors keep the failed card.
+
 ## State machine
 
 `spec_ready` to `rendering` (claim) to `ready` or `failed`. The claim is one
@@ -112,6 +125,14 @@ checks only; there is no helper for Office input yet).
 "Open in Google" is G-5 and is not built: the card has an `extraActions`
 slot and the preview a `header-actions` slot for it. There is no
 `google.drive` flag yet and none was added.
+
+The card trusts the server, not the client feature payload: a stale
+`useFeature('documents')` (grant added after page load) no longer turns a
+ready document into "Document unavailable". The flow's 404 is the signal, and
+the card refreshes the client features once when a document answers while the
+flag reads inactive. A card that held the browser render and was unmounted or
+re-triggered does not orphan it, and a card waiting on another card's render
+renders itself when no render is in flight any more.
 
 ## Flags
 

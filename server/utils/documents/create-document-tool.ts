@@ -3,6 +3,7 @@ import { jsonSchema, tool, zodSchema } from 'ai'
 import { createError } from 'evlog'
 import { z } from 'zod'
 import {
+  DOCUMENT_SPEC_VERSION,
   collectImageIds,
   documentSpecSchema,
   parseDocumentSpec,
@@ -154,11 +155,11 @@ export function buildDocumentToolDescription(
     `${DOCUMENT_MAX_CALLS_PER_TURN} times per reply.`,
     'Keep it concise: only what was asked, no filler. Write in the user\'s',
     'language (Cyrillic and Latin both work) and set `language` as a BCP 47',
-    'tag such as "en" or "uk". Every spec has specVersion 1, format and a',
-    'title of at most 200 characters. Text is plain: no HTML or Markdown',
-    'inside it, no control characters; use runs for bold, italic,',
-    'underline, code and links. Links are https: or mailto: only. Images',
-    'only by the `fileId` of a PNG or JPEG file the user attached or that',
+    'tag such as "en" or "uk". Every spec has a format and a title of at',
+    'most 200 characters; specVersion is optional and defaults to 1. Text',
+    'is plain: no HTML or Markdown inside it, no control characters; use',
+    'runs for bold, italic, underline, code and links. Links are https: or',
+    'mailto: only. Images only by the `fileId` of a PNG or JPEG file the user attached or that',
     'was generated in this chat, at most 20; never URLs or data URIs.',
     'Optional `theme`: {"font":"sans"|"serif","accent":"neutral"|"blue"|'
     + '"green"|"orange"|"violet"}.',
@@ -193,7 +194,8 @@ function isEmptyToolValue(value: unknown): boolean {
  * Providers that see one flat object with optional per-format properties
  * sometimes fill the properties of other formats with null or an empty
  * array. Those placeholders are dropped before the strict validation; any
- * real value of a foreign property is still rejected by the spec schema.
+ * real value of a foreign property is still rejected by the spec schema. A
+ * missing `specVersion` becomes the current version: the model cannot know it.
  */
 function dropUnusedPlaceholders(input: unknown): unknown {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
@@ -218,6 +220,10 @@ function dropUnusedPlaceholders(input: unknown): unknown {
     cleaned[key] = value
   }
 
+  if (cleaned.specVersion === undefined || cleaned.specVersion === null) {
+    cleaned.specVersion = DOCUMENT_SPEC_VERSION
+  }
+
   return cleaned
 }
 
@@ -240,7 +246,7 @@ export function buildDocumentToolInputSchema(
     return options.every(option => key in option.shape)
   })
   const shape: Record<string, z.ZodType> = {
-    specVersion: options[0]!.shape.specVersion,
+    specVersion: options[0]!.shape.specVersion.optional(),
     format: z.enum(options.map(option => option.shape.format.value) as [
       DocumentFormat,
       ...DocumentFormat[],

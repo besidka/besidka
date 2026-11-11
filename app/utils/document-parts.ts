@@ -5,6 +5,7 @@ import {
   isDataDocumentPart,
   isDocumentFormat,
   isDocumentStatus,
+  isInvalidDocumentInputErrorText,
 } from '#shared/utils/documents'
 import { readArtifactFailureText } from '~/utils/artifact-parts'
 
@@ -104,6 +105,10 @@ function getToolPartView(
   }
 
   if (FAILED_STATES.has(state)) {
+    if (isInvalidDocumentInputErrorText(record.errorText)) {
+      return null
+    }
+
     const failure = readArtifactFailureText(record.errorText)
 
     return {
@@ -198,5 +203,31 @@ export function hasStreamingDocumentPart(parts: readonly unknown[]): boolean {
     const view = getDocumentPartView(part)
 
     return view?.state === 'streaming' || view?.state === 'creating'
+  })
+}
+
+export function isInvalidDocumentInputPart(part: unknown): boolean {
+  const record = readRecord(part)
+
+  return record?.type === DOCUMENT_TOOL_PART_TYPE
+    && FAILED_STATES.has(readString(record.state))
+    && isInvalidDocumentInputErrorText(record.errorText)
+}
+
+/**
+ * A call the model got wrong (its input did not match the schema) is not a
+ * document: it only shows as a step. Once the model corrected itself with a
+ * later call that created a document, the failed attempt is hidden entirely.
+ */
+export function isSupersededInvalidDocumentPart(
+  parts: readonly unknown[],
+  partIndex: number,
+): boolean {
+  if (!isInvalidDocumentInputPart(parts[partIndex])) {
+    return false
+  }
+
+  return parts.slice(partIndex + 1).some((part) => {
+    return getDocumentPartView(part)?.documentId != null
   })
 }

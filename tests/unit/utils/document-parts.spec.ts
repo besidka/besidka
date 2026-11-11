@@ -4,7 +4,9 @@ import {
   getDocumentPartView,
   hasStreamingDocumentPart,
   isDocumentPart,
+  isInvalidDocumentInputPart,
   isLastDocumentPart,
+  isSupersededInvalidDocumentPart,
 } from '../../../app/utils/document-parts'
 
 const TOOL_OUTPUT = {
@@ -265,5 +267,75 @@ describe('document part position helpers', () => {
     expect(hasStreamingDocumentPart([
       toolPart('output-available', { output: TOOL_OUTPUT }),
     ])).toBe(false)
+  })
+})
+
+describe('invalid document input attempts', () => {
+  const liveInvalidInputText = JSON.stringify({
+    code: 'invalid-provider-output',
+    kind: 'invalid-tool-input',
+    message: 'The model sent an invalid tool call.',
+    why: 'The model called create_document with input that does not '
+      + 'match its schema.',
+    status: 422,
+  })
+  const persistedInvalidInputText
+    = 'The document input did not match the schema.'
+
+  it.each([
+    ['live', liveInvalidInputText],
+    ['persisted', persistedInvalidInputText],
+  ])('does not render a %s invalid-input attempt as a card', (_label, text) => {
+    const part = toolPart('output-error', {
+      input: { format: 'docx' },
+      errorText: text,
+    })
+
+    expect(getDocumentPartView(part)).toBeNull()
+    expect(isInvalidDocumentInputPart(part)).toBe(true)
+  })
+
+  it('keeps the failed card for an error after the input was valid', () => {
+    const part = toolPart('output-error', {
+      input: { format: 'docx', title: 'Plan' },
+      errorText: JSON.stringify({
+        code: 'unknown',
+        message: 'The document could not be saved.',
+        status: 400,
+      }),
+    })
+
+    expect(getDocumentPartView(part)?.state).toBe('failed')
+    expect(isInvalidDocumentInputPart(part)).toBe(false)
+  })
+
+  it('hides the attempt once a later call created a document', () => {
+    const attempt = toolPart('output-error', {
+      errorText: persistedInvalidInputText,
+    })
+
+    expect(isSupersededInvalidDocumentPart([attempt], 0)).toBe(false)
+    expect(isSupersededInvalidDocumentPart(
+      [attempt, toolPart('input-available', { toolCallId: 'call_2' })],
+      0,
+    )).toBe(false)
+    expect(isSupersededInvalidDocumentPart(
+      [attempt, dataPart()],
+      0,
+    )).toBe(true)
+    expect(isSupersededInvalidDocumentPart(
+      [
+        attempt,
+        toolPart('output-available', {
+          toolCallId: 'call_2',
+          output: TOOL_OUTPUT,
+        }),
+      ],
+      0,
+    )).toBe(true)
+    expect(isSupersededInvalidDocumentPart(
+      [dataPart(), attempt],
+      1,
+    )).toBe(false)
   })
 })

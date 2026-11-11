@@ -30,6 +30,11 @@ const TOOL_STEP_TITLES = new Map<string, {
   done: string
   failed: string
 }>([
+  ['create_document', {
+    pending: 'Creating a document',
+    done: 'Created a document',
+    failed: 'Document call failed',
+  }],
   ['web_search_preview', {
     pending: 'Searching the web',
     done: 'Searched the web',

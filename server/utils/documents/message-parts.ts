@@ -2,11 +2,13 @@ import type { UIMessage } from 'ai'
 import type { DataDocumentPart } from '#shared/utils/documents'
 import {
   DOCUMENT_DATA_PART_TYPE,
+  DOCUMENT_INVALID_INPUT_ERROR_TEXT,
   DOCUMENT_TOOL_NAME,
   DOCUMENT_TOOL_PART_TYPE,
   isDataDocumentPart,
   isDocumentFormat,
   isDocumentToolPartType,
+  isInvalidDocumentInputErrorText,
 } from '#shared/utils/documents'
 
 type MessagePart = UIMessage['parts'][number]
@@ -61,7 +63,9 @@ function toFailedToolPart(part: Record<string, unknown>): MessagePart {
     toolCallId: part.toolCallId,
     state: 'output-error',
     input: format ? { format } : {},
-    errorText: FAILED_DOCUMENT_TEXT,
+    errorText: isInvalidDocumentInputErrorText(part.errorText)
+      ? DOCUMENT_INVALID_INPUT_ERROR_TEXT
+      : FAILED_DOCUMENT_TEXT,
   } as MessagePart
 }
 

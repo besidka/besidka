@@ -154,6 +154,42 @@ export function isDocumentToolPartType(type: unknown): boolean {
   return type === DOCUMENT_TOOL_PART_TYPE
 }
 
+export const DOCUMENT_INVALID_INPUT_ERROR_TEXT
+  = 'The document input did not match the schema.'
+
+const INVALID_TOOL_INPUT_KIND = 'invalid-tool-input'
+const MAX_ERROR_PAYLOAD_LENGTH = 4000
+
+/**
+ * True for the `errorText` of a `create_document` call whose input failed the
+ * schema: the live stream carries the serialized chat error payload with
+ * `kind: 'invalid-tool-input'`, the persisted part carries the fixed
+ * `DOCUMENT_INVALID_INPUT_ERROR_TEXT`.
+ */
+export function isInvalidDocumentInputErrorText(errorText: unknown): boolean {
+  if (typeof errorText !== 'string') {
+    return false
+  }
+
+  const text = errorText.trim()
+
+  if (text === DOCUMENT_INVALID_INPUT_ERROR_TEXT) {
+    return true
+  }
+
+  if (!text.startsWith('{') || text.length > MAX_ERROR_PAYLOAD_LENGTH) {
+    return false
+  }
+
+  try {
+    const payload = JSON.parse(text) as { kind?: unknown } | null
+
+    return payload?.kind === INVALID_TOOL_INPUT_KIND
+  } catch {
+    return false
+  }
+}
+
 export function isDocumentPartType(type: unknown): boolean {
   return type === DOCUMENT_DATA_PART_TYPE || type === DOCUMENT_TOOL_PART_TYPE
 }

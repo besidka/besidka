@@ -317,7 +317,10 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       continue
     }
 
-    if (!isThinkingToolPart(part)) {
+    if (
+      !isThinkingToolPart(part)
+      || isSupersededInvalidDocumentPart(props.message.parts, partIndex)
+    ) {
       continue
     }
 

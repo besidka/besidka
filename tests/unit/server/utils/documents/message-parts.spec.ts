@@ -107,6 +107,23 @@ describe('rewriteDocumentToolParts', () => {
     expect(JSON.stringify(parts)).not.toContain('Quarterly report')
   })
 
+  it.each([
+    JSON.stringify({ kind: 'invalid-tool-input', message: 'Invalid.' }),
+    'The document input did not match the schema.',
+  ])('marks an invalid-input failure with its own fixed text', (errorText) => {
+    const parts = rewriteDocumentToolParts([
+      toolPart('output-error', { errorText }),
+    ] as Parts)
+
+    expect(parts).toEqual([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'output-error',
+      input: { format: 'docx' },
+      errorText: 'The document input did not match the schema.',
+    }])
+  })
+
   it('drops the format of a failed call whose format is unknown', () => {
     const parts = rewriteDocumentToolParts([
       toolPart('output-error', {
