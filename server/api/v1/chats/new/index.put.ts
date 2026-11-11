@@ -1,5 +1,6 @@
 import { createError } from 'evlog'
 import type { FileUIPart, TextUIPart } from 'ai'
+import { isDataArtifactAttachmentPart } from '#shared/utils/artifacts'
 import { and, eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
@@ -8,6 +9,7 @@ import {
   userMessagePartsSchema,
 } from '~~/server/utils/chats/request-schema'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
+import { resolveArtifactAttachmentParts } from '~~/server/utils/artifacts/attachments'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import { trackLandingEvent } from '~~/server/utils/landing/analytics-events'
@@ -88,6 +90,15 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const activityAt = new Date()
+  const parts = await resolveArtifactAttachmentParts({
+    event,
+    db,
+    userId,
+    parts: body.data.research
+      ? body.data.parts.filter(part => !isDataArtifactAttachmentPart(part))
+      : body.data.parts,
+    logger,
+  })
 
   let projectId: string | undefined
 
@@ -126,7 +137,7 @@ export default defineEventHandler(async (event) => {
     values: {
       chatId: chat.id,
       role: 'user',
-      parts: body.data.parts as (TextUIPart | FileUIPart)[],
+      parts: parts as (TextUIPart | FileUIPart)[],
       tools: body.data.tools,
       reasoning: body.data.reasoning,
     },
@@ -160,7 +171,7 @@ export default defineEventHandler(async (event) => {
         },
         userMessage: {
           id: userMessagePublicId,
-          parts: body.data.parts as (TextUIPart | FileUIPart)[],
+          parts: parts as (TextUIPart | FileUIPart)[],
         },
         model: body.data.model,
         answers: body.data.research.answers,

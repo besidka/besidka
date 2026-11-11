@@ -47,6 +47,15 @@
         data-testid="tools-action-generated"
         @click="emit('open-files-generated')"
       />
+      <ChatInputToolsMenuActionRow
+        v-if="state.artifacts.visible"
+        label="Add artifact"
+        hint="Artifacts from your chats"
+        icon="lucide:app-window"
+        :badge="state.artifacts.attached.length || undefined"
+        data-testid="tools-action-artifacts"
+        @click="emit('open-artifact-picker')"
+      />
     </ChatInputToolsMenuSection>
     <div
       v-if="hasDividerBeforeSearch"
@@ -178,6 +187,7 @@ const emit = defineEmits<{
   'open-files-select': []
   'open-files-upload': []
   'open-files-generated': []
+  'open-artifact-picker': []
   'update:use-memory': [value: boolean]
 }>()
 

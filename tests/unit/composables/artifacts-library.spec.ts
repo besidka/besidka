@@ -13,10 +13,12 @@ import {
   toArtifactSearchTerm,
   useArtifactLibrary,
   useArtifactLibraryFilters,
+  useArtifactPickerFilters,
 } from '../../../app/composables/artifacts-library'
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  lazyFetch: vi.fn(),
   push: vi.fn(),
   errorMessage: vi.fn(),
 }))
@@ -50,12 +52,16 @@ mockNuxtImport('useRouter', (original) => {
 })
 
 mockNuxtImport('useLazyFetch', () => {
-  return () => ({
-    data: lazyData,
-    status: lazyStatus,
-    error: lazyError,
-    refresh: lazyRefresh,
-  })
+  return (url: string, options: unknown) => {
+    mocks.lazyFetch(url, options)
+
+    return {
+      data: lazyData,
+      status: lazyStatus,
+      error: lazyError,
+      refresh: lazyRefresh,
+    }
+  }
 })
 
 function createArtifact(
@@ -776,4 +782,97 @@ describe('useArtifactLibrary', () => {
       expect(library.hasError.value).toBe(true)
     })
   })
+})
+
+describe('useArtifactPickerFilters', () => {
+  let scope: EffectScope
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    scope = effectScope()
+  })
+
+  afterEach(() => {
+    scope.stop()
+    vi.useRealTimers()
+  })
+
+  function setup() {
+    return scope.run(() => useArtifactPickerFilters())!
+  }
+
+  it('starts empty and never touches the URL', () => {
+    const filters = setup()
+
+    expect(filters.search.value).toBe('')
+    expect(filters.appliedQuery.value).toBe('')
+    expect(filters.appliedKind.value).toBe('all')
+    expect(mocks.push).not.toHaveBeenCalled()
+  })
+
+  it('applies the search after the debounce and ignores a short term',
+    async () => {
+      const filters = setup()
+
+      filters.search.value = 'q'
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+      expect(filters.appliedQuery.value).toBe('')
+
+      filters.search.value = ' quiz '
+      await nextTick()
+
+      expect(filters.appliedQuery.value).toBe('')
+
+      await vi.advanceTimersByTimeAsync(ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+      expect(filters.appliedQuery.value).toBe('quiz')
+    })
+
+  it('sets the kind at once and resets everything', async () => {
+    const filters = setup()
+
+    filters.setKind('svg')
+    filters.search.value = 'quiz'
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+    expect(filters.appliedKind.value).toBe('svg')
+    expect(filters.appliedQuery.value).toBe('quiz')
+
+    filters.reset()
+
+    expect(filters.search.value).toBe('')
+    expect(filters.appliedQuery.value).toBe('')
+    expect(filters.appliedKind.value).toBe('all')
+  })
+})
+
+describe('useArtifactLibrary fetch key', () => {
+  let scope: EffectScope
+
+  beforeEach(() => {
+    mocks.lazyFetch.mockClear()
+    scope = effectScope()
+  })
+
+  afterEach(() => {
+    scope.stop()
+  })
+
+  it('uses an own key only when asked, so the picker never shares the page data',
+    () => {
+      const filters = {
+        query: ref(''),
+        kind: ref<'all'>('all'),
+      }
+
+      scope.run(() => useArtifactLibrary(filters))
+      scope.run(() => useArtifactLibrary(filters, { key: 'artifact-picker' }))
+
+      expect(mocks.lazyFetch.mock.calls[0]?.[1]).not.toHaveProperty('key')
+      expect(mocks.lazyFetch.mock.calls[1]?.[1])
+        .toMatchObject({ key: 'artifact-picker' })
+    })
 })

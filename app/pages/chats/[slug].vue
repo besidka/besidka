@@ -66,6 +66,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatArtifactAttachments
+            v-if="isArtifactsActive && m.role === 'user'"
+            :message="m"
+          />
           <ChatOmittedContextFiles
             v-if="m.role === 'assistant'"
             :message="m"
@@ -225,6 +229,7 @@
   <ChatInput
     v-model:message="input"
     v-model:files="files"
+    v-model:attached-artifacts="attachedArtifacts"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
     display-project-picker
@@ -430,6 +435,7 @@ const {
   isLastAssistantMessage,
   shouldDisplayMessage,
   files,
+  attachedArtifacts,
   currentTurnStartedAt,
   currentTurnReasoningAccumulatedMs,
   currentReasoningSegmentStartedAt,

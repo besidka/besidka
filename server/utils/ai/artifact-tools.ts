@@ -433,7 +433,8 @@ export function buildArtifactInstructions(
       + ' confirms each call and may decline, so catch errors and show a'
       + ' short message.'
       : 'Artifacts cannot call a model.',
-    'When the user refers to an artifact from this chat, change it with',
+    'When the user refers to an artifact from this chat or one they',
+    'attached (attached="true"), change it with',
     '`update_artifact` and its id; prefer small `edits` over sending the',
     'whole content again. A new, unrelated request is not an edit.',
     'After writing an artifact, add one or two sentences for the user;',
@@ -446,10 +447,12 @@ export function buildArtifactInstructions(
  * Builds the `create_artifact` and `update_artifact` chat tools. Each write
  * goes through the artifact store as a new immutable version, at most
  * `ARTIFACT_WRITES_PER_TURN` per send. `update_artifact` only reaches
- * artifacts created in this chat (`chatArtifactIds`: owned rows whose
- * origin is this chat) or in this turn, never one that a copied or branched
- * message merely references, so a shared chat cannot steer a model into
- * overwriting the reader's own artifacts. An edit is applied to the version
+ * artifacts created in this chat or attached by the user to a message of it
+ * (`chatArtifactIds`: owned rows whose origin is this chat, or whose public
+ * id sits in an attachment part of this chat's own user messages) or created
+ * in this turn, never one that a copied or branched message merely
+ * references, so a shared chat cannot steer a model into overwriting the
+ * reader's own artifacts. An edit is applied to the version
  * it read and refused if a newer one appeared meanwhile. Errors are thrown
  * as tool errors with a readable message the model can relay.
  */

@@ -14,6 +14,7 @@ flags, the eval suite, the results, the rollout plan and the stop rules
 | Model calls from an artifact (`window.besidka.complete`) | `docs/artifacts/llm-bridge.md` |
 | Public links (`/a#<token>`), reports, takedown | `docs/artifacts/shares.md` |
 | Artifacts library tab | `docs/artifacts/library.md` |
+| Attaching an existing artifact to a chat (BES-350) | `docs/artifacts/attach.md` |
 | Chat tools and instructions | `server/utils/ai/artifact-tools.ts` |
 | Flags, grants, rollouts, scheduled steps | `docs/feature-flags.md` |
 | Legal basis, DPIA, notice `2026-12-artifacts` | `docs/legal/prechecks/artifacts.md`, `docs/legal/dpia.md` |

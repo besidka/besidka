@@ -58,6 +58,7 @@ function createState(
     },
     image: { supported: lower, enabled: false, required: false },
     files: { visible: files, count: 0, isImageInputSupported: true },
+    artifacts: { visible: false, attached: [] },
     project: { visible: false, context: null },
     memory: { excluded: null },
     research: null,
@@ -180,5 +181,90 @@ describe('ChatInput/ToolsMenu/Content section titles', () => {
     const titles = wrapper.findAll('h3').map(heading => heading.text())
 
     expect(titles).toEqual(['Add', 'Web search', 'Reasoning'])
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
+  const ARTIFACT_ROW = '[data-testid="tools-action-artifacts"]'
+
+  function withArtifacts(
+    artifacts: ChatInputToolsState['artifacts'],
+  ): ChatInputToolsState {
+    return { ...createState(), artifacts }
+  }
+
+  it('is absent without access and leaves the Add section as before',
+    async () => {
+      const without = await mountContent(createState())
+      const explicit = await mountContent(withArtifacts({
+        visible: false,
+        attached: [],
+      }))
+
+      expect(explicit.find(ARTIFACT_ROW).exists()).toBe(false)
+      expect(explicit.html()).toBe(without.html())
+      expect(layout(explicit)).toEqual([
+        'add',
+        '---',
+        'search',
+        '---',
+        'reasoning',
+        '---',
+        'image',
+      ])
+      expect(explicit.text()).not.toContain('Add artifact')
+    })
+
+  it('shows Add artifact after Generated images with access', async () => {
+    const wrapper = await mountContent(withArtifacts({
+      visible: true,
+      attached: [],
+    }))
+    const rows = wrapper.findAll(
+      '[data-section="add"] button[data-testid^="tools-action-"]',
+    ).map(row => row.attributes('data-testid'))
+
+    expect(rows).toEqual([
+      'tools-action-attach',
+      'tools-action-library',
+      'tools-action-generated',
+      'tools-action-artifacts',
+    ])
+    expect(wrapper.find(ARTIFACT_ROW).text()).toContain('Add artifact')
+    expect(wrapper.find(ARTIFACT_ROW).text())
+      .toContain('Artifacts from your chats')
+  })
+
+  it('shows the attached count as a badge', async () => {
+    const wrapper = await mountContent(withArtifacts({
+      visible: true,
+      attached: [
+        {
+          artifactId: 'a1',
+          version: 1,
+          kind: 'html',
+          title: 'Quiz',
+        },
+        {
+          artifactId: 'a2',
+          version: 2,
+          kind: 'svg',
+          title: 'Logo',
+        },
+      ],
+    }))
+
+    expect(wrapper.find(ARTIFACT_ROW).find('.badge').text()).toBe('2')
+  })
+
+  it('emits open-artifact-picker when the row is clicked', async () => {
+    const wrapper = await mountContent(withArtifacts({
+      visible: true,
+      attached: [],
+    }))
+
+    await wrapper.find(ARTIFACT_ROW).trigger('click')
+
+    expect(wrapper.emitted('open-artifact-picker')).toHaveLength(1)
   })
 })
