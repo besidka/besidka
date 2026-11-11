@@ -399,7 +399,7 @@ export async function createArtifact(
   }
 }
 
-async function findOwnedArtifact(
+export async function findOwnedArtifact(
   db: DbClient,
   userId: number,
   artifactId: number,
@@ -417,7 +417,7 @@ async function findOwnedArtifact(
   return artifact
 }
 
-function assertNotTakenDown(artifact: { takedownAt: Date | null }) {
+export function assertNotTakenDown(artifact: { takedownAt: Date | null }) {
   if (!artifact.takedownAt) {
     return
   }

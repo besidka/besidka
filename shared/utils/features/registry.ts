@@ -75,6 +75,7 @@ const featureList = [
     title: 'Artifact storage',
     description: 'Artifacts that keep their own data between visits.',
     parent: 'artifacts',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.llm-bridge',

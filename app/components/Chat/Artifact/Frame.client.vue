@@ -127,14 +127,24 @@ import type {
   DisplayMode,
   HostConnection,
   HostContext,
+  HostStorageHandlers,
   LogMessageParams,
   OpenLinkParams,
+  StorageMode,
   Theme,
   ToolResultContent,
   UnexpectedNavigationDetails,
 } from '@besidka/artifacts-protocol'
 import { log } from 'evlog/client'
-import type { ArtifactRuntimeMessage } from '~/composables/artifacts'
+import type {
+  ArtifactPanelSource,
+  ArtifactRuntimeMessage,
+} from '~/composables/artifacts'
+import type { ArtifactStorageState } from '~/composables/artifact-storage'
+import {
+  createArtifactStorageSession,
+  resolveArtifactStorageMode,
+} from '~/composables/artifact-storage'
 
 type FrameStatus = 'loading' | 'ready' | 'error'
 
@@ -146,11 +156,13 @@ const props = defineProps<{
   partial: ArtifactPayload | null
   artifactId?: string | null
   version?: number | null
+  source?: ArtifactPanelSource
 }>()
 
 const emit = defineEmits<{
   'ready': []
   'runtime-message': [message: ArtifactRuntimeMessage]
+  'storage-change': [state: ArtifactStorageState]
 }>()
 
 const LOAD_TIMEOUT_MS = 10_000
@@ -176,6 +188,8 @@ const ERROR_COPY: Record<FrameErrorKind, {
 
 const nuxtApp = useNuxtApp()
 const colorMode = useColorMode()
+const { loggedIn } = useAuth()
+const storageFeature = useFeature('artifacts.storage')
 const { isFullWidth } = useSidePanel()
 const layout = useSidePanelLayout()
 const runtimeOrigin = String(useRuntimeConfig().public.artifactsOrigin ?? '')
@@ -192,6 +206,8 @@ let partialTimer: ReturnType<typeof setTimeout> | null = null
 let lastPartialAt = 0
 let lastSentResult: ToolResultContent | null = null
 let pendingCopyShownAt = 0
+let storageMode: StorageMode = 'memory'
+let storageArtifactId: string | null = null
 
 const theme = computed<Theme>(() => {
   return colorMode.value === 'dark' ? 'dark' : 'light'
@@ -252,6 +268,15 @@ const errorCopy = computed(() => {
   return ERROR_COPY[errorKind.value]
 })
 
+const desiredStorageMode = computed<StorageMode>(() => {
+  return resolveArtifactStorageMode({
+    loggedIn: loggedIn.value,
+    featureActive: storageFeature.value.active,
+    source: props.source ?? 'owner',
+    artifactId: props.artifactId,
+  })
+})
+
 function toPlainPayload(payload: ArtifactPayload): ArtifactPayload {
   return {
     kind: payload.kind,
@@ -294,7 +319,7 @@ function getHostContext(): HostContext {
     theme: theme.value,
     displayMode: displayMode.value,
     locale: navigator.language || 'en',
-    capabilities: { storage: 'memory', complete: false },
+    capabilities: { storage: storageMode, complete: false },
   }
 }
 
@@ -396,6 +421,28 @@ function sendCurrentContent() {
   }
 }
 
+function createStorageHandlers(): HostStorageHandlers | undefined {
+  storageMode = desiredStorageMode.value
+  storageArtifactId = props.artifactId ?? null
+
+  if (storageMode !== 'persistent' || !props.artifactId) {
+    emit('storage-change', { persistent: false, keys: 0, bytes: 0 })
+
+    return undefined
+  }
+
+  const session = createArtifactStorageSession({
+    artifactId: props.artifactId,
+    onChange: (state) => {
+      emit('storage-change', state)
+    },
+  })
+
+  session.ready().catch(() => {})
+
+  return session.handlers
+}
+
 function mountFrame() {
   const container = host.value
 
@@ -406,6 +453,8 @@ function mountFrame() {
   teardown()
   status.value = 'loading'
   ensureArtifactFramePolicy(runtimeOrigin)
+
+  const storage = createStorageHandlers()
 
   const element = document.createElement('iframe')
 
@@ -424,6 +473,7 @@ function mountFrame() {
     onOpenLink,
     onUnexpectedNavigation,
     ...hostActionHandlers,
+    ...(storage ? { storage } : {}),
   }, {
     hasUserActivation: () => {
       return navigator.userActivation?.isActive === true
@@ -494,6 +544,15 @@ watch(() => props.partial, (partial) => {
   }
 
   schedulePartial()
+})
+
+watch([desiredStorageMode, () => props.artifactId], ([mode, artifactId]) => {
+  const sessionChanged = mode !== storageMode
+    || (mode === 'persistent' && (artifactId ?? null) !== storageArtifactId)
+
+  if (sessionChanged && frame) {
+    mountFrame()
+  }
 })
 
 watch(theme, (value) => {

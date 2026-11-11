@@ -150,7 +150,13 @@ export function getAffectedTests(changedFiles) {
   ]
   const artifactsCoreTests = [
     'tests/unit/server/utils/artifacts/store.spec.ts',
+    'tests/unit/server/utils/artifacts/access.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-retention.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-request.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-limit.spec.ts',
     'tests/integration/api/artifacts.spec.ts',
+    'tests/integration/api/artifact-storage.spec.ts',
+    'tests/integration/server/artifact-storage-sweep-plugin.spec.ts',
     'tests/unit/server/capabilities/conformance.spec.ts',
     'tests/unit/server/utils/chats/lifecycle.spec.ts',
     'tests/integration/api/chats-history.spec.ts',
@@ -167,6 +173,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Artifact/Frame.client.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/composables/artifacts.spec.ts',
+    'tests/unit/composables/artifact-storage.spec.ts',
     'tests/unit/utils/artifact-export.spec.ts',
     'tests/unit/utils/artifact-parts.spec.ts',
     'tests/e2e/chat/artifacts-panel.spec.ts',
@@ -3004,7 +3011,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/artifacts\/|server\/api\/v1\/artifacts\/|server\/capabilities\/artifacts\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|server\/plugins\/artifact-report-sweep\.ts$|tests\/setup\/helpers\/artifacts-store\.ts$)/,
+        /^(server\/utils\/artifacts\/|server\/api\/v1\/artifacts\/|server\/capabilities\/artifacts\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|server\/plugins\/artifact-(report|storage)-sweep\.ts$|tests\/setup\/helpers\/artifacts-store\.ts$)/,
       tests: artifactsCoreTests,
     },
     {
@@ -3023,7 +3030,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/artifact(s|-host-actions)\.ts|app\/utils\/artifact-(export|parts)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
+        /^(app\/components\/Chat\/Artifact\/(Card|Detail\.client|Frame\.client)\.vue|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/prose\/(PreStream|MermaidViewer\.client)\.vue|app\/composables\/artifact(s|-host-actions|-storage)\.ts|app\/utils\/artifact-(export|parts)\.ts|shared\/utils\/artifacts\.ts|playwright\.config\.ts)$|^packages\/artifacts-protocol\//,
       tests: artifactsUiTests,
     },
     {
