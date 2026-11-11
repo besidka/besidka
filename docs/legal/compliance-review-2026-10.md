@@ -254,15 +254,19 @@
   **2.12.2026** (source:
   https://ai-act-service-desk.ec.europa.eu/en/ai-act/article-111). Besidka
   generated images before 2.8.2026, so the later date is the working deadline.
-- **Who is the provider.** The Commission guidelines on Art. 50 (20 July 2026)
-  point strongly to Besidka being a provider, and this review treats it as one.
+- **Who is the provider.** The Commission guidelines on Art. 50 (Communication C(2026) 7702 of
+  5 November 2026; the Commission page was published on 20 July 2026 and
+  updated on 5 November 2026) point strongly to Besidka being a provider, and this review treats it as one.
   The text of para 11 gives the example: a company that offers a generative app
   under its own name is a provider, free or paid. A BYOK relay with Besidka's
   name on it fits that example. Art. 3(3) covers supply free of charge. Not
   every step is settled: "placing on the market" (Art. 3(9) with 3(10)) needs a
   commercial activity, but "putting into service" (Art. 3(11)) does not, and a
   personal project can be a provider by putting the system into service. The
-  Art. 2(12) open-source exemption was **not verified**. Para 74 lets a system
+  Art. 2(12) open-source exemption is settled for Art. 50: Art. 2(12) says
+  the Regulation does not apply to open-source systems "unless" they fall
+  under Art. 5 or 50 (read in the EUR-Lex text for pre-check D-10, 2026-11-08),
+  and guidelines para 23 says the same. Para 74 lets a system
   provider rely on an upstream model provider's marking, without prejudice to
   its duty to demonstrate compliance. Deployer duties in Art. 50(4) (deep fakes)
   are unchanged: they attach to professional use, which a personal project is
@@ -350,6 +354,59 @@
   Text artifacts are not deep fakes, so Art. 50(4) does not apply to Besidka;
   a user who publishes one professionally to inform the public is the
   deployer.
+- **Documents (2026-11-11, D-9; pre-check `docs/legal/prechecks/documents.md`,
+  Q2 and Q10).** Besidka stays the provider. The guidelines list text as a
+  modality (para 60). This review reads that as covering the rendered PDF,
+  DOCX, PPTX and XLSX file, which is the final output people read; **the
+  guidelines do not name those formats, so that reading is this review's
+  own.** The JSON spec is a machine-readable specification and out of scope
+  (para 68). Rendering is format conversion (para 92; Art. 50(2) also exempts
+  systems that "do not substantially alter the input data"), but the content
+  is the model's output, so the file stays in scope.
+  - *What is marked.* D-2 (built on `feat/documents-spec-package`, PR #833,
+    not merged) writes the mark into every rendered file, mirroring the image
+    tag: OOXML `docProps/custom.xml` with `Iptc4xmpExt:DigitalSourceType`
+    (`trainedAlgorithmicMedia`, or the composite value) and
+    `Iptc4xmpExt:AISystemUsed` (the model id only), and for PDF an
+    uncompressed XMP stream with the same fields, plus the document title and
+    language. No prompt, user id or chat id is written. `validate()` returns
+    `ai`, `channel-only` or `missing`. `stampDocument` adds the mark to an
+    existing OOXML or PDF file without re-rendering. The chat card keeps a
+    visible AI label.
+  - *Detection.* Paras 69, 70, 75 and 76 ask for marking and detection. The
+    minimum is a published line saying that the mark can be read with
+    `exiftool`, the Acrobat document properties and the Word, PowerPoint or
+    Excel custom properties. That is a minimum, not a proven detection
+    solution, and no human-readable detection tool exists yet.
+  - *MCP exception.* A connected client supplies the content and Besidka
+    renders it without altering it (paras 64, 65 and 92). Besidka does not
+    assert AI origin unless the client declares `aiGenerated`; the file says
+    "Created by a connected app" and carries a `createdVia` property. The
+    client's own provider carries any Art. 50(2) duty for what the client
+    wrote. This is this review's analysis, not a Commission statement about
+    MCP.
+  - *Provider-made files (D-7, D-8).* Code and skill output files may carry no
+    mark. Images go through `markAiGeneratedImage` (PNG, JPEG and WebP only;
+    `gif` is removed from the allowlist or stored unmarked and logged). Office
+    and PDF files pass `validate()` and, where the mark is missing, either
+    `stampDocument` or a recorded `missing` state with a visible AI label. A
+    flag for this path does not leave `internal` without one of the two.
+    Model-written code and stdout are source code, out of scope (para 68);
+    CSV, TSV, JSON, TXT and Markdown cannot carry a mark.
+  - *Residual gaps.* One unsigned metadata layer, probably below what Art.
+    50(2) expects (paras 79 to 87, the Code of Practice's two layers); no text
+    watermark (that needs the model, so only the upstream provider can add
+    one); stripped by re-saving, printing or copy-paste; the OOXML property
+    name is not a standard one, so interoperability is weak; an orphan XMP
+    stream in a PDF reads as marked; MCP files are channel-only.
+  - *Art. 111(4).* Not relied on for documents: the grace plausibly covers a
+    system that generated text before 2 August 2026, but no source says it
+    reaches a new output type, so marking ships with the feature.
+  - *Open owner decision before 2 December 2026.* Extended to documents and
+    to chat text: assistant messages have a visible UI label but no
+    machine-readable mark, and this section covered images only. Put text and
+    documents on the same decision as the images (recommended). A visible
+    "created with AI" line in documents (para 71) is not planned.
 - **Revisit when.**
   - a provider starts or stops embedding C2PA (re-run the R2 check above);
   - the Commission publishes further guidance, or a standard under Art. 50(7)
@@ -464,6 +521,17 @@ publish. Watch the appeal.
 8. Extend the Cloudflare "API flood limit" rule with
    `or starts_with(http.request.uri.path, "/api/v1/shared/")` (2.2). Done
    2026-10-28 via the `cf` CLI (ruleset `http_ratelimit`, rule version 3).
+9. Documents and code execution (2026-11-11, D-9). Open: (a) Art. 50(2) for
+   documents and chat text, on the same decision as item 3 before 2.12.2026
+   (3.2); (b) decided 2026-11-11 ("Yes, add to Terms"): the Terms mirror
+   the providers' malware, denial-of-service and critical-infrastructure
+   rules, with three more sentences (documents and code results are not
+   reviewed by Besidka, the AI-mark paragraph extended to documents, Anthropic's
+   skills run under the user's own agreement); material, notice
+   `2026-12-code-and-documents`, effective 2026-12-19 (`docs/legal/dpia.md`,
+   section 6, item 26); (c) whether the cautious
+   reading of materiality (one `LEGAL_NOTICES` entry) is wanted for the
+   provider-side retention of code execution (item 25).
 
 ## 5. Deploying the legal text
 

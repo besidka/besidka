@@ -290,7 +290,7 @@ describe('useLegalNoticeBanner', () => {
       try {
         const wrapper = await mountBanner()
 
-        expect(wrapper.vm.notice?.id).toBe('2026-12-artifacts')
+        expect(wrapper.vm.notice?.id).toBe('2026-12-code-and-documents')
         expect(wrapper.vm.effectiveDateLabel).toBe('19 December 2026')
       } finally {
         registryMode.useRealRegistry = false

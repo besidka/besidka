@@ -22,6 +22,8 @@ const EXPERIMENTAL_FEATURES_NOTICE_ID = '2026-11-experimental-features'
 
 const ARTIFACTS_NOTICE_ID = '2026-12-artifacts'
 
+const CODE_AND_DOCUMENTS_NOTICE_ID = '2026-12-code-and-documents'
+
 function createNotice(overrides: Partial<LegalNotice> = {}): LegalNotice {
   return {
     id: 'test-notice',
@@ -268,8 +270,8 @@ describe('artifacts notice', () => {
     )
   })
 
-  it('becomes the banner notice while the two earlier ones are active', () => {
-    const now = new Date('2026-11-20T12:00:00Z')
+  it('is active together with the two earlier ones', () => {
+    const now = new Date('2026-11-15T07:30:00Z')
     const activeIds = getActiveLegalNotices(now).map((activeNotice) => {
       return activeNotice.id
     })
@@ -280,5 +282,42 @@ describe('artifacts notice', () => {
       ARTIFACTS_NOTICE_ID,
     ])
     expect(getLatestLegalNotice(now)?.id).toBe(ARTIFACTS_NOTICE_ID)
+  })
+})
+
+describe('code and documents notice', () => {
+  const notice = getLegalNoticeById(CODE_AND_DOCUMENTS_NOTICE_ID)
+
+  it('announces the Terms of Use only, with the standard period', () => {
+    expect(notice?.documents).toEqual(['terms-of-use'])
+    expect(notice?.shortNoticeReason).toBeUndefined()
+    expect(notice?.alreadyAvailable).toBeUndefined()
+  })
+
+  it('takes effect with the feature rollout gate', () => {
+    expect(notice?.effectiveAt).toBe('2026-12-19')
+  })
+
+  it('publishes after the artifacts notice', () => {
+    const artifactsNotice = getLegalNoticeById(ARTIFACTS_NOTICE_ID)
+
+    expect(Date.parse(notice?.publishedAt ?? '')).toBeGreaterThan(
+      Date.parse(artifactsNotice?.publishedAt ?? ''),
+    )
+  })
+
+  it('becomes the banner notice while the three earlier ones are active', () => {
+    const now = new Date('2026-11-20T12:00:00Z')
+    const activeIds = getActiveLegalNotices(now).map((activeNotice) => {
+      return activeNotice.id
+    })
+
+    expect(activeIds).toEqual([
+      FIRST_NOTICE_ID,
+      EXPERIMENTAL_FEATURES_NOTICE_ID,
+      ARTIFACTS_NOTICE_ID,
+      CODE_AND_DOCUMENTS_NOTICE_ID,
+    ])
+    expect(getLatestLegalNotice(now)?.id).toBe(CODE_AND_DOCUMENTS_NOTICE_ID)
   })
 })
