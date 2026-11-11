@@ -15,25 +15,13 @@
           placeholder="Search artifacts..."
           class="input-sm sm:input-md"
         />
-        <div
-          role="group"
-          aria-label="Filter by type"
-          class="flex flex-wrap gap-1.5"
-          data-testid="artifact-library-kind-filter"
-        >
-          <button
-            v-for="option in ARTIFACT_LIBRARY_KIND_FILTERS"
-            :key="option.value"
-            type="button"
-            class="btn btn-sm"
-            :class="appliedKind === option.value ? 'btn-accent' : 'btn-soft'"
-            :aria-pressed="appliedKind === option.value"
-            :data-testid="`artifact-library-kind-${option.value}`"
-            @click="setKind(option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
+        <ArtifactKindFilter
+          :counts="kindCounts"
+          :kind="appliedKind"
+          test-id-prefix="artifact-library"
+          @select="setKind"
+          @fallback="setKind('all', { replace: true })"
+        />
       </div>
     </template>
 
@@ -264,6 +252,7 @@ const { search, appliedQuery, appliedKind, setKind, clearFilters }
 const {
   items,
   usedBytes,
+  kindCounts,
   hasMore,
   hasError,
   hasLoaded,

@@ -52,25 +52,14 @@
             class="input-sm sm:input-md"
           />
         </div>
-        <div
-          role="group"
-          aria-label="Filter by type"
-          class="mt-3 flex shrink-0 flex-wrap gap-1.5"
-          data-testid="artifact-picker-kind-filter"
-        >
-          <button
-            v-for="option in ARTIFACT_LIBRARY_KIND_FILTERS"
-            :key="option.value"
-            type="button"
-            class="btn btn-sm"
-            :class="appliedKind === option.value ? 'btn-accent' : 'btn-soft'"
-            :aria-pressed="appliedKind === option.value"
-            :data-testid="`artifact-picker-kind-${option.value}`"
-            @click="setKind(option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
+        <ArtifactKindFilter
+          :counts="kindCounts"
+          :kind="appliedKind"
+          test-id-prefix="artifact-picker"
+          class="mt-3 shrink-0"
+          @select="setKind"
+          @fallback="setKind('all')"
+        />
 
         <div
           ref="scrollRef"
@@ -247,6 +236,7 @@ const { search, appliedQuery, appliedKind, setKind, reset }
 
 const {
   items,
+  kindCounts,
   hasMore,
   hasError,
   hasLoaded,

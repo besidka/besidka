@@ -128,6 +128,7 @@ export const ARTIFACT_ATTACHMENT_PART_TYPE = 'data-artifact-attachment'
 export const ARTIFACT_ATTACHMENTS_MAX = 3
 
 export type ArtifactKind = typeof ARTIFACT_KINDS[number]
+export type ArtifactKindCounts = Record<ArtifactKind, number>
 export type ArtifactReportReason = typeof ARTIFACT_REPORT_REASONS[number]
 export type ArtifactReportStatus = typeof ARTIFACT_REPORT_STATUSES[number]
 export type ArtifactReportPriority = typeof ARTIFACT_REPORT_PRIORITIES[number]
@@ -327,6 +328,16 @@ export interface ArtifactUITools {
 
 export function isArtifactShareToken(value: unknown): boolean {
   return typeof value === 'string' && ARTIFACT_SHARE_TOKEN_PATTERN.test(value)
+}
+
+export function createEmptyArtifactKindCounts(): ArtifactKindCounts {
+  return {
+    html: 0,
+    react: 0,
+    svg: 0,
+    mermaid: 0,
+    markdown: 0,
+  }
 }
 
 export function isArtifactKind(value: unknown): value is ArtifactKind {
