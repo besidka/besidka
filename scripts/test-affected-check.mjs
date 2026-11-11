@@ -117,6 +117,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu/Section.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InfoNote.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InlineButton.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/CodeExecutionSection.spec.ts',
+    'tests/unit/utils/code-execution-ui.spec.ts',
     'tests/unit/composables/reveal-guard.spec.ts',
     'tests/unit/composables/tools-menu-focus-rescue.spec.ts',
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
@@ -1324,6 +1326,15 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/side-panel.spec.ts',
   ]
 
+  const codeExecutionTests = [
+    'tests/unit/components/Chat/CodeExecution.spec.ts',
+    'tests/unit/components/Chat/CodeExecution/Detail.spec.ts',
+    'tests/unit/utils/code-execution-ui.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+  ]
+
   const chatContextTests = [
     'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
     'tests/unit/server/api/chats-context.spec.ts',
@@ -2287,6 +2298,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/assets\/css\/main\.css|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
       tests: sidePanelTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Chat\/CodeExecution(\/.*)?\.vue|app\/utils\/code-execution-ui\.ts|shared\/utils\/code-execution\.ts)$/,
+      tests: [...codeExecutionTests, ...chatInputToolsTests],
     },
     {
       pattern:

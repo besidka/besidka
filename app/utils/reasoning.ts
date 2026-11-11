@@ -15,6 +15,7 @@ const EXCLUDED_TOOL_STEP_NAMES = new Set<string>([
   'generate_image',
   'create_artifact',
   'update_artifact',
+  'code_execution',
 ])
 const PENDING_TOOL_STATES = new Set<string>([
   'input-streaming',

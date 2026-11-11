@@ -190,6 +190,7 @@ const emit = defineEmits<{
   'select-exa-search-level': [level: ExaSearchLevel]
   'toggle-auto-web-search': [isOn: boolean]
   'toggle-image-generation': []
+  'toggle-code-execution': [isOn: boolean]
   'select-reasoning-level': [level: ReasoningLevel]
   'save-default-reasoning-level': [level: ReasoningLevel]
   'open-project-picker': []
@@ -297,6 +298,9 @@ const contentListeners = {
   },
   'onToggleImageGeneration': () => {
     emit('toggle-image-generation')
+  },
+  'onToggleCodeExecution': (isOn: boolean) => {
+    emit('toggle-code-execution', isOn)
   },
   'onSelectReasoningLevel': (level: ReasoningLevel) => {
     emit('select-reasoning-level', level)

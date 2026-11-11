@@ -49,6 +49,7 @@ const ICONS: Record<ChatContextItemKind, string> = {
   'web-source': 'lucide:globe',
   'web-search': 'lucide:search',
   'artifact': 'lucide:app-window',
+  'code-execution': 'lucide:square-terminal',
 }
 
 const DETAILS: Record<ChatContextItemKind, string> = {
@@ -61,6 +62,7 @@ const DETAILS: Record<ChatContextItemKind, string> = {
   'web-source': 'Source',
   'web-search': 'Web search',
   'artifact': 'Artifact',
+  'code-execution': 'Code execution',
 }
 
 const thumbnailUrl = computed<string | null>(() => {
@@ -92,6 +94,10 @@ const detail = computed<string>(() => {
 
   if (kind === 'web-search' && meta?.count) {
     return meta.count === 1 ? 'Used in 1 answer' : `Used in ${meta.count} answers`
+  }
+
+  if (kind === 'code-execution' && meta?.count) {
+    return meta.count === 1 ? '1 run' : `${meta.count} runs`
   }
 
   if (kind === 'web-source' && meta?.domain) {

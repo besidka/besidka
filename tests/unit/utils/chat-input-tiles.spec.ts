@@ -394,6 +394,56 @@ describe('buildChatInputTiles', () => {
   })
 })
 
+describe('code execution tile', () => {
+  it('adds a Run code tile after search when the tool is on', () => {
+    const state = createState({
+      webSearch: { selected: 'web_search' },
+    })
+    const tiles = buildChatInputTiles({
+      ...state,
+      codeExecution: {
+        visible: true,
+        enabled: true,
+        providerId: 'anthropic',
+      },
+    })
+
+    expect(tiles.map(tile => tile.id)).toEqual(['search', 'code'])
+    expect(tiles[1]).toMatchObject({
+      id: 'code',
+      section: 'code',
+      icon: { kind: 'icon', name: 'lucide:square-terminal' },
+      chipLabel: 'Run code',
+      value: 'Run code',
+      ariaLabel: 'Run code is on for the next message',
+      removeLabel: 'Turn off run code',
+      isNeutral: false,
+      isLocked: false,
+    })
+  })
+
+  it('adds no tile while the tool is off or the row is hidden', () => {
+    const state = createState()
+
+    expect(tileIds({
+      ...state,
+      codeExecution: { visible: true, enabled: false, providerId: 'openai' },
+    })).toEqual([])
+    expect(tileIds({
+      ...state,
+      codeExecution: { visible: false, enabled: true, providerId: 'openai' },
+    })).toEqual([])
+    expect(tileIds(state)).toEqual([])
+  })
+
+  it('adds no tile for a deep research model', () => {
+    expect(tileIds({
+      ...createState({ isDeepResearchModel: true }),
+      codeExecution: { visible: true, enabled: true, providerId: 'openai' },
+    })).not.toContain('code')
+  })
+})
+
 describe('chat input tile helpers', () => {
   it('formats web search values', () => {
     expect(getWebSearchValueLabel('web_search', 'auto')).toBe('Built-in')

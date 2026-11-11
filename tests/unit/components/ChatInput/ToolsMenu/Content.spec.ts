@@ -163,6 +163,84 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     })
 })
 
+describe('ChatInput/ToolsMenu/Content Run code row', () => {
+  function withCodeExecution(
+    codeExecution: ChatInputToolsState['codeExecution'],
+  ): ChatInputToolsState {
+    return { ...createState(), codeExecution }
+  }
+
+  it('shows the Run code section before the image row when visible',
+    async () => {
+      const wrapper = await mountContent(withCodeExecution({
+        visible: true,
+        enabled: false,
+        providerId: 'anthropic',
+      }))
+
+      expect(layout(wrapper)).toEqual([
+        'add',
+        '---',
+        'search',
+        '---',
+        'reasoning',
+        '---',
+        'code',
+        'image',
+      ])
+      expect(wrapper.find('[data-testid="tools-code-execution-toggle"]')
+        .exists()).toBe(true)
+    })
+
+  it('hides the row when it is not visible', async () => {
+    const wrapper = await mountContent(withCodeExecution({
+      visible: false,
+      enabled: false,
+      providerId: 'anthropic',
+    }))
+
+    expect(layout(wrapper)).not.toContain('code')
+  })
+
+  it('draws the lower group on its own when only Run code is there',
+    async () => {
+      const state = createState({
+        lower: false,
+        files: false,
+        search: false,
+        reasoning: false,
+      })
+      const wrapper = await mountContent({
+        ...state,
+        codeExecution: {
+          visible: true,
+          enabled: true,
+          providerId: 'openai',
+        },
+      })
+
+      expect(layout(wrapper)).toEqual(['code'])
+    })
+
+  it('forwards the toggle once the provider was confirmed', async () => {
+    window.localStorage.setItem(
+      'besidka:code-execution-confirmed:openai',
+      'true',
+    )
+
+    const wrapper = await mountContent(withCodeExecution({
+      visible: true,
+      enabled: false,
+      providerId: 'openai',
+    }))
+
+    await wrapper.get('[data-testid="tools-code-execution-toggle"]')
+      .setValue(true)
+
+    expect(wrapper.emitted('toggle-code-execution')).toEqual([[true]])
+  })
+})
+
 describe('ChatInput/ToolsMenu/Content section titles', () => {
   it('puts an icon left of every titled section header', async () => {
     const wrapper = await mountContent(createState())

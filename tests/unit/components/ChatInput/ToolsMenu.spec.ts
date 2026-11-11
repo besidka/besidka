@@ -274,6 +274,35 @@ describe('ChatInput/ToolsMenu', () => {
     ).toBe('true')
   })
 
+  it('forwards the Run code toggle as toggle-code-execution', async () => {
+    window.localStorage.setItem(
+      'besidka:code-execution-confirmed:anthropic',
+      'true',
+    )
+
+    const wrapper = await mountMenu({
+      codeExecution: {
+        visible: true,
+        enabled: false,
+        providerId: 'anthropic',
+      },
+    })
+
+    await open(wrapper)
+    await wrapper.get('[data-testid="tools-code-execution-toggle"]')
+      .setValue(true)
+
+    expect(wrapper.emitted('toggle-code-execution')).toEqual([[true]])
+  })
+
+  it('has no Run code row without support', async () => {
+    const wrapper = await mountMenu()
+
+    await open(wrapper)
+
+    expect(has(wrapper, 'tools-code-execution-toggle')).toBe(false)
+  })
+
   it('closes after an action that opens a modal', async () => {
     const wrapper = await mountMenu()
 

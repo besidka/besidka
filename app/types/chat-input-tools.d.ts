@@ -14,6 +14,7 @@ export type ToolsSection
   = | 'add'
     | 'search'
     | 'reasoning'
+    | 'code'
     | 'image'
     | 'project'
     | 'memory'
@@ -24,6 +25,7 @@ export type ChatInputTileId
     | 'deep-research'
     | 'image'
     | 'search'
+    | 'code'
     | 'reasoning'
 
 export type ChatInputTileIcon
@@ -87,6 +89,11 @@ export interface ChatInputToolsState {
     supported: boolean
     enabled: boolean
     required: boolean
+  }
+  codeExecution?: {
+    visible: boolean
+    enabled: boolean
+    providerId: string | null
   }
   files: {
     visible: boolean

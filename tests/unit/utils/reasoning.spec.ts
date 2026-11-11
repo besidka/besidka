@@ -417,6 +417,26 @@ describe('isThinkingToolPart / getToolPartName', () => {
     }
   })
 
+  it('never treats a code_execution tool part as a reasoning step', () => {
+    const states = [
+      'input-streaming',
+      'input-available',
+      'output-available',
+      'output-error',
+    ]
+
+    for (const state of states) {
+      const part = {
+        type: 'tool-code_execution',
+        state,
+      } as UIMessage['parts'][number]
+
+      expect(getToolPartName(part)).toBe('code_execution')
+      expect(isThinkingToolPart(part)).toBe(false)
+      expect(isPendingToolPart(part)).toBe(false)
+    }
+  })
+
   it('names a dynamic-tool part from its toolName field', () => {
     const part = {
       type: 'dynamic-tool',

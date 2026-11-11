@@ -689,6 +689,89 @@ describe('buildChatContext used: web sources', () => {
   })
 })
 
+describe('buildChatContext used: code execution', () => {
+  function codeExecutionPart(
+    toolCallId: string,
+    state = 'output-available',
+  ) {
+    return {
+      type: 'tool-code_execution',
+      toolCallId,
+      state,
+      input: { language: 'python', code: 'print(1)' },
+      output: { stdout: '1', stderr: '', returnCode: 0 },
+    }
+  }
+
+  it('lists one Code execution item counting every run in Used', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        codeExecutionPart('call-1'),
+        codeExecutionPart('call-2', 'output-error'),
+      ]),
+      message('m2', 'assistant', [codeExecutionPart('call-3')]),
+    ])
+
+    expect(context.used).toEqual([
+      {
+        id: 'code-execution',
+        sectionId: 'code-execution',
+        kind: 'code-execution',
+        title: 'Code execution',
+        messageId: 'm1',
+        meta: { count: 3 },
+      },
+    ])
+    expect(context.counts).toEqual({ outputs: 0, inputs: 0, used: 1 })
+    expect(context.kindCounts['code-execution']).toBe(1)
+  })
+
+  it('keeps files a run produced in Outputs, not in Used', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        codeExecutionPart('call-1'),
+        {
+          type: 'file',
+          url: '/files/chart-key',
+          mediaType: 'image/png',
+          filename: 'chart.png',
+        },
+        {
+          type: 'data-code-execution-files',
+          data: {
+            savedCount: 1,
+            skipped: [{ filename: 'huge.bin', reason: 'too-large' }],
+          },
+        },
+      ]),
+    ])
+
+    expect(context.outputs).toHaveLength(1)
+    expect(context.outputs[0]).toMatchObject({
+      id: 'image:/files/chart-key',
+      kind: 'image',
+      title: 'chart.png',
+    })
+    expect(context.used.map(item => item.kind)).toEqual(['code-execution'])
+  })
+
+  it('ignores code execution parts on user messages', () => {
+    const context = privateContext([
+      message('m1', 'user', [codeExecutionPart('call-1')]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('never reaches a shared chat', () => {
+    const context = publicContext([
+      message('m1', 'assistant', [codeExecutionPart('call-1')]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+})
+
 describe('buildChatContext tool part shapes', () => {
   it('reads dynamic-tool parts like static tool parts', () => {
     const context = privateContext([

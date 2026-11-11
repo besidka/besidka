@@ -43,7 +43,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -56,7 +56,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -69,7 +69,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -80,7 +80,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -93,7 +93,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -106,7 +106,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -117,7 +117,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -130,7 +130,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -157,7 +157,7 @@ export default {
         input: ['text', 'image', 'video', 'audio', 'pdf'],
         output: ['text'],
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       toolCall: true,
       reasoning: {
         mode: 'levels',
@@ -171,7 +171,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -184,7 +184,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -197,7 +197,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -209,7 +209,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],

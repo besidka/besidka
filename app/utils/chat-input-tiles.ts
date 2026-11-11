@@ -10,6 +10,10 @@ import type {
 } from '~/types/chat-input-tools'
 import type { WebSearchSelection } from '~/types/web-search'
 import {
+  CODE_EXECUTION_TOOL_ICON,
+  CODE_EXECUTION_TOOL_LABEL,
+} from '~/utils/code-execution-ui'
+import {
   CHAT_MEMORY_EXCLUSION_HELPER,
   CHAT_MEMORY_EXCLUSION_ICON,
   CHAT_MEMORY_OFF_LABEL,
@@ -229,6 +233,31 @@ function buildSearchTile(
   }
 }
 
+function buildCodeExecutionTile(
+  state: ChatInputToolsState,
+): ChatInputTile | null {
+  const { codeExecution } = state
+
+  if (!codeExecution?.visible || !codeExecution.enabled) {
+    return null
+  }
+
+  return {
+    id: 'code',
+    section: 'code',
+    icon: { kind: 'icon', name: CODE_EXECUTION_TOOL_ICON },
+    caption: 'Mode',
+    value: CODE_EXECUTION_TOOL_LABEL,
+    chipLabel: CODE_EXECUTION_TOOL_LABEL,
+    ariaLabel: `${CODE_EXECUTION_TOOL_LABEL} is on for the next message`,
+    removeLabel: 'Turn off run code',
+    isNeutral: false,
+    isAuto: false,
+    isLocked: false,
+    isDisabled: false,
+  }
+}
+
 function buildReasoningTile(
   state: ChatInputToolsState,
 ): ChatInputTile | null {
@@ -287,6 +316,7 @@ export function buildChatInputTiles(
       buildMemoryTile,
       buildImageTile,
       buildSearchTile,
+      buildCodeExecutionTile,
       buildReasoningTile,
     ]
 

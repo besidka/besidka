@@ -450,6 +450,9 @@ export default defineNuxtConfig({
       exaSearchCostPerThousandRequestsUsd: '',
       exaDeepSearchCostPerThousandRequestsUsd: '',
       deepseekSearchCostPerThousandRequestsUsd: '',
+      openaiCodeInterpreterCostPerSessionUsd: '',
+      anthropicCodeExecutionCostPerHourUsd: '',
+      anthropicCodeExecutionFreeHoursPerMonth: '',
     },
   },
   site: {

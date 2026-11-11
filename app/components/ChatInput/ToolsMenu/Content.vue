@@ -97,6 +97,13 @@
       class="h-px mx-2 my-1 bg-base-content/10"
       data-testid="tools-menu-divider"
     />
+    <ChatInputToolsMenuCodeExecutionSection
+      v-if="state.codeExecution?.visible"
+      :is-highlighted="highlightedSection === 'code'"
+      :is-enabled="state.codeExecution.enabled"
+      :provider-id="state.codeExecution.providerId"
+      @toggle="emit('toggle-code-execution', $event)"
+    />
     <ChatInputToolsMenuSection
       v-if="isImageRowVisible"
       id="image"
@@ -172,6 +179,7 @@ const emit = defineEmits<{
   'select-exa-search-level': [level: ExaSearchLevel]
   'toggle-auto-web-search': [isOn: boolean]
   'toggle-image-generation': []
+  'toggle-code-execution': [isOn: boolean]
   'select-reasoning-level': [level: ReasoningLevel]
   'save-default-reasoning-level': [level: ReasoningLevel]
   'open-project-picker': []
@@ -201,6 +209,10 @@ const isImageRowVisible = computed<boolean>(() => {
   return props.state.image.supported && !props.state.isDeepResearchModel
 })
 
+const isCodeExecutionRowVisible = computed<boolean>(() => {
+  return props.state.codeExecution?.visible === true
+})
+
 const hasUpperSection = computed<boolean>(() => {
   return props.state.files.visible
     || props.state.webSearch.visible
@@ -210,6 +222,7 @@ const hasUpperSection = computed<boolean>(() => {
 
 const hasLowerSection = computed<boolean>(() => {
   return isImageRowVisible.value
+    || isCodeExecutionRowVisible.value
     || props.state.project.visible
     || props.state.memory.excluded !== null
 })

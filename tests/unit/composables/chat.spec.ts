@@ -961,6 +961,32 @@ describe('chat error helpers', () => {
     expect(hasVisibleAssistantContent(generateImageOnlyMessage)).toBe(true)
   })
 
+  it('counts a code_execution part in every state as visible content', () => {
+    const states = [
+      'input-streaming',
+      'input-available',
+      'output-available',
+      'output-error',
+    ]
+
+    for (const state of states) {
+      const message = {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-code_execution',
+            toolCallId: 'call_1',
+            state,
+            input: { language: 'python', code: 'print(1)' },
+          },
+        ],
+      } as unknown as UIMessage
+
+      expect(hasVisibleAssistantContent(message)).toBe(true)
+    }
+  })
+
   it('treats a persisted file-only reply as visible assistant content', () => {
     const fileAssistantMessage = {
       id: 'assistant-1',
@@ -1690,6 +1716,20 @@ describe('resolveInitialChatTools', () => {
       userMessage(['web_search_exa']),
       assistantMessage('searched'),
     ], autoBrave)).toEqual(['web_search_exa'])
+  })
+
+  it('drops code_execution from an answered turn so it starts off on '
+    + 'reopen', () => {
+    expect(resolveInitialChatTools([
+      userMessage(['web_search_exa', 'code_execution']),
+      assistantMessage('searched'),
+    ], autoBrave)).toEqual(['web_search_exa'])
+  })
+
+  it('keeps code_execution for an unanswered turn that is resuming', () => {
+    expect(resolveInitialChatTools([
+      userMessage(['code_execution']),
+    ], autoBrave)).toEqual(['code_execution'])
   })
 
   it('restores the saved provider after an Auto skip, so the menu still '
