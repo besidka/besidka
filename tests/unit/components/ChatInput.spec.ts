@@ -40,9 +40,19 @@ mockNuxtImport('useMediaQuery', () => {
   return () => isPopoverLayout
 })
 
+const codeExecutionFeature = reactive({
+  enabled: true,
+  active: false,
+  variant: null,
+})
+
 mockNuxtImport('useFeature', () => {
   return (key: string) => {
     return computed(() => {
+      if (key === 'code-execution') {
+        return codeExecutionFeature
+      }
+
       return key === 'artifacts'
         ? artifactsFeature.value
         : { enabled: false, active: false, variant: null }
@@ -59,16 +69,6 @@ mockNuxtImport('useUserSetting', () => {
     setReasoningExpanded: mocks.setReasoningExpanded,
     setReasoningAutoHide: mocks.setReasoningAutoHide,
   })
-})
-
-const codeExecutionFeature = reactive({
-  enabled: true,
-  active: false,
-  variant: null,
-})
-
-mockNuxtImport('useFeature', () => {
-  return () => computed(() => codeExecutionFeature)
 })
 
 const isPopoverLayout = shallowRef<boolean>(true)
