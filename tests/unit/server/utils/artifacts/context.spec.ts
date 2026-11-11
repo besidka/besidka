@@ -69,13 +69,18 @@ describe('buildArtifactContextBlock', () => {
     return created.artifactId
   }
 
-  function build(artifactIds: string[], chatId = 'pub-999') {
+  function build(
+    artifactIds: string[],
+    chatId = 'pub-999',
+    attachedArtifactIds?: string[],
+  ) {
     return buildArtifactContextBlock({
       db: testDb.db,
       storage,
       userId,
       chatId,
       artifactIds,
+      attachedArtifactIds,
       logger,
     })
   }
@@ -175,10 +180,115 @@ describe('buildArtifactContextBlock', () => {
       attributes: {
         artifacts: {
           contextArtifacts: 1,
+          contextAttachedArtifacts: 0,
           contextFailedReads: 1,
           contextError: 'The content of this artifact is missing',
         },
       },
     })
+  })
+  describe('attached artifacts', () => {
+    it('puts attached artifacts first and marks them attached', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const own = await createArtifact({
+        db: testDb.db,
+        storage,
+        userId,
+        kind: 'svg',
+        title: 'Own',
+        content: '<svg/>',
+        originChatId: chat.id,
+        createdVia: 'chat',
+        createdBy: 'model',
+      })
+      const attached = await seed('Library page', 'attached body', 100)
+      const block = await build([], chat.id, [attached])
+
+      expect(block).toContain(
+        `<artifact id="${attached}" kind="markdown"`
+        + ' title="Library page" version="1" attached="true">'
+        + '\nattached body\n</artifact>',
+      )
+      expect(block).toContain(`<artifact id="${own.artifactId}" kind="svg"`
+        + ' title="Own" version="1">')
+      expect(block!.indexOf('Library page')).toBeLessThan(
+        block!.indexOf('title="Own"'),
+      )
+      expect(block).toContain('attached by the user')
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          artifacts: {
+            contextArtifacts: 2,
+            contextAttachedArtifacts: 1,
+            contextFailedReads: 0,
+          },
+        },
+      })
+    })
+
+    it('adds no attached notice and no attribute for chat artifacts only',
+      async () => {
+        const id = await seed('Chat made', 'body', 100)
+        const block = await build([id])
+
+        expect(block).not.toContain('attached=')
+        expect(block).not.toContain('attached by the user')
+      })
+
+    it('caps the whole block at three artifacts, attachments first',
+      async () => {
+        const attached = [
+          await seed('A1', 'a', 100),
+          await seed('A2', 'b', 110),
+          await seed('A3', 'c', 120),
+          await seed('A4', 'd', 130),
+        ]
+        const referenced = await seed('Referenced', 'e', 900)
+        const block = await build([referenced], 'pub-999', attached)
+
+        expect(block!.match(/<artifact /g)).toHaveLength(3)
+        expect(block).toContain('title="A1"')
+        expect(block).toContain('title="A2"')
+        expect(block).toContain('title="A3"')
+        expect(block).not.toContain('title="A4"')
+        expect(block).not.toContain('Referenced')
+      })
+
+    it('shows an artifact once when it is attached and referenced',
+      async () => {
+        const id = await seed('Both', 'body', 100)
+        const block = await build([id], 'pub-999', [id])
+
+        expect(block!.match(/<artifact /g)).toHaveLength(1)
+        expect(block).toContain('attached="true"')
+      })
+
+    it('ignores foreign, taken-down, unknown and malformed attachments',
+      async () => {
+        const otherUserId = await seedUser(testDb.db, null)
+        const foreign = await seed('Foreign', 'x', 100, otherUserId)
+        const takenDown = await seed('Taken down', 'y', 100)
+
+        testDb.sqlite.prepare(
+          'update artifacts set takedown_at = 1 where id = ?',
+        ).run(decodeArtifactId(takenDown))
+
+        await expect(
+          build([], 'pub-999', [foreign, takenDown, 'garbage']),
+        ).resolves.toBeNull()
+      })
+
+    it('cuts a very large attached artifact with the truncation marker',
+      async () => {
+        const id = await seed(
+          'Huge',
+          'z'.repeat(ARTIFACT_CONTEXT_MAX_CHARS + 10),
+          100,
+        )
+        const block = await build([], 'pub-999', [id])
+
+        expect(block).toContain(ARTIFACT_CONTEXT_TRUNCATION_MARKER)
+        expect(block).toContain('attached="true"')
+      })
   })
 })

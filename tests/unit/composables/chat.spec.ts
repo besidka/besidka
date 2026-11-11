@@ -59,6 +59,19 @@ mockNuxtImport('useSetChatTitle', () => {
   return () => undefined
 })
 
+mockNuxtImport('convertFilesToUIParts', () => {
+  return async () => {
+    await Promise.resolve()
+
+    return [{
+      type: 'file',
+      mediaType: 'text/plain',
+      filename: 'notes.txt',
+      url: '/files/notes',
+    }]
+  }
+})
+
 vi.mock('@ai-sdk/vue', () => {
   return {
     useChat: () => ({
@@ -2039,5 +2052,72 @@ describe('hasVisibleAssistantContent with artifact tool parts', () => {
     } as unknown as UIMessage
 
     expect(hasVisibleAssistantContent(message)).toBe(true)
+  })
+})
+
+describe('useChat submit with attached artifacts', () => {
+  const attachedArtifact = {
+    artifactId: 'art-1',
+    version: 3,
+    kind: 'html' as const,
+    title: 'Quiz',
+  }
+
+  async function mountChat() {
+    let chat: ReturnType<typeof useChat> | null = null
+
+    const host = defineComponent({
+      setup() {
+        chat = useChat({ id: 'chat-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return chat!
+  }
+
+  it('puts the attachment part after the text of the sent message',
+    async () => {
+      const chat = await mountChat()
+
+      chat.input.value = 'Change question 3'
+      chat.attachedArtifacts.value = [attachedArtifact]
+
+      await chat.submit()
+
+      expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+        { type: 'text', text: 'Change question 3' },
+        { type: 'data-artifact-attachment', data: attachedArtifact },
+      ])
+    })
+
+  it('keeps the attachment when the composer clears it while the files '
+    + 'are still being converted', async () => {
+    const chat = await mountChat()
+
+    chat.input.value = 'Use both'
+    chat.files.value = [{
+      id: 'f1',
+      storageKey: 'k1',
+      name: 'notes.txt',
+      size: 4,
+      type: 'text/plain',
+    }] as never
+    chat.attachedArtifacts.value = [attachedArtifact]
+
+    const submitted = chat.submit()
+
+    chat.attachedArtifacts.value = []
+    chat.files.value = []
+    await submitted
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Use both' },
+      expect.objectContaining({ type: 'file', filename: 'notes.txt' }),
+      { type: 'data-artifact-attachment', data: attachedArtifact },
+    ])
   })
 })

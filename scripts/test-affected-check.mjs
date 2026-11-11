@@ -263,6 +263,29 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/composables/chat.spec.ts',
   ]
+  const artifactsAttachTests = [
+    'tests/unit/components/ChatInput/ArtifactPicker.client.spec.ts',
+    'tests/unit/components/Chat/ArtifactAttachments.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/History/ArtifactRow.spec.ts',
+    'tests/unit/components/Chat/Artifact/Detail.client.spec.ts',
+    'tests/unit/composables/artifacts-library.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/artifact-attachments.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/server/utils/artifacts/attachments.spec.ts',
+    'tests/unit/server/utils/artifacts/chat-artifacts.spec.ts',
+    'tests/unit/server/utils/artifacts/context.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/integration/api/chats-new-artifacts.spec.ts',
+    'tests/integration/api/chats-new.spec.ts',
+    'tests/integration/api/chats-artifacts.spec.ts',
+    'tests/integration/api/chats-shares-branch.spec.ts',
+    'tests/e2e/chat/artifact-attach.spec.ts',
+  ]
   const mailAlertsTests = [
     'tests/unit/utils/mail-alert-protocol.spec.ts',
     'tests/unit/workers/mail-alerts/classify.spec.ts',
@@ -3207,6 +3230,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/ai\/artifact-tools\.ts$|server\/utils\/artifacts\/|server\/capabilities\/|server\/utils\/features\/send-features\.ts$|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$|server\/utils\/chats\/persist-user-message\.ts$|server\/utils\/ai\/(tool-loop|search-answer-continuation)\.ts$|shared\/utils\/(artifacts|message-metadata)\.ts$)/,
       tests: artifactsChatTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/(ChatInput\/ArtifactPicker\.client|Chat\/ArtifactAttachments|History\/ArtifactRow|ChatInput\.client|ChatInput\/ToolsMenu(\.client|\/Content))\.vue|app\/composables\/(artifact-fix|artifacts-library|chat-input-prefill|chat)\.ts|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/pages\/chats\/(new|\[slug\])\.vue|server\/utils\/artifacts\/(attachments|chat-artifacts|context)\.ts|server\/utils\/chats\/(request-schema|share-public-parts)\.ts|server\/utils\/chats\/context\/(artifacts|sections)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post|shares\/\[slug\]\/branch\.post)\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: artifactsAttachTests,
     },
     {
       pattern:

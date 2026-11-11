@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   appendArtifactVersion: vi.fn(),
   readArtifactVersion: vi.fn(),
   buildArtifactContextBlock: vi.fn(),
+  resolveArtifactAttachmentParts: vi.fn(),
   historyMessages: [] as Array<Record<string, unknown>>,
 }))
 
@@ -100,10 +101,20 @@ vi.mock('~~/server/utils/artifacts/context', () => ({
   buildArtifactContextBlock: mocks.buildArtifactContextBlock,
 }))
 
+vi.mock('~~/server/utils/artifacts/attachments', () => ({
+  resolveArtifactAttachmentParts: mocks.resolveArtifactAttachmentParts,
+}))
+
 vi.mock('~~/server/utils/artifacts/chat-artifacts', () => ({
-  listChatArtifactIds: vi.fn(async (input: { chatId: string }) => {
+  listChatArtifactIds: vi.fn(async (input: {
+    chatId: string
+    attachedArtifactIds?: string[]
+  }) => {
     return [...mocks.artifacts.entries()]
-      .filter(([, artifact]) => artifact.originChatId === input.chatId)
+      .filter(([artifactId, artifact]) => {
+        return artifact.originChatId === input.chatId
+          || input.attachedArtifactIds?.includes(artifactId)
+      })
       .map(([artifactId]) => artifactId)
   }),
 }))
@@ -332,9 +343,17 @@ function stubChatProvider(toolCallSupported: boolean) {
   })))
 }
 
+function createAttachmentPart(artifactId: string, version = 1) {
+  return {
+    type: 'data-artifact-attachment',
+    data: { artifactId, version, kind: 'html', title: 'Library quiz' },
+  }
+}
+
 async function runSend(input: {
   steps: Array<Array<Record<string, unknown>>>
   tools?: string[]
+  parts?: Array<Record<string, unknown>>
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -358,7 +377,10 @@ async function runSend(input: {
       messages: [{
         id: 'user-public-1',
         role: 'user',
-        parts: [{ type: 'text', text: 'Make a quiz about photosynthesis.' }],
+        parts: input.parts ?? [{
+          type: 'text',
+          text: 'Make a quiz about photosynthesis.',
+        }],
       }],
     },
   } as any)
@@ -417,6 +439,9 @@ describe('artifact tools on the chat send path', () => {
     mocks.historyMessages = []
     mocks.activeFlags = new Set(['artifacts', 'artifacts.react'])
     mocks.buildArtifactContextBlock.mockResolvedValue(null)
+    mocks.resolveArtifactAttachmentParts.mockImplementation(
+      async (input: { parts: unknown[] }) => input.parts,
+    )
     installArtifactStore()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -671,5 +696,146 @@ describe('artifact tools on the chat send path', () => {
     expect(names).not.toContain('update_artifact')
     expect(readSystemPrompt(doStream.mock.calls[0]?.[0]))
       .not.toContain('`create_artifact`')
+  })
+  describe('attached artifacts', () => {
+    const attachedQuiz = {
+      kind: 'html',
+      title: 'Library quiz',
+      versions: [QUIZ],
+      originChatId: 'other-chat',
+      originMessageId: 'old',
+    }
+
+    function sendWithAttachment(steps: Array<Array<Record<string, unknown>>>) {
+      return runSend({
+        steps,
+        parts: [
+          { type: 'text', text: 'Change question 3 of the attached quiz.' },
+          createAttachmentPart('art-9'),
+        ],
+      })
+    }
+
+    it('validates the new message and hands the attached ids to the context',
+      async () => {
+        mocks.artifacts.set('art-9', { ...attachedQuiz })
+
+        await sendWithAttachment([text('Done.')])
+
+        expect(mocks.resolveArtifactAttachmentParts).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 1,
+            onUnavailable: 'throw',
+            parts: [
+              expect.objectContaining({ type: 'text' }),
+              createAttachmentPart('art-9'),
+            ],
+          }),
+        )
+        expect(mocks.buildArtifactContextBlock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            chatId: 'chat-1',
+            attachedArtifactIds: ['art-9'],
+          }),
+        )
+      })
+
+    it('lets update_artifact edit an attached artifact from another chat',
+      async () => {
+        mocks.artifacts.set('art-9', { ...attachedQuiz })
+
+        const { assistantInsert } = await sendWithAttachment([
+          toolCall('call-1', 'update_artifact', {
+            artifactId: 'art-9',
+            edits: [{
+              old_string: 'Question 3: What is produced?',
+              new_string: 'Question 3: Which gas is released?',
+            }],
+          }),
+          text('Question 3 is updated.'),
+        ])
+
+        expect(mocks.artifacts.get('art-9')?.versions[1])
+          .toContain('Which gas is released?')
+        expect(assistantInsert?.parts.filter((part: any) => {
+          return part.type === 'data-artifact'
+        })).toEqual([{
+          type: 'data-artifact',
+          data: {
+            artifactId: 'art-9',
+            version: 2,
+            kind: 'html',
+            title: 'Library quiz',
+          },
+        }])
+      })
+
+    it('still refuses an artifact that is neither from this chat nor attached',
+      async () => {
+        mocks.artifacts.set('art-9', { ...attachedQuiz })
+
+        const { assistantInsert } = await runSend({
+          steps: [
+            toolCall('call-1', 'update_artifact', {
+              artifactId: 'art-9',
+              edits: [{ old_string: 'Question', new_string: 'Q' }],
+            }),
+            text('I could not change that.'),
+          ],
+        })
+
+        expect(mocks.appendArtifactVersion).not.toHaveBeenCalled()
+        expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+          type: 'tool-update_artifact',
+          state: 'output-error',
+        }))
+      })
+
+    it('drops unavailable attachments instead of failing a stored message',
+      async () => {
+        mocks.artifacts.set('art-9', { ...attachedQuiz })
+        mocks.historyMessages = [{
+          id: 'm-1',
+          publicId: 'user-public-1',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Change question 3.' },
+            createAttachmentPart('art-9'),
+          ],
+          tools: [],
+          reasoning: 'off',
+        }]
+
+        await sendWithAttachment([text('Done.')])
+
+        expect(mocks.resolveArtifactAttachmentParts).toHaveBeenCalledWith(
+          expect.objectContaining({ onUnavailable: 'drop' }),
+        )
+      })
+
+    it('rejects the send before any model call when the user has no access',
+      async () => {
+        mocks.resolveArtifactAttachmentParts.mockRejectedValue(
+          Object.assign(new Error('Not found'), {
+            status: 404,
+            why: 'feature_unavailable',
+          }),
+        )
+
+        await expect(sendWithAttachment([text('Done.')])).rejects.toMatchObject({
+          status: 404,
+          why: 'feature_unavailable',
+        })
+        expect(mocks.buildArtifactContextBlock).not.toHaveBeenCalled()
+      })
+
+    it('adds no attached ids when the message has no attachments',
+      async () => {
+        await runSend({ steps: [text('Hello.')] })
+
+        expect(mocks.buildArtifactContextBlock).toHaveBeenCalledWith(
+          expect.objectContaining({ attachedArtifactIds: [] }),
+        )
+      })
   })
 })

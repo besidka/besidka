@@ -47,6 +47,10 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
       count: 0,
       isImageInputSupported: true,
     },
+    artifacts: {
+      visible: false,
+      attached: [],
+    },
     project: {
       visible: true,
       context: null,
@@ -67,6 +71,7 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     reasoning: { ...base.reasoning, ...overrides.reasoning },
     image: { ...base.image, ...overrides.image },
     files: { ...base.files, ...overrides.files },
+    artifacts: { ...base.artifacts, ...overrides.artifacts },
     project: { ...base.project, ...overrides.project },
     memory: { ...base.memory, ...overrides.memory },
   } as ChatInputToolsState
@@ -431,4 +436,61 @@ describe('chat input tile helpers', () => {
     expect(getChatInputTileToneClass({ isNeutral: false }))
       .toContain('dark:bg-(--color-accent-bg)/60')
   })
+})
+
+describe('buildChatInputTiles artifact tiles', () => {
+  const attached = [
+    { artifactId: 'a1', version: 3, kind: 'html' as const, title: 'Quiz' },
+    { artifactId: 'a2', version: 1, kind: 'mermaid' as const, title: 'Flow' },
+  ]
+
+  it('adds one removable tile per attached artifact after the settings',
+    () => {
+      const state = createState({
+        memory: { excluded: true },
+        artifacts: { visible: true, attached },
+      })
+
+      expect(tileIds(state)).toEqual([
+        'memory',
+        'artifact-a1',
+        'artifact-a2',
+      ])
+
+      const [tile] = buildChatInputTiles(state).filter((candidate) => {
+        return candidate.id === 'artifact-a1'
+      })
+
+      expect(tile).toMatchObject({
+        section: 'add',
+        icon: { kind: 'icon', name: 'lucide:app-window' },
+        caption: 'HTML',
+        value: 'Quiz',
+        chipLabel: 'Artifact: Quiz',
+        removeLabel: 'Remove Quiz',
+        isNeutral: false,
+      })
+      expect(tile?.ariaLabel).toBe(
+        'Attached artifact: Quiz, HTML, version 3',
+      )
+    })
+
+  it('adds nothing when the artifacts feature is not available', () => {
+    const state = createState({
+      artifacts: { visible: false, attached },
+    })
+
+    expect(tileIds(state)).toEqual([])
+  })
+
+  it('shows them before the model capabilities resolve, settings do not',
+    () => {
+      const state = createState({
+        isCapabilityResolved: false,
+        memory: { excluded: true },
+        artifacts: { visible: true, attached },
+      })
+
+      expect(tileIds(state)).toEqual(['artifact-a1', 'artifact-a2'])
+    })
 })

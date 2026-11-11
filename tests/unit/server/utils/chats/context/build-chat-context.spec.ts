@@ -1243,3 +1243,89 @@ describe('artifacts section', () => {
     expect(context.outputs).toEqual([])
   })
 })
+
+describe('attached artifacts section', () => {
+  const artifacts = new Map([
+    ['art-1', {
+      title: ' Library\n quiz ',
+      kind: 'html' as const,
+      version: 4,
+      latestVersion: 4,
+    }],
+  ])
+
+  function attachmentPart(artifactId: string, version: number) {
+    return {
+      type: 'data-artifact-attachment',
+      data: { artifactId, version, kind: 'html', title: 'Part title' },
+    }
+  }
+
+  it('lists an attached artifact under Inputs with the attached version',
+    () => {
+      const context = buildChatContext([
+        message('m1', 'user', [
+          { type: 'text', text: 'Use this' },
+          attachmentPart('art-1', 2),
+          attachmentPart('art-unknown', 1),
+        ]),
+        message('m2', 'user', [attachmentPart('art-1', 3)]),
+      ], { visibility: 'private', artifacts })
+
+      expect(context.inputs).toEqual([
+        {
+          id: 'attached-artifact:art-1',
+          sectionId: 'attached-artifacts',
+          kind: 'artifact',
+          title: 'Library quiz',
+          messageId: 'm1',
+          meta: {
+            artifactId: 'art-1',
+            artifactKind: 'html',
+            version: 2,
+            latestVersion: 4,
+          },
+        },
+      ])
+      expect(context.outputs).toEqual([])
+      expect(context.counts.inputs).toBe(1)
+    })
+
+  it('ignores attachment parts of assistant messages', () => {
+    const context = buildChatContext([
+      message('m1', 'assistant', [attachmentPart('art-1', 1)]),
+    ], { visibility: 'private', artifacts })
+
+    expect(context.inputs).toEqual([])
+    expect(context.outputs).toEqual([])
+  })
+
+  it('never lists attachments on a public share', () => {
+    const context = buildChatContext([
+      message('m1', 'user', [attachmentPart('art-1', 1)]),
+    ], { visibility: 'public', artifacts })
+
+    expect(context.inputs).toEqual([])
+    expect(context.outputs).toEqual([])
+  })
+
+  it('keeps the chat outputs separate from the attached input', () => {
+    const context = buildChatContext([
+      message('m1', 'user', [attachmentPart('art-1', 1)]),
+      message('m2', 'assistant', [{
+        type: 'data-artifact',
+        data: {
+          artifactId: 'art-1',
+          version: 4,
+          kind: 'html',
+          title: 'Library quiz',
+        },
+      }]),
+    ], { visibility: 'private', artifacts })
+
+    expect(context.inputs.map(item => item.id))
+      .toEqual(['attached-artifact:art-1'])
+    expect(context.outputs.map(item => item.id))
+      .toEqual(['artifact:art-1'])
+  })
+})

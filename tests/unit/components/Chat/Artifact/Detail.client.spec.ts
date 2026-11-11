@@ -687,8 +687,10 @@ describe('ChatArtifactDetail', () => {
     it('fills the open composer instead of navigating from /chats/new',
       async () => {
         const prefill = vi.fn()
+        const attach = vi.fn()
 
         useNuxtApp().hook('chat-input:prefill', prefill)
+        useNuxtApp().hook('chat-input:attach-artifact', attach)
         fakeRoute.path = '/chats/new'
         respond({ ...DETAIL, originChatSlug: null, originChatTitle: null })
 
@@ -702,7 +704,14 @@ describe('ChatArtifactDetail', () => {
         expect(prefill).toHaveBeenCalledWith(
           'Fix the error in "Landing page": ReferenceError: x is not defined',
         )
+        expect(attach).toHaveBeenCalledWith({
+          artifactId: 'Art1Art1Art1Art1',
+          version: 3,
+          kind: 'html',
+          title: 'Landing page',
+        })
         expect(useChatInputPrefill().take()).toBeNull()
+        expect(useChatInputPrefill().takeArtifact()).toBeNull()
       })
 
     it('offers a new chat when the origin chat was deleted', async () => {
@@ -723,6 +732,12 @@ describe('ChatArtifactDetail', () => {
       expect(useChatInputPrefill().take()).toBe(
         'Fix the error in "Landing page": ReferenceError: x is not defined',
       )
+      expect(useChatInputPrefill().takeArtifact()).toEqual({
+        artifactId: 'Art1Art1Art1Art1',
+        version: 3,
+        kind: 'html',
+        title: 'Landing page',
+      })
     })
 
     it('says so when a connected app created the artifact', async () => {

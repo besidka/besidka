@@ -304,3 +304,77 @@ describe('incomingUserMessageSchema forged artifact parts', () => {
     }
   })
 })
+
+describe('userMessagePartsSchema artifact attachments', () => {
+  const text = { type: 'text' as const, text: 'Fix the quiz' }
+
+  function attachment(artifactId: string, version = 1) {
+    return {
+      type: 'data-artifact-attachment' as const,
+      data: { artifactId, version, kind: 'html' as const, title: 'Quiz' },
+    }
+  }
+
+  it('accepts up to three different attached artifacts', () => {
+    const result = userMessagePartsSchema.safeParse([
+      text,
+      attachment('a1'),
+      attachment('a2'),
+      attachment('a3'),
+    ])
+
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects a fourth attached artifact', () => {
+    const result = userMessagePartsSchema.safeParse([
+      text,
+      attachment('a1'),
+      attachment('a2'),
+      attachment('a3'),
+      attachment('a4'),
+    ])
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects the same artifact attached twice', () => {
+    const result = userMessagePartsSchema.safeParse([
+      text,
+      attachment('a1'),
+      attachment('a1', 2),
+    ])
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects malformed attachment data and extra keys', () => {
+    expect(userMessagePartsSchema.safeParse([
+      text,
+      { type: 'data-artifact-attachment', data: { artifactId: 'a1' } },
+    ]).success).toBe(false)
+    expect(userMessagePartsSchema.safeParse([
+      text,
+      {
+        ...attachment('a1'),
+        data: { ...attachment('a1').data, kind: 'exe' },
+      },
+    ]).success).toBe(false)
+    expect(userMessagePartsSchema.safeParse([
+      text,
+      {
+        ...attachment('a1'),
+        data: { ...attachment('a1').data, version: 0 },
+      },
+    ]).success).toBe(false)
+    expect(userMessagePartsSchema.safeParse([
+      text,
+      { ...attachment('a1'), extra: true },
+    ]).success).toBe(false)
+  })
+
+  it('still needs a text part', () => {
+    expect(userMessagePartsSchema.safeParse([attachment('a1')]).success)
+      .toBe(false)
+  })
+})

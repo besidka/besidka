@@ -19,6 +19,7 @@ default shows as a tile at the start of the attachments row.
 | A setting tile | `app/components/ChatInput/SettingTile.vue` |
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
+| "Add artifact" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/ArtifactPicker.client.vue` (below, `docs/artifacts/attach.md`) |
 | Types | `app/types/chat-input-tools.d.ts` |
 | Reasoning icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `REASONING_EXPANDED_ICON`, `REASONING_AUTO_HIDE_ICON`) |
 
@@ -87,11 +88,53 @@ button already marks that edge. Order and rules:
 | Image (caption "Mode", value "Image generation", like Deep research) | image generation is on or required | turns it off, none when required; a required tile (image-only models) shows a small lock badge (`isLocked`, `chat-input-tile-lock-badge`) on the icon and the title "Image generation is always on for this model", never the word "Required" |
 | Web search | a provider is selected; the icon is the provider, "Auto search" plus a sparkle badge while Auto is active | turns search off (and saves Off as the new-chat default, as before) |
 | Reasoning | the level differs from the effective default (below) | none, tapping opens the Reasoning section |
+| Attached artifact (one per artifact, up to 3, after the settings; the kind icon, the kind as caption, the title as value, id `artifact-<id>`) | the user attached it from "Add artifact" | detaches it, tapping opens the Add section |
 
 No tile renders until `isModelCapabilityResolved` is true, and the search and
 reasoning tiles follow their sections' visibility (hidden for deep research
 and while image creation is on or required). This keeps the race-sampler
 guarantee in `tests/e2e/chat/gateway-image-generation.spec.ts`.
+
+## Add artifact (BES-350)
+
+The Add section has a fourth row, **Add artifact** ("Artifacts from your
+chats", `lucide:app-window`, `tools-action-artifacts`), after "Generated
+images". It shows the number of attached artifacts as a badge and opens
+`ChatInput/ArtifactPicker.client.vue`, closing the menu first like the other
+rows that open a modal.
+
+- **Access gate.** The row, the tiles and the picker exist only when
+  `useFeature('artifacts').active` is true and the model is not a deep
+  research model. `ChatInput.client.vue` puts that single boolean into
+  `ChatInputToolsState.artifacts.visible`; `Content.vue` hides the row on it
+  and `buildChatInputTiles` builds no artifact tile without it. Without
+  access the menu is byte for byte what it was: no row, no divider, no empty
+  section, no picker component (it mounts on the first open, behind
+  `v-if`) and so no request to `/api/v1/artifacts`. Losing access, or picking
+  a deep research model, clears the attached artifacts. The server is the
+  real gate (`docs/artifacts/attach.md`); this only hides UI.
+- **Picker.** A `<dialog class="modal modal-bottom sm:modal-middle">` with
+  the History → Artifacts behaviour: search (300 ms debounce, 2 characters
+  minimum), kind filter buttons (All, HTML, React, SVG, Mermaid, Markdown),
+  rows from `HistoryArtifactRow` in `mode="picker"` (title, kind, version,
+  updated date, origin chat or "Chat deleted", no actions menu, the whole row
+  is the button, a taken-down artifact cannot be picked), skeletons, empty and
+  no-results states, an error with Retry, and lazy loading from the same
+  `GET /api/v1/artifacts` through `useArtifactLibrary` (its own fetch key
+  `artifact-picker`, so the picker never shares data with the History page;
+  an intersection sentinel loads the next page and a Load more button stays
+  for keyboards). Filters live in memory (`useArtifactPickerFilters`), never
+  in the URL, and reset each time the picker opens.
+- **iOS.** Like the model picker, the dialog box is focused on open, never the
+  search field (the search wrapper is `inert` for the `showModal()` call, then
+  released, because iOS WebKit would focus the first text field). Desktop
+  devices focus the search. The box carries `sheet-safe-padding` and a fixed
+  `85dvh` height below `sm`, so the list does not jump while a search
+  narrows it.
+- **Pick** attaches the artifact at its current version (a second pick of the
+  same artifact does nothing, a fourth shows a warning) and closes the
+  picker. A sent message clears the tiles. A failed send on `/chats/new`
+  restores them, like files.
 
 ## Default reasoning level
 

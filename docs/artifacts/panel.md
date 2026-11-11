@@ -152,9 +152,13 @@ The detail view:
     is dropped, so no later composer shows a surprise prompt.
   - No origin chat (deleted, or `createdVia === 'mcp'`): the button is
     replaced by a short explanation and **Start a new chat with this
-    artifact**, which queues the text and opens `/chats/new` (or fills the
-    open composer when already there). The artifact is not attached yet;
-    attaching it to a chat is BES-350.
+    artifact**, which queues the text and the artifact
+    (`useChatInputPrefill().queue(text, artifact)`) and opens `/chats/new`,
+    or, when already there, fires `chat-input:attach-artifact` and
+    `chat-input:prefill` at the open composer. The composer attaches the
+    artifact (a tile, `docs/artifacts/attach.md`) and takes the text; nothing
+    is sent. The model can then edit the artifact with `update_artifact`
+    from the new chat (BES-350).
   Until the artifact detail has loaded the button is disabled, except on an
   owned chat page, where a failed detail load falls back to filling that
   chat's composer.
