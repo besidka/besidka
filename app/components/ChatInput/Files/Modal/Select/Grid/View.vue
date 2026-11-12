@@ -115,7 +115,8 @@
 
       <!-- Hover/Focus Actions -->
       <div
-        class="absolute top-1 right-1 flex gap-0.5"
+        class="absolute top-1 right-1 grid grid-cols-2 gap-0.5 sm:flex"
+        data-testid="files-tile-actions"
         :class="{
           [`
             md:opacity-0

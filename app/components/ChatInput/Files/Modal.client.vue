@@ -99,6 +99,8 @@ type Tab = 'select' | 'upload'
 type SelectTabRef = {
   reset: () => void
   fetchFiles: (reset?: boolean) => Promise<boolean>
+  getScrollTop: () => number
+  setScrollTop: (scrollTop: number) => void
 }
 
 withDefaults(defineProps<{
@@ -117,6 +119,8 @@ const emit = defineEmits<{
 }>()
 
 const documentPreview = useDocumentPreview()
+const sidePanel = useSidePanel()
+const route = useRoute()
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 const closeBtn = useTemplateRef<HTMLButtonElement>('closeBtn')
 const storageUsage = useTemplateRef('storageUsage')
@@ -125,6 +129,7 @@ const selectTabRef = shallowRef<SelectTabRef | null>(null)
 const activeTab = shallowRef<Tab | null>(null)
 const selectSource = shallowRef<FileSourceFilter | undefined>(undefined)
 const shouldRefreshSelect = shallowRef<boolean>(false)
+const stopPreviewReturnWatch = shallowRef<(() => void) | null>(null)
 
 async function refreshSelectTabIfNeeded() {
   if (activeTab.value !== 'select' || !shouldRefreshSelect.value) {
@@ -147,6 +152,11 @@ async function refreshSelectTabIfNeeded() {
 }
 
 function open(tab: Tab, source?: FileSourceFilter): void {
+  if (stopPreviewReturnWatch.value) {
+    cancelPreviewReturn()
+    resetModalState()
+  }
+
   activeTab.value = tab
   selectSource.value = tab === 'select' ? source ?? 'upload' : undefined
 
@@ -170,15 +180,72 @@ function close(): void {
   }
 }
 
-function onModalClosed(): void {
-  if (modal.value?.open) {
-    return
-  }
-
+function resetModalState(): void {
   activeTab.value = null
   selectSource.value = undefined
   shouldRefreshSelect.value = true
   selectTabRef.value?.reset()
+}
+
+function onModalClosed(): void {
+  if (modal.value?.open || stopPreviewReturnWatch.value) {
+    return
+  }
+
+  resetModalState()
+}
+
+function cancelPreviewReturn(): void {
+  stopPreviewReturnWatch.value?.()
+  stopPreviewReturnWatch.value = null
+}
+
+async function returnFromPreview(scrollTop: number): Promise<void> {
+  cancelPreviewReturn()
+
+  if (!modal.value || modal.value.open) {
+    return
+  }
+
+  modal.value.showModal()
+  storageUsage.value?.fetch()
+
+  await nextTick()
+
+  selectTabRef.value?.setScrollTop(scrollTop)
+}
+
+/**
+ * The side panel lives outside the dialog's top layer, so the dialog is
+ * closed while a preview shows. Its state (tab, filter, search, selection)
+ * is kept and the dialog reopens with the same scroll position once the side
+ * panel closes. If the panel is taken over by another view or the user leaves
+ * the page, the kept state is dropped instead.
+ */
+function closeForPreview(documentId: string): void {
+  const returnPath = route.fullPath
+  const scrollTop = selectTabRef.value?.getScrollTop() ?? 0
+
+  cancelPreviewReturn()
+  stopPreviewReturnWatch.value = watch(
+    () => documentPreview.isShowing(documentId),
+    async (isShowing) => {
+      if (isShowing) {
+        return
+      }
+
+      if (sidePanel.isOpen.value || route.fullPath !== returnPath) {
+        cancelPreviewReturn()
+        resetModalState()
+
+        return
+      }
+
+      await returnFromPreview(scrollTop)
+    },
+    { flush: 'post' },
+  )
+  close()
 }
 
 function onFilesAttached(files: FileManagerFile[]) {
@@ -208,7 +275,7 @@ function onFilePreview(file: FileManagerFile) {
     return
   }
 
-  close()
+  closeForPreview(file.documentId)
   documentPreview.open({
     documentId: file.documentId,
     format,
@@ -225,6 +292,8 @@ function onFilesUploaded(files: File[]) {
   emit('upload', files)
   close()
 }
+
+onBeforeUnmount(cancelPreviewReturn)
 
 watch([activeTab, selectTabRef], () => {
   void refreshSelectTabIfNeeded()

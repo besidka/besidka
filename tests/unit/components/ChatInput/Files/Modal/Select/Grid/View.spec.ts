@@ -65,6 +65,18 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     expect(wrapper.emitted('file-click')).toBeUndefined()
   })
 
+  it('stacks the four tile actions in two columns below sm so they stay inside the tile', async () => {
+    const wrapper = await mountDocumentGrid([documentFile])
+    const actions = wrapper.get('[data-testid="files-tile-actions"]')
+
+    expect(actions.classes()).toEqual(expect.arrayContaining([
+      'grid',
+      'grid-cols-2',
+      'sm:flex',
+    ]))
+    expect(actions.findAll('a, button')).toHaveLength(4)
+  })
+
   it('has no preview action without a document id or the feature',
     async () => {
       const wrapper = await mountDocumentGrid([
