@@ -146,6 +146,13 @@ const featureList = [
     requires: { bindings: ['DOC_RENDERER'], keyKinds: [] },
   }),
   internalFeature({
+    key: 'files.office',
+    title: 'Office attachments',
+    description: 'Attach Word, Excel and PowerPoint files to a chat.',
+    requires: { bindings: ['DOC_RENDERER'], keyKinds: [] },
+    available: true,
+  }),
+  internalFeature({
     key: 'code-execution',
     title: 'Code execution',
     description: 'Run code in your AI provider\'s sandbox from a chat.',
