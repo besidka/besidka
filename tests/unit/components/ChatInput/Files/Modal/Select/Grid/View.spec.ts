@@ -164,6 +164,71 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     )
   })
 
+  it('shows a short caption on a tile the model cannot accept', async () => {
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+        unsupportedReasons: { 'file-1': 'No text could be read.' },
+        unsupportedCaptions: { 'file-1': 'No readable text' },
+      },
+    })
+    const caption = wrapper.get('[data-testid="files-unsupported-caption"]')
+
+    expect(caption.text()).toBe('No readable text')
+    expect(caption.classes()).toEqual(expect.arrayContaining([
+      'badge',
+      'badge-neutral',
+      'badge-xs',
+    ]))
+    expect(caption.classes()).not.toContain('badge-soft')
+  })
+
+  it('shows a quiet note on a tile whose text leaves content out', async () => {
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+        textNotes: {
+          'file-1': {
+            label: 'Shortened',
+            description: 'It is long, so only the start is sent.',
+            isBlocking: false,
+          },
+        },
+      },
+    })
+    const note = wrapper.get('[data-testid="files-text-note"]')
+
+    expect(note.text()).toBe('Shortened')
+    expect(note.attributes('title')).toBe(
+      'It is long, so only the start is sent.',
+    )
+    expect(note.classes()).toEqual(expect.arrayContaining([
+      'badge',
+      'badge-soft',
+      'badge-xs',
+    ]))
+  })
+
+  it('shows no note on a tile with nothing left out', async () => {
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+      },
+    })
+
+    expect(wrapper.find('[data-testid="files-text-note"]').exists())
+      .toBe(false)
+  })
+
   it('leaves a supported tile enabled', async () => {
     const wrapper = await mountSuspended(GridView, {
       props: {

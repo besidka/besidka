@@ -40,10 +40,10 @@ const LazyImagePreview = defineAsyncComponent(() => {
 })
 
 const mocks = vi.hoisted(() => ({
-  useImageInputSupport: vi.fn(),
+  useFileInputSupport: vi.fn(),
 }))
 
-mockNuxtImport('useImageInputSupport', () => mocks.useImageInputSupport)
+mockNuxtImport('useFileInputSupport', () => mocks.useFileInputSupport)
 
 describe('Chat/GeneratedImage', () => {
   beforeEach(() => {
@@ -59,7 +59,7 @@ describe('Chat/GeneratedImage', () => {
     vi.spyOn(HTMLImageElement.prototype, 'complete', 'get')
       .mockReturnValue(false)
     useState<number>('image-preview-guard-count', () => 0).value = 0
-    mocks.useImageInputSupport.mockReturnValue({
+    mocks.useFileInputSupport.mockReturnValue({
       isImageInputSupported: shallowRef(true),
     })
   })
@@ -367,7 +367,7 @@ describe('Chat/GeneratedImage', () => {
   })
 
   it('hides the attach shortcut when image input is unsupported', async () => {
-    mocks.useImageInputSupport.mockReturnValue({
+    mocks.useFileInputSupport.mockReturnValue({
       isImageInputSupported: shallowRef(false),
     })
 

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { isDocumentAiGenerated } from '#shared/utils/documents'
+import { OFFICE_TEXT_INLINE_MAX_BYTES } from '#shared/utils/office-files'
 import type { DocumentCreatedVia } from '#shared/utils/documents'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
@@ -88,6 +89,10 @@ export default defineEventHandler(async (event) => {
         createdAt: schema.files.createdAt,
         originModel: schema.files.originModel,
         generationCost: schema.files.generationCost,
+        textStatus: schema.files.textStatus,
+        textBytes: schema.files.textBytes,
+        textOmittedMedia: schema.files.textOmittedMedia,
+        textOmittedCharts: schema.files.textOmittedCharts,
         documentId: sql<number | null>`(
           select ${schema.documents.id} from ${schema.documents}
           where ${schema.documents.fileId} = ${schema.files.id}
@@ -130,6 +135,9 @@ export default defineEventHandler(async (event) => {
 
       return {
         ...fileColumns,
+        textTruncated: file.textBytes !== null
+          && file.textBytes !== undefined
+          && file.textBytes > OFFICE_TEXT_INLINE_MAX_BYTES,
         documentId: hasDocument
           ? encodePublicId(Number(file.documentId))
           : null,

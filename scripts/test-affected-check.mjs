@@ -77,13 +77,25 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Modal/Select/ProjectGroups.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
+    'tests/unit/composables/xls-convert.spec.ts',
+    'tests/unit/workers/xls-convert.spec.ts',
+    'tests/unit/utils/xls-convert.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/file-delivery-hints.spec.ts',
+    'tests/unit/utils/file-delivery.spec.ts',
+    'tests/unit/utils/office-files.spec.ts',
+    'tests/unit/server/utils/files/office-upload-check.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
+    'tests/unit/server/utils/chats/file-delivery-check.spec.ts',
+    'tests/integration/api/chats-office-attachments.spec.ts',
     'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
+    'tests/integration/api/files-upload-office.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
     'tests/integration/api/files-index.spec.ts',
     'tests/integration/api/files-index-source.spec.ts',
@@ -95,6 +107,8 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/file-download.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
+    'tests/integration/server/assistant-files-office-carry.spec.ts',
     'tests/integration/server/chat-deletion-cleanup.spec.ts',
     'tests/integration/server/cache-invalidation.spec.ts',
     'tests/integration/server/file-retention.spec.ts',
@@ -103,6 +117,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/confirmation.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
+    'tests/e2e/chat/office-attachments.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
   ]
   const chatInputToolsTests = [
@@ -1637,11 +1652,11 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/image-input-support\.ts$/,
+      pattern: /^app\/composables\/file-input-support\.ts$/,
       tests: [
         ...imageGenerationTests,
         ...filesModuleTests,
-        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/composables/file-input-support.spec.ts',
         'tests/unit/components/Chat/GeneratedImage.spec.ts',
       ],
     },
@@ -1650,12 +1665,32 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...filesModuleTests,
         'tests/unit/utils/input-media-types.spec.ts',
-        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/composables/file-input-support.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/utils/chats/input-file-support.spec.ts',
         'tests/integration/server/assistant-files.spec.ts',
         'tests/integration/api/chats-carried-files.spec.ts',
         'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/(file-delivery|office-files)\.ts$/,
+      tests: [
+        ...filesModuleTests,
+        'tests/unit/composables/file-input-support.spec.ts',
+        'tests/unit/utils/chats/input-file-support.spec.ts',
+        'tests/unit/utils/features/registry.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/chats\/file-delivery-check\.ts$/,
+      tests: [
+        'tests/unit/server/utils/chats/file-delivery-check.spec.ts',
+        'tests/integration/api/chats-office-attachments.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+        'tests/integration/api/chats-gateway.spec.ts',
       ],
     },
     {
@@ -2594,7 +2629,7 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
-      pattern: /^app\/composables\/(chat-files|file-manager(-project-groups)?)\.ts$/,
+      pattern: /^app\/composables\/(chat-files|xls-convert|file-manager(-project-groups)?)\.ts$/,
       tests: filesModuleTests,
     },
     {
@@ -2718,7 +2753,11 @@ export function getAffectedTests(changedFiles) {
       tests: historyProjectsTests,
     },
     {
-      pattern: /^app\/utils\/(files|upload-with-progress)\.ts$/,
+      pattern: /^app\/utils\/(files|file-delivery-hints|upload-with-progress|xls-convert)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^(app\/workers\/xls-convert\.ts|app\/types\/xls-convert\.d\.ts)$/,
       tests: filesModuleTests,
     },
     {

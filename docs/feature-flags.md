@@ -145,7 +145,8 @@ table too. The replay source is therefore Axiom, not the audit table
 
 Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 `artifacts` (and `.react`, `.storage`, `.llm-bridge`, `.share`, `.mcp`),
-`documents` (and `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.mcp`), `code-execution`
+`documents` (and `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.mcp`), `files.office`,
+`code-execution`
 (and `.files`, `.skills`), `research.custom` (and `research.custom.max`,
 `research.export`, `research.mcp`), `connectors` (and `.oauth`, `.registry`,
 `.native`), `google.drive` (and `google.calendar`, `google.byo`,

@@ -272,6 +272,30 @@ describe('cleanupExpiredFiles', () => {
     )
   })
 
+  it('removes the extracted text next to an expired Office file', async () => {
+    const { db } = createCleanupDbMock([{
+      id: 'file-1',
+      userId: 7,
+      storageKey: 'expired.docx',
+      expiresAt: new Date('2026-01-01T00:00:00.000Z'),
+    }])
+    const storageDelete = vi.fn().mockResolvedValue(undefined)
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useFileStorage', () => ({ delete: storageDelete }))
+
+    await cleanupExpiredFiles({
+      batchSize: 100,
+      maxRuntimeMs: 20000,
+      now: new Date('2026-02-18T00:00:00.000Z'),
+    })
+
+    expect(storageDelete).toHaveBeenCalledWith([
+      'expired.docx',
+      'expired.docx.text.md',
+    ])
+  })
+
   it('keeps DB row when R2 delete fails so next run can retry', async () => {
     const { db, spies } = createCleanupDbMock([{
       id: 'file-1',

@@ -187,7 +187,7 @@ const { messageRole, part } = defineProps<{
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
-const { isImageInputSupported } = useImageInputSupport()
+const { isImageInputSupported } = useFileInputSupport()
 
 const imageElement = useTemplateRef<HTMLImageElement>('imageElement')
 const isImageLoaded = shallowRef<boolean>(false)

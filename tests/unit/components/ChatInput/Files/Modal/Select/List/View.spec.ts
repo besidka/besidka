@@ -173,6 +173,111 @@ describe('ChatInput/Files/Modal/Select/List/View', () => {
     )
   })
 
+  it('labels Office files Word, Excel and PowerPoint, never by media type',
+    async () => {
+      const officeTypes: Array<[string, string]> = [
+        [
+          'application/vnd.openxmlformats-officedocument'
+          + '.wordprocessingml.document',
+          'Word',
+        ],
+        [
+          'application/vnd.openxmlformats-officedocument'
+          + '.spreadsheetml.sheet',
+          'Excel',
+        ],
+        [
+          'application/vnd.openxmlformats-officedocument'
+          + '.presentationml.presentation',
+          'PowerPoint',
+        ],
+      ]
+      const wrapper = await mountListView({
+        files: officeTypes.map(([type], index) => {
+          return {
+            ...file,
+            id: `office-${index}`,
+            storageKey: `office-${index}`,
+            name: `File ${index}`,
+            type,
+          }
+        }),
+      })
+      const rows = wrapper.findAll('tbody tr')
+
+      officeTypes.forEach(([, label], index) => {
+        expect(rows[index]!.text()).toContain(label)
+        expect(rows[index]!.text()).not.toContain('VND.')
+      })
+    })
+
+  it('shows a short caption on a row the model cannot accept', async () => {
+    const wrapper = await mountListView({
+      unsupportedReasons: { 'file-1': 'No text could be read.' },
+      unsupportedCaptions: { 'file-1': 'No readable text' },
+    })
+    const caption = wrapper.get('[data-testid="files-unsupported-caption"]')
+
+    expect(caption.text()).toBe('No readable text')
+    expect(caption.classes()).toEqual(expect.arrayContaining([
+      'badge',
+      'badge-soft',
+      'badge-xs',
+    ]))
+  })
+
+  it('shows a quiet note on a row whose text leaves content out', async () => {
+    const wrapper = await mountListView({
+      textNotes: {
+        'file-1': {
+          label: '1 image not sent',
+          description: 'The model gets this file\'s text only.',
+          isBlocking: false,
+        },
+      },
+    })
+    const note = wrapper.get('[data-testid="files-text-note"]')
+
+    expect(note.text()).toBe('1 image not sent')
+    expect(note.attributes('title')).toBe(
+      'The model gets this file\'s text only.',
+    )
+    expect(note.classes()).toEqual(expect.arrayContaining([
+      'badge',
+      'badge-soft',
+      'badge-xs',
+    ]))
+  })
+
+  it('shows the caption instead of the note on a disabled row', async () => {
+    const wrapper = await mountListView({
+      unsupportedReasons: { 'file-1': 'No text could be read.' },
+      unsupportedCaptions: { 'file-1': 'No readable text' },
+      textNotes: {
+        'file-1': { label: 'Shortened', description: '', isBlocking: false },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="files-unsupported-caption"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-testid="files-text-note"]').exists())
+      .toBe(false)
+  })
+
+  it('shows no note on a row with nothing left out', async () => {
+    const wrapper = await mountListView()
+
+    expect(wrapper.find('[data-testid="files-text-note"]').exists())
+      .toBe(false)
+  })
+
+  it('shows no caption on a supported row', async () => {
+    const wrapper = await mountListView()
+
+    expect(wrapper.find('[data-testid="files-unsupported-caption"]').exists())
+      .toBe(false)
+  })
+
   it('leaves a supported row enabled', async () => {
     const wrapper = await mountListView()
     const row = wrapper.get('[data-file-index="0"]')

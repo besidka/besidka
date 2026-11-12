@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  LEGACY_OFFICE_ACCEPT_EXTENSIONS,
+  LEGACY_OFFICE_UPLOAD_HINT,
+  OFFICE_ACCEPT_EXTENSIONS,
   TEXT_FILE_PREVIEW_MAX_BYTES,
   TEXT_FILE_VIEW_MAX_BYTES,
   addFileDownloadQuery,
@@ -11,13 +14,142 @@ import {
   resolveUploadMediaType,
   getFileDownloadUrl,
   getFileIcon,
+  formatUploadFormatLabels,
+  getLegacyOfficeMessage,
   getSafeFileLinks,
+  getUploadFormatLabel,
+  isLegacyOfficeFile,
   getUnsupportedInputMessage,
   isMediaTypeRejectedByModel,
   getFileUrl,
   truncateFilename,
   truncateFilenameMiddle,
 } from '../../../app/utils/files'
+
+const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument'
+  + '.wordprocessingml.document'
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument'
+  + '.spreadsheetml.sheet'
+const PPTX_TYPE = 'application/vnd.openxmlformats-officedocument'
+  + '.presentationml.presentation'
+
+describe('Office uploads', () => {
+  it('sets the Office media type by extension whatever the browser sent', () => {
+    const cases: Array<[string, string, string]> = [
+      ['plan.docx', '', DOCX_TYPE],
+      ['plan.docx', 'application/zip', DOCX_TYPE],
+      ['plan.docx', 'application/octet-stream', DOCX_TYPE],
+      ['budget.xlsx', '', XLSX_TYPE],
+      ['budget.XLSX', 'application/zip', XLSX_TYPE],
+      ['deck.pptx', 'application/x-zip-compressed', PPTX_TYPE],
+      ['deck.pptx', PPTX_TYPE, PPTX_TYPE],
+    ]
+
+    for (const [name, declaredType, expectedType] of cases) {
+      const file = new File(['PK'], name, { type: declaredType })
+
+      expect(resolveUploadMediaType(file)).toBe(expectedType)
+      expect(normalizeUploadFile(file).type).toBe(expectedType)
+      expect(normalizeUploadFile(file).name).toBe(name)
+    }
+  })
+
+  it('leaves a correct Office file untouched', () => {
+    const file = new File(['PK'], 'plan.docx', { type: DOCX_TYPE })
+
+    expect(normalizeUploadFile(file)).toBe(file)
+  })
+
+  it('does not turn a CSV that Windows calls Excel into an Office file', () => {
+    const file = new File(['a,b'], 'data.csv', {
+      type: 'application/vnd.ms-excel',
+    })
+
+    expect(resolveUploadMediaType(file)).toBe('text/csv')
+  })
+
+  it('spots legacy and macro Office files by extension, not media type', () => {
+    for (const name of [
+      'old.xls',
+      'old.doc',
+      'old.ppt',
+      'macro.xlsm',
+      'macro.docm',
+      'macro.pptm',
+      'OLD.XLS',
+    ]) {
+      expect(isLegacyOfficeFile({ name })).toBe(true)
+    }
+
+    for (const name of ['new.xlsx', 'new.docx', 'data.csv', 'notes.txt']) {
+      expect(isLegacyOfficeFile({ name })).toBe(false)
+    }
+  })
+
+  it('tells the user to save a legacy file in the new format', () => {
+    expect(LEGACY_OFFICE_UPLOAD_HINT)
+      .toBe('Save it as .xlsx / .docx / .pptx and upload again.')
+    expect(getLegacyOfficeMessage(['old.xls'])).toBe(
+      'old.xls is an old Office format and cannot be read. '
+      + 'Save it as .xlsx / .docx / .pptx and upload again.',
+    )
+    expect(getLegacyOfficeMessage(['a.xls', 'b.doc', 'c.ppt', 'd.xls']))
+      .toBe(
+        '4 files are old Office formats and cannot be read: '
+        + 'a.xls, b.doc, c.ppt.... '
+        + 'Save it as .xlsx / .docx / .pptx and upload again.',
+      )
+  })
+
+  it('lists the extensions the picker should show', () => {
+    expect(OFFICE_ACCEPT_EXTENSIONS).toEqual(['.docx', '.xlsx', '.pptx'])
+    expect(LEGACY_OFFICE_ACCEPT_EXTENSIONS).toEqual(expect.arrayContaining([
+      '.doc',
+      '.xls',
+      '.ppt',
+      '.docm',
+      '.xlsm',
+      '.pptm',
+    ]))
+  })
+})
+
+describe('upload format labels', () => {
+  it('uses readable names, never the media type', () => {
+    expect(getUploadFormatLabel(DOCX_TYPE)).toBe('Word')
+    expect(getUploadFormatLabel(XLSX_TYPE)).toBe('Excel')
+    expect(getUploadFormatLabel(PPTX_TYPE)).toBe('PowerPoint')
+    expect(getUploadFormatLabel('application/pdf')).toBe('PDF')
+    expect(getUploadFormatLabel('image/png')).toBe('PNG')
+    expect(getUploadFormatLabel('image/jpeg')).toBe('JPEG')
+    expect(getUploadFormatLabel('image/webp')).toBe('WebP')
+    expect(getUploadFormatLabel('text/plain')).toBe('Text')
+    expect(getUploadFormatLabel('text/markdown')).toBe('Markdown')
+    expect(getUploadFormatLabel('text/csv')).toBe('CSV')
+    expect(getUploadFormatLabel('text/tab-separated-values')).toBe('TSV')
+  })
+
+  it('falls back to the upper-cased subtype for an unknown type', () => {
+    expect(getUploadFormatLabel('image/avif')).toBe('AVIF')
+  })
+
+  it('orders images, PDF, Office, then text, without repeats', () => {
+    const labels = formatUploadFormatLabels([
+      'text/plain',
+      DOCX_TYPE,
+      'image/png',
+      XLSX_TYPE,
+      'application/pdf',
+      PPTX_TYPE,
+      'text/csv',
+      'text/plain',
+    ])
+
+    expect(labels).toBe('PNG, PDF, Word, Excel, PowerPoint, Text, CSV')
+    expect(labels).not.toContain('vnd')
+    expect(labels).not.toContain('openxmlformats')
+  })
+})
 
 describe('files utils', () => {
   it('returns file URL by storage key', () => {

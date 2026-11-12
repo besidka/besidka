@@ -8,7 +8,9 @@ import {
 import { createError, useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+import { isOfficeMediaType } from '#shared/utils/office-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { extractAndStoreOfficeText } from '~~/server/utils/files/office-text'
 import {
   getEffectiveUserFilePolicy,
   getUserStorageUsageBytes,
@@ -43,7 +45,10 @@ export type PersistedFile = Pick<
   | 'type'
   | 'source'
   | 'expiresAt'
->
+> & Partial<Pick<
+  FileMetadata,
+  'textStatus' | 'textBytes' | 'textOmittedMedia' | 'textOmittedCharts'
+>>
 
 const MAX_LOGGED_EXTENSION_LENGTH = 16
 
@@ -242,7 +247,26 @@ export async function persistFile(
 
   await invalidateStorageCache(input.userId)
 
-  return storedFile
+  if (!isOfficeMediaType(normalizedMediaType)) {
+    return storedFile
+  }
+
+  const textState = await extractAndStoreOfficeText({
+    fileId: storedFile.id,
+    userId: input.userId,
+    storageKey: response.key,
+    mediaType: normalizedMediaType,
+    bytes: input.fileData,
+    logger,
+  })
+
+  return {
+    ...storedFile,
+    textStatus: textState?.textStatus ?? null,
+    textBytes: textState?.textBytes ?? null,
+    textOmittedMedia: textState?.textOmittedMedia ?? null,
+    textOmittedCharts: textState?.textOmittedCharts ?? null,
+  }
 }
 
 interface RollbackPersistedFileInput {

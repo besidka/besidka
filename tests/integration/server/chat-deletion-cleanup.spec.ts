@@ -128,6 +128,31 @@ describe('cleanupFilesOrphanedByChatDeletion', () => {
     })
   })
 
+  it('removes the extracted text next to an Office file in the same batch', async () => {
+    const storageDelete = vi.fn(async () => undefined)
+    const deleteQuery = vi.fn(() => ({ where: vi.fn(async () => undefined) }))
+
+    vi.stubGlobal('useFileStorage', () => ({ delete: storageDelete }))
+    vi.stubGlobal('useDb', () => ({
+      select: vi.fn(() => createJoinWhereChain([])),
+      delete: deleteQuery,
+    }))
+
+    const { cleanupFilesOrphanedByChatDeletion } = await loadModule()
+
+    await cleanupFilesOrphanedByChatDeletion([
+      { id: 'file-1', storageKey: 'a.docx' },
+      { id: 'file-2', storageKey: 'b.png' },
+    ], 1, createLogger())
+
+    expect(storageDelete).toHaveBeenCalledWith([
+      'a.docx',
+      'b.png',
+      'a.docx.text.md',
+    ])
+    expect(mocks.invalidateFileCache).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps a file whose storage key is still referenced by another message', async () => {
     const storageDelete = vi.fn(async () => undefined)
     const deleteWhere = vi.fn(async () => undefined)

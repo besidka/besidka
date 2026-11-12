@@ -27,25 +27,28 @@ umbrella reference they link back to.
 All paths are in `server/api/v1/chats/[slug]/index.post.ts` unless noted.
 
 1. The request body carries exactly one message
-   (`messages: z.array(incomingUserMessageSchema).length(1)`, line 186). The
-   client never sends history.
-2. The route loads the earlier messages from D1, then runs
-   `buildModelContextMessages` (call at line 577), which wraps
-   `sanitizeMessagesForModelContext`
-   (`server/utils/files/assistant-files.ts:75`), with the current model's
-   input modalities wired in through `createCarriedMediaTypePredicate`
-   (line 580).
-3. `convertFilesForAI` (lines 584-587) turns file URLs into data the SDK can
-   send and reports `missingFiles`.
-4. `buildMessagesForModel` (call at line 1185, definition in
+   (`messages: z.array(incomingUserMessageSchema).length(1)` in the body
+   schema). The client never sends history.
+2. The route loads the earlier messages from D1, checks the newest message's
+   files with `assertFilesDeliverable()`
+   (`server/utils/chats/file-delivery-check.ts`), then runs
+   `buildModelContextMessages`, which wraps `sanitizeMessagesForModelContext`
+   (`server/utils/files/assistant-files.ts`), with the current model's input
+   modalities wired in through `createCarriedMediaTypePredicate` and the text
+   size of each Office file (`officeTextBytesByStorageKey`).
+3. `convertFilesForAI` turns file URLs into data or text the SDK can send
+   (an Office file becomes its extracted text) and reports `missingFiles` and
+   `unsupportedFiles`. `assertOnlyDeliverableFileParts()` then fails with a
+   400 if any `file` part other than an image or PDF is left.
+4. `buildMessagesForModel` (definition in
    `server/utils/chats/model-turns.ts`) keeps the model-facing turns
    alternating: a `(no reply)` assistant turn between adjacent user turns, an
    `(earlier message deleted)` user turn between adjacent assistant turns,
    and the Google leading-assistant placeholder. It keys on the underlying
    model provider (`modelProviderId`), so gateway-routed `google/*` models get
    the placeholder too.
-5. `convertToModelMessages` (line 1312) produces the AI SDK model messages
-   passed to `streamText`.
+5. `convertToModelMessages` produces the AI SDK model messages passed to
+   `streamText`; the same guard runs just before it as a backstop.
 
 Because the model is resolved fresh from each request, switching model or
 provider needs no migration step: the next send simply rebuilds the context
@@ -53,7 +56,7 @@ for the new target.
 
 ## The whitelist sanitizer
 
-`sanitizeMessageParts` (`assistant-files.ts:269-325`) has been a whitelist
+`sanitizeMessageParts` (`assistant-files.ts`) has been a whitelist
 since commit `9c79d6ab` (2026-05-04, "reduce worker memory usage"). For a
 past message:
 
@@ -69,7 +72,7 @@ past message:
 
 Part metadata is stripped too: Anthropic reasoning signatures and OpenAI
 `itemId` values never leave the database. A message that sanitizes to zero
-parts is skipped entirely (`assistant-files.ts:84-86`).
+parts is skipped entirely.
 
 ### Consequences
 
@@ -81,14 +84,14 @@ parts is skipped entirely (`assistant-files.ts:84-86`).
   works when the citation was in the prose.
 - Multi-turn image editing has no pixels to edit: the assistant's generated
   image becomes a text note (ticket IMG-012 in
-  `docs/chats/files-generation-tickets.md`, line 405).
+  `docs/chats/files-generation-tickets.md`).
 - A deep research turn carries only its report text into later turns.
 
 ## Earlier user files
 
 Earlier user files are carried only when all of these hold
-(`selectCarriedFileParts`, `assistant-files.ts:156-215`;
-constants in `server/utils/files/file-governance.ts:20-24`):
+(`selectCarriedFileParts` in `assistant-files.ts`; constants in
+`server/utils/files/file-governance.ts`):
 
 - The file belongs to one of the last 3 earlier user messages
   (`CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES`).
@@ -97,9 +100,15 @@ constants in `server/utils/files/file-governance.ts:20-24`):
   files against the 10 MB request budget (`REQUEST_FILES_MAX_BYTES`).
 - Text files are at most 64 KB (`CARRIED_TEXT_FILE_MAX_BYTES`).
 - The current model accepts the media type. The predicate in
-  `server/utils/files/carried-media-types.ts` always allows `text/*`, allows
-  `image/*` only when `modalities.input` includes `image`, allows
-  `application/pdf` only when it includes `pdf`, and rejects everything else.
+  `server/utils/files/carried-media-types.ts` always allows `text/*` and the
+  three Office types (`.docx`, `.xlsx`, `.pptx`, which are sent as extracted
+  text), allows `image/*` only when `modalities.input` includes `image`,
+  allows `application/pdf` only when it includes `pdf`, and rejects
+  everything else.
+- An Office file is carried only when its extracted text is ready, and its
+  text size (`files.text_bytes`) replaces the file size in the count, byte and
+  64 KB checks. An Office file without ready text is omitted as
+  `unsupported-by-model`; it never makes the send fail.
 
 A file that fails any check becomes the text `Previously attached file
 omitted from model context: <name>.` (`omittedFilePrefix`,
@@ -107,8 +116,8 @@ omitted from model context: <name>.` (`omittedFilePrefix`,
 
 Gateway sends carry no earlier files at all: on the gateway branch `model`
 is undefined, so `canCarryMediaType` is undefined and
-`selectCarriedFileParts` returns an empty set (line 571-573 in the route,
-early return at `assistant-files.ts:163-169`).
+`selectCarriedFileParts` returns an empty set (the early return on a missing
+`canCarryMediaType`).
 
 ## Gaps found
 
@@ -164,6 +173,19 @@ window files of unknown size (missing, unowned or `data:` URLs), and the
 notice lives on the live turn only, so it is not persisted. See
 `docs/files.md`.
 
+### Office files reached providers as raw file parts (closed by BES-370)
+
+A DOCX, XLSX or PPTX (a generated document, or any Office file in the
+library) attached to a message was sent as a `data:` URL `file` part, because
+nothing gated types other than images and PDFs. `@ai-sdk/anthropic` throws on
+it (and on `text/markdown`/`text/csv` file parts), Moonshot and the
+Cloudflare gateway throw, DeepSeek drops it silently, and OpenAI needs
+`passThroughUnsupportedFiles` to accept it. Office files now reach every model
+as extracted text, and a file that cannot be read is a clear 400 that names
+the file and the reason, never a provider error or a silent drop. The rules
+are in `docs/files.md` ("Office attachments") and `resolveFileDelivery()`
+(`shared/utils/file-delivery.ts`).
+
 ### Gateway sends carry no earlier files (by design)
 
 On the gateway branch `model` is undefined, so no earlier user files are
@@ -187,8 +209,8 @@ of having no cross-provider incompatibility, and it is not changed.
 ### Adjacent same-role turns (closed by #478)
 
 Reasoning-, source-, tool- or failure-notice-only replies are persisted,
-but they sanitize to nothing, so the skip at `assistant-files.ts:84-86`
-removes the whole message. Two user turns then reached the provider back to
+but they sanitize to nothing, so the empty-message skip in
+`buildModelContextMessages()` removes the whole message. Two user turns then reached the provider back to
 back. Only `@ai-sdk/anthropic` merges adjacent user turns; the Google,
 OpenAI, openai-compatible, xAI, DeepSeek and OpenRouter converters send them
 separately. Single-message delete can likewise leave two assistant turns in

@@ -1,3 +1,4 @@
+import { withDerivedKeys } from '#shared/utils/office-files'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -123,18 +124,19 @@ export async function purgeUserData(
   const storageKeys = files.map((file) => {
     return file.storageKey
   })
+  const objectKeys = withDerivedKeys(storageKeys)
 
   let storageBatches = 0
 
-  if (storageKeys.length > 0) {
+  if (objectKeys.length > 0) {
     const storage = useFileStorage()
 
     for (
       let index = 0;
-      index < storageKeys.length;
+      index < objectKeys.length;
       index += r2BatchDeleteLimit
     ) {
-      const batch = storageKeys.slice(index, index + r2BatchDeleteLimit)
+      const batch = objectKeys.slice(index, index + r2BatchDeleteLimit)
 
       try {
         await storage.delete(batch)

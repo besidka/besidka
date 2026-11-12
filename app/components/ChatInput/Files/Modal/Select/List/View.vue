@@ -91,6 +91,21 @@
               {{ truncateFilenameMiddle(file.name, 48) }}
             </span>
             <span
+              v-if="unsupportedCaptions[file.id]"
+              class="badge badge-soft badge-xs mt-1 leading-none"
+              data-testid="files-unsupported-caption"
+            >
+              {{ unsupportedCaptions[file.id] }}
+            </span>
+            <span
+              v-else-if="textNotes[file.id]"
+              class="badge badge-soft badge-xs mt-1 leading-none"
+              :title="textNotes[file.id]?.description"
+              data-testid="files-text-note"
+            >
+              {{ textNotes[file.id]?.label }}
+            </span>
+            <span
               v-if="isAiGeneratedFile(file)"
               class="badge badge-secondary badge-xs mt-1 text-2xs leading-none gap-0.5"
               data-testid="files-ai-badge"
@@ -190,6 +205,7 @@
 
 <script setup lang="ts">
 import type { FileManagerFile } from '~/types/file-manager'
+import type { FileDeliveryHint } from '~/utils/file-delivery-hints'
 import { formatMessageCost } from '#shared/utils/message-format'
 
 withDefaults(defineProps<{
@@ -201,9 +217,13 @@ withDefaults(defineProps<{
   hasSelection: boolean
   stickyOffset?: boolean
   unsupportedReasons?: Record<string, string>
+  unsupportedCaptions?: Record<string, string>
+  textNotes?: Record<string, FileDeliveryHint>
 }>(), {
   stickyOffset: false,
   unsupportedReasons: () => ({}),
+  unsupportedCaptions: () => ({}),
+  textNotes: () => ({}),
 })
 
 defineEmits<{
@@ -219,6 +239,10 @@ const { canPreviewFile } = useDocumentPreview()
 const containerRef = useTemplateRef<HTMLTableElement>('containerRef')
 
 function getFileTypeLabel(type: string): string {
+  if (isOfficeMediaType(type)) {
+    return getUploadFormatLabel(type)
+  }
+
   const parts = type.split('/')
 
   return parts[1]?.toUpperCase() || type

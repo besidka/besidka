@@ -96,6 +96,29 @@ gpt-4o, gpt-4.1, o3 and gpt-5.4. Text-only models (o3-mini, gpt-4,
 gpt-3.5-turbo) stay without `pdf`. Drop the entry if models.dev starts
 reporting OpenAI PDF support accurately.
 
+### Which inputs reach a model: the delivery resolver
+
+`modalities.input` says what a model can read natively. How a file actually
+reaches it is decided by `resolveFileDelivery()`
+(`shared/utils/file-delivery.ts`), which takes the route (`direct` or a
+gateway), the provider id, the model's input modalities, the file's media type
+and, for Office files, the extraction status. It returns `native`, `text` or
+`unsupported` with a reason, and it is total: an unknown type is
+`unsupported`, never an exception.
+
+Images and PDFs are `native` when `modalities.input` has `image` or `pdf` (the
+merged list described above, so `excludedInputModalities` and
+`impliedInputModalities` apply); an unknown list fails open, as the gateway
+checks always have. `text/*` is `text`. A DOCX, XLSX or PPTX is `text` for
+every provider and gateway once its text was extracted when the file was
+stored, because Office has no `modalities.input` entry: no provider reads
+these files uniformly, and sending extracted text works everywhere. The
+per-provider `office: 'extract'` rows in that file are the seam for turning
+OpenAI's native `input_file` path on later. The carried-files predicate
+(`server/utils/files/carried-media-types.ts`) and the newest-message checks
+(`docs/files.md`) read the same rules. A new modality (audio, video) belongs in
+this resolver, not in a one-off check.
+
 ## Reasoning capability sync rule
 
 The models.dev `reasoning` boolean is never merged into the catalog: a

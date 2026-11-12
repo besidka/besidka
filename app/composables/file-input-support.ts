@@ -24,20 +24,27 @@ const FAIL_OPEN_INPUT_MODALITIES = ['image', 'pdf']
  * On gateways they are ALWAYS accepted: gateway catalogs describe documents
  * as `file` rather than `pdf`, OpenRouter parses PDFs for any routed model,
  * and the server only gates images on gateways.
+ *
+ * `fileDeliveryContext` is the input of the resolver the send route uses for
+ * the same selection; the caller adds the send's Run code state and builds
+ * the per-file resolver from it, so the file manager and the chips agree with
+ * the server.
  */
-export function useImageInputSupport() {
+export function useFileInputSupport() {
   const { selection, userModel } = useUserModel()
   const { gatewayModel } = useSelectedModelInfo()
 
-  const selectedModel = computed(() => {
+  const selectedModelInfo = computed(() => {
     const currentModel = toValue(userModel)
 
-    if (!currentModel) return null
+    if (!currentModel) return { model: null, provider: null }
 
-    const { model } = getModel(currentModel)
+    const { model, provider } = getModel(currentModel)
 
-    return model
+    return { model, provider }
   })
+
+  const selectedModel = computed(() => selectedModelInfo.value.model)
 
   const canAttachMediaType = computed<(mediaType: string) => boolean>(() => {
     if (selection.value.source === 'gateway') {
@@ -60,8 +67,18 @@ export function useImageInputSupport() {
     return canAttachMediaType.value('image/png')
   })
 
+  const fileDeliveryContext = computed<FileDeliveryContext>(() => {
+    return getFileDeliveryContext({
+      selection: selection.value,
+      model: selectedModel.value,
+      providerId: selectedModelInfo.value.provider?.id,
+      gatewayModel: gatewayModel.value,
+    })
+  })
+
   return {
     isImageInputSupported,
     canAttachMediaType,
+    fileDeliveryContext,
   }
 }

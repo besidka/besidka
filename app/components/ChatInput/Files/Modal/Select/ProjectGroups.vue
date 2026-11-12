@@ -77,6 +77,8 @@
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
             :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             @file-click="(
               event: MouseEvent,
               file: FileManagerFile,
@@ -93,6 +95,8 @@
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
             :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             :sticky-offset="true"
             :all-selected="isGroupAllSelected(group)"
             :has-selection="hasGroupSelection(group)"
@@ -154,6 +158,7 @@ import type {
   ProjectFileGroup,
   ViewMode,
 } from '~/types/file-manager'
+import type { FileDeliveryHint } from '~/utils/file-delivery-hints'
 
 const props = withDefaults(defineProps<{
   groups: ProjectFileGroup[]
@@ -163,8 +168,12 @@ const props = withDefaults(defineProps<{
   touchedIndices: Set<number>
   touchGroupId: string | null
   unsupportedReasons?: Record<string, string>
+  unsupportedCaptions?: Record<string, string>
+  textNotes?: Record<string, FileDeliveryHint>
 }>(), {
   unsupportedReasons: () => ({}),
+  unsupportedCaptions: () => ({}),
+  textNotes: () => ({}),
 })
 
 const emit = defineEmits<{

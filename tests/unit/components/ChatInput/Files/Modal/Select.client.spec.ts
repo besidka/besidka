@@ -7,6 +7,8 @@ import type {
   FileManagerFile,
   ProjectFileGroup,
 } from '../../../../../../app/types/file-manager'
+import { OFFICE_MEDIA_TYPES } from '../../../../../../shared/utils/office-files'
+import { createFileDeliveryResolver } from '../../../../../../app/utils/file-delivery-hints'
 import Select from '../../../../../../app/components/ChatInput/Files/Modal/Select.client.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -603,6 +605,247 @@ describe('ChatInput/Files/Modal/Select', () => {
       expect(wrapper.emitted('attach')).toBeUndefined()
       expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
     })
+  })
+
+  describe('delivery reasons', () => {
+    const docxType = OFFICE_MEDIA_TYPES.docx
+    const xlsxType = OFFICE_MEDIA_TYPES.xlsx
+    const readableSheet = createManagerFile({
+      id: 'sheet-ready',
+      storageKey: 'sheet-ready.xlsx',
+      name: 'Budget.xlsx',
+      type: xlsxType,
+      textStatus: 'ready',
+    })
+    const unreadSheet = createManagerFile({
+      id: 'sheet-null',
+      storageKey: 'sheet-null.xlsx',
+      name: 'Old budget.xlsx',
+      type: xlsxType,
+      textStatus: null,
+    })
+    const emptyDocument = createManagerFile({
+      id: 'doc-empty',
+      storageKey: 'doc-empty.docx',
+      name: 'Empty.docx',
+      type: docxType,
+      textStatus: 'empty',
+    })
+    const failedDocument = createManagerFile({
+      id: 'doc-failed',
+      storageKey: 'doc-failed.docx',
+      name: 'Broken.docx',
+      type: docxType,
+      textStatus: 'failed',
+    })
+    const legacySheet = createManagerFile({
+      id: 'sheet-legacy',
+      storageKey: 'sheet-legacy.xls',
+      name: 'Legacy.xls',
+      type: 'application/vnd.ms-excel',
+    })
+    const archive = createManagerFile({
+      id: 'archive',
+      storageKey: 'archive.zip',
+      name: 'Backup.zip',
+      type: 'application/zip',
+    })
+    const resolveDelivery = createFileDeliveryResolver({
+      route: 'direct',
+      providerId: 'anthropic',
+      modalities: ['text', 'image', 'pdf'],
+    })
+
+    async function mountWithResolver() {
+      source.value = 'assistant'
+      managerFiles.value = [
+        readableSheet,
+        unreadSheet,
+        emptyDocument,
+        failedDocument,
+        legacySheet,
+        archive,
+        createManagerFile(),
+      ]
+
+      return await mountSuspended(Select, {
+        props: {
+          attachedIds: new Set<string>(),
+          canAttachMediaType: () => true,
+          resolveDelivery,
+        },
+        shallow: true,
+        global: { stubs: { KeepAlive: false } },
+      })
+    }
+
+    function readCaptions(
+      wrapper: Awaited<ReturnType<typeof mountWithResolver>>,
+    ): Record<string, string> {
+      const attributes = wrapper
+        .findComponent({ name: 'AsyncComponentWrapper' }).vm.$attrs
+
+      return (attributes['unsupported-captions']
+        ?? attributes.unsupportedCaptions) as Record<string, string>
+    }
+
+    function readReasons(
+      wrapper: Awaited<ReturnType<typeof mountWithResolver>>,
+    ): Record<string, string> {
+      const attributes = wrapper
+        .findComponent({ name: 'AsyncComponentWrapper' }).vm.$attrs
+
+      return (attributes['unsupported-reasons']
+        ?? attributes.unsupportedReasons) as Record<string, string>
+    }
+
+    function readTextNotes(
+      wrapper: Awaited<ReturnType<typeof mountWithResolver>>,
+    ): Record<string, { label: string, description: string }> {
+      const attributes = wrapper
+        .findComponent({ name: 'AsyncComponentWrapper' }).vm.$attrs
+
+      return (attributes['text-notes']
+        ?? attributes.textNotes) as Record<
+        string,
+        { label: string, description: string }
+      >
+    }
+
+    it('notes only the files whose text leaves content out', async () => {
+      source.value = 'assistant'
+      managerFiles.value = [
+        createManagerFile({
+          id: 'sheet-plain',
+          storageKey: 'sheet-plain.xlsx',
+          type: xlsxType,
+          textStatus: 'ready',
+          textOmittedMedia: 0,
+          textOmittedCharts: 0,
+        }),
+        createManagerFile({
+          id: 'doc-images',
+          storageKey: 'doc-images.docx',
+          type: docxType,
+          textStatus: 'ready',
+          textOmittedMedia: 3,
+        }),
+        createManagerFile({
+          id: 'sheet-long',
+          storageKey: 'sheet-long.xlsx',
+          type: xlsxType,
+          textStatus: 'ready',
+          textTruncated: true,
+        }),
+        emptyDocument,
+        createManagerFile(),
+      ]
+
+      const wrapper = await mountSuspended(Select, {
+        props: {
+          attachedIds: new Set<string>(),
+          canAttachMediaType: () => true,
+          resolveDelivery,
+        },
+        shallow: true,
+        global: { stubs: { KeepAlive: false } },
+      })
+      const notes = readTextNotes(wrapper)
+
+      expect(Object.keys(notes).sort()).toEqual(['doc-images', 'sheet-long'])
+      expect(notes['doc-images']?.label).toBe('3 images not sent')
+      expect(notes['sheet-long']?.label).toBe('Shortened')
+    })
+
+    it('keeps generated and stored Office files selectable', async () => {
+      const reasons = readReasons(await mountWithResolver())
+
+      expect(reasons['sheet-ready']).toBeUndefined()
+      expect(reasons['sheet-null']).toBeUndefined()
+      expect(reasons['file-1']).toBeUndefined()
+    })
+
+    it('disables a document with no readable text and says why', async () => {
+      const reasons = readReasons(await mountWithResolver())
+
+      for (const id of ['doc-empty', 'doc-failed']) {
+        expect(reasons[id]).toContain('No text could be read')
+        expect(reasons[id]).toContain('.docx, .xlsx or .pptx')
+      }
+    })
+
+    it('names each file in its own reason', async () => {
+      const reasons = readReasons(await mountWithResolver())
+
+      expect(reasons['doc-empty']).toContain('Empty.docx')
+      expect(reasons['doc-failed']).toContain('Broken.docx')
+      expect(reasons['doc-failed']).not.toContain('Empty.docx')
+      expect(reasons['sheet-legacy']).toContain('Legacy.xls')
+    })
+
+    it('captions each disabled file with a few words', async () => {
+      const captions = readCaptions(await mountWithResolver())
+
+      expect(captions).toEqual({
+        'doc-empty': 'No readable text',
+        'doc-failed': 'No readable text',
+        'sheet-legacy': 'Old Office format',
+        'archive': 'Type not supported',
+      })
+    })
+
+    it('disables a legacy Office file with the save-as hint', async () => {
+      const reasons = readReasons(await mountWithResolver())
+
+      expect(reasons['sheet-legacy']).toContain('cannot be read')
+      expect(reasons['sheet-legacy'])
+        .toContain('Save the file as .docx, .xlsx or .pptx')
+    })
+
+    it('disables a type no model can take instead of dropping it', async () => {
+      const reasons = readReasons(await mountWithResolver())
+
+      expect(reasons.archive).toContain('cannot be sent to a model')
+    })
+
+    it('shows the reason in a warning when a disabled file is clicked',
+      async () => {
+        const wrapper = await mountWithResolver()
+        const view = wrapper.findComponent({ name: 'AsyncComponentWrapper' })
+
+        view.vm.$emit('file-click', new MouseEvent('click'), failedDocument, 3)
+
+        expect(handleSelect).not.toHaveBeenCalled()
+        expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+          expect.stringContaining('No text could be read'),
+        )
+      })
+
+    it('keeps the model reason for an image the model cannot read',
+      async () => {
+        source.value = 'assistant'
+        managerFiles.value = [createManagerFile()]
+
+        const wrapper = await mountSuspended(Select, {
+          props: {
+            attachedIds: new Set<string>(),
+            canAttachMediaType: (mediaType: string) => {
+              return !mediaType.startsWith('image/')
+            },
+            resolveDelivery: createFileDeliveryResolver({
+              route: 'direct',
+              modalities: ['text', 'pdf'],
+            }),
+          },
+          shallow: true,
+          global: { stubs: { KeepAlive: false } },
+        })
+
+        expect(readReasons(wrapper)['file-1']).toBe(
+          'This model does not support image input. '
+          + 'Attach a PDF or text file instead, or switch models.',
+        )
+      })
   })
 
   it('renders a registered extra source after the built-in tabs', async () => {

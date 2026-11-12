@@ -32,7 +32,8 @@ storage and image transforms.
 
 ### Components
 
-- R2: binary file objects.
+- R2: binary file objects, plus one `<storageKey>.text.md` sidecar per Office
+  file (the extracted text, see "Office attachments").
 - D1:
   - `files` metadata.
   - `storages` per-user file policy and counters.
@@ -83,14 +84,19 @@ Rules, applied newest first:
 4. A carried `text/*` file larger than `CARRIED_TEXT_FILE_MAX_BYTES` (64 KB) is
    omitted. `convertFilesForAI()` inlines text files as prompt text, so a
    multi-megabyte text file would otherwise cost on the order of a million
-   input tokens on every turn.
+   input tokens on every turn. An Office file counts as text here: its
+   `text_bytes` (the extracted text, passed in as
+   `officeTextBytesByStorageKey`) replace its file size in rule 2, rule 3 and
+   this cap, and an Office file without ready text is omitted as
+   `unsupported-by-model` instead of being carried.
 5. Modality gate: carried files are checked against the selected model, which
    only the request's own attachments were checked against before.
    `createCarriedMediaTypePredicate()`
    (`server/utils/files/carried-media-types.ts`) allows `text/*` always,
    `image/*` only if `model.modalities.input` includes `image`, and
-   `application/pdf` only if it includes `pdf`; everything else (audio, video,
-   archives, ...) is never carried. Without this, an image sent to a vision
+   `application/pdf` only if it includes `pdf`, and the three Office types
+   always (they are sent as text); everything else (audio, video, archives,
+   ...) is never carried. Without this, an image sent to a vision
    model and carried after switching to a text-only model would make the
    provider reject every following turn.
 6. Gateway sends carry nothing: this handler does not resolve gateway model
@@ -229,6 +235,11 @@ already-persisted-reply replay and before `persistUserMessage()`.
   catalog-derived gate would reject sends that work. Cloudflare is skipped
   entirely: its catalog needs the user's credentials and exposes no reliable
   input modalities (see `docs/providers/gateways.md`).
+- **Office and unknown types**: images and PDFs above are judged from the
+  declared type before the database is read. The database-aware check
+  (`assertFilesDeliverable()`) then re-judges every file by its stored type and
+  adds Office readiness, legacy Office and unknown types, through
+  `resolveFileDelivery()`. See "Office attachments".
 - **Provider-side fallback**: when a provider still rejects a PDF at request
   time, `normalizeChatError()` rewrites the raw upstream text into
   "This model does not support PDF input..." (the PDF counterpart of the image
@@ -266,6 +277,213 @@ repeated `set()` and would otherwise inflate the main call's list. Both live
 under `attributes` per `docs/axiom-map-fields.md`. The serializer is
 `server/utils/ai/sdk-warnings.ts`.
 
+### Office attachments (`files.office`)
+
+Word, Excel and PowerPoint files (`.docx`, `.xlsx`, `.pptx`) are attachments
+on every provider and gateway because the model gets their text, not the file.
+No provider reads them uniformly: OpenAI Responses reads them natively but
+returns text only, Anthropic, Moonshot and Cloudflare throw on an Office
+`file` part, DeepSeek silently drops it, and Gemini documents them only on the
+Interactions API. One extraction, sent as a text part, behaves the same
+everywhere and survives a model switch. Provider research and the full
+decision list are in BES-370.
+
+- **Flag.** Accepting an Office upload needs the `files.office` flag
+  (`internalFeature`, requires the `DOC_RENDERER` binding). With it off the
+  upload routes answer exactly as before ("File type must be one of ..."). The
+  rest is not flagged: text extraction runs for every Office file that is
+  stored (uploads, generated documents, code-execution outputs) and on the
+  first send of an older one, and the resolver, the send guard and the sidecar
+  cleanup apply to all of them. That fixes today's behaviour: a generated DOCX
+  attached to an Anthropic model used to reach the provider as a raw file part
+  and throw.
+- **Allowlist.** `nuxt.config.ts` keeps the base `allowedFileFormats`. The
+  three Office media types join it only through `getAllowedFileFormats()`
+  (`shared/utils/office-files.ts`) while the flag is active, so the flag-off
+  list is the base list. `AllowedFileFormat` includes them.
+- **Upload checks** (`server/utils/files/upload-file-type.ts`,
+  `office-upload-check.ts`, shared by `PUT /files/upload` and
+  `POST /files/create`). The extension decides the media type (the declared
+  type never makes a file legacy: browsers send `application/vnd.ms-excel` for
+  a `.csv`), because
+  browsers send an empty type, `application/zip` or
+  `application/octet-stream` for these files. Then, in order: the extension
+  (legacy `.doc/.xls/.ppt` and macro `.docm/.xlsm/.pptm` are rejected with a
+  "Save as .docx, .xlsx or .pptx" hint, as the owner decided on 2026-11-12;
+  the server still rejects a raw `.xls` and never trusts the browser's
+  conversion, see "Legacy `.xls` conversion in the browser" below),
+  the ZIP magic bytes (a compound `D0 CF 11 E0` file is legacy or
+  password-protected), the central-directory bounds (`readZipSummary` and
+  `readZipDirectory` from `@besidka/doc-renderer/zip`, with the extractor's
+  limits and not the tighter ones for generated documents: 5000 entries,
+  50 MB per entry, 150 MB in all, ratio 1000:1 above 1 MB, encrypted entries
+  refused; nothing is inflated), the main part
+  (`word/document.xml`, `xl/workbook.xml`, `ppt/presentation.xml`) and a 20 MB
+  cap per Office file (read as a capped stream, so a larger body is never
+  buffered). Generated documents go through the renderer's `validate()`
+  instead; an upload has no spec, so this is the structural gate.
+- **Extraction when a file is stored.** `persistFile()` calls
+  `extractAndStoreOfficeText()` (`server/utils/files/office-text.ts`) for any
+  Office media type, so it covers uploads, chat and MCP documents
+  (`documents/finalize.ts`), code-execution outputs and MCP-created files. The
+  `extractOfficeText` binding call runs in the storing request. The
+  Markdown goes to R2 at `<storageKey>.text.md` (at most 1 MB, not counted in
+  the quota) and the state to `files.text_*`. It never fails the request: a
+  failed or `too_large` result is stored as such, and a renderer that is
+  unavailable leaves the status null, so the next send retries. The log is
+  `attributes.files.officeText` (format, status, sizes, error code, the
+  omitted counts, never the text).
+- **What the text leaves out.** At the same moment `office-text.ts` counts the
+  parts the text cannot carry, from the ZIP entry names only (nothing is
+  inflated, and it runs in the main Worker, not in the doc-renderer
+  satellite). `readZipSummary` returns no names, so it uses `readZipDirectory`
+  with the same `OFFICE_UPLOAD_ZIP_LIMITS` as the upload check. Entries are
+  matched under `word/`, `ppt/` and `xl/` only: `media/*` and `embeddings/*`
+  count as `text_omitted_media`; `charts/chart*.xml` and `diagrams/data*.xml`
+  count as `text_omitted_charts` (relationship, style, colour and layout parts
+  are ignored). Each count is capped at 99 and the UI shows "99+". An archive
+  that cannot be read stores 0 and 0, so NULL only ever means "not counted
+  yet" and nothing is retried forever. Embedded spreadsheets (`.xlsx`,
+  `.xlsm`, `.xlsb`, `.xls`) are the data behind a chart and count as neither,
+  so a deck with one chart and no picture reads "1 chart not sent"; other
+  embedded objects (`oleObject*.bin`, `.docx`, `.pdf`) still count as media.
+  Known over-count: `ppt/media` also holds images from slide masters and
+  layouts. A generated document with no image shows nothing.
+- **Lazy fallback.** A file with a null status (stored before extraction, or
+  while the renderer was down) or an older `text_version` is read once on its
+  first send (`ensureOfficeTextState()`) and cached the same way. Only the
+  newest message's files are read lazily; an earlier file with no text is
+  omitted from the carry-over instead. A `ready` file whose omitted counts are
+  both NULL (stored before they existed) gets a count-only backfill on its
+  first use: one R2 read of the file, no renderer call, no rewrite of the text,
+  and `OFFICE_TEXT_VERSION` stays at 1 so no stored file is re-extracted.
+  `getOwnedFilesByStorageKeys()` selects both columns, or the backfill would
+  run on every send.
+- **Deleting.** `withDerivedKeys(keys)` returns the keys plus their sidecar
+  keys. All four paths that delete file objects use it in their batched R2
+  delete: `delete-files.ts`, `cleanup-expired-files.ts`,
+  `chat-deletion-cleanup.ts` and `account/purge-user-data.ts` (before
+  chunking, so a batch stays within 1000 keys). `documents/cleanup.ts` deletes
+  spec objects under `documents/<userId>/`, not file objects, so it needs
+  nothing. `tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts`
+  fails when a new server file deletes from the file bucket without being
+  listed. The sidecar has no `files` row, so `/files/[key]` returns 404 for it
+  and the MCP `read_file` tool (which reads by row, `text/*` only) cannot
+  expose it.
+- **Resolver.** `resolveFileDelivery({ route, providerId, modalities,
+  mediaType, textStatus })` (`shared/utils/file-delivery.ts`) is the single
+  answer to how a file reaches the model: `native`, `text` or `unsupported`
+  with a reason. It is total, so an unknown type is `unsupported`, never an
+  exception. Images and PDFs are `native` when the modalities allow them
+  (`model-no-image`, `model-no-pdf` otherwise; unknown modalities fail open),
+  `text/*` is `text`, an Office file is `text` when its text is `ready` and
+  `office-unreadable` otherwise, legacy Office types are `legacy-office`. A
+  per-provider and per-gateway `office: 'extract'` row is the seam for turning
+  OpenAI's native path on behind a flag later.
+- **Send path.** Before anything is persisted or streamed,
+  `assertFilesDeliverable()` (`server/utils/chats/file-delivery-check.ts`)
+  checks every file of the newest message against the database row (the stored
+  type, not the client's `mediaType`), reads lazily where needed and answers
+  400 with the file name, the reason and a fix. `convertFilesForAI()` then
+  turns a ready Office file into a `text` part: the file name and format
+  ("Word document", "Excel spreadsheet", "PowerPoint presentation"), the line
+  "Extracted text. Images, charts and formatting are not included.", then the
+  Markdown in a fence, cut at 200 KB per file and 512 KB per message on a UTF-8
+  boundary with a "[Truncated ...]" marker. Gateways get the same text. A file
+  it cannot send becomes a "[File not included: ...]" note and an
+  `unsupportedFiles` entry, never a dropped part. `assertOnlyDeliverableFileParts()`
+  runs once after the conversion (a real 400, before the stream) and once just
+  before `convertToModelMessages` (a backstop): the only `file` parts that may
+  reach a provider are images and PDFs.
+- **Run code.** On a direct Anthropic, OpenAI or Google send with "Run code"
+  and `code-execution.files`, an Office or JSON file of the newest message
+  also reaches the provider sandbox (`docs/chats/code-execution.md`), so
+  `resolveFileDelivery()` takes `codeExecutionFiles` and
+  `CODE_EXECUTION_FILE_DELIVERY` says how each provider takes it: Anthropic and
+  OpenAI by upload (the route uploads the bytes itself, the model message has
+  no file part and gets a "[Available in the code sandbox ...]" note, plus the
+  extracted text when it is ready), Gemini inline (the file part stays in the
+  model message, in addition to the text). The result is `container` when the
+  model gets no text of the file, so an unreadable Office file or a re-attached
+  JSON output is not a 400 there. Only the Office and JSON types in
+  `CODE_EXECUTION_CONTAINER_MEDIA_TYPES` qualify (a spec ties them to
+  `server/utils/code-execution/file-types.ts`), only for the sandbox message,
+  and `assertOnlyDeliverableFileParts()` lets a raw part through only for the
+  Gemini case. Without Run code, with `code-execution.files` off, on a gateway
+  or on any other provider, they are refused as before.
+- **Carry-over.** Office counts as text: any model can carry an earlier Office
+  file, the 64 KB cap and the 8 file / 5 MB / 10 MB budgets use `text_bytes`
+  instead of the file size, and an earlier file without ready text is omitted
+  as `unsupported-by-model` instead of failing the send.
+- **API surface.** `GET /api/v1/files` adds `textStatus`, `textBytes`,
+  `textTruncated` (true when `textBytes` is over the 200 KB inline cap, so only
+  the start is sent), `textOmittedMedia` and `textOmittedCharts`. The upload
+  response carries the same columns.
+- **The text note (owner decision, 2026-11-12).** Normal files show nothing.
+  Earlier every Office file showed "Sent as text"; that label is gone. A quiet
+  `badge-soft badge-xs` appears only when something is lost, on the attached
+  chip (`files-delivery-hint`) and on file manager rows and tiles
+  (`files-text-note`): "3 images not sent", "2 charts not sent", "Shortened",
+  or a combination ("Shortened · 3 images · 2 charts not sent"), with correct
+  singular and plural forms. The tooltip says "The model gets this file's text
+  only. Images, charts and formatting aren't sent." plus "It is long, so only
+  the start is sent." when shortened. The logic is `getTextLossNote()` in
+  `app/utils/file-delivery-hints.ts`; NULL counts (not counted yet) show
+  nothing. Unsupported-file reasons ("No readable text", "Old Office format",
+  "Needs Run code") are unchanged, and on a disabled row the reason replaces
+  the note.
+
+### Legacy `.xls` conversion in the browser
+
+The owner exports `.xls` from Jira. It is real BIFF8 (OLE2, `D0 CF 11 E0`), so
+on 2026-11-12 he overrode the "reject with a hint" decision for `.xls` only
+(BES-370). The browser converts it to `.xlsx` before upload and the server
+only ever receives XLSX. `.doc`, `.ppt` and the macro formats keep the
+"Save it as .xlsx / .docx / .pptx and upload again" hint: the only converters
+for them are new single-maintainer libraries or LibreOffice (about 52 MB of
+WASM that needs COOP/COEP, or a Container with a patch treadmill).
+
+- **Flag and entry point.** Behind `files.office`. `useChatFiles().uploadFiles`
+  converts first, before the count and size caps, so they see the converted
+  file; every upload path (modal, full-page drop, paste) goes through it. The
+  upload modal (`Upload.client.vue`) lets a `.xls` through only when its first
+  8 bytes are the CFB signature, otherwise it keeps its inline hint.
+- **Code.** `app/composables/xls-convert.ts` (`useXlsConversion`),
+  `app/workers/xls-convert.ts` (`convertXlsBytes`), `app/utils/xls-convert.ts`
+  (limits, signature check, naming, no SheetJS import) and
+  `app/types/xls-convert.d.ts`. SheetJS is imported only in the worker file, so
+  it is a lazily loaded worker chunk: never on the server, never in the entry
+  chunk, and there is no main-thread fallback (no `Worker` means the hint).
+- **Library.** SheetJS Community Edition 0.20.3 from the official CDN tarball
+  (`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`), pinned in
+  `package.json` with the sha512 integrity in `pnpm-lock.yaml`. It fixes
+  CVE-2023-30533 and CVE-2024-22363. The npm `xlsx@0.18.5` has both and the
+  `@e965/xlsx` mirror is a third-party republisher: never use either.
+- **Safety limits.** Only a file named `.xls` (not `.xlsm`, `.xlt`, `.xlsb`)
+  whose first 8 bytes are `D0 CF 11 E0 A1 B1 1A E1`; HTML or other content
+  disguised as `.xls` gets the hint. Input is capped at 20 MB before it is
+  read. Parsing uses `sheetRows: 100000` and no `cellStyles`, `bookVBA` or
+  `bookFiles`. Each file gets its own worker with a 30 s timeout; the worker is
+  terminated after the file, on timeout, on error and when the scope is
+  disposed. Any failure ends in the existing hint, never a crash. The server
+  keeps all its checks and does not trust the conversion.
+- **Output.** `XLSX.write(..., { bookType: 'xlsx', type: 'array',
+  compression: true })`, uploaded as `<original base name>.xlsx` with the XLSX
+  media type. Cells keep their values and number formats (`cellNF: true`;
+  without it a date column arrives as a serial number); formulas keep their
+  cached values; styles, charts and macros are not kept. SheetJS writes a fixed
+  content-type table that maps `.bin` to the macro-enabled binary workbook
+  type, and the server's Office reader treats that type as a macro marker and
+  refuses the file as `ooxml_macro`, so the worker drops that one entry from
+  the new package. Do not remove that step.
+- **UI.** The attached chip shows "Converted from .xls" (under the text note
+  when there is one), with a tooltip that says styles, charts and macros are not kept. The state is
+  client-only (`convertedFromXlsKeys` from `useChatFiles`, keyed by storage
+  key), so it is gone after a reload.
+- **Maintenance.** Dependabot cannot see a tarball dependency, so a SheetJS
+  security fix will not open a PR. Watch https://cdn.sheetjs.com/advisories/
+  by hand and bump the tarball URL when an advisory lists a newer version.
+
 ## Data Model Reference
 
 ### `files`
@@ -280,6 +498,16 @@ under `attributes` per `docs/axiom-map-fields.md`. The serializer is
   - `source`: `upload | assistant`.
   - `originMessageId`: nullable FK to `messages` for provenance.
   - `originProvider`: nullable provider id for provenance.
+  - `textStatus`, `textBytes`, `textVersion`: nullable. The state of the text
+    extracted from an Office file (`ready | empty | failed | too_large`), the
+    UTF-8 size of the stored text, and the extractor version that made it.
+    All three are null for every other file and for an Office file not read
+    yet. No SQL defaults, so the migration is three `ALTER TABLE ... ADD`.
+  - `textOmittedMedia`, `textOmittedCharts`: nullable integers, capped at 99.
+    Images plus embedded objects, and charts plus diagrams, that the extracted
+    text leaves out. NULL means not counted yet (a file stored before they
+    existed, until its first send). No SQL defaults, so the migration is two
+    `ALTER TABLE ... ADD`.
 
 ### `storages`
 
@@ -455,7 +683,7 @@ excluded from the Uploaded and Generated tabs.
 
 - Requires auth session.
 - Validates required headers and allowed MIME type (`allowedFileFormats` in
-  `nuxt.config.ts`: WebP/PNG/JPEG/GIF images, `application/pdf`,
+  `nuxt.config.ts`: WebP/PNG/JPEG images (no GIF), `application/pdf`,
   `text/plain`, `text/markdown`, `text/csv` and
   `text/tab-separated-values`). CSV and TSV are the main input of provider code
   execution (`docs/chats/code-execution.md`); they are read as text for the
@@ -472,6 +700,10 @@ excluded from the Uploaded and Generated tabs.
   `.md` extension, and in the chat input it shows as a text card that opens a
   read-only viewer. Long pastes are not uploaded at all: see
   `docs/chats/chat-input-markdown.md`.
+- Office uploads (`.docx`, `.xlsx`, `.pptx`) are accepted only while the
+  `files.office` flag is active and go through their own checks and text
+  extraction: see "Office attachments". A `.xls` is converted to `.xlsx` in the
+  browser first and is still rejected here as a raw `.xls`.
 - Uses real body size for quota checks (`X-Filesize` is not trusted).
 - Checks user storage usage against effective policy.
 - Image flow:
@@ -490,7 +722,8 @@ Common failure statuses:
 ### Delete Single (`DELETE /api/v1/files/[id]`)
 
 - Requires auth and ownership.
-- Attempts R2 delete first.
+- Attempts R2 delete first (the file and, for an Office file, its extracted
+  text sidecar, in one batched call through `withDerivedKeys()`).
 - On R2 delete failure, returns error and keeps DB metadata intact.
 - On success, invalidates file cache and storage stats cache, then deletes DB row.
 

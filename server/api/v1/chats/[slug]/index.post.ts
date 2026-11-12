@@ -106,6 +106,12 @@ import {
   insertParagraphBreakAfterNonTextGap,
 } from '~~/server/utils/chats/filter-ui-message-stream'
 import { assertInputFilesSupported } from '~~/server/utils/chats/input-file-support'
+import {
+  assertFilesDeliverable,
+  assertOnlyDeliverableFileParts,
+} from '~~/server/utils/chats/file-delivery-check'
+import { CODE_EXECUTION_FILE_DELIVERY } from '#shared/utils/file-delivery'
+import { isOfficeMediaType } from '#shared/utils/office-files'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
   appendTextToLastUserTurn,
@@ -821,14 +827,39 @@ export default defineEventHandler(async (event) => {
     newMessage.parts as UIMessage['parts'],
   )
 
+  const isInlineContainerSend = codeExecutionGate.filesActive
+    && !!provider
+    && CODE_EXECUTION_FILE_DELIVERY[provider.id] === 'inline'
+
+  await assertFilesDeliverable({
+    parts: newMessage.parts,
+    userId,
+    route: gatewayId ?? 'direct',
+    providerId: provider?.id,
+    modalities: model ? getModelInputModalities(model) : undefined,
+    modelName: model?.name ?? userModel,
+    codeExecutionFiles: codeExecutionGate.filesActive,
+    logger,
+  })
+
   const ownedContextFiles = await getOwnedFilesByStorageKeys(
     userId,
     getModelContextFileStorageKeys(allMessages),
   )
   const fileSizesByStorageKey = new Map<string, number>()
+  const officeTextBytesByStorageKey = new Map<string, number>()
 
   for (const [storageKey, file] of ownedContextFiles) {
     fileSizesByStorageKey.set(storageKey, file.size)
+
+    if (
+      file.type
+      && isOfficeMediaType(file.type)
+      && file.textStatus === 'ready'
+      && typeof file.textBytes === 'number'
+    ) {
+      officeTextBytesByStorageKey.set(storageKey, file.textBytes)
+    }
   }
 
   const {
@@ -836,6 +867,7 @@ export default defineEventHandler(async (event) => {
     omittedFiles,
   } = buildModelContextMessages(allMessages, {
     fileSizesByStorageKey,
+    officeTextBytesByStorageKey,
     canCarryMediaType: model
       ? createCarriedMediaTypePredicate(getModelInputModalities(model))
       : undefined,
@@ -844,13 +876,25 @@ export default defineEventHandler(async (event) => {
   const {
     messages: messagesForAI,
     missingFiles,
-  } = await convertFilesForAI(modelContextMessages)
+    unsupportedFiles = [],
+  } = await convertFilesForAI(modelContextMessages, {
+    container: codeExecutionGate.filesActive && provider
+      ? { providerId: provider.id, messageId: newMessage.id }
+      : undefined,
+  })
+
+  assertOnlyDeliverableFileParts(messagesForAI, {
+    inlineContainerFiles: isInlineContainerSend,
+  })
 
   logger.set({
     filesCount: newMessage.parts.filter(part => part.type === 'file').length,
     carriedFilesCount: countCarriedFileParts(modelContextMessages),
     omittedContextFilesCount: omittedFiles.length,
     missingFilesCount: missingFiles.length,
+    attributes: {
+      files: { unsupportedCount: unsupportedFiles.length },
+    },
   })
 
   if (newMessage.role === 'user') {
@@ -1943,6 +1987,9 @@ export default defineEventHandler(async (event) => {
           // wire one: on this stack it is a no-op, or would defeat that
           // replay by skipping persist. (Providers also bill and omit usage
           // on abort, so there is no cost to recover here either.)
+          assertOnlyDeliverableFileParts(messagesForModel, {
+            inlineContainerFiles: isInlineContainerSend,
+          })
           modelMessages = await convertToModelMessages(messagesForModel)
 
           if (codeExecutionSession?.provider === 'anthropic') {

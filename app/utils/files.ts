@@ -5,6 +5,16 @@ import {
   normalizeMediaType,
 } from '#shared/utils/files'
 import { getInputMediaKind } from '#shared/utils/input-media-types'
+import { DOCUMENT_FORMAT_LIBRARY_LABELS } from '#shared/utils/documents'
+import {
+  OFFICE_FORMATS,
+  OFFICE_LEGACY_EXTENSIONS,
+  OFFICE_MACRO_EXTENSIONS,
+  OFFICE_MEDIA_TYPES,
+  getOfficeExtensionKind,
+  getOfficeFormatByFileName,
+  getOfficeFormatByMediaType,
+} from '#shared/utils/office-files'
 
 const FILE_URL_ORIGIN = 'https://besidka.local'
 
@@ -185,6 +195,12 @@ export function isTextFileType(type: string): boolean {
 }
 
 export function resolveUploadMediaType(file: File): string {
+  const officeFormat = getOfficeFormatByFileName(file.name)
+
+  if (officeFormat) {
+    return OFFICE_MEDIA_TYPES[officeFormat]
+  }
+
   const declaredType = normalizeMediaType(file.type)
 
   if (markdownAliasMediaTypes.has(declaredType)) {
@@ -218,6 +234,92 @@ export function normalizeUploadFile(file: File): File {
     type: resolvedType,
     lastModified: file.lastModified,
   })
+}
+
+export const LEGACY_OFFICE_UPLOAD_HINT
+  = 'Save it as .xlsx / .docx / .pptx and upload again.'
+
+export const OFFICE_ACCEPT_EXTENSIONS: readonly string[] = [
+  ...OFFICE_FORMATS.map(format => `.${format}`),
+]
+
+export const LEGACY_OFFICE_ACCEPT_EXTENSIONS: readonly string[] = [
+  ...OFFICE_LEGACY_EXTENSIONS,
+  ...OFFICE_MACRO_EXTENSIONS,
+].map(extension => `.${extension}`)
+
+export function isLegacyOfficeFile(file: Pick<File, 'name'>): boolean {
+  const kind = getOfficeExtensionKind(file.name)
+
+  return kind === 'legacy' || kind === 'macro'
+}
+
+export function getLegacyOfficeMessage(fileNames: string[]): string {
+  const shownNames = fileNames.slice(0, 3).join(', ')
+  const suffix = fileNames.length > 3 ? '...' : ''
+  const subject = fileNames.length === 1
+    ? `${shownNames} is an old Office format and cannot be read.`
+    : `${fileNames.length} files are old Office formats and cannot be read: ${
+      shownNames}${suffix}.`
+
+  return `${subject} ${LEGACY_OFFICE_UPLOAD_HINT}`
+}
+
+export function getInvalidFormatMessage(fileNames: string[]): string {
+  const shownNames = fileNames.slice(0, 3).join(', ')
+  const suffix = fileNames.length > 3 ? '...' : ''
+
+  return `${fileNames.length} file(s) skipped due to invalid format: `
+    + `${shownNames}${suffix}`
+}
+
+const FORMAT_LABEL_BY_MEDIA_TYPE: Record<string, string> = {
+  'image/png': 'PNG',
+  'image/jpeg': 'JPEG',
+  'image/webp': 'WebP',
+  'image/gif': 'GIF',
+  'application/pdf': 'PDF',
+  'text/plain': 'Text',
+  'text/markdown': 'Markdown',
+  'text/csv': 'CSV',
+  'text/tab-separated-values': 'TSV',
+}
+
+export function getUploadFormatLabel(mediaType: string): string {
+  const normalizedMediaType = normalizeMediaType(mediaType)
+  const officeFormat = getOfficeFormatByMediaType(normalizedMediaType)
+
+  if (officeFormat) {
+    return DOCUMENT_FORMAT_LIBRARY_LABELS[officeFormat]
+  }
+
+  return FORMAT_LABEL_BY_MEDIA_TYPE[normalizedMediaType]
+    || normalizedMediaType.split('/')[1]?.toUpperCase()
+    || normalizedMediaType
+}
+
+function getUploadFormatRank(mediaType: string): number {
+  if (mediaType.startsWith('image/')) {
+    return 0
+  }
+
+  if (mediaType === 'application/pdf') {
+    return 1
+  }
+
+  if (getOfficeFormatByMediaType(mediaType)) {
+    return 2
+  }
+
+  return 3
+}
+
+export function formatUploadFormatLabels(mediaTypes: string[]): string {
+  const sortedMediaTypes = [...mediaTypes].sort((first, second) => {
+    return getUploadFormatRank(first) - getUploadFormatRank(second)
+  })
+
+  return [...new Set(sortedMediaTypes.map(getUploadFormatLabel))].join(', ')
 }
 
 export function countTextLines(content: string): number {

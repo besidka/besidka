@@ -74,6 +74,7 @@ export function assertUploadContentLength(
 export async function readUploadBody(
   body: ReadableStream<Uint8Array> | null,
   remainingStorageBytes: number,
+  createTooLargeError?: () => Error,
 ): Promise<Uint8Array> {
   if (!body) {
     return new Uint8Array(0)
@@ -95,6 +96,10 @@ export async function readUploadBody(
 
     if (totalBytes > maxBytes) {
       await reader.cancel()
+
+      if (createTooLargeError) {
+        throw createTooLargeError()
+      }
 
       throw createError({
         message: 'Not enough storage space. Please delete some files.',
