@@ -71,9 +71,11 @@ function originChatJoin() {
  * duplicate `id` and `title` columns of the joined tables would overwrite
  * each other. A document counts only while
  * its file exists: deleting the file detaches the row (`fileId` becomes null),
- * so the inner join on `files` drops it. The counts ignore the search text,
- * the format and the source, like the artifact kind counts. One batch is one
- * D1 round trip for the page, the total and the counts.
+ * so the inner join on `files` drops it. The format counts follow the
+ * selected source, so the buttons match the list; the source counts ignore
+ * it, so every source tab stays. Both ignore the search text and the
+ * selected format. One batch is one D1 round trip for the page, the total
+ * and the counts.
  */
 export async function listLibraryDocuments(
   input: ListLibraryDocumentsInput,
@@ -144,11 +146,16 @@ export async function listLibraryDocuments(
   const sourceCounts = createEmptyDocumentSourceCounts()
 
   for (const group of groupRows) {
-    if (isDocumentFormat(group.format)) {
+    const groupSource = toLibrarySource(group.createdVia)
+
+    if (
+      isDocumentFormat(group.format)
+      && (!input.source || input.source === groupSource)
+    ) {
       formatCounts[group.format] += Number(group.total)
     }
 
-    sourceCounts[toLibrarySource(group.createdVia)] += Number(group.total)
+    sourceCounts[groupSource] += Number(group.total)
   }
 
   return {

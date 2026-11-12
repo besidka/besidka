@@ -251,6 +251,35 @@ describe('documents library API', () => {
       expect(filtered.sourceCounts).toEqual(unfiltered.sourceCounts)
     })
 
+  it('counts formats within the selected source and keeps the source tabs',
+    async () => {
+      await seedLibrary()
+      await seedReadyDocument({
+        userId: ownerId,
+        format: 'pdf',
+        fileName: 'Board summary.pdf',
+        createdVia: 'mcp',
+        minutesAgo: 4,
+      })
+
+      const list = await importListHandler()
+      const mcp = await list(createEvent({ source: 'mcp' }))
+      const chat = await list(createEvent({ source: 'chat' }))
+      const mcpPdf = await list(createEvent({ source: 'mcp', format: 'pdf' }))
+
+      expect(mcp.formatCounts).toEqual({ pdf: 1, docx: 0, pptx: 1, xlsx: 1 })
+      expect(chat.formatCounts).toEqual({ pdf: 1, docx: 0, pptx: 0, xlsx: 0 })
+      expect(mcpPdf.formatCounts).toEqual(mcp.formatCounts)
+      expect(mcp.sourceCounts).toEqual({ chat: 1, mcp: 3 })
+      expect(chat.sourceCounts).toEqual(mcp.sourceCounts)
+
+      for (const format of ['pdf', 'docx', 'pptx', 'xlsx']) {
+        const byFormat = await list(createEvent({ source: 'mcp', format }))
+
+        expect(byFormat.total).toBe(mcp.formatCounts[format])
+      }
+    })
+
   it('filters by format and by source', async () => {
     const { report, deck, budget } = await seedLibrary()
     const list = await importListHandler()
