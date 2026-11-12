@@ -78,6 +78,8 @@ const BUILT_IN_ELAPSED_HOURS_FORMAT = 46
 const FORMAT_CODE_MAX_CHARACTERS = 255
 const FORMATS_MAX = 1024
 const SHEET_NAME_MAX = 255
+const SKIPPED_NAMES_MAX = 10
+const SKIPPED_NAME_CHARACTERS_MAX = 64
 const STYLES_MAX = 65_536
 const STORED_CHARACTERS_MAX = 8 * 1024 * 1024
 const ROW_GAP_MAX = 20
@@ -796,6 +798,17 @@ function renderRow(row: RawCell[], shared: SharedStrings): string | null {
   return hasText ? fields.join(',') : null
 }
 
+function skippedSheetsNotice(skipped: SheetReference[]): string {
+  const names = skipped
+    .slice(0, SKIPPED_NAMES_MAX)
+    .map(sheet => sheet.name.slice(0, SKIPPED_NAME_CHARACTERS_MAX))
+  const rest = skipped.length - names.length
+  const list = rest > 0 ? `${names.join(', ')}, and ${rest} more` : names.join(', ')
+
+  return `[Truncated: ${skipped.length} more sheets not included because `
+    + `the cell limit was reached: ${list}.]`
+}
+
 export function extractXlsx(officePackage: OfficePackage): ExtractionOutput {
   const { limits, stats } = officePackage
   const workbook = readWorkbook(officePackage)
@@ -816,7 +829,15 @@ export function extractXlsx(officePackage: OfficePackage): ExtractionOutput {
     addTruncation(stats, 'sheets_limit')
   }
 
-  for (const sheet of workbook.sheets.slice(0, sheetsIncluded)) {
+  const includedSheets = workbook.sheets.slice(0, sheetsIncluded)
+
+  for (const [sheetIndex, sheet] of includedSheets.entries()) {
+    if (cellsUsed >= limits.cellsMax) {
+      addTruncation(stats, 'cells_limit')
+      sink.add(skippedSheetsNotice(includedSheets.slice(sheetIndex)))
+      break
+    }
+
     const entry = findEntry(officePackage, sheet.partName)
 
     if (!entry) {
@@ -862,7 +883,7 @@ export function extractXlsx(officePackage: OfficePackage): ExtractionOutput {
       }
     }
 
-    if (rowsWritten === 0) {
+    if (rowsWritten === 0 && !data.hasCellLimit) {
       sink.add('(empty sheet)')
     }
 
