@@ -343,11 +343,12 @@ decision list are in BES-370.
   count as `text_omitted_charts` (relationship, style, colour and layout parts
   are ignored). Each count is capped at 99 and the UI shows "99+". An archive
   that cannot be read stores 0 and 0, so NULL only ever means "not counted
-  yet" and nothing is retried forever. Known over-counts: `ppt/media` also
-  holds images from slide masters and layouts, and a chart often carries its
-  data workbook under `embeddings/`, so a deck with one chart and no picture
-  reads "1 image not sent" next to "1 chart not sent". A generated document
-  with no image shows nothing.
+  yet" and nothing is retried forever. Embedded spreadsheets (`.xlsx`,
+  `.xlsm`, `.xlsb`, `.xls`) are the data behind a chart and count as neither,
+  so a deck with one chart and no picture reads "1 chart not sent"; other
+  embedded objects (`oleObject*.bin`, `.docx`, `.pdf`) still count as media.
+  Known over-count: `ppt/media` also holds images from slide masters and
+  layouts. A generated document with no image shows nothing.
 - **Lazy fallback.** A file with a null status (stored before extraction, or
   while the renderer was down) or an older `text_version` is read once on its
   first send (`ensureOfficeTextState()`) and cached the same way. Only the

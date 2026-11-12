@@ -19,6 +19,8 @@ const SIDECAR_CONTENT_TYPE = 'text/markdown; charset=utf-8'
 const SIDECAR_SLACK_BYTES = 4 * 1024
 export const OFFICE_OMITTED_COUNT_MAX = 99
 const OMITTED_MEDIA_ENTRY = /^(?:word|ppt|xl)\/(?:media|embeddings)\/.*[^/]$/
+const CHART_DATA_WORKBOOK_ENTRY
+  = /^(?:word|ppt|xl)\/embeddings\/.*\.(?:xlsx|xlsm|xlsb|xls)$/i
 const OMITTED_CHART_ENTRY
   = /^(?:word|ppt|xl)\/(?:charts\/chart|diagrams\/data)[^/]*\.xml$/
 const encoder = new TextEncoder()
@@ -79,8 +81,9 @@ function logOfficeText(
 /**
  * Counts the parts of an Office package that the extracted text leaves out,
  * from entry names only: images and embedded objects as `media`, charts and
- * diagrams as `charts`. Each count is capped so a hostile file cannot inflate
- * it.
+ * diagrams as `charts`. An embedded spreadsheet is the data behind a chart,
+ * not a picture, so it counts as neither. Each count is capped so a hostile
+ * file cannot inflate it.
  */
 export function countOmittedOfficeEntries(
   names: readonly string[],
@@ -89,6 +92,10 @@ export function countOmittedOfficeEntries(
   let charts = 0
 
   for (const name of names) {
+    if (CHART_DATA_WORKBOOK_ENTRY.test(name)) {
+      continue
+    }
+
     if (OMITTED_MEDIA_ENTRY.test(name)) {
       media += 1
     } else if (OMITTED_CHART_ENTRY.test(name)) {

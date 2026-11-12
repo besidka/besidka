@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { strToU8, zipSync } from 'fflate'
 import { render } from '@besidka/doc-renderer/render'
 import { parseDocumentSpec } from '@besidka/doc-renderer/spec'
+import { getTextLossNote } from '~~/app/utils/file-delivery-hints'
 import { loadReferenceAssets } from '~~/tests/setup/helpers/documents'
 import {
   OFFICE_MEDIA_TYPES,
@@ -81,7 +82,27 @@ describe('countOmittedOfficeEntries', () => {
     expect(countOmittedOfficeEntries([
       'word/media/image1.png',
       'word/embeddings/oleObject1.bin',
+      'ppt/embeddings/Spec.pdf',
+    ])).toEqual({ media: 3, charts: 0 })
+  })
+
+  it('does not count the data workbook behind a chart as an image', () => {
+    expect(countOmittedOfficeEntries([
+      'ppt/charts/chart1.xml',
       'ppt/embeddings/Microsoft_Excel_Sheet1.xlsx',
+      'word/charts/chart1.xml',
+      'word/embeddings/Microsoft_Excel_Sheet2.XLSX',
+      'xl/embeddings/data.xlsm',
+      'xl/embeddings/data.xlsb',
+      'xl/embeddings/data.xls',
+    ])).toEqual({ media: 0, charts: 2 })
+  })
+
+  it('still counts other embedded objects as media', () => {
+    expect(countOmittedOfficeEntries([
+      'word/embeddings/oleObject1.bin',
+      'word/embeddings/Microsoft_Word_Document1.docx',
+      'ppt/embeddings/Spec.pdf',
     ])).toEqual({ media: 3, charts: 0 })
   })
 
@@ -143,6 +164,26 @@ describe('countOmittedOfficeContent', () => {
     ])
 
     expect(countOmittedOfficeContent(bytes)).toEqual({ media: 2, charts: 1 })
+  })
+
+  it('gives a deck with one chart and no picture one chart and no image', () => {
+    const bytes = buildZip([
+      'ppt/presentation.xml',
+      'ppt/slides/slide1.xml',
+      'ppt/charts/chart1.xml',
+      'ppt/charts/_rels/chart1.xml.rels',
+      'ppt/charts/style1.xml',
+      'ppt/charts/colors1.xml',
+      'ppt/embeddings/Microsoft_Excel_Sheet1.xlsx',
+    ])
+    const counts = countOmittedOfficeContent(bytes)
+
+    expect(counts).toEqual({ media: 0, charts: 1 })
+    expect(getTextLossNote({
+      type: 'pptx',
+      textOmittedMedia: counts?.media,
+      textOmittedCharts: counts?.charts,
+    })?.label).toBe('1 chart not sent')
   })
 
   it('counts an image the renderer embedded', async () => {
