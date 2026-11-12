@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { extractOfficeText } from '@besidka/doc-renderer/extract'
 import {
+  MAIN_CONTENT_TYPES,
   SAMPLE_SPECS,
   docxPackage,
   paragraphXml,
+  relationshipsXml,
   renderSpec,
 } from '../../../fixtures/documents/extract/builders'
 
@@ -230,5 +232,70 @@ describe('extractOfficeText: docx structure', () => {
     expect(result.text).toContain('Рядок 0')
     expect(result.text).not.toContain('Рядок 3999')
     expect(result.text).not.toContain('�')
+  })
+})
+
+describe('extractOfficeText: docx review fixes', () => {
+  const OVERRIDE_NUMBERING = `
+    <w:abstractNum w:abstractNumId="1">
+      <w:lvl w:ilvl="0"><w:start w:val="3"/><w:numFmt w:val="decimal"/></w:lvl>
+    </w:abstractNum>
+    <w:num w:numId="8"><w:abstractNumId w:val="1"/></w:num>
+    <w:num w:numId="9">
+      <w:abstractNumId w:val="1"/>
+      <w:lvlOverride w:ilvl="0"><w:startOverride w:val="10"/></w:lvlOverride>
+    </w:num>
+  `
+
+  it('restarts a numId that carries a startOverride', () => {
+    const body = listItem('a', '8', 0)
+      + listItem('b', '8', 0)
+      + listItem('c', '9', 0)
+      + listItem('d', '9', 0)
+      + listItem('e', '8', 0)
+
+    expect(readyText(docxPackage(body, { numberingXml: OVERRIDE_NUMBERING })))
+      .toBe('3. a\n4. b\n10. c\n11. d\n5. e')
+  })
+
+  it('follows basedOn chains and outline levels to find headings', () => {
+    const styles = `
+      <w:style w:type="paragraph" w:styleId="Titre2"><w:name w:val="heading 2"/></w:style>
+      <w:style w:type="paragraph" w:styleId="Custom"><w:name w:val="My section"/><w:basedOn w:val="Titre2"/></w:style>
+      <w:style w:type="paragraph" w:styleId="Deeper"><w:name w:val="Deeper"/><w:basedOn w:val="Custom"/></w:style>
+      <w:style w:type="paragraph" w:styleId="Outlined"><w:name w:val="Outlined"/><w:pPr><w:outlineLvl w:val="2"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Loop"><w:name w:val="Loop"/><w:basedOn w:val="Loop"/></w:style>
+    `
+    const body = paragraphXml('based', '<w:pStyle w:val="Custom"/>')
+      + paragraphXml('twice', '<w:pStyle w:val="Deeper"/>')
+      + paragraphXml('outline', '<w:pStyle w:val="Outlined"/>')
+      + paragraphXml('direct', '<w:outlineLvl w:val="0"/>')
+      + paragraphXml('body', '<w:pStyle w:val="Outlined"/><w:outlineLvl w:val="9"/>')
+      + paragraphXml('cycle', '<w:pStyle w:val="Loop"/>')
+
+    expect(readyText(docxPackage(body, { stylesXml: styles }))).toBe([
+      '## based',
+      '## twice',
+      '### outline',
+      '# direct',
+      'body',
+      'cycle',
+    ].join('\n\n'))
+  })
+
+  it('finds the main part through the root relationships', () => {
+    const bytes = docxPackage(paragraphXml('decoy'), {
+      options: {
+        extraContentTypes: `<Override PartName="/word/main-body.xml" ContentType="${MAIN_CONTENT_TYPES.docx}"/>`,
+        extraFiles: {
+          'word/main-body.xml': '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>real</w:t></w:r></w:p></w:body></w:document>',
+          '_rels/.rels': relationshipsXml([
+            { id: 'rId1', type: 'officeDocument', target: '/word/main-body.xml' },
+          ]),
+        },
+      },
+    })
+
+    expect(readyText(bytes)).toBe('real')
   })
 })

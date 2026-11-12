@@ -19,6 +19,7 @@ export class XmlError extends Error {
 
 export interface ParseXmlOptions {
   keepAttributePrefixes?: boolean
+  attributesMax?: number
 }
 
 const ENTITY_PATTERN = /&(#x[0-9a-fA-F]{1,8}|#\d{1,9}|lt|gt|amp|quot|apos);/g
@@ -222,6 +223,7 @@ export function* parseXml(
 
     const name = localName(text.slice(open + 1, cursor))
     const attributes: Record<string, string> = {}
+    let attributeCount = 0
     let selfClosing = false
 
     for (;;) {
@@ -291,6 +293,15 @@ export function* parseXml(
       }
 
       if (attributeName !== 'xmlns' && !attributeName.startsWith('xmlns:')) {
+        attributeCount += 1
+
+        if (
+          options.attributesMax !== undefined
+          && attributeCount > options.attributesMax
+        ) {
+          throw new XmlError('xml_attributes', 'Too many attributes on a tag')
+        }
+
         const attributeKey = options.keepAttributePrefixes
           ? attributeName
           : localName(attributeName)

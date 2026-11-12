@@ -3,11 +3,15 @@ import {
   ExtractError,
   TextSink,
   addTruncation,
+  appendSpannedCell,
+  appendText,
+  collapseLineBreaks,
   findEntry,
   readRelationships,
   relationshipIdOf,
   renderMarkdownTable,
   scanPart,
+  trimLineEnds,
 } from './common.ts'
 import type {
   BlockKind,
@@ -25,14 +29,20 @@ interface SlideContent {
   blocks: SlideBlock[]
 }
 
+interface ShapeLimits {
+  maxBytes: number
+}
+
 interface ParagraphState {
   level: number
   hasBullet: boolean | undefined
   parts: string[]
+  length: number
 }
 
 interface CellState {
   parts: string[]
+  length: number
   span: number
   isMerged: boolean
 }
@@ -57,6 +67,8 @@ const BULLET_ELEMENTS: ReadonlySet<string> = new Set([
   'buBlip',
 ])
 const LIST_INDENT = '  '
+const XML_SUFFIX_LENGTH = 4
+const MAX_DIGITS = 15
 
 function slideShapeFilter(placeholderType: string | null): boolean {
   return placeholderType === null || !FURNITURE_TYPES.has(placeholderType)
@@ -71,19 +83,20 @@ function emptyContent(): SlideContent {
 }
 
 function readSlideContent(
-  pkg: OfficePackage,
+  officePackage: OfficePackage,
   partName: string,
   isCaptured: ShapeFilter,
+  maxBytes: number,
 ): SlideContent {
-  const entry = findEntry(pkg, partName)
+  const entry = findEntry(officePackage, partName)
   let content = emptyContent()
 
   if (!entry) {
     return content
   }
 
-  scanPart(pkg, entry, (events) => {
-    content = walkShapes(events, isCaptured)
+  scanPart(officePackage, entry, (events) => {
+    content = walkShapes(officePackage, events, isCaptured, { maxBytes })
 
     return false
   })
@@ -92,11 +105,17 @@ function readSlideContent(
 }
 
 function walkShapes(
+  officePackage: OfficePackage,
   events: Iterable<XmlEvent>,
   isCaptured: ShapeFilter,
+  shapeLimits: ShapeLimits,
 ): SlideContent {
+  const { rowsMax, columnsMax, cellCharsMax, textBytesMax }
+    = officePackage.limits
   const content = emptyContent()
   const titleParts: string[] = []
+  let collectedLength = 0
+  let hasDroppedRows = false
   let paragraph: ParagraphState | null = null
   let tableRows: string[][] = []
   let rowCells: string[] = []
@@ -107,14 +126,17 @@ function walkShapes(
   let isInText = false
 
   function finishParagraph(finished: ParagraphState): void {
-    const text = finished.parts.join('').replace(/[ \t]+$/gm, '').trim()
+    const text = trimLineEnds(finished.parts.join('')).trim()
 
     if (text.length === 0) {
       return
     }
 
     if (cell) {
-      cell.parts.push(text)
+      if (cell.length < cellCharsMax) {
+        cell.parts.push(text)
+        cell.length += text.length
+      }
 
       return
     }
@@ -124,7 +146,8 @@ function walkShapes(
     }
 
     if (placeholderType !== null && TITLE_TYPES.has(placeholderType)) {
-      titleParts.push(text.replace(/\s*\n\s*/g, ' '))
+      titleParts.push(collapseLineBreaks(text))
+      collectedLength += text.length
 
       return
     }
@@ -137,11 +160,13 @@ function walkShapes(
       const body = text.replace(/\n/g, `\n${indent}${LIST_INDENT}`)
 
       content.blocks.push({ text: `${indent}- ${body}`, kind: 'list' })
+      collectedLength += text.length
 
       return
     }
 
     content.blocks.push({ text, kind: 'block' })
+    collectedLength += text.length
   }
 
   for (const event of events) {
@@ -155,9 +180,15 @@ function walkShapes(
       continue
     }
 
+    if (collectedLength > shapeLimits.maxBytes) {
+      break
+    }
+
     if (event.type === 'text') {
       if (isInText) {
-        paragraph?.parts.push(event.text)
+        if (paragraph) {
+          appendText(paragraph, event.text, textBytesMax)
+        }
       }
 
       continue
@@ -171,7 +202,7 @@ function walkShapes(
       } else if (event.name === 'ph') {
         placeholderType = event.attributes.type ?? 'body'
       } else if (event.name === 'p') {
-        paragraph = { level: 0, hasBullet: undefined, parts: [] }
+        paragraph = { level: 0, hasBullet: undefined, parts: [], length: 0 }
       } else if (event.name === 'pPr' && paragraph) {
         paragraph.level = Math.min(Number(event.attributes.lvl ?? 0) || 0, 8)
       } else if (event.name === 'buNone' && paragraph) {
@@ -181,7 +212,7 @@ function walkShapes(
       } else if (event.name === 't') {
         isInText = paragraph !== null
       } else if (event.name === 'br' && paragraph) {
-        paragraph.parts.push('\n')
+        appendText(paragraph, '\n', textBytesMax)
       } else if (event.name === 'tbl') {
         isInTable = true
         tableRows = []
@@ -193,6 +224,7 @@ function walkShapes(
 
         cell = {
           parts: [],
+          length: 0,
           span: Math.max(Number(event.attributes.gridSpan ?? 1) || 1, 1),
           isMerged,
         }
@@ -207,15 +239,25 @@ function walkShapes(
       finishParagraph(paragraph)
       paragraph = null
     } else if (event.name === 'tc' && cell) {
-      rowCells.push(cell.isMerged ? '' : cell.parts.join(' ').trim())
+      const isClamped = appendSpannedCell(
+        rowCells,
+        cell.isMerged ? '' : cell.parts.join(' ').trim(),
+        cell.span,
+        columnsMax,
+      )
 
-      for (let extra = 1; extra < cell.span; extra += 1) {
-        rowCells.push('')
+      if (isClamped) {
+        addTruncation(officePackage.stats, 'columns_limit')
       }
 
       cell = null
     } else if (event.name === 'tr' && isInTable) {
-      tableRows.push(rowCells)
+      if (tableRows.length < rowsMax) {
+        tableRows.push(rowCells)
+      } else {
+        hasDroppedRows = true
+      }
+
       rowCells = []
     } else if (event.name === 'tbl') {
       isInTable = false
@@ -225,12 +267,26 @@ function walkShapes(
       })
 
       if (hasText && isCaptured(placeholderType)) {
-        content.blocks.push({
-          text: renderMarkdownTable(tableRows),
-          kind: 'block',
+        const table = renderMarkdownTable(tableRows, {
+          rowsMax,
+          columnsMax,
+          cellCharsMax,
+          maxBytes: shapeLimits.maxBytes - collectedLength,
         })
+
+        content.blocks.push({ text: table.text, kind: 'block' })
+        collectedLength += table.text.length
+
+        for (const reason of table.reasons) {
+          addTruncation(officePackage.stats, reason)
+        }
       }
 
+      if (hasDroppedRows) {
+        addTruncation(officePackage.stats, 'rows_limit')
+      }
+
+      hasDroppedRows = false
       tableRows = []
     } else if (event.name === 'spTree') {
       break
@@ -243,13 +299,49 @@ function walkShapes(
 }
 
 function trailingNumber(partName: string): number {
-  const match = /(\d+)\.xml$/i.exec(partName)
+  const lower = partName.toLowerCase()
 
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER
+  if (!lower.endsWith('.xml')) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  const digitsEnd = lower.length - XML_SUFFIX_LENGTH
+  let digitsStart = digitsEnd
+
+  while (digitsStart > 0 && isDigit(lower.charCodeAt(digitsStart - 1))) {
+    digitsStart -= 1
+  }
+
+  if (digitsStart === digitsEnd || digitsEnd - digitsStart > MAX_DIGITS) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  return Number(lower.slice(digitsStart, digitsEnd))
 }
 
-function readSlideOrder(pkg: OfficePackage): string[] {
-  const entry = findEntry(pkg, PRESENTATION_PART)
+function isDigit(code: number): boolean {
+  return code >= 0x30 && code <= 0x39
+}
+
+function uniqueParts(partNames: string[]): string[] {
+  const seen = new Set<string>()
+  const unique: string[] = []
+
+  for (const partName of partNames) {
+    const key = partName.toLowerCase()
+
+    if (!seen.has(key)) {
+      seen.add(key)
+      unique.push(partName)
+    }
+  }
+
+  return unique
+}
+
+function readSlideOrder(officePackage: OfficePackage): string[] {
+  const presentationPart = officePackage.mainPart || PRESENTATION_PART
+  const entry = findEntry(officePackage, presentationPart)
 
   if (!entry) {
     throw new ExtractError(
@@ -260,7 +352,7 @@ function readSlideOrder(pkg: OfficePackage): string[] {
 
   const listed: string[] = []
 
-  scanPart(pkg, entry, (events) => {
+  scanPart(officePackage, entry, (events) => {
     listed.length = 0
 
     for (const event of events) {
@@ -276,7 +368,7 @@ function readSlideOrder(pkg: OfficePackage): string[] {
     return false
   }, { keepAttributePrefixes: true })
 
-  const slideRelationships = readRelationships(pkg, PRESENTATION_PART)
+  const slideRelationships = readRelationships(officePackage, presentationPart)
     .filter(relationship => relationship.type.endsWith(SLIDE_TYPE_SUFFIX))
   const targetById = new Map(
     slideRelationships.map(relationship => [
@@ -295,42 +387,81 @@ function readSlideOrder(pkg: OfficePackage): string[] {
   }
 
   if (ordered.length > 0 || slideRelationships.length === 0) {
-    return ordered
+    return uniqueParts(ordered)
   }
 
-  return slideRelationships
-    .map(relationship => relationship.target)
-    .sort((left, right) => trailingNumber(left) - trailingNumber(right))
+  return uniqueParts(
+    slideRelationships
+      .map(relationship => relationship.target)
+      .sort((left, right) => trailingNumber(left) - trailingNumber(right)),
+  )
 }
 
-function readNotes(pkg: OfficePackage, slidePart: string): string {
-  const relationship = readRelationships(pkg, slidePart).find((candidate) => {
-    return candidate.type.endsWith(NOTES_TYPE_SUFFIX)
-  })
+function readNotes(
+  officePackage: OfficePackage,
+  slidePart: string,
+  notesCache: Map<string, string>,
+  maxBytes: number,
+): string {
+  const relationship = readRelationships(officePackage, slidePart)
+    .find((candidate) => {
+      return candidate.type.endsWith(NOTES_TYPE_SUFFIX)
+    })
 
   if (!relationship) {
     return ''
   }
 
-  const notes = readSlideContent(pkg, relationship.target, notesShapeFilter)
+  const cacheKey = relationship.target.toLowerCase()
+  const cached = notesCache.get(cacheKey)
 
-  return notes.blocks
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const notes = readSlideContent(
+    officePackage,
+    relationship.target,
+    notesShapeFilter,
+    maxBytes,
+  )
+  const text = notes.blocks
     .map(block => block.text.replace(/^\s*- /, ''))
     .join('\n')
+
+  notesCache.set(cacheKey, text)
+
+  return text
 }
 
-export function extractPptx(pkg: OfficePackage): ExtractionOutput {
-  const { stats } = pkg
-  const sink = new TextSink(pkg.limits.textBytesMax)
-  const slideParts = readSlideOrder(pkg)
+export function extractPptx(officePackage: OfficePackage): ExtractionOutput {
+  const { stats, limits } = officePackage
+  const sink = new TextSink(limits.textBytesMax)
+  const allSlideParts = readSlideOrder(officePackage)
+  const slideParts = allSlideParts.slice(0, limits.slidesMax)
+  const notesCache = new Map<string, string>()
   let slidesWritten = 0
   let hasContent = false
 
-  stats.slidesTotal = slideParts.length
+  stats.slidesTotal = allSlideParts.length
+
+  if (allSlideParts.length > limits.slidesMax) {
+    addTruncation(stats, 'slides_limit')
+  }
 
   for (const [index, slidePart] of slideParts.entries()) {
-    const content = readSlideContent(pkg, slidePart, slideShapeFilter)
-    const notes = readNotes(pkg, slidePart)
+    const content = readSlideContent(
+      officePackage,
+      slidePart,
+      slideShapeFilter,
+      sink.remainingBytes,
+    )
+    const notes = readNotes(
+      officePackage,
+      slidePart,
+      notesCache,
+      sink.remainingBytes,
+    )
     const hasText = content.title.length > 0
       || content.blocks.length > 0
       || notes.length > 0

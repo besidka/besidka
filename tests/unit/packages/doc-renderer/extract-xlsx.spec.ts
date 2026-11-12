@@ -179,6 +179,10 @@ describe('extractOfficeText: xlsx cells', () => {
       '',
       ',Merged title',
       'left,,,right',
+      '',
+      '',
+      '',
+      '',
       ',,late',
     ].join('\n'))
   })
@@ -409,5 +413,166 @@ describe('extractOfficeText: xlsx limits', () => {
     expect(result.stats.truncations).toEqual(['cells_limit'])
     expect(result.text.split('\n').filter(line => /^\d+$/.test(line)))
       .toHaveLength(10)
+  })
+})
+
+describe('extractOfficeText: xlsx review fixes', () => {
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+  const THREE_STRINGS = row(
+    1,
+    stringCell('A1', 0) + stringCell('B1', 1) + stringCell('C1', 2),
+  )
+
+  function withSharedStrings(
+    xml: string,
+    sheetRows = THREE_STRINGS,
+  ): Uint8Array {
+    return xlsxPackage([{ name: 'S', xml: worksheetXml(sheetRows) }], {
+      sharedStrings: [],
+      options: { extraFiles: { 'xl/sharedStrings.xml': xml } },
+    })
+  }
+
+  it('counts a self-closing <si/> as an empty string', () => {
+    const bytes = withSharedStrings(
+      `<sst xmlns="${NS}"><si/><si><t>A</t></si><si><t>B</t></si></sst>`,
+    )
+
+    expect(readyText(bytes)).toBe('## Sheet: S\n\n,A,B')
+  })
+
+  it('counts an empty <si></si> and a prefixed <x:si/> the same way', () => {
+    const bytes = withSharedStrings(
+      `<x:sst xmlns:x="${NS}"><x:si></x:si><x:si/><x:si><x:t>B</x:t></x:si></x:sst>`,
+    )
+
+    expect(readyText(bytes)).toBe('## Sheet: S\n\n,,B')
+  })
+
+  it('reads shared strings written with a namespace prefix', () => {
+    const bytes = withSharedStrings(
+      `<x:sst xmlns:x="${NS}"><x:si><x:t>A</x:t></x:si>`
+      + '<x:si><x:r><x:t>B</x:t></x:r><x:r><x:t>b</x:t></x:r></x:si>'
+      + '<x:si><x:t>C</x:t><x:rPh sb="0" eb="1"><x:t>skip</x:t></x:rPh></x:si></x:sst>',
+    )
+
+    expect(readyText(bytes)).toBe('## Sheet: S\n\nA,Bb,C')
+  })
+
+  it('reads shared strings across a window boundary and a later sheet', () => {
+    const strings = Array.from({ length: 60_000 }, (_value, index) => {
+      return `<si><t>string ${index} ${'x'.repeat(40)}</t></si>`
+    }).join('')
+    const bytes = xlsxPackage(
+      [
+        { name: 'One', xml: worksheetXml(row(1, stringCell('A1', 5))) },
+        {
+          name: 'Two',
+          xml: worksheetXml(
+            row(1, stringCell('A1', 59_999) + stringCell('B1', 3)),
+          ),
+        },
+      ],
+      {
+        sharedStrings: [],
+        options: {
+          extraFiles: {
+            'xl/sharedStrings.xml': `<sst xmlns="${NS}">${strings}</sst>`,
+          },
+        },
+      },
+    )
+    const text = readyText(bytes)
+
+    expect(text).toContain(`string 5 ${'x'.repeat(40)}\n`)
+    expect(text).toContain(`string 59999 ${'x'.repeat(40)},string 3 `)
+  })
+
+  const ELAPSED_STYLES = `
+    <numFmts count="5">
+      <numFmt numFmtId="170" formatCode="[h]:mm:ss"/>
+      <numFmt numFmtId="171" formatCode="[mm]:ss"/>
+      <numFmt numFmtId="172" formatCode="[s]"/>
+      <numFmt numFmtId="173" formatCode="h:mm"/>
+      <numFmt numFmtId="174" formatCode="yyyy\\-mm\\-dd"/>
+    </numFmts>
+    <cellXfs count="7">
+      <xf numFmtId="0"/>
+      <xf numFmtId="170"/>
+      <xf numFmtId="171"/>
+      <xf numFmtId="172"/>
+      <xf numFmtId="173"/>
+      <xf numFmtId="174"/>
+      <xf numFmtId="46"/>
+    </cellXfs>
+  `
+
+  it('renders elapsed-time formats as durations, not dates', () => {
+    const sheet = worksheetXml(row(
+      1,
+      numberCell('A1', 1.5, 1)
+      + numberCell('B1', 1.5, 2)
+      + numberCell('C1', 1.5, 3)
+      + numberCell('D1', 2.25, 6),
+    ))
+    const bytes = xlsxPackage([{ name: 'E', xml: sheet }], {
+      stylesXml: ELAPSED_STYLES,
+    })
+
+    expect(readyText(bytes)).toBe('## Sheet: E\n\n36:00:00,2160:00,129600,54:00:00')
+  })
+
+  it('keeps a time-only format a time and a date-only format a date', () => {
+    const sheet = worksheetXml(row(
+      1,
+      numberCell('A1', 46204.75, 4) + numberCell('B1', 46204, 5),
+    ))
+    const bytes = xlsxPackage([{ name: 'T', xml: sheet }], {
+      stylesXml: ELAPSED_STYLES,
+    })
+
+    expect(readyText(bytes)).toBe('## Sheet: T\n\n18:00:00,2026-07-01')
+  })
+
+  it('keeps the blank rows between row numbers, capped', () => {
+    const sheet = worksheetXml(
+      row(2, inlineCell('A2', 'top'))
+      + row(4, inlineCell('A4', 'two later'))
+      + row(5, inlineCell('A5', 'next'))
+      + row(900, inlineCell('A900', 'far')),
+    )
+    const lines = readyText(xlsxPackage([{ name: 'G', xml: sheet }]))
+      .split('\n')
+
+    expect(lines.slice(0, 7)).toEqual([
+      '## Sheet: G',
+      '',
+      'top',
+      '',
+      'two later',
+      'next',
+      '',
+    ])
+    expect(lines.at(-1)).toBe('far')
+    expect(lines.filter(line => line === '').length).toBe(2 + 20)
+  })
+
+  it('keeps the row in progress when the cell cap is reached', () => {
+    const rowOfFive = row(
+      1,
+      ['A', 'B', 'C', 'D', 'E']
+        .map(column => inlineCell(`${column}1`, column.toLowerCase()))
+        .join(''),
+    )
+    const result = extractOfficeText(
+      xlsxPackage([{ name: 'P', xml: worksheetXml(rowOfFive) }]),
+      'xlsx',
+      { cellsMax: 3 },
+    )
+
+    expect(result.status).toBe('ready')
+    expect(result.truncated).toBe(true)
+    expect(result.stats.truncations).toContain('cells_limit')
+    expect(result.text.split('\n')).toContain('a,b,c')
   })
 })
