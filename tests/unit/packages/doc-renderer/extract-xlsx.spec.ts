@@ -400,6 +400,34 @@ describe('extractOfficeText: xlsx limits', () => {
     expect(result.text).not.toContain('�')
   })
 
+  it('names the sheets it skips once the cell budget is spent', () => {
+    const first = worksheetXml(
+      row(1, numberCell('A1', 1) + numberCell('B1', 2) + numberCell('C1', 3)),
+    )
+    const second = worksheetXml(row(1, numberCell('A1', 9)))
+    const third = worksheetXml(row(1, numberCell('A1', 8)))
+    const result = extractOfficeText(
+      xlsxPackage([
+        { name: 'First', xml: first },
+        { name: 'Second', xml: second },
+        { name: 'Third', xml: third },
+      ]),
+      'xlsx',
+      { cellsMax: 3 },
+    )
+
+    expect(result.status).toBe('ready')
+    expect(result.truncated).toBe(true)
+    expect(result.stats.truncations).toContain('cells_limit')
+    expect(result.text).not.toContain('(empty sheet)')
+    expect(result.text).not.toContain('## Sheet: Second')
+    expect(result.text).toContain('1,2,3')
+    expect(result.text).toContain(
+      '[Truncated: 2 more sheets not included because the cell limit was '
+      + 'reached: Second, Third.]',
+    )
+  })
+
   it('stops reading sheets once the cell cap is reached', () => {
     const rows = Array.from({ length: 50 }, (_value, index) => {
       return row(index + 1, numberCell(`A${index + 1}`, index))
@@ -514,6 +542,32 @@ describe('extractOfficeText: xlsx review fixes', () => {
     expect(result.status).toBe('ready')
     expect(result.text).toContain(`05999${filler}`)
     expect(result.text).toContain(`05000${filler}`)
+  })
+
+  it('flags a cut shared string only when a cell uses it', () => {
+    const long = 'z'.repeat(3000)
+    const strings = `<sst xmlns="${NS}"><si><t>${long}</t></si><si><t>short</t></si></sst>`
+    const unused = withSharedStrings(strings, row(1, stringCell('A1', 1)))
+    const used = withSharedStrings(strings, row(1, stringCell('A1', 0)))
+    const later = xlsxPackage(
+      [
+        { name: 'One', xml: worksheetXml(row(1, stringCell('A1', 1))) },
+        { name: 'Two', xml: worksheetXml(row(1, stringCell('A1', 0))) },
+      ],
+      {
+        sharedStrings: [],
+        options: { extraFiles: { 'xl/sharedStrings.xml': strings } },
+      },
+    )
+
+    expect(extractOfficeText(unused, 'xlsx')).toMatchObject({
+      status: 'ready',
+      truncated: false,
+    })
+    expect(extractOfficeText(used, 'xlsx').stats.truncations)
+      .toContain('cell_chars_limit')
+    expect(extractOfficeText(later, 'xlsx').stats.truncations)
+      .toContain('cell_chars_limit')
   })
 
   const ELAPSED_STYLES = `

@@ -70,7 +70,6 @@ const INITIAL_PART_BYTES = 1024 * 1024
 const WINDOW_BYTES = 1024 * 1024
 const PART_GROWTH_FACTOR = 4
 export const ATTRIBUTES_MAX = 128
-const RELATIONSHIPS_MAX = 5000
 const BUDGET_EXCEEDED_CODE = 'extract_budget_exceeded'
 const GREATER_THAN = 0x3E
 const LESS_THAN = 0x3C
@@ -78,6 +77,10 @@ const SLASH = 0x2F
 const COLON = 0x3A
 const MAX_PREFIX_BYTES = 64
 const OFFICE_DOCUMENT_TYPE_SUFFIX = '/officeDocument'
+const ID_LENGTH_MAX = 64
+const TYPE_LENGTH_MAX = 256
+const TARGET_LENGTH_MAX = 512
+const RELATIONSHIPS_PER_PART_MAX = 1000
 const HIGH_SURROGATE_START = 0xD800
 const HIGH_SURROGATE_END = 0xDBFF
 const LOW_SURROGATE_START = 0xDC00
@@ -804,8 +807,11 @@ export function readRelationships(
   officePackage: OfficePackage,
   partName: string,
 ): Relationship[] {
+  const isReused = partName === '' || partName === officePackage.mainPart
   const cacheKey = partName.toLowerCase()
-  const cached = officePackage.relationshipCache.get(cacheKey)
+  const cached = isReused
+    ? officePackage.relationshipCache.get(cacheKey)
+    : undefined
 
   if (cached) {
     return cached
@@ -814,7 +820,9 @@ export function readRelationships(
   const entry = findEntry(officePackage, relationshipsPartFor(partName))
   const relationships: Relationship[] = []
 
-  officePackage.relationshipCache.set(cacheKey, relationships)
+  if (isReused) {
+    officePackage.relationshipCache.set(cacheKey, relationships)
+  }
 
   if (!entry) {
     return relationships
@@ -828,19 +836,19 @@ export function readRelationships(
         continue
       }
 
-      if (relationships.length >= RELATIONSHIPS_MAX) {
+      if (relationships.length >= RELATIONSHIPS_PER_PART_MAX) {
         break
       }
 
       const { Id, Type, Target, TargetMode } = event.attributes
       const isExternal = TargetMode === 'External'
 
+      const target = (Target ?? '').slice(0, TARGET_LENGTH_MAX)
+
       relationships.push({
-        id: Id ?? '',
-        type: Type ?? '',
-        target: isExternal
-          ? (Target ?? '')
-          : resolvePartPath(partName, Target ?? ''),
+        id: shortId(Id ?? ''),
+        type: (Type ?? '').slice(0, TYPE_LENGTH_MAX),
+        target: isExternal ? target : resolvePartPath(partName, target),
         isExternal,
       })
     }
@@ -872,11 +880,19 @@ export function relationshipIdOf(
 ): string | null {
   for (const [name, value] of Object.entries(attributes)) {
     if (name.endsWith(':id')) {
-      return value
+      return shortId(value)
     }
   }
 
   return null
+}
+
+/**
+ * Keeps an identifier short, so a stored or compared name cannot cost more
+ * than a few bytes however large the attribute it came from was.
+ */
+export function shortId(value: string): string {
+  return value.length > ID_LENGTH_MAX ? value.slice(0, ID_LENGTH_MAX) : value
 }
 
 export function appendText(

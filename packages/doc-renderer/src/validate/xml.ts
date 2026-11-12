@@ -25,6 +25,8 @@ export interface ParseXmlOptions {
 const ENTITY_PATTERN = /&(#x[0-9a-fA-F]{1,8}|#\d{1,9}|lt|gt|amp|quot|apos);/g
 const WHITESPACE = new Set([' ', '\t', '\n', '\r'])
 const MAX_CODE_POINT = 0x10FFFF
+const COMMENT_OPENER = '<!--'
+const CDATA_OPENER = '<![CDATA['
 
 function replaceEntity(_match: string, body: string): string {
   switch (body) {
@@ -195,6 +197,16 @@ export function* parseXml(
     }
 
     if (text.startsWith('<!', open)) {
+      const opener = text.slice(open)
+      const isCutOpener = opener.length < CDATA_OPENER.length && (
+        COMMENT_OPENER.startsWith(opener)
+        || CDATA_OPENER.startsWith(opener)
+      )
+
+      if (isCutOpener) {
+        throw new XmlError('xml_malformed', 'Truncated comment or CDATA opener')
+      }
+
       throw new XmlError('xml_doctype', 'DOCTYPE or ENTITY declaration')
     }
 

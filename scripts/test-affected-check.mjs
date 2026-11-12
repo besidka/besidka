@@ -165,6 +165,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/doc-renderer/extract-xlsx.spec.ts',
     'tests/unit/packages/doc-renderer/extract-pptx.spec.ts',
     'tests/unit/packages/doc-renderer/extract-hostile.spec.ts',
+    'tests/unit/packages/doc-renderer/xml-truncation.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/knowledge-zip.spec.ts',
   ]
