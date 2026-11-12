@@ -121,6 +121,10 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/office-attachments.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
   ]
+  const topModalDialogTests = [
+    'tests/unit/composables/top-modal-dialog.spec.ts',
+    'tests/unit/components/ui/Messages.spec.ts',
+  ]
   const chatInputToolsTests = [
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
@@ -2281,6 +2285,11 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
         'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^app\/(composables\/top-modal-dialog\.ts|components\/ui\/Messages\.vue)$/,
+      tests: topModalDialogTests,
     },
     {
       pattern: /^app\/composables\/message-copy\.ts$/,
