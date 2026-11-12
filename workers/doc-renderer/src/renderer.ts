@@ -352,7 +352,7 @@ export function validateDocument(request: ValidateRequest): ValidateResult {
     }
 
     return validate('xlsx', request.bytes, { spec: parsed.spec })
-  } catch {
+  } catch (_exception) {
     return validationFailure('validation_error', UNEXPECTED_DETAIL)
   }
 }
@@ -381,7 +381,7 @@ export function extractDocumentText(request: ExtractRequest): ExtractResult {
     }
 
     return extractOfficeText(request.bytes, request.format)
-  } catch {
+  } catch (_exception) {
     return extractFailure('extract_error', 0)
   }
 }

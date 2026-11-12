@@ -407,7 +407,60 @@ describe('document renderer binding', () => {
       expect(binding.extract).not.toHaveBeenCalled()
     })
 
-    it('turns a failed binding call into renderer_unavailable', async () => {
+    it('does not call a satellite with another extract version', async () => {
+      const binding = createBinding()
+
+      binding.capabilities.mockResolvedValue({
+        ...CAPABILITIES,
+        extract: { ...CAPABILITIES.extract!, version: 99 },
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request)
+
+      expect(result.errorCode).toBe('renderer_unavailable')
+      expect(binding.extract).not.toHaveBeenCalled()
+    })
+
+    it('answers too_large without a call above maxInputBytes', async () => {
+      const binding = createBinding()
+      const logger = createLogger()
+      const oversize = {
+        format: 'docx' as const,
+        bytes: new Uint8Array(CAPABILITIES.extract!.maxInputBytes + 1),
+      }
+
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(oversize, logger as never)
+
+      expect(result).toMatchObject({
+        status: 'too_large',
+        text: '',
+        truncated: false,
+        errorCode: 'file_too_large',
+        stats: { inputBytes: oversize.bytes.byteLength },
+      })
+      expect(binding.extract).not.toHaveBeenCalled()
+      expect(loggedText(logger)).toContain('file_too_large')
+    })
+
+    it('accepts a file of exactly maxInputBytes', async () => {
+      const binding = createBinding()
+      const exact = {
+        format: 'docx' as const,
+        bytes: new Uint8Array(CAPABILITIES.extract!.maxInputBytes),
+      }
+
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(exact)
+
+      expect(result.status).toBe('ready')
+      expect(binding.extract).toHaveBeenCalledOnce()
+    })
+
+    it('turns a throwing call on a supported satellite into a terminal failure', async () => {
       const binding = createBinding()
       const logger = createLogger()
 
@@ -418,9 +471,10 @@ describe('document renderer binding', () => {
 
       expect(result).toMatchObject({
         status: 'failed',
-        errorCode: 'renderer_unavailable',
+        errorCode: 'extract_crashed',
       })
       expect(loggedText(logger)).toContain('binding_call_failed')
+      expect(loggedText(logger)).toContain('extract_crashed')
     })
 
     it('passes a failed extraction through with its code', async () => {
