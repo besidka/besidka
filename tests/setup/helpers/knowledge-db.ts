@@ -153,7 +153,10 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       origin_message_id integer,
       origin_provider text,
       origin_model text,
-      generation_cost real
+      generation_cost real,
+      text_status text,
+      text_bytes integer,
+      text_version integer
     );
 
     CREATE UNIQUE INDEX uq_file_storageKey ON files (storage_key);

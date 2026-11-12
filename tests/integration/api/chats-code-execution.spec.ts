@@ -363,8 +363,17 @@ describe('chat send pipeline: provider code execution', () => {
       vi.fn().mockResolvedValue({ user: { id: '1' } }),
     )
     vi.stubGlobal('validateMessageFilePolicy', vi.fn(async () => undefined))
-    vi.stubGlobal('convertFilesForAI', vi.fn(async (messages: unknown) => ({
-      messages,
+    vi.stubGlobal('convertFilesForAI', vi.fn(async (messages: any[]) => ({
+      messages: messages.map((message) => {
+        return {
+          ...message,
+          parts: message.parts.map((part: any) => {
+            return part.type === 'file'
+              ? { type: 'text', text: `[attached ${part.filename}]` }
+              : part
+          }),
+        }
+      }),
       missingFiles: [],
     })))
     vi.stubGlobal('attachCloudflareMeta', vi.fn())

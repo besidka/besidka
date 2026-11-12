@@ -182,7 +182,7 @@ describe('knowledge retention and cascade handling', () => {
 
       expect(result.selectedCount).toBe(1)
       expect(result.deletedCount).toBe(1)
-      expect(bucket.deleteCalls).toEqual(['expired-free'])
+      expect(bucket.deleteCalls).toEqual([['expired-free']])
       expect(fileExists(1)).toBe(false)
       expect(fileExists(2)).toBe(true)
       expect(fileExists(3)).toBe(true)
@@ -213,7 +213,7 @@ describe('knowledge retention and cascade handling', () => {
       const result = await runCleanup(2)
 
       expect(result.selectedCount).toBe(1)
-      expect(bucket.deleteCalls).toEqual(['plain-expired'])
+      expect(bucket.deleteCalls).toEqual([['plain-expired']])
     })
 
     it('expires the file once no item links to it any more', async () => {
@@ -237,7 +237,7 @@ describe('knowledge retention and cascade handling', () => {
       await runCleanup()
 
       expect(fileExists(1)).toBe(false)
-      expect(bucket.deleteCalls).toEqual(['was-linked'])
+      expect(bucket.deleteCalls).toEqual([['was-linked']])
     })
   })
 
@@ -462,7 +462,7 @@ describe('knowledge retention and cascade handling', () => {
       expect(knowledgeVersion(20)).toBeNull()
       expect(fileExists(1)).toBe(false)
       expect(bucket.deleteCalls).toEqual([
-        'file-key-1',
+        ['file-key-1'],
         ['knowledge/u1/p10/items/1.md'],
         ['knowledge/u1/p11/items/2.md'],
       ])
