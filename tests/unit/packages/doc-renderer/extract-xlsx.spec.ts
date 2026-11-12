@@ -516,6 +516,32 @@ describe('extractOfficeText: xlsx review fixes', () => {
     expect(result.text).toContain(`05000${filler}`)
   })
 
+  it('flags a cut shared string only when a cell uses it', () => {
+    const long = 'z'.repeat(3000)
+    const strings = `<sst xmlns="${NS}"><si><t>${long}</t></si><si><t>short</t></si></sst>`
+    const unused = withSharedStrings(strings, row(1, stringCell('A1', 1)))
+    const used = withSharedStrings(strings, row(1, stringCell('A1', 0)))
+    const later = xlsxPackage(
+      [
+        { name: 'One', xml: worksheetXml(row(1, stringCell('A1', 1))) },
+        { name: 'Two', xml: worksheetXml(row(1, stringCell('A1', 0))) },
+      ],
+      {
+        sharedStrings: [],
+        options: { extraFiles: { 'xl/sharedStrings.xml': strings } },
+      },
+    )
+
+    expect(extractOfficeText(unused, 'xlsx')).toMatchObject({
+      status: 'ready',
+      truncated: false,
+    })
+    expect(extractOfficeText(used, 'xlsx').stats.truncations)
+      .toContain('cell_chars_limit')
+    expect(extractOfficeText(later, 'xlsx').stats.truncations)
+      .toContain('cell_chars_limit')
+  })
+
   const ELAPSED_STYLES = `
     <numFmts count="5">
       <numFmt numFmtId="170" formatCode="[h]:mm:ss"/>

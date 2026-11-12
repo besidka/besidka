@@ -412,6 +412,7 @@ function readSerialFormats(
 class SharedStrings {
   private readonly strings: string[] = []
   private readonly needed = new Set<number>()
+  private readonly cutStrings = new Set<number>()
   private readonly officePackage: OfficePackage
   private readonly part: WindowedPart | null
   private events: Iterator<XmlEvent> | null = null
@@ -452,6 +453,10 @@ class SharedStrings {
     let isBehind = false
 
     for (const index of indexes) {
+      if (this.cutStrings.has(index)) {
+        addTruncation(this.officePackage.stats, 'cell_chars_limit')
+      }
+
       const isBeyondTable = this.knownRecordCount !== null
         && index >= this.knownRecordCount
 
@@ -557,7 +562,11 @@ class SharedStrings {
 
     if (this.isWanted) {
       if (this.value.length > cellCharsMax) {
-        addTruncation(this.officePackage.stats, 'cell_chars_limit')
+        this.cutStrings.add(this.position)
+
+        if (this.needed.has(this.position)) {
+          addTruncation(this.officePackage.stats, 'cell_chars_limit')
+        }
       }
 
       const kept = cutToCharacters(this.value, cellCharsMax)
