@@ -334,6 +334,13 @@ database lacks.
   period, then delete objects whose key is in no `files` row. `DATA_BUCKET`
   holds only user files: landing and key-guide media live in `CMS_BUCKET`.
 
+- **Extracted-text sidecars** (`<storage_key>.text.md`, one per Office file,
+  see `docs/files.md`) have no `files` row of their own. In the object diff,
+  a `*.text.md` key is orphaned only when `<key without .text.md>` is in no
+  `files` row; deleting a file removes its sidecar with it. A restored row
+  whose sidecar was deleted has `text_status = 'ready'` and no object: the
+  next send re-extracts it (one re-read of the file), so nothing needs fixing.
+
 If your `wrangler` version has no command to list bucket objects, use the
 R2 S3-compatible API (for
 example `aws s3api list-objects-v2 --endpoint-url

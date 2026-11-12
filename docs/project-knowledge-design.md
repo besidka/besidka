@@ -657,6 +657,15 @@ rb, go, rs, java, kt, swift, c, h, cpp, hpp, cs, php, sh, sql, graphql,
 proto, ini, Dockerfile, Makefile`, plus PDF, DOCX, XLSX and PNG/JPEG/WebP.
 Text files are capped at 1 MB.
 
+The chat attachment list is separate and still unchanged for everything
+except Office: with the `files.office` flag a chat accepts `.docx`, `.xlsx`
+and `.pptx` too (BES-370, `docs/files.md` "Office attachments"). That path
+extracts the text on the server, when the file is stored, with the
+`besidka-doc-renderer` satellite, and keeps it as a `<storageKey>.text.md`
+sidecar. Knowledge extraction (K1 to K3) is unchanged: it still runs in the
+browser worker with its own limits and never reads that sidecar, so the two
+extractors can disagree on a file and neither feeds the other.
+
 ## 8. Folders
 
 - **Portable: `<input type="file" webkitdirectory>`**. Desktop Chrome, Edge,

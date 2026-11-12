@@ -32,7 +32,8 @@ storage and image transforms.
 
 ### Components
 
-- R2: binary file objects.
+- R2: binary file objects, plus one `<storageKey>.text.md` sidecar per Office
+  file (the extracted text, see "Office attachments").
 - D1:
   - `files` metadata.
   - `storages` per-user file policy and counters.
@@ -83,14 +84,19 @@ Rules, applied newest first:
 4. A carried `text/*` file larger than `CARRIED_TEXT_FILE_MAX_BYTES` (64 KB) is
    omitted. `convertFilesForAI()` inlines text files as prompt text, so a
    multi-megabyte text file would otherwise cost on the order of a million
-   input tokens on every turn.
+   input tokens on every turn. An Office file counts as text here: its
+   `text_bytes` (the extracted text, passed in as
+   `officeTextBytesByStorageKey`) replace its file size in rule 2, rule 3 and
+   this cap, and an Office file without ready text is omitted as
+   `unsupported-by-model` instead of being carried.
 5. Modality gate: carried files are checked against the selected model, which
    only the request's own attachments were checked against before.
    `createCarriedMediaTypePredicate()`
    (`server/utils/files/carried-media-types.ts`) allows `text/*` always,
    `image/*` only if `model.modalities.input` includes `image`, and
-   `application/pdf` only if it includes `pdf`; everything else (audio, video,
-   archives, ...) is never carried. Without this, an image sent to a vision
+   `application/pdf` only if it includes `pdf`, and the three Office types
+   always (they are sent as text); everything else (audio, video, archives,
+   ...) is never carried. Without this, an image sent to a vision
    model and carried after switching to a text-only model would make the
    provider reject every following turn.
 6. Gateway sends carry nothing: this handler does not resolve gateway model
@@ -229,6 +235,11 @@ already-persisted-reply replay and before `persistUserMessage()`.
   catalog-derived gate would reject sends that work. Cloudflare is skipped
   entirely: its catalog needs the user's credentials and exposes no reliable
   input modalities (see `docs/providers/gateways.md`).
+- **Office and unknown types**: images and PDFs above are judged from the
+  declared type before the database is read. The database-aware check
+  (`assertFilesDeliverable()`) then re-judges every file by its stored type and
+  adds Office readiness, legacy Office and unknown types, through
+  `resolveFileDelivery()`. See "Office attachments".
 - **Provider-side fallback**: when a provider still rejects a PDF at request
   time, `normalizeChatError()` rewrites the raw upstream text into
   "This model does not support PDF input..." (the PDF counterpart of the image
@@ -266,6 +277,109 @@ repeated `set()` and would otherwise inflate the main call's list. Both live
 under `attributes` per `docs/axiom-map-fields.md`. The serializer is
 `server/utils/ai/sdk-warnings.ts`.
 
+### Office attachments (`files.office`)
+
+Word, Excel and PowerPoint files (`.docx`, `.xlsx`, `.pptx`) are attachments
+on every provider and gateway because the model gets their text, not the file.
+No provider reads them uniformly: OpenAI Responses reads them natively but
+returns text only, Anthropic, Moonshot and Cloudflare throw on an Office
+`file` part, DeepSeek silently drops it, and Gemini documents them only on the
+Interactions API. One extraction, sent as a text part, behaves the same
+everywhere and survives a model switch. Provider research and the full
+decision list are in BES-370.
+
+- **Flag.** Accepting an Office upload needs the `files.office` flag
+  (`internalFeature`, requires the `DOC_RENDERER` binding). With it off the
+  upload routes answer exactly as before ("File type must be one of ..."). The
+  rest is not flagged: text extraction runs for every Office file that is
+  stored (uploads, generated documents, code-execution outputs) and on the
+  first send of an older one, and the resolver, the send guard and the sidecar
+  cleanup apply to all of them. That fixes today's behaviour: a generated DOCX
+  attached to an Anthropic model used to reach the provider as a raw file part
+  and throw.
+- **Allowlist.** `nuxt.config.ts` keeps the base `allowedFileFormats`. The
+  three Office media types join it only through `getAllowedFileFormats()`
+  (`shared/utils/office-files.ts`) while the flag is active, so the flag-off
+  list is the base list. `AllowedFileFormat` includes them.
+- **Upload checks** (`server/utils/files/upload-file-type.ts`,
+  `office-upload-check.ts`, shared by `PUT /files/upload` and
+  `POST /files/create`). The extension decides the media type (the declared
+  type never makes a file legacy: browsers send `application/vnd.ms-excel` for
+  a `.csv`), because
+  browsers send an empty type, `application/zip` or
+  `application/octet-stream` for these files. Then, in order: the extension
+  (legacy `.doc/.xls/.ppt` and macro `.docm/.xlsm/.pptm` are rejected with a
+  "Save as .docx, .xlsx or .pptx" hint, as the owner decided on 2026-11-12),
+  the ZIP magic bytes (a compound `D0 CF 11 E0` file is legacy or
+  password-protected), the central-directory bounds (`readZipSummary` and
+  `readZipDirectory` from `@besidka/doc-renderer/zip`, with the extractor's
+  limits and not the tighter ones for generated documents: 5000 entries,
+  50 MB per entry, 150 MB in all, ratio 1000:1 above 1 MB, encrypted entries
+  refused; nothing is inflated), the main part
+  (`word/document.xml`, `xl/workbook.xml`, `ppt/presentation.xml`) and a 20 MB
+  cap per Office file (read as a capped stream, so a larger body is never
+  buffered). Generated documents go through the renderer's `validate()`
+  instead; an upload has no spec, so this is the structural gate.
+- **Extraction when a file is stored.** `persistFile()` calls
+  `extractAndStoreOfficeText()` (`server/utils/files/office-text.ts`) for any
+  Office media type, so it covers uploads, chat and MCP documents
+  (`documents/finalize.ts`), code-execution outputs and MCP-created files. The
+  `extractOfficeText` binding call runs in the storing request. The
+  Markdown goes to R2 at `<storageKey>.text.md` (at most 1 MB, not counted in
+  the quota) and the state to `files.text_*`. It never fails the request: a
+  failed or `too_large` result is stored as such, and a renderer that is
+  unavailable leaves the status null, so the next send retries. The log is
+  `attributes.files.officeText` (format, status, sizes, error code, never the
+  text).
+- **Lazy fallback.** A file with a null status (stored before extraction, or
+  while the renderer was down) or an older `text_version` is read once on its
+  first send (`ensureOfficeTextState()`) and cached the same way. Only the
+  newest message's files are read lazily; an earlier file with no text is
+  omitted from the carry-over instead.
+- **Deleting.** `withDerivedKeys(keys)` returns the keys plus their sidecar
+  keys. All four paths that delete file objects use it in their batched R2
+  delete: `delete-files.ts`, `cleanup-expired-files.ts`,
+  `chat-deletion-cleanup.ts` and `account/purge-user-data.ts` (before
+  chunking, so a batch stays within 1000 keys). `documents/cleanup.ts` deletes
+  spec objects under `documents/<userId>/`, not file objects, so it needs
+  nothing. `tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts`
+  fails when a new server file deletes from the file bucket without being
+  listed. The sidecar has no `files` row, so `/files/[key]` returns 404 for it
+  and the MCP `read_file` tool (which reads by row, `text/*` only) cannot
+  expose it.
+- **Resolver.** `resolveFileDelivery({ route, providerId, modalities,
+  mediaType, textStatus })` (`shared/utils/file-delivery.ts`) is the single
+  answer to how a file reaches the model: `native`, `text` or `unsupported`
+  with a reason. It is total, so an unknown type is `unsupported`, never an
+  exception. Images and PDFs are `native` when the modalities allow them
+  (`model-no-image`, `model-no-pdf` otherwise; unknown modalities fail open),
+  `text/*` is `text`, an Office file is `text` when its text is `ready` and
+  `office-unreadable` otherwise, legacy Office types are `legacy-office`. A
+  per-provider and per-gateway `office: 'extract'` row is the seam for turning
+  OpenAI's native path on behind a flag later.
+- **Send path.** Before anything is persisted or streamed,
+  `assertFilesDeliverable()` (`server/utils/chats/file-delivery-check.ts`)
+  checks every file of the newest message against the database row (the stored
+  type, not the client's `mediaType`), reads lazily where needed and answers
+  400 with the file name, the reason and a fix. `convertFilesForAI()` then
+  turns a ready Office file into a `text` part: the file name and format
+  ("Word document", "Excel spreadsheet", "PowerPoint presentation"), the line
+  "Extracted text. Images, charts and formatting are not included.", then the
+  Markdown in a fence, cut at 200 KB per file and 512 KB per message on a UTF-8
+  boundary with a "[Truncated ...]" marker. Gateways get the same text. A file
+  it cannot send becomes a "[File not included: ...]" note and an
+  `unsupportedFiles` entry, never a dropped part. `assertOnlyDeliverableFileParts()`
+  runs once after the conversion (a real 400, before the stream) and once just
+  before `convertToModelMessages` (a backstop): the only `file` parts that may
+  reach a provider are images and PDFs.
+- **Carry-over.** Office counts as text: any model can carry an earlier Office
+  file, the 64 KB cap and the 8 file / 5 MB / 10 MB budgets use `text_bytes`
+  instead of the file size, and an earlier file without ready text is omitted
+  as `unsupported-by-model` instead of failing the send.
+- **API surface.** `GET /api/v1/files` adds `textStatus`, `textBytes` and
+  `textTruncated` (true when `textBytes` is over the 200 KB inline cap, so only
+  the start is sent), so the UI can show "Sent as text".
+
 ## Data Model Reference
 
 ### `files`
@@ -280,6 +394,11 @@ under `attributes` per `docs/axiom-map-fields.md`. The serializer is
   - `source`: `upload | assistant`.
   - `originMessageId`: nullable FK to `messages` for provenance.
   - `originProvider`: nullable provider id for provenance.
+  - `textStatus`, `textBytes`, `textVersion`: nullable. The state of the text
+    extracted from an Office file (`ready | empty | failed | too_large`), the
+    UTF-8 size of the stored text, and the extractor version that made it.
+    All three are null for every other file and for an Office file not read
+    yet. No SQL defaults, so the migration is three `ALTER TABLE ... ADD`.
 
 ### `storages`
 
@@ -455,7 +574,7 @@ excluded from the Uploaded and Generated tabs.
 
 - Requires auth session.
 - Validates required headers and allowed MIME type (`allowedFileFormats` in
-  `nuxt.config.ts`: WebP/PNG/JPEG/GIF images, `application/pdf`,
+  `nuxt.config.ts`: WebP/PNG/JPEG images (no GIF), `application/pdf`,
   `text/plain`, `text/markdown`, `text/csv` and
   `text/tab-separated-values`). CSV and TSV are the main input of provider code
   execution (`docs/chats/code-execution.md`); they are read as text for the
@@ -472,6 +591,9 @@ excluded from the Uploaded and Generated tabs.
   `.md` extension, and in the chat input it shows as a text card that opens a
   read-only viewer. Long pastes are not uploaded at all: see
   `docs/chats/chat-input-markdown.md`.
+- Office uploads (`.docx`, `.xlsx`, `.pptx`) are accepted only while the
+  `files.office` flag is active and go through their own checks and text
+  extraction: see "Office attachments".
 - Uses real body size for quota checks (`X-Filesize` is not trusted).
 - Checks user storage usage against effective policy.
 - Image flow:
@@ -490,7 +612,8 @@ Common failure statuses:
 ### Delete Single (`DELETE /api/v1/files/[id]`)
 
 - Requires auth and ownership.
-- Attempts R2 delete first.
+- Attempts R2 delete first (the file and, for an Office file, its extracted
+  text sidecar, in one batched call through `withDerivedKeys()`).
 - On R2 delete failure, returns error and keeps DB metadata intact.
 - On success, invalidates file cache and storage stats cache, then deletes DB row.
 
