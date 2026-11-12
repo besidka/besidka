@@ -1,36 +1,29 @@
 <template>
   <div
     v-if="options.length"
-    role="group"
+    class="tabs tabs-box max-xs:tabs-xs xs:tabs-sm w-full shrink-0 flex-nowrap overflow-x-auto no-scrollbar"
+    role="tablist"
     :aria-label="label"
-    class="flex flex-wrap gap-1.5"
     :data-testid="`${testIdPrefix}-filter`"
   >
-    <button
+    <input
       v-for="option in options"
       :key="option.value"
-      type="button"
-      class="btn btn-sm"
-      :class="modelValue === option.value ? 'btn-accent' : 'btn-soft'"
-      :aria-pressed="modelValue === option.value"
+      type="radio"
+      :name="`${testIdPrefix}_tabs`"
+      class="tab grow shrink-0 whitespace-nowrap min-h-11 sm:min-h-8"
+      :aria-label="option.label"
+      :checked="modelValue === option.value"
       :data-testid="`${testIdPrefix}-${option.value}`"
-      @click="emit('select', option.value)"
+      @change="select(option.value)"
     >
-      {{ option.label }}
-      <span
-        class="badge badge-sm badge-soft"
-        :data-testid="`${testIdPrefix}-${option.value}-count`"
-      >
-        {{ option.count }}
-      </span>
-    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { DocumentFilterOption } from '~/composables/documents-library'
 
-defineProps<{
+const props = defineProps<{
   options: Array<DocumentFilterOption<string>>
   modelValue: string
   label: string
@@ -40,4 +33,12 @@ defineProps<{
 const emit = defineEmits<{
   select: [value: string]
 }>()
+
+function select(value: string): void {
+  if (value === props.modelValue) {
+    return
+  }
+
+  emit('select', value)
+}
 </script>

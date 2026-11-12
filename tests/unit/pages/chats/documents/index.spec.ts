@@ -254,20 +254,31 @@ describe('pages/chats/documents/index', () => {
     expect(library.loadMore).toHaveBeenCalledTimes(1)
   })
 
-  it('shows format and source filters with their counts', async () => {
-    library.items.value = [createItem()]
-    library.formatCounts.value = { pdf: 2, docx: 1, pptx: 0, xlsx: 0 }
-    library.sourceCounts.value = { chat: 2, mcp: 1 }
+  it('shows source tabs above format tabs without empty formats',
+    async () => {
+      library.items.value = [createItem()]
+      library.formatCounts.value = { pdf: 2, docx: 1, pptx: 0, xlsx: 0 }
+      library.sourceCounts.value = { chat: 2, mcp: 1 }
 
-    const wrapper = await mountPage()
+      const wrapper = await mountPage()
+      const filters = wrapper.findAll('[role="tablist"]')
 
-    expect(wrapper.get(testId('document-library-format-all-count')).text())
-      .toBe('3')
-    expect(wrapper.get(testId('document-library-format-docx')).text())
-      .toContain('Word')
-    expect(wrapper.get(testId('document-library-source-mcp')).text())
-      .toContain('Connected app')
-  })
+      expect(filters.map(filter => filter.attributes('data-testid')))
+        .toEqual([
+          'document-library-source-filter',
+          'document-library-format-filter',
+        ])
+      expect(wrapper.get(testId('document-library-source-all'))
+        .attributes('aria-label')).toBe('All sources')
+      expect(wrapper.get(testId('document-library-format-all'))
+        .attributes('aria-label')).toBe('All formats')
+      expect(wrapper.get(testId('document-library-source-mcp'))
+        .attributes('aria-label')).toBe('Connected app')
+      expect(wrapper.get(testId('document-library-format-docx'))
+        .attributes('aria-label')).toBe('Word')
+      expect(wrapper.find(testId('document-library-format-pptx')).exists())
+        .toBe(false)
+    })
 
   it('hides a filter row with a single value', async () => {
     library.items.value = [createItem()]
@@ -290,9 +301,9 @@ describe('pages/chats/documents/index', () => {
     const wrapper = await mountPage()
 
     await wrapper.get(testId('document-library-format-docx'))
-      .trigger('click')
+      .trigger('change')
     await wrapper.get(testId('document-library-source-mcp'))
-      .trigger('click')
+      .trigger('change')
 
     expect(filters.setFormat).toHaveBeenCalledWith('docx')
     expect(filters.setSource).toHaveBeenCalledWith('mcp')

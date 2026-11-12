@@ -16,18 +16,18 @@
           class="input-sm sm:input-md"
         />
         <HistoryDocumentFilter
-          :options="formatOptions"
-          :model-value="appliedFormat"
-          label="Filter by format"
-          test-id-prefix="document-library-format"
-          @select="onSelectFormat"
-        />
-        <HistoryDocumentFilter
           :options="sourceOptions"
           :model-value="appliedSource"
           label="Filter by source"
           test-id-prefix="document-library-source"
           @select="onSelectSource"
+        />
+        <HistoryDocumentFilter
+          :options="formatOptions"
+          :model-value="appliedFormat"
+          label="Filter by format"
+          test-id-prefix="document-library-format"
+          @select="onSelectFormat"
         />
       </div>
     </template>

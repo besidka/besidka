@@ -35,6 +35,7 @@ function buildFilterOptions<Value extends string>(
   values: readonly Value[],
   labels: Record<Value, string>,
   counts: Record<Value, number> | null,
+  allLabel: string,
 ): Array<DocumentFilterOption<Value>> {
   if (!counts) {
     return []
@@ -49,7 +50,7 @@ function buildFilterOptions<Value extends string>(
   const total = available.reduce((sum, value) => sum + counts[value], 0)
 
   return [
-    { value: 'all', label: 'All', count: total },
+    { value: 'all', label: allLabel, count: total },
     ...available.map((value) => {
       return { value, label: labels[value], count: counts[value] }
     }),
@@ -68,6 +69,7 @@ export function buildDocumentFormatOptions(
     DOCUMENT_FORMATS,
     DOCUMENT_FORMAT_LIBRARY_LABELS,
     counts,
+    'All formats',
   )
 }
 
@@ -78,6 +80,7 @@ export function buildDocumentSourceOptions(
     DOCUMENT_LIBRARY_SOURCES,
     DOCUMENT_SOURCE_LIBRARY_LABELS,
     counts,
+    'All sources',
   )
 }
 
