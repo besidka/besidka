@@ -21,10 +21,8 @@
 </template>
 
 <script setup lang="ts">
-import type { DocumentFilterOption } from '~/composables/documents-library'
-
 const props = defineProps<{
-  options: Array<DocumentFilterOption<string>>
+  options: Array<{ value: string, label: string }>
   modelValue: string
   label: string
   testIdPrefix: string

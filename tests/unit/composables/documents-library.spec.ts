@@ -158,7 +158,7 @@ describe('documents-library helpers', () => {
       }))
 
       expect(options).toEqual([
-        { value: 'all', label: 'All formats', count: 6 },
+        { value: 'all', label: 'All', count: 6 },
         { value: 'pdf', label: 'PDF', count: 2 },
         { value: 'pptx', label: 'PowerPoint', count: 1 },
         { value: 'xlsx', label: 'Excel', count: 3 },
@@ -172,7 +172,7 @@ describe('documents-library helpers', () => {
       }))
 
       expect(options.map(option => option.label))
-        .toEqual(['All formats', 'PDF', 'Word'])
+        .toEqual(['All', 'PDF', 'Word'])
     })
   })
 

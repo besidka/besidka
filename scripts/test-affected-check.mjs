@@ -236,6 +236,7 @@ export function getAffectedTests(changedFiles) {
   const artifactsLibraryTests = [
     'tests/unit/pages/chats/artifacts/index.spec.ts',
     'tests/unit/components/Artifact/KindFilter.spec.ts',
+    'tests/unit/components/History/FilterButtons.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/composables/artifacts-library.spec.ts',
@@ -347,7 +348,8 @@ export function getAffectedTests(changedFiles) {
   const documentsLibraryTests = [
     'tests/unit/pages/chats/documents/index.spec.ts',
     'tests/unit/components/History/DocumentRow.spec.ts',
-    'tests/unit/components/History/DocumentFilter.spec.ts',
+    'tests/unit/components/History/BoxTabs.spec.ts',
+    'tests/unit/components/History/FilterButtons.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
     'tests/unit/components/Chat/DocumentPreview.spec.ts',
@@ -2493,7 +2495,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/documents\/index\.vue|app\/components\/History\/(DocumentRow|DocumentFilter|PageShell)\.vue|app\/composables\/(documents-library|document-preview)\.ts|app\/components\/Search\/Modal\.client\.vue|server\/api\/v1\/documents\/index\.get\.ts|server\/utils\/documents\/library\.ts|shared\/utils\/documents\.ts)$/,
+        /^(app\/pages\/chats\/documents\/index\.vue|app\/components\/History\/(DocumentRow|BoxTabs|FilterButtons|PageShell)\.vue|app\/composables\/(documents-library|document-preview)\.ts|app\/components\/Search\/Modal\.client\.vue|server\/api\/v1\/documents\/index\.get\.ts|server\/utils\/documents\/library\.ts|shared\/utils\/documents\.ts)$/,
       tests: documentsLibraryTests,
     },
     {
@@ -3407,7 +3409,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/components\/Artifact\/KindFilter\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/components\/Artifact\/KindFilter\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|FilterButtons|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsLibraryTests,
     },
     {

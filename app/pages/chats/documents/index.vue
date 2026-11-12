@@ -15,14 +15,14 @@
           placeholder="Search documents..."
           class="input-sm sm:input-md"
         />
-        <HistoryDocumentFilter
+        <HistoryBoxTabs
           :options="sourceOptions"
           :model-value="appliedSource"
           label="Filter by source"
           test-id-prefix="document-library-source"
           @select="onSelectSource"
         />
-        <HistoryDocumentFilter
+        <HistoryFilterButtons
           :options="formatOptions"
           :model-value="appliedFormat"
           label="Filter by format"

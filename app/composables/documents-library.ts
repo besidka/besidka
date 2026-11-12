@@ -69,7 +69,7 @@ export function buildDocumentFormatOptions(
     DOCUMENT_FORMATS,
     DOCUMENT_FORMAT_LIBRARY_LABELS,
     counts,
-    'All formats',
+    'All',
   )
 }
 

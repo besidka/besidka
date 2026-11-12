@@ -1,30 +1,11 @@
 <template>
-  <div
-    v-if="options.length"
-    role="group"
-    aria-label="Filter by type"
-    class="flex flex-wrap gap-1.5"
-    :data-testid="`${testIdPrefix}-kind-filter`"
-  >
-    <button
-      v-for="option in options"
-      :key="option.value"
-      type="button"
-      class="btn btn-sm"
-      :class="kind === option.value ? 'btn-accent' : 'btn-soft'"
-      :aria-pressed="kind === option.value"
-      :data-testid="`${testIdPrefix}-kind-${option.value}`"
-      @click="emit('select', option.value)"
-    >
-      {{ option.label }}
-      <span
-        class="badge badge-sm badge-soft"
-        :data-testid="`${testIdPrefix}-kind-${option.value}-count`"
-      >
-        {{ option.count }}
-      </span>
-    </button>
-  </div>
+  <HistoryFilterButtons
+    :options="options"
+    :model-value="kind"
+    label="Filter by type"
+    :test-id-prefix="`${testIdPrefix}-kind`"
+    @select="onSelect"
+  />
 </template>
 
 <script setup lang="ts">
@@ -45,6 +26,10 @@ const emit = defineEmits<{
 const options = computed(() => {
   return buildArtifactKindOptions(props.counts)
 })
+
+function onSelect(value: string) {
+  emit('select', value as ArtifactKindFilter)
+}
 
 watch(
   () => [props.counts, props.kind] as const,
