@@ -1,9 +1,10 @@
 import { createError } from 'evlog'
-import { describeFileDeliveryReason, resolveFileDelivery } from '#shared/utils/file-delivery'
+import { describeFileDeliveryReason, resolveFileDelivery, CODE_EXECUTION_CONTAINER_MEDIA_TYPES } from '#shared/utils/file-delivery'
 import type { FileDeliveryRoute } from '#shared/utils/file-delivery'
 import {
   extractLocalFileStorageKey,
   isHiddenFilePart,
+  normalizeMediaType,
 } from '#shared/utils/files'
 import { getInputMediaKind } from '#shared/utils/input-media-types'
 import { isOfficeMediaType } from '#shared/utils/office-files'
@@ -25,6 +26,7 @@ export interface AssertFilesDeliverableInput {
   providerId?: string
   modalities?: readonly string[]
   modelName: string
+  codeExecutionFiles?: boolean
   logger: LoggerLike
 }
 
@@ -86,6 +88,7 @@ export async function assertFilesDeliverable(
       route: input.route,
       providerId: input.providerId,
       modalities: input.modalities,
+      codeExecutionFiles: input.codeExecutionFiles,
       mediaType,
       textStatus: textState?.textStatus,
     })
@@ -118,10 +121,14 @@ export async function assertFilesDeliverable(
  * parts that may reach a provider are images and PDFs. Anything else (an
  * Office file whose text was not read, a type no provider accepts) would be
  * thrown on by some SDKs and silently dropped by others, so it stops here
- * with a clear 400 instead.
+ * with a clear 400 instead. The one exception is a Gemini "Run code" send,
+ * where the sandbox takes attachments inline: with `inlineContainerFiles` an
+ * Office or JSON part may stay (the types in
+ * `CODE_EXECUTION_CONTAINER_MEDIA_TYPES`, nothing else).
  */
 export function assertOnlyDeliverableFileParts(
   messages: readonly { parts: readonly DeliveryFilePart[] }[],
+  options: { inlineContainerFiles?: boolean } = {},
 ): void {
   for (const message of messages) {
     for (const part of message.parts) {
@@ -132,6 +139,15 @@ export function assertOnlyDeliverableFileParts(
       const kind = getInputMediaKind(part.mediaType ?? '')
 
       if (kind === 'image' || kind === 'pdf') {
+        continue
+      }
+
+      if (
+        options.inlineContainerFiles
+        && CODE_EXECUTION_CONTAINER_MEDIA_TYPES.includes(
+          normalizeMediaType(part.mediaType ?? ''),
+        )
+      ) {
         continue
       }
 

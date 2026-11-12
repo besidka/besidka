@@ -110,6 +110,7 @@ import {
   assertFilesDeliverable,
   assertOnlyDeliverableFileParts,
 } from '~~/server/utils/chats/file-delivery-check'
+import { CODE_EXECUTION_FILE_DELIVERY } from '#shared/utils/file-delivery'
 import { isOfficeMediaType } from '#shared/utils/office-files'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
@@ -826,6 +827,10 @@ export default defineEventHandler(async (event) => {
     newMessage.parts as UIMessage['parts'],
   )
 
+  const isInlineContainerSend = codeExecutionGate.filesActive
+    && !!provider
+    && CODE_EXECUTION_FILE_DELIVERY[provider.id] === 'inline'
+
   await assertFilesDeliverable({
     parts: newMessage.parts,
     userId,
@@ -833,6 +838,7 @@ export default defineEventHandler(async (event) => {
     providerId: provider?.id,
     modalities: model ? getModelInputModalities(model) : undefined,
     modelName: model?.name ?? userModel,
+    codeExecutionFiles: codeExecutionGate.filesActive,
     logger,
   })
 
@@ -871,9 +877,15 @@ export default defineEventHandler(async (event) => {
     messages: messagesForAI,
     missingFiles,
     unsupportedFiles = [],
-  } = await convertFilesForAI(modelContextMessages)
+  } = await convertFilesForAI(modelContextMessages, {
+    container: codeExecutionGate.filesActive && provider
+      ? { providerId: provider.id, messageId: newMessage.id }
+      : undefined,
+  })
 
-  assertOnlyDeliverableFileParts(messagesForAI)
+  assertOnlyDeliverableFileParts(messagesForAI, {
+    inlineContainerFiles: isInlineContainerSend,
+  })
 
   logger.set({
     filesCount: newMessage.parts.filter(part => part.type === 'file').length,
@@ -1975,7 +1987,9 @@ export default defineEventHandler(async (event) => {
           // wire one: on this stack it is a no-op, or would defeat that
           // replay by skipping persist. (Providers also bill and omit usage
           // on abort, so there is no cost to recover here either.)
-          assertOnlyDeliverableFileParts(messagesForModel)
+          assertOnlyDeliverableFileParts(messagesForModel, {
+            inlineContainerFiles: isInlineContainerSend,
+          })
           modelMessages = await convertToModelMessages(messagesForModel)
 
           if (codeExecutionSession?.provider === 'anthropic') {

@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   deleteCalls: [] as string[],
   uploadCalls: [] as string[],
   ownedFiles: vi.fn(),
+  conversions: [] as Array<{ messages: any[] }>,
 }))
 
 function createMockUIMessageStream(messageId: string) {
@@ -263,16 +264,27 @@ describe('chat send pipeline: provider code execution', () => {
   const useOpenAI = vi.fn()
   const useGoogle = vi.fn()
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
+
+    const { convertFilesForAI } = await import(
+      '~~/server/utils/files/convert-files-for-ai'
+    )
+
     mocks.streamTextOptions = []
+    mocks.conversions = []
     mocks.uiChunks = undefined
     mocks.activeFlags = new Set(['code-execution', 'code-execution.files'])
     mocks.deleteCalls = []
     mocks.uploadCalls = []
     mocks.ownedFiles.mockResolvedValue(
-      new Map([['key1.csv', { id: 'f1', storageKey: 'key1.csv', size: 4 }]]),
+      new Map([['key1.csv', {
+        id: 'f1',
+        storageKey: 'key1.csv',
+        size: 4,
+        type: 'text/csv',
+      }]]),
     )
     mocks.persistContainerFiles.mockResolvedValue({
       saved: [{
@@ -327,8 +339,13 @@ describe('chat send pipeline: provider code execution', () => {
       return new Response(null, { status: 200 })
     }))
     vi.stubGlobal('useFileStorage', () => ({
-      get: vi.fn(async () => ({
-        arrayBuffer: async () => new ArrayBuffer(4),
+      get: vi.fn(async (key: string) => ({
+        arrayBuffer: async () => (
+          key.endsWith('.text.md')
+            ? new TextEncoder().encode('Quarterly numbers').buffer
+            : new ArrayBuffer(4)
+        ),
+        text: async () => 'a,b',
       })),
     }))
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -363,19 +380,17 @@ describe('chat send pipeline: provider code execution', () => {
       vi.fn().mockResolvedValue({ user: { id: '1' } }),
     )
     vi.stubGlobal('validateMessageFilePolicy', vi.fn(async () => undefined))
-    vi.stubGlobal('convertFilesForAI', vi.fn(async (messages: any[]) => ({
-      messages: messages.map((message) => {
-        return {
-          ...message,
-          parts: message.parts.map((part: any) => {
-            return part.type === 'file'
-              ? { type: 'text', text: `[attached ${part.filename}]` }
-              : part
-          }),
-        }
-      }),
-      missingFiles: [],
-    })))
+    vi.stubGlobal('convertFilesForAI', async (
+      messages: Parameters<typeof convertFilesForAI>[0],
+      options: Parameters<typeof convertFilesForAI>[1],
+    ) => {
+      const result = await convertFilesForAI(messages, options)
+
+      mocks.conversions.push(result)
+
+      return result
+    })
+    vi.stubGlobal('useEvent', () => ({}))
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
@@ -540,6 +555,162 @@ describe('chat send pipeline: provider code execution', () => {
       'https://api.anthropic.com/v1/files/file_chart',
       'https://api.anthropic.com/v1/files/file_archive',
     ])
+  })
+
+  describe('Office and JSON files with Run code', () => {
+    const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+    function stubOwned(
+      key: string,
+      type: string,
+      overrides: Record<string, unknown> = {},
+    ) {
+      mocks.ownedFiles.mockResolvedValue(new Map([[key, {
+        id: 'f1',
+        storageKey: key,
+        size: 4,
+        type,
+        textStatus: null,
+        textBytes: null,
+        textVersion: null,
+        ...overrides,
+      }]]))
+    }
+
+    function bodyWith(
+      key: string,
+      mediaType: string,
+      filename: string,
+      overrides: Record<string, unknown> = {},
+    ) {
+      return baseBody({
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Use it' },
+            { type: 'file', mediaType, filename, url: `/files/${key}` },
+          ],
+        }],
+        ...overrides,
+      })
+    }
+
+    function getModelContainerUploads() {
+      const messages = mocks.streamTextOptions[0]?.messages as Array<{
+        content: unknown
+      }>
+
+      return messages.flatMap((message) => {
+        return Array.isArray(message.content) ? message.content : []
+      }).filter((part: any) => part.providerOptions?.anthropic?.containerUpload)
+    }
+
+    function getConvertedParts() {
+      return mocks.conversions[0]?.messages.flatMap((message) => {
+        return message.parts
+      }) as Array<Record<string, any>>
+    }
+
+    function getConvertedFileParts() {
+      return getConvertedParts().filter(part => part.type === 'file')
+    }
+
+    function getConvertedText() {
+      return getConvertedParts()
+        .filter(part => part.type === 'text')
+        .map(part => part.text)
+        .join('\n')
+    }
+
+    it('uploads an Office file with no readable text on Anthropic and sends no raw part', async () => {
+      stubProvider('anthropic', ['code_execution'], 'claude-haiku-5-5')
+      stubOwned('plan.docx', DOCX, { textStatus: 'failed' })
+
+      await runHandler(bodyWith('plan.docx', DOCX, 'plan.docx'))
+
+      expect(mocks.uploadCalls).toEqual(['https://api.anthropic.com/v1/files'])
+      expect(getConvertedFileParts()).toEqual([])
+      expect(getConvertedText()).toContain('Available in the code sandbox')
+      expect(getModelContainerUploads()).toHaveLength(1)
+    })
+
+    it('gives the model the extracted text and still uploads the file', async () => {
+      stubProvider('anthropic', ['code_execution'], 'claude-haiku-5-5')
+      stubOwned('plan.docx', DOCX, {
+        textStatus: 'ready',
+        textBytes: 17,
+        textVersion: 1,
+      })
+
+      await runHandler(bodyWith('plan.docx', DOCX, 'plan.docx'))
+
+      expect(mocks.uploadCalls).toEqual(['https://api.anthropic.com/v1/files'])
+      expect(getConvertedText()).toContain('Quarterly numbers')
+      expect(getConvertedFileParts()).toEqual([])
+      expect(getModelContainerUploads()).toHaveLength(1)
+    })
+
+    it('uploads a re-attached JSON output for OpenAI and sends no raw part', async () => {
+      stubProvider('openai', ['code_execution'], 'gpt-6-luna')
+      stubOwned('out.json', 'application/json')
+
+      await runHandler({
+        ...bodyWith('out.json', 'application/json', 'out.json'),
+        model: 'gpt-6-luna',
+      })
+
+      expect(mocks.uploadCalls).toEqual(['https://api.openai.com/v1/files'])
+      expect(useOpenAI).toHaveBeenCalledWith(
+        '1',
+        'gpt-6-luna',
+        ['code_execution'],
+        'off',
+        expect.any(String),
+        ['file_in_1'],
+      )
+      expect(getConvertedFileParts()).toEqual([])
+    })
+
+    it('keeps the Office part inline for Gemini, which takes attachments inline', async () => {
+      stubProvider('google', ['code_execution'], 'gemini-3.1-pro')
+      stubOwned('plan.docx', DOCX, { textStatus: 'failed' })
+
+      await runHandler({
+        ...bodyWith('plan.docx', DOCX, 'plan.docx'),
+        model: 'gemini-3.1-pro',
+      })
+
+      expect(mocks.uploadCalls).toEqual([])
+      expect(getConvertedFileParts()).toEqual([
+        expect.objectContaining({ mediaType: DOCX }),
+      ])
+    })
+
+    it('refuses an unreadable Office file when the sandbox gets no files', async () => {
+      stubProvider('anthropic', ['code_execution'], 'claude-haiku-5-5')
+      stubOwned('plan.docx', DOCX, { textStatus: 'failed' })
+      mocks.activeFlags = new Set(['code-execution'])
+
+      await expect(runHandler(bodyWith('plan.docx', DOCX, 'plan.docx')))
+        .rejects.toMatchObject({ status: 400 })
+      expect(mocks.uploadCalls).toEqual([])
+    })
+
+    it('refuses a JSON file without Run code', async () => {
+      stubProvider('anthropic', ['code_execution'], 'claude-haiku-5-5')
+      stubOwned('out.json', 'application/json')
+
+      await expect(runHandler(bodyWith(
+        'out.json',
+        'application/json',
+        'out.json',
+        { tools: [] },
+      ))).rejects.toMatchObject({
+        status: 400,
+        message: 'out.json cannot be sent to claude-haiku-5-5.',
+      })
+    })
   })
 
   describe('with an attached file', () => {

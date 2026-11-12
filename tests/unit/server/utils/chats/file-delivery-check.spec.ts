@@ -200,3 +200,83 @@ describe('assertOnlyDeliverableFileParts', () => {
     })
   }
 })
+
+describe('assertOnlyDeliverableFileParts for inline sandbox files', () => {
+  const options = { inlineContainerFiles: true }
+
+  it('allows exactly the Office and JSON types', () => {
+    for (const mediaType of [
+      OFFICE_MEDIA_TYPES.docx,
+      OFFICE_MEDIA_TYPES.xlsx,
+      OFFICE_MEDIA_TYPES.pptx,
+      'application/json',
+    ]) {
+      expect(() => {
+        assertOnlyDeliverableFileParts(
+          [{ parts: [{ type: 'file', mediaType }] }],
+          options,
+        )
+      }).not.toThrow()
+    }
+  })
+
+  it('still stops everything else', () => {
+    for (const mediaType of [
+      'text/markdown',
+      'text/csv',
+      'application/zip',
+      'application/octet-stream',
+      'application/msword',
+      '',
+    ]) {
+      expect(() => {
+        assertOnlyDeliverableFileParts(
+          [{ parts: [{ type: 'file', mediaType }] }],
+          options,
+        )
+      }, mediaType).toThrowError(expect.objectContaining({ status: 400 }))
+    }
+  })
+
+  it('allows nothing extra when the option is off', () => {
+    expect(() => {
+      assertOnlyDeliverableFileParts([{
+        parts: [{ type: 'file', mediaType: 'application/json' }],
+      }])
+    }).toThrowError(expect.objectContaining({ status: 400 }))
+  })
+})
+
+describe('assertFilesDeliverable with Run code files', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.ensureOfficeTextState.mockResolvedValue({
+      textStatus: 'failed',
+      textBytes: null,
+      textVersion: 1,
+    })
+  })
+
+  it('accepts an unreadable Office file and a JSON file when the sandbox gets files', async () => {
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([
+      owned('a.docx', OFFICE_MEDIA_TYPES.docx),
+      owned('o.json', 'application/json', { textStatus: null }),
+    ]))
+
+    await expect(check([
+      part('a.docx', OFFICE_MEDIA_TYPES.docx),
+      part('o.json', 'application/json'),
+    ], { codeExecutionFiles: true })).resolves.toBeUndefined()
+  })
+
+  it('refuses them again for a provider without a sandbox', async () => {
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([
+      owned('o.json', 'application/json', { textStatus: null }),
+    ]))
+
+    await expect(check(
+      [part('o.json', 'application/json')],
+      { codeExecutionFiles: true, providerId: 'deepseek' },
+    )).rejects.toMatchObject({ status: 400 })
+  })
+})

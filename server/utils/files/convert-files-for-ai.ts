@@ -46,8 +46,23 @@ export interface ConversionResult {
 const CACHE_TTL_SECONDS = 5 * 60
 const FILE_CACHE_PREFIX = 'file-cache:'
 
+export interface ConvertFilesOptions {
+  container?: {
+    providerId: string
+    messageId: string
+  }
+}
+
+/**
+ * `options.container` names the "Run code" send (direct provider, files on)
+ * and the id of the message whose files the sandbox receives. Only that
+ * message's Office and JSON files may leave as a sandbox file part
+ * (`inline`, Gemini) or as a note (`upload`, Anthropic and OpenAI, where the
+ * route uploads them separately).
+ */
 export async function convertFilesForAI(
   messages: UIMessage[],
+  options: ConvertFilesOptions = {},
 ): Promise<ConversionResult> {
   const logger = useLogger(useEvent())
   const session = await useUserSession()
@@ -147,8 +162,13 @@ export async function convertFilesForAI(
           logger,
         )
         : null
+      const isContainerMessage = options.container?.messageId === message.id
       const delivery = resolveFileDelivery({
         route: 'direct',
+        providerId: isContainerMessage
+          ? options.container?.providerId
+          : undefined,
+        codeExecutionFiles: isContainerMessage,
         mediaType,
         textStatus: isOffice ? (officeText ? 'ready' : 'failed') : undefined,
       })
@@ -166,6 +186,14 @@ export async function convertFilesForAI(
         continue
       }
 
+      if (delivery.delivery === 'container' && delivery.container === 'upload') {
+        convertedParts.push({
+          type: 'text',
+          text: formatSandboxFilePart(part.filename),
+        })
+        continue
+      }
+
       if (officeText) {
         const formatted = formatOfficeFilePart({
           filename: part.filename,
@@ -176,10 +204,13 @@ export async function convertFilesForAI(
 
         officeBytesRemaining = formatted.remainingBytes
         convertedParts.push({ type: 'text', text: formatted.text })
-        continue
+
+        if (delivery.container !== 'inline') {
+          continue
+        }
       }
 
-      if (delivery.delivery === 'text') {
+      if (delivery.delivery === 'text' && !officeText) {
         try {
           const textContent = await readStorageFileAsText(
             storage,
@@ -463,6 +494,12 @@ function formatUnsupportedFilePart(
     || 'this file type cannot be sent to the model'
 
   return `${header}[File not included: ${note}.]`
+}
+
+function formatSandboxFilePart(filename: string | undefined): string {
+  const header = filename ? `**${filename}**\n\n` : ''
+
+  return `${header}[Available in the code sandbox. No text of it is included here.]`
 }
 
 interface FormattedOfficeFilePart {

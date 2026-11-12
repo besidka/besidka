@@ -418,4 +418,102 @@ describe('convertFilesForAI with Office files', () => {
       expect(getTexts(message)[1]).not.toContain('[Not included')
     }
   })
+
+  describe('with Run code files', () => {
+    const container = (providerId: string) => ({
+      container: { providerId, messageId: 'm1' },
+    })
+
+    it('replaces an unreadable Office file with a sandbox note when it is uploaded', async () => {
+      stubOwnedFiles([officeRow('f.docx', {
+        textStatus: 'failed',
+        textBytes: null,
+      })])
+
+      const { messages, unsupportedFiles } = await convertFilesForAI([
+        userMessage([{ key: 'f.docx', mediaType: OFFICE_MEDIA_TYPES.docx }]),
+      ], container('anthropic'))
+
+      expect(unsupportedFiles).toEqual([])
+      expect(getFileParts(messages[0])).toEqual([])
+      expect(getTexts(messages[0]).join('\n'))
+        .toContain('[Available in the code sandbox.')
+    })
+
+    it('keeps the extracted text and adds nothing raw for an uploaded file', async () => {
+      store('a.docx.text.md', 'Real text')
+      stubOwnedFiles([officeRow('a.docx')])
+
+      const { messages } = await convertFilesForAI([
+        userMessage([{ key: 'a.docx', mediaType: OFFICE_MEDIA_TYPES.docx }]),
+      ], container('openai'))
+
+      expect(getFileParts(messages[0])).toEqual([])
+      expect(getTexts(messages[0]).join('\n')).toContain('Real text')
+    })
+
+    it('hands a JSON file to an uploading provider as a note', async () => {
+      stubOwnedFiles([officeRow('o.json', {
+        type: 'application/json',
+        textStatus: null,
+      })])
+
+      const { messages, unsupportedFiles } = await convertFilesForAI([
+        userMessage([{ key: 'o.json', mediaType: 'application/json' }]),
+      ], container('openai'))
+
+      expect(unsupportedFiles).toEqual([])
+      expect(getFileParts(messages[0])).toEqual([])
+    })
+
+    it('keeps an unreadable Office file and a JSON file inline for Gemini', async () => {
+      store('f.docx', new Uint8Array([1, 2, 3]))
+      store('o.json', new Uint8Array([4, 5]))
+      stubOwnedFiles([
+        officeRow('f.docx', { textStatus: 'failed', textBytes: null }),
+        officeRow('o.json', { type: 'application/json', textStatus: null }),
+      ])
+
+      const { messages } = await convertFilesForAI([
+        userMessage([
+          { key: 'f.docx', mediaType: OFFICE_MEDIA_TYPES.docx },
+          { key: 'o.json', mediaType: 'application/json' },
+        ]),
+      ], container('google'))
+
+      expect(getFileParts(messages[0]).map((part) => {
+        return [part.mediaType, part.url.startsWith('data:')]
+      })).toEqual([
+        [OFFICE_MEDIA_TYPES.docx, true],
+        ['application/json', true],
+      ])
+    })
+
+    it('sends both the text and the file inline for Gemini when the text is ready', async () => {
+      store('a.docx', new Uint8Array([1, 2, 3]))
+      store('a.docx.text.md', 'Real text')
+      stubOwnedFiles([officeRow('a.docx')])
+
+      const { messages } = await convertFilesForAI([
+        userMessage([{ key: 'a.docx', mediaType: OFFICE_MEDIA_TYPES.docx }]),
+      ], container('google'))
+
+      expect(getFileParts(messages[0])).toHaveLength(1)
+      expect(getTexts(messages[0]).join('\n')).toContain('Real text')
+    })
+
+    it('only applies to the message the sandbox receives', async () => {
+      stubOwnedFiles([officeRow('f.docx', {
+        textStatus: 'failed',
+        textBytes: null,
+      })])
+
+      const { messages, unsupportedFiles } = await convertFilesForAI([
+        userMessage([{ key: 'f.docx', mediaType: OFFICE_MEDIA_TYPES.docx }]),
+      ], { container: { providerId: 'google', messageId: 'other' } })
+
+      expect(getFileParts(messages[0])).toEqual([])
+      expect(unsupportedFiles).toHaveLength(1)
+    })
+  })
 })

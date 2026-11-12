@@ -372,6 +372,22 @@ decision list are in BES-370.
   runs once after the conversion (a real 400, before the stream) and once just
   before `convertToModelMessages` (a backstop): the only `file` parts that may
   reach a provider are images and PDFs.
+- **Run code.** On a direct Anthropic, OpenAI or Google send with "Run code"
+  and `code-execution.files`, an Office or JSON file of the newest message
+  also reaches the provider sandbox (`docs/chats/code-execution.md`), so
+  `resolveFileDelivery()` takes `codeExecutionFiles` and
+  `CODE_EXECUTION_FILE_DELIVERY` says how each provider takes it: Anthropic and
+  OpenAI by upload (the route uploads the bytes itself, the model message has
+  no file part and gets a "[Available in the code sandbox ...]" note, plus the
+  extracted text when it is ready), Gemini inline (the file part stays in the
+  model message, in addition to the text). The result is `container` when the
+  model gets no text of the file, so an unreadable Office file or a re-attached
+  JSON output is not a 400 there. Only the Office and JSON types in
+  `CODE_EXECUTION_CONTAINER_MEDIA_TYPES` qualify (a spec ties them to
+  `server/utils/code-execution/file-types.ts`), only for the sandbox message,
+  and `assertOnlyDeliverableFileParts()` lets a raw part through only for the
+  Gemini case. Without Run code, with `code-execution.files` off, on a gateway
+  or on any other provider, they are refused as before.
 - **Carry-over.** Office counts as text: any model can carry an earlier Office
   file, the 64 KB cap and the 8 file / 5 MB / 10 MB budgets use `text_bytes`
   instead of the file size, and an earlier file without ready text is omitted

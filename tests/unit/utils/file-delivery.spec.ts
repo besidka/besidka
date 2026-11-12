@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CODE_EXECUTION_CONTAINER_MEDIA_TYPES,
+  CODE_EXECUTION_FILE_DELIVERY,
   DIRECT_PROVIDER_OFFICE_DELIVERY,
   GATEWAY_OFFICE_DELIVERY,
   resolveFileDelivery,
@@ -9,6 +11,7 @@ import type {
 } from '../../../shared/utils/file-delivery'
 import { gatewayIds } from '../../../shared/utils/gateways'
 import { OFFICE_MEDIA_TYPES } from '../../../shared/utils/office-files'
+import { resolveContainerFileType } from '../../../server/utils/code-execution/file-types'
 
 const PROVIDERS = [
   'anthropic',
@@ -208,6 +211,128 @@ describe('resolveFileDelivery', () => {
           modalities: ['text', 'image', 'pdf'],
         })).toEqual({ delivery: 'unsupported', reason: 'unsupported-type' })
       })
+    }
+  })
+})
+
+describe('resolveFileDelivery with Run code files', () => {
+  const docx = OFFICE_MEDIA_TYPES.docx
+  const sandboxProviders = Object.keys(CODE_EXECUTION_FILE_DELIVERY)
+
+  it('names how each sandbox provider takes files', () => {
+    expect(CODE_EXECUTION_FILE_DELIVERY).toEqual({
+      anthropic: 'upload',
+      openai: 'upload',
+      google: 'inline',
+    })
+  })
+
+  it('lists only types the code-execution allowlist accepts', () => {
+    const samples: Record<string, [string, Uint8Array]> = {
+      'application/json': ['out.json', new TextEncoder().encode('{}')],
+      [OFFICE_MEDIA_TYPES.docx]: ['a.docx', new Uint8Array([0x50, 0x4b, 3, 4])],
+      [OFFICE_MEDIA_TYPES.xlsx]: ['a.xlsx', new Uint8Array([0x50, 0x4b, 3, 4])],
+      [OFFICE_MEDIA_TYPES.pptx]: ['a.pptx', new Uint8Array([0x50, 0x4b, 3, 4])],
+    }
+
+    expect([...CODE_EXECUTION_CONTAINER_MEDIA_TYPES].sort())
+      .toEqual(Object.keys(samples).sort())
+
+    for (const [mediaType, [fileName, bytes]] of Object.entries(samples)) {
+      const result = resolveContainerFileType(fileName, bytes)
+
+      expect(result.ok && result.type.mediaType).toBe(mediaType)
+    }
+  })
+
+  for (const providerId of sandboxProviders) {
+    const container = CODE_EXECUTION_FILE_DELIVERY[providerId]
+
+    it(`hands ${providerId} an unreadable Office file as ${container}`, () => {
+      expect(resolveFileDelivery({
+        route: 'direct',
+        providerId,
+        mediaType: docx,
+        textStatus: 'failed',
+        codeExecutionFiles: true,
+      })).toEqual({ delivery: 'container', container })
+    })
+
+    it(`keeps the text for ${providerId} and adds the sandbox copy`, () => {
+      expect(resolveFileDelivery({
+        route: 'direct',
+        providerId,
+        mediaType: docx,
+        textStatus: 'ready',
+        codeExecutionFiles: true,
+      })).toEqual({ delivery: 'text', container })
+    })
+
+    it(`hands ${providerId} a JSON file as ${container}`, () => {
+      expect(resolveFileDelivery({
+        route: 'direct',
+        providerId,
+        mediaType: 'application/json',
+        codeExecutionFiles: true,
+      })).toEqual({ delivery: 'container', container })
+    })
+  }
+
+  it('does nothing for providers without a sandbox', () => {
+    for (const providerId of ['xai', 'deepseek', 'moonshotai', 'qwen']) {
+      expect(resolveFileDelivery({
+        route: 'direct',
+        providerId,
+        mediaType: 'application/json',
+        codeExecutionFiles: true,
+      })).toEqual({ delivery: 'unsupported', reason: 'unsupported-type' })
+      expect(resolveFileDelivery({
+        route: 'direct',
+        providerId,
+        mediaType: docx,
+        textStatus: 'failed',
+        codeExecutionFiles: true,
+      })).toEqual({ delivery: 'unsupported', reason: 'office-unreadable' })
+    }
+  })
+
+  it('does nothing on a gateway or without the files switch', () => {
+    for (const route of gatewayIds) {
+      expect(resolveFileDelivery({
+        route,
+        providerId: 'anthropic',
+        mediaType: 'application/json',
+        codeExecutionFiles: true,
+      })).toEqual({ delivery: 'unsupported', reason: 'unsupported-type' })
+    }
+
+    expect(resolveFileDelivery({
+      route: 'direct',
+      providerId: 'anthropic',
+      mediaType: 'application/json',
+      codeExecutionFiles: false,
+    })).toEqual({ delivery: 'unsupported', reason: 'unsupported-type' })
+    expect(resolveFileDelivery({
+      route: 'direct',
+      providerId: 'anthropic',
+      mediaType: docx,
+      textStatus: 'failed',
+    })).toEqual({ delivery: 'unsupported', reason: 'office-unreadable' })
+  })
+
+  it('never opens the sandbox path for legacy or unknown types', () => {
+    for (const mediaType of [
+      'application/msword',
+      'application/zip',
+      'application/octet-stream',
+      'audio/mpeg',
+    ]) {
+      expect(resolveFileDelivery({
+        route: 'direct',
+        providerId: 'anthropic',
+        mediaType,
+        codeExecutionFiles: true,
+      }).delivery).toBe('unsupported')
     }
   })
 })
