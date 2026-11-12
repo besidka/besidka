@@ -1,5 +1,10 @@
 import type { ModelRef, Ref } from 'vue'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { FileDeliveryReason } from '#shared/utils/file-delivery'
+import type {
+  FileDeliveryResolver,
+  FileRejection,
+} from '~/utils/file-delivery-hints'
 import { uploadWithProgress } from '~/utils/upload-with-progress'
 
 export interface UploadingFile {
@@ -25,11 +30,16 @@ function delay(ms: number): Promise<void> {
   })
 }
 
+const PRE_UPLOAD_REJECTION_REASONS: readonly (FileDeliveryReason | undefined)[]
+  = ['model-no-image', 'model-no-pdf']
+
 export function useChatFiles(
   attachedFiles: ModelRef<FileMetadata[]>,
   canAttachMediaType: Ref<(mediaType: string) => boolean>,
+  resolveDelivery?: Ref<FileDeliveryResolver>,
 ) {
   const nuxtApp = useNuxtApp()
+  const officeFeature = useFeature('files.office')
   const { ensureSendConsent } = useLegalConsent()
   const uploadingFiles = ref<Map<string, UploadingFile>>(new Map())
   const uploadQueue = ref<string[]>([])
@@ -159,28 +169,61 @@ export function useChatFiles(
     }
   }
 
+  function getFileRejections(
+    files: { type: string, name: string, textStatus?: string | null }[],
+  ): FileRejection[] {
+    const resolve = resolveDelivery?.value
+      ?? createPredicateDeliveryResolver(canAttachMediaType.value)
+
+    return files.flatMap((file) => {
+      const rejection = getFileRejection(file, resolve)
+
+      return rejection ? [rejection] : []
+    })
+  }
+
   /**
    * Central choke point for every upload path (the modal, the full-page
    * drop zone, and clipboard paste) — filtering here instead of in each
    * caller guarantees an image or PDF never reaches the server for a model
-   * that can't take it, regardless of which affordance the user picked.
+   * that can't take it, and a legacy Office file (.doc, .xls, .ppt) never
+   * reaches it at all, regardless of which affordance the user picked.
    */
   function rejectUnsupportedFiles(candidateFiles: File[]): File[] {
-    const allowedFiles = candidateFiles.filter((file) => {
-      return !isMediaTypeRejectedByModel(file.type, canAttachMediaType.value)
-    })
+    const allowedFiles: File[] = []
+    const legacyOfficeNames: string[] = []
+    const rejections: FileRejection[] = []
 
-    if (allowedFiles.length < candidateFiles.length) {
-      const rejectedMediaTypes = candidateFiles
-        .filter(file => !allowedFiles.includes(file))
-        .map(file => file.type)
+    for (const file of candidateFiles) {
+      if (officeFeature.value.active && isLegacyOfficeFile(file)) {
+        legacyOfficeNames.push(file.name)
 
-      useWarningMessage(
-        getUnsupportedInputMessage(
-          rejectedMediaTypes,
-          canAttachMediaType.value,
-        ),
-      )
+        continue
+      }
+
+      const [rejection] = getFileRejections([file])
+
+      if (
+        rejection
+        && PRE_UPLOAD_REJECTION_REASONS.includes(rejection.reason)
+      ) {
+        rejections.push(rejection)
+
+        continue
+      }
+
+      allowedFiles.push(file)
+    }
+
+    if (legacyOfficeNames.length > 0) {
+      useWarningMessage(getLegacyOfficeMessage(legacyOfficeNames))
+    }
+
+    for (const message of getRejectionMessages(
+      rejections,
+      canAttachMediaType.value,
+    )) {
+      useWarningMessage(message)
     }
 
     return allowedFiles
@@ -321,18 +364,15 @@ export function useChatFiles(
       }
 
       if (response.data) {
-        if (
-          isMediaTypeRejectedByModel(
-            response.data.type,
+        const rejections = getFileRejections([response.data])
+
+        if (rejections.length > 0) {
+          for (const message of getRejectionMessages(
+            rejections,
             canAttachMediaType.value,
-          )
-        ) {
-          useWarningMessage(
-            getUnsupportedInputMessage(
-              [response.data.type],
-              canAttachMediaType.value,
-            ),
-          )
+          )) {
+            useWarningMessage(message)
+          }
         } else {
           attachedFiles.value.push(response.data)
         }

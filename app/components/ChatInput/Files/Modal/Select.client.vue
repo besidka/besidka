@@ -79,6 +79,7 @@
         :touched-indices="touchedIndices"
         :touch-group-id="touchGroupId"
         :unsupported-reasons="unsupportedReasons"
+        :unsupported-captions="unsupportedCaptions"
         @toggle="toggleProjectGroup"
         @load-more="loadMoreProjectGroup"
         @file-click="onFileClick"
@@ -98,6 +99,7 @@
             :is-touch-selecting="isTouchSelecting"
             :touched-indices="touchedIndices"
             :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
             @file-click="onFileClick"
             @preview="onPreview"
             @rename="openRenameModal"
@@ -113,6 +115,7 @@
             :all-selected="allSelected"
             :has-selection="hasSelection"
             :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
             @file-click="onFileClick"
             @preview="onPreview"
             @rename="openRenameModal"
@@ -171,14 +174,20 @@ import type {
   FileSourceFilter,
   FileSourceTab,
 } from '~/types/file-manager'
+import type {
+  FileDeliveryResolver,
+  FileRejection,
+} from '~/utils/file-delivery-hints'
 
 const props = withDefaults(defineProps<{
   attachedIds: Set<string>
   initialSource?: FileSourceFilter
   canAttachMediaType?: (mediaType: string) => boolean
+  resolveDelivery?: FileDeliveryResolver
 }>(), {
   initialSource: undefined,
   canAttachMediaType: () => true,
+  resolveDelivery: undefined,
 })
 
 const emit = defineEmits<{
@@ -236,26 +245,45 @@ const {
   reset: resetFileManager,
 } = useFileManager()
 
-const unsupportedReasons = computed<Record<string, string>>(() => {
-  const reasons: Record<string, string> = {}
-  const reasonsByMediaType = new Map<string, string>()
+const fileRejections = computed<Map<string, FileRejection>>(() => {
+  const resolve = props.resolveDelivery
+    ?? createPredicateDeliveryResolver(props.canAttachMediaType)
+  const rejections = new Map<string, FileRejection>()
 
   for (const file of loadedFiles.value) {
-    if (!isMediaTypeRejectedByModel(file.type, props.canAttachMediaType)) {
-      continue
-    }
+    const rejection = getFileRejection(file, resolve)
 
-    if (!reasonsByMediaType.has(file.type)) {
-      reasonsByMediaType.set(
-        file.type,
-        getUnsupportedInputMessage([file.type], props.canAttachMediaType),
-      )
+    if (rejection) {
+      rejections.set(file.id, rejection)
     }
+  }
 
-    reasons[file.id] = reasonsByMediaType.get(file.type)!
+  return rejections
+})
+
+const unsupportedReasons = computed<Record<string, string>>(() => {
+  const reasons: Record<string, string> = {}
+
+  for (const [fileId, rejection] of fileRejections.value) {
+    const [message] = getRejectionMessages(
+      [rejection],
+      props.canAttachMediaType,
+    )
+
+    reasons[fileId] = message || ''
   }
 
   return reasons
+})
+
+const unsupportedCaptions = computed<Record<string, string>>(() => {
+  const captions: Record<string, string> = {}
+
+  for (const [fileId, rejection] of fileRejections.value) {
+    captions[fileId] = getRejectionCaption(rejection.reason)
+  }
+
+  return captions
 })
 
 const extraSourceTabs = getFileManagerExtraSourceTabs()
@@ -705,12 +733,16 @@ function attachSelected() {
   })
 
   if (rejected.length > 0) {
-    useWarningMessage(
-      getUnsupportedInputMessage(
-        rejected.map(file => file.type),
-        props.canAttachMediaType,
-      ),
-    )
+    const rejections = rejected.flatMap((file) => {
+      return fileRejections.value.get(file.id) ?? []
+    })
+
+    for (const message of getRejectionMessages(
+      rejections,
+      props.canAttachMediaType,
+    )) {
+      useWarningMessage(message)
+    }
   }
 
   if (attachable.length === 0) {

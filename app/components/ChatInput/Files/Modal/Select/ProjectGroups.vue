@@ -77,6 +77,7 @@
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
             :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
             @file-click="(
               event: MouseEvent,
               file: FileManagerFile,
@@ -93,6 +94,7 @@
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
             :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
             :sticky-offset="true"
             :all-selected="isGroupAllSelected(group)"
             :has-selection="hasGroupSelection(group)"
@@ -163,8 +165,10 @@ const props = withDefaults(defineProps<{
   touchedIndices: Set<number>
   touchGroupId: string | null
   unsupportedReasons?: Record<string, string>
+  unsupportedCaptions?: Record<string, string>
 }>(), {
   unsupportedReasons: () => ({}),
+  unsupportedCaptions: () => ({}),
 })
 
 const emit = defineEmits<{

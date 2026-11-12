@@ -22,7 +22,8 @@ export function useChatInput() {
   const {
     isImageInputSupported,
     canAttachMediaType,
-  } = useImageInputSupport()
+    fileDeliveryContext,
+  } = useFileInputSupport()
   const { gatewayModel } = useSelectedModelInfo()
   const gatewayCatalogCache = useGatewayCatalogCache()
 
@@ -436,6 +437,7 @@ export function useChatInput() {
     isCodeExecutionSupported,
     isImageInputSupported,
     canAttachMediaType,
+    fileDeliveryContext,
     reasoningCapability,
     reasoningMode,
     reasoningMenuLevels,

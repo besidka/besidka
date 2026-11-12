@@ -1,8 +1,11 @@
 import { ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
+import { useState } from '#imports'
 import { createInputMediaTypePredicate } from '../../../shared/utils/input-media-types'
 import { useChatFiles } from '../../../app/composables/chat-files'
+import { OFFICE_MEDIA_TYPES } from '../../../shared/utils/office-files'
+import { createFileDeliveryResolver } from '../../../app/utils/file-delivery-hints'
 
 const {
   uploadWithProgressMock,
@@ -85,6 +88,7 @@ describe('useChatFiles', () => {
   afterEach(() => {
     uploadWithProgressMock.mockReset()
     useWarningMessageMock.mockReset()
+    useState('features').value = null
   })
 
   it('resolves true when the files are accepted and queued', async () => {
@@ -501,5 +505,168 @@ describe('useChatFiles', () => {
       'This model does not support PDF input. Attach an image or text '
       + 'file instead, or switch models.',
     )
+  })
+
+  describe('Office documents', () => {
+    const resolveDelivery = ref(createFileDeliveryResolver({
+      route: 'direct',
+      providerId: 'anthropic',
+      modalities: ['text', 'image', 'pdf'],
+    }))
+
+    function turnOfficeOn() {
+      useState('features').value = {
+        features: {
+          'files.office': { enabled: true, active: true, variant: null },
+        },
+        isAdmin: false,
+      }
+    }
+
+    function echoUpload(extra: Record<string, unknown> = {}) {
+      uploadWithProgressMock.mockImplementation(async ({ file }) => {
+        return {
+          data: {
+            id: file.name,
+            storageKey: file.name,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            source: 'upload',
+            expiresAt: null,
+            ...extra,
+          },
+        }
+      })
+    }
+
+    it('never uploads a legacy Office file and says how to save it', async () => {
+      turnOfficeOn()
+      echoUpload()
+
+      const { uploadFiles, uploadingFiles } = useChatFiles(
+        ref([]) as any,
+        ref(() => true),
+        resolveDelivery,
+      )
+
+      const accepted = await uploadFiles([
+        new File(['x'], 'old.xls', { type: 'application/vnd.ms-excel' }),
+        new File(['x'], 'macro.docm', { type: '' }),
+      ])
+
+      expect(accepted).toBe(false)
+      expect(uploadingFiles.value.size).toBe(0)
+      expect(uploadWithProgressMock).not.toHaveBeenCalled()
+      expect(useWarningMessageMock).toHaveBeenCalledWith(
+        '2 files are old Office formats and cannot be read: '
+        + 'old.xls, macro.docm. '
+        + 'Save it as .xlsx / .docx / .pptx and upload again.',
+      )
+    })
+
+    it('uploads the rest of a batch that has a legacy file', async () => {
+      turnOfficeOn()
+      echoUpload()
+
+      const attachedFiles = ref([]) as any
+      const { uploadFiles } = useChatFiles(
+        attachedFiles,
+        ref(() => true),
+        resolveDelivery,
+      )
+
+      await uploadFiles([
+        new File(['x'], 'old.ppt', { type: '' }),
+        createTextFile('notes.txt'),
+      ])
+      await waitFor(() => attachedFiles.value.length === 1)
+
+      expect(attachedFiles.value[0].name).toBe('notes.txt')
+      expect(useWarningMessageMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('uploads an xlsx whose browser type was empty with the Office type',
+      async () => {
+        turnOfficeOn()
+        echoUpload({ textStatus: 'ready', textBytes: 120 })
+
+        const attachedFiles = ref([]) as any
+        const { uploadFiles } = useChatFiles(
+          attachedFiles,
+          ref(() => true),
+          resolveDelivery,
+        )
+
+        await uploadFiles([new File(['PK'], 'budget.xlsx', { type: '' })])
+        await waitFor(() => attachedFiles.value.length === 1)
+
+        expect(uploadWithProgressMock.mock.calls[0]![0].file.type)
+          .toBe(OFFICE_MEDIA_TYPES.xlsx)
+        expect(uploadWithProgressMock.mock.calls[0]![0].headers['Content-Type'])
+          .toBe(OFFICE_MEDIA_TYPES.xlsx)
+        expect(attachedFiles.value[0]).toMatchObject({
+          name: 'budget.xlsx',
+          type: OFFICE_MEDIA_TYPES.xlsx,
+          textStatus: 'ready',
+        })
+        expect(useWarningMessageMock).not.toHaveBeenCalled()
+      })
+
+    it('does not attach an upload whose text could not be read', async () => {
+      turnOfficeOn()
+      echoUpload({ textStatus: 'empty', textBytes: 0 })
+
+      const attachedFiles = ref([]) as any
+      const { uploadFiles } = useChatFiles(
+        attachedFiles,
+        ref(() => true),
+        resolveDelivery,
+      )
+
+      await uploadFiles([new File(['PK'], 'blank.docx', { type: '' })])
+      await waitFor(() => useWarningMessageMock.mock.calls.length > 0)
+
+      expect(attachedFiles.value).toEqual([])
+      expect(useWarningMessageMock).toHaveBeenCalledWith(
+        expect.stringContaining('blank.docx: No text could be read'),
+      )
+    })
+
+    it('attaches an upload whose text is read after the response', async () => {
+      turnOfficeOn()
+      echoUpload({ textStatus: null, textBytes: null })
+
+      const attachedFiles = ref([]) as any
+      const { uploadFiles } = useChatFiles(
+        attachedFiles,
+        ref(() => true),
+        resolveDelivery,
+      )
+
+      await uploadFiles([new File(['PK'], 'slow.pptx', { type: '' })])
+      await waitFor(() => attachedFiles.value.length === 1)
+
+      expect(useWarningMessageMock).not.toHaveBeenCalled()
+    })
+
+    it('leaves a legacy file to the server while the flag is off', async () => {
+      echoUpload()
+
+      const { uploadFiles } = useChatFiles(
+        ref([]) as any,
+        ref(() => true),
+        resolveDelivery,
+      )
+
+      await uploadFiles([
+        new File(['x'], 'old.xls', { type: 'application/vnd.ms-excel' }),
+      ])
+      await waitFor(() => uploadWithProgressMock.mock.calls.length === 1)
+
+      expect(useWarningMessageMock).not.toHaveBeenCalledWith(
+        expect.stringContaining('Save it as .xlsx'),
+      )
+    })
   })
 })

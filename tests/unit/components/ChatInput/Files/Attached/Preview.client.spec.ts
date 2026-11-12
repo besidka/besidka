@@ -1,6 +1,8 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
 import type { ChatInputTile } from '../../../../../../app/types/chat-input-tools'
+import { OFFICE_MEDIA_TYPES } from '../../../../../../shared/utils/office-files'
+import { createFileDeliveryResolver } from '../../../../../../app/utils/file-delivery-hints'
 import Preview from '../../../../../../app/components/ChatInput/Files/Attached/Preview.client.vue'
 
 function createTile(overrides: Partial<ChatInputTile>): ChatInputTile {
@@ -266,4 +268,98 @@ describe('ChatInput/Files/Attached/Preview', () => {
 
       expect(wrapper.emitted('open-text')).toEqual([['notes-key']])
     })
+
+  describe('delivery hint', () => {
+    const resolveDelivery = createFileDeliveryResolver({
+      route: 'direct',
+      providerId: 'anthropic',
+      modalities: ['text', 'image', 'pdf'],
+    })
+    const officeFile = {
+      storageKey: 'budget-key',
+      name: 'budget.xlsx',
+      type: OFFICE_MEDIA_TYPES.xlsx,
+      size: 2048,
+    }
+
+    it('says an attached Office file is sent as text', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{ ...officeFile, textStatus: 'ready' as const }],
+          resolveDelivery,
+        },
+      })
+      const hint = wrapper.get('[data-testid="files-delivery-hint"]')
+
+      expect(hint.text()).toBe('Sent as text')
+      expect(hint.attributes('title')).toBe(
+        'Sent as text: images, charts and formatting aren\'t included.',
+      )
+      expect(hint.classes()).toEqual(expect.arrayContaining([
+        'badge',
+        'badge-soft',
+        'badge-xs',
+      ]))
+    })
+
+    it('says the text is shortened when the file is long', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            ...officeFile,
+            textStatus: 'ready' as const,
+            textBytes: 300 * 1024,
+          }],
+          resolveDelivery,
+        },
+      })
+
+      expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
+        .toBe('Sent as text (shortened)')
+    })
+
+    it('says it for a generated document with no text status yet',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [{
+              storageKey: 'report-key',
+              name: 'report.docx',
+              type: OFFICE_MEDIA_TYPES.docx,
+              size: 4096,
+              textStatus: null,
+            }],
+            resolveDelivery,
+          },
+        })
+
+        expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
+          .toBe('Sent as text')
+      })
+
+    it('shows no hint for images, PDFs and text files', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [
+            { storageKey: 'a', name: 'a.png', type: 'image/png', size: 1 },
+            { storageKey: 'b', name: 'b.pdf', type: 'application/pdf', size: 1 },
+            { storageKey: 'c', name: 'c.txt', type: 'text/plain', size: 1 },
+          ],
+          resolveDelivery,
+        },
+      })
+
+      expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+        .toBe(false)
+    })
+
+    it('shows no hint without a resolver', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: { files: [officeFile] },
+      })
+
+      expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+        .toBe(false)
+    })
+  })
 })

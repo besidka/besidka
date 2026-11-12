@@ -57,6 +57,7 @@
               :attached-ids="attachedIds"
               :initial-source="selectSource"
               :can-attach-media-type="canAttachMediaType"
+              :resolve-delivery="resolveDelivery"
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"
@@ -83,12 +84,16 @@
 </template>
 
 <script setup lang="ts">
-import type { FileMetadata } from '#shared/types/files.d'
 import {
   getDocumentDisplayTitle,
   getDocumentFormatFromMediaType,
 } from '#shared/utils/documents'
-import type { FileManagerFile, FileSourceFilter } from '~/types/file-manager'
+import type {
+  AttachedFile,
+  FileManagerFile,
+  FileSourceFilter,
+} from '~/types/file-manager'
+import type { FileDeliveryResolver } from '~/utils/file-delivery-hints'
 
 type Tab = 'select' | 'upload'
 type SelectTabRef = {
@@ -99,12 +104,14 @@ type SelectTabRef = {
 withDefaults(defineProps<{
   attachedIds: Set<string>
   canAttachMediaType?: (mediaType: string) => boolean
+  resolveDelivery?: FileDeliveryResolver
 }>(), {
   canAttachMediaType: () => true,
+  resolveDelivery: undefined,
 })
 
 const emit = defineEmits<{
-  attach: [files: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[]]
+  attach: [files: AttachedFile[]]
   detach: [fileIds: string[]]
   upload: [files: File[]]
 }>()
@@ -175,13 +182,18 @@ function onModalClosed(): void {
 }
 
 function onFilesAttached(files: FileManagerFile[]) {
-  const attachedFiles = files.map(({ id, storageKey, name, size, type }) => ({
-    id,
-    storageKey,
-    name,
-    size,
-    type,
-  }))
+  const attachedFiles: AttachedFile[] = files.map((file) => {
+    return {
+      id: file.id,
+      storageKey: file.storageKey,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      textStatus: file.textStatus,
+      textBytes: file.textBytes,
+      textTruncated: file.textTruncated,
+    }
+  })
 
   emit('attach', attachedFiles)
   close()

@@ -164,6 +164,27 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     )
   })
 
+  it('shows a short caption on a tile the model cannot accept', async () => {
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+        unsupportedReasons: { 'file-1': 'No text could be read.' },
+        unsupportedCaptions: { 'file-1': 'No readable text' },
+      },
+    })
+    const caption = wrapper.get('[data-testid="files-unsupported-caption"]')
+
+    expect(caption.text()).toBe('No readable text')
+    expect(caption.classes()).toEqual(expect.arrayContaining([
+      'badge',
+      'badge-soft',
+      'badge-xs',
+    ]))
+  })
+
   it('leaves a supported tile enabled', async () => {
     const wrapper = await mountSuspended(GridView, {
       props: {

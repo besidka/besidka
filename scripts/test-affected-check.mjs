@@ -80,6 +80,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/file-delivery-hints.spec.ts',
     'tests/unit/utils/file-delivery.spec.ts',
     'tests/unit/utils/office-files.spec.ts',
     'tests/unit/server/utils/files/office-upload-check.spec.ts',
@@ -113,6 +114,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/confirmation.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
+    'tests/e2e/chat/office-attachments.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
   ]
   const chatInputToolsTests = [
@@ -1646,11 +1648,11 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/image-input-support\.ts$/,
+      pattern: /^app\/composables\/file-input-support\.ts$/,
       tests: [
         ...imageGenerationTests,
         ...filesModuleTests,
-        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/composables/file-input-support.spec.ts',
         'tests/unit/components/Chat/GeneratedImage.spec.ts',
       ],
     },
@@ -1659,7 +1661,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...filesModuleTests,
         'tests/unit/utils/input-media-types.spec.ts',
-        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/composables/file-input-support.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/utils/chats/input-file-support.spec.ts',
         'tests/integration/server/assistant-files.spec.ts',
@@ -1671,7 +1673,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^shared\/utils\/(file-delivery|office-files)\.ts$/,
       tests: [
         ...filesModuleTests,
-        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/composables/file-input-support.spec.ts',
         'tests/unit/utils/chats/input-file-support.spec.ts',
         'tests/unit/utils/features/registry.spec.ts',
         'tests/integration/api/chats-carried-files.spec.ts',
@@ -2747,7 +2749,7 @@ export function getAffectedTests(changedFiles) {
       tests: historyProjectsTests,
     },
     {
-      pattern: /^app\/utils\/(files|upload-with-progress)\.ts$/,
+      pattern: /^app\/utils\/(files|file-delivery-hints|upload-with-progress)\.ts$/,
       tests: filesModuleTests,
     },
     {

@@ -48,7 +48,7 @@ export const OFFICE_TEXT_INLINE_MAX_BYTES = 200 * 1024
 
 export const OFFICE_TEXT_MESSAGE_MAX_BYTES = 512 * 1024
 
-const LEGACY_EXTENSIONS: readonly string[] = [
+export const OFFICE_LEGACY_EXTENSIONS: readonly string[] = [
   'doc',
   'dot',
   'xls',
@@ -59,7 +59,7 @@ const LEGACY_EXTENSIONS: readonly string[] = [
   'pot',
 ]
 
-const MACRO_EXTENSIONS: readonly string[] = [
+export const OFFICE_MACRO_EXTENSIONS: readonly string[] = [
   'docm',
   'dotm',
   'xlsm',
@@ -118,11 +118,11 @@ export function getOfficeExtensionKind(
     return 'office'
   }
 
-  if (LEGACY_EXTENSIONS.includes(extension)) {
+  if (OFFICE_LEGACY_EXTENSIONS.includes(extension)) {
     return 'legacy'
   }
 
-  if (MACRO_EXTENSIONS.includes(extension)) {
+  if (OFFICE_MACRO_EXTENSIONS.includes(extension)) {
     return 'macro'
   }
 

@@ -47,6 +47,7 @@
           <!-- Attached Files Preview with Upload Progress -->
           <LazyChatInputFilesAttachedPreview
             :files="files"
+            :resolve-delivery="resolveDelivery"
             :uploading-files="uploadingFiles"
             :uploading-count="uploadingCount"
             :tiles="tiles"
@@ -159,6 +160,7 @@
       ref="filesModalRef"
       :attached-ids="attachedIds"
       :can-attach-media-type="canAttachMediaType"
+      :resolve-delivery="resolveDelivery"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
       @upload="uploadFiles"
@@ -197,7 +199,11 @@ import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
-import type { FileSourceFilter } from '~/types/file-manager'
+import type { AttachedFile, FileSourceFilter } from '~/types/file-manager'
+import type {
+  FileDeliveryResolver,
+  FileRejection,
+} from '~/utils/file-delivery-hints'
 import type { TextSnapshot } from '~/composables/markdown-textarea'
 import type { PastedText } from '~/utils/pasted-text'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
@@ -253,6 +259,7 @@ const {
   isImageGenerationRequired,
   isImageInputSupported,
   canAttachMediaType,
+  fileDeliveryContext,
   isReasoningSupported,
   isReasoningAlwaysOn,
   reasoningCapability,
@@ -270,6 +277,7 @@ const {
   isCodeExecutionSupported,
 } = useChatInput()
 const codeExecutionFeature = useFeature('code-execution')
+const codeExecutionFilesFeature = useFeature('code-execution.files')
 const { features: loadedFeatures } = useFeatures()
 const { ensureSendConsent } = useLegalConsent()
 const {
@@ -523,6 +531,21 @@ nuxtApp.hook('chat:attach-file', async (file) => {
   nuxtApp.callHook('chat:scroll-to-bottom')
 })
 
+const isCodeExecutionFilesActive = computed<boolean>(() => {
+  return tools.value.includes('code_execution')
+    && isCodeExecutionSupported.value
+    && !isDeepResearchModel.value
+    && codeExecutionFeature.value.active
+    && codeExecutionFilesFeature.value.active
+})
+
+const resolveDelivery = computed<FileDeliveryResolver>(() => {
+  return createFileDeliveryResolver({
+    ...fileDeliveryContext.value,
+    codeExecutionFiles: isCodeExecutionFilesActive.value,
+  })
+})
+
 const {
   uploadFiles,
   uploadingFiles,
@@ -532,24 +555,29 @@ const {
   cancelAllUploads,
   removeAttachedFile,
   removeAllFiles,
-} = useChatFiles(files, canAttachMediaType)
+} = useChatFiles(files, canAttachMediaType, resolveDelivery)
 
-watch(canAttachMediaType, (canAttach) => {
-  const rejectedFiles = files.value.filter((file) => {
-    return isMediaTypeRejectedByModel(file.type, canAttach)
+watch(resolveDelivery, (resolve) => {
+  const rejections = files.value.flatMap((file) => {
+    const rejection = getFileRejection(file, resolve)
+
+    return rejection ? [{ file, rejection }] : []
   })
 
-  if (rejectedFiles.length === 0) {
+  if (rejections.length === 0) {
     return
   }
 
+  const rejectedFiles = rejections.map(({ file }) => file)
+
   files.value = files.value.filter(file => !rejectedFiles.includes(file))
-  useWarningMessage(
-    getUnsupportedInputMessage(
-      rejectedFiles.map(file => file.type),
-      canAttach,
-    ),
-  )
+
+  for (const message of getRejectionMessages(
+    rejections.map(({ rejection }) => rejection),
+    canAttachMediaType.value,
+  )) {
+    useWarningMessage(message)
+  }
 }, { flush: 'post' })
 
 /**
@@ -1225,27 +1253,27 @@ watch(input, (newValue) => {
   }
 })
 
-function onFilesAttached(
-  attachedFiles: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
-) {
+function onFilesAttached(attachedFiles: AttachedFile[]) {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
   const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
   )
-  const rejectedFiles = incomingFiles.filter((file) => {
-    return isMediaTypeRejectedByModel(file.type, canAttachMediaType.value)
-  })
+  const rejections: FileRejection[] = []
   const newFiles = incomingFiles.filter((file) => {
-    return !rejectedFiles.includes(file)
+    const rejection = getFileRejection(file, resolveDelivery.value)
+
+    if (rejection) {
+      rejections.push(rejection)
+    }
+
+    return !rejection
   })
 
-  if (rejectedFiles.length > 0) {
-    useWarningMessage(
-      getUnsupportedInputMessage(
-        rejectedFiles.map(file => file.type),
-        canAttachMediaType.value,
-      ),
-    )
+  for (const message of getRejectionMessages(
+    rejections,
+    canAttachMediaType.value,
+  )) {
+    useWarningMessage(message)
   }
 
   if (newFiles.length === 0) {

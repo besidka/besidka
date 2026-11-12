@@ -16,6 +16,18 @@ export type FileManagerFile = Pick<
 > & {
   documentId?: string | null
   documentAiGenerated?: boolean | null
+  textStatus?: FileMetadata['textStatus']
+  textBytes?: FileMetadata['textBytes']
+  textTruncated?: boolean
+}
+
+export type AttachedFile = Pick<
+  FileMetadata,
+  'id' | 'storageKey' | 'name' | 'size' | 'type'
+> & {
+  textStatus?: FileMetadata['textStatus']
+  textBytes?: FileMetadata['textBytes']
+  textTruncated?: boolean
 }
 
 export type ViewMode = 'grid' | 'list'

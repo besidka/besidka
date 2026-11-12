@@ -36,10 +36,27 @@
         </p>
         <p class="mt-2 text-sm text-base-content/60">
           Allowed file types:
-          <strong class="block font-semibold lowercase">
+          <strong
+            class="block font-semibold"
+            data-testid="files-upload-formats"
+          >
             {{ formattedFileFormats }}
           </strong>
         </p>
+        <div
+          v-if="legacyOfficeMessage"
+          role="alert"
+          class="alert alert-warning alert-soft mt-4 text-left text-sm"
+          data-testid="files-upload-legacy-hint"
+          @click.stop
+        >
+          <Icon
+            name="lucide:circle-alert"
+            size="16"
+            class="shrink-0"
+          />
+          <span>{{ legacyOfficeMessage }}</span>
+        </div>
       </div>
       <div class="hidden">
         <input
@@ -69,6 +86,9 @@ const emit = defineEmits<{
 }>()
 
 const { allowedFileFormats } = useRuntimeConfig().public
+const officeFeature = useFeature('files.office')
+
+const legacyOfficeMessage = shallowRef<string>('')
 
 const dropZoneRef = useTemplateRef<HTMLDivElement>('dropZoneRef')
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
@@ -87,7 +107,9 @@ const { isOverDropZone } = useDropZone(dropZoneRef, {
 const { focused: isInputFocused } = useFocus(fileInput)
 
 const effectiveFileFormats = computed<string[]>(() => {
-  const formats = allowedFileFormats as string[]
+  const formats = getAllowedFileFormats(allowedFileFormats as string[], {
+    office: officeFeature.value.active,
+  })
 
   return formats.filter((format) => {
     return !isMediaTypeRejectedByModel(format, props.canAttachMediaType)
@@ -104,22 +126,31 @@ const acceptAttribute = computed<string>(() => {
   return [
     ...effectiveFileFormats.value,
     ...hasTextFormat ? TEXT_FILE_EXTENSIONS : [],
+    ...officeFeature.value.active
+      ? [...OFFICE_ACCEPT_EXTENSIONS, ...LEGACY_OFFICE_ACCEPT_EXTENSIONS]
+      : [],
   ].join(',')
 })
 
 const formattedFileFormats = computed<string>(() => {
-  return effectiveFileFormats.value
-    .map(format => format.split('/')[1])
-    .filter(Boolean)
-    .join(', ')
+  return formatUploadFormatLabels(effectiveFileFormats.value)
 })
 
 function filterValidFiles(files: File[]): File[] {
   const formats = effectiveFileFormats.value
   const valid: File[] = []
   const invalid: string[] = []
+  const legacyOffice: string[] = []
+
+  legacyOfficeMessage.value = ''
 
   for (const file of files) {
+    if (officeFeature.value.active && isLegacyOfficeFile(file)) {
+      legacyOffice.push(file.name)
+
+      continue
+    }
+
     const normalizedFile = normalizeUploadFile(file)
 
     if (formats.includes(normalizedFile.type)) {
@@ -127,6 +158,11 @@ function filterValidFiles(files: File[]): File[] {
     } else {
       invalid.push(file.name)
     }
+  }
+
+  if (legacyOffice.length > 0) {
+    legacyOfficeMessage.value = getLegacyOfficeMessage(legacyOffice)
+    useWarningMessage(legacyOfficeMessage.value)
   }
 
   if (invalid.length > 0) {

@@ -91,6 +91,13 @@
               {{ truncateFilenameMiddle(file.name, 48) }}
             </span>
             <span
+              v-if="unsupportedCaptions[file.id]"
+              class="badge badge-soft badge-xs mt-1 leading-none"
+              data-testid="files-unsupported-caption"
+            >
+              {{ unsupportedCaptions[file.id] }}
+            </span>
+            <span
               v-if="isAiGeneratedFile(file)"
               class="badge badge-secondary badge-xs mt-1 text-2xs leading-none gap-0.5"
               data-testid="files-ai-badge"
@@ -201,9 +208,11 @@ withDefaults(defineProps<{
   hasSelection: boolean
   stickyOffset?: boolean
   unsupportedReasons?: Record<string, string>
+  unsupportedCaptions?: Record<string, string>
 }>(), {
   stickyOffset: false,
   unsupportedReasons: () => ({}),
+  unsupportedCaptions: () => ({}),
 })
 
 defineEmits<{
@@ -219,6 +228,10 @@ const { canPreviewFile } = useDocumentPreview()
 const containerRef = useTemplateRef<HTMLTableElement>('containerRef')
 
 function getFileTypeLabel(type: string): string {
+  if (isOfficeMediaType(type)) {
+    return getUploadFormatLabel(type)
+  }
+
   const parts = type.split('/')
 
   return parts[1]?.toUpperCase() || type

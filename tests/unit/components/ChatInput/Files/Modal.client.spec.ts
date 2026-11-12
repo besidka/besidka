@@ -13,6 +13,7 @@ const SelectStub = defineComponent({
     attachedIds: { type: Set, required: true },
     initialSource: { type: String, default: undefined },
     isImageInputSupported: { type: Boolean, default: true },
+    resolveDelivery: { type: Function, default: undefined },
   },
   emits: ['attach', 'detach', 'deleted', 'preview'],
   setup(_props, { expose }) {
@@ -50,10 +51,11 @@ type ModalExposed = {
   close: () => void
 }
 
-async function mountModal() {
+async function mountModal(props: Record<string, unknown> = {}) {
   return mountSuspended(Modal, {
     props: {
       attachedIds: new Set<string>(),
+      ...props,
     },
     global: {
       stubs: {
@@ -117,6 +119,48 @@ describe('ChatInput/Files/Modal.client', () => {
       'min-h-0',
     ]))
     expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+  })
+
+  it('hands the delivery resolver to the Select tab', async () => {
+    const resolveDelivery = vi.fn(() => ({ delivery: 'native' }))
+    const wrapper = await mountModal({ resolveDelivery })
+    const exposed = wrapper.vm as unknown as ModalExposed
+
+    exposed.open('select')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(SelectStub).props('resolveDelivery'))
+      .toBe(resolveDelivery)
+  })
+
+  it('keeps the text status of an attached Office file', async () => {
+    const wrapper = await mountModal()
+    const exposed = wrapper.vm as unknown as ModalExposed
+
+    exposed.open('select')
+    await wrapper.vm.$nextTick()
+    wrapper.findComponent(SelectStub).vm.$emit('attach', [{
+      id: 'file-1',
+      storageKey: 'file-1.xlsx',
+      name: 'Budget.xlsx',
+      size: 10,
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      source: 'assistant',
+      textStatus: 'ready',
+      textBytes: 300 * 1024,
+      textTruncated: true,
+    }])
+
+    expect(wrapper.emitted('attach')![0]![0]).toEqual([{
+      id: 'file-1',
+      storageKey: 'file-1.xlsx',
+      name: 'Budget.xlsx',
+      size: 10,
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      textStatus: 'ready',
+      textBytes: 300 * 1024,
+      textTruncated: true,
+    }])
   })
 
   it('defaults the Select tab to uploaded files', async () => {
