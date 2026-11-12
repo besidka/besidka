@@ -65,16 +65,33 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     expect(wrapper.emitted('file-click')).toBeUndefined()
   })
 
-  it('stacks the four tile actions in two columns below sm so they stay inside the tile', async () => {
+  it('keeps one row of actions and moves rename and delete into a menu below sm', async () => {
     const wrapper = await mountDocumentGrid([documentFile])
     const actions = wrapper.get('[data-testid="files-tile-actions"]')
 
-    expect(actions.classes()).toEqual(expect.arrayContaining([
-      'grid',
-      'grid-cols-2',
-      'sm:flex',
-    ]))
-    expect(actions.findAll('a, button')).toHaveLength(4)
+    expect(actions.classes()).toEqual(expect.arrayContaining(['flex']))
+    expect(actions.classes()).not.toContain('grid')
+    expect(wrapper.get('[aria-label="Rename file"]').classes())
+      .toContain('max-sm:hidden')
+    expect(wrapper.get('[aria-label="Delete file"]').classes())
+      .toContain('max-sm:hidden')
+
+    const more = wrapper.get('[data-testid="files-action-more"]')
+
+    expect(more.element.parentElement?.classList.contains('sm:hidden'))
+      .toBe(true)
+    expect(more.attributes('aria-label')).toBe('More actions for Report.pdf')
+  })
+
+  it('renames and deletes from the menu without selecting the tile', async () => {
+    const wrapper = await mountDocumentGrid([documentFile])
+
+    await wrapper.get('[data-testid="files-menu-rename"]').trigger('click')
+    await wrapper.get('[data-testid="files-menu-delete"]').trigger('click')
+
+    expect(wrapper.emitted('rename')?.[0]).toEqual([documentFile])
+    expect(wrapper.emitted('delete')?.[0]).toEqual([documentFile])
+    expect(wrapper.emitted('file-click')).toBeUndefined()
   })
 
   it('has no preview action without a document id or the feature',
