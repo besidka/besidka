@@ -358,7 +358,14 @@ import type {
 const props = withDefaults(defineProps<{
   files: (
     Pick<FileMetadata, 'storageKey' | 'name' | 'type' | 'size'>
-    & Partial<Pick<AttachedFile, 'textStatus' | 'textBytes' | 'textTruncated'>>
+    & Partial<Pick<
+      AttachedFile,
+      | 'textStatus'
+      | 'textBytes'
+      | 'textTruncated'
+      | 'textOmittedMedia'
+      | 'textOmittedCharts'
+    >>
   )[]
   resolveDelivery?: FileDeliveryResolver
   resolveDeliveryWithRunCode?: FileDeliveryResolver

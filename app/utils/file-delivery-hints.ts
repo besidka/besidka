@@ -23,6 +23,8 @@ export interface DeliveryFile {
   textStatus?: string | null
   textBytes?: number | null
   textTruncated?: boolean
+  textOmittedMedia?: number | null
+  textOmittedCharts?: number | null
 }
 
 export type FileDeliveryContext = Pick<
@@ -44,20 +46,20 @@ export interface FileRejection {
   name?: string
 }
 
-export const SENT_AS_TEXT_LABEL = 'Sent as text'
+export const TEXT_ONLY_DESCRIPTION
+  = 'The model gets this file\'s text only. Images, charts and formatting aren\'t sent.'
 
-export const SENT_AS_TEXT_SHORTENED_LABEL = 'Sent as text (shortened)'
+export const TEXT_SHORTENED_LABEL = 'Shortened'
 
-export const SENT_AS_TEXT_DESCRIPTION
-  = 'Sent as text: images, charts and formatting aren\'t included.'
+export const TEXT_SHORTENED_DESCRIPTION
+  = 'It is long, so only the start is sent.'
+
+export const OMITTED_COUNT_DISPLAY_MAX = 99
 
 export const NEEDS_RUN_CODE_LABEL = 'Needs Run code'
 
 export const NEEDS_RUN_CODE_DESCRIPTION
   = 'Turn on Run code to send this file, or remove it.'
-
-export const SENT_AS_TEXT_SHORTENED_DESCRIPTION
-  = `${SENT_AS_TEXT_DESCRIPTION} It is long, so only the start is sent.`
 
 const TERMINAL_TEXT_STATUSES: readonly string[] = [
   'empty',
@@ -183,12 +185,60 @@ function needsRunCode(
   return resolveWithRunCode?.(file).delivery === 'container'
 }
 
+function formatOmittedCount(
+  count: number | null | undefined,
+  singular: string,
+  plural: string,
+): string | null {
+  if (typeof count !== 'number' || !Number.isFinite(count) || count < 1) {
+    return null
+  }
+
+  if (count >= OMITTED_COUNT_DISPLAY_MAX) {
+    return `${OMITTED_COUNT_DISPLAY_MAX}+ ${plural}`
+  }
+
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
 /**
- * The note on an attached file. An Office file whose text, not the file
- * itself, reaches the model gets the quiet "Sent as text" note. A file the
- * send would refuse gets a blocking note with the reason instead of being
- * dropped, and "Needs Run code" when only the sandbox could take it.
- * Plain text files need none: they are the text.
+ * The note for an Office file whose text leaves something out: the model
+ * gets the text only, so images, charts and diagrams are not sent, and a
+ * long text is cut to its start. A file where nothing is lost (or the counts
+ * are not known yet) gets none, so a normal file shows nothing.
+ */
+export function getTextLossNote(
+  file: DeliveryFile,
+): Pick<FileDeliveryHint, 'label' | 'description'> | null {
+  const isShortened = isTextTruncated(file)
+  const omitted = [
+    formatOmittedCount(file.textOmittedMedia, 'image', 'images'),
+    formatOmittedCount(file.textOmittedCharts, 'chart', 'charts'),
+  ].filter((part): part is string => part !== null)
+
+  if (!isShortened && omitted.length === 0) {
+    return null
+  }
+
+  const labelParts = [
+    ...isShortened ? [TEXT_SHORTENED_LABEL] : [],
+    ...omitted.length > 0 ? [`${omitted.join(' \u00B7 ')} not sent`] : [],
+  ]
+
+  return {
+    label: labelParts.join(' \u00B7 '),
+    description: isShortened
+      ? `${TEXT_ONLY_DESCRIPTION} ${TEXT_SHORTENED_DESCRIPTION}`
+      : TEXT_ONLY_DESCRIPTION,
+  }
+}
+
+/**
+ * The note on an attached file. A file the send would refuse gets a blocking
+ * note with the reason instead of being dropped, and "Needs Run code" when
+ * only the sandbox could take it. An Office file whose text reaches the
+ * model gets a quiet note only when that text leaves content out (see
+ * `getTextLossNote`). Plain text files and complete Office files need none.
  */
 export function getFileDeliveryHint(
   file: DeliveryFile,
@@ -219,19 +269,9 @@ export function getFileDeliveryHint(
     return null
   }
 
-  if (isTextTruncated(file)) {
-    return {
-      label: SENT_AS_TEXT_SHORTENED_LABEL,
-      description: SENT_AS_TEXT_SHORTENED_DESCRIPTION,
-      isBlocking: false,
-    }
-  }
+  const note = getTextLossNote(file)
 
-  return {
-    label: SENT_AS_TEXT_LABEL,
-    description: SENT_AS_TEXT_DESCRIPTION,
-    isBlocking: false,
-  }
+  return note ? { ...note, isBlocking: false } : null
 }
 
 /**

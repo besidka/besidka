@@ -192,6 +192,8 @@ function onFilesAttached(files: FileManagerFile[]) {
       textStatus: file.textStatus,
       textBytes: file.textBytes,
       textTruncated: file.textTruncated,
+      textOmittedMedia: file.textOmittedMedia,
+      textOmittedCharts: file.textOmittedCharts,
     }
   })
 

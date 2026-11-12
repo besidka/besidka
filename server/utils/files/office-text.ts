@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import { readZipDirectory } from '@besidka/doc-renderer/zip'
 import * as schema from '~~/server/db/schema'
 import {
   OFFICE_TEXT_MAX_BYTES,
@@ -11,17 +12,29 @@ import type { OfficeTextStatus } from '#shared/utils/office-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { extractOfficeText } from '~~/server/utils/documents/renderer'
+import { OFFICE_UPLOAD_ZIP_LIMITS } from '~~/server/utils/files/office-upload-check'
 
 const RENDERER_UNAVAILABLE_CODE = 'renderer_unavailable'
 const SIDECAR_CONTENT_TYPE = 'text/markdown; charset=utf-8'
 const SIDECAR_SLACK_BYTES = 4 * 1024
+export const OFFICE_OMITTED_COUNT_MAX = 99
+const OMITTED_MEDIA_ENTRY = /^(?:word|ppt|xl)\/(?:media|embeddings)\/.*[^/]$/
+const OMITTED_CHART_ENTRY
+  = /^(?:word|ppt|xl)\/(?:charts\/chart|diagrams\/data)[^/]*\.xml$/
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+
+export interface OfficeOmittedCounts {
+  media: number
+  charts: number
+}
 
 export interface OfficeTextState {
   textStatus: OfficeTextStatus
   textBytes: number | null
   textVersion: number
+  textOmittedMedia: number | null
+  textOmittedCharts: number | null
 }
 
 export interface OfficeTextFile {
@@ -32,6 +45,8 @@ export interface OfficeTextFile {
   textStatus?: string | null
   textBytes?: number | null
   textVersion?: number | null
+  textOmittedMedia?: number | null
+  textOmittedCharts?: number | null
 }
 
 export interface StoreOfficeTextInput {
@@ -59,6 +74,52 @@ function logOfficeText(
       },
     },
   })
+}
+
+/**
+ * Counts the parts of an Office package that the extracted text leaves out,
+ * from entry names only: images and embedded objects as `media`, charts and
+ * diagrams as `charts`. Each count is capped so a hostile file cannot inflate
+ * it.
+ */
+export function countOmittedOfficeEntries(
+  names: readonly string[],
+): OfficeOmittedCounts {
+  let media = 0
+  let charts = 0
+
+  for (const name of names) {
+    if (OMITTED_MEDIA_ENTRY.test(name)) {
+      media += 1
+    } else if (OMITTED_CHART_ENTRY.test(name)) {
+      charts += 1
+    }
+  }
+
+  return {
+    media: Math.min(media, OFFICE_OMITTED_COUNT_MAX),
+    charts: Math.min(charts, OFFICE_OMITTED_COUNT_MAX),
+  }
+}
+
+/**
+ * Reads the ZIP central directory (names only, nothing is inflated) and
+ * counts what the text leaves out. An archive that cannot be read counts as
+ * nothing omitted, so a file is never re-read on every send; NULL columns
+ * only ever mean "not counted yet".
+ */
+export function countOmittedOfficeContent(
+  bytes: Uint8Array,
+): OfficeOmittedCounts | null {
+  const directory = readZipDirectory(bytes, OFFICE_UPLOAD_ZIP_LIMITS)
+
+  if (!directory.ok) {
+    return null
+  }
+
+  return countOmittedOfficeEntries(
+    directory.directory.entries.map(entry => entry.name),
+  )
 }
 
 /**
@@ -104,6 +165,8 @@ async function saveOfficeTextState(
       textStatus: state.textStatus,
       textBytes: state.textBytes,
       textVersion: state.textVersion,
+      textOmittedMedia: state.textOmittedMedia,
+      textOmittedCharts: state.textOmittedCharts,
     })
     .where(and(
       eq(schema.files.id, input.fileId),
@@ -151,10 +214,13 @@ export async function extractAndStoreOfficeText(
       textStatus = textBytes === null ? 'too_large' : 'ready'
     }
 
+    const omitted = countOmittedOfficeContent(input.bytes)
     const state: OfficeTextState = {
       textStatus,
       textBytes,
       textVersion: OFFICE_TEXT_VERSION,
+      textOmittedMedia: omitted?.media ?? 0,
+      textOmittedCharts: omitted?.charts ?? 0,
     }
 
     try {
@@ -170,6 +236,9 @@ export async function extractAndStoreOfficeText(
       textBytes,
       truncated: result.truncated,
       errorCode: result.errorCode,
+      omittedMedia: state.textOmittedMedia,
+      omittedCharts: state.textOmittedCharts,
+      omittedUnreadable: omitted === null,
     })
 
     return state
@@ -222,6 +291,70 @@ async function extractFromStoredFile(
   })
 }
 
+function needsOmittedCounts(file: OfficeTextFile): boolean {
+  return file.textStatus === 'ready'
+    && file.textOmittedMedia == null
+    && file.textOmittedCharts == null
+}
+
+/**
+ * A ready file stored before the omitted-content counts existed gets them
+ * from its ZIP directory on first use, without running the renderer or
+ * rewriting the text. A failure leaves the counts empty and returns the
+ * state as it was.
+ */
+async function backfillOmittedCounts(
+  file: OfficeTextFile,
+  state: OfficeTextState,
+  logger: LoggerLike,
+): Promise<OfficeTextState> {
+  try {
+    const object = await useFileStorage().get(file.storageKey)
+
+    if (!object) {
+      return state
+    }
+
+    const omitted = countOmittedOfficeContent(
+      new Uint8Array(await object.arrayBuffer()),
+    )
+    const counted: OfficeTextState = {
+      ...state,
+      textOmittedMedia: omitted?.media ?? 0,
+      textOmittedCharts: omitted?.charts ?? 0,
+    }
+
+    await useDb()
+      .update(schema.files)
+      .set({
+        textOmittedMedia: counted.textOmittedMedia,
+        textOmittedCharts: counted.textOmittedCharts,
+      })
+      .where(and(
+        eq(schema.files.id, file.id),
+        eq(schema.files.userId, file.userId),
+      ))
+
+    logOfficeText(logger, {
+      status: 'counted',
+      phase: 'backfill',
+      omittedMedia: counted.textOmittedMedia,
+      omittedCharts: counted.textOmittedCharts,
+      omittedUnreadable: omitted === null,
+    })
+
+    return counted
+  } catch (exception) {
+    logOfficeText(logger, {
+      status: 'error',
+      phase: 'backfill',
+      error: exceptionMessage(exception),
+    })
+
+    return state
+  }
+}
+
 /**
  * The extraction state a send can rely on. A file stored before extraction
  * existed (or by an older extractor) is read once here and cached, so the
@@ -233,11 +366,19 @@ export async function ensureOfficeTextState(
   logger: LoggerLike,
 ): Promise<OfficeTextState | null> {
   if (!needsOfficeTextExtraction(file)) {
-    return {
+    const state: OfficeTextState = {
       textStatus: file.textStatus as OfficeTextStatus,
       textBytes: file.textBytes ?? null,
       textVersion: file.textVersion ?? OFFICE_TEXT_VERSION,
+      textOmittedMedia: file.textOmittedMedia ?? null,
+      textOmittedCharts: file.textOmittedCharts ?? null,
     }
+
+    if (needsOmittedCounts(file)) {
+      return backfillOmittedCounts(file, state, logger)
+    }
+
+    return state
   }
 
   try {

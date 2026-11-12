@@ -282,18 +282,58 @@ describe('ChatInput/Files/Attached/Preview', () => {
       size: 2048,
     }
 
-    it('says an attached Office file is sent as text', async () => {
+    it('shows no hint for an Office file whose text is complete',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [{
+              ...officeFile,
+              textStatus: 'ready' as const,
+              textOmittedMedia: 0,
+              textOmittedCharts: 0,
+            }],
+            resolveDelivery,
+          },
+        })
+
+        expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+          .toBe(false)
+      })
+
+    it('shows no hint for an Office file that was not counted yet',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [{
+              ...officeFile,
+              textStatus: 'ready' as const,
+              textOmittedMedia: null,
+              textOmittedCharts: null,
+            }],
+            resolveDelivery,
+          },
+        })
+
+        expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+          .toBe(false)
+      })
+
+    it('names the images that are not sent', async () => {
       const wrapper = await mountSuspended(Preview, {
         props: {
-          files: [{ ...officeFile, textStatus: 'ready' as const }],
+          files: [{
+            ...officeFile,
+            textStatus: 'ready' as const,
+            textOmittedMedia: 1,
+          }],
           resolveDelivery,
         },
       })
       const hint = wrapper.get('[data-testid="files-delivery-hint"]')
 
-      expect(hint.text()).toBe('Sent as text')
+      expect(hint.text()).toBe('1 image not sent')
       expect(hint.attributes('title')).toBe(
-        'Sent as text: images, charts and formatting aren\'t included.',
+        'The model gets this file\'s text only. Images, charts and formatting aren\'t sent.',
       )
       expect(hint.classes()).toEqual(expect.arrayContaining([
         'badge',
@@ -302,11 +342,31 @@ describe('ChatInput/Files/Attached/Preview', () => {
       ]))
     })
 
+    it('names the charts that are not sent', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            ...officeFile,
+            textStatus: 'ready' as const,
+            textOmittedCharts: 2,
+          }],
+          resolveDelivery,
+        },
+      })
+
+      expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
+        .toBe('2 charts not sent')
+    })
+
     it('notes a file that was converted from .xls, apart from the hint',
       async () => {
         const wrapper = await mountSuspended(Preview, {
           props: {
-            files: [{ ...officeFile, textStatus: 'ready' as const }],
+            files: [{
+              ...officeFile,
+              textStatus: 'ready' as const,
+              textOmittedMedia: 2,
+            }],
             resolveDelivery,
             convertedFromXlsKeys: new Set(['budget-key']),
           },
@@ -320,8 +380,28 @@ describe('ChatInput/Files/Attached/Preview', () => {
           + 'kept.',
         )
         expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
-          .toBe('Sent as text')
+          .toBe('2 images not sent')
       })
+
+    it('shows the converted note alone when nothing is left out', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            ...officeFile,
+            textStatus: 'ready' as const,
+            textOmittedMedia: 0,
+            textOmittedCharts: 0,
+          }],
+          resolveDelivery,
+          convertedFromXlsKeys: new Set(['budget-key']),
+        },
+      })
+
+      expect(wrapper.get('[data-testid="files-converted-note"]').text())
+        .toBe('Converted from .xls')
+      expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+        .toBe(false)
+    })
 
     it('shows no converted note for a file that was not converted',
       async () => {
@@ -350,10 +430,27 @@ describe('ChatInput/Files/Attached/Preview', () => {
       })
 
       expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
-        .toBe('Sent as text (shortened)')
+        .toBe('Shortened')
     })
 
-    it('says it for a generated document with no text status yet',
+    it('combines the shortened note with what is not sent', async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            ...officeFile,
+            textStatus: 'ready' as const,
+            textBytes: 300 * 1024,
+            textOmittedMedia: 3,
+          }],
+          resolveDelivery,
+        },
+      })
+
+      expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
+        .toBe('Shortened \u00B7 3 images not sent')
+    })
+
+    it('shows no hint for a generated document with no text status yet',
       async () => {
         const wrapper = await mountSuspended(Preview, {
           props: {
@@ -368,8 +465,8 @@ describe('ChatInput/Files/Attached/Preview', () => {
           },
         })
 
-        expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
-          .toBe('Sent as text')
+        expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+          .toBe(false)
       })
 
     it('shows no hint for images, PDFs and text files', async () => {

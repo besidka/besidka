@@ -45,7 +45,10 @@ export type PersistedFile = Pick<
   | 'type'
   | 'source'
   | 'expiresAt'
-> & Partial<Pick<FileMetadata, 'textStatus' | 'textBytes'>>
+> & Partial<Pick<
+  FileMetadata,
+  'textStatus' | 'textBytes' | 'textOmittedMedia' | 'textOmittedCharts'
+>>
 
 const MAX_LOGGED_EXTENSION_LENGTH = 16
 
@@ -261,6 +264,8 @@ export async function persistFile(
     ...storedFile,
     textStatus: textState?.textStatus ?? null,
     textBytes: textState?.textBytes ?? null,
+    textOmittedMedia: textState?.textOmittedMedia ?? null,
+    textOmittedCharts: textState?.textOmittedCharts ?? null,
   }
 }
 

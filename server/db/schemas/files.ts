@@ -30,6 +30,8 @@ export const files = snakeCase.table(
     }),
     textBytes: integer({ mode: 'number' }),
     textVersion: integer({ mode: 'number' }),
+    textOmittedMedia: integer({ mode: 'number' }),
+    textOmittedCharts: integer({ mode: 'number' }),
   },
   table => [
     uniqueIndex('uq_file_user').on(table.id, table.userId),

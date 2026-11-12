@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
+import { strToU8, zipSync } from 'fflate'
 import {
   OFFICE_MEDIA_TYPES,
   OFFICE_TEXT_INLINE_MAX_BYTES,
@@ -49,6 +50,8 @@ interface OwnedRow {
   textStatus?: string | null
   textBytes?: number | null
   textVersion?: number | null
+  textOmittedMedia?: number | null
+  textOmittedCharts?: number | null
 }
 
 function officeRow(key: string, overrides: Partial<OwnedRow> = {}): OwnedRow {
@@ -60,6 +63,8 @@ function officeRow(key: string, overrides: Partial<OwnedRow> = {}): OwnedRow {
     textStatus: 'ready',
     textBytes: 10,
     textVersion: 1,
+    textOmittedMedia: 0,
+    textOmittedCharts: 0,
     ...overrides,
   }
 }
@@ -323,8 +328,37 @@ describe('convertFilesForAI with Office files', () => {
       textStatus: 'ready',
       textBytes: 9,
       textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
     })
     expect(getTexts(messages[0]).join('\n')).toContain('Lazy text')
+  })
+
+  it('counts what the text leaves out for a ready file stored before the counts existed', async () => {
+    store('counted.docx', zipSync({
+      'word/document.xml': strToU8('<w:document/>'),
+      'word/media/image1.png': new Uint8Array([1]),
+      'word/charts/chart1.xml': strToU8('<c:chart/>'),
+    }))
+    store('counted.docx.text.md', 'Already extracted')
+    stubOwnedFiles([officeRow('counted.docx', {
+      textOmittedMedia: null,
+      textOmittedCharts: null,
+    })])
+
+    const { messages } = await convertFilesForAI([
+      userMessage([{
+        key: 'counted.docx',
+        mediaType: OFFICE_MEDIA_TYPES.docx,
+      }]),
+    ])
+
+    expect(mocks.extractOfficeText).not.toHaveBeenCalled()
+    expect(updateSet).toHaveBeenCalledWith({
+      textOmittedMedia: 1,
+      textOmittedCharts: 1,
+    })
+    expect(getTexts(messages[0]).join('\n')).toContain('Already extracted')
   })
 
   it('does not extract a file again when the cached status is current', async () => {

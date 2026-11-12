@@ -80,6 +80,7 @@
         :touch-group-id="touchGroupId"
         :unsupported-reasons="unsupportedReasons"
         :unsupported-captions="unsupportedCaptions"
+        :text-notes="textNotes"
         @toggle="toggleProjectGroup"
         @load-more="loadMoreProjectGroup"
         @file-click="onFileClick"
@@ -100,6 +101,7 @@
             :touched-indices="touchedIndices"
             :unsupported-reasons="unsupportedReasons"
             :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             @file-click="onFileClick"
             @preview="onPreview"
             @rename="openRenameModal"
@@ -116,6 +118,7 @@
             :has-selection="hasSelection"
             :unsupported-reasons="unsupportedReasons"
             :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             @file-click="onFileClick"
             @preview="onPreview"
             @rename="openRenameModal"
@@ -175,6 +178,7 @@ import type {
   FileSourceTab,
 } from '~/types/file-manager'
 import type {
+  FileDeliveryHint,
   FileDeliveryResolver,
   FileRejection,
 } from '~/utils/file-delivery-hints'
@@ -284,6 +288,27 @@ const unsupportedCaptions = computed<Record<string, string>>(() => {
   }
 
   return captions
+})
+
+const textNotes = computed<Record<string, FileDeliveryHint>>(() => {
+  const resolve = props.resolveDelivery
+    ?? createPredicateDeliveryResolver(props.canAttachMediaType)
+  const notes: Record<string, FileDeliveryHint> = {}
+  const groupFiles = projectGroups.value.flatMap(group => group.files)
+
+  for (const file of [...loadedFiles.value, ...groupFiles]) {
+    if (fileRejections.value.has(file.id)) {
+      continue
+    }
+
+    const note = getFileDeliveryHint(file, resolve)
+
+    if (note) {
+      notes[file.id] = note
+    }
+  }
+
+  return notes
 })
 
 const extraSourceTabs = getFileManagerExtraSourceTabs()

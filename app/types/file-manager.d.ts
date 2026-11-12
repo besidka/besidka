@@ -19,6 +19,8 @@ export type FileManagerFile = Pick<
   textStatus?: FileMetadata['textStatus']
   textBytes?: FileMetadata['textBytes']
   textTruncated?: boolean
+  textOmittedMedia?: FileMetadata['textOmittedMedia']
+  textOmittedCharts?: FileMetadata['textOmittedCharts']
 }
 
 export type AttachedFile = Pick<
@@ -28,6 +30,8 @@ export type AttachedFile = Pick<
   textStatus?: FileMetadata['textStatus']
   textBytes?: FileMetadata['textBytes']
   textTruncated?: boolean
+  textOmittedMedia?: FileMetadata['textOmittedMedia']
+  textOmittedCharts?: FileMetadata['textOmittedCharts']
 }
 
 export type ViewMode = 'grid' | 'list'

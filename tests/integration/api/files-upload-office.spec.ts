@@ -264,6 +264,8 @@ describe('Office uploads', () => {
             textStatus: 'ready',
             textBytes: 19,
             textVersion: 1,
+            textOmittedMedia: 0,
+            textOmittedCharts: 0,
           })
           expect(result).toMatchObject({
             id: 'file-1',
@@ -289,6 +291,83 @@ describe('Office uploads', () => {
       })
     })
   }
+
+  it('counts the images in a DOCX and returns them from the files list', async () => {
+    const handler = await getHandler()
+    const docxWithImage = docxPackage(paragraphXml('Quarterly numbers'), {
+      options: {
+        extraFiles: {
+          'word/media/image1.png': new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        },
+      },
+    })
+
+    const uploaded = await handler(createEvent({
+      'content-type': DOCX_TYPE,
+      'x-filename': encodeURIComponent('report.docx'),
+    }, docxWithImage) as any)
+
+    expect(uploaded).toMatchObject({
+      textStatus: 'ready',
+      textOmittedMedia: 1,
+      textOmittedCharts: 0,
+    })
+
+    const stored = dbMock.spies.updateSet.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    const chain = {
+      from: vi.fn(),
+      where: vi.fn(),
+      orderBy: vi.fn(),
+      offset: vi.fn(),
+      limit: vi.fn(),
+      get: vi.fn(),
+    }
+    const row = {
+      id: 'file-1',
+      storageKey: STORED_KEY,
+      name: 'report.docx',
+      size: 1,
+      type: DOCX_TYPE,
+      source: 'upload',
+      expiresAt: null,
+      createdAt: new Date(),
+      originModel: null,
+      generationCost: null,
+      documentId: null,
+      documentCreatedVia: null,
+      documentAiGenerated: null,
+      textStatus: stored.textStatus,
+      textBytes: stored.textBytes,
+      textOmittedMedia: stored.textOmittedMedia,
+      textOmittedCharts: stored.textOmittedCharts,
+    }
+
+    chain.from.mockReturnValue(chain)
+    chain.where.mockReturnValue(chain)
+    chain.orderBy.mockReturnValue(chain)
+    chain.offset.mockReturnValue(chain)
+    chain.limit.mockResolvedValue([row])
+    chain.get.mockResolvedValue({ count: 1 })
+    vi.stubGlobal('getQuery', () => ({}))
+    vi.stubGlobal('useDb', () => ({
+      select: vi.fn(() => chain),
+    }))
+
+    const { default: listHandler } = await import(
+      '../../../server/api/v1/files/index.get'
+    )
+    const listed = await listHandler({} as any)
+
+    expect(listed.files[0]?.textOmittedMedia).toBeGreaterThanOrEqual(1)
+    expect(listed.files[0]).toMatchObject({
+      textStatus: 'ready',
+      textOmittedMedia: 1,
+      textOmittedCharts: 0,
+    })
+  })
 
   it('rejects legacy files with a save-as hint', async () => {
     const handler = await getHandler()
@@ -417,6 +496,8 @@ describe('Office uploads', () => {
       textStatus: 'failed',
       textBytes: null,
       textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
     })
   })
 

@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { strToU8, zipSync } from 'fflate'
+import { render } from '@besidka/doc-renderer/render'
+import { parseDocumentSpec } from '@besidka/doc-renderer/spec'
+import { loadReferenceAssets } from '~~/tests/setup/helpers/documents'
 import {
   OFFICE_MEDIA_TYPES,
   OFFICE_TEXT_MAX_BYTES,
@@ -13,6 +17,9 @@ vi.mock('~~/server/utils/documents/renderer', () => ({
 }))
 
 const {
+  OFFICE_OMITTED_COUNT_MAX,
+  countOmittedOfficeContent,
+  countOmittedOfficeEntries,
   ensureOfficeTextState,
   extractAndStoreOfficeText,
   loadOfficeText,
@@ -35,6 +42,135 @@ function readyResult(text: string) {
     },
   }
 }
+
+function buildZip(names: string[]): Uint8Array {
+  const archive: Record<string, Uint8Array> = {}
+
+  for (const name of names) {
+    archive[name] = strToU8(name.endsWith('/') ? '' : 'x')
+  }
+
+  return zipSync(archive)
+}
+
+async function renderDocx(blocks: unknown[]): Promise<Uint8Array> {
+  const parsed = parseDocumentSpec({
+    specVersion: 1,
+    format: 'docx',
+    title: 'Report',
+    blocks,
+  })
+
+  if (!parsed.ok) {
+    throw new Error(JSON.stringify(parsed.issues))
+  }
+
+  return (await render(parsed.spec, loadReferenceAssets())).bytes
+}
+
+describe('countOmittedOfficeEntries', () => {
+  it('counts images from every Office media folder', () => {
+    expect(countOmittedOfficeEntries([
+      'word/media/image1.png',
+      'ppt/media/image2.jpeg',
+      'xl/media/image3.gif',
+    ])).toEqual({ media: 3, charts: 0 })
+  })
+
+  it('counts embedded objects with the images', () => {
+    expect(countOmittedOfficeEntries([
+      'word/media/image1.png',
+      'word/embeddings/oleObject1.bin',
+      'ppt/embeddings/Microsoft_Excel_Sheet1.xlsx',
+    ])).toEqual({ media: 3, charts: 0 })
+  })
+
+  it('counts charts and diagrams together as charts', () => {
+    expect(countOmittedOfficeEntries([
+      'word/charts/chart1.xml',
+      'ppt/charts/chart2.xml',
+      'xl/charts/chartEx1.xml',
+      'word/diagrams/data1.xml',
+      'ppt/diagrams/data2.xml',
+    ])).toEqual({ media: 0, charts: 5 })
+  })
+
+  it('ignores chart helpers, relationships, folders and other roots', () => {
+    expect(countOmittedOfficeEntries([
+      'word/charts/_rels/chart1.xml.rels',
+      'word/charts/style1.xml',
+      'word/charts/colors1.xml',
+      'word/diagrams/layout1.xml',
+      'word/diagrams/drawing1.xml',
+      'word/media/',
+      'word/embeddings/',
+      'docProps/thumbnail.jpeg',
+      'customXml/media/image1.png',
+      'word/document.xml',
+      'ppt/slides/slide1.xml',
+      'xl/worksheets/sheet1.xml',
+    ])).toEqual({ media: 0, charts: 0 })
+  })
+
+  it('returns zero for no entries', () => {
+    expect(countOmittedOfficeEntries([])).toEqual({ media: 0, charts: 0 })
+  })
+
+  it('caps each count', () => {
+    const names = [
+      ...Array.from({ length: 150 }, (_value, index) => {
+        return `word/media/image${index}.png`
+      }),
+      ...Array.from({ length: 120 }, (_value, index) => {
+        return `word/charts/chart${index}.xml`
+      }),
+    ]
+
+    expect(countOmittedOfficeEntries(names)).toEqual({
+      media: OFFICE_OMITTED_COUNT_MAX,
+      charts: OFFICE_OMITTED_COUNT_MAX,
+    })
+  })
+})
+
+describe('countOmittedOfficeContent', () => {
+  it('reads entry names from a ZIP built by hand', () => {
+    const bytes = buildZip([
+      'word/document.xml',
+      'word/media/image1.png',
+      'word/media/image2.png',
+      'word/charts/chart1.xml',
+    ])
+
+    expect(countOmittedOfficeContent(bytes)).toEqual({ media: 2, charts: 1 })
+  })
+
+  it('counts an image the renderer embedded', async () => {
+    const bytes = await renderDocx([
+      { type: 'paragraph', runs: [{ text: 'Revenue' }] },
+      {
+        type: 'image',
+        fileId: 'chart-revenue.png',
+        alt: 'Revenue chart',
+        widthPercent: 50,
+      },
+    ])
+
+    expect(countOmittedOfficeContent(bytes)).toEqual({ media: 1, charts: 0 })
+  })
+
+  it('counts nothing for a document without images', async () => {
+    const bytes = await renderDocx([
+      { type: 'paragraph', runs: [{ text: 'Plain text only' }] },
+    ])
+
+    expect(countOmittedOfficeContent(bytes)).toEqual({ media: 0, charts: 0 })
+  })
+
+  it('returns null for bytes that are not a ZIP', () => {
+    expect(countOmittedOfficeContent(new Uint8Array([1, 2, 3]))).toBeNull()
+  })
+})
 
 describe('truncateUtf8', () => {
   it('returns short text unchanged', () => {
@@ -123,6 +259,8 @@ describe('extractAndStoreOfficeText', () => {
       textStatus: 'ready',
       textBytes: 5,
       textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
     })
     expect(put.mock.calls[0]?.[0]).toBe('k.docx.text.md')
     expect(logger.set).toHaveBeenCalledWith({
@@ -132,6 +270,49 @@ describe('extractAndStoreOfficeText', () => {
             status: 'ready',
             textBytes: 5,
           }),
+        },
+      },
+    })
+  })
+
+  it('stores what the text leaves out, counted from the ZIP', async () => {
+    mocks.extractOfficeText.mockResolvedValue(readyResult('hello'))
+
+    const state = await extractAndStoreOfficeText({
+      ...input(),
+      bytes: buildZip([
+        'word/document.xml',
+        'word/media/image1.png',
+        'word/embeddings/oleObject1.bin',
+        'word/charts/chart1.xml',
+        'word/diagrams/data1.xml',
+        'word/diagrams/data2.xml',
+      ]),
+    })
+
+    expect(state).toMatchObject({
+      textOmittedMedia: 2,
+      textOmittedCharts: 3,
+    })
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      textOmittedMedia: 2,
+      textOmittedCharts: 3,
+    }))
+  })
+
+  it('stores zero when the archive cannot be read', async () => {
+    mocks.extractOfficeText.mockResolvedValue(readyResult('hello'))
+
+    await extractAndStoreOfficeText(input())
+
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
+    }))
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        files: {
+          officeText: expect.objectContaining({ omittedUnreadable: true }),
         },
       },
     })
@@ -156,6 +337,8 @@ describe('extractAndStoreOfficeText', () => {
       textStatus: 'empty',
       textBytes: null,
       textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
     })
     expect(put).not.toHaveBeenCalled()
   })
@@ -216,8 +399,145 @@ describe('ensureOfficeTextState and loadOfficeText', () => {
       textStatus: 'failed',
       textBytes: null,
       textVersion: 1,
+      textOmittedMedia: null,
+      textOmittedCharts: null,
     })
     expect(get).not.toHaveBeenCalled()
+  })
+
+  it('returns stored counts without touching R2', async () => {
+    const get = vi.fn()
+
+    vi.stubGlobal('useFileStorage', () => ({ get }))
+
+    await expect(ensureOfficeTextState({
+      id: 'f1',
+      userId: 1,
+      storageKey: 'k.docx',
+      type: DOCX,
+      textStatus: 'ready',
+      textBytes: 5,
+      textVersion: 1,
+      textOmittedMedia: 0,
+      textOmittedCharts: 2,
+    }, logger)).resolves.toMatchObject({
+      textOmittedMedia: 0,
+      textOmittedCharts: 2,
+    })
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  describe('backfilling counts of files stored before they existed', () => {
+    const readyFile = {
+      id: 'f1',
+      userId: 1,
+      storageKey: 'k.docx',
+      type: DOCX,
+      textStatus: 'ready',
+      textBytes: 5,
+      textVersion: 1,
+    }
+    let updateSet: ReturnType<typeof vi.fn>
+
+    function stubStorage(bytes: Uint8Array | null) {
+      const get = vi.fn(async () => {
+        if (!bytes) {
+          return null
+        }
+
+        return {
+          arrayBuffer: async () => {
+            return bytes.buffer.slice(
+              bytes.byteOffset,
+              bytes.byteOffset + bytes.byteLength,
+            )
+          },
+        }
+      })
+
+      vi.stubGlobal('useFileStorage', () => ({ get, put: vi.fn() }))
+
+      return get
+    }
+
+    beforeEach(() => {
+      updateSet = vi.fn(() => ({
+        where: vi.fn().mockResolvedValue(undefined),
+      }))
+      vi.stubGlobal('useDb', () => ({
+        update: vi.fn(() => ({ set: updateSet })),
+      }))
+    })
+
+    it('counts a ready file once, without running the renderer', async () => {
+      const get = stubStorage(buildZip([
+        'word/document.xml',
+        'word/media/image1.png',
+        'word/media/image2.png',
+        'word/charts/chart1.xml',
+      ]))
+
+      await expect(ensureOfficeTextState(readyFile, logger)).resolves
+        .toMatchObject({
+          textStatus: 'ready',
+          textBytes: 5,
+          textOmittedMedia: 2,
+          textOmittedCharts: 1,
+        })
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(updateSet).toHaveBeenCalledWith({
+        textOmittedMedia: 2,
+        textOmittedCharts: 1,
+      })
+      expect(mocks.extractOfficeText).not.toHaveBeenCalled()
+    })
+
+    it('writes zero for an unreadable archive, so it is not retried', async () => {
+      stubStorage(new Uint8Array([1, 2, 3]))
+
+      await expect(ensureOfficeTextState(readyFile, logger)).resolves
+        .toMatchObject({ textOmittedMedia: 0, textOmittedCharts: 0 })
+      expect(updateSet).toHaveBeenCalledWith({
+        textOmittedMedia: 0,
+        textOmittedCharts: 0,
+      })
+    })
+
+    it('leaves the counts empty when the file object is gone', async () => {
+      stubStorage(null)
+
+      await expect(ensureOfficeTextState(readyFile, logger)).resolves
+        .toMatchObject({ textStatus: 'ready', textOmittedMedia: null })
+      expect(updateSet).not.toHaveBeenCalled()
+    })
+
+    it('keeps the state when counting fails', async () => {
+      vi.stubGlobal('useFileStorage', () => ({
+        get: vi.fn().mockRejectedValue(new Error('r2 down')),
+      }))
+
+      await expect(ensureOfficeTextState(readyFile, logger)).resolves
+        .toMatchObject({
+          textStatus: 'ready',
+          textBytes: 5,
+          textOmittedMedia: null,
+          textOmittedCharts: null,
+        })
+      expect(updateSet).not.toHaveBeenCalled()
+    })
+
+    it('does not count a file that has no ready text', async () => {
+      const get = stubStorage(buildZip(['word/media/image1.png']))
+
+      await ensureOfficeTextState({
+        ...readyFile,
+        textStatus: 'empty',
+        textBytes: null,
+      }, logger)
+
+      expect(get).not.toHaveBeenCalled()
+      expect(updateSet).not.toHaveBeenCalled()
+    })
   })
 
   it('returns null when the file object is gone', async () => {

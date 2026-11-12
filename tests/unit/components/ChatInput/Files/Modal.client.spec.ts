@@ -149,6 +149,8 @@ describe('ChatInput/Files/Modal.client', () => {
       textStatus: 'ready',
       textBytes: 300 * 1024,
       textTruncated: true,
+      textOmittedMedia: 2,
+      textOmittedCharts: 1,
     }])
 
     expect(wrapper.emitted('attach')![0]![0]).toEqual([{
@@ -160,6 +162,8 @@ describe('ChatInput/Files/Modal.client', () => {
       textStatus: 'ready',
       textBytes: 300 * 1024,
       textTruncated: true,
+      textOmittedMedia: 2,
+      textOmittedCharts: 1,
     }])
   })
 

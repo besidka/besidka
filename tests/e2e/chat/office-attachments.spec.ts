@@ -22,7 +22,13 @@ const CONVERTED_SPREADSHEET_NAME = `${CONVERTED_SPREADSHEET_BASE_NAME}.xlsx`
 const CONVERTED_NOTE = 'Converted from .xls'
 const BLANK_DOCUMENT_NAME = 'e2e-blank.docx'
 const SAVE_AS_HINT = 'Save it as .xlsx / .docx / .pptx and upload again.'
-const SENT_AS_TEXT = 'Sent as text'
+const IMAGE_DOCUMENT_NAME = 'e2e-with-image.docx'
+const TEXT_ONLY_TITLE = 'The model gets this file\'s text only. '
+  + 'Images, charts and formatting aren\'t sent.'
+const PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
 const READY_TIMEOUT = 60_000
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
 const NS_SHEET = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -145,6 +151,32 @@ function buildBlankDocument(): Buffer {
   return Buffer.from(archive)
 }
 
+function buildDocumentWithImage(): Buffer {
+  const archive = zipSync({
+    '[Content_Types].xml': strToU8(
+      `${XML_HEADER}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
+      + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Default Extension="png" ContentType="image/png"/>'
+      + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+      + '</Types>',
+    ),
+    '_rels/.rels': strToU8(
+      `${XML_HEADER}<Relationships xmlns="${NS_PACKAGE_RELATIONSHIPS}">`
+      + `<Relationship Id="rId1" Type="${NS_RELATIONSHIPS}/officeDocument" Target="word/document.xml"/>`
+      + '</Relationships>',
+    ),
+    'word/document.xml': strToU8(
+      `${XML_HEADER}<w:document xmlns:w="${NS_WORD}"><w:body>`
+      + '<w:p><w:r><w:t>Quarterly update with a chart picture</w:t></w:r></w:p>'
+      + '</w:body></w:document>',
+    ),
+    'word/media/image1.png': new Uint8Array(PIXEL_PNG),
+  })
+
+  return Buffer.from(archive)
+}
+
 function markEmailVerified(email: string) {
   execFileSync('pnpm', [
     'exec',
@@ -226,7 +258,7 @@ test.describe('Office attachments', () => {
     expect(accept).toContain('.xls')
   })
 
-  test('uploads an xlsx and shows that it is sent as text', async ({
+  test('uploads an xlsx and shows no badge when nothing is left out', async ({
     page,
   }) => {
     await signInWithOfficeAttachments(page)
@@ -242,13 +274,7 @@ test.describe('Office attachments', () => {
       timeout: 30_000,
     })
 
-    const hint = page.getByTestId('files-delivery-hint')
-
-    await expect(hint).toHaveText(SENT_AS_TEXT)
-    await expect(hint).toHaveAttribute(
-      'title',
-      'Sent as text: images, charts and formatting aren\'t included.',
-    )
+    await expect(page.getByTestId('files-delivery-hint')).toHaveCount(0)
 
     const files = await page.request.get('/api/v1/files?limit=50')
     const uploaded = (await files.json()).files.find(
@@ -256,6 +282,37 @@ test.describe('Office attachments', () => {
     )
 
     expect(uploaded.type).toBe(XLSX_MEDIA_TYPE)
+    expect(uploaded.textOmittedMedia).toBe(0)
+    expect(uploaded.textOmittedCharts).toBe(0)
+  })
+
+  test('shows how many images a DOCX leaves out', async ({ page }) => {
+    await signInWithOfficeAttachments(page)
+    await openNewChat(page)
+    await openFilesModal(page, 'Upload new files')
+    await page.getByTestId('files-upload-input').setInputFiles({
+      name: IMAGE_DOCUMENT_NAME,
+      mimeType: '',
+      buffer: buildDocumentWithImage(),
+    })
+
+    await expect(page.getByLabel(`Remove ${IMAGE_DOCUMENT_NAME}`)).toBeVisible({
+      timeout: 30_000,
+    })
+
+    const hint = page.getByTestId('files-delivery-hint')
+
+    await expect(hint).toHaveText('1 image not sent')
+    await expect(hint).toHaveAttribute('title', TEXT_ONLY_TITLE)
+
+    const files = await page.request.get('/api/v1/files?limit=50')
+    const uploaded = (await files.json()).files.find(
+      (file: { name: string }) => file.name === IMAGE_DOCUMENT_NAME,
+    )
+
+    expect(uploaded.textStatus).toBe('ready')
+    expect(uploaded.textOmittedMedia).toBe(1)
+    expect(uploaded.textOmittedCharts).toBe(0)
   })
 
   test('converts a real .xls in the browser and uploads an xlsx', async ({
@@ -285,8 +342,7 @@ test.describe('Office attachments', () => {
       page.getByLabel(`Remove ${CONVERTED_SPREADSHEET_NAME}`),
     ).toBeVisible({ timeout: 30_000 })
     await expect(page.getByTestId('files-upload-legacy-hint')).toHaveCount(0)
-    await expect(page.getByTestId('files-delivery-hint'))
-      .toHaveText(SENT_AS_TEXT)
+    await expect(page.getByTestId('files-delivery-hint')).toHaveCount(0)
 
     const note = page.getByTestId('files-converted-note')
 
@@ -367,9 +423,7 @@ test.describe('Office attachments', () => {
     await expect(page.getByTestId('files-attach-selected')).toHaveCount(0)
   })
 
-  test('attaches a generated DOCX and shows that it is sent as text', async ({
-    page,
-  }) => {
+  test('attaches a generated DOCX and shows no badge', async ({ page }) => {
     await signInWithOfficeAttachments(page)
     await page.goto(DOCUMENT_URL)
     await waitForHydration(page)
@@ -398,8 +452,6 @@ test.describe('Office attachments', () => {
     await expect(page.getByLabel(`Remove ${GENERATED_FILE_NAME}`)).toBeVisible({
       timeout: 15_000,
     })
-    await expect(page.getByTestId('files-delivery-hint')).toHaveText(
-      SENT_AS_TEXT,
-    )
+    await expect(page.getByTestId('files-delivery-hint')).toHaveCount(0)
   })
 })

@@ -699,6 +699,64 @@ describe('ChatInput/Files/Modal/Select', () => {
         ?? attributes.unsupportedReasons) as Record<string, string>
     }
 
+    function readTextNotes(
+      wrapper: Awaited<ReturnType<typeof mountWithResolver>>,
+    ): Record<string, { label: string, description: string }> {
+      const attributes = wrapper
+        .findComponent({ name: 'AsyncComponentWrapper' }).vm.$attrs
+
+      return (attributes['text-notes']
+        ?? attributes.textNotes) as Record<
+        string,
+        { label: string, description: string }
+      >
+    }
+
+    it('notes only the files whose text leaves content out', async () => {
+      source.value = 'assistant'
+      managerFiles.value = [
+        createManagerFile({
+          id: 'sheet-plain',
+          storageKey: 'sheet-plain.xlsx',
+          type: xlsxType,
+          textStatus: 'ready',
+          textOmittedMedia: 0,
+          textOmittedCharts: 0,
+        }),
+        createManagerFile({
+          id: 'doc-images',
+          storageKey: 'doc-images.docx',
+          type: docxType,
+          textStatus: 'ready',
+          textOmittedMedia: 3,
+        }),
+        createManagerFile({
+          id: 'sheet-long',
+          storageKey: 'sheet-long.xlsx',
+          type: xlsxType,
+          textStatus: 'ready',
+          textTruncated: true,
+        }),
+        emptyDocument,
+        createManagerFile(),
+      ]
+
+      const wrapper = await mountSuspended(Select, {
+        props: {
+          attachedIds: new Set<string>(),
+          canAttachMediaType: () => true,
+          resolveDelivery,
+        },
+        shallow: true,
+        global: { stubs: { KeepAlive: false } },
+      })
+      const notes = readTextNotes(wrapper)
+
+      expect(Object.keys(notes).sort()).toEqual(['doc-images', 'sheet-long'])
+      expect(notes['doc-images']?.label).toBe('3 images not sent')
+      expect(notes['sheet-long']?.label).toBe('Shortened')
+    })
+
     it('keeps generated and stored Office files selectable', async () => {
       const reasons = readReasons(await mountWithResolver())
 

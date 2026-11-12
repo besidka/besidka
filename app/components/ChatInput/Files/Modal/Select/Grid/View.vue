@@ -88,6 +88,14 @@
         {{ unsupportedCaptions[file.id] }}
       </span>
       <span
+        v-else-if="textNotes[file.id]"
+        class="badge badge-soft badge-xs absolute top-1 left-1 z-10 max-w-[calc(100%-0.5rem)] truncate leading-none"
+        :title="textNotes[file.id]?.description"
+        data-testid="files-text-note"
+      >
+        {{ textNotes[file.id]?.label }}
+      </span>
+      <span
         v-if="isAiGeneratedFile(file)"
         class="badge badge-secondary badge-xs absolute bottom-1 left-1 z-10 text-2xs leading-none gap-0.5"
         data-testid="files-ai-badge"
@@ -163,6 +171,7 @@
 
 <script setup lang="ts">
 import type { FileManagerFile } from '~/types/file-manager'
+import type { FileDeliveryHint } from '~/utils/file-delivery-hints'
 import { formatMessageCost } from '#shared/utils/message-format'
 
 withDefaults(defineProps<{
@@ -172,9 +181,11 @@ withDefaults(defineProps<{
   touchedIndices: Set<number>
   unsupportedReasons?: Record<string, string>
   unsupportedCaptions?: Record<string, string>
+  textNotes?: Record<string, FileDeliveryHint>
 }>(), {
   unsupportedReasons: () => ({}),
   unsupportedCaptions: () => ({}),
+  textNotes: () => ({}),
 })
 
 const emit = defineEmits<{

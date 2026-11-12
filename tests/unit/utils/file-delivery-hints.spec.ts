@@ -9,10 +9,8 @@ import {
   OFFICE_TEXT_INLINE_MAX_BYTES,
 } from '../../../shared/utils/office-files'
 import {
-  SENT_AS_TEXT_DESCRIPTION,
-  SENT_AS_TEXT_LABEL,
-  SENT_AS_TEXT_SHORTENED_DESCRIPTION,
-  SENT_AS_TEXT_SHORTENED_LABEL,
+  TEXT_ONLY_DESCRIPTION,
+  TEXT_SHORTENED_DESCRIPTION,
   buildFileDeliveryInput,
   createFileDeliveryResolver,
   createPredicateDeliveryResolver,
@@ -23,6 +21,7 @@ import {
   getFileRejection,
   getRejectionCaption,
   getRejectionMessages,
+  getTextLossNote,
   isTextTruncated,
 } from '../../../app/utils/file-delivery-hints'
 import type { DeliveryFile } from '../../../app/utils/file-delivery-hints'
@@ -129,6 +128,91 @@ describe('isTextTruncated', () => {
   })
 })
 
+describe('getTextLossNote', () => {
+  it('returns nothing when no content is left out', () => {
+    expect(getTextLossNote({ type: DOCX })).toBeNull()
+    expect(getTextLossNote({
+      type: DOCX,
+      textOmittedMedia: 0,
+      textOmittedCharts: 0,
+    })).toBeNull()
+    expect(getTextLossNote({
+      type: DOCX,
+      textOmittedMedia: null,
+      textOmittedCharts: null,
+    })).toBeNull()
+  })
+
+  it('uses the singular for one and the plural for more', () => {
+    expect(getTextLossNote({ type: DOCX, textOmittedMedia: 1 })?.label)
+      .toBe('1 image not sent')
+    expect(getTextLossNote({ type: DOCX, textOmittedMedia: 2 })?.label)
+      .toBe('2 images not sent')
+    expect(getTextLossNote({ type: PPTX, textOmittedCharts: 1 })?.label)
+      .toBe('1 chart not sent')
+    expect(getTextLossNote({ type: PPTX, textOmittedCharts: 2 })?.label)
+      .toBe('2 charts not sent')
+  })
+
+  it('joins images and charts in one short label', () => {
+    expect(getTextLossNote({
+      type: PPTX,
+      textOmittedMedia: 3,
+      textOmittedCharts: 1,
+    })?.label).toBe('3 images \u00B7 1 chart not sent')
+  })
+
+  it('shows Shortened alone when the text is cut', () => {
+    expect(getTextLossNote({ type: XLSX, textTruncated: true })).toEqual({
+      label: 'Shortened',
+      description: `${TEXT_ONLY_DESCRIPTION} ${TEXT_SHORTENED_DESCRIPTION}`,
+    })
+  })
+
+  it('puts Shortened first when the text is cut and content is left out', () => {
+    expect(getTextLossNote({
+      type: DOCX,
+      textTruncated: true,
+      textOmittedMedia: 3,
+    })?.label).toBe('Shortened \u00B7 3 images not sent')
+    expect(getTextLossNote({
+      type: DOCX,
+      textTruncated: true,
+      textOmittedMedia: 1,
+      textOmittedCharts: 2,
+    })?.label).toBe('Shortened \u00B7 1 image \u00B7 2 charts not sent')
+  })
+
+  it('explains that only text is sent, and the cut only when there is one', () => {
+    expect(getTextLossNote({ type: DOCX, textOmittedMedia: 1 })?.description)
+      .toBe(
+        'The model gets this file\'s text only. Images, charts and formatting aren\'t sent.',
+      )
+    expect(getTextLossNote({
+      type: DOCX,
+      textOmittedMedia: 1,
+      textTruncated: true,
+    })?.description).toBe(
+      'The model gets this file\'s text only. Images, charts and formatting aren\'t sent. It is long, so only the start is sent.',
+    )
+  })
+
+  it('shows a capped count as 99+', () => {
+    expect(getTextLossNote({ type: DOCX, textOmittedMedia: 99 })?.label)
+      .toBe('99+ images not sent')
+    expect(getTextLossNote({ type: DOCX, textOmittedCharts: 400 })?.label)
+      .toBe('99+ charts not sent')
+  })
+
+  it('ignores counts that are not whole positive numbers', () => {
+    expect(getTextLossNote({ type: DOCX, textOmittedMedia: -1 })).toBeNull()
+    expect(getTextLossNote({
+      type: DOCX,
+      textOmittedMedia: Number.NaN,
+    })).toBeNull()
+  })
+})
+
 describe('getFileDeliveryHint', () => {
   const resolve = createFileDeliveryResolver({
     route: 'direct',
@@ -136,21 +220,40 @@ describe('getFileDeliveryHint', () => {
     modalities: ['text', 'image', 'pdf'],
   })
 
-  it('says an Office file is sent as text', () => {
+  it('shows nothing for an Office file whose text is complete', () => {
     for (const type of [DOCX, XLSX, PPTX]) {
       expect(getFileDeliveryHint({ type, textStatus: 'ready' }, resolve))
-        .toEqual({
-          label: SENT_AS_TEXT_LABEL,
-          description: SENT_AS_TEXT_DESCRIPTION,
-          isBlocking: false,
-        })
+        .toBeNull()
+      expect(getFileDeliveryHint({
+        type,
+        textStatus: 'ready',
+        textOmittedMedia: 0,
+        textOmittedCharts: 0,
+      }, resolve)).toBeNull()
     }
   })
 
-  it('says so for a stored file whose text is not read yet', () => {
-    const hint = getFileDeliveryHint({ type: DOCX, textStatus: null }, resolve)
+  it('shows nothing for a stored file that is not read or counted yet', () => {
+    expect(getFileDeliveryHint({ type: DOCX, textStatus: null }, resolve))
+      .toBeNull()
+    expect(getFileDeliveryHint({
+      type: DOCX,
+      textStatus: 'ready',
+      textOmittedMedia: null,
+      textOmittedCharts: null,
+    }, resolve)).toBeNull()
+  })
 
-    expect(hint?.label).toBe(SENT_AS_TEXT_LABEL)
+  it('names the images that are not sent', () => {
+    expect(getFileDeliveryHint({
+      type: DOCX,
+      textStatus: 'ready',
+      textOmittedMedia: 3,
+    }, resolve)).toEqual({
+      label: '3 images not sent',
+      description: TEXT_ONLY_DESCRIPTION,
+      isBlocking: false,
+    })
   })
 
   it('says the text is shortened when it is over the per-file cap', () => {
@@ -159,15 +262,15 @@ describe('getFileDeliveryHint', () => {
       textStatus: 'ready',
       textBytes: OFFICE_TEXT_INLINE_MAX_BYTES + 10,
     }, resolve)).toEqual({
-      label: SENT_AS_TEXT_SHORTENED_LABEL,
-      description: SENT_AS_TEXT_SHORTENED_DESCRIPTION,
+      label: 'Shortened',
+      description: `${TEXT_ONLY_DESCRIPTION} ${TEXT_SHORTENED_DESCRIPTION}`,
       isBlocking: false,
     })
     expect(getFileDeliveryHint({
       type: XLSX,
       textStatus: 'ready',
       textTruncated: true,
-    }, resolve)?.label).toBe('Sent as text (shortened)')
+    }, resolve)?.label).toBe('Shortened')
   })
 
   it('shows nothing for files that are not converted to text', () => {

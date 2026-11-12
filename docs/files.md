@@ -331,13 +331,33 @@ decision list are in BES-370.
   the quota) and the state to `files.text_*`. It never fails the request: a
   failed or `too_large` result is stored as such, and a renderer that is
   unavailable leaves the status null, so the next send retries. The log is
-  `attributes.files.officeText` (format, status, sizes, error code, never the
-  text).
+  `attributes.files.officeText` (format, status, sizes, error code, the
+  omitted counts, never the text).
+- **What the text leaves out.** At the same moment `office-text.ts` counts the
+  parts the text cannot carry, from the ZIP entry names only (nothing is
+  inflated, and it runs in the main Worker, not in the doc-renderer
+  satellite). `readZipSummary` returns no names, so it uses `readZipDirectory`
+  with the same `OFFICE_UPLOAD_ZIP_LIMITS` as the upload check. Entries are
+  matched under `word/`, `ppt/` and `xl/` only: `media/*` and `embeddings/*`
+  count as `text_omitted_media`; `charts/chart*.xml` and `diagrams/data*.xml`
+  count as `text_omitted_charts` (relationship, style, colour and layout parts
+  are ignored). Each count is capped at 99 and the UI shows "99+". An archive
+  that cannot be read stores 0 and 0, so NULL only ever means "not counted
+  yet" and nothing is retried forever. Known over-counts: `ppt/media` also
+  holds images from slide masters and layouts, and a chart often carries its
+  data workbook under `embeddings/`, so a deck with one chart and no picture
+  reads "1 image not sent" next to "1 chart not sent". A generated document
+  with no image shows nothing.
 - **Lazy fallback.** A file with a null status (stored before extraction, or
   while the renderer was down) or an older `text_version` is read once on its
   first send (`ensureOfficeTextState()`) and cached the same way. Only the
   newest message's files are read lazily; an earlier file with no text is
-  omitted from the carry-over instead.
+  omitted from the carry-over instead. A `ready` file whose omitted counts are
+  both NULL (stored before they existed) gets a count-only backfill on its
+  first use: one R2 read of the file, no renderer call, no rewrite of the text,
+  and `OFFICE_TEXT_VERSION` stays at 1 so no stored file is re-extracted.
+  `getOwnedFilesByStorageKeys()` selects both columns, or the backfill would
+  run on every send.
 - **Deleting.** `withDerivedKeys(keys)` returns the keys plus their sidecar
   keys. All four paths that delete file objects use it in their batched R2
   delete: `delete-files.ts`, `cleanup-expired-files.ts`,
@@ -394,9 +414,23 @@ decision list are in BES-370.
   file, the 64 KB cap and the 8 file / 5 MB / 10 MB budgets use `text_bytes`
   instead of the file size, and an earlier file without ready text is omitted
   as `unsupported-by-model` instead of failing the send.
-- **API surface.** `GET /api/v1/files` adds `textStatus`, `textBytes` and
+- **API surface.** `GET /api/v1/files` adds `textStatus`, `textBytes`,
   `textTruncated` (true when `textBytes` is over the 200 KB inline cap, so only
-  the start is sent), so the UI can show "Sent as text".
+  the start is sent), `textOmittedMedia` and `textOmittedCharts`. The upload
+  response carries the same columns.
+- **The text note (owner decision, 2026-11-12).** Normal files show nothing.
+  Earlier every Office file showed "Sent as text"; that label is gone. A quiet
+  `badge-soft badge-xs` appears only when something is lost, on the attached
+  chip (`files-delivery-hint`) and on file manager rows and tiles
+  (`files-text-note`): "3 images not sent", "2 charts not sent", "Shortened",
+  or a combination ("Shortened · 3 images · 2 charts not sent"), with correct
+  singular and plural forms. The tooltip says "The model gets this file's text
+  only. Images, charts and formatting aren't sent." plus "It is long, so only
+  the start is sent." when shortened. The logic is `getTextLossNote()` in
+  `app/utils/file-delivery-hints.ts`; NULL counts (not counted yet) show
+  nothing. Unsupported-file reasons ("No readable text", "Old Office format",
+  "Needs Run code") are unchanged, and on a disabled row the reason replaces
+  the note.
 
 ### Legacy `.xls` conversion in the browser
 
@@ -441,8 +475,8 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
   type, and the server's Office reader treats that type as a macro marker and
   refuses the file as `ooxml_macro`, so the worker drops that one entry from
   the new package. Do not remove that step.
-- **UI.** The attached chip shows "Converted from .xls" under "Sent as text",
-  with a tooltip that says styles, charts and macros are not kept. The state is
+- **UI.** The attached chip shows "Converted from .xls" (under the text note
+  when there is one), with a tooltip that says styles, charts and macros are not kept. The state is
   client-only (`convertedFromXlsKeys` from `useChatFiles`, keyed by storage
   key), so it is gone after a reload.
 - **Maintenance.** Dependabot cannot see a tarball dependency, so a SheetJS
@@ -468,6 +502,11 @@ WASM that needs COOP/COEP, or a Container with a patch treadmill).
     UTF-8 size of the stored text, and the extractor version that made it.
     All three are null for every other file and for an Office file not read
     yet. No SQL defaults, so the migration is three `ALTER TABLE ... ADD`.
+  - `textOmittedMedia`, `textOmittedCharts`: nullable integers, capped at 99.
+    Images plus embedded objects, and charts plus diagrams, that the extracted
+    text leaves out. NULL means not counted yet (a file stored before they
+    existed, until its first send). No SQL defaults, so the migration is two
+    `ALTER TABLE ... ADD`.
 
 ### `storages`
 

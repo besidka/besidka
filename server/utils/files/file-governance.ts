@@ -75,6 +75,8 @@ export interface OwnedFile {
   textStatus?: string | null
   textBytes?: number | null
   textVersion?: number | null
+  textOmittedMedia?: number | null
+  textOmittedCharts?: number | null
 }
 
 export interface OwnedGeneratedImageFile {
@@ -550,6 +552,8 @@ export async function getOwnedFilesByStorageKeys(
         textStatus: true,
         textBytes: true,
         textVersion: true,
+        textOmittedMedia: true,
+        textOmittedCharts: true,
       },
     })
 
