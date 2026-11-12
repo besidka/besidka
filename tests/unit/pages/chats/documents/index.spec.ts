@@ -285,7 +285,7 @@ describe('pages/chats/documents/index', () => {
       expect(wrapper.get(testId('document-library-format-all-count')).text())
         .toBe('3')
       expect(wrapper.get(testId('document-library-format-docx-count'))
-        .classes()).toContain('badge-soft')
+        .classes()).toContain('badge-xs')
       expect(wrapper.find(testId('document-library-format-pptx')).exists())
         .toBe(false)
     })

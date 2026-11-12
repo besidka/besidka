@@ -18,7 +18,7 @@
     >
       {{ option.label }}
       <span
-        class="badge badge-sm badge-soft"
+        class="badge badge-xs badge-soft"
         :data-testid="`${testIdPrefix}-${option.value}-count`"
       >
         {{ option.count }}

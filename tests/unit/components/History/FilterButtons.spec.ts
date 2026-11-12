@@ -40,13 +40,14 @@ describe('History/FilterButtons', () => {
     ])
   })
 
-  it('uses daisyUI badge modifiers only', async () => {
+  it('uses the smaller daisyUI badge size', async () => {
     const wrapper = await mountFilter()
     const badge = wrapper.get(testId('library-format-pdf-count'))
 
     expect(badge.classes()).toEqual(
-      expect.arrayContaining(['badge', 'badge-soft']),
+      expect.arrayContaining(['badge', 'badge-xs', 'badge-soft']),
     )
+    expect(badge.classes()).not.toContain('badge-sm')
     expect(badge.classes().some(name => /^(text|bg|border)-/.test(name)))
       .toBe(false)
   })

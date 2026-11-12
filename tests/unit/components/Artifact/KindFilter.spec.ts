@@ -94,7 +94,10 @@ describe('Artifact/KindFilter', () => {
 
     const badge = wrapper.get(testId('artifact-library-kind-html-count'))
 
-    expect(badge.classes()).toContain('badge-soft')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-xs', 'badge-soft']),
+    )
+    expect(badge.classes()).not.toContain('badge-sm')
     expect(badge.classes().some(name => /^(text|bg|border)-/.test(name)))
       .toBe(false)
   })
