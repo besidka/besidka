@@ -211,12 +211,16 @@ and a marker after the sheet for rows, columns, cells and sheets. Empty rows
 are skipped, not counted.
 
 Two budgets count the work of one whole extraction, across every part:
-64 MiB of inflated bytes (`inflatedBytesMax`) and 6,000,000 XML parser events
+64 MiB of inflated bytes (`inflatedBytesMax`) and 10,000,000 XML parser events
 (`eventsMax`). When either runs out the result is `too_large` with
 `extract_budget_exceeded`, never a partial text, so a file that is small in
 bytes but huge in work (millions of empty `<c/>`, a notes part shared by every
-slide) cannot reach the Worker's CPU limit. The bench workbook uses about a
-sixth of the event budget. Other guards against small hostile files:
+slide) cannot reach the Worker's CPU limit. Measured by bisecting the limits,
+the bench fixtures use 0.3 to 1.9 million events and 4 to 19 MiB inflated, and
+the worst real-shaped files tried stay under 2.1 million events: 400,000 rows of
+styled empty cells (read to the part cap) and a 200,000-string table read by
+seven sheets that each reference strings an earlier sheet passed. Exhausting
+the 10 million takes under a second of CPU. Other guards against small hostile files:
 `gridSpan` and `ilvl` are clamped, a table is capped at 1,000 rows by 200
 columns and stops being built once the output budget is spent, DOCX paragraphs
 nested deeper than 64 are `ooxml_malformed`, a tag with more than 128

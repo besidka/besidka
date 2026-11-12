@@ -78,6 +78,7 @@ const BUILT_IN_ELAPSED_HOURS_FORMAT = 46
 const FORMAT_CODE_MAX_CHARACTERS = 255
 const FORMATS_MAX = 1024
 const STYLES_MAX = 65_536
+const STORED_CHARACTERS_MAX = 8 * 1024 * 1024
 const ROW_GAP_MAX = 20
 const MILLISECONDS_PER_DAY = 86_400_000
 const SECONDS_PER_DAY = 86_400
@@ -408,13 +409,14 @@ function readSerialFormats(
 }
 
 class SharedStrings {
-  private readonly strings = new Map<number, string>()
+  private readonly strings: string[] = []
   private readonly needed = new Set<number>()
   private readonly officePackage: OfficePackage
   private readonly part: WindowedPart | null
   private events: Iterator<XmlEvent> | null = null
   private knownRecordCount: number | null = null
   private highestNeeded = -1
+  private storedCharacters = 0
   private position = 0
   private isInRecord = false
   private isWanted = false
@@ -430,13 +432,15 @@ class SharedStrings {
   }
 
   resolve(index: number): string {
-    return this.strings.get(index) ?? ''
+    return this.strings[index] ?? ''
   }
 
   /**
    * Makes the strings at `indexes` available. The part is read forward only
-   * as far as the highest index asked for, and again from the start only when
-   * a later sheet asks for a record that was passed without being kept.
+   * as far as the highest index asked for. Every record passed on the way is
+   * kept, up to a character budget, so a later sheet that shares strings with
+   * an earlier one finds them; the part is read again from the start only
+   * when a record was passed after that budget was spent.
    */
   ensure(indexes: Iterable<number>): void {
     if (this.part === null) {
@@ -450,12 +454,18 @@ class SharedStrings {
       const isBeyondTable = this.knownRecordCount !== null
         && index >= this.knownRecordCount
 
-      if (!isBeyondTable && !this.needed.has(index)) {
-        this.needed.add(index)
-        this.highestNeeded = Math.max(this.highestNeeded, index)
-        hasNew = true
-        isBehind = isBehind || index < this.position
+      if (
+        isBeyondTable
+        || this.strings[index] !== undefined
+        || this.needed.has(index)
+      ) {
+        continue
       }
+
+      this.needed.add(index)
+      this.highestNeeded = Math.max(this.highestNeeded, index)
+      hasNew = true
+      isBehind = isBehind || index < this.position
     }
 
     if (!hasNew) {
@@ -509,6 +519,7 @@ class SharedStrings {
       if (event.name === 'si') {
         this.isInRecord = true
         this.isWanted = this.needed.has(this.position)
+          || this.storedCharacters < STORED_CHARACTERS_MAX
         this.isInText = false
         this.phoneticDepth = 0
         this.value = ''
@@ -548,10 +559,10 @@ class SharedStrings {
         addTruncation(this.officePackage.stats, 'cell_chars_limit')
       }
 
-      this.strings.set(
-        this.position,
-        cutToCharacters(this.value, cellCharsMax),
-      )
+      const kept = cutToCharacters(this.value, cellCharsMax)
+
+      this.strings[this.position] = kept
+      this.storedCharacters += kept.length
     }
 
     this.position += 1

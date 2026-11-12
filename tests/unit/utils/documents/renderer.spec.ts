@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { EXTRACT_VERSION } from '@besidka/doc-renderer/extract'
 import type {
   ExtractResult,
   RendererCapabilities,
@@ -405,6 +406,21 @@ describe('document renderer binding', () => {
 
       expect(result.errorCode).toBe('renderer_unavailable')
       expect(binding.extract).not.toHaveBeenCalled()
+    })
+
+    it('accepts the extract version the package reports', async () => {
+      const binding = createBinding()
+
+      binding.capabilities.mockResolvedValue({
+        ...CAPABILITIES,
+        extract: { ...CAPABILITIES.extract!, version: EXTRACT_VERSION },
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request)
+
+      expect(result.status).toBe('ready')
+      expect(binding.extract).toHaveBeenCalledOnce()
     })
 
     it('does not call a satellite with another extract version', async () => {

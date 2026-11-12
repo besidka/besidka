@@ -77,7 +77,7 @@ export const EXTRACT_LIMITS: ExtractLimits = {
   cellsMax: 200_000,
   slidesMax: 500,
   inflatedBytesMax: 64 * 1024 * 1024,
-  eventsMax: 6_000_000,
+  eventsMax: 10_000_000,
   contentTypesBytesMax: 1024 * 1024,
 }
 

@@ -488,6 +488,34 @@ describe('extractOfficeText: xlsx review fixes', () => {
     expect(text).toContain(`string 59999 ${'x'.repeat(40)},string 3 `)
   })
 
+  it('reads the part again when a record was passed after the keep budget', () => {
+    const filler = 'y'.repeat(1900)
+    const strings = Array.from({ length: 6000 }, (_value, index) => {
+      return `<si><t>${String(index).padStart(5, '0')}${filler}</t></si>`
+    }).join('')
+    const bytes = xlsxPackage(
+      [
+        { name: 'One', xml: worksheetXml(row(1, stringCell('A1', 5999))) },
+        { name: 'Two', xml: worksheetXml(row(1, stringCell('A1', 5000))) },
+      ],
+      {
+        sharedStrings: [],
+        options: {
+          extraFiles: {
+            'xl/sharedStrings.xml': `<sst xmlns="${NS}">${strings}</sst>`,
+          },
+        },
+      },
+    )
+    const result = extractOfficeText(bytes, 'xlsx', {
+      zipRatioMax: Number.MAX_SAFE_INTEGER,
+    })
+
+    expect(result.status).toBe('ready')
+    expect(result.text).toContain(`05999${filler}`)
+    expect(result.text).toContain(`05000${filler}`)
+  })
+
   const ELAPSED_STYLES = `
     <numFmts count="5">
       <numFmt numFmtId="170" formatCode="[h]:mm:ss"/>
