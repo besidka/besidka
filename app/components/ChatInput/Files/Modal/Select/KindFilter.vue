@@ -1,22 +1,21 @@
 <template>
   <div
-    class="join w-full shrink-0 mb-3"
-    role="group"
+    class="tabs tabs-box max-xs:tabs-xs xs:tabs-sm w-full shrink-0 mb-3 flex-nowrap overflow-x-auto no-scrollbar"
+    role="tablist"
     aria-label="Filter generated files by kind"
     data-testid="files-kind-filter"
   >
-    <button
+    <input
       v-for="option in options"
       :key="option.id"
-      type="button"
-      class="btn btn-sm join-item flex-1 min-h-11 sm:min-h-8"
-      :class="{ 'btn-active btn-accent': modelValue === option.id }"
-      :aria-pressed="modelValue === option.id"
+      type="radio"
+      name="file_kind_tabs"
+      class="tab grow shrink-0 whitespace-nowrap min-h-11 sm:min-h-8"
+      :aria-label="option.label"
+      :checked="modelValue === option.id"
       :data-testid="option.testId"
-      @click="select(option.id)"
+      @change="select(option.id)"
     >
-      {{ option.label }}
-    </button>
   </div>
 </template>
 
