@@ -7,7 +7,6 @@ import {
   getAllowedFileFormats,
   getOfficeExtensionKind,
   getOfficeFormatByFileName,
-  isLegacyOfficeMediaType,
   isOfficeMediaType,
 } from '#shared/utils/office-files'
 import type { OfficeFormat } from '#shared/utils/office-files'
@@ -38,13 +37,7 @@ export function looksLikeOfficeUpload(
   declaredType: string | undefined,
 ): boolean {
   return getOfficeExtensionKind(fileName) !== null
-    || (
-      declaredType !== undefined
-      && (
-        isOfficeMediaType(declaredType)
-        || isLegacyOfficeMediaType(declaredType)
-      )
-    )
+    || (declaredType !== undefined && isOfficeMediaType(declaredType))
 }
 
 /**
@@ -82,13 +75,6 @@ function resolveOfficeUploadType(
 ): ResolvedUploadFileType | null {
   assertSupportedOfficeExtension(fileName)
 
-  if (declaredType && isLegacyOfficeMediaType(declaredType)) {
-    throw createOfficeRejection(
-      'Legacy Word, Excel and PowerPoint files (.doc, .xls, .ppt) are not supported.',
-      OFFICE_SAVE_AS_FIX,
-    )
-  }
-
   const officeFormat = getOfficeFormatByFileName(fileName)
 
   if (officeFormat) {
@@ -111,7 +97,8 @@ function resolveOfficeUploadType(
  * is the allowlist check the routes always had. With it on, an Office
  * extension decides the type (browsers send an empty type, `application/zip`
  * or `application/octet-stream` for these files), and legacy and
- * macro-enabled files are refused with a save-as hint.
+ * macro-enabled files are refused with a save-as hint. The declared type never
+ * makes a file legacy: browsers send `application/vnd.ms-excel` for a `.csv`.
  */
 export async function resolveUploadFileType(
   input: ResolveUploadFileTypeInput,

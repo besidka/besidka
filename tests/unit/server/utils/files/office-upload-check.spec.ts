@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   OFFICE_UPLOAD_MAX_BYTES,
 } from '~~/shared/utils/office-files'
+import { EXTRACT_LIMITS } from '@besidka/doc-renderer/extract'
 import {
+  OFFICE_UPLOAD_ZIP_LIMITS,
   assertOfficeContentLength,
   assertOfficeUploadBytes,
   assertSupportedOfficeExtension,
@@ -18,7 +20,6 @@ import {
   worksheetXml,
 } from '../../../../fixtures/documents/extract/builders'
 import {
-  highRatioPackage,
   markEncrypted,
   zipWithManyEntries,
 } from '../../../../fixtures/documents/malicious/builders'
@@ -57,6 +58,30 @@ function incompressibleBytes(length: number): Uint8Array {
 
   return bytes
 }
+
+describe('OFFICE_UPLOAD_ZIP_LIMITS', () => {
+  it('mirrors the limits the text extractor applies', () => {
+    expect(OFFICE_UPLOAD_ZIP_LIMITS).toEqual({
+      entriesMax: EXTRACT_LIMITS.zipEntriesMax,
+      entryBytesMax: EXTRACT_LIMITS.zipEntryBytesMax,
+      totalBytesMax: EXTRACT_LIMITS.zipTotalBytesMax,
+      ratioMax: EXTRACT_LIMITS.zipRatioMax,
+      ratioMinBytes: EXTRACT_LIMITS.zipRatioMinBytes,
+    })
+  })
+
+  it('accepts a well-compressed part the generated-document limits refuse', () => {
+    const compressible = docxPackage(paragraphXml('x'), {
+      options: {
+        extraFiles: { 'word/media/sparse.xml': new Uint8Array(400 * 1024) },
+      },
+    })
+
+    expect(() => {
+      assertOfficeUploadBytes('a.docx', 'docx', compressible)
+    }).not.toThrow()
+  })
+})
 
 describe('assertSupportedOfficeExtension', () => {
   it('accepts the three current formats', () => {
@@ -137,8 +162,14 @@ describe('assertOfficeUploadBytes', () => {
   })
 
   it('rejects a ZIP bomb by its compression ratio', () => {
+    const bomb = docxPackage(paragraphXml('x'), {
+      options: {
+        extraFiles: { 'word/media/zeros.bin': new Uint8Array(24 * 1024 * 1024) },
+      },
+    })
+
     expectRejection(() => {
-      assertOfficeUploadBytes('a.docx', 'docx', highRatioPackage('docx'))
+      assertOfficeUploadBytes('a.docx', 'docx', bomb)
     }, /zip_ratio/)
   })
 

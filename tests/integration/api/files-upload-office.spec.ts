@@ -306,6 +306,31 @@ describe('Office uploads', () => {
     expect(storagePut).not.toHaveBeenCalled()
   })
 
+  it('lets the extension decide, not a legacy declared type', async () => {
+    const handler = await getHandler()
+
+    await handler(createEvent({
+      'content-type': 'application/msword',
+      'x-filename': encodeURIComponent('report.docx'),
+    }, validDocx()) as any)
+
+    expect(dbMock.spies.insertValues.mock.calls[0]?.[0]?.type)
+      .toBe(DOCX_TYPE)
+  })
+
+  it('keeps the allowlist error for a CSV the browser typed as Excel', async () => {
+    const handler = await getHandler()
+
+    await expect(handler(createEvent({
+      'content-type': 'application/vnd.ms-excel',
+      'x-filename': encodeURIComponent('cities.csv'),
+    }, new TextEncoder().encode('a,b')) as any)).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringMatching(/^File type must be one of/),
+    })
+    expect(mocks.evaluateFeatureForEvent).not.toHaveBeenCalled()
+  })
+
   it('rejects macro-enabled files', async () => {
     const handler = await getHandler()
 

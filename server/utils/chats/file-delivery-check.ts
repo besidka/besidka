@@ -1,13 +1,13 @@
 import { createError } from 'evlog'
 import { describeFileDeliveryReason, resolveFileDelivery } from '#shared/utils/file-delivery'
 import type { FileDeliveryRoute } from '#shared/utils/file-delivery'
-import { isHiddenFilePart } from '#shared/utils/files'
+import {
+  extractLocalFileStorageKey,
+  isHiddenFilePart,
+} from '#shared/utils/files'
 import { getInputMediaKind } from '#shared/utils/input-media-types'
 import { isOfficeMediaType } from '#shared/utils/office-files'
-import {
-  extractStorageKeyFromFileUrl,
-  getOwnedFilesByStorageKeys,
-} from '~~/server/utils/files/file-governance'
+import { getOwnedFilesByStorageKeys } from '~~/server/utils/files/file-governance'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { ensureOfficeTextState } from '~~/server/utils/files/office-text'
 
@@ -53,7 +53,7 @@ export async function assertFilesDeliverable(
   }
 
   const storageKeys = fileParts.flatMap((part) => {
-    const storageKey = extractStorageKeyFromFileUrl(part.url as string)
+    const storageKey = extractLocalFileStorageKey(part.url as string)
 
     return storageKey ? [storageKey] : []
   })
@@ -63,7 +63,7 @@ export async function assertFilesDeliverable(
   )
 
   for (const part of fileParts) {
-    const storageKey = extractStorageKeyFromFileUrl(part.url as string)
+    const storageKey = extractLocalFileStorageKey(part.url as string)
     const ownedFile = storageKey ? ownedFiles.get(storageKey) : undefined
 
     if (!storageKey || !ownedFile) {

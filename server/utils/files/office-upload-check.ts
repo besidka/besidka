@@ -1,9 +1,6 @@
 import { createError } from 'evlog'
-import {
-  DEFAULT_ZIP_LIMITS,
-  readZipDirectory,
-  readZipSummary,
-} from '@besidka/doc-renderer/zip'
+import { readZipDirectory, readZipSummary } from '@besidka/doc-renderer/zip'
+import type { ZipLimits } from '@besidka/doc-renderer/zip'
 import {
   OFFICE_FORMAT_LABELS,
   OFFICE_SAVE_AS_FIX,
@@ -15,6 +12,21 @@ import { formatFileSize } from '#shared/utils/files'
 
 const ZIP_SIGNATURE = [0x50, 0x4b, 0x03, 0x04]
 const COMPOUND_FILE_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0]
+
+/**
+ * The bounds the text extractor applies (`EXTRACT_LIMITS` in
+ * `@besidka/doc-renderer/extract`), not the tighter ones for generated
+ * documents: a real spreadsheet or deck can pack well past 100:1, and a file
+ * the extractor would read should not be refused at the door. A spec pins the
+ * two together.
+ */
+export const OFFICE_UPLOAD_ZIP_LIMITS: ZipLimits = {
+  entriesMax: 5000,
+  entryBytesMax: 50 * 1024 * 1024,
+  totalBytesMax: 150 * 1024 * 1024,
+  ratioMax: 1000,
+  ratioMinBytes: 1024 * 1024,
+}
 
 export const OFFICE_MAIN_PARTS: Record<OfficeFormat, string> = {
   docx: 'word/document.xml',
@@ -114,9 +126,9 @@ export function assertOfficeUploadBytes(
 
   if (
     !summary
-    || summary.entries > DEFAULT_ZIP_LIMITS.entriesMax
-    || summary.uncompressedBytes > DEFAULT_ZIP_LIMITS.totalBytesMax
-    || summary.largestEntryBytes > DEFAULT_ZIP_LIMITS.entryBytesMax
+    || summary.entries > OFFICE_UPLOAD_ZIP_LIMITS.entriesMax
+    || summary.uncompressedBytes > OFFICE_UPLOAD_ZIP_LIMITS.totalBytesMax
+    || summary.largestEntryBytes > OFFICE_UPLOAD_ZIP_LIMITS.entryBytesMax
   ) {
     throw createOfficeRejection(
       `The ${label} file is damaged or larger than it can be safely read.`,
@@ -124,7 +136,7 @@ export function assertOfficeUploadBytes(
     )
   }
 
-  const directory = readZipDirectory(bytes)
+  const directory = readZipDirectory(bytes, OFFICE_UPLOAD_ZIP_LIMITS)
 
   if (!directory.ok) {
     throw createOfficeRejection(

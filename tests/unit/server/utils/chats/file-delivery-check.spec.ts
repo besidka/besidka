@@ -8,9 +8,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('~~/server/utils/files/file-governance', () => ({
-  extractStorageKeyFromFileUrl: (url: string) => {
-    return url.startsWith('/files/') ? url.slice('/files/'.length) : null
-  },
   getOwnedFilesByStorageKeys: mocks.getOwnedFilesByStorageKeys,
 }))
 
