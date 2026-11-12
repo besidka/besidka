@@ -108,6 +108,23 @@ describe('delete owned files', () => {
         expect(remainingFileIds()).toEqual([1, 2, 3])
       })
 
+    it('removes the extracted text next to an Office file', async () => {
+      testDb.insertFile({ id: 4, userId: OWNER, storageKey: 'office.docx' })
+
+      const { deleteOwnedFile } = await load()
+      const outcome = await deleteOwnedFile({
+        userId: OWNER,
+        fileId: fileId(4),
+        logger: mocks.logger,
+      })
+
+      expect(outcome).toBe('deleted')
+      expect(mocks.deleteObject).toHaveBeenCalledWith([
+        'office.docx',
+        'office.docx.text.md',
+      ])
+    })
+
     it('keeps the row and reports storage_error when R2 fails', async () => {
       const { deleteOwnedFile } = await load()
 

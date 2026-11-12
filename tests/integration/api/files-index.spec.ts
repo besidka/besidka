@@ -128,6 +128,48 @@ describe('files index API', () => {
     expect(countChain.where).toHaveBeenCalledTimes(1)
   })
 
+  it('returns the extracted-text state and a truncation hint', async () => {
+    const baseRow = {
+      storageKey: 'a.docx',
+      name: 'a.docx',
+      size: 10,
+      type: 'application/octet-stream',
+      source: 'upload',
+      expiresAt: null,
+      createdAt: new Date(),
+      originModel: null,
+      generationCost: null,
+      documentId: null,
+      documentCreatedVia: null,
+      documentAiGenerated: null,
+    }
+    const filesChain = createSelectChain([
+      { ...baseRow, id: 'f1', textStatus: 'ready', textBytes: 1024 },
+      { ...baseRow, id: 'f2', textStatus: 'ready', textBytes: 300 * 1024 },
+      { ...baseRow, id: 'f3', textStatus: 'failed', textBytes: null },
+      { ...baseRow, id: 'f4', textStatus: null, textBytes: null },
+    ])
+    const countChain = createSelectChain({ count: 4 })
+    const select = vi.fn()
+      .mockReturnValueOnce(filesChain)
+      .mockReturnValueOnce(countChain)
+
+    vi.stubGlobal('getQuery', () => ({}))
+    vi.stubGlobal('useDb', () => ({ select }))
+
+    const handler = await getHandler()
+    const result = await handler({} as any)
+
+    expect(result.files.map((file: any) => {
+      return [file.textStatus, file.textBytes, file.textTruncated]
+    })).toEqual([
+      ['ready', 1024, false],
+      ['ready', 300 * 1024, true],
+      ['failed', null, false],
+      [null, null, false],
+    ])
+  })
+
   it('rejects an unknown source filter', async () => {
     vi.stubGlobal('getQuery', () => ({ source: 'provider' }))
     vi.stubGlobal('useDb', vi.fn())

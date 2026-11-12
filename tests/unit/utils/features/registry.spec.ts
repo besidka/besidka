@@ -98,6 +98,16 @@ describe('feature registry', () => {
       .toEqual(['DOC_RENDERER'])
   })
 
+  it('gates Office attachments on the renderer binding', () => {
+    const definition = FEATURE_REGISTRY['files.office']
+
+    expect(definition.available).toBe(true)
+    expect(definition.stage).toBe('internal')
+    expect(definition.default).toBe(false)
+    expect(definition.spend).toBe('none')
+    expect(definition.requires.bindings).toEqual(['DOC_RENDERER'])
+  })
+
   it('makes documents over MCP available so create_document can run', () => {
     expect(FEATURE_REGISTRY['documents.mcp'].available).toBe(true)
   })

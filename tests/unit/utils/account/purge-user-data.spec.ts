@@ -172,6 +172,48 @@ describe('purgeUserData', () => {
     })
   })
 
+  it('removes the extracted text next to every Office file', async () => {
+    const storageKeys = ['users/1/a.docx', 'users/1/b.png', 'users/1/c.xlsx']
+    const db = createDb(storageKeys)
+    const storage = createStorage()
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 1,
+      logger: { set: vi.fn() },
+    })
+
+    expect(storage.delete).toHaveBeenCalledWith([
+      ...storageKeys,
+      'users/1/a.docx.text.md',
+      'users/1/c.xlsx.text.md',
+    ])
+    expect(result.filesFound).toBe(3)
+    expect(result.fileCacheKeysInvalidated).toBe(3)
+  })
+
+  it('keeps every R2 batch within 1000 keys once sidecars are added', async () => {
+    const storageKeys = Array.from({ length: 600 }, (_value, index) => {
+      return `users/1/file-${index}.docx`
+    })
+    const db = createDb(storageKeys)
+    const storage = createStorage()
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 1, logger: { set: vi.fn() } })
+
+    const batchSizes = storage.delete.mock.calls.map(([keys]) => {
+      return keys.length
+    })
+
+    expect(batchSizes).toEqual([1000, 200])
+  })
+
   it('deletes the memory entries scoped to the user id', async () => {
     const db = createDb([])
     const storage = createStorage()
