@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createShareFile,
+  hashText,
   ensureFileExtension,
   readContentDispositionFileName,
   shareFile,
@@ -37,6 +38,14 @@ describe('utils/file-share', () => {
   afterEach(() => {
     Reflect.deleteProperty(navigator, 'share')
     Reflect.deleteProperty(navigator, 'canShare')
+  })
+
+  describe('hashText', () => {
+    it('is stable and tells different texts apart', () => {
+      expect(hashText('abc')).toBe(hashText('abc'))
+      expect(hashText('abc')).not.toBe(hashText('abd'))
+      expect(hashText('')).toBe('811c9dc5')
+    })
   })
 
   describe('readContentDispositionFileName', () => {

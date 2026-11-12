@@ -114,10 +114,6 @@ function createTextBlob(text: string, type: string): Blob {
   return new Blob([text], { type })
 }
 
-function triggerDownload(blob: Blob, fileName: string): void {
-  useFileDownload().downloadBlob(blob, fileName)
-}
-
 async function writeTextFallback(
   textPromise: Promise<string>,
 ): Promise<boolean> {
@@ -202,12 +198,15 @@ async function buildDrawioDocument(
 
 async function download(
   action: DiagramExportAction,
+  input: DiagramExportInput,
   buildBlob: () => Promise<Blob>,
 ): Promise<boolean> {
   try {
-    triggerDownload(await buildBlob(), DOWNLOAD_FILE_NAMES[action] ?? action)
-
-    return true
+    return await useFileDownload().downloadBlob({
+      key: `diagram:${action}:${hashText(input.source)}`,
+      fileName: DOWNLOAD_FILE_NAMES[action] ?? action,
+      build: buildBlob,
+    })
   } catch {
     return false
   }
@@ -235,18 +234,18 @@ function runExportAction(
       case 'copy-drawio':
         return copyText(buildDrawioDocument(input, buildDrawioClipboardXml))
       case 'download-svg':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return createTextBlob(
             await buildStandaloneSvg(input),
             `${SVG_MIME_TYPE};charset=utf-8`,
           )
         })
       case 'download-png':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return svgToPngBlob(await buildStandaloneSvg(input))
         })
       case 'download-drawio':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return createTextBlob(
             await buildDrawioDocument(input, buildDrawioFile),
             DRAWIO_MIME_TYPE,

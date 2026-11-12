@@ -94,9 +94,15 @@ async function copyAll() {
 }
 
 function download() {
-  const blob = new Blob([props.codes.join('\n')], { type: 'text/plain' })
+  const content = props.codes.join('\n')
 
-  downloadBlob(blob, 'besidka-backup-codes.txt')
+  downloadBlob({
+    key: `backup-codes:${hashText(content)}`,
+    fileName: 'besidka-backup-codes.txt',
+    build: () => {
+      return new Blob([content], { type: 'text/plain' })
+    },
+  })
 }
 
 function acknowledge() {

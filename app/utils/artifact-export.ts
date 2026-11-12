@@ -255,10 +255,16 @@ export function buildStandaloneArtifactFile(
   }
 }
 
-export function downloadArtifactFile(file: ArtifactSourceFile): void {
-  const blob = new Blob([file.content], {
-    type: `${file.mimeType};charset=utf-8`,
+export function downloadArtifactFile(
+  file: ArtifactSourceFile,
+): Promise<boolean> {
+  return useFileDownload().downloadBlob({
+    key: `artifact:${file.fileName}:${hashText(file.content)}`,
+    fileName: file.fileName,
+    build: () => {
+      return new Blob([file.content], {
+        type: `${file.mimeType};charset=utf-8`,
+      })
+    },
   })
-
-  useFileDownload().downloadBlob(blob, file.fileName)
 }

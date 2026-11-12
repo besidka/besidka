@@ -501,6 +501,31 @@ describe('composables/diagram-export', () => {
     })
   })
 
+  describe('runExportAction downloads in the iOS home-screen app', () => {
+    beforeEach(() => {
+      vi.stubGlobal('navigator', {
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) '
+          + 'AppleWebKit/605.1.15 Mobile/15E148',
+        platform: 'iPhone',
+        maxTouchPoints: 5,
+        standalone: true,
+      })
+      vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('reports the real outcome instead of true, and never clicks an anchor', async () => {
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+
+      await expect(useDiagramExport().runExportAction('download-svg', input))
+        .resolves.toBe(false)
+      expect(click).not.toHaveBeenCalled()
+    })
+  })
+
   describe('exposed helpers', () => {
     it('exposes the markdown builder', () => {
       expect(useDiagramExport().buildMarkdown('graph TD')).toBe(

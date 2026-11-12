@@ -3,9 +3,69 @@ export interface FileDownloadTarget {
   fileName: string
 }
 
+export type BlobBuilder = () => Blob | Promise<Blob>
+
+export interface BlobDownloadTarget {
+  key: string
+  fileName: string
+  build: BlobBuilder
+}
+
+type ShareDownloadOutcome
+  = | 'saved'
+    | 'cancelled'
+    | 'awaiting-tap'
+    | 'unsupported'
+    | 'failed'
+    | 'busy'
+
+interface PendingFile {
+  file: File
+  expiresAt: number
+}
+
 const ANCHOR_REVOKE_DELAY_MS = 4000
-const pendingFiles = new Map<string, File>()
+const PENDING_FILE_TTL_MS = 60_000
+const FETCH_TIMEOUT_MS = 30_000
+const pendingFiles = new Map<string, PendingFile>()
 const isSharing = shallowRef<boolean>(false)
+let isVisibilityClearBound = false
+
+function bindVisibilityClear(): void {
+  if (isVisibilityClearBound || typeof document === 'undefined') {
+    return
+  }
+
+  isVisibilityClearBound = true
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      pendingFiles.clear()
+    }
+  })
+}
+
+function takePendingFile(key: string): File | null {
+  const pending = pendingFiles.get(key)
+
+  if (!pending) {
+    return null
+  }
+
+  if (pending.expiresAt < Date.now()) {
+    pendingFiles.delete(key)
+
+    return null
+  }
+
+  return pending.file
+}
+
+function keepPendingFile(key: string, file: File): void {
+  pendingFiles.set(key, {
+    file,
+    expiresAt: Date.now() + PENDING_FILE_TTL_MS,
+  })
+}
 
 function triggerAnchorDownload(
   href: string,
@@ -32,7 +92,14 @@ function triggerAnchorDownload(
 }
 
 async function fetchShareFile(target: FileDownloadTarget): Promise<File> {
-  const response = await fetch(target.url, { credentials: 'same-origin' })
+  if (!target.url) {
+    throw new Error('There is no file to download')
+  }
+
+  const response = await fetch(target.url, {
+    credentials: 'same-origin',
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
 
   if (!response.ok) {
     throw new Error(`The file could not be loaded (${response.status})`)
@@ -48,15 +115,17 @@ async function fetchShareFile(target: FileDownloadTarget): Promise<File> {
 }
 
 /**
- * One entry point for every download button. Off iOS the browser keeps its
- * native download, so desktop and Android are untouched. On iOS the file is
- * handed to the native share sheet ("Save to Files") instead of being
- * navigated to: in a home-screen PWA a download replaces the only web view
- * with a full-screen file view that has no way back.
+ * One entry point for every download button. Everywhere except the iOS
+ * home-screen app the browser keeps its native download, so desktop, Android
+ * and Safari tabs are untouched. In the iOS home-screen app a download
+ * replaces the only web view with a full-screen file view that has no way
+ * back, so the file goes to the native share sheet ("Save to Files") instead.
  */
 export function useFileDownload() {
-  function isShareSheetAvailable(): boolean {
-    return isIosDevice(navigator.userAgent) && canUseShareSheet()
+  bindVisibilityClear()
+
+  function isStandaloneIos(): boolean {
+    return isIosDevice(navigator.userAgent) && isStandaloneDisplay()
   }
 
   function reportUnsupported(): void {
@@ -69,15 +138,17 @@ export function useFileDownload() {
   async function shareDownloadedFile(
     key: string,
     resolveFile: () => Promise<File>,
-  ): Promise<boolean> {
+  ): Promise<ShareDownloadOutcome> {
     if (isSharing.value) {
-      return true
+      useInfoMessage('Still preparing the previous file')
+
+      return 'busy'
     }
 
     isSharing.value = true
 
     try {
-      const cachedFile = pendingFiles.get(key) ?? null
+      const cachedFile = takePendingFile(key)
       const file = cachedFile ?? await resolveFile()
       const outcome = await shareFile(file)
 
@@ -88,26 +159,22 @@ export function useFileDownload() {
           'The share sheet could not be opened. Try downloading it again.',
         )
 
-        return true
+        return 'failed'
       }
 
       if (outcome === 'needs-gesture') {
-        pendingFiles.set(key, file)
+        keepPendingFile(key, file)
         useInfoMessage(
           `${file.name} is ready`,
           'Tap download once more to save it.',
         )
 
-        return true
+        return 'awaiting-tap'
       }
 
       pendingFiles.delete(key)
 
-      if (outcome === 'unsupported') {
-        return false
-      }
-
-      return true
+      return outcome === 'shared' ? 'saved' : outcome
     } catch (exception) {
       pendingFiles.delete(key)
       useErrorMessage(
@@ -115,7 +182,7 @@ export function useFileDownload() {
         exception instanceof Error ? exception.message : undefined,
       )
 
-      return true
+      return 'failed'
     } finally {
       isSharing.value = false
     }
@@ -125,67 +192,61 @@ export function useFileDownload() {
     event: MouseEvent,
     target: FileDownloadTarget,
   ): Promise<void> {
-    if (!isIosDevice(navigator.userAgent)) {
-      return
-    }
-
-    if (!isShareSheetAvailable()) {
-      if (isStandaloneDisplay()) {
-        event.preventDefault()
-        reportUnsupported()
-      }
-
+    if (!isStandaloneIos()) {
       return
     }
 
     event.preventDefault()
 
-    const isHandled = await shareDownloadedFile(target.url, () => {
+    if (!canUseShareSheet()) {
+      reportUnsupported()
+
+      return
+    }
+
+    const outcome = await shareDownloadedFile(target.url, () => {
       return fetchShareFile(target)
     })
 
-    if (isHandled) {
-      return
-    }
-
-    if (isStandaloneDisplay()) {
+    if (outcome === 'unsupported') {
       reportUnsupported()
-
-      return
     }
-
-    triggerAnchorDownload(target.url, target.fileName, {
-      revokeAfterClick: false,
-    })
   }
 
-  async function downloadBlob(blob: Blob, fileName: string): Promise<void> {
-    if (!isIosDevice(navigator.userAgent)) {
-      triggerAnchorDownload(URL.createObjectURL(blob), fileName, {
+  /**
+   * Resolves to false when nothing was saved because of a failure. The Blob
+   * is built lazily and only after a kept file for the same `key` is looked
+   * up, so the second tap after an expired gesture shares synchronously.
+   */
+  async function downloadBlob(target: BlobDownloadTarget): Promise<boolean> {
+    if (!isStandaloneIos()) {
+      const built = target.build()
+      const blob = built instanceof Blob ? built : await built
+
+      triggerAnchorDownload(URL.createObjectURL(blob), target.fileName, {
         revokeAfterClick: true,
       })
 
-      return
+      return true
     }
 
-    const isHandled = isShareSheetAvailable()
-      && await shareDownloadedFile(`blob:${fileName}:${blob.size}`, () => {
-        return Promise.resolve(createShareFile(blob, fileName))
-      })
-
-    if (isHandled) {
-      return
-    }
-
-    if (isStandaloneDisplay()) {
+    if (!canUseShareSheet()) {
       reportUnsupported()
 
-      return
+      return false
     }
 
-    triggerAnchorDownload(URL.createObjectURL(blob), fileName, {
-      revokeAfterClick: true,
+    const outcome = await shareDownloadedFile(target.key, async () => {
+      return createShareFile(await target.build(), target.fileName)
     })
+
+    if (outcome === 'unsupported') {
+      reportUnsupported()
+    }
+
+    return outcome === 'saved'
+      || outcome === 'cancelled'
+      || outcome === 'awaiting-tap'
   }
 
   return { onDownloadClick, downloadBlob }

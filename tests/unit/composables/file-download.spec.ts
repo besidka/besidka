@@ -68,6 +68,17 @@ function messageTitles(): string[] {
   })
 }
 
+function createBlobTarget(key = 'diagram:download-svg:abc') {
+  const build = vi.fn(async () => {
+    return new Blob(['<svg/>'], { type: 'image/svg+xml' })
+  })
+
+  return {
+    build,
+    target: { key, fileName: 'diagram.svg', build },
+  }
+}
+
 describe('composables/file-download', () => {
   let anchorClick: ReturnType<typeof vi.spyOn>
 
@@ -80,6 +91,7 @@ describe('composables/file-download', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     Reflect.deleteProperty(navigator, 'share')
     Reflect.deleteProperty(navigator, 'canShare')
@@ -111,17 +123,55 @@ describe('composables/file-download', () => {
         revokeObjectURL: vi.fn(),
       }))
 
-      await useFileDownload()
-        .downloadBlob(new Blob(['x']), 'diagram.svg')
+      const { target: blobTarget } = createBlobTarget()
+      const isSaved = await useFileDownload().downloadBlob(blobTarget)
 
+      expect(isSaved).toBe(true)
       expect(createObjectURL).toHaveBeenCalledOnce()
       expect(anchorClick).toHaveBeenCalledOnce()
     })
   })
 
-  describe('on iOS with the share sheet', () => {
+  describe('in an iOS Safari tab', () => {
     beforeEach(() => {
       setUserAgent(IPHONE_USER_AGENT)
+      setStandalone(false)
+    })
+
+    it('keeps the native download even with share support', async () => {
+      const share = stubShare()
+      const fetchMock = stubFetch()
+      const event = createClick()
+
+      await useFileDownload().onDownloadClick(event, target)
+
+      expect(event.defaultPrevented).toBe(false)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(share).not.toHaveBeenCalled()
+      expect(messageTitles()).toEqual([])
+    })
+
+    it('downloads a blob through an anchor', async () => {
+      const share = stubShare()
+
+      vi.stubGlobal('URL', Object.assign(URL, {
+        createObjectURL: vi.fn(() => 'blob:test'),
+        revokeObjectURL: vi.fn(),
+      }))
+
+      const { target: blobTarget } = createBlobTarget()
+
+      await useFileDownload().downloadBlob(blobTarget)
+
+      expect(anchorClick).toHaveBeenCalledOnce()
+      expect(share).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('in the iOS home-screen app with the share sheet', () => {
+    beforeEach(() => {
+      setUserAgent(IPHONE_USER_AGENT)
+      setStandalone(true)
     })
 
     it('shares the downloaded file instead of navigating to it', async () => {
@@ -134,6 +184,7 @@ describe('composables/file-download', () => {
       expect(event.defaultPrevented).toBe(true)
       expect(fetchMock).toHaveBeenCalledWith(target.url, {
         credentials: 'same-origin',
+        signal: expect.any(AbortSignal),
       })
       expect(share).toHaveBeenCalledOnce()
 
@@ -142,6 +193,20 @@ describe('composables/file-download', () => {
       expect(shared.files[0]?.name).toBe('Plan.docx')
       expect(shared.files[0]?.type).toBe(DOCX_TYPE)
       expect(anchorClick).not.toHaveBeenCalled()
+    })
+
+    it('never fetches an empty URL', async () => {
+      stubShare()
+
+      const fetchMock = stubFetch()
+
+      await useFileDownload().onDownloadClick(createClick(), {
+        url: '',
+        fileName: 'Plan',
+      })
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(messageTitles()).toEqual(['Failed to download the file'])
     })
 
     it('stays quiet when the user closes the share sheet', async () => {
@@ -199,6 +264,38 @@ describe('composables/file-download', () => {
       expect(anchorClick).not.toHaveBeenCalled()
     })
 
+    it('forgets a kept file after 60 seconds', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+
+      const share = stubShare()
+      const fetchMock = stubFetch()
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+      await useFileDownload().onDownloadClick(createClick(), target)
+      vi.setSystemTime(Date.now() + 61_000)
+      await useFileDownload().onDownloadClick(createClick(), target)
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('forgets a kept file when the page is hidden', async () => {
+      const share = stubShare()
+      const fetchMock = stubFetch()
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+      await useFileDownload().onDownloadClick(createClick(), target)
+
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+      await useFileDownload().onDownloadClick(createClick(), target)
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
     it('reports a failed fetch and never navigates to the file', async () => {
       stubShare()
       vi.stubGlobal('fetch', vi.fn(async () => {
@@ -213,7 +310,7 @@ describe('composables/file-download', () => {
       expect(anchorClick).not.toHaveBeenCalled()
     })
 
-    it('ignores a second tap while a share is still open', async () => {
+    it('tells the user when a second tap is swallowed while a share is open', async () => {
       let finishShare = () => {}
       const share = stubShare(() => {
         return new Promise<void>((resolve) => {
@@ -232,43 +329,96 @@ describe('composables/file-download', () => {
 
       expect(fetchMock).toHaveBeenCalledOnce()
       expect(share).toHaveBeenCalledOnce()
+      expect(messageTitles()).toEqual(['Still preparing the previous file'])
 
       finishShare()
       await firstTap
     })
 
-    it('shares a blob with the given name', async () => {
+    it('releases the guard after a failure', async () => {
       const share = stubShare()
 
-      await useFileDownload().downloadBlob(
-        new Blob(['x'], { type: 'image/svg+xml' }),
-        'diagram.svg',
-      )
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        throw new TypeError('network')
+      }))
+      await useFileDownload().onDownloadClick(createClick(), target)
+      stubFetch()
+      await useFileDownload().onDownloadClick(createClick(), target)
 
+      expect(share).toHaveBeenCalledOnce()
+    })
+
+    it('shares a blob with the given name and reports it saved', async () => {
+      const share = stubShare()
+      const { target: blobTarget } = createBlobTarget()
+
+      const isSaved = await useFileDownload().downloadBlob(blobTarget)
       const [shared] = share.mock.calls[0] as unknown as [{ files: File[] }]
 
+      expect(isSaved).toBe(true)
       expect(shared.files[0]?.name).toBe('diagram.svg')
       expect(anchorClick).not.toHaveBeenCalled()
     })
+
+    it('shares the kept blob on the second tap without building it again', async () => {
+      const share = stubShare()
+      const { build, target: blobTarget } = createBlobTarget()
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+
+      const firstResult = await useFileDownload().downloadBlob(blobTarget)
+
+      expect(firstResult).toBe(true)
+      expect(build).toHaveBeenCalledOnce()
+      expect(messageTitles()).toEqual(['diagram.svg is ready'])
+
+      const secondTap = useFileDownload().downloadBlob(blobTarget)
+
+      expect(share).toHaveBeenCalledTimes(2)
+
+      await expect(secondTap).resolves.toBe(true)
+      expect(build).toHaveBeenCalledOnce()
+    })
+
+    it('does not mix kept blobs of different exports', async () => {
+      const share = stubShare()
+      const first = createBlobTarget('diagram:download-svg:aaa')
+      const second = createBlobTarget('diagram:download-svg:bbb')
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+      await useFileDownload().downloadBlob(first.target)
+      await useFileDownload().downloadBlob(second.target)
+
+      expect(second.build).toHaveBeenCalledOnce()
+    })
+
+    it('resolves to false when building the blob fails', async () => {
+      stubShare()
+
+      const isSaved = await useFileDownload().downloadBlob({
+        key: 'diagram:download-png:abc',
+        fileName: 'diagram.png',
+        build: async () => {
+          throw new Error('render failed')
+        },
+      })
+
+      expect(isSaved).toBe(false)
+      expect(messageTitles()).toEqual(['Failed to download the file'])
+    })
   })
 
-  describe('on iOS without a share sheet', () => {
+  describe('in the iOS home-screen app without a share sheet', () => {
     beforeEach(() => {
       setUserAgent(IPHONE_USER_AGENT)
-    })
-
-    it('keeps the native download in Safari', async () => {
-      const event = createClick()
-
-      await useFileDownload().onDownloadClick(event, target)
-
-      expect(event.defaultPrevented).toBe(false)
-      expect(messageTitles()).toEqual([])
-    })
-
-    it('never navigates the home-screen app to the file', async () => {
       setStandalone(true)
+    })
 
+    it('never navigates the app to the file', async () => {
       const event = createClick()
 
       await useFileDownload().onDownloadClick(event, target)
@@ -277,6 +427,14 @@ describe('composables/file-download', () => {
       expect(messageTitles()).toEqual([
         'This file cannot be saved from the app',
       ])
+      expect(anchorClick).not.toHaveBeenCalled()
+    })
+
+    it('reports a blob as not saved', async () => {
+      const { target: blobTarget } = createBlobTarget()
+
+      await expect(useFileDownload().downloadBlob(blobTarget))
+        .resolves.toBe(false)
       expect(anchorClick).not.toHaveBeenCalled()
     })
   })
