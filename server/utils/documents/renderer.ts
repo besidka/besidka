@@ -284,7 +284,7 @@ export async function extractOfficeText(
 
   try {
     capabilities = await getRendererCapabilities(logger)
-  } catch (_exception) {
+  } catch {
     setRendererLog(logger, {
       operation: 'extract',
       format: request.format,
@@ -351,7 +351,7 @@ export async function extractOfficeText(
     })
 
     return result
-  } catch (_exception) {
+  } catch {
     setRendererLog(logger, {
       operation: 'extract',
       format: request.format,
