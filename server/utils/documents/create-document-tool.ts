@@ -499,6 +499,7 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
             format: validSpec.format,
             title: validSpec.title,
             createdVia: 'chat',
+            aiGenerated: true,
             originChatId: input.chatId,
             originMessagePublicId: input.assistantMessageId,
             originProvider: input.provider ?? null,

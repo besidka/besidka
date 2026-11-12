@@ -245,7 +245,9 @@ global `artifacts` rule off in `/admin` until the steps below are done.
 ## Documents
 
 A restore rolls back the `documents` table (`server/db/schemas/documents.ts`,
-BES-293) to the bookmark B. It has no foreign key to `users`, `chats` or
+BES-293) to the bookmark B. Its `ai_generated` column (nullable, no default)
+rolls back with the row; `NULL` is read by channel, so a restore to a
+bookmark before the column existed changes no label. It has no foreign key to `users`, `chats` or
 `files`, so nothing cascades, and R2 keeps its current state. The spec object
 of a document sits under `documents/<userId>/<documentId>/spec.v<n>.json` and
 is derived from the row, so the row and the object can drift in both

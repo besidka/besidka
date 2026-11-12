@@ -15,18 +15,23 @@ describe('files index API document id', () => {
     userId: number
     fileId: number | null
     status: 'ready' | 'failed' | 'spec_ready'
+    createdVia?: 'chat' | 'mcp'
+    aiGenerated?: boolean | null
   }) {
     testDb.sqlite.prepare(
       'insert into documents (id, created_at, updated_at, user_id, format,'
-      + ' status, render_attempts, file_id, created_via)'
-      + ' values (?, 1, 1, ?, ?, ?, 0, ?, ?)',
+      + ' status, render_attempts, file_id, created_via, ai_generated)'
+      + ' values (?, 1, 1, ?, ?, ?, 0, ?, ?, ?)',
     ).run(
       input.id,
       input.userId,
       'pdf',
       input.status,
       input.fileId,
-      'chat',
+      input.createdVia ?? 'chat',
+      input.aiGenerated === undefined || input.aiGenerated === null
+        ? null
+        : Number(input.aiGenerated),
     )
   }
 
@@ -109,4 +114,74 @@ describe('files index API document id', () => {
         .toHaveLength(1)
       expect(result.total).toBe(4)
     })
+
+  async function listFlags() {
+    const module = await import('~~/server/api/v1/files/index.get')
+    const result = await module.default({} as never) as {
+      files: Array<{ name: string, documentAiGenerated: boolean | null }>
+    }
+
+    return Object.fromEntries(result.files.map((file) => {
+      return [file.name, file.documentAiGenerated]
+    }))
+  }
+
+  it('returns the stored AI flag of a document file', async () => {
+    insertDocument({
+      id: 21,
+      userId: OWNER,
+      fileId: 1,
+      status: 'ready',
+      createdVia: 'mcp',
+      aiGenerated: false,
+    })
+    insertDocument({
+      id: 22,
+      userId: OWNER,
+      fileId: 2,
+      status: 'ready',
+      createdVia: 'mcp',
+      aiGenerated: true,
+    })
+
+    const flags = await listFlags()
+
+    expect(flags['ready.pdf']).toBe(false)
+    expect(flags['detached.pdf']).toBe(true)
+  })
+
+  it('reads a missing flag as AI for chat and as not AI for MCP',
+    async () => {
+      insertDocument({ id: 23, userId: OWNER, fileId: 1, status: 'ready' })
+      insertDocument({
+        id: 24,
+        userId: OWNER,
+        fileId: 2,
+        status: 'ready',
+        createdVia: 'mcp',
+      })
+
+      const flags = await listFlags()
+
+      expect(flags['ready.pdf']).toBe(true)
+      expect(flags['detached.pdf']).toBe(false)
+    })
+
+  it('returns null for a file without a document', async () => {
+    const flags = await listFlags()
+
+    expect(flags['uploaded.pdf']).toBeNull()
+  })
+
+  it('does not expose the raw document columns', async () => {
+    insertDocument({ id: 25, userId: OWNER, fileId: 1, status: 'ready' })
+
+    const module = await import('~~/server/api/v1/files/index.get')
+    const result = await module.default({} as never) as {
+      files: Array<Record<string, unknown>>
+    }
+
+    expect(result.files[0]).not.toHaveProperty('documentCreatedVia')
+    expect(result.files[0]).toHaveProperty('documentAiGenerated')
+  })
 })

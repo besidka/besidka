@@ -3,6 +3,7 @@ import {
   createEmptyDocumentFormatCounts,
   createEmptyDocumentSourceCounts,
   getDocumentDisplayTitle,
+  isDocumentAiGenerated,
   isDocumentFormat,
 } from '#shared/utils/documents'
 import type {
@@ -90,6 +91,7 @@ export async function listLibraryDocuments(
       title: schema.documents.title,
       stats: schema.documents.stats,
       createdVia: schema.documents.createdVia,
+      aiGenerated: schema.documents.aiGenerated,
       createdAt: schema.documents.createdAt,
       fileId: sql<string>`${schema.files.id}`
         .mapWith(schema.files.id)
@@ -149,6 +151,7 @@ export async function listLibraryDocuments(
           row.format,
         ),
         source: toLibrarySource(row.createdVia),
+        aiGenerated: isDocumentAiGenerated(row),
         fileId: row.fileId,
         fileName: row.fileName,
         storageKey: row.storageKey,

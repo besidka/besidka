@@ -83,6 +83,30 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
         .exists()).toBe(false)
     })
 
+  it('hides the AI badge for a connected app document and marks it',
+    async () => {
+      const wrapper = await mountDocumentGrid([
+        { ...documentFile, documentAiGenerated: false },
+      ])
+
+      expect(wrapper.find('[data-testid="files-ai-badge"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="files-app-badge"]').text())
+        .toBe('App')
+    })
+
+  it('keeps the AI badge for AI documents and generated files', async () => {
+    const wrapper = await mountDocumentGrid([
+      { ...documentFile, documentAiGenerated: true },
+      { ...documentFile, id: 'file-3', documentAiGenerated: null },
+      file,
+    ])
+
+    expect(wrapper.findAll('[data-testid="files-ai-badge"]')).toHaveLength(3)
+    expect(wrapper.find('[data-testid="files-app-badge"]').exists())
+      .toBe(false)
+  })
+
   it('selects only when keyboard events originate from the tile', async () => {
     const wrapper = await mountSuspended(GridView, {
       props: {

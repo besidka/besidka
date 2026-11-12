@@ -153,7 +153,7 @@
 import { parseError } from 'evlog'
 import type { DocumentSpec } from '@besidka/doc-renderer/spec'
 import {
-  DOCUMENT_FORMAT_LABELS,
+  DOCUMENT_FORMAT_LIBRARY_LABELS,
   isDocumentFormat,
 } from '#shared/utils/documents'
 import type {
@@ -206,7 +206,7 @@ const {
 )
 
 const formatLabel = computed<string>(() => {
-  return DOCUMENT_FORMAT_LABELS[props.format]
+  return DOCUMENT_FORMAT_LIBRARY_LABELS[props.format]
 })
 
 const fileUrls = computed(() => {

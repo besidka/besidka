@@ -108,6 +108,7 @@ describe('documents library API', () => {
     fileName: string
     title?: string | null
     createdVia?: 'chat' | 'mcp'
+    aiGenerated?: boolean | null
     originChatId?: string
     minutesAgo: number
     size?: number
@@ -130,6 +131,7 @@ describe('documents library API', () => {
       status: 'ready',
       fileId: file!.id,
       createdVia: input.createdVia ?? 'chat',
+      aiGenerated: input.aiGenerated,
       originChatId: input.originChatId,
       stats: {
         pages: 3,
@@ -158,6 +160,7 @@ describe('documents library API', () => {
       format: 'pptx',
       fileName: 'Launch deck.pptx',
       createdVia: 'mcp',
+      aiGenerated: true,
       minutesAgo: 20,
     })
     const budget = await seedReadyDocument({
@@ -195,6 +198,7 @@ describe('documents library API', () => {
       format: 'pdf',
       title: 'Quarterly report',
       source: 'chat',
+      aiGenerated: true,
       fileId: expect.any(String),
       fileName: 'Quarterly report.pdf',
       storageKey: 'library-1.bin',
@@ -206,10 +210,27 @@ describe('documents library API', () => {
     })
     expect(result.items[1]).toMatchObject({
       source: 'mcp',
+      aiGenerated: true,
       originChatSlug: null,
       originChatTitle: null,
     })
   })
+
+  it('labels documents by the stored flag and reads null by channel',
+    async () => {
+      const { report, deck, budget } = await seedLibrary()
+      const list = await importListHandler()
+      const result = await list(createEvent())
+      const flags = Object.fromEntries(
+        result.items.map((item: { id: string, aiGenerated: boolean }) => {
+          return [item.id, item.aiGenerated]
+        }),
+      )
+
+      expect(flags[report.id]).toBe(true)
+      expect(flags[deck.id]).toBe(true)
+      expect(flags[budget.id]).toBe(false)
+    })
 
   it('counts formats and sources for every document of the owner',
     async () => {

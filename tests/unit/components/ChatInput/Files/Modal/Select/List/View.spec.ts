@@ -57,6 +57,37 @@ describe('ChatInput/Files/Modal/Select/List/View', () => {
     expect(wrapper.emitted('file-click')).toBeUndefined()
   })
 
+  it('hides the AI badge for a connected app document and marks it',
+    async () => {
+      const documentFile = {
+        ...file,
+        source: 'assistant' as const,
+        documentId: 'doc-1',
+        documentAiGenerated: false,
+      }
+      const wrapper = await mountListView({ files: [documentFile] })
+
+      expect(wrapper.find('[data-testid="files-ai-badge"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="files-app-badge"]').text())
+        .toBe('App')
+    })
+
+  it('keeps the AI badge for AI documents and generated files', async () => {
+    const generated = { ...file, source: 'assistant' as const }
+    const aiDocument = {
+      ...generated,
+      id: 'file-2',
+      documentId: 'doc-2',
+      documentAiGenerated: true,
+    }
+    const wrapper = await mountListView({ files: [aiDocument, generated] })
+
+    expect(wrapper.findAll('[data-testid="files-ai-badge"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="files-app-badge"]').exists())
+      .toBe(false)
+  })
+
   it('has no preview action without a document id or the feature',
     async () => {
       const withoutId = await mountListView({

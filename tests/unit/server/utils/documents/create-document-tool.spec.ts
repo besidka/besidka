@@ -351,6 +351,7 @@ describe('create_document tool', () => {
         format: 'pdf',
         status: 'spec_ready',
         createdVia: 'chat',
+        aiGenerated: true,
         originChatId: chatId,
         originMessagePublicId: 'ASSISTANT-ULID',
         originProvider: 'anthropic',

@@ -34,6 +34,7 @@ export const documents = snakeCase.table(
     renderedBy: text({ enum: DOCUMENT_RENDERED_BY }),
     errorCode: text(),
     createdVia: text({ enum: DOCUMENT_CREATED_VIA }).notNull(),
+    aiGenerated: integer({ mode: 'boolean' }),
     originProvider: text(),
     originModel: text(),
   },

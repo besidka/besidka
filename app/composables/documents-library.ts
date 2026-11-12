@@ -2,7 +2,9 @@ import type { Ref } from 'vue'
 import { parseError } from 'evlog'
 import {
   DOCUMENT_FORMATS,
+  DOCUMENT_FORMAT_LIBRARY_LABELS,
   DOCUMENT_LIBRARY_SOURCES,
+  DOCUMENT_SOURCE_LIBRARY_LABELS,
   getDocumentDisplayTitle,
 } from '#shared/utils/documents'
 import type {
@@ -28,21 +30,6 @@ export const DOCUMENT_LIBRARY_SKELETON_DELAY_MS = 300
 export const DOCUMENT_LIBRARY_SKELETON_ROWS = 6
 export const DOCUMENT_LIBRARY_PATH = '/chats/documents'
 export const DOCUMENT_FILTER_MIN_OPTIONS = 2
-
-export const DOCUMENT_FORMAT_LIBRARY_LABELS: Record<DocumentFormat, string> = {
-  pdf: 'PDF',
-  docx: 'Word',
-  pptx: 'PowerPoint',
-  xlsx: 'Excel',
-}
-
-export const DOCUMENT_SOURCE_LIBRARY_LABELS: Record<
-  DocumentLibrarySource,
-  string
-> = {
-  chat: 'Chat',
-  mcp: 'Connected app',
-}
 
 function buildFilterOptions<Value extends string>(
   values: readonly Value[],

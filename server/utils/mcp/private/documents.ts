@@ -650,6 +650,7 @@ export async function createMcpDocument(
     format: spec.format,
     title: spec.title,
     createdVia: 'mcp',
+    aiGenerated: input.aiGenerated === true,
     specVersion: spec.specVersion,
     stats: toDocumentStats(spec),
     specJson: JSON.stringify(spec),

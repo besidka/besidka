@@ -61,6 +61,13 @@ export const DOCUMENT_FORMAT_LABELS: Record<DocumentFormat, string> = {
   xlsx: 'XLSX',
 }
 
+export const DOCUMENT_FORMAT_LIBRARY_LABELS: Record<DocumentFormat, string> = {
+  pdf: 'PDF',
+  docx: 'Word',
+  pptx: 'PowerPoint',
+  xlsx: 'Excel',
+}
+
 export const DOCUMENT_FEATURE_KEYS: Record<DocumentFormat, FeatureKey> = {
   pdf: 'documents.pdf',
   docx: 'documents.docx',
@@ -254,6 +261,31 @@ export const DOCUMENT_LIBRARY_SOURCES = ['chat', 'mcp'] as const
 
 export type DocumentLibrarySource = typeof DOCUMENT_LIBRARY_SOURCES[number]
 
+export const DOCUMENT_SOURCE_LIBRARY_LABELS: Record<
+  DocumentLibrarySource,
+  string
+> = {
+  chat: 'Chat',
+  mcp: 'Connected app',
+}
+
+/**
+ * Whether a document is labelled as AI-generated. A stored flag wins. Rows
+ * written before the column existed carry null: a chat document was written
+ * by a model, an MCP document only by a connected app unless the caller said
+ * otherwise, so null reads as AI only for non-MCP documents.
+ */
+export function isDocumentAiGenerated(document: {
+  createdVia: DocumentCreatedVia
+  aiGenerated: boolean | null
+}): boolean {
+  if (document.aiGenerated !== null) {
+    return document.aiGenerated
+  }
+
+  return document.createdVia !== 'mcp'
+}
+
 export type DocumentFormatCounts = Record<DocumentFormat, number>
 
 export type DocumentSourceCounts = Record<DocumentLibrarySource, number>
@@ -263,6 +295,7 @@ export interface DocumentLibraryItem {
   format: DocumentFormat
   title: string
   source: DocumentLibrarySource
+  aiGenerated: boolean
   fileId: string
   fileName: string
   storageKey: string

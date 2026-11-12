@@ -91,11 +91,21 @@
               {{ truncateFilenameMiddle(file.name, 48) }}
             </span>
             <span
-              v-if="file.source === 'assistant'"
+              v-if="isAiGeneratedFile(file)"
               class="badge badge-secondary badge-xs mt-1 text-2xs leading-none gap-0.5"
+              data-testid="files-ai-badge"
             >
               <Icon name="lucide:sparkles" size="10" />
               {{ getAiBadgeLabel(file) }}
+            </span>
+            <span
+              v-else-if="isConnectedAppFile(file)"
+              class="badge badge-soft badge-xs mt-1 text-2xs leading-none gap-0.5"
+              :title="CONNECTED_APP_FILE_BADGE_TITLE"
+              data-testid="files-app-badge"
+            >
+              <Icon name="lucide:plug" size="10" />
+              {{ CONNECTED_APP_FILE_BADGE_LABEL }}
             </span>
             <span class="text-base-content/60 text-2xs sm:hidden">
               Size: {{ formatFileSize(file.size) }}, Type:

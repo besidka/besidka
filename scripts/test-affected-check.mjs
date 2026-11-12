@@ -314,6 +314,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/documents/stored-spec.spec.ts',
     'tests/unit/utils/documents/file-name.spec.ts',
     'tests/unit/utils/documents/library-helpers.spec.ts',
+    'tests/unit/utils/documents/ai-generated.spec.ts',
     'tests/unit/components/Chat/Document/Blocks.spec.ts',
     'tests/unit/components/Chat/Document/Slide.spec.ts',
     'tests/unit/utils/chats/share-pii-check.spec.ts',

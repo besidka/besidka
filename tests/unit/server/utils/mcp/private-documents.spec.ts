@@ -597,6 +597,16 @@ describe('createMcpDocument', () => {
       }))
     })
 
+    it('stores the AI flag of the caller on the row', async () => {
+      await createMcpDocument(context(), input())
+      await createMcpDocument(context(), input({ aiGenerated: true }))
+      await createMcpDocument(context(), input({ aiGenerated: false }))
+
+      const flags = (await documentRows()).map(row => row.aiGenerated)
+
+      expect(flags).toEqual([false, true, false])
+    })
+
     it('marks the channel only, without an AI assertion, by default',
       async () => {
         await createMcpDocument(context(), input())

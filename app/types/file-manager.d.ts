@@ -15,6 +15,7 @@ export type FileManagerFile = Pick<
   | 'generationCost'
 > & {
   documentId?: string | null
+  documentAiGenerated?: boolean | null
 }
 
 export type ViewMode = 'grid' | 'list'

@@ -14,6 +14,7 @@ function createItem(
     format: 'pdf',
     title: 'Quarterly report',
     source: 'chat',
+    aiGenerated: true,
     fileId: 'file-1',
     fileName: 'Quarterly report.pdf',
     storageKey: 'quarterly-report.pdf',
@@ -110,6 +111,7 @@ describe('History/DocumentRow', () => {
   it('marks a connected app document without a chat link', async () => {
     const wrapper = await mountRow(createItem({
       source: 'mcp',
+      aiGenerated: false,
       originChatSlug: null,
       originChatTitle: null,
     }))
@@ -121,6 +123,26 @@ describe('History/DocumentRow', () => {
     expect(wrapper.find(testId('document-row-ai')).exists()).toBe(false)
     expect(wrapper.find(testId('document-action-open-chat')).exists())
       .toBe(false)
+  })
+
+  it('shows the AI badge on a connected app document the caller declared AI',
+    async () => {
+      const wrapper = await mountRow(createItem({
+        source: 'mcp',
+        aiGenerated: true,
+        originChatSlug: null,
+        originChatTitle: null,
+      }))
+
+      expect(wrapper.get(testId('document-row-source')).text())
+        .toBe('Connected app')
+      expect(wrapper.find(testId('document-row-ai')).exists()).toBe(true)
+    })
+
+  it('hides the AI badge on a chat document flagged as not AI', async () => {
+    const wrapper = await mountRow(createItem({ aiGenerated: false }))
+
+    expect(wrapper.find(testId('document-row-ai')).exists()).toBe(false)
   })
 
   it('offers preview, download, rename and delete actions', async () => {

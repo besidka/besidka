@@ -198,7 +198,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       error_code text,
       created_via text NOT NULL,
       origin_provider text,
-      origin_model text
+      origin_model text,
+      ai_generated integer
     );
 
     CREATE INDEX idx_documents_file ON documents (file_id);
