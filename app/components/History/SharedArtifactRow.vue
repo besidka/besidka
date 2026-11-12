@@ -33,10 +33,7 @@
         <span data-testid="shared-artifact-row-expiry">
           <template v-if="artifact.nearestExpiresAt">
             Next expiry
-            <UiLocalDate
-              :value="artifact.nearestExpiresAt"
-              with-time
-            />
+            <UiLocalDate :value="artifact.nearestExpiresAt" />
           </template>
           <template v-else>
             No expiry
