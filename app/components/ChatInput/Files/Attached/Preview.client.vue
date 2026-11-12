@@ -115,6 +115,9 @@
             <span
               v-if="deliveryHints.get(file.storageKey)"
               class="badge badge-soft badge-xs leading-none"
+              :class="{
+                'badge-warning': deliveryHints.get(file.storageKey)?.isBlocking
+              }"
               :title="deliveryHints.get(file.storageKey)?.description"
               data-testid="files-delivery-hint"
             >
@@ -350,12 +353,14 @@ const props = withDefaults(defineProps<{
     & Partial<Pick<AttachedFile, 'textStatus' | 'textBytes' | 'textTruncated'>>
   )[]
   resolveDelivery?: FileDeliveryResolver
+  resolveDeliveryWithRunCode?: FileDeliveryResolver
   uploadingFiles?: Map<string, UploadingFile>
   uploadingCount?: number
   tiles?: ChatInputTile[]
   pastedTexts?: PastedText[]
 }>(), {
   resolveDelivery: undefined,
+  resolveDeliveryWithRunCode: undefined,
   uploadingFiles: undefined,
   uploadingCount: undefined,
   tiles: () => [],
@@ -383,7 +388,11 @@ const deliveryHints = computed<Map<string, FileDeliveryHint>>(() => {
   }
 
   for (const file of props.files) {
-    const hint = getFileDeliveryHint(file, resolve)
+    const hint = getFileDeliveryHint(
+      file,
+      resolve,
+      props.resolveDeliveryWithRunCode,
+    )
 
     if (hint) {
       hints.set(file.storageKey, hint)

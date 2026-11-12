@@ -1,4 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { KeepAlive, defineComponent, h, nextTick, shallowRef } from 'vue'
 import { useState } from '#imports'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '../../../../../../shared/utils/input-media-types'
@@ -285,6 +286,35 @@ describe('ChatInput/Files/Modal/Upload', () => {
           + 'Save it as .xlsx / .docx / .pptx and upload again.',
         )
     })
+
+    it('clears the legacy hint on a tab switch or when the modal closes',
+      async () => {
+        turnOfficeOn()
+
+        const isShown = shallowRef<boolean>(true)
+        const Host = defineComponent({
+          components: { Upload },
+          setup() {
+            return () => h(KeepAlive, null, {
+              default: () => isShown.value ? h(Upload) : h('div'),
+            })
+          },
+        })
+        const wrapper = await mountSuspended(Host)
+
+        await chooseFiles(wrapper, [new File(['x'], 'old.xls', { type: '' })])
+
+        expect(wrapper.find('[data-testid="files-upload-legacy-hint"]').exists())
+          .toBe(true)
+
+        isShown.value = false
+        await nextTick()
+        isShown.value = true
+        await nextTick()
+
+        expect(wrapper.find('[data-testid="files-upload-legacy-hint"]').exists())
+          .toBe(false)
+      })
 
     it('clears the legacy hint when the next pick is fine', async () => {
       turnOfficeOn()

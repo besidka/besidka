@@ -25,11 +25,10 @@ const FAIL_OPEN_INPUT_MODALITIES = ['image', 'pdf']
  * as `file` rather than `pdf`, OpenRouter parses PDFs for any routed model,
  * and the server only gates images on gateways.
  *
- * `fileDeliveryContext` is the resolver input for the same selection (the
- * caller adds the send's Run code state), and `resolveDelivery` answers the
- * per-file question from it without that state
- * (native, text or unsupported, with a reason) through the resolver the send
- * route uses, so the file manager and the chips agree with the server.
+ * `fileDeliveryContext` is the input of the resolver the send route uses for
+ * the same selection; the caller adds the send's Run code state and builds
+ * the per-file resolver from it, so the file manager and the chips agree with
+ * the server.
  */
 export function useFileInputSupport() {
   const { selection, userModel } = useUserModel()
@@ -77,14 +76,9 @@ export function useFileInputSupport() {
     })
   })
 
-  const resolveDelivery = computed<FileDeliveryResolver>(() => {
-    return createFileDeliveryResolver(fileDeliveryContext.value)
-  })
-
   return {
     isImageInputSupported,
     canAttachMediaType,
     fileDeliveryContext,
-    resolveDelivery,
   }
 }

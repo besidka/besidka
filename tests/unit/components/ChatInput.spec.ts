@@ -49,7 +49,7 @@ const codeExecutionFeature = reactive({
 mockNuxtImport('useFeature', () => {
   return (key: string) => {
     return computed(() => {
-      if (key === 'code-execution') {
+      if (key === 'code-execution' || key === 'code-execution.files') {
         return codeExecutionFeature
       }
 
@@ -1372,6 +1372,146 @@ describe('ChatInput.client', () => {
 
       expect(attachedFileNames(wrapper)).toEqual(['a.png'])
       expect(mocks.useWarningMessage).toHaveBeenCalledWith(pdfWarning)
+    })
+  })
+
+  describe('Run code files', () => {
+    const jsonFile = {
+      id: '4',
+      storageKey: 'json-key',
+      name: 'data.json',
+      size: 10,
+      type: 'application/json',
+    }
+    const needsRunCodeWarning = 'data.json: Turn on Run code to send '
+      + 'this file, or remove it.'
+
+    afterEach(() => {
+      codeExecutionFeature.active = false
+    })
+
+    function attachedFileNames(wrapper: Awaited<ReturnType<
+      typeof mountChatInput
+    >>): string[] {
+      return wrapper.findAll('[data-testid="carousel-item"]').map((item) => {
+        return item.attributes('data-file-name')
+      }) as string[]
+    }
+
+    async function pressEnter(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+    ) {
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('Analyse the data')
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+    }
+
+    function useRunCodeSelection(
+      options: { providerId?: string, codeExecution?: boolean } = {},
+    ) {
+      const allowAll = createInputMediaTypePredicate(['image', 'pdf'])
+
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
+        isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(options.codeExecution ?? true),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(allowAll),
+        fileDeliveryContext: shallowRef({
+          route: 'direct' as const,
+          providerId: options.providerId ?? 'anthropic',
+          modalities: ['image', 'pdf'],
+        }),
+        isReasoningSupported: shallowRef(false),
+        isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
+        reasoningCapability: shallowRef(null),
+        reasoningMode: shallowRef('none'),
+        reasoningMenuLevels: shallowRef([]),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
+        selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('claude-haiku-5-5'),
+        selectedModelBillingProviderId: shallowRef<string | null>('anthropic'),
+      })
+    }
+
+    it('keeps an attached JSON file when Run code is turned off, marks it and '
+      + 'blocks the send', async () => {
+      codeExecutionFeature.active = true
+      useRunCodeSelection()
+
+      const wrapper = await mountChatInput({ tools: ['code_execution'] })
+
+      wrapper.findComponent(filesModalStub).vm.$emit('attach', [jsonFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual(['data.json'])
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+
+      await wrapper.setProps({ tools: [] })
+      await flushPromises()
+
+      expect(attachedFileNames(wrapper)).toEqual(['data.json'])
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+      expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
+        .toBe('Needs Run code')
+
+      await pressEnter(wrapper)
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(needsRunCodeWarning)
+      expect(attachedFileNames(wrapper)).toEqual(['data.json'])
+
+      await wrapper.setProps({ tools: ['code_execution'] })
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+        .toBe(false)
+
+      await pressEnter(wrapper)
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('lets the user remove the file instead of turning Run code back on',
+      async () => {
+        codeExecutionFeature.active = true
+        useRunCodeSelection()
+
+        const wrapper = await mountChatInput({ tools: ['code_execution'] })
+
+        wrapper.findComponent(filesModalStub).vm.$emit('attach', [jsonFile])
+        await wrapper.setProps({ tools: [] })
+        await flushPromises()
+        await wrapper.get('[data-testid="files-preview-detach"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(wrapper.emitted('submit')).toBeUndefined()
+      })
+
+    it('says the plain reason when Run code is not available', async () => {
+      useRunCodeSelection({ providerId: 'xai', codeExecution: false })
+
+      const wrapper = await mountChatInput()
+
+      wrapper.findComponent(filesModalStub).vm.$emit('attach', [jsonFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual([])
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('This file type cannot be sent to a model'),
+      )
     })
   })
 

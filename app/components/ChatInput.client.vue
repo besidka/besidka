@@ -48,6 +48,7 @@
           <LazyChatInputFilesAttachedPreview
             :files="files"
             :resolve-delivery="resolveDelivery"
+            :resolve-delivery-with-run-code="resolveDeliveryWithRunCode"
             :uploading-files="uploadingFiles"
             :uploading-count="uploadingCount"
             :tiles="tiles"
@@ -531,18 +532,35 @@ nuxtApp.hook('chat:attach-file', async (file) => {
   nuxtApp.callHook('chat:scroll-to-bottom')
 })
 
-const isCodeExecutionFilesActive = computed<boolean>(() => {
-  return tools.value.includes('code_execution')
-    && isCodeExecutionSupported.value
+const isCodeExecutionFilesAvailable = computed<boolean>(() => {
+  return isCodeExecutionSupported.value
     && !isDeepResearchModel.value
     && codeExecutionFeature.value.active
     && codeExecutionFilesFeature.value.active
+})
+
+const isCodeExecutionFilesActive = computed<boolean>(() => {
+  return tools.value.includes('code_execution')
+    && isCodeExecutionFilesAvailable.value
 })
 
 const resolveDelivery = computed<FileDeliveryResolver>(() => {
   return createFileDeliveryResolver({
     ...fileDeliveryContext.value,
     codeExecutionFiles: isCodeExecutionFilesActive.value,
+  })
+})
+
+const resolveDeliveryWithRunCode = computed<
+  FileDeliveryResolver | undefined
+>(() => {
+  if (!isCodeExecutionFilesAvailable.value) {
+    return undefined
+  }
+
+  return createFileDeliveryResolver({
+    ...fileDeliveryContext.value,
+    codeExecutionFiles: true,
   })
 })
 
@@ -561,7 +579,9 @@ watch(resolveDelivery, (resolve) => {
   const rejections = files.value.flatMap((file) => {
     const rejection = getFileRejection(file, resolve)
 
-    return rejection ? [{ file, rejection }] : []
+    return rejection && isModelCapabilityRejection(rejection)
+      ? [{ file, rejection }]
+      : []
   })
 
   if (rejections.length === 0) {
@@ -1444,6 +1464,21 @@ async function sendMessage() {
 
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
+  }
+
+  const blockedFileMessages = getBlockedFileMessages(
+    files.value,
+    resolveDelivery.value,
+    resolveDeliveryWithRunCode.value,
+    canAttachMediaType.value,
+  )
+
+  if (blockedFileMessages.length > 0) {
+    for (const blockedFileMessage of blockedFileMessages) {
+      useWarningMessage(blockedFileMessage)
+    }
+
+    return
   }
 
   if (props.isClarifying) {

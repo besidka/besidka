@@ -3,6 +3,7 @@ import { shallowRef } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { OFFICE_MEDIA_TYPES } from '../../../shared/utils/office-files'
+import { createFileDeliveryResolver } from '../../../app/utils/file-delivery-hints'
 import { useFileInputSupport } from '../../../app/composables/file-input-support'
 
 const mocks = vi.hoisted(() => ({
@@ -49,6 +50,12 @@ function selectGatewayModel(modalities: { input: string[] } | undefined) {
         : { id: 'vendor/model', name: 'Model', toolCall: true },
     ),
   })
+}
+
+function resolverFor() {
+  const { fileDeliveryContext } = useFileInputSupport()
+
+  return createFileDeliveryResolver(fileDeliveryContext.value)
 }
 
 describe('useFileInputSupport', () => {
@@ -168,32 +175,32 @@ describe('useFileInputSupport', () => {
     })
   })
 
-  describe('resolveDelivery', () => {
+  describe('fileDeliveryContext', () => {
     const docx = OFFICE_MEDIA_TYPES.docx
 
     it('sends Office files as text on a direct model', () => {
       selectDirectModel(['text', 'image', 'pdf'])
 
-      const { resolveDelivery } = useFileInputSupport()
+      const resolveDelivery = resolverFor()
 
-      expect(resolveDelivery.value({ type: docx, textStatus: 'ready' }))
+      expect(resolveDelivery({ type: docx, textStatus: 'ready' }))
         .toEqual({ delivery: 'text' })
-      expect(resolveDelivery.value({ type: docx, textStatus: null }))
+      expect(resolveDelivery({ type: docx, textStatus: null }))
         .toEqual({ delivery: 'text' })
     })
 
     it('gives the same answer for a text-only model', () => {
       selectDirectModel(['text'])
 
-      const { resolveDelivery } = useFileInputSupport()
+      const resolveDelivery = resolverFor()
 
-      expect(resolveDelivery.value({ type: docx, textStatus: 'ready' }))
+      expect(resolveDelivery({ type: docx, textStatus: 'ready' }))
         .toEqual({ delivery: 'text' })
-      expect(resolveDelivery.value({ type: 'image/png' })).toEqual({
+      expect(resolveDelivery({ type: 'image/png' })).toEqual({
         delivery: 'unsupported',
         reason: 'model-no-image',
       })
-      expect(resolveDelivery.value({ type: 'application/pdf' })).toEqual({
+      expect(resolveDelivery({ type: 'application/pdf' })).toEqual({
         delivery: 'unsupported',
         reason: 'model-no-pdf',
       })
@@ -202,9 +209,9 @@ describe('useFileInputSupport', () => {
     it('disables a document whose text cannot be read', () => {
       selectDirectModel(['text', 'image', 'pdf'])
 
-      const { resolveDelivery } = useFileInputSupport()
+      const resolveDelivery = resolverFor()
 
-      expect(resolveDelivery.value({ type: docx, textStatus: 'failed' }))
+      expect(resolveDelivery({ type: docx, textStatus: 'failed' }))
         .toEqual({ delivery: 'unsupported', reason: 'office-unreadable' })
     })
 
@@ -212,10 +219,11 @@ describe('useFileInputSupport', () => {
       for (const input of [['text'], ['text', 'image'], ['text', 'pdf']]) {
         selectDirectModel(input)
 
-        const { canAttachMediaType, resolveDelivery } = useFileInputSupport()
+        const { canAttachMediaType } = useFileInputSupport()
+        const resolveDelivery = resolverFor()
 
         for (const type of ['image/png', 'application/pdf', 'text/plain']) {
-          expect(resolveDelivery.value({ type }).delivery !== 'unsupported')
+          expect(resolveDelivery({ type }).delivery !== 'unsupported')
             .toBe(canAttachMediaType.value(type))
         }
       }
@@ -224,15 +232,15 @@ describe('useFileInputSupport', () => {
     it('follows the gateway catalog for images and always allows PDFs', () => {
       selectGatewayModel({ input: ['text'] })
 
-      const { resolveDelivery } = useFileInputSupport()
+      const resolveDelivery = resolverFor()
 
-      expect(resolveDelivery.value({ type: 'image/png' })).toEqual({
+      expect(resolveDelivery({ type: 'image/png' })).toEqual({
         delivery: 'unsupported',
         reason: 'model-no-image',
       })
-      expect(resolveDelivery.value({ type: 'application/pdf' }))
+      expect(resolveDelivery({ type: 'application/pdf' }))
         .toEqual({ delivery: 'native' })
-      expect(resolveDelivery.value({ type: docx, textStatus: 'ready' }))
+      expect(resolveDelivery({ type: docx, textStatus: 'ready' }))
         .toEqual({ delivery: 'text' })
     })
   })

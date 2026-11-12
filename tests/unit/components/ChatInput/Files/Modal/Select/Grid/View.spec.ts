@@ -180,9 +180,10 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     expect(caption.text()).toBe('No readable text')
     expect(caption.classes()).toEqual(expect.arrayContaining([
       'badge',
-      'badge-soft',
+      'badge-neutral',
       'badge-xs',
     ]))
+    expect(caption.classes()).not.toContain('badge-soft')
   })
 
   it('leaves a supported tile enabled', async () => {

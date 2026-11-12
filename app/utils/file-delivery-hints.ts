@@ -35,6 +35,7 @@ export type FileDeliveryResolver = (file: DeliveryFile) => FileDeliveryResult
 export interface FileDeliveryHint {
   label: string
   description: string
+  isBlocking: boolean
 }
 
 export interface FileRejection {
@@ -49,6 +50,11 @@ export const SENT_AS_TEXT_SHORTENED_LABEL = 'Sent as text (shortened)'
 
 export const SENT_AS_TEXT_DESCRIPTION
   = 'Sent as text: images, charts and formatting aren\'t included.'
+
+export const NEEDS_RUN_CODE_LABEL = 'Needs Run code'
+
+export const NEEDS_RUN_CODE_DESCRIPTION
+  = 'Turn on Run code to send this file, or remove it.'
 
 export const SENT_AS_TEXT_SHORTENED_DESCRIPTION
   = `${SENT_AS_TEXT_DESCRIPTION} It is long, so only the start is sent.`
@@ -170,19 +176,46 @@ export function isTextTruncated(file: DeliveryFile): boolean {
     && file.textBytes > OFFICE_TEXT_INLINE_MAX_BYTES
 }
 
+function needsRunCode(
+  file: DeliveryFile,
+  resolveWithRunCode: FileDeliveryResolver | undefined,
+): boolean {
+  return resolveWithRunCode?.(file).delivery === 'container'
+}
+
 /**
- * The quiet "Sent as text" note for an Office file whose text, not the file
- * itself, reaches the model. Plain text files need none: they are the text.
+ * The note on an attached file. An Office file whose text, not the file
+ * itself, reaches the model gets the quiet "Sent as text" note. A file the
+ * send would refuse gets a blocking note with the reason instead of being
+ * dropped, and "Needs Run code" when only the sandbox could take it.
+ * Plain text files need none: they are the text.
  */
 export function getFileDeliveryHint(
   file: DeliveryFile,
   resolve: FileDeliveryResolver,
+  resolveWithRunCode?: FileDeliveryResolver,
 ): FileDeliveryHint | null {
-  if (!isOfficeMediaType(file.type)) {
-    return null
+  const result = resolve(file)
+
+  if (result.delivery === 'unsupported') {
+    if (needsRunCode(file, resolveWithRunCode)) {
+      return {
+        label: NEEDS_RUN_CODE_LABEL,
+        description: NEEDS_RUN_CODE_DESCRIPTION,
+        isBlocking: true,
+      }
+    }
+
+    const { why, fix } = describeFileDeliveryReason(result.reason)
+
+    return {
+      label: getRejectionCaption(result.reason),
+      description: `${why} ${fix.replace(/\.$/, '')}.`,
+      isBlocking: true,
+    }
   }
 
-  if (resolve(file).delivery !== 'text') {
+  if (!isOfficeMediaType(file.type) || result.delivery !== 'text') {
     return null
   }
 
@@ -190,13 +223,57 @@ export function getFileDeliveryHint(
     return {
       label: SENT_AS_TEXT_SHORTENED_LABEL,
       description: SENT_AS_TEXT_SHORTENED_DESCRIPTION,
+      isBlocking: false,
     }
   }
 
   return {
     label: SENT_AS_TEXT_LABEL,
     description: SENT_AS_TEXT_DESCRIPTION,
+    isBlocking: false,
   }
+}
+
+/**
+ * What stops a send when attached files cannot be delivered, one message per
+ * reason. Files that only Run code could take are named together.
+ */
+export function getBlockedFileMessages(
+  files: (DeliveryFile & { name: string })[],
+  resolve: FileDeliveryResolver,
+  resolveWithRunCode: FileDeliveryResolver | undefined,
+  canAttachMediaType: (mediaType: string) => boolean,
+): string[] {
+  const runCodeNames: string[] = []
+  const rejections: FileRejection[] = []
+
+  for (const file of files) {
+    const rejection = getFileRejection(file, resolve)
+
+    if (!rejection) {
+      continue
+    }
+
+    if (needsRunCode(file, resolveWithRunCode)) {
+      runCodeNames.push(file.name)
+    } else {
+      rejections.push(rejection)
+    }
+  }
+
+  const messages = getRejectionMessages(rejections, canAttachMediaType)
+
+  if (runCodeNames.length > 0) {
+    const isPlural = runCodeNames.length > 1
+
+    messages.push(
+      `${runCodeNames.slice(0, 3).join(', ')}: Turn on Run code to send `
+      + `${isPlural ? 'these files' : 'this file'}, or remove `
+      + `${isPlural ? 'them' : 'it'}.`,
+    )
+  }
+
+  return messages
 }
 
 export function getFileRejection(
@@ -228,6 +305,12 @@ export function getRejectionCaption(
   reason: FileDeliveryReason | undefined,
 ): string {
   return REJECTION_CAPTIONS[reason ?? 'unsupported-type']
+}
+
+export function isModelCapabilityRejection(
+  rejection: FileRejection,
+): boolean {
+  return isMediaCapabilityReason(rejection.reason)
 }
 
 function isMediaCapabilityReason(

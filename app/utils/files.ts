@@ -265,6 +265,14 @@ export function getLegacyOfficeMessage(fileNames: string[]): string {
   return `${subject} ${LEGACY_OFFICE_UPLOAD_HINT}`
 }
 
+export function getInvalidFormatMessage(fileNames: string[]): string {
+  const shownNames = fileNames.slice(0, 3).join(', ')
+  const suffix = fileNames.length > 3 ? '...' : ''
+
+  return `${fileNames.length} file(s) skipped due to invalid format: `
+    + `${shownNames}${suffix}`
+}
+
 const FORMAT_LABEL_BY_MEDIA_TYPE: Record<string, string> = {
   'image/png': 'PNG',
   'image/jpeg': 'JPEG',

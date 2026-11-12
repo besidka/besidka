@@ -90,6 +90,10 @@ const officeFeature = useFeature('files.office')
 
 const legacyOfficeMessage = shallowRef<string>('')
 
+onDeactivated(() => {
+  legacyOfficeMessage.value = ''
+})
+
 const dropZoneRef = useTemplateRef<HTMLDivElement>('dropZoneRef')
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
 
@@ -166,9 +170,7 @@ function filterValidFiles(files: File[]): File[] {
   }
 
   if (invalid.length > 0) {
-    useWarningMessage(
-      `${invalid.length} file(s) skipped due to invalid format: ${invalid.slice(0, 3).join(', ')}${invalid.length > 3 ? '...' : ''}`,
-    )
+    useWarningMessage(getInvalidFormatMessage(invalid))
   }
 
   return valid

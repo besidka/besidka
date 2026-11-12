@@ -18,6 +18,7 @@ import {
   createPredicateDeliveryResolver,
   getClientTextStatus,
   getFileDeliveryContext,
+  getBlockedFileMessages,
   getFileDeliveryHint,
   getFileRejection,
   getRejectionCaption,
@@ -141,6 +142,7 @@ describe('getFileDeliveryHint', () => {
         .toEqual({
           label: SENT_AS_TEXT_LABEL,
           description: SENT_AS_TEXT_DESCRIPTION,
+          isBlocking: false,
         })
     }
   })
@@ -159,6 +161,7 @@ describe('getFileDeliveryHint', () => {
     }, resolve)).toEqual({
       label: SENT_AS_TEXT_SHORTENED_LABEL,
       description: SENT_AS_TEXT_SHORTENED_DESCRIPTION,
+      isBlocking: false,
     })
     expect(getFileDeliveryHint({
       type: XLSX,
@@ -173,11 +176,98 @@ describe('getFileDeliveryHint', () => {
     }
   })
 
-  it('shows nothing for a file that cannot be read', () => {
-    expect(getFileDeliveryHint({ type: DOCX, textStatus: 'empty' }, resolve))
-      .toBeNull()
-    expect(getFileDeliveryHint({ type: 'application/msword' }, resolve))
-      .toBeNull()
+  it('marks a file that cannot be read as blocking, with the reason', () => {
+    const unreadable = getFileDeliveryHint(
+      { type: DOCX, textStatus: 'empty' },
+      resolve,
+    )
+    const legacy = getFileDeliveryHint({ type: 'application/msword' }, resolve)
+
+    expect(unreadable).toMatchObject({
+      label: 'No readable text',
+      isBlocking: true,
+    })
+    expect(unreadable?.description).toContain('No text could be read')
+    expect(legacy).toMatchObject({ label: 'Old Office format', isBlocking: true })
+  })
+
+  describe('with Run code', () => {
+    const context = {
+      route: 'direct' as const,
+      providerId: 'anthropic',
+      modalities: ['text', 'image', 'pdf'],
+    }
+    const withoutRunCode = createFileDeliveryResolver(context)
+    const withRunCode = createFileDeliveryResolver({
+      ...context,
+      codeExecutionFiles: true,
+    })
+
+    it('says a JSON file needs Run code while Run code is off', () => {
+      expect(getFileDeliveryHint(
+        { type: 'application/json' },
+        withoutRunCode,
+        withRunCode,
+      )).toEqual({
+        label: 'Needs Run code',
+        description: 'Turn on Run code to send this file, or remove it.',
+        isBlocking: true,
+      })
+    })
+
+    it('shows nothing for a JSON file once Run code is on', () => {
+      expect(getFileDeliveryHint(
+        { type: 'application/json' },
+        withRunCode,
+        withRunCode,
+      )).toBeNull()
+    })
+
+    it('gives the plain reason when Run code is not available', () => {
+      expect(getFileDeliveryHint({ type: 'application/json' }, withoutRunCode))
+        .toMatchObject({ label: 'Type not supported', isBlocking: true })
+    })
+
+    it('blocks a send with one message naming the files that need Run code',
+      () => {
+        const messages = getBlockedFileMessages(
+          [
+            { type: 'application/json', name: 'data.json' },
+            { type: DOCX, textStatus: 'failed', name: 'broken.docx' },
+            { type: 'text/plain', name: 'notes.txt' },
+          ],
+          withoutRunCode,
+          withRunCode,
+          () => true,
+        )
+
+        expect(messages).toEqual([
+          'data.json, broken.docx: Turn on Run code to send these files, '
+          + 'or remove them.',
+        ])
+      })
+
+    it('blocks a send with the plain reason when Run code is not available',
+      () => {
+        const messages = getBlockedFileMessages(
+          [{ type: 'application/zip', name: 'backup.zip' }],
+          withoutRunCode,
+          undefined,
+          () => true,
+        )
+
+        expect(messages).toHaveLength(1)
+        expect(messages[0]).toContain('backup.zip: This file type cannot be')
+      })
+
+    it('does not block a send when every file can be delivered', () => {
+      expect(getBlockedFileMessages(
+        [{ type: 'application/json', name: 'data.json' }],
+        withRunCode,
+        withRunCode,
+        () => true,
+      )).toEqual([])
+    })
   })
 })
 

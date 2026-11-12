@@ -82,7 +82,7 @@
 
       <span
         v-if="unsupportedCaptions[file.id]"
-        class="badge badge-soft badge-xs absolute top-1 left-1 z-10 max-w-[calc(100%-0.5rem)] truncate leading-none"
+        class="badge badge-neutral badge-xs absolute top-1 left-1 z-10 max-w-[calc(100%-0.5rem)] truncate leading-none"
         data-testid="files-unsupported-caption"
       >
         {{ unsupportedCaptions[file.id] }}

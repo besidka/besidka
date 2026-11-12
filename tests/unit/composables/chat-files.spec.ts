@@ -650,6 +650,51 @@ describe('useChatFiles', () => {
       expect(useWarningMessageMock).not.toHaveBeenCalled()
     })
 
+    it('skips a type no model can take before uploading, like any invalid '
+      + 'format', async () => {
+      echoUpload()
+
+      const { uploadFiles } = useChatFiles(
+        ref([]) as any,
+        ref(() => true),
+        resolveDelivery,
+      )
+
+      const accepted = await uploadFiles([
+        new File(['{}'], 'data.json', { type: 'application/json' }),
+        new File(['x'], 'backup.zip', { type: 'application/zip' }),
+      ])
+
+      expect(accepted).toBe(false)
+      expect(uploadWithProgressMock).not.toHaveBeenCalled()
+      expect(useWarningMessageMock).toHaveBeenCalledWith(
+        '2 file(s) skipped due to invalid format: data.json, backup.zip',
+      )
+    })
+
+    it('uploads a JSON file when Run code can take it', async () => {
+      echoUpload()
+
+      const attachedFiles = ref([]) as any
+      const { uploadFiles } = useChatFiles(
+        attachedFiles,
+        ref(() => true),
+        ref(createFileDeliveryResolver({
+          route: 'direct',
+          providerId: 'anthropic',
+          modalities: ['text', 'image', 'pdf'],
+          codeExecutionFiles: true,
+        })),
+      )
+
+      await uploadFiles([
+        new File(['{}'], 'data.json', { type: 'application/json' }),
+      ])
+      await waitFor(() => attachedFiles.value.length === 1)
+
+      expect(useWarningMessageMock).not.toHaveBeenCalled()
+    })
+
     it('leaves a legacy file to the server while the flag is off', async () => {
       echoUpload()
 

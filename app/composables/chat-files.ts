@@ -31,7 +31,7 @@ function delay(ms: number): Promise<void> {
 }
 
 const PRE_UPLOAD_REJECTION_REASONS: readonly (FileDeliveryReason | undefined)[]
-  = ['model-no-image', 'model-no-pdf']
+  = ['model-no-image', 'model-no-pdf', 'unsupported-type']
 
 export function useChatFiles(
   attachedFiles: ModelRef<FileMetadata[]>,
@@ -193,6 +193,7 @@ export function useChatFiles(
     const allowedFiles: File[] = []
     const legacyOfficeNames: string[] = []
     const rejections: FileRejection[] = []
+    const invalidFormatNames: string[] = []
 
     for (const file of candidateFiles) {
       if (officeFeature.value.active && isLegacyOfficeFile(file)) {
@@ -207,7 +208,11 @@ export function useChatFiles(
         rejection
         && PRE_UPLOAD_REJECTION_REASONS.includes(rejection.reason)
       ) {
-        rejections.push(rejection)
+        if (rejection.reason === 'unsupported-type') {
+          invalidFormatNames.push(file.name)
+        } else {
+          rejections.push(rejection)
+        }
 
         continue
       }
@@ -217,6 +222,10 @@ export function useChatFiles(
 
     if (legacyOfficeNames.length > 0) {
       useWarningMessage(getLegacyOfficeMessage(legacyOfficeNames))
+    }
+
+    if (invalidFormatNames.length > 0) {
+      useWarningMessage(getInvalidFormatMessage(invalidFormatNames))
     }
 
     for (const message of getRejectionMessages(
