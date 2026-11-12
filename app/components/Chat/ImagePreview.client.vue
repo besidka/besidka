@@ -34,6 +34,10 @@
             class="btn btn-sm btn-accent max-xs:btn-circle"
             :aria-label="`Download ${filename}`"
             data-testid="image-preview-download"
+            @click="onDownloadClick($event, {
+              url: downloadUrl,
+              fileName: filename,
+            })"
           >
             <Icon name="lucide:download" size="15" aria-hidden="true" />
             <span class="max-xs:sr-only">Download</span>
@@ -87,6 +91,7 @@ const props = defineProps<{
   isAiGenerated?: boolean
 }>()
 
+const { onDownloadClick } = useFileDownload()
 const isOpen = defineModel<boolean>('open', { required: true })
 const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const closeButtonRef = useTemplateRef<HTMLButtonElement>('closeButtonRef')

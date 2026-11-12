@@ -73,6 +73,7 @@ const emit = defineEmits<{
 }>()
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
+const { downloadBlob } = useFileDownload()
 
 watch(() => props.open, (isOpen) => {
   if (!modal.value) {
@@ -94,14 +95,8 @@ async function copyAll() {
 
 function download() {
   const blob = new Blob([props.codes.join('\n')], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
 
-  link.href = url
-  link.download = 'besidka-backup-codes.txt'
-  link.click()
-
-  URL.revokeObjectURL(url)
+  downloadBlob(blob, 'besidka-backup-codes.txt')
 }
 
 function acknowledge() {

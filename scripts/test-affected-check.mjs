@@ -2261,6 +2261,27 @@ export function getAffectedTests(changedFiles) {
       tests: contextMenuTests,
     },
     {
+      pattern:
+        /^app\/(composables\/(file-download|ios-in-app-browser)|utils\/file-share)\.ts$/,
+      tests: [
+        'tests/unit/composables/file-download.spec.ts',
+        'tests/unit/utils/file-share.spec.ts',
+        'tests/unit/composables/ios-in-app-browser.spec.ts',
+        'tests/unit/utils/artifact-export.spec.ts',
+        'tests/unit/composables/diagram-export.spec.ts',
+        'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
+        'tests/unit/components/History/DocumentRow.spec.ts',
+        'tests/unit/components/Chat/Files.spec.ts',
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+        'tests/unit/components/Chat/ImagePreview.client.spec.ts',
+        'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+        'tests/unit/components/Chat/DocumentPreview.spec.ts',
+        'tests/unit/components/Chat/Document.spec.ts',
+        'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+        'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
+      ],
+    },
+    {
       pattern: /^app\/composables\/message-copy\.ts$/,
       tests: [
         'tests/unit/composables/message-copy.spec.ts',

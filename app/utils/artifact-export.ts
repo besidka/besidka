@@ -259,16 +259,6 @@ export function downloadArtifactFile(file: ArtifactSourceFile): void {
   const blob = new Blob([file.content], {
     type: `${file.mimeType};charset=utf-8`,
   })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
 
-  link.href = url
-  link.download = file.fileName
-  link.rel = 'noopener'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  setTimeout(() => {
-    URL.revokeObjectURL(url)
-  }, 0)
+  useFileDownload().downloadBlob(blob, file.fileName)
 }

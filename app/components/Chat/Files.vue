@@ -106,6 +106,10 @@
             class="btn btn-circle btn-xs btn-soft"
             :aria-label="`Download ${file.filename || 'file'}`"
             title="Download"
+            @click="onDownloadClick($event, {
+              url: file.links.downloadUrl,
+              fileName: file.filename || 'file',
+            })"
           >
             <Icon name="lucide:download" size="12" />
           </a>
@@ -156,6 +160,7 @@ const props = defineProps<{
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
+const { onDownloadClick } = useFileDownload()
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 const failedUrls = reactive<Record<string, boolean>>({})

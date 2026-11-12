@@ -37,7 +37,6 @@ const FALLBACK_DIMENSIONS = { width: 800, height: 600 }
 const SVG_MIME_TYPE: string = 'image/svg+xml'
 const PNG_MIME_TYPE: string = 'image/png'
 const DRAWIO_MIME_TYPE: string = 'application/vnd.jgraph.mxfile'
-const DOWNLOAD_REVOKE_DELAY_MS: number = 4000
 const DOWNLOAD_FILE_NAMES: Partial<Record<DiagramExportAction, string>> = {
   'download-svg': 'diagram.svg',
   'download-png': 'diagram.png',
@@ -116,19 +115,7 @@ function createTextBlob(text: string, type: string): Blob {
 }
 
 function triggerDownload(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-
-  anchor.href = url
-  anchor.download = fileName
-  anchor.style.display = 'none'
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-
-  setTimeout(() => {
-    URL.revokeObjectURL(url)
-  }, DOWNLOAD_REVOKE_DELAY_MS)
+  useFileDownload().downloadBlob(blob, fileName)
 }
 
 async function writeTextFallback(

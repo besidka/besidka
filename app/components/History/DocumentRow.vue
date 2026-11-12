@@ -120,7 +120,7 @@
               :href="downloadUrl"
               download
               data-testid="document-action-download"
-              @click="closeDropdown"
+              @click="onDownload"
             >
               <Icon name="lucide:download" size="14" />
               Download
@@ -186,6 +186,7 @@ const emit = defineEmits<{
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
 const { isFlippedUp, updatePlacement } = useDropdownPlacement(dropdownRef)
+const { onDownloadClick } = useFileDownload()
 
 const isConnectedApp = computed<boolean>(() => {
   return props.item.source === 'mcp'
@@ -234,6 +235,14 @@ function closeDropdown() {
 
     activeElement?.blur()
   }
+}
+
+function onDownload(event: MouseEvent) {
+  onDownloadClick(event, {
+    url: downloadUrl.value,
+    fileName: props.item.fileName,
+  })
+  closeDropdown()
 }
 
 function onPreview() {

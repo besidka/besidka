@@ -128,6 +128,10 @@
               class="btn btn-xs btn-circle btn-accent hitslop"
               :aria-label="`Download ${cardDisplay.name}`"
               data-testid="generated-image-download"
+              @click="onDownloadClick($event, {
+                url: downloadUrl,
+                fileName: cardDisplay.name,
+              })"
             >
               <Icon name="lucide:download" size="12" />
             </a>
@@ -187,6 +191,7 @@ const { messageRole, part } = defineProps<{
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
+const { onDownloadClick } = useFileDownload()
 const { isImageInputSupported } = useFileInputSupport()
 
 const imageElement = useTemplateRef<HTMLImageElement>('imageElement')

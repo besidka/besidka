@@ -27,6 +27,10 @@
           class="btn btn-sm btn-accent"
           :aria-label="`Download ${title}`"
           data-testid="document-preview-download"
+          @click="onDownloadClick($event, {
+            url: downloadHref,
+            fileName: title,
+          })"
         >
           <Icon
             name="lucide:download"
@@ -168,6 +172,8 @@ const props = defineProps<{
   viewUrl?: string
   downloadUrl?: string
 }>()
+
+const { onDownloadClick } = useFileDownload()
 
 const needsFileUrls = computed<boolean>(() => {
   return !props.viewUrl || !props.downloadUrl

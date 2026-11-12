@@ -135,6 +135,7 @@
             download
             class="btn btn-ghost btn-ghost-legacy btn-sm"
             data-testid="memory-export"
+            @click="onDownloadClick($event, MEMORY_EXPORT_TARGET)"
           >
             <Icon name="lucide:download" size="16" />
             Export JSON
@@ -210,7 +211,7 @@
                 href="/api/v1/memory/export"
                 download
                 data-testid="memory-export-menu"
-                @click="closeMoreMenu(true)"
+                @click="onExportFromMenu"
               >
                 <Icon name="lucide:download" size="16" />
                 Export JSON
@@ -441,6 +442,17 @@ async function findLatestChatSlug(): Promise<string | null> {
 }
 
 const { ensureSendConsent, handleConsentError } = useLegalConsent()
+const { onDownloadClick } = useFileDownload()
+
+const MEMORY_EXPORT_TARGET = {
+  url: '/api/v1/memory/export',
+  fileName: 'besidka-memory-export.json',
+}
+
+function onExportFromMenu(event: MouseEvent) {
+  onDownloadClick(event, MEMORY_EXPORT_TARGET)
+  closeMoreMenu(true)
+}
 
 async function updateMemoryNow() {
   if (!await ensureSendConsent(null)) {
