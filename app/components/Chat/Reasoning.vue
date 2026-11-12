@@ -610,9 +610,10 @@ function toggleMain() {
   const willExpand = !isMainExpanded.value
 
   isMainExpanded.value = willExpand
+  isMainCollapsedByUser.value = !willExpand
 
-  if (willExpand) {
-    isMainCollapsedByUser.value = false
+  if (!willExpand) {
+    isStreamingExpandOverride.value = false
   }
 
   if (!isThinkingStreaming.value) {
@@ -620,8 +621,6 @@ function toggleMain() {
   }
 
   if (!willExpand) {
-    isMainCollapsedByUser.value = true
-    isStreamingExpandOverride.value = false
     expandedStepId.value = ''
 
     return

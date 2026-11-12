@@ -1325,6 +1325,52 @@ describe('Chat/Reasoning', () => {
       expect(isMainExpanded(wrapper)).toBe(false)
     })
 
+    it('keeps the block collapsed when the user collapses it while answer text streams and a later reasoning segment starts', async () => {
+      setReasoningUserSetting(true, false)
+
+      const answeringParts = [
+        { ...firstReasoning, state: 'done' },
+        { type: 'text', text: 'Answer so far.', state: 'streaming' },
+      ] as UIMessage['parts']
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage(answeringParts),
+          status: 'streaming',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 1000,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+
+      const nextSegmentParts = [
+        ...answeringParts,
+        secondReasoning,
+      ] as UIMessage['parts']
+
+      await wrapper.setProps({
+        message: createMessage(nextSegmentParts),
+        reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: heldFor(nextSegmentParts),
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+    })
+
     it('expands again when the user reopens the collapsed block', async () => {
       const wrapper = await mountStreamingTurn(true)
 
