@@ -181,6 +181,24 @@ describe('composables/file-download', () => {
       expect(anchorClick).not.toHaveBeenCalled()
     })
 
+    it('stops asking for a tap when the kept file is refused too', async () => {
+      const share = stubShare()
+
+      stubFetch()
+      share.mockRejectedValue(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+
+      await useFileDownload().onDownloadClick(createClick(), target)
+      await useFileDownload().onDownloadClick(createClick(), target)
+
+      expect(messageTitles()).toEqual([
+        'Failed to save the file',
+        'Plan.docx is ready',
+      ])
+      expect(anchorClick).not.toHaveBeenCalled()
+    })
+
     it('reports a failed fetch and never navigates to the file', async () => {
       stubShare()
       vi.stubGlobal('fetch', vi.fn(async () => {

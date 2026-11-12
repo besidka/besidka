@@ -10,6 +10,8 @@ enableAutoUnmount(afterEach)
 const scrollMocks = vi.hoisted(() => ({
   getScrollTop: vi.fn(() => 240),
   setScrollTop: vi.fn(),
+  fetchFiles: vi.fn(async () => true),
+  reset: vi.fn(),
 }))
 
 const SelectStub = defineComponent({
@@ -23,8 +25,8 @@ const SelectStub = defineComponent({
   emits: ['attach', 'detach', 'deleted', 'preview'],
   setup(_props, { expose }) {
     expose({
-      reset: vi.fn(),
-      fetchFiles: vi.fn(async () => true),
+      reset: scrollMocks.reset,
+      fetchFiles: scrollMocks.fetchFiles,
       getScrollTop: scrollMocks.getScrollTop,
       setScrollTop: scrollMocks.setScrollTop,
     })
@@ -313,6 +315,27 @@ describe('ChatInput/Files/Modal.client', () => {
           expect(HTMLDialogElement.prototype.showModal)
             .toHaveBeenCalledOnce()
           expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+        })
+
+      it('reloads the list when the file manager is opened while the preview still shows',
+        async () => {
+          const wrapper = await previewDocument()
+          const exposed = wrapper.vm as unknown as ModalExposed
+
+          Object.defineProperty(
+            wrapper.get('[data-testid="files-modal"]').element,
+            'open',
+            { value: false, configurable: true },
+          )
+          scrollMocks.fetchFiles.mockClear()
+          scrollMocks.reset.mockClear()
+          exposed.open('select', 'assistant')
+          await flushPromises()
+
+          expect(scrollMocks.reset).toHaveBeenCalled()
+          expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(1)
+          expect(HTMLDialogElement.prototype.showModal)
+            .toHaveBeenCalledTimes(2)
         })
 
       it('resets the kept state when the file manager is opened afresh',

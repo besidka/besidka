@@ -77,8 +77,19 @@ export function useFileDownload() {
     isSharing.value = true
 
     try {
-      const file = pendingFiles.get(key) ?? await resolveFile()
+      const cachedFile = pendingFiles.get(key) ?? null
+      const file = cachedFile ?? await resolveFile()
       const outcome = await shareFile(file)
+
+      if (outcome === 'needs-gesture' && cachedFile) {
+        pendingFiles.delete(key)
+        useErrorMessage(
+          'Failed to save the file',
+          'The share sheet could not be opened. Try downloading it again.',
+        )
+
+        return true
+      }
 
       if (outcome === 'needs-gesture') {
         pendingFiles.set(key, file)
