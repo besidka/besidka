@@ -247,6 +247,13 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/history/artifacts-library.spec.ts',
     'tests/e2e/chat/artifact-actions.spec.ts',
   ]
+  const sharedHistoryTests = [
+    'tests/unit/pages/chats/shared/index.spec.ts',
+    'tests/unit/composables/shared-artifacts.spec.ts',
+    'tests/unit/components/History/BoxTabs.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/integration/api/artifact-shared-list.spec.ts',
+  ]
   const artifactsShareUiTests = [
     'tests/unit/pages/artifacts/[token].spec.ts',
     'tests/unit/components/Artifact/ReportModal.client.spec.ts',
@@ -3411,6 +3418,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/pages\/chats\/artifacts\/index\.vue|app\/components\/Artifact\/KindFilter\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|FilterButtons|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsLibraryTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/shared\/index\.vue|app\/components\/History\/(SharedArtifactRow|BoxTabs|PageShell)\.vue|app\/composables\/shared-artifacts\.ts|server\/api\/v1\/artifacts\/shared\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: sharedHistoryTests,
     },
     {
       pattern:

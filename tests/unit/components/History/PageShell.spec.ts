@@ -75,7 +75,7 @@ describe('HistoryPageShell', () => {
     expect(wrapper.findAll('nav a span.\\@max-md\\:sr-only')).toHaveLength(0)
   })
 
-  it('adds the Artifacts tab as the fourth link with the feature on',
+  it('adds the Artifacts tab before Shared with the feature on',
     async () => {
       artifactsActive.value = true
 
@@ -87,7 +87,8 @@ describe('HistoryPageShell', () => {
       expect(links).toHaveLength(4)
       expect(wrapper.find('[data-testid="tab-documents"]').exists())
         .toBe(false)
-      expect(links[3]?.attributes('href')).toBe('/chats/artifacts')
+      expect(links[2]?.attributes('href')).toBe('/chats/artifacts')
+      expect(links[3]?.attributes('href')).toBe('/chats/shared')
       expect(artifactsTab.attributes('aria-current')).toBe('page')
       expect(artifactsTab.attributes('aria-label')).toBe('Artifacts')
       expect(artifactsTab.text()).toContain('Artifacts')
@@ -124,12 +125,13 @@ describe('HistoryPageShell', () => {
       expect(links).toHaveLength(4)
       expect(wrapper.find('[data-testid="tab-artifacts"]').exists())
         .toBe(false)
-      expect(links[3]?.attributes('href')).toBe('/chats/documents')
+      expect(links[2]?.attributes('href')).toBe('/chats/documents')
+      expect(links[3]?.attributes('href')).toBe('/chats/shared')
       expect(documentsTab.attributes('aria-current')).toBe('page')
       expect(documentsTab.attributes('aria-label')).toBe('Documents')
     })
 
-  it('puts Documents after Artifacts and collapses inactive labels',
+  it('orders tabs Chats, Projects, Artifacts, Documents, Shared and collapses inactive labels',
     async () => {
       artifactsActive.value = true
       documentsActive.value = true
@@ -145,15 +147,15 @@ describe('HistoryPageShell', () => {
       expect(links.map(link => link.attributes('href'))).toEqual([
         '/chats/history',
         '/chats/projects',
-        '/chats/shared',
         '/chats/artifacts',
         '/chats/documents',
+        '/chats/shared',
       ])
       expect(collapsed.map(label => label.text())).toEqual([
         'Chats',
         'Projects',
-        'Shared',
         'Artifacts',
+        'Shared',
       ])
     })
 })

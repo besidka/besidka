@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import { parseError } from 'evlog'
 import type {
+  ArtifactDetail,
   ArtifactKind,
   ArtifactKindCounts,
   ArtifactSummary,
@@ -474,7 +475,7 @@ export function useArtifactLibrary(filters: {
 
   async function refreshItem(artifactId: string) {
     try {
-      const detail = await $fetch(
+      const detail = await $fetch<ArtifactDetail>(
         `/api/v1/artifacts/${encodeURIComponent(artifactId)}`,
       )
 

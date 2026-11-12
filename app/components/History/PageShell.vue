@@ -55,9 +55,9 @@
 type HistoryTab
   = | 'chats'
     | 'projects'
-    | 'shared'
     | 'artifacts'
     | 'documents'
+    | 'shared'
 
 interface HistoryTabLink {
   id: HistoryTab
@@ -76,7 +76,7 @@ const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
 
 const tabs = computed<HistoryTabLink[]>(() => {
-  const baseTabs: HistoryTabLink[] = [
+  const tabLinks: HistoryTabLink[] = [
     {
       id: 'chats',
       to: '/chats/history',
@@ -89,18 +89,10 @@ const tabs = computed<HistoryTabLink[]>(() => {
       label: 'Projects',
       icon: 'lucide:folder',
     },
-    {
-      id: 'shared',
-      to: '/chats/shared',
-      label: 'Shared',
-      icon: 'lucide:share-2',
-    },
   ]
 
-  const featureTabs: HistoryTabLink[] = []
-
   if (artifactsFeature.value.active) {
-    featureTabs.push({
+    tabLinks.push({
       id: 'artifacts',
       to: '/chats/artifacts',
       label: 'Artifacts',
@@ -109,7 +101,7 @@ const tabs = computed<HistoryTabLink[]>(() => {
   }
 
   if (documentsFeature.value.active) {
-    featureTabs.push({
+    tabLinks.push({
       id: 'documents',
       to: '/chats/documents',
       label: 'Documents',
@@ -117,6 +109,13 @@ const tabs = computed<HistoryTabLink[]>(() => {
     })
   }
 
-  return [...baseTabs, ...featureTabs]
+  tabLinks.push({
+    id: 'shared',
+    to: '/chats/shared',
+    label: 'Shared',
+    icon: 'lucide:share-2',
+  })
+
+  return tabLinks
 })
 </script>
