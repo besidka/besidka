@@ -491,6 +491,7 @@ const touchGroupId = shallowRef<string | null>(null)
 const touchSwipeHandled = shallowRef<boolean>(false)
 const autoSelectedIds = ref<Set<string>>(new Set())
 const isComponentActive = shallowRef<boolean>(false)
+const scrollAreaRef = useTemplateRef<HTMLDivElement>('scrollAreaRef')
 
 function getFileIndexFromElement(element: Element | null): number | null {
   if (!element) return null
@@ -904,8 +905,6 @@ onUnmounted(() => {
   detachInteractionListeners()
   reset()
 })
-
-const scrollAreaRef = useTemplateRef<HTMLDivElement>('scrollAreaRef')
 
 function getScrollTop(): number {
   return scrollAreaRef.value?.scrollTop ?? 0
