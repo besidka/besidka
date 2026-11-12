@@ -568,6 +568,20 @@ describe('createMcpDocument', () => {
       },
     )
 
+    it('reports the block count for a docx whose renderer sent no stats',
+      async () => {
+        renderSucceeds({})
+
+        const result = await createMcpDocument(context(), input({
+          format: 'docx',
+          title: 'Letter',
+          spec: specOf('docx'),
+        }))
+
+        expect(result.stats).toEqual({ blocks: expect.any(Number) })
+        expect(result.stats.blocks).toBeGreaterThan(0)
+      })
+
     it('saves the file as an assistant file of the caller', async () => {
       const result = await createMcpDocument(context(), input())
       const [file] = await testDb.db.select()

@@ -450,7 +450,7 @@ export async function renderDocx(
     bytes: stamped.bytes,
     mediaType: MEDIA_TYPES.docx,
     extension: 'docx',
-    stats: {},
+    stats: { blocks: spec.blocks.length },
     warnings: [],
   }
 }

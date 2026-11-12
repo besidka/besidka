@@ -26,6 +26,7 @@ import { resolveOwnedImageFiles } from '~~/server/utils/documents/images'
 import { createDocument } from '~~/server/utils/documents/store'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import type { RenderSuccess } from '~~/workers/doc-renderer/src/contract'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -166,8 +167,9 @@ export function buildDocumentToolDescription(
     'runs for bold, italic, underline, code and links. Links are https: or',
     'mailto: only. Images only by the `fileId` of a PNG or JPEG file the user attached or that',
     'was generated in this chat, at most 20; never URLs or data URIs.',
-    'Optional `theme`: {"font":"sans"|"serif","accent":"neutral"|"blue"|'
-    + '"green"|"orange"|"violet"}.',
+    'Optional `theme`: {"font"?:"sans"|"serif","accent"?:"neutral"|"blue"|'
+    + '"green"|"orange"|"violet"}; both fields are optional and a missing one',
+    'falls back to "sans" or "neutral".',
     hasBlockFormat ? BLOCKS_DESCRIPTION : '',
     ...formats.map(format => FORMAT_RULES[format]),
     'Examples:',
@@ -384,6 +386,17 @@ export function toDocumentStats(spec: DocumentSpec): DocumentStats {
     cells: summary.cells,
     images: summary.images,
   }
+}
+
+export function withSpecStats(
+  stats: RenderSuccess['stats'],
+  spec: DocumentSpec,
+): RenderSuccess['stats'] {
+  if (spec.format !== 'docx' || stats.blocks !== undefined) {
+    return stats
+  }
+
+  return { ...stats, blocks: spec.blocks.length }
 }
 
 /**

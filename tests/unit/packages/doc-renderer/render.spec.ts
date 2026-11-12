@@ -119,6 +119,8 @@ describe('reference documents: render, validate, stats', () => {
     expect(deck.extension).toBe('pptx')
     expect(workbook.stats.sheets).toBe(3)
     expect(workbook.stats.cells).toBeGreaterThan(10000)
+    expect(docx.stats.blocks).toBeGreaterThan(0)
+    expect(docx.stats.pages).toBeUndefined()
     expect(docx.mediaType).toBe(
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     )

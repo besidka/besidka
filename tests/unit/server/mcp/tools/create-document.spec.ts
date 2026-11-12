@@ -161,6 +161,14 @@ describe('create_document tool', () => {
       expect(description).toContain('at most 512 KiB')
     })
 
+  it('says that both theme fields are optional', async () => {
+    const { description } = await loadTool({ mcpAuth: AUTH })
+
+    expect(description).toContain('"font"?:"sans"|"serif"')
+    expect(description).toContain('"accent"?:')
+    expect(description).toContain('both fields are optional')
+  })
+
   it('fits a 200000 character Cyrillic spec into the request body cap',
     async () => {
       const text = 'Ж'.repeat(190_000)

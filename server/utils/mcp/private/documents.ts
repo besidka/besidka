@@ -24,6 +24,7 @@ import {
   FORMAT_RULES,
   checkDocumentSpecInput,
   toDocumentStats,
+  withSpecStats,
 } from '~~/server/utils/documents/create-document-tool'
 import {
   failClaimedDocument,
@@ -148,8 +149,9 @@ export function buildMcpDocumentDescription(): string {
     'inside it, no control characters; use runs for bold, italic,',
     'underline, code and links (https: or mailto: only). Write in the',
     'language of the content and set `language` as a BCP 47 tag such as',
-    '"en" or "uk". Optional `theme`: {"font":"sans"|"serif","accent":',
-    '"neutral"|"blue"|"green"|"orange"|"violet"}.',
+    '"en" or "uk". Optional `theme`: {"font"?:"sans"|"serif","accent"?:',
+    '"neutral"|"blue"|"green"|"orange"|"violet"}; both fields are optional',
+    'and a missing one falls back to "sans" or "neutral".',
     BLOCKS_DESCRIPTION,
     ...DOCUMENT_FORMATS.map(format => FORMAT_RULES[format]),
     'Examples of the full document (spec is the object without format and',
@@ -605,7 +607,11 @@ async function renderAndStore(
     logger: context.logger,
   })
 
-  return { ok: true, file, stats: result.stats }
+  return {
+    ok: true,
+    file,
+    stats: withSpecStats(result.stats, spec),
+  }
 }
 
 /**

@@ -32,6 +32,7 @@ const {
   DOCUMENT_TOOL_ERROR_CODES,
   buildDocumentToolDescription,
   createDocumentTool,
+  withSpecStats,
 } = await import('~~/server/utils/documents/create-document-tool')
 const { toolRequiresFollowUpTurn } = await import(
   '~~/server/utils/ai/tool-loop'
@@ -183,6 +184,31 @@ describe('create_document tool', () => {
       }
     })
 
+    it('says that both theme fields are optional', () => {
+      const description = buildDocumentToolDescription(['pdf'])
+
+      expect(description).toContain('"font"?:"sans"|"serif"')
+      expect(description).toContain('"accent"?:"neutral"')
+      expect(description).toContain('both fields are optional')
+    })
+
+    it('fills docx stats from the spec and keeps renderer stats', () => {
+      const docxSpec = {
+        specVersion: 1,
+        format: 'docx',
+        title: 'Letter',
+        blocks: [
+          { type: 'heading', level: 1, text: 'Hi' },
+          { type: 'paragraph', runs: [{ text: 'Body' }] },
+        ],
+      } as never
+      const pdfSpec = { ...(docxSpec as object), format: 'pdf' } as never
+
+      expect(withSpecStats({}, docxSpec)).toEqual({ blocks: 2 })
+      expect(withSpecStats({ blocks: 7 }, docxSpec)).toEqual({ blocks: 7 })
+      expect(withSpecStats({ pages: 3 }, pdfSpec)).toEqual({ pages: 3 })
+    })
+
     it('carries only the examples and rules of enabled formats', () => {
       const description = buildDocumentToolDescription(['pdf'])
 
@@ -224,6 +250,18 @@ describe('create_document tool', () => {
           expect(jsonSchema.required).toEqual(
             expect.arrayContaining(['format', 'title']),
           )
+        })
+
+        it('keeps every theme field optional', () => {
+          const theme = readSchema().properties.theme
+
+          if (!theme) {
+            return
+          }
+
+          expect(theme.properties).toHaveProperty('font')
+          expect(theme.properties).toHaveProperty('accent')
+          expect(theme.required ?? []).toEqual([])
         })
 
         it('does not require specVersion', () => {
