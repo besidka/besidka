@@ -107,7 +107,7 @@ describe('documents library API', () => {
     format: keyof typeof MEDIA_TYPES
     fileName: string
     title?: string | null
-    createdVia?: 'chat' | 'mcp'
+    createdVia?: 'chat' | 'mcp' | 'research' | 'schedule'
     aiGenerated?: boolean | null
     originChatId?: string
     minutesAgo: number
@@ -277,6 +277,39 @@ describe('documents library API', () => {
     expect(none.items).toEqual([])
     expect(none.total).toBe(0)
   })
+
+  it('counts research and schedule documents as chat, like the filter',
+    async () => {
+      const { report } = await seedLibrary()
+      const research = await seedReadyDocument({
+        userId: ownerId,
+        format: 'docx',
+        fileName: 'Research brief.docx',
+        createdVia: 'research',
+        minutesAgo: 3,
+      })
+      const scheduled = await seedReadyDocument({
+        userId: ownerId,
+        format: 'pdf',
+        fileName: 'Weekly digest.pdf',
+        createdVia: 'schedule',
+        minutesAgo: 2,
+      })
+      const list = await importListHandler()
+      const chat = await list(createEvent({ source: 'chat' }))
+      const all = await list(createEvent())
+
+      expect(chat.items.map((item: { id: string, source: string }) => {
+        return [item.id, item.source]
+      })).toEqual([
+        [scheduled.id, 'chat'],
+        [research.id, 'chat'],
+        [report.id, 'chat'],
+      ])
+      expect(chat.total).toBe(3)
+      expect(all.sourceCounts.chat).toBe(chat.total)
+      expect(all.sourceCounts).toEqual({ chat: 3, mcp: 2 })
+    })
 
   it('searches the file name and the title with escaped wildcards',
     async () => {

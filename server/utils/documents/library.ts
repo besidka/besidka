@@ -1,4 +1,4 @@
-import { and, count, desc, eq, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, ne, or, sql } from 'drizzle-orm'
 import {
   createEmptyDocumentFormatCounts,
   createEmptyDocumentSourceCounts,
@@ -41,6 +41,16 @@ function toLibrarySource(
   return createdVia === 'mcp' ? 'mcp' : 'chat'
 }
 
+function getSourceCondition(source: DocumentLibrarySource | undefined) {
+  if (!source) {
+    return undefined
+  }
+
+  return source === 'mcp'
+    ? eq(schema.documents.createdVia, 'mcp')
+    : ne(schema.documents.createdVia, 'mcp')
+}
+
 function fileJoin() {
   return and(
     eq(schema.files.id, schema.documents.fileId),
@@ -76,7 +86,7 @@ export async function listLibraryDocuments(
   const filter = and(
     ownedReady,
     input.format ? eq(schema.documents.format, input.format) : undefined,
-    input.source ? eq(schema.documents.createdVia, input.source) : undefined,
+    getSourceCondition(input.source),
     search
       ? or(
         containsLikeEscaped(schema.files.name, search),
