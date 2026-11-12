@@ -1,4 +1,4 @@
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, watch } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -366,6 +366,39 @@ describe('ChatInput/Files/Modal.client', () => {
 
         expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
         expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+      })
+
+      it('reopens when the side panel restores focus to its opener as it closes', async () => {
+        const composer = document.createElement('textarea')
+
+        document.body.appendChild(composer)
+
+        const stopRestore = watch(
+          () => useSidePanel().isOpen.value,
+          (isOpen) => {
+            if (!isOpen) {
+              composer.focus()
+            }
+          },
+          { flush: 'post' },
+        )
+        const wrapper = await previewDocument()
+
+        Object.defineProperty(
+          wrapper.get('[data-testid="files-modal"]').element,
+          'open',
+          { value: false, configurable: true },
+        )
+        useSidePanel().close()
+        await flushPromises()
+        stopRestore()
+
+        expect(document.activeElement).toBe(composer)
+        expect(HTMLDialogElement.prototype.showModal)
+          .toHaveBeenCalledTimes(2)
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+
+        composer.remove()
       })
 
       it('keeps the kept state when focus lands in the side panel', async () => {

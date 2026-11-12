@@ -238,7 +238,8 @@ function isEditableOutsideSidePanel(target: EventTarget | null): boolean {
  * is kept and the dialog reopens with the same scroll position once the side
  * panel closes. The kept state is dropped, so the dialog cannot pop up later
  * by surprise, when another view takes the panel, the route changes, or the
- * user moves on to the composer or any other field.
+ * user moves on to the composer or any other field while the panel is still
+ * open. Focus the side panel hands back to its opener as it closes is not that.
  */
 function closeForPreview(documentId: string): void {
   const scrollTop = selectTabRef.value?.getScrollTop() ?? 0
@@ -264,7 +265,7 @@ function closeForPreview(documentId: string): void {
   )
   const stopRouteWatch = watch(() => route.fullPath, abandonPreviewReturn)
   const onFocusIn = (event: FocusEvent) => {
-    if (isEditableOutsideSidePanel(event.target)) {
+    if (sidePanel.isOpen.value && isEditableOutsideSidePanel(event.target)) {
       abandonPreviewReturn()
     }
   }
