@@ -6,6 +6,22 @@ export interface ZipSummary {
   largestEntryBytes: number
 }
 
+export interface ZipLimits {
+  entriesMax: number
+  entryBytesMax: number
+  totalBytesMax: number
+  ratioMax: number
+  ratioMinBytes: number
+}
+
+export const DEFAULT_ZIP_LIMITS: ZipLimits = {
+  entriesMax: VALIDATION_LIMITS.zipEntriesMax,
+  entryBytesMax: VALIDATION_LIMITS.zipEntryBytesMax,
+  totalBytesMax: VALIDATION_LIMITS.zipTotalBytesMax,
+  ratioMax: VALIDATION_LIMITS.zipRatioMax,
+  ratioMinBytes: VALIDATION_LIMITS.zipRatioMinBytes,
+}
+
 export interface ZipEntry {
   name: string
   flags: number
@@ -212,7 +228,10 @@ function isUnsafeEntryName(name: string): string | null {
  * entry with its data offset. Nothing is inflated here: declared sizes are a
  * pre-filter only, the streaming byte cap in `inflateEntry` is the real bound.
  */
-export function readZipDirectory(bytes: Uint8Array): ZipDirectoryResult {
+export function readZipDirectory(
+  bytes: Uint8Array,
+  limits: ZipLimits = DEFAULT_ZIP_LIMITS,
+): ZipDirectoryResult {
   const startsWithLocalHeader = bytes.length >= 4
     && bytes[0] === 0x50
     && bytes[1] === 0x4B
@@ -271,11 +290,11 @@ export function readZipDirectory(bytes: Uint8Array): ZipDirectoryResult {
     }
   }
 
-  if (declaredEntries > VALIDATION_LIMITS.zipEntriesMax) {
+  if (declaredEntries > limits.entriesMax) {
     return {
       ok: false,
       code: 'zip_too_many_entries',
-      detail: `${declaredEntries} entries, limit ${VALIDATION_LIMITS.zipEntriesMax}`,
+      detail: `${declaredEntries} entries, limit ${limits.entriesMax}`,
     }
   }
 
@@ -375,7 +394,7 @@ export function readZipDirectory(bytes: Uint8Array): ZipDirectoryResult {
       }
     }
 
-    if (uncompressedSize > VALIDATION_LIMITS.zipEntryBytesMax) {
+    if (uncompressedSize > limits.entryBytesMax) {
       return {
         ok: false,
         code: 'zip_entry_too_large',
@@ -385,28 +404,28 @@ export function readZipDirectory(bytes: Uint8Array): ZipDirectoryResult {
 
     totalUncompressedBytes += uncompressedSize
 
-    if (totalUncompressedBytes > VALIDATION_LIMITS.zipTotalBytesMax) {
+    if (totalUncompressedBytes > limits.totalBytesMax) {
       return {
         ok: false,
         code: 'zip_total_too_large',
-        detail: `Archive declares more than ${VALIDATION_LIMITS.zipTotalBytesMax} bytes`,
+        detail: `Archive declares more than ${limits.totalBytesMax} bytes`,
       }
     }
 
     const isRatioChecked
-      = uncompressedSize >= VALIDATION_LIMITS.zipRatioMinBytes
+      = uncompressedSize >= limits.ratioMinBytes
 
     if (
       isRatioChecked
       && (
         compressedSize === 0
-        || uncompressedSize / compressedSize > VALIDATION_LIMITS.zipRatioMax
+        || uncompressedSize / compressedSize > limits.ratioMax
       )
     ) {
       return {
         ok: false,
         code: 'zip_ratio',
-        detail: `Entry ${name.slice(0, 80)} exceeds ${VALIDATION_LIMITS.zipRatioMax}:1`,
+        detail: `Entry ${name.slice(0, 80)} exceeds ${limits.ratioMax}:1`,
       }
     }
 

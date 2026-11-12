@@ -148,6 +148,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/packages/doc-renderer/package-boundaries.spec.ts',
     'tests/unit/packages/doc-renderer/notices.spec.ts',
     'tests/unit/packages/doc-renderer/hardening.spec.ts',
+    'tests/unit/packages/doc-renderer/extract.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-docx.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-xlsx.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-pptx.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/knowledge-zip.spec.ts',
   ]

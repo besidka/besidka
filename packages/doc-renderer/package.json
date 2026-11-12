@@ -11,7 +11,8 @@
     "./provenance": "./src/provenance.ts",
     "./stamp": "./src/stamp/index.ts",
     "./csv": "./src/csv.ts",
-    "./zip": "./src/validate/zip.ts"
+    "./zip": "./src/validate/zip.ts",
+    "./extract": "./src/extract/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

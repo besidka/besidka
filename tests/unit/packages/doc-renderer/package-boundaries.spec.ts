@@ -189,6 +189,15 @@ describe('package boundaries', () => {
     expect([...transitiveExternals('src/spec/index.ts')].sort()).toEqual(['zod'])
   })
 
+  it('keeps ./extract free of the renderer libraries and exports it', () => {
+    const manifest = JSON.parse(
+      readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8'),
+    ) as { exports: Record<string, string> }
+
+    expect(manifest.exports['./extract']).toBe('./src/extract/index.ts')
+    expect([...transitiveExternals('src/extract/index.ts')]).toEqual(['fflate'])
+  })
+
   it('keeps the ZIP summary subpath dependency free', () => {
     expect([...transitiveExternals('src/validate/zip.ts')]).toEqual([])
   })
