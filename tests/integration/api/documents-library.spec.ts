@@ -376,6 +376,27 @@ describe('documents library API', () => {
     })
   })
 
+  it('reads the page, the total and the counts in one D1 batch with '
+    + 'unique column names', async () => {
+    await seedLibrary()
+
+    const batchSpy = vi.spyOn(testDb.db, 'batch')
+    const list = await importListHandler()
+
+    await list(createEvent())
+
+    expect(batchSpy).toHaveBeenCalledTimes(1)
+
+    const statements = batchSpy.mock.calls[0]![0] as unknown as Array<{
+      toSQL: () => { sql: string }
+    }>
+    const itemsSql = statements[0]!.toSQL().sql
+
+    expect(statements).toHaveLength(3)
+    expect(itemsSql).toContain('as "file_row_id"')
+    expect(itemsSql).toContain('as "origin_chat_title"')
+  })
+
   it('rejects invalid query parameters', async () => {
     await seedLibrary()
 

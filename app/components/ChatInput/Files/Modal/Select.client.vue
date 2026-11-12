@@ -82,6 +82,7 @@
         @toggle="toggleProjectGroup"
         @load-more="loadMoreProjectGroup"
         @file-click="onFileClick"
+        @preview="onPreview"
         @rename="openRenameModal"
         @delete="confirmDelete"
         @toggle-select-all="handleToggleProjectGroupSelectAll"

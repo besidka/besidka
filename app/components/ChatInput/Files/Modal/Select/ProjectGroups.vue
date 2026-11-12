@@ -82,6 +82,7 @@
               file: FileManagerFile,
               index: number,
             ) => emit('file-click', event, file, index, group.id)"
+            @preview="emit('preview', $event)"
             @rename="emit('rename', $event)"
             @delete="emit('delete', $event)"
           />
@@ -100,6 +101,7 @@
               file: FileManagerFile,
               index: number,
             ) => emit('file-click', event, file, index, group.id)"
+            @preview="emit('preview', $event)"
             @rename="emit('rename', $event)"
             @delete="emit('delete', $event)"
             @toggle-select-all="emit('toggle-select-all', group.id)"
@@ -174,6 +176,7 @@ const emit = defineEmits<{
     index: number,
     groupId: string,
   ]
+  'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
   'toggle-select-all': [groupId: string]
