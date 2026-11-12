@@ -35,7 +35,9 @@
 
 <script setup lang="ts">
 const messages = useMessages()
-const topDialog = useTopModalDialog()
+const { topDialog, refresh: refreshTopDialog } = useTopModalDialog()
+
+watch(() => messages.value.length, refreshTopDialog)
 </script>
 
 <style scoped>

@@ -9,6 +9,7 @@ enableAutoUnmount(afterEach)
 
 const mocks = vi.hoisted(() => ({
   useTopModalDialog: vi.fn(),
+  refresh: vi.fn(),
 }))
 
 mockNuxtImport('useTopModalDialog', () => mocks.useTopModalDialog)
@@ -18,7 +19,11 @@ describe('ui/Messages', () => {
 
   beforeEach(() => {
     topDialog = shallowRef<HTMLDialogElement | null>(null)
-    mocks.useTopModalDialog.mockReturnValue(topDialog)
+    mocks.refresh.mockReset()
+    mocks.useTopModalDialog.mockReturnValue({
+      topDialog,
+      refresh: mocks.refresh,
+    })
     useMessages().value = [{
       id: 1,
       title: 'Plan.docx is ready',
@@ -62,6 +67,32 @@ describe('ui/Messages', () => {
 
     expect(teleport.attributes('disabled')).toBe('false')
     expect(teleport.attributes('to')).toContain('test-dialog')
+  })
+
+  it('revalidates the dialog target whenever a message is added', async () => {
+    const dialog = document.createElement('dialog')
+
+    dialog.className = 'test-dialog'
+    document.body.appendChild(dialog)
+    topDialog.value = dialog
+    mocks.refresh.mockImplementation(() => {
+      if (!dialog.isConnected) {
+        topDialog.value = null
+      }
+    })
+
+    const wrapper = await mountMessages()
+
+    dialog.remove()
+    useMessages().value = [
+      ...useMessages().value,
+      { id: 2, title: 'Another', type: 'info' },
+    ]
+    await wrapper.vm.$nextTick()
+
+    expect(mocks.refresh).toHaveBeenCalled()
+    expect(wrapper.get('teleport-stub').attributes('disabled')).toBe('true')
+    expect(wrapper.get('teleport-stub').attributes('to')).toBe('body')
   })
 
   it('moves back to the page when the dialog closes', async () => {

@@ -6,11 +6,15 @@ import { useTopModalDialog } from '../../../app/composables/top-modal-dialog'
 
 enableAutoUnmount(afterEach)
 
-let topDialog: ReturnType<typeof useTopModalDialog>
+let topDialog: ReturnType<typeof useTopModalDialog>['topDialog']
+let refresh: ReturnType<typeof useTopModalDialog>['refresh']
 
 const Host = defineComponent({
   setup() {
-    topDialog = useTopModalDialog()
+    const composable = useTopModalDialog()
+
+    topDialog = composable.topDialog
+    refresh = composable.refresh
 
     return () => h('div')
   },
@@ -26,12 +30,19 @@ function createDialog(): HTMLDialogElement {
 }
 
 let notify: (dialog: HTMLDialogElement) => void = () => {}
+let notifyRemoval: () => void = () => {}
 
 class FakeMutationObserver {
   constructor(callback: MutationCallback) {
     notify = (dialog) => {
       callback(
-        [{ target: dialog } as unknown as MutationRecord],
+        [{ type: 'attributes', target: dialog } as unknown as MutationRecord],
+        this as unknown as MutationObserver,
+      )
+    }
+    notifyRemoval = () => {
+      callback(
+        [{ type: 'childList', target: document.body } as unknown as MutationRecord],
         this as unknown as MutationObserver,
       )
     }
@@ -95,6 +106,52 @@ describe('composables/top-modal-dialog', () => {
     expect(topDialog.value).toBe(first)
 
     setOpen(first, false)
+
+    expect(topDialog.value).toBeNull()
+  })
+
+  it('forgets an open dialog that is removed without close()', async () => {
+    await mountSuspended(Host)
+
+    const first = createDialog()
+    const second = createDialog()
+
+    setOpen(first, true)
+    setOpen(second, true)
+    second.remove()
+    notifyRemoval()
+
+    expect(topDialog.value).toBe(first)
+
+    first.remove()
+    notifyRemoval()
+
+    expect(topDialog.value).toBeNull()
+  })
+
+  it('does no tracking work for removals while no dialog is open', async () => {
+    await mountSuspended(Host)
+
+    const unrelated = document.createElement('div')
+
+    document.body.appendChild(unrelated)
+    unrelated.remove()
+    notifyRemoval()
+
+    expect(topDialog.value).toBeNull()
+  })
+
+  it('drops a stale dialog on refresh even without a mutation record', async () => {
+    await mountSuspended(Host)
+
+    const dialog = createDialog()
+
+    setOpen(dialog, true)
+    dialog.remove()
+
+    expect(topDialog.value).toBe(dialog)
+
+    refresh()
 
     expect(topDialog.value).toBeNull()
   })
