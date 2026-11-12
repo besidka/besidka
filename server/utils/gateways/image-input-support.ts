@@ -7,11 +7,12 @@ import {
   createUnsupportedImageInputError,
   hasImageFilePart,
 } from '~~/server/utils/chats/input-file-support'
+import { resolveFileDelivery } from '#shared/utils/file-delivery'
 
 interface AssertGatewayImageInputSupportedInput {
   gatewayId: GatewayId
   modelId: string
-  parts: readonly { type: string, mediaType?: string }[]
+  parts: readonly { type: string, mediaType?: string, filename?: string }[]
   logger: { set: (fields: Record<string, unknown>) => void }
 }
 
@@ -50,5 +51,18 @@ export async function assertGatewayImageInputSupported(
     return
   }
 
-  throw createUnsupportedImageInputError(catalogModel?.name || modelId)
+  const unsupportedPart = parts.find((part) => {
+    return part.type === 'file'
+      && typeof part.mediaType === 'string'
+      && resolveFileDelivery({
+        route: gatewayId,
+        modalities: inputModalities,
+        mediaType: part.mediaType,
+      }).reason === 'model-no-image'
+  })
+
+  throw createUnsupportedImageInputError(
+    catalogModel?.name || modelId,
+    unsupportedPart?.filename,
+  )
 }

@@ -38,7 +38,7 @@ describe('delete owned files', () => {
 
   function failStorageDelete(storageKey: string) {
     mocks.deleteObject.mockImplementation(async (keys: string | string[]) => {
-      if (keys === storageKey) {
+      if (Array.isArray(keys) && keys.includes(storageKey)) {
         throw new Error('R2 failure')
       }
     })
@@ -87,7 +87,7 @@ describe('delete owned files', () => {
         })
 
         expect(outcome).toBe('deleted')
-        expect(mocks.deleteObject).toHaveBeenCalledWith('key-1')
+        expect(mocks.deleteObject).toHaveBeenCalledWith(['key-1'])
         expect(mocks.invalidateFileCache).toHaveBeenCalledWith('key-1')
         expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(OWNER)
         expect(remainingFileIds()).toEqual([2, 3])
@@ -156,7 +156,7 @@ describe('delete owned files', () => {
           logger: mocks.logger,
         })
 
-        expect(mocks.deleteObject).toHaveBeenCalledWith('key-1')
+        expect(mocks.deleteObject).toHaveBeenCalledWith(['key-1'])
         expect(mocks.deleteObject).toHaveBeenCalledWith([
           `knowledge/u${OWNER}/p10/items/${firstItemId}.md`,
         ])
@@ -177,7 +177,7 @@ describe('delete owned files', () => {
         })
 
         expect(mocks.deleteObject).toHaveBeenCalledTimes(1)
-        expect(mocks.deleteObject).toHaveBeenCalledWith('key-2')
+        expect(mocks.deleteObject).toHaveBeenCalledWith(['key-2'])
       })
 
     it('keeps the knowledge text when the file object cannot be deleted',
@@ -210,7 +210,7 @@ describe('delete owned files', () => {
       })
       mocks.deleteObject.mockImplementation(
         async (keys: string | string[]) => {
-          if (Array.isArray(keys)) {
+          if (Array.isArray(keys) && keys[0]?.startsWith('knowledge/')) {
             throw new Error('R2 batch failure')
           }
         },

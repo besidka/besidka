@@ -1,6 +1,16 @@
 import type { UIMessage } from 'ai'
 import { useLogger } from 'evlog'
 import { normalizeMediaType } from '#shared/utils/files'
+import { resolveFileDelivery } from '#shared/utils/file-delivery'
+import type { FileDeliveryReason } from '#shared/utils/file-delivery'
+import {
+  OFFICE_FORMAT_NOUNS,
+  OFFICE_TEXT_INLINE_MAX_BYTES,
+  OFFICE_TEXT_MESSAGE_MAX_BYTES,
+  getOfficeFormatByMediaType,
+  isOfficeMediaType,
+} from '#shared/utils/office-files'
+import type { OfficeFormat } from '#shared/utils/office-files'
 import {
   extractStorageKeyFromFileUrl,
   getOwnedFilesByStorageKeys,
@@ -11,15 +21,26 @@ import {
 } from '~~/server/utils/files/logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  loadOfficeText,
+  truncateUtf8,
+} from '~~/server/utils/files/office-text'
 
 export interface MissingFile {
   storageKey: string
   filename?: string
 }
 
+export interface UnsupportedFile {
+  storageKey: string
+  filename?: string
+  reason: FileDeliveryReason | undefined
+}
+
 export interface ConversionResult {
   messages: UIMessage[]
   missingFiles: MissingFile[]
+  unsupportedFiles: UnsupportedFile[]
 }
 
 const CACHE_TTL_SECONDS = 5 * 60
@@ -37,6 +58,7 @@ export async function convertFilesForAI(
 
   const userId = parseInt(session.user.id)
   const missingFiles: MissingFile[] = []
+  const unsupportedFiles: UnsupportedFile[] = []
   const storage = useFileStorage()
   const convertedMessages: UIMessage[] = []
   const storageKeysFromMessages: string[] = []
@@ -71,6 +93,7 @@ export async function convertFilesForAI(
     }
 
     const convertedParts: NonNullable<UIMessage['parts']>[number][] = []
+    let officeBytesRemaining = OFFICE_TEXT_MESSAGE_MAX_BYTES
 
     for (const part of message.parts) {
       if (part.type !== 'file') {
@@ -100,7 +123,9 @@ export async function convertFilesForAI(
         continue
       }
 
-      if (!ownedFiles.has(storageKey)) {
+      const ownedFile = ownedFiles.get(storageKey)
+
+      if (!ownedFile) {
         logger.set({
           fileConversion: {
             reason: 'forbidden-file-access',
@@ -114,7 +139,47 @@ export async function convertFilesForAI(
         continue
       }
 
-      if (isTextMediaType(part.mediaType)) {
+      const mediaType = ownedFile.type ?? part.mediaType
+      const isOffice = isOfficeMediaType(mediaType)
+      const officeText = isOffice
+        ? await loadOfficeText(
+          { ...ownedFile, userId, type: mediaType },
+          logger,
+        )
+        : null
+      const delivery = resolveFileDelivery({
+        route: 'direct',
+        mediaType,
+        textStatus: isOffice ? (officeText ? 'ready' : 'failed') : undefined,
+      })
+
+      if (delivery.delivery === 'unsupported') {
+        unsupportedFiles.push({
+          storageKey,
+          filename: part.filename,
+          reason: delivery.reason,
+        })
+        convertedParts.push({
+          type: 'text',
+          text: formatUnsupportedFilePart(part.filename, delivery.reason),
+        })
+        continue
+      }
+
+      if (officeText) {
+        const formatted = formatOfficeFilePart({
+          filename: part.filename,
+          mediaType,
+          text: officeText.text,
+          remainingBytes: officeBytesRemaining,
+        })
+
+        officeBytesRemaining = formatted.remainingBytes
+        convertedParts.push({ type: 'text', text: formatted.text })
+        continue
+      }
+
+      if (delivery.delivery === 'text') {
         try {
           const textContent = await readStorageFileAsText(
             storage,
@@ -134,7 +199,7 @@ export async function convertFilesForAI(
             type: 'text',
             text: formatTextFilePart({
               filename: part.filename,
-              mediaType: part.mediaType,
+              mediaType,
               content: textContent,
             }),
           })
@@ -176,7 +241,7 @@ export async function convertFilesForAI(
         const dataUrl = await convertStorageFileToDataUrl(
           storage,
           storageKey,
-          part.mediaType,
+          mediaType,
           logger,
         )
 
@@ -221,6 +286,7 @@ export async function convertFilesForAI(
   return {
     messages: convertedMessages,
     missingFiles,
+    unsupportedFiles,
   }
 }
 
@@ -339,10 +405,6 @@ async function cacheFileDataUrl(
   }
 }
 
-function isTextMediaType(mediaType: string): boolean {
-  return normalizeMediaType(mediaType).startsWith('text/')
-}
-
 async function readStorageFileAsText(
   storage: ReturnType<typeof useFileStorage>,
   storageKey: string,
@@ -383,6 +445,66 @@ function formatTextFilePart(input: {
   const header = input.filename ? `**${input.filename}**\n\n` : ''
 
   return `${header}${fence}${language}\n${input.content}\n${fence}`
+}
+
+const UNSUPPORTED_FILE_NOTES: Record<string, string> = {
+  'legacy-office': 'a legacy Office format that cannot be read',
+  'office-unreadable': 'no text could be read from this document',
+  'model-no-image': 'the model does not read images',
+  'model-no-pdf': 'the model does not read PDFs',
+}
+
+function formatUnsupportedFilePart(
+  filename: string | undefined,
+  reason: FileDeliveryReason | undefined,
+): string {
+  const header = filename ? `**${filename}**\n\n` : ''
+  const note = (reason && UNSUPPORTED_FILE_NOTES[reason])
+    || 'this file type cannot be sent to the model'
+
+  return `${header}[File not included: ${note}.]`
+}
+
+interface FormattedOfficeFilePart {
+  text: string
+  remainingBytes: number
+}
+
+/**
+ * Wraps extracted Office text for the model: the file name and format, a line
+ * that says what the text lacks, then the Markdown in a fence. Each file is
+ * cut at 200 KB and each message at 512 KB (on a UTF-8 boundary), with a
+ * marker so the model knows the text is partial.
+ */
+function formatOfficeFilePart(input: {
+  filename?: string
+  mediaType: string
+  text: string
+  remainingBytes: number
+}): FormattedOfficeFilePart {
+  const format = getOfficeFormatByMediaType(input.mediaType) as OfficeFormat
+  const noun = OFFICE_FORMAT_NOUNS[format]
+  const name = input.filename ? `**${input.filename}** (${noun})` : noun
+  const header = `${name}\n\nExtracted text. Images, charts and formatting are not included.\n\n`
+
+  if (input.remainingBytes <= 0) {
+    return {
+      text: `${header}[Not included: this message already carries 512 KB of extracted file text.]`,
+      remainingBytes: 0,
+    }
+  }
+
+  const limit = Math.min(OFFICE_TEXT_INLINE_MAX_BYTES, input.remainingBytes)
+  const cut = truncateUtf8(input.text, limit)
+  const fence = '`'.repeat(computeFenceLength(cut.text))
+  const marker = cut.truncated
+    ? `\n\n[Truncated: only the first ${Math.round(limit / 1024)} KB of this file's text is included.]`
+    : ''
+
+  return {
+    text: `${header}${fence}md\n${cut.text}\n${fence}${marker}`,
+    remainingBytes: input.remainingBytes - cut.bytes,
+  }
 }
 
 function pickCodeFenceLanguage(

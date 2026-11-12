@@ -66,10 +66,15 @@ interface TransformSlotReservation {
   reason?: 'disabled' | 'user-limit' | 'global-limit'
 }
 
-interface OwnedFile {
+export interface OwnedFile {
   id: string
   storageKey: string
   size: number
+  name?: string
+  type?: string
+  textStatus?: string | null
+  textBytes?: number | null
+  textVersion?: number | null
 }
 
 export interface OwnedGeneratedImageFile {
@@ -540,6 +545,11 @@ export async function getOwnedFilesByStorageKeys(
         id: true,
         storageKey: true,
         size: true,
+        name: true,
+        type: true,
+        textStatus: true,
+        textBytes: true,
+        textVersion: true,
       },
     })
 

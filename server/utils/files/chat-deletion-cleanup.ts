@@ -1,3 +1,4 @@
+import { withDerivedKeys } from '#shared/utils/office-files'
 import { and, eq, inArray, like, or } from 'drizzle-orm'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -195,7 +196,7 @@ export async function cleanupFilesOrphanedByChatDeletion(
     const storageKeys = chunk.map(file => file.storageKey)
 
     try {
-      await storage.delete(storageKeys)
+      await storage.delete(withDerivedKeys(storageKeys))
     } catch (exception) {
       failedCount += chunk.length
       batchDeleteErrors.push(exceptionMessage(exception))

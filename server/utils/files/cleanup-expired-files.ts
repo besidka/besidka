@@ -1,3 +1,4 @@
+import { withDerivedKeys } from '#shared/utils/office-files'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
@@ -72,7 +73,7 @@ export async function cleanupExpiredFiles(
     processedCount++
 
     try {
-      await useFileStorage().delete(file.storageKey)
+      await useFileStorage().delete(withDerivedKeys([file.storageKey]))
     } catch (exception) {
       failedCount++
       logger?.set({

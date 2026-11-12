@@ -1,5 +1,6 @@
 import { createError } from 'evlog'
 import { isHiddenFilePart } from '#shared/utils/files'
+import { resolveFileDelivery } from '#shared/utils/file-delivery'
 import { getInputMediaKind } from '#shared/utils/input-media-types'
 
 type UnsupportedInputFileKind = 'image' | 'pdf'
@@ -7,19 +8,18 @@ type UnsupportedInputFileKind = 'image' | 'pdf'
 interface InputFilePart {
   type: string
   mediaType?: string
+  filename?: string
 }
 
-/**
- * Returns the kind of the first image or PDF part the model cannot read, or
- * `undefined` when every such part is deliverable. `inputModalities` uses the
- * curated catalog vocabulary (`image`, `pdf`). Text files are always allowed
- * because they are inlined as text before the provider call, and other types
- * are governed by `validateMessageFilePolicy()`, not by model modalities.
- */
-export function findUnsupportedInputFileKind(
+interface UnsupportedInputFile {
+  kind: UnsupportedInputFileKind
+  filename?: string
+}
+
+function findUnsupportedInputFile(
   parts: readonly InputFilePart[],
   inputModalities: readonly string[],
-): UnsupportedInputFileKind | undefined {
+): UnsupportedInputFile | undefined {
   for (const part of parts) {
     if (
       part.type !== 'file'
@@ -29,17 +29,41 @@ export function findUnsupportedInputFileKind(
       continue
     }
 
-    const kind = getInputMediaKind(part.mediaType)
+    const { delivery, reason } = resolveFileDelivery({
+      route: 'direct',
+      modalities: inputModalities,
+      mediaType: part.mediaType,
+    })
 
-    if (
-      (kind === 'image' || kind === 'pdf')
-      && !inputModalities.includes(kind)
-    ) {
-      return kind
+    if (delivery !== 'unsupported') {
+      continue
+    }
+
+    if (reason === 'model-no-image') {
+      return { kind: 'image', filename: part.filename }
+    }
+
+    if (reason === 'model-no-pdf') {
+      return { kind: 'pdf', filename: part.filename }
     }
   }
 
   return undefined
+}
+
+/**
+ * Returns the kind of the first image or PDF part the model cannot read, or
+ * `undefined` when every such part is deliverable. `inputModalities` uses the
+ * curated catalog vocabulary (`image`, `pdf`). It reads only the media type
+ * the client declared; the file's own type, and so whether an Office file has
+ * readable text, is checked against the database by
+ * `assertFilesDeliverable()`.
+ */
+export function findUnsupportedInputFileKind(
+  parts: readonly InputFilePart[],
+  inputModalities: readonly string[],
+): UnsupportedInputFileKind | undefined {
+  return findUnsupportedInputFile(parts, inputModalities)?.kind
 }
 
 export function hasImageFilePart(
@@ -52,27 +76,34 @@ export function hasImageFilePart(
   })
 }
 
-export function createUnsupportedImageInputError(modelName: string) {
+function describeAffectedFile(filename: string | undefined): string {
+  return filename ? ` File: ${filename}.` : ''
+}
+
+export function createUnsupportedImageInputError(
+  modelName: string,
+  filename?: string,
+) {
   return createError({
     message: `${modelName} does not support image input.`,
     status: 400,
-    why: 'The message includes an image attachment, but the selected model does not advertise image support.',
+    why: `The message includes an image attachment, but the selected model does not advertise image support.${describeAffectedFile(filename)}`,
     fix: 'Remove the image attachment, or switch to a vision-capable model.',
   })
 }
 
 function createUnsupportedInputFileError(
-  kind: UnsupportedInputFileKind,
+  unsupported: UnsupportedInputFile,
   modelName: string,
 ) {
-  if (kind === 'image') {
-    return createUnsupportedImageInputError(modelName)
+  if (unsupported.kind === 'image') {
+    return createUnsupportedImageInputError(modelName, unsupported.filename)
   }
 
   return createError({
     message: `${modelName} does not support PDF input.`,
     status: 400,
-    why: 'The message includes a PDF attachment, but the selected model does not advertise PDF support.',
+    why: `The message includes a PDF attachment, but the selected model does not advertise PDF support.${describeAffectedFile(unsupported.filename)}`,
     fix: 'Remove the PDF, attach its text as a .txt file, or switch to a model that reads PDFs.',
   })
 }
@@ -86,12 +117,9 @@ export function assertInputFilesSupported(
     return
   }
 
-  const unsupportedKind = findUnsupportedInputFileKind(
-    parts,
-    inputModalities,
-  )
+  const unsupported = findUnsupportedInputFile(parts, inputModalities)
 
-  if (unsupportedKind) {
-    throw createUnsupportedInputFileError(unsupportedKind, modelName)
+  if (unsupported) {
+    throw createUnsupportedInputFileError(unsupported, modelName)
   }
 }
