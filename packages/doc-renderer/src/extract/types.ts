@@ -6,6 +6,7 @@ export type TruncationReason
   = | 'text_limit'
     | 'part_limit'
     | 'sheets_limit'
+    | 'slides_limit'
     | 'rows_limit'
     | 'columns_limit'
     | 'cells_limit'
@@ -46,6 +47,10 @@ export interface ExtractLimits {
   columnsMax: number
   cellCharsMax: number
   cellsMax: number
+  slidesMax: number
+  inflatedBytesMax: number
+  eventsMax: number
+  contentTypesBytesMax: number
 }
 
 export const EXTRACT_FORMATS: readonly ExtractFormat[] = [
@@ -70,6 +75,10 @@ export const EXTRACT_LIMITS: ExtractLimits = {
   columnsMax: 200,
   cellCharsMax: 2000,
   cellsMax: 200_000,
+  slidesMax: 500,
+  inflatedBytesMax: 64 * 1024 * 1024,
+  eventsMax: 10_000_000,
+  contentTypesBytesMax: 1024 * 1024,
 }
 
 export const TRUNCATION_MARKER

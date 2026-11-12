@@ -237,28 +237,42 @@ export async function validateDocumentBytes(
 }
 
 const RENDERER_UNAVAILABLE_CODE = 'renderer_unavailable'
+const EXTRACT_CRASHED_CODE = 'extract_crashed'
+const FILE_TOO_LARGE_CODE = 'file_too_large'
+const SUPPORTED_EXTRACT_VERSIONS: readonly number[] = [1]
 
-function createUnavailableExtraction(request: ExtractRequest): ExtractResult {
+function createExtraction(
+  request: ExtractRequest,
+  status: ExtractResult['status'],
+  errorCode: string,
+): ExtractResult {
   return {
-    status: 'failed',
+    status,
     text: '',
     truncated: false,
     stats: {
-      inputBytes: request.bytes.length,
+      inputBytes: request.bytes.byteLength,
       entries: 0,
       textBytes: 0,
       truncations: [],
     },
-    errorCode: RENDERER_UNAVAILABLE_CODE,
+    errorCode,
   }
 }
 
 /**
  * Extracts Markdown text from a DOCX, XLSX or PPTX through the binding. It
- * never throws: a missing binding, a satellite deployed before `extract`
- * existed (no `extract` entry in its capabilities) and a failed call all come
- * back as `failed` with `renderer_unavailable`, so a caller can store that
- * state and retry later instead of failing the request that stored the file.
+ * never throws, and separates the failures a caller may retry from the ones
+ * it may not:
+ * - `renderer_unavailable` (`failed`, retry later): no binding, a satellite
+ *   deployed before `extract` existed or with another `extract` version, or
+ *   a satellite that does not list the format;
+ * - `file_too_large` (`too_large`): the file is over the satellite's
+ *   `maxInputBytes`, answered without a call because a larger RPC payload
+ *   would throw;
+ * - `extract_crashed` (`failed`, do not retry): the call threw on a
+ *   satellite that supports `extract`, for instance CPU or memory exceeded,
+ *   which the same file will do again.
  * Only sizes and codes are logged, never the text.
  */
 export async function extractOfficeText(
@@ -266,23 +280,56 @@ export async function extractOfficeText(
   logger?: LoggerLike,
 ): Promise<ExtractResult> {
   const startedAt = Date.now()
+  let capabilities: RendererCapabilities
 
   try {
-    const capabilities = await getRendererCapabilities(logger)
+    capabilities = await getRendererCapabilities(logger)
+  } catch (_exception) {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: RENDERER_UNAVAILABLE_CODE,
+      durationMs: Date.now() - startedAt,
+    })
 
-    if (!capabilities.extract?.formats.includes(request.format)) {
-      setRendererLog(logger, {
-        operation: 'extract',
-        format: request.format,
-        ok: false,
-        code: RENDERER_UNAVAILABLE_CODE,
-        durationMs: Date.now() - startedAt,
-        rendererVersion: capabilities.rendererVersion,
-      })
+    return createExtraction(request, 'failed', RENDERER_UNAVAILABLE_CODE)
+  }
 
-      return createUnavailableExtraction(request)
-    }
+  const extract = capabilities.extract
+  const isSupported = extract !== undefined
+    && extract.formats.includes(request.format)
+    && SUPPORTED_EXTRACT_VERSIONS.includes(extract.version)
 
+  if (!isSupported) {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: RENDERER_UNAVAILABLE_CODE,
+      durationMs: Date.now() - startedAt,
+      rendererVersion: capabilities.rendererVersion,
+    })
+
+    return createExtraction(request, 'failed', RENDERER_UNAVAILABLE_CODE)
+  }
+
+  if (request.bytes.byteLength > extract.maxInputBytes) {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: FILE_TOO_LARGE_CODE,
+      status: 'too_large',
+      durationMs: Date.now() - startedAt,
+      bytes: request.bytes.byteLength,
+      rendererVersion: capabilities.rendererVersion,
+    })
+
+    return createExtraction(request, 'too_large', FILE_TOO_LARGE_CODE)
+  }
+
+  try {
     const result = await callRenderer(
       'extract',
       logger,
@@ -297,23 +344,25 @@ export async function extractOfficeText(
       code: result.errorCode,
       status: result.status,
       durationMs: Date.now() - startedAt,
-      bytes: request.bytes.length,
+      bytes: request.bytes.byteLength,
       textBytes: result.stats.textBytes,
       truncated: result.truncated,
       rendererVersion: capabilities.rendererVersion,
     })
 
     return result
-  } catch {
+  } catch (_exception) {
     setRendererLog(logger, {
       operation: 'extract',
       format: request.format,
       ok: false,
-      code: RENDERER_UNAVAILABLE_CODE,
+      code: EXTRACT_CRASHED_CODE,
       durationMs: Date.now() - startedAt,
+      bytes: request.bytes.byteLength,
+      rendererVersion: capabilities.rendererVersion,
     })
 
-    return createUnavailableExtraction(request)
+    return createExtraction(request, 'failed', EXTRACT_CRASHED_CODE)
   }
 }
 

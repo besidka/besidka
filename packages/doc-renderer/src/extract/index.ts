@@ -4,6 +4,7 @@ import {
   ExtractError,
   findEntry,
   openPackage,
+  resolveMainPart,
   scanPart,
   utf8Length,
 } from './common.ts'
@@ -49,6 +50,7 @@ const TOO_LARGE_CODES: ReadonlySet<string> = new Set([
   'zip_entry_too_large',
   'zip_total_too_large',
   'zip_ratio',
+  'extract_budget_exceeded',
 ])
 const MAIN_PARTS: Record<ExtractFormat, string> = {
   docx: 'word/document.xml',
@@ -62,7 +64,7 @@ const MAIN_CONTENT_TYPE_PATTERNS: Record<ExtractFormat, RegExp> = {
 }
 const EXTRACTORS: Record<
   ExtractFormat,
-  (pkg: OfficePackage) => ExtractionOutput
+  (officePackage: OfficePackage) => ExtractionOutput
 > = {
   docx: extractDocx,
   xlsx: extractXlsx,
@@ -80,7 +82,7 @@ function containsEncryptedPackage(bytes: Uint8Array): boolean {
   const last = bytes.length - ENCRYPTED_PACKAGE_STREAM.length
 
   for (let start = 0; start <= last; start += 1) {
-    if (bytes[start] !== first) {
+    if (bytes[start] !== first || bytes[start + 1] !== 0) {
       continue
     }
 
@@ -96,8 +98,11 @@ function containsEncryptedPackage(bytes: Uint8Array): boolean {
   return false
 }
 
-function assertPackageFormat(pkg: OfficePackage, format: ExtractFormat): void {
-  const entry = findEntry(pkg, CONTENT_TYPES_PART)
+function assertPackageFormat(
+  officePackage: OfficePackage,
+  format: ExtractFormat,
+): void {
+  const entry = findEntry(officePackage, CONTENT_TYPES_PART)
 
   if (!entry) {
     throw new ExtractError(
@@ -106,11 +111,19 @@ function assertPackageFormat(pkg: OfficePackage, format: ExtractFormat): void {
     )
   }
 
-  const mainPartName = `/${MAIN_PARTS[format]}`.toLowerCase()
+  if (entry.uncompressedSize > officePackage.limits.contentTypesBytesMax) {
+    throw new ExtractError(
+      'ooxml_malformed',
+      'The [Content_Types].xml part is larger than any real one',
+    )
+  }
+
+  const mainPart = resolveMainPart(officePackage, MAIN_PARTS[format])
+  const mainPartName = `/${mainPart}`.toLowerCase()
   let mainContentType = ''
   let hasMacroContentType = false
 
-  scanPart(pkg, entry, (events) => {
+  const outcome = scanPart(officePackage, entry, (events) => {
     mainContentType = ''
     hasMacroContentType = false
 
@@ -135,7 +148,14 @@ function assertPackageFormat(pkg: OfficePackage, format: ExtractFormat): void {
     return false
   })
 
-  const hasMacroPart = [...pkg.entries.keys()].some((name) => {
+  if (outcome.cut) {
+    throw new ExtractError(
+      'ooxml_malformed',
+      'The [Content_Types].xml part could not be read completely',
+    )
+  }
+
+  const hasMacroPart = [...officePackage.entries.keys()].some((name) => {
     return MACRO_PART_PATTERNS.some(denied => denied.pattern.test(name))
   })
 
@@ -146,12 +166,14 @@ function assertPackageFormat(pkg: OfficePackage, format: ExtractFormat): void {
   const isExpectedType = MAIN_CONTENT_TYPE_PATTERNS[format]
     .test(mainContentType)
 
-  if (!isExpectedType || !findEntry(pkg, MAIN_PARTS[format])) {
+  if (!isExpectedType || !findEntry(officePackage, mainPart)) {
     throw new ExtractError(
       'ooxml_format_mismatch',
       `The package is not a ${format} document`,
     )
   }
+
+  officePackage.mainPart = mainPart
 }
 
 function failure(
@@ -211,11 +233,11 @@ export function extractOfficeText(
       )
     }
 
-    const pkg = openPackage(bytes, effective, stats)
+    const officePackage = openPackage(bytes, effective, stats)
 
-    assertPackageFormat(pkg, format)
+    assertPackageFormat(officePackage, format)
 
-    const output = EXTRACTORS[format](pkg)
+    const output = EXTRACTORS[format](officePackage)
 
     if (!output.hasContent) {
       return {

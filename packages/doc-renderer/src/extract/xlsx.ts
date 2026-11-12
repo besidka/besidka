@@ -1,15 +1,18 @@
 import { parseXml } from '../validate/xml.ts'
+import type { XmlEvent } from '../validate/xml.ts'
 import type { ZipEntry } from '../validate/zip.ts'
 import {
   ExtractError,
   TextSink,
+  WindowedPart,
+  ATTRIBUTES_MAX,
   addTruncation,
   cutToCharacters,
   findEntry,
+  meterEvents,
   readRelationships,
   relationshipIdOf,
   scanPart,
-  scanPartWindows,
 } from './common.ts'
 import type { ExtractionOutput, OfficePackage } from './common.ts'
 
@@ -25,14 +28,26 @@ interface Workbook {
   stylesPart: string
 }
 
+type SerialFormat
+  = | 'date'
+    | 'time'
+    | 'elapsedHours'
+    | 'elapsedMinutes'
+    | 'elapsedSeconds'
+
 interface RawCell {
   column: number
   text: string
   sharedIndex: number
 }
 
+interface SheetRow {
+  number: number
+  cells: RawCell[]
+}
+
 interface SheetData {
-  rows: RawCell[][]
+  rows: SheetRow[]
   cellCount: number
   sharedIndexes: Set<number>
   hasMoreRows: boolean
@@ -41,7 +56,7 @@ interface SheetData {
   hasCellLimit: boolean
 }
 
-const RECORD_END = '</si>'
+const SHARED_STRING_RECORD = 'si'
 const WORKBOOK_PART = 'xl/workbook.xml'
 const DEFAULT_SHARED_STRINGS_PART = 'xl/sharedStrings.xml'
 const DEFAULT_STYLES_PART = 'xl/styles.xml'
@@ -52,15 +67,24 @@ const MAX_COLUMN_LETTERS = 3
 const FIRST_UPPERCASE_CODE = 65
 const LAST_UPPERCASE_CODE = 90
 const BUILT_IN_DATE_FORMATS: ReadonlySet<number> = new Set([
-  14, 15, 16, 17, 18, 19, 20, 21, 22,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
-  45, 46, 47,
+  14, 15, 16, 17, 22,
+  27, 28, 29, 30, 31, 36,
   50, 51, 52, 53, 54, 55, 56, 57, 58,
 ])
+const BUILT_IN_TIME_FORMATS: ReadonlySet<number> = new Set([
+  18, 19, 20, 21, 32, 33, 34, 35, 45, 47,
+])
+const BUILT_IN_ELAPSED_HOURS_FORMAT = 46
+const FORMAT_CODE_MAX_CHARACTERS = 255
+const FORMATS_MAX = 1024
+const STYLES_MAX = 65_536
+const STORED_CHARACTERS_MAX = 8 * 1024 * 1024
+const ROW_GAP_MAX = 20
 const MILLISECONDS_PER_DAY = 86_400_000
 const SECONDS_PER_DAY = 86_400
 const DATE_1904_OFFSET_DAYS = 1462
 const LAST_SERIAL = 2_958_465
+const MAX_ELAPSED_SERIAL = 1e9
 const LEAP_BUG_SERIAL = 60
 const EXCEL_EPOCH_AFTER_LEAP_BUG = Date.UTC(1899, 11, 30)
 const EXCEL_EPOCH_BEFORE_LEAP_BUG = Date.UTC(1899, 11, 31)
@@ -96,23 +120,122 @@ function escapeCsvField(text: string): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-function isDateFormatCode(formatCode: string): boolean {
-  const stripped = formatCode
-    .replace(/"[^"]*"/g, '')
-    .replace(/\\./g, '')
-    .replace(/_./g, '')
-    .replace(/\*./g, '')
-    .replace(/\[[^\]]*\]/g, (section) => {
-      return /^\[(?:h+|m+|s+)\]$/i.test(section) ? 'h' : ''
-    })
+function elapsedFormatOf(unit: string): SerialFormat | null {
+  const letter = unit.charAt(0).toLowerCase()
 
-  return /[ymdhs]/i.test(stripped)
+  if (!/^(?:h+|m+|s+)$/i.test(unit)) {
+    return null
+  }
+
+  if (letter === 'h') {
+    return 'elapsedHours'
+  }
+
+  return letter === 'm' ? 'elapsedMinutes' : 'elapsedSeconds'
 }
 
-function formatSerial(raw: string, date1904: boolean): string | null {
+function classifyFormatCode(formatCode: string): SerialFormat | null {
+  const code = formatCode.slice(0, FORMAT_CODE_MAX_CHARACTERS)
+  let hasYearOrDay = false
+  let hasHourOrSecond = false
+  let hasMonthOrMinute = false
+  let elapsed: SerialFormat | null = null
+  let index = 0
+
+  while (index < code.length) {
+    const character = code.charAt(index)
+
+    if (character === '"') {
+      const close = code.indexOf('"', index + 1)
+
+      index = close === -1 ? code.length : close + 1
+    } else if (character === '\\' || character === '_' || character === '*') {
+      index += 2
+    } else if (character === '[') {
+      const close = code.indexOf(']', index + 1)
+
+      if (close === -1) {
+        index += 1
+        continue
+      }
+
+      elapsed = elapsed ?? elapsedFormatOf(code.slice(index + 1, close))
+      index = close + 1
+    } else {
+      const lower = character.toLowerCase()
+
+      hasYearOrDay = hasYearOrDay || lower === 'y' || lower === 'd'
+      hasHourOrSecond = hasHourOrSecond || lower === 'h' || lower === 's'
+      hasMonthOrMinute = hasMonthOrMinute || lower === 'm'
+      index += 1
+    }
+  }
+
+  if (elapsed !== null) {
+    return elapsed
+  }
+
+  if (hasYearOrDay || (hasMonthOrMinute && !hasHourOrSecond)) {
+    return 'date'
+  }
+
+  return hasHourOrSecond ? 'time' : null
+}
+
+function builtInFormatOf(formatId: number): SerialFormat | null {
+  if (formatId === BUILT_IN_ELAPSED_HOURS_FORMAT) {
+    return 'elapsedHours'
+  }
+
+  if (BUILT_IN_TIME_FORMATS.has(formatId)) {
+    return 'time'
+  }
+
+  return BUILT_IN_DATE_FORMATS.has(formatId) ? 'date' : null
+}
+
+function pad(part: number): string {
+  return String(part).padStart(2, '0')
+}
+
+function formatElapsed(serial: number, format: SerialFormat): string | null {
+  if (serial < 0 || serial > MAX_ELAPSED_SERIAL) {
+    return null
+  }
+
+  const totalSeconds = Math.round(serial * SECONDS_PER_DAY)
+
+  if (format === 'elapsedSeconds') {
+    return String(totalSeconds)
+  }
+
+  const seconds = totalSeconds % 60
+
+  if (format === 'elapsedMinutes') {
+    return `${Math.floor(totalSeconds / 60)}:${pad(seconds)}`
+  }
+
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+
+  return `${Math.floor(totalSeconds / 3600)}:${pad(minutes)}:${pad(seconds)}`
+}
+
+function formatSerial(
+  raw: string,
+  date1904: boolean,
+  format: SerialFormat,
+): string | null {
   const serial = Number(raw)
 
-  if (!Number.isFinite(serial) || serial <= 0 || serial > LAST_SERIAL) {
+  if (raw === '' || !Number.isFinite(serial)) {
+    return null
+  }
+
+  if (format !== 'date' && format !== 'time') {
+    return formatElapsed(serial, format)
+  }
+
+  if (serial <= 0 || serial > LAST_SERIAL) {
     return null
   }
 
@@ -131,9 +254,9 @@ function formatSerial(raw: string, date1904: boolean): string | null {
     Math.floor(seconds / 3600),
     Math.floor((seconds % 3600) / 60),
     seconds % 60,
-  ].map(part => String(part).padStart(2, '0')).join(':')
+  ].map(pad).join(':')
 
-  if (wholeDays === 0) {
+  if (wholeDays === 0 || format === 'time') {
     return time
   }
 
@@ -154,8 +277,9 @@ function formatSerial(raw: string, date1904: boolean): string | null {
   return seconds === 0 ? date : `${date}T${time}`
 }
 
-function readWorkbook(pkg: OfficePackage): Workbook {
-  const entry = findEntry(pkg, WORKBOOK_PART)
+function readWorkbook(officePackage: OfficePackage): Workbook {
+  const workbookPart = officePackage.mainPart || WORKBOOK_PART
+  const entry = findEntry(officePackage, workbookPart)
 
   if (!entry) {
     throw new ExtractError(
@@ -167,7 +291,7 @@ function readWorkbook(pkg: OfficePackage): Workbook {
   const declared: Array<{ name: string, relationshipId: string | null }> = []
   let date1904 = false
 
-  scanPart(pkg, entry, (events) => {
+  scanPart(officePackage, entry, (events) => {
     declared.length = 0
     date1904 = false
 
@@ -191,18 +315,26 @@ function readWorkbook(pkg: OfficePackage): Workbook {
     return false
   }, { keepAttributePrefixes: true })
 
-  const relationships = readRelationships(pkg, WORKBOOK_PART)
+  const relationships = readRelationships(officePackage, workbookPart)
   const byId = new Map(relationships.map((relationship) => {
     return [relationship.id, relationship] as const
   }))
   const sheets: SheetReference[] = []
+  const seenParts = new Set<string>()
 
   for (const sheet of declared) {
     const relationship = sheet.relationshipId === null
       ? undefined
       : byId.get(sheet.relationshipId)
 
-    if (relationship?.type.endsWith(WORKSHEET_TYPE_SUFFIX)) {
+    if (!relationship?.type.endsWith(WORKSHEET_TYPE_SUFFIX)) {
+      continue
+    }
+
+    const partKey = relationship.target.toLowerCase()
+
+    if (!seenParts.has(partKey)) {
+      seenParts.add(partKey)
       sheets.push({ name: sheet.name, partName: relationship.target })
     }
   }
@@ -222,42 +354,48 @@ function readWorkbook(pkg: OfficePackage): Workbook {
   }
 }
 
-function readDateStyles(pkg: OfficePackage, partName: string): Set<number> {
-  const dateStyles = new Set<number>()
-  const entry = findEntry(pkg, partName)
+function readSerialFormats(
+  officePackage: OfficePackage,
+  partName: string,
+): Map<number, SerialFormat> {
+  const serialFormats = new Map<number, SerialFormat>()
+  const entry = findEntry(officePackage, partName)
 
   if (!entry) {
-    return dateStyles
+    return serialFormats
   }
 
-  scanPart(pkg, entry, (events) => {
-    dateStyles.clear()
+  scanPart(officePackage, entry, (events) => {
+    serialFormats.clear()
 
-    const customFormats = new Map<number, string>()
+    const customFormats = new Map<number, SerialFormat | null>()
     let isInCellFormats = false
     let styleIndex = 0
 
     for (const event of events) {
       if (event.type === 'start') {
-        if (event.name === 'numFmt') {
+        if (event.name === 'numFmt' && customFormats.size < FORMATS_MAX) {
           customFormats.set(
             Number(event.attributes.numFmtId),
-            event.attributes.formatCode ?? '',
+            classifyFormatCode(event.attributes.formatCode ?? ''),
           )
         } else if (event.name === 'cellXfs') {
           isInCellFormats = true
         } else if (event.name === 'xf' && isInCellFormats) {
           const formatId = Number(event.attributes.numFmtId ?? 0)
-          const customCode = customFormats.get(formatId)
-          const isDate = customCode === undefined
-            ? BUILT_IN_DATE_FORMATS.has(formatId)
-            : isDateFormatCode(customCode)
+          const format = customFormats.has(formatId)
+            ? customFormats.get(formatId)
+            : builtInFormatOf(formatId)
 
-          if (isDate) {
-            dateStyles.add(styleIndex)
+          if (format) {
+            serialFormats.set(styleIndex, format)
           }
 
           styleIndex += 1
+
+          if (styleIndex >= STYLES_MAX) {
+            return true
+          }
         }
       } else if (event.type === 'end' && event.name === 'cellXfs') {
         return true
@@ -267,150 +405,190 @@ function readDateStyles(pkg: OfficePackage, partName: string): Set<number> {
     return false
   })
 
-  return dateStyles
+  return serialFormats
 }
 
 class SharedStrings {
-  private readonly strings = new Map<number, string>()
+  private readonly strings: string[] = []
   private readonly needed = new Set<number>()
+  private readonly officePackage: OfficePackage
+  private readonly part: WindowedPart | null
+  private events: Iterator<XmlEvent> | null = null
   private knownRecordCount: number | null = null
   private highestNeeded = -1
-  private readonly pkg: OfficePackage
-  private readonly entry: ZipEntry | null
+  private storedCharacters = 0
+  private position = 0
+  private isInRecord = false
+  private isWanted = false
+  private isInText = false
+  private phoneticDepth = 0
+  private value = ''
 
-  constructor(pkg: OfficePackage, entry: ZipEntry | null) {
-    this.pkg = pkg
-    this.entry = entry
+  constructor(officePackage: OfficePackage, entry: ZipEntry | null) {
+    this.officePackage = officePackage
+    this.part = entry === null
+      ? null
+      : new WindowedPart(officePackage, entry, SHARED_STRING_RECORD)
   }
 
   resolve(index: number): string {
-    return this.strings.get(index) ?? ''
+    return this.strings[index] ?? ''
   }
 
+  /**
+   * Makes the strings at `indexes` available. The part is read forward only
+   * as far as the highest index asked for. Every record passed on the way is
+   * kept, up to a character budget, so a later sheet that shares strings with
+   * an earlier one finds them; the part is read again from the start only
+   * when a record was passed after that budget was spent.
+   */
   ensure(indexes: Iterable<number>): void {
-    if (this.entry === null) {
+    if (this.part === null) {
       return
     }
 
     let hasNew = false
+    let isBehind = false
 
     for (const index of indexes) {
       const isBeyondTable = this.knownRecordCount !== null
         && index >= this.knownRecordCount
 
-      if (!isBeyondTable && !this.needed.has(index)) {
-        this.needed.add(index)
-        this.highestNeeded = Math.max(this.highestNeeded, index)
-        hasNew = true
+      if (
+        isBeyondTable
+        || this.strings[index] !== undefined
+        || this.needed.has(index)
+      ) {
+        continue
       }
+
+      this.needed.add(index)
+      this.highestNeeded = Math.max(this.highestNeeded, index)
+      hasNew = true
+      isBehind = isBehind || index < this.position
     }
 
-    if (hasNew) {
-      this.load()
+    if (!hasNew) {
+      return
+    }
+
+    if (isBehind) {
+      this.part.rewind()
+      this.events = null
+      this.position = 0
+      this.isInRecord = false
+    }
+
+    this.advance(this.part)
+  }
+
+  private advance(part: WindowedPart): void {
+    while (this.position <= this.highestNeeded) {
+      if (this.events === null) {
+        const text = part.next()
+
+        if (text === null) {
+          this.knownRecordCount = this.position
+
+          if (part.isCut) {
+            addTruncation(this.officePackage.stats, 'part_limit')
+          }
+
+          return
+        }
+
+        this.events = meterEvents(
+          this.officePackage,
+          parseXml(text, { attributesMax: ATTRIBUTES_MAX }),
+        )[Symbol.iterator]()
+      }
+
+      const step = this.events.next()
+
+      if (step.done) {
+        this.events = null
+        continue
+      }
+
+      this.consume(step.value)
     }
   }
 
-  private load(): void {
-    const { pkg, needed, strings } = this
-    const { cellCharsMax } = pkg.limits
-    const highest = this.highestNeeded
-    let position = 0
-    let hasTruncatedString = false
-
-    const outcome = scanPartWindows(
-      pkg,
-      this.entry as ZipEntry,
-      RECORD_END,
-      (windowText, isFirstWindow) => {
-        if (isFirstWindow) {
-          strings.clear()
-          position = 0
-        }
-
-        let cursor = 0
-
-        for (;;) {
-          const recordEnd = windowText.indexOf(RECORD_END, cursor)
-
-          if (recordEnd === -1) {
-            return false
-          }
-
-          const nextCursor = recordEnd + RECORD_END.length
-
-          if (needed.has(position)) {
-            const value = readSharedStringText(
-              windowText.slice(cursor, nextCursor),
-            )
-
-            hasTruncatedString = hasTruncatedString
-              || value.length > cellCharsMax
-            strings.set(position, cutToCharacters(value, cellCharsMax))
-          }
-
-          position += 1
-          cursor = nextCursor
-
-          if (position > highest) {
-            return true
-          }
-        }
-      },
-    )
-
-    this.knownRecordCount = outcome.enough ? null : position
-
-    if (outcome.cut) {
-      addTruncation(pkg.stats, 'part_limit')
-    }
-
-    if (hasTruncatedString) {
-      addTruncation(pkg.stats, 'cell_chars_limit')
-    }
-  }
-}
-
-function readSharedStringText(record: string): string {
-  let value = ''
-  let isInText = false
-  let phoneticDepth = 0
-
-  for (const event of parseXml(record)) {
+  private consume(event: XmlEvent): void {
     if (event.type === 'start') {
-      if (event.name === 'rPh') {
-        phoneticDepth += 1
-      } else if (event.name === 't') {
-        isInText = phoneticDepth === 0
+      if (event.name === 'si') {
+        this.isInRecord = true
+        this.isWanted = this.needed.has(this.position)
+          || this.storedCharacters < STORED_CHARACTERS_MAX
+        this.isInText = false
+        this.phoneticDepth = 0
+        this.value = ''
+      } else if (this.isInRecord && event.name === 'rPh') {
+        this.phoneticDepth += 1
+      } else if (this.isInRecord && event.name === 't') {
+        this.isInText = this.phoneticDepth === 0
       }
-    } else if (event.type === 'text') {
-      if (isInText) {
-        value += event.text
+
+      return
+    }
+
+    if (event.type === 'text') {
+      const { cellCharsMax } = this.officePackage.limits
+
+      if (this.isInText && this.isWanted && this.value.length <= cellCharsMax) {
+        this.value += event.text
       }
-    } else if (event.name === 't') {
-      isInText = false
+
+      return
+    }
+
+    if (event.name === 't') {
+      this.isInText = false
     } else if (event.name === 'rPh') {
-      phoneticDepth -= 1
+      this.phoneticDepth -= 1
+    } else if (event.name === 'si') {
+      this.finishRecord()
     }
   }
 
-  return value
+  private finishRecord(): void {
+    const { cellCharsMax } = this.officePackage.limits
+
+    if (this.isWanted) {
+      if (this.value.length > cellCharsMax) {
+        addTruncation(this.officePackage.stats, 'cell_chars_limit')
+      }
+
+      const kept = cutToCharacters(this.value, cellCharsMax)
+
+      this.strings[this.position] = kept
+      this.storedCharacters += kept.length
+    }
+
+    this.position += 1
+    this.isInRecord = false
+    this.isWanted = false
+    this.value = ''
+  }
 }
 
 function readSheet(
-  pkg: OfficePackage,
+  officePackage: OfficePackage,
   entry: ZipEntry,
-  dateStyles: Set<number>,
+  serialFormats: Map<number, SerialFormat>,
   date1904: boolean,
   cellsAvailable: number,
 ): { data: SheetData, isCut: boolean } {
-  const { rowsMax, columnsMax, cellCharsMax } = pkg.limits
+  const { rowsMax, columnsMax, cellCharsMax } = officePackage.limits
   let data = createSheetData()
 
-  const outcome = scanPart(pkg, entry, (events) => {
+  const outcome = scanPart(officePackage, entry, (events) => {
     data = createSheetData()
 
     let isInSheetData = false
     let rowCells: RawCell[] = []
+    let rowNumber = 0
+    let lastRowNumber = 0
     let nextColumn = 0
     let column: number | null = null
     let type = 'n'
@@ -429,6 +607,11 @@ function readSheet(
         } else if (!isInSheetData) {
           continue
         } else if (event.name === 'row') {
+          const declared = Number.parseInt(event.attributes.r ?? '', 10)
+
+          rowNumber = Number.isInteger(declared) && declared > lastRowNumber
+            ? declared
+            : lastRowNumber + 1
           rowCells = []
           nextColumn = 0
         } else if (event.name === 'c') {
@@ -468,7 +651,7 @@ function readSheet(
           styleIndex,
           valueText,
           inlineText,
-          dateStyles,
+          serialFormats,
           date1904,
         )
 
@@ -486,6 +669,10 @@ function readSheet(
         if (data.cellCount >= cellsAvailable) {
           data.hasCellLimit = true
 
+          if (rowCells.length > 0 && data.rows.length < rowsMax) {
+            data.rows.push({ number: rowNumber, cells: rowCells })
+          }
+
           return true
         }
 
@@ -502,6 +689,8 @@ function readSheet(
 
         rowCells.push(cell)
       } else if (event.name === 'row') {
+        lastRowNumber = rowNumber
+
         if (rowCells.length === 0) {
           continue
         }
@@ -512,7 +701,7 @@ function readSheet(
           return true
         }
 
-        data.rows.push(rowCells)
+        data.rows.push({ number: rowNumber, cells: rowCells })
         rowCells = []
       } else if (event.name === 'sheetData') {
         return true
@@ -543,7 +732,7 @@ function buildCell(
   styleIndex: number,
   valueText: string,
   inlineText: string,
-  dateStyles: Set<number>,
+  serialFormats: Map<number, SerialFormat>,
   date1904: boolean,
 ): RawCell | null {
   if (type === 's') {
@@ -560,8 +749,12 @@ function buildCell(
     text = inlineText
   } else if (type === 'b') {
     text = valueText.trim() === '1' ? 'TRUE' : 'FALSE'
-  } else if (type === 'n' && dateStyles.has(styleIndex)) {
-    text = formatSerial(valueText.trim(), date1904) ?? valueText.trim()
+  } else if (type === 'n' && serialFormats.has(styleIndex)) {
+    text = formatSerial(
+      valueText.trim(),
+      date1904,
+      serialFormats.get(styleIndex) as SerialFormat,
+    ) ?? valueText.trim()
   } else {
     text = valueText.trim()
   }
@@ -593,13 +786,13 @@ function renderRow(row: RawCell[], shared: SharedStrings): string | null {
   return hasText ? fields.join(',') : null
 }
 
-export function extractXlsx(pkg: OfficePackage): ExtractionOutput {
-  const { limits, stats } = pkg
-  const workbook = readWorkbook(pkg)
-  const dateStyles = readDateStyles(pkg, workbook.stylesPart)
+export function extractXlsx(officePackage: OfficePackage): ExtractionOutput {
+  const { limits, stats } = officePackage
+  const workbook = readWorkbook(officePackage)
+  const serialFormats = readSerialFormats(officePackage, workbook.stylesPart)
   const shared = new SharedStrings(
-    pkg,
-    findEntry(pkg, workbook.sharedStringsPart),
+    officePackage,
+    findEntry(officePackage, workbook.sharedStringsPart),
   )
   const sink = new TextSink(limits.textBytesMax)
   const sheetsIncluded = Math.min(workbook.sheets.length, limits.sheetsMax)
@@ -614,16 +807,16 @@ export function extractXlsx(pkg: OfficePackage): ExtractionOutput {
   }
 
   for (const sheet of workbook.sheets.slice(0, sheetsIncluded)) {
-    const entry = findEntry(pkg, sheet.partName)
+    const entry = findEntry(officePackage, sheet.partName)
 
     if (!entry) {
       continue
     }
 
     const { data, isCut } = readSheet(
-      pkg,
+      officePackage,
       entry,
-      dateStyles,
+      serialFormats,
       workbook.date1904,
       limits.cellsMax - cellsUsed,
     )
@@ -634,9 +827,10 @@ export function extractXlsx(pkg: OfficePackage): ExtractionOutput {
     sink.add(`## Sheet: ${sheet.name}`)
 
     let rowsWritten = 0
+    let previousRowNumber = 0
 
     for (const row of data.rows) {
-      const line = renderRow(row, shared)
+      const line = renderRow(row.cells, shared)
 
       if (line === null) {
         continue
@@ -644,6 +838,14 @@ export function extractXlsx(pkg: OfficePackage): ExtractionOutput {
 
       hasContent = true
       rowsWritten += 1
+
+      if (rowsWritten > 1) {
+        sink.addBlankLines(
+          Math.min(row.number - previousRowNumber - 1, ROW_GAP_MAX),
+        )
+      }
+
+      previousRowNumber = row.number
 
       if (!sink.add(line, rowsWritten === 1 ? 'block' : 'line')) {
         break
