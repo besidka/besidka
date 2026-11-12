@@ -215,28 +215,45 @@ async function returnFromPreview(scrollTop: number): Promise<void> {
   selectTabRef.value?.setScrollTop(scrollTop)
 }
 
+function abandonPreviewReturn(): void {
+  cancelPreviewReturn()
+  resetModalState()
+}
+
+function isEditableOutsideSidePanel(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  if (target.closest('.js-side-panel, .js-side-panel-sheet')) {
+    return false
+  }
+
+  return !!target.closest('textarea, input, [contenteditable]')
+}
+
 /**
  * The side panel lives outside the dialog's top layer, so the dialog is
  * closed while a preview shows. Its state (tab, filter, search, selection)
  * is kept and the dialog reopens with the same scroll position once the side
- * panel closes. If the panel is taken over by another view or the user leaves
- * the page, the kept state is dropped instead.
+ * panel closes. The kept state is dropped, so the dialog cannot pop up later
+ * by surprise, when another view takes the panel, the route changes, or the
+ * user moves on to the composer or any other field.
  */
 function closeForPreview(documentId: string): void {
-  const returnPath = route.fullPath
   const scrollTop = selectTabRef.value?.getScrollTop() ?? 0
 
   cancelPreviewReturn()
-  stopPreviewReturnWatch.value = watch(
+
+  const stopPanelWatch = watch(
     () => documentPreview.isShowing(documentId),
     async (isShowing) => {
       if (isShowing) {
         return
       }
 
-      if (sidePanel.isOpen.value || route.fullPath !== returnPath) {
-        cancelPreviewReturn()
-        resetModalState()
+      if (sidePanel.isOpen.value) {
+        abandonPreviewReturn()
 
         return
       }
@@ -245,7 +262,20 @@ function closeForPreview(documentId: string): void {
     },
     { flush: 'post' },
   )
+  const stopRouteWatch = watch(() => route.fullPath, abandonPreviewReturn)
+  const onFocusIn = (event: FocusEvent) => {
+    if (isEditableOutsideSidePanel(event.target)) {
+      abandonPreviewReturn()
+    }
+  }
+
+  stopPreviewReturnWatch.value = () => {
+    stopPanelWatch()
+    stopRouteWatch()
+    document.removeEventListener('focusin', onFocusIn)
+  }
   close()
+  document.addEventListener('focusin', onFocusIn)
 }
 
 function onFilesAttached(files: FileManagerFile[]) {

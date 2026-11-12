@@ -338,6 +338,59 @@ describe('ChatInput/Files/Modal.client', () => {
             .toHaveBeenCalledTimes(2)
         })
 
+      it('drops the kept state and stays closed when the route changes', async () => {
+        const wrapper = await previewDocument()
+        const router = useRouter()
+
+        await router.push('/profile/keys')
+        await flushPromises()
+        useSidePanel().close()
+        await flushPromises()
+        await wrapper.get('[data-testid="files-modal"]').trigger('close')
+
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+      })
+
+      it('drops the kept state when the user focuses a field outside the panel', async () => {
+        const wrapper = await previewDocument()
+        const composer = document.createElement('textarea')
+
+        document.body.appendChild(composer)
+        composer.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+        await flushPromises()
+        useSidePanel().close()
+        await flushPromises()
+        composer.remove()
+        await wrapper.get('[data-testid="files-modal"]').trigger('close')
+
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+      })
+
+      it('keeps the kept state when focus lands in the side panel', async () => {
+        const wrapper = await previewDocument()
+        const panel = document.createElement('div')
+        const field = document.createElement('input')
+
+        panel.className = 'js-side-panel'
+        panel.appendChild(field)
+        document.body.appendChild(panel)
+        field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+        await flushPromises()
+        panel.remove()
+        Object.defineProperty(
+          wrapper.get('[data-testid="files-modal"]').element,
+          'open',
+          { value: false, configurable: true },
+        )
+        useSidePanel().close()
+        await flushPromises()
+
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledTimes(2)
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+      })
+
       it('resets the kept state when the file manager is opened afresh',
         async () => {
           const wrapper = await previewDocument()
