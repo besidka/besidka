@@ -17,6 +17,13 @@ import {
   SUPPORTED_SPEC_VERSIONS,
 } from '@besidka/doc-renderer/spec'
 import {
+  EXTRACT_FORMATS,
+  EXTRACT_LIMITS,
+  EXTRACT_VERSION,
+  extractOfficeText,
+} from '@besidka/doc-renderer/extract'
+import type { ExtractFormat } from '@besidka/doc-renderer/extract'
+import {
   validate,
   VALIDATED_FORMATS,
   VALIDATION_LIMITS,
@@ -27,6 +34,8 @@ import workerPackage from '../package.json'
 import { CREATED_VIA_VALUES } from './contract'
 import type {
   DocumentFormat,
+  ExtractRequest,
+  ExtractResult,
   RenderAssetInput,
   RenderFailure,
   RenderFailureCode,
@@ -68,6 +77,12 @@ export function getCapabilities(): RendererCapabilities {
     specVersions: [...SUPPORTED_SPEC_VERSIONS],
     formats: [...VALIDATED_FORMATS],
     maxOutputBytes: VALIDATION_LIMITS.fileBytesMax,
+    extract: {
+      version: EXTRACT_VERSION,
+      formats: [...EXTRACT_FORMATS],
+      maxInputBytes: EXTRACT_LIMITS.fileBytesMax,
+      maxTextBytes: EXTRACT_LIMITS.textBytesMax,
+    },
   }
 }
 
@@ -339,5 +354,34 @@ export function validateDocument(request: ValidateRequest): ValidateResult {
     return validate('xlsx', request.bytes, { spec: parsed.spec })
   } catch {
     return validationFailure('validation_error', UNEXPECTED_DETAIL)
+  }
+}
+
+function extractFailure(
+  errorCode: string,
+  inputBytes: number,
+): ExtractResult {
+  return {
+    status: 'failed',
+    text: '',
+    truncated: false,
+    stats: { inputBytes, entries: 0, textBytes: 0, truncations: [] },
+    errorCode,
+  }
+}
+
+export function extractDocumentText(request: ExtractRequest): ExtractResult {
+  try {
+    if (!isRecord(request) || !(request.bytes instanceof Uint8Array)) {
+      return extractFailure('bad_request', 0)
+    }
+
+    if (!EXTRACT_FORMATS.includes(request.format as ExtractFormat)) {
+      return extractFailure('unsupported_format', request.bytes.length)
+    }
+
+    return extractOfficeText(request.bytes, request.format)
+  } catch {
+    return extractFailure('extract_error', 0)
   }
 }

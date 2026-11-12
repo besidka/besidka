@@ -141,6 +141,67 @@ describe('DocRenderer entrypoint', () => {
       specVersions: [1],
       formats: ['pdf', 'docx', 'pptx', 'xlsx'],
       maxOutputBytes: 20 * 1024 * 1024,
+      extract: {
+        version: 1,
+        formats: ['docx', 'xlsx', 'pptx'],
+        maxInputBytes: 30 * 1024 * 1024,
+        maxTextBytes: 1024 * 1024,
+      },
+    })
+  })
+
+  it.each(['docx', 'pptx', 'xlsx'] as const)(
+    'extracts the text of a rendered %s',
+    async (format) => {
+      const rendered = await createRenderer().render(
+        createRequest(SPECS[format]),
+      )
+
+      expect(rendered.ok).toBe(true)
+
+      if (!rendered.ok) {
+        return
+      }
+
+      const result = await createRenderer().extract({
+        format,
+        bytes: rendered.bytes,
+      })
+
+      expect(result.status).toBe('ready')
+      expect(result.truncated).toBe(false)
+      expect(result.text.length).toBeGreaterThan(5)
+    },
+  )
+
+  it('returns failure values from extract, never an exception', async () => {
+    const renderer = createRenderer()
+    const garbage = await renderer.extract({
+      format: 'docx',
+      bytes: new Uint8Array([1, 2, 3, 4]),
+    })
+    const badFormat = await renderer.extract({
+      format: 'pdf' as never,
+      bytes: new Uint8Array(4),
+    })
+    const badBytes = await renderer.extract({
+      format: 'docx',
+      bytes: 'text' as never,
+    })
+    const badRequest = await renderer.extract(null as never)
+
+    expect(garbage).toMatchObject({ status: 'failed', errorCode: 'zip_invalid' })
+    expect(badFormat).toMatchObject({
+      status: 'failed',
+      errorCode: 'unsupported_format',
+    })
+    expect(badBytes).toMatchObject({
+      status: 'failed',
+      errorCode: 'bad_request',
+    })
+    expect(badRequest).toMatchObject({
+      status: 'failed',
+      errorCode: 'bad_request',
     })
   })
 

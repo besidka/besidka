@@ -5,6 +5,8 @@ import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type {
   DocumentRendererService,
+  ExtractRequest,
+  ExtractResult,
   RendererCapabilities,
   RenderFailureCode,
   RenderRequest,
@@ -13,7 +15,7 @@ import type {
   ValidateResult,
 } from '~~/workers/doc-renderer/src/contract'
 
-type RendererOperation = 'capabilities' | 'render' | 'validate'
+type RendererOperation = 'capabilities' | 'render' | 'validate' | 'extract'
 
 export const RENDERER_CAPABILITIES_TTL_MS = 5 * 60 * 1000
 
@@ -79,6 +81,9 @@ function setRendererLog(
     durationMs: number
     bytes?: number
     rendererVersion?: string
+    status?: string
+    textBytes?: number
+    truncated?: boolean
   },
 ): void {
   logger?.set({
@@ -229,6 +234,87 @@ export async function validateDocumentBytes(
   })
 
   return result
+}
+
+const RENDERER_UNAVAILABLE_CODE = 'renderer_unavailable'
+
+function createUnavailableExtraction(request: ExtractRequest): ExtractResult {
+  return {
+    status: 'failed',
+    text: '',
+    truncated: false,
+    stats: {
+      inputBytes: request.bytes.length,
+      entries: 0,
+      textBytes: 0,
+      truncations: [],
+    },
+    errorCode: RENDERER_UNAVAILABLE_CODE,
+  }
+}
+
+/**
+ * Extracts Markdown text from a DOCX, XLSX or PPTX through the binding. It
+ * never throws: a missing binding, a satellite deployed before `extract`
+ * existed (no `extract` entry in its capabilities) and a failed call all come
+ * back as `failed` with `renderer_unavailable`, so a caller can store that
+ * state and retry later instead of failing the request that stored the file.
+ * Only sizes and codes are logged, never the text.
+ */
+export async function extractOfficeText(
+  request: ExtractRequest,
+  logger?: LoggerLike,
+): Promise<ExtractResult> {
+  const startedAt = Date.now()
+
+  try {
+    const capabilities = await getRendererCapabilities(logger)
+
+    if (!capabilities.extract?.formats.includes(request.format)) {
+      setRendererLog(logger, {
+        operation: 'extract',
+        format: request.format,
+        ok: false,
+        code: RENDERER_UNAVAILABLE_CODE,
+        durationMs: Date.now() - startedAt,
+        rendererVersion: capabilities.rendererVersion,
+      })
+
+      return createUnavailableExtraction(request)
+    }
+
+    const result = await callRenderer(
+      'extract',
+      logger,
+      renderer => renderer.extract(request),
+      request.format,
+    )
+
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: result.status === 'ready' || result.status === 'empty',
+      code: result.errorCode,
+      status: result.status,
+      durationMs: Date.now() - startedAt,
+      bytes: request.bytes.length,
+      textBytes: result.stats.textBytes,
+      truncated: result.truncated,
+      rendererVersion: capabilities.rendererVersion,
+    })
+
+    return result
+  } catch {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: RENDERER_UNAVAILABLE_CODE,
+      durationMs: Date.now() - startedAt,
+    })
+
+    return createUnavailableExtraction(request)
+  }
 }
 
 const CLIENT_FAILURE_CODES: readonly RenderFailureCode[] = [
