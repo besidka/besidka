@@ -289,6 +289,7 @@ export function getAffectedTests(changedFiles) {
   const documentsChatTests = [
     'tests/integration/api/chats-documents.spec.ts',
     'tests/integration/api/documents.spec.ts',
+    'tests/integration/api/documents-library.spec.ts',
     'tests/integration/api/files-kind-filter.spec.ts',
     'tests/integration/api/shared-documents.spec.ts',
     'tests/unit/components/Chat/Document.spec.ts',
@@ -312,6 +313,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/documents/link-message.spec.ts',
     'tests/unit/server/utils/documents/stored-spec.spec.ts',
     'tests/unit/utils/documents/file-name.spec.ts',
+    'tests/unit/utils/documents/library-helpers.spec.ts',
     'tests/unit/components/Chat/Document/Blocks.spec.ts',
     'tests/unit/components/Chat/Document/Slide.spec.ts',
     'tests/unit/utils/chats/share-pii-check.spec.ts',
@@ -329,6 +331,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
   const documentsFileManagerTests = [
+    'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/KindFilter.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
@@ -338,6 +341,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/integration/api/files-kind-filter.spec.ts',
     'tests/integration/api/files-index-source.spec.ts',
+    'tests/integration/api/files-index-document-id.spec.ts',
+  ]
+  const documentsLibraryTests = [
+    'tests/unit/pages/chats/documents/index.spec.ts',
+    'tests/unit/components/History/DocumentRow.spec.ts',
+    'tests/unit/components/History/DocumentFilter.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/Chat/DocumentPreview.spec.ts',
+    'tests/unit/composables/documents-library.spec.ts',
+    'tests/unit/utils/documents/library-helpers.spec.ts',
+    'tests/integration/api/documents-library.spec.ts',
   ]
   const documentRendererWorkerTests = [
     'tests/unit/workers/doc-renderer/index.spec.ts',
@@ -2472,8 +2487,13 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\/.*)?\.vue|app\/composables\/file-manager\.ts|app\/utils\/file-manager-sources\.ts|app\/types\/file-manager\.d\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/utils\/files\/source-filter\.ts)$/,
+        /^(app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\/.*)?\.vue|app\/composables\/(file-manager|document-preview)\.ts|app\/utils\/file-manager-sources\.ts|app\/types\/file-manager\.d\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/utils\/files\/source-filter\.ts|tests\/setup\/helpers\/knowledge-db\.ts)$/,
       tests: documentsFileManagerTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/documents\/index\.vue|app\/components\/History\/(DocumentRow|DocumentFilter|PageShell)\.vue|app\/composables\/(documents-library|document-preview)\.ts|app\/components\/Search\/Modal\.client\.vue|server\/api\/v1\/documents\/index\.get\.ts|server\/utils\/documents\/library\.ts|shared\/utils\/documents\.ts)$/,
+      tests: documentsLibraryTests,
     },
     {
       pattern:

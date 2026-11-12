@@ -77,7 +77,7 @@
           </div>
         </td>
         <td>
-          <div class="max-w-[150px] lg:max-w-sm">
+          <div class="max-w-[110px] xs:max-w-[150px] lg:max-w-sm">
             <span
               class="block lg:hidden"
               :title="file.name"
@@ -133,6 +133,17 @@
         </td>
         <td @click.stop>
           <div class="flex justify-end gap-0.5">
+            <button
+              v-if="canPreviewFile(file)"
+              type="button"
+              class="btn btn-circle btn-xs btn-ghost"
+              aria-label="Preview document"
+              title="Preview"
+              data-testid="files-action-preview"
+              @click="$emit('preview', file)"
+            >
+              <Icon name="lucide:eye" size="12" />
+            </button>
             <a
               :href="getFileDownloadUrl(file.storageKey)"
               class="btn btn-circle btn-xs btn-ghost"
@@ -187,10 +198,13 @@ withDefaults(defineProps<{
 
 defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]
+  'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
   'toggle-select-all': []
 }>()
+
+const { canPreviewFile } = useDocumentPreview()
 
 const containerRef = useTemplateRef<HTMLTableElement>('containerRef')
 

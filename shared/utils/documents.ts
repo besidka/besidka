@@ -249,3 +249,60 @@ export function getDocumentFileName(
 
   return `${cleaned || 'document'}.${format}`
 }
+
+export const DOCUMENT_LIBRARY_SOURCES = ['chat', 'mcp'] as const
+
+export type DocumentLibrarySource = typeof DOCUMENT_LIBRARY_SOURCES[number]
+
+export type DocumentFormatCounts = Record<DocumentFormat, number>
+
+export type DocumentSourceCounts = Record<DocumentLibrarySource, number>
+
+export interface DocumentLibraryItem {
+  id: string
+  format: DocumentFormat
+  title: string
+  source: DocumentLibrarySource
+  fileId: string
+  fileName: string
+  storageKey: string
+  size: number
+  stats: DocumentStats | null
+  originChatSlug: string | null
+  originChatTitle: string | null
+  createdAt: string
+}
+
+export function createEmptyDocumentFormatCounts(): DocumentFormatCounts {
+  return { pdf: 0, docx: 0, pptx: 0, xlsx: 0 }
+}
+
+export function createEmptyDocumentSourceCounts(): DocumentSourceCounts {
+  return { chat: 0, mcp: 0 }
+}
+
+export function getDocumentFormatFromMediaType(
+  mediaType: string,
+): DocumentFormat | null {
+  const format = DOCUMENT_FORMATS.find((candidate) => {
+    return DOCUMENT_MEDIA_TYPES[candidate] === mediaType
+  })
+
+  return format ?? null
+}
+
+/**
+ * The name shown for a document: the stored file name without its format
+ * extension, so a rename of the file is visible in the library.
+ */
+export function getDocumentDisplayTitle(
+  fileName: string,
+  format: DocumentFormat,
+): string {
+  const extension = `.${format}`
+  const stem = fileName.toLowerCase().endsWith(extension)
+    ? fileName.slice(0, -extension.length)
+    : fileName
+
+  return stem.trim() || fileName
+}

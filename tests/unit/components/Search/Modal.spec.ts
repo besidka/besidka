@@ -25,6 +25,7 @@ const sidebarPinned = ref<boolean>(false)
 const loggedIn = ref<boolean>(true)
 const isAdmin = ref<boolean>(false)
 const artifactsActive = ref<boolean>(false)
+const documentsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -44,12 +45,12 @@ mockNuxtImport('useAuth', () => {
 })
 
 mockNuxtImport('useFeature', () => {
-  return () => computed(() => {
-    return {
-      enabled: artifactsActive.value,
-      active: artifactsActive.value,
-      variant: null,
-    }
+  return (key: string) => computed(() => {
+    const active = key === 'documents'
+      ? documentsActive.value
+      : artifactsActive.value
+
+    return { enabled: active, active, variant: null }
   })
 })
 
@@ -126,6 +127,7 @@ describe('Search/Modal.client', () => {
     loggedIn.value = true
     isAdmin.value = false
     artifactsActive.value = false
+    documentsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -282,6 +284,46 @@ describe('Search/Modal.client', () => {
     await nextTick()
 
     expect(wrapper.find('#search-option-artifacts').exists()).toBe(false)
+  })
+
+  it('adds the Documents row after Artifacts only with the documents feature',
+    async () => {
+      artifactsActive.value = true
+      documentsActive.value = true
+      useSearchModal().isModalOpen.value = true
+
+      const wrapper = await mountModal()
+      await nextTick()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(ids.slice(0, 5)).toEqual([
+        'search-option-history',
+        'search-option-attachments',
+        'search-option-projects',
+        'search-option-artifacts',
+        'search-option-documents',
+      ])
+      expect(wrapper.get('#search-option-documents').text()).toBe('Documents')
+      expect(wrapper.get('#search-option-documents .iconify').classes())
+        .toContain('i-lucide:file-text')
+
+      await wrapper.find('#search-option-documents').trigger('click')
+
+      expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/documents')
+      expect(closeSpy).toHaveBeenCalled()
+    })
+
+  it('omits the Documents row without the documents feature', async () => {
+    artifactsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-artifacts').exists()).toBe(true)
+    expect(wrapper.find('#search-option-documents').exists()).toBe(false)
   })
 
   it('shows the Admin rows last in Settings only to admins', async () => {

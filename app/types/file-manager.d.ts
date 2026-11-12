@@ -13,7 +13,9 @@ export type FileManagerFile = Pick<
   | 'createdAt'
   | 'originModel'
   | 'generationCost'
->
+> & {
+  documentId?: string | null
+}
 
 export type ViewMode = 'grid' | 'list'
 export type FileSourceFilter = FileMetadata['source'] | 'project'

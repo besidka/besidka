@@ -4,18 +4,21 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import HistoryPageShell from '../../../../app/components/History/PageShell.vue'
 
 const artifactsActive = ref<boolean>(false)
+const documentsActive = ref<boolean>(false)
 
 mockNuxtImport('useFeature', () => {
-  return () => computed(() => {
-    return {
-      enabled: artifactsActive.value,
-      active: artifactsActive.value,
-      variant: null,
-    }
+  return (key: string) => computed(() => {
+    const active = key === 'documents'
+      ? documentsActive.value
+      : artifactsActive.value
+
+    return { enabled: active, active, variant: null }
   })
 })
 
-function mountShell(activeTab: 'chats' | 'projects' | 'shared' | 'artifacts') {
+type ShellTab = 'chats' | 'projects' | 'shared' | 'artifacts' | 'documents'
+
+function mountShell(activeTab: ShellTab) {
   return mountSuspended(HistoryPageShell, {
     props: {
       activeTab,
@@ -45,6 +48,7 @@ function mountShell(activeTab: 'chats' | 'projects' | 'shared' | 'artifacts') {
 describe('HistoryPageShell', () => {
   beforeEach(() => {
     artifactsActive.value = false
+    documentsActive.value = false
   })
 
   it('renders history navigation as page links styled like tabs', async () => {
@@ -81,6 +85,8 @@ describe('HistoryPageShell', () => {
       const artifactsTab = wrapper.get('[data-testid="tab-artifacts"]')
 
       expect(links).toHaveLength(4)
+      expect(wrapper.find('[data-testid="tab-documents"]').exists())
+        .toBe(false)
       expect(links[3]?.attributes('href')).toBe('/chats/artifacts')
       expect(artifactsTab.attributes('aria-current')).toBe('page')
       expect(artifactsTab.attributes('aria-label')).toBe('Artifacts')
@@ -105,4 +111,49 @@ describe('HistoryPageShell', () => {
     expect(wrapper.get('[data-testid="tab-shared"]').attributes('aria-label'))
       .toBe('Shared')
   })
+
+  it('adds only the Documents tab when only the documents feature is on',
+    async () => {
+      documentsActive.value = true
+
+      const wrapper = await mountShell('documents')
+      const links = wrapper.get('nav[aria-label="History sections"]')
+        .findAll('a')
+      const documentsTab = wrapper.get('[data-testid="tab-documents"]')
+
+      expect(links).toHaveLength(4)
+      expect(wrapper.find('[data-testid="tab-artifacts"]').exists())
+        .toBe(false)
+      expect(links[3]?.attributes('href')).toBe('/chats/documents')
+      expect(documentsTab.attributes('aria-current')).toBe('page')
+      expect(documentsTab.attributes('aria-label')).toBe('Documents')
+    })
+
+  it('puts Documents after Artifacts and collapses inactive labels',
+    async () => {
+      artifactsActive.value = true
+      documentsActive.value = true
+
+      const wrapper = await mountShell('documents')
+      const links = wrapper.get('nav[aria-label="History sections"]')
+        .findAll('a')
+      const labels = wrapper.findAll('nav a span:not(.iconify)')
+      const collapsed = labels.filter((label) => {
+        return label.classes().includes('@max-md:sr-only')
+      })
+
+      expect(links.map(link => link.attributes('href'))).toEqual([
+        '/chats/history',
+        '/chats/projects',
+        '/chats/shared',
+        '/chats/artifacts',
+        '/chats/documents',
+      ])
+      expect(collapsed.map(label => label.text())).toEqual([
+        'Chats',
+        'Projects',
+        'Shared',
+        'Artifacts',
+      ])
+    })
 })

@@ -60,6 +60,7 @@
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"
+              @preview="onFilePreview"
               @deleted="storageUsage?.fetch()"
             />
             <ChatInputFilesModalUpload
@@ -83,6 +84,10 @@
 
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
+import {
+  getDocumentDisplayTitle,
+  getDocumentFormatFromMediaType,
+} from '#shared/utils/documents'
 import type { FileManagerFile, FileSourceFilter } from '~/types/file-manager'
 
 type Tab = 'select' | 'upload'
@@ -104,6 +109,7 @@ const emit = defineEmits<{
   upload: [files: File[]]
 }>()
 
+const documentPreview = useDocumentPreview()
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 const closeBtn = useTemplateRef<HTMLButtonElement>('closeBtn')
 const storageUsage = useTemplateRef('storageUsage')
@@ -179,6 +185,22 @@ function onFilesAttached(files: FileManagerFile[]) {
 
   emit('attach', attachedFiles)
   close()
+}
+
+function onFilePreview(file: FileManagerFile) {
+  const format = getDocumentFormatFromMediaType(file.type)
+
+  if (!file.documentId || !format) {
+    return
+  }
+
+  close()
+  documentPreview.open({
+    documentId: file.documentId,
+    format,
+    title: getDocumentDisplayTitle(file.name, format),
+    storageKey: file.storageKey,
+  })
 }
 
 function onFilesDetached(fileIds: string[]) {

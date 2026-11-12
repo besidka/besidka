@@ -32,7 +32,8 @@
         />
         <span
           :class="{
-            '@max-md:sr-only': hasArtifactsTab && activeTab !== tab.id,
+            '@max-md:sr-only': tabs.length > BASE_TAB_COUNT
+              && activeTab !== tab.id,
           }"
         >
           {{ tab.label }}
@@ -51,57 +52,71 @@
 </template>
 
 <script setup lang="ts">
-type HistoryTab = 'chats' | 'projects' | 'shared' | 'artifacts'
+type HistoryTab
+  = | 'chats'
+    | 'projects'
+    | 'shared'
+    | 'artifacts'
+    | 'documents'
+
+interface HistoryTabLink {
+  id: HistoryTab
+  to: string
+  label: string
+  icon: string
+}
+
+const BASE_TAB_COUNT = 3
 
 defineProps<{
   activeTab: HistoryTab
 }>()
 
 const artifactsFeature = useFeature('artifacts')
+const documentsFeature = useFeature('documents')
 
-const hasArtifactsTab = computed<boolean>(() => {
-  return artifactsFeature.value.active
-})
-
-const tabs = computed<Array<{
-  id: HistoryTab
-  to: string
-  label: string
-  icon: string
-}>>(() => {
-  const baseTabs = [
+const tabs = computed<HistoryTabLink[]>(() => {
+  const baseTabs: HistoryTabLink[] = [
     {
-      id: 'chats' as const,
+      id: 'chats',
       to: '/chats/history',
       label: 'Chats',
       icon: 'lucide:message-circle',
     },
     {
-      id: 'projects' as const,
+      id: 'projects',
       to: '/chats/projects',
       label: 'Projects',
       icon: 'lucide:folder',
     },
     {
-      id: 'shared' as const,
+      id: 'shared',
       to: '/chats/shared',
       label: 'Shared',
       icon: 'lucide:share-2',
     },
   ]
 
-  if (!hasArtifactsTab.value) {
-    return baseTabs
-  }
+  const featureTabs: HistoryTabLink[] = []
 
-  return [
-    ...baseTabs,
-    {
-      id: 'artifacts' as const,
+  if (artifactsFeature.value.active) {
+    featureTabs.push({
+      id: 'artifacts',
       to: '/chats/artifacts',
       label: 'Artifacts',
       icon: 'lucide:app-window',
-    },
-  ]
+    })
+  }
+
+  if (documentsFeature.value.active) {
+    featureTabs.push({
+      id: 'documents',
+      to: '/chats/documents',
+      label: 'Documents',
+      icon: 'lucide:file-text',
+    })
+  }
+
+  return [...baseTabs, ...featureTabs]
 })
 </script>

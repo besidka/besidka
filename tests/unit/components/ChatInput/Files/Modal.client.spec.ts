@@ -3,6 +3,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Modal from '../../../../../app/components/ChatInput/Files/Modal.client.vue'
+import { useSidePanel } from '../../../../../app/composables/side-panel'
 
 enableAutoUnmount(afterEach)
 
@@ -13,7 +14,7 @@ const SelectStub = defineComponent({
     initialSource: { type: String, default: undefined },
     isImageInputSupported: { type: Boolean, default: true },
   },
-  emits: ['attach', 'detach', 'deleted'],
+  emits: ['attach', 'detach', 'deleted', 'preview'],
   setup(_props, { expose }) {
     expose({
       reset: vi.fn(),
@@ -144,5 +145,77 @@ describe('ChatInput/Files/Modal.client', () => {
       'sm:min-h-0',
     ]))
     expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+  })
+
+  describe('document preview', () => {
+    const documentFile = {
+      id: 'file-1',
+      storageKey: 'plan-1.docx',
+      name: 'Plan.docx',
+      size: 2048,
+      type: 'application/vnd.openxmlformats-officedocument'
+        + '.wordprocessingml.document',
+      source: 'assistant' as const,
+      createdAt: '2026-07-15T12:00:00.000Z',
+      documentId: 'doc-1',
+    }
+
+    beforeEach(() => {
+      useSidePanel().close()
+    })
+
+    afterEach(() => {
+      useSidePanel().close()
+    })
+
+    async function openSelectTab() {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+
+      exposed.open('select')
+      await wrapper.vm.$nextTick()
+
+      Object.defineProperty(
+        wrapper.get('[data-testid="files-modal"]').element,
+        'open',
+        { value: true, configurable: true },
+      )
+
+      return wrapper
+    }
+
+    it('closes the dialog and opens the document in the side panel',
+      async () => {
+        const wrapper = await openSelectTab()
+
+        wrapper.findComponent(SelectStub).vm.$emit('preview', documentFile)
+        await wrapper.vm.$nextTick()
+
+        const panel = useSidePanel()
+
+        expect(HTMLDialogElement.prototype.close).toHaveBeenCalledOnce()
+        expect(panel.viewKey.value).toBe('document:doc-1')
+        expect(panel.title.value).toBe('Plan')
+        expect(panel.currentView.value?.props).toEqual({
+          documentId: 'doc-1',
+          format: 'docx',
+          title: 'Plan',
+          viewUrl: '/files/plan-1.docx',
+          downloadUrl: '/files/plan-1.docx?download=1',
+        })
+      })
+
+    it('ignores a file without a document id', async () => {
+      const wrapper = await openSelectTab()
+
+      wrapper.findComponent(SelectStub).vm.$emit('preview', {
+        ...documentFile,
+        documentId: null,
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(useSidePanel().isOpen.value).toBe(false)
+      expect(HTMLDialogElement.prototype.close).not.toHaveBeenCalled()
+    })
   })
 })

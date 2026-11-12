@@ -101,6 +101,17 @@
         }"
         @click.stop
       >
+        <button
+          v-if="canPreviewFile(file)"
+          type="button"
+          class="btn btn-circle btn-xs btn-soft"
+          aria-label="Preview document"
+          title="Preview"
+          data-testid="files-action-preview"
+          @click="$emit('preview', file)"
+        >
+          <Icon name="lucide:eye" size="12" />
+        </button>
         <a
           :href="getFileDownloadUrl(file.storageKey)"
           class="btn btn-circle btn-xs btn-soft"
@@ -149,9 +160,12 @@ withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]
+  'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
 }>()
+
+const { canPreviewFile } = useDocumentPreview()
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 

@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import {
   filesKindFilters,
@@ -85,6 +86,13 @@ export default defineEventHandler(async (event) => {
         createdAt: schema.files.createdAt,
         originModel: schema.files.originModel,
         generationCost: schema.files.generationCost,
+        documentId: sql<number | null>`(
+          select ${schema.documents.id} from ${schema.documents}
+          where ${schema.documents.fileId} = ${schema.files.id}
+            and ${schema.documents.userId} = ${schema.files.userId}
+            and ${schema.documents.status} = 'ready'
+          limit 1
+        )`,
       })
       .from(schema.files)
       .where(whereConditions)
@@ -99,7 +107,14 @@ export default defineEventHandler(async (event) => {
   ])
 
   return {
-    files,
+    files: files.map((file) => {
+      return {
+        ...file,
+        documentId: file.documentId === null || file.documentId === undefined
+          ? null
+          : encodePublicId(Number(file.documentId)),
+      }
+    }),
     total: countResult?.count ?? 0,
     offset,
     limit,
