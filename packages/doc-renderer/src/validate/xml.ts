@@ -17,9 +17,16 @@ export class XmlError extends Error {
   }
 }
 
+export interface ParseXmlOptions {
+  keepAttributePrefixes?: boolean
+  attributesMax?: number
+}
+
 const ENTITY_PATTERN = /&(#x[0-9a-fA-F]{1,8}|#\d{1,9}|lt|gt|amp|quot|apos);/g
 const WHITESPACE = new Set([' ', '\t', '\n', '\r'])
 const MAX_CODE_POINT = 0x10FFFF
+const COMMENT_OPENER = '<!--'
+const CDATA_OPENER = '<![CDATA['
 
 function replaceEntity(_match: string, body: string): string {
   switch (body) {
@@ -134,9 +141,13 @@ export function decodeXmlBytes(data: Uint8Array): string {
  * document, a `>` inside an attribute value cannot end a tag early, comments
  * and processing instructions are skipped, CDATA is delivered as text and any
  * DTD or entity declaration is refused. Namespace prefixes are dropped from
- * element and attribute names.
+ * element names and, unless `keepAttributePrefixes` is set, from attribute
+ * names too; without it `id` and `r:id` on one element collide.
  */
-export function* parseXml(text: string): Generator<XmlEvent> {
+export function* parseXml(
+  text: string,
+  options: ParseXmlOptions = {},
+): Generator<XmlEvent> {
   let position = 0
 
   while (position < text.length) {
@@ -186,6 +197,16 @@ export function* parseXml(text: string): Generator<XmlEvent> {
     }
 
     if (text.startsWith('<!', open)) {
+      const opener = text.slice(open)
+      const isCutOpener = opener.length < CDATA_OPENER.length && (
+        COMMENT_OPENER.startsWith(opener)
+        || CDATA_OPENER.startsWith(opener)
+      )
+
+      if (isCutOpener) {
+        throw new XmlError('xml_malformed', 'Truncated comment or CDATA opener')
+      }
+
       throw new XmlError('xml_doctype', 'DOCTYPE or ENTITY declaration')
     }
 
@@ -214,6 +235,7 @@ export function* parseXml(text: string): Generator<XmlEvent> {
 
     const name = localName(text.slice(open + 1, cursor))
     const attributes: Record<string, string> = {}
+    let attributeCount = 0
     let selfClosing = false
 
     for (;;) {
@@ -283,7 +305,20 @@ export function* parseXml(text: string): Generator<XmlEvent> {
       }
 
       if (attributeName !== 'xmlns' && !attributeName.startsWith('xmlns:')) {
-        attributes[localName(attributeName)] = unescapeXml(
+        attributeCount += 1
+
+        if (
+          options.attributesMax !== undefined
+          && attributeCount > options.attributesMax
+        ) {
+          throw new XmlError('xml_attributes', 'Too many attributes on a tag')
+        }
+
+        const attributeKey = options.keepAttributePrefixes
+          ? attributeName
+          : localName(attributeName)
+
+        attributes[attributeKey] = unescapeXml(
           text.slice(cursor + 1, valueEnd),
         )
       }

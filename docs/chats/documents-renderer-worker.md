@@ -28,9 +28,10 @@ specs never need the `cloudflare:workers` module (the suite stub exports only
 
 ```ts
 class DocRenderer extends WorkerEntrypoint {
-  capabilities(): Promise<{ rendererVersion, specVersions, formats, maxOutputBytes }>
+  capabilities(): Promise<{ rendererVersion, specVersions, formats, maxOutputBytes, extract? }>
   render(request: { specVersion, spec, assets, provenance }): Promise<RenderResult>
   validate(request: { format, bytes, spec? }): Promise<ValidationResult>
+  extract(request: { format, bytes }): Promise<ExtractResult>
 }
 ```
 
@@ -165,6 +166,159 @@ working for version 1.
   id or a key name from the spec; callers (D-4, D-5) must not log them or pass
   them to a client verbatim without checking. The Worker itself writes no logs at all (no `console` in
   its sources, asserted), so Workers Logs hold only the invocation records.
+
+## Office text extraction
+
+BES-370, layer 1 (Worker version 1.1.0). `extract` reads the text of a user's DOCX, XLSX or PPTX so a
+later layer can send it to models that cannot take Office files. Nothing calls
+it yet: it has no user-visible effect. The Worker still holds no user-data
+binding; it receives bytes and returns text.
+
+```ts
+extract({ format: 'docx' | 'xlsx' | 'pptx', bytes }): Promise<{
+  status: 'ready' | 'empty' | 'too_large' | 'failed'
+  text: string            // Markdown, at most 1 MiB of UTF-8
+  truncated: boolean
+  stats: { inputBytes, entries, textBytes, paragraphs?, tables?, sheets?,
+           sheetsTotal?, slides?, slidesTotal?, truncations: string[] }
+  errorCode?: string
+}>
+```
+
+The code is `packages/doc-renderer/src/extract/` (export `./extract`, only
+`fflate` as a dependency). It reuses the capped ZIP directory reader, the
+streaming inflater and the XML tokenizer of `./validate`; it adds no parser
+library. Nothing is thrown: every problem is a status and a stable
+`errorCode`.
+
+### What comes out
+
+| Format | Output |
+| --- | --- |
+| DOCX | Headings as `#` to `######`, resolved through the style names in `styles.xml` (`heading 1`, `Title`), so localized style ids work, through `basedOn` chains (at most 8 deep) and through `outlineLvl` on the style or the paragraph. Paragraphs, bulleted and numbered lists with nesting (counters per abstract numbering; a `num` with `lvlOverride/startOverride` gets its own counter that starts at the override), tables as Markdown tables (merged cells become empty cells, nested tables are flattened into their cell), hyperlink text. |
+| XLSX | One `## Sheet: <name>` section per worksheet, in workbook order, holding CSV. Shared strings (an empty `<si/>` counts as an empty string, and a prefixed `<x:sst>` from Open XML SDK or ClosedXML writers is read), inline strings and the cached `<v>` of formulas are resolved. Numbers with a date number format (built-in ids 14-22, 27-36, 45-47, 50-58, or a custom code with date or time tokens) become ISO dates or times, with `date1904` honoured; a time-only format is a time, and an elapsed format (`[h]:mm:ss`, `[mm]:ss`, `[s]`, built-in 46) is a duration such as `36:00:00`, not a date. The gaps between `<row r=...>` numbers are kept as empty lines (at most 20 in a row). Booleans are `TRUE` or `FALSE`. Merged cells show their value once, in the top-left cell. CSV, not a Markdown table, because it costs fewer tokens, keeps empty cells as consecutive commas and needs no header row. |
+| PPTX | `## Slide N` per slide in `sldIdLst` order, then the title as `###`, body text (bullets for body placeholders and explicit bullets), tables as Markdown tables, and `Speaker notes: ...` from the notes body placeholder. |
+
+Limits (`EXTRACT_LIMITS`, overridable per call): 30 MiB input, 1 MiB of text,
+5,000 ZIP entries, 150 MiB of declared total and 50 MiB per entry, a 1000:1
+ratio for entries over 1 MiB (the validator's 100:1 would reject sparse real
+spreadsheets), 50 sheets, 500 slides, 1,000 rows and 200 columns (also per
+table in DOCX and PPTX), 2,000 characters per cell, 200,000 cells and 16 MiB
+inflated per XML part. When a limit cuts the output,
+`truncated` is `true`, `stats.truncations` names the limit and the text says
+so: `[Truncated: the text limit was reached ...]` at the end for the 1 MiB cap,
+and a marker after the sheet for rows, columns, cells and sheets. Empty rows
+are skipped, not counted.
+
+Two budgets count the work of one whole extraction, across every part:
+64 MiB of inflated bytes (`inflatedBytesMax`) and 10,000,000 XML parser events
+(`eventsMax`). When either runs out the result is `too_large` with
+`extract_budget_exceeded`, never a partial text, so a file that is small in
+bytes but huge in work (millions of empty `<c/>`, a notes part shared by every
+slide) cannot reach the Worker's CPU limit. Measured by bisecting the limits,
+the bench fixtures use 0.3 to 1.9 million events and 4 to 19 MiB inflated, and
+the worst real-shaped files tried stay under 2.1 million events: 400,000 rows of
+styled empty cells (read to the part cap) and a 200,000-string table read by
+seven sheets that each reference strings an earlier sheet passed. Exhausting
+the 10 million takes under a second of CPU. Other guards against small hostile files:
+`gridSpan` and `ilvl` are clamped, a table is capped at 1,000 rows by 200
+columns and stops being built once the output budget is spent, DOCX paragraphs
+nested deeper than 64 are `ooxml_malformed`, a tag with more than 128
+attributes is `xml_attributes`, slide ids and worksheet targets are de-duplicated
+(a slide or worksheet is read once however often it is listed), and every
+whitespace and number-format scan is a hand-written linear loop (the regular
+expressions they replaced took 9 to 15 seconds on 80,000 spaces). Each of these
+has a regression test in `tests/unit/packages/doc-renderer/extract-hostile.spec.ts`
+that builds the file in memory and asserts the CPU time stays under a second.
+`[Content_Types].xml` is read in full or the file is refused (`ooxml_malformed`),
+because the macro check depends on all of it.
+
+The ZIP limits come from `readZipDirectory(bytes, limits)`; its default
+argument is the validator's own limits, so `validate()` is unchanged.
+
+### Rejected before reading
+
+An OLE compound file header (`D0 CF 11 E0`) is refused: `ooxml_encrypted` when
+it holds an `EncryptedPackage` stream, `legacy_office_format` otherwise (.doc,
+.xls, .ppt). Macro-enabled content types and VBA parts are `ooxml_macro`. A
+package whose main part content type is not the requested format is
+`ooxml_format_mismatch`. ZIP64, encrypted entries, unsafe names, a size that
+differs from the declaration and the limits above are `zip_*` codes; the five
+limit codes (`file_too_large`, `zip_too_many_entries`, `zip_entry_too_large`,
+`zip_total_too_large`, `zip_ratio`) are status `too_large`, everything else
+`failed`.
+
+### Memory and CPU
+
+Each part is inflated as a prefix that starts at 1 MiB and grows fourfold only
+while the reader still needs more, so a worksheet that needs 1,000 rows never
+inflates its 40 MB tail, and a document stops at the text limit. The inflater
+is kept between growths, so a larger prefix continues where the smaller one
+stopped and every byte is inflated and charged once. A part over
+16 MiB is read as far as that and flagged `part_limit`. Shared strings are
+read as a pull stream of 1 MiB windows cut after the closing `si` tag (any
+namespace prefix) and parsed with the XML tokenizer, up to the highest index
+any sheet references; the position is kept between sheets, and the part is
+read again from the start only when a later sheet needs a record that was
+passed without being kept. Peak live memory stays near the input size plus the largest prefix
+(an estimate of about 45 MiB for a 20 MB workbook; a capped 64 MiB V8 heap ran it without trouble); a Worker has 128 MiB.
+
+Measured on 2026-11-12 with `scripts/bench/doc-renderer-extract.mjs` (Node
+24.18, Apple Silicon, cold run then median of warm runs, V8 heap capped at 64
+MiB, status asserted `ready`):
+
+| Case | Input | Output | Node cold / warm | Local `workerd` RPC wall, cold / warm |
+| --- | --- | --- | --- | --- |
+| XLSX, 3 sheets of 57,000 rows, unique strings | 20.0 MiB | 460 KiB, `rows_limit` | 585 ms / 562 ms | 634 ms / 519 ms |
+| XLSX, one dense sheet of 3,000 rows by 200 columns | 5.5 MiB | 1 MiB, `cells_limit`, `text_limit` | 563 ms / 521 ms | not run |
+| PPTX, 300 slides with bullets, a table and notes | 4.2 MiB | 256 KiB | 93 ms / 77 ms | 114 ms / 87 ms |
+
+The worst case is about 4 percent of the 15 s CPU limit. Re-measured after the
+hardening above (the budgets, the linear scans, the kept inflater): Node cold
+474 / 521 / 102 ms and local `workerd` cold 485 / 411 / 110 ms for the same three
+cases, within noise of the table, on a loaded machine. A hostile 31 MB worksheet
+of 1.5 million empty cells took 1.4 s through the binding, 6.8 MB included. The `workerd` column
+is wall time of an HTTP request to a harness Worker that calls `extract`
+through a service binding (`scripts/bench/doc-renderer-extract-harness/`, run
+with `wrangler dev -c <harness> -c workers/doc-renderer/wrangler.jsonc`), so it
+includes moving 20 MiB over the binding. Local `wrangler dev` does not enforce
+`cpu_ms`, and `Date.now()` does not advance during synchronous work inside
+workerd, so the figure is the caller's clock, not the Worker's CPU. Production
+CPU and the 128 MiB memory limit are not measured: read `cpuTime` with
+`wrangler tail besidka-doc-renderer --format json` on the first real upload.
+
+### What is lost
+
+Images, charts, drawings, text boxes and shapes in DOCX, SmartArt, comments,
+tracked deletions, headers, footers, footnotes, hidden-sheet flags, number
+formats other than dates (a currency cell is its raw number), formulas
+(only the cached value), cell colours and all formatting. PPTX text follows the
+shape order in the file, which is the z-order, not always the reading order.
+Paragraph breaks inside a table cell become spaces.
+
+### App helper
+
+`extractOfficeText(request, logger?)` in `server/utils/documents/renderer.ts`
+never throws, and tells retryable failures from terminal ones:
+
+- `failed` with `renderer_unavailable` (retry later): a missing binding, a
+  failed `capabilities()` call, a satellite deployed before `extract` existed
+  (no `extract` entry, which is how a staggered deploy shows), one that does
+  not list the format, or one whose `extract.version` the app does not know.
+- `too_large` with `file_too_large`: the file is over
+  `capabilities().extract.maxInputBytes`, answered before the call because an
+  RPC payload over the limit throws.
+- `failed` with `extract_crashed` (terminal): the call threw on a satellite
+  that supports `extract` (CPU or memory exceeded, payload too large), which
+  the same file will do again, so it must not stay retryable.
+
+Layer 2 stores these states instead of failing the request that stored the
+file. The log block
+`attributes.documents.renderer.extract` holds `format`, `ok`, `status`, `code`,
+`durationMs`, `bytes`, `textBytes`, `truncated` and `rendererVersion`, never
+the text. `capabilities().extract` carries `version` (`EXTRACT_VERSION`, bump it
+when output changes so layer 2 can re-extract), `formats`, `maxInputBytes` and
+`maxTextBytes`.
 
 ## Local development
 

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { EXTRACT_VERSION } from '@besidka/doc-renderer/extract'
 import type {
+  ExtractResult,
   RendererCapabilities,
   RenderRequest,
 } from '~~/workers/doc-renderer/src/contract'
@@ -13,6 +15,7 @@ vi.mock('cloudflare:workers', () => ({
 }))
 
 const {
+  extractOfficeText,
   getDocumentRenderer,
   getRendererCapabilities,
   getRenderFailureStatus,
@@ -27,6 +30,20 @@ const CAPABILITIES: RendererCapabilities = {
   specVersions: [1],
   formats: ['pdf', 'docx', 'pptx', 'xlsx'],
   maxOutputBytes: 20 * 1024 * 1024,
+  extract: {
+    version: 1,
+    formats: ['docx', 'xlsx', 'pptx'],
+    maxInputBytes: 30 * 1024 * 1024,
+    maxTextBytes: 1024 * 1024,
+  },
+}
+
+const SECRET_TEXT = 'Salary of the CEO is 900000'
+const EXTRACTED: ExtractResult = {
+  status: 'ready',
+  text: SECRET_TEXT,
+  truncated: false,
+  stats: { inputBytes: 2048, entries: 9, textBytes: 27, truncations: [] },
 }
 
 const SECRET_TITLE = 'Confidential merger memo'
@@ -52,6 +69,7 @@ function createBinding() {
         provenance: 'ai' as const,
       }
     }),
+    extract: vi.fn(async () => EXTRACTED),
   }
 }
 
@@ -320,6 +338,178 @@ describe('document renderer binding', () => {
 
       expect(result).toMatchObject({ ok: false, code: 'ooxml_macro' })
       expect(loggedText(logger)).toContain('ooxml_macro')
+    })
+  })
+
+  describe('extractOfficeText', () => {
+    const request = {
+      format: 'docx' as const,
+      bytes: new Uint8Array(2048),
+    }
+
+    it('returns renderer_unavailable instead of throwing without a binding', async () => {
+      const logger = createLogger()
+      const result = await extractOfficeText(request, logger as never)
+
+      expect(result).toMatchObject({
+        status: 'failed',
+        text: '',
+        truncated: false,
+        errorCode: 'renderer_unavailable',
+        stats: { inputBytes: 2048 },
+      })
+      expect(loggedText(logger)).toContain('renderer_unavailable')
+    })
+
+    it('returns the extraction and logs sizes, never the text', async () => {
+      const binding = createBinding()
+      const logger = createLogger()
+
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request, logger as never)
+
+      expect(result).toEqual(EXTRACTED)
+      expect(binding.extract).toHaveBeenCalledWith(request)
+      expect(loggedText(logger)).toContain('"extract"')
+      expect(loggedText(logger)).toContain('"textBytes":27')
+      expect(loggedText(logger)).not.toContain(SECRET_TEXT)
+    })
+
+    it('does not call a satellite that has no extract capability', async () => {
+      const binding = createBinding()
+
+      binding.capabilities.mockResolvedValue({
+        rendererVersion: CAPABILITIES.rendererVersion,
+        specVersions: CAPABILITIES.specVersions,
+        formats: CAPABILITIES.formats,
+        maxOutputBytes: CAPABILITIES.maxOutputBytes,
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request)
+
+      expect(result.errorCode).toBe('renderer_unavailable')
+      expect(binding.extract).not.toHaveBeenCalled()
+    })
+
+    it('does not call a satellite that lacks the format', async () => {
+      const binding = createBinding()
+
+      binding.capabilities.mockResolvedValue({
+        ...CAPABILITIES,
+        extract: { ...CAPABILITIES.extract!, formats: ['xlsx'] },
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request)
+
+      expect(result.errorCode).toBe('renderer_unavailable')
+      expect(binding.extract).not.toHaveBeenCalled()
+    })
+
+    it('accepts the extract version the package reports', async () => {
+      const binding = createBinding()
+
+      binding.capabilities.mockResolvedValue({
+        ...CAPABILITIES,
+        extract: { ...CAPABILITIES.extract!, version: EXTRACT_VERSION },
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request)
+
+      expect(result.status).toBe('ready')
+      expect(binding.extract).toHaveBeenCalledOnce()
+    })
+
+    it('does not call a satellite with another extract version', async () => {
+      const binding = createBinding()
+
+      binding.capabilities.mockResolvedValue({
+        ...CAPABILITIES,
+        extract: { ...CAPABILITIES.extract!, version: 99 },
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request)
+
+      expect(result.errorCode).toBe('renderer_unavailable')
+      expect(binding.extract).not.toHaveBeenCalled()
+    })
+
+    it('answers too_large without a call above maxInputBytes', async () => {
+      const binding = createBinding()
+      const logger = createLogger()
+      const oversize = {
+        format: 'docx' as const,
+        bytes: new Uint8Array(CAPABILITIES.extract!.maxInputBytes + 1),
+      }
+
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(oversize, logger as never)
+
+      expect(result).toMatchObject({
+        status: 'too_large',
+        text: '',
+        truncated: false,
+        errorCode: 'file_too_large',
+        stats: { inputBytes: oversize.bytes.byteLength },
+      })
+      expect(binding.extract).not.toHaveBeenCalled()
+      expect(loggedText(logger)).toContain('file_too_large')
+    })
+
+    it('accepts a file of exactly maxInputBytes', async () => {
+      const binding = createBinding()
+      const exact = {
+        format: 'docx' as const,
+        bytes: new Uint8Array(CAPABILITIES.extract!.maxInputBytes),
+      }
+
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(exact)
+
+      expect(result.status).toBe('ready')
+      expect(binding.extract).toHaveBeenCalledOnce()
+    })
+
+    it('turns a throwing call on a supported satellite into a terminal failure', async () => {
+      const binding = createBinding()
+      const logger = createLogger()
+
+      binding.extract.mockRejectedValueOnce(new Error('Worker exceeded CPU'))
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request, logger as never)
+
+      expect(result).toMatchObject({
+        status: 'failed',
+        errorCode: 'extract_crashed',
+      })
+      expect(loggedText(logger)).toContain('binding_call_failed')
+      expect(loggedText(logger)).toContain('extract_crashed')
+    })
+
+    it('passes a failed extraction through with its code', async () => {
+      const binding = createBinding()
+      const logger = createLogger()
+
+      binding.extract.mockResolvedValueOnce({
+        status: 'failed',
+        text: '',
+        truncated: false,
+        stats: EXTRACTED.stats,
+        errorCode: 'ooxml_encrypted',
+      })
+      mocks.env.DOC_RENDERER = binding
+
+      const result = await extractOfficeText(request, logger as never)
+
+      expect(result.errorCode).toBe('ooxml_encrypted')
+      expect(loggedText(logger)).toContain('ooxml_encrypted')
     })
   })
 

@@ -5,6 +5,8 @@ import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type {
   DocumentRendererService,
+  ExtractRequest,
+  ExtractResult,
   RendererCapabilities,
   RenderFailureCode,
   RenderRequest,
@@ -13,7 +15,7 @@ import type {
   ValidateResult,
 } from '~~/workers/doc-renderer/src/contract'
 
-type RendererOperation = 'capabilities' | 'render' | 'validate'
+type RendererOperation = 'capabilities' | 'render' | 'validate' | 'extract'
 
 export const RENDERER_CAPABILITIES_TTL_MS = 5 * 60 * 1000
 
@@ -79,6 +81,9 @@ function setRendererLog(
     durationMs: number
     bytes?: number
     rendererVersion?: string
+    status?: string
+    textBytes?: number
+    truncated?: boolean
   },
 ): void {
   logger?.set({
@@ -229,6 +234,136 @@ export async function validateDocumentBytes(
   })
 
   return result
+}
+
+const RENDERER_UNAVAILABLE_CODE = 'renderer_unavailable'
+const EXTRACT_CRASHED_CODE = 'extract_crashed'
+const FILE_TOO_LARGE_CODE = 'file_too_large'
+const SUPPORTED_EXTRACT_VERSIONS: readonly number[] = [1]
+
+function createExtraction(
+  request: ExtractRequest,
+  status: ExtractResult['status'],
+  errorCode: string,
+): ExtractResult {
+  return {
+    status,
+    text: '',
+    truncated: false,
+    stats: {
+      inputBytes: request.bytes.byteLength,
+      entries: 0,
+      textBytes: 0,
+      truncations: [],
+    },
+    errorCode,
+  }
+}
+
+/**
+ * Extracts Markdown text from a DOCX, XLSX or PPTX through the binding. It
+ * never throws, and separates the failures a caller may retry from the ones
+ * it may not:
+ * - `renderer_unavailable` (`failed`, retry later): no binding, a satellite
+ *   deployed before `extract` existed or with another `extract` version, or
+ *   a satellite that does not list the format;
+ * - `file_too_large` (`too_large`): the file is over the satellite's
+ *   `maxInputBytes`, answered without a call because a larger RPC payload
+ *   would throw;
+ * - `extract_crashed` (`failed`, do not retry): the call threw on a
+ *   satellite that supports `extract`, for instance CPU or memory exceeded,
+ *   which the same file will do again.
+ * Only sizes and codes are logged, never the text.
+ */
+export async function extractOfficeText(
+  request: ExtractRequest,
+  logger?: LoggerLike,
+): Promise<ExtractResult> {
+  const startedAt = Date.now()
+  let capabilities: RendererCapabilities
+
+  try {
+    capabilities = await getRendererCapabilities(logger)
+  } catch {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: RENDERER_UNAVAILABLE_CODE,
+      durationMs: Date.now() - startedAt,
+    })
+
+    return createExtraction(request, 'failed', RENDERER_UNAVAILABLE_CODE)
+  }
+
+  const extract = capabilities.extract
+  const isSupported = extract !== undefined
+    && extract.formats.includes(request.format)
+    && SUPPORTED_EXTRACT_VERSIONS.includes(extract.version)
+
+  if (!isSupported) {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: RENDERER_UNAVAILABLE_CODE,
+      durationMs: Date.now() - startedAt,
+      rendererVersion: capabilities.rendererVersion,
+    })
+
+    return createExtraction(request, 'failed', RENDERER_UNAVAILABLE_CODE)
+  }
+
+  if (request.bytes.byteLength > extract.maxInputBytes) {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: FILE_TOO_LARGE_CODE,
+      status: 'too_large',
+      durationMs: Date.now() - startedAt,
+      bytes: request.bytes.byteLength,
+      rendererVersion: capabilities.rendererVersion,
+    })
+
+    return createExtraction(request, 'too_large', FILE_TOO_LARGE_CODE)
+  }
+
+  try {
+    const result = await callRenderer(
+      'extract',
+      logger,
+      renderer => renderer.extract(request),
+      request.format,
+    )
+
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: result.status === 'ready' || result.status === 'empty',
+      code: result.errorCode,
+      status: result.status,
+      durationMs: Date.now() - startedAt,
+      bytes: request.bytes.byteLength,
+      textBytes: result.stats.textBytes,
+      truncated: result.truncated,
+      rendererVersion: capabilities.rendererVersion,
+    })
+
+    return result
+  } catch {
+    setRendererLog(logger, {
+      operation: 'extract',
+      format: request.format,
+      ok: false,
+      code: EXTRACT_CRASHED_CODE,
+      durationMs: Date.now() - startedAt,
+      bytes: request.bytes.byteLength,
+      rendererVersion: capabilities.rendererVersion,
+    })
+
+    return createExtraction(request, 'failed', EXTRACT_CRASHED_CODE)
+  }
 }
 
 const CLIENT_FAILURE_CODES: readonly RenderFailureCode[] = [

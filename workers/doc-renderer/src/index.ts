@@ -1,7 +1,14 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { documentFonts } from './fonts'
-import { getCapabilities, renderDocument, validateDocument } from './renderer'
+import {
+  extractDocumentText,
+  getCapabilities,
+  renderDocument,
+  validateDocument,
+} from './renderer'
 import type {
+  ExtractRequest,
+  ExtractResult,
   RendererCapabilities,
   RenderRequest,
   RenderResult,
@@ -22,6 +29,10 @@ export class DocRenderer extends WorkerEntrypoint<Record<string, never>> {
 
   async validate(request: ValidateRequest): Promise<ValidateResult> {
     return validateDocument(request)
+  }
+
+  async extract(request: ExtractRequest): Promise<ExtractResult> {
+    return extractDocumentText(request)
   }
 }
 

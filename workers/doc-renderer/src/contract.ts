@@ -3,6 +3,10 @@ import type {
   ImageMediaType,
   RenderStats,
 } from '@besidka/doc-renderer/render'
+import type {
+  ExtractFormat,
+  ExtractResult,
+} from '@besidka/doc-renderer/extract'
 import type { SpecIssue } from '@besidka/doc-renderer/spec'
 import type {
   ValidatedFormat,
@@ -71,15 +75,31 @@ export interface ValidateRequest {
 
 export type ValidateResult = ValidationResult
 
+export type { ExtractFormat, ExtractResult }
+
+export interface ExtractRequest {
+  format: ExtractFormat
+  bytes: Uint8Array
+}
+
+export interface ExtractCapabilities {
+  version: number
+  formats: ExtractFormat[]
+  maxInputBytes: number
+  maxTextBytes: number
+}
+
 export interface RendererCapabilities {
   rendererVersion: string
   specVersions: number[]
   formats: string[]
   maxOutputBytes: number
+  extract?: ExtractCapabilities
 }
 
 export interface DocumentRendererService {
   capabilities: () => Promise<RendererCapabilities>
   render: (request: RenderRequest) => Promise<RenderResult>
   validate: (request: ValidateRequest) => Promise<ValidateResult>
+  extract: (request: ExtractRequest) => Promise<ExtractResult>
 }
