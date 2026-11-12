@@ -77,6 +77,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Modal/Select/ProjectGroups.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
+    'tests/unit/composables/xls-convert.spec.ts',
+    'tests/unit/workers/xls-convert.spec.ts',
+    'tests/unit/utils/xls-convert.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
@@ -2626,7 +2629,7 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
-      pattern: /^app\/composables\/(chat-files|file-manager(-project-groups)?)\.ts$/,
+      pattern: /^app\/composables\/(chat-files|xls-convert|file-manager(-project-groups)?)\.ts$/,
       tests: filesModuleTests,
     },
     {
@@ -2750,7 +2753,11 @@ export function getAffectedTests(changedFiles) {
       tests: historyProjectsTests,
     },
     {
-      pattern: /^app\/utils\/(files|file-delivery-hints|upload-with-progress)\.ts$/,
+      pattern: /^app\/utils\/(files|file-delivery-hints|upload-with-progress|xls-convert)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^(app\/workers\/xls-convert\.ts|app\/types\/xls-convert\.d\.ts)$/,
       tests: filesModuleTests,
     },
     {

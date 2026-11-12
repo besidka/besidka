@@ -50,6 +50,7 @@
             :resolve-delivery="resolveDelivery"
             :resolve-delivery-with-run-code="resolveDeliveryWithRunCode"
             :uploading-files="uploadingFiles"
+            :converted-from-xls-keys="convertedFromXlsKeys"
             :uploading-count="uploadingCount"
             :tiles="tiles"
             :pasted-texts="pastedTexts"
@@ -567,6 +568,7 @@ const resolveDeliveryWithRunCode = computed<
 const {
   uploadFiles,
   uploadingFiles,
+  convertedFromXlsKeys,
   uploadingCount,
   cancelUpload,
   retryUpload,

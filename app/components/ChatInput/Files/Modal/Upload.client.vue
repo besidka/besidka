@@ -98,9 +98,9 @@ const dropZoneRef = useTemplateRef<HTMLDivElement>('dropZoneRef')
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
 
 const { isOverDropZone } = useDropZone(dropZoneRef, {
-  onDrop(droppedFiles) {
+  async onDrop(droppedFiles) {
     if (droppedFiles && droppedFiles.length > 0) {
-      const validFiles = filterValidFiles(Array.from(droppedFiles))
+      const validFiles = await filterValidFiles(Array.from(droppedFiles))
       if (validFiles.length > 0) {
         emit('upload', validFiles)
       }
@@ -140,7 +140,7 @@ const formattedFileFormats = computed<string>(() => {
   return formatUploadFormatLabels(effectiveFileFormats.value)
 })
 
-function filterValidFiles(files: File[]): File[] {
+async function filterValidFiles(files: File[]): Promise<File[]> {
   const formats = effectiveFileFormats.value
   const valid: File[] = []
   const invalid: string[] = []
@@ -150,7 +150,11 @@ function filterValidFiles(files: File[]): File[] {
 
   for (const file of files) {
     if (officeFeature.value.active && isLegacyOfficeFile(file)) {
-      legacyOffice.push(file.name)
+      if (isXlsFile(file) && await readsAsCfb(file)) {
+        valid.push(file)
+      } else {
+        legacyOffice.push(file.name)
+      }
 
       continue
     }
@@ -176,18 +180,21 @@ function filterValidFiles(files: File[]): File[] {
   return valid
 }
 
-function onFileInputChange(event: Event) {
+async function onFileInputChange(event: Event) {
   const target = event.target as HTMLInputElement
   const files = target.files
-
-  if (files && files.length > 0) {
-    const validFiles = filterValidFiles(Array.from(files))
-
-    if (validFiles.length > 0) {
-      emit('upload', validFiles)
-    }
-  }
+  const pickedFiles = files ? Array.from(files) : []
 
   target.value = ''
+
+  if (pickedFiles.length === 0) {
+    return
+  }
+
+  const validFiles = await filterValidFiles(pickedFiles)
+
+  if (validFiles.length > 0) {
+    emit('upload', validFiles)
+  }
 }
 </script>

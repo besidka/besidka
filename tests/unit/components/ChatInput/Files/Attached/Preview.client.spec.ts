@@ -302,6 +302,41 @@ describe('ChatInput/Files/Attached/Preview', () => {
       ]))
     })
 
+    it('notes a file that was converted from .xls, apart from the hint',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [{ ...officeFile, textStatus: 'ready' as const }],
+            resolveDelivery,
+            convertedFromXlsKeys: new Set(['budget-key']),
+          },
+        })
+        const note = wrapper.get('[data-testid="files-converted-note"]')
+
+        expect(note.text()).toBe('Converted from .xls')
+        expect(note.attributes('title')).toBe(
+          'Converted to .xlsx in your browser before upload. Formulas keep '
+          + 'their last calculated values. Styles, charts and macros are not '
+          + 'kept.',
+        )
+        expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
+          .toBe('Sent as text')
+      })
+
+    it('shows no converted note for a file that was not converted',
+      async () => {
+        const wrapper = await mountSuspended(Preview, {
+          props: {
+            files: [{ ...officeFile, textStatus: 'ready' as const }],
+            resolveDelivery,
+            convertedFromXlsKeys: new Set(['another-key']),
+          },
+        })
+
+        expect(wrapper.find('[data-testid="files-converted-note"]').exists())
+          .toBe(false)
+      })
+
     it('says the text is shortened when the file is long', async () => {
       const wrapper = await mountSuspended(Preview, {
         props: {

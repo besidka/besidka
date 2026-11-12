@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { strToU8, zipSync } from 'fflate'
+import * as XLSX from 'xlsx'
 import { getDocumentFileName } from '../../../shared/utils/documents'
 import { TEST_DOCUMENT_TITLE } from '../../../server/utils/chats/test/document-fixture'
 import {
@@ -15,6 +17,9 @@ const DOCUMENT_URL = '/chats/test?scenario=document&messages=1'
 const GENERATED_FILE_NAME = getDocumentFileName(TEST_DOCUMENT_TITLE, 'docx')
 const SPREADSHEET_NAME = 'e2e-budget.xlsx'
 const LEGACY_SPREADSHEET_NAME = 'e2e-legacy.xls'
+const CONVERTED_SPREADSHEET_BASE_NAME = 'e2e-jira-export'
+const CONVERTED_SPREADSHEET_NAME = `${CONVERTED_SPREADSHEET_BASE_NAME}.xlsx`
+const CONVERTED_NOTE = 'Converted from .xls'
 const BLANK_DOCUMENT_NAME = 'e2e-blank.docx'
 const SAVE_AS_HINT = 'Save it as .xlsx / .docx / .pptx and upload again.'
 const SENT_AS_TEXT = 'Sent as text'
@@ -100,6 +105,22 @@ function buildSpreadsheet(): Buffer {
   })
 
   return Buffer.from(archive)
+}
+
+function buildLegacySpreadsheet(): Buffer {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['Key', 'Summary', 'Estimate'],
+    ['BES-370', 'Convert xls in the browser', 5],
+    ['BES-371', 'Quarterly update', 8],
+  ])
+  const workbook = XLSX.utils.book_new()
+
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Issues')
+
+  return Buffer.from(XLSX.write(workbook, {
+    bookType: 'biff8',
+    type: 'buffer',
+  }))
 }
 
 function buildBlankDocument(): Buffer {
@@ -237,7 +258,51 @@ test.describe('Office attachments', () => {
     expect(uploaded.type).toBe(XLSX_MEDIA_TYPE)
   })
 
-  test('rejects a legacy .xls with the save-as hint', async ({ page }) => {
+  test('converts a real .xls in the browser and uploads an xlsx', async ({
+    page,
+  }) => {
+    await signInWithOfficeAttachments(page)
+    await openNewChat(page)
+    await openFilesModal(page, 'Upload new files')
+
+    const uploadedNames: string[] = []
+
+    page.on('request', (request) => {
+      if (request.url().includes('/api/v1/files/upload')) {
+        uploadedNames.push(
+          decodeURIComponent(request.headers()['x-filename'] ?? ''),
+        )
+      }
+    })
+
+    await page.getByTestId('files-upload-input').setInputFiles({
+      name: `${CONVERTED_SPREADSHEET_BASE_NAME}.xls`,
+      mimeType: 'application/vnd.ms-excel',
+      buffer: buildLegacySpreadsheet(),
+    })
+
+    await expect(
+      page.getByLabel(`Remove ${CONVERTED_SPREADSHEET_NAME}`),
+    ).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByTestId('files-upload-legacy-hint')).toHaveCount(0)
+    await expect(page.getByTestId('files-delivery-hint'))
+      .toHaveText(SENT_AS_TEXT)
+
+    const note = page.getByTestId('files-converted-note')
+
+    await expect(note).toHaveText(CONVERTED_NOTE)
+    await expect(note).toHaveAttribute('title', /Styles, charts and macros/)
+    expect(uploadedNames).toEqual([CONVERTED_SPREADSHEET_NAME])
+
+    const files = await page.request.get('/api/v1/files?limit=50')
+    const uploaded = (await files.json()).files.find(
+      (file: { name: string }) => file.name === CONVERTED_SPREADSHEET_NAME,
+    )
+
+    expect(uploaded.type).toBe(XLSX_MEDIA_TYPE)
+  })
+
+  test('rejects a fake .xls with the save-as hint', async ({ page }) => {
     await signInWithOfficeAttachments(page)
     await openNewChat(page)
     await openFilesModal(page, 'Upload new files')
@@ -253,7 +318,7 @@ test.describe('Office attachments', () => {
     await page.getByTestId('files-upload-input').setInputFiles({
       name: LEGACY_SPREADSHEET_NAME,
       mimeType: 'application/vnd.ms-excel',
-      buffer: Buffer.from('legacy'),
+      buffer: randomBytes(256),
     })
 
     const hint = page.getByTestId('files-upload-legacy-hint')

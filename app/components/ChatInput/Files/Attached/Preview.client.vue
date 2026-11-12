@@ -123,6 +123,14 @@
             >
               {{ deliveryHints.get(file.storageKey)?.label }}
             </span>
+            <span
+              v-if="convertedFromXlsKeys.has(file.storageKey)"
+              class="text-[10px] leading-none text-base-content/60"
+              :title="XLS_CONVERTED_NOTE_DESCRIPTION"
+              data-testid="files-converted-note"
+            >
+              {{ XLS_CONVERTED_NOTE }}
+            </span>
           </div>
         </div>
         <button
@@ -355,6 +363,7 @@ const props = withDefaults(defineProps<{
   resolveDelivery?: FileDeliveryResolver
   resolveDeliveryWithRunCode?: FileDeliveryResolver
   uploadingFiles?: Map<string, UploadingFile>
+  convertedFromXlsKeys?: ReadonlySet<string>
   uploadingCount?: number
   tiles?: ChatInputTile[]
   pastedTexts?: PastedText[]
@@ -362,6 +371,7 @@ const props = withDefaults(defineProps<{
   resolveDelivery: undefined,
   resolveDeliveryWithRunCode: undefined,
   uploadingFiles: undefined,
+  convertedFromXlsKeys: () => new Set<string>(),
   uploadingCount: undefined,
   tiles: () => [],
   pastedTexts: () => [],

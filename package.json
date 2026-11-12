@@ -148,6 +148,7 @@
 		"vue": "3.6.0-rc.12",
 		"vue-router": "^5.4.0",
 		"web-haptics": "0.0.6",
+		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
 		"zod": "^4.6.7"
 	},
 	"devDependencies": {

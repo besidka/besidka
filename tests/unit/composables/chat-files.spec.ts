@@ -12,17 +12,23 @@ const {
   fetchMock,
   useWarningMessageMock,
   ensureSendConsentMock,
+  convertXlsFileMock,
 } = vi.hoisted(() => ({
   uploadWithProgressMock: vi.fn(),
   fetchMock: vi.fn(),
   useWarningMessageMock: vi.fn(),
   ensureSendConsentMock: vi.fn(),
+  convertXlsFileMock: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('useWarningMessage', () => useWarningMessageMock)
 mockNuxtImport('useLegalConsent', () => () => ({
   ensureSendConsent: ensureSendConsentMock,
+}))
+mockNuxtImport('useXlsConversion', () => () => ({
+  convertXlsFile: convertXlsFileMock,
+  dispose: vi.fn(),
 }))
 
 vi.mock('~/utils/upload-with-progress', () => ({
@@ -64,6 +70,10 @@ describe('useChatFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ensureSendConsentMock.mockResolvedValue(true)
+    convertXlsFileMock.mockResolvedValue({
+      status: 'failed',
+      reason: 'not-cfb',
+    })
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-preview')
     fetchMock.mockImplementation(async (url: string) => {
       if (url === '/api/v1/files/policy') {
@@ -693,6 +703,214 @@ describe('useChatFiles', () => {
       await waitFor(() => attachedFiles.value.length === 1)
 
       expect(useWarningMessageMock).not.toHaveBeenCalled()
+    })
+
+    describe('legacy .xls conversion', () => {
+      const xlsxType = OFFICE_MEDIA_TYPES.xlsx
+
+      function convertedFile(name = 'jira.xlsx'): File {
+        return new File(['converted'], name, { type: xlsxType })
+      }
+
+      function createXls(name = 'jira.xls'): File {
+        return new File(['x'], name, { type: 'application/vnd.ms-excel' })
+      }
+
+      it('uploads the converted .xlsx instead of the .xls', async () => {
+        turnOfficeOn()
+        echoUpload()
+
+        convertXlsFileMock.mockResolvedValue({
+          status: 'converted',
+          file: convertedFile(),
+        })
+
+        const attachedFiles = ref([]) as any
+        const { uploadFiles, convertedFromXlsKeys } = useChatFiles(
+          attachedFiles,
+          ref(() => true),
+          resolveDelivery,
+        )
+
+        const accepted = await uploadFiles([createXls()])
+
+        await waitFor(() => attachedFiles.value.length === 1)
+
+        expect(accepted).toBe(true)
+        expect(convertXlsFileMock).toHaveBeenCalledTimes(1)
+        expect(uploadWithProgressMock).toHaveBeenCalledTimes(1)
+
+        const uploaded = uploadWithProgressMock.mock.calls[0]![0].file as File
+
+        expect(await uploaded.text()).toBe('converted')
+        expect(uploaded.name).toBe('jira.xlsx')
+        expect(uploaded.type).toBe(xlsxType)
+        expect(attachedFiles.value[0].name).toBe('jira.xlsx')
+        expect([...convertedFromXlsKeys.value]).toEqual(['jira.xlsx'])
+        expect(useWarningMessageMock).not.toHaveBeenCalled()
+      })
+
+      it('marks only the converted upload, not an .xlsx in the same batch',
+        async () => {
+          turnOfficeOn()
+          echoUpload()
+          convertXlsFileMock.mockResolvedValue({
+            status: 'converted',
+            file: convertedFile('jira.xlsx'),
+          })
+
+          const attachedFiles = ref([]) as any
+          const { uploadFiles, convertedFromXlsKeys } = useChatFiles(
+            attachedFiles,
+            ref(() => true),
+            resolveDelivery,
+          )
+
+          await uploadFiles([
+            createXls(),
+            new File(['y'], 'plain.xlsx', { type: xlsxType }),
+          ])
+          await waitFor(() => attachedFiles.value.length === 2)
+
+          expect(convertXlsFileMock).toHaveBeenCalledTimes(1)
+          expect([...convertedFromXlsKeys.value]).toEqual(['jira.xlsx'])
+        })
+
+      it('forgets the note when the attachment is removed', async () => {
+        turnOfficeOn()
+        echoUpload()
+        convertXlsFileMock.mockResolvedValue({
+          status: 'converted',
+          file: convertedFile(),
+        })
+
+        const attachedFiles = ref([]) as any
+        const {
+          uploadFiles,
+          convertedFromXlsKeys,
+          removeAttachedFile,
+          removeAllFiles,
+        } = useChatFiles(attachedFiles, ref(() => true), resolveDelivery)
+
+        await uploadFiles([createXls()])
+        await waitFor(() => attachedFiles.value.length === 1)
+        removeAttachedFile('jira.xlsx')
+
+        expect(convertedFromXlsKeys.value.size).toBe(0)
+
+        await uploadFiles([createXls()])
+        await waitFor(() => attachedFiles.value.length === 1)
+        removeAllFiles()
+
+        expect(convertedFromXlsKeys.value.size).toBe(0)
+      })
+
+      it('falls back to the save-as hint when the conversion fails',
+        async () => {
+          turnOfficeOn()
+          echoUpload()
+          convertXlsFileMock.mockResolvedValue({
+            status: 'failed',
+            reason: 'timeout',
+          })
+
+          const { uploadFiles, uploadingFiles } = useChatFiles(
+            ref([]) as any,
+            ref(() => true),
+            resolveDelivery,
+          )
+
+          const accepted = await uploadFiles([createXls()])
+
+          expect(accepted).toBe(false)
+          expect(uploadingFiles.value.size).toBe(0)
+          expect(uploadWithProgressMock).not.toHaveBeenCalled()
+          expect(useWarningMessageMock).toHaveBeenCalledWith(
+            'jira.xls is an old Office format and cannot be read. '
+            + 'Save it as .xlsx / .docx / .pptx and upload again.',
+          )
+        })
+
+      it('keeps the rest of a batch when one .xls cannot be converted',
+        async () => {
+          turnOfficeOn()
+          echoUpload()
+
+          const attachedFiles = ref([]) as any
+          const { uploadFiles } = useChatFiles(
+            attachedFiles,
+            ref(() => true),
+            resolveDelivery,
+          )
+
+          await uploadFiles([createXls('fake.xls'), createTextFile('a.txt')])
+          await waitFor(() => attachedFiles.value.length === 1)
+
+          expect(attachedFiles.value[0].name).toBe('a.txt')
+          expect(useWarningMessageMock).toHaveBeenCalledTimes(1)
+        })
+
+      it('never converts .doc, .ppt, macro files or .xlsm', async () => {
+        turnOfficeOn()
+        echoUpload()
+
+        const { uploadFiles } = useChatFiles(
+          ref([]) as any,
+          ref(() => true),
+          resolveDelivery,
+        )
+
+        await uploadFiles([
+          new File(['x'], 'old.doc', { type: '' }),
+          new File(['x'], 'old.ppt', { type: '' }),
+          new File(['x'], 'macro.xlsm', { type: '' }),
+          new File(['x'], 'template.xlt', { type: '' }),
+        ])
+
+        expect(convertXlsFileMock).not.toHaveBeenCalled()
+        expect(uploadWithProgressMock).not.toHaveBeenCalled()
+      })
+
+      it('does not convert while the flag is off', async () => {
+        echoUpload()
+
+        const { uploadFiles } = useChatFiles(
+          ref([]) as any,
+          ref(() => true),
+          resolveDelivery,
+        )
+
+        await uploadFiles([createXls()])
+        await waitFor(() => uploadWithProgressMock.mock.calls.length === 1)
+
+        expect(convertXlsFileMock).not.toHaveBeenCalled()
+      })
+
+      it('counts the converted size against the message limits', async () => {
+        turnOfficeOn()
+        echoUpload()
+        convertXlsFileMock.mockResolvedValue({
+          status: 'converted',
+          file: new File(['z'.repeat(2048)], 'big.xlsx', { type: xlsxType }),
+        })
+        fetchMock.mockImplementation(async () => ({
+          policy: {
+            maxFilesPerMessage: 10,
+            maxMessageFilesBytes: 1024,
+          },
+        }))
+
+        const { uploadFiles } = useChatFiles(
+          ref([]) as any,
+          ref(() => true),
+          resolveDelivery,
+        )
+
+        const accepted = await uploadFiles([createXls('big.xls')])
+
+        expect(accepted).toBe(false)
+        expect(uploadWithProgressMock).not.toHaveBeenCalled()
+      })
     })
 
     it('leaves a legacy file to the server while the flag is off', async () => {

@@ -268,6 +268,103 @@ describe('ChatInput/Files/Modal/Upload', () => {
       )
     })
 
+    describe('legacy .xls', () => {
+      const compoundFileHeader = new Uint8Array([
+        0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0,
+      ])
+
+      function realXls(name = 'jira.xls'): File {
+        return new File([compoundFileHeader], name, {
+          type: 'application/vnd.ms-excel',
+        })
+      }
+
+      it('hands a real compound-file .xls on to be converted', async () => {
+        turnOfficeOn()
+
+        const wrapper = await mountSuspended(Upload)
+
+        await chooseFiles(wrapper, [realXls()])
+        await vi.waitFor(() => {
+          expect(wrapper.emitted('upload')).toBeDefined()
+        })
+
+        const uploaded = wrapper.emitted('upload')![0]![0] as File[]
+
+        expect(uploaded.map(file => file.name)).toEqual(['jira.xls'])
+        expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+        expect(wrapper.find('[data-testid="files-upload-legacy-hint"]').exists())
+          .toBe(false)
+      })
+
+      it('still shows the hint for an .xls that is not a compound file',
+        async () => {
+          turnOfficeOn()
+
+          const wrapper = await mountSuspended(Upload)
+          const disguisedHtml = new File(
+            ['<html><table></table></html>'],
+            'jira.xls',
+            { type: 'application/vnd.ms-excel' },
+          )
+
+          await chooseFiles(wrapper, [disguisedHtml])
+          await vi.waitFor(() => {
+            expect(wrapper.find('[data-testid="files-upload-legacy-hint"]')
+              .exists()).toBe(true)
+          })
+
+          expect(wrapper.emitted('upload')).toBeUndefined()
+          expect(wrapper.get('[data-testid="files-upload-legacy-hint"]').text())
+            .toBe(
+              'jira.xls is an old Office format and cannot be read. '
+              + 'Save it as .xlsx / .docx / .pptx and upload again.',
+            )
+        })
+
+      it('keeps .doc, .ppt and .xlsm on the hint even with the signature',
+        async () => {
+          turnOfficeOn()
+
+          const wrapper = await mountSuspended(Upload)
+
+          await chooseFiles(wrapper, [
+            realXls('old.doc'),
+            realXls('old.ppt'),
+            realXls('macro.xlsm'),
+          ])
+          await vi.waitFor(() => {
+            expect(wrapper.find('[data-testid="files-upload-legacy-hint"]')
+              .exists()).toBe(true)
+          })
+
+          expect(wrapper.emitted('upload')).toBeUndefined()
+        })
+
+      it('splits a batch: the real .xls goes on, the fake one gets the hint',
+        async () => {
+          turnOfficeOn()
+
+          const wrapper = await mountSuspended(Upload)
+
+          await chooseFiles(wrapper, [
+            realXls('real.xls'),
+            new File(['nope'], 'fake.xls', { type: '' }),
+          ])
+          await vi.waitFor(() => {
+            expect(wrapper.emitted('upload')).toBeDefined()
+          })
+
+          const uploaded = wrapper.emitted('upload')![0]![0] as File[]
+
+          expect(uploaded.map(file => file.name)).toEqual(['real.xls'])
+          expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+            'fake.xls is an old Office format and cannot be read. '
+            + 'Save it as .xlsx / .docx / .pptx and upload again.',
+          )
+        })
+    })
+
     it('uploads nothing for a lone legacy file', async () => {
       turnOfficeOn()
 

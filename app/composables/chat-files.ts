@@ -6,6 +6,7 @@ import type {
   FileRejection,
 } from '~/utils/file-delivery-hints'
 import { uploadWithProgress } from '~/utils/upload-with-progress'
+import { isXlsFile } from '~/utils/xls-convert'
 
 export interface UploadingFile {
   id: string
@@ -14,6 +15,7 @@ export interface UploadingFile {
   progress: number
   retryCount: number
   previewUrl?: string
+  convertedFromXls?: boolean
   error?: string
   abortController?: AbortController
 }
@@ -41,8 +43,11 @@ export function useChatFiles(
   const nuxtApp = useNuxtApp()
   const officeFeature = useFeature('files.office')
   const { ensureSendConsent } = useLegalConsent()
+  const { convertXlsFile } = useXlsConversion()
   const uploadingFiles = ref<Map<string, UploadingFile>>(new Map())
   const uploadQueue = ref<string[]>([])
+  const convertedFromXlsKeys = ref<Set<string>>(new Set())
+  const convertedFiles = new WeakSet<File>()
   const emitFilesUploaded = useDebounceFn(() => {
     nuxtApp.callHook('files:uploaded')
   }, 500)
@@ -183,6 +188,42 @@ export function useChatFiles(
   }
 
   /**
+   * Replaces each browser-readable `.xls` with its `.xlsx` conversion. A file
+   * that cannot be converted stays as it is, so the legacy-file check right
+   * after it shows the "Save it as .xlsx" hint instead of a crash.
+   */
+  async function convertLegacySpreadsheets(
+    candidateFiles: File[],
+  ): Promise<File[]> {
+    if (!officeFeature.value.active) {
+      return candidateFiles
+    }
+
+    const preparedFiles: File[] = []
+
+    for (const file of candidateFiles) {
+      if (!isXlsFile(file)) {
+        preparedFiles.push(file)
+
+        continue
+      }
+
+      const conversion = await convertXlsFile(file)
+
+      if (conversion.status === 'converted') {
+        convertedFiles.add(conversion.file)
+        preparedFiles.push(conversion.file)
+
+        continue
+      }
+
+      preparedFiles.push(file)
+    }
+
+    return preparedFiles
+  }
+
+  /**
    * Central choke point for every upload path (the modal, the full-page
    * drop zone, and clipboard paste) — filtering here instead of in each
    * caller guarantees an image or PDF never reaches the server for a model
@@ -243,8 +284,9 @@ export function useChatFiles(
    * accepted and queued, false when they were refused before queuing.
    */
   async function uploadFiles(candidateFiles: File[]): Promise<boolean> {
+    const preparedFiles = await convertLegacySpreadsheets(candidateFiles)
     const newFiles = rejectUnsupportedFiles(
-      candidateFiles.map(normalizeUploadFile),
+      preparedFiles.map(normalizeUploadFile),
     )
 
     if (newFiles.length === 0) {
@@ -304,6 +346,7 @@ export function useChatFiles(
         progress: 0,
         retryCount: 0,
         previewUrl,
+        convertedFromXls: convertedFiles.has(file),
       })
 
       uploadQueue.value.push(id)
@@ -384,6 +427,10 @@ export function useChatFiles(
           }
         } else {
           attachedFiles.value.push(response.data)
+
+          if (uploadFile.convertedFromXls) {
+            convertedFromXlsKeys.value.add(response.data.storageKey)
+          }
         }
       }
 
@@ -515,6 +562,8 @@ export function useChatFiles(
     if (index !== -1) {
       attachedFiles.value.splice(index, 1)
     }
+
+    convertedFromXlsKeys.value.delete(storageKey)
   }
 
   /**
@@ -523,6 +572,7 @@ export function useChatFiles(
   function removeAllFiles() {
     cancelAllUploads()
     attachedFiles.value = []
+    convertedFromXlsKeys.value.clear()
   }
 
   nuxtApp.hook('files:deleted', (deletedIds: string[]) => {
@@ -542,6 +592,7 @@ export function useChatFiles(
 
   return {
     uploadingFiles,
+    convertedFromXlsKeys,
     uploadingCount,
     overallProgress,
     hasUploading,

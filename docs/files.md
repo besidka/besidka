@@ -309,7 +309,9 @@ decision list are in BES-370.
   browsers send an empty type, `application/zip` or
   `application/octet-stream` for these files. Then, in order: the extension
   (legacy `.doc/.xls/.ppt` and macro `.docm/.xlsm/.pptm` are rejected with a
-  "Save as .docx, .xlsx or .pptx" hint, as the owner decided on 2026-11-12),
+  "Save as .docx, .xlsx or .pptx" hint, as the owner decided on 2026-11-12;
+  the server still rejects a raw `.xls` and never trusts the browser's
+  conversion, see "Legacy `.xls` conversion in the browser" below),
   the ZIP magic bytes (a compound `D0 CF 11 E0` file is legacy or
   password-protected), the central-directory bounds (`readZipSummary` and
   `readZipDirectory` from `@besidka/doc-renderer/zip`, with the extractor's
@@ -395,6 +397,57 @@ decision list are in BES-370.
 - **API surface.** `GET /api/v1/files` adds `textStatus`, `textBytes` and
   `textTruncated` (true when `textBytes` is over the 200 KB inline cap, so only
   the start is sent), so the UI can show "Sent as text".
+
+### Legacy `.xls` conversion in the browser
+
+The owner exports `.xls` from Jira. It is real BIFF8 (OLE2, `D0 CF 11 E0`), so
+on 2026-11-12 he overrode the "reject with a hint" decision for `.xls` only
+(BES-370). The browser converts it to `.xlsx` before upload and the server
+only ever receives XLSX. `.doc`, `.ppt` and the macro formats keep the
+"Save it as .xlsx / .docx / .pptx and upload again" hint: the only converters
+for them are new single-maintainer libraries or LibreOffice (about 52 MB of
+WASM that needs COOP/COEP, or a Container with a patch treadmill).
+
+- **Flag and entry point.** Behind `files.office`. `useChatFiles().uploadFiles`
+  converts first, before the count and size caps, so they see the converted
+  file; every upload path (modal, full-page drop, paste) goes through it. The
+  upload modal (`Upload.client.vue`) lets a `.xls` through only when its first
+  8 bytes are the CFB signature, otherwise it keeps its inline hint.
+- **Code.** `app/composables/xls-convert.ts` (`useXlsConversion`),
+  `app/workers/xls-convert.ts` (`convertXlsBytes`), `app/utils/xls-convert.ts`
+  (limits, signature check, naming, no SheetJS import) and
+  `app/types/xls-convert.d.ts`. SheetJS is imported only in the worker file, so
+  it is a lazily loaded worker chunk: never on the server, never in the entry
+  chunk, and there is no main-thread fallback (no `Worker` means the hint).
+- **Library.** SheetJS Community Edition 0.20.3 from the official CDN tarball
+  (`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`), pinned in
+  `package.json` with the sha512 integrity in `pnpm-lock.yaml`. It fixes
+  CVE-2023-30533 and CVE-2024-22363. The npm `xlsx@0.18.5` has both and the
+  `@e965/xlsx` mirror is a third-party republisher: never use either.
+- **Safety limits.** Only a file named `.xls` (not `.xlsm`, `.xlt`, `.xlsb`)
+  whose first 8 bytes are `D0 CF 11 E0 A1 B1 1A E1`; HTML or other content
+  disguised as `.xls` gets the hint. Input is capped at 20 MB before it is
+  read. Parsing uses `sheetRows: 100000` and no `cellStyles`, `bookVBA` or
+  `bookFiles`. Each file gets its own worker with a 30 s timeout; the worker is
+  terminated after the file, on timeout, on error and when the scope is
+  disposed. Any failure ends in the existing hint, never a crash. The server
+  keeps all its checks and does not trust the conversion.
+- **Output.** `XLSX.write(..., { bookType: 'xlsx', type: 'array',
+  compression: true })`, uploaded as `<original base name>.xlsx` with the XLSX
+  media type. Cells keep their values and number formats (`cellNF: true`;
+  without it a date column arrives as a serial number); formulas keep their
+  cached values; styles, charts and macros are not kept. SheetJS writes a fixed
+  content-type table that maps `.bin` to the macro-enabled binary workbook
+  type, and the server's Office reader treats that type as a macro marker and
+  refuses the file as `ooxml_macro`, so the worker drops that one entry from
+  the new package. Do not remove that step.
+- **UI.** The attached chip shows "Converted from .xls" under "Sent as text",
+  with a tooltip that says styles, charts and macros are not kept. The state is
+  client-only (`convertedFromXlsKeys` from `useChatFiles`, keyed by storage
+  key), so it is gone after a reload.
+- **Maintenance.** Dependabot cannot see a tarball dependency, so a SheetJS
+  security fix will not open a PR. Watch https://cdn.sheetjs.com/advisories/
+  by hand and bump the tarball URL when an advisory lists a newer version.
 
 ## Data Model Reference
 
@@ -609,7 +662,8 @@ excluded from the Uploaded and Generated tabs.
   `docs/chats/chat-input-markdown.md`.
 - Office uploads (`.docx`, `.xlsx`, `.pptx`) are accepted only while the
   `files.office` flag is active and go through their own checks and text
-  extraction: see "Office attachments".
+  extraction: see "Office attachments". A `.xls` is converted to `.xlsx` in the
+  browser first and is still rejected here as a raw `.xls`.
 - Uses real body size for quota checks (`X-Filesize` is not trusted).
 - Checks user storage usage against effective policy.
 - Image flow:
