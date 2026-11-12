@@ -168,6 +168,26 @@ describe('extractOfficeText: pptx structure', () => {
     ].join('\n'))
   })
 
+  it('does not pad a column span twice for its hMerge placeholders', () => {
+    const cell = (text: string, attributes = '') => {
+      return `<a:tc${attributes}><a:txBody>${runParagraphXml(text)}</a:txBody></a:tc>`
+    }
+    const table = '<p:graphicFrame><a:graphic><a:graphicData><a:tbl>'
+      + `<a:tr>${cell('A', ' gridSpan="2"')}${cell('', ' hMerge="1"')}${cell('B')}</a:tr>`
+      + `<a:tr>${cell('C')}${cell('D')}${cell('E')}</a:tr>`
+      + `<a:tr>${cell('F', ' gridSpan="3"')}${cell('', ' hMerge="1"')}${cell('', ' hMerge="1"')}</a:tr>`
+      + '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>'
+
+    expect(readyText(pptxPackage([{ xml: slideXml(table) }]))).toBe([
+      '## Slide 1',
+      '',
+      '| A |  | B |',
+      '| --- | --- | --- |',
+      '| C | D | E |',
+      '| F |  |  |',
+    ].join('\n'))
+  })
+
   it('skips the fallback branch of alternate content', () => {
     const slide = slideXml(
       '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'

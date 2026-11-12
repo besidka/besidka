@@ -46,6 +46,7 @@ interface CellState {
   length: number
   span: number
   isMerged: boolean
+  isSpanPlaceholder: boolean
 }
 
 type ShapeFilter = (placeholderType: string | null) => boolean
@@ -220,14 +221,12 @@ function walkShapes(
       } else if (event.name === 'tr' && isInTable) {
         rowCells = []
       } else if (event.name === 'tc' && isInTable) {
-        const isMerged = event.attributes.hMerge === '1'
-          || event.attributes.vMerge === '1'
-
         cell = {
           parts: [],
           length: 0,
           span: Math.max(Number(event.attributes.gridSpan ?? 1) || 1, 1),
-          isMerged,
+          isMerged: event.attributes.vMerge === '1',
+          isSpanPlaceholder: event.attributes.hMerge === '1',
         }
       }
 
@@ -240,7 +239,7 @@ function walkShapes(
       finishParagraph(paragraph)
       paragraph = null
     } else if (event.name === 'tc' && cell) {
-      const isClamped = appendSpannedCell(
+      const isClamped = !cell.isSpanPlaceholder && appendSpannedCell(
         rowCells,
         cell.isMerged ? '' : cell.parts.join(' ').trim(),
         cell.span,
