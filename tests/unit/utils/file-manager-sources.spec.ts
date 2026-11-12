@@ -6,6 +6,8 @@ import {
   fileManagerBuiltInSourceTabs,
   fileManagerKindFilterOptions,
   getFileManagerExtraSourceTabs,
+  isAiGeneratedFile,
+  isConnectedAppFile,
   resolveFileManagerSourceTabs,
 } from '../../../app/utils/file-manager-sources'
 
@@ -101,5 +103,53 @@ describe('utils/file-manager-sources', () => {
 
     expect(tabs.map(tab => tab.id)).toEqual(['upload', 'assistant', 'project'])
     expect(tabs.every(tab => tab.kind === 'built-in')).toBe(true)
+  })
+})
+
+describe('isConnectedAppFile', () => {
+  const base = {
+    id: 'file-1',
+    storageKey: 'file-1.pdf',
+    name: 'Report.pdf',
+    size: 1,
+    type: 'application/pdf',
+    source: 'assistant' as const,
+    expiresAt: null,
+    createdAt: new Date(),
+    originModel: null,
+    generationCost: null,
+  }
+
+  it('is true only for a document file flagged as not AI', () => {
+    const connectedApp = {
+      ...base,
+      documentId: 'doc-1',
+      documentAiGenerated: false,
+    }
+
+    expect(isConnectedAppFile(connectedApp)).toBe(true)
+    expect(isAiGeneratedFile(connectedApp)).toBe(false)
+  })
+
+  it.each([true, null, undefined])(
+    'leaves a file with an AI flag of %s labelled as AI',
+    (documentAiGenerated) => {
+      const file = { ...base, documentId: 'doc-1', documentAiGenerated }
+
+      expect(isConnectedAppFile(file)).toBe(false)
+      expect(isAiGeneratedFile(file)).toBe(true)
+    },
+  )
+
+  it('never marks an uploaded file', () => {
+    const upload = {
+      ...base,
+      source: 'upload' as const,
+      documentId: 'doc-1',
+      documentAiGenerated: false,
+    }
+
+    expect(isConnectedAppFile(upload)).toBe(false)
+    expect(isAiGeneratedFile(upload)).toBe(false)
   })
 })

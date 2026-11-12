@@ -158,6 +158,17 @@ export interface ArtifactSummary {
   takenDown: boolean
 }
 
+export interface SharedArtifactSummary {
+  id: string
+  title: string
+  kind: ArtifactKind
+  currentVersion: number
+  updatedAt: string
+  activeShareCount: number
+  nearestExpiresAt: string | null
+  hasPermanentLink: boolean
+}
+
 export interface ArtifactVersionSummary {
   version: number
   sizeBytes: number

@@ -27,6 +27,17 @@ describe('OAuth scope label', () => {
     expect(wrapper.text()).toContain('30 days')
   })
 
+  it('says the files scope also creates documents', async () => {
+    const wrapper = await mountSuspended(ScopeLabel, {
+      props: { scope: 'files:write', withDescription: true },
+    })
+
+    expect(wrapper.text()).toContain(
+      'Create text files and documents (PDF, Word, PowerPoint, Excel) and '
+      + 'rename files.',
+    )
+  })
+
   it('mentions artifacts in the delete description', async () => {
     const wrapper = await mountSuspended(ScopeLabel, {
       props: { scope: 'data:delete', withDescription: true },

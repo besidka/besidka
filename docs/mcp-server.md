@@ -83,7 +83,7 @@ never data.
 | `memory:read` | `list_memory` |
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
-| `files:write` | `create_file`, `rename_file` |
+| `files:write` | `create_file`, `create_document`, `rename_file` |
 | `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
 | `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |
@@ -92,7 +92,8 @@ never data.
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
-The per-user surface has 32 tools: the original thirteen plus 19 added for
+The first per-user surface had 32 tools (the artifact tools and
+`create_document` came later, see below): the original thirteen plus 19 added for
 UI parity (six new scopes: `files:read`, `settings:read`, `chats:write`,
 `files:write`, `settings:write` and `data:delete`, and more tools behind
 `projects:write` and `memory:write`). Write scopes are off by
@@ -859,6 +860,7 @@ text only and capped.
 | `list_files` | `files:read` | no | Library files, newest first, with `search` and a `source` filter (`all`, `upload`, `assistant`, `project`), plus the user's storage usage | `getFilesSourceCondition`, `containsLikeEscaped`. `limit` up to 50 |
 | `read_file` | `files:read` | no | Text of one file, paged with `offset` and `nextOffset`. Text types only (plain text, markdown, CSV); PDFs and images are refused | 50,000 characters by default, 100,000 at most; files above 2 MiB are refused (`MCP_FILE_READ_MAX_BYTES`) |
 | `create_file` | `files:write` | no | Save text as a new file in the library (stored as `text/plain`, keeps its name) and return its id | `persistFile`, `assertUploadContentLength`, quota checks like an upload. Name up to 255 characters, text up to 200,000 |
+| `create_document` | `files:write` | no | Render a PDF, Word, PowerPoint or Excel file from a spec the client supplies and save it as a private library file (`source: assistant`). Input: `format`, `title`, `spec` (a JSON object, not a string; `format` and `title` are filled from the arguments, `specVersion` defaults to 1), optional `fileName` and `aiGenerated`. Returns `documentId`, `file` (`id`, `name`, `size`, `type`, `expiresAt`), `format` and `stats`. Since 3.1.0 | `createMcpDocument` (`server/utils/mcp/private/documents.ts`): `checkDocumentSpecInput`, `renderDocument` through `DOC_RENDERER`, `createDocument`, `claimDocumentRender`, `finalizeRenderedDocument`. Serialized spec up to 200,000 characters; 10 renders a minute and 100 a day per user (`MCP_DOCUMENT_RENDER_MINUTE_LIMIT`, `MCP_DOCUMENT_RENDER_DAILY_LIMIT`) on top of the write limit |
 | `rename_file` | `files:write` | yes | Change a file's name; the old name is not kept | `assertFileNameCharacters`. 255 characters |
 | `delete_files` | `data:delete` | yes | Hard delete files; the extracted text of files that are project knowledge is removed with them. Skipped ids are reported with a reason (`not_found`, `storage_error`, `error`) | `deleteOwnedFiles` (per file, not a batched R2 delete: each file is removed and caught on its own, so a failure keeps what was already deleted), `isFileLinkedToKnowledgeSql`. Up to 100 ids |
 | `list_memory` | `memory:read` | no | Account memory, one project's with `projectId`, or both with `scope: all` | `listMemoryEntries`. The entry caps (30 account, 15 per project, 4 KiB body) |
@@ -910,6 +912,10 @@ Notes:
   the other exclusions are deliberate, see
   [What MCP does not do (and why)](#what-mcp-does-not-do-and-why). Documents
   arrive as text, see [Files and documents](#files-and-documents-text-route).
+  The UI creates documents in a chat (the `create_document` chat tool, the
+  browser or the renderer Worker renders the file); MCP has no chat, so
+  `create_document` over MCP takes the client's spec and renders it on the
+  Worker, see [Rendered documents](#rendered-documents-create_document).
 - Every write goes through the same lifecycle functions as its HTTP route
   (`server/utils/chats/lifecycle.ts`, `projects/lifecycle.ts`,
   `files/delete-files.ts`, `settings/apply-user-settings.ts`), which the
@@ -952,6 +958,14 @@ Notes:
   screened for prompt injection (the tool description says so); to make text project knowledge use
   `add_project_text`. `delete_files` also removes the knowledge text of a
   linked file, so a file cannot be deleted while its text stays searchable.
+- `create_document` is the one tool that renders a file (see
+  [Rendered documents](#rendered-documents-create_document)). It takes the
+  spec as a JSON object, because a spec passed as a string would be escaped
+  twice and could pass 512 KiB. The `inputSchema` is a flat object
+  (`z.looseObject` for `spec`, so `tools/list` stays small and the root is
+  `type: "object"`: Anthropic, OpenAI strict and Gemini clients reject a
+  root `oneOf` or `anyOf`); the per-format shapes live in the tool
+  description and `parseDocumentSpec` is the only validator.
 - `get_settings` returns `memoryExtractionEnabled`, the memory models and
   nothing about keys, so a client can explain why extraction is off, but
   `update_settings` cannot change them (see the exclusions below).
@@ -1021,6 +1035,79 @@ the CPU time and 128 MB memory limits and with the existing ZIP-bomb caps. A
 new upload route must read the body with h3 `readRawBody`: Workers pre-buffers
 request bodies, and a custom stream reader hangs (see Request limits).
 
+### Rendered documents (`create_document`)
+
+`create_document` (`files:write`, since 3.1.0) lets an external agent write a
+spec and get a real PDF, DOCX, PPTX or XLSX saved into the user's library.
+It renders on Besidka's own `DOC_RENDERER` Worker, so it spends no provider
+key and needs no consent beyond `files:write`: creating a file was already
+allowed by that scope, and a document format does not widen what the client
+can read.
+
+- **Gate.** Inside the handler (never the toolkit `enabled` guard, so the
+  tool stays in `tools/list`): `documents`, `documents.mcp` and the flag of
+  the requested format (`documents.pdf|docx|pptx|xlsx`) must be on for the
+  user, evaluated without a request (`evaluateFeature` with the user's
+  state), and the user's own Labs toggle must not be off. Any failure is the
+  same 404, "Document creation is not available for this account".
+- **Input checks, in order.** Flags, then `JSON.stringify(spec).length` up to
+  200,000 characters (before parsing), then `checkDocumentSpecInput` (the
+  chat tool's validator) with the top-level `format` and `title` overriding
+  the spec's own. A bad spec returns up to 10 `path: message` lines, never
+  the document text. Then image ids: only PNG or JPEG files of the caller
+  (`resolveOwnedImageFiles`); another user's file, a non-image and an unknown
+  id all give the same "Unknown image fileId" answer. Only then the render
+  budget is consumed.
+- **Body ceiling.** The 512 KiB authenticated request cap holds for 200,000
+  Cyrillic characters (2 bytes each, about 400 KB), asserted in
+  `create-document.spec.ts`. CJK text (3 bytes) above about 170,000
+  characters gets the guard's `413` before the tool runs; the tool
+  description says so.
+- **Render.** A `documents` row is created (`createdVia: 'mcp'`, no chat, no
+  provider, no model), its spec is written to R2 and the row is claimed
+  (`rendering` with a 120 s lease). Images are read from R2 one object at a
+  time. The renderer gets `provenance: { model: null, createdVia: 'mcp',
+  aiGenerated }`: the file metadata says it was rendered by Besidka from
+  caller-supplied content and asserts AI origin only when the client passes
+  `aiGenerated: true` (the tool description tells clients to do so for
+  AI-written content). The same flag is stored as `documents.ai_generated`
+  (nullable, no SQL default; `true` for chat documents). Display reads it
+  through `isDocumentAiGenerated`: a stored value wins, and `NULL` (rows from
+  before the column) means AI for chat and not AI for `mcp`. The Documents
+  library shows the "Connected app" source badge for every MCP document and
+  the AI badge only when the helper says so; the file manager hides its AI
+  badge on a non-AI MCP document and shows a neutral "App" marker instead (the
+  "Generated by AI" tab still lists those files, because the tab filters on
+  `files.source`). `finalizeRenderedDocument` stores the file
+  (`source: assistant`, quota and retention like an upload) and marks the
+  row `ready`. A caller's `fileName` renames the stored file afterwards and
+  gets the format's extension when it lacks it.
+- **Failures.** The row becomes `failed` with an `errorCode`
+  (`spec_invalid`, `bounds_exceeded`, `asset_invalid`,
+  `spec_version_unsupported`, `render_failed`, `output_invalid`,
+  `quota_exceeded`, `renderer_unavailable`), the spec object is deleted and
+  `spec_r2_key` is cleared; no row stays `rendering`. A caller can fix its
+  own mistakes, so spec, bounds, image, version and render failures are 422
+  with a readable message, a full library is 413 with the current usage (no
+  orphan file or object), and the budget is 429. A renderer outage (503)
+  stays the generic tool error because `withSafeToolErrors` masks every 5xx.
+- **Limiter.** `consumeDocumentAllowance`: 10 renders a minute and 100 a day
+  per user, in KV under `mcp:rate-limit:document-minute` and
+  `mcp:rate-limit:document-day` (`createAuthRateLimitStorage`, like the
+  artifact share limit). A refused KV write counts as "too close together"
+  (429), not as a pass. The chat route's own bucket (10 a minute,
+  `documents-render-rate-limit`) is separate.
+- **Not here.** `update_document` and `list_documents` (documents are files:
+  `list_files` and `read_file` cover them), binary upload, and any spec
+  written with the user's key.
+- **Abuse watch.** The renderer is free compute for a signed-in user:
+  watch `attributes.mcp` in the Axiom dashboard `besidka-mcp-tool-calls` and
+  the per-user caps.
+- **Open decision (BES-296).** A published JSON Schema of the spec (for
+  example `z.toJSONSchema` at a public URL) instead of the shapes in the
+  description is not built: decide after trying the tool with Claude and
+  ChatGPT clients.
+
 ### Sending messages (not built)
 
 There is no `send_message` tool, by decision (owner, 2026-10-30). Every tool
@@ -1080,7 +1167,9 @@ tools ship.
    [Sending messages](#sending-messages-not-built)), and the same boundary
    covers memory import, "Update memory now" (extract now), the instruct
    preview, memory backfill, project memory refresh, chat title generation,
-   the share personal-data check and deep research. Why: a tool call cannot
+   the share personal-data check and deep research. `create_document` is not
+   an exception: Besidka never writes the spec with the user's key over MCP,
+   the client supplies it and the Worker only renders it. Why: a tool call cannot
    prove that a human approved it, an injected prompt could drain the user's
    key, and spending on a key needs the user's explicit consent in Besidka.
    For the same reason `update_project` and `update_settings` only restore

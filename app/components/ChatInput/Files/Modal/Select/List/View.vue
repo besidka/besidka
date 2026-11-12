@@ -77,7 +77,7 @@
           </div>
         </td>
         <td>
-          <div class="max-w-[150px] lg:max-w-sm">
+          <div class="max-w-[110px] xs:max-w-[150px] lg:max-w-sm">
             <span
               class="block lg:hidden"
               :title="file.name"
@@ -91,11 +91,21 @@
               {{ truncateFilenameMiddle(file.name, 48) }}
             </span>
             <span
-              v-if="file.source === 'assistant'"
+              v-if="isAiGeneratedFile(file)"
               class="badge badge-secondary badge-xs mt-1 text-2xs leading-none gap-0.5"
+              data-testid="files-ai-badge"
             >
               <Icon name="lucide:sparkles" size="10" />
               {{ getAiBadgeLabel(file) }}
+            </span>
+            <span
+              v-else-if="isConnectedAppFile(file)"
+              class="badge badge-soft badge-xs mt-1 text-2xs leading-none gap-0.5"
+              :title="CONNECTED_APP_FILE_BADGE_TITLE"
+              data-testid="files-app-badge"
+            >
+              <Icon name="lucide:plug" size="10" />
+              {{ CONNECTED_APP_FILE_BADGE_LABEL }}
             </span>
             <span class="text-base-content/60 text-2xs sm:hidden">
               Size: {{ formatFileSize(file.size) }}, Type:
@@ -133,6 +143,17 @@
         </td>
         <td @click.stop>
           <div class="flex justify-end gap-0.5">
+            <button
+              v-if="canPreviewFile(file)"
+              type="button"
+              class="btn btn-circle btn-xs btn-ghost"
+              aria-label="Preview document"
+              title="Preview"
+              data-testid="files-action-preview"
+              @click="$emit('preview', file)"
+            >
+              <Icon name="lucide:eye" size="12" />
+            </button>
             <a
               :href="getFileDownloadUrl(file.storageKey)"
               class="btn btn-circle btn-xs btn-ghost"
@@ -187,10 +208,13 @@ withDefaults(defineProps<{
 
 defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]
+  'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
   'toggle-select-all': []
 }>()
+
+const { canPreviewFile } = useDocumentPreview()
 
 const containerRef = useTemplateRef<HTMLTableElement>('containerRef')
 

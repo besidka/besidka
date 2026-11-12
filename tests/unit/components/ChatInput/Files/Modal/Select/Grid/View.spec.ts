@@ -1,7 +1,20 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { computed, ref } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it } from 'vitest'
 import GridView from '../../../../../../../../app/components/ChatInput/Files/Modal/Select/Grid/View.vue'
 import GridSkeleton from '../../../../../../../../app/components/ChatInput/Files/Modal/Select/Grid/Skeleton.vue'
+
+const documentsActive = ref<boolean>(true)
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return {
+      enabled: documentsActive.value,
+      active: documentsActive.value,
+      variant: null,
+    }
+  })
+})
 
 const file = {
   id: 'file-1',
@@ -13,7 +26,87 @@ const file = {
   createdAt: '2026-07-15T12:00:00.000Z',
 }
 
+const documentFile = {
+  ...file,
+  id: 'file-2',
+  storageKey: 'file-2.pdf',
+  name: 'Report.pdf',
+  type: 'application/pdf',
+  documentId: 'doc-2',
+}
+
+function mountDocumentGrid(files: Array<Record<string, unknown>>) {
+  return mountSuspended(GridView, {
+    props: {
+      files,
+      selectedIds: new Set<string>(),
+      isTouchSelecting: false,
+      touchedIndices: new Set<number>(),
+    },
+  })
+}
+
 describe('ChatInput/Files/Modal/Select/Grid/View', () => {
+  beforeEach(() => {
+    documentsActive.value = true
+  })
+
+  it('previews a document file without selecting the tile', async () => {
+    const wrapper = await mountDocumentGrid([documentFile])
+    const preview = wrapper.get('[data-testid="files-action-preview"]')
+
+    expect(preview.attributes('aria-label')).toBe('Preview document')
+    expect(wrapper.find('[aria-label="Download Report.pdf"]').exists())
+      .toBe(true)
+
+    await preview.trigger('click')
+
+    expect(wrapper.emitted('preview')?.[0]).toEqual([documentFile])
+    expect(wrapper.emitted('file-click')).toBeUndefined()
+  })
+
+  it('has no preview action without a document id or the feature',
+    async () => {
+      const wrapper = await mountDocumentGrid([
+        { ...documentFile, documentId: null },
+        file,
+      ])
+
+      expect(wrapper.find('[data-testid="files-action-preview"]').exists())
+        .toBe(false)
+
+      documentsActive.value = false
+
+      const withoutFeature = await mountDocumentGrid([documentFile])
+
+      expect(withoutFeature.find('[data-testid="files-action-preview"]')
+        .exists()).toBe(false)
+    })
+
+  it('hides the AI badge for a connected app document and marks it',
+    async () => {
+      const wrapper = await mountDocumentGrid([
+        { ...documentFile, documentAiGenerated: false },
+      ])
+
+      expect(wrapper.find('[data-testid="files-ai-badge"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="files-app-badge"]').text())
+        .toBe('App')
+    })
+
+  it('keeps the AI badge for AI documents and generated files', async () => {
+    const wrapper = await mountDocumentGrid([
+      { ...documentFile, documentAiGenerated: true },
+      { ...documentFile, id: 'file-3', documentAiGenerated: null },
+      file,
+    ])
+
+    expect(wrapper.findAll('[data-testid="files-ai-badge"]')).toHaveLength(3)
+    expect(wrapper.find('[data-testid="files-app-badge"]').exists())
+      .toBe(false)
+  })
+
   it('selects only when keyboard events originate from the tile', async () => {
     const wrapper = await mountSuspended(GridView, {
       props: {

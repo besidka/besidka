@@ -130,6 +130,7 @@ const route = useRoute()
 const { loggedIn } = useAuth()
 const isAdmin = useIsAdmin()
 const artifactsFeature = useFeature('artifacts')
+const documentsFeature = useFeature('documents')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
@@ -271,6 +272,14 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
             iconName: 'lucide:app-window',
             label: 'Artifacts',
             run: () => goTo('/chats/artifacts'),
+          }]
+          : []),
+        ...(documentsFeature.value.active
+          ? [{
+            id: 'search-option-documents',
+            iconName: 'lucide:file-text',
+            label: 'Documents',
+            run: () => goTo('/chats/documents'),
           }]
           : []),
       ],

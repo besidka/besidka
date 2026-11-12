@@ -59,6 +59,41 @@ describe('parseDocumentSpec', () => {
       .toEqual(['$.specVersion'])
   })
 
+  describe('theme', () => {
+    function parsedTheme(theme: unknown) {
+      const result = parseDocumentSpec(docx([paragraph()], { theme }))
+
+      return result.ok ? result.spec.theme : undefined
+    }
+
+    it('fills a missing accent with neutral', () => {
+      expect(parsedTheme({ font: 'serif' }))
+        .toEqual({ font: 'serif', accent: 'neutral' })
+    })
+
+    it('fills a missing font with sans', () => {
+      expect(parsedTheme({ accent: 'violet' }))
+        .toEqual({ font: 'sans', accent: 'violet' })
+    })
+
+    it('fills both fields of an empty theme', () => {
+      expect(parsedTheme({})).toEqual({ font: 'sans', accent: 'neutral' })
+    })
+
+    it('keeps a complete theme and leaves an absent theme absent', () => {
+      expect(parsedTheme({ font: 'serif', accent: 'green' }))
+        .toEqual({ font: 'serif', accent: 'green' })
+      expect(parsedTheme(undefined)).toBeUndefined()
+    })
+
+    it('still rejects unknown values and keys with their path', () => {
+      expect(issuePaths(docx([paragraph()], { theme: { accent: 'pink' } })))
+        .toEqual(['$.theme.accent'])
+      expect(issuePaths(docx([paragraph()], { theme: { color: 'red' } })))
+        .toHaveLength(1)
+    })
+  })
+
   it('rejects unknown keys so models cannot smuggle fields', () => {
     expect(issuePaths(docx([{ ...paragraph(), onclick: 'x' }])).length)
       .toBeGreaterThan(0)

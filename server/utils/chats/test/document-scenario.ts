@@ -64,6 +64,7 @@ export async function createTestDocument(
     format: spec.format,
     title: spec.title,
     createdVia: 'chat',
+    aiGenerated: true,
     originMessagePublicId: null,
     originProvider: null,
     originModel: null,

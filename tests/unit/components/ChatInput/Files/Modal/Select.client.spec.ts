@@ -316,6 +316,40 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect(kind.value).toBe('document')
   })
 
+  it.each(['grid', 'list'] as const)(
+    'passes a %s preview up to the modal',
+    async (view) => {
+      source.value = 'assistant'
+      managerFiles.value = [createManagerFile({
+        id: 'file-doc',
+        name: 'Plan.docx',
+        documentId: 'doc-1',
+      })]
+      mocks.useFileManager.mockReturnValue({
+        ...mocks.useFileManager(),
+        viewMode: shallowRef<'grid' | 'list'>(view),
+      })
+
+      const wrapper = await mountSuspended(Select, {
+        props: {
+          attachedIds: new Set<string>(),
+        },
+        shallow: true,
+        global: { stubs: { KeepAlive: false } },
+      })
+
+      await flushPromises()
+
+      const fileView = wrapper.findComponent({ name: 'AsyncComponentWrapper' })
+
+      expect(fileView.exists()).toBe(true)
+
+      fileView.vm.$emit('preview', managerFiles.value[0])
+
+      expect(wrapper.emitted('preview')?.[0]).toEqual([managerFiles.value[0]])
+    },
+  )
+
   it('names the empty state after the chosen kind', async () => {
     source.value = 'assistant'
     kind.value = 'document'

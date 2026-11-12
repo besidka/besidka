@@ -1,6 +1,19 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { computed, ref } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it } from 'vitest'
 import ListView from '../../../../../../../../app/components/ChatInput/Files/Modal/Select/List/View.vue'
+
+const documentsActive = ref<boolean>(true)
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return {
+      enabled: documentsActive.value,
+      active: documentsActive.value,
+      variant: null,
+    }
+  })
+})
 
 const file = {
   id: 'file-1',
@@ -27,6 +40,73 @@ function mountListView(props: Record<string, unknown> = {}) {
 }
 
 describe('ChatInput/Files/Modal/Select/List/View', () => {
+  beforeEach(() => {
+    documentsActive.value = true
+  })
+
+  it('previews a document file without selecting the row', async () => {
+    const documentFile = { ...file, documentId: 'doc-1' }
+    const wrapper = await mountListView({ files: [documentFile] })
+    const preview = wrapper.get('[data-testid="files-action-preview"]')
+
+    expect(preview.attributes('aria-label')).toBe('Preview document')
+
+    await preview.trigger('click')
+
+    expect(wrapper.emitted('preview')?.[0]).toEqual([documentFile])
+    expect(wrapper.emitted('file-click')).toBeUndefined()
+  })
+
+  it('hides the AI badge for a connected app document and marks it',
+    async () => {
+      const documentFile = {
+        ...file,
+        source: 'assistant' as const,
+        documentId: 'doc-1',
+        documentAiGenerated: false,
+      }
+      const wrapper = await mountListView({ files: [documentFile] })
+
+      expect(wrapper.find('[data-testid="files-ai-badge"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="files-app-badge"]').text())
+        .toBe('App')
+    })
+
+  it('keeps the AI badge for AI documents and generated files', async () => {
+    const generated = { ...file, source: 'assistant' as const }
+    const aiDocument = {
+      ...generated,
+      id: 'file-2',
+      documentId: 'doc-2',
+      documentAiGenerated: true,
+    }
+    const wrapper = await mountListView({ files: [aiDocument, generated] })
+
+    expect(wrapper.findAll('[data-testid="files-ai-badge"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="files-app-badge"]').exists())
+      .toBe(false)
+  })
+
+  it('has no preview action without a document id or the feature',
+    async () => {
+      const withoutId = await mountListView({
+        files: [{ ...file, documentId: null }],
+      })
+
+      expect(withoutId.find('[data-testid="files-action-preview"]').exists())
+        .toBe(false)
+
+      documentsActive.value = false
+
+      const withoutFeature = await mountListView({
+        files: [{ ...file, documentId: 'doc-1' }],
+      })
+
+      expect(withoutFeature.find('[data-testid="files-action-preview"]')
+        .exists()).toBe(false)
+    })
+
   it('pins the table header at the top of the scroll area by default', async () => {
     const wrapper = await mountListView()
     const table = wrapper.get('[data-testid="files-list-table"]')

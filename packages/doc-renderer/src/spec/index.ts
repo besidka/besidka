@@ -4,7 +4,11 @@ import {
   measureSerializedLength,
 } from './bounds.ts'
 import type { SpecIssue } from './bounds.ts'
-import { documentSpecSchema, SPEC_LIMITS } from './v1.ts'
+import {
+  documentSpecSchema,
+  resolveThemeFields,
+  SPEC_LIMITS,
+} from './v1.ts'
 import type { DocumentSpec } from './v1.ts'
 
 export const DOCUMENT_SPEC_VERSION = 1
@@ -25,7 +29,9 @@ export {
   blockSchema,
   documentSpecSchema,
   HYPERLINK_PROTOCOLS,
+  DEFAULT_THEME,
   isAllowedHyperlink,
+  resolveThemeFields,
   SPEC_LIMITS,
 } from './v1.ts'
 export type {
@@ -47,6 +53,7 @@ export type {
   Sheet,
   Slide,
   TableBlock,
+  ResolvedTheme,
   Theme,
   XlsxSpec,
 } from './v1.ts'
@@ -125,5 +132,9 @@ export function parseDocumentSpec(input: unknown): ParseDocumentSpecResult {
     return { ok: false, issues: boundIssues.slice(0, MAX_REPORTED_ISSUES) }
   }
 
-  return { ok: true, spec: result.data }
+  const spec: DocumentSpec = result.data.theme
+    ? { ...result.data, theme: resolveThemeFields(result.data.theme) }
+    : result.data
+
+  return { ok: true, spec }
 }

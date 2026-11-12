@@ -1,5 +1,6 @@
 import type { ProvenanceInput } from '../provenance.ts'
-import type { DocumentSpec, Theme } from '../spec/v1.ts'
+import { resolveThemeFields } from '../spec/v1.ts'
+import type { DocumentSpec, ResolvedTheme } from '../spec/v1.ts'
 
 export interface RenderFonts {
   regular: Uint8Array
@@ -15,6 +16,7 @@ export interface RenderOptions {
 
 export interface RenderStats {
   pages?: number
+  blocks?: number
   slides?: number
   sheets?: number
   cells?: number
@@ -40,7 +42,7 @@ export const MEDIA_TYPES = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 } as const
 
-export const ACCENT_COLORS: Record<Theme['accent'], string> = {
+export const ACCENT_COLORS: Record<ResolvedTheme['accent'], string> = {
   neutral: '374151',
   blue: '1D4ED8',
   green: '15803D',
@@ -48,7 +50,7 @@ export const ACCENT_COLORS: Record<Theme['accent'], string> = {
   violet: '6D28D9',
 }
 
-export const ACCENT_TINTS: Record<Theme['accent'], string> = {
+export const ACCENT_TINTS: Record<ResolvedTheme['accent'], string> = {
   neutral: 'E5E7EB',
   blue: 'DBEAFE',
   green: 'DCFCE7',
@@ -56,10 +58,8 @@ export const ACCENT_TINTS: Record<Theme['accent'], string> = {
   violet: 'EDE9FE',
 }
 
-export const DEFAULT_THEME: Theme = { font: 'sans', accent: 'neutral' }
-
-export function resolveTheme(spec: DocumentSpec): Theme {
-  return spec.theme ?? DEFAULT_THEME
+export function resolveTheme(spec: DocumentSpec): ResolvedTheme {
+  return resolveThemeFields(spec.theme)
 }
 
 export function hexToRgb(hex: string): [number, number, number] {

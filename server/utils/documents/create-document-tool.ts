@@ -9,7 +9,7 @@ import {
   parseDocumentSpec,
   summarizeSpec,
 } from '@besidka/doc-renderer/spec'
-import type { DocumentSpec } from '@besidka/doc-renderer/spec'
+import type { DocumentSpec, SpecIssue } from '@besidka/doc-renderer/spec'
 import {
   DOCUMENT_FORMATS,
   DOCUMENT_FORMAT_LABELS,
@@ -26,6 +26,7 @@ import { resolveOwnedImageFiles } from '~~/server/utils/documents/images'
 import { createDocument } from '~~/server/utils/documents/store'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import type { RenderSuccess } from '~~/workers/doc-renderer/src/contract'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -50,13 +51,18 @@ export interface CreateDocumentToolInput {
   assistantMessageId: string
 }
 
-type DocumentSpecCheck
+export type DocumentSpecCheck
   = | { ok: true, spec: DocumentSpec }
-    | { ok: false, code: string, message: string }
+    | {
+      ok: false
+      code: string
+      message: string
+      issues?: readonly SpecIssue[]
+    }
 
 type SpecOption = (typeof documentSpecSchema.options)[number]
 
-const FORMAT_EXAMPLES: Record<DocumentFormat, string> = {
+export const FORMAT_EXAMPLES: Record<DocumentFormat, string> = {
   pdf: '{"specVersion":1,"format":"pdf","title":"Trip plan","language":"en",'
     + '"pageSize":"A4","blocks":[{"type":"heading","level":1,"text":"Trip '
     + 'plan"},{"type":"paragraph","runs":[{"text":"Leave on "},{"text":'
@@ -74,7 +80,7 @@ const FORMAT_EXAMPLES: Record<DocumentFormat, string> = {
     + '["Food",400],["Total",{"formula":"SUM(B2:B3)"}]]}]}',
 }
 
-const FORMAT_RULES: Record<DocumentFormat, string> = {
+export const FORMAT_RULES: Record<DocumentFormat, string> = {
   pdf: 'pdf needs pageSize "A4" or "Letter" and blocks.',
   docx: 'docx needs blocks.',
   pptx: 'pptx needs aspect "16:9" or "4:3" and slides. Slide layouts: '
@@ -91,7 +97,7 @@ const FORMAT_RULES: Record<DocumentFormat, string> = {
     + 'unique, none of [ ] : * ? / \\, not "History".',
 }
 
-const BLOCKS_DESCRIPTION = 'Blocks for pdf and docx: {"type":"heading",'
+export const BLOCKS_DESCRIPTION = 'Blocks for pdf and docx: {"type":"heading",'
   + '"level":1-4,"text"}, {"type":"paragraph","runs":[...],"align?"}, '
   + '{"type":"list","ordered":bool,"items":[{"runs":[...],"children?":'
   + '[...]}]} (three levels at most), {"type":"table","header":bool,'
@@ -161,8 +167,9 @@ export function buildDocumentToolDescription(
     'runs for bold, italic, underline, code and links. Links are https: or',
     'mailto: only. Images only by the `fileId` of a PNG or JPEG file the user attached or that',
     'was generated in this chat, at most 20; never URLs or data URIs.',
-    'Optional `theme`: {"font":"sans"|"serif","accent":"neutral"|"blue"|'
-    + '"green"|"orange"|"violet"}.',
+    'Optional `theme`: {"font"?:"sans"|"serif","accent"?:"neutral"|"blue"|'
+    + '"green"|"orange"|"violet"}; both fields are optional and a missing one',
+    'falls back to "sans" or "neutral".',
     hasBlockFormat ? BLOCKS_DESCRIPTION : '',
     ...formats.map(format => FORMAT_RULES[format]),
     'Examples:',
@@ -365,10 +372,11 @@ export function checkDocumentSpecInput(
       + 'No document was created. Fix these fields and call '
       + `\`${DOCUMENT_TOOL_NAME}\` again, or tell the user it could not be `
       + 'created.',
+    issues: parsed.issues,
   }
 }
 
-function toDocumentStats(spec: DocumentSpec): DocumentStats {
+export function toDocumentStats(spec: DocumentSpec): DocumentStats {
   const summary = summarizeSpec(spec)
 
   return {
@@ -378,6 +386,17 @@ function toDocumentStats(spec: DocumentSpec): DocumentStats {
     cells: summary.cells,
     images: summary.images,
   }
+}
+
+export function withSpecStats(
+  stats: RenderSuccess['stats'],
+  spec: DocumentSpec,
+): RenderSuccess['stats'] {
+  if (spec.format !== 'docx' || stats.blocks !== undefined) {
+    return stats
+  }
+
+  return { ...stats, blocks: spec.blocks.length }
 }
 
 /**
@@ -480,6 +499,7 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
             format: validSpec.format,
             title: validSpec.title,
             createdVia: 'chat',
+            aiGenerated: true,
             originChatId: input.chatId,
             originMessagePublicId: input.assistantMessageId,
             originProvider: input.provider ?? null,

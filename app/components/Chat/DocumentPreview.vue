@@ -55,7 +55,7 @@
       </div>
     </header>
     <p
-      v-if="format !== 'pdf'"
+      v-if="format !== 'pdf' && !isSpecUnavailable"
       class="text-xs text-base-content/60"
       data-testid="document-preview-note"
     >
@@ -72,6 +72,23 @@
       <div class="skeleton skeleton--default h-6 w-2/3" />
       <div class="skeleton skeleton--default h-40 w-full" />
       <div class="skeleton skeleton--default h-4 w-1/2" />
+    </div>
+    <div
+      v-else-if="isSpecUnavailable"
+      class="alert alert-soft items-start"
+      role="status"
+      data-testid="document-preview-unavailable"
+    >
+      <Icon
+        name="lucide:file-x"
+        size="18"
+        class="shrink-0"
+        aria-hidden="true"
+      />
+      <div class="grow">
+        <p class="font-medium">Preview unavailable</p>
+        <p class="text-sm">Download the file to open it.</p>
+      </div>
     </div>
     <div
       v-else-if="errorText"
@@ -136,7 +153,7 @@
 import { parseError } from 'evlog'
 import type { DocumentSpec } from '@besidka/doc-renderer/spec'
 import {
-  DOCUMENT_FORMAT_LABELS,
+  DOCUMENT_FORMAT_LIBRARY_LABELS,
   isDocumentFormat,
 } from '#shared/utils/documents'
 import type {
@@ -189,7 +206,7 @@ const {
 )
 
 const formatLabel = computed<string>(() => {
-  return DOCUMENT_FORMAT_LABELS[props.format]
+  return DOCUMENT_FORMAT_LIBRARY_LABELS[props.format]
 })
 
 const fileUrls = computed(() => {
@@ -230,6 +247,23 @@ const isLoading = computed<boolean>(() => {
   }
 
   return specRequest.value === 'idle' || specRequest.value === 'pending'
+})
+
+const UNAVAILABLE_SPEC_STATUS_CODES = [404, 410]
+
+const isSpecUnavailable = computed<boolean>(() => {
+  if (props.format === 'pdf') {
+    return false
+  }
+
+  const failure = specError.value as {
+    status?: number
+    statusCode?: number
+  } | null
+  const statusCode = failure?.statusCode ?? failure?.status
+
+  return typeof statusCode === 'number'
+    && UNAVAILABLE_SPEC_STATUS_CODES.includes(statusCode)
 })
 
 const errorText = computed<string>(() => {

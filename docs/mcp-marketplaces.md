@@ -294,7 +294,7 @@ consent page lets the user approve each scope separately.
 | `memory:read` | `list_memory` |
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
-| `files:write` | `create_file`, `rename_file` |
+| `files:write` | `create_file`, `create_document`, `rename_file` |
 | `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
 | `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |

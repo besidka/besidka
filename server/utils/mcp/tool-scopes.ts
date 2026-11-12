@@ -30,6 +30,7 @@ export const MCP_PRIVATE_TOOL_SCOPES = {
   list_files: 'files:read',
   read_file: 'files:read',
   create_file: 'files:write',
+  create_document: 'files:write',
   rename_file: 'files:write',
   delete_files: 'data:delete',
   list_memory: 'memory:read',

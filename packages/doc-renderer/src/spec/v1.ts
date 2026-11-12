@@ -222,8 +222,8 @@ export const blockSchema = z.discriminatedUnion('type', [
 ])
 
 export const themeSchema = z.strictObject({
-  font: z.enum(['sans', 'serif']),
-  accent: z.enum(['neutral', 'blue', 'green', 'orange', 'violet']),
+  font: z.enum(['sans', 'serif']).optional(),
+  accent: z.enum(['neutral', 'blue', 'green', 'orange', 'violet']).optional(),
 })
 
 const commonShape = {
@@ -402,6 +402,19 @@ export type Slide = z.infer<typeof slideSchema>
 export type Cell = z.infer<typeof cellSchema>
 export type Sheet = z.infer<typeof sheetSchema>
 export type Theme = z.infer<typeof themeSchema>
+export type ResolvedTheme = Required<Theme>
+
+export const DEFAULT_THEME: ResolvedTheme = {
+  font: 'sans',
+  accent: 'neutral',
+}
+
+export function resolveThemeFields(theme: Theme | undefined): ResolvedTheme {
+  return {
+    font: theme?.font ?? DEFAULT_THEME.font,
+    accent: theme?.accent ?? DEFAULT_THEME.accent,
+  }
+}
 export type DocxSpec = z.infer<typeof docxSpecSchema>
 export type PdfSpec = z.infer<typeof pdfSpecSchema>
 export type PptxSpec = z.infer<typeof pptxSpecSchema>

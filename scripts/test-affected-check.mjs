@@ -236,6 +236,7 @@ export function getAffectedTests(changedFiles) {
   const artifactsLibraryTests = [
     'tests/unit/pages/chats/artifacts/index.spec.ts',
     'tests/unit/components/Artifact/KindFilter.spec.ts',
+    'tests/unit/components/History/FilterButtons.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/composables/artifacts-library.spec.ts',
@@ -245,6 +246,13 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/artifacts.spec.ts',
     'tests/e2e/history/artifacts-library.spec.ts',
     'tests/e2e/chat/artifact-actions.spec.ts',
+  ]
+  const sharedHistoryTests = [
+    'tests/unit/pages/chats/shared/index.spec.ts',
+    'tests/unit/composables/shared-artifacts.spec.ts',
+    'tests/unit/components/History/BoxTabs.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/integration/api/artifact-shared-list.spec.ts',
   ]
   const artifactsShareUiTests = [
     'tests/unit/pages/artifacts/[token].spec.ts',
@@ -289,6 +297,7 @@ export function getAffectedTests(changedFiles) {
   const documentsChatTests = [
     'tests/integration/api/chats-documents.spec.ts',
     'tests/integration/api/documents.spec.ts',
+    'tests/integration/api/documents-library.spec.ts',
     'tests/integration/api/files-kind-filter.spec.ts',
     'tests/integration/api/shared-documents.spec.ts',
     'tests/unit/components/Chat/Document.spec.ts',
@@ -303,6 +312,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/documents/message-parts.spec.ts',
     'tests/unit/server/utils/documents/share.spec.ts',
     'tests/unit/server/utils/documents/store.spec.ts',
+    'tests/unit/server/mcp/tools/create-document.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
     'tests/unit/utils/document-parts.spec.ts',
     'tests/unit/utils/document-ui.spec.ts',
     'tests/unit/workers/document-render.spec.ts',
@@ -310,6 +321,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/documents/link-message.spec.ts',
     'tests/unit/server/utils/documents/stored-spec.spec.ts',
     'tests/unit/utils/documents/file-name.spec.ts',
+    'tests/unit/utils/documents/library-helpers.spec.ts',
+    'tests/unit/utils/documents/ai-generated.spec.ts',
     'tests/unit/components/Chat/Document/Blocks.spec.ts',
     'tests/unit/components/Chat/Document/Slide.spec.ts',
     'tests/unit/utils/chats/share-pii-check.spec.ts',
@@ -327,6 +340,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
   const documentsFileManagerTests = [
+    'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/KindFilter.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
@@ -336,6 +350,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/integration/api/files-kind-filter.spec.ts',
     'tests/integration/api/files-index-source.spec.ts',
+    'tests/integration/api/files-index-document-id.spec.ts',
+  ]
+  const documentsLibraryTests = [
+    'tests/unit/pages/chats/documents/index.spec.ts',
+    'tests/unit/components/History/DocumentRow.spec.ts',
+    'tests/unit/components/History/BoxTabs.spec.ts',
+    'tests/unit/components/History/FilterButtons.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/Chat/DocumentPreview.spec.ts',
+    'tests/unit/composables/documents-library.spec.ts',
+    'tests/unit/utils/documents/library-helpers.spec.ts',
+    'tests/integration/api/documents-library.spec.ts',
   ]
   const documentRendererWorkerTests = [
     'tests/unit/workers/doc-renderer/index.spec.ts',
@@ -449,6 +476,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/admin-scopes.spec.ts',
     'tests/unit/server/mcp/tools/branch-chat.spec.ts',
     'tests/unit/server/mcp/tools/create-file.spec.ts',
+    'tests/unit/server/mcp/tools/create-document.spec.ts',
     'tests/unit/server/mcp/tools/delete-chat-message.spec.ts',
     'tests/unit/server/mcp/tools/delete-chats.spec.ts',
     'tests/unit/server/mcp/tools/delete-files.spec.ts',
@@ -471,6 +499,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/mcp/tools/update-settings.spec.ts',
     'tests/unit/server/utils/mcp/private-chat-actions.spec.ts',
     'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
     'tests/unit/server/utils/mcp/private-files.spec.ts',
     'tests/unit/server/utils/mcp/private-projects-manage.spec.ts',
     'tests/unit/server/utils/mcp/private-settings.spec.ts',
@@ -2468,8 +2497,13 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\/.*)?\.vue|app\/composables\/file-manager\.ts|app\/utils\/file-manager-sources\.ts|app\/types\/file-manager\.d\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/utils\/files\/source-filter\.ts)$/,
+        /^(app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\/.*)?\.vue|app\/composables\/(file-manager|document-preview)\.ts|app\/utils\/file-manager-sources\.ts|app\/types\/file-manager\.d\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/utils\/files\/source-filter\.ts|tests\/setup\/helpers\/knowledge-db\.ts)$/,
       tests: documentsFileManagerTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/documents\/index\.vue|app\/components\/History\/(DocumentRow|BoxTabs|FilterButtons|PageShell)\.vue|app\/composables\/(documents-library|document-preview)\.ts|app\/components\/Search\/Modal\.client\.vue|server\/api\/v1\/documents\/index\.get\.ts|server\/utils\/documents\/library\.ts|shared\/utils\/documents\.ts)$/,
+      tests: documentsLibraryTests,
     },
     {
       pattern:
@@ -3336,6 +3370,14 @@ export function getAffectedTests(changedFiles) {
       tests: mcpArtifactTests,
     },
     {
+      pattern: /^server\/(mcp\/tools\/create-document|utils\/mcp\/private\/documents)\.ts$/,
+      tests: [
+        'tests/unit/server/mcp/tools/create-document.spec.ts',
+        'tests/unit/server/utils/mcp/private-documents.spec.ts',
+        'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/(turnstile|auth-hosts)\.ts$/,
       tests: ['tests/unit/server/utils/turnstile.spec.ts'],
     },
@@ -3374,8 +3416,13 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/components\/Artifact\/KindFilter\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/components\/Artifact\/KindFilter\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|FilterButtons|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsLibraryTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/shared\/index\.vue|app\/components\/History\/(SharedArtifactRow|BoxTabs|PageShell)\.vue|app\/composables\/shared-artifacts\.ts|server\/api\/v1\/artifacts\/shared\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: sharedHistoryTests,
     },
     {
       pattern:

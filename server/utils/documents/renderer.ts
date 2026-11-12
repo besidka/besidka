@@ -2,7 +2,7 @@ import { createError } from 'evlog'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 import { exceptionSummary } from '~~/server/utils/evlog-attributes'
-import type { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 import type {
   DocumentRendererService,
   RendererCapabilities,
@@ -12,8 +12,6 @@ import type {
   ValidateRequest,
   ValidateResult,
 } from '~~/workers/doc-renderer/src/contract'
-
-type RequestLogger = ReturnType<typeof useRequestLogger>
 
 type RendererOperation = 'capabilities' | 'render' | 'validate'
 
@@ -72,7 +70,7 @@ function readFormat(value: unknown): string | null {
 }
 
 function setRendererLog(
-  logger: RequestLogger | undefined,
+  logger: LoggerLike | undefined,
   fields: {
     operation: RendererOperation
     format?: string | null
@@ -94,7 +92,7 @@ function setRendererLog(
 
 async function callRenderer<Result>(
   operation: RendererOperation,
-  logger: RequestLogger | undefined,
+  logger: LoggerLike | undefined,
   call: (renderer: DocumentRendererService) => Promise<Result>,
   format: string | null,
 ): Promise<Result> {
@@ -122,7 +120,7 @@ async function callRenderer<Result>(
 }
 
 export async function getRendererCapabilities(
-  logger?: RequestLogger,
+  logger?: LoggerLike,
 ): Promise<RendererCapabilities> {
   const now = Date.now()
 
@@ -161,7 +159,7 @@ export async function getRendererCapabilities(
  */
 export async function renderDocument(
   request: RenderRequest,
-  logger: RequestLogger,
+  logger: LoggerLike,
 ): Promise<RenderResult> {
   const format = readFormat(request.spec)
   const capabilities = await getRendererCapabilities(logger)
@@ -210,7 +208,7 @@ export async function renderDocument(
 
 export async function validateDocumentBytes(
   request: ValidateRequest,
-  logger: RequestLogger,
+  logger: LoggerLike,
 ): Promise<ValidateResult> {
   const format = readFormat(request)
   const startedAt = Date.now()

@@ -82,6 +82,7 @@
         @toggle="toggleProjectGroup"
         @load-more="loadMoreProjectGroup"
         @file-click="onFileClick"
+        @preview="onPreview"
         @rename="openRenameModal"
         @delete="confirmDelete"
         @toggle-select-all="handleToggleProjectGroupSelectAll"
@@ -98,6 +99,7 @@
             :touched-indices="touchedIndices"
             :unsupported-reasons="unsupportedReasons"
             @file-click="onFileClick"
+            @preview="onPreview"
             @rename="openRenameModal"
             @delete="confirmDelete"
           />
@@ -112,6 +114,7 @@
             :has-selection="hasSelection"
             :unsupported-reasons="unsupportedReasons"
             @file-click="onFileClick"
+            @preview="onPreview"
             @rename="openRenameModal"
             @delete="confirmDelete"
             @toggle-select-all="handleToggleSelectAll"
@@ -182,6 +185,7 @@ const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
   detach: [fileIds: string[]]
   deleted: []
+  preview: [file: FileManagerFile]
 }>()
 
 const nuxtApp = useNuxtApp()
@@ -625,6 +629,10 @@ function onFileClick(
   }
 
   handleSelect(file.id, index, event.shiftKey)
+}
+
+function onPreview(file: FileManagerFile) {
+  emit('preview', file)
 }
 
 const renameModalRef = shallowRef<{

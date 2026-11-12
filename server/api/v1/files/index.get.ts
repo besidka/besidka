@@ -2,6 +2,9 @@ import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { isDocumentAiGenerated } from '#shared/utils/documents'
+import type { DocumentCreatedVia } from '#shared/utils/documents'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import {
   filesKindFilters,
@@ -85,6 +88,27 @@ export default defineEventHandler(async (event) => {
         createdAt: schema.files.createdAt,
         originModel: schema.files.originModel,
         generationCost: schema.files.generationCost,
+        documentId: sql<number | null>`(
+          select ${schema.documents.id} from ${schema.documents}
+          where ${schema.documents.fileId} = ${schema.files.id}
+            and ${schema.documents.userId} = ${schema.files.userId}
+            and ${schema.documents.status} = 'ready'
+          limit 1
+        )`,
+        documentCreatedVia: sql<DocumentCreatedVia | null>`(
+          select ${schema.documents.createdVia} from ${schema.documents}
+          where ${schema.documents.fileId} = ${schema.files.id}
+            and ${schema.documents.userId} = ${schema.files.userId}
+            and ${schema.documents.status} = 'ready'
+          limit 1
+        )`,
+        documentAiGenerated: sql<number | null>`(
+          select ${schema.documents.aiGenerated} from ${schema.documents}
+          where ${schema.documents.fileId} = ${schema.files.id}
+            and ${schema.documents.userId} = ${schema.files.userId}
+            and ${schema.documents.status} = 'ready'
+          limit 1
+        )`,
       })
       .from(schema.files)
       .where(whereConditions)
@@ -99,7 +123,27 @@ export default defineEventHandler(async (event) => {
   ])
 
   return {
-    files,
+    files: files.map((file) => {
+      const { documentCreatedVia, documentAiGenerated, ...fileColumns } = file
+      const hasDocument = file.documentId !== null
+        && file.documentId !== undefined
+
+      return {
+        ...fileColumns,
+        documentId: hasDocument
+          ? encodePublicId(Number(file.documentId))
+          : null,
+        documentAiGenerated: hasDocument && documentCreatedVia
+          ? isDocumentAiGenerated({
+            createdVia: documentCreatedVia,
+            aiGenerated: documentAiGenerated === null
+              || documentAiGenerated === undefined
+              ? null
+              : Boolean(documentAiGenerated),
+          })
+          : null,
+      }
+    }),
     total: countResult?.count ?? 0,
     offset,
     limit,

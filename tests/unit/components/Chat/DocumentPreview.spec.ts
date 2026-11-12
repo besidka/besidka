@@ -336,6 +336,30 @@ describe('ChatDocumentPreview', () => {
       expect(state.refreshSpec).toHaveBeenCalledTimes(1)
     })
 
+    it.each([404, 410])(
+      'shows the unavailable state without a retry when the spec is gone (%i)',
+      async (statusCode) => {
+        state.specError.value = {
+          statusCode,
+          data: { message: 'The document spec is gone' },
+        }
+        state.specStatus.value = 'error'
+
+        const wrapper = await mountPreview(props)
+
+        expect(wrapper.get(testId('document-preview-unavailable')).text())
+          .toContain('Preview unavailable')
+        expect(wrapper.find(testId('document-preview-error')).exists())
+          .toBe(false)
+        expect(wrapper.find(testId('document-preview-retry')).exists())
+          .toBe(false)
+        expect(wrapper.find(testId('document-preview-note')).exists())
+          .toBe(false)
+        expect(wrapper.find(testId('document-preview-download')).exists())
+          .toBe(true)
+      },
+    )
+
     it('renders the header-actions slot', async () => {
       state.spec.value = DOCX_SPEC
 
