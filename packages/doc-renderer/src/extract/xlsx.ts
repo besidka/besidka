@@ -273,7 +273,7 @@ function readDateStyles(pkg: OfficePackage, partName: string): Set<number> {
 class SharedStrings {
   private readonly strings = new Map<number, string>()
   private readonly needed = new Set<number>()
-  private isComplete = false
+  private knownRecordCount: number | null = null
   private highestNeeded = -1
   private readonly pkg: OfficePackage
   private readonly entry: ZipEntry | null
@@ -288,14 +288,17 @@ class SharedStrings {
   }
 
   ensure(indexes: Iterable<number>): void {
-    if (this.entry === null || this.isComplete) {
+    if (this.entry === null) {
       return
     }
 
     let hasNew = false
 
     for (const index of indexes) {
-      if (!this.needed.has(index)) {
+      const isBeyondTable = this.knownRecordCount !== null
+        && index >= this.knownRecordCount
+
+      if (!isBeyondTable && !this.needed.has(index)) {
         this.needed.add(index)
         this.highestNeeded = Math.max(this.highestNeeded, index)
         hasNew = true
@@ -355,7 +358,7 @@ class SharedStrings {
       },
     )
 
-    this.isComplete = !outcome.enough
+    this.knownRecordCount = outcome.enough ? null : position
 
     if (outcome.cut) {
       addTruncation(pkg.stats, 'part_limit')

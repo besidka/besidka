@@ -169,7 +169,7 @@ working for version 1.
 
 ## Office text extraction
 
-BES-370, layer 1. `extract` reads the text of a user's DOCX, XLSX or PPTX so a
+BES-370, layer 1 (Worker version 1.1.0). `extract` reads the text of a user's DOCX, XLSX or PPTX so a
 later layer can send it to models that cannot take Office files. Nothing calls
 it yet: it has no user-visible effect. The Worker still holds no user-data
 binding; it receives bytes and returns text.

@@ -137,7 +137,7 @@ describe('DocRenderer entrypoint', () => {
     const capabilities = await createRenderer().capabilities()
 
     expect(capabilities).toEqual({
-      rendererVersion: '1.0.0+1.0.0',
+      rendererVersion: '1.1.0+1.0.0',
       specVersions: [1],
       formats: ['pdf', 'docx', 'pptx', 'xlsx'],
       maxOutputBytes: 20 * 1024 * 1024,
@@ -225,7 +225,7 @@ describe('DocRenderer entrypoint', () => {
       )
 
       expect(result.extension).toBe(format)
-      expect(result.rendererVersion).toBe('1.0.0+1.0.0')
+      expect(result.rendererVersion).toBe('1.1.0+1.0.0')
       expect(validated.ok && validated.provenance).toBe('ai')
     },
   )

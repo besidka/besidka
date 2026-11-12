@@ -207,6 +207,52 @@ describe('extractOfficeText: xlsx cells', () => {
     expect(result.text).toBe('')
   })
 
+  it('resolves a later sheet when an earlier one ran past the table', () => {
+    const first = worksheetXml(
+      row(1, stringCell('A1', 999) + stringCell('B1', 0)),
+    )
+    const second = worksheetXml(row(1, stringCell('A1', 1)))
+    const result = extractOfficeText(
+      xlsxPackage(
+        [{ name: 'One', xml: first }, { name: 'Two', xml: second }],
+        { sharedStrings: ['zero', 'one', 'two'] },
+      ),
+      'xlsx',
+    )
+
+    expect(result.text).toBe([
+      '## Sheet: One',
+      '',
+      ',zero',
+      '',
+      '## Sheet: Two',
+      '',
+      'one',
+    ].join('\n'))
+  })
+
+  it('resolves a later sheet when the string table was cut at the cap', () => {
+    const strings = Array.from({ length: 3000 }, (_value, index) => {
+      return `string ${index}`
+    })
+    const first = worksheetXml(
+      row(1, stringCell('A1', 2900) + stringCell('B1', 0)),
+    )
+    const second = worksheetXml(row(1, stringCell('A1', 3)))
+    const result = extractOfficeText(
+      xlsxPackage(
+        [{ name: 'One', xml: first }, { name: 'Two', xml: second }],
+        { sharedStrings: strings },
+      ),
+      'xlsx',
+      { partBytesMax: 2000 },
+    )
+
+    expect(result.stats.truncations).toContain('part_limit')
+    expect(result.text).toContain(',string 0')
+    expect(result.text).toContain('## Sheet: Two\n\nstring 3')
+  })
+
   it('reads sheets in workbook order, not in file order', () => {
     const first = worksheetXml(row(1, inlineCell('A1', 'one')))
     const second = worksheetXml(row(1, inlineCell('A1', 'two')))
