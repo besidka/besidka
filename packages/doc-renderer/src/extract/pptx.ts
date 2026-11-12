@@ -11,6 +11,7 @@ import {
   relationshipIdOf,
   renderMarkdownTable,
   scanPart,
+  shortId,
   trimLineEnds,
 } from './common.ts'
 import type {
@@ -200,7 +201,7 @@ function walkShapes(
       } else if (event.name === 'sp' || event.name === 'graphicFrame') {
         placeholderType = null
       } else if (event.name === 'ph') {
-        placeholderType = event.attributes.type ?? 'body'
+        placeholderType = shortId(event.attributes.type ?? 'body')
       } else if (event.name === 'p') {
         paragraph = { level: 0, hasBullet: undefined, parts: [], length: 0 }
       } else if (event.name === 'pPr' && paragraph) {

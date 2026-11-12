@@ -10,6 +10,7 @@ import {
   readRelationships,
   renderMarkdownTable,
   scanPart,
+  shortId,
   trimLineEnds,
 } from './common.ts'
 import type { ExtractionOutput, OfficePackage } from './common.ts'
@@ -134,7 +135,7 @@ function readStyles(officePackage: OfficePackage): Map<string, WordStyle> {
 
     for (const event of events) {
       if (event.type === 'start' && event.name === 'style') {
-        currentId = event.attributes.styleId ?? ''
+        currentId = shortId(event.attributes.styleId ?? '')
         current = {
           name: '',
           numId: null,
@@ -143,7 +144,7 @@ function readStyles(officePackage: OfficePackage): Map<string, WordStyle> {
           outlineLevel: null,
         }
       } else if (event.type === 'start' && current) {
-        const value = event.attributes.val ?? ''
+        const value = shortId(event.attributes.val ?? '')
 
         if (event.name === 'name') {
           current.name = value.toLowerCase()
@@ -199,10 +200,10 @@ function readNumbering(officePackage: OfficePackage): Numbering {
 
     for (const event of events) {
       if (event.type === 'start') {
-        const value = event.attributes.val ?? ''
+        const value = shortId(event.attributes.val ?? '')
 
         if (event.name === 'abstractNum') {
-          abstractId = event.attributes.abstractNumId ?? ''
+          abstractId = shortId(event.attributes.abstractNumId ?? '')
 
           if (numbering.levels.size < MAX_DEFINITIONS) {
             numbering.levels.set(abstractId, new Map())
@@ -215,7 +216,7 @@ function readNumbering(officePackage: OfficePackage): Numbering {
         } else if (event.name === 'start' && level) {
           level.start = Number(value) || 1
         } else if (event.name === 'num') {
-          numberId = event.attributes.numId ?? ''
+          numberId = shortId(event.attributes.numId ?? '')
         } else if (
           event.name === 'abstractNumId'
           && numberId !== null
@@ -470,7 +471,7 @@ function walkDocument(
 
     if (event.type === 'start') {
       const current = paragraphs[paragraphs.length - 1]
-      const value = event.attributes.val ?? ''
+      const value = shortId(event.attributes.val ?? '')
 
       if (SKIPPED_ELEMENTS.has(event.name)) {
         skipDepth = 1

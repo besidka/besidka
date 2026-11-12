@@ -404,6 +404,104 @@ describe('extractOfficeText: hostile input stays inside the CPU and memory budge
     expect(elapsed).toBeLessThan(TIME_BUDGET_MS)
   }, TEST_TIMEOUT_MS)
 
+  it('does not re-scan an 8 MB style name for every paragraph', () => {
+    const chunk = 'abcdefghijklmnop'.repeat(32)
+    let name = ''
+
+    while (name.length < 8_000_000) {
+      name += `${chunk}${name.length % 997}`
+    }
+
+    const styles = `<w:style w:type="paragraph" w:styleId="S"><w:name w:val="${name}"/><w:basedOn w:val="S"/></w:style>`
+    const body = Array.from({ length: 5000 }, () => {
+      return paragraphXml('x', '<w:pStyle w:val="S"/>')
+    }).join('')
+    const bytes = docxPackage(body, { stylesXml: styles })
+    const { result, elapsed } = timed(() => {
+      return extractOfficeText(bytes, 'docx', UNLIMITED_RATIO)
+    })
+
+    expect(result.status).toBe('ready')
+    expect(elapsed).toBeLessThan(TIME_BUDGET_MS)
+  }, TEST_TIMEOUT_MS)
+
+  it('keeps long ids and numbering keys short', () => {
+    const longId = 'n'.repeat(2_000_000)
+    const numbering = `<w:abstractNum w:abstractNumId="${longId}"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum><w:num w:numId="${longId}"><w:abstractNumId w:val="${longId}"/></w:num>`
+    const body = Array.from({ length: 3000 }, () => {
+      return paragraphXml(
+        'item',
+        `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${'n'.repeat(70)}"/></w:numPr>`,
+      )
+    }).join('')
+    const bytes = docxPackage(body, { numberingXml: numbering })
+    const { result, elapsed } = timed(() => {
+      return extractOfficeText(bytes, 'docx', UNLIMITED_RATIO)
+    })
+
+    expect(result.status).toBe('ready')
+    expect(result.text).toContain('1. item')
+    expect(elapsed).toBeLessThan(TIME_BUDGET_MS)
+  }, TEST_TIMEOUT_MS)
+
+  it('reads no more than 1,000 relationships from a slide rels part', () => {
+    const junk = Array.from({ length: 1500 }, (_item, index) => {
+      return { id: `j${index}`, type: 'hyperlink', target: `t${index}` }
+    })
+    const notesRelationship = {
+      id: 'n1',
+      type: 'notesSlide',
+      target: '../notesSlides/notes1.xml',
+    }
+    const notes = notesXml(
+      shapeXml([runParagraphXml('late note')], '<p:ph type="body"/>'),
+    )
+    const slide = { xml: slideXml(shapeXml([runParagraphXml('s')], TITLE)) }
+    const bytes = pptxPackage([slide, slide], {
+      options: {
+        extraFiles: {
+          'ppt/notesSlides/notes1.xml': notes,
+          'ppt/slides/_rels/slide1.xml.rels': relationshipsXml([
+            notesRelationship,
+            ...junk,
+          ]),
+          'ppt/slides/_rels/slide2.xml.rels': relationshipsXml([
+            ...junk,
+            notesRelationship,
+          ]),
+        },
+      },
+    })
+    const result = extractOfficeText(bytes, 'pptx')
+
+    expect(result.status).toBe('ready')
+    expect(result.text.match(/Speaker notes: late note/g)).toHaveLength(1)
+  }, TEST_TIMEOUT_MS)
+
+  it('streams the rels parts of many slides without holding them', () => {
+    const items = Array.from({ length: 4999 }, (_item, index) => {
+      return `<Relationship Id="${index}" Type="h" Target="t${index}"/>`
+    }).join('')
+    const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${items}</Relationships>`
+    const slides = Array.from({ length: 120 }, (_slide, index) => {
+      return { xml: slideXml(shapeXml([runParagraphXml(`s${index}`)], TITLE)) }
+    })
+    const extraFiles: Record<string, string> = {}
+
+    slides.forEach((_slide, index) => {
+      extraFiles[`ppt/slides/_rels/slide${index + 1}.xml.rels`] = rels
+    })
+
+    const bytes = pptxPackage(slides, { options: { extraFiles } })
+    const { result, elapsed } = timed(() => {
+      return extractOfficeText(bytes, 'pptx', UNLIMITED_RATIO)
+    })
+
+    expect(result.status).toBe('ready')
+    expect(result.stats.slides).toBe(120)
+    expect(elapsed).toBeLessThan(TIME_BUDGET_MS)
+  }, TEST_TIMEOUT_MS)
+
   it('fails closed when [Content_Types].xml cannot be read in full', () => {
     const bytes = docxPackage(paragraphXml('x'))
     const { result } = timed(() => {

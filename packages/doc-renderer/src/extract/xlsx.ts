@@ -77,6 +77,7 @@ const BUILT_IN_TIME_FORMATS: ReadonlySet<number> = new Set([
 const BUILT_IN_ELAPSED_HOURS_FORMAT = 46
 const FORMAT_CODE_MAX_CHARACTERS = 255
 const FORMATS_MAX = 1024
+const SHEET_NAME_MAX = 255
 const STYLES_MAX = 65_536
 const STORED_CHARACTERS_MAX = 8 * 1024 * 1024
 const ROW_GAP_MAX = 20
@@ -302,7 +303,7 @@ function readWorkbook(officePackage: OfficePackage): Workbook {
 
       if (event.name === 'sheet') {
         declared.push({
-          name: event.attributes.name ?? '',
+          name: (event.attributes.name ?? '').slice(0, SHEET_NAME_MAX),
           relationshipId: relationshipIdOf(event.attributes),
         })
       } else if (event.name === 'workbookPr') {
