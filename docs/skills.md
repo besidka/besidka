@@ -219,8 +219,13 @@ requested path are inflated, with one exception: the repository-root
 subfolder import. They serve licence classification (section 4, step 1). They
 are not stored as skill files unless the skill has none of its own; then they
 are stored verbatim as the skill's licence. A repository that holds several skills
-returns a list to pick from, up to `SKILL_GITHUB_PICK_MAX` (10). Only public
-repositories work; a 404 says "Private or missing repository".
+returns a list to pick from, up to `SKILL_GITHUB_PICK_MAX` (10; the answer
+also carries the total and a `truncated` flag). The list is `{ pick }` with no
+`stageId`; the client sends the same link again as `{ url, path }`, where
+`path` is the chosen repository-relative folder, so the ref stays a branch and
+update checks keep working. Each follow-up is a new import: it costs an hourly
+import slot, a REST call and a download. Only public repositories work; a 404
+says "Private or missing repository".
 
 **A SHA must be on the named repository.** A commit SHA can belong to a fork
 and still resolve under another repository's URL. So before importing a SHA that
@@ -339,7 +344,11 @@ never use staging: their pending version is persisted directly (see step 3).
    the content-addressed blob layout of section 3.5, writes **version 1 with
    origin `import`**, and creates the row with `enabled=false`,
    `status='ready'`. A GitHub repository that holds several skills first shows
-   a checklist.
+   a checklist. The GitHub preview response carries `sourceUrl` (the
+   repository URL), `sourceRef` (the branch, tag, `HEAD` or SHA from the link)
+   and `sourcePath` (the skill folder, null at the repository root) next to
+   `sourceVersion` (the commit SHA); a zip or paste preview returns them as
+   null. Commit records them on the skill and on its version row.
 3. `POST /api/v1/skills/[id]/update/check` (GitHub skills only, S-2G, behind
    `skills.import-url`)
    re-resolves the ref (REST call). Unchanged: `{ upToDate: true }`. Changed:
@@ -978,6 +987,9 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_INVOCATIONS_PER_MESSAGE` | 1 | S-12 |
 | `SKILL_RESERVED_SLASH_NAMES` | `new`, `model`, `search`, `image`, `memory`, `project`, `help` (section 5.6) | S-1 |
 | `SKILL_GITHUB_PICK_MAX` | 10 skills chosen from one repository | S-2G |
+| `SKILL_GITHUB_MAX_ARCHIVE_ENTRIES` | 20,000 entries in a repository archive (the directory scan; the 1,000-entry upload cap does not apply) | S-2G |
+| `SKILL_GITHUB_API_MAX_BYTES` | 2 MiB per `api.github.com` answer | S-2G |
+| `SKILL_GITHUB_TIMEOUT_MS` | 30 s per GitHub request, body read included | S-2G |
 | `SKILL_DESCRIPTION_CATALOG_SOFT_MAX` | 300 characters | S-11 |
 | `SKILL_STAGE_TTL` | 1 h (import preview only) | S-2 |
 | `SKILL_DIFF_MAX_LINES` | 2,000 | S-2, S-4 |

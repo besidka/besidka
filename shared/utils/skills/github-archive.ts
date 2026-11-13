@@ -34,13 +34,7 @@ const ROOT_LICENCE_FILES_MAX = 8
 const UNBOUNDED = Number.MAX_SAFE_INTEGER
 const SKILL_MD_SUFFIX = `/${SKILL_MD_FILE_NAME}`
 
-/**
- * A repository archive holds far more than one skill, so the whole-archive
- * limits of an upload do not apply to the directory scan. The per-file,
- * ratio and total caps are applied to the entries that are actually
- * inflated, in `inflateSelectedSkillEntries`.
- */
-const GITHUB_DIRECTORY_LIMITS: ZipLimits = {
+const GITHUB_DIRECTORY_SCAN_LIMITS_WITHOUT_ENTRY_CAPS: ZipLimits = {
   entriesMax: SKILL_GITHUB_MAX_ARCHIVE_ENTRIES,
   entryBytesMax: UNBOUNDED,
   totalBytesMax: UNBOUNDED,
@@ -134,7 +128,10 @@ export function extractGithubSkillArchive(
     )
   }
 
-  const directory = readZipDirectory(bytes, GITHUB_DIRECTORY_LIMITS)
+  const directory = readZipDirectory(
+    bytes,
+    GITHUB_DIRECTORY_SCAN_LIMITS_WITHOUT_ENTRY_CAPS,
+  )
 
   if (!directory.ok) {
     return archiveFailure(
