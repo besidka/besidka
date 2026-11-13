@@ -204,6 +204,70 @@ describe('ChatInput/Files/Modal.client', () => {
     expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
   })
 
+  describe('refreshing the list after a close', () => {
+    afterEach(() => {
+      scrollMocks.fetchFiles.mockReset()
+      scrollMocks.fetchFiles.mockResolvedValue(true)
+    })
+
+    it('starts a new refresh on reopen even while a stale one is still pending', async () => {
+      const resolvers: Array<(didRefresh: boolean) => void> = []
+
+      scrollMocks.fetchFiles.mockReset()
+      scrollMocks.fetchFiles.mockImplementation(() => {
+        return new Promise<boolean>((resolve) => {
+          resolvers.push(resolve)
+        })
+      })
+
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const dialog = wrapper.get('[data-testid="files-modal"]')
+
+      exposed.open('select')
+      await flushPromises()
+      await dialog.trigger('close')
+      await flushPromises()
+
+      exposed.open('select')
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(1)
+
+      await dialog.trigger('close')
+      await flushPromises()
+      exposed.open('select')
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(2)
+      expect(scrollMocks.fetchFiles).toHaveBeenLastCalledWith(true)
+
+      resolvers[0]?.(false)
+      await flushPromises()
+      resolvers[1]?.(true)
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(2)
+      expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+    })
+
+    it('does exactly one fetch on a normal reopen', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const dialog = wrapper.get('[data-testid="files-modal"]')
+
+      exposed.open('select')
+      await flushPromises()
+      await dialog.trigger('close')
+      await flushPromises()
+      scrollMocks.fetchFiles.mockClear()
+      exposed.open('select')
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('document preview', () => {
     const documentFile = {
       id: 'file-1',

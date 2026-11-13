@@ -130,23 +130,32 @@ const activeTab = shallowRef<Tab | null>(null)
 const selectSource = shallowRef<FileSourceFilter | undefined>(undefined)
 const shouldRefreshSelect = shallowRef<boolean>(false)
 const stopPreviewReturnWatch = shallowRef<(() => void) | null>(null)
-const isRefreshingSelect = shallowRef<boolean>(false)
+let refreshGeneration = 0
+let activeRefreshGeneration: number | null = null
 
+/**
+ * A refresh is identified by a generation. Resetting the modal state bumps
+ * the generation, which both frees the slot, so a reopen can start a new
+ * refresh at once, and makes the older fetch stale: its late result neither
+ * marks the tab as refreshed nor clears the newer refresh's slot.
+ */
 async function refreshSelectTabIfNeeded() {
-  if (
-    activeTab.value !== 'select'
-    || !shouldRefreshSelect.value
-    || isRefreshingSelect.value
-  ) {
+  if (activeTab.value !== 'select' || !shouldRefreshSelect.value) {
     return
   }
 
-  isRefreshingSelect.value = true
+  if (activeRefreshGeneration === refreshGeneration) {
+    return
+  }
+
+  const generation = ++refreshGeneration
+
+  activeRefreshGeneration = generation
 
   try {
     await nextTick()
 
-    if (!selectTabRef.value) {
+    if (generation !== refreshGeneration || !selectTabRef.value) {
       return
     }
 
@@ -154,11 +163,13 @@ async function refreshSelectTabIfNeeded() {
 
     const didRefresh = await selectTabRef.value.fetchFiles(true)
 
-    if (didRefresh) {
+    if (didRefresh && generation === refreshGeneration) {
       shouldRefreshSelect.value = false
     }
   } finally {
-    isRefreshingSelect.value = false
+    if (activeRefreshGeneration === generation) {
+      activeRefreshGeneration = null
+    }
   }
 }
 
@@ -198,6 +209,8 @@ function close(): void {
 }
 
 function resetModalState(): void {
+  refreshGeneration++
+  activeRefreshGeneration = null
   activeTab.value = null
   selectSource.value = undefined
   shouldRefreshSelect.value = true
