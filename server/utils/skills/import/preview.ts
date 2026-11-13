@@ -8,6 +8,7 @@ import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import { stageSkillImport } from '~~/server/utils/skills/import/stage'
 import type {
+  SkillImportProvenance,
   SkillImportSourceKind,
   SkillStageBucket,
   SkillStageKv,
@@ -105,6 +106,7 @@ export async function createSkillImportPreview(input: {
   userId: number
   source: SkillImportSourceKind
   sourceVersion: string
+  provenance?: SkillImportProvenance
   fileName: string | null
   files: SkillArchiveFile[]
   folderName: string | null
@@ -138,6 +140,7 @@ export async function createSkillImportPreview(input: {
     userId: input.userId,
     source: input.source,
     sourceVersion: input.sourceVersion,
+    provenance: input.provenance,
     fileName: input.fileName,
     analysis,
     files: input.files,
@@ -163,6 +166,9 @@ export async function createSkillImportPreview(input: {
     stageId: manifest.stageId,
     source: manifest.source,
     sourceVersion: manifest.sourceVersion,
+    sourceUrl: manifest.sourceUrl ?? null,
+    sourceRef: manifest.sourceRef ?? null,
+    sourcePath: manifest.sourcePath ?? null,
     expiresAt: manifest.expiresAt,
     skill: {
       name: analysis.skill.name,

@@ -15,7 +15,13 @@ import type { SkillBlobBucket } from '~~/server/utils/skills/storage'
 export const SKILL_STAGE_KEY_PREFIX = 'skills:stage:'
 export const SKILL_STAGE_ID_PATTERN = /^[a-f0-9]{32}$/
 
-export type SkillImportSourceKind = 'zip' | 'text'
+export type SkillImportSourceKind = 'zip' | 'text' | 'github'
+
+export interface SkillImportProvenance {
+  url: string | null
+  ref: string | null
+  path: string | null
+}
 
 export interface SkillStageKv {
   get: (key: string) => Promise<string | null>
@@ -45,6 +51,9 @@ export interface SkillStageManifest {
   userId: number
   source: SkillImportSourceKind
   sourceVersion: string
+  sourceUrl?: string | null
+  sourceRef?: string | null
+  sourcePath?: string | null
   fileName: string | null
   createdAt: number
   expiresAt: number
@@ -100,6 +109,7 @@ function buildManifest(input: {
   userId: number
   source: SkillImportSourceKind
   sourceVersion: string
+  provenance?: SkillImportProvenance
   fileName: string | null
   analysis: ReadyAnalysis
   now: number
@@ -121,6 +131,9 @@ function buildManifest(input: {
     userId: input.userId,
     source: input.source,
     sourceVersion: input.sourceVersion,
+    sourceUrl: input.provenance?.url ?? null,
+    sourceRef: input.provenance?.ref ?? null,
+    sourcePath: input.provenance?.path ?? null,
     fileName: input.fileName,
     createdAt: input.now,
     expiresAt: input.now + SKILL_STAGE_TTL * 1000,
@@ -168,6 +181,7 @@ export async function stageSkillImport(input: {
   userId: number
   source: SkillImportSourceKind
   sourceVersion: string
+  provenance?: SkillImportProvenance
   fileName: string | null
   analysis: ReadyAnalysis
   files: StagedFileContent[]
@@ -179,6 +193,7 @@ export async function stageSkillImport(input: {
     userId: input.userId,
     source: input.source,
     sourceVersion: input.sourceVersion,
+    provenance: input.provenance,
     fileName: input.fileName,
     analysis: input.analysis,
     now: input.now ?? Date.now(),

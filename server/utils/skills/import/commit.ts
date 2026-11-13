@@ -141,7 +141,7 @@ function assertAcknowledgements(
   }
 }
 
-function assertLimits(input: {
+export function assertLimits(input: {
   skillsCount: number
   usageBytes: number
   incomingBytes: number
@@ -166,6 +166,27 @@ function assertLimits(input: {
       fix: 'Delete a skill or an older version you no longer use',
     })
   }
+}
+
+export type PendingVersionPayload = Pick<
+  SkillStageManifest,
+  | 'userId'
+  | 'source'
+  | 'sourceVersion'
+  | 'sourceUrl'
+  | 'sourceRef'
+  | 'sourcePath'
+  | 'licence'
+  | 'files'
+  | 'totalBytes'
+  | 'contentSha256'
+  | 'findingCounts'
+>
+
+function isStageManifest(
+  manifest: PendingVersionPayload,
+): manifest is SkillStageManifest {
+  return 'stageId' in manifest
 }
 
 interface PreparedImport {
@@ -235,7 +256,7 @@ async function prepareRenamedImport(input: {
 
 async function copyStagedBlobs(input: {
   bucket: SkillStageBucket
-  manifest: SkillStageManifest
+  manifest: PendingVersionPayload
   contentOverrides: Map<string, Uint8Array>
   skillId: string
 }): Promise<void> {
@@ -249,11 +270,13 @@ async function copyStagedBlobs(input: {
     copied.add(file.sha256)
 
     const bytes = input.contentOverrides.get(file.sha256)
-      ?? await readStagedFile({
-        bucket: input.bucket,
-        manifest: input.manifest,
-        sha256: file.sha256,
-      })
+      ?? (isStageManifest(input.manifest)
+        ? await readStagedFile({
+          bucket: input.bucket,
+          manifest: input.manifest,
+          sha256: file.sha256,
+        })
+        : null)
 
     if (!bytes) {
       throw createError({
@@ -285,9 +308,10 @@ async function copyStagedBlobs(input: {
 
 function buildVersionStatements(input: {
   db: DbClient
-  manifest: SkillStageManifest
+  manifest: PendingVersionPayload
   skillId: string
   version: number
+  origin: 'import' | 'update'
 }) {
   const { db, manifest, skillId, version } = input
 
@@ -296,11 +320,11 @@ function buildVersionStatements(input: {
       skillId,
       userId: manifest.userId,
       version,
-      origin: 'import',
+      origin: input.origin,
       sourceKind: manifest.source,
-      sourceUrl: null,
-      sourceRef: null,
-      sourcePath: null,
+      sourceUrl: manifest.sourceUrl ?? null,
+      sourceRef: manifest.sourceRef ?? null,
+      sourcePath: manifest.sourcePath ?? null,
       sourceVersion: manifest.sourceVersion,
       sha256: manifest.contentSha256,
       filesCount: manifest.files.length,
@@ -402,9 +426,9 @@ async function createSkillFromStage(input: {
       metadata: manifest.skill.metadata,
       allowedTools: manifest.skill.allowedTools,
       sourceKind: manifest.source,
-      sourceUrl: null,
-      sourceRef: null,
-      sourcePath: null,
+      sourceUrl: manifest.sourceUrl ?? null,
+      sourceRef: manifest.sourceRef ?? null,
+      sourcePath: manifest.sourcePath ?? null,
       sourceVersion: manifest.sourceVersion,
       currentVersion: 1,
       pendingVersion: null,
@@ -450,7 +474,13 @@ async function createSkillFromStage(input: {
           eq(schema.skills.id, skillId),
           eq(schema.skills.userId, manifest.userId),
         )),
-      ...buildVersionStatements({ db, manifest, skillId, version: 1 }),
+      ...buildVersionStatements({
+        db,
+        manifest,
+        skillId,
+        version: 1,
+        origin: 'import',
+      }),
     ] as unknown as [BatchItem<'sqlite'>])
   } catch (exception) {
     await discardUnfinishedSkill({
@@ -614,7 +644,7 @@ async function reclaimAbandonedPlaceholder(input: {
 async function reassertPendingBlobs(input: {
   db: DbClient
   bucket: SkillStageBucket
-  manifest: SkillStageManifest
+  manifest: PendingVersionPayload
   contentOverrides: Map<string, Uint8Array>
   skillId: string
   version: number
@@ -643,6 +673,94 @@ async function reassertPendingBlobs(input: {
   } catch {
     return
   }
+}
+
+/**
+ * Writes a persisted pending version over blobs and rows, replacing an older
+ * pending one. The caller has already checked ownership and the name. Used by
+ * "replace as an update" (origin `import`) and by the GitHub update check
+ * (origin `update`); `contentOverrides` holds every file the caller has in
+ * memory, and anything else is read from the staged copy.
+ */
+export async function persistPendingVersion(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  manifest: PendingVersionPayload
+  contentOverrides: Map<string, Uint8Array>
+  skillId: string
+  pendingVersion: number | null
+  origin: 'import' | 'update'
+}): Promise<{ version: number }> {
+  const { db, bucket, manifest, contentOverrides, skillId } = input
+
+  const [latest] = await db.select({ version: schema.skillVersions.version })
+    .from(schema.skillVersions)
+    .where(and(
+      eq(schema.skillVersions.skillId, skillId),
+      eq(schema.skillVersions.userId, manifest.userId),
+    ))
+    .orderBy(desc(schema.skillVersions.version))
+    .limit(1)
+  const version = (latest?.version ?? 0) + 1
+
+  await copyStagedBlobs({ bucket, manifest, contentOverrides, skillId })
+
+  const replacingStatements = input.pendingVersion === null
+    ? []
+    : [
+      db.delete(schema.skillFiles).where(and(
+        eq(schema.skillFiles.skillId, skillId),
+        eq(schema.skillFiles.userId, manifest.userId),
+        eq(schema.skillFiles.version, input.pendingVersion),
+      )),
+      db.delete(schema.skillVersions).where(and(
+        eq(schema.skillVersions.skillId, skillId),
+        eq(schema.skillVersions.userId, manifest.userId),
+        eq(schema.skillVersions.version, input.pendingVersion),
+      )),
+    ]
+
+  try {
+    await db.batch([
+      ...replacingStatements,
+      ...buildVersionStatements({
+        db,
+        manifest,
+        skillId,
+        version,
+        origin: input.origin,
+      }),
+      db.update(schema.skills)
+        .set({ pendingVersion: version })
+        .where(and(
+          eq(schema.skills.id, skillId),
+          eq(schema.skills.userId, manifest.userId),
+        )),
+    ] as unknown as [BatchItem<'sqlite'>])
+  } catch (exception) {
+    if (isUniqueViolation(exception)) {
+      throw createError({
+        message: 'This skill changed while you were importing',
+        status: 409,
+        code: 'pending-changed',
+        why: 'Another save created the same version number',
+        fix: 'Try the import again',
+      })
+    }
+
+    throw exception
+  }
+
+  await reassertPendingBlobs({
+    db,
+    bucket,
+    manifest,
+    contentOverrides,
+    skillId,
+    version,
+  })
+
+  return { version }
 }
 
 async function replaceAsUpdate(input: {
@@ -689,65 +807,14 @@ async function replaceAsUpdate(input: {
     })
   }
 
-  const [latest] = await db.select({ version: schema.skillVersions.version })
-    .from(schema.skillVersions)
-    .where(and(
-      eq(schema.skillVersions.skillId, skillId),
-      eq(schema.skillVersions.userId, manifest.userId),
-    ))
-    .orderBy(desc(schema.skillVersions.version))
-    .limit(1)
-  const version = (latest?.version ?? 0) + 1
-
-  await copyStagedBlobs({ bucket, manifest, contentOverrides, skillId })
-
-  const replacingStatements = skill.pendingVersion === null
-    ? []
-    : [
-      db.delete(schema.skillFiles).where(and(
-        eq(schema.skillFiles.skillId, skillId),
-        eq(schema.skillFiles.userId, manifest.userId),
-        eq(schema.skillFiles.version, skill.pendingVersion),
-      )),
-      db.delete(schema.skillVersions).where(and(
-        eq(schema.skillVersions.skillId, skillId),
-        eq(schema.skillVersions.userId, manifest.userId),
-        eq(schema.skillVersions.version, skill.pendingVersion),
-      )),
-    ]
-
-  try {
-    await db.batch([
-      ...replacingStatements,
-      ...buildVersionStatements({ db, manifest, skillId, version }),
-      db.update(schema.skills)
-        .set({ pendingVersion: version })
-        .where(and(
-          eq(schema.skills.id, skillId),
-          eq(schema.skills.userId, manifest.userId),
-        )),
-    ] as unknown as [BatchItem<'sqlite'>])
-  } catch (exception) {
-    if (isUniqueViolation(exception)) {
-      throw createError({
-        message: 'This skill changed while you were importing',
-        status: 409,
-        code: 'pending-changed',
-        why: 'Another save created the same version number',
-        fix: 'Try the import again',
-      })
-    }
-
-    throw exception
-  }
-
-  await reassertPendingBlobs({
+  const { version } = await persistPendingVersion({
     db,
     bucket,
     manifest,
     contentOverrides,
     skillId,
-    version,
+    pendingVersion: skill.pendingVersion,
+    origin: 'import',
   })
 
   return {
