@@ -175,7 +175,6 @@ describe('putSkillBlob', () => {
       sha256: expectedSha,
       key: `user-skills/u3/skl5/blobs/${expectedSha}`,
       bytes: 7,
-      written: true,
     })
     expect(bucket.put).toHaveBeenCalledWith(
       result.key,
@@ -184,13 +183,16 @@ describe('putSkillBlob', () => {
     )
   })
 
-  it('does not write the same content twice for one skill', async () => {
+  it('writes a reused blob again under the same key and moves its uploaded time forward', async () => {
     const first = await putSkillBlob({
       bucket,
       userId: 3,
       skillId: 'skl5',
       content: 'same',
     })
+
+    bucket.objects.get(first.key)!.uploaded = new Date(0)
+
     const second = await putSkillBlob({
       bucket,
       userId: 3,
@@ -198,10 +200,10 @@ describe('putSkillBlob', () => {
       content: 'same',
     })
 
-    expect(first.written).toBe(true)
-    expect(second.written).toBe(false)
     expect(second.key).toBe(first.key)
-    expect(bucket.put).toHaveBeenCalledTimes(1)
+    expect(bucket.put).toHaveBeenCalledTimes(2)
+    expect(bucket.objects.size).toBe(1)
+    expect(bucket.objects.get(first.key)!.uploaded.getTime()).toBeGreaterThan(0)
   })
 
   it('keeps blobs of different skills and users apart', async () => {
@@ -213,14 +215,13 @@ describe('putSkillBlob', () => {
     expect(bucket.objects.size).toBe(3)
   })
 
-  it('writes only the changed files of a save, one after another', async () => {
+  it('writes every file of a save, one after another, deduplicated by key', async () => {
     await putSkillBlobs({
       bucket,
       userId: 3,
       skillId: 'skl5',
       contents: ['SKILL.md v1', 'references/a.md'],
     })
-    bucket.putCalls.length = 0
 
     const results = await putSkillBlobs({
       bucket,
@@ -229,10 +230,9 @@ describe('putSkillBlob', () => {
       contents: ['SKILL.md v2', 'references/a.md'],
     })
 
-    expect(results.map((result) => {
-      return result.written
-    })).toEqual([true, false])
-    expect(bucket.putCalls).toHaveLength(1)
+    expect(results).toHaveLength(2)
+    expect(bucket.put).toHaveBeenCalledTimes(4)
+    expect(bucket.objects.size).toBe(3)
   })
 
   it('accepts binary content', async () => {

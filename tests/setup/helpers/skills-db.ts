@@ -14,7 +14,6 @@ export interface FakeSkillBucket {
   deleteCalls: string[][]
   putCalls: string[]
   listCalls: Array<{ prefix: string, cursor?: string, limit?: number }>
-  head: ReturnType<typeof vi.fn>
   put: ReturnType<typeof vi.fn>
   delete: ReturnType<typeof vi.fn>
   list: ReturnType<typeof vi.fn>
@@ -38,9 +37,6 @@ export function createFakeSkillBucket(pageSize = 1000): FakeSkillBucket {
     deleteCalls,
     putCalls,
     listCalls,
-    head: vi.fn(async (key: string) => {
-      return objects.has(key) ? { key } : null
-    }),
     put: vi.fn(async (key: string, bytes: Uint8Array) => {
       putCalls.push(key)
       objects.set(key, { bytes, uploaded: new Date() })

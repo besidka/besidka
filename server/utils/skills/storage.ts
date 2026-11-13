@@ -23,7 +23,6 @@ const BLOB_KEY_PATTERN
 const SKILL_BLOB_CONTENT_TYPE = 'text/plain; charset=utf-8'
 
 export interface SkillBlobBucket {
-  head: (key: string) => Promise<unknown>
   put: (
     key: string,
     value: Uint8Array,
@@ -54,7 +53,6 @@ export interface PutSkillBlobResult {
   sha256: string
   key: string
   bytes: number
-  written: boolean
 }
 
 export interface PruneSkillVersionsResult {
@@ -144,10 +142,11 @@ function toBytes(content: string | Uint8Array): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * Writes one file as a content-addressed blob. A blob that already exists
- * for this skill is not written again, so a one-line save uploads only the
- * files whose content changed. Safe to repeat: the key is derived from the
- * content.
+ * Writes one file as a content-addressed blob. The write is unconditional:
+ * the key is derived from the content, so storage stays deduplicated, and
+ * every save that references the blob refreshes its R2 `uploaded` time, which
+ * keeps it inside the sweep's grace period until the version rows exist.
+ * Safe to repeat.
  */
 export async function putSkillBlob(input: {
   bucket: SkillBlobBucket
@@ -158,18 +157,12 @@ export async function putSkillBlob(input: {
   const bytes = toBytes(input.content)
   const sha256 = await sha256Hex(bytes)
   const key = skillBlobKey(input.userId, input.skillId, sha256)
-  const existing = await input.bucket.head(key)
-
-  if (existing) {
-    return { sha256, key, bytes: bytes.byteLength, written: false }
-  }
-
   await input.bucket.put(key, bytes, {
     httpMetadata: { contentType: SKILL_BLOB_CONTENT_TYPE },
     customMetadata: { sha256 },
   })
 
-  return { sha256, key, bytes: bytes.byteLength, written: true }
+  return { sha256, key, bytes: bytes.byteLength }
 }
 
 /**
@@ -272,7 +265,10 @@ export async function deleteSkillPrefix(
  * version and every pinned version (shares pin one). Rows go first, then
  * only the blobs that no remaining row of the skill references, so a blob
  * shared with a kept version survives. A failed R2 delete leaves orphan
- * blobs that the hourly sweep removes.
+ * blobs that the hourly sweep removes. A save must call it right after its
+ * own commit, with saves serialised per skill by the `baseVersion` guard:
+ * a concurrent save could otherwise reuse a blob that this prune has just
+ * judged unreferenced.
  */
 export async function pruneSkillVersions(input: {
   db: DbClient
