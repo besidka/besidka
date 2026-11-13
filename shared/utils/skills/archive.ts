@@ -84,7 +84,10 @@ const UNIX_SYMLINK = 0xA000
 const UNIX_REGULAR_FILE = 0x8000
 const UNIX_DIRECTORY = 0x4000
 
-const REJECTION_MESSAGES: Record<SkillPathRejection, string> = {
+export const SKILL_PATH_REJECTION_MESSAGES: Record<
+  SkillPathRejection,
+  string
+> = {
   'empty': 'An entry has an empty name',
   'absolute': 'An entry has an absolute path',
   'traversal': 'An entry tries to leave the skill folder',
@@ -98,7 +101,10 @@ const REJECTION_MESSAGES: Record<SkillPathRejection, string> = {
   'extension-not-allowed': 'Only text files are allowed in a skill',
 }
 
-const directoryErrorCodes: Record<string, SkillArchiveErrorCode> = {
+export const SKILL_DIRECTORY_ERROR_CODES: Record<
+  string,
+  SkillArchiveErrorCode
+> = {
   zip_invalid: 'archive-invalid',
   zip64: 'archive-zip64',
   zip_encrypted: 'archive-encrypted',
@@ -186,14 +192,147 @@ function inflateSkillEntry(
   return { ok: true, data: output }
 }
 
+export type SkillArchiveFailure = Extract<SkillArchiveResult, { ok: false }>
+
 function failure(
   code: SkillArchiveErrorCode,
   message: string,
   path?: string,
-): SkillArchiveResult {
+): SkillArchiveFailure {
   return path === undefined
     ? { ok: false, code, message }
     : { ok: false, code, message, path }
+}
+
+export { failure as archiveFailure }
+
+export function sortSkillArchiveFiles(files: SkillArchiveFile[]): void {
+  files.sort((left, right) => {
+    if (left.path === SKILL_MD_FILE_NAME || right.path === SKILL_MD_FILE_NAME) {
+      return left.path === SKILL_MD_FILE_NAME ? -1 : 1
+    }
+
+    return left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+  })
+}
+
+export type InflatedSkillEntries
+  = | { ok: true, files: SkillArchiveFile[], totalBytes: number }
+    | { ok: false, failure: SkillArchiveFailure }
+
+function inflateFailure(
+  code: SkillArchiveErrorCode,
+  message: string,
+  path?: string,
+): InflatedSkillEntries {
+  return { ok: false, failure: failure(code, message, path) }
+}
+
+/**
+ * Inflates the chosen entries under the per-file, SKILL.md and total caps
+ * and the text rules; the zip upload and the GitHub archive share it. The
+ * declared sizes are checked first so no buffer is allocated from a forged
+ * header, and the streaming cap in `inflateSkillEntry` stays the real bound.
+ */
+export function inflateSelectedSkillEntries(
+  bytes: Uint8Array,
+  selected: Array<{ entry: ZipEntry, path: string }>,
+): InflatedSkillEntries {
+  let declaredTotal = 0
+
+  for (const { entry, path } of selected) {
+    if (entry.uncompressedSize > SKILL_MAX_FILE_BYTES) {
+      return inflateFailure('archive-entry-too-large', 'A file is over 1 MiB', path)
+    }
+
+    if (
+      entry.uncompressedSize >= SKILL_RATIO_MIN_BYTES
+      && (
+        entry.compressedSize === 0
+        || entry.uncompressedSize / entry.compressedSize > SKILL_MAX_RATIO
+      )
+    ) {
+      return inflateFailure(
+        'archive-ratio',
+        `An entry expands more than ${SKILL_MAX_RATIO}:1`,
+        path,
+      )
+    }
+
+    declaredTotal += entry.uncompressedSize
+  }
+
+  if (declaredTotal > SKILL_MAX_TOTAL_BYTES) {
+    return inflateFailure(
+      'archive-total-too-large',
+      'The skill is over 5 MiB uncompressed',
+    )
+  }
+
+  const files: SkillArchiveFile[] = []
+  let totalBytes = 0
+
+  for (const { entry, path } of selected) {
+    const inflated = inflateSkillEntry(bytes, entry)
+
+    if (!inflated.ok) {
+      return inflateFailure(inflated.code, inflated.message, path)
+    }
+
+    const data = inflated.data
+
+    if (data.byteLength > SKILL_MAX_FILE_BYTES) {
+      return inflateFailure(
+        'archive-entry-too-large',
+        'A file is over 1 MiB',
+        path,
+      )
+    }
+
+    if (
+      path === SKILL_MD_FILE_NAME
+      && data.byteLength > SKILL_MAX_SKILL_MD_BYTES
+    ) {
+      return inflateFailure(
+        'archive-skill-md-too-large',
+        'SKILL.md is over 256 KiB',
+        path,
+      )
+    }
+
+    totalBytes += data.byteLength
+
+    if (totalBytes > SKILL_MAX_TOTAL_BYTES) {
+      return inflateFailure(
+        'archive-total-too-large',
+        'The skill is over 5 MiB uncompressed',
+      )
+    }
+
+    let text: string
+
+    try {
+      text = fatalDecoder.decode(data)
+    } catch {
+      return inflateFailure(
+        'archive-not-utf8',
+        'A file is not valid UTF-8 text',
+        path,
+      )
+    }
+
+    if (text.includes('\u0000')) {
+      return inflateFailure(
+        'archive-binary-content',
+        'A file contains binary data',
+        path,
+      )
+    }
+
+    files.push({ path, bytes: data, text })
+  }
+
+  return { ok: true, files, totalBytes }
 }
 
 /**
@@ -275,7 +414,7 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
 
   if (!directory.ok) {
     return failure(
-      directoryErrorCodes[directory.code] ?? 'archive-invalid',
+      SKILL_DIRECTORY_ERROR_CODES[directory.code] ?? 'archive-invalid',
       directory.detail,
     )
   }
@@ -317,7 +456,7 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
     if (normalised.status === 'reject') {
       return failure(
         'archive-path-rejected',
-        REJECTION_MESSAGES[normalised.reason],
+        SKILL_PATH_REJECTION_MESSAGES[normalised.reason],
         entry.name,
       )
     }
@@ -377,7 +516,7 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
     if (rejection) {
       return failure(
         'archive-path-rejected',
-        REJECTION_MESSAGES[rejection],
+        SKILL_PATH_REJECTION_MESSAGES[rejection],
         relativePath,
       )
     }
@@ -392,60 +531,13 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
     )
   }
 
-  const files: SkillArchiveFile[] = []
-  let totalBytes = 0
+  const inflated = inflateSelectedSkillEntries(bytes, selected)
 
-  for (const { entry, path } of selected) {
-    const inflated = inflateSkillEntry(bytes, entry)
-
-    if (!inflated.ok) {
-      return failure(inflated.code, inflated.message, path)
-    }
-
-    const data = inflated.data
-
-    if (data.byteLength > SKILL_MAX_FILE_BYTES) {
-      return failure('archive-entry-too-large', 'A file is over 1 MiB', path)
-    }
-
-    if (
-      path === SKILL_MD_FILE_NAME
-      && data.byteLength > SKILL_MAX_SKILL_MD_BYTES
-    ) {
-      return failure(
-        'archive-skill-md-too-large',
-        'SKILL.md is over 256 KiB',
-        path,
-      )
-    }
-
-    totalBytes += data.byteLength
-
-    if (totalBytes > SKILL_MAX_TOTAL_BYTES) {
-      return failure(
-        'archive-total-too-large',
-        'The skill is over 5 MiB uncompressed',
-      )
-    }
-
-    let text: string
-
-    try {
-      text = fatalDecoder.decode(data)
-    } catch {
-      return failure('archive-not-utf8', 'A file is not valid UTF-8 text', path)
-    }
-
-    if (text.includes('\u0000')) {
-      return failure(
-        'archive-binary-content',
-        'A file contains binary data',
-        path,
-      )
-    }
-
-    files.push({ path, bytes: data, text })
+  if (!inflated.ok) {
+    return inflated.failure
   }
+
+  const { files, totalBytes } = inflated
 
   if (
     totalBytes > SKILL_RATIO_MIN_BYTES
@@ -467,13 +559,7 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
     )
   }
 
-  files.sort((left, right) => {
-    if (left.path === SKILL_MD_FILE_NAME || right.path === SKILL_MD_FILE_NAME) {
-      return left.path === SKILL_MD_FILE_NAME ? -1 : 1
-    }
-
-    return left.path < right.path ? -1 : left.path > right.path ? 1 : 0
-  })
+  sortSkillArchiveFiles(files)
 
   return {
     ok: true,

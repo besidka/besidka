@@ -12,6 +12,7 @@ const BODY_MAX_BYTES = 4096
 const bodySchema = z.object({
   version: z.number().int().min(1),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  licenceAcknowledged: z.boolean().optional(),
 })
 
 /**
@@ -55,6 +56,7 @@ export default defineEventHandler(async (event) => {
     skillId: id ?? '',
     version: body.data.version,
     sha256: body.data.sha256,
+    licenceAcknowledged: body.data.licenceAcknowledged,
   })
 
   logger.set({

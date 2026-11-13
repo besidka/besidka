@@ -26,9 +26,13 @@ export interface AcceptPendingInput extends PendingVersionReference {
   bucket: SkillStageBucket
   userId: number
   skillId: string
+  licenceAcknowledged?: boolean
 }
 
-export type RejectPendingInput = Omit<AcceptPendingInput, 'bucket'>
+export type RejectPendingInput = Omit<
+  AcceptPendingInput,
+  'bucket' | 'licenceAcknowledged'
+>
 
 function createSkillNotFoundError() {
   return createError({
@@ -172,6 +176,36 @@ function deletePendingStatements(
   ]
 }
 
+/**
+ * An update that moves a skill to a licence the user has not acknowledged
+ * (none or custom, and different from the current class) needs the same tick
+ * the import asks for, so a silent update cannot swap an open licence for
+ * one the user never saw.
+ */
+function assertLicenceAcknowledged(input: {
+  pendingClass: string
+  currentClass: string
+  licenceAcknowledged: boolean | undefined
+}): void {
+  const needsTick = (input.pendingClass === 'none'
+    || input.pendingClass === 'custom')
+  && input.pendingClass !== input.currentClass
+
+  if (!needsTick || input.licenceAcknowledged === true) {
+    return
+  }
+
+  throw createError({
+    message: 'Confirm that you may use the updated skill',
+    status: 400,
+    code: 'licence-acknowledgement-required',
+    why: input.pendingClass === 'none'
+      ? 'The update states no licence, so the author keeps all rights'
+      : 'The update carries a custom licence',
+    fix: 'Tick the licence box in the update review and accept again',
+  })
+}
+
 async function readSkillMdText(input: {
   bucket: SkillStageBucket
   userId: number
@@ -206,6 +240,13 @@ export async function acceptPendingSkillVersion(
 ): Promise<{ id: string, version: number, enabled: false }> {
   const { db, bucket, userId, skillId } = input
   const { skill, pending } = await loadReviewedPending(input)
+
+  assertLicenceAcknowledged({
+    pendingClass: pending.licenseClass,
+    currentClass: skill.licenseClass,
+    licenceAcknowledged: input.licenceAcknowledged,
+  })
+
   const pendingFiles = await db.select()
     .from(schema.skillFiles)
     .where(and(
