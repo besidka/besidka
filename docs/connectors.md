@@ -217,7 +217,7 @@ Redirects follow a two-tier rule **(this doc)**:
 | `mcp` | MCP transport calls to the connector's server URL | Same-origin only, at most 3 hops. A redirect to another origin stops with `CONNECTOR_ORIGIN_CHANGED`: the user edits the URL, which asks for consent again | 60 s per call, 10 s per connect | 1 MiB raw | `Besidka-Connectors/<version>` |
 | `oauth` | PRM, AS metadata, registration, token, revocation | At most 3 hops, each re-validated; `Authorization` and request body dropped on origin change; 303 becomes GET | 10 s | 256 KiB | `Besidka-Connectors/<version>` |
 | `registry` | `registry.modelcontextprotocol.io` | At most 3 validated hops | 30 s | 2 MiB per page | `Besidka-Connectors/<version>` |
-| `skills-github` | `github.com/<owner>/<repo>/archive/<ref>.zip` and its `codeload.github.com` hop | At most 3 validated hops | 30 s | 25 MiB | `Besidka-Skills/<version>` (GitHub answers 403 without a UA) |
+| `skills-github` | Exactly `api.github.com` (ref to commit SHA, update checks) and `codeload.github.com/<owner>/<repo>/zip/<sha>`, through the narrow fetcher of `docs/skills.md` section 3.1 until C-3 lands | No redirect followed (`redirect: 'manual'`) | 30 s | 25 MiB | `Besidka-Skills/<version>` (GitHub answers 403 without a UA) |
 | `skills-url` | A raw `SKILL.md` URL | At most 3 validated hops | 10 s | 256 KiB | `Besidka-Skills/<version>` |
 
 The OAuth authorization server usually lives on another origin than the MCP
@@ -858,7 +858,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_CALLS_PER_MINUTE_PER_CONNECTOR` | 30 per user per connector | C-5 |
 | `SAFE_FETCH_OAUTH_MAX_BYTES` | 262,144 | C-3, C-4 |
 | `SAFE_FETCH_REGISTRY_MAX_BYTES` | 2,097,152 per page | C-3, C-8 |
-| Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`) | C-3, S-2 |
+| Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`). `skills-github` uses the narrow allowlisted fetcher (`docs/skills.md` section 3.1) until C-3 lands, and then may move to `safeFetch`. `skills-url` waits for C-3 (S-2U) | S-2G, S-2U, C-3 |
 | `CONNECTOR_TOOLS_CACHE_TTL` | default 600 s, clamp 60 to 3,600 s | C-5 |
 | `CONNECTOR_OAUTH_STATE_TTL` | 600 s | C-4 |
 | `CONNECTOR_REFRESH_LOCK_TTL` | 30 s | C-4 |
