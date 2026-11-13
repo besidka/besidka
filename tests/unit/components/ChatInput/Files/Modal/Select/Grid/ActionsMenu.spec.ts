@@ -1,5 +1,5 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ActionsMenu from '../../../../../../../../app/components/ChatInput/Files/Modal/Select/Grid/ActionsMenu.vue'
 
 function mountMenu() {
@@ -32,5 +32,77 @@ describe('ChatInput/Files/Modal/Select/Grid/ActionsMenu', () => {
 
     expect(wrapper.emitted('rename')).toHaveLength(1)
     expect(wrapper.emitted('delete')).toHaveLength(1)
+  })
+
+  describe('placement', () => {
+    const MENU_WIDTH = 144
+    const MENU_HEIGHT = 76
+
+    beforeEach(() => {
+      vi.stubGlobal('innerWidth', 375)
+      vi.stubGlobal('innerHeight', 600)
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    async function openMenuAt(triggerRect: Partial<DOMRect>) {
+      const wrapper = await mountMenu()
+      const trigger = wrapper.get('[data-testid="files-action-more"]').element
+      const menu = wrapper.get('[data-testid="files-actions-menu"]').element as HTMLElement
+
+      vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+        width: 28,
+        height: 28,
+        ...triggerRect,
+      } as DOMRect)
+      Object.defineProperty(menu, 'offsetWidth', { value: MENU_WIDTH })
+      Object.defineProperty(menu, 'offsetHeight', { value: MENU_HEIGHT })
+
+      menu.dispatchEvent(Object.assign(new Event('beforetoggle'), {
+        newState: 'open',
+      }))
+
+      expect(menu.style.visibility).toBe('hidden')
+
+      menu.dispatchEvent(Object.assign(new Event('toggle'), {
+        newState: 'open',
+      }))
+
+      expect(menu.style.visibility).toBe('')
+
+      return menu
+    }
+
+    it('opens under the trigger when there is room', async () => {
+      const menu = await openMenuAt({ top: 100, bottom: 128, right: 300 })
+
+      expect(menu.style.top).toBe('132px')
+      expect(menu.style.left).toBe('156px')
+    })
+
+    it('opens above the trigger when the tile is cut off at the bottom', async () => {
+      const menu = await openMenuAt({ top: 560, bottom: 588, right: 300 })
+
+      expect(menu.style.top).toBe(`${560 - 4 - MENU_HEIGHT}px`)
+    })
+
+    it('never places the menu above the viewport margin', async () => {
+      const menu = await openMenuAt({ top: 20, bottom: 48, right: 300 })
+
+      vi.stubGlobal('innerHeight', 90)
+      menu.dispatchEvent(Object.assign(new Event('toggle'), {
+        newState: 'open',
+      }))
+
+      expect(Number.parseFloat(menu.style.top)).toBeGreaterThanOrEqual(8)
+    })
+
+    it('keeps the menu inside the viewport horizontally', async () => {
+      const menu = await openMenuAt({ top: 100, bottom: 128, right: 40 })
+
+      expect(menu.style.left).toBe('8px')
+    })
   })
 })
