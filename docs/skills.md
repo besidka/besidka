@@ -234,9 +234,22 @@ repository: it reads the default branch with `GET /repos/{owner}/{repo}` (one
 call, cached within the import) and then calls
 `GET /repos/{owner}/{repo}/compare/{default_branch}...{sha}`. Only the status
 `behind` or `identical` passes. Otherwise the import is rejected with "This
-commit is not on any branch of owner/repo". A tag or branch resolved through
-`api.github.com` is on the named repository by construction, so that path needs
-no compare call.
+commit is not on any branch of owner/repo". The same check runs for a ref that
+is a hex prefix of the SHA it resolved to, because the commit lookup also
+resolves abbreviated ids from forks.
+
+**A ref must be a branch or tag of the named repository.** The commit lookup
+answers for any ref GitHub knows, including `pull/N/head` and `pull/N/merge`,
+whose commits live in forks. So a link whose ref starts with `pull`, `refs`,
+`keep-around` or `__gh__` is refused by the parser, never offered as a ref
+candidate, and refused again when a stored ref is rechecked by an update check.
+Any other name (not `HEAD`, not a hex id) is first confirmed with
+`GET /repos/{owner}/{repo}/git/ref/heads/{ref}` and, on a 404,
+`git/ref/tags/{ref}`; only then is the SHA trusted. A lightweight ref answers
+with its commit, and an annotated tag is peeled by the commit lookup. When no
+candidate exists, one `GET /repos/{owner}/{repo}` tells a missing repository
+(404, "Private or missing repository") from a missing ref ("Branch, tag or
+commit not found").
 
 **The GitHub fetcher is a narrow, allowlisted fetcher, not C-3 (this doc).**
 The host is never user-controlled.
@@ -252,8 +265,14 @@ The host is never user-controlled.
 - Fetch rules: `redirect: 'manual'`, https only, an exact-host allowlist, and
   no redirect is followed. The S-2G spike verifies that codeload answers a SHA
   URL directly.
-- Other limits: a streaming cap of `SKILL_MAX_GITHUB_ARCHIVE_BYTES` (25 MiB), a
-  timeout, a `User-Agent`, and 10 imports per hour.
+- Other limits: a streaming cap of `SKILL_MAX_GITHUB_ARCHIVE_BYTES` (15 MiB;
+  the largest real skills repository checked, `anthropics/skills`, is 4.4 MiB
+  compressed), a
+  timeout, a `User-Agent`, and 10 imports per hour. The body is read into
+  one buffer (sized from `Content-Length`, else doubled up to the cap), one
+  archive is processed at a time per isolate (a second import answers 503
+  "Another GitHub import is running, try again in a moment" with
+  `Retry-After: 5`), and one 60 s deadline covers all GitHub calls of a request.
 - Why this is enough without C-3: C-3's threats are SSRF to metadata or private
   ranges (T1) and DNS rebinding (T2). Both come from hosts the user chooses.
   With fixed public hosts there is nothing for them to act on, so the fetcher
@@ -269,9 +288,15 @@ documented): the archive download does not count against that quota. The REST
 API (`GET /repos/{owner}/{repo}/commits/{ref}` with
 `Accept: application/vnd.github.sha`) does count, and it runs once per import
 and on every update check. An import of a SHA from the URL makes two more
-calls, the repository lookup and the compare. A 403 or
-429 gives "GitHub rate limit reached" with the fix "Try again in an hour or
-upload a zip". A per-user GitHub token (`keys.provider = 'github'`, public
+calls, the repository lookup and the compare. Because the quota is shared by
+the whole app, every API call draws from one global budget of
+`SKILL_GITHUB_API_BUDGET_PER_HOUR` (50) a hour in KV, which fails closed with
+the rate limit message when spent or when KV cannot be read; a verified
+ref-to-SHA answer is cached for `SKILL_GITHUB_REF_CACHE_SECONDS` (60) and a
+default branch for `SKILL_GITHUB_BRANCH_CACHE_SECONDS` (600). A 429, or a 403
+with `x-ratelimit-remaining: 0`, gives "GitHub rate limit reached" with the fix
+"Try again in an hour or upload a zip"; any other 403 gives "GitHub refused
+the request". A per-user GitHub token (`keys.provider = 'github'`, public
 read-only, encrypted) is **not** in the first layer: S-2G measures on the
 preview first (pre-check owner item 3). `keys.provider` is a TypeScript-only
 enum, so adding `github` should generate no SQL; whoever adds it runs
@@ -359,10 +384,18 @@ never use staging: their pending version is persisted directly (see step 3).
    pointing at it. `current_version` does not change, and the skill keeps
    running. The response carries a per-file diff (at most 2,000 lines), new
    findings and any licence change. Nothing is staged in KV or `skills-staging/`.
+   A pending version that did not come from an update check (an import that
+   replaced the skill) is never replaced by a check: it answers 409 "Review or
+   reject the pending version first". A pinned (SHA) skill answers
+   `{ upToDate: true, pinned: true }` without spending the import limit.
 4. `POST /api/v1/skills/[id]/update/accept` (S-2, gated by `skills` alone)
    `{ version, sha256, acknowledged: true }`, where `sha256` is that of the
    pending version the user reviewed. On a mismatch it answers 409 "This update
-   changed while you were reviewing it". Otherwise it
+   changed while you were reviewing it". When the pending version's licence
+   class is `none` or `custom` and differs from the current version's class,
+   the body must also carry `licenceAcknowledged: true`, or the answer is 400
+   `licence-acknowledgement-required`, so an update cannot silently swap an
+   open licence for one the user never saw. Otherwise it
    **creates a new `skill_versions` row with the next number** (the highest
    existing number plus 1) that points at the same blobs, with no blob copy and
    with the pending row's origin and its `source_kind`, `source_url`,
@@ -707,7 +740,7 @@ The picker, chip and composer rules are in section 10.
 | K15 | Slash-name hijack over MCP: an agent renames a skill to a name the user types every day (`/summarize`) | Agent with `skills:write` | `rename_skill` disables the skill and sets `needs-review`, so it never fires until the user re-enables it. The in-app rename keeps the skill enabled | S-6 |
 | K16 | An imported skill makes itself model-invocable or slash-invocable | Skill author | `model_invocable` and `slash_command` are columns the user sets, not frontmatter; Claude Code keys are read only as defaults at import (section 5.5); MCP never sets them on an existing skill | S-2, S-6, S-12 |
 | K17 | Storage and request abuse through saves | Malicious user or injected agent | `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs), per-save caps, 120 saves per hour, 30 MCP skill writes per hour | S-10, S-6 |
-| K18 | A GitHub import shows `owner/repo` as the source for a commit the repository never held: a SHA in the URL can belong to a fork of it | Malicious link author | Before a SHA from a URL is imported, the repository default branch is read and `compare/{default_branch}...{sha}` must answer `behind` or `identical`; otherwise "This commit is not on any branch of owner/repo" (section 3.1). One extra API call, counted against the GitHub quota | S-2G |
+| K18 | A GitHub import shows `owner/repo` as the source for a commit the repository never held: a SHA in the URL can belong to a fork of it | Malicious link author | Before a SHA from a URL is imported, the repository default branch is read and `compare/{default_branch}...{sha}` must answer `behind` or `identical`; otherwise "This commit is not on any branch of owner/repo" (section 3.1). The same check covers a hex-prefix ref. Pull request and internal refs (`pull/N/head`, `pull/N/merge`, `refs/`, `keep-around`, `__gh__`) are refused outright, and any other ref must first be confirmed as a branch or tag of the repository (`git/ref/heads`, `git/ref/tags`), because the commit lookup resolves fork commits through pull refs. Extra API calls count against the app-wide GitHub budget | S-2G |
 
 ## 7. Scripts in provider containers (S-5)
 
@@ -970,7 +1003,7 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_MAX_FILE_BYTES` | 1 MiB | S-2, S-4 |
 | `SKILL_MAX_SKILL_MD_BYTES` | 256 KiB | S-2 |
 | `SKILL_MAX_UPLOAD_BYTES` | 5 MiB compressed | S-2 |
-| `SKILL_MAX_GITHUB_ARCHIVE_BYTES` | 25 MiB compressed | S-2G |
+| `SKILL_MAX_GITHUB_ARCHIVE_BYTES` | 15 MiB compressed | S-2G |
 | `SKILL_MAX_RAW_URL_BYTES` | 256 KiB | S-2U |
 | `SKILL_MAX_RATIO` | 100:1 | S-2 |
 | `SKILL_MAX_PATH_LENGTH` | 200 | S-2, S-3 |
@@ -990,6 +1023,11 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_GITHUB_MAX_ARCHIVE_ENTRIES` | 20,000 entries in a repository archive (the directory scan; the 1,000-entry upload cap does not apply) | S-2G |
 | `SKILL_GITHUB_API_MAX_BYTES` | 2 MiB per `api.github.com` answer | S-2G |
 | `SKILL_GITHUB_TIMEOUT_MS` | 30 s per GitHub request, body read included | S-2G |
+| `SKILL_GITHUB_REQUEST_DEADLINE_MS` | 60 s for all GitHub calls of one request | S-2G |
+| `SKILL_GITHUB_API_BUDGET_PER_HOUR` | 50 `api.github.com` calls an hour for the whole app (KV, fails closed) | S-2G |
+| `SKILL_GITHUB_REF_CACHE_SECONDS` | 60 (verified ref to SHA, KV) | S-2G |
+| `SKILL_GITHUB_BRANCH_CACHE_SECONDS` | 600 (default branch, KV) | S-2G |
+| `SKILL_DIFF_TOTAL_CELL_BUDGET` | 8,000,000 diff cells for one review; past it files are counted, not diffed | S-2G |
 | `SKILL_DESCRIPTION_CATALOG_SOFT_MAX` | 300 characters | S-11 |
 | `SKILL_STAGE_TTL` | 1 h (import preview only) | S-2 |
 | `SKILL_DIFF_MAX_LINES` | 2,000 | S-2, S-4 |
