@@ -1,3 +1,4 @@
+import type { BlobDownloadResult } from '~/composables/file-download'
 import type { ArtifactKind } from '#shared/utils/artifacts'
 
 export interface ArtifactExportOptions {
@@ -255,20 +256,42 @@ export function buildStandaloneArtifactFile(
   }
 }
 
-export function downloadArtifactFile(file: ArtifactSourceFile): void {
-  const blob = new Blob([file.content], {
-    type: `${file.mimeType};charset=utf-8`,
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
+/**
+ * For a download that has to fetch the artifact first. The fetch lives inside
+ * the Blob builder and the kept file is keyed by artifact and version, so the
+ * second tap after an expired gesture finds it before any network request and
+ * can share synchronously.
+ */
+export function downloadArtifactVersion(options: {
+  artifactId: string
+  version: number
+  kind: ArtifactKind
+  title: string
+  load: () => Promise<ArtifactSourceFile>
+}): Promise<BlobDownloadResult> {
+  return useFileDownload().downloadBlob({
+    key: `artifact:${options.artifactId}:v${options.version}`,
+    fileName: artifactFileName(options.title, options.kind),
+    build: async () => {
+      const file = await options.load()
 
-  link.href = url
-  link.download = file.fileName
-  link.rel = 'noopener'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  setTimeout(() => {
-    URL.revokeObjectURL(url)
-  }, 0)
+      return new Blob([file.content], {
+        type: `${file.mimeType};charset=utf-8`,
+      })
+    },
+  })
+}
+
+export function downloadArtifactFile(
+  file: ArtifactSourceFile,
+): Promise<BlobDownloadResult> {
+  return useFileDownload().downloadBlob({
+    key: `artifact:${file.fileName}:${hashText(file.content)}`,
+    fileName: file.fileName,
+    build: () => {
+      return new Blob([file.content], {
+        type: `${file.mimeType};charset=utf-8`,
+      })
+    },
+  })
 }

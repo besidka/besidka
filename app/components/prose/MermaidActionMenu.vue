@@ -58,6 +58,7 @@ import {
 } from '@besidka/artifacts-protocol/diagram-menus'
 import type {
   DiagramExportAction,
+  DiagramExportOutcome,
   DiagramMenuAction,
   DiagramMenuInput,
 } from '~/types/diagram-export.d'
@@ -198,11 +199,15 @@ function reportFailure() {
 
 async function reportOutcome(
   action: DiagramExportAction,
-  outcome: boolean | Promise<boolean>,
+  outcome: DiagramExportOutcome | Promise<DiagramExportOutcome>,
 ) {
-  const isSuccess = await outcome
+  const result = await outcome
 
-  if (!isSuccess) {
+  if (result === 'reported') {
+    return
+  }
+
+  if (!result) {
     reportFailure()
 
     return

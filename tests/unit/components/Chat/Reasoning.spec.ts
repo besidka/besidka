@@ -1221,6 +1221,168 @@ describe('Chat/Reasoning', () => {
     ])
   })
 
+  describe('collapsing the block while a multi-step turn streams', () => {
+    const firstReasoning = {
+      type: 'reasoning',
+      text: '**Plan the document**\n\nFirst body\n\n**Pick a format**\n\nMore',
+      state: 'done',
+    }
+    const createDocumentTool = {
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'input-streaming',
+      input: {},
+    }
+    const secondReasoning = {
+      type: 'reasoning',
+      text: '**Write the body**\n\nSecond body',
+      state: 'streaming',
+    }
+
+    async function mountStreamingTurn(
+      reasoningExpandedSetting: boolean,
+    ): Promise<VueWrapper> {
+      setReasoningUserSetting(reasoningExpandedSetting, true)
+
+      const firstStreamingParts = [
+        { ...firstReasoning, state: 'streaming' },
+      ] as UIMessage['parts']
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage(firstStreamingParts),
+          status: 'streaming',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: Date.now(),
+          isTurnThinkingHeld: heldFor(firstStreamingParts),
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+
+      await wrapper.vm.$nextTick()
+
+      if (!isMainExpanded(wrapper)) {
+        await wrapper.get('summary').trigger('click')
+        await wrapper.vm.$nextTick()
+      }
+
+      const nextStepParts = [
+        firstReasoning,
+        createDocumentTool,
+        secondReasoning,
+      ] as UIMessage['parts']
+
+      await wrapper.setProps({
+        message: createMessage(nextStepParts),
+        isTurnThinkingHeld: heldFor(nextStepParts),
+      })
+      await wrapper.vm.$nextTick()
+
+      return wrapper
+    }
+
+    it.each([
+      ['off', false],
+      ['on', true],
+    ])(
+      'lets the user collapse the expanded block once the next step starts, with the expanded-by-default setting %s',
+      async (_label, reasoningExpandedSetting) => {
+        const wrapper = await mountStreamingTurn(reasoningExpandedSetting)
+
+        expect(isMainExpanded(wrapper)).toBe(true)
+
+        await wrapper.get('summary').trigger('click')
+        await wrapper.vm.$nextTick()
+
+        expect(isMainExpanded(wrapper)).toBe(false)
+      },
+    )
+
+    it('keeps the block collapsed while later steps keep streaming', async () => {
+      const wrapper = await mountStreamingTurn(true)
+
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      const laterParts = [
+        firstReasoning,
+        createDocumentTool,
+        { ...secondReasoning, text: `${secondReasoning.text}\n\n**Review**\n\nThird` },
+        { type: 'tool-create_document', toolCallId: 'call-2', state: 'input-streaming', input: {} },
+      ] as UIMessage['parts']
+
+      await wrapper.setProps({
+        message: createMessage(laterParts),
+        isTurnThinkingHeld: heldFor(laterParts),
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+    })
+
+    it('keeps the block collapsed when the user collapses it while answer text streams and a later reasoning segment starts', async () => {
+      setReasoningUserSetting(true, false)
+
+      const answeringParts = [
+        { ...firstReasoning, state: 'done' },
+        { type: 'text', text: 'Answer so far.', state: 'streaming' },
+      ] as UIMessage['parts']
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage(answeringParts),
+          status: 'streaming',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 1000,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+
+      const nextSegmentParts = [
+        ...answeringParts,
+        secondReasoning,
+      ] as UIMessage['parts']
+
+      await wrapper.setProps({
+        message: createMessage(nextSegmentParts),
+        reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: heldFor(nextSegmentParts),
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(false)
+    })
+
+    it('expands again when the user reopens the collapsed block', async () => {
+      const wrapper = await mountStreamingTurn(true)
+
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+      await wrapper.get('summary').trigger('click')
+      await wrapper.vm.$nextTick()
+
+      expect(isMainExpanded(wrapper)).toBe(true)
+    })
+  })
+
   it('still auto-expands the single expandable step once settled, with a tool step present', async () => {
     const wrapper = await mountSuspended(Reasoning, {
       props: {

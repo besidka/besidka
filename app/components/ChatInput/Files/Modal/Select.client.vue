@@ -35,7 +35,10 @@
     />
 
     <!-- Scrollable Files Area -->
-    <div class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+    <div
+      ref="scrollAreaRef"
+      class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1"
+    >
       <component
         :is="activeExtraTab.component"
         v-if="activeExtraTab"
@@ -488,6 +491,7 @@ const touchGroupId = shallowRef<string | null>(null)
 const touchSwipeHandled = shallowRef<boolean>(false)
 const autoSelectedIds = ref<Set<string>>(new Set())
 const isComponentActive = shallowRef<boolean>(false)
+const scrollAreaRef = useTemplateRef<HTMLDivElement>('scrollAreaRef')
 
 function getFileIndexFromElement(element: Element | null): number | null {
   if (!element) return null
@@ -633,6 +637,12 @@ watch([viewMode, source, activeExtraTabId], async (_, __, onCleanup) => {
 
 function onSearchShortcut(event: KeyboardEvent) {
   if (event.key !== '/') return
+
+  const hostDialog = scrollAreaRef.value?.closest('dialog')
+
+  if (hostDialog && !hostDialog.open) {
+    return
+  }
 
   const tagName = activeElement.value?.tagName
   const isEditable = activeElement.value?.hasAttribute?.('contenteditable')
@@ -896,8 +906,22 @@ onUnmounted(() => {
   reset()
 })
 
+function getScrollTop(): number {
+  return scrollAreaRef.value?.scrollTop ?? 0
+}
+
+function setScrollTop(scrollTop: number): void {
+  if (!scrollAreaRef.value) {
+    return
+  }
+
+  scrollAreaRef.value.scrollTop = scrollTop
+}
+
 defineExpose({
   reset,
   fetchFiles,
+  getScrollTop,
+  setScrollTop,
 })
 </script>

@@ -261,6 +261,18 @@ describe('prose/MermaidActionMenu.vue', () => {
     )
   })
 
+  it('adds no second toast for a download the helper already reported', async () => {
+    mocks.runExportAction.mockResolvedValue('reported')
+
+    const { wrapper } = await mountMenu('download')
+
+    await wrapper.get('[data-testid="mermaid-export-download-drawio"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(mocks.useErrorMessage).not.toHaveBeenCalled()
+  })
+
   it('does not export when the theme element is unavailable', async () => {
     const { wrapper } = await mountMenu('copy', {
       themeElement: () => null,

@@ -73,6 +73,7 @@ const emit = defineEmits<{
 }>()
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
+const { downloadBlob } = useFileDownload()
 
 watch(() => props.open, (isOpen) => {
   if (!modal.value) {
@@ -93,15 +94,15 @@ async function copyAll() {
 }
 
 function download() {
-  const blob = new Blob([props.codes.join('\n')], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
+  const content = props.codes.join('\n')
 
-  link.href = url
-  link.download = 'besidka-backup-codes.txt'
-  link.click()
-
-  URL.revokeObjectURL(url)
+  downloadBlob({
+    key: `backup-codes:${hashText(content)}`,
+    fileName: 'besidka-backup-codes.txt',
+    build: () => {
+      return new Blob([content], { type: 'text/plain' })
+    },
+  })
 }
 
 function acknowledge() {

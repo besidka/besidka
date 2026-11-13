@@ -73,6 +73,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Grid/ActionsMenu.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/ProjectGroups.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
@@ -119,6 +120,10 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
     'tests/e2e/chat/office-attachments.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
+  ]
+  const topModalDialogTests = [
+    'tests/unit/composables/top-modal-dialog.spec.ts',
+    'tests/unit/components/ui/Messages.spec.ts',
   ]
   const chatInputToolsTests = [
     'tests/unit/components/ChatInput.spec.ts',
@@ -2259,6 +2264,33 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/components\/Chat\/(Message|ContextMenu\.client)\.vue$/,
       tests: contextMenuTests,
+    },
+    {
+      pattern:
+        /^app\/(composables\/(file-download|ios-in-app-browser)|utils\/file-share)\.ts$/,
+      tests: [
+        'tests/unit/composables/file-download.spec.ts',
+        'tests/unit/utils/file-share.spec.ts',
+        'tests/unit/composables/ios-in-app-browser.spec.ts',
+        'tests/unit/utils/artifact-export.spec.ts',
+        'tests/unit/composables/diagram-export.spec.ts',
+        'tests/unit/components/prose/MermaidActionMenu.spec.ts',
+        'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
+        'tests/unit/components/History/DocumentRow.spec.ts',
+        'tests/unit/components/Chat/Files.spec.ts',
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+        'tests/unit/components/Chat/ImagePreview.client.spec.ts',
+        'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+        'tests/unit/components/Chat/DocumentPreview.spec.ts',
+        'tests/unit/components/Chat/Document.spec.ts',
+        'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+        'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^app\/(composables\/top-modal-dialog\.ts|components\/ui\/Messages\.vue)$/,
+      tests: topModalDialogTests,
     },
     {
       pattern: /^app\/composables\/message-copy\.ts$/,

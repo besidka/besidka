@@ -115,6 +115,10 @@
         class="btn btn-sm btn-accent"
         :aria-label="`Download ${titleText}`"
         data-testid="document-card-download"
+        @click="onDownloadClick($event, {
+          url: downloadUrl,
+          fileName: titleText,
+        })"
       >
         <Icon
           name="lucide:download"
@@ -153,6 +157,7 @@ const props = withDefaults(defineProps<{
 const sidePanel = useSidePanel()
 const documentsFeature = useFeature('documents')
 const { refreshFeatures } = useFeatures()
+const { onDownloadClick } = useFileDownload()
 
 const view = computed(() => {
   return isDocumentPart(props.part) ? getDocumentPartView(props.part) : null

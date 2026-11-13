@@ -174,7 +174,10 @@
               class="btn btn-circle btn-xs btn-ghost"
               :aria-label="`Download ${file.name}`"
               title="Download"
-              @click.stop
+              @click.stop="onDownloadClick($event, {
+                url: getFileDownloadUrl(file.storageKey),
+                fileName: file.name,
+              })"
             >
               <Icon name="lucide:download" size="12" />
             </a>
@@ -235,6 +238,7 @@ defineEmits<{
 }>()
 
 const { canPreviewFile } = useDocumentPreview()
+const { onDownloadClick } = useFileDownload()
 
 const containerRef = useTemplateRef<HTMLTableElement>('containerRef')
 

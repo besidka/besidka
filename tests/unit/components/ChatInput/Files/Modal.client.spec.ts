@@ -1,11 +1,18 @@
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, watch } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Modal from '../../../../../app/components/ChatInput/Files/Modal.client.vue'
 import { useSidePanel } from '../../../../../app/composables/side-panel'
 
 enableAutoUnmount(afterEach)
+
+const scrollMocks = vi.hoisted(() => ({
+  getScrollTop: vi.fn(() => 240),
+  setScrollTop: vi.fn(),
+  fetchFiles: vi.fn(async () => true),
+  reset: vi.fn(),
+}))
 
 const SelectStub = defineComponent({
   name: 'ChatInputFilesModalSelect',
@@ -18,8 +25,10 @@ const SelectStub = defineComponent({
   emits: ['attach', 'detach', 'deleted', 'preview'],
   setup(_props, { expose }) {
     expose({
-      reset: vi.fn(),
-      fetchFiles: vi.fn(async () => true),
+      reset: scrollMocks.reset,
+      fetchFiles: scrollMocks.fetchFiles,
+      getScrollTop: scrollMocks.getScrollTop,
+      setScrollTop: scrollMocks.setScrollTop,
     })
 
     return () => h('div', { 'data-testid': 'select-stub' })
@@ -195,6 +204,70 @@ describe('ChatInput/Files/Modal.client', () => {
     expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
   })
 
+  describe('refreshing the list after a close', () => {
+    afterEach(() => {
+      scrollMocks.fetchFiles.mockReset()
+      scrollMocks.fetchFiles.mockResolvedValue(true)
+    })
+
+    it('starts a new refresh on reopen even while a stale one is still pending', async () => {
+      const resolvers: Array<(didRefresh: boolean) => void> = []
+
+      scrollMocks.fetchFiles.mockReset()
+      scrollMocks.fetchFiles.mockImplementation(() => {
+        return new Promise<boolean>((resolve) => {
+          resolvers.push(resolve)
+        })
+      })
+
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const dialog = wrapper.get('[data-testid="files-modal"]')
+
+      exposed.open('select')
+      await flushPromises()
+      await dialog.trigger('close')
+      await flushPromises()
+
+      exposed.open('select')
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(1)
+
+      await dialog.trigger('close')
+      await flushPromises()
+      exposed.open('select')
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(2)
+      expect(scrollMocks.fetchFiles).toHaveBeenLastCalledWith(true)
+
+      resolvers[0]?.(false)
+      await flushPromises()
+      resolvers[1]?.(true)
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(2)
+      expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+    })
+
+    it('does exactly one fetch on a normal reopen', async () => {
+      const wrapper = await mountModal()
+      const exposed = wrapper.vm as unknown as ModalExposed
+      const dialog = wrapper.get('[data-testid="files-modal"]')
+
+      exposed.open('select')
+      await flushPromises()
+      await dialog.trigger('close')
+      await flushPromises()
+      scrollMocks.fetchFiles.mockClear()
+      exposed.open('select')
+      await flushPromises()
+
+      expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('document preview', () => {
     const documentFile = {
       id: 'file-1',
@@ -252,6 +325,211 @@ describe('ChatInput/Files/Modal.client', () => {
           downloadUrl: '/files/plan-1.docx?download=1',
         })
       })
+
+    describe('returning from the preview', () => {
+      async function previewDocument() {
+        const wrapper = await openSelectTab()
+
+        wrapper.findComponent(SelectStub).vm.$emit('preview', documentFile)
+        await wrapper.vm.$nextTick()
+        await wrapper.get('[data-testid="files-modal"]').trigger('close')
+
+        return wrapper
+      }
+
+      beforeEach(() => {
+        scrollMocks.setScrollTop.mockClear()
+        scrollMocks.getScrollTop.mockClear()
+      })
+
+      it('keeps the Select tab and its state while the preview shows',
+        async () => {
+          const wrapper = await previewDocument()
+
+          expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+          expect(scrollMocks.getScrollTop).toHaveBeenCalledOnce()
+        })
+
+      it('reopens the file manager at the same scroll when the preview closes',
+        async () => {
+          const wrapper = await previewDocument()
+
+          Object.defineProperty(
+            wrapper.get('[data-testid="files-modal"]').element,
+            'open',
+            { value: false, configurable: true },
+          )
+          useSidePanel().close()
+          await flushPromises()
+
+          expect(HTMLDialogElement.prototype.showModal)
+            .toHaveBeenCalledTimes(2)
+          expect(scrollMocks.setScrollTop).toHaveBeenCalledWith(240)
+          expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+        })
+
+      it('stays closed and drops the kept state when another view takes the panel',
+        async () => {
+          const wrapper = await previewDocument()
+
+          useSidePanel().open({ viewKey: 'other', title: 'Other' })
+          await flushPromises()
+          await wrapper.get('[data-testid="files-modal"]').trigger('close')
+
+          expect(HTMLDialogElement.prototype.showModal)
+            .toHaveBeenCalledOnce()
+          expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+        })
+
+      it('reloads the list when the file manager is opened while the preview still shows',
+        async () => {
+          const wrapper = await previewDocument()
+          const exposed = wrapper.vm as unknown as ModalExposed
+
+          Object.defineProperty(
+            wrapper.get('[data-testid="files-modal"]').element,
+            'open',
+            { value: false, configurable: true },
+          )
+          scrollMocks.fetchFiles.mockClear()
+          scrollMocks.reset.mockClear()
+          exposed.open('select', 'assistant')
+          await flushPromises()
+
+          expect(scrollMocks.reset).toHaveBeenCalled()
+          expect(scrollMocks.fetchFiles).toHaveBeenCalledTimes(1)
+          expect(HTMLDialogElement.prototype.showModal)
+            .toHaveBeenCalledTimes(2)
+        })
+
+      it('reloads the list once when reopened with the same source while the preview still shows',
+        async () => {
+          const wrapper = await previewDocument()
+          const exposed = wrapper.vm as unknown as ModalExposed
+
+          Object.defineProperty(
+            wrapper.get('[data-testid="files-modal"]').element,
+            'open',
+            { value: false, configurable: true },
+          )
+          scrollMocks.fetchFiles.mockClear()
+          exposed.open('select')
+          await flushPromises()
+
+          expect(scrollMocks.fetchFiles).toHaveBeenCalledOnce()
+          expect(scrollMocks.fetchFiles).toHaveBeenCalledWith(true)
+          expect(wrapper.findComponent(SelectStub).props('initialSource'))
+            .toBe('upload')
+        })
+
+      it('drops the kept state and stays closed when the route changes', async () => {
+        const wrapper = await previewDocument()
+        const router = useRouter()
+
+        await router.push('/profile/keys')
+        await flushPromises()
+        useSidePanel().close()
+        await flushPromises()
+        await wrapper.get('[data-testid="files-modal"]').trigger('close')
+
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+      })
+
+      it('drops the kept state when the user focuses a field outside the panel', async () => {
+        const wrapper = await previewDocument()
+        const composer = document.createElement('textarea')
+
+        document.body.appendChild(composer)
+        composer.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+        await flushPromises()
+        useSidePanel().close()
+        await flushPromises()
+        composer.remove()
+        await wrapper.get('[data-testid="files-modal"]').trigger('close')
+
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(false)
+      })
+
+      it('reopens when the side panel restores focus to its opener as it closes', async () => {
+        const composer = document.createElement('textarea')
+
+        document.body.appendChild(composer)
+
+        const stopRestore = watch(
+          () => useSidePanel().isOpen.value,
+          (isOpen) => {
+            if (!isOpen) {
+              composer.focus()
+            }
+          },
+          { flush: 'post' },
+        )
+        const wrapper = await previewDocument()
+
+        Object.defineProperty(
+          wrapper.get('[data-testid="files-modal"]').element,
+          'open',
+          { value: false, configurable: true },
+        )
+        useSidePanel().close()
+        await flushPromises()
+        stopRestore()
+
+        expect(document.activeElement).toBe(composer)
+        expect(HTMLDialogElement.prototype.showModal)
+          .toHaveBeenCalledTimes(2)
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+
+        composer.remove()
+      })
+
+      it('keeps the kept state when focus lands in the side panel', async () => {
+        const wrapper = await previewDocument()
+        const panel = document.createElement('div')
+        const field = document.createElement('input')
+
+        panel.className = 'js-side-panel'
+        panel.appendChild(field)
+        document.body.appendChild(panel)
+        field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+        await flushPromises()
+        panel.remove()
+        Object.defineProperty(
+          wrapper.get('[data-testid="files-modal"]').element,
+          'open',
+          { value: false, configurable: true },
+        )
+        useSidePanel().close()
+        await flushPromises()
+
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledTimes(2)
+        expect(wrapper.findComponent(SelectStub).exists()).toBe(true)
+      })
+
+      it('resets the kept state when the file manager is opened afresh',
+        async () => {
+          const wrapper = await previewDocument()
+          const exposed = wrapper.vm as unknown as ModalExposed
+
+          useSidePanel().close()
+          Object.defineProperty(
+            wrapper.get('[data-testid="files-modal"]').element,
+            'open',
+            { value: false, configurable: true },
+          )
+          await flushPromises()
+
+          expect(scrollMocks.setScrollTop).toHaveBeenCalledOnce()
+
+          exposed.open('select', 'assistant')
+          await wrapper.vm.$nextTick()
+
+          expect(wrapper.findComponent(SelectStub).props('initialSource'))
+            .toBe('assistant')
+        })
+    })
 
     it('ignores a file without a document id', async () => {
       const wrapper = await openSelectTab()

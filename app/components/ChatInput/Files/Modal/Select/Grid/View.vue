@@ -1,7 +1,7 @@
 <template>
   <div
     ref="containerRef"
-    class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 py-1 select-none"
+    class="grid grid-cols-3 max-[22.5rem]:grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 py-1 select-none"
   >
     <div
       v-for="(file, index) in files"
@@ -37,7 +37,7 @@
       <!-- File Icon for non-images -->
       <div
         v-else
-        class="size-full flex flex-col items-center justify-center p-2"
+        class="size-full flex flex-col items-center justify-center p-2 max-sm:pt-9"
         :class="{
           'opacity-50': selectedIds.has(file.id)
         }"
@@ -116,6 +116,7 @@
       <!-- Hover/Focus Actions -->
       <div
         class="absolute top-1 right-1 flex gap-0.5"
+        data-testid="files-tile-actions"
         :class="{
           [`
             md:opacity-0
@@ -142,13 +143,21 @@
           class="btn btn-circle btn-xs btn-soft"
           :aria-label="`Download ${file.name}`"
           title="Download"
-          @click.stop
+          @click.stop="onDownloadClick($event, {
+            url: getFileDownloadUrl(file.storageKey),
+            fileName: file.name,
+          })"
         >
           <Icon name="lucide:download" size="12" />
         </a>
+        <ChatInputFilesModalSelectGridActionsMenu
+          :file-name="file.name"
+          @rename="$emit('rename', file)"
+          @delete="$emit('delete', file)"
+        />
         <button
           type="button"
-          class="btn btn-circle btn-xs btn-soft"
+          class="btn btn-circle btn-xs btn-soft max-sm:hidden"
           aria-label="Rename file"
           title="Rename"
           @click="$emit('rename', file)"
@@ -157,7 +166,7 @@
         </button>
         <button
           type="button"
-          class="btn btn-circle btn-xs btn-error btn-soft"
+          class="btn btn-circle btn-xs btn-error btn-soft max-sm:hidden"
           aria-label="Delete file"
           title="Delete"
           @click="$emit('delete', file)"
@@ -196,6 +205,7 @@ const emit = defineEmits<{
 }>()
 
 const { canPreviewFile } = useDocumentPreview()
+const { onDownloadClick } = useFileDownload()
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 

@@ -128,6 +128,10 @@
                 :href="downloadUrl"
                 class="btn btn-sm btn-ghost"
                 data-testid="text-file-modal-download"
+                @click="onDownloadClick($event, {
+                  url: downloadUrl,
+                  fileName: name,
+                })"
               >
                 <Icon name="lucide:download" size="14" aria-hidden="true" />
                 Download
@@ -214,6 +218,7 @@ const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const closeButtonRef = useTemplateRef<HTMLButtonElement>('closeButtonRef')
 const textareaRef = useTemplateRef<HTMLTextAreaElement>('textareaRef')
 const clipboard = useClipboard()
+const { onDownloadClick } = useFileDownload()
 const { isDesktop } = useDevice()
 const isCenteredLayout = useMediaQuery('(min-width: 40rem)')
 const { isKeyboardOpen } = useVisualViewportInset()

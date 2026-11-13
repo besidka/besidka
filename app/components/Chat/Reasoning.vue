@@ -436,6 +436,7 @@ const isMainExpanded = shallowRef<boolean>(false)
 const expandedStepId = shallowRef<string>('')
 const isStreamingExpandOverride = shallowRef<boolean>(false)
 const hasAutoHiddenThisMessage = shallowRef<boolean>(false)
+const isMainCollapsedByUser = shallowRef<boolean>(false)
 const reasoningInterval = shallowRef<
   ReturnType<typeof setInterval> | null
 >(null)
@@ -477,7 +478,7 @@ watch(
       return
     }
 
-    if (hasAutoHiddenThisMessage.value) {
+    if (hasAutoHiddenThisMessage.value || isMainCollapsedByUser.value) {
       return
     }
 
@@ -609,13 +610,17 @@ function toggleMain() {
   const willExpand = !isMainExpanded.value
 
   isMainExpanded.value = willExpand
+  isMainCollapsedByUser.value = !willExpand
+
+  if (!willExpand) {
+    isStreamingExpandOverride.value = false
+  }
 
   if (!isThinkingStreaming.value) {
     return
   }
 
   if (!willExpand) {
-    isStreamingExpandOverride.value = false
     expandedStepId.value = ''
 
     return

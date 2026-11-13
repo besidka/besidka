@@ -1,7 +1,7 @@
 import { computed, defineComponent, h, reactive, ref, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { flushPromises } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   ExtraFileSourceTab,
   FileManagerFile,
@@ -10,6 +10,8 @@ import type {
 import { OFFICE_MEDIA_TYPES } from '../../../../../../shared/utils/office-files'
 import { createFileDeliveryResolver } from '../../../../../../app/utils/file-delivery-hints'
 import Select from '../../../../../../app/components/ChatInput/Files/Modal/Select.client.vue'
+
+enableAutoUnmount(afterEach)
 
 const mocks = vi.hoisted(() => ({
   fetchFiles: vi.fn(),
@@ -1072,5 +1074,80 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect(wrapper.find('[data-testid="files-source-drive"]').exists())
       .toBe(true)
     expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
+  })
+
+  it('exposes the scroll position of the files area', async () => {
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+    const exposed = wrapper.vm as unknown as {
+      getScrollTop: () => number
+      setScrollTop: (scrollTop: number) => void
+    }
+
+    expect(exposed.getScrollTop()).toBe(0)
+
+    exposed.setScrollTop(180)
+
+    expect(exposed.getScrollTop()).toBe(180)
+  })
+
+  describe('the "/" search shortcut', () => {
+    async function mountInDialog(isDialogOpen: boolean) {
+      const dialog = document.createElement('dialog')
+      const host = document.createElement('div')
+
+      if (isDialogOpen) {
+        dialog.setAttribute('open', '')
+      }
+
+      dialog.appendChild(host)
+      document.body.appendChild(dialog)
+
+      const wrapper = await mountSuspended(Select, {
+        props: {
+          attachedIds: new Set<string>(),
+        },
+        shallow: true,
+        attachTo: host,
+      })
+
+      await flushPromises()
+
+      return { dialog, wrapper }
+    }
+
+    function pressSlash(): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', {
+        key: '/',
+        cancelable: true,
+        bubbles: true,
+      })
+
+      document.dispatchEvent(event)
+
+      return event
+    }
+
+    it('is handled while the host dialog is open', async () => {
+      const { dialog, wrapper } = await mountInDialog(true)
+
+      expect(pressSlash().defaultPrevented).toBe(true)
+
+      wrapper.unmount()
+      dialog.remove()
+    })
+
+    it('is ignored while the host dialog is closed', async () => {
+      const { dialog, wrapper } = await mountInDialog(false)
+
+      expect(pressSlash().defaultPrevented).toBe(false)
+
+      wrapper.unmount()
+      dialog.remove()
+    })
   })
 })

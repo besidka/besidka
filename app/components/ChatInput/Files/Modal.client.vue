@@ -99,6 +99,8 @@ type Tab = 'select' | 'upload'
 type SelectTabRef = {
   reset: () => void
   fetchFiles: (reset?: boolean) => Promise<boolean>
+  getScrollTop: () => number
+  setScrollTop: (scrollTop: number) => void
 }
 
 withDefaults(defineProps<{
@@ -117,6 +119,8 @@ const emit = defineEmits<{
 }>()
 
 const documentPreview = useDocumentPreview()
+const sidePanel = useSidePanel()
+const route = useRoute()
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 const closeBtn = useTemplateRef<HTMLButtonElement>('closeBtn')
 const storageUsage = useTemplateRef('storageUsage')
@@ -125,28 +129,58 @@ const selectTabRef = shallowRef<SelectTabRef | null>(null)
 const activeTab = shallowRef<Tab | null>(null)
 const selectSource = shallowRef<FileSourceFilter | undefined>(undefined)
 const shouldRefreshSelect = shallowRef<boolean>(false)
+const stopPreviewReturnWatch = shallowRef<(() => void) | null>(null)
+let refreshGeneration = 0
+let activeRefreshGeneration: number | null = null
 
+/**
+ * A refresh is identified by a generation. Resetting the modal state bumps
+ * the generation, which both frees the slot, so a reopen can start a new
+ * refresh at once, and makes the older fetch stale: its late result neither
+ * marks the tab as refreshed nor clears the newer refresh's slot.
+ */
 async function refreshSelectTabIfNeeded() {
   if (activeTab.value !== 'select' || !shouldRefreshSelect.value) {
     return
   }
 
-  await nextTick()
-
-  if (!selectTabRef.value) {
+  if (activeRefreshGeneration === refreshGeneration) {
     return
   }
 
-  selectTabRef.value.reset()
+  const generation = ++refreshGeneration
 
-  const didRefresh = await selectTabRef.value.fetchFiles(true)
+  activeRefreshGeneration = generation
 
-  if (didRefresh) {
-    shouldRefreshSelect.value = false
+  try {
+    await nextTick()
+
+    if (generation !== refreshGeneration || !selectTabRef.value) {
+      return
+    }
+
+    selectTabRef.value.reset()
+
+    const didRefresh = await selectTabRef.value.fetchFiles(true)
+
+    if (didRefresh && generation === refreshGeneration) {
+      shouldRefreshSelect.value = false
+    }
+  } finally {
+    if (activeRefreshGeneration === generation) {
+      activeRefreshGeneration = null
+    }
   }
 }
 
 function open(tab: Tab, source?: FileSourceFilter): void {
+  const isAbandoningPreviewReturn = stopPreviewReturnWatch.value !== null
+
+  if (isAbandoningPreviewReturn) {
+    cancelPreviewReturn()
+    resetModalState()
+  }
+
   activeTab.value = tab
   selectSource.value = tab === 'select' ? source ?? 'upload' : undefined
 
@@ -162,6 +196,10 @@ function open(tab: Tab, source?: FileSourceFilter): void {
       closeBtn.value?.focus()
     }, 300)
   }
+
+  if (isAbandoningPreviewReturn) {
+    refreshSelectTabIfNeeded()
+  }
 }
 
 function close(): void {
@@ -170,15 +208,105 @@ function close(): void {
   }
 }
 
-function onModalClosed(): void {
-  if (modal.value?.open) {
-    return
-  }
-
+function resetModalState(): void {
+  refreshGeneration++
+  activeRefreshGeneration = null
   activeTab.value = null
   selectSource.value = undefined
   shouldRefreshSelect.value = true
   selectTabRef.value?.reset()
+}
+
+function onModalClosed(): void {
+  if (modal.value?.open || stopPreviewReturnWatch.value) {
+    return
+  }
+
+  resetModalState()
+}
+
+function cancelPreviewReturn(): void {
+  stopPreviewReturnWatch.value?.()
+  stopPreviewReturnWatch.value = null
+}
+
+async function returnFromPreview(scrollTop: number): Promise<void> {
+  cancelPreviewReturn()
+
+  if (!modal.value || modal.value.open) {
+    return
+  }
+
+  modal.value.showModal()
+  storageUsage.value?.fetch()
+
+  await nextTick()
+
+  selectTabRef.value?.setScrollTop(scrollTop)
+}
+
+function abandonPreviewReturn(): void {
+  cancelPreviewReturn()
+  resetModalState()
+}
+
+function isEditableOutsideSidePanel(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  if (target.closest('.js-side-panel, .js-side-panel-sheet')) {
+    return false
+  }
+
+  return !!target.closest('textarea, input, [contenteditable]')
+}
+
+/**
+ * The side panel lives outside the dialog's top layer, so the dialog is
+ * closed while a preview shows. Its state (tab, filter, search, selection)
+ * is kept and the dialog reopens with the same scroll position once the side
+ * panel closes. The kept state is dropped, so the dialog cannot pop up later
+ * by surprise, when another view takes the panel, the route changes, or the
+ * user moves on to the composer or any other field while the panel is still
+ * open. Focus the side panel hands back to its opener as it closes is not that.
+ */
+function closeForPreview(documentId: string): void {
+  const scrollTop = selectTabRef.value?.getScrollTop() ?? 0
+
+  cancelPreviewReturn()
+
+  const stopPanelWatch = watch(
+    () => documentPreview.isShowing(documentId),
+    async (isShowing) => {
+      if (isShowing) {
+        return
+      }
+
+      if (sidePanel.isOpen.value) {
+        abandonPreviewReturn()
+
+        return
+      }
+
+      await returnFromPreview(scrollTop)
+    },
+    { flush: 'post' },
+  )
+  const stopRouteWatch = watch(() => route.fullPath, abandonPreviewReturn)
+  const onFocusIn = (event: FocusEvent) => {
+    if (sidePanel.isOpen.value && isEditableOutsideSidePanel(event.target)) {
+      abandonPreviewReturn()
+    }
+  }
+
+  stopPreviewReturnWatch.value = () => {
+    stopPanelWatch()
+    stopRouteWatch()
+    document.removeEventListener('focusin', onFocusIn)
+  }
+  close()
+  document.addEventListener('focusin', onFocusIn)
 }
 
 function onFilesAttached(files: FileManagerFile[]) {
@@ -208,7 +336,7 @@ function onFilePreview(file: FileManagerFile) {
     return
   }
 
-  close()
+  closeForPreview(file.documentId)
   documentPreview.open({
     documentId: file.documentId,
     format,
@@ -225,6 +353,8 @@ function onFilesUploaded(files: File[]) {
   emit('upload', files)
   close()
 }
+
+onBeforeUnmount(cancelPreviewReturn)
 
 watch([activeTab, selectTabRef], () => {
   void refreshSelectTabIfNeeded()

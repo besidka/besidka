@@ -2,6 +2,7 @@ import { isImageClipboardSupported } from '@besidka/artifacts-protocol/diagram-m
 import type {
   DiagramExportAction,
   DiagramExportInput,
+  DiagramExportOutcome,
 } from '~/types/diagram-export.d'
 import {
   createColorContext,
@@ -37,7 +38,6 @@ const FALLBACK_DIMENSIONS = { width: 800, height: 600 }
 const SVG_MIME_TYPE: string = 'image/svg+xml'
 const PNG_MIME_TYPE: string = 'image/png'
 const DRAWIO_MIME_TYPE: string = 'application/vnd.jgraph.mxfile'
-const DOWNLOAD_REVOKE_DELAY_MS: number = 4000
 const DOWNLOAD_FILE_NAMES: Partial<Record<DiagramExportAction, string>> = {
   'download-svg': 'diagram.svg',
   'download-png': 'diagram.png',
@@ -113,22 +113,6 @@ async function buildStandaloneSvg(input: DiagramExportInput): Promise<string> {
 
 function createTextBlob(text: string, type: string): Blob {
   return new Blob([text], { type })
-}
-
-function triggerDownload(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-
-  anchor.href = url
-  anchor.download = fileName
-  anchor.style.display = 'none'
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-
-  setTimeout(() => {
-    URL.revokeObjectURL(url)
-  }, DOWNLOAD_REVOKE_DELAY_MS)
 }
 
 async function writeTextFallback(
@@ -215,21 +199,26 @@ async function buildDrawioDocument(
 
 async function download(
   action: DiagramExportAction,
+  input: DiagramExportInput,
   buildBlob: () => Promise<Blob>,
-): Promise<boolean> {
-  try {
-    triggerDownload(await buildBlob(), DOWNLOAD_FILE_NAMES[action] ?? action)
+): Promise<DiagramExportOutcome> {
+  const result = await useFileDownload().downloadBlob({
+    key: `diagram:${action}:${hashText(input.source)}`,
+    fileName: DOWNLOAD_FILE_NAMES[action] ?? action,
+    build: buildBlob,
+  })
 
-    return true
-  } catch {
-    return false
+  if (result === 'reported') {
+    return 'reported'
   }
+
+  return result === 'ok'
 }
 
 function runExportAction(
   action: DiagramExportAction,
   input: DiagramExportInput,
-): boolean | Promise<boolean> {
+): DiagramExportOutcome | Promise<DiagramExportOutcome> {
   try {
     switch (action) {
       case 'copy-source':
@@ -248,18 +237,18 @@ function runExportAction(
       case 'copy-drawio':
         return copyText(buildDrawioDocument(input, buildDrawioClipboardXml))
       case 'download-svg':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return createTextBlob(
             await buildStandaloneSvg(input),
             `${SVG_MIME_TYPE};charset=utf-8`,
           )
         })
       case 'download-png':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return svgToPngBlob(await buildStandaloneSvg(input))
         })
       case 'download-drawio':
-        return download(action, async () => {
+        return download(action, input, async () => {
           return createTextBlob(
             await buildDrawioDocument(input, buildDrawioFile),
             DRAWIO_MIME_TYPE,
