@@ -1459,6 +1459,30 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
 
+  const skillsImportTests = [
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/path.spec.ts',
+    'tests/unit/utils/skills/frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings.spec.ts',
+    'tests/unit/utils/skills/licence.spec.ts',
+    'tests/unit/utils/skills/archive.spec.ts',
+    'tests/unit/utils/skills/analyse.spec.ts',
+    'tests/unit/server/utils/skills/import/zip.spec.ts',
+    'tests/unit/server/utils/skills/import/rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/stage.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/pending.spec.ts',
+    'tests/unit/server/api/v1/skills/import-preview.spec.ts',
+    'tests/unit/server/api/v1/skills/import-text.spec.ts',
+    'tests/unit/server/api/v1/skills/import-commit.spec.ts',
+    'tests/unit/server/api/v1/skills/update-pending.spec.ts',
+    'tests/unit/workers/skill-import.spec.ts',
+    'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-request.spec.ts',
+    'tests/integration/api/artifact-complete.spec.ts',
+    'tests/integration/api/artifact-storage.spec.ts',
+  ]
+
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
   ]
@@ -2493,6 +2517,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^wrangler\.jsonc$/,
       tests: [
         'tests/unit/config/wrangler-search-rates.spec.ts',
+        'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
         'tests/unit/config/wrangler-previews.spec.ts',
         'tests/unit/config/wrangler-legal-notice-sweep.spec.ts',
         'tests/unit/utils/consents-rate-limit.spec.ts',
@@ -2845,6 +2870,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/skills-policy\.ts|server\/db\/schemas\/skills\.ts|server\/utils\/skills\/.*\.ts|server\/plugins\/skills-storage-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_normal_the_professor\/.*)$/,
       tests: skillsStorageTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock)\.ts|tests\/fixtures\/skills\/.*)$/,
+      tests: skillsImportTests,
     },
     {
       pattern:
