@@ -17,6 +17,12 @@ export interface BlobDownloadTarget {
   build: BlobBuilder
 }
 
+/**
+ * Thrown from a `build` callback that already told the user what went wrong,
+ * so the download helper stays quiet instead of adding a second toast.
+ */
+export class DownloadAlreadyReportedError extends Error {}
+
 type ShareDownloadOutcome
   = | 'saved'
     | 'cancelled'
@@ -205,10 +211,13 @@ export function useFileDownload() {
       return outcome === 'shared' ? 'saved' : outcome
     } catch (exception) {
       forgetPendingFile(key)
-      useErrorMessage(
-        'Failed to download the file',
-        exception instanceof Error ? exception.message : undefined,
-      )
+
+      if (!(exception instanceof DownloadAlreadyReportedError)) {
+        useErrorMessage(
+          'Failed to download the file',
+          exception instanceof Error ? exception.message : undefined,
+        )
+      }
 
       return 'failed'
     } finally {

@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useFileDownload } from '../../../app/composables/file-download'
+import {
+  DownloadAlreadyReportedError,
+  useFileDownload,
+} from '../../../app/composables/file-download'
+import { downloadArtifactVersion } from '../../../app/utils/artifact-export'
 import { useMessages } from '../../../app/composables/messages'
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument'
@@ -500,6 +504,68 @@ describe('composables/file-download', () => {
       document.dispatchEvent(new Event('visibilitychange'))
 
       expect(vi.getTimerCount()).toBe(0)
+    })
+  })
+
+  describe('downloading an artifact version in the iOS home-screen app', () => {
+    beforeEach(() => {
+      setUserAgent(IPHONE_USER_AGENT)
+      setStandalone(true)
+    })
+
+    function createVersionOptions(load: () => Promise<{
+      fileName: string
+      content: string
+      mimeType: string
+    }>) {
+      return {
+        artifactId: 'artifact-1',
+        version: 3,
+        kind: 'html' as const,
+        title: 'Landing page',
+        load,
+      }
+    }
+
+    it('shares the kept file on the second tap without loading the version again', async () => {
+      const share = stubShare()
+      const load = vi.fn(async () => {
+        return {
+          fileName: 'Landing page.html',
+          content: '<p>hi</p>',
+          mimeType: 'text/html',
+        }
+      })
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+      await downloadArtifactVersion(createVersionOptions(load))
+
+      expect(load).toHaveBeenCalledOnce()
+      expect(messageTitles()).toEqual(['Landing-page.html is ready'])
+
+      const secondTap = downloadArtifactVersion(createVersionOptions(load))
+
+      expect(share).toHaveBeenCalledTimes(2)
+
+      await expect(secondTap).resolves.toBe('ok')
+      expect(load).toHaveBeenCalledOnce()
+    })
+
+    it('adds no second toast when loading already reported the problem', async () => {
+      stubShare()
+
+      const result = await downloadArtifactVersion(createVersionOptions(
+        async () => {
+          useErrorMessage('This artifact is no longer available')
+
+          throw new DownloadAlreadyReportedError()
+        },
+      ))
+
+      expect(result).toBe('reported')
+      expect(messageTitles()).toEqual(['This artifact is no longer available'])
     })
   })
 

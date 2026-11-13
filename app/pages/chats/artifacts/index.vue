@@ -375,26 +375,34 @@ function onShare(artifact: ArtifactSummary) {
   isShareOpen.value = true
 }
 
-async function onDownload(artifact: ArtifactSummary) {
-  const result = await loadArtifactVersion({
+function onDownload(artifact: ArtifactSummary) {
+  downloadArtifactVersion({
     artifactId: artifact.id,
     version: artifact.currentVersion,
-    source: 'owner',
+    kind: artifact.kind,
+    title: artifact.title,
+    load: async () => {
+      const result = await loadArtifactVersion({
+        artifactId: artifact.id,
+        version: artifact.currentVersion,
+        source: 'owner',
+      })
+
+      if (!result.ok) {
+        if (isArtifactUnavailableStatus(result.status)) {
+          useErrorMessage(UNAVAILABLE_NOTICE)
+        }
+
+        throw new DownloadAlreadyReportedError()
+      }
+
+      return buildArtifactSourceFile(
+        result.value.kind,
+        result.value.content,
+        { title: result.value.title },
+      )
+    },
   })
-
-  if (!result.ok) {
-    if (isArtifactUnavailableStatus(result.status)) {
-      useErrorMessage(UNAVAILABLE_NOTICE)
-    }
-
-    return
-  }
-
-  downloadArtifactFile(
-    buildArtifactSourceFile(result.value.kind, result.value.content, {
-      title: result.value.title,
-    }),
-  )
 }
 
 async function onClearFilters() {

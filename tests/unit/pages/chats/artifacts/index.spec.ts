@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   loadArtifactDetail: vi.fn(),
   loadArtifactVersion: vi.fn(),
   downloadArtifactFile: vi.fn(),
+  downloadArtifactVersion: vi.fn(),
   routerReplace: vi.fn(),
   errorMessage: vi.fn(),
   successMessage: vi.fn(),
@@ -42,6 +43,10 @@ mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('loadArtifactDetail', () => mocks.loadArtifactDetail)
 mockNuxtImport('loadArtifactVersion', () => mocks.loadArtifactVersion)
 mockNuxtImport('downloadArtifactFile', () => mocks.downloadArtifactFile)
+mockNuxtImport(
+  'downloadArtifactVersion',
+  () => mocks.downloadArtifactVersion,
+)
 mockNuxtImport('useErrorMessage', () => mocks.errorMessage)
 mockNuxtImport('useSuccessMessage', () => mocks.successMessage)
 mockNuxtImport('useWarningMessage', () => mocks.warningMessage)
@@ -187,6 +192,14 @@ describe('pages/chats/artifacts/index', () => {
     mocks.loadArtifactDetail.mockReset()
     mocks.loadArtifactVersion.mockReset()
     mocks.downloadArtifactFile.mockReset()
+    mocks.downloadArtifactVersion.mockReset()
+    mocks.downloadArtifactVersion.mockImplementation(async (options) => {
+      try {
+        return { file: await options.load() }
+      } catch {
+        return { file: null }
+      }
+    })
     mocks.routerReplace.mockReset().mockResolvedValue(undefined)
     mocks.errorMessage.mockReset()
     mocks.successMessage.mockReset()
@@ -483,7 +496,7 @@ describe('pages/chats/artifacts/index', () => {
     expect(wrapper.find(testId('artifact-action-share')).exists()).toBe(false)
   })
 
-  it('downloads the current version through the source file helper',
+  it('downloads the current version through the lazy version helper',
     async () => {
       library.items.value = [createArtifact()]
       mocks.loadArtifactVersion.mockResolvedValue({
@@ -509,10 +522,16 @@ describe('pages/chats/artifacts/index', () => {
         version: 2,
         source: 'owner',
       })
-      expect(mocks.downloadArtifactFile).toHaveBeenCalledTimes(1)
-      expect(mocks.downloadArtifactFile.mock.calls[0]?.[0]).toMatchObject({
-        fileName: 'Diagram.svg',
+      expect(mocks.downloadArtifactVersion).toHaveBeenCalledTimes(1)
+      expect(mocks.downloadArtifactVersion.mock.calls[0]?.[0]).toMatchObject({
+        artifactId: ARTIFACT_ID,
+        version: 2,
+        kind: 'html',
+        title: 'Photosynthesis quiz',
       })
+      await expect(
+        mocks.downloadArtifactVersion.mock.results[0]?.value,
+      ).resolves.toMatchObject({ file: { fileName: 'Diagram.svg' } })
     })
 
   it('does not download when the version cannot be loaded', async () => {
@@ -528,7 +547,9 @@ describe('pages/chats/artifacts/index', () => {
     await wrapper.get(testId('artifact-action-download')).trigger('click')
     await nextTick()
 
-    expect(mocks.downloadArtifactFile).not.toHaveBeenCalled()
+    await expect(
+      mocks.downloadArtifactVersion.mock.results[0]?.value,
+    ).resolves.toEqual({ file: null })
     expect(mocks.errorMessage).toHaveBeenCalledWith(
       'This artifact is not available',
     )

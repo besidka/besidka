@@ -256,6 +256,32 @@ export function buildStandaloneArtifactFile(
   }
 }
 
+/**
+ * For a download that has to fetch the artifact first. The fetch lives inside
+ * the Blob builder and the kept file is keyed by artifact and version, so the
+ * second tap after an expired gesture finds it before any network request and
+ * can share synchronously.
+ */
+export function downloadArtifactVersion(options: {
+  artifactId: string
+  version: number
+  kind: ArtifactKind
+  title: string
+  load: () => Promise<ArtifactSourceFile>
+}): Promise<BlobDownloadResult> {
+  return useFileDownload().downloadBlob({
+    key: `artifact:${options.artifactId}:v${options.version}`,
+    fileName: artifactFileName(options.title, options.kind),
+    build: async () => {
+      const file = await options.load()
+
+      return new Blob([file.content], {
+        type: `${file.mimeType};charset=utf-8`,
+      })
+    },
+  })
+}
+
 export function downloadArtifactFile(
   file: ArtifactSourceFile,
 ): Promise<BlobDownloadResult> {
