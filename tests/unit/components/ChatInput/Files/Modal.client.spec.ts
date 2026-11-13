@@ -338,6 +338,26 @@ describe('ChatInput/Files/Modal.client', () => {
             .toHaveBeenCalledTimes(2)
         })
 
+      it('reloads the list once when reopened with the same source while the preview still shows',
+        async () => {
+          const wrapper = await previewDocument()
+          const exposed = wrapper.vm as unknown as ModalExposed
+
+          Object.defineProperty(
+            wrapper.get('[data-testid="files-modal"]').element,
+            'open',
+            { value: false, configurable: true },
+          )
+          scrollMocks.fetchFiles.mockClear()
+          exposed.open('select')
+          await flushPromises()
+
+          expect(scrollMocks.fetchFiles).toHaveBeenCalledOnce()
+          expect(scrollMocks.fetchFiles).toHaveBeenCalledWith(true)
+          expect(wrapper.findComponent(SelectStub).props('initialSource'))
+            .toBe('upload')
+        })
+
       it('drops the kept state and stays closed when the route changes', async () => {
         const wrapper = await previewDocument()
         const router = useRouter()

@@ -130,29 +130,42 @@ const activeTab = shallowRef<Tab | null>(null)
 const selectSource = shallowRef<FileSourceFilter | undefined>(undefined)
 const shouldRefreshSelect = shallowRef<boolean>(false)
 const stopPreviewReturnWatch = shallowRef<(() => void) | null>(null)
+const isRefreshingSelect = shallowRef<boolean>(false)
 
 async function refreshSelectTabIfNeeded() {
-  if (activeTab.value !== 'select' || !shouldRefreshSelect.value) {
+  if (
+    activeTab.value !== 'select'
+    || !shouldRefreshSelect.value
+    || isRefreshingSelect.value
+  ) {
     return
   }
 
-  await nextTick()
+  isRefreshingSelect.value = true
 
-  if (!selectTabRef.value) {
-    return
-  }
+  try {
+    await nextTick()
 
-  selectTabRef.value.reset()
+    if (!selectTabRef.value) {
+      return
+    }
 
-  const didRefresh = await selectTabRef.value.fetchFiles(true)
+    selectTabRef.value.reset()
 
-  if (didRefresh) {
-    shouldRefreshSelect.value = false
+    const didRefresh = await selectTabRef.value.fetchFiles(true)
+
+    if (didRefresh) {
+      shouldRefreshSelect.value = false
+    }
+  } finally {
+    isRefreshingSelect.value = false
   }
 }
 
 function open(tab: Tab, source?: FileSourceFilter): void {
-  if (stopPreviewReturnWatch.value) {
+  const isAbandoningPreviewReturn = stopPreviewReturnWatch.value !== null
+
+  if (isAbandoningPreviewReturn) {
     cancelPreviewReturn()
     resetModalState()
   }
@@ -171,6 +184,10 @@ function open(tab: Tab, source?: FileSourceFilter): void {
 
       closeBtn.value?.focus()
     }, 300)
+  }
+
+  if (isAbandoningPreviewReturn) {
+    refreshSelectTabIfNeeded()
   }
 }
 
