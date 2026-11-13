@@ -162,6 +162,77 @@ describe('restoreSkillVersion', () => {
     })
   })
 
+  describe('on a broken skill', () => {
+    async function breakSkill() {
+      await testDb.db.update(schema.skills)
+        .set({ status: 'broken', enabled: false })
+        .where(eq(schema.skills.id, skillId))
+    }
+
+    it('marks the skill ready once every blob of the target exists', async () => {
+      await breakSkill()
+
+      const result = await restore(1)
+
+      expect(result).toMatchObject({ version: 3, recovered: true })
+      expect(await skillRow()).toMatchObject({
+        status: 'ready',
+        enabled: false,
+        currentVersion: 3,
+      })
+    })
+
+    it('answers 409 and writes nothing when a blob of the target is missing', async () => {
+      await breakSkill()
+
+      const [notes] = await testDb.db.select()
+        .from(schema.skillFiles)
+        .where(and(
+          eq(schema.skillFiles.skillId, skillId),
+          eq(schema.skillFiles.version, 1),
+          eq(schema.skillFiles.path, 'references/notes.md'),
+        ))
+
+      bucket.objects.delete(
+        `user-skills/u${userId}/${skillId}/blobs/${notes!.blobSha256}`,
+      )
+
+      const failure = await failureOf(restore(1))
+      const versions = await testDb.db.select()
+        .from(schema.skillVersions)
+        .where(eq(schema.skillVersions.skillId, skillId))
+
+      expect(failure).toMatchObject({ status: 409, code: 'files-missing' })
+      expect(versions).toHaveLength(2)
+      expect(await skillRow()).toMatchObject({
+        status: 'broken',
+        currentVersion: 2,
+      })
+    })
+
+    it('does not list the bucket for a skill that is not broken', async () => {
+      bucket.list.mockClear()
+
+      await restore(1)
+
+      expect(bucket.list).not.toHaveBeenCalled()
+    })
+  })
+
+  it('restores to a smaller set when the user is over the storage cap', async () => {
+    await testDb.db.insert(schema.skillFiles).values({
+      skillId: 'skl9999',
+      userId,
+      version: 1,
+      path: 'huge.md',
+      blobSha256: 'a'.repeat(64),
+      bytes: 60 * 1024 * 1024,
+      kind: 'other',
+    })
+
+    expect(await restore(1)).toMatchObject({ version: 3, restoredFrom: 1 })
+  })
+
   it('refuses the pending version', async () => {
     await testDb.db.insert(schema.skillVersions).values({
       skillId,

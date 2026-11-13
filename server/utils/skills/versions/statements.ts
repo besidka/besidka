@@ -171,7 +171,8 @@ export interface GuardedVersionWrite {
 /**
  * The guarded batch of a save, in the order that keeps every statement safe
  * on its own: (1) the version row, written only while the skill is still at
- * `baseVersion` and the user's unique blobs plus the new ones fit the cap;
+ * `baseVersion` and the user's unique blobs plus the new ones fit the cap (a
+ * write that adds no new blob bytes always passes it);
  * (2) every file row, written only while that version row exists; (3) the
  * `skills` update, guarded the same way and returning its row, which is how
  * the caller learns the batch won. A stale save writes nothing, so it can
@@ -194,10 +195,13 @@ export function buildGuardedVersionStatements(input: GuardedVersionWrite) {
       eq(schema.skillVersions.sha256, record.sha256),
     )}
   )`
+  const capGuard = input.incomingBytes > 0
+    ? sql` and ${uniqueBlobBytesSql(userId)} + ${input.incomingBytes}
+      <= ${input.maxUserBytes}`
+    : sql``
   const versionGuard = sql`exists (
     select 1 from ${schema.skills} where ${skillAtBase}
-  ) and ${uniqueBlobBytesSql(userId)} + ${input.incomingBytes}
-    <= ${input.maxUserBytes}`
+  )${capGuard}`
   const now = new Date()
   const versionValues: Record<string, unknown> = {
     ...record,

@@ -648,6 +648,90 @@ describe('saveSkillChanges', () => {
     })
   })
 
+  describe('recovering a broken skill', () => {
+    it('marks the skill ready when every blob of the new version exists', async () => {
+      const { skillId } = await seedAuthored(undefined, {
+        status: 'broken',
+        enabled: false,
+      })
+      const result = await save(skillId, [
+        { op: 'put', path: 'references/notes.md', content: 'Fixed\n' },
+      ])
+      const row = await skillRow(skillId)
+
+      expect(result).toMatchObject({ version: 2, recovered: true })
+      expect(row).toMatchObject({ status: 'ready', enabled: false })
+    })
+
+    it('stays broken while a blob of the new version is missing', async () => {
+      const { skillId, shas } = await seedAuthored(undefined, {
+        status: 'broken',
+        enabled: false,
+      })
+
+      bucket.objects.delete(
+        `user-skills/u${userId}/${skillId}/blobs/${shas['references/notes.md']}`,
+      )
+
+      const result = await save(skillId, [
+        { op: 'put', path: 'references/other.md', content: 'Other\n' },
+      ])
+
+      expect(result).toMatchObject({ version: 2, recovered: false })
+      expect((await skillRow(skillId)).status).toBe('broken')
+    })
+
+    it('leaves other statuses alone', async () => {
+      const { skillId } = await seedAuthored(undefined, {
+        status: 'needs-review',
+      })
+      const result = await save(skillId, [
+        { op: 'put', path: 'references/notes.md', content: 'Edited\n' },
+      ])
+
+      expect(result).toMatchObject({ recovered: false })
+      expect((await skillRow(skillId)).status).toBe('needs-review')
+    })
+  })
+
+  describe('the storage cap', () => {
+    async function fillStorage() {
+      await testDb.db.insert(schema.skillFiles).values({
+        skillId: 'skl9999',
+        userId,
+        version: 1,
+        path: 'huge.md',
+        blobSha256: 'a'.repeat(64),
+        bytes: 60 * 1024 * 1024,
+        kind: 'other',
+      })
+    }
+
+    it('lets a delete-only save through when the user is over the cap', async () => {
+      const { skillId } = await seedAuthored()
+
+      await fillStorage()
+
+      const result = await save(skillId, [
+        { op: 'delete', path: 'references/notes.md' },
+      ])
+
+      expect(result).toMatchObject({ version: 2, filesCount: 1 })
+    })
+
+    it('lets through a save that reuses a blob the skill already holds', async () => {
+      const { skillId } = await seedAuthored()
+
+      await fillStorage()
+
+      const result = await save(skillId, [
+        { op: 'put', path: 'references/copy.md', content: 'First note\n' },
+      ])
+
+      expect(result).toMatchObject({ version: 2, filesCount: 3 })
+    })
+  })
+
   it('fails with files-missing when SKILL.md cannot be read', async () => {
     const { skillId, shas } = await seedAuthored()
 

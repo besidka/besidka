@@ -15,6 +15,7 @@ import {
   pruneSkillVersions,
   putSkillBlob,
 } from '~~/server/utils/skills/storage'
+import { hasEveryBlob } from '~~/server/utils/skills/versions/blobs'
 import { findUniqueViolation } from '~~/server/utils/skills/unique-violation'
 import { getUserSkillsUsageBytes } from '~~/server/utils/skills/usage'
 import type { WorkingSkillFile } from '~~/server/utils/skills/versions/apply'
@@ -50,6 +51,7 @@ export interface WriteSkillVersionInput {
   origin: SkillVersionOrigin
   note: string | null
   findingCounts: Record<string, number>
+  blobsVerified?: boolean
   logger: LoggerLike
 }
 
@@ -61,6 +63,7 @@ export interface WrittenSkillVersion {
   bytes: number
   licenseClass: string
   findingCounts: Record<string, number>
+  recovered: boolean
   versionsPruned: number
 }
 
@@ -122,7 +125,11 @@ async function explainRejectedWrite(
  * writes no row; the cap on unique blobs is enforced in the same statement.
  * Right after the commit the blobs are put again (closing the window in
  * which a prune could have judged them unreferenced) and the versions beyond
- * `SKILL_VERSIONS_KEPT` are pruned; neither step can fail the save.
+ * `SKILL_VERSIONS_KEPT` are pruned; neither step can fail the save. The cap
+ * on unique blobs applies only when the write adds blob bytes. A `broken`
+ * skill becomes `ready` in the same guarded update when every blob of the
+ * new version is in R2 (`blobsVerified` lets a caller that already checked
+ * say so).
  */
 export async function writeSkillVersion(
   input: WriteSkillVersionInput,
@@ -136,12 +143,14 @@ export async function writeSkillVersion(
     input.blobsToWrite,
   )
 
-  assertLimits({
-    skillsCount: 0,
-    usageBytes: await getUserSkillsUsageBytes(db, userId),
-    incomingBytes,
-    isNewSkill: false,
-  })
+  if (incomingBytes > 0) {
+    assertLimits({
+      skillsCount: 0,
+      usageBytes: await getUserSkillsUsageBytes(db, userId),
+      incomingBytes,
+      isNewSkill: false,
+    })
+  }
 
   const [latest] = await db.select({ version: schema.skillVersions.version })
     .from(schema.skillVersions)
@@ -157,6 +166,15 @@ export async function writeSkillVersion(
     await putSkillBlob({ bucket, userId, skillId, content: bytes })
   }
 
+  const markReady = skill.status === 'broken'
+    && (input.blobsVerified ?? await hasEveryBlob({
+      bucket,
+      userId,
+      skillId,
+      files: input.files.filter((file) => {
+        return !input.blobsToWrite.has(file.blobSha256)
+      }),
+    }))
   const statements = buildGuardedVersionStatements({
     db,
     userId,
@@ -191,6 +209,7 @@ export async function writeSkillVersion(
       allowedTools: prepared.frontmatter.allowedTools,
       filesCount: input.files.length,
       bytes: prepared.totalBytes,
+      ...(markReady ? { status: 'ready' as const } : {}),
     },
   })
   let results: unknown[]
@@ -252,6 +271,7 @@ export async function writeSkillVersion(
     bytes: prepared.totalBytes,
     licenseClass: prepared.licenseClass,
     findingCounts: input.findingCounts,
+    recovered: markReady,
     versionsPruned,
   }
 }

@@ -223,6 +223,7 @@ export async function saveSkillChanges(
           }).length,
           version: written.version,
           renamed: written.renamed,
+          recovered: written.recovered,
           files: written.filesCount,
           bytes: written.bytes,
           licenceClass: written.licenseClass,

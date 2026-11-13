@@ -129,6 +129,16 @@ describe('buildGuardedVersionStatements', () => {
     expect(await counts()).toEqual({ versions: 0, files: 0, currentVersion: 1 })
   })
 
+  it('skips the cap for a write that adds no blob bytes', async () => {
+    const results = await testDb.db.batch(asBatch(statements({
+      maxUserBytes: 1,
+      incomingBytes: 0,
+    }))) as unknown[]
+
+    expect(results.at(-1)).toHaveLength(1)
+    expect(await counts()).toEqual({ versions: 1, files: 1, currentVersion: 2 })
+  })
+
   it('counts a blob once per skill however many versions hold it', async () => {
     const [existing] = await testDb.db.select()
       .from(schema.skillFiles)

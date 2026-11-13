@@ -1,9 +1,11 @@
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { WorkingSkillFile } from '~~/server/utils/skills/versions/apply'
 import {
+  createFilesMissingError,
   createSkillEditError,
   createStaleBaseError,
 } from '~~/server/utils/skills/versions/errors'
+import { findMissingBlobs } from '~~/server/utils/skills/versions/blobs'
 import { prepareSkillVersion } from '~~/server/utils/skills/versions/prepare'
 import {
   loadOwnedSkill,
@@ -93,6 +95,19 @@ export async function restoreSkillVersion(
     })
   }
 
+  if (skill.status === 'broken') {
+    const missing = await findMissingBlobs({
+      bucket,
+      userId,
+      skillId,
+      files: targetFiles,
+    })
+
+    if (missing.length > 0) {
+      throw createFilesMissingError()
+    }
+  }
+
   const prepared = await prepareSkillVersion({
     db,
     bucket,
@@ -129,6 +144,7 @@ export async function restoreSkillVersion(
     origin: 'restore',
     note: input.note ?? `Restored version ${version}`,
     findingCounts: target.findings ?? {},
+    blobsVerified: skill.status === 'broken' ? true : undefined,
     logger: input.logger,
   })
 
@@ -139,6 +155,7 @@ export async function restoreSkillVersion(
           restoredFrom: version,
           version: written.version,
           renamed: written.renamed,
+          recovered: written.recovered,
           files: written.filesCount,
         },
       },
