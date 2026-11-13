@@ -177,7 +177,7 @@ is added by S-13.
 | Flag | Gates | `spend` |
 | --- | --- | --- |
 | `skills` | Page, tab, Search row, routes, editor, "+" menu section, runtime | `none` (the catalog and bodies are tokens of the user's normal send) |
-| `skills.import-url` | GitHub import and update checks (archive, paste, templates and writing a skill work without it) | `none` |
+| `skills.import-url` | Only the `{ url }` (GitHub) import and `update/check`. Archive and paste imports, templates, writing a skill, and the accept and reject routes work without it and are gated by `skills` alone | `none` |
 | `skills.commands` | The `/` picker, the invocation chip and the invocation part (section 5.5) | `none` (Send is the only spend, item 15) |
 | `skills.scripts` | Provider-container execution (section 7), Labs opt-in | `foreground`, so `optIn: 'required'` |
 | `skills.share` | Link sharing (S-13, section 12.1) | set by S-13 |
@@ -213,10 +213,25 @@ skill and on the version row (section 8).
 A ref that contains `/` is resolved by trying candidate splits from shortest to
 longest, at most 3. The pin is the commit SHA that `api.github.com` returns for
 the ref (one call on import), or the 40-character SHA from the URL when it
-already holds one (no call). The download always uses the SHA. Only entries
-under the requested path are inflated. A repository that holds several skills
+already holds one. The download always uses the SHA. Only entries under the
+requested path are inflated, with one exception: the repository-root
+`LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` entries are also inflated for a
+subfolder import. They serve licence classification (section 4, step 1). They
+are not stored as skill files unless the skill has none of its own; then they
+are stored verbatim as the skill's licence. A repository that holds several skills
 returns a list to pick from, up to `SKILL_GITHUB_PICK_MAX` (10). Only public
 repositories work; a 404 says "Private or missing repository".
+
+**A SHA must be on the named repository.** A commit SHA can belong to a fork
+and still resolve under another repository's URL. So before importing a SHA that
+came from the URL, Besidka checks that it is reachable from the named
+repository: it reads the default branch with `GET /repos/{owner}/{repo}` (one
+call, cached within the import) and then calls
+`GET /repos/{owner}/{repo}/compare/{default_branch}...{sha}`. Only the status
+`behind` or `identical` passes. Otherwise the import is rejected with "This
+commit is not on any branch of owner/repo". A tag or branch resolved through
+`api.github.com` is on the named repository by construction, so that path needs
+no compare call.
 
 **The GitHub fetcher is a narrow, allowlisted fetcher, not C-3 (this doc).**
 The host is never user-controlled.
@@ -248,7 +263,8 @@ across Workers egress. Observed on 2026-11-08 (pre-check Q4, not
 documented): the archive download does not count against that quota. The REST
 API (`GET /repos/{owner}/{repo}/commits/{ref}` with
 `Accept: application/vnd.github.sha`) does count, and it runs once per import
-and on every update check. A 403 or
+and on every update check. An import of a SHA from the URL makes two more
+calls, the repository lookup and the compare. A 403 or
 429 gives "GitHub rate limit reached" with the fix "Try again in an hour or
 upload a zip". A per-user GitHub token (`keys.provider = 'github'`, public
 read-only, encrypted) is **not** in the first layer: S-2G measures on the
@@ -284,7 +300,10 @@ never trusts the client's result.
   `TextDecoder('utf-8', { fatal: true })` is rejected.
 - Paths are NFC-normalised. The skill root is one top-level folder that holds
   `SKILL.md`, or `SKILL.md` at the archive root. Two candidate roots reject.
-- GitHub archives inflate only entries under the requested path.
+- GitHub archives inflate only entries under the requested path, plus the
+  repository-root `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` entries for
+  licence classification (section 3.1). The same size and text rules apply to
+  them.
 
 ### 3.3 Findings
 
@@ -321,7 +340,8 @@ never use staging: their pending version is persisted directly (see step 3).
    origin `import`**, and creates the row with `enabled=false`,
    `status='ready'`. A GitHub repository that holds several skills first shows
    a checklist.
-3. `POST /api/v1/skills/[id]/update/check` (GitHub skills only, S-2G)
+3. `POST /api/v1/skills/[id]/update/check` (GitHub skills only, S-2G, behind
+   `skills.import-url`)
    re-resolves the ref (REST call). Unchanged: `{ upToDate: true }`. Changed:
    the new files are downloaded and a **pending version is persisted**: a
    `skill_versions` row with the next version number (origin `update`), its
@@ -330,19 +350,25 @@ never use staging: their pending version is persisted directly (see step 3).
    pointing at it. `current_version` does not change, and the skill keeps
    running. The response carries a per-file diff (at most 2,000 lines), new
    findings and any licence change. Nothing is staged in KV or `skills-staging/`.
-4. `POST /api/v1/skills/[id]/update/accept` `{ version, acknowledged: true }`
+4. `POST /api/v1/skills/[id]/update/accept` (S-2, gated by `skills` alone)
+   `{ version, sha256, acknowledged: true }`, where `sha256` is that of the
+   pending version the user reviewed. On a mismatch it answers 409 "This update
+   changed while you were reviewing it". Otherwise it
    **creates a new `skill_versions` row with the next number** (the highest
    existing number plus 1) that points at the same blobs, with no blob copy and
-   with the pending row's origin and its `source_kind`, `source_version` and
-   `source_path`. It then sets
+   with the pending row's origin and its `source_kind`, `source_url`,
+   `source_ref`, `source_path` and `source_version`. It copies those source
+   fields to the skill row too. It then sets
    `current_version` to that new number, deletes the pending row, clears
    `pending_version`, disables the skill until the user enables it again, and
    prunes versions beyond `SKILL_VERSIONS_KEPT` (section 8.7).
    `current_version` only ever increases. If no in-app save happened since the
    pending row was created, the result is the same content as the pending
    version, renumbered.
-5. **Reject** deletes the pending `skill_versions` and `skill_files` rows. The
-   prune and the hourly sweep then remove the blobs that nothing references.
+5. **Reject** (S-2, gated by `skills` alone) takes `{ version, sha256 }` with
+   the same 409 on a mismatch, then deletes the pending `skill_versions` and
+   `skill_files` rows. The prune and the hourly sweep then remove the blobs that
+   nothing references.
 
 An MCP `update_skill` also writes a persisted pending version, the same way
 (section 11).
@@ -373,8 +399,8 @@ GitHub imports.
   `{ stageId, asUpdateOf: <skillId> }` turns the staged files into a persisted
   pending version on the existing skill: origin `import`, the next version
   number, the blobs moved under `user-skills/u<userId>/<skillPublicId>/blobs/`,
-  and the import's `source_kind`, `source_version` and `source_path` recorded
-  on that version. The stage is deleted. The user then reviews and accepts it
+  and the import's `source_kind`, `source_url`, `source_ref`, `source_path`
+  and `source_version` recorded on that version. The stage is deleted. The user then reviews and accepts it
   through step 4, like any pending version. If the existing skill already has a
   pending version, the new one replaces it and the old pending row is deleted.
   The skill's own `source_kind`, `source_url`, `source_ref`, `source_path` and
@@ -672,6 +698,7 @@ The picker, chip and composer rules are in section 10.
 | K15 | Slash-name hijack over MCP: an agent renames a skill to a name the user types every day (`/summarize`) | Agent with `skills:write` | `rename_skill` disables the skill and sets `needs-review`, so it never fires until the user re-enables it. The in-app rename keeps the skill enabled | S-6 |
 | K16 | An imported skill makes itself model-invocable or slash-invocable | Skill author | `model_invocable` and `slash_command` are columns the user sets, not frontmatter; Claude Code keys are read only as defaults at import (section 5.5); MCP never sets them on an existing skill | S-2, S-6, S-12 |
 | K17 | Storage and request abuse through saves | Malicious user or injected agent | `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs), per-save caps, 120 saves per hour, 30 MCP skill writes per hour | S-10, S-6 |
+| K18 | A GitHub import shows `owner/repo` as the source for a commit the repository never held: a SHA in the URL can belong to a fork of it | Malicious link author | Before a SHA from a URL is imported, the repository default branch is read and `compare/{default_branch}...{sha}` must answer `behind` or `identical`; otherwise "This commit is not on any branch of owner/repo" (section 3.1). One extra API call, counted against the GitHub quota | S-2G |
 
 ## 7. Scripts in provider containers (S-5)
 
@@ -731,8 +758,10 @@ note "Scripts need a Claude model with code execution".
 ## 8. Data model
 
 All in `server/db/schemas/skills.ts`, exported from `server/db/schema.ts`. Four
-tables in **one migration in S-1**: only `CREATE TABLE` and `CREATE INDEX`, and
-no `ADD COLUMN` later. Defaults are set in application code (`$defaultFn`).
+tables in **one migration in S-1**, which holds only `CREATE TABLE` and
+`CREATE INDEX`. A later nullable `ADD COLUMN` is allowed by the repo rules; only
+table rebuilds are banned. Defaults are set in application code
+(`$defaultFn`).
 The S-1 pull request greps the generated SQL for `DROP TABLE`. A
 `besidka-preview` Time Travel bookmark is taken before the bottom layer is
 created, because creating it triggers a deploy that applies the migration
@@ -800,8 +829,12 @@ unique (`user_id`, `name`); (`user_id`, `updated_at`).
 | `version` | integer |
 | `origin` | `import`, `update`, `editor`, `template`, `mcp`, `rename`, `restore`, `share` |
 | `created_by_client_id` | MCP client id, null otherwise |
-| `source_version` | provenance |
-| `sha256` | of the canonical file set |
+| `source_kind` | text, null; as on `skills` |
+| `source_url` | text, null |
+| `source_ref` | text, null |
+| `source_path` | text, null |
+| `source_version` | provenance (text, null) |
+| `sha256` | of the canonical file set; accept and reject are bound to it (section 3.4) |
 | `files_count`, `bytes` | |
 | `license_class`, `license_file_sha256` | |
 | `findings` | json of counts by type |
@@ -883,7 +916,9 @@ caps the worst case of rewriting 1 MiB files across 20 versions and 50 skills.
 
 **Accept** also creates a new version. It does not promote the pending row's
 number: it adds a row with the next number that points at the same blobs, then
-deletes the pending row (section 3.4). So `current_version` only ever
+deletes the pending row (section 3.4). Accept and reject are bound to the
+reviewed content: the body is `{ version, sha256 }`, and a mismatch answers 409
+"This update changed while you were reviewing it". So `current_version` only ever
 increases, and no blob is copied.
 
 **Restore** creates a new version. It never rewrites history.
@@ -1017,8 +1052,8 @@ state in `app/composables/skills-library.ts`.
   such as "≈ 95 tokens in every message", shown only for model-invocable
   skills; an enable `toggle toggle-sm` (24 px target; the first enable of an
   imported or MCP skill asks for confirmation); and a kebab menu: Edit, Use in
-  new chat, Versions, Download .zip, Check for updates (GitHub only), Share
-  (S-13), Delete.
+  new chat (S-12, behind `skills.commands`), Versions, Download .zip, Check for
+  updates (GitHub only), Share (S-13), Delete.
 - **Detail:** a click opens `UiSidePanel` (`open({ viewKey: 'skill:<id>' })`),
   docked from 1128 px, an overlay at md and a full-screen sheet below md.
   Inside the panel: **Instructions** (`SKILL.md` as plain monospace text with line
@@ -1031,7 +1066,8 @@ state in `app/composables/skills-library.ts`.
   **Settings** (the two invocation toggles, argument hint, licence and source,
   and later the S-5 scripts toggle). The header holds the enable toggle and an
   **Edit** button.
-- **Use in new chat** opens `/chats/new` with the chip queued through
+- **Use in new chat** (S-12, behind `skills.commands`) opens `/chats/new` with
+  the chip queued through
   `useChatInputPrefill().queue()` (`app/composables/chat-input-prefill.ts`).
   Nothing is sent.
 - **States:** loading (skeleton rows, and `UiSidePanelSkeleton` in the panel);
@@ -1197,7 +1233,7 @@ Commands are skills, so there are no separate command tools. Outputs include
 | `list_skills` | `skills:read` | `readOnlyHint` | `{ cursor?, limit? ≤ 50, kind? 'skill' or 'command' }` | Metadata only: `[{ id, name, description, enabled, status, licenseClass, sourceKind, sourceUrl?, sourceRef?, version, filesCount, bytes, createdVia, modelInvocable, slashCommand, argumentHint?, updatedAt }]` |
 | `get_skill` | `skills:read` | `readOnlyHint` | `{ id, version?, path? }` | Metadata and file list; with `path`, the file text (at most 200,000 characters) plus a `truncated` flag |
 | `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; slashCommand?, modelInvocable?, argumentHint? }` | Saved disabled with `needs-review`. The licence gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
-| `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Writes a persisted pending version (section 3.4), disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, `findings`, `reviewUrl` and `diffSummary` |
+| `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Writes a persisted pending version (section 3.4), disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, its `sha256`, `findings`, `reviewUrl` and `diffSummary`. The app's accept and reject are bound to `{ version, sha256 }`, so a change after the user opened the review is refused with 409 |
 | `rename_skill` | `skills:write` | `idempotentHint`, not destructive | `{ id, name }` (regex, 1 to 64 characters, unique per user, reserved slash names refused) | Rewrites only the frontmatter `name`, as a new version (origin `rename`, note "Renamed from x"). Disables the skill and sets `needs-review` |
 | `delete_skills` | `data:delete` | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`, plus provider-copy deletion with S-5 |
 
@@ -1349,16 +1385,16 @@ Ticket keys without a BES id are new on 2026-11-13.
 | --- | --- |
 | S-0 (new) | `docs(skills): authoring, versions, commands and GitHub import in the first release`. This amendment, the pre-check addendum, and the roadmap order. Plain PR, no flag |
 | BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built; the phase now covers authoring, versions and commands, and moves ahead of Phase 3 (research deferred by the owner on 2026-11-12) |
-| S-1 BES-264 | One migration with four tables, `CREATE TABLE` and `CREATE INDEX` only, no `ADD COLUMN` later (section 8): `skills`, `skill_versions`, `skill_files`, `skill_chat_settings`; no FK to `users` on any of them (explicit purge plus the coverage spec); one sentence added to `CLAUDE.md` after the `documents` note, no cascade-list entry; blob layout `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` and `skills-staging/u<userId>/`, with the key builder, blob put and prune in `server/utils/skills/storage.ts`; `SKILL_VERSIONS_KEPT` 20; the reserved-name validator; the purge, the chat-delete cleanup and the hourly orphan sweep; the "Skills" section of `docs/d1-restore-reconciliation.md`; registry: add `skills.commands` and set `skills.scripts` to `spend: 'foreground'`, `optIn: 'required'`; a `besidka-preview` Time Travel bookmark before the bottom layer is created; `DROP TABLE` grep in the PR; status transitions of section 8.6 |
-| S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime for the import preview only; commit writes version 1 with origin `import`, disabled, or, after a name collision (409), takes `asUpdateOf` to turn the staged files into a pending version of the existing skill (replacing any older pending one), or the user renames the incoming skill; Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
-| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/{check,accept}` with a persisted pending version, reject, and accept by `{ version }`, which creates a new version row with the next number over the same blobs and deletes the pending row, so `current_version` only increases (accepting disables the skill; the local-edit warning and diff of section 3.4). The ref is resolved with one `api.github.com` call and the zip comes from `codeload.github.com/<owner>/<repo>/zip/<sha>`. Flag `skills.import-url`. Not C-3-dependent |
+| S-1 BES-264 | One migration with four tables, `CREATE TABLE` and `CREATE INDEX` only (a later nullable `ADD COLUMN` is allowed by the repo rules; only table rebuilds are banned) (section 8): `skills`, `skill_versions`, `skill_files`, `skill_chat_settings`; no FK to `users` on any of them (explicit purge plus the coverage spec); one sentence added to `CLAUDE.md` after the `documents` note, no cascade-list entry; blob layout `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` and `skills-staging/u<userId>/`, with the key builder, blob put and prune in `server/utils/skills/storage.ts`; `SKILL_VERSIONS_KEPT` 20; the reserved-name validator; the purge, the chat-delete cleanup and the hourly orphan sweep; the "Skills" section of `docs/d1-restore-reconciliation.md`; registry: add `skills.commands` and set `skills.scripts` to `spend: 'foreground'`, `optIn: 'required'`; a `besidka-preview` Time Travel bookmark before the bottom layer is created; `DROP TABLE` grep in the PR; status transitions of section 8.6 |
+| S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime for the import preview only; commit writes version 1 with origin `import`, disabled, or, after a name collision (409), takes `asUpdateOf` to turn the staged files into a pending version of the existing skill (replacing any older pending one), or the user renames the incoming skill; the accept and reject routes of section 3.4, gated by `skills` alone and bound to `{ version, sha256 }` (409 "This update changed while you were reviewing it" on a mismatch); Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
+| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/check` with a persisted pending version (the local-edit warning and diff of section 3.4). Accept and reject are in S-2, not here: accept creates a new version row with the next number over the same blobs, so `current_version` only increases, and accepting disables the skill. The ref is resolved with one `api.github.com` call, a SHA from the URL must pass the reachability check of section 3.1 (K18), the repository-root licence files are inflated for subfolder imports, and the zip comes from `codeload.github.com/<owner>/<repo>/zip/<sha>`. Flag `skills.import-url`, which gates only `{ url }` and `update/check`. Not C-3-dependent |
 | S-10 (new) | `feat(skills): versioned saves, file edits, diff and restore API`: list and create from blank or template; `PATCH` for settings only; versions list and save with `{ baseVersion, changes[], note? }` (409 on a stale base); diff, restore, files and download; templates; 120 saves per hour; every save reruns the classifier |
 | S-4 BES-280 | Re-scoped: the manager page of section 10.2 (list, filters, detail panel, import dialog, review screen, diff view); licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed; tab row checked at 768, 1024 and 1440 px |
 | S-11 (new) | `feat(skills): skill and command editor`: the `WorkspaceDialog` in edit mode, file tree, frontmatter fields, Model view, live validation and token estimate, unsaved-changes guard, the 409 flow, the iOS sheet rules |
 | S-3 BES-276 | Re-scoped: catalog from model-invocable skills only, with Cyrillic-aware caps and `SKILL_ACTIVATE_MAX_TOKENS`; the **interim rule** of section 2 item 8 instead of the approval card (a spec for each point; C-6 later adds the card as an acceptance criterion on BES-244, not a blocker); side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB and 6,000 tokens points to `read_skill_file`; memory write lock spec |
-| S-12 (new) | `feat(skills): slash commands in the composer`: section 5.5 and the picker of section 10.5; `data-skill-invocation` part and `resolveSkillInvocationPart`; `$ARGUMENTS` substitution; one-shot versus persistent invocation; `filterPublicParts` drops the part; replay drops a part that no longer resolves; Enter never sends while the picker is open; iOS Simulator check that the keyboard stays open. Flag `skills.commands` |
+| S-12 (new) | `feat(skills): slash commands in the composer`: section 5.5 and the picker of section 10.5; `data-skill-invocation` part and `resolveSkillInvocationPart`; `$ARGUMENTS` substitution; one-shot versus persistent invocation; `filterPublicParts` drops the part; replay drops a part that no longer resolves; Enter never sends while the picker is open; iOS Simulator check that the keyboard stays open; the manager's "Use in new chat" action (the `useChatInputPrefill().queue()` chip). Flag `skills.commands` |
 | S-5 BES-285 | Anthropic only; provider id in D1 columns, KV cache removed; substring rename rule; disclosure text of section 7; pinned version; deletion triggers; re-upload lazily when `current_version` differs from the uploaded version, not on every save; its own stack, needs C-6 and D-7 |
-| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); licence classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` (a persisted pending version, which accept turns into a new numbered version over the same blobs) and `rename_skill` set `needs-review` and disable the skill; `skills:share` not registered (reserved in the docs only); MCP `4.0.0`; the top layer, so it is the preview PR |
+| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); licence classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` (a persisted pending version, which the app's accept (S-2, bound to `{ version, sha256 }`) turns into a new numbered version over the same blobs) and `rename_skill` set `needs-review` and disable the skill; `skills:share` not registered (reserved in the docs only); MCP `4.0.0`; the top layer, so it is the preview PR |
 | S-7 BES-294 | Re-scoped to `docs(legal): skills and commands`; a plain PR in parallel with the stack that must merge, and its `LEGAL_NOTICES` entry be published, at least 30 days before `skills` leaves `internal`. Uses this document's licence and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material). Also: Art. 30 row 10b reads "created or imported"; retention of up to 20 versions; an invocation equals a send to the same provider; DPIA rows for authored text and for commands; the Terms right-to-use promise for "create, paste or import" |
 | S-8 pre-check (PR #739) | Its S-1 row and question 8 ask to add the skills tables to the `CLAUDE.md` cascade list; with no FK to `users` there is nothing to add (section 8). Staging prefix kept as `skills-staging/`, committed files moved to `user-skills/` as it recommends. A dated 2026-11-13 addendum records authoring, `authored`, enabled-on-save, 20 kept versions and commands. Coordinator to confirm |
 | S-9 BES-316 | Plain PR after the testers. Never says "safe". Names the licence block. Claims no affiliation with the Agent Skills project or Anthropic |
