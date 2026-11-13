@@ -1,0 +1,16 @@
+export interface SkillTemplateFile {
+  path: string
+  content: string
+}
+
+export interface SkillTemplate {
+  id: string
+  title: string
+  summary: string
+  name: string
+  description: string
+  modelInvocable: boolean
+  slashCommand: boolean
+  argumentHint: string | null
+  files: SkillTemplateFile[]
+}

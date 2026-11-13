@@ -23,7 +23,6 @@ import {
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { isDecodableSkillPublicId } from '~~/server/utils/skills/ids'
 import {
   assertLimits,
   persistPendingVersion,
@@ -39,7 +38,11 @@ import {
 import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
 import type { GithubKv } from '~~/server/utils/skills/import/github'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
-import { skillBlobKey } from '~~/server/utils/skills/storage'
+import {
+  loadOwnedSkill,
+  loadVersionFiles,
+  readChangedFileTexts,
+} from '~~/server/utils/skills/versions/read'
 import {
   countUserSkills,
   getUserSkillsUsageBytes,
@@ -59,7 +62,6 @@ const LOCAL_EDIT_ORIGINS: ReadonlySet<string> = new Set([
 ])
 const textEncoder = new TextEncoder()
 const bomPreservingDecoder = new TextDecoder('utf-8', { ignoreBOM: true })
-const textDecoder = new TextDecoder()
 
 export interface GithubUpdateCheckInput {
   db: DbClient
@@ -108,16 +110,6 @@ export interface GithubUpdateReview {
   }
 }
 
-function createSkillNotFoundError() {
-  return createError({
-    message: 'Skill not found',
-    status: 404,
-    code: 'skill-not-found',
-    why: 'The skill does not exist or is not yours',
-    fix: 'Reload the skills list',
-  })
-}
-
 function createNotGithubSkillError() {
   return createError({
     message: 'This skill was not imported from GitHub',
@@ -136,62 +128,6 @@ function createUpstreamMovedError(why: string) {
     why,
     fix: 'Import the skill from its new location as a new skill',
   })
-}
-
-async function loadOwnedSkill(
-  input: GithubUpdateCheckInput,
-): Promise<SkillRow> {
-  if (!isDecodableSkillPublicId(input.skillId)) {
-    throw createSkillNotFoundError()
-  }
-
-  const [skill] = await input.db.select()
-    .from(schema.skills)
-    .where(and(
-      eq(schema.skills.id, input.skillId),
-      eq(schema.skills.userId, input.userId),
-    ))
-    .limit(1)
-
-  if (!skill) {
-    throw createSkillNotFoundError()
-  }
-
-  return skill
-}
-
-async function readBlobText(
-  input: GithubUpdateCheckInput,
-  blobSha256: string,
-): Promise<string> {
-  const object = await input.bucket.get(
-    skillBlobKey(input.userId, input.skillId, blobSha256),
-  )
-
-  if (!object) {
-    throw createError({
-      message: 'The files of this skill are missing',
-      status: 409,
-      code: 'files-missing',
-      why: 'A stored file could not be read',
-      fix: 'Import the skill again',
-    })
-  }
-
-  return textDecoder.decode(await object.arrayBuffer())
-}
-
-async function loadVersionFiles(
-  input: GithubUpdateCheckInput,
-  version: number,
-) {
-  return await input.db.select()
-    .from(schema.skillFiles)
-    .where(and(
-      eq(schema.skillFiles.skillId, input.skillId),
-      eq(schema.skillFiles.userId, input.userId),
-      eq(schema.skillFiles.version, version),
-    ))
 }
 
 function findNewFindings(
@@ -272,43 +208,28 @@ async function buildReview(input: {
   const currentRow = input.versions.find((row) => {
     return row.version === skill.currentVersion
   })
-  const currentFiles = await loadVersionFiles(context, skill.currentVersion)
-  const pendingFiles = await loadVersionFiles(context, pending.version)
-  const currentBySha = new Map(currentFiles.map((file) => {
-    return [file.path, file.blobSha256]
-  }))
-  const before = new Map<string, string>()
-  const after = new Map<string, string>()
-
-  for (const file of pendingFiles) {
-    if (currentBySha.get(file.path) === file.blobSha256) {
-      continue
-    }
-
-    after.set(
-      file.path,
-      input.knownTexts.get(file.blobSha256)
-      ?? await readBlobText(context, file.blobSha256),
-    )
-  }
-
-  const pendingBySha = new Map(pendingFiles.map((file) => {
-    return [file.path, file.blobSha256]
-  }))
-
-  for (const file of currentFiles) {
-    if (pendingBySha.get(file.path) === file.blobSha256) {
-      continue
-    }
-
-    before.set(file.path, await readBlobText(context, file.blobSha256))
-  }
-
-  const allPaths = new Set([...currentBySha.keys(), ...pendingBySha.keys()])
-  const unchangedFiles = allPaths.size - new Set([
-    ...before.keys(),
-    ...after.keys(),
-  ]).size
+  const [currentFiles, pendingFiles] = await Promise.all([
+    loadVersionFiles(
+      context.db,
+      context.userId,
+      context.skillId,
+      skill.currentVersion,
+    ),
+    loadVersionFiles(
+      context.db,
+      context.userId,
+      context.skillId,
+      pending.version,
+    ),
+  ])
+  const { before, after, unchanged } = await readChangedFileTexts({
+    bucket: context.bucket,
+    userId: context.userId,
+    skillId: context.skillId,
+    beforeFiles: currentFiles,
+    afterFiles: pendingFiles,
+    knownTexts: input.knownTexts,
+  })
   const localEdits = readLocalEdits(input.versions, pending.version)
   const hasCompareInputs = skill.sourceUrl
     && skill.sourceVersion
@@ -330,7 +251,7 @@ async function buildReview(input: {
     warnings: input.warnings,
     diff: {
       ...diffSkillFiles(before, after),
-      unchanged: unchangedFiles,
+      unchanged,
     },
     newFindings: findNewFindings(before, after),
     findingCounts: {
@@ -402,7 +323,7 @@ async function keepLocalName(
 export async function checkGithubSkillUpdate(
   input: GithubUpdateCheckInput,
 ): Promise<GithubUpdateCheckResult> {
-  const skill = await loadOwnedSkill(input)
+  const skill = await loadOwnedSkill(input.db, input.userId, input.skillId)
   const parsedUrl = skill.sourceUrl
     ? parseGithubSkillUrl(skill.sourceUrl)
     : null

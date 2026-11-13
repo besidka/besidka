@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   SKILL_ARGUMENT_HINT_MAX,
+  SKILL_EDIT_MAX_FILE_BYTES,
+  SKILL_NOTE_MAX,
+  SKILL_SAVES_PER_HOUR,
+  SKILL_SAVE_MAX_BYTES,
+  SKILL_SAVE_MAX_CHANGES,
+  SKILL_SAVE_REQUEST_MAX_BYTES,
+  SKILL_VIEWER_FILE_MAX_BYTES,
   SKILL_IMPORTS_PER_HOUR,
   SKILL_MAX_FILES,
   SKILL_MAX_FILE_BYTES,
@@ -41,6 +48,16 @@ describe('skills policy constants', () => {
     expect(SKILLS_PER_USER).toBe(50)
     expect(SKILL_IMPORTS_PER_HOUR).toBe(10)
     expect(SKILL_STAGE_TTL).toBe(3600)
+  })
+
+  it('keeps the save limits of the design', () => {
+    expect(SKILL_SAVES_PER_HOUR).toBe(120)
+    expect(SKILL_SAVE_MAX_CHANGES).toBe(50)
+    expect(SKILL_SAVE_MAX_BYTES).toBe(2 * 1024 * 1024)
+    expect(SKILL_EDIT_MAX_FILE_BYTES).toBe(256 * 1024)
+    expect(SKILL_VIEWER_FILE_MAX_BYTES).toBe(1024 * 1024)
+    expect(SKILL_NOTE_MAX).toBe(200)
+    expect(SKILL_SAVE_REQUEST_MAX_BYTES).toBeGreaterThan(SKILL_SAVE_MAX_BYTES)
   })
 
   it('reserves the seven built-in command names', () => {

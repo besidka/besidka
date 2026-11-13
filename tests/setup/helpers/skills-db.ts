@@ -184,3 +184,80 @@ export async function seedSkillVersion(
     })
   }
 }
+
+export interface SeededSkillFiles {
+  skillId: string
+  shas: Record<string, string>
+}
+
+/**
+ * A skill with real content: every file is put in the fake bucket under its
+ * hash and listed in version 1 (or `version`), so saves, restores and reads
+ * can run against it.
+ */
+export async function seedSkillWithFiles(
+  db: TestDb,
+  bucket: FakeSkillBucket,
+  input: {
+    userId: number
+    files: Record<string, string>
+    version?: number
+    skill?: Partial<typeof schema.skills.$inferInsert>
+    versionValues?: Partial<typeof schema.skillVersions.$inferInsert>
+  },
+): Promise<SeededSkillFiles> {
+  const version = input.version ?? 1
+  const encoder = new TextEncoder()
+  const skillId = await seedSkill(db, input.userId, {
+    currentVersion: version,
+    filesCount: Object.keys(input.files).length,
+    bytes: Object.values(input.files).reduce((total, text) => {
+      return total + encoder.encode(text).byteLength
+    }, 0),
+    ...input.skill,
+  })
+  const shas: Record<string, string> = {}
+  const { putSkillBlob } = await import('~~/server/utils/skills/storage')
+  const { hashSkillFileSet } = await import('#shared/utils/skills/analyse')
+  const { getSkillFileKind } = await import('#shared/utils/skills/path')
+
+  for (const [path, text] of Object.entries(input.files)) {
+    const stored = await putSkillBlob({
+      bucket,
+      userId: input.userId,
+      skillId,
+      content: text,
+    })
+
+    shas[path] = stored.sha256
+  }
+
+  await db.insert(schema.skillVersions).values({
+    skillId,
+    userId: input.userId,
+    version,
+    origin: 'editor',
+    sha256: await hashSkillFileSet(Object.entries(shas).map(([path, sha]) => {
+      return { path, sha256: sha }
+    })),
+    filesCount: Object.keys(shas).length,
+    bytes: 1,
+    licenseClass: input.skill?.licenseClass ?? 'authored',
+    findings: {},
+    ...input.versionValues,
+  })
+
+  for (const [path, text] of Object.entries(input.files)) {
+    await db.insert(schema.skillFiles).values({
+      skillId,
+      userId: input.userId,
+      version,
+      path,
+      blobSha256: shas[path]!,
+      bytes: encoder.encode(text).byteLength,
+      kind: getSkillFileKind(path),
+    })
+  }
+
+  return { skillId, shas }
+}
