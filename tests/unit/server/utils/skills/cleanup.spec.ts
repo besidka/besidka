@@ -62,6 +62,21 @@ describe('skills tables', () => {
     expect(new Set(exportedSkillsTables)).toEqual(new Set(SKILLS_TABLES))
   })
 
+  it('keeps nullable provenance columns on skill_versions', () => {
+    const columns = getTableColumns(schema.skillVersions)
+
+    for (const name of [
+      'sourceKind',
+      'sourceUrl',
+      'sourceRef',
+      'sourcePath',
+      'sourceVersion',
+    ] as const) {
+      expect(columns[name].notNull).toBe(false)
+      expect(columns[name].hasDefault).toBe(false)
+    }
+  })
+
   it.each(SKILLS_TABLES.map((table) => {
     return [getTableName(table), table] as const
   }))('%s carries user_id and no foreign key', (_name, table) => {

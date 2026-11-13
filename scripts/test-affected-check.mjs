@@ -2843,7 +2843,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills-policy\.ts|server\/db\/schemas\/skills\.ts|server\/utils\/skills\/.*\.ts|server\/plugins\/skills-storage-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_icy_annihilus\/.*)$/,
+        /^(shared\/utils\/skills-policy\.ts|server\/db\/schemas\/skills\.ts|server\/utils\/skills\/.*\.ts|server\/plugins\/skills-storage-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_normal_the_professor\/.*)$/,
       tests: skillsStorageTests,
     },
     {

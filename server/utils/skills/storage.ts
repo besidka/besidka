@@ -157,6 +157,7 @@ export async function putSkillBlob(input: {
   const bytes = toBytes(input.content)
   const sha256 = await sha256Hex(bytes)
   const key = skillBlobKey(input.userId, input.skillId, sha256)
+
   await input.bucket.put(key, bytes, {
     httpMetadata: { contentType: SKILL_BLOB_CONTENT_TYPE },
     customMetadata: { sha256 },

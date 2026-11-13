@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "71a81039-805e-4a22-8bd0-839e029329c9",
+  "id": "251d5bd4-f8b8-478a-84a2-6ac83b309c80",
   "prevIds": [
     "7c286c74-ab03-48cf-9fd3-7b695e31d3d4"
   ],
@@ -6005,6 +6005,46 @@
     {
       "table": "skill_versions",
       "name": "created_by_client_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "skill_versions",
+      "name": "source_kind",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "skill_versions",
+      "name": "source_url",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "skill_versions",
+      "name": "source_ref",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "skill_versions",
+      "name": "source_path",
       "type": "text",
       "notNull": false,
       "autoincrement": false,
