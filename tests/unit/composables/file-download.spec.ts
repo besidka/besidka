@@ -115,6 +115,19 @@ describe('composables/file-download', () => {
       expect(share).not.toHaveBeenCalled()
     })
 
+    it('reports a failed build as failed so the caller can say so', async () => {
+      const result = await useFileDownload().downloadBlob({
+        key: 'diagram:download-png:abc',
+        fileName: 'diagram.png',
+        build: async () => {
+          throw new Error('render failed')
+        },
+      })
+
+      expect(result).toBe('failed')
+      expect(messageTitles()).toEqual([])
+    })
+
     it('downloads a blob through an anchor', async () => {
       const createObjectURL = vi.fn(() => 'blob:test')
 
@@ -124,9 +137,9 @@ describe('composables/file-download', () => {
       }))
 
       const { target: blobTarget } = createBlobTarget()
-      const isSaved = await useFileDownload().downloadBlob(blobTarget)
+      const result = await useFileDownload().downloadBlob(blobTarget)
 
-      expect(isSaved).toBe(true)
+      expect(result).toBe('ok')
       expect(createObjectURL).toHaveBeenCalledOnce()
       expect(anchorClick).toHaveBeenCalledOnce()
     })
@@ -352,10 +365,10 @@ describe('composables/file-download', () => {
       const share = stubShare()
       const { target: blobTarget } = createBlobTarget()
 
-      const isSaved = await useFileDownload().downloadBlob(blobTarget)
+      const result = await useFileDownload().downloadBlob(blobTarget)
       const [shared] = share.mock.calls[0] as unknown as [{ files: File[] }]
 
-      expect(isSaved).toBe(true)
+      expect(result).toBe('ok')
       expect(shared.files[0]?.name).toBe('diagram.svg')
       expect(anchorClick).not.toHaveBeenCalled()
     })
@@ -370,7 +383,7 @@ describe('composables/file-download', () => {
 
       const firstResult = await useFileDownload().downloadBlob(blobTarget)
 
-      expect(firstResult).toBe(true)
+      expect(firstResult).toBe('ok')
       expect(build).toHaveBeenCalledOnce()
       expect(messageTitles()).toEqual(['diagram.svg is ready'])
 
@@ -378,7 +391,7 @@ describe('composables/file-download', () => {
 
       expect(share).toHaveBeenCalledTimes(2)
 
-      await expect(secondTap).resolves.toBe(true)
+      await expect(secondTap).resolves.toBe('ok')
       expect(build).toHaveBeenCalledOnce()
     })
 
@@ -394,6 +407,46 @@ describe('composables/file-download', () => {
       await useFileDownload().downloadBlob(second.target)
 
       expect(second.build).toHaveBeenCalledOnce()
+    })
+
+    it('reports a failed build once, with a single toast', async () => {
+      stubShare()
+
+      const result = await useFileDownload().downloadBlob({
+        key: 'diagram:download-png:abc',
+        fileName: 'diagram.png',
+        build: async () => {
+          throw new Error('render failed')
+        },
+      })
+
+      expect(result).toBe('reported')
+      expect(messageTitles()).toEqual(['Failed to download the file'])
+    })
+
+    it('reports a swallowed tap once, with a single toast', async () => {
+      let finishShare = () => {}
+      const share = stubShare(() => {
+        return new Promise<void>((resolve) => {
+          finishShare = resolve
+        })
+      })
+      const first = createBlobTarget('diagram:download-svg:aaa')
+      const second = createBlobTarget('diagram:download-svg:aaa')
+
+      const firstTap = useFileDownload().downloadBlob(first.target)
+
+      await vi.waitFor(() => {
+        expect(share).toHaveBeenCalledOnce()
+      })
+
+      const secondResult = await useFileDownload().downloadBlob(second.target)
+
+      expect(secondResult).toBe('reported')
+      expect(messageTitles()).toEqual(['Still preparing the previous file'])
+
+      finishShare()
+      await expect(firstTap).resolves.toBe('ok')
     })
 
     it('evicts a kept file after 60 seconds without any tap', async () => {
@@ -448,21 +501,6 @@ describe('composables/file-download', () => {
 
       expect(vi.getTimerCount()).toBe(0)
     })
-
-    it('resolves to false when building the blob fails', async () => {
-      stubShare()
-
-      const isSaved = await useFileDownload().downloadBlob({
-        key: 'diagram:download-png:abc',
-        fileName: 'diagram.png',
-        build: async () => {
-          throw new Error('render failed')
-        },
-      })
-
-      expect(isSaved).toBe(false)
-      expect(messageTitles()).toEqual(['Failed to download the file'])
-    })
   })
 
   describe('in the iOS home-screen app without a share sheet', () => {
@@ -483,11 +521,14 @@ describe('composables/file-download', () => {
       expect(anchorClick).not.toHaveBeenCalled()
     })
 
-    it('reports a blob as not saved', async () => {
+    it('reports an unsupported blob once, with a single toast', async () => {
       const { target: blobTarget } = createBlobTarget()
 
       await expect(useFileDownload().downloadBlob(blobTarget))
-        .resolves.toBe(false)
+        .resolves.toBe('reported')
+      expect(messageTitles()).toEqual([
+        'This file cannot be saved from the app',
+      ])
       expect(anchorClick).not.toHaveBeenCalled()
     })
   })

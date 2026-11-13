@@ -517,11 +517,11 @@ describe('composables/diagram-export', () => {
       vi.unstubAllGlobals()
     })
 
-    it('reports the real outcome instead of true, and never clicks an anchor', async () => {
+    it('reports it as already reported and never clicks an anchor', async () => {
       const click = vi.spyOn(HTMLAnchorElement.prototype, 'click')
 
       await expect(useDiagramExport().runExportAction('download-svg', input))
-        .resolves.toBe(false)
+        .resolves.toBe('reported')
       expect(click).not.toHaveBeenCalled()
     })
   })

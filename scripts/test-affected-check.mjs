@@ -2274,6 +2274,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/ios-in-app-browser.spec.ts',
         'tests/unit/utils/artifact-export.spec.ts',
         'tests/unit/composables/diagram-export.spec.ts',
+        'tests/unit/components/prose/MermaidActionMenu.spec.ts',
         'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
         'tests/unit/components/History/DocumentRow.spec.ts',
         'tests/unit/components/Chat/Files.spec.ts',

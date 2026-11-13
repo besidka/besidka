@@ -1,3 +1,4 @@
+import type { BlobDownloadResult } from '~/composables/file-download'
 import type { ArtifactKind } from '#shared/utils/artifacts'
 
 export interface ArtifactExportOptions {
@@ -257,7 +258,7 @@ export function buildStandaloneArtifactFile(
 
 export function downloadArtifactFile(
   file: ArtifactSourceFile,
-): Promise<boolean> {
+): Promise<BlobDownloadResult> {
   return useFileDownload().downloadBlob({
     key: `artifact:${file.fileName}:${hashText(file.content)}`,
     fileName: file.fileName,

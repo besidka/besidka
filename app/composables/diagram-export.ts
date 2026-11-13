@@ -2,6 +2,7 @@ import { isImageClipboardSupported } from '@besidka/artifacts-protocol/diagram-m
 import type {
   DiagramExportAction,
   DiagramExportInput,
+  DiagramExportOutcome,
 } from '~/types/diagram-export.d'
 import {
   createColorContext,
@@ -200,22 +201,24 @@ async function download(
   action: DiagramExportAction,
   input: DiagramExportInput,
   buildBlob: () => Promise<Blob>,
-): Promise<boolean> {
-  try {
-    return await useFileDownload().downloadBlob({
-      key: `diagram:${action}:${hashText(input.source)}`,
-      fileName: DOWNLOAD_FILE_NAMES[action] ?? action,
-      build: buildBlob,
-    })
-  } catch {
-    return false
+): Promise<DiagramExportOutcome> {
+  const result = await useFileDownload().downloadBlob({
+    key: `diagram:${action}:${hashText(input.source)}`,
+    fileName: DOWNLOAD_FILE_NAMES[action] ?? action,
+    build: buildBlob,
+  })
+
+  if (result === 'reported') {
+    return 'reported'
   }
+
+  return result === 'ok'
 }
 
 function runExportAction(
   action: DiagramExportAction,
   input: DiagramExportInput,
-): boolean | Promise<boolean> {
+): DiagramExportOutcome | Promise<DiagramExportOutcome> {
   try {
     switch (action) {
       case 'copy-source':

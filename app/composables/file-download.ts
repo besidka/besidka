@@ -5,6 +5,12 @@ export interface FileDownloadTarget {
 
 export type BlobBuilder = () => Blob | Promise<Blob>
 
+/**
+ * `reported` means the user already got a toast for it, so a caller must not
+ * show a second one. `failed` means nothing was shown yet.
+ */
+export type BlobDownloadResult = 'ok' | 'reported' | 'failed'
+
 export interface BlobDownloadTarget {
   key: string
   fileName: string
@@ -236,26 +242,34 @@ export function useFileDownload() {
   }
 
   /**
-   * Resolves to false when nothing was saved because of a failure. The Blob
-   * is built lazily and only after a kept file for the same `key` is looked
-   * up, so the second tap after an expired gesture shares synchronously.
+   * Builds the Blob lazily and only after a kept file for the same `key` is
+   * looked up, so the second tap after an expired gesture shares
+   * synchronously. Every outcome the user was already told about, such as a
+   * busy share, an unsupported app or a failed build in the home-screen app,
+   * resolves to `reported`.
    */
-  async function downloadBlob(target: BlobDownloadTarget): Promise<boolean> {
+  async function downloadBlob(
+    target: BlobDownloadTarget,
+  ): Promise<BlobDownloadResult> {
     if (!isStandaloneIos()) {
-      const built = target.build()
-      const blob = built instanceof Blob ? built : await built
+      try {
+        const built = target.build()
+        const blob = built instanceof Blob ? built : await built
 
-      triggerAnchorDownload(URL.createObjectURL(blob), target.fileName, {
-        revokeAfterClick: true,
-      })
+        triggerAnchorDownload(URL.createObjectURL(blob), target.fileName, {
+          revokeAfterClick: true,
+        })
 
-      return true
+        return 'ok'
+      } catch {
+        return 'failed'
+      }
     }
 
     if (!canUseShareSheet()) {
       reportUnsupported()
 
-      return false
+      return 'reported'
     }
 
     const outcome = await shareDownloadedFile(target.key, async () => {
@@ -266,9 +280,15 @@ export function useFileDownload() {
       reportUnsupported()
     }
 
-    return outcome === 'saved'
+    if (
+      outcome === 'saved'
       || outcome === 'cancelled'
       || outcome === 'awaiting-tap'
+    ) {
+      return 'ok'
+    }
+
+    return 'reported'
   }
 
   return { onDownloadClick, downloadBlob }
