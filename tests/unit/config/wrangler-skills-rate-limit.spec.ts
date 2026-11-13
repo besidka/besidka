@@ -40,9 +40,9 @@ function skillsLimiter(block: WranglerBlock | undefined) {
 describe('SKILLS_RATE_LIMITER binding', () => {
   const config = parseWranglerConfig()
 
-  it('allows 3 requests per 60 seconds at the top level', () => {
+  it('allows 10 requests per 60 seconds at the top level', () => {
     expect(skillsLimiter(config)).toMatchObject({
-      simple: { limit: 3, period: 60 },
+      simple: { limit: 10, period: 60 },
     })
   })
 
@@ -50,10 +50,10 @@ describe('SKILLS_RATE_LIMITER binding', () => {
     const production = config.env.production!
 
     expect(skillsLimiter(production)).toMatchObject({
-      simple: { limit: 3, period: 60 },
+      simple: { limit: 10, period: 60 },
     })
     expect(skillsLimiter(production.previews)).toMatchObject({
-      simple: { limit: 3, period: 60 },
+      simple: { limit: 10, period: 60 },
     })
   })
 

@@ -165,7 +165,7 @@
 			"name": "SKILLS_RATE_LIMITER",
 			"namespace_id": "730103",
 			"simple": {
-				"limit": 3,
+				"limit": 10,
 				"period": 60
 			}
 		}
@@ -375,7 +375,7 @@
 					"name": "SKILLS_RATE_LIMITER",
 					"namespace_id": "730104",
 					"simple": {
-						"limit": 3,
+						"limit": 10,
 						"period": 60
 					}
 				}
@@ -500,7 +500,7 @@
 						"name": "SKILLS_RATE_LIMITER",
 						"namespace_id": "730103",
 						"simple": {
-							"limit": 3,
+							"limit": 10,
 							"period": 60
 						}
 					}

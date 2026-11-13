@@ -34,7 +34,7 @@ function tooManyRequests(
 
 /**
  * A short burst limit (the Workers Rate Limiting binding `SKILLS_RATE_LIMITER`,
- * 3 per 60 s per user, shared by preview, paste and commit). The binding is
+ * 10 per 60 s per user, shared by preview, paste and commit). The binding is
  * per location and eventually consistent, so it is a flood guard, not exact
  * accounting; like the consents limiter it is skipped when the binding is
  * missing (unit tests, self-hosts) and when the binding itself throws.
