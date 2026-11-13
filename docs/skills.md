@@ -303,9 +303,11 @@ highlights, never a verdict:
 
 ### 3.4 Import preview, commit and update
 
-Staging (KV and R2 with a 1 h lifetime) exists only for the import preview
-before the first commit of a **new** skill. An update never uses staging: a
-pending version is persisted (see step 3).
+Staging (KV and R2 with a 1 h lifetime) exists only for the import preview,
+before `import/commit`. The commit either creates a **new** skill or, after a
+name collision, turns the staged files into a pending version of an existing
+skill (see "A name collision" below). An update check and an MCP `update_skill`
+never use staging: their pending version is persisted directly (see step 3).
 
 1. `POST /api/v1/skills/import/preview` (multipart `file` or JSON `{ url }`;
    `{ url }` is a GitHub link, S-2G) validates, classifies the licence, scans,
@@ -331,7 +333,8 @@ pending version is persisted (see step 3).
 4. `POST /api/v1/skills/[id]/update/accept` `{ version, acknowledged: true }`
    **creates a new `skill_versions` row with the next number** (the highest
    existing number plus 1) that points at the same blobs, with no blob copy and
-   with the pending row's origin and `source_version`. It then sets
+   with the pending row's origin and its `source_kind`, `source_version` and
+   `source_path`. It then sets
    `current_version` to that new number, deletes the pending row, clears
    `pending_version`, disables the skill until the user enables it again, and
    prunes versions beyond `SKILL_VERSIONS_KEPT` (section 8.7).
@@ -362,16 +365,31 @@ in history, within the 20 kept, so the user can restore one.
 Writing and editing in the app is a separate path (S-10): create from blank or
 template, and `POST /api/v1/skills/[id]/versions` for a save (section 8.7).
 
-A name collision at commit answers 409 "A skill named X exists: replace as an
-update?", handled as steps 3 and 4. Rate limit: 10 imports per hour per user;
-at most `SKILLS_PER_USER` skills.
+**A name collision at commit** answers 409 "A skill named X exists", and the
+user chooses one of two ways. It works the same for zip, `.skill`, paste and
+GitHub imports.
+
+- **Replace as an update.** `import/commit` with
+  `{ stageId, asUpdateOf: <skillId> }` turns the staged files into a persisted
+  pending version on the existing skill: origin `import`, the next version
+  number, the blobs moved under `user-skills/u<userId>/<skillPublicId>/blobs/`,
+  and the import's `source_kind`, `source_version` and `source_path` recorded
+  on that version. The stage is deleted. The user then reviews and accepts it
+  through step 4, like any pending version. If the existing skill already has a
+  pending version, the new one replaces it and the old pending row is deleted.
+  The skill's own `source_kind`, `source_url`, `source_ref`, `source_path` and
+  `source_version` (so its GitHub upstream) change only when that version is
+  accepted.
+- **Rename the incoming skill** and commit it as a new skill (step 2).
+
+Rate limit: 10 imports per hour per user; at most `SKILLS_PER_USER` skills.
 
 ### 3.5 R2 layout
 
 | Prefix | Content | Lifetime |
 | --- | --- | --- |
 | `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` | Committed file contents, content-addressed, `contentType` `text/*`. Which blob is which path in which version is in `skill_files` (section 8.3) | Until the skill or the account is deleted, or no remaining `skill_files` row references the blob (after a version is pruned) |
-| `skills-staging/u<userId>/<stageId>/<path>` | Staged files of an import preview before the first commit of a new skill (never updates) | 1 h, swept hourly |
+| `skills-staging/u<userId>/<stageId>/<path>` | Staged files of an import preview, before `import/commit` (a new skill, or a "replace as an update" commit). Never used by update checks or MCP | Until the stage is committed or deleted, or 1 h, swept hourly |
 
 The earlier layout `…/<version>/<path>` would copy up to 200 files on every
 one-line save, so it is replaced. There is no `r2_key` column: one key builder
@@ -818,7 +836,7 @@ Unchanged by the 2026-11-13 amendments.
 
 | Key | TTL | Content |
 | --- | --- | --- |
-| `skills:stage:<stageId>` | 1 h | staged manifest of an import preview before the first commit of a new skill; never used for updates |
+| `skills:stage:<stageId>` | 1 h | staged manifest of an import preview, before `import/commit`; never used by update checks or MCP |
 
 ### 8.6 Status transitions
 
@@ -926,7 +944,7 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_RESERVED_SLASH_NAMES` | `new`, `model`, `search`, `image`, `memory`, `project`, `help` (section 5.6) | S-1 |
 | `SKILL_GITHUB_PICK_MAX` | 10 skills chosen from one repository | S-2G |
 | `SKILL_DESCRIPTION_CATALOG_SOFT_MAX` | 300 characters | S-11 |
-| `SKILL_STAGE_TTL` | 1 h (import preview of a new skill only) | S-2 |
+| `SKILL_STAGE_TTL` | 1 h (import preview only) | S-2 |
 | `SKILL_DIFF_MAX_LINES` | 2,000 | S-2, S-4 |
 | `SKILL_FINDING_LONG_LINE` | 2,000 characters | S-2 |
 | `SKILL_FINDING_BLANK_RUN` | 50 lines | S-2 |
@@ -1332,7 +1350,7 @@ Ticket keys without a BES id are new on 2026-11-13.
 | S-0 (new) | `docs(skills): authoring, versions, commands and GitHub import in the first release`. This amendment, the pre-check addendum, and the roadmap order. Plain PR, no flag |
 | BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built; the phase now covers authoring, versions and commands, and moves ahead of Phase 3 (research deferred by the owner on 2026-11-12) |
 | S-1 BES-264 | One migration with four tables, `CREATE TABLE` and `CREATE INDEX` only, no `ADD COLUMN` later (section 8): `skills`, `skill_versions`, `skill_files`, `skill_chat_settings`; no FK to `users` on any of them (explicit purge plus the coverage spec); one sentence added to `CLAUDE.md` after the `documents` note, no cascade-list entry; blob layout `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` and `skills-staging/u<userId>/`, with the key builder, blob put and prune in `server/utils/skills/storage.ts`; `SKILL_VERSIONS_KEPT` 20; the reserved-name validator; the purge, the chat-delete cleanup and the hourly orphan sweep; the "Skills" section of `docs/d1-restore-reconciliation.md`; registry: add `skills.commands` and set `skills.scripts` to `spend: 'foreground'`, `optIn: 'required'`; a `besidka-preview` Time Travel bookmark before the bottom layer is created; `DROP TABLE` grep in the PR; status transitions of section 8.6 |
-| S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime for the import preview of a new skill only; commit writes version 1 with origin `import`, disabled; Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
+| S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime for the import preview only; commit writes version 1 with origin `import`, disabled, or, after a name collision (409), takes `asUpdateOf` to turn the staged files into a pending version of the existing skill (replacing any older pending one), or the user renames the incoming skill; Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
 | S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/{check,accept}` with a persisted pending version, reject, and accept by `{ version }`, which creates a new version row with the next number over the same blobs and deletes the pending row, so `current_version` only increases (accepting disables the skill; the local-edit warning and diff of section 3.4). The ref is resolved with one `api.github.com` call and the zip comes from `codeload.github.com/<owner>/<repo>/zip/<sha>`. Flag `skills.import-url`. Not C-3-dependent |
 | S-10 (new) | `feat(skills): versioned saves, file edits, diff and restore API`: list and create from blank or template; `PATCH` for settings only; versions list and save with `{ baseVersion, changes[], note? }` (409 on a stale base); diff, restore, files and download; templates; 120 saves per hour; every save reruns the classifier |
 | S-4 BES-280 | Re-scoped: the manager page of section 10.2 (list, filters, detail panel, import dialog, review screen, diff view); licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed; tab row checked at 768, 1024 and 1440 px |
