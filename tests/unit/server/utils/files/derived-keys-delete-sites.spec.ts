@@ -23,6 +23,8 @@ const OTHER_OBJECT_DELETE_SITES = [
   'server/utils/knowledge/text-store.ts',
   'server/utils/knowledge/pack.ts',
   'server/utils/platform/cloudflare/blob-store.ts',
+  'server/utils/skills/storage.ts',
+  'server/utils/skills/sweep.ts',
 ]
 
 const STORAGE_DELETE_PATTERN

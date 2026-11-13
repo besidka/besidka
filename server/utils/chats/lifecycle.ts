@@ -14,6 +14,7 @@ import {
   cleanupDocumentsForDeletedChats,
   cleanupDocumentsForDeletedMessage,
 } from '~~/server/utils/documents/cleanup'
+import { cleanupSkillsForDeletedChats } from '~~/server/utils/skills/cleanup'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import {
@@ -273,6 +274,12 @@ export async function deleteChat(
   }
 
   await cleanupDocumentsForDeletedChats(db, {
+    userId,
+    chatIds: [chat.id],
+    logger,
+  })
+
+  await cleanupSkillsForDeletedChats(db, {
     userId,
     chatIds: [chat.id],
     logger,
