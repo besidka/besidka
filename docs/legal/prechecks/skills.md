@@ -375,7 +375,7 @@ create, edit, delete and rename skills, and optional sharing.
 | Commands | none | A command is a skill the user runs with `/name` (two user-set columns, `model_invocable` and `slash_command`) |
 | MCP | list, get, create, update, delete | Adds `rename_skill`; the name `skills:share` is reserved in the docs only; MCP version 4.0.0 |
 | GitHub fetch | `safeFetch` (C-3) | A narrow allowlisted fetcher (S-2G), not C-3-dependent. The allowlist is exactly `api.github.com`, which resolves the ref to a commit SHA (one call on import) and runs update checks, and `codeload.github.com`, which downloads `/<owner>/<repo>/zip/<sha>`. No `github.com` archive fallback, no zipball redirect, no redirect followed |
-| Updates | A staged update, old versions pruned after accept | A pending version is persisted (a `skill_versions` row, its blobs and `skills.pending_version`), not staged. Staging in KV and R2 (1 h) exists only for the import preview of a new skill. Accept takes `{ version }`; reject deletes the pending rows |
+| Updates | A staged update, old versions pruned after accept | A pending version is persisted (a `skill_versions` row, its blobs and `skills.pending_version`), not staged. Staging in KV and R2 (1 h) exists only for the import preview of a new skill. Accept takes `{ version }` and creates a new version row with the next number over the same blobs, so `current_version` only increases; reject deletes the pending rows |
 | Tool approvals while a skill is active | The C-6 approval card | The interim rule until C-6 ships: no tool is added by a skill, spending tools are offered only when the user picked them for that message, and `generate_image` is limited to one call per send |
 
 ### Answers to the five conflicts
