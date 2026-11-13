@@ -768,7 +768,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   rule until C-6), the threat model, Anthropic-only provider-container scripts,
   the data model, limits, the manager, editor and `/` picker, MCP tools
   (`list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`,
-  `delete_skills`; MCP 4.0.0, `skills:share` reserved), the never-public
+  `delete_skills`; MCP 4.0.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official

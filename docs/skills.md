@@ -150,12 +150,11 @@ the old wording is in the git history.
     The one planned exception is optional link sharing (S-13). It is not part
     of the first release, it needs its own pre-check addendum (S-8b) and its
     own legal notice, and section 12.1 holds its design.
-12. **New MCP scopes `skills:read` and `skills:write`, and a reserved
+12. **New MCP scopes `skills:read` and `skills:write`, and a reserved name
     `skills:share`.** Writes arrive disabled; deletes stay on `data:delete`,
     because skills are user content (unlike connectors, see
-    `docs/connectors.md` section 2, item 11). `skills:share` is reserved so it
-    can ship in MCP 4.0.0 with the other skill scopes; the tools behind it
-    arrive with S-13 (section 11).
+    `docs/connectors.md` section 2, item 11). `skills:share` is reserved in the
+    docs only and is not registered by S-6 (section 11).
 13. **No new nav pill slots.** Profile tab, Search popup row, "+" menu section,
     context panel "Used" section. Commands live in the same tab; there is no
     separate tab.
@@ -321,6 +320,16 @@ highlights, never a verdict:
 4. `POST /api/v1/skills/[id]/update/accept` `{ stageId, acknowledged: true }`
    promotes the pending version, disables the skill, and prunes versions beyond
    `SKILL_VERSIONS_KEPT` (section 8.7).
+
+**An update check on a skill with local edits.** The check compares the skill's
+`source_version` with the latest upstream commit. A newer commit creates a
+pending version, which stays disabled until accepted, as for every update. If
+any version newer than the last import has origin `editor`, `template`, `mcp`,
+`rename` or `restore` (a local edit), the review screen warns "Accepting
+replaces your local edits since the import" and shows the diff against the
+**current** version, not against the last import. There is no merge in the first
+release. Accepting makes the upstream version current. The local versions stay
+in history, within the 20 kept, so the user can restore one.
 
 Writing and editing in the app is a separate path (S-10): create from blank or
 template, and `POST /api/v1/skills/[id]/versions` for a save (section 8.7).
@@ -1016,7 +1025,9 @@ update is accepted; shared with the editor in read-only mode;
   use this skill" for class `none`), "Install (disabled)", "Cancel".
 
 Update diff: per-file unified diff with `+` and `-` markers and a text label,
-not colour alone; new findings and licence changes called out; "Accept
+not colour alone, against the **current** version; new findings and licence
+changes called out; when local edits exist since the import, the warning
+"Accepting replaces your local edits since the import" (section 3.4); "Accept
 update" disables the skill again.
 
 ### 10.4 Editor (S-11)
@@ -1110,14 +1121,17 @@ workspace" with a remove action.
 An agent can add, edit, rename and delete skills over MCP, as well as list and
 read them. Sharing is optional and arrives later (S-13).
 
-New scopes: `skills:read` (read class), `skills:write` (write class, unticked
-by default) and a reserved `skills:share` (section 12.1). Labels: "See your
+New scopes: `skills:read` (read class) and `skills:write` (write class,
+unticked by default). The name `skills:share` is reserved (section 12.1).
+Labels: "See your
 skills and their full text" and "Add or replace skills (saved switched off for
 your review)". Deletes stay on `data:delete`. The scopes make the server a
 **major version bump**: `config/mcp-server.ts` is at `3.1.0` on `main`, so the
-release is `4.0.0`. The owner decided on 2026-11-13 that `skills:share` is
-reserved so it can ship in 4.0.0 with `skills:read` and `skills:write`; the
-sharing tools behind it arrive with S-13.
+release is `4.0.0`. Coordinator decision, 2026-11-13: `skills:share` is a name reserved in the docs only: S-6 does not
+register a scope that has no tools, because a consent line that grants nothing
+confuses users. If S-13 is ready before S-6 merges, the scope joins 4.0.0;
+otherwise it ships with S-13 as its own major version bump.
+The sharing tools behind it arrive with S-13.
 
 Commands are skills, so there are no separate command tools. Outputs include
 `modelInvocable`, `slashCommand` and `argumentHint`.
@@ -1166,7 +1180,7 @@ Commands are skills, so there are no separate command tools. Outputs include
   manifests; `docs/mcp-server.md` (tables and "What MCP does not do"); and the
   Privacy Policy scope list.
 
-**Sharing tools (S-13, later).** Behind the reserved scope: `share_skill
+**Sharing tools (S-13, later).** Behind the reserved name: `share_skill
 { id, expiresInDays ≤ 30 }` and `revoke_skill_shares` under `skills:share`, and
 `list_skill_shares` under `skills:read`. See section 12.1.
 
@@ -1236,7 +1250,7 @@ own legal notice. Flag `skills.share`. It comes after the stack
   report and takedown path (the `app/pages/admin/artifact-reports.vue`
   pattern) with a `skill_share_reports` table, statements of reasons, and a
   takedown that also hides the share for viewers.
-- **MCP:** the reserved `skills:share` scope, unticked by default, with
+- **MCP:** the `skills:share` scope (reserved name), unticked by default, with
   `share_skill { id, expiresInDays ≤ 30 }`. `revoke_skill_shares` sits under
   `skills:share`, as the owner asked. The artifacts precedent would put revoke
   under `:write`, because it only reduces exposure; that is noted for the
@@ -1281,14 +1295,14 @@ Ticket keys without a BES id are new on 2026-11-13.
 | BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built; the phase now covers authoring, versions and commands, and moves ahead of Phase 3 (research deferred by the owner on 2026-11-12) |
 | S-1 BES-264 | One migration with four tables, `CREATE TABLE` and `CREATE INDEX` only, no `ADD COLUMN` later (section 8): `skills`, `skill_versions`, `skill_files`, `skill_chat_settings`; no FK to `users` on any of them (explicit purge plus the coverage spec); one sentence added to `CLAUDE.md` after the `documents` note, no cascade-list entry; blob layout `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` and `skills-staging/u<userId>/`, with the key builder, blob put and prune in `server/utils/skills/storage.ts`; `SKILL_VERSIONS_KEPT` 20; the reserved-name validator; the purge, the chat-delete cleanup and the hourly orphan sweep; the "Skills" section of `docs/d1-restore-reconciliation.md`; registry: add `skills.commands` and set `skills.scripts` to `spend: 'foreground'`, `optIn: 'required'`; a `besidka-preview` Time Travel bookmark before the bottom layer is created; `DROP TABLE` grep in the PR; status transitions of section 8.6 |
 | S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime; commit writes version 1 with origin `import`, disabled; Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
-| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/{check,accept}` (accepting disables the skill). Flag `skills.import-url`. Not C-3-dependent |
+| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/{check,accept}` (accepting disables the skill; the local-edit warning and diff of section 3.4). Flag `skills.import-url`. Not C-3-dependent |
 | S-10 (new) | `feat(skills): versioned saves, file edits, diff and restore API`: list and create from blank or template; `PATCH` for settings only; versions list and save with `{ baseVersion, changes[], note? }` (409 on a stale base); diff, restore, files and download; templates; 120 saves per hour; every save reruns the classifier |
 | S-4 BES-280 | Re-scoped: the manager page of section 10.2 (list, filters, detail panel, import dialog, review screen, diff view); licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed; tab row checked at 768, 1024 and 1440 px |
 | S-11 (new) | `feat(skills): skill and command editor`: the `WorkspaceDialog` in edit mode, file tree, frontmatter fields, Model view, live validation and token estimate, unsaved-changes guard, the 409 flow, the iOS sheet rules |
 | S-3 BES-276 | Re-scoped: catalog from model-invocable skills only, with Cyrillic-aware caps and `SKILL_ACTIVATE_MAX_TOKENS`; the **interim rule** of section 2 item 8 instead of the approval card (a spec for each point; C-6 later adds the card as an acceptance criterion on BES-244, not a blocker); side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB and 6,000 tokens points to `read_skill_file`; memory write lock spec |
 | S-12 (new) | `feat(skills): slash commands in the composer`: section 5.5 and the picker of section 10.5; `data-skill-invocation` part and `resolveSkillInvocationPart`; `$ARGUMENTS` substitution; one-shot versus persistent invocation; `filterPublicParts` drops the part; replay drops a part that no longer resolves; Enter never sends while the picker is open; iOS Simulator check that the keyboard stays open. Flag `skills.commands` |
 | S-5 BES-285 | Anthropic only; provider id in D1 columns, KV cache removed; substring rename rule; disclosure text of section 7; pinned version; deletion triggers; re-upload lazily when `current_version` differs from the uploaded version, not on every save; its own stack, needs C-6 and D-7 |
-| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); licence classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` and `rename_skill` stage `needs-review` and disable the skill; `skills:share` reserved; MCP `4.0.0`; the top layer, so it is the preview PR |
+| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); licence classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` and `rename_skill` stage `needs-review` and disable the skill; `skills:share` not registered (reserved in the docs only); MCP `4.0.0`; the top layer, so it is the preview PR |
 | S-7 BES-294 | Re-scoped to `docs(legal): skills and commands`; a plain PR in parallel with the stack that must merge, and its `LEGAL_NOTICES` entry be published, at least 30 days before `skills` leaves `internal`. Uses this document's licence and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material). Also: Art. 30 row 10b reads "created or imported"; retention of up to 20 versions; an invocation equals a send to the same provider; DPIA rows for authored text and for commands; the Terms right-to-use promise for "create, paste or import" |
 | S-8 pre-check (PR #739) | Its S-1 row and question 8 ask to add the skills tables to the `CLAUDE.md` cascade list; with no FK to `users` there is nothing to add (section 8). Staging prefix kept as `skills-staging/`, committed files moved to `user-skills/` as it recommends. A dated 2026-11-13 addendum records authoring, `authored`, enabled-on-save, 20 kept versions and commands. Coordinator to confirm |
 | S-9 BES-316 | Plain PR after the testers. Never says "safe". Names the licence block. Claims no affiliation with the Agent Skills project or Anthropic |
@@ -1374,9 +1388,10 @@ The owner took the plan's defaults:
 
 | # | Decision |
 | --- | --- |
-| 7 | **Sharing (S-13):** built later as the last optional stack. Authored and open skills only, signed-in viewers, 7 days by default and 30 at most, with its own legal notice. The `skills:share` scope is still reserved so it can ship in MCP 4.0.0 with the other skill scopes. |
+| 7 | **Sharing (S-13):** built later as the last optional stack. Authored and open skills only, signed-in viewers, 7 days by default and 30 at most, with its own legal notice. The name `skills:share` is reserved in the docs only. S-6 does not register a scope that has no tools. If S-13 is ready before S-6 merges, the scope joins 4.0.0; otherwise it ships with S-13 as its own major bump. |
 | 8 | **Skills authored in the app** are saved enabled with no licence tick (class `authored`). Imports, updates, MCP writes and share copies stay disabled until the user enables them in the app. |
 | 9 | **Runtime** (S-3 and S-12) ships before C-6, under the interim rule in section 2, item 8. The approval card comes with C-6, and connectors cannot exist before C-6 anyway. |
+| 10 | **GitHub update versus local edits** (coordinator, 2026-11-13): the update check compares the skill's `source_version` with the latest upstream commit, and a newer commit creates a pending version, disabled until accepted. If any version newer than the last import has origin `editor`, `template`, `mcp`, `rename` or `restore`, the review screen warns "Accepting replaces your local edits since the import" and shows the diff against the current version. There is no merge in the first release. Accepting makes the upstream version current, and the local versions stay in history (within the 20 kept) so the user can restore one (section 3.4). |
 
 The owner also asked for these to be possible, and this document states each:
 adding a skill by archive (`.zip` or `.skill`, section 3.1), adding one by

@@ -1160,6 +1160,13 @@ the planned tool rows are in `docs/connectors.md` (section 11) and
 `docs/skills.md` (section 11); C-9 and S-6 add the full entries here when the
 tools ship.
 
+The planned skills entry (amended 2026-11-13): the tools `list_skills`,
+`get_skill`, `create_skill`, `update_skill`, `rename_skill` and
+`delete_skills`, behind the scopes `skills:read`, `skills:write` and
+`data:delete` (deletes), released as MCP 4.0.0. Created, updated and renamed
+skills arrive switched off. The name `skills:share` is reserved in the docs
+only, and S-6 does not register it.
+
 ### Left out on purpose
 
 1. **Anything that spends the user's provider keys.** No `send_message`

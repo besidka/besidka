@@ -127,8 +127,10 @@ in `docs/legal/prechecks/skills.md`.
    was deferred by the owner on 2026-11-12.
 2. **Sharing (S-13):** built later as the last optional stack. Authored and
    open skills only, signed-in viewers, 7 days by default and 30 at most, with
-   its own legal notice. The `skills:share` scope is still reserved so it can
-   ship in MCP 4.0.0 with the other skill scopes.
+   its own legal notice. The name `skills:share` is reserved in the docs only. S-6
+   does not register a scope that has no tools. The scope joins MCP 4.0.0 if
+   S-13 is ready before S-6 merges, and otherwise ships with S-13 as its own
+   major bump (coordinator decision).
 3. **Skills authored in the app** are saved enabled with no licence tick
    (class `authored`). Imports, updates, MCP writes and share copies stay
    disabled until the user enables them in the app.
@@ -167,7 +169,8 @@ in `docs/legal/prechecks/skills.md`.
   needed (D-6 updates that file).
 - **New scopes instead of reusing old ones:** `artifacts:read`,
   `artifacts:write`, `connectors:read`, `connectors:write`, `skills:read`,
-  `skills:write` (and `skills:share`, reserved on 2026-11-13). Reusing `chats:read` or `files:write` would silently extend
+  `skills:write` (and the name `skills:share`, reserved in the docs only on
+  2026-11-13). Reusing `chats:read` or `files:write` would silently extend
   existing grants to the new resources, because consent is stored by scope
   name. `admin:features` and `artifacts:share` are new scopes too. Each new
   scope is a major MCP version bump; ship `admin:features` and

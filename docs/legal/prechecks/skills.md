@@ -372,7 +372,7 @@ create, edit, delete and rename skills, and optional sharing.
 | Enabled state | Every new skill and every update starts disabled | A skill created in the app is saved enabled. Imports, updates, MCP writes, MCP renames and share copies stay disabled until the user enables them in the app |
 | Versions | 2 kept, old versions pruned after an accepted update | Every save, rename, restore or import creates a version; up to 20 are kept (`SKILL_VERSIONS_KEPT`) |
 | Commands | none | A command is a skill the user runs with `/name` (two user-set columns, `model_invocable` and `slash_command`) |
-| MCP | list, get, create, update, delete | Adds `rename_skill`; reserves `skills:share`; MCP version 4.0.0 |
+| MCP | list, get, create, update, delete | Adds `rename_skill`; the name `skills:share` is reserved in the docs only; MCP version 4.0.0 |
 | GitHub fetch | `safeFetch` (C-3) | A narrow allowlisted fetcher for `codeload.github.com` and `api.github.com` (S-2G). Not C-3-dependent |
 | Tool approvals while a skill is active | The C-6 approval card | The interim rule until C-6 ships: no tool is added by a skill, spending tools are offered only when the user picked them for that message, and `generate_image` is limited to one call per send |
 
@@ -459,8 +459,10 @@ runs in parallel with the stack. Add these to the input list above.
 
 1. Sharing is built later as the last optional stack (authored and open skills
    only, signed-in viewers, 7 days by default and 30 at most, with its own
-   legal notice). The `skills:share` scope is reserved so it can ship in MCP
-   4.0.0 with the other skill scopes.
+   legal notice). The name `skills:share` is reserved in the docs only; S-6
+   does not register a scope with no tools. It joins 4.0.0 if S-13 is ready
+   before S-6 merges, and otherwise ships with S-13 as its own major bump
+   (coordinator decision, 2026-11-13).
 2. Skills authored in the app are saved enabled with no licence tick (class
    `authored`). Imports, updates, MCP writes and share copies stay disabled
    until the user enables them in the app.

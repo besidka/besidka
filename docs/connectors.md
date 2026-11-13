@@ -858,7 +858,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_CALLS_PER_MINUTE_PER_CONNECTOR` | 30 per user per connector | C-5 |
 | `SAFE_FETCH_OAUTH_MAX_BYTES` | 262,144 | C-3, C-4 |
 | `SAFE_FETCH_REGISTRY_MAX_BYTES` | 2,097,152 per page | C-3, C-8 |
-| Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`) | C-3, S-2 |
+| Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`). `skills-github` uses the narrow allowlisted fetcher (`docs/skills.md` section 3.1) until C-3 lands, and then may move to `safeFetch`. `skills-url` waits for C-3 (S-2U) | S-2G, S-2U, C-3 |
 | `CONNECTOR_TOOLS_CACHE_TTL` | default 600 s, clamp 60 to 3,600 s | C-5 |
 | `CONNECTOR_OAUTH_STATE_TTL` | 600 s | C-4 |
 | `CONNECTOR_REFRESH_LOCK_TTL` | 30 s | C-4 |
