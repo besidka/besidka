@@ -4,7 +4,9 @@ Status: **approved plan, Phase 0 in progress** (written 2026-11-08). This
 file is the source of truth for the programme. The Linear project
 "Agentic capabilities" (P-BES-3) holds the tickets, and the Linear document of
 the same name points here once the docs sync has mirrored this file. Every
-ticket that merges updates the status table in section 2.
+ticket that merges updates the status table in section 2. **Order amended on
+2026-11-13 (S-0):** 4c (skills and commands) moves ahead of Phase 3, because
+the owner deferred deep research on 2026-11-12.
 
 ## 1. Goal
 
@@ -30,10 +32,10 @@ research run or anything else that spends a key does not
 | 0 Foundation | Per-user feature access, admin, rollout and A/B, Labs, shared side panel, chat context panel, larger file manager | BES-224 | In progress: pre-check (P0-14) and this design (P0-1) in review |
 | 1 Artifacts | Sandboxed HTML/React/SVG/Mermaid/Markdown artifacts, versions, per-viewer storage, LLM bridge on the viewer's key, public shares | BES-225 | In progress: A-2 runtime on `main`; native stack `artifacts` (#766) in review: A-1 store, A-3 chat tools, A-4 panel, A-14 code blocks, A-5 viewer storage, A-6 LLM bridge, A-7 public links and reports, A-8 MCP tools, A-11 library tab, A-10 evals and rollout plan (`docs/artifacts.md`); all `artifacts.*` flags at stage `internal`, percentage rollout planned from 2027-01-04 after the 2026-12-19 notices |
 | 2 Documents | PDF, DOCX, XLSX, PPTX from a validated JSON spec (hybrid renderer); provider-native code execution | BES-226 | Ticketed, after Phase 1 |
-| 3 Research | Custom deep research on any tool-calling model with Brave/Exa, 5 to 10 minutes, about 200 sources, Workflows orchestration | BES-227 | Ticketed, after Phase 2 |
+| 3 Research | Custom deep research on any tool-calling model with Brave/Exa, 5 to 10 minutes, about 200 sources, Workflows orchestration | BES-227 | Ticketed, **later**: deferred by the owner on 2026-11-12, now after 4c |
 | 4a Connectors | User-brought remote MCP servers (OAuth client, approvals, registry search) | BES-229 | Ticketed, in parallel with Phase 1 |
 | 4b Google | Drive Picker with `drive.file`, built-in Drive tools, BYO Google OAuth client for Gmail and full Drive, Calendar | BES-230 | Ticketed, in parallel with Phase 1 |
-| 4c Skills | Agent Skills by URL or zip for any model, scripts in provider containers | BES-231 | Ticketed, after Phase 3 (S-5 needs D-7) |
+| 4c Skills and commands | Agent Skills for any model: write one in the app, start from a template, or add one by archive (zip, `.skill`), pasted text, GitHub link or MCP; versions (20 kept), slash commands, MCP tools to create, edit, rename and delete; scripts in provider containers (S-5) and sharing by link (S-13) come later | BES-231 | **Next.** Design amended 2026-11-13 (S-0, `docs/skills.md`). Stack "skills": S-1, S-2, S-2G, S-10, S-4, S-11, S-3, S-12, S-6; legal S-7 in parallel; then S-9. S-5 needs C-6 and D-7; S-13 and S-2U are later |
 | 5 Voice | Voice input and output | not ticketed | Roadmap only |
 | 6 Scheduled routines | Scheduled tasks that reuse artifacts, research, documents and connectors; background spend behind Labs opt-in | not ticketed | Roadmap only |
 | 7 Browser agent | An agent that drives a browser, shown in the side panel | not ticketed | Roadmap only |
@@ -67,8 +69,10 @@ in `docs/feature-flags.md` and the Phase 0 tickets.
    P0-13 chat context, before A-4 and any other panel consumer.
 2. Two tracks in parallel: Phase 1 (A-1, A-2 and A-9 start together) and
    Phase 4a/4b (G-1 spike and G-2 owner tasks start at once).
-3. Phase 2 (D-1 spike and D-7 code execution in parallel), then Phase 3
-   (R-1, R-2, R-3 and R-6 can start once Phase 0 lands), then 4c.
+3. Phase 2 (D-1 spike and D-7 code execution in parallel), then **4c**
+   (S-0 first, then the stack "skills"; nothing in the first release waits for
+   C-3 or C-6), then Phase 3 (R-1, R-2, R-3 and R-6 can start once Phase 0
+   lands; deferred by the owner on 2026-11-12).
 4. Cross-phase joins: R-7 needs A-3 and D-3; G-5 save-to-Drive needs D-4;
    S-5 needs D-7. Phase 6 later reuses `DOC_RENDERER`, the orchestrator
    Workflow, artifacts and connectors.
@@ -114,6 +118,30 @@ in `docs/feature-flags.md` and the Phase 0 tickets.
     existing Google clients. A separate Google Cloud test project exists only
     to test the BYO client mode.
 
+## 3a. Owner decisions (2026-11-13), skills and commands
+
+Recorded by S-0. The full design is `docs/skills.md`, and the legal addendum is
+in `docs/legal/prechecks/skills.md`.
+
+1. **Order:** 4c (skills and commands) comes ahead of Phase 3. Deep research
+   was deferred by the owner on 2026-11-12.
+2. **Sharing (S-13):** built later as the last optional stack. Authored and
+   open skills only, signed-in viewers, 7 days by default and 30 at most, with
+   its own legal notice. The `skills:share` scope is still reserved so it can
+   ship in MCP 4.0.0 with the other skill scopes.
+3. **Skills authored in the app** are saved enabled with no licence tick
+   (class `authored`). Imports, updates, MCP writes and share copies stay
+   disabled until the user enables them in the app.
+4. **Runtime before C-6:** S-3 and S-12 ship before C-6, under an interim rule.
+   Activating a skill never adds a tool; the tools that spend are offered only
+   when the user picked them for that message; and while a skill is active,
+   `generate_image` is limited to one call per send. The approval card comes
+   with C-6.
+5. **Ways in:** skills can be added by archive (`.zip` or `.skill`) and by
+   GitHub link. MCP has separate actions to create, edit (update), delete and
+   rename skills, plus optional sharing.
+6. **Commands are skills** with two user-set columns, not a separate entity.
+
 ## 4. Decisions made in planning
 
 - **No columns on `users` and no foreign key to `users`** in new tables
@@ -139,7 +167,7 @@ in `docs/feature-flags.md` and the Phase 0 tickets.
   needed (D-6 updates that file).
 - **New scopes instead of reusing old ones:** `artifacts:read`,
   `artifacts:write`, `connectors:read`, `connectors:write`, `skills:read`,
-  `skills:write`. Reusing `chats:read` or `files:write` would silently extend
+  `skills:write` (and `skills:share`, reserved on 2026-11-13). Reusing `chats:read` or `files:write` would silently extend
   existing grants to the new resources, because consent is stored by scope
   name. `admin:features` and `artifacts:share` are new scopes too. Each new
   scope is a major MCP version bump; ship `admin:features` and

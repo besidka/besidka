@@ -755,15 +755,22 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   UI placement, MCP tools and scopes, the OpenAI-only native path, the
   `@ai-sdk/mcp` verification, host portability, the vendor-policy re-check,
   and the ticket changes it imposes on C-2 to C-11
-- `docs/skills.md` - Skills design (Phase 4c, not built yet): Agent Skills
-  (agentskills.io) imported by GitHub, link, zip, paste or MCP; pinning,
-  archive rules, findings, the licence classifier (Anthropic's 2026-11-06
-  Apache-2.0 relicence, content-based blocking), the R2 layout
-  (`user-skills/`), the runtime (catalog budget, `activate_skill`,
-  `read_skill_file`, re-injection past the text-only sanitizer), the threat
-  model, Anthropic-only provider-container scripts, the data model, limits,
-  review UI, MCP tools, the never-public invariant, and the ticket changes
-  it imposes on S-1 to S-7
+- `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
+  amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
+  from templates, or added by archive (zip, `.skill`), pasted text, GitHub link
+  or MCP; commands as skills with two user-set columns (`model_invocable`,
+  `slash_command`) and the `data-skill-invocation` part; numbered versions (20
+  kept) over content-addressed R2 blobs (`user-skills/`); pinning, archive rules,
+  findings, the licence classifier (Anthropic's 2026-11-06 Apache-2.0 relicence,
+  content-based blocking, class `authored`), the narrow allowlisted GitHub
+  fetcher (not C-3), the runtime (catalog budget, `activate_skill`,
+  `read_skill_file`, re-injection past the text-only sanitizer, the interim tool
+  rule until C-6), the threat model, Anthropic-only provider-container scripts,
+  the data model, limits, the manager, editor and `/` picker, MCP tools
+  (`list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`,
+  `delete_skills`; MCP 4.0.0, `skills:share` reserved), the never-public
+  invariant and the optional S-13 sharing design, and the ticket changes it
+  imposes on S-1 to S-14
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the

@@ -10,6 +10,9 @@
 > `docs/legal/agentic-capabilities-precheck.md` (P0-14, BES-303, written in
 > parallel and not merged yet). Until it merges, this file answers the
 > track-specific questions of BES-315 and runs the gate in full below.
+> A dated addendum at the end of this file (2026-11-13) covers authoring, the
+> `authored` class, enabled-on-save, 20 kept versions and commands, and wins
+> where it disagrees with the text above.
 
 ## Verdict
 
@@ -345,3 +348,120 @@ restrictions appended.
   (UNVERIFIED like Brave and Exa in row 5).
 - The MCP major-version rule as the ticket states it (not re-checked in
   `docs/mcp-server.md`).
+
+## Addendum 2026-11-13: authoring, versions and commands
+
+> Engineer-drafted, not lawyer-reviewed. This addendum amends the verdict and
+> the S-7 input list above for the S-0 amendment of `docs/skills.md`
+> (2026-11-13). Where it and the text above disagree, this addendum wins. It
+> does not re-run the sources; the open points under "Unverified" still stand.
+> Sharing by link (S-13) is **not** covered here: it needs its own addendum
+> (S-8b) first.
+
+### What changed in the design
+
+The first release is no longer "imports only". The owner took the plan's
+defaults on 2026-11-13 and asked for four things in writing: add a skill by
+archive (`.zip` or `.skill`), add one by GitHub link, separate MCP actions to
+create, edit, delete and rename skills, and optional sharing.
+
+| Area | Before | Now |
+| --- | --- | --- |
+| Sources | GitHub, link, zip, paste, MCP | The same, plus writing a skill in the app and Besidka's own templates. The raw-link import moves out of the first release (S-2U, waits for C-3) |
+| Licence class | `open`, `custom`, `none`, `restricted` | Adds `authored`, assigned only by the editor and templates, never by an import |
+| Enabled state | Every new skill and every update starts disabled | A skill created in the app is saved enabled. Imports, updates, MCP writes, MCP renames and share copies stay disabled until the user enables them in the app |
+| Versions | 2 kept, old versions pruned after an accepted update | Every save, rename, restore or import creates a version; up to 20 are kept (`SKILL_VERSIONS_KEPT`) |
+| Commands | none | A command is a skill the user runs with `/name` (two user-set columns, `model_invocable` and `slash_command`) |
+| MCP | list, get, create, update, delete | Adds `rename_skill`; reserves `skills:share`; MCP version 4.0.0 |
+| GitHub fetch | `safeFetch` (C-3) | A narrow allowlisted fetcher for `codeload.github.com` and `api.github.com` (S-2G). Not C-3-dependent |
+| Tool approvals while a skill is active | The C-6 approval card | The interim rule until C-6 ships: no tool is added by a skill, spending tools are offered only when the user picked them for that message, and `generate_image` is limited to one call per send |
+
+### Answers to the five conflicts
+
+1. **The licence gate on every source versus authoring.** The gate exists to
+   stop Besidka storing third-party text it holds no right to. Text the user
+   typed in the app, or took from Besidka's own template, raises no such issue.
+   It gets class `authored` and no right-to-use tick, and the Terms promise
+   covers "create, paste or import". A licence file the user adds still goes
+   through the classifier, so a restricted licence text still blocks the save.
+   A pasted `SKILL.md` is an import: it keeps class `none` and its tick, and
+   an import can never produce `authored`.
+2. **"New skills disabled" as a DPIA measure (Q9, `docs/skills.md` section 2,
+   item 4).** The measure was written against third-party text and an injected
+   agent. It still applies to imports, updates, MCP writes, MCP renames and
+   share copies. It no longer applies to a skill the user creates in the app,
+   because the user wrote it. An in-app save or rename keeps the current
+   enabled state. The injection risk of an enabled, user-written skill is
+   handled by the same measures as any skill: the text is wrapped and framed as
+   untrusted, the memory write lock is engaged, and the interim tool rule
+   applies. DPIA row 1 (a malicious skill steers the model) therefore names the
+   interim rule as its measure until C-6 ships.
+3. **Retention: "old versions pruned after an update is accepted" (Q8).** It
+   becomes: up to 20 versions are kept per skill, and a pending version is
+   never pruned. Older versions are deleted, and blobs no remaining version
+   references are deleted with them. Art. 30 row 10b and the Privacy Policy
+   "How long I keep things" row say "up to 20 versions" instead of "old
+   versions pruned". Deleting a skill or the account removes all versions.
+4. **"Plain text everywhere".** Kept. The editor's preview, called Model view,
+   shows plain monospace text exactly as the model receives it and renders no
+   Markdown, so no image URL leaks the viewer's IP and no text can hide. No
+   amendment is needed.
+5. **"Never public".** Commands comply. The invocation part
+   (`data-skill-invocation`) is removed from shared chats, the visible text
+   holds only the user's arguments, and the shared view shows a neutral
+   "(private command)". Sharing by link (S-13) is the only real reversal. It is
+   optional, comes last, and is gated by its own addendum, its own Art. 30 and
+   DPIA rows, and a separate material `LEGAL_NOTICES` entry.
+
+### Commands add no new recipient and no new purpose
+
+An invocation is the same send to the same provider as an activation: the
+user's own text and the skill body go to the chat's provider, on the user's
+key, when the user presses Send. The picker, the chip, "Use in new chat", the
+manager and every MCP tool make no model call. So Q10 stands unchanged: no new
+recipient, no new Art. 49(1)(a) consent and no new consent version.
+`CURRENT_CONSENT_VERSION` stays unchanged. `LEGAL_NOTICES` stays at **one entry
+for the phase** (material, published at least 30 days before `skills` leaves
+`internal`), plus one more entry for S-13 if it ships.
+
+### Changes to the S-7 input list
+
+S-7 is re-scoped to `docs(legal): skills and commands`. It stays a plain PR that
+runs in parallel with the stack. Add these to the input list above.
+
+- **Art. 30 row 10b** reads "Skills (user-created or imported instructions)".
+  The purpose is to let the user's chosen model follow instructions the user
+  created or imported. Categories add the source kinds `editor` and
+  `template`, the version history (up to 20 versions with a note of up to 200
+  characters), the licence class `authored`, and the command settings
+  (`model_invocable`, `slash_command`, `argument_hint`). Retention reads "up to
+  20 versions", not "old versions pruned". Recipients and transfers are
+  unchanged. GitHub receives the request for a GitHub import and the URL; the
+  fetch is limited to `codeload.github.com` and `api.github.com`.
+- **DPIA rows.** Add one row for **authored text** (stored privately, sent to
+  the provider on the user's key, enabled on save with no licence tick;
+  measures: the same wrapping, memory lock and interim rule). Add one
+  row for **commands** (an invocation puts a skill body into the latest user
+  turn; one invocation per message; a part that is private and removed from
+  shares; the name cannot be probed because every failure answers one generic
+  error; an agent cannot rename a skill into an active command name without the
+  user, because `rename_skill` disables the skill and sets `needs-review`).
+  Section 3 of the DPIA gets "authoring and commands" in the "3.x Skills"
+  description.
+- **Terms of Use.** The right-to-use promise reads "create, paste or import".
+  The "no sharing, no marketplace" line stays until S-13 ships, and S-13
+  changes it.
+- **Privacy Policy.** The retention row says "up to 20 versions" instead of
+  "old versions pruned".
+- **Breach-runbook rows**, as listed in `docs/skills.md` section 13.
+
+### Owner decisions recorded on 2026-11-13
+
+1. Sharing is built later as the last optional stack (authored and open skills
+   only, signed-in viewers, 7 days by default and 30 at most, with its own
+   legal notice). The `skills:share` scope is reserved so it can ship in MCP
+   4.0.0 with the other skill scopes.
+2. Skills authored in the app are saved enabled with no licence tick (class
+   `authored`). Imports, updates, MCP writes and share copies stay disabled
+   until the user enables them in the app.
+3. The runtime (S-3 and S-12) ships before C-6, with the interim rule above.

@@ -1,22 +1,29 @@
 # Skills design (Phase 4c)
 
-Status: **design, 2026-11-08.** Not built. This document is the source of
-truth for the skills track: S-1 (BES-264) to S-6 (BES-292) implement it, and
-C-1 (BES-233) wrote it. Where a ticket body and this document disagree, this
-document wins; section 13 lists every ticket that has to change. The legal
-reasoning (licence gate, never-public invariant, S-5 provider verdicts) is in
-the compliance pre-check `docs/legal/prechecks/skills.md` (S-8, BES-315,
-PR #739). The shared approval model and the outbound URL rules are in
-`docs/connectors.md`; the flag rules are in `docs/feature-flags.md` (lands
-with P0-1, PR #732).
+Status: **design, 2026-11-08, amended 2026-11-13 (S-0).** Not built. This
+document is the source of truth for the skills track: S-1 (BES-264) to S-6
+(BES-292) implement it, together with the tickets S-0, S-2G, S-10, S-11 and
+S-12 added on 2026-11-13, and C-1 (BES-233) wrote it. Where a ticket body and
+this document disagree, this document wins; section 13 lists every ticket that
+has to change. The legal reasoning (licence gate, never-public invariant, S-5
+provider verdicts) is in the compliance pre-check
+`docs/legal/prechecks/skills.md` (S-8, BES-315, PR #739), which has a dated
+addendum for the 2026-11-13 amendments. The shared approval model and the
+outbound URL rules are in `docs/connectors.md`; the flag rules are in
+`docs/feature-flags.md` (lands with P0-1, PR #732).
 
 A **skill** is a folder of instructions (`SKILL.md` plus optional reference
-files and scripts) in the open Agent Skills format. A user imports one from
-GitHub, a link, a zip or pasted text; the model sees a short catalog of the
-user's enabled skills and loads one when the task calls for it. Skills are
-third-party instruction text, so the whole design treats them like software
-the user installs: pinned, reviewed in full, disabled until the user enables
-them, and never trusted to override the user or Besidka's rules.
+files and scripts) in the open Agent Skills format. A user writes one in the
+app, starts from one of Besidka's own templates, or adds one by archive
+(`.zip` or `.skill`), pasted text, a GitHub link or an MCP agent. The model
+sees a short catalog of the user's enabled skills and loads one when the task
+calls for it. A **command** is a skill the user runs on purpose with `/name`
+(section 5.5). Skills written by others are third-party instruction text, so
+the design treats them like software the user installs: pinned, reviewed in
+full, disabled until the user enables them, and never trusted to override the
+user or Besidka's rules. Text the user typed in the app is also treated as
+untrusted when it reaches the model, but it needs no licence tick and is saved
+enabled (section 2, items 4 and 6).
 
 ## Contents
 
@@ -24,12 +31,12 @@ them, and never trusted to override the user or Besidka's rules.
 2. [Decisions](#2-decisions)
 3. [Import, pinning and archive rules](#3-import-pinning-and-archive-rules)
 4. [Licence gate](#4-licence-gate)
-5. [Runtime](#5-runtime)
+5. [Runtime and commands](#5-runtime-and-commands)
 6. [Threat model](#6-threat-model)
 7. [Scripts in provider containers (S-5)](#7-scripts-in-provider-containers-s-5)
 8. [Data model](#8-data-model)
 9. [Limits](#9-limits)
-10. [UI placement and review](#10-ui-placement-and-review)
+10. [UI placement, manager, editor and picker](#10-ui-placement-manager-editor-and-picker)
 11. [MCP exposure](#11-mcp-exposure)
 12. [Never public](#12-never-public)
 13. [Ticket changes](#13-ticket-changes)
@@ -72,25 +79,45 @@ gated, and no skill tool registered when no skill is enabled.
 
 ## 2. Decisions
 
-Binding for S-1 to S-6. **(pre-check)** marks a decision from
-`docs/legal/prechecks/skills.md`; **(this doc)** marks one that settles a
-disagreement between tickets and is listed in section 13.
+Binding for the skills track (S-1 to S-14). **(pre-check)** marks a decision
+from `docs/legal/prechecks/skills.md`; **(this doc)** marks one that settles a
+disagreement between tickets and is listed in section 13. Items 1, 2, 4, 6, 8,
+11, 12 and 13 were amended on 2026-11-13 (S-0), and items 14 and 15 are new;
+the old wording is in the git history.
 
-1. **User imports only.** No marketplace, no presets, no sharing, no public
-   listing.
-2. **Pinned and immutable.** A GitHub import is pinned to a 40-character
-   commit SHA; other sources to `sha256-<first 16 hex>` of the content. Never
-   auto-updated. An update is an explicit check, a diff, a review and an
-   accept.
+1. **Users bring their own skills.** A user can write a skill in the app,
+   start from one of Besidka's own templates, or add one by archive (`.zip` or
+   `.skill`), pasted `SKILL.md` text, a GitHub link, or an MCP agent. There is
+   no marketplace, no public listing and no preset of third-party skills.
+   Besidka's own templates are Besidka's text, not presets. Presets that set a
+   model, reasoning or tools are deferred (section 5.6). Sharing by link is
+   optional and built later (S-13, section 12.1); nothing in the first release
+   shares a skill.
+2. **Imports are pinned. Edits make versions.** A GitHub import is pinned to a
+   40-character commit SHA; other sources to `sha256-<first 16 hex>` of the
+   content. An import is never auto-updated. An update is an explicit check, a
+   diff, a review and an accept. Every skill, imported or written, keeps
+   numbered versions (1, 2, 3, and so on). A version is never rewritten: an
+   edit, rename, import, update or restore creates a new version, and the
+   newest 20 are kept (section 8.7).
 3. **Text only.** Extension allowlist plus strict UTF-8; no binaries, no
    `.pyc`, no symlinks.
-4. **Disabled until enabled in the app.** Imports, updates, MCP-created and
-   MCP-updated skills all start disabled.
+4. **Disabled until enabled in the app, except what the user writes in the
+   app.** Imports, updates, MCP-created and MCP-updated skills, MCP renames and
+   share copies all start or become disabled, and only the user enables them in
+   the app. A skill the user creates in the app (blank, command or template) is
+   saved enabled, because the user typed every byte. An in-app save or rename
+   keeps the skill's current enabled state.
 5. **Scanners are not a boundary.** Besidka highlights links, commands and
    hidden characters for the user's review; it never calls a skill "safe".
 6. **Licence gate on every source (pre-check).** The licence **file** at the
    pinned commit decides, through the classifier in section 4; the `license`
    field alone never allows. Restricted skills are blocked with no override.
+   One class is not decided by the classifier: text the user writes in the app
+   (source `editor` or `template`) is class `authored` and needs no
+   right-to-use tick (**this doc**). A licence file the user adds to such a
+   skill still goes through the classifier, so restricted text still blocks.
+   Pasted `SKILL.md` text is an import: it keeps class `none` and its tick.
 7. **Anthropic's document skills (docx, pdf, pptx, xlsx) are Apache-2.0 since
    2026-11-06 (pre-check).** Copies pinned before commit `2c5958ec` carry the
    old proprietary licence and are blocked by licence content, not by path or
@@ -104,7 +131,12 @@ disagreement between tickets and is listed in section 13.
    section 7.1, rule F1), and Besidka's own spending tools offered to the
    model (today `generate_image`) go through the same approval card
    (`toolApproval` returns `user-approval` for them while an activation exists
-   in the send or in the chat's re-injected skills).
+   in the send or in the chat's re-injected skills). **Until C-6 ships, an
+   interim rule replaces the card (owner decision 2026-11-13; S-3 and S-12 ship
+   before C-6):** activating a skill never adds a tool; the tools that spend
+   (web search, `generate_image`, code execution) are offered only when the
+   user picked them for that message; while a skill is active, `generate_image`
+   is limited to one call per send. The approval card is added when C-6 lands.
 9. **Plain text everywhere (this doc).** Skill files are shown as plain
    monospace text in the review screen, the file viewer and the chat side
    panel. No Markdown rendering, no images (an image URL in a skill would leak
@@ -113,34 +145,103 @@ disagreement between tickets and is listed in section 13.
     user's own key, behind `skills.scripts`, a Labs opt-in, a per-skill toggle
     and a per-chat confirmation. **Anthropic only in v1 (coordinator decision,
     2026-11-08)**; the OpenAI path is not built.
-11. **Never public (pre-check).** No user skill content, name or activation
-    reaches a public route or a shared chat (section 12).
-12. **New MCP scopes `skills:read` and `skills:write`.** Writes arrive
-    disabled; deletes stay on `data:delete`, because skills are user content
-    (unlike connectors, see `docs/connectors.md` section 2, item 11).
+11. **Never public (pre-check).** No user skill content, name, activation or
+    command invocation reaches a public route or a shared chat (section 12).
+    The one planned exception is optional link sharing (S-13). It is not part
+    of the first release, it needs its own pre-check addendum (S-8b) and its
+    own legal notice, and section 12.1 holds its design.
+12. **New MCP scopes `skills:read` and `skills:write`, and a reserved
+    `skills:share`.** Writes arrive disabled; deletes stay on `data:delete`,
+    because skills are user content (unlike connectors, see
+    `docs/connectors.md` section 2, item 11). `skills:share` is reserved so it
+    can ship in MCP 4.0.0 with the other skill scopes; the tools behind it
+    arrive with S-13 (section 11).
 13. **No new nav pill slots.** Profile tab, Search popup row, "+" menu section,
-    context panel "Used" section.
+    context panel "Used" section. Commands live in the same tab; there is no
+    separate tab.
+14. **A command is a skill (this doc).** One entity, one manager, one set of
+    tables. Two columns the user sets, never the skill's own frontmatter,
+    decide how a skill can be used: `model_invocable` and `slash_command`
+    (section 5.5).
+15. **Nothing spends without Send.** Opening the picker, "Use in new chat", the
+    manager and every MCP tool make no model call. Only the user's Send
+    spends. There is no prefetch, no background work and no MCP run or
+    activate tool.
 
-Feature flags (registered by S-1 at stage `internal`, `default: false`,
-`allowRoles: ['admin']`):
+Feature flags (stage `internal`, `default: false`, `allowRoles: ['admin']`).
+`skills`, `skills.import-url` and `skills.scripts` are already registered in
+`shared/utils/features/registry.ts` on `main`. `skills.scripts` has no `spend`
+set there, so `internalFeature` defaults it to `none`. S-1 adds
+`skills.commands` and corrects `skills.scripts` to the row below. `skills.share`
+is added by S-13.
 
 | Flag | Gates | `spend` |
 | --- | --- | --- |
-| `skills` | Page, tab, Search row, routes, "+" menu section, runtime | `none` (the catalog and bodies are tokens of the user's normal send) |
-| `skills.import-url` | GitHub and link imports (zip and paste work without it) | `none` |
+| `skills` | Page, tab, Search row, routes, editor, "+" menu section, runtime | `none` (the catalog and bodies are tokens of the user's normal send) |
+| `skills.import-url` | GitHub import and update checks (archive, paste, templates and writing a skill work without it) | `none` |
+| `skills.commands` | The `/` picker, the invocation chip and the invocation part (section 5.5) | `none` (Send is the only spend, item 15) |
 | `skills.scripts` | Provider-container execution (section 7), Labs opt-in | `foreground`, so `optIn: 'required'` |
+| `skills.share` | Link sharing (S-13, section 12.1) | set by S-13 |
 
 ## 3. Import, pinning and archive rules
 
 ### 3.1 Sources
 
-| Source | How | Version |
-| --- | --- | --- |
-| GitHub URL `github.com/<owner>/<repo>[/tree\|blob/<ref>/<path>]` | One download of `https://github.com/<owner>/<repo>/archive/<ref>.zip` (redirects to `codeload.github.com`), through `safeFetch` purpose `skills-github` (section 4.2 of `docs/connectors.md`) with a `User-Agent`. The SHA comes from the zip's archive comment (GitHub writes the full 40-character SHA there) or from the URL when it already holds one. No REST API call on import | Commit SHA |
-| Link to a raw `SKILL.md` | One `safeFetch` (purpose `skills-url`, at most 256 KiB, `text/*`). Folder name from the URL path's parent segment | `sha256-<16 hex>` of the content |
-| Upload `.zip` or `.skill` | At most 5 MiB compressed; unzipped in a browser worker for the preview, then the **original archive** is uploaded and the server re-inflates it with hard limits | `sha256-<16 hex>` of the archive |
-| Paste | `SKILL.md` text only (`POST /api/v1/skills/import/text`) | `sha256-<16 hex>` of the text |
-| MCP `create_skill` | Files as text (section 11) | `sha256-<16 hex>` of the canonical file set |
+| Source | `source_kind` | How | Version |
+| --- | --- | --- | --- |
+| Editor: blank skill or blank command | `editor` | Written in the app (section 10); class `authored` | Besidka version 1, origin `editor` |
+| Template | `template` | One of 3 to 4 Besidka-authored starters in `shared/utils/skills/templates/`; class `authored` | Besidka version 1, origin `template` |
+| Upload `.zip` or `.skill` | `zip` | At most 5 MiB compressed; unzipped in a browser worker for the preview, then the **original archive** is uploaded and the server re-inflates it with hard limits | Provenance `sha256-<16 hex>` of the archive |
+| Paste | `text` | `SKILL.md` text only (`POST /api/v1/skills/import/text`) | Provenance `sha256-<16 hex>` of the text |
+| GitHub URL | `github` | One download from `codeload.github.com` through the narrow fetcher below; flag `skills.import-url` | Provenance: commit SHA |
+| MCP `create_skill` | `mcp` | Files as text (section 11) | Provenance `sha256-<16 hex>` of the canonical file set |
+| Share copy (S-13) | `share` | "Import a copy" of a shared skill (section 12.1) | Set by S-13 |
+| Link to a raw `SKILL.md` | `url` | **Later (S-2U), not in the first release.** One `safeFetch` (purpose `skills-url`, at most 256 KiB, `text/*`) once C-3 is on `main`. Folder name from the URL path's parent segment | `sha256-<16 hex>` of the content |
+
+Two kinds of version exist. Every skill has Besidka's own numbered versions
+(1, 2, 3, and so on; `skills.current_version`). The provenance in the last
+column (a commit SHA or `sha256-<16 hex>`) is stored as `source_version` on the
+skill and on the version row (section 8).
+
+**GitHub link forms (S-2G).** The parser accepts:
+
+- `github.com/<owner>/<repo>`;
+- `github.com/<owner>/<repo>/tree/<ref>[/<path>]`;
+- `github.com/<owner>/<repo>/blob/<ref>/<path>/SKILL.md` (the parent folder is
+  used);
+- `github.com/<owner>/<repo>/commit/<sha>`.
+
+A ref that contains `/` is resolved by trying candidate splits from shortest to
+longest, at most 3, on codeload only. The pin is the SHA in the archive comment
+(GitHub writes the full 40-character SHA there), or the 40-character SHA from
+the URL when it already holds one. Only entries under the requested path are
+inflated. A repository that holds several skills returns a list to pick from,
+up to `SKILL_GITHUB_PICK_MAX` (10). Only public repositories work; a 404 says
+"Private or missing repository". No REST API call is made on import.
+
+**The GitHub fetcher is a narrow, allowlisted fetcher, not C-3 (this doc).**
+The host is never user-controlled.
+
+- Besidka parses `owner`, `repo`, `ref` and `path` with strict regexes
+  (`[A-Za-z0-9._-]`, length caps) and builds
+  `https://codeload.github.com/<owner>/<repo>/zip/<ref>` itself. It uses
+  `api.github.com` only for update checks. `raw.githubusercontent.com` is not
+  needed, because the zip carries the files.
+- Fetch rules: `redirect: 'manual'`, https only, an exact-host allowlist, and
+  at most one redirect, followed only when the target is on the allowlist. The
+  hop from `github.com/<owner>/<repo>/archive/<ref>.zip` to codeload is allowed
+  only as that one redirect. Direct codeload comes first; the S-2G spike
+  verifies that codeload answers directly for refs and `HEAD`.
+- Other limits: a streaming cap of `SKILL_MAX_GITHUB_ARCHIVE_BYTES` (25 MiB), a
+  timeout, a `User-Agent`, and 10 imports per hour.
+- Why this is enough without C-3: C-3's threats are SSRF to metadata or private
+  ranges (T1) and DNS rebinding (T2). Both come from hosts the user chooses.
+  With fixed public hosts there is nothing for them to act on, so the fetcher
+  is about 100 lines and easy to review. C-3 is a general wrapper for
+  connectors and arbitrary URLs; pulling it in would add OAuth-purpose rules,
+  header rules and test vectors that skills do not need.
+- The fetcher keeps C-3's call shape (`purpose: 'skills-github'`). When C-3
+  lands, it becomes `safeFetch` with the same allowlist, and one line changes.
 
 GitHub's unauthenticated REST limit is 60 requests an hour per IP, shared
 across Workers egress. Observed on 2026-11-08 (pre-check Q4, not
@@ -149,13 +250,17 @@ API (`GET /repos/{owner}/{repo}/commits/{ref}` with
 `Accept: application/vnd.github.sha`) is used only for update checks. A 403 or
 429 gives "GitHub rate limit reached" with the fix "Try again in an hour or
 upload a zip". A per-user GitHub token (`keys.provider = 'github'`, public
-read-only, encrypted) is **not** in the first layer: S-2 measures on the
+read-only, encrypted) is **not** in the first layer: S-2G measures on the
 preview first (pre-check owner item 3). `keys.provider` is a TypeScript-only
 enum, so adding `github` should generate no SQL; whoever adds it runs
 `pnpm run db:generate` and greps any generated `.sql` for `DROP TABLE` before
 applying (a rebuild of `keys` is the cascade disaster `CLAUDE.md` describes). Never a Besidka-wide token (GitHub
 Terms section H). A connector's GitHub PAT is never reused for imports
 (different purpose and consent).
+
+An import from a Claude Code skill folder reads three frontmatter keys only as
+defaults for the two user-set columns (section 5.5): `disable-model-invocation`,
+`user-invocable` and `argument-hint`. After import they have no effect.
 
 ### 3.2 Archive rules
 
@@ -197,23 +302,28 @@ highlights, never a verdict:
 
 ### 3.4 Staging, commit and update
 
-1. `POST /api/v1/skills/import/preview` (multipart `file` or JSON `{ url }`)
-   validates, classifies the licence, scans, and stages: manifest in KV
+1. `POST /api/v1/skills/import/preview` (multipart `file` or JSON `{ url }`;
+   `{ url }` is a GitHub link, S-2G) validates, classifies the licence, scans, and stages: manifest in KV
    `skills:stage:<stageId>` (1 h), files in R2
    `skills-staging/u<userId>/<stageId>/<path>` (1 h, plus the hourly
    sweep). Returns the frontmatter, file list, `SKILL.md`, findings, warnings
    and licence class.
 2. `POST /api/v1/skills/import/commit` `{ stageId, acknowledged: true }` (and,
    for class `none` or `custom`, `licenceAcknowledged: true`) moves the files to
-   `user-skills/u<userId>/<skillPublicId>/<version>/<path>` and creates the
-   row with `enabled=false`, `status='ready'`.
-3. `POST /api/v1/skills/[id]/update/check` re-resolves the ref (REST call) or
-   re-fetches the link. Unchanged: `{ upToDate: true }`. Changed: staged as
-   `pendingVersion` with a per-file diff (at most 2,000 lines), new findings and
-   any licence change.
+   the content-addressed blob layout of section 3.5, writes **version 1 with
+   origin `import`**, and creates the row with `enabled=false`,
+   `status='ready'`. A GitHub repository that holds several skills first shows
+   a checklist.
+3. `POST /api/v1/skills/[id]/update/check` (GitHub skills only, S-2G)
+   re-resolves the ref (REST call). Unchanged: `{ upToDate: true }`. Changed:
+   staged as `pendingVersion` with a per-file diff (at most 2,000 lines), new
+   findings and any licence change.
 4. `POST /api/v1/skills/[id]/update/accept` `{ stageId, acknowledged: true }`
    promotes the pending version, disables the skill, and prunes versions beyond
-   `SKILL_VERSIONS_KEPT`.
+   `SKILL_VERSIONS_KEPT` (section 8.7).
+
+Writing and editing in the app is a separate path (S-10): create from blank or
+template, and `POST /api/v1/skills/[id]/versions` for a save (section 8.7).
 
 A name collision at commit answers 409 "A skill named X exists: replace as an
 update?", handled as steps 3 and 4. Rate limit: 10 imports per hour per user;
@@ -223,8 +333,13 @@ at most `SKILLS_PER_USER` skills.
 
 | Prefix | Content | Lifetime |
 | --- | --- | --- |
-| `user-skills/u<userId>/<skillPublicId>/<version>/<path>` | Committed files, `contentType` `text/*`, `customMetadata.sha256` | Until the skill, the version (pruned) or the account is deleted |
+| `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` | Committed file contents, content-addressed, `contentType` `text/*`. Which blob is which path in which version is in `skill_files` (section 8.3) | Until the skill or the account is deleted, or no remaining `skill_files` row references the blob (after a version is pruned) |
 | `skills-staging/u<userId>/<stageId>/<path>` | Staged files | 1 h, swept hourly |
+
+The earlier layout `…/<version>/<path>` would copy up to 200 files on every
+one-line save, so it is replaced. There is no `r2_key` column: one key builder
+derives the key from `userId`, the skill's public id and `blob_sha256`, and the
+S-1 never-public spec tests that builder.
 
 The `user-` prefix keeps user content visibly apart from the repository's
 host skills directory `skills/` (served at `/.well-known/agent-skills/`
@@ -240,9 +355,9 @@ first; there is no public or signed-URL route to these objects.
 
 ## 4. Licence gate
 
-`shared/utils/skills/licence.ts` (S-2) runs on every source, on update and on
-MCP `create_skill` and `update_skill`, and returns
-`{ class, text, matched }`. Steps, in order (from the pre-check):
+`shared/utils/skills/licence.ts` (S-2) runs on every source, on update, on
+every in-app save (S-10) and on MCP `create_skill` and `update_skill`, and
+returns `{ class, text, matched }`. Steps, in order (from the pre-check):
 
 1. **Resolve.** Read `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` in the
    skill folder; only if there are none, the repository root (GitHub imports).
@@ -277,6 +392,11 @@ MCP `create_skill` and `update_skill`, and returns
 | `open` | Allowed. SPDX badge and "Licence file: LICENSE.txt (view)". `LICENSE` and `NOTICE` stored verbatim (Apache-2.0 section 4) |
 | `custom` | Allowed after the user reads the licence and ticks an extra box "I read the licence and may use this skill": "Custom licence. Read it before you install." |
 | `none` | Allowed with an extra tick "I have the right to use this skill": "No licence stated. The author keeps all rights by default. Besidka keeps a private copy for you only. Install it only if you have the right to use it." |
+| `authored` | Assigned by source, never by the classifier: only the editor and templates produce it, and **an import never does**. Saved enabled with no licence tick, because the user wrote the text (or took Besidka's own template). A licence file the user adds still goes through the classifier above, so a restricted licence file blocks the save with the `restricted` message |
+
+`LICENSE` and `NOTICE` files are read-only in the editor and cannot be
+deleted or changed when the class is `open` or `custom` (Apache-2.0 section 4).
+Only `authored` skills and `open` skills may be shared (section 12.1).
 
 A licence containing `NonCommercial` shows a warning (monetisation guard).
 When the owner adds a restrictive hash or phrase, stored skills are
@@ -291,32 +411,44 @@ Apache text and its 11,345-byte and 10,174-byte variants; an MIT skill; a
 skill with no licence (`doc-coauthoring`); a "Proprietary" field with no file;
 an Apache header with restrictions appended.
 
-## 5. Runtime
+## 5. Runtime and commands
 
 S-3 wires skills into `server/api/v1/chats/[slug]/index.post.ts` after the
 knowledge tools, only when the `skills` flag is on and the chat has at least
-one enabled skill.
+one enabled, model-invocable skill. S-12 adds slash commands (section 5.5).
+Both ship before C-6, under the interim rule in section 2, item 8.
 
 ### 5.1 Selection
 
 Optional body field `skillIds: z.array(z.string().max(64)).max(20).optional()`
 (a new field; `chatToolSchema` is not widened). Ownership and `enabled` are
 verified and the choice is stored in `skill_chat_settings`; an omitted field
-means the stored per-chat state. At most 20 enabled skills per chat.
+means the stored per-chat state. At most 20 enabled skills per chat. The
+"+" menu lists only enabled skills with `model_invocable` on.
 
 ### 5.2 Catalog
 
 `buildSkillCatalog({ skills, budgetTokens: 1500, family })`
 (`server/utils/skills/runtime/catalog.ts`) builds an `<available_skills>`
-block of `- name: description` lines sorted by name. Tokens are estimated with
+block of `- name: description` lines sorted by name. Only skills with
+`enabled && model_invocable` enter the catalog. A slash-only command costs no
+tokens until the user invokes it. Tokens are estimated with
 `KNOWLEDGE_CHARS_PER_TOKEN` (`shared/utils/project-knowledge-policy.ts`; Latin
 versus Cyrillic, see "Cyrillic multiplier" in `docs/memory-architecture.md`).
 Over budget: descriptions shortened to their first sentence, then names only
 with "(+N more; call activate_skill with an exact name)". The catalog goes in
 the stable prefix of `buildChatInstructions` after the knowledge block, so it
 caches with the prompt (`docs/providers/general.md`). No catalog and no tools
-when the chat has no enabled skill, and no catalog when tool calling is off
-for the message.
+when the chat has no enabled, model-invocable skill, and no catalog when tool
+calling is off for the message.
+
+**Cyrillic multiplier.** `KNOWLEDGE_CHARS_PER_TOKEN` counts Latin at 3.2
+characters per token and Cyrillic at 1.1 for Anthropic. So the 1,500-token
+catalog holds about 1,650 Ukrainian characters. One Ukrainian description at
+the full 1,024 characters is about 930 tokens; in English it would be about
+320. That is why the editor shows a token estimate and warns above
+`SKILL_DESCRIPTION_CATALOG_SOFT_MAX` (300 characters, "Shortened in the
+catalog"), and why slash-only commands stay out of the catalog.
 
 ### 5.3 Tools
 
@@ -326,8 +458,9 @@ for the message.
 
 - `activate_skill({ name: z.enum(enabledNames) })` loads the current
   version's `SKILL.md` body (frontmatter stripped) through `readSkillFile`,
-  cut at 40 KiB with a notice that the rest is readable with
-  `read_skill_file`. Returns
+  cut at 40 KiB **and** at `SKILL_ACTIVATE_MAX_TOKENS` (6,000 tokens,
+  estimated per model family), whichever comes first, with a notice that the
+  rest is readable with `read_skill_file`. Returns
   `<skill_content name="…" source="…" version="…">…</skill_content>` and a
   `<skill_resources>` list (path, bytes, kind; scripts marked "text only, not
   executable here"). A second activation in the same chat returns "Already
@@ -362,24 +495,128 @@ mode), already-active skills are still injected and the catalog is omitted.
 `server/utils/chats/persist-user-message.ts`. Branching keeps the data part;
 re-injection works only for a branching user who owns the skill.
 
+**Why the per-activation token cap exists.** The 40 KiB activation cap is about
+20,480 Cyrillic characters, or about 18,600 tokens. Even Latin text at that
+size is about 12,800 tokens. Either one exceeds the 12,000-token
+`SKILL_ACTIVE_BLOCK_MAX_TOKENS` on its own. The cap of
+`SKILL_ACTIVATE_MAX_TOKENS` (6,000) per activation or invocation lets the block
+fit two. The spec itself recommends a body under 5,000 tokens, and the editor
+warns above that. The rest stays readable through `read_skill_file`.
+
+**Cache.** An invocation goes into the latest user turn (section 5.5), so the
+cached prefix is untouched. Editing a model-invocable skill changes the
+catalog, so it misses the cache once.
+
+### 5.5 Commands (slash invocation)
+
+A **command** is a skill on which the user has switched "Use as /name" on. It
+is not a second entity. A command is built the way a skill is: the same
+`SKILL.md` plus files, the same manager, the same tables, the same import,
+licence gate, findings, versions, review, purge, restore and MCP tools. A
+separate entity would duplicate every one of those and need its own
+`commands:*` scopes, which means another major MCP version.
+
+Two columns on `skills`, set by the user and never by frontmatter, decide how a
+skill can be used:
+
+| Column | UI label | Effect |
+| --- | --- | --- |
+| `model_invocable` | "Model can use it automatically" | Listed in the catalog. The model can call `activate_skill`. |
+| `slash_command` | "Use as /name" | Offered in the composer's `/` picker. The user invokes it explicitly. |
+
+"New command" in the manager creates a skill with `model_invocable` off,
+`slash_command` on, and a short body that uses `$ARGUMENTS`. A skill can have
+both columns on.
+
+Why columns and not frontmatter: skill text is untrusted, and `allowed-tools`
+"never grants a tool" (section 1). An imported skill must not be able to make
+itself model-invocable or slash-invocable. On import, Claude Code's
+`disable-model-invocation`, `user-invocable` and `argument-hint` are read only
+as defaults for the columns. This also matches the ecosystem: Claude Code
+folded `.claude/commands/*.md` into skills, and a `SKILL.md` round-trips to
+and from Claude Code and agentskills.io.
+
+**How an invocation works (BYOK-safe).** The model is the
+`data-artifact-attachment` precedent (`docs/artifacts/attach.md`): a strict
+user-message part, rewritten on the server from the D1 row, removed by
+`filterPublicParts`, and dropped on replay when it no longer resolves.
+
+1. **Choosing in the picker** removes the `/query` text and adds a chip to the
+   attachments row. Nothing is sent and nothing is fetched for the model. The
+   user types arguments and presses Send. That press is the only consent and
+   the only spend.
+2. **The send** carries
+   `{ type: 'data-skill-invocation', data: { skillId, name, version } }`, at
+   most one per message (`SKILL_INVOCATIONS_PER_MESSAGE`). A message may hold
+   only an invocation: S-12 changes the request schema
+   (`server/utils/chats/request-schema.ts`) to allow it.
+   `resolveSkillInvocationPart` (new,
+   `server/utils/skills/runtime/invocation.ts`) is called by both chat routes.
+   It checks owner, `enabled`, `slash_command` and the flag, and answers one
+   generic 400 for every failure so that ids cannot be probed.
+3. **The server injects** the current version's body as
+   `<skill_content name source version invoked="user">`, with `$ARGUMENTS`
+   replaced by the user's text (or "ARGUMENTS: ..." appended when the body has
+   no placeholder). It goes into the **latest user turn**, never the system
+   prompt, so the prompt cache stays intact. The artifact context block does
+   the same. Because no tool call is needed, it works on any model, including
+   models without tool calling. Deep-research models hide the picker. The
+   body is cut at `SKILL_ACTIVATE_MAX_TOKENS`, as an activation is.
+4. **Persistence.** If `model_invocable` is on, the invocation also emits
+   `data-skill-activation`, so the skill stays active through section 5.4
+   re-injection. A pure command is one-shot: it applies only to its own turn
+   and to a Regenerate of it.
+5. **Never public.** The part is filtered from shares, so the skill name never
+   reaches a shared chat (section 12). The visible text part holds only the
+   arguments, because typing `/name␠` turns into the chip before sending. A
+   client-side "Insert as text" (chip menu) expands the template into the
+   textarea as the user's own text. It is offered only for skills of class
+   `authored`, so third-party text never becomes trusted user text by default.
+6. **The memory write lock is preset** (the `presetMemoryWriteLock` pattern)
+   whenever an invoked or re-injected skill is in context. All skill text, the
+   user's own included, is treated as untrusted. The invocation is labelled as
+   user-selected but stays subordinate to the user's message and Besidka's
+   rules. Arguments are the user's own text, so they add no injection
+   channel.
+
+The picker, chip and composer rules are in section 10.
+
+### 5.6 Presets and built-in commands
+
+- **Presets** (model, reasoning, tools) are deferred. If they are built later,
+  they are D1 settings applied as **visible, removable composer tiles before
+  Send**, never applied silently, because a preset that changes the model or
+  tools is a spend escalation.
+- **Built-in commands** are optional and later (S-14, flag
+  `composer.builtin-commands`): `/new`, `/model`, `/search`, `/image`,
+  `/memory`, `/project`, `/help`. They are client-only UI actions that change
+  visible composer state. They never send and never become parts. They appear
+  in the same picker under a "Besidka" group.
+- **Reserve their names now.** The S-1 name validator holds
+  `SKILL_RESERVED_SLASH_NAMES`. A skill can still have such a name, but its
+  slash toggle is refused with "/memory is reserved by Besidka".
+
 ## 6. Threat model
 
 | # | Threat | Attacker | Mitigation | Ticket |
 | --- | --- | --- | --- | --- |
-| K1 | Malicious instructions that steer the model to exfiltrate data or act (Snyk ToxicSkills, 2026-02: 36.82% of 3,984 public skills flawed, 13.4% critical) | Skill author | Full-content review before install with a required tick; skill text wrapped and framed as untrusted; F1 forced approvals for every tool not marked read-only while a skill is active; memory write lock; disabled by default; per-skill and per-chat toggles | S-3, S-4, C-6 |
+| K1 | Malicious instructions that steer the model to exfiltrate data or act (Snyk ToxicSkills, 2026-02: 36.82% of 3,984 public skills flawed, 13.4% critical) | Skill author | Full-content review before install with a required tick; skill text wrapped and framed as untrusted (an invocation is labelled user-selected but stays subordinate to the user's message); the interim tool rule until C-6 (section 2, item 8), then F1 forced approvals for every tool not marked read-only while a skill is active; memory write lock, preset on invocation; disabled by default for everything but text the user wrote in the app; per-skill and per-chat toggles | S-3, S-4, S-12, C-6 |
 | K2 | Scanner bypass (Trail of Bits, 2026-06: newline padding, `.pyc`, prompts aimed at LLM analysers) | Skill author | Scanners are not a boundary: findings are highlights; padding and long lines are findings themselves; `.pyc` and binaries rejected; no LLM judges a skill | S-2, S-4 |
 | K3 | Hidden text: bidi overrides, zero-width characters, padding below the fold | Skill author | Hidden characters shown as `⟨U+…⟩`; plain monospace viewer, no Markdown rendering; line and blank-run findings | S-2, S-4 |
 | K4 | Silent update that turns a reviewed skill malicious | Repository owner | Pinned SHA, never auto-updated; update = diff + new findings + licence change + review + accept, and the skill is disabled again | S-2, S-4 |
 | K5 | Archive attacks: zip slip, symlinks, zip bombs, zip64, huge entries | Skill author | Section 3.2 rules on client and server, streaming inflate with abort | S-2 |
 | K6 | YAML attacks: alias expansion ("billion laughs"), huge frontmatter | Skill author | `yaml` with `maxAliasCount: 0`, size cap, or a minimal frontmatter splitter | S-2 |
 | K7 | Scripts executing arbitrary code | Skill author | Never in Besidka; only in the user's own provider container with no network, behind flag, opt-in, per-skill toggle and per-chat confirmation | S-5 |
-| K8 | SSRF through import URLs | Malicious user | `safeFetch` purposes `skills-github` and `skills-url` (`docs/connectors.md` section 4) | C-3, S-2 |
+| K8 | SSRF through import URLs | Malicious user | GitHub import: the narrow allowlisted fetcher (section 3.1): the host is never user-controlled, `redirect: 'manual'`, exact-host allowlist. A raw-link import (S-2U) waits for `safeFetch` purpose `skills-url` (`docs/connectors.md` section 4) | S-2G, S-2U, C-3 |
 | K9 | Licence or copyright breach by an import | User | Licence gate on every source; restricted blocked; private storage only; Terms right-to-use promise and disable power (S-7) | S-2, S-7 |
-| K10 | Injected agent installs instructions over MCP | Agent with `skills:write` | Created and updated skills are disabled with status `needs-review`; no enable, no `allowScripts`, no URL import, no activation over MCP; licence gate runs | S-6 |
+| K10 | Injected agent installs instructions over MCP | Agent with `skills:write` | Created, updated and renamed skills are disabled with status `needs-review`; no enable, no toggles on an existing skill, no `allowScripts`, no URL import, no activation over MCP; licence gate runs; 30 skill writes per hour per user | S-6 |
 | K11 | Skill content leaks to the public | Bug | Never-public invariant with specs (section 12) | S-1, S-3, S-6 |
-| K12 | D1 restore revives a deleted malicious skill, enabled | Operator restore | `docs/d1-restore-reconciliation.md`: `UPDATE skills SET enabled = 0` for rows touched in the window (or all), replay deletions from Axiom, mark rows whose R2 object is gone `broken` | S-1 |
+| K12 | D1 restore revives a deleted malicious skill, enabled | Operator restore | `docs/d1-restore-reconciliation.md`: `UPDATE skills SET enabled = 0` for rows touched in the window (or all), replay deletions from Axiom, mark rows whose R2 blob is gone `broken` (section 8.8) | S-1 |
 | K13 | Provider-side copy outlives the user's intent | n/a | Provider skill id stored in D1; the copy is deleted when scripts are turned off, the skill or the account is deleted, before the key is purged | S-5 |
 | K14 | Cross-connector exfiltration triggered by a skill | Skill author | `docs/connectors.md` rule F2 applies regardless of skills | C-6 |
+| K15 | Slash-name hijack over MCP: an agent renames a skill to a name the user types every day (`/summarize`) | Agent with `skills:write` | `rename_skill` disables the skill and sets `needs-review`, so it never fires until the user re-enables it. The in-app rename keeps the skill enabled | S-6 |
+| K16 | An imported skill makes itself model-invocable or slash-invocable | Skill author | `model_invocable` and `slash_command` are columns the user sets, not frontmatter; Claude Code keys are read only as defaults at import (section 5.5); MCP never sets them on an existing skill | S-2, S-6, S-12 |
+| K17 | Storage and request abuse through saves | Malicious user or injected agent | `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs), per-save caps, 120 saves per hour, 30 MCP skill writes per hour | S-10, S-6 |
 
 ## 7. Scripts in provider containers (S-5)
 
@@ -415,8 +652,9 @@ containers" toggle is on; the skill is enabled for the chat.
    Automatic for `open` skills, user-confirmed for `none` and `custom`;
    `restricted` never gets here.
 4. **Store** `provider_skill_id`, `provider_skill_version` and
-   `provider_uploaded_name` on the `skills` row (D1, not KV). Re-upload when the
-   Besidka version changes or the provider answers not-found.
+   `provider_uploaded_name` on the `skills` row (D1, not KV). Re-upload lazily:
+   when `current_version` differs from the uploaded version, not on every save,
+   or when the provider answers not-found.
 5. **Send**: `providerOptions.anthropic.container.skills = [{ type: 'custom', skillId, version }]`
    plus D-7's code execution tool; `activate_skill` stays.
 6. **Per-chat confirmation**: the first script run in a chat shows a C-6 style
@@ -437,18 +675,24 @@ note "Scripts need a Claude model with code execution".
 
 ## 8. Data model
 
-All in `server/db/schemas/skills.ts`, exported from `server/db/schema.ts`. One
-migration in S-1 with only `CREATE TABLE` and `CREATE INDEX`. Defaults in
-application code. **No foreign key to `users` and no cascade to `chats`
+All in `server/db/schemas/skills.ts`, exported from `server/db/schema.ts`. Four
+tables in **one migration in S-1**: only `CREATE TABLE` and `CREATE INDEX`, and
+no `ADD COLUMN` later. Defaults are set in application code (`$defaultFn`).
+The S-1 pull request greps the generated SQL for `DROP TABLE`. A
+`besidka-preview` Time Travel bookmark is taken before the bottom layer is
+created, because creating it triggers a deploy that applies the migration
+(`docs/stacked-prs.md`). **No foreign key to `users` and no cascade to `chats`
 (this doc, same rule as `docs/connectors.md` section 8):** `purgeUserData`
 deletes the rows and the R2 prefixes explicitly, and the purge coverage spec
 fails when a table with a `user_id` is missed. The purge deletes the S-5
-provider copies first (best effort, before the key is purged), then the rows,
-then `user-skills/u<userId>/` and `skills-staging/u<userId>/`. The skills
-pre-check (question 8, S-1 row) asks to add the skills tables to the
-`CLAUDE.md` cascade list; that list holds tables with a cascade FK to
-`users`, and these tables have none, so nothing is added (coordinator to
-confirm, see section 13). Activations are message parts, not a table.
+provider copies first (best effort, before the key is purged), then all four
+tables (and the share tables, once S-13 exists), then `user-skills/u<userId>/`
+and `skills-staging/u<userId>/`. The skills pre-check (question 8, S-1 row)
+asks to add the skills tables to the `CLAUDE.md` cascade list; that list holds
+tables with a cascade FK to `users`, and these tables have none, so no table is
+added. S-1 adds one sentence after the `documents` note instead: the skills
+tables have no foreign key and are purged explicitly (coordinator to confirm,
+see section 13). Activations and invocations are message parts, not a table.
 
 ### 8.1 `skills`
 
@@ -456,26 +700,30 @@ confirm, see section 13). Activations are message parts, not a table.
 | --- | --- | --- |
 | `id` | publicId | |
 | `user_id` | integer, not null | |
-| `name` | text | unique per user |
+| `name` | text | unique per user, so slash names are unique too |
 | `description` | text | at most 1,024 |
 | `license_field` | text, null | raw `license` frontmatter |
-| `license_class` | text | `open`, `custom`, `none`, `restricted` |
+| `license_class` | text | `open`, `custom`, `none`, `restricted`, `authored` |
 | `license_file_sha256` | text, null | |
 | `license_classifier_version` | integer | |
 | `compatibility` | text, null | at most 500 |
 | `metadata` | json, null | string map |
 | `allowed_tools` | json, null | informational |
-| `source_kind` | text | `github`, `url`, `zip`, `text` |
+| `source_kind` | text | `editor`, `template`, `zip`, `text`, `github`, `url`, `mcp`, `share` |
 | `source_url` | text, null | |
 | `source_ref` | text, null | requested ref (branch or tag) |
-| `current_version` | text | SHA or `sha256-<16 hex>` |
-| `pending_version` | text, null | update awaiting review |
-| `sha256` | text | of the current file set |
-| `files_count`, `bytes` | integer | |
-| `enabled` | integer (bool) | false on create and on every update |
+| `source_path` | text, null | subfolder inside the repository |
+| `source_version` | text, null | provenance of the last import: commit SHA or `sha256-<16 hex>` |
+| `current_version` | integer | Besidka's own 1, 2, 3, and so on |
+| `pending_version` | integer, null | update awaiting review; null when none |
+| `files_count`, `bytes` | integer | of the current version, for the list |
+| `enabled` | integer (bool) | false on import, update, MCP write and share copy; true on creation in the app |
+| `model_invocable` | integer (bool) | section 5.5 |
+| `slash_command` | integer (bool) | section 5.5 |
+| `argument_hint` | text, null | at most 100; read as a default from Claude Code's `argument-hint` on import |
 | `allow_scripts` | integer (bool) | S-5, default false |
 | `status` | text | `ready`, `needs-review`, `broken` |
-| `created_via` | text | `app`, `mcp` |
+| `created_via` | text | `app`, `mcp`, `share` |
 | `created_by_client_id` | text, null | MCP client id |
 | `provider_skill_id` | text, null | S-5 |
 | `provider_skill_version` | text, null | S-5 |
@@ -483,45 +731,124 @@ confirm, see section 13). Activations are message parts, not a table.
 | `provider_deleted_at` | timestamp, null | S-5 |
 | `created_at`, `updated_at` | timestamps | |
 
-Indexes: unique (`user_id`, `name`); (`user_id`, `updated_at`).
+The `sha256` column of the earlier design is dropped (it moves to the version
+row). Indexes:
+unique (`user_id`, `name`); (`user_id`, `updated_at`).
 
-### 8.2 `skill_files`
+### 8.2 `skill_versions`
+
+| Column | Notes |
+| --- | --- |
+| `id` | |
+| `skill_id` | text, the public id |
+| `user_id` | integer |
+| `version` | integer |
+| `origin` | `import`, `update`, `editor`, `template`, `mcp`, `rename`, `restore`, `share` |
+| `created_by_client_id` | MCP client id, null otherwise |
+| `source_version` | provenance |
+| `sha256` | of the canonical file set |
+| `files_count`, `bytes` | |
+| `license_class`, `license_file_sha256` | |
+| `findings` | json of counts by type |
+| `note` | at most 200 characters |
+| `created_at` | |
+
+Indexes: unique (`skill_id`, `version`); (`user_id`).
+
+### 8.3 `skill_files`
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | integer, autoincrement | |
 | `skill_id` | text | |
 | `user_id` | integer | |
-| `version` | text | |
+| `version` | integer | |
 | `path` | text | normalised relative path |
-| `r2_key` | text | |
+| `blob_sha256` | text | the R2 blob (section 3.5) |
 | `bytes` | integer | |
-| `sha256` | text | |
 | `kind` | text | `skill-md`, `reference`, `script`, `asset`, `licence`, `other` |
 
-Unique (`skill_id`, `version`, `path`); index (`user_id`).
+There is no `r2_key` column (section 3.5). Indexes: unique (`skill_id`,
+`version`, `path`); (`user_id`); (`skill_id`, `blob_sha256`) for pruning.
 
-### 8.3 `skill_chat_settings`
+### 8.4 `skill_chat_settings`
 
 `id`, `user_id`, `chat_public_id` (text), `skill_id`, `enabled`, timestamps.
 Unique (`chat_public_id`, `skill_id`). Deleted by the chat-deletion cleanup.
+Unchanged by the 2026-11-13 amendments.
 
-### 8.4 KV keys
+### 8.5 KV keys
 
 | Key | TTL | Content |
 | --- | --- | --- |
 | `skills:stage:<stageId>` | 1 h | staged manifest |
 
-### 8.5 Status transitions
+### 8.6 Status transitions
 
 | Event | `status` | `enabled` |
 | --- | --- | --- |
+| Created in the app (blank, command, template) | `ready` | true |
+| In-app save or rename of an existing skill | unchanged | unchanged |
 | App import committed (after review) | `ready` | false |
 | MCP `create_skill` | `needs-review` | false |
 | Update staged (app check or MCP `update_skill`) | `needs-review` (pending version set) | false |
+| MCP `rename_skill` | `needs-review` | false |
 | Update accepted in the app | `ready` | false until the user enables |
-| R2 object missing on read, or after a restore | `broken` | false |
+| Share copy imported (S-13) | as for an app import | false |
+| R2 blob missing on read, or after a restore | `broken` | false |
 | Licence re-classified as `restricted` | `broken` with a licence notice | false |
+
+### 8.7 Versioning and storage
+
+**Settings versus content.** The toggles (`model_invocable`, `slash_command`),
+`argument_hint` and `enabled` are settings. Changing them does not create a
+version. The name, the description and every file are content. Every save,
+rename, restore or import creates a version.
+
+**A save writes only the files that changed.**
+
+1. R2 puts first (they are idempotent, because the key is the content hash).
+2. Then one `db.batch()` inserts the version and its file rows and updates
+   `skills.current_version`, guarded on `baseVersion`. A stale `baseVersion`
+   answers 409.
+
+Blobs from a failed batch are orphans. The hourly sweep removes blobs older
+than 1 h that no `skill_files` row references.
+
+**Prune.** Keep `SKILL_VERSIONS_KEPT` (20) versions. A pending version, and a
+version pinned by a share, are never pruned. After a version's rows are
+deleted, the blobs that no remaining row references are deleted. Deleting a
+skill is one prefix delete. `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs)
+caps the worst case of rewriting 1 MiB files across 20 versions and 50 skills.
+
+**Restore** creates a new version. It never rewrites history.
+
+### 8.8 Purge, cleanup and restore
+
+- `purgeUserData` (`server/utils/account/purge-user-data.ts`) runs in the order
+  at the top of this section. The coverage spec in
+  `tests/unit/utils/account/purge-user-data.spec.ts` must see `user_id` on
+  every skills table.
+- Chat deletion removes `skill_chat_settings` rows.
+- `docs/d1-restore-reconciliation.md` gets a new "Skills" section and summary
+  rows (S-1):
+  - `UPDATE skills SET enabled = 0` for rows touched in the window (or all);
+  - replay skill deletes from Axiom;
+  - diff the `user-skills/` blobs against `skill_files.blob_sha256`, and mark a
+    row with a missing blob `broken`;
+  - set `current_version` to the newest complete version;
+  - with S-13, revoked shares come back: replay the revokes and turn the share
+    flag off until that is done.
+
+### 8.9 Later: sharing tables (S-13)
+
+In S-13's own migration, not S-1's:
+
+- `skill_shares`: `id`, `skill_id`, `user_id`, `token_hash`,
+  `token_encrypted`, `pinned_version`, `created_via`, `client_id`,
+  `expires_at`, `revoked_at`, `takedown_at`, `takedown_reason`,
+  `import_count`.
+- `skill_share_reports`: modelled on `artifact_reports`.
 
 ## 9. Limits
 
@@ -534,14 +861,24 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_MAX_FILE_BYTES` | 1 MiB | S-2, S-4 |
 | `SKILL_MAX_SKILL_MD_BYTES` | 256 KiB | S-2 |
 | `SKILL_MAX_UPLOAD_BYTES` | 5 MiB compressed | S-2 |
-| `SKILL_MAX_GITHUB_ARCHIVE_BYTES` | 25 MiB compressed | S-2 |
-| `SKILL_MAX_RAW_URL_BYTES` | 256 KiB | S-2 |
+| `SKILL_MAX_GITHUB_ARCHIVE_BYTES` | 25 MiB compressed | S-2G |
+| `SKILL_MAX_RAW_URL_BYTES` | 256 KiB | S-2U |
 | `SKILL_MAX_RATIO` | 100:1 | S-2 |
 | `SKILL_MAX_PATH_LENGTH` | 200 | S-2, S-3 |
 | `SKILL_MAX_PATH_DEPTH` | 6 | S-2 |
 | `SKILLS_PER_USER` | 50 | S-2, S-6 |
-| `SKILL_VERSIONS_KEPT` | 2 | S-2 |
-| `SKILL_IMPORTS_PER_HOUR` | 10 per user | S-2 |
+| `SKILL_VERSIONS_KEPT` | 20 (was 2) | S-1, S-2, S-10 |
+| `SKILLS_MAX_USER_BYTES` | 50 MiB of unique blobs per user | S-1, S-10 |
+| `SKILL_IMPORTS_PER_HOUR` | 10 per user | S-2, S-2G |
+| `SKILL_SAVES_PER_HOUR` | 120 per user | S-10 |
+| `SKILL_SAVE_MAX_CHANGES` | 50 per save | S-10 |
+| `SKILL_SAVE_MAX_BYTES` | 2 MiB per save | S-10 |
+| `SKILL_EDIT_MAX_FILE_BYTES` | 256 KiB; larger files open read-only | S-10, S-11 |
+| `SKILL_ARGUMENT_HINT_MAX` | 100 characters | S-1, S-10 |
+| `SKILL_INVOCATIONS_PER_MESSAGE` | 1 | S-12 |
+| `SKILL_RESERVED_SLASH_NAMES` | `new`, `model`, `search`, `image`, `memory`, `project`, `help` (section 5.6) | S-1 |
+| `SKILL_GITHUB_PICK_MAX` | 10 skills chosen from one repository | S-2G |
+| `SKILL_DESCRIPTION_CATALOG_SOFT_MAX` | 300 characters | S-11 |
 | `SKILL_STAGE_TTL` | 1 h | S-2 |
 | `SKILL_DIFF_MAX_LINES` | 2,000 | S-2, S-4 |
 | `SKILL_FINDING_LONG_LINE` | 2,000 characters | S-2 |
@@ -549,10 +886,11 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILLS_ENABLED_PER_CHAT` | 20 | S-3 |
 | `SKILL_CATALOG_BUDGET_TOKENS` | 1,500 | S-3 |
 | `SKILL_ACTIVATE_MAX_BYTES` | 40 KiB | S-3 |
+| `SKILL_ACTIVATE_MAX_TOKENS` | 6,000, Cyrillic-aware, in addition to the byte cap (sections 5.3 and 5.4) | S-3, S-12 |
 | `SKILL_READ_FILE_MAX_BYTES` | 64 KiB | S-3 |
 | `SKILL_ACTIVE_BLOCK_MAX_TOKENS` | 12,000 | S-3 |
 | `SKILL_STEPS_PER_TURN` | 4 | S-3 |
-| `SKILL_VIEWER_FILE_MAX_BYTES` | 1 MiB (`GET /api/v1/skills/[id]/files`) | S-4 |
+| `SKILL_VIEWER_FILE_MAX_BYTES` | 1 MiB (`GET /api/v1/skills/[id]/files`) | S-4, S-10 |
 | `SKILL_MCP_FILES_MAX` | 50 per `create_skill` or `update_skill` | S-6 |
 | `SKILL_MCP_FILE_MAX_CHARS` | 200,000 | S-6 |
 | `SKILL_MCP_TOTAL_MAX_BYTES` | 400 KiB (under the 512 KiB `MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES`) | S-6 |
@@ -564,27 +902,101 @@ The 40 KiB activation cap is below the 256 KiB `SKILL.md` cap on purpose: a
 large `SKILL.md` stays importable, and the model reads the rest in 64 KiB
 pages through `read_skill_file`.
 
-## 10. UI placement and review
+## 10. UI placement, manager, editor and picker
+
+### 10.1 Placement
 
 | Place | What | Ticket |
 | --- | --- | --- |
-| Profile tab | `{ to: '/profile/skills', label: 'Skills', icon: 'lucide:sparkles' }` after Connectors, flag-gated | S-4 |
+| Profile tab | `{ to: '/profile/skills', label: 'Skills', icon: 'lucide:sparkles' }` after Labs (and after Connectors once that exists), flag-gated. Commands live in the same tab. `isTabActive` already covers child routes | S-4 |
 | Search popup | Settings row `search-option-skills`, same icon and label, flag-gated, id in `tests/unit/components/Search/Modal.spec.ts` | S-4 |
 | User dropdown | Nothing | S-4 |
-| "+" menu | Section "Skills" in `ToolsMenu/Content.vue`: `ToggleRow` per enabled skill (name, description tooltip), revealed only when the user has at least one enabled skill; `ActionRow` "Manage skills"; tile "N skills" | S-3 |
-| Chat bubble | `Chat/SkillActivation.vue` chip (`badge badge-soft` with `lucide:sparkles`); click opens the P0-11 `UiSidePanel` with `SKILL.md` as **plain monospace text**, version, short SHA, source, "Manage skills" | S-3 |
-| Context panel | "Used → Skills" (name, activation count, version) from `data-skill-activation` parts, owner view only | S-3 |
+| "+" menu | Section "Skills" in `ToolsMenu/Content.vue` (section 10.5) | S-3, S-12 |
+| Composer | The `/` picker and the invocation chip (section 10.5) | S-12 |
+| Chat bubble | `Chat/SkillActivation.vue` chip (`badge badge-soft` with `lucide:sparkles`) for an activation, `Chat/SkillInvocation.vue` for an invocation; click opens the P0-11 `UiSidePanel` with `SKILL.md` as **plain monospace text**, version, short SHA, source, "Manage skills" | S-3, S-12 |
+| Context panel | "Used → Skills" (name, activation count, version) from `data-skill-activation` and `data-skill-invocation` parts, owner view only | S-3, S-12 |
 | Labs | `skills.scripts` opt-in with the cost note | S-5 |
 
-Skills page (`app/pages/profile/skills.vue`, components in
-`app/components/Profile/Skills/`): header "Skills teach the model how to do a
-task your way. They are instructions written by others, so review them like
-software you install."; "Import skill" (dialog
-`modal modal-bottom sm:modal-middle js-skill-import-modal`, tabs GitHub · Link
-to SKILL.md · Upload · Paste; GitHub and Link hidden without
-`skills.import-url`).
+Tab-row width: six profile tabs exist today (Security, API Keys, Memory,
+Preferences, Connected apps, Labs), and the documented rule only guarantees
+six. Skills is the seventh (the eighth once Connectors exists). Re-check the
+row at 768, 1024 and 1440 px in light and dark. If it overflows, use the
+`docs/connectors.md` section 10 fallback: one "Integrations" tab.
 
-Review screen (required before install and before accepting an update;
+### 10.2 Manager (S-4)
+
+`app/pages/profile/skills.vue`, components in `app/components/Profile/Skills/`
+(List, Row, Filters, DetailPanel, ImportDialog, WorkspaceDialog, DiffView),
+state in `app/composables/skills-library.ts`.
+
+- **Header:** one line, "Skills teach the model how to do a task your way.
+  Commands are skills you run with /name." On the right, a `btn btn-primary
+  btn-sm` **New** that opens a daisyUI `dropdown` (a `modal modal-bottom`
+  sheet below `sm`) with: Blank skill, Blank command, From a template, Upload
+  .zip or .skill, Paste SKILL.md, and From GitHub (behind `skills.import-url`).
+- **Filters** follow the documents-library precedent
+  (`app/pages/chats/documents/index.vue`, `buildFilterOptions`). Top row:
+  `HistoryBoxTabs` by source: **All sources**, Created, Imported, From apps.
+  Kind row: `HistoryFilterButtons` with `badge-xs` counts: **All**, Skills,
+  Commands (a skill that is both counts in both). Each row is hidden when it
+  has fewer than two options, so there are never two identical "All" controls.
+  `UiSearchInput` appears from 8 items. State lives in the URL query
+  (`?source=&kind=&query=`).
+- **Review banner:** `alert alert-warning alert-soft` "N skills need review"
+  when any skill is `needs-review`, linking to the first one.
+- **Rows** (`ul.list`, like `HistoryArtifactRow`): the name (shown as `/name`
+  when slash is on) and a one-line description, as plain text; `badge
+  badge-soft` for Skill and Command, and a status badge (Off, Needs review,
+  Broken); a meta line ("Created by you · v7 · 2 h ago",
+  "github.com/o/r/skills/x @ abc1234", or "Added by <client>"); an estimate
+  such as "≈ 95 tokens in every message", shown only for model-invocable
+  skills; an enable `toggle toggle-sm` (24 px target; the first enable of an
+  imported or MCP skill asks for confirmation); and a kebab menu: Edit, Use in
+  new chat, Versions, Download .zip, Check for updates (GitHub only), Share
+  (S-13), Delete.
+- **Detail:** a click opens `UiSidePanel` (`open({ viewKey: 'skill:<id>' })`),
+  docked from 1128 px, an overlay at md and a full-screen sheet below md.
+  Inside the panel: **Instructions** (`SKILL.md` as plain monospace text with line
+  numbers; findings marked with a background and a text marker; hidden
+  characters shown as `⟨U+202E⟩`), **Files** (a `menu menu-sm` tree, a `select`
+  on mobile), **Versions** (for example v7 "Edited in Besidka", v6 "Imported
+  @abc1234", v5 "From Claude (MCP), pending"; each has "Compare with current",
+  a unified diff with `+` and `-` and text labels, not colour alone, capped at
+  `SKILL_DIFF_MAX_LINES`, and "Restore", which creates a new version) and
+  **Settings** (the two invocation toggles, argument hint, licence and source,
+  and later the S-5 scripts toggle). The header holds the enable toggle and an
+  **Edit** button.
+- **Use in new chat** opens `/chats/new` with the chip queued through
+  `useChatInputPrefill().queue()` (`app/composables/chat-input-prefill.ts`).
+  Nothing is sent.
+- **States:** loading (skeleton rows, and `UiSidePanelSkeleton` in the panel);
+  empty ("No skills yet. Create one, start from a template, or import a .zip or
+  a GitHub link." and the New button); no results for filters; error (inline
+  `alert alert-error alert-soft` with Retry, inside the view in the panel);
+  broken skill (row badge plus "Files are missing. Restore an earlier version
+  or delete it.").
+- **Mobile:** a single-column list with full-width toggles; the New menu and
+  the import dialog are bottom sheets; the detail is a full-screen sheet. Check
+  Safari and the PWA in the iOS Simulator on the top layer's preview.
+
+### 10.3 Create and import
+
+- **Blank skill or blank command** opens the editor with a minimal template
+  (frontmatter name and description, plus a body). The command template uses
+  `$ARGUMENTS`.
+- **From a template:** 3 to 4 Besidka-authored starters shipped as text under
+  `shared/utils/skills/templates/`, for example writing style, code-review
+  checklist, meeting notes, and translate with glossary. They are Besidka's own
+  text, so they are not presets of third-party skills.
+- **Archive, paste and GitHub import:** a dialog `modal modal-bottom
+  sm:modal-middle js-skill-import-modal` with tabs Upload, Paste and GitHub.
+  It leads to the review screen below, then "Install (disabled)". A GitHub
+  repository with several skills shows a checklist ("This repository has 17
+  skills. Choose which to import."), up to `SKILL_GITHUB_PICK_MAX` (10). The
+  GitHub tab is hidden without `skills.import-url`.
+
+Review screen (S-4; required before an import is installed and before an
+update is accepted; shared with the editor in read-only mode;
 `max-w-5xl h-[85vh]` on desktop, full-screen sheet on mobile):
 
 - Top: name, description, source (owner/repo/path with the short SHA, the
@@ -607,49 +1019,162 @@ Update diff: per-file unified diff with `+` and `-` markers and a text label,
 not colour alone; new findings and licence changes called out; "Accept
 update" disables the skill again.
 
-Skill card: name, description, source and pinned SHA, licence badge, files and
-bytes, "Added by <client>" for MCP-created skills, status badge, enable toggle
-(the first enable shows a one-time confirmation), menu (View content, Check for
-updates, Download as zip, Delete), and with S-5 "Allow scripts in provider
-containers" and "Provider copy: stored in your Anthropic workspace" with a
-remove action.
+### 10.4 Editor (S-11)
 
-Tab-row width: see `docs/connectors.md` section 10 (eight tabs with Labs and
-Connectors; fallback "Integrations").
+- **Shell:** the editor shares one shell with the review screen,
+  `Profile/Skills/WorkspaceDialog.client.vue`, in read-only or edit mode:
+  `max-w-5xl h-[85vh]` on desktop and a full-screen sheet below `sm` (the
+  file-manager size). It is a dialog, not the side panel, because the side
+  panel closes on route change and an editor needs an unsaved-changes guard.
+  The guard follows the `TextFileModal` precedent: "Discard your unsaved
+  changes?" through `useConfirm`. The iOS focus mechanism comes from
+  `docs/chats/model-picker.md`: wrapper `inert` during `showModal()`, close
+  button focused.
+- **Left, the file tree.** Toolbar: Add file, Rename, Delete. Paths are
+  validated live with the same `normaliseSkillPath` and extension allowlist as
+  import. Imported `LICENSE*` and `NOTICE*` files are read-only and cannot be
+  deleted (Apache-2.0 section 4). Files over `SKILL_EDIT_MAX_FILE_BYTES`
+  (256 KiB) open read-only. On mobile the tree is a `select`.
+- **Right, when `SKILL.md` is selected:**
+  - **Name** (regex; uniqueness checked on blur; reserved-name check when
+    slash is on) and **Description** (counter out of 1,024);
+  - a live **token estimate** per model family, using
+    `KNOWLEDGE_CHARS_PER_TOKEN` and the most conservative family; above 300
+    characters it warns "Shortened in the catalog";
+  - a collapsed **Advanced (YAML)** textarea for `license`, `compatibility`,
+    `metadata`, `allowed-tools` and unknown keys, never rendered as HTML;
+  - the **body**, a `textarea textarea-bordered font-mono` (the global
+    `--radius-box` applies), bound to `useMarkdownTextarea` without the
+    long-paste chip, like `Projects/InstructionsCard.vue`.
+- **Other text files** use the same `textarea`.
+- **Two tabs, Write and Model view** (the `NoteEditor` tab pattern). Model view
+  is the preview: it shows the catalog line exactly as the model sees it, then
+  the body as wrapped and sent (plain monospace), with findings highlighted and
+  a token count against the caps. It does **not** render Markdown, which keeps
+  section 2, item 9 (no image IP leak, no hidden text) with no amendment.
+- **Live validation:** the shared `parseSkillMarkdown` and `scanSkillText`
+  (`shared/utils/skills/*`) run client-side with a 300 ms debounce. Errors show
+  inline with line numbers. Hidden characters offer the quick fix "Remove
+  hidden characters". Shell commands and URLs are highlighted as on the review
+  screen.
+- **Footer:** an optional change note (up to 200 characters), Cancel and
+  **Save**. Save sends `{ baseVersion, changes[] }`. A stale base returns 409
+  "This skill changed since you opened it", with Reload and Compare. A save in
+  the app keeps the skill's current enabled state.
+- **Mobile:** full-screen, with the keyboard lift from the `TextFileModal`
+  sheet rules.
+
+### 10.5 "+" menu and composer (S-3, S-12)
+
+- **"+" menu section "Skills"** in `ChatInput/ToolsMenu/Content.vue`: one
+  `ToggleRow` per enabled, model-invocable skill (the per-chat catalog choice,
+  stored in `skill_chat_settings`), revealed only when at least one exists; an
+  `ActionRow` "Use a command" that focuses the textarea and opens the picker,
+  so a touch user does not need to type `/`; and an `ActionRow` "Manage
+  skills". A tile appears only when the chat's selection differs from the
+  default ("3 of 5 skills"). With S-5, a `badge badge-soft` "scripts" marks a
+  skill with scripts, or the muted note "Scripts need a Claude model with code
+  execution".
+- **The `/` picker.**
+  - **Trigger:** the text before the caret matches `^\s*\/[a-z0-9-]*$`, that is,
+    the start of the message only.
+  - **When it does not open:** during IME composition (`isImeEvent`), inside an
+    open fence (guarded even though it cannot happen at the start), or when an
+    invocation chip already exists.
+  - **Shared state:** `useState('chat-input:open-popover')`, so opening it
+    closes the tools menu and the model picker.
+  - **Rendering:** an anchored `ul role="listbox"` above the textarea (the
+    combobox pattern with `aria-expanded` and `aria-activedescendant`), up to 8
+    rows: `/name`, a one-line description and a Skill or Command badge. A
+    footer row "Manage skills". The empty state reads "No command named /xyz.
+    Esc keeps it as text." A loading row comes first, then results.
+  - **Keys:** Up and Down move; Enter and Tab choose. While the picker is open,
+    `onKeydown` returns `true`, so **Enter never sends**. Esc closes and keeps
+    the text. A space after an exact name chooses it.
+  - **Mobile:** the same inline list, not a bottom sheet. A sheet would call
+    `showModal`, steal focus and close the iOS keyboard. Rows are `min-h-11`
+    and are lifted by the existing `useVisualViewportInset`.
+- **Chip:** a pill `SettingTile` with icon `lucide:square-slash`, caption
+  "Command" and value "/name", plus a remove button. Tapping it opens the
+  read-only side-panel detail. The textarea placeholder shows `argument_hint`.
+- **Sent messages:** the bubble shows the chip above the text. The context
+  panel lists the invocation under "Used → Skills".
+
+Skill cards keep the earlier details: "Added by <client>" for MCP-created
+skills, the status badge, the first-enable confirmation, and with S-5 "Allow
+scripts in provider containers" and "Provider copy: stored in your Anthropic
+workspace" with a remove action.
 
 ## 11. MCP exposure
 
-New scopes `skills:read` (read class) and `skills:write` (write class,
-unticked by default). Labels: "See your skills and their full text" and "Add
-or replace skills (saved switched off for your review)". Deletes stay on
-`data:delete`.
+An agent can add, edit, rename and delete skills over MCP, as well as list and
+read them. Sharing is optional and arrives later (S-13).
 
-| Tool | Scope | Annotations | Input | Output |
+New scopes: `skills:read` (read class), `skills:write` (write class, unticked
+by default) and a reserved `skills:share` (section 12.1). Labels: "See your
+skills and their full text" and "Add or replace skills (saved switched off for
+your review)". Deletes stay on `data:delete`. The scopes make the server a
+**major version bump**: `config/mcp-server.ts` is at `3.1.0` on `main`, so the
+release is `4.0.0`. The owner decided on 2026-11-13 that `skills:share` is
+reserved so it can ship in 4.0.0 with `skills:read` and `skills:write`; the
+sharing tools behind it arrive with S-13.
+
+Commands are skills, so there are no separate command tools. Outputs include
+`modelInvocable`, `slashCommand` and `argumentHint`.
+
+| Tool | Scope | Annotations | Input and caps | Behaviour |
 | --- | --- | --- | --- | --- |
-| `list_skills` | `skills:read` | `readOnlyHint` | `{ cursor?, limit? ≤ 50 }` | `[{ id, name, description, enabled, status, licenseClass, sourceKind, sourceUrl?, sourceRef?, version, filesCount, bytes, createdVia, updatedAt }]` |
-| `get_skill` | `skills:read` | `readOnlyHint` | `{ id, includeFiles?, path? }` | metadata and file list; with `path` the file text (at most 200,000 characters, `truncated` flag) |
-| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB }`, must include `SKILL.md` | `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
-| `update_skill` | `skills:write` | `destructiveHint` (replaces content) | `{ id, files: [...] }` (full replacement set) | pending version, `enabled: false`, `findings`, `reviewUrl`, `diffSummary` |
-| `delete_skills` | `data:delete` | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }` |
+| `list_skills` | `skills:read` | `readOnlyHint` | `{ cursor?, limit? ≤ 50, kind? 'skill' or 'command' }` | Metadata only: `[{ id, name, description, enabled, status, licenseClass, sourceKind, sourceUrl?, sourceRef?, version, filesCount, bytes, createdVia, modelInvocable, slashCommand, argumentHint?, updatedAt }]` |
+| `get_skill` | `skills:read` | `readOnlyHint` | `{ id, version?, path? }` | Metadata and file list; with `path`, the file text (at most 200,000 characters) plus a `truncated` flag |
+| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; slashCommand?, modelInvocable?, argumentHint? }` | Saved disabled with `needs-review`. The licence gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
+| `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Stages a pending version, disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, `findings`, `reviewUrl` and `diffSummary` |
+| `rename_skill` | `skills:write` | `idempotentHint`, not destructive | `{ id, name }` (regex, 1 to 64 characters, unique per user, reserved slash names refused) | Rewrites only the frontmatter `name`, as a new version (origin `rename`, note "Renamed from x"). Disables the skill and sets `needs-review` |
+| `delete_skills` | `data:delete` | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`, plus provider-copy deletion with S-5 |
 
-Rules: files as text only, no URLs, no binaries; the same validation as the
-app (`parseSkillMarkdown`, `normaliseSkillPath`, `scanSkillText`, the licence
-classifier, which rejects `restricted` with a clear error); never enable,
-never `allowScripts`, no activation or run tool; `update_skill` stages a
-pending version, disables the skill and sets `needs-review`; `get_skill`
-returns only the caller's own skills. Descriptions end with
-`Requires signing in (<scope>).`; create and update add "The skill is saved
-switched off. The user must review and enable it in Besidka at <reviewUrl>."
-Logic in `server/utils/mcp/private/skills.ts`. Bookkeeping as for connectors:
-`DESTRUCTIVE_TOOLS` gains `update_skill` and `delete_skills`, scope lists,
-labels, `pnpm run mcp:surface`, a major `MCP_SERVER_VERSION` bump (ideally one
-release together with `connectors:*`).
+**How `rename_skill` handles the name rules.**
+
+- The rule that `name` equals the folder name holds by construction. Files are
+  stored relative to the skill root, and the folder name is derived from `name`
+  on download and on the S-5 upload, so no path moves.
+- The `/command` follows the name. The tool output warns "/old no longer
+  works".
+- It disables the skill and sets `needs-review`, because an agent could
+  otherwise rename a skill to a name the user types every day (section 6, K15).
+  The in-app rename uses the same server path but keeps the skill enabled.
+
+**Rules.**
+
+- Files as text only, no URLs, no binaries. The same validation as the app
+  (`parseSkillMarkdown`, `normaliseSkillPath`, `scanSkillText`, the licence
+  classifier, which rejects `restricted` with a clear error).
+- MCP never enables a skill and never sets toggles on an existing skill.
+  Create-time toggles (`slashCommand`, `modelInvocable`, `argumentHint`) take
+  effect only once the user enables the skill. There is no `allowScripts`, no
+  activation or run tool, and no URL or GitHub import over MCP.
+- `get_skill` and `list_skills` return only the caller's own skills.
+- A limit of 30 skill writes per hour per user.
+- Descriptions end with `Requires signing in (<scope>).`. The write tools add
+  "The skill is saved switched off. The user must review and enable it in
+  Besidka at <reviewUrl>."
+- Logic lives in `server/utils/mcp/private/skills.ts` and the tools in
+  `server/mcp/tools/{list-skills,get-skill,create-skill,update-skill,rename-skill,delete-skills}.ts`.
+- Bookkeeping as for connectors: `DESTRUCTIVE_TOOLS` gains `update_skill` and
+  `delete_skills`; scope lists (`shared/utils/mcp-oauth-scopes.ts`,
+  `server/utils/mcp/tool-scopes.ts`), `app/components/OAuth/ScopeLabel.vue`,
+  the scope picker and the connected-apps page; `pnpm run mcp:surface`; the
+  `4.0.0` bump in `config/mcp-server.ts`, `server.json` and both plugin
+  manifests; `docs/mcp-server.md` (tables and "What MCP does not do"); and the
+  Privacy Policy scope list.
+
+**Sharing tools (S-13, later).** Behind the reserved scope: `share_skill
+{ id, expiresInDays ≤ 30 }` and `revoke_skill_shares` under `skills:share`, and
+`list_skill_shares` under `skills:read`. See section 12.1.
 
 "What MCP does not do (and why)" additions (S-6): no enabling a skill, no
-script permission, no URL or GitHub import, no activation. Why: a skill is a
-persistent instruction source, and an injected agent must never switch one
-on. **Revisit when** a confirm-in-app pending state exists that an agent cannot
-complete.
+toggles on an existing skill, no script permission, no URL or GitHub import, no
+activation or run tool. Why: a skill is a persistent instruction source, and an
+injected agent must never switch one on. **Revisit when** a confirm-in-app
+pending state exists that an agent cannot complete.
 
 ## 12. Never public
 
@@ -662,9 +1187,12 @@ Invariants, each with a spec:
    key builder never yields a path the host skills mount serves.
 2. Shared chats carry nothing from a user skill: `activate_skill` and
    `read_skill_file` tool parts are stripped like all tool parts, and
-   `filterPublicParts` also drops `data-skill-activation` parts **(this doc)**.
-   The shared context panel shows no skills section. S-3 spec: no skill name
-   or body text in the shared payload.
+   `filterPublicParts` also drops `data-skill-activation` parts **(this doc)**
+   and `data-skill-invocation` parts (S-12). The shared context panel shows no
+   skills section. The shared view shows a neutral "(private command)" where an
+   invocation was. The visible text part of an invocation holds only the
+   arguments. S-3 and S-12 specs: no skill name or body text in the shared
+   payload.
 3. Skill objects have no public or signed-URL route; reads are authenticated
    and owner-checked in D1.
 4. Axiom wide events carry skill ids and counts only (`attributes.skills`),
@@ -672,17 +1200,68 @@ Invariants, each with a spec:
 5. MCP never returns another user's skill (S-6 spec); the `besidka-overview`
    host skill documents scopes, not content.
 
+Commands comply with these invariants through part filtering and chip
+conversion (section 5.5). Optional link sharing is the only real reversal, and
+it is gated by its own addendum.
+
 `docs/agent-readiness.md` ("Skills and the digest contract") gets a pointer
 to this section in S-1.
 
+### 12.1 Optional sharing by link (S-13, not in the first release)
+
+Decided on 2026-11-13: build it later, as the last optional stack. Authored and
+open skills only, signed-in viewers, 7 days by default and 30 at most, with its
+own legal notice. Flag `skills.share`. It comes after the stack
+"skills" (section 13).
+
+- **Own stack, in order:** (1) S-8b, a `docs(legal)` pre-check addendum as a
+  plain PR first; (2) the D1 layer (`skill_shares`, `skill_share_reports`,
+  section 8.9); (3) routes and UI; (4) the MCP layer.
+- **Link and viewer:** the token is in the path, `/skills/s/<token>`, stored as
+  `token_hash` plus an encrypted copy. Signed-in viewers only. The route sends
+  `X-Robots-Tag: noindex`, is robots-disallowed, and is excluded from the
+  sitemap, `/llms.txt` and the markdown twins. A share is pinned to one
+  version, and pruning keeps it. It expires in 7 days by default and 30 at most
+  (shares created over MCP: 30 at most). It is revocable, with "Revoke all".
+- **What the viewer sees:** the `WorkspaceDialog` in read-only mode, with every
+  file in plain text, findings highlighted and the licence class shown.
+- **"Import a copy"** runs the normal staged review. The copy has
+  `source_kind = 'share'`, the classifier reruns, and it is saved **disabled**.
+- **Licence rule:** share only `authored` skills and `open` skills (with
+  `LICENSE` and `NOTICE` included; a modified `open` skill gains a CHANGES note
+  under Apache-2.0 section 4(b)). Never `none`, `custom` or `restricted`,
+  because Besidka would then distribute third-party text it holds no right to.
+- **DSA and reports:** a link that any account holder can open counts as public
+  dissemination. So the feature needs a Report button that reuses the artifact
+  report and takedown path (the `app/pages/admin/artifact-reports.vue`
+  pattern) with a `skill_share_reports` table, statements of reasons, and a
+  takedown that also hides the share for viewers.
+- **MCP:** the reserved `skills:share` scope, unticked by default, with
+  `share_skill { id, expiresInDays ≤ 30 }`. `revoke_skill_shares` sits under
+  `skills:share`, as the owner asked. The artifacts precedent would put revoke
+  under `:write`, because it only reduces exposure; that is noted for the
+  owner. `list_skill_shares` goes under `skills:read`.
+- **Legal:** this reverses invariant 11 (section 2) and the "no sharing" line
+  in the Terms. It needs a pre-check addendum (S-8b), new Art. 30 and DPIA rows
+  (recipients are other users; the category is shared skill text), the DSA
+  sentence changed from "private storage" to "hosting with public links", and
+  a **separate material `LEGAL_NOTICES` entry**.
+
 ## 13. Ticket changes
 
-Dependencies across stacks: S-2 needs C-3 (`safeFetch`) on `main` first;
-S-3's forced approvals and S-5's per-chat script confirmation need the C-6
-approval flow; S-5 needs D-7 (provider code execution); the context-panel
-section needs P0-13. The MCP version number and order against C-9, P0-8,
-P0-13 and A-8 are set at merge time; S-6 and C-9 ideally ship in one major
-release.
+**Order and dependencies (2026-11-13).** S-0 (this amendment) comes first, then
+one native stack "skills", bottom to top: S-1, S-2, S-2G, S-10, S-4, S-11, S-3,
+S-12, S-6. S-7 (legal) runs in parallel as a plain PR and gates `skills`
+leaving `internal`. Then the testers, then S-9. The optional S-13 follows as
+its own stack. S-2U waits for C-3, and S-5 waits for C-6 (its per-chat script
+confirmation) and needs D-7 (on `main`). **Nothing in the first release waits
+for C-3 or C-6**: GitHub import uses the narrow fetcher (section 3.1), and S-3
+and S-12 use the interim tool rule (section 2, item 8). The lower layers can
+ship early with `gh stack merge --squash` up to a given PR; for example, merge
+S-1 to S-11 (the manager) while S-3, S-12 and S-6 are still in review. The
+context-panel section needs P0-13. The MCP version number and order against
+C-9, P0-8, P0-13 and A-8 are set at merge time; S-6 and C-9 ideally ship in one
+major release (MCP `4.0.0` for the skills scopes).
 
 Breach-runbook rows that S-7 adds (pre-check question 12): R2
 `user-skills/` exposure (like the existing R2 row: random ids lower but do not
@@ -694,17 +1273,28 @@ delete provider copies where a key is held, then the session steps); and a
 note that Anthropic workspace copies sit with the provider, so an exposed key
 means the user deletes them in the Anthropic Console.
 
+Ticket keys without a BES id are new on 2026-11-13.
+
 | Ticket | Change |
 | --- | --- |
-| BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built |
-| S-1 BES-264 | No FK to `users` on any skills table (explicit purge plus the coverage spec), so no `CLAUDE.md` cascade-list change; R2 prefixes `user-skills/u<userId>/` and `skills-staging/u<userId>/`; licence columns; `source_ref` holds the requested ref (branch or tag), the resolved SHA is the version; S-5 provider columns on `skills` (not KV, not a separate table); `skill_files.kind` gains `licence`; status transitions of section 8.5 |
-| S-2 BES-268 | GitHub import through the archive URL with the SHA from the archive comment, REST only for update checks, no token in the first layer; licence classifier on every source; `licenceAcknowledged` for `none` and `custom`; staging prefix `skills-staging/` |
-| S-3 BES-276 | While a skill is active, `generate_image` and any other spending tool goes through the approval card (section 2 item 8); side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB points to `read_skill_file`; memory write lock spec |
-| S-4 BES-280 | Licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed |
-| S-5 BES-285 | Anthropic only; provider id in D1 columns, KV cache removed; substring rename rule; disclosure text of section 7; pinned version; deletion triggers |
-| S-6 BES-292 | Licence classifier in the shared validation; `list_skills` and `create_skill` outputs gain `licenseClass`; `update_skill` stages a pending version (status `needs-review`); labels of section 11 |
-| S-7 BES-294 | Uses this document's licence and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material) |
-| S-8 pre-check (PR #739) | Its S-1 row and question 8 ask to add the skills tables to the `CLAUDE.md` cascade list; with no FK to `users` there is nothing to add (section 8). Staging prefix kept as `skills-staging/`, committed files moved to `user-skills/` as it recommends. Coordinator to confirm |
+| S-0 (new) | `docs(skills): authoring, versions, commands and GitHub import in the first release`. This amendment, the pre-check addendum, and the roadmap order. Plain PR, no flag |
+| BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built; the phase now covers authoring, versions and commands, and moves ahead of Phase 3 (research deferred by the owner on 2026-11-12) |
+| S-1 BES-264 | One migration with four tables, `CREATE TABLE` and `CREATE INDEX` only, no `ADD COLUMN` later (section 8): `skills`, `skill_versions`, `skill_files`, `skill_chat_settings`; no FK to `users` on any of them (explicit purge plus the coverage spec); one sentence added to `CLAUDE.md` after the `documents` note, no cascade-list entry; blob layout `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` and `skills-staging/u<userId>/`, with the key builder, blob put and prune in `server/utils/skills/storage.ts`; `SKILL_VERSIONS_KEPT` 20; the reserved-name validator; the purge, the chat-delete cleanup and the hourly orphan sweep; the "Skills" section of `docs/d1-restore-reconciliation.md`; registry: add `skills.commands` and set `skills.scripts` to `spend: 'foreground'`, `optIn: 'required'`; a `besidka-preview` Time Travel bookmark before the bottom layer is created; `DROP TABLE` grep in the PR; status transitions of section 8.6 |
+| S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime; commit writes version 1 with origin `import`, disabled; Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
+| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/{check,accept}` (accepting disables the skill). Flag `skills.import-url`. Not C-3-dependent |
+| S-10 (new) | `feat(skills): versioned saves, file edits, diff and restore API`: list and create from blank or template; `PATCH` for settings only; versions list and save with `{ baseVersion, changes[], note? }` (409 on a stale base); diff, restore, files and download; templates; 120 saves per hour; every save reruns the classifier |
+| S-4 BES-280 | Re-scoped: the manager page of section 10.2 (list, filters, detail panel, import dialog, review screen, diff view); licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed; tab row checked at 768, 1024 and 1440 px |
+| S-11 (new) | `feat(skills): skill and command editor`: the `WorkspaceDialog` in edit mode, file tree, frontmatter fields, Model view, live validation and token estimate, unsaved-changes guard, the 409 flow, the iOS sheet rules |
+| S-3 BES-276 | Re-scoped: catalog from model-invocable skills only, with Cyrillic-aware caps and `SKILL_ACTIVATE_MAX_TOKENS`; the **interim rule** of section 2 item 8 instead of the approval card (a spec for each point; C-6 later adds the card as an acceptance criterion on BES-244, not a blocker); side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB and 6,000 tokens points to `read_skill_file`; memory write lock spec |
+| S-12 (new) | `feat(skills): slash commands in the composer`: section 5.5 and the picker of section 10.5; `data-skill-invocation` part and `resolveSkillInvocationPart`; `$ARGUMENTS` substitution; one-shot versus persistent invocation; `filterPublicParts` drops the part; replay drops a part that no longer resolves; Enter never sends while the picker is open; iOS Simulator check that the keyboard stays open. Flag `skills.commands` |
+| S-5 BES-285 | Anthropic only; provider id in D1 columns, KV cache removed; substring rename rule; disclosure text of section 7; pinned version; deletion triggers; re-upload lazily when `current_version` differs from the uploaded version, not on every save; its own stack, needs C-6 and D-7 |
+| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); licence classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` and `rename_skill` stage `needs-review` and disable the skill; `skills:share` reserved; MCP `4.0.0`; the top layer, so it is the preview PR |
+| S-7 BES-294 | Re-scoped to `docs(legal): skills and commands`; a plain PR in parallel with the stack that must merge, and its `LEGAL_NOTICES` entry be published, at least 30 days before `skills` leaves `internal`. Uses this document's licence and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material). Also: Art. 30 row 10b reads "created or imported"; retention of up to 20 versions; an invocation equals a send to the same provider; DPIA rows for authored text and for commands; the Terms right-to-use promise for "create, paste or import" |
+| S-8 pre-check (PR #739) | Its S-1 row and question 8 ask to add the skills tables to the `CLAUDE.md` cascade list; with no FK to `users` there is nothing to add (section 8). Staging prefix kept as `skills-staging/`, committed files moved to `user-skills/` as it recommends. A dated 2026-11-13 addendum records authoring, `authored`, enabled-on-save, 20 kept versions and commands. Coordinator to confirm |
+| S-9 BES-316 | Plain PR after the testers. Never says "safe". Names the licence block. Claims no affiliation with the Agent Skills project or Anthropic |
+| S-13 (new, optional) | `feat(skills): share a skill or command by link`: its own stack (S-8b legal addendum as a plain PR, D1 layer, routes and UI, MCP layer); section 12.1. Flag `skills.share` |
+| S-2U (later) | `feat(skills): import a raw SKILL.md from any link`: needs `safeFetch` purpose `skills-url`, so it waits for C-3 |
+| S-14 (optional) | `feat(composer): built-in slash commands`: client only; flag `composer.builtin-commands` (section 5.6) |
 
 ## 14. SDK verification
 
@@ -727,7 +1317,14 @@ them as direct dependencies.
 
 | Alternative | Why not |
 | --- | --- |
-| A skills marketplace, presets or sharing | Moderation, DSA notice-and-action and licence exposure; skills stay private hosting |
+| A skills marketplace or a public gallery | Moderation, DSA notice-and-action and licence exposure; skills stay private hosting |
+| Presets of third-party skills | Besidka's own templates are the only starters; presets that set model, reasoning or tools are deferred and, if built, are visible removable tiles (section 5.6) |
+| Sharing in the first release | Optional and later (S-13, section 12.1): it reverses the never-public invariant and needs its own pre-check addendum and legal notice |
+| A separate "commands" entity | It would duplicate import, licence gate, findings, versions, review, purge, restore, MCP and legal rows, and need `commands:*` scopes, which means another major MCP version (section 5.5) |
+| Command flags in frontmatter | Skill text is untrusted; an imported skill must not make itself model-invocable or slash-invocable |
+| Injecting an invoked skill into the system prompt | It would break the prompt cache; the body goes into the latest user turn |
+| Pulling C-3 in for GitHub import | Its threats come from user-chosen hosts; the fixed-host narrow fetcher is enough (section 3.1) |
+| Storing every file again in each version (`…/<version>/<path>`) | A one-line save would copy up to 200 files; content-addressed blobs write only what changed (section 3.5) |
 | Trusting a scanner or an LLM judge | Known bypasses (Trail of Bits 2026-06); an LLM judge is itself injectable |
 | Running scripts in the Worker | Arbitrary code next to user data and keys |
 | OpenAI shell skills in v1 | OpenAI's guide names this design as one to avoid (pre-check Q5) |
@@ -744,8 +1341,15 @@ them as direct dependencies.
   in writing.
 - **Per-user GitHub token**: preview measurements show archive downloads or
   update checks hitting GitHub limits.
-- **Sharing or a public skill gallery**: only with moderation, DSA Art. 16
+- **A public skill gallery or marketplace**: only with moderation, DSA Art. 16
   notice-and-action, a DPIA pass and a new legal notice.
+- **Link sharing (S-13)**: built only after the S-8b pre-check addendum, with
+  its own `LEGAL_NOTICES` entry (section 12.1).
+- **Raw-link import (S-2U)**: when C-3's `safeFetch` is on `main`. At that point
+  the GitHub fetcher also becomes `safeFetch` with the same allowlist.
+- **Presets**: if built, as visible, removable composer tiles (section 5.6).
+- **Interim tool rule (section 2, item 8)**: replaced by the C-6 approval card
+  when C-6 ships.
 - **Licence classifier**: when a new restrictive licence family appears in
   imports, add its hash or phrase and bump the classifier version.
 - **Catalog budget (1,500 tokens) and active block (12,000 tokens)**: retune
@@ -759,7 +1363,23 @@ them as direct dependencies.
 | --- | --- | --- | --- |
 | 1 | Keep S-5 Anthropic-only, or defer S-5 for both providers for consistency | Owner | Anthropic-only (coordinator decision) |
 | 2 | Allow `none`-licence skills with the extra tick, or block them | Owner | Allow with the tick (pre-check owner item 2) |
-| 3 | Ship the per-user GitHub token in the first importer layer | Owner, after S-2 measures | Not in the first layer |
+| 3 | Ship the per-user GitHub token in the first importer layer | Owner, after S-2G measures | Not in the first layer |
 | 4 | Publish the skills legal notice when `skills` leaves `internal` (material, 30 days) | Owner, S-7 | One notice at that point |
 | 5 | Whether the 2026-11-06 relicence reaches older copies | Counsel or Anthropic | Treat older copies as restricted |
-| 6 | Eight profile tabs or one "Integrations" tab | Owner, after C-7 measures | Separate tabs if they fit |
+| 6 | Seven or eight profile tabs, or one "Integrations" tab | Owner, after S-4 and C-7 measure the row | Separate tabs if they fit |
+
+### Decided on 2026-11-13
+
+The owner took the plan's defaults:
+
+| # | Decision |
+| --- | --- |
+| 7 | **Sharing (S-13):** built later as the last optional stack. Authored and open skills only, signed-in viewers, 7 days by default and 30 at most, with its own legal notice. The `skills:share` scope is still reserved so it can ship in MCP 4.0.0 with the other skill scopes. |
+| 8 | **Skills authored in the app** are saved enabled with no licence tick (class `authored`). Imports, updates, MCP writes and share copies stay disabled until the user enables them in the app. |
+| 9 | **Runtime** (S-3 and S-12) ships before C-6, under the interim rule in section 2, item 8. The approval card comes with C-6, and connectors cannot exist before C-6 anyway. |
+
+The owner also asked for these to be possible, and this document states each:
+adding a skill by archive (`.zip` or `.skill`, section 3.1), adding one by
+GitHub link (sections 3.1 and 10.3), separate MCP actions to create, edit
+(`update_skill`), delete and rename skills (section 11), and optional sharing
+(section 12.1).
