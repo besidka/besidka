@@ -94,6 +94,19 @@ describe('parseGithubSkillUrl', () => {
     expect(rejection('https://github.com/o/..')).toContain('owner')
   })
 
+  it.each([
+    'github.com/o/r/tree/pull/1/head',
+    'github.com/o/r/tree/pull/1/merge/skills/a',
+    'github.com/o/r/tree/refs/heads/main',
+    'github.com/o/r/tree/refs/pull/1/head',
+    'github.com/o/r/tree/keep-around/abc',
+    'github.com/o/r/tree/__gh__/x',
+    'github.com/o/r/blob/pull/1/head/SKILL.md',
+    'github.com/o/r/tree/PULL/1/head',
+  ])('refuses the pull request or internal ref in %s', (input) => {
+    expect(rejection(input)).toContain('Pull request and internal refs')
+  })
+
   it('refuses links that name no repository or an unknown kind', () => {
     expect(rejection('https://github.com/')).toContain('owner')
     expect(rejection('https://github.com/o')).toContain('owner')
@@ -124,6 +137,18 @@ describe('getGithubRefCandidates', () => {
       .toEqual([{ ref: 'HEAD', path: null }])
     expect(getGithubRefCandidates(parse(`github.com/o/r/commit/${SHA}`)))
       .toEqual([{ ref: SHA, path: null }])
+  })
+
+  it('never offers a reserved namespace as a candidate', () => {
+    const value = parse('github.com/o/r/tree/main/pull/1/head')
+    const candidates = getGithubRefCandidates(value)
+
+    expect(candidates.map((candidate) => {
+      return candidate.ref
+    })).toEqual(['main', 'main/pull', 'main/pull/1'])
+    expect(candidates.some((candidate) => {
+      return candidate.ref.startsWith('pull')
+    })).toBe(false)
   })
 
   it('lists up to three splits, shortest ref first', () => {

@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
         message: 'Invalid request',
         status: 400,
         code: 'invalid-request',
-        why: body.error.message,
+        why: 'The body must be { url, path? } with a github.com link',
         fix: 'Send { url } with a github.com link',
       })
     }

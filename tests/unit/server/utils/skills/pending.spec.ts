@@ -135,7 +135,7 @@ describe('pending skill versions', () => {
     try {
       await promise
     } catch (exception) {
-      return exception as { status: number, code?: string }
+      return exception as { status: number, code?: string, fix?: string }
     }
 
     throw new Error('Expected a rejection')
@@ -148,6 +148,7 @@ describe('pending skill versions', () => {
     skillId,
     version: 2,
     sha256: pendingSha256,
+    licenceAcknowledged: true,
   })
 
   beforeEach(async () => {
@@ -270,6 +271,51 @@ describe('pending skill versions', () => {
       expect(failure).toMatchObject({ status: 409, code: 'pending-changed' })
       expect(await versionNumbers()).toEqual([1, 2])
       expect((await skillRow()).pendingVersion).toBe(2)
+    })
+
+    it('asks for the licence tick when the update moves to none or custom', async () => {
+      const failure = await rejection(acceptPendingSkillVersion({
+        ...baseInput(),
+        licenceAcknowledged: undefined,
+      }))
+
+      expect(failure).toMatchObject({
+        status: 400,
+        code: 'licence-acknowledgement-required',
+      })
+      expect(failure.fix).toContain('licence box')
+      expect(await versionNumbers()).toEqual([1, 2])
+      expect((await skillRow()).pendingVersion).toBe(2)
+      expect(await rejection(acceptPendingSkillVersion({
+        ...baseInput(),
+        licenceAcknowledged: false,
+      }))).toMatchObject({ status: 400 })
+    })
+
+    it('does not ask when the licence class is unchanged or the update is open', async () => {
+      await testDb.db.update(schema.skills)
+        .set({ licenseClass: 'none' })
+        .where(eq(schema.skills.id, skillId))
+
+      await acceptPendingSkillVersion({
+        ...baseInput(),
+        licenceAcknowledged: undefined,
+      })
+
+      expect((await skillRow()).currentVersion).toBe(3)
+    })
+
+    it('does not ask when the pending version is open', async () => {
+      await testDb.db.update(schema.skillVersions)
+        .set({ licenseClass: 'open' })
+        .where(eq(schema.skillVersions.version, 2))
+
+      await acceptPendingSkillVersion({
+        ...baseInput(),
+        licenceAcknowledged: undefined,
+      })
+
+      expect((await skillRow()).currentVersion).toBe(3)
     })
 
     it('answers 409 when the version differs or nothing is pending', async () => {

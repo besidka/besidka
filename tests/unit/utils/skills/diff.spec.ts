@@ -100,6 +100,36 @@ describe('diffSkillFiles', () => {
     expect(file).toMatchObject({ lines: [], truncated: true })
   })
 
+  it('switches to counts only once the running cell budget is spent', () => {
+    const lines = (prefix: string, shared: number) => {
+      return Array.from({ length: 1100 }, (_, index) => {
+        return index < shared ? `same ${index}` : `${prefix}${index}`
+      }).join('\n')
+    }
+    const before = new Map<string, string>()
+    const after = new Map<string, string>()
+
+    for (let file = 0; file < 8; file++) {
+      before.set(`f${file}.md`, `head\n${lines('a', 0)}\ntail`)
+      after.set(`f${file}.md`, `head\n${lines('b', 0)}\ntail`)
+    }
+
+    const diff = diffSkillFiles(before, after, 100_000)
+    const withLines = diff.files.filter((file) => {
+      return file.lines.length > 0
+    })
+    const countsOnly = diff.files.filter((file) => {
+      return file.lines.length === 0
+    })
+
+    expect(withLines.length).toBeGreaterThan(0)
+    expect(countsOnly.length).toBeGreaterThan(0)
+    expect(countsOnly.every((file) => {
+      return file.truncated && file.added === 1102 && file.removed === 1102
+    })).toBe(true)
+    expect(diff.truncated).toBe(true)
+  })
+
   it('replaces wholesale when the diff table would be too large', () => {
     const lines = (prefix: string) => {
       return Array.from({ length: 1900 }, (_, index) => {

@@ -5,10 +5,7 @@ import {
   createGithubClient,
   downloadGithubArchive,
   githubFetch,
-  resolveGithubRef,
-  resolveGithubSource,
 } from '~~/server/utils/skills/import/github'
-import { parseGithubSkillUrl } from '#shared/utils/skills/github-url'
 
 const SHA = 'a'.repeat(40)
 const OTHER_SHA = 'b'.repeat(40)
@@ -48,16 +45,6 @@ async function failureOf(promise: Promise<unknown>) {
   }
 
   throw new Error('Expected a rejection')
-}
-
-function parsed(url: string) {
-  const result = parseGithubSkillUrl(url)
-
-  if (!result.ok) {
-    throw new Error(result.message)
-  }
-
-  return result.value
 }
 
 afterEach(() => {
@@ -161,16 +148,41 @@ describe('githubFetch', () => {
     ))).code).toBe('github-redirect')
   })
 
-  it.each([403, 429])('maps %i to the rate limit message', async (status) => {
+  it('maps 429 and a 403 with a spent quota to the rate limit message', async () => {
+    const spent = { 'x-ratelimit-remaining': '0' }
+
+    for (const response of [
+      () => text('', 429),
+      () => text('', 403, spent),
+    ]) {
+      const failure = await failureOf(githubFetch(
+        `${API}/commits/main`,
+        { ...OPTIONS, fetchImpl: fetchOf(response) },
+      ))
+
+      expect(failure).toMatchObject({
+        status: 429,
+        message: 'GitHub rate limit reached',
+        fix: 'Try again in an hour or upload a zip',
+      })
+    }
+  })
+
+  it('does not call a plain 403 a rate limit', async () => {
     const failure = await failureOf(githubFetch(
       `${API}/commits/main`,
-      { ...OPTIONS, fetchImpl: fetchOf(() => text('', status)) },
+      {
+        ...OPTIONS,
+        fetchImpl: fetchOf(() => {
+          return text('', 403, { 'x-ratelimit-remaining': '41' })
+        }),
+      },
     ))
 
     expect(failure).toMatchObject({
-      status: 429,
-      message: 'GitHub rate limit reached',
-      fix: 'Try again in an hour or upload a zip',
+      status: 502,
+      message: 'GitHub refused the request',
+      code: 'github-refused',
     })
   })
 
@@ -306,49 +318,6 @@ describe('githubFetch', () => {
   })
 })
 
-describe('resolveGithubRef', () => {
-  it('reads the SHA with the sha media type and encodes a ref with slashes', async () => {
-    const fetchImpl = fetchOf(() => text(`${SHA}\n`))
-    const client = createGithubClient({ fetchImpl })
-
-    expect(await resolveGithubRef(client, {
-      owner: 'o',
-      repo: 'r',
-      ref: 'feature/x',
-    })).toEqual({ found: true, sha: SHA })
-
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
-
-    expect(url).toBe(`${API}/commits/feature/x`)
-    expect(new Headers(init.headers).get('accept'))
-      .toBe('application/vnd.github.sha')
-  })
-
-  it('answers 422 as a missing ref and 404 as a missing repository', async () => {
-    const missingRef = createGithubClient({ fetchImpl: fetchOf(() => text('', 422)) })
-    const missingRepo = createGithubClient({ fetchImpl: fetchOf(() => text('', 404)) })
-
-    expect(await resolveGithubRef(missingRef, { owner: 'o', repo: 'r', ref: 'x' }))
-      .toEqual({ found: false, status: 422 })
-    expect((await failureOf(resolveGithubRef(
-      missingRepo,
-      { owner: 'o', repo: 'r', ref: 'x' },
-    )))).toMatchObject({
-      status: 404,
-      message: 'Private or missing repository',
-    })
-  })
-
-  it('refuses a body that is not a commit SHA', async () => {
-    const client = createGithubClient({ fetchImpl: fetchOf(() => text('<html>')) })
-
-    expect((await failureOf(resolveGithubRef(
-      client,
-      { owner: 'o', repo: 'r', ref: 'main' },
-    ))).code).toBe('github-unexpected-response')
-  })
-})
-
 describe('assertCommitOnRepository (K18)', () => {
   function repoAndCompare(status: string | null, compareStatus = 200) {
     return fetchOf((url) => {
@@ -436,121 +405,6 @@ describe('assertCommitOnRepository (K18)', () => {
       createGithubClient({ fetchImpl }),
       { owner: 'o', repo: 'r', sha: SHA },
     ))).status).toBe(404)
-  })
-})
-
-describe('resolveGithubSource', () => {
-  it('resolves a bare repository through HEAD with one call', async () => {
-    const fetchImpl = fetchOf(() => text(SHA))
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r'),
-    )
-
-    expect(source).toEqual({ sha: SHA, ref: 'HEAD', path: null })
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(fetchImpl.mock.calls[0]![0]).toBe(`${API}/commits/HEAD`)
-  })
-
-  it('tries splits shortest first and stops at the first existing ref', async () => {
-    const fetchImpl = fetchOf((url) => {
-      return url.endsWith('/commits/feature/x') ? text(SHA) : text('', 422)
-    })
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r/tree/feature/x/skills/a'),
-    )
-
-    expect(source).toEqual({ sha: SHA, ref: 'feature/x', path: 'skills/a' })
-    expect(fetchImpl.mock.calls.map((call) => {
-      return call[0]
-    })).toEqual([`${API}/commits/feature`, `${API}/commits/feature/x`])
-  })
-
-  it('makes at most three ref calls, then reports the ref as missing', async () => {
-    const fetchImpl = fetchOf(() => text('', 422))
-    const failure = await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r/tree/a/b/c/d/e'),
-    ))
-
-    expect(fetchImpl).toHaveBeenCalledTimes(3)
-    expect(failure).toMatchObject({ code: 'github-ref-not-found', status: 404 })
-  })
-
-  it('stops at the first 404 because the repository is missing', async () => {
-    const fetchImpl = fetchOf(() => text('', 404))
-    const failure = await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r/tree/a/b/c'),
-    ))
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(failure.message).toBe('Private or missing repository')
-  })
-
-  it('checks a 40-character SHA from the link against the default branch', async () => {
-    const fetchImpl = fetchOf((url) => {
-      return url === API
-        ? json({ default_branch: 'main' })
-        : json({ status: 'behind' })
-    })
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed(`github.com/o/r/commit/${SHA}`),
-    )
-
-    expect(source).toEqual({ sha: SHA, ref: SHA, path: null })
-    expect(fetchImpl.mock.calls.map((call) => {
-      return call[0]
-    })).toEqual([API, `${API}/compare/main...${SHA}?per_page=1`])
-  })
-
-  it('rejects a SHA from the link that is on a fork only', async () => {
-    const fetchImpl = fetchOf((url) => {
-      return url === API ? json({ default_branch: 'main' }) : text('', 404)
-    })
-
-    expect((await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed(`github.com/o/r/tree/${SHA}/skills/a`),
-    ))).code).toBe('github-commit-not-on-repository')
-  })
-
-  it('also checks an abbreviated SHA that resolved to a commit', async () => {
-    const fetchImpl = fetchOf((url) => {
-      if (url.endsWith('/commits/aaaaaaa')) {
-        return text(SHA)
-      }
-
-      return url === API ? json({ default_branch: 'main' }) : text('', 404)
-    })
-
-    expect((await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r/tree/aaaaaaa/skills/a'),
-    ))).code).toBe('github-commit-not-on-repository')
-  })
-
-  it('does not check a branch the API resolved', async () => {
-    const fetchImpl = fetchOf(() => text(OTHER_SHA))
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r/tree/main/skills/a'),
-    )
-
-    expect(source.sha).toBe(OTHER_SHA)
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-  })
-
-  it('lets a picked path replace the one in the link', async () => {
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl: fetchOf(() => text(SHA)) }),
-      parsed('github.com/o/r/tree/main/skills'),
-      { path: 'skills/a' },
-    )
-
-    expect(source.path).toBe('skills/a')
   })
 })
 

@@ -153,7 +153,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     kv = createFakeSkillKv()
     bucket = createFakeSkillBucket()
     github = createGithubMock()
-    github.refs.set('main', GITHUB_SHA_ONE)
+    github.setBranch('main', GITHUB_SHA_ONE)
     github.refs.set('HEAD', GITHUB_SHA_ONE)
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE))
     vi.stubGlobal('fetch', github.fetch)
@@ -217,7 +217,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       return file.path
     })).toEqual(['SKILL.md', 'LICENSE', 'references/checklist.md'])
     expect(github.urls()).toEqual([
-      'https://api.github.com/repos/o/r/commits/main',
+      'https://api.github.com/repos/o/r/git/ref/heads/main',
       `https://codeload.github.com/o/r/zip/${GITHUB_SHA_ONE}`,
     ])
   })
@@ -310,9 +310,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
   it('maps a missing or private repository to a clear 404', async () => {
     await signIn()
     github.refs.clear()
-    github.fetch.mockImplementationOnce(async () => {
-      return new Response('', { status: 404 })
-    })
+    github.repoStatus = 404
 
     const failure = await failureOf(preview({ url: 'https://github.com/o/r' }))
 
@@ -335,7 +333,10 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
   it('maps GitHub rate limiting to its message and fix', async () => {
     await signIn()
     github.fetch.mockImplementationOnce(async () => {
-      return new Response('', { status: 403 })
+      return new Response('', {
+        status: 403,
+        headers: { 'x-ratelimit-remaining': '0' },
+      })
     })
 
     const failure = await failureOf(preview({ url: 'https://github.com/o/r' }))
@@ -392,6 +393,34 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
 
     expect(failure.status).toBe(400)
     expect(github.fetch).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['pull/1/head', 'https://github.com/o/r/tree/pull/1/head/skills/review-pr'],
+    ['pull/1/merge', 'https://github.com/o/r/tree/pull/1/merge/skills/review-pr'],
+    ['a blob on a pull ref', 'https://github.com/o/r/blob/pull/1/head/SKILL.md'],
+    ['refs/pull', 'https://github.com/o/r/tree/refs/pull/1/head'],
+  ])('refuses %s without calling GitHub (K18)', async (_label, url) => {
+    await signIn()
+    github.refs.set('pull/1/head', GITHUB_SHA_ONE)
+    github.compare.set(GITHUB_SHA_ONE, 'identical')
+
+    const failure = await failureOf(preview({ url }))
+
+    expect(failure.status).toBe(400)
+    expect(failure.why).toContain('Pull request and internal refs')
+    expect(github.fetch).not.toHaveBeenCalled()
+  })
+
+  it('does not echo the validation message of a bad body', async () => {
+    await signIn()
+
+    const failure = await failureOf(preview({ url: 42, extra: '<script>' }))
+
+    expect(failure).toMatchObject({
+      status: 400,
+      why: 'The body must be { url, path? } with a github.com link',
+    })
   })
 
   it('answers 413 for an archive over the cap', async () => {

@@ -17,6 +17,7 @@ import {
 } from '#shared/utils/skills/frontmatter'
 import {
   isGithubFullSha,
+  isReservedGithubRef,
   parseGithubSkillUrl,
 } from '#shared/utils/skills/github-url'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
@@ -30,13 +31,13 @@ import {
 import type { PendingVersionPayload } from '~~/server/utils/skills/import/commit'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import {
-  assertCommitOnRepository,
   createGithubClient,
   createGithubRefNotFoundError,
-  githubRefNeedsReachabilityCheck,
-  resolveGithubRef,
+  resolveVerifiedGithubRef,
+  throwGithubRefMissing,
 } from '~~/server/utils/skills/import/github'
 import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
+import type { GithubKv } from '~~/server/utils/skills/import/github'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
 import { skillBlobKey } from '~~/server/utils/skills/storage'
 import {
@@ -65,6 +66,8 @@ export interface GithubUpdateCheckInput {
   bucket: SkillStageBucket
   userId: number
   skillId: string
+  kv?: GithubKv
+  beforeNetwork?: () => Promise<void>
   logger: LoggerLike
   fetchImpl?: typeof fetch
 }
@@ -423,6 +426,10 @@ export async function checkGithubSkillUpdate(
     }
   }
 
+  if (isReservedGithubRef(skill.sourceRef)) {
+    throw createGithubRefNotFoundError()
+  }
+
   const repository = {
     owner: parsedUrl.value.owner,
     repo: parsedUrl.value.repo,
@@ -430,18 +437,18 @@ export async function checkGithubSkillUpdate(
   const client = createGithubClient({
     fetchImpl: input.fetchImpl,
     logger: input.logger,
+    kv: input.kv,
   })
-  const lookup = await resolveGithubRef(client, {
+
+  await input.beforeNetwork?.()
+
+  const lookup = await resolveVerifiedGithubRef(client, {
     ...repository,
     ref: skill.sourceRef,
   })
 
   if (!lookup.found) {
-    throw createGithubRefNotFoundError()
-  }
-
-  if (githubRefNeedsReachabilityCheck(skill.sourceRef, lookup.sha)) {
-    await assertCommitOnRepository(client, { ...repository, sha: lookup.sha })
+    return await throwGithubRefMissing(client, repository)
   }
 
   if (lookup.sha === skill.sourceVersion) {
@@ -460,6 +467,17 @@ export async function checkGithubSkillUpdate(
     : versions.find((row) => {
       return row.version === skill.pendingVersion
     }) ?? null
+
+  if (existingPending && existingPending.origin !== 'update') {
+    throw createError({
+      message: 'Review or reject the pending version first',
+      status: 409,
+      code: 'pending-exists',
+      why: 'The skill already has a pending version that did not come from an '
+        + 'update check, and a check would replace it',
+      fix: 'Review or reject the pending version, then check for updates again',
+    })
+  }
 
   if (existingPending && existingPending.sourceVersion === lookup.sha) {
     return {

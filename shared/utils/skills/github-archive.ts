@@ -19,10 +19,11 @@ import type {
   SkillArchiveFile,
   SkillArchiveResult,
 } from '#shared/utils/skills/archive'
+import { isValidGithubSegment } from '#shared/utils/skills/github-url'
+import { hasHiddenCharacter } from '#shared/utils/skills/hidden-characters'
 import {
   SKILL_MD_FILE_NAME,
   checkSkillRelativePath,
-  isSkillLicenceFileName,
   normaliseSkillEntryName,
 } from '#shared/utils/skills/path'
 
@@ -31,6 +32,11 @@ const UNIX_SYMLINK = 0xA000
 const UNIX_REGULAR_FILE = 0x8000
 const UNIX_DIRECTORY = 0x4000
 const ROOT_LICENCE_FILES_MAX = 8
+const PICK_COLLECT_MARGIN = SKILL_GITHUB_PICK_MAX
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/
+const ROOT_LICENCE_NAME_PATTERN
+  = /^(?:licen[sc]e|copying|notice)(?:\.(?:md|txt))?$/i
 const UNBOUNDED = Number.MAX_SAFE_INTEGER
 const SKILL_MD_SUFFIX = `/${SKILL_MD_FILE_NAME}`
 
@@ -80,37 +86,82 @@ function isRegularOrUntyped(fileType: number): boolean {
     || fileType === UNIX_DIRECTORY
 }
 
-function isNestedCandidate(directory: string, all: string[]): boolean {
-  return all.some((other) => {
-    return other !== directory
-      && (other === '' || directory.startsWith(`${other}/`))
-  })
+function isPickablePath(directory: string): boolean {
+  return !hasHiddenCharacter(directory)
+    && directory.split('/').every(isValidGithubSegment)
 }
 
-function findSkillDirectories(paths: string[]): string[] {
-  const directories = paths
-    .filter((path) => {
-      return path.endsWith(SKILL_MD_SUFFIX)
-    })
-    .map((path) => {
-      return path.slice(0, -SKILL_MD_SUFFIX.length)
-    })
-    .filter((directory) => {
-      return directory.split('/').length <= SKILL_MAX_PATH_DEPTH
-    })
-  const unique = [...new Set(directories)].sort()
+function hasCandidateAncestor(directory: string, all: Set<string>): boolean {
+  const segments = directory.split('/')
 
-  return unique.filter((directory) => {
-    return !isNestedCandidate(directory, unique)
-  })
+  for (let length = 1; length < segments.length; length++) {
+    if (all.has(segments.slice(0, length).join('/'))) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * One pass over the names and one over the candidates, with the nesting test
+ * a lookup in a set (a path is at most six levels deep), so a repository with
+ * thousands of entries costs linear time. Every non-nested skill folder is
+ * counted, but only a bounded number is kept for the list.
+ */
+function findSkillDirectories(paths: string[]): {
+  directories: string[]
+  total: number
+} {
+  const all = new Set<string>()
+
+  for (const path of paths) {
+    if (!path.endsWith(SKILL_MD_SUFFIX)) {
+      continue
+    }
+
+    const directory = path.slice(0, -SKILL_MD_SUFFIX.length)
+
+    if (
+      directory.split('/').length <= SKILL_MAX_PATH_DEPTH
+      && isPickablePath(directory)
+    ) {
+      all.add(directory)
+    }
+  }
+
+  const kept: string[] = []
+  let total = 0
+
+  for (const directory of all) {
+    if (hasCandidateAncestor(directory, all)) {
+      continue
+    }
+
+    total++
+
+    if (kept.length < SKILL_GITHUB_PICK_MAX + PICK_COLLECT_MARGIN) {
+      kept.push(directory)
+    }
+  }
+
+  return { directories: kept.sort(), total }
+}
+
+function displayPath(path: string): string {
+  return hasHiddenCharacter(path) || CONTROL_CHARACTER_PATTERN.test(path)
+    ? '(a path with hidden or control characters)'
+    : path
 }
 
 /**
  * Reads the zip `codeload.github.com` serves for one commit. Only entries
- * under the requested folder are looked at, plus the repository-root licence
- * files for licence classification, so a hostile file elsewhere in the
- * repository cannot fail the import. Inside the skill folder the same rules
- * as an upload apply (docs/skills.md section 3.2).
+ * under the requested folder are inflated, plus the repository-root licence
+ * files for licence classification. The directory scan still validates every
+ * entry name in the repository (unsafe names, case-only duplicates and an
+ * entry count over the cap), so a hostile entry elsewhere fails the import
+ * closed rather than being skipped. Inside the skill folder the same rules as
+ * an upload apply (docs/skills.md section 3.2).
  *
  * With no folder, or a folder that holds no `SKILL.md` of its own, the result
  * is the single skill found below it, or a pick list when there are several.
@@ -177,7 +228,7 @@ export function extractGithubSkillArchive(
       fileType: fileTypeOf(attributes[index]!.externalAttributes),
     }
 
-    if (!repoName.includes('/') && isSkillLicenceFileName(repoName)) {
+    if (!repoName.includes('/') && ROOT_LICENCE_NAME_PATTERN.test(repoName)) {
       rootLicences.push(item)
     }
 
@@ -204,21 +255,22 @@ export function extractGithubSkillArchive(
   if (inScopeNames.includes(scopeSkillMd)) {
     skillDirectory = scope.path ?? ''
   } else {
-    const candidates = findSkillDirectories(inScopeNames)
+    const found = findSkillDirectories(inScopeNames)
+    const candidates = found.directories
 
-    if (candidates.length === 0) {
+    if (found.total === 0) {
       return archiveFailure(
         'archive-missing-skill-md',
         'No SKILL.md found in the repository or the folder',
       )
     }
 
-    if (candidates.length > 1) {
+    if (found.total > 1) {
       return {
         ok: true,
         kind: 'pick',
         candidates: candidates.slice(0, SKILL_GITHUB_PICK_MAX),
-        total: candidates.length,
+        total: found.total,
       }
     }
 
@@ -237,7 +289,7 @@ export function extractGithubSkillArchive(
       return archiveFailure(
         'archive-symlink',
         'Symbolic links are not allowed',
-        item.repoName,
+        displayPath(item.repoName),
       )
     }
 
@@ -245,7 +297,7 @@ export function extractGithubSkillArchive(
       return archiveFailure(
         'archive-special-file',
         'Only regular files are allowed',
-        item.repoName,
+        displayPath(item.repoName),
       )
     }
 
@@ -255,7 +307,7 @@ export function extractGithubSkillArchive(
       return archiveFailure(
         'archive-path-rejected',
         SKILL_PATH_REJECTION_MESSAGES[normalised.reason],
-        item.repoName,
+        displayPath(item.repoName),
       )
     }
 
@@ -267,7 +319,7 @@ export function extractGithubSkillArchive(
       return archiveFailure(
         'archive-path-rejected',
         SKILL_PATH_REJECTION_MESSAGES.traversal,
-        item.repoName,
+        displayPath(item.repoName),
       )
     }
 
@@ -278,7 +330,7 @@ export function extractGithubSkillArchive(
       return archiveFailure(
         'archive-path-rejected',
         SKILL_PATH_REJECTION_MESSAGES[rejection],
-        relativePath,
+        displayPath(relativePath),
       )
     }
 
@@ -317,6 +369,13 @@ export function extractGithubSkillArchive(
       .filter((item) => {
         return item.fileType !== UNIX_SYMLINK
           && isRegularOrUntyped(item.fileType)
+      })
+      .filter((item) => {
+        const normalised = normaliseSkillEntryName(item.repoName)
+
+        return normalised.status === 'ok'
+          && normalised.path === item.repoName
+          && checkSkillRelativePath(item.repoName) === null
       })
       .slice(0, ROOT_LICENCE_FILES_MAX)
       .map((item) => {

@@ -10,6 +10,7 @@ import { isSkillLicenceFileName } from '#shared/utils/skills/path'
 import {
   createGithubTooLargeError,
   downloadGithubArchive,
+  withGithubArchiveSlot,
 } from '~~/server/utils/skills/import/github'
 import type {
   GithubClient,
@@ -100,8 +101,11 @@ export async function loadGithubSkill(
   client: GithubClient,
   input: GithubRepository & { sha: string, path: string | null },
 ): Promise<GithubSkillLoad> {
-  const bytes = await downloadGithubArchive(client, input)
-  const result = extractGithubSkillArchive(bytes, { path: input.path })
+  const result = await withGithubArchiveSlot(async () => {
+    const bytes = await downloadGithubArchive(client, input)
+
+    return extractGithubSkillArchive(bytes, { path: input.path })
+  })
 
   if (!result.ok) {
     if (result.code === 'archive-too-large') {

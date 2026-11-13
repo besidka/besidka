@@ -9,6 +9,9 @@ export const GITHUB_SHA_THREE = '3'.repeat(40)
 export interface GithubMock {
   fetch: ReturnType<typeof vi.fn>
   refs: Map<string, string>
+  branches: Map<string, string>
+  tags: Map<string, { sha: string, type: string }>
+  setBranch: (name: string, sha: string) => void
   archives: Map<string, Uint8Array>
   compare: Map<string, string | number>
   defaultBranch: string
@@ -34,6 +37,8 @@ export function githubRepoArchive(
  */
 export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
   const refs = new Map<string, string>()
+  const branches = new Map<string, string>()
+  const tags = new Map<string, { sha: string, type: string }>()
   const archives = new Map<string, Uint8Array>()
   const compare = new Map<string, string | number>()
   const state = {
@@ -43,6 +48,26 @@ export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
   const apiBase = `https://api.github.com/repos/${owner}/${repo}`
   const fetchMock = vi.fn(async (input: string | URL) => {
     const url = String(input)
+
+    for (const namespace of ['heads', 'tags'] as const) {
+      const prefix = `${apiBase}/git/ref/${namespace}/`
+
+      if (url.startsWith(prefix)) {
+        const name = url.slice(prefix.length)
+        const found = namespace === 'heads'
+          ? branches.has(name)
+            ? { sha: branches.get(name)!, type: 'commit' }
+            : undefined
+          : tags.get(name)
+
+        return found
+          ? new Response(JSON.stringify({
+            ref: `refs/${namespace}/${name}`,
+            object: { sha: found.sha, type: found.type },
+          }))
+          : new Response('', { status: 404 })
+      }
+    }
 
     if (url.startsWith(`${apiBase}/commits/`)) {
       const ref = url.slice(`${apiBase}/commits/`.length)
@@ -83,6 +108,12 @@ export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
   return {
     fetch: fetchMock,
     refs,
+    branches,
+    tags,
+    setBranch: (name: string, sha: string) => {
+      branches.set(name, sha)
+      refs.set(name, sha)
+    },
     archives,
     compare,
     get defaultBranch() {

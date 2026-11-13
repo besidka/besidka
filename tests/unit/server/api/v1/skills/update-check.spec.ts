@@ -158,8 +158,17 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       .where(eq(schema.skillVersions.skillId, skillId))
   }
 
+  function forgetCachedRefs() {
+    for (const key of [...kv.values.keys()]) {
+      if (key.startsWith('skills:github:')) {
+        kv.values.delete(key)
+      }
+    }
+  }
+
   function moveHeadTo(sha: string, archive: Uint8Array) {
-    github.refs.set('main', sha)
+    forgetCachedRefs()
+    github.setBranch('main', sha)
     github.refs.set('HEAD', sha)
     github.archives.set(sha, archive)
   }
@@ -204,6 +213,8 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
   })
 
   it('says up to date after one API call when the commit has not moved', async () => {
+    forgetCachedRefs()
+
     expect(await check()).toEqual({
       upToDate: true,
       pinned: false,
@@ -212,7 +223,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       latestVersion: GITHUB_SHA_ONE,
     })
     expect(github.urls()).toEqual([
-      'https://api.github.com/repos/o/r/commits/main',
+      'https://api.github.com/repos/o/r/git/ref/heads/main',
     ])
     expect(await versionRows()).toHaveLength(1)
   })
@@ -292,7 +303,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       sourceVersion: GITHUB_SHA_TWO,
     })
     expect(github.urls()).toEqual([
-      'https://api.github.com/repos/o/r/commits/main',
+      'https://api.github.com/repos/o/r/git/ref/heads/main',
       `https://codeload.github.com/o/r/zip/${GITHUB_SHA_TWO}`,
     ])
     expect([...kv.values.keys()].filter((key) => {
@@ -331,9 +342,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       sha256: first.sha256,
       reusedPending: true,
     })
-    expect(github.urls()).toEqual([
-      'https://api.github.com/repos/o/r/commits/main',
-    ])
+    expect(github.urls()).toEqual([])
     expect(await versionRows()).toHaveLength(2)
   })
 
@@ -505,8 +514,96 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     expect((await skillRow()).pendingVersion).toBeNull()
   })
 
+  it('refuses a stored pull request ref without calling GitHub', async () => {
+    for (const ref of ['pull/1/head', 'pull/1/merge', 'refs/pull/1/head']) {
+      await testDb.db.update(schema.skills)
+        .set({ sourceRef: ref })
+        .where(eq(schema.skills.id, skillId))
+      github.refs.set(ref, GITHUB_SHA_TWO)
+      github.compare.set(GITHUB_SHA_TWO, 'identical')
+      github.fetch.mockClear()
+
+      expect(await failureOf(check())).toMatchObject({
+        status: 404,
+        code: 'github-ref-not-found',
+      })
+      expect(github.fetch).not.toHaveBeenCalled()
+    }
+
+    expect((await skillRow()).pendingVersion).toBeNull()
+  })
+
+  it('does not follow a stored branch name that is only a fork ref', async () => {
+    await testDb.db.update(schema.skills)
+      .set({ sourceRef: 'looks-like-a-branch' })
+      .where(eq(schema.skills.id, skillId))
+    github.refs.set('looks-like-a-branch', GITHUB_SHA_TWO)
+
+    expect(await failureOf(check())).toMatchObject({
+      status: 404,
+      code: 'github-ref-not-found',
+    })
+    expect(github.urls().some((url) => {
+      return url.includes('/commits/')
+    })).toBe(false)
+  })
+
+  it('answers 409 when the pending version did not come from an update check', async () => {
+    await testDb.db.insert(schema.skillVersions).values({
+      skillId,
+      userId,
+      version: 2,
+      origin: 'import',
+      sourceKind: 'github',
+      sourceVersion: GITHUB_SHA_THREE,
+      sha256: 'c'.repeat(64),
+      filesCount: 1,
+      bytes: 1,
+      licenseClass: 'open',
+    })
+    await testDb.db.update(schema.skills)
+      .set({ pendingVersion: 2 })
+      .where(eq(schema.skills.id, skillId))
+    moveHeadTo(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {}, skillMarkdown({
+      description: 'Would replace it',
+    })))
+
+    expect(await failureOf(check())).toMatchObject({
+      status: 409,
+      code: 'pending-exists',
+      message: 'Review or reject the pending version first',
+    })
+    expect(await versionRows()).toHaveLength(2)
+    expect((await skillRow()).pendingVersion).toBe(2)
+  })
+
+  it('spends the import limit only when GitHub is called', async () => {
+    const limitState = () => kv.values.get('skills-import-rate-limit:1')
+    const before = limitState()
+
+    await testDb.db.update(schema.skills)
+      .set({ sourceRef: GITHUB_SHA_ONE })
+      .where(eq(schema.skills.id, skillId))
+    expect(await check()).toMatchObject({ pinned: true })
+
+    const editorSkill = await seedSkill(testDb.db, userId, { name: 'mine' })
+
+    await failureOf(check(editorSkill))
+
+    expect(limitState()).toBe(before)
+
+    await testDb.db.update(schema.skills)
+      .set({ sourceRef: 'main' })
+      .where(eq(schema.skills.id, skillId))
+    await check()
+
+    expect(limitState()).not.toBe(before)
+  })
+
   it('answers 404 when the branch no longer exists', async () => {
+    forgetCachedRefs()
     github.refs.delete('main')
+    github.branches.delete('main')
 
     expect(await failureOf(check())).toMatchObject({
       status: 404,

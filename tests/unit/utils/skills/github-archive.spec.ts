@@ -220,6 +220,77 @@ describe('extractGithubSkillArchive', () => {
     )).code).toBe('archive-not-utf8')
   })
 
+  it('counts thousands of nested candidates in linear time and caps the list', () => {
+    const entries: Record<string, ArchiveEntry> = {}
+
+    for (let index = 0; index < 4000; index++) {
+      const name = `s${String(index).padStart(4, '0')}`
+
+      entries[`skills/${name}/SKILL.md`] = 'x\n'
+      entries[`skills/${name}/inner/SKILL.md`] = 'x\n'
+    }
+
+    const startedAt = performance.now()
+    const result = extractGithubSkillArchive(
+      repoArchive(entries),
+      { path: null },
+    )
+
+    expect(performance.now() - startedAt).toBeLessThan(5000)
+    expect(result).toMatchObject({ kind: 'pick', total: 4000 })
+    expect((result as { candidates: string[] }).candidates).toHaveLength(10)
+  })
+
+  it('offers only folders whose every segment is a plain name', () => {
+    const bytes = repoArchive({
+      'skills/ok/SKILL.md': skillMarkdown(),
+      'skills/has space/SKILL.md': skillMarkdown({ name: 'space' }),
+      'skills/zero\u200Bwidth/SKILL.md': skillMarkdown({ name: 'zero' }),
+      'skills/also-ok/SKILL.md': skillMarkdown({ name: 'also-ok' }),
+    })
+
+    expect(extractGithubSkillArchive(bytes, { path: null })).toEqual({
+      ok: true,
+      kind: 'pick',
+      candidates: ['skills/also-ok', 'skills/ok'],
+      total: 2,
+    })
+  })
+
+  it('never echoes a path with a hidden character in an error', () => {
+    const bytes = repoArchive({
+      'skills/review/SKILL.md': skillMarkdown(),
+      'skills/review/evil\u202Etxt.md': 'x\n',
+    })
+    const result = failureOf(
+      extractGithubSkillArchive(bytes, { path: 'skills/review' }),
+    )
+
+    expect(result.code).toBe('archive-path-rejected')
+    expect(result.path).toBe('(a path with hidden or control characters)')
+    expect(JSON.stringify(result)).not.toContain('\u202E')
+  })
+
+  it('takes only LICENSE, LICENCE, COPYING and NOTICE with .md or .txt from the root', () => {
+    const bytes = repoArchive({
+      'LICENSE': 'MIT\n',
+      'LICENSE.md': 'md\n',
+      'COPYING.txt': 'txt\n',
+      'LICENSE.bak': 'bak\n',
+      'LICENSE-MIT': 'dash\n',
+      'NOTICE.rst': 'rst\n',
+      'LICENCE.json': '{}\n',
+      'skills/review/SKILL.md': skillMarkdown(),
+    })
+    const result = skillOf(
+      extractGithubSkillArchive(bytes, { path: 'skills/review' }),
+    )
+
+    expect(result.licenceFiles.map((file) => {
+      return file.path
+    })).toEqual(['COPYING.txt', 'LICENSE', 'LICENSE.md'])
+  })
+
   it('refuses an archive without a single top-level folder', () => {
     const bytes = buildArchive({
       'a/SKILL.md': skillMarkdown(),
@@ -236,7 +307,7 @@ describe('extractGithubSkillArchive', () => {
       { path: null },
     )).code).toBe('archive-invalid')
     expect(failureOf(extractGithubSkillArchive(
-      new Uint8Array(25 * 1024 * 1024 + 1),
+      new Uint8Array(15 * 1024 * 1024 + 1),
       { path: null },
     )).code).toBe('archive-too-large')
   })

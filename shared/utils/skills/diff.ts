@@ -1,8 +1,11 @@
-import { SKILL_DIFF_MAX_LINES } from '#shared/utils/skills-policy'
+import {
+  SKILL_DIFF_MAX_LINES,
+  SKILL_DIFF_TOTAL_CELL_BUDGET,
+} from '#shared/utils/skills-policy'
 
 export const SKILL_DIFF_CONTEXT_LINES = 3
 export const SKILL_DIFF_FILE_MAX_LINES = 5000
-export const SKILL_DIFF_CELL_BUDGET = 2_000_000
+export const SKILL_DIFF_FILE_CELL_BUDGET = 2_000_000
 
 export type SkillDiffLineKind = 'add' | 'remove' | 'context' | 'gap'
 
@@ -62,7 +65,15 @@ function replaceAll(before: string[], after: string[]): Edit[] {
   ]
 }
 
-function diffMiddle(before: string[], after: string[]): Edit[] {
+interface CellBudget {
+  remaining: number
+}
+
+function diffMiddle(
+  before: string[],
+  after: string[],
+  budget: CellBudget,
+): Edit[] | null {
   const rows = before.length
   const columns = after.length
 
@@ -70,9 +81,17 @@ function diffMiddle(before: string[], after: string[]): Edit[] {
     return replaceAll(before, after)
   }
 
-  if ((rows + 1) * (columns + 1) > SKILL_DIFF_CELL_BUDGET) {
+  const cells = (rows + 1) * (columns + 1)
+
+  if (cells > SKILL_DIFF_FILE_CELL_BUDGET) {
     return replaceAll(before, after)
   }
+
+  if (cells > budget.remaining) {
+    return null
+  }
+
+  budget.remaining -= cells
 
   const width = columns + 1
   const table = new Uint32Array((rows + 1) * width)
@@ -119,7 +138,11 @@ function diffMiddle(before: string[], after: string[]): Edit[] {
   return edits
 }
 
-function computeEdits(before: string[], after: string[]): Edit[] {
+function computeEdits(
+  before: string[],
+  after: string[],
+  budget: CellBudget,
+): Edit[] | null {
   let prefix = 0
 
   while (
@@ -140,14 +163,21 @@ function computeEdits(before: string[], after: string[]): Edit[] {
     suffix++
   }
 
+  const middle = diffMiddle(
+    before.slice(prefix, before.length - suffix),
+    after.slice(prefix, after.length - suffix),
+    budget,
+  )
+
+  if (middle === null) {
+    return null
+  }
+
   return [
     ...before.slice(0, prefix).map((text): Edit => {
       return { kind: 'same', text }
     }),
-    ...diffMiddle(
-      before.slice(prefix, before.length - suffix),
-      after.slice(prefix, after.length - suffix),
-    ),
+    ...middle,
     ...before.slice(before.length - suffix).map((text): Edit => {
       return { kind: 'same', text }
     }),
@@ -208,6 +238,7 @@ function diffOneFile(input: {
   path: string
   before: string | null
   after: string | null
+  budget: CellBudget
 }): SkillFileDiff | null {
   const beforeLines = splitLines(input.before ?? '')
   const afterLines = splitLines(input.after ?? '')
@@ -219,21 +250,26 @@ function diffOneFile(input: {
     return null
   }
 
+  const countsOnly: SkillFileDiff = {
+    path: input.path,
+    status,
+    added: afterLines.length,
+    removed: beforeLines.length,
+    lines: [],
+    truncated: true,
+  }
   const tooLarge = beforeLines.length > SKILL_DIFF_FILE_MAX_LINES
     || afterLines.length > SKILL_DIFF_FILE_MAX_LINES
 
   if (tooLarge) {
-    return {
-      path: input.path,
-      status,
-      added: afterLines.length,
-      removed: beforeLines.length,
-      lines: [],
-      truncated: true,
-    }
+    return countsOnly
   }
 
-  const edits = computeEdits(beforeLines, afterLines)
+  const edits = computeEdits(beforeLines, afterLines, input.budget)
+
+  if (edits === null) {
+    return countsOnly
+  }
 
   return {
     path: input.path,
@@ -266,6 +302,7 @@ export function diffSkillFiles(
   const files: SkillFileDiff[] = []
   let unchanged = 0
   let remaining = maxLines
+  const budget: CellBudget = { remaining: SKILL_DIFF_TOTAL_CELL_BUDGET }
   let truncated = false
 
   for (const path of paths) {
@@ -273,6 +310,7 @@ export function diffSkillFiles(
       path,
       before: before.get(path) ?? null,
       after: after.get(path) ?? null,
+      budget,
     })
 
     if (!diff) {

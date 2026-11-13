@@ -11,6 +11,8 @@ import { checkGithubSkillUpdate } from '~~/server/utils/skills/import/update-che
  * pending version and the answer carries its diff against the current
  * version, the findings that are new in it and any licence change. The skill
  * keeps running on its current version until the pending one is accepted.
+ * The import limit is spent only when GitHub is about to be called, so a
+ * pinned or non-GitHub skill answers without using it.
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -24,9 +26,6 @@ export default defineEventHandler(async (event) => {
   await requireFeature(event, 'skills.import-url')
 
   const userId = parseInt(session.user.id)
-
-  await enforceSkillImportRateLimit(event, userId)
-
   const { id } = getDecodedRouterParams(event)
 
   logger.set({ userId })
@@ -36,6 +35,10 @@ export default defineEventHandler(async (event) => {
     bucket: useFileStorage(),
     userId,
     skillId: id ?? '',
+    kv: useKV(),
+    beforeNetwork: async () => {
+      await enforceSkillImportRateLimit(event, userId)
+    },
     logger,
   })
 })

@@ -17,6 +17,12 @@ const GITHUB_HOSTS: ReadonlySet<string> = new Set([
 ])
 const SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//
 const SKILL_FILE_NAME = 'SKILL.md'
+export const GITHUB_RESERVED_REF_ROOTS: ReadonlySet<string> = new Set([
+  'pull',
+  'refs',
+  'keep-around',
+  '__gh__',
+])
 const SPLIT_KINDS: ReadonlySet<string> = new Set(['tree', 'blob'])
 
 export type GithubSkillUrlKind = 'repo' | 'tree' | 'blob' | 'commit'
@@ -46,6 +52,17 @@ export function isValidGithubSegment(segment: string): boolean {
   return segment !== '.'
     && segment !== '..'
     && GITHUB_SEGMENT_PATTERN.test(segment)
+}
+
+/**
+ * Pull request heads, merge refs and GitHub's internal namespaces hold
+ * commits that belong to forks, so they are never a branch or a tag of the
+ * named repository and are refused wherever a ref is read.
+ */
+export function isReservedGithubRef(ref: string): boolean {
+  const root = ref.split('/')[0]?.toLowerCase() ?? ''
+
+  return GITHUB_RESERVED_REF_ROOTS.has(root)
 }
 
 export function isGithubFullSha(value: string): boolean {
@@ -175,6 +192,12 @@ export function parseGithubSkillUrl(input: string): GithubUrlParseResult {
     return rejected('The path in the link is too long')
   }
 
+  if (isReservedGithubRef(rest[0]!)) {
+    return rejected(
+      'Pull request and internal refs cannot be imported; use a branch, a tag or a commit of the default branch',
+    )
+  }
+
   if (kind === 'blob') {
     if (rest.length < 2 || rest.at(-1) !== SKILL_FILE_NAME) {
       return rejected('A file link must point to a SKILL.md')
@@ -234,7 +257,11 @@ export function getGithubRefCandidates(
     const pathText = segments.slice(refSegments).join('/')
     const path = pathText === '' ? null : pathText
 
-    if (ref.length > GITHUB_REF_MAX_LENGTH || !isPathWithinLimits(path)) {
+    if (
+      ref.length > GITHUB_REF_MAX_LENGTH
+      || !isPathWithinLimits(path)
+      || isReservedGithubRef(ref)
+    ) {
       continue
     }
 

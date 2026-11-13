@@ -169,6 +169,29 @@ describe('POST /api/v1/skills/[id]/update/{accept,reject}', () => {
     },
   )
 
+  it('asks for licenceAcknowledged when the update moves an open skill to none', async () => {
+    await testDb.db.update(schema.skills)
+      .set({ licenseClass: 'open' })
+      .where(eq(schema.skills.id, skillId))
+
+    expect(await failureOf(
+      call('accept', { version: 2, sha256: pendingSha256 }),
+    )).toMatchObject({
+      status: 400,
+      code: 'licence-acknowledgement-required',
+    })
+    expect((await testDb.db.select().from(schema.skills))[0]!.pendingVersion)
+      .toBe(2)
+
+    const result = await call('accept', {
+      version: 2,
+      sha256: pendingSha256,
+      licenceAcknowledged: true,
+    })
+
+    expect(result).toMatchObject({ id: skillId, version: 3 })
+  })
+
   it('accepts the reviewed version and disables the skill', async () => {
     await testDb.db.update(schema.skills)
       .set({ enabled: true })

@@ -96,6 +96,7 @@ export async function previewGithubImport(input: {
   const client = createGithubClient({
     fetchImpl: input.fetchImpl,
     logger: input.logger,
+    kv: input.kv,
   })
   const source = await resolveGithubSource(client, parsed.value, {
     path: pickedPath,
