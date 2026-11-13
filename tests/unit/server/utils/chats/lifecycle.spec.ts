@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
     cleanupFilesOrphanedByChatDeletion: vi.fn(),
     cleanupDocumentsForDeletedChats: vi.fn(),
     cleanupDocumentsForDeletedMessage: vi.fn(),
+    cleanupSkillsForDeletedChats: vi.fn(),
     detachChatsFromMemory: vi.fn(),
     detachArtifactsFromChats: vi.fn(),
     removeChatsFromSearchIndex: vi.fn(),
@@ -32,6 +33,12 @@ vi.mock('~~/server/utils/documents/cleanup', () => {
     cleanupDocumentsForDeletedChats: mocks.cleanupDocumentsForDeletedChats,
     cleanupDocumentsForDeletedMessage:
       mocks.cleanupDocumentsForDeletedMessage,
+  }
+})
+
+vi.mock('~~/server/utils/skills/cleanup', () => {
+  return {
+    cleanupSkillsForDeletedChats: mocks.cleanupSkillsForDeletedChats,
   }
 })
 
@@ -154,6 +161,11 @@ describe('chat lifecycle', () => {
     })
     mocks.cleanupDocumentsForDeletedMessage.mockImplementation(async () => {
       mocks.calls.push('document-cleanup')
+
+      return {}
+    })
+    mocks.cleanupSkillsForDeletedChats.mockImplementation(async () => {
+      mocks.calls.push('skill-cleanup')
 
       return {}
     })
@@ -448,8 +460,13 @@ describe('chat lifecycle', () => {
           'refresh',
           'stale',
           'document-cleanup',
+          'skill-cleanup',
         ])
         expect(mocks.cleanupDocumentsForDeletedChats).toHaveBeenCalledWith(
+          db,
+          { userId: USER_ID, chatIds: ['c1'], logger: mocks.logger },
+        )
+        expect(mocks.cleanupSkillsForDeletedChats).toHaveBeenCalledWith(
           db,
           { userId: USER_ID, chatIds: ['c1'], logger: mocks.logger },
         )

@@ -100,6 +100,8 @@ Other parent tables with cascade children: `chats` → `messages`, `chat_share_f
 
 `documents` (`server/db/schemas/documents.ts`) has no FK and no cascade: `purgeUserData` deletes its rows and the spec objects under `documents/<userId>/`, and the deletion hooks in `server/utils/documents/cleanup.ts` remove the rest (see `docs/d1-restore-reconciliation.md`).
 
+The skills tables (`skills`, `skill_versions`, `skill_files`, `skill_chat_settings`, `server/db/schemas/skills.ts`) have no FK and no cascade: `purgeUserSkills` deletes their rows and the objects under `user-skills/u<userId>/` and `skills-staging/u<userId>/`, and `cleanupSkillsForDeletedChats` removes the per-chat rows (see `docs/d1-restore-reconciliation.md`).
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:

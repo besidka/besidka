@@ -1095,6 +1095,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/features/exposure.spec.ts',
     'tests/unit/server/utils/features/guards.spec.ts',
     'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
     'tests/unit/utils/features/rollout-gate.spec.ts',
     'tests/unit/utils/features/schedule-schemas.spec.ts',
     'tests/unit/server/utils/features/schedules.spec.ts',
@@ -1443,6 +1444,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/(auth)/signup.spec.ts',
     'tests/unit/pages/(auth)/2fa.spec.ts',
     'tests/e2e/auth/signin.spec.ts',
+  ]
+
+  const skillsStorageTests = [
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/unit/server/utils/skills/storage.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/skills/sweep.spec.ts',
+    'tests/integration/server/skills-storage-sweep-plugin.spec.ts',
+    'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/server/utils/chats/lifecycle.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
   ]
 
   const seoTests = [
@@ -2826,6 +2840,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills-policy\.ts|server\/db\/schemas\/skills\.ts|server\/utils\/skills\/.*\.ts|server\/plugins\/skills-storage-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_icy_annihilus\/.*)$/,
+      tests: skillsStorageTests,
     },
     {
       pattern:

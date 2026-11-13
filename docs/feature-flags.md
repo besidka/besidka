@@ -150,7 +150,7 @@ Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 (and `.files`, `.skills`), `research.custom` (and `research.custom.max`,
 `research.export`, `research.mcp`), `connectors` (and `.oauth`, `.registry`,
 `.native`), `google.drive` (and `google.calendar`, `google.byo`,
-`google.gmail`), `skills` (and `.import-url`, `.scripts`), and
+`google.gmail`), `skills` (and `.import-url`, `.commands`, `.scripts`), and
 `ui.side-panel-demo`.
 
 As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,

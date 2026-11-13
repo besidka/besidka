@@ -259,10 +259,18 @@ const featureList = [
     parent: 'skills',
   }),
   internalFeature({
+    key: 'skills.commands',
+    title: 'Skill commands',
+    description: 'Run a skill as a slash command from the chat input.',
+    parent: 'skills',
+  }),
+  internalFeature({
     key: 'skills.scripts',
     title: 'Skill scripts',
     description: 'Skills that ship scripts.',
     parent: 'skills',
+    spend: 'foreground',
+    optIn: 'required',
   }),
   internalFeature({
     key: 'ui.side-panel-demo',

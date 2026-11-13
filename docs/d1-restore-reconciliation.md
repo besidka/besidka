@@ -50,6 +50,8 @@ command below is for the operator, preview first.
 | Documents deleted or detached in the window (`documents`) | Rows return; spec objects in R2 stay gone, so a restored row reads `spec_missing`; a deleted chat's rows return with their titles | Medium (erasure) | No |
 | `documents` rows pointing at deleted files | A restored row names a `file_id` whose file row or R2 object is gone | Medium | Partly (the sweep) |
 | Spec objects written in the window | No row, no owner | Medium (privacy) | No |
+| Skills disabled, deleted or pruned in the window (`skills`, `skill_versions`, `skill_files`) | Rows return as they were at B, often enabled; their blobs in R2 stay gone, so a restored skill reads `broken` | High (a disabled skill is live instruction text again) | No |
+| Skill blobs written in the window | No `skill_files` row references them | Low (privacy) | Yes (the hourly sweep, after one hour) |
 | `d1_migrations` | Rolled back, so the next deploy re-applies migrations | **Blocking** | No |
 
 ## Sessions: why a restore revives revoked sessions
@@ -303,6 +305,71 @@ before an additive migration re-runs it on the next deploy (see the next
 section). A `DEFAULT true` on a privacy flag would then reset rows that users
 had configured after the migration. Prefer restrictive defaults, or no SQL
 default at all, which `CLAUDE.md` already favors for rebuild reasons.
+
+## Skills
+
+A restore rolls back the four skills tables (`skills`, `skill_versions`,
+`skill_files` and `skill_chat_settings`, `server/db/schemas/skills.ts`) to the
+bookmark B. None has a foreign key to `users`, `chats` or each other, so
+nothing cascades, and R2 keeps its current state. File content sits in
+content-addressed blobs at `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>`
+and is referenced only through `skill_files.blob_sha256`, so a row and its
+blob can drift in both directions. Skill text is third-party instruction text
+that the model reads, so a skill that comes back enabled is a regression, not
+just stale data.
+
+- **Disable everything first.** A skill the user disabled or deleted in the
+  window returns exactly as it was at B, often enabled. Right after the
+  restore, before users can send:
+
+  ```sql
+  UPDATE skills SET enabled = 0;
+  ```
+
+  The rows touched in the window cannot be told apart after the restore (the
+  update was rolled back with them), so disable all of them, and say so in
+  the user notice (step 7): users re-enable the skills they want. Slash and
+  model toggles (`slash_command`, `model_invocable`) are settings, stay as
+  they are and do nothing while `enabled` is 0.
+- **Deletions come back as rows without blobs.** A skill deleted in the
+  window (or with its account) returns with its rows while its blobs under
+  `user-skills/` are gone. Replay the deletes from Axiom
+  (`attributes.skills.cleanup` for chats and account purges; the skill
+  delete route's own wide event for single deletes) by user: delete the
+  restored rows of deleted accounts and skills. Blob existence cannot be
+  checked in SQL: list `user-skills/` (see "Files and R2" for the listing
+  options), encode `skill_files.skill_id` into the public id with the same
+  Hashids settings as the app (`encryptionHashids`, length 16), diff the
+  `(user_id, public id, blob_sha256)` triples against the keys, and set
+  `status = 'broken'` and `enabled = 0` on every skill that has a
+  `skill_files` row without a blob in its current version. Rows whose
+  `current_version` points at a version without complete `skill_files` rows
+  need `current_version` set to the newest version that has them.
+- **Blobs written in the window.** No row references them after the restore.
+  The hourly sweep (`server/plugins/skills-storage-sweep.ts`) deletes blobs
+  older than one hour with no `skill_files` row, and staged import files
+  under `skills-staging/` after one hour, so this heals itself within a few
+  runs (the pass resumes from a KV cursor and covers a bounded number of
+  objects per run). Do not delete them by hand before the diff above: the
+  same blob can belong to a restored row.
+- **Pruned versions.** Versions pruned in the window return as rows, and the
+  blobs only they referenced are gone, so those versions read as broken when
+  opened. Only the current and pending versions are used at runtime, and the
+  newest 20 versions are kept, so the diff above decides whether the skill
+  itself is affected.
+- **Per-chat choices.** `skill_chat_settings` rows of chats deleted in the
+  window return with a chat id that no longer exists. They do nothing and
+  disappear with the account purge; no repair is needed.
+- **Ids.** `skills.id` is a public id encoded from an integer primary key
+  without `AUTOINCREMENT`, so the id of the newest skill can be reused after
+  a delete or a restore. R2 keys carry the user id and a content hash, so a
+  reused id can only meet a blob with identical content. The other three
+  tables use `AUTOINCREMENT`: record `sqlite_sequence` before the restore
+  (runbook step 0) and push it past the old high-water mark (step 3).
+- **Shares.** Skill sharing is not built yet. When it is (S-13), its share
+  rows are rolled back like artifact shares: revoked links become live again,
+  so replay the revocations from Axiom and keep the share flag off until that
+  is done.
 
 ## Migrations re-apply on the next deploy (blocking)
 
@@ -595,8 +662,9 @@ removes data that users already asked to delete.
 
 ### 5. Reconcile files and R2
 
-For artifacts and documents, run the R2 diffs of the Artifacts and
-Documents sections as well.
+For artifacts, documents and skills, run the R2 diffs of the Artifacts,
+Documents and Skills sections as well. Run `UPDATE skills SET enabled = 0;`
+before the diffs, so no restored skill stays live while they run.
 
 1. `files` rows whose object is missing: delete those rows. This lowers the
    owners' quota usage.
