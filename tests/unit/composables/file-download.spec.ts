@@ -396,6 +396,59 @@ describe('composables/file-download', () => {
       expect(second.build).toHaveBeenCalledOnce()
     })
 
+    it('evicts a kept file after 60 seconds without any tap', async () => {
+      vi.useFakeTimers()
+
+      const share = stubShare()
+      const { build, target: blobTarget } = createBlobTarget('diagram:x:ttl')
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+      await useFileDownload().downloadBlob(blobTarget)
+
+      expect(vi.getTimerCount()).toBe(1)
+
+      vi.advanceTimersByTime(60_000)
+
+      expect(vi.getTimerCount()).toBe(0)
+
+      await useFileDownload().downloadBlob(blobTarget)
+
+      expect(build).toHaveBeenCalledTimes(2)
+    })
+
+    it('stops the eviction timer when the kept file is used', async () => {
+      vi.useFakeTimers()
+
+      const share = stubShare()
+      const { target: blobTarget } = createBlobTarget('diagram:x:used')
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+      await useFileDownload().downloadBlob(blobTarget)
+      await useFileDownload().downloadBlob(blobTarget)
+
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('stops the eviction timer when the page is hidden', async () => {
+      vi.useFakeTimers()
+
+      const share = stubShare()
+      const { target: blobTarget } = createBlobTarget('diagram:x:hidden')
+
+      share.mockRejectedValueOnce(
+        new DOMException('no gesture', 'NotAllowedError'),
+      )
+      await useFileDownload().downloadBlob(blobTarget)
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
     it('resolves to false when building the blob fails', async () => {
       stubShare()
 

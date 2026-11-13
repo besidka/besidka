@@ -22,6 +22,7 @@ type ShareDownloadOutcome
 interface PendingFile {
   file: File
   expiresAt: number
+  timer: ReturnType<typeof setTimeout>
 }
 
 const ANCHOR_REVOKE_DELAY_MS = 4000
@@ -39,9 +40,26 @@ function bindVisibilityClear(): void {
   isVisibilityClearBound = true
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      pendingFiles.clear()
+      clearPendingFiles()
     }
   })
+}
+
+function forgetPendingFile(key: string): void {
+  const pending = pendingFiles.get(key)
+
+  if (!pending) {
+    return
+  }
+
+  clearTimeout(pending.timer)
+  pendingFiles.delete(key)
+}
+
+function clearPendingFiles(): void {
+  for (const key of [...pendingFiles.keys()]) {
+    forgetPendingFile(key)
+  }
 }
 
 function takePendingFile(key: string): File | null {
@@ -52,7 +70,7 @@ function takePendingFile(key: string): File | null {
   }
 
   if (pending.expiresAt < Date.now()) {
-    pendingFiles.delete(key)
+    forgetPendingFile(key)
 
     return null
   }
@@ -61,9 +79,13 @@ function takePendingFile(key: string): File | null {
 }
 
 function keepPendingFile(key: string, file: File): void {
+  forgetPendingFile(key)
   pendingFiles.set(key, {
     file,
     expiresAt: Date.now() + PENDING_FILE_TTL_MS,
+    timer: setTimeout(() => {
+      pendingFiles.delete(key)
+    }, PENDING_FILE_TTL_MS),
   })
 }
 
@@ -153,7 +175,7 @@ export function useFileDownload() {
       const outcome = await shareFile(file)
 
       if (outcome === 'needs-gesture' && cachedFile) {
-        pendingFiles.delete(key)
+        forgetPendingFile(key)
         useErrorMessage(
           'Failed to save the file',
           'The share sheet could not be opened. Try downloading it again.',
@@ -172,11 +194,11 @@ export function useFileDownload() {
         return 'awaiting-tap'
       }
 
-      pendingFiles.delete(key)
+      forgetPendingFile(key)
 
       return outcome === 'shared' ? 'saved' : outcome
     } catch (exception) {
-      pendingFiles.delete(key)
+      forgetPendingFile(key)
       useErrorMessage(
         'Failed to download the file',
         exception instanceof Error ? exception.message : undefined,
