@@ -1,5 +1,5 @@
 import type { BatchItem } from 'drizzle-orm/batch'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, lte, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { hashSkillFileSet } from '#shared/utils/skills/analyse'
@@ -8,9 +8,11 @@ import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import {
   SKILLS_MAX_USER_BYTES,
   SKILLS_PER_USER,
+  isReservedSkillSlashName,
   isSkillNameValid,
 } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { isDecodableSkillPublicId } from '~~/server/utils/skills/ids'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
@@ -19,6 +21,7 @@ import {
   deleteSkillStage,
   readSkillStage,
   readStagedFile,
+  skillStageKey,
 } from '~~/server/utils/skills/import/stage'
 import type {
   SkillStageBucket,
@@ -320,6 +323,59 @@ function buildVersionStatements(input: {
   ]
 }
 
+type SkillRow = Omit<typeof schema.skills.$inferInsert, 'id'>
+
+const SKILL_INSERT_COLUMNS = Object.entries(getTableColumns(schema.skills))
+  .filter(([key]) => {
+    return key !== 'id'
+  })
+
+/**
+ * Inserts the skill row only while the user is under both caps, in one
+ * statement, so two concurrent commits cannot both pass a count that was
+ * read earlier. Returns the new public id, or null when a cap blocked it.
+ * Column names and value encoding come from the Drizzle table, so a new
+ * column cannot be forgotten here without the type of `SkillRow` failing.
+ */
+async function insertSkillWithinLimits(
+  db: DbClient,
+  row: SkillRow,
+): Promise<string | null> {
+  const values = row as Record<string, unknown>
+  const columnList = sql.join(
+    SKILL_INSERT_COLUMNS.map(([, column]) => {
+      return sql.identifier(column.name)
+    }),
+    sql`, `,
+  )
+  const valueList = sql.join(
+    SKILL_INSERT_COLUMNS.map(([key, column]) => {
+      const value = values[key]
+
+      return sql`${value === null || value === undefined
+        ? null
+        : column.mapToDriverValue(value)}`
+    }),
+    sql`, `,
+  )
+  const rows = await db.all<{ id: number }>(sql`
+    insert into ${schema.skills} (${columnList})
+    select ${valueList}
+    where (
+      select count(*) from ${schema.skills}
+      where ${schema.skills.userId} = ${row.userId}
+    ) < ${SKILLS_PER_USER}
+    and (
+      select coalesce(sum(${schema.skills.bytes}), 0) from ${schema.skills}
+      where ${schema.skills.userId} = ${row.userId}
+    ) + ${row.bytes} <= ${SKILLS_MAX_USER_BYTES}
+    returning id
+  `)
+  const inserted = rows[0]
+
+  return inserted ? encodePublicId(Number(inserted.id)) : null
+}
+
 async function createSkillFromStage(input: {
   db: DbClient
   bucket: SkillStageBucket
@@ -331,7 +387,10 @@ async function createSkillFromStage(input: {
   let skillId: string
 
   try {
-    const [row] = await db.insert(schema.skills).values({
+    const now = new Date()
+    const insertedId = await insertSkillWithinLimits(db, {
+      createdAt: now,
+      updatedAt: now,
       userId: manifest.userId,
       name,
       description: manifest.skill.description,
@@ -353,14 +412,24 @@ async function createSkillFromStage(input: {
       bytes: manifest.totalBytes,
       enabled: false,
       modelInvocable: manifest.skill.modelInvocable,
-      slashCommand: manifest.skill.slashCommand,
+      slashCommand: manifest.skill.slashCommand
+        && !isReservedSkillSlashName(name),
       argumentHint: manifest.skill.argumentHint,
       allowScripts: false,
       status: 'broken',
       createdVia: 'app',
-    }).returning({ id: schema.skills.id })
+      createdByClientId: null,
+      providerSkillId: null,
+      providerSkillVersion: null,
+      providerUploadedName: null,
+      providerDeletedAt: null,
+    })
 
-    skillId = row!.id
+    if (insertedId === null) {
+      throw await createLimitError(db, manifest.userId)
+    }
+
+    skillId = insertedId
   } catch (exception) {
     if (isUniqueViolation(exception)) {
       const existing = await findSkillByName(db, manifest.userId, name)
@@ -406,20 +475,56 @@ async function createSkillFromStage(input: {
   }
 }
 
+async function createLimitError(db: DbClient, userId: number) {
+  const skillsCount = await countUserSkills(db, userId)
+
+  return skillsCount >= SKILLS_PER_USER
+    ? createError({
+      message: 'Skill limit reached',
+      status: 403,
+      code: 'skills-limit',
+      why: `An account can hold ${SKILLS_PER_USER} skills`,
+      fix: 'Delete a skill you no longer use',
+    })
+    : createError({
+      message: 'Skill storage is full',
+      status: 413,
+      code: 'skills-storage-limit',
+      why: 'Your skills would use more than 50 MiB of storage',
+      fix: 'Delete a skill or an older version you no longer use',
+    })
+}
+
 /**
  * The skill row exists before its blobs, because the blob key carries the
  * skill id. A failed import removes the row, its rows and its blob prefix;
  * a failed cleanup leaves a `broken` disabled row and swept orphans.
  */
-async function discardUnfinishedSkill(input: {
+export async function discardUnfinishedSkill(input: {
   db: DbClient
   bucket: SkillStageBucket
   userId: number
   skillId: string
-}): Promise<void> {
+  notUpdatedAfter?: Date
+}): Promise<boolean> {
   const { db, bucket, userId, skillId } = input
 
   try {
+    const deleted = await db.delete(schema.skills)
+      .where(and(
+        eq(schema.skills.id, skillId),
+        eq(schema.skills.userId, userId),
+        eq(schema.skills.status, 'broken'),
+        input.notUpdatedAfter
+          ? lte(schema.skills.updatedAt, input.notUpdatedAfter)
+          : undefined,
+      ))
+      .returning({ id: schema.skills.id })
+
+    if (deleted.length === 0) {
+      return false
+    }
+
     await db.batch([
       db.delete(schema.skillFiles).where(and(
         eq(schema.skillFiles.skillId, skillId),
@@ -429,14 +534,12 @@ async function discardUnfinishedSkill(input: {
         eq(schema.skillVersions.skillId, skillId),
         eq(schema.skillVersions.userId, userId),
       )),
-      db.delete(schema.skills).where(and(
-        eq(schema.skills.id, skillId),
-        eq(schema.skills.userId, userId),
-      )),
     ])
     await deleteSkillPrefix(skillPrefix(userId, skillId), bucket)
+
+    return true
   } catch {
-    return
+    return false
   }
 }
 
@@ -492,14 +595,54 @@ async function reclaimAbandonedPlaceholder(input: {
     return false
   }
 
-  await discardUnfinishedSkill({
+  return await discardUnfinishedSkill({
     db,
     bucket: input.bucket,
     userId: input.userId,
     skillId: existing.id,
+    notUpdatedAfter: existing.updatedAt,
   })
+}
 
-  return true
+/**
+ * The blobs were written before the version rows existed, so a prune that
+ * ran in between could have judged them unreferenced. Writing them again
+ * now that the rows exist closes that window. Skipped when another import
+ * has replaced this pending version meanwhile, and never fatal: the rows are
+ * committed either way.
+ */
+async function reassertPendingBlobs(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  manifest: SkillStageManifest
+  contentOverrides: Map<string, Uint8Array>
+  skillId: string
+  version: number
+}): Promise<void> {
+  try {
+    const [current] = await input.db.select({
+      pendingVersion: schema.skills.pendingVersion,
+    })
+      .from(schema.skills)
+      .where(and(
+        eq(schema.skills.id, input.skillId),
+        eq(schema.skills.userId, input.manifest.userId),
+      ))
+      .limit(1)
+
+    if (current?.pendingVersion !== input.version) {
+      return
+    }
+
+    await copyStagedBlobs({
+      bucket: input.bucket,
+      manifest: input.manifest,
+      contentOverrides: input.contentOverrides,
+      skillId: input.skillId,
+    })
+  } catch {
+    return
+  }
 }
 
 async function replaceAsUpdate(input: {
@@ -598,6 +741,15 @@ async function replaceAsUpdate(input: {
     throw exception
   }
 
+  await reassertPendingBlobs({
+    db,
+    bucket,
+    manifest,
+    contentOverrides,
+    skillId,
+    version,
+  })
+
   return {
     kind: 'pending',
     id: skillId,
@@ -607,6 +759,48 @@ async function replaceAsUpdate(input: {
     sha256: manifest.contentSha256,
     licenceClass: manifest.licence.class,
     filesCount: manifest.files.length,
+  }
+}
+
+/**
+ * Takes the stage before any work starts: the manifest is read, then
+ * deleted, and the commit continues with its in-memory copy, so a second
+ * commit that reads it afterwards finds nothing. KV is eventually consistent
+ * and has no compare-and-delete, so two commits racing within the
+ * propagation window can still both read the manifest; the unique name index
+ * and the atomic limit insert keep that harmless (one skill, one of them
+ * answers 409), and a replace-as-update would at worst write the same
+ * pending version twice.
+ */
+async function claimSkillStage(
+  kv: SkillStageKv,
+  manifest: SkillStageManifest,
+): Promise<void> {
+  await kv.delete(skillStageKey(manifest.stageId))
+}
+
+/**
+ * A commit that fails after claiming puts the manifest back with its
+ * remaining lifetime, so the user can retry (a rename, another resolution)
+ * without uploading again. Best effort.
+ */
+async function restoreSkillStage(
+  kv: SkillStageKv,
+  manifest: SkillStageManifest,
+  now: number,
+): Promise<void> {
+  const remainingSeconds = Math.ceil((manifest.expiresAt - now) / 1000)
+
+  if (remainingSeconds <= 0) {
+    return
+  }
+
+  try {
+    await kv.put(skillStageKey(manifest.stageId), JSON.stringify(manifest), {
+      expirationTtl: Math.max(60, remainingSeconds),
+    })
+  } catch {
+    return
   }
 }
 
@@ -668,12 +862,20 @@ export async function commitSkillImport(
   let result: CommitSkillImportResult
 
   if (input.asUpdateOf) {
-    result = await replaceAsUpdate({
-      db,
-      bucket,
-      prepared: { manifest, contentOverrides: new Map() },
-      skillId: input.asUpdateOf,
-    })
+    await claimSkillStage(kv, manifest)
+
+    try {
+      result = await replaceAsUpdate({
+        db,
+        bucket,
+        prepared: { manifest, contentOverrides: new Map() },
+        skillId: input.asUpdateOf,
+      })
+    } catch (exception) {
+      await restoreSkillStage(kv, manifest, input.now ?? Date.now())
+
+      throw exception
+    }
   } else {
     const existing = await findSkillByName(db, userId, name)
 
@@ -690,12 +892,20 @@ export async function commitSkillImport(
       throw createNameTakenError(name, manifest.stageId, existing.id)
     }
 
-    result = await createSkillFromStage({
-      db,
-      bucket,
-      prepared: await prepareRenamedImport({ bucket, manifest, name }),
-      name,
-    })
+    await claimSkillStage(kv, manifest)
+
+    try {
+      result = await createSkillFromStage({
+        db,
+        bucket,
+        prepared: await prepareRenamedImport({ bucket, manifest, name }),
+        name,
+      })
+    } catch (exception) {
+      await restoreSkillStage(kv, manifest, input.now ?? Date.now())
+
+      throw exception
+    }
   }
 
   try {

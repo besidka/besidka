@@ -137,6 +137,13 @@ describe('POST /api/v1/skills/import/text', () => {
     })
   })
 
+  it('answers 411 for a body without a Content-Length', async () => {
+    expect((await failureOf(callText(
+      { text: skillMarkdown() },
+      { 'content-length': '' },
+    ))).status).toBe(411)
+  })
+
   it('answers 413 before parsing a body over 1 MiB', async () => {
     expect((await failureOf(callText(
       { text: skillMarkdown() },

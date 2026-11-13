@@ -10,6 +10,7 @@ import { assertRequestBodyLength } from '~~/server/utils/artifacts/viewer-storag
 import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { commitSkillImport } from '~~/server/utils/skills/import/commit'
+import { enforceSkillBurstLimit } from '~~/server/utils/skills/import/rate-limit'
 import { SKILL_STAGE_ID_PATTERN } from '~~/server/utils/skills/import/stage'
 
 const BODY_MAX_BYTES = 4096
@@ -41,6 +42,10 @@ export default defineEventHandler(async (event) => {
 
   assertRequestBodyLength(event, BODY_MAX_BYTES)
 
+  const userId = parseInt(session.user.id)
+
+  await enforceSkillBurstLimit(event, userId)
+
   const body = await readValidatedBody(event, bodySchema.safeParse)
 
   if (body.error) {
@@ -52,8 +57,6 @@ export default defineEventHandler(async (event) => {
       fix: 'Send { stageId, acknowledged: true } from the preview step',
     })
   }
-
-  const userId = parseInt(session.user.id)
 
   logger.set({ userId })
 

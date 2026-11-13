@@ -6,7 +6,10 @@ import {
 import type { SkillFileKind } from '#shared/utils/skills-policy'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import type { SkillFrontmatter } from '#shared/utils/skills/frontmatter'
-import { scanSkillText, summariseSkillFindings } from '#shared/utils/skills/findings'
+import {
+  capSkillFindings,
+  scanSkillTextWithCounts,
+} from '#shared/utils/skills/findings'
 import type { SkillFinding } from '#shared/utils/skills/findings'
 import { classifySkillLicence } from '#shared/utils/skills/licence'
 import type { SkillLicenceResult } from '#shared/utils/skills/licence'
@@ -146,6 +149,7 @@ export async function analyseSkillFiles(
 
   const files: SkillAnalysisFile[] = []
   const findings: SkillFinding[] = []
+  const findingCounts: Record<string, number> = {}
   let totalBytes = 0
 
   for (const file of input.files) {
@@ -156,12 +160,24 @@ export async function analyseSkillFiles(
       sha256: await sha256Hex(file.bytes as BufferSource),
     })
     totalBytes += file.bytes.byteLength
-    findings.push(...scanSkillText(file.path, file.text))
+    const scan = scanSkillTextWithCounts(file.path, file.text)
+
+    findings.push(...scan.findings)
+
+    for (const [type, count] of Object.entries(scan.counts)) {
+      findingCounts[type] = (findingCounts[type] ?? 0) + count
+    }
   }
 
-  if (findings.length > SKILL_FINDINGS_MAX_TOTAL) {
+  const totalFindings = Object.values(findingCounts).reduce(
+    (total, count) => total + count,
+    0,
+  )
+  const shownFindings = capSkillFindings(findings, SKILL_FINDINGS_MAX_TOTAL)
+
+  if (totalFindings > shownFindings.length) {
     warnings.push(
-      `Showing the first ${SKILL_FINDINGS_MAX_TOTAL} of ${findings.length} findings`,
+      `Showing ${shownFindings.length} of ${totalFindings} findings, including at least one of every type`,
     )
   }
 
@@ -170,8 +186,8 @@ export async function analyseSkillFiles(
     skill: parsed.frontmatter,
     files,
     skillMd: skillMdFile.text,
-    findings: findings.slice(0, SKILL_FINDINGS_MAX_TOTAL),
-    findingCounts: summariseSkillFindings(findings),
+    findings: shownFindings,
+    findingCounts,
     warnings,
     licence,
     totalBytes,

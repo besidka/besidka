@@ -3,6 +3,7 @@ import {
   SKILL_MAX_PATH_LENGTH,
 } from '#shared/utils/skills-policy'
 import type { SkillFileKind } from '#shared/utils/skills-policy'
+import { hasHiddenCharacter } from '#shared/utils/skills/hidden-characters'
 
 export const SKILL_MD_FILE_NAME = 'SKILL.md'
 
@@ -56,8 +57,7 @@ const LICENCE_BASENAME_PATTERN
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F-\u009F]/
-const FORMAT_CHARACTER_PATTERN
-  = /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\uFEFF\u2028\u2029]/
+const LINE_SEPARATOR_PATTERN = /[\u2028\u2029]/
 const WINDOWS_DRIVE_PATTERN = /^[A-Za-z]:/
 
 export type SkillPathRejection
@@ -67,6 +67,7 @@ export type SkillPathRejection
     | 'backslash'
     | 'control-character'
     | 'format-character'
+    | 'unsafe-segment'
     | 'too-long'
     | 'too-deep'
     | 'extension-denied'
@@ -76,6 +77,15 @@ export type SkillEntryName
   = | { status: 'ok', path: string }
     | { status: 'skip', reason: 'directory' | 'macos-metadata' | 'ds-store' }
     | { status: 'reject', reason: SkillPathRejection }
+
+/**
+ * Windows drops a trailing dot or space and reads `name:stream` as an
+ * alternate data stream, so such a segment can name a different file than
+ * the one the checks saw.
+ */
+function isUnsafeSegment(segment: string): boolean {
+  return segment.endsWith('.') || segment.endsWith(' ') || segment.includes(':')
+}
 
 export function getSkillBaseName(path: string): string {
   return path.split('/').at(-1) ?? ''
@@ -114,7 +124,7 @@ export function normaliseSkillEntryName(rawName: string): SkillEntryName {
     return { status: 'reject', reason: 'control-character' }
   }
 
-  if (FORMAT_CHARACTER_PATTERN.test(rawName)) {
+  if (hasHiddenCharacter(rawName) || LINE_SEPARATOR_PATTERN.test(rawName)) {
     return { status: 'reject', reason: 'format-character' }
   }
 
@@ -136,6 +146,10 @@ export function normaliseSkillEntryName(rawName: string): SkillEntryName {
 
   if (segments.length === 0) {
     return { status: 'reject', reason: 'empty' }
+  }
+
+  if (segments.some(isUnsafeSegment)) {
+    return { status: 'reject', reason: 'unsafe-segment' }
   }
 
   if (isDirectory) {

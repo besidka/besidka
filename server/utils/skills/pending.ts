@@ -1,5 +1,5 @@
 import type { BatchItem } from 'drizzle-orm/batch'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { SKILL_LICENCE_CLASSIFIER_VERSION } from '#shared/utils/skills/licence'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
@@ -111,6 +111,47 @@ async function loadReviewedPending(input: RejectPendingInput) {
   return { skill, pending }
 }
 
+/**
+ * One guarded statement that takes the pending version: it clears
+ * `pending_version` only while it still points at the reviewed version, and
+ * only the caller that gets a row back may go on. Two clicks, or an accept
+ * and a reject, cannot both win.
+ */
+async function claimPendingVersion(
+  input: RejectPendingInput,
+  version: number,
+): Promise<void> {
+  const claimed = await input.db.update(schema.skills)
+    .set({ pendingVersion: null })
+    .where(and(
+      eq(schema.skills.id, input.skillId),
+      eq(schema.skills.userId, input.userId),
+      eq(schema.skills.pendingVersion, version),
+    ))
+    .returning({ id: schema.skills.id })
+
+  if (claimed.length === 0) {
+    throw createPendingChangedError()
+  }
+}
+
+async function releasePendingVersion(
+  input: RejectPendingInput,
+  version: number,
+): Promise<void> {
+  try {
+    await input.db.update(schema.skills)
+      .set({ pendingVersion: version })
+      .where(and(
+        eq(schema.skills.id, input.skillId),
+        eq(schema.skills.userId, input.userId),
+        isNull(schema.skills.pendingVersion),
+      ))
+  } catch {
+    return
+  }
+}
+
 function deletePendingStatements(
   db: DbClient,
   userId: number,
@@ -195,6 +236,8 @@ export async function acceptPendingSkillVersion(
   const hasProvenance = pending.sourceKind !== null
   const frontmatter = parsed?.ok ? parsed.frontmatter : null
 
+  await claimPendingVersion(input, pending.version)
+
   try {
     await db.batch([
       db.insert(schema.skillVersions).values({
@@ -256,11 +299,12 @@ export async function acceptPendingSkillVersion(
         .where(and(
           eq(schema.skills.id, skillId),
           eq(schema.skills.userId, userId),
-          eq(schema.skills.pendingVersion, pending.version),
         )),
       ...deletePendingStatements(db, userId, skillId, pending.version),
     ] as unknown as [BatchItem<'sqlite'>])
   } catch (exception) {
+    await releasePendingVersion(input, pending.version)
+
     if (isUniqueViolation(exception)) {
       throw createPendingChangedError()
     }
@@ -287,15 +331,15 @@ export async function rejectPendingSkillVersion(
   const { db, userId, skillId } = input
   const { pending } = await loadReviewedPending(input)
 
-  await db.batch([
-    ...deletePendingStatements(db, userId, skillId, pending.version),
-    db.update(schema.skills)
-      .set({ pendingVersion: null })
-      .where(and(
-        eq(schema.skills.id, skillId),
-        eq(schema.skills.userId, userId),
-      )),
-  ] as unknown as [BatchItem<'sqlite'>])
+  await claimPendingVersion(input, pending.version)
+  const deletions = deletePendingStatements(
+    db,
+    userId,
+    skillId,
+    pending.version,
+  ) as unknown as [BatchItem<'sqlite'>]
+
+  await db.batch(deletions)
 
   return { id: skillId, rejected: true }
 }

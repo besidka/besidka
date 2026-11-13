@@ -79,7 +79,6 @@ const CENTRAL_RECORD_SIGNATURE = 0x02014B50
 const END_RECORD_BYTES = 22
 const CENTRAL_RECORD_BYTES = 46
 const MAX_COMMENT_BYTES = 0xFFFF
-const UNIX_HOST_SYSTEM = 3
 const UNIX_FILE_TYPE_MASK = 0xF000
 const UNIX_SYMLINK = 0xA000
 const UNIX_REGULAR_FILE = 0x8000
@@ -92,6 +91,7 @@ const REJECTION_MESSAGES: Record<SkillPathRejection, string> = {
   'backslash': 'An entry name contains a backslash',
   'control-character': 'An entry name contains a control character',
   'format-character': 'An entry name contains a hidden or bidirectional character',
+  'unsafe-segment': 'An entry name ends in a dot or space, or contains a colon',
   'too-long': 'An entry path is longer than 200 characters',
   'too-deep': 'An entry path is nested more than 6 levels deep',
   'extension-denied': 'Binary and compiled files are not allowed in a skill',
@@ -248,11 +248,12 @@ export function readZipEntryAttributes(
   return attributes
 }
 
-function readUnixFileType(attributes: EntryAttributes): number | null {
-  if (attributes.hostSystem !== UNIX_HOST_SYSTEM) {
-    return null
-  }
-
+/**
+ * The unix file type sits in the high 16 bits of the external attributes.
+ * It is read whatever the "made by" host byte says, because that byte is
+ * written by the archive's author and a symlink must not hide behind it.
+ */
+function readUnixFileType(attributes: EntryAttributes): number {
   return (attributes.externalAttributes >>> 16) & UNIX_FILE_TYPE_MASK
 }
 
@@ -300,8 +301,7 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
     }
 
     if (
-      fileType !== null
-      && fileType !== 0
+      fileType !== 0
       && fileType !== UNIX_REGULAR_FILE
       && fileType !== UNIX_DIRECTORY
     ) {
@@ -336,7 +336,9 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
   const paths = kept.map((item) => {
     return item.path
   })
-  const uniquePaths = new Set(paths)
+  const uniquePaths = new Set(paths.map((path) => {
+    return path.normalize('NFC').toLowerCase()
+  }))
 
   if (uniquePaths.size !== paths.length) {
     return failure('archive-invalid', 'Two entries resolve to the same path')

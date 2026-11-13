@@ -3,6 +3,15 @@ import {
   SKILL_FINDING_BLANK_RUN,
   SKILL_FINDING_LONG_LINE,
 } from '#shared/utils/skills-policy'
+import {
+  HIDDEN_CHARACTER_PATTERN,
+  showHiddenCharacters,
+} from '#shared/utils/skills/hidden-characters'
+
+export {
+  formatHiddenCharacter,
+  showHiddenCharacters,
+} from '#shared/utils/skills/hidden-characters'
 
 export const SKILL_FINDING_TYPES = [
   'url',
@@ -24,61 +33,58 @@ export interface SkillFinding {
   detail: string | null
 }
 
+export interface SkillTextScan {
+  findings: SkillFinding[]
+  counts: Record<string, number>
+}
+
 const SNIPPET_MAX_CHARACTERS = 120
 const SCAN_LINE_MAX_CHARACTERS = 5000
-const HIDDEN_CHARACTER_PATTERN
-  = /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\uFEFF]/g
 const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`)\]]+/gi
 const IPV4_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
+const WHITESPACE_RUN_PATTERN = /\s+/g
+const REMOVE_FLAGS_PATTERN = /\brm((?: -[a-z]+)+)/i
 
+/**
+ * The shell, injection and secret patterns run on a line whose whitespace
+ * runs are collapsed to one space, so none of them needs `\s+` or `\s*`,
+ * and each has a single, unambiguous way to match: nothing can backtrack
+ * quadratically on an untrusted line.
+ */
 const SHELL_PATTERNS: ReadonlyArray<{ name: string, pattern: RegExp }> = [
   { name: 'curl', pattern: /\bcurl\b/i },
   { name: 'wget', pattern: /\bwget\b/i },
-  { name: '| sh', pattern: /\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b/i },
-  { name: 'bash -c', pattern: /\b(?:ba|z|da)?sh\s+-c\b/i },
-  { name: 'rm -rf', pattern: /\brm\s+-(?:[a-z]*r[a-z]*f|[a-z]*f[a-z]*r)\b/i },
+  { name: '| sh', pattern: /\| ?(?:sudo )?(?:ba|z|da)?sh\b/i },
+  { name: 'bash -c', pattern: /\b(?:ba|z|da)?sh -c\b/i },
   { name: 'sudo', pattern: /\bsudo\b/i },
-  { name: 'chmod +x', pattern: /\bchmod\s+\+x\b/i },
+  { name: 'chmod +x', pattern: /\bchmod \+x\b/i },
   { name: 'eval', pattern: /\beval\b/i },
-  { name: 'base64 -d', pattern: /\bbase64\s+(?:-d|--decode)\b/i },
-  { name: 'pip install', pattern: /\bpip3?\s+install\b/i },
-  { name: 'npm i', pattern: /\bnpm\s+(?:i|install)\b/i },
+  { name: 'base64 -d', pattern: /\bbase64 (?:-d|--decode)\b/i },
+  { name: 'pip install', pattern: /\bpip3? install\b/i },
+  { name: 'npm i', pattern: /\bnpm (?:i|install)\b/i },
   {
     name: 'powershell -enc',
-    pattern: /\bpowershell(?:\.exe)?\s[^\n]{0,80}?-e(?:nc|ncodedcommand)?\b/i,
+    pattern: /\bpowershell(?:\.exe)? (?:[^ ]{1,40} ){0,8}-e(?:nc|ncodedcommand)?\b/i,
   },
 ]
 
 const INJECTION_PATTERNS: ReadonlyArray<{ name: string, pattern: RegExp }> = [
   {
     name: 'ignore previous',
-    pattern: /\bignore\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above)\b/i,
+    pattern: /\bignore (?:all )?(?:the )?(?:previous|prior|above)\b/i,
   },
   {
     name: 'disregard previous',
-    pattern: /\bdisregard\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above)\b/i,
+    pattern: /\bdisregard (?:all )?(?:the )?(?:previous|prior|above)\b/i,
   },
-  { name: 'system prompt', pattern: /\bsystem\s+prompt\b/i },
+  { name: 'system prompt', pattern: /\bsystem prompt\b/i },
 ]
 
 const SECRET_PATTERNS: ReadonlyArray<{ name: string, pattern: RegExp }> = [
-  { name: 'API_KEY', pattern: /\b[A-Z0-9_]*API_KEY\b/ },
+  { name: 'API_KEY', pattern: /API_KEY\b/ },
   { name: '.env', pattern: /(?:^|[\s"'`(=/])\.env(?:\.[a-z]{1,12})?(?![\w-])/ },
   { name: '~/.ssh', pattern: /~\/\.ssh\b/ },
 ]
-
-export function formatHiddenCharacter(character: string): string {
-  const codePoint = character.codePointAt(0) ?? 0
-
-  return `⟨U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}⟩`
-}
-
-/**
- * Makes every bidi, zero-width and format character visible as `⟨U+202E⟩`.
- */
-export function showHiddenCharacters(text: string): string {
-  return text.replace(HIDDEN_CHARACTER_PATTERN, formatHiddenCharacter)
-}
 
 function toSnippet(text: string): string {
   const visible = showHiddenCharacters(text.trim())
@@ -94,18 +100,58 @@ function isValidIpv4(address: string): boolean {
   })
 }
 
+function hasRecursiveForceRemove(line: string): boolean {
+  const match = REMOVE_FLAGS_PATTERN.exec(line)
+
+  if (!match) {
+    return false
+  }
+
+  const flags = match[1]!.toLowerCase()
+
+  return flags.includes('r') && flags.includes('f')
+}
+
+/**
+ * Collects findings while counting every one of them. Only the first
+ * `maxStored` are kept, plus the first finding of any type that would
+ * otherwise be missing, so a file full of links can never hide one shell
+ * command.
+ */
+class FindingCollector {
+  readonly findings: SkillFinding[] = []
+
+  readonly counts: Record<string, number> = {}
+
+  private readonly storedTypes = new Set<string>()
+
+  constructor(private readonly maxStored: number) {}
+
+  add(finding: SkillFinding): void {
+    this.counts[finding.type] = (this.counts[finding.type] ?? 0) + 1
+
+    if (
+      this.findings.length < this.maxStored
+      || !this.storedTypes.has(finding.type)
+    ) {
+      this.findings.push(finding)
+      this.storedTypes.add(finding.type)
+    }
+  }
+}
+
 function scanLine(
   path: string,
   lineNumber: number,
   line: string,
-  findings: SkillFinding[],
+  collector: FindingCollector,
 ): void {
   const add = (
     type: SkillFindingType,
     snippet: string,
     detail: string | null = null,
   ) => {
-    findings.push({
+    collector.add({
       type,
       path,
       line: lineNumber,
@@ -118,15 +164,17 @@ function scanLine(
     add('long-line', line, `${line.length} characters`)
   }
 
-  const scanned = line.length > SCAN_LINE_MAX_CHARACTERS
-    ? line.slice(0, SCAN_LINE_MAX_CHARACTERS)
-    : line
-
-  const hiddenMatches = scanned.match(HIDDEN_CHARACTER_PATTERN)
+  const hiddenMatches = line.match(HIDDEN_CHARACTER_PATTERN)
 
   if (hiddenMatches) {
-    add('hidden-character', scanned, `${hiddenMatches.length} hidden`)
+    add('hidden-character', line, `${hiddenMatches.length} hidden`)
   }
+
+  const scanned = (
+    line.length > SCAN_LINE_MAX_CHARACTERS
+      ? line.slice(0, SCAN_LINE_MAX_CHARACTERS)
+      : line
+  ).replace(WHITESPACE_RUN_PATTERN, ' ')
 
   for (const match of scanned.matchAll(URL_PATTERN)) {
     add('url', match[0])
@@ -144,6 +192,10 @@ function scanLine(
     }
   }
 
+  if (hasRecursiveForceRemove(scanned)) {
+    add('shell', scanned, 'rm -rf')
+  }
+
   for (const { name, pattern } of INJECTION_PATTERNS) {
     if (pattern.test(scanned)) {
       add('injection', scanned, name)
@@ -158,19 +210,23 @@ function scanLine(
 }
 
 /**
- * Highlights for the review screen, never a verdict. Scans line by line with
- * linear patterns, because the input is an untrusted file of up to 1 MiB,
- * and stops adding findings after the per-file cap.
+ * Highlights for the review screen, never a verdict. Scans line by line,
+ * counts every finding, and returns a bounded list. Hidden characters are
+ * looked for on the whole line; only the text patterns see its first 5,000
+ * characters.
  */
-export function scanSkillText(path: string, text: string): SkillFinding[] {
-  const findings: SkillFinding[] = []
+export function scanSkillTextWithCounts(
+  path: string,
+  text: string,
+): SkillTextScan {
+  const collector = new FindingCollector(SKILL_FINDINGS_MAX_PER_FILE)
   const lines = text.split('\n')
   let blankRunStart = 0
   let blankRunLength = 0
 
   const closeBlankRun = () => {
     if (blankRunLength > SKILL_FINDING_BLANK_RUN) {
-      findings.push({
+      collector.add({
         type: 'blank-run',
         path,
         line: blankRunStart,
@@ -191,19 +247,48 @@ export function scanSkillText(path: string, text: string): SkillFinding[] {
       }
 
       blankRunLength += 1
-    } else {
-      closeBlankRun()
-      scanLine(path, index + 1, line, findings)
+
+      continue
     }
 
-    if (findings.length >= SKILL_FINDINGS_MAX_PER_FILE) {
-      return findings.slice(0, SKILL_FINDINGS_MAX_PER_FILE)
-    }
+    closeBlankRun()
+    scanLine(path, index + 1, line, collector)
   }
 
   closeBlankRun()
 
-  return findings.slice(0, SKILL_FINDINGS_MAX_PER_FILE)
+  return { findings: collector.findings, counts: collector.counts }
+}
+
+export function scanSkillText(path: string, text: string): SkillFinding[] {
+  return scanSkillTextWithCounts(path, text).findings
+}
+
+/**
+ * Keeps the first `max` findings and, past that, the first finding of every
+ * type that would otherwise vanish from the list.
+ */
+export function capSkillFindings(
+  findings: SkillFinding[],
+  max: number,
+): SkillFinding[] {
+  if (findings.length <= max) {
+    return findings
+  }
+
+  const kept = findings.slice(0, max)
+  const seen = new Set(kept.map((finding) => {
+    return finding.type
+  }))
+
+  for (const finding of findings.slice(max)) {
+    if (!seen.has(finding.type)) {
+      seen.add(finding.type)
+      kept.push(finding)
+    }
+  }
+
+  return kept
 }
 
 export function summariseSkillFindings(

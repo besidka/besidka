@@ -147,6 +147,26 @@ describe('parseSkillMarkdown', () => {
     })
   })
 
+  it.each([
+    'name: a\nname: b\ndescription: d',
+    'name: a\ndescription: d\nname: b',
+    'name: a\n"name": b\ndescription: d',
+    'name: a\n\'name\' : b\ndescription: d',
+  ])('rejects duplicate name keys (%#)', (block) => {
+    expect(parseSkillMarkdown(markdown(block))).toMatchObject({
+      ok: false,
+      code: 'frontmatter-invalid',
+    })
+  })
+
+  it('does not mistake a nested or longer key for a second name', () => {
+    const result = parseOk(markdown(
+      'name: a\ndescription: d\nmetadata:\n  name: inner\nnickname: x',
+    ))
+
+    expect(result.frontmatter.name).toBe('a')
+  })
+
   it('rejects a missing, unterminated, oversized or non-map block', () => {
     expect(parseSkillMarkdown('no frontmatter')).toMatchObject({
       ok: false,
@@ -261,5 +281,31 @@ describe('renameSkillMarkdown', () => {
       'x',
     )).toBeNull()
     expect(renameSkillMarkdown('no frontmatter\nname: a', 'x')).toBeNull()
+  })
+})
+
+describe('renameSkillMarkdown line endings and quoted keys', () => {
+  it('rewrites a CRLF name line without touching the carriage return', () => {
+    const source = '---\r\nname: old\r\ndescription: d\r\n---\r\nBody\r\n'
+
+    expect(renameSkillMarkdown(source, 'fresh')).toBe(
+      '---\r\nname: fresh\r\ndescription: d\r\n---\r\nBody\r\n',
+    )
+  })
+
+  it('rewrites a quoted name key', () => {
+    expect(renameSkillMarkdown(
+      '---\n"name": old\ndescription: d\n---\n',
+      'fresh',
+    )).toBe('---\nname: fresh\ndescription: d\n---\n')
+  })
+
+  it('keeps a stray carriage return after the value out of the new name', () => {
+    const renamed = renameSkillMarkdown(
+      '---\nname: old\r\ndescription: d\n---\n',
+      'fresh',
+    )
+
+    expect(renamed).toBe('---\nname: fresh\r\ndescription: d\n---\n')
   })
 })

@@ -171,6 +171,68 @@ describe('extractSkillArchive: path attacks', () => {
     })
   })
 
+  it('rejects entries that differ only in case or in Unicode form', () => {
+    expect(rejectCode(buildArchive({
+      'skill/SKILL.md': skillMarkdown(),
+      'skill/References.md': 'x',
+      'skill/references.md': 'y',
+    }))).toBe('archive-invalid')
+    expect(rejectCode(buildArchive({
+      'skill/SKILL.md': skillMarkdown(),
+      'skill/caf\u00E9.md': 'x',
+      'skill/cafe\u0301.md': 'y',
+    }))).toBe('archive-invalid')
+  })
+
+  it.each([
+    'skill/references/name.',
+    'skill/references/name.md ',
+    'skill/refs./a.md',
+    'skill/a.md:hidden',
+  ])('rejects the Windows-unsafe name %j', (name) => {
+    expect(rejectCode(buildArchive({
+      'skill/SKILL.md': skillMarkdown(),
+      [name]: 'x',
+    }))).toBe('archive-path-rejected')
+  })
+
+  it.each([
+    ['MS-DOS', 0],
+    ['Unix', 3],
+    ['Windows NTFS', 10],
+    ['Mac OS X', 19],
+  ])('rejects a symlink whatever the made-by host (%s)', (_name, host) => {
+    const symlink = buildArchive({
+      'skill/SKILL.md': skillMarkdown(),
+      'skill/link.md': [
+        strToU8('/etc/passwd'),
+        { os: host, attrs: 0o120777 * 0x10000 },
+      ],
+    })
+
+    expect(rejectCode(symlink)).toBe('archive-symlink')
+  })
+
+  it.each([
+    ['a fifo', 0o010644],
+    ['a character device', 0o020644],
+    ['a socket', 0o140644],
+  ])('rejects %s whatever the made-by host', (_name, mode) => {
+    expect(rejectCode(buildArchive({
+      'skill/SKILL.md': skillMarkdown(),
+      'skill/special.md': [strToU8('x'), { os: 0, attrs: mode * 0x10000 }],
+    }))).toBe('archive-special-file')
+  })
+
+  it('accepts a regular file with a unix mode on any host', () => {
+    expect(extractSkillArchive(buildArchive({
+      'skill/SKILL.md': [
+        strToU8(skillMarkdown()),
+        { os: 0, attrs: 0o100644 * 0x10000 },
+      ],
+    })).ok).toBe(true)
+  })
+
   it('rejects two entries that resolve to the same path', () => {
     expect(rejectCode(buildArchive({
       'skill/SKILL.md': skillMarkdown(),

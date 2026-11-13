@@ -22,8 +22,11 @@ import {
 
 const mocks = vi.hoisted(() => ({
   featureOn: true,
+  env: {} as Record<string, unknown>,
   logger: { set: vi.fn() },
 }))
+
+vi.mock('cloudflare:workers', () => ({ env: mocks.env }))
 
 vi.mock('nuxt/server', async () => {
   const { skillsNuxtServerMockFactory } = await import(
@@ -71,6 +74,7 @@ describe('POST /api/v1/skills/import/preview', () => {
 
   beforeEach(() => {
     mocks.featureOn = true
+    delete mocks.env.SKILLS_RATE_LIMITER
     kv = createFakeSkillKv()
     bucket = createFakeSkillBucket()
     stubSkillsRouteGlobals({ userId: 5, db: null, kv, bucket })
@@ -229,7 +233,7 @@ describe('POST /api/v1/skills/import/preview', () => {
       .resolves.toMatchObject({ source: 'zip' })
   })
 
-  it('fails open when the rate limit counter cannot be written', async () => {
+  it('fails closed with 429 when the rate limit counter cannot be written', async () => {
     kv.put.mockImplementation(async (key: string) => {
       if (key.startsWith('skills-import-rate-limit')) {
         throw new Error('KV write limit')
@@ -238,7 +242,20 @@ describe('POST /api/v1/skills/import/preview', () => {
       kv.values.set(key, 'x')
     })
 
-    await expect(callPreview(createUploadEvent(validSkillArchive())))
-      .resolves.toMatchObject({ source: 'zip' })
+    const event = createUploadEvent(validSkillArchive())
+    const failure = await failureOf(callPreview(event))
+
+    expect(failure.status).toBe(429)
+    expect(event.res.headers.get('Retry-After')).toBe('60')
+    expect(bucket.put).not.toHaveBeenCalled()
+  })
+
+  it('answers 429 when the burst limit refuses', async () => {
+    mocks.env.SKILLS_RATE_LIMITER = { limit: async () => ({ success: false }) }
+
+    expect((await failureOf(
+      callPreview(createUploadEvent(validSkillArchive())),
+    )).status).toBe(429)
+    expect(bucket.put).not.toHaveBeenCalled()
   })
 })

@@ -27,8 +27,11 @@ import {
 
 const mocks = vi.hoisted(() => ({
   featureOn: true,
+  env: {} as Record<string, unknown>,
   logger: { set: vi.fn() },
 }))
+
+vi.mock('cloudflare:workers', () => ({ env: mocks.env }))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
@@ -108,6 +111,7 @@ describe('POST /api/v1/skills/import/commit', () => {
 
   beforeEach(async () => {
     mocks.featureOn = true
+    delete mocks.env.SKILLS_RATE_LIMITER
     testDb = createMemoryExtractionTestDb()
     kv = createFakeSkillKv()
     bucket = createFakeSkillBucket()
@@ -140,6 +144,45 @@ describe('POST /api/v1/skills/import/commit', () => {
       stageId: 'a'.repeat(32),
       acknowledged: true,
     }))).status).toBe(401)
+  })
+
+  it('answers 411 without a Content-Length and 413 over 4 KiB', async () => {
+    const handler = await importHandler(
+      '~~/server/api/v1/skills/import/commit.post',
+    )
+    const body = {
+      stageId: 'a'.repeat(32),
+      acknowledged: true,
+    }
+
+    expect((await failureOf(handler(
+      createSkillsRouteEvent({ body, headers: { 'content-length': '' } }),
+    ))).status).toBe(411)
+    expect((await failureOf(handler(
+      createSkillsRouteEvent({ body, headers: { 'content-length': '5000' } }),
+    ))).status).toBe(413)
+  })
+
+  it('answers 429 with Retry-After 60 when the burst limit refuses and keeps the stage', async () => {
+    const staged = await preview()
+
+    mocks.env.SKILLS_RATE_LIMITER = { limit: async () => ({ success: false }) }
+
+    const handler = await importHandler(
+      '~~/server/api/v1/skills/import/commit.post',
+    )
+    const event = createSkillsRouteEvent({
+      body: {
+        stageId: staged.stageId,
+        acknowledged: true,
+        licenceAcknowledged: true,
+      },
+    })
+
+    expect((await failureOf(handler(event))).status).toBe(429)
+    expect(event.res.headers.get('Retry-After')).toBe('60')
+    expect(kv.values.has(`skills:stage:${staged.stageId}`)).toBe(true)
+    expect(await testDb.db.select().from(schema.skills)).toHaveLength(0)
   })
 
   it('creates a disabled skill with 201 after the preview', async () => {

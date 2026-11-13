@@ -38,7 +38,6 @@ export function createSkillsRouteEvent(
   return {
     context: {},
     params: {},
-    headers: {},
     req: {
       formData: async () => {
         throw new Error('No form data in this event')
@@ -46,6 +45,7 @@ export function createSkillsRouteEvent(
     },
     res: { headers: new Headers() },
     ...partial,
+    headers: { 'content-length': '200', ...partial.headers },
   }
 }
 

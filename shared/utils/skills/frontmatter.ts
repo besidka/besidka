@@ -26,6 +26,7 @@ const KNOWN_KEYS: ReadonlySet<string> = new Set([
   'argument-hint',
 ])
 
+const NAME_KEY_LINE_PATTERN = /^(["']?)name\1[ \t]*:/gm
 const MAPPING_LINE_PATTERN = /^([A-Za-z][\w-]*):[ \t]+(\S.*)$/
 const UNSAFE_PLAIN_START_PATTERN = /^["'[{|>&*!%@`#]/
 const textEncoder = new TextEncoder()
@@ -356,6 +357,13 @@ export function parseSkillMarkdown(text: string): ParsedSkillMarkdown {
     return split
   }
 
+  if ((split.raw.match(NAME_KEY_LINE_PATTERN)?.length ?? 0) > 1) {
+    return failure(
+      'frontmatter-invalid',
+      'The frontmatter in SKILL.md has more than one "name" key',
+    )
+  }
+
   const data = parseFrontmatterBlock(split.raw)
 
   if (!data) {
@@ -441,7 +449,7 @@ export function parseSkillMarkdown(text: string): ParsedSkillMarkdown {
 
 const FRONTMATTER_BLOCK_PATTERN
   = /^(---[ \t]*\r?\n)([\s\S]*?)(\r?\n---[ \t]*(?:\r?\n|$))/
-const NAME_LINE_PATTERN = /^name:[ \t]*.*$/m
+const NAME_LINE_PATTERN = /^(["']?)name\1[ \t]*:[^\r\n]*$/m
 
 /**
  * Rewrites the `name:` line of the frontmatter and leaves every other byte

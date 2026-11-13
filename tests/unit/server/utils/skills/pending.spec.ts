@@ -309,6 +309,80 @@ describe('pending skill versions', () => {
     })
   })
 
+  describe('claiming the pending version', () => {
+    it('lets only one of two simultaneous accepts win', async () => {
+      const outcomes = await Promise.allSettled([
+        acceptPendingSkillVersion(baseInput()),
+        acceptPendingSkillVersion(baseInput()),
+      ])
+      const winners = outcomes.filter((outcome) => {
+        return outcome.status === 'fulfilled'
+      })
+      const losers = outcomes.filter((outcome) => {
+        return outcome.status === 'rejected'
+      })
+
+      expect(winners).toHaveLength(1)
+      expect((losers[0] as PromiseRejectedResult).reason).toMatchObject({
+        status: 409,
+        code: 'pending-changed',
+      })
+      expect(await versionNumbers()).toEqual([1, 3])
+    })
+
+    it('lets only one of an accept and a reject win', async () => {
+      const outcomes = await Promise.allSettled([
+        acceptPendingSkillVersion(baseInput()),
+        rejectPendingSkillVersion({
+          db: testDb.db,
+          userId,
+          skillId,
+          version: 2,
+          sha256: pendingSha256,
+        }),
+      ])
+
+      expect(outcomes.filter((outcome) => {
+        return outcome.status === 'fulfilled'
+      })).toHaveLength(1)
+
+      const [skill] = await testDb.db.select().from(schema.skills)
+
+      expect(skill!.pendingVersion).toBeNull()
+    })
+
+    it('answers 409 to a second reject', async () => {
+      const input = {
+        db: testDb.db,
+        userId,
+        skillId,
+        version: 2,
+        sha256: pendingSha256,
+      }
+
+      await rejectPendingSkillVersion(input)
+
+      expect(await rejection(rejectPendingSkillVersion(input))).toMatchObject({
+        status: 409,
+        code: 'pending-changed',
+      })
+    })
+
+    it('puts the pointer back when the accept batch fails', async () => {
+      const batch = vi.spyOn(testDb.db, 'batch').mockRejectedValueOnce(
+        new Error('D1 unavailable'),
+      )
+
+      await expect(acceptPendingSkillVersion(baseInput()))
+        .rejects.toThrow('D1 unavailable')
+      batch.mockRestore()
+
+      expect((await skillRow()).pendingVersion).toBe(2)
+      await expect(acceptPendingSkillVersion(baseInput()))
+        .resolves.toMatchObject({ version: 3 })
+    })
+  })
+
   describe('rejectPendingSkillVersion', () => {
     it('deletes the pending rows and clears the pointer', async () => {
       const result = await rejectPendingSkillVersion({

@@ -18,15 +18,37 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 /**
  * Refuses a request body larger than `maxBytes` by its `Content-Length`
  * before it is read, so a direct API call cannot make the Worker parse
- * megabytes that validation would reject anyway.
+ * megabytes that validation would reject anyway. A body without a
+ * `Content-Length` (chunked) is refused with 411, because its size cannot be
+ * checked up front, and a header that is not a number with 400. Call it only
+ * on routes that read a request body.
  */
 export function assertRequestBodyLength(
   event: RequestEvent,
   maxBytes: number,
 ): void {
-  const length = Number(getRequestHeader(event, 'content-length') ?? 0)
+  const header = getRequestHeader(event, 'content-length')
 
-  if (!Number.isFinite(length) || length <= maxBytes) {
+  if (header === undefined || header === null || header.trim() === '') {
+    throw createError({
+      message: 'Content-Length required',
+      status: 411,
+      why: 'The request did not declare the size of its body.',
+      fix: 'Send the body with a Content-Length header.',
+    })
+  }
+
+  const length = Number(header)
+
+  if (!Number.isFinite(length) || length < 0) {
+    throw createError({
+      message: 'Invalid Content-Length',
+      status: 400,
+      why: 'The Content-Length header is not a valid size.',
+    })
+  }
+
+  if (length <= maxBytes) {
     return
   }
 

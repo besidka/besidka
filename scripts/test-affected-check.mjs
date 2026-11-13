@@ -1468,6 +1468,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/skills/archive.spec.ts',
     'tests/unit/utils/skills/analyse.spec.ts',
     'tests/unit/server/utils/skills/import/zip.spec.ts',
+    'tests/unit/server/utils/skills/import/rate-limit.spec.ts',
     'tests/unit/server/utils/skills/import/stage.spec.ts',
     'tests/unit/server/utils/skills/import/commit.spec.ts',
     'tests/unit/server/utils/skills/pending.spec.ts',
@@ -1476,6 +1477,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/api/v1/skills/import-commit.spec.ts',
     'tests/unit/server/api/v1/skills/update-pending.spec.ts',
     'tests/unit/workers/skill-import.spec.ts',
+    'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-request.spec.ts',
+    'tests/integration/api/artifact-complete.spec.ts',
+    'tests/integration/api/artifact-storage.spec.ts',
   ]
 
   const seoTests = [
@@ -2512,6 +2517,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^wrangler\.jsonc$/,
       tests: [
         'tests/unit/config/wrangler-search-rates.spec.ts',
+        'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
         'tests/unit/config/wrangler-previews.spec.ts',
         'tests/unit/config/wrangler-legal-notice-sweep.spec.ts',
         'tests/unit/utils/consents-rate-limit.spec.ts',

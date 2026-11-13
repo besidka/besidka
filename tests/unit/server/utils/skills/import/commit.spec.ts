@@ -34,7 +34,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await skillPublicIdMockFactory()
 })
 
-const { commitSkillImport } = await import(
+const { commitSkillImport, discardUnfinishedSkill } = await import(
   '~~/server/utils/skills/import/commit'
 )
 const { stageSkillImport, skillStageKey } = await import(
@@ -636,6 +636,276 @@ describe('commitSkillImport', () => {
       expect(await rejection(commit(manifest.stageId, {
         now: Date.now() + 30 * 60 * 1000,
       }))).toMatchObject({ status: 409 })
+    })
+  })
+
+  describe('atomic limits', () => {
+    it('lets only one of two racing commits take the last skill slot', async () => {
+      for (let index = 0; index < 49; index += 1) {
+        await seedSkill(testDb.db, userId, { name: `skill-${index}` })
+      }
+
+      const first = await stage(openSkillFiles())
+      const second = await stage([
+        archiveFile('SKILL.md', skillMarkdown({ name: 'second-skill' })),
+      ])
+      const outcomes = await Promise.allSettled([
+        commit(first.stageId),
+        commit(second.stageId),
+      ])
+      const created = outcomes.filter((outcome) => {
+        return outcome.status === 'fulfilled'
+      })
+      const refused = outcomes.filter((outcome) => {
+        return outcome.status === 'rejected'
+      })
+
+      expect(created).toHaveLength(1)
+      expect(refused).toHaveLength(1)
+      expect((refused[0] as PromiseRejectedResult).reason).toMatchObject({
+        status: 403,
+        code: 'skills-limit',
+      })
+      expect(await allSkills()).toHaveLength(50)
+    })
+
+    it('refuses the insert itself when the skills table would pass 50 MiB', async () => {
+      await seedSkill(testDb.db, userId, {
+        name: 'heavy',
+        bytes: SKILLS_MAX_USER_BYTES - 10,
+      })
+
+      const manifest = await stage(openSkillFiles())
+
+      expect(await rejection(commit(manifest.stageId))).toMatchObject({
+        status: 413,
+        code: 'skills-storage-limit',
+      })
+      expect(await allSkills()).toHaveLength(1)
+      expect(kv.values.has(skillStageKey(manifest.stageId))).toBe(true)
+    })
+
+    it('inserts the full row, including the columns Drizzle would default', async () => {
+      const manifest = await stage(openSkillFiles())
+
+      await commit(manifest.stageId)
+
+      const [skill] = await allSkills()
+
+      expect(skill).toMatchObject({
+        createdByClientId: null,
+        providerSkillId: null,
+        allowScripts: false,
+        pendingVersion: null,
+        licenseClassifierVersion: 1,
+      })
+      expect(skill!.createdAt).toBeInstanceOf(Date)
+      expect(skill!.updatedAt).toBeInstanceOf(Date)
+      expect(skill!.metadata).toBeNull()
+    })
+
+    it('stores json columns and booleans through the same encoding', async () => {
+      const manifest = await stage([
+        archiveFile('SKILL.md', skillMarkdown({
+          extra: 'metadata:\n  owner: me\nallowed-tools: Read Write',
+        })),
+      ])
+
+      await commit(manifest.stageId)
+
+      const [skill] = await allSkills()
+
+      expect(skill).toMatchObject({
+        metadata: { owner: 'me' },
+        allowedTools: ['Read', 'Write'],
+        modelInvocable: true,
+        enabled: false,
+      })
+    })
+  })
+
+  describe('claiming the stage', () => {
+    it('deletes the manifest before any blob is written', async () => {
+      const manifest = await stage(openSkillFiles())
+
+      bucket.put.mockClear()
+      kv.delete.mockClear()
+      await commit(manifest.stageId)
+
+      expect(kv.delete.mock.invocationCallOrder[0]).toBeLessThan(
+        bucket.put.mock.invocationCallOrder[0]!,
+      )
+    })
+
+    it('puts the manifest back with its remaining lifetime when the commit fails', async () => {
+      const manifest = await stage(openSkillFiles())
+
+      bucket.put.mockImplementationOnce(async () => {
+        throw new Error('R2 unavailable')
+      })
+      kv.put.mockClear()
+
+      await expect(commit(manifest.stageId)).rejects.toThrow('R2 unavailable')
+
+      expect(kv.put).toHaveBeenCalledWith(
+        skillStageKey(manifest.stageId),
+        expect.any(String),
+        { expirationTtl: expect.any(Number) },
+      )
+
+      const ttl = kv.put.mock.calls[0]![2].expirationTtl
+
+      expect(ttl).toBeGreaterThanOrEqual(60)
+      expect(ttl).toBeLessThanOrEqual(3600)
+      await expect(commit(manifest.stageId)).resolves.toMatchObject({
+        kind: 'created',
+      })
+    })
+
+    it('answers 404 to a commit that finds the manifest already claimed', async () => {
+      const manifest = await stage(openSkillFiles())
+
+      await commit(manifest.stageId)
+
+      expect(await rejection(commit(manifest.stageId, { name: 'again' })))
+        .toMatchObject({ status: 404, code: 'stage-not-found' })
+      expect(await allSkills()).toHaveLength(1)
+    })
+  })
+
+  describe('a reserved slash name', () => {
+    it('forces slashCommand off when the skill is renamed to a reserved name', async () => {
+      const manifest = await stage([
+        archiveFile('SKILL.md', skillMarkdown({
+          extra: 'user-invocable: true',
+        })),
+      ])
+
+      expect(manifest.skill.slashCommand).toBe(true)
+
+      await commit(manifest.stageId, { name: 'search' })
+
+      const [skill] = await allSkills()
+
+      expect(skill).toMatchObject({ name: 'search', slashCommand: false })
+    })
+
+    it('keeps slashCommand for an ordinary name', async () => {
+      const manifest = await stage([
+        archiveFile('SKILL.md', skillMarkdown({
+          extra: 'user-invocable: true',
+        })),
+      ])
+
+      await commit(manifest.stageId, { name: 'summarise' })
+
+      expect((await allSkills())[0]).toMatchObject({ slashCommand: true })
+    })
+  })
+
+  describe('re-asserting blobs after the pending rows exist', () => {
+    it('writes every blob of a replace-as-update twice', async () => {
+      const existingId = await seedSkill(testDb.db, userId, {
+        name: 'review-pr',
+        currentVersion: 1,
+      })
+
+      await seedSkillVersion(testDb.db, {
+        skillId: existingId,
+        userId,
+        version: 1,
+        files: [{ path: 'SKILL.md', sha256: shaOf('existing') }],
+      })
+
+      const manifest = await stage(openSkillFiles())
+
+      bucket.putCalls.length = 0
+      await commit(manifest.stageId, { asUpdateOf: existingId })
+
+      const keys = bucket.putCalls.filter((key) => {
+        return key.startsWith(`user-skills/u${userId}/${existingId}/`)
+      })
+
+      expect(keys).toHaveLength(6)
+      expect(new Set(keys).size).toBe(3)
+    })
+  })
+
+  describe('discardUnfinishedSkill', () => {
+    async function seedBroken(status: 'broken' | 'ready' = 'broken') {
+      const skillId = await seedSkill(testDb.db, userId, {
+        name: 'half-done',
+        status,
+      })
+      const [row] = await testDb.db.select().from(schema.skills)
+        .where(eq(schema.skills.id, skillId))
+
+      return { skillId, updatedAt: row!.updatedAt }
+    }
+
+    it('deletes a broken row, its rows and its blob prefix', async () => {
+      const { skillId, updatedAt } = await seedBroken()
+
+      await seedSkillVersion(testDb.db, {
+        skillId,
+        userId,
+        version: 1,
+        files: [{ path: 'SKILL.md', sha256: shaOf('half') }],
+      })
+      bucket.objects.set(
+        `user-skills/u${userId}/${skillId}/blobs/${shaOf('half')}`,
+        { bytes: new Uint8Array([1]), uploaded: new Date() },
+      )
+
+      await expect(discardUnfinishedSkill({
+        db: testDb.db,
+        bucket,
+        userId,
+        skillId,
+        notUpdatedAfter: updatedAt,
+      })).resolves.toBe(true)
+
+      expect(await allSkills()).toHaveLength(0)
+      expect(await testDb.db.select().from(schema.skillVersions))
+        .toHaveLength(0)
+      expect(bucket.objects.size).toBe(0)
+    })
+
+    it('leaves a row that became ready', async () => {
+      const { skillId } = await seedBroken('ready')
+
+      await expect(discardUnfinishedSkill({
+        db: testDb.db,
+        bucket,
+        userId,
+        skillId,
+      })).resolves.toBe(false)
+      expect(await allSkills()).toHaveLength(1)
+    })
+
+    it('leaves a row that was updated after it was observed', async () => {
+      const { skillId, updatedAt } = await seedBroken()
+
+      await expect(discardUnfinishedSkill({
+        db: testDb.db,
+        bucket,
+        userId,
+        skillId,
+        notUpdatedAfter: new Date(updatedAt.getTime() - 5000),
+      })).resolves.toBe(false)
+      expect(await allSkills()).toHaveLength(1)
+    })
+
+    it('never touches another user\'s row', async () => {
+      const { skillId, updatedAt } = await seedBroken()
+
+      await expect(discardUnfinishedSkill({
+        db: testDb.db,
+        bucket,
+        userId: otherUserId,
+        skillId,
+        notUpdatedAfter: updatedAt,
+      })).resolves.toBe(false)
     })
   })
 
