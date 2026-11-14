@@ -60,7 +60,7 @@
         >
           <ul
             v-if="visibleItems.length"
-            class="grid gap-0.5"
+            class="grid grid-cols-[minmax(0,1fr)] gap-0.5"
             data-testid="skill-picker-list"
           >
             <li
