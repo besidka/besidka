@@ -66,6 +66,7 @@
       :selected-id="selectedId"
       :can-import-from-url="importFromUrl.active"
       @open="openDetail"
+      @edit="skill => editSession.open(skill.id)"
       @toggle="onToggle"
       @review-update="onReviewUpdate"
       @check-updates="onCheckUpdates"
@@ -81,6 +82,13 @@
     :kind="createKind"
     @created="onCreated"
     @close="createKind = null"
+  />
+  <LazyProfileSkillsEditDialog
+    v-if="editSkillId"
+    :skill-id="editSkillId"
+    :is-just-created="isEditJustCreated"
+    @saved="onEdited"
+    @close="editSession.close()"
   />
   <LazyProfileSkillsImportDialog
     v-if="importTab"
@@ -160,11 +168,14 @@ const {
 })
 const actions = useSkillActions()
 const updateReview = useSkillUpdateReview()
+const editSession = useSkillEditSession()
 const busyIds = actions.busyIds
 
 const createKind = shallowRef<SkillCreateKind | null>(null)
 const importTab = shallowRef<SkillImportTab | null>(null)
 const reviewSkillId = updateReview.skillId
+const editSkillId = editSession.skillId
+const isEditJustCreated = editSession.isJustCreated
 
 const isLibraryEmpty = computed<boolean>(() => {
   return hasLoaded.value && !skills.value.length
@@ -279,9 +290,23 @@ function onReviewFirst() {
   openDetail(first)
 }
 
+function onEdited(saved: { id: string, isRenamed: boolean }) {
+  if (!saved.isRenamed || selectedId.value !== saved.id) {
+    return
+  }
+
+  const renamed = skills.value.find((skill) => {
+    return skill.id === saved.id
+  })
+
+  if (renamed) {
+    openDetail(renamed, detailTab.value)
+  }
+}
+
 async function onCreated(created: { id: string, name: string }) {
   await refreshSkillData()
-  openDetail(created)
+  editSession.open(created.id, { isJustCreated: true })
 }
 
 async function onInstalled(installed: {
@@ -301,6 +326,8 @@ async function onInstalled(installed: {
 }
 
 onBeforeUnmount(() => {
+  editSession.close()
+
   if (selectedId.value) {
     sidePanel.close()
   }

@@ -104,6 +104,16 @@
         data-testid="skill-row-actions-menu"
       >
         <ul class="menu menu-sm bg-base-100 rounded-box shadow-lg w-64 p-1">
+          <li>
+            <button
+              type="button"
+              data-testid="skill-action-edit"
+              @click="onAction('edit')"
+            >
+              <Icon name="lucide:pencil" size="14" />
+              Edit
+            </button>
+          </li>
           <li v-if="skill.pendingVersion !== null">
             <button
               type="button"
@@ -180,6 +190,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   open: [skill: SkillSummary, tab: SkillDetailTab]
   toggle: [skill: SkillSummary, enabled: boolean]
+  edit: [skill: SkillSummary]
   reviewUpdate: [skill: SkillSummary]
   checkUpdates: [skill: SkillSummary]
   delete: [skill: SkillSummary]
@@ -256,11 +267,13 @@ function closeDropdown() {
 }
 
 function onAction(
-  action: 'versions' | 'review-update' | 'check-updates' | 'delete',
+  action: 'edit' | 'versions' | 'review-update' | 'check-updates' | 'delete',
 ) {
   closeDropdown()
 
-  if (action === 'versions') {
+  if (action === 'edit') {
+    emit('edit', props.skill)
+  } else if (action === 'versions') {
     emit('open', props.skill, 'versions')
   } else if (action === 'review-update') {
     emit('reviewUpdate', props.skill)

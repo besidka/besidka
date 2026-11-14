@@ -63,6 +63,7 @@
       :can-import-from-url="canImportFromUrl"
       @open="(target, tab) => emit('open', target, tab)"
       @toggle="(target, enabled) => emit('toggle', target, enabled)"
+      @edit="target => emit('edit', target)"
       @review-update="target => emit('reviewUpdate', target)"
       @check-updates="target => emit('checkUpdates', target)"
       @delete="target => emit('delete', target)"
@@ -145,6 +146,7 @@ withDefaults(defineProps<{
 const emit = defineEmits<{
   open: [skill: SkillSummary, tab: SkillDetailTab]
   toggle: [skill: SkillSummary, enabled: boolean]
+  edit: [skill: SkillSummary]
   reviewUpdate: [skill: SkillSummary]
   checkUpdates: [skill: SkillSummary]
   delete: [skill: SkillSummary]

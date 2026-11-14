@@ -1,6 +1,7 @@
 import type { MaybeRefOrGetter, Ref } from 'vue'
 import { parseError } from 'evlog'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
+import { formatSkillCatalogLine } from '#shared/utils/skills/compose'
 import { getSkillSourceGroup } from '#shared/utils/skills/edit'
 import type { SkillSourceGroup } from '#shared/utils/skills/edit'
 import type {
@@ -222,9 +223,17 @@ export function estimateSkillCatalogTokens(
   skill: Pick<SkillSummary, 'name' | 'description'>,
 ): number {
   return estimateMemoryTokens(
-    `- ${skill.name}: ${skill.description}`,
+    formatSkillCatalogLine(skill.name, skill.description),
     'anthropic',
   )
+}
+
+/**
+ * The size of a skill body the model reads when it activates the skill, with
+ * the same conservative family as the catalog estimate.
+ */
+export function estimateSkillBodyTokens(body: string): number {
+  return estimateMemoryTokens(body, 'anthropic')
 }
 
 export function requiresEnableConfirmation(
