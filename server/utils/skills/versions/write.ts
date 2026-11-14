@@ -1,23 +1,19 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { SKILL_LICENSE_CLASSIFIER_VERSION } from '#shared/utils/skills/license'
-import {
-  SKILLS_MAX_USER_BYTES,
-} from '#shared/utils/skills-policy'
 import type { SkillVersionOrigin } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
+import { getEffectiveUserFilePolicy } from '~~/server/utils/files/file-governance'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { buildStorageFullError } from '~~/server/utils/storage/guard'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import {
-  assertLimits,
-  createStorageLimitError,
-} from '~~/server/utils/skills/import/commit'
+import { assertLimits } from '~~/server/utils/skills/import/commit'
 import {
   pruneSkillVersions,
   putSkillBlob,
 } from '~~/server/utils/skills/storage'
 import { hasEveryBlob } from '~~/server/utils/skills/versions/blobs'
 import { findUniqueViolation } from '~~/server/utils/skills/unique-violation'
-import { getUserSkillsUsageBytes } from '~~/server/utils/skills/usage'
 import type { WorkingSkillFile } from '~~/server/utils/skills/versions/apply'
 import {
   createSkillEditError,
@@ -111,7 +107,7 @@ async function explainRejectedWrite(
     throw createStaleBaseError()
   }
 
-  throw createStorageLimitError()
+  throw await buildStorageFullError(userId, db)
 }
 
 /**
@@ -122,11 +118,12 @@ async function explainRejectedWrite(
  * only increases and `pending_version` is not touched, so a pending update
  * stays pending. The new number is the highest existing one plus 1, because
  * a pending row can hold `base + 1`. A stale `baseVersion` answers 409 and
- * writes no row; the cap on unique blobs is enforced in the same statement.
+ * writes no row; the shared storage allowance is enforced in the same
+ * statement.
  * Right after the commit the blobs are put again (closing the window in
  * which a prune could have judged them unreferenced) and the versions beyond
- * `SKILL_VERSIONS_KEPT` are pruned; neither step can fail the save. The cap
- * on unique blobs applies only when the write adds blob bytes. A `broken`
+ * `SKILL_VERSIONS_KEPT` are pruned; neither step can fail the save. The
+ * allowance applies only when the write adds blob bytes. A `broken`
  * skill becomes `ready` in the same guarded update when every blob of the
  * new version is in R2 (`blobsVerified` lets a caller that already checked
  * say so).
@@ -143,14 +140,16 @@ export async function writeSkillVersion(
     input.blobsToWrite,
   )
 
-  if (incomingBytes > 0) {
-    assertLimits({
-      skillsCount: 0,
-      usageBytes: await getUserSkillsUsageBytes(db, userId),
-      incomingBytes,
-      isNewSkill: false,
-    })
-  }
+  await assertLimits({
+    db,
+    userId,
+    skillsCount: 0,
+    incomingBytes,
+    isNewSkill: false,
+  })
+  const maxStorageBytes = incomingBytes > 0
+    ? (await getEffectiveUserFilePolicy(userId, db)).maxStorageBytes
+    : 0
 
   const [latest] = await db.select({ version: schema.skillVersions.version })
     .from(schema.skillVersions)
@@ -180,7 +179,7 @@ export async function writeSkillVersion(
     userId,
     skillId,
     baseVersion: input.baseVersion,
-    maxUserBytes: SKILLS_MAX_USER_BYTES,
+    maxStorageBytes,
     incomingBytes,
     record: {
       skillId,
@@ -262,6 +261,8 @@ export async function writeSkillVersion(
       },
     })
   }
+
+  await invalidateStorageCache(userId, input.logger)
 
   return {
     version,

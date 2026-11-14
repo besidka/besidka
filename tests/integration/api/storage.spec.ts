@@ -7,6 +7,8 @@ import {
 import type {
   MemoryExtractionTestDb,
 } from '../../setup/helpers/memory-extraction-db'
+import { seedSkill } from '../../setup/helpers/skills-db'
+import * as schema from '~~/server/db/schema'
 
 const mocks = vi.hoisted(() => ({
   logger: { set: vi.fn() },
@@ -14,6 +16,14 @@ const mocks = vi.hoisted(() => ({
   kvGet: vi.fn(),
   kvPut: vi.fn(),
 }))
+
+vi.mock('~~/server/utils/custom-db-types', async () => {
+  const { skillPublicIdMockFactory } = await import(
+    '../../setup/helpers/skills-public-id-mock'
+  )
+
+  return await skillPublicIdMockFactory()
+})
 
 vi.mock('~~/server/utils/logging/request-logger', () => ({
   useRequestLogger: () => mocks.logger,
@@ -28,6 +38,22 @@ async function importHandler() {
 describe('storage API', () => {
   let testDb: MemoryExtractionTestDb
   let userId: number
+
+  async function seedSkillBlobs() {
+    const skillId = await seedSkill(testDb.db, userId, { name: 'review-pr' })
+
+    for (const version of [1, 2]) {
+      await testDb.db.insert(schema.skillFiles).values({
+        skillId,
+        userId,
+        version,
+        path: 'SKILL.md',
+        blobSha256: 'a'.repeat(64),
+        bytes: 700,
+        kind: 'skill-md',
+      })
+    }
+  }
 
   function seedData(projectId: number) {
     testDb.sqlite.prepare(`
@@ -95,24 +121,26 @@ describe('storage API', () => {
       .get(userId) as { id: number }
 
     seedData(project.id)
+    await seedSkillBlobs()
 
     const handler = await importHandler()
     const stats = await handler({})
 
     expect(stats).toMatchObject({
-      used: 10_500,
+      used: 11_200,
       total: 20 * 1024 * 1024,
       percentage: 0,
       tier: 'free',
       maxStorageBytes: 20 * 1024 * 1024,
       breakdown: {
-        totalBytes: 10_500,
+        totalBytes: 11_200,
         categories: [
           { id: 'aiImages', bytes: 1_000, count: 1 },
           { id: 'uploads', bytes: 2_000, count: 1 },
           { id: 'generatedFiles', bytes: 3_000, count: 1 },
           { id: 'artifacts', bytes: 4_000, count: 1 },
           { id: 'knowledge', bytes: 500, count: 1 },
+          { id: 'skills', bytes: 700, count: 1 },
         ],
       },
     })
@@ -141,7 +169,7 @@ describe('storage API', () => {
     const handler = await importHandler()
     const stats = await handler({})
 
-    expect(stats.breakdown.categories).toHaveLength(5)
+    expect(stats.breakdown.categories).toHaveLength(6)
     expect(mocks.kvPut).toHaveBeenCalledTimes(1)
   })
 

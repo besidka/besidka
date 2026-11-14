@@ -9,13 +9,16 @@ const mocks = vi.hoisted(() => ({
   navigateTo: vi.fn(),
   requestOpen: vi.fn(),
   artifactsActive: { value: true },
+  skillsActive: { value: true },
 }))
 
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
 mockNuxtImport('useFeature', () => {
-  return () => computed(() => {
-    const active = mocks.artifactsActive.value
+  return (flag: string) => computed(() => {
+    const active = flag === 'skills'
+      ? mocks.skillsActive.value
+      : mocks.artifactsActive.value
 
     return { enabled: active, active }
   })
@@ -27,12 +30,12 @@ mockNuxtImport('useFilesModalHandoff', () => {
 const MEGABYTE = 1024 * 1024
 
 function createStats(overrides: Record<string, unknown> = {}) {
-  const used = 12 * MEGABYTE
+  const used = 13 * MEGABYTE
 
   return {
     used,
     total: 20 * MEGABYTE,
-    percentage: 60,
+    percentage: 65,
     breakdown: {
       totalBytes: used,
       categories: [
@@ -41,6 +44,7 @@ function createStats(overrides: Record<string, unknown> = {}) {
         { id: 'generatedFiles', bytes: 0, count: 0 },
         { id: 'artifacts', bytes: 2 * MEGABYTE, count: 3 },
         { id: 'knowledge', bytes: 2 * MEGABYTE, count: 9 },
+        { id: 'skills', bytes: MEGABYTE, count: 2 },
       ],
     },
     ...overrides,
@@ -75,6 +79,7 @@ describe('profile storage page', () => {
     mocks.navigateTo.mockReset().mockResolvedValue(undefined)
     mocks.requestOpen.mockReset()
     mocks.artifactsActive.value = true
+    mocks.skillsActive.value = true
   })
 
   afterEach(() => {
@@ -96,15 +101,15 @@ describe('profile storage page', () => {
 
     expect(wrapper.get('h1').text()).toBe('Storage')
     expect(wrapper.get('[data-testid="storage-usage-text"]').text())
-      .toBe('12.0 MB of 20.0 MB used')
+      .toBe('13.0 MB of 20.0 MB used')
     expect(progress.element.tagName).toBe('PROGRESS')
     expect(progress.classes()).toContain('progress')
     expect(progress.classes()).not.toContain('progress-warning')
     expect(progress.classes()).not.toContain('progress-error')
-    expect(progress.attributes('value')).toBe('60')
+    expect(progress.attributes('value')).toBe('65')
     expect(progress.attributes('max')).toBe('100')
     expect(wrapper.get('[data-testid="storage-percentage"]').text())
-      .toBe('60%')
+      .toBe('65%')
   })
 
   it('lists every category with size and count', async () => {
@@ -120,6 +125,8 @@ describe('profile storage page', () => {
       .text()).toBe('2.0 MB · 3 artifacts')
     expect(wrapper.get('[data-testid="storage-category-knowledge-summary"]')
       .text()).toBe('2.0 MB · 9 items')
+    expect(wrapper.get('[data-testid="storage-category-skills-summary"]')
+      .text()).toBe('1.0 MB · 2 skills')
     expect(wrapper.get('[data-testid="storage-category-generatedFiles"]')
       .text()).toContain('Generated files')
   })
@@ -130,6 +137,7 @@ describe('profile storage page', () => {
     ['generatedFiles', 'i-lucide:file-text'],
     ['artifacts', 'i-lucide:app-window'],
     ['knowledge', 'i-lucide:book-open'],
+    ['skills', 'i-lucide:sparkles'],
   ])('gives %s the %s icon', async (id, icon) => {
     const wrapper = await mountPage()
 
@@ -137,13 +145,15 @@ describe('profile storage page', () => {
       .classes()).toContain(icon)
   })
 
-  it('links artifacts and project knowledge to where space is freed', async () => {
+  it('links artifacts, project knowledge and skills to where space is freed', async () => {
     const wrapper = await mountPage()
 
     expect(wrapper.get('[data-testid="storage-manage-artifacts"]')
       .attributes('to')).toBe('/chats/artifacts')
     expect(wrapper.get('[data-testid="storage-manage-knowledge"]')
       .attributes('to')).toBe('/chats/projects')
+    expect(wrapper.get('[data-testid="storage-manage-skills"]')
+      .attributes('to')).toBe('/chats/skills')
   })
 
   it('opens the file manager on the matching source', async () => {
@@ -184,6 +194,19 @@ describe('profile storage page', () => {
     expect(wrapper.find('[data-testid="storage-manage-artifacts"]').exists())
       .toBe(false)
     expect(wrapper.find('[data-testid="storage-manage-knowledge"]').exists())
+      .toBe(true)
+  })
+
+  it('hides the Skills link while the skills feature is off', async () => {
+    mocks.skillsActive.value = false
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('[data-testid="storage-manage-skills"]').exists())
+      .toBe(false)
+    expect(wrapper.get('[data-testid="storage-category-skills-summary"]')
+      .text()).toBe('1.0 MB · 2 skills')
+    expect(wrapper.find('[data-testid="storage-manage-artifacts"]').exists())
       .toBe(true)
   })
 
@@ -233,6 +256,7 @@ describe('profile storage page', () => {
             { id: 'generatedFiles', bytes: 0, count: 0 },
             { id: 'artifacts', bytes: 0, count: 0 },
             { id: 'knowledge', bytes: 0, count: 0 },
+            { id: 'skills', bytes: 0, count: 0 },
           ],
         },
       }),

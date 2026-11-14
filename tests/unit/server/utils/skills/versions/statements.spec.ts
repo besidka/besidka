@@ -10,6 +10,7 @@ import type {
 } from '../../../../../setup/helpers/memory-extraction-db'
 import {
   createFakeSkillBucket,
+  seedArtifactBytes,
   seedSkillWithFiles,
 } from '../../../../../setup/helpers/skills-db'
 import { skillMarkdown } from '../../../../../setup/helpers/skill-archives'
@@ -33,7 +34,7 @@ describe('buildGuardedVersionStatements', () => {
 
   function statements(overrides: {
     baseVersion?: number
-    maxUserBytes?: number
+    maxStorageBytes?: number
     incomingBytes?: number
   } = {}) {
     return buildGuardedVersionStatements({
@@ -41,7 +42,7 @@ describe('buildGuardedVersionStatements', () => {
       userId,
       skillId,
       baseVersion: overrides.baseVersion ?? 1,
-      maxUserBytes: overrides.maxUserBytes ?? 1_000_000,
+      maxStorageBytes: overrides.maxStorageBytes ?? 1_000_000,
       incomingBytes: overrides.incomingBytes ?? 10,
       record: {
         skillId,
@@ -119,9 +120,9 @@ describe('buildGuardedVersionStatements', () => {
     expect(await counts()).toEqual({ versions: 0, files: 0, currentVersion: 1 })
   })
 
-  it('writes nothing when the new blobs would pass the user cap', async () => {
+  it('writes nothing when the new blobs would pass the shared allowance', async () => {
     const results = await testDb.db.batch(asBatch(statements({
-      maxUserBytes: 100,
+      maxStorageBytes: 100,
       incomingBytes: 1_000,
     }))) as unknown[]
 
@@ -131,12 +132,24 @@ describe('buildGuardedVersionStatements', () => {
 
   it('skips the cap for a write that adds no blob bytes', async () => {
     const results = await testDb.db.batch(asBatch(statements({
-      maxUserBytes: 1,
+      maxStorageBytes: 1,
       incomingBytes: 0,
     }))) as unknown[]
 
     expect(results.at(-1)).toHaveLength(1)
     expect(await counts()).toEqual({ versions: 1, files: 1, currentVersion: 2 })
+  })
+
+  it('counts the bytes of other categories against the same allowance', async () => {
+    seedArtifactBytes(testDb.sqlite, userId, 95)
+
+    const results = await testDb.db.batch(asBatch(statements({
+      maxStorageBytes: 100,
+      incomingBytes: 10,
+    }))) as unknown[]
+
+    expect(results.at(-1)).toEqual([])
+    expect(await counts()).toEqual({ versions: 0, files: 0, currentVersion: 1 })
   })
 
   it('counts a blob once per skill however many versions hold it', async () => {
@@ -158,7 +171,7 @@ describe('buildGuardedVersionStatements', () => {
     })
 
     const results = await testDb.db.batch(asBatch(statements({
-      maxUserBytes: 80,
+      maxStorageBytes: 80,
       incomingBytes: 10,
     }))) as unknown[]
 

@@ -9,8 +9,8 @@ export default defineMcpTool({
     + 'search switches. The memory extraction switch and the memory models '
     + 'are included for reference but cannot be changed through MCP. Also '
     + 'returns your storage: bytes used, the allowance and a breakdown by '
-    + 'AI images, uploads, generated files, artifacts and project knowledge. '
-    + 'Requires signing in (settings:read).',
+    + 'AI images, uploads, generated files, artifacts, project knowledge '
+    + 'and skills. Requires signing in (settings:read).',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

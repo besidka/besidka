@@ -43,6 +43,7 @@ export type StorageCategoryId
     | 'generatedFiles'
     | 'artifacts'
     | 'knowledge'
+    | 'skills'
 
 export interface StorageCategoryUsage {
   id: StorageCategoryId

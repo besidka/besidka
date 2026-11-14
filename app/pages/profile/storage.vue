@@ -82,7 +82,8 @@
           />
           <span>
             Storage is full. What you have stays, but new uploads, images,
-            documents and artifacts are refused until you free some space.
+            documents, artifacts and skills are refused until you free some
+            space.
           </span>
         </div>
         <p
@@ -92,7 +93,7 @@
           data-testid="storage-empty"
         >
           Nothing is stored yet. Uploaded files, generated images,
-          artifacts and project knowledge will show up here.
+          artifacts, project knowledge and skills will show up here.
         </p>
         <ul
           v-else
@@ -174,6 +175,7 @@ const { data: stats, status, error, refresh } = await useLazyFetch(
   { key: 'profile-storage' },
 )
 const artifactsFeature = useFeature('artifacts')
+const skillsFeature = useFeature('skills')
 const { requestOpen } = useFilesModalHandoff()
 
 const isSkeletonVisible = shallowRef<boolean>(false)
@@ -259,6 +261,9 @@ const categories = computed(() => {
     } else if (meta.action === 'artifacts') {
       to = '/chats/artifacts'
       canManage = canManage && artifactsFeature.value.active
+    } else if (meta.action === 'skills') {
+      to = '/chats/skills'
+      canManage = canManage && skillsFeature.value.active
     } else {
       to = '/chats/projects'
     }

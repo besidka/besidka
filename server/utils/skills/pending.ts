@@ -8,6 +8,7 @@ import {
 } from '#shared/utils/skills/path'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import * as schema from '~~/server/db/schema'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { isDecodableSkillPublicId } from '~~/server/utils/skills/ids'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
 import {
@@ -340,8 +341,12 @@ export async function acceptPendingSkillVersion(
   try {
     await pruneSkillVersions({ db, bucket, userId, skillId })
   } catch {
+    await invalidateStorageCache(userId)
+
     return { id: skillId, version, enabled: false }
   }
+
+  await invalidateStorageCache(userId)
 
   return { id: skillId, version, enabled: false }
 }
@@ -365,6 +370,7 @@ export async function rejectPendingSkillVersion(
   ) as unknown as [BatchItem<'sqlite'>]
 
   await db.batch(deletions)
+  await invalidateStorageCache(userId)
 
   return { id: skillId, rejected: true }
 }

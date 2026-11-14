@@ -22,7 +22,6 @@ import {
   SKILL_INVOCATIONS_PER_MESSAGE,
   SKILL_RESERVED_SLASH_NAMES,
   SKILL_VERSIONS_KEPT,
-  SKILLS_MAX_USER_BYTES,
   isReservedSkillSlashName,
   getSkillCommandProblem,
   isSkillNameValid,
@@ -33,9 +32,14 @@ import {
 describe('skills policy constants', () => {
   it('keeps the values the plan fixes', () => {
     expect(SKILL_VERSIONS_KEPT).toBe(20)
-    expect(SKILLS_MAX_USER_BYTES).toBe(50 * 1024 * 1024)
     expect(SKILL_ARGUMENT_HINT_MAX).toBe(100)
     expect(SKILL_INVOCATIONS_PER_MESSAGE).toBe(1)
+  })
+
+  it('has no byte cap per account, since skills use the shared storage allowance', async () => {
+    const policy = await import('#shared/utils/skills-policy')
+
+    expect(Object.keys(policy)).not.toContain('SKILLS_MAX_USER_BYTES')
   })
 
   it('keeps the import limits of the design', () => {

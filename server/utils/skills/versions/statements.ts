@@ -8,6 +8,7 @@ import type {
   SkillVersionOrigin,
 } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
+import { userStorageUsedBytesSql } from '~~/server/utils/storage/usage'
 
 type DbClient = ReturnType<typeof useDb>
 type BatchStatements = [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]
@@ -143,25 +144,12 @@ function guardedInsert(
   `)
 }
 
-export function uniqueBlobBytesSql(userId: number): SQL {
-  return sql`(
-    select coalesce(sum(unique_blobs.bytes), 0) from (
-      select distinct
-        ${schema.skillFiles.skillId} as skill_id,
-        ${schema.skillFiles.blobSha256} as blob_sha256,
-        ${schema.skillFiles.bytes} as bytes
-      from ${schema.skillFiles}
-      where ${schema.skillFiles.userId} = ${userId}
-    ) as unique_blobs
-  )`
-}
-
 export interface GuardedVersionWrite {
   db: DbClient
   userId: number
   skillId: string
   baseVersion: number
-  maxUserBytes: number
+  maxStorageBytes: number
   incomingBytes: number
   record: SkillVersionRecord
   files: SkillVersionFileRecord[]
@@ -171,8 +159,8 @@ export interface GuardedVersionWrite {
 /**
  * The guarded batch of a save, in the order that keeps every statement safe
  * on its own: (1) the version row, written only while the skill is still at
- * `baseVersion` and the user's unique blobs plus the new ones fit the cap (a
- * write that adds no new blob bytes always passes it);
+ * `baseVersion` and the user's shared storage total plus the new blobs fits
+ * the allowance (a write that adds no new blob bytes always passes it);
  * (2) every file row, written only while that version row exists; (3) the
  * `skills` update, guarded the same way and returning its row, which is how
  * the caller learns the batch won. A stale save writes nothing, so it can
@@ -196,8 +184,8 @@ export function buildGuardedVersionStatements(input: GuardedVersionWrite) {
     )}
   )`
   const capGuard = input.incomingBytes > 0
-    ? sql` and ${uniqueBlobBytesSql(userId)} + ${input.incomingBytes}
-      <= ${input.maxUserBytes}`
+    ? sql` and ${userStorageUsedBytesSql(userId)} + ${input.incomingBytes}
+      <= ${input.maxStorageBytes}`
     : sql``
   const versionGuard = sql`exists (
     select 1 from ${schema.skills} where ${skillAtBase}

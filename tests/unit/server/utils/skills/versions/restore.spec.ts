@@ -15,6 +15,14 @@ import {
 import type { FakeSkillBucket } from '../../../../../setup/helpers/skills-db'
 import { skillMarkdown } from '../../../../../setup/helpers/skill-archives'
 
+const storageCacheMocks = vi.hoisted(() => ({
+  invalidateStorageCache: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/api/v1/storage/index.get', () => ({
+  invalidateStorageCache: storageCacheMocks.invalidateStorageCache,
+}))
+
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
     '../../../../../setup/helpers/skills-public-id-mock'
@@ -109,6 +117,15 @@ describe('restoreSkillVersion', () => {
 
   afterEach(() => {
     testDb.close()
+  })
+
+  it('drops the storage stats cache of the user after a restore', async () => {
+    storageCacheMocks.invalidateStorageCache.mockClear()
+
+    await restore(1)
+
+    expect(storageCacheMocks.invalidateStorageCache)
+      .toHaveBeenCalledWith(userId, logger)
   })
 
   it('writes the old files as a new version over the same blobs', async () => {

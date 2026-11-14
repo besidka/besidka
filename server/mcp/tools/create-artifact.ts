@@ -41,7 +41,7 @@ export default defineMcpTool({
     + 'Artifacts run in a sandbox '
     + 'without network access, so the content must be self-contained. html '
     + 'and react artifacts already load Tailwind CSS 4 and daisyUI 5 with '
-    + 'the Besidka theme: style with their class names and theme colours, '
+    + 'the Besidka theme: style with their class names and theme colors, '
     + 'never link a CDN or external fonts. It counts against your artifact '
     + 'storage and uses none of your API keys. React artifacts need the '
     + 'React artifacts feature. Requires signing in (artifacts:write).',

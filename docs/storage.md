@@ -7,7 +7,7 @@ and the Storage page (`/profile/storage`) shows what fills it. BES-393.
 
 ## What counts
 
-Five categories, defined once in `server/utils/storage/categories.ts`
+Six categories, defined once in `server/utils/storage/categories.ts`
 (`STORAGE_CATEGORIES`). Each gives a bytes expression and a count expression
 for a user; the total is their sum.
 
@@ -18,6 +18,7 @@ for a user; the total is their sum.
 | `generatedFiles` | Rendered documents, code-execution output and other generated files | `files.source = 'assistant'` and `files.type not like 'image/%'` |
 | `artifacts` | Every stored version of every artifact | `sum(artifacts.total_bytes)`, counting rows with `current_version > 0` (a pending header from an interrupted write has `0` bytes and no version) |
 | `knowledge` | Text extracted from project files and notes | `sum(project_knowledge_items.text_bytes)` |
+| `skills` | Every stored version of every skill | The bytes of unique blobs: `skill_files` rows deduplicated by `(skill_id, blob_sha256)`, so a blob counts once per skill however many versions hold it (the way R2 stores it). The count is the number of `skills` rows (`userSkillsBytesSql` and `userSkillsCountSql` in `skills/usage.ts`) |
 
 The three file categories partition `files` by `source` and `type`, so their
 sum equals `sum(files.size)`. No column was added for this.
@@ -62,6 +63,7 @@ check for writers that have no quota of their own.
 | Document creation | The chat `create_document` tool checks first and returns a plain tool error; the rendered file goes through `persistFile` (`finalizeRenderedDocument`, 413 with code `quota_exceeded`); MCP `create_document` answers 413 in the message |
 | Artifact create and update | `createArtifact` and `appendArtifactVersion` in `artifacts/store.ts` call `assertStorageAvailable`, so the chat tools, the app routes and MCP `create_artifact` and `update_artifact` are all covered. The old 25 MB artifact quota is gone |
 | Project knowledge | `assertKnowledgeCapacity` and the guarded insert and update statements in `knowledge/ingest.ts` |
+| Skill create, import, update check, save and restore | `assertLimits` (`skills/import/commit.ts`) before any write, the atomic skill-row insert (`insertSkillWithinLimits`) and the guarded version insert (`buildGuardedVersionStatements`), all against the shared total. A refusal is the same 413 `Storage is full` with a link to `/profile/storage`. A write that adds no new blob bytes (a delete, a restore over existing blobs) is never refused, even while the account is over its allowance |
 
 Model tool calls never fail the stream. `toToolError` in `artifact-tools.ts`
 maps `storage_full` to the `artifact-quota` tool error, whose text reads
@@ -72,19 +74,24 @@ maps `storage_full` to the `artifact-quota` tool error, whose text reads
 the error message (`withReadableDetails`).
 
 The check is read-then-write, so concurrent writes can overshoot by one write
-each. That is accepted; the knowledge statements are atomic.
+each. That is accepted; the knowledge statements and the guarded skill
+statements are atomic. A skill row is inserted before its files, and the row
+itself is not counted (only `skill_files` is), so two skill creations racing
+at the very end of the allowance can both pass the insert guard.
 
 An account over its allowance (for example because artifacts now count) keeps
 everything. Every new write is refused until it is back under, and the Storage
 page clamps the bar at 100%.
 
-## Not counted yet: skills
+## Skills
 
-The skills tables (`skills`, `skill_versions`, `skill_files`, with `bytes`
-per skill) are already on `main` (#864), but no skill writer or route exists
-yet and skills are not in `STORAGE_CATEGORIES`. The layer that adds the
-writers registers a `skills` category as described under "Adding a category"
-and makes its writes call the guard.
+Skills have no byte cap of their own. The old `SKILLS_MAX_USER_BYTES`
+(50 MiB) is gone: the bytes of a skill draw on the same allowance as files,
+artifacts and project knowledge. The per-skill caps stay (5 MiB per skill,
+1 MiB per file, 200 files, the 50 skill count cap, per-save limits), and see
+`docs/skills.md` for the rest of the skills limits. Deleting a skill or a
+version frees its bytes: versions beyond `SKILL_VERSIONS_KEPT` are pruned on
+every save, and a pending update counts until it is accepted or rejected.
 
 ## Cache
 
@@ -92,7 +99,9 @@ and makes its writes call the guard.
 `storage-stats:<userId>`; `invalidateStorageCache` drops it. Writers and
 deleters call it: `persistFile`, file deletion and expiry, chat deletion
 cleanup, knowledge ingest, project lifecycle, account purge and, since BES-393,
-`createArtifact`, `appendArtifactVersion` and artifact deletion. A cached entry
+`createArtifact`, `appendArtifactVersion`, artifact deletion and every skill
+write: create, save, restore, import, update check, accepting or rejecting an
+update, and delete. A cached entry
 without `breakdown` (written before this shipped) is treated as a miss.
 
 ## The page
@@ -101,7 +110,8 @@ without `breakdown` (written before this shipped) is treated as a miss.
 `progress` (primary, warning from 80%, error at 100%), a row per category with
 size, count and a Manage action (the file manager on the right source for AI
 images, uploads and generated files, `/chats/artifacts` when the `artifacts`
-feature is on, `/chats/projects`), a skeleton after 300 ms, an error state with
+feature is on, `/chats/projects`, `/chats/skills` when the `skills` feature is
+on), a skeleton after 300 ms, an error state with
 Retry and an empty state. Labels, icons and links live in
 `app/utils/storage-categories.ts`. The page has a tab in
 `app/layouts/profile.vue` and the `search-option-storage` row in the Search
@@ -110,13 +120,14 @@ modal; it is deliberately not in the sidebar user dropdown.
 ## MCP
 
 `get_settings` (`settings:read`, since 3.2.0) returns a `storage` block:
-`usedBytes`, `totalBytes` and `categories` (`id`, `bytes`, `count`). See
+`usedBytes`, `totalBytes` and `categories` (`id`, `bytes`, `count`, with
+`skills` among them). See
 `docs/mcp-server.md`.
 
 ## Adding a category
 
-Skills (or any later feature that stores bytes per user) registers with one
-entry:
+Skills registered this way, and any later feature that stores bytes per user
+registers with one entry:
 
 1. Add the id to `StorageCategoryId` in `shared/types/files.d.ts`.
 2. Add one `StorageCategoryDefinition` to `STORAGE_CATEGORIES` in

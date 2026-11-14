@@ -5,6 +5,7 @@ export type StorageCategoryAction
     | 'files-upload'
     | 'artifacts'
     | 'projects'
+    | 'skills'
 
 export interface StorageCategoryMeta {
   label: string
@@ -58,6 +59,14 @@ export const STORAGE_CATEGORY_META: Record<
     plural: 'items',
     hint: 'Text extracted from your project files and notes',
     action: 'projects',
+  },
+  skills: {
+    label: 'Skills',
+    icon: 'lucide:sparkles',
+    singular: 'skill',
+    plural: 'skills',
+    hint: 'Every saved version of your skills',
+    action: 'skills',
   },
 }
 

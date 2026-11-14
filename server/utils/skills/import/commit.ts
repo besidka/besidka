@@ -6,7 +6,6 @@ import { hashSkillFileSet } from '#shared/utils/skills/analyse'
 import { renameSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import {
-  SKILLS_MAX_USER_BYTES,
   SKILLS_PER_USER,
   isSkillNameValid,
 } from '#shared/utils/skills-policy'
@@ -34,10 +33,14 @@ import {
   skillPrefix,
 } from '~~/server/utils/skills/storage'
 import { isUniqueViolation } from '~~/server/utils/skills/unique-violation'
+import { countUserSkills } from '~~/server/utils/skills/usage'
+import { getEffectiveUserFilePolicy } from '~~/server/utils/files/file-governance'
 import {
-  countUserSkills,
-  getUserSkillsUsageBytes,
-} from '~~/server/utils/skills/usage'
+  assertStorageAvailable,
+  buildStorageFullError,
+} from '~~/server/utils/storage/guard'
+import { userStorageUsedBytesSql } from '~~/server/utils/storage/usage'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -123,22 +126,19 @@ function assertAcknowledgements(
   }
 }
 
-export function createStorageLimitError() {
-  return createError({
-    message: 'Skill storage is full',
-    status: 413,
-    code: 'skills-storage-limit',
-    why: 'Your skills would use more than 50 MiB of storage',
-    fix: 'Delete a skill or an older version you no longer use',
-  })
-}
-
-export function assertLimits(input: {
+/**
+ * The per-account skill count cap, then the shared storage allowance. Skills
+ * have no byte cap of their own: the bytes of a skill draw on the same
+ * allowance as files, artifacts and project knowledge, and a refusal is the
+ * shared 413 `Storage is full`. A write that adds no bytes is never refused.
+ */
+export async function assertLimits(input: {
+  db: DbClient
+  userId: number
   skillsCount: number
-  usageBytes: number
   incomingBytes: number
   isNewSkill: boolean
-}): void {
+}): Promise<void> {
   if (input.isNewSkill && input.skillsCount >= SKILLS_PER_USER) {
     throw createError({
       message: 'Skill limit reached',
@@ -149,8 +149,12 @@ export function assertLimits(input: {
     })
   }
 
-  if (input.usageBytes + input.incomingBytes > SKILLS_MAX_USER_BYTES) {
-    throw createStorageLimitError()
+  if (input.incomingBytes > 0) {
+    await assertStorageAvailable({
+      userId: input.userId,
+      additionalBytes: input.incomingBytes,
+      db: input.db,
+    })
   }
 }
 
@@ -384,9 +388,10 @@ const SKILL_INSERT_COLUMNS = Object.entries(getTableColumns(schema.skills))
   })
 
 /**
- * Inserts the skill row only while the user is under both caps, in one
- * statement, so two concurrent commits cannot both pass a count that was
- * read earlier. Returns the new public id, or null when a cap blocked it.
+ * Inserts the skill row only while the user is under the skill count cap and
+ * the shared storage allowance, in one statement, so two concurrent commits
+ * cannot both pass a count that was read earlier. Returns the new public id,
+ * or null when a cap blocked it.
  * Column names and value encoding come from the Drizzle table, so a new
  * column cannot be forgotten here without the type of `SkillRow` failing.
  */
@@ -395,6 +400,7 @@ export async function insertSkillWithinLimits(
   row: SkillInsertRow,
 ): Promise<string | null> {
   const values = row as Record<string, unknown>
+  const policy = await getEffectiveUserFilePolicy(row.userId, db)
   const columnList = sql.join(
     SKILL_INSERT_COLUMNS.map(([, column]) => {
       return sql.identifier(column.name)
@@ -418,10 +424,8 @@ export async function insertSkillWithinLimits(
       select count(*) from ${schema.skills}
       where ${schema.skills.userId} = ${row.userId}
     ) < ${SKILLS_PER_USER}
-    and (
-      select coalesce(sum(${schema.skills.bytes}), 0) from ${schema.skills}
-      where ${schema.skills.userId} = ${row.userId}
-    ) + ${row.bytes} <= ${SKILLS_MAX_USER_BYTES}
+    and ${userStorageUsedBytesSql(row.userId)} + ${row.bytes}
+      <= ${policy.maxStorageBytes}
     returning id
   `)
   const inserted = rows[0]
@@ -545,7 +549,7 @@ export async function createLimitError(db: DbClient, userId: number) {
       why: `An account can hold ${SKILLS_PER_USER} skills`,
       fix: 'Delete a skill you no longer use',
     })
-    : createStorageLimitError()
+    : await buildStorageFullError(userId, db)
 }
 
 /**
@@ -941,14 +945,10 @@ export async function commitSkillImport(
     )
   }
 
-  const [skillsCount, usageBytes] = await Promise.all([
-    countUserSkills(db, userId),
-    getUserSkillsUsageBytes(db, userId),
-  ])
-
-  assertLimits({
-    skillsCount,
-    usageBytes,
+  await assertLimits({
+    db,
+    userId,
+    skillsCount: await countUserSkills(db, userId),
     incomingBytes: manifest.totalBytes,
     isNewSkill: !input.asUpdateOf,
   })
@@ -1006,6 +1006,8 @@ export async function commitSkillImport(
       throw exception
     }
   }
+
+  await invalidateStorageCache(userId, logger)
 
   try {
     await deleteSkillStage({ kv, bucket, manifest })

@@ -1,5 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
@@ -198,6 +199,8 @@ export async function deleteUserSkill(
   if (!result.skillDeleted) {
     return result
   }
+
+  await invalidateStorageCache(userId, logger)
 
   try {
     result.skillObjectsDeleted = await deleteSkillPrefix(

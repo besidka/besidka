@@ -200,6 +200,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/artifacts-library.spec.ts',
     'tests/unit/utils/ai/image-generation-errors.spec.ts',
     'tests/unit/utils/code-execution/persist-container-files.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/versions/create.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/skills/versions/statements.spec.ts',
+    'tests/unit/server/api/v1/skills/update-check.spec.ts',
   ]
   const storagePageTests = [
     'tests/unit/pages/profile/storage.spec.ts',
@@ -1124,6 +1129,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/features/evaluate-variants.spec.ts',
     'tests/unit/server/utils/features/exposure.spec.ts',
     'tests/unit/server/utils/features/guards.spec.ts',
+    'tests/unit/server/utils/features/background.spec.ts',
     'tests/unit/utils/features/registry.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
     'tests/unit/utils/features/rollout-gate.spec.ts',
@@ -3224,6 +3230,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/mcp\/tools\/get-settings\.ts$/,
+      tests: storageQuotaTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/skills\/(usage|import\/commit|import\/update-check|pending|cleanup|versions\/(create|write|statements))\.ts$/,
       tests: storageQuotaTests,
     },
     {

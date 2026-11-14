@@ -66,7 +66,7 @@ export interface KnowledgeTestDb {
 /**
  * Creates an in-memory SQLite DB with the tables the project knowledge code
  * touches (`project_knowledge_items`, `projects`, `files`, `storages`,
- * `documents`, `artifacts`) as the
+ * `documents`, `artifacts`, `skills`, `skill_files`) as the
  * migrations define them, minus the foreign keys, so a spec can seed a user,
  * a project or a file without a `users` row. The `project_knowledge_items`
  * DDL and its indexes are the exact `20261025214938_project_knowledge`
@@ -224,6 +224,22 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       takedown_at integer,
       takedown_reason text,
       legal_hold_until integer
+    );
+
+    CREATE TABLE skills (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      user_id integer NOT NULL
+    );
+
+    CREATE TABLE skill_files (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      skill_id integer NOT NULL,
+      user_id integer NOT NULL,
+      version integer NOT NULL DEFAULT 1,
+      path text NOT NULL DEFAULT 'SKILL.md',
+      blob_sha256 text NOT NULL DEFAULT '',
+      bytes integer NOT NULL DEFAULT 0,
+      kind text NOT NULL DEFAULT 'other'
     );
   `)
 

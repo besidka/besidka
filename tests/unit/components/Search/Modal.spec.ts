@@ -620,6 +620,7 @@ describe('Search/Modal.client', () => {
       'search-option-keys',
       'search-option-memory',
       'search-option-preferences',
+      'search-option-storage',
       'search-option-connected-apps',
       'search-option-labs',
     ])

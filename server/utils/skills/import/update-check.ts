@@ -21,6 +21,7 @@ import {
 } from '#shared/utils/skills/github-url'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import * as schema from '~~/server/db/schema'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   assertLimits,
@@ -45,10 +46,7 @@ import {
   loadVersionFiles,
   readChangedFileTexts,
 } from '~~/server/utils/skills/versions/read'
-import {
-  countUserSkills,
-  getUserSkillsUsageBytes,
-} from '~~/server/utils/skills/usage'
+import { countUserSkills } from '~~/server/utils/skills/usage'
 
 type DbClient = ReturnType<typeof useDb>
 type SkillRow = typeof schema.skills.$inferSelect
@@ -514,9 +512,10 @@ export async function checkGithubSkillUpdate(
     }
   }
 
-  assertLimits({
+  await assertLimits({
+    db: input.db,
+    userId: input.userId,
     skillsCount: await countUserSkills(input.db, input.userId),
-    usageBytes: await getUserSkillsUsageBytes(input.db, input.userId),
     incomingBytes: analysis.totalBytes,
     isNewSkill: false,
   })
@@ -560,6 +559,9 @@ export async function checkGithubSkillUpdate(
     pendingVersion: skill.pendingVersion,
     origin: 'update',
   })
+
+  await invalidateStorageCache(input.userId, input.logger)
+
   const refreshed = await loadVersions(input)
   const pending = refreshed.find((row) => {
     return row.version === version

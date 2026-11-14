@@ -224,7 +224,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Save content you wrote as a new Besidka artifact (version 1) in your library and return its id and a link to open it in Besidka. Use it when the user asks for an artifact, asks to save content in Besidka, or wants an app, interactive page, quiz, game or document to keep there; otherwise answer diagrams and code in your reply. Artifacts run in a sandbox without network access, so the content must be self-contained. html and react artifacts already load Tailwind CSS 4 and daisyUI 5 with the Besidka theme: style with their class names and theme colours, never link a CDN or external fonts. It counts against your artifact storage and uses none of your API keys. React artifacts need the React artifacts feature. Requires signing in (artifacts:write).",
+      "description": "Save content you wrote as a new Besidka artifact (version 1) in your library and return its id and a link to open it in Besidka. Use it when the user asks for an artifact, asks to save content in Besidka, or wants an app, interactive page, quiz, game or document to keep there; otherwise answer diagrams and code in your reply. Artifacts run in a sandbox without network access, so the content must be self-contained. html and react artifacts already load Tailwind CSS 4 and daisyUI 5 with the Besidka theme: style with their class names and theme colors, never link a CDN or external fonts. It counts against your artifact storage and uses none of your API keys. React artifacts need the React artifacts feature. Requires signing in (artifacts:write).",
       "inputSchema": {
         "properties": {
           "content": {
@@ -808,7 +808,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read your Besidka preferences: reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The memory extraction switch and the memory models are included for reference but cannot be changed through MCP. Also returns your storage: bytes used, the allowance and a breakdown by AI images, uploads, generated files, artifacts and project knowledge. Requires signing in (settings:read).",
+      "description": "Read your Besidka preferences: reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The memory extraction switch and the memory models are included for reference but cannot be changed through MCP. Also returns your storage: bytes used, the allowance and a breakdown by AI images, uploads, generated files, artifacts, project knowledge and skills. Requires signing in (settings:read).",
       "inputSchema": {
         "properties": {},
         "type": "object"

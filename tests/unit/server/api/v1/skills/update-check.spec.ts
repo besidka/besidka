@@ -49,6 +49,11 @@ const SKILL_URL = 'https://github.com/o/r/tree/main/skills/review-pr'
 const mocks = vi.hoisted(() => ({
   flags: new Set<string>(),
   logger: { set: vi.fn() },
+  invalidateStorageCache: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/api/v1/storage/index.get', () => ({
+  invalidateStorageCache: mocks.invalidateStorageCache,
 }))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
@@ -607,22 +612,39 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     })
   })
 
-  it('stops at the storage cap without writing a pending version', async () => {
+  it('stops at the storage allowance without writing a pending version', async () => {
     moveHeadTo(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {}, skillMarkdown({
       description: 'Over the cap',
     })))
-    await testDb.db.update(schema.skills)
-      .set({ bytes: 50 * 1024 * 1024 })
-      .where(eq(schema.skills.id, skillId))
     await testDb.db.update(schema.skillFiles)
-      .set({ bytes: 50 * 1024 * 1024 })
+      .set({ bytes: 20 * 1024 * 1024 })
       .where(eq(schema.skillFiles.path, 'references/checklist.md'))
 
     expect(await failureOf(check())).toMatchObject({
       status: 413,
-      code: 'skills-storage-limit',
+      code: 'storage_full',
+      link: '/profile/storage',
     })
     expect((await skillRow()).pendingVersion).toBeNull()
+  })
+
+  it('drops the storage stats cache when the check writes a pending version', async () => {
+    moveHeadTo(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {}, skillMarkdown({
+      description: 'A change',
+    })))
+    mocks.invalidateStorageCache.mockClear()
+
+    await check()
+
+    expect(mocks.invalidateStorageCache)
+      .toHaveBeenCalledWith(userId, mocks.logger)
+  })
+
+  it('leaves the storage stats cache alone when nothing is written', async () => {
+    mocks.invalidateStorageCache.mockClear()
+
+    expect((await check()).upToDate).toBe(true)
+    expect(mocks.invalidateStorageCache).not.toHaveBeenCalled()
   })
 
   it('lets the existing accept route take the pending version', async () => {

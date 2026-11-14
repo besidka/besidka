@@ -43,6 +43,22 @@ function createDb(sqlite: SqliteDatabase) {
       project_id integer NOT NULL,
       text_bytes integer NOT NULL
     );
+
+    CREATE TABLE skills (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      user_id integer NOT NULL
+    );
+
+    CREATE TABLE skill_files (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      skill_id integer NOT NULL,
+      user_id integer NOT NULL,
+      version integer NOT NULL DEFAULT 1,
+      path text NOT NULL DEFAULT 'SKILL.md',
+      blob_sha256 text NOT NULL DEFAULT '',
+      bytes integer NOT NULL DEFAULT 0,
+      kind text NOT NULL DEFAULT 'other'
+    );
   `)
 
   const builder = drizzle({ client: sqlite })

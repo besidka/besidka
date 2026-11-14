@@ -16,12 +16,14 @@ describe('storage categories', () => {
       ['generatedFiles', 'Generated files', 'lucide:file-text'],
       ['artifacts', 'Artifacts', 'lucide:app-window'],
       ['knowledge', 'Project knowledge', 'lucide:book-open'],
+      ['skills', 'Skills', 'lucide:sparkles'],
     ])
   })
 
   it('recognises only categories it knows how to show', () => {
     expect(isKnownStorageCategory('artifacts')).toBe(true)
-    expect(isKnownStorageCategory('skills')).toBe(false)
+    expect(isKnownStorageCategory('skills')).toBe(true)
+    expect(isKnownStorageCategory('notes')).toBe(false)
     expect(isKnownStorageCategory('toString')).toBe(false)
   })
 
@@ -30,6 +32,8 @@ describe('storage categories', () => {
     expect(formatStorageCount('uploads', 0)).toBe('0 files')
     expect(formatStorageCount('knowledge', 2)).toBe('2 items')
     expect(formatStorageCount('aiImages', 1)).toBe('1 image')
+    expect(formatStorageCount('skills', 1)).toBe('1 skill')
+    expect(formatStorageCount('skills', 3)).toBe('3 skills')
   })
 
   it('picks the progress tone from the percentage', () => {

@@ -3,6 +3,10 @@ import type { StorageCategoryId } from '#shared/types/files.d'
 import { and, eq, gt, like, notLike, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { userKnowledgeTextBytesSql } from '~~/server/utils/knowledge/quota'
+import {
+  userSkillsBytesSql,
+  userSkillsCountSql,
+} from '~~/server/utils/skills/usage'
 
 export interface StorageCategoryDefinition {
   id: StorageCategoryId
@@ -74,12 +78,18 @@ const knowledgeCategory: StorageCategoryDefinition = {
   },
 }
 
+const skillsCategory: StorageCategoryDefinition = {
+  id: 'skills',
+  bytesSql: userSkillsBytesSql,
+  countSql: userSkillsCountSql,
+}
+
 /**
  * Every kind of data that counts against the one storage allowance. The
  * three file categories partition `files` by `source` and `type`, so their
- * sum equals the sum of `files.size`. A later feature (skills) adds one
- * entry here and one id to `StorageCategoryId`; the total, the quota guards
- * and the breakdown all derive from this list.
+ * sum equals the sum of `files.size`. A new feature adds one entry here and
+ * one id to `StorageCategoryId`; the total, the quota guards and the
+ * breakdown all derive from this list.
  */
 export const STORAGE_CATEGORIES: readonly StorageCategoryDefinition[] = [
   filesCategory('aiImages', and(isGeneratedFile, isImage)),
@@ -90,4 +100,5 @@ export const STORAGE_CATEGORIES: readonly StorageCategoryDefinition[] = [
   ))),
   artifactsCategory,
   knowledgeCategory,
+  skillsCategory,
 ]

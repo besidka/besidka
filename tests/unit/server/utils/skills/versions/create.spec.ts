@@ -11,10 +11,20 @@ import type {
   MemoryExtractionTestDb,
 } from '../../../../../setup/helpers/memory-extraction-db'
 import {
+  STORAGE_ALLOWANCE_BYTES,
   createFakeSkillBucket,
+  seedArtifactBytes,
   seedSkill,
 } from '../../../../../setup/helpers/skills-db'
 import type { FakeSkillBucket } from '../../../../../setup/helpers/skills-db'
+
+const storageCacheMocks = vi.hoisted(() => ({
+  invalidateStorageCache: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/api/v1/storage/index.get', () => ({
+  invalidateStorageCache: storageCacheMocks.invalidateStorageCache,
+}))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
@@ -70,6 +80,7 @@ describe('createAuthoredSkill', () => {
     bucket = createFakeSkillBucket()
     userId = await seedUser(testDb.db)
     logger.set.mockClear()
+    storageCacheMocks.invalidateStorageCache.mockClear()
   })
 
   afterEach(() => {
@@ -141,6 +152,21 @@ describe('createAuthoredSkill', () => {
 
     return new TextDecoder().decode(object!.bytes)
   }
+
+  it('drops the storage stats cache of the user after creating a skill', async () => {
+    await create({ kind: 'blank', name: 'my-skill' })
+
+    expect(storageCacheMocks.invalidateStorageCache)
+      .toHaveBeenCalledWith(userId, logger)
+  })
+
+  it('keeps the storage stats cache when the allowance refuses the skill', async () => {
+    seedArtifactBytes(testDb.sqlite, userId, STORAGE_ALLOWANCE_BYTES)
+
+    expect(await failureOf(create({ kind: 'blank', name: 'my-skill' })))
+      .toMatchObject({ status: 413, code: 'storage_full' })
+    expect(storageCacheMocks.invalidateStorageCache).not.toHaveBeenCalled()
+  })
 
   it('creates a blank skill with a command that uses $ARGUMENTS', async () => {
     const created = await create({

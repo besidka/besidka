@@ -116,6 +116,7 @@ describe('get_settings tool', () => {
 
     expect(tool.description).toContain('storage')
     expect(tool.description).toContain('project knowledge')
+    expect(tool.description).toContain('skills')
   })
 
   it('refuses a token without settings:read', async () => {

@@ -302,6 +302,7 @@ export const handlers = [
           { id: 'generatedFiles', bytes: 0, count: 0 },
           { id: 'artifacts', bytes: 0, count: 0 },
           { id: 'knowledge', bytes: 0, count: 0 },
+          { id: 'skills', bytes: 0, count: 0 },
         ],
       },
     })
