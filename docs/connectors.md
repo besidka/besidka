@@ -701,7 +701,7 @@ to the public id on the way out (`encodePublicId`) and decodes it on the way in
 | `user_id` | integer, not null | |
 | `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). Other hosts use the second-to-last label (`mcp.example.com` gives `example`), or the third-to-last when the second-to-last has 3 characters or fewer and another label exists (`mcp.example.co.uk` gives `example`), cut to 16. On collision `-2`, `-3` |
 | `title` | text | user-editable, at most 80 characters |
-| `origin` | text | `https://host[:port]`, plain, for display and consent |
+| `origin` | text | `https://host[:port]`, plain, for display and consent. Derived from the URL inside `createConnector`, never taken from the caller |
 | `url_encrypted` | text | full canonical URL, encrypted (paths and queries can carry secrets) |
 | `transport` | text | `streamable-http` or `sse` (TypeScript enum) |
 | `auth_type` | text, null | `none`, `oauth` or `header`; null until discovery |
@@ -716,11 +716,19 @@ to the public id on the way out (`encodePublicId`) and decodes it on the way in
 | `consented_at` | timestamp, null | |
 | `consent_withdrawn_at` | timestamp, null | |
 | `native_opt_in_at` | timestamp, null | OpenAI-run calls opt-in (section 12) |
-| `last_error` | json, null | code and safe message; includes the scope `degraded` note |
+| `last_error` | json, null | a fixed code plus a short fixed message, and the scope `degraded` note. **Never upstream text**: no response body, no remote error message, no URL (a URL can carry a secret, and upstream text is attacker-controlled and shown on the card). Map every failure to a code and a message Besidka wrote |
 | `last_connected_at` | timestamp, null | |
 | `created_at`, `updated_at` | timestamps | |
 
 Indexes: unique (`user_id`, `slug`); (`user_id`, `updated_at`).
+
+The store (`server/utils/connectors/store.ts`) enforces the rules a route
+must not be trusted with: `createConnector` inserts and enforces
+`CONNECTORS_PER_USER` in one batch (the row is deleted again in the same
+batch when it would be over the cap), `updateConnector` writes only a
+whitelist of columns, and every write to a child table (`saveConnectorCredentials`,
+`upsertConnectorToolSettings`, `upsertConnectorChatSettings`) first checks that
+the connector belongs to the user and never rewrites `user_id` on conflict.
 
 ### 8.2 `connector_credentials`
 
@@ -796,6 +804,12 @@ Phase 6 routines.
 
 Indexes: (`user_id`, `created_at`); (`created_at`) for the sweep. A pending
 row is updated in place when the approval is answered.
+
+`chat_public_id` deliberately outlives the chat: chat delete cleanup removes
+`connector_chat_settings` rows but leaves the audit rows, so the trail of what
+ran in a deleted chat stays for the 90-day retention and a stolen session
+cannot erase it by deleting chats. The audit rows hold no chat content, only
+the id.
 
 ### 8.6 `mcp_registry_servers`
 

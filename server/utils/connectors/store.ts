@@ -1,5 +1,5 @@
 import {
-  and, asc, desc, eq, getTableColumns,
+  and, asc, desc, eq, getTableColumns, sql,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
@@ -7,6 +7,7 @@ import {
 } from '#shared/utils/connectors-slug'
 import {
   CONNECTOR_TITLE_MAX_LENGTH,
+  CONNECTORS_PER_USER,
 } from '#shared/utils/connectors-policy'
 import type {
   ConnectorAuditApproval,
@@ -54,10 +55,24 @@ export type ConnectorPatch = Partial<Pick<
   | 'lastConnectedAt'
 >>
 
+const CONNECTOR_PATCH_KEYS = [
+  'title',
+  'authType',
+  'status',
+  'enabled',
+  'consentOrigin',
+  'consentIssuer',
+  'consentVersion',
+  'consentedAt',
+  'consentWithdrawnAt',
+  'nativeOptInAt',
+  'lastError',
+  'lastConnectedAt',
+] as const satisfies ReadonlyArray<keyof ConnectorPatch>
+
 export interface CreateConnectorInput {
   userId: number
   title: string
-  origin: string
   url: string
   slugBase: string
   createdVia: ConnectorCreatedVia
@@ -136,12 +151,59 @@ export interface DeleteConnectorResult {
   chatSettingsDeleted: number
 }
 
+function createConnectorLimitError() {
+  return createError({
+    message: 'Connector limit reached',
+    status: 409,
+    code: 'CONNECTOR_LIMIT_REACHED',
+    why: `An account can have at most ${CONNECTORS_PER_USER} connectors`,
+    fix: 'Delete a connector you no longer use',
+  })
+}
+
 function toConnectorRecord(row: ConnectorRow): ConnectorRecord {
   return { ...row, id: encodePublicId(row.id) }
 }
 
 function connectorIdEquals(connectorId: string) {
   return eq(schema.connectors.id, decodePublicId(connectorId))
+}
+
+function pickConnectorPatch(patch: ConnectorPatch): ConnectorPatch {
+  const picked: Record<string, unknown> = {}
+
+  for (const key of CONNECTOR_PATCH_KEYS) {
+    if (Object.hasOwn(patch, key) && patch[key] !== undefined) {
+      picked[key] = key === 'title'
+        ? normalizeTitle(patch.title!)
+        : patch[key]
+    }
+  }
+
+  return picked as ConnectorPatch
+}
+
+async function assertConnectorOwned(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+): Promise<void> {
+  const [owned] = await db.select({ id: schema.connectors.id })
+    .from(schema.connectors)
+    .where(and(
+      eq(schema.connectors.userId, userId),
+      connectorIdEquals(connectorId),
+    ))
+    .limit(1)
+
+  if (!owned) {
+    throw createError({
+      message: 'Connector not found',
+      status: 404,
+      why: 'No connector with this id belongs to the account',
+      fix: 'Check the connector id',
+    })
+  }
 }
 
 function normalizeTitle(title: string): string {
@@ -183,14 +245,18 @@ async function listTakenSlugs(
 
 /**
  * Inserts a disabled connector in `needs-auth`: defaults live here, not in
- * SQL. The slug is the base, or the base with `-2`, `-3`, and is retried when
- * a concurrent insert takes the same one. The URL is stored encrypted, the
- * origin in the clear.
+ * SQL. The origin is derived from the URL here, never taken from the caller.
+ * The slug is the base, or the base with `-2`, `-3`, and is retried when a
+ * concurrent insert takes the same one. The URL is stored encrypted, the
+ * origin in the clear. The per-user cap is enforced in the same batch as the
+ * insert: the row is removed again, atomically, when it would be the
+ * (cap + 1)th, so two concurrent creates cannot both pass a count.
  */
 export async function createConnector(
   db: DbClient,
   input: CreateConnectorInput,
 ): Promise<ConnectorRecord> {
+  const origin = new URL(input.url).origin
   const urlEncrypted = await useEncryptText(input.url)
 
   for (let attempt = 0; attempt < SLUG_ALLOCATION_ATTEMPTS; attempt++) {
@@ -200,22 +266,37 @@ export async function createConnector(
     )
 
     try {
-      const [created] = await db.insert(schema.connectors).values({
-        userId: input.userId,
-        slug,
-        title: normalizeTitle(input.title),
-        origin: input.origin,
-        urlEncrypted,
-        transport: input.transport ?? 'streamable-http',
-        authType: null,
-        status: 'needs-auth',
-        enabled: false,
-        presetId: input.presetId ?? null,
-        createdVia: input.createdVia,
-        createdByClientId: input.createdByClientId ?? null,
-      }).returning(connectorPublicColumns)
+      const [inserted, overCap] = await db.batch([
+        db.insert(schema.connectors).values({
+          userId: input.userId,
+          slug,
+          title: normalizeTitle(input.title),
+          origin,
+          urlEncrypted,
+          transport: input.transport ?? 'streamable-http',
+          authType: null,
+          status: 'needs-auth',
+          enabled: false,
+          presetId: input.presetId ?? null,
+          createdVia: input.createdVia,
+          createdByClientId: input.createdByClientId ?? null,
+        }).returning(connectorPublicColumns),
+        db.delete(schema.connectors)
+          .where(and(
+            sql`${schema.connectors.id} = last_insert_rowid()`,
+            eq(schema.connectors.userId, input.userId),
+            sql`(select count(*) from ${schema.connectors}
+              where ${schema.connectors.userId} = ${input.userId})
+              > ${CONNECTORS_PER_USER}`,
+          ))
+          .returning({ id: schema.connectors.id }),
+      ])
 
-      return toConnectorRecord(created!)
+      if (overCap.length > 0) {
+        throw createConnectorLimitError()
+      }
+
+      return toConnectorRecord(inserted[0]!)
     } catch (exception) {
       if (!isUniqueViolation(exception)) {
         throw exception
@@ -290,9 +371,12 @@ export async function updateConnector(
   connectorId: string,
   patch: ConnectorPatch,
 ): Promise<ConnectorRecord | null> {
-  const values = patch.title === undefined
-    ? patch
-    : { ...patch, title: normalizeTitle(patch.title) }
+  const values = pickConnectorPatch(patch)
+
+  if (Object.keys(values).length === 0) {
+    return await getConnector(db, userId, connectorId)
+  }
+
   const [updated] = await db.update(schema.connectors)
     .set(values)
     .where(and(
@@ -377,6 +461,8 @@ export async function saveConnectorCredentials(
   db: DbClient,
   input: SaveConnectorCredentialsInput,
 ): Promise<void> {
+  await assertConnectorOwned(db, input.userId, input.connectorId)
+
   const clientRegistration = input.clientRegistration
     ? await useEncryptText(JSON.stringify(input.clientRegistration))
     : null
@@ -400,7 +486,17 @@ export async function saveConnectorCredentials(
         schema.connectorCredentials.connectorId,
         schema.connectorCredentials.issuer,
       ],
-      set: { ...values, updatedAt: new Date() },
+      set: {
+        clientRegistration: values.clientRegistration,
+        accessToken: values.accessToken,
+        refreshToken: values.refreshToken,
+        headerName: values.headerName,
+        headerValue: values.headerValue,
+        scope: values.scope,
+        expiresAt: values.expiresAt,
+        updatedAt: new Date(),
+      },
+      setWhere: eq(schema.connectorCredentials.userId, input.userId),
     })
 }
 
@@ -465,6 +561,8 @@ export async function upsertConnectorToolSettings(
     return
   }
 
+  await assertConnectorOwned(db, userId, connectorId)
+
   const [first, ...rest] = tools.map((tool) => {
     const values = {
       userId,
@@ -484,7 +582,15 @@ export async function upsertConnectorToolSettings(
           schema.connectorToolSettings.connectorId,
           schema.connectorToolSettings.toolName,
         ],
-        set: { ...values, updatedAt: new Date() },
+        set: {
+          definitionHash: values.definitionHash,
+          serverReadOnly: values.serverReadOnly,
+          enabled: values.enabled,
+          approval: values.approval,
+          approvedDefinitionHash: values.approvedDefinitionHash,
+          updatedAt: new Date(),
+        },
+        setWhere: eq(schema.connectorToolSettings.userId, userId),
       })
   })
 
@@ -509,6 +615,7 @@ export async function upsertConnectorChatSettings(
   db: DbClient,
   input: ConnectorChatSettingInput,
 ): Promise<void> {
+  await assertConnectorOwned(db, input.userId, input.connectorId)
   await db.insert(schema.connectorChatSettings)
     .values(input)
     .onConflictDoUpdate({
@@ -521,6 +628,7 @@ export async function upsertConnectorChatSettings(
         alwaysAllowTools: input.alwaysAllowTools,
         updatedAt: new Date(),
       },
+      setWhere: eq(schema.connectorChatSettings.userId, input.userId),
     })
 }
 

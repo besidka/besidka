@@ -54,7 +54,6 @@ describe('connectors store', () => {
     return await createConnector(testDb.db, {
       userId: owner,
       title: 'Example',
-      origin: 'https://mcp.example.com',
       url: SECRET_URL,
       slugBase,
       createdVia: 'app',
@@ -128,11 +127,65 @@ describe('connectors store', () => {
       expect(otherUsers.slug).toBe('example')
     })
 
+    it('derives the origin from the URL and ignores a caller origin', async () => {
+      const connector = await createConnector(testDb.db, {
+        userId,
+        title: 'Spoof',
+        url: 'https://mcp.example.com:8443/mcp?key=x',
+        slugBase: 'spoof',
+        createdVia: 'app',
+        origin: 'https://mcp.notion.com',
+      } as unknown as Parameters<typeof createConnector>[1])
+
+      expect(connector.origin).toBe('https://mcp.example.com:8443')
+    })
+
+    it('refuses a URL that does not parse', async () => {
+      await expect(createConnector(testDb.db, {
+        userId,
+        title: 'Bad',
+        url: 'not a url',
+        slugBase: 'bad',
+        createdVia: 'app',
+      })).rejects.toThrow()
+      expect(await testDb.db.select().from(schema.connectors)).toHaveLength(0)
+    })
+
+    it('stops at 20 connectors per user and frees a slot on delete', async () => {
+      for (let index = 0; index < 20; index++) {
+        await addConnector(userId, `server-${index}`)
+      }
+
+      await expect(addConnector(userId, 'one-too-many')).rejects.toThrow(
+        'Connector limit reached',
+      )
+      expect(await listConnectors(testDb.db, userId)).toHaveLength(20)
+      expect(await addConnector(otherUserId)).toEqual(
+        expect.objectContaining({ userId: otherUserId }),
+      )
+
+      const [first] = await listConnectors(testDb.db, userId)
+
+      await deleteConnector(testDb.db, userId, first!.id)
+
+      expect(await addConnector(userId, 'fits-now')).toEqual(
+        expect.objectContaining({ slug: 'fits-now' }),
+      )
+    })
+
+    it('inserts and enforces the cap in one batch', async () => {
+      const batch = vi.spyOn(testDb.db, 'batch')
+
+      await addConnector(userId)
+
+      expect(batch).toHaveBeenCalledTimes(1)
+      expect(batch.mock.calls[0]![0]).toHaveLength(2)
+    })
+
     it('records who added an MCP connector', async () => {
       const connector = await createConnector(testDb.db, {
         userId,
         title: 'Added by agent',
-        origin: 'https://mcp.example.com',
         url: SECRET_URL,
         slugBase: 'example',
         createdVia: 'mcp',
@@ -149,7 +202,6 @@ describe('connectors store', () => {
       const connector = await createConnector(testDb.db, {
         userId,
         title: 'a'.repeat(120),
-        origin: 'https://mcp.example.com',
         url: SECRET_URL,
         slugBase: 'example',
         createdVia: 'app',
@@ -200,6 +252,47 @@ describe('connectors store', () => {
         connector.id,
         { enabled: true },
       )).toBeNull()
+    })
+
+    it('ignores keys outside the patch whitelist', async () => {
+      const connector = await addConnector(userId)
+      const updated = await updateConnector(testDb.db, userId, connector.id, {
+        title: 'Renamed',
+        userId: otherUserId,
+        slug: 'hijack',
+        urlEncrypted: 'evil',
+        id: 999,
+        origin: 'https://evil.example',
+        createdVia: 'mcp',
+        presetId: 'github',
+      } as unknown as Parameters<typeof updateConnector>[3])
+      const [row] = await testDb.db.select().from(schema.connectors)
+
+      expect(updated?.title).toBe('Renamed')
+      expect(row).toEqual(expect.objectContaining({
+        userId,
+        slug: 'example',
+        origin: 'https://mcp.example.com',
+        createdVia: 'app',
+        presetId: null,
+      }))
+      expect(row!.urlEncrypted).not.toBe('evil')
+      expect(updated?.id).toBe(connector.id)
+    })
+
+    it('returns the connector unchanged for an empty patch', async () => {
+      const connector = await addConnector(userId)
+      const unchanged = await updateConnector(
+        testDb.db,
+        userId,
+        connector.id,
+        { userId: otherUserId } as unknown as Parameters<
+          typeof updateConnector
+        >[3],
+      )
+
+      expect(unchanged?.id).toBe(connector.id)
+      expect(unchanged?.userId).toBe(userId)
     })
 
     it('updates consent and status fields', async () => {
@@ -347,6 +440,128 @@ describe('connectors store', () => {
       expect(
         await readConnectorCredentials(testDb.db, userId, other.id),
       ).not.toBeNull()
+    })
+  })
+
+  describe('ownership of writes', () => {
+    it('refuses credentials for a connector of another user', async () => {
+      const foreign = await addConnector(otherUserId)
+
+      await saveConnectorCredentials(testDb.db, {
+        userId: otherUserId,
+        connectorId: foreign.id,
+        issuer: '',
+        headerName: 'X-Key',
+        headerValue: 'victim-secret',
+      })
+
+      await expect(saveConnectorCredentials(testDb.db, {
+        userId,
+        connectorId: foreign.id,
+        issuer: '',
+        headerName: 'X-Key',
+        headerValue: 'attacker-value',
+      })).rejects.toThrow('Connector not found')
+
+      const [row] = await testDb.db.select()
+        .from(schema.connectorCredentials)
+
+      expect(row!.userId).toBe(otherUserId)
+      expect(
+        (await readConnectorCredentials(testDb.db, otherUserId, foreign.id))
+          ?.headerValue,
+      ).toBe('victim-secret')
+    })
+
+    it('refuses tool settings for a connector of another user', async () => {
+      const foreign = await addConnector(otherUserId)
+      const tool = {
+        toolName: 'search',
+        definitionHash: 'victim-hash',
+        serverReadOnly: true,
+        enabled: true,
+        approval: 'ask' as const,
+      }
+
+      await upsertConnectorToolSettings(
+        testDb.db,
+        otherUserId,
+        foreign.id,
+        [tool],
+      )
+
+      await expect(upsertConnectorToolSettings(
+        testDb.db,
+        userId,
+        foreign.id,
+        [{ ...tool, definitionHash: 'attacker-hash', approval: 'always' }],
+      )).rejects.toThrow('Connector not found')
+
+      const [row] = await testDb.db.select()
+        .from(schema.connectorToolSettings)
+
+      expect(row).toEqual(expect.objectContaining({
+        userId: otherUserId,
+        definitionHash: 'victim-hash',
+        approval: 'ask',
+      }))
+    })
+
+    it('refuses chat settings for a connector of another user', async () => {
+      const foreign = await addConnector(otherUserId)
+      const chat = await seedChat(testDb.db, otherUserId)
+
+      await upsertConnectorChatSettings(testDb.db, {
+        userId: otherUserId,
+        chatPublicId: chat.id,
+        connectorId: foreign.id,
+        enabled: true,
+        alwaysAllowTools: { search: 'victim-hash' },
+      })
+
+      await expect(upsertConnectorChatSettings(testDb.db, {
+        userId,
+        chatPublicId: chat.id,
+        connectorId: foreign.id,
+        enabled: false,
+        alwaysAllowTools: { create: 'attacker-hash' },
+      })).rejects.toThrow('Connector not found')
+
+      const [row] = await testDb.db.select()
+        .from(schema.connectorChatSettings)
+
+      expect(row).toEqual(expect.objectContaining({
+        userId: otherUserId,
+        enabled: true,
+        alwaysAllowTools: { search: 'victim-hash' },
+      }))
+    })
+
+    it('never rewrites the owner of an existing row on conflict', async () => {
+      const connector = await addConnector(userId)
+      const input = {
+        userId,
+        connectorId: connector.id,
+        issuer: '',
+        headerName: 'X-Key',
+      }
+
+      await saveConnectorCredentials(testDb.db, { ...input, headerValue: 'a' })
+      await saveConnectorCredentials(testDb.db, { ...input, headerValue: 'b' })
+
+      const rows = await testDb.db.select()
+        .from(schema.connectorCredentials)
+
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.userId).toBe(userId)
+    })
+
+    it('rejects an unknown connector id', async () => {
+      await expect(saveConnectorCredentials(testDb.db, {
+        userId,
+        connectorId: 'skl999',
+        issuer: '',
+      })).rejects.toThrow('Connector not found')
     })
   })
 
