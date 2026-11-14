@@ -671,7 +671,17 @@ and C-2 row also ask for a cascade FK and a `CLAUDE.md` cascade-list entry;
 this document overrides that, because a cascade only adds blast radius to a
 future `users` rebuild and gives nothing explicit purge does not. With no
 cascade, the `CLAUDE.md` list does not change. Per-chat rows store the chat
-public id as text and are deleted by the chat-deletion cleanup.
+public id and are deleted by the chat-deletion cleanup.
+
+**Id columns (C-2 deviation from this table, 2026-11-14).** `connector_id` and
+`chat_public_id` are stored as `publicId()`, an integer-backed column that
+encodes to the public id in TypeScript, not as `text`. This is the precedent
+of the merged skills tables (`skill_chat_settings.chat_public_id`,
+`skill_files.skill_id`) and of `research_jobs.chat_id`. It keeps
+`connector_id` comparable to `connectors.id` in SQL (SQLite compares an
+`INTEGER` and a `TEXT` column with different affinity), and it does not tie
+the stored value to the Hashids salt. The column type cannot change later
+without a table rebuild, so it is decided here.
 
 ### 8.1 `connectors`
 
@@ -707,7 +717,7 @@ Indexes: unique (`user_id`, `slug`); (`user_id`, `updated_at`).
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | publicId | |
-| `connector_id` | text | no foreign key |
+| `connector_id` | publicId | no foreign key |
 | `user_id` | integer | |
 | `issuer` | text | AS issuer; empty string for header auth |
 | `client_registration` | text, encrypted, null | `{ client_id, registrationKind: 'cimd' \| 'dcr', client_secret? }` |
@@ -729,7 +739,7 @@ connector-level fingerprint column).
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | publicId | |
-| `connector_id` | text | |
+| `connector_id` | publicId | |
 | `user_id` | integer | |
 | `tool_name` | text | remote name |
 | `definition_hash` | text | SHA-256 hex over `{ name, title, description, inputSchema, annotations }` as canonical JSON; computed from the `fingerprintTools` digest plus the canonical annotations |
@@ -747,8 +757,8 @@ Unique (`connector_id`, `tool_name`).
 | --- | --- | --- |
 | `id` | publicId | |
 | `user_id` | integer | |
-| `chat_public_id` | text | |
-| `connector_id` | text | |
+| `chat_public_id` | publicId | |
+| `connector_id` | publicId | |
 | `enabled` | integer (bool) | |
 | `always_allow_tools` | json | `Record<toolName, definitionHash>` ("Allow in this chat") |
 | `created_at`, `updated_at` | timestamps | |
@@ -762,9 +772,9 @@ Phase 6 routines.
 | --- | --- | --- |
 | `id` | integer, autoincrement | |
 | `user_id` | integer | |
-| `connector_id` | text | plain, no foreign key |
+| `connector_id` | publicId | plain, no foreign key |
 | `connector_host` | text | plain |
-| `chat_public_id` | text, null | |
+| `chat_public_id` | publicId, null | |
 | `tool_name` | text | remote name |
 | `args_hmac` | text | section 7.4 |
 | `result_bytes` | integer | |

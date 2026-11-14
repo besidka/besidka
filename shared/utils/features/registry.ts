@@ -222,6 +222,7 @@ const featureList = [
     key: 'connectors.native',
     title: 'Built-in connectors',
     description: 'Connectors built into Besidka.',
+    spend: 'foreground',
     parent: 'connectors',
   }),
   internalFeature({
