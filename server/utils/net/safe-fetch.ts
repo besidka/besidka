@@ -1,5 +1,6 @@
 import { createError } from 'evlog'
 import {
+  CONNECTOR_REJECTED_HEADER_NAMES,
   SAFE_FETCH_DEFAULT_TIMEOUT_MS,
   SAFE_FETCH_MAX_REDIRECTS,
   SAFE_FETCH_OAUTH_MAX_BYTES,
@@ -104,11 +105,10 @@ const BODY_HEADERS: readonly string[] = [
   'content-language',
   'content-location',
 ]
-const NEVER_FORWARDED_HEADERS: readonly string[] = [
-  'cookie',
-  'host',
-  'content-length',
-]
+const MCP_TRANSPORT_HEADERS: ReadonlySet<string> = new Set([
+  'mcp-session-id',
+  'mcp-protocol-version',
+])
 const MAX_LOGGED_HOST_LENGTH = 253
 
 const REJECTION_WHY: Readonly<Record<SafeUrlRejection, string>> = {
@@ -119,6 +119,7 @@ const REJECTION_WHY: Readonly<Record<SafeUrlRejection, string>> = {
   'credentials': 'The address contains a user name or password',
   'ip-literal': 'The address is an IP number, not a host name',
   'special-name': 'The host name is local or private',
+  'own-host': 'The address points back to Besidka',
   'port': 'Only the ports 443 and 8443 are allowed',
   'path': 'The address must not have a path',
 }
@@ -208,16 +209,29 @@ function createTimeoutError(timeoutMs: number) {
   })
 }
 
+const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,39}$/
+
+function describeNetworkFailure(exception: unknown): string {
+  if (!(exception instanceof Error)) {
+    return 'Unknown'
+  }
+
+  const cause = exception.cause as { code?: unknown } | undefined
+  const rawCode = (exception as { code?: unknown }).code ?? cause?.code
+  const code = typeof rawCode === 'string' && ERROR_CODE_PATTERN.test(rawCode)
+    ? rawCode
+    : null
+
+  return code ? `${exception.name} ${code}` : exception.name
+}
+
 function createNetworkError(exception: unknown) {
   return createError({
     message: 'The server could not be reached',
     status: 502,
     code: 'safe-fetch-network',
-    why: 'The connection failed or was refused',
+    why: `The connection failed (${describeNetworkFailure(exception)})`,
     fix: 'Check the address and try again',
-    cause: exception instanceof Error
-      ? exception
-      : new Error(String(exception)),
   })
 }
 
@@ -231,9 +245,17 @@ function isStreamBody(body: unknown): boolean {
     && body instanceof ReadableStream
 }
 
+function isRejectedHeader(lowerName: string, purpose: SafeFetchPurpose) {
+  if (!CONNECTOR_REJECTED_HEADER_NAMES.includes(lowerName)) {
+    return false
+  }
+
+  return !(purpose === 'mcp' && MCP_TRANSPORT_HEADERS.has(lowerName))
+}
+
 function buildHopHeaders(
   base: Headers,
-  userAgent: string,
+  purpose: SafeFetchPurpose,
   options: { crossOrigin: boolean, dropBody: boolean },
 ): Headers {
   const headers = new Headers()
@@ -241,7 +263,7 @@ function buildHopHeaders(
   for (const [name, value] of base) {
     const lowerName = name.toLowerCase()
 
-    if (NEVER_FORWARDED_HEADERS.includes(lowerName)) {
+    if (isRejectedHeader(lowerName, purpose)) {
       continue
     }
 
@@ -256,7 +278,7 @@ function buildHopHeaders(
     headers.set(name, value)
   }
 
-  headers.set('user-agent', userAgent)
+  headers.set('user-agent', SAFE_FETCH_PURPOSE_POLICY[purpose].userAgent)
 
   return headers
 }
@@ -509,7 +531,7 @@ export async function safeFetch(
       try {
         response = await fetch(currentUrl.toString(), {
           method,
-          headers: buildHopHeaders(headers, purposePolicy.userAgent, {
+          headers: buildHopHeaders(headers, init.purpose, {
             crossOrigin: false,
             dropBody: false,
           }),
@@ -593,7 +615,7 @@ export async function safeFetch(
 
       method = isCrossOrigin && method !== 'HEAD' ? 'GET' : redirectedMethod
       body = keepsBody ? body : undefined
-      headers = buildHopHeaders(headers, purposePolicy.userAgent, {
+      headers = buildHopHeaders(headers, init.purpose, {
         crossOrigin: isCrossOrigin,
         dropBody: body === undefined,
       })

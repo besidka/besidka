@@ -251,6 +251,78 @@ describe('parseSafeOutboundUrl', () => {
     })
   })
 
+  describe('Besidka\'s own hosts', () => {
+    it.each([
+      'https://besidka.com/api/v1/chats',
+      'https://BESIDKA.com./',
+      'https://www.besidka.com/',
+      'https://cdn.besidka.com/',
+      'https://besidka.com:8443/',
+      'https://besidka-artifacts.chernenko.workers.dev/',
+      'https://pr-12-besidka.chernenko.workers.dev/mcp',
+      'https://preview-besidka.chernenko.workers.dev/',
+      'https://anything.chernenko.workers.dev/',
+    ])('rejects %s', (input) => {
+      expectRejected(input, 'own-host')
+    })
+
+    it('accepts look-alikes that are not Besidka\'s', () => {
+      for (const input of [
+        'https://notbesidka.com/mcp',
+        'https://besidka.com.evil.example/mcp',
+        'https://besidka.example.org/mcp',
+        'https://chernenko.workers.dev.example.org/mcp',
+        'https://other.workers.dev/mcp',
+      ]) {
+        expect(parseSafeOutboundUrl(input).ok, input).toBe(true)
+      }
+    })
+
+    it('also rejects the hosts from the runtime configuration', () => {
+      const config = useRuntimeConfig()
+      const original = {
+        authAdditionalAllowedHosts: config.authAdditionalAllowedHosts,
+        baseUrl: config.public.baseUrl,
+        artifactsOrigin: config.public.artifactsOrigin,
+      }
+
+      config.authAdditionalAllowedHosts = '*-app.example.org'
+      config.public.baseUrl = 'https://app.example.org'
+      config.public.artifactsOrigin = 'https://viewer.example.net'
+
+      try {
+        for (const input of [
+          'https://app.example.org/x',
+          'https://pr-9-app.example.org/x',
+          'https://viewer.example.net/x',
+        ]) {
+          expectRejected(input, 'own-host')
+        }
+
+        expect(parseSafeOutboundUrl('https://mcp.example.org/x').ok)
+          .toBe(true)
+      } finally {
+        config.authAdditionalAllowedHosts = original.authAdditionalAllowedHosts
+        config.public.baseUrl = original.baseUrl
+        config.public.artifactsOrigin = original.artifactsOrigin
+      }
+    })
+
+    it('keeps the static names when the configuration is unusable', () => {
+      const config = useRuntimeConfig()
+      const original = config.public.baseUrl
+
+      config.public.baseUrl = 'not a url'
+
+      try {
+        expectRejected('https://besidka.com/', 'own-host')
+        expect(parseSafeOutboundUrl('https://example.com/').ok).toBe(true)
+      } finally {
+        config.public.baseUrl = original
+      }
+    })
+  })
+
   describe('credentials', () => {
     it.each([
       'https://user:pass@example.com',
@@ -399,6 +471,7 @@ describe('parseSafeOutboundUrl', () => {
       'invalid',
       'ip-literal',
       'length',
+      'own-host',
       'path',
       'port',
       'scheme',

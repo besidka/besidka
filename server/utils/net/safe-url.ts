@@ -3,6 +3,7 @@ import {
   CONNECTOR_ALLOWED_PORTS,
   CONNECTOR_URL_MAX_LENGTH,
 } from '#shared/utils/connectors-policy'
+import { isOwnHostname } from '~~/server/utils/net/own-hosts'
 
 export const SAFE_URL_REJECTIONS = [
   'length',
@@ -12,6 +13,7 @@ export const SAFE_URL_REJECTIONS = [
   'credentials',
   'ip-literal',
   'special-name',
+  'own-host',
   'port',
   'path',
 ] as const
@@ -231,6 +233,10 @@ export function parseSafeOutboundUrl(
 
   if (isSpecialHostname(hostname)) {
     return reject('special-name')
+  }
+
+  if (isOwnHostname(hostname)) {
+    return reject('own-host')
   }
 
   const port = url.port === '' ? DEFAULT_HTTPS_PORT : Number(url.port)

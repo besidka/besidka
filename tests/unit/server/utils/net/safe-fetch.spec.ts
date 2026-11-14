@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CONNECTOR_REJECTED_HEADER_NAMES } from '#shared/utils/connectors-policy'
 import {
   SAFE_FETCH_PURPOSE_POLICY,
   SAFE_FETCH_PURPOSES,
@@ -131,6 +132,103 @@ describe('safeFetch', () => {
       expect(calls()[0]![1].redirect).toBe('manual')
       expect(headersOf(calls()[0]!).get('user-agent'))
         .toBe('Besidka-Skills/1.0')
+    })
+
+    it.each(['oauth', 'registry', 'skills-url', 'skills-github'] as const)(
+      'strips every rejected header name for purpose %s',
+      async (purpose) => {
+        fetchMock.mockImplementation(async () => ok())
+
+        await safeFetch('https://example.com/x', {
+          purpose,
+          headers: {
+            'Host': 'evil.test',
+            'Cookie': 'a=b',
+            'Content-Length': '999',
+            'Transfer-Encoding': 'chunked',
+            'Connection': 'upgrade',
+            'Mcp-Session-Id': 'session',
+            'Mcp-Protocol-Version': '2025-06-18',
+            'X-Api-Key': 'kept',
+          },
+        })
+
+        const headers = headersOf(calls()[0]!)
+
+        for (const name of CONNECTOR_REJECTED_HEADER_NAMES) {
+          expect(headers.get(name), name).toBeNull()
+        }
+
+        expect(headers.get('x-api-key')).toBe('kept')
+      },
+    )
+
+    it('keeps the two MCP protocol headers for purpose mcp only', async () => {
+      fetchMock.mockImplementation(async () => ok())
+
+      await safeFetch('https://example.com/mcp', {
+        purpose: 'mcp',
+        method: 'POST',
+        body: '{}',
+        headers: {
+          'Host': 'evil.test',
+          'Cookie': 'a=b',
+          'Content-Length': '999',
+          'Transfer-Encoding': 'chunked',
+          'Connection': 'upgrade',
+          'Mcp-Session-Id': 'session',
+          'Mcp-Protocol-Version': '2025-06-18',
+        },
+      })
+
+      const headers = headersOf(calls()[0]!)
+
+      expect(headers.get('mcp-session-id')).toBe('session')
+      expect(headers.get('mcp-protocol-version')).toBe('2025-06-18')
+
+      for (const name of [
+        'host',
+        'cookie',
+        'content-length',
+        'transfer-encoding',
+        'connection',
+      ]) {
+        expect(headers.get(name), name).toBeNull()
+      }
+    })
+
+    it('strips rejected headers on a redirect hop as well', async () => {
+      fetchMock
+        .mockImplementationOnce(async () => redirect(302, '/next'))
+        .mockImplementationOnce(async () => ok())
+
+      await safeFetch('https://example.com/x', {
+        purpose: 'oauth',
+        headers: { Connection: 'upgrade', Cookie: 'a=b' },
+      })
+
+      expect(headersOf(calls()[1]!).get('connection')).toBeNull()
+      expect(headersOf(calls()[1]!).get('cookie')).toBeNull()
+    })
+
+    it('refuses Besidka\'s own host, first hop and redirect hop', async () => {
+      const first = await errorOf(safeFetch('https://besidka.com/api/v1/x', {
+        purpose: 'oauth',
+      }))
+
+      expect(first.message).toBe('This address is not allowed')
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      fetchMock.mockImplementationOnce(async () => {
+        return redirect(302, 'https://pr-1-besidka.chernenko.workers.dev/x')
+      })
+
+      const hop = await errorOf(safeFetch('https://example.com/start', {
+        purpose: 'oauth',
+      }))
+
+      expect(hop.message).toBe('This address is not allowed')
+      expect(hop.code).toBe('safe-fetch-own-host')
     })
 
     it('never forwards cookies or a host header', async () => {
@@ -745,16 +843,47 @@ describe('safeFetch', () => {
       expect(await pending).toBe(reason)
     })
 
-    it('wraps a network failure and keeps the cause', async () => {
-      fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+    it('wraps a network failure without the raw exception or any URL', async () => {
+      const failure = new TypeError(
+        'fetch failed for https://example.com/path?token=secret',
+        { cause: Object.assign(new Error('connect ECONNREFUSED 10.0.0.1'), {
+          code: 'ECONNREFUSED',
+        }) },
+      )
+
+      fetchMock.mockRejectedValueOnce(failure)
+
+      const exception = await errorOf(safeFetch(
+        'https://example.com/path?token=secret',
+        { purpose: 'oauth' },
+      ))
+      const serialized = JSON.stringify({
+        message: exception.message,
+        why: (exception as { why?: string }).why,
+        cause: exception.cause,
+        stack: undefined,
+      })
+
+      expect(exception.status).toBe(502)
+      expect(exception.message).toBe('The server could not be reached')
+      expect(exception.cause).toBeUndefined()
+      expect((exception as { why?: string }).why)
+        .toBe('The connection failed (TypeError ECONNREFUSED)')
+      expect(serialized).not.toContain('secret')
+      expect(serialized).not.toContain('example.com')
+      expect(serialized).not.toContain('10.0.0.1')
+    })
+
+    it('keeps only a plain class name for a non-error failure', async () => {
+      fetchMock.mockRejectedValueOnce('https://example.com/?token=secret')
 
       const exception = await errorOf(safeFetch('https://example.com', {
         purpose: 'oauth',
       }))
 
-      expect(exception.status).toBe(502)
-      expect(exception.message).toBe('The server could not be reached')
-      expect(exception.cause).toBeInstanceOf(TypeError)
+      expect((exception as { why?: string }).why)
+        .toBe('The connection failed (Unknown)')
+      expect(exception.cause).toBeUndefined()
     })
   })
 

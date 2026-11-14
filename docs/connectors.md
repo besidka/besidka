@@ -331,6 +331,20 @@ Other C-3 choices that differ from or add to the text above:
 - One deadline covers every hop and the whole body; the timer is cleared when
   the body ends or is canceled. A response above the cap is cut as it streams,
   and a `Content-Length` over the cap is refused before reading.
+- `parseSafeOutboundUrl` also rejects Besidka's own hosts (reason `own-host`):
+  the hosts the app trusts for sign-in (`NUXT_PUBLIC_BASE_URL` and
+  `NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS`, read through the same pattern rules in
+  `server/utils/auth-hosts.ts`), the artifacts origin, `besidka.com` with
+  `www` and one-label subdomains, and `*.chernenko.workers.dev`, so a
+  connector cannot make the Worker call itself or a sibling Worker.
+- `safeFetch` itself strips every name in `CONNECTOR_REJECTED_HEADER_NAMES`
+  (`Host`, `Cookie`, `Content-Length`, `Transfer-Encoding`, `Connection`,
+  `Mcp-Session-Id`, `Mcp-Protocol-Version`) on every hop, not only the routes
+  that validate user input. The `mcp` purpose keeps the last two, because they
+  are the MCP transport's own headers.
+- A network failure is rethrown without the raw exception: no `cause`, only
+  the error class and a plain error code (`TypeError ECONNREFUSED`) in `why`,
+  because a runtime error message can carry the URL and its query.
 - The local-development `http://localhost` allowance is not built.
 - `skills-github` and `skills-url` have policies (30 s and 15 MiB, 10 s and
   256 KiB) but nothing uses them yet: `githubFetch` keeps its own transport
