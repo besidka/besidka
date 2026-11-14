@@ -7,6 +7,19 @@ import {
 } from '#shared/utils/skills/runtime'
 
 /**
+ * A user message that only attached a skill has no part left once the skill
+ * parts are filtered out. The shared view and a visitor's branch skip it
+ * instead of showing or copying an empty bubble.
+ */
+export function dropEmptyUserMessages<
+  TMessage extends { role: string, parts: UIMessage['parts'] },
+>(messages: TMessage[]): TMessage[] {
+  return messages.filter((message) => {
+    return message.role !== 'user' || message.parts.length > 0
+  })
+}
+
+/**
  * The message parts a public share exposes: everything except tool parts,
  * artifact attachments (an artifact the owner attached from the library
  * is no part of what the chat shows, so sharing the chat never reveals it)

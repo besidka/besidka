@@ -401,3 +401,13 @@ the `<label>` carries `cursor-pointer` (`cursor-not-allowed` when disabled).
 
 - Keyboard shortcuts (`/` to open the menu from an empty textarea, Cmd/Ctrl+U
   to attach) are a follow-up.
+
+## Skills section (skills layer S-3)
+
+The menu has a "Skills" section (`ToolsMenu/SkillsSection.vue`) between Add and
+web search, shown only when the `skills` flag is on, the user has an enabled
+skill and the model is not a deep-research model. It lists up to six enabled
+skills, "All skills…" (a searchable dialog) and "Manage skills". Choosing a
+skill sets the one composer invocation and shows a "Skill" tile (sparkles
+icon); tapping the tile opens the read-only skill preview instead of the menu.
+See `docs/skills.md` section 5.7 and 10.5.

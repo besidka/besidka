@@ -72,7 +72,7 @@ describe('prepareSkillsForSend', () => {
   ) {
     return prepareSkillsForSend({
       db: testDb.db,
-      bucket,
+      getBucket: () => bucket,
       userId,
       isSkillsActive: true,
       isToolCallingAllowed: true,
@@ -110,8 +110,10 @@ describe('prepareSkillsForSend', () => {
   })
 
   it('adds nothing and reads nothing when the flag is off', async () => {
+    const getBucket = vi.fn(() => bucket)
     const result = await prepare({
       isSkillsActive: false,
+      getBucket,
       newMessageParts: [invocation(autoId, 'auto-skill')],
     })
 
@@ -120,6 +122,7 @@ describe('prepareSkillsForSend', () => {
     expect(result.instructionBlock).toBeNull()
     expect(result.invocationBlock).toBeNull()
     expect(result.holdsSkillText).toBe(false)
+    expect(getBucket).not.toHaveBeenCalled()
     expect(bucket.get).not.toHaveBeenCalled()
   })
 

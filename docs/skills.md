@@ -137,6 +137,9 @@ the old wording is in the git history.
    (web search, `generate_image`, code execution) are offered only when the
    user picked them for that message; while a skill is active, `generate_image`
    is limited to one call per send. The approval card is added when C-6 lands.
+   As built in S-3 (section 5.7): the skill tools add no tool, the spending
+   tools stay exactly what the user picked for the message, and the one-call
+   limit of `generate_image` is the tool's own single-execution claim.
 9. **Plain text everywhere (this doc).** Skill files are shown as plain
    monospace text in the review screen, the file viewer and the chat side
    panel. No Markdown rendering, no images (an image URL in a skill would leak
@@ -161,7 +164,9 @@ the old wording is in the git history.
 14. **A command is a skill (this doc).** One entity, one manager, one set of
     tables. Two columns the user sets, never the skill's own frontmatter,
     decide how a skill can be used: `model_invocable` and `slash_command`
-    (section 5.5).
+    (section 5.5). Since 2026-11-14 the user never sees the columns: one
+    **invocation mode** (Off, Auto, Only when I ask) sets `enabled`,
+    `model_invocable` and `slash_command` together (section 5.7).
 15. **Nothing spends without Send.** Opening the picker, "Use in new chat", the
     manager and every MCP tool make no model call. Only the user's Send
     spends. There is no prefetch, no background work and no MCP run or
@@ -632,8 +637,10 @@ catalog, so it misses the cache once.
 
 ### 5.5 Commands (slash invocation)
 
-A **command** is a skill on which the user has switched "Use as /name" on. It
-is not a second entity. A command is built the way a skill is: the same
+A **command** is a skill that runs when the user asks for it by name, either
+with `/name` or by attaching it. Since 2026-11-14 that is the mode **Only when
+I ask**, and every enabled skill is also available as `/name` (section 5.7).
+It is not a second entity. A command is built the way a skill is: the same
 `SKILL.md` plus files, the same manager, the same tables, the same import,
 licence gate, findings, versions, review, purge, restore and MCP tools. A
 separate entity would duplicate every one of those and need its own
@@ -644,12 +651,12 @@ skill can be used:
 
 | Column | UI label | Effect |
 | --- | --- | --- |
-| `model_invocable` | "Model can use it automatically" | Listed in the catalog. The model can call `activate_skill`. |
-| `slash_command` | "Use as /name" | Offered in the composer's `/` picker. The user invokes it explicitly. |
+| `model_invocable` | Mode Auto | Listed in the catalog. The model can call `activate_skill`. |
+| `slash_command` | Every enabled skill (unless the name is reserved) | Offered in the composer's `/` picker. The user invokes it explicitly. |
 
 "New command" in the manager creates a skill with `model_invocable` off,
-`slash_command` on, and a short body that uses `$ARGUMENTS`. A skill can have
-both columns on.
+`slash_command` on, and a short body that uses `$ARGUMENTS`: mode Only when I
+ask. A blank skill and the skill templates start as Auto.
 
 Why columns and not frontmatter: skill text is untrusted, and `allowed-tools`
 "never grants a tool" (section 1). An imported skill must not be able to make
@@ -703,6 +710,115 @@ user-message part, rewritten on the server from the D1 row, removed by
    channel.
 
 The picker, chip and composer rules are in section 10.
+
+### 5.7 As built (S-3)
+
+**Invocation mode (owner decision, 2026-11-14).** The enable toggle and the two
+invocation toggles are replaced by one control with three values, and it is
+the only UI that writes `enabled`, `model_invocable` and `slash_command`
+(`shared/utils/skills/mode.ts`, `PATCH /api/v1/skills/[id]` with `mode`):
+
+| Mode | Columns | Meaning |
+| --- | --- | --- |
+| Off | `enabled=false` (the other two columns are left as they were) | Not available in chats |
+| Auto | `enabled`, `model_invocable`, `slash_command` all true | "The model uses it when the description matches. You can also run it with /name." |
+| Only when I ask | `enabled`, `slash_command` true, `model_invocable` false | "Runs only when you attach it or type /name." |
+
+The server derives the three columns from the mode in one statement. A
+reserved name (`SKILL_RESERVED_SLASH_NAMES`) never fails the request: the mode
+is applied and `slash_command` stays off, and the UI says "Rename to use
+/name". A rename recomputes `slash_command` in both directions (a reserved new
+name turns it off, leaving a reserved name turns it on again for an enabled
+skill), so a reserved name no longer blocks a save. The separate flags still
+work on the same route for MCP callers, and still refuse a reserved
+`slash_command`. The first turn-on of a skill the user did not write keeps its
+confirmation. In the manager, a **skill** is a skill with `model_invocable` on
+and a **command** is one that runs only when asked; the "≈ N tokens in every
+message" estimate is shown for Auto only. Blank skills and the writing-style
+and code-review templates start as Auto; blank commands and the other two
+templates start as Only when I ask. An import still starts Off, and its
+default mode is Auto unless the frontmatter sets `disable-model-invocation`
+(then Only when I ask); `user-invocable` is ignored.
+
+**Catalog and tools** (`server/utils/skills/runtime/`). `catalog.ts` builds
+`<available_skills>` from the user's enabled, model-invocable skills that are
+not broken, at 1,500 tokens (`SKILL_CATALOG_BUDGET_TOKENS`), with the framing
+that descriptions are untrusted. `tools.ts` registers `activate_skill` and
+`read_skill_file` only when the catalog is not empty and the model can call
+tools, both with a follow-up turn and a loop budget of
+`SKILL_TOOL_STEPS` (4). Neither adds a tool, both set the memory write guard,
+a skill already active is not loaded twice, and `read_skill_file` is capped at
+8 reads and 64 KiB. Deep-research models are refused earlier, so they get no
+catalog. `section 5.1` (`skillIds` and `skill_chat_settings`) is not built:
+the catalog is simply every qualifying skill.
+
+**Persistence.** `activate_skill` and `read_skill_file` outputs are reduced to
+the skill id, name, version, status and path before they are stored
+(`persist.ts`), because the body is read again from the current version on
+every later send. A `data-skill-activation` part is added for each activated
+skill, and is also written at the start of a send whose attached skill is Auto.
+`reinject.ts` reads those parts from the chat's stored messages, loads each
+skill's current version (12,000 tokens in all, newest first), and adds the
+`<active_skills>` block to the system prompt, also when tool calling is off. A
+deleted or disabled skill gets a one-line notice. The activation part counts as
+a meaningful part only next to text, and `filterPublicParts` drops both skill
+parts.
+
+**Forced attach (the invocation core, moved here from S-12).** One shared
+state, `useComposerSkillInvocation()`, holds at most one `{ skillId, name,
+version, source }`; `source` is `menu` here and S-12 adds `text` for a typed
+`/name`. The "+" menu lists enabled skills (six, then "All skills…" in a
+searchable dialog and "Manage skills"), a tile with the sparkles icon and the
+caption "Skill" shows the choice, and the send carries one
+`data-skill-invocation` part (the message may hold only that part).
+`resolveSkillInvocationPart` runs in both chat routes: any failure (flag off,
+id that does not decode, somebody else's skill, disabled, broken, a second
+invocation) is the same 400 `skill_invocation_unavailable`, **even with the
+flag off**, unlike the artifact attachment which answers 404 for a gated
+feature, so an id can never be probed. The first message of a new chat goes
+through the PUT route (which validates and throws) and then the POST route
+(which already sees a stored message, so a part that no longer resolves is
+dropped). `prepareSkillsForSend` builds the text for the latest user turn: the
+current body as `<skill_content name source version invoked="user">`, with
+`$ARGUMENTS` replaced by splitting and joining (never a string replace, so
+`$&` in the user's text stays text) or "ARGUMENTS: ..." appended. A message
+that is only an attached skill has no text for the model context sanitizer to
+keep, so `appendTextAsLastUserTurn` adds a user turn instead of leaving the
+conversation on the assistant. An Auto skill stays active through the
+activation part; an Only when I ask skill is one-shot and applies to its own
+turn and to a Regenerate of it, because the stored part resolves again. The
+shared view and a visitor's branch drop a user message that is left with no
+part (`dropEmptyUserMessages`).
+
+**Step card.** An `activate_skill` call renders as a compact card in the
+assistant message, in the style of the artifact and document cards: "Using
+skill…" while it runs, "Used skill · name" with `lucide:sparkles` when it
+returned (a click opens the preview), "Could not use skill" on an error. It is
+excluded from the reasoning box's tool steps, and counts as visible assistant
+content so the bubble shows before any text. A `read_skill_file` call stays a
+reasoning step ("Read a skill file"). The sent user bubble shows a chip with
+the skill name above the text.
+
+**Preview.** `ChatSkillPreview` is a read-only dialog (a bottom sheet below
+`sm`): name, description, mode and `SKILL.md` as plain monospace text (no
+Markdown, no `v-html`; the first 60,000 characters), with **Edit**, which opens
+`/profile/skills?skill=<id>&edit=1` (the page opens the details and the editor,
+then removes the two parameters), and an "All skills" link. The composer tile,
+the chip in a sent message and the step card all open it, from one
+`useSkillPreview()` state mounted in the chat layout.
+
+**Interim rule, as built.** The skill tools never add a tool. The web search
+tools, `generate_image` and code execution stay exactly what the user picked
+for the message. While a skill is active `generate_image` is limited to one
+call per send, which the image tool already guarantees by claiming its single
+execution (a second call fails with `generation-busy`, covered in
+`tests/integration/server/image-generation.spec.ts`). The memory write lock is
+set when an invoked or re-injected skill is in context, and by any
+`activate_skill` or `read_skill_file` result.
+
+**Context panel.** An attached skill, an activation and a successful
+`activate_skill` call appear once each under Used (kind `skill`, label
+"Attached" or "Used"); the shared context panel shows none.
 
 ### 5.6 Presets and built-in commands
 
@@ -1095,13 +1211,14 @@ state in `app/composables/skills-library.ts`.
 - **Review banner:** `alert alert-warning alert-soft` "N skills need review"
   when any skill is `needs-review`, linking to the first one.
 - **Rows** (`ul.list`, like `HistoryArtifactRow`): the name (shown as `/name`
-  when slash is on) and a one-line description, as plain text; `badge
+  for a command) and a one-line description, as plain text; `badge
   badge-soft` for Skill and Command, and a status badge (Off, Needs review,
   Broken); a meta line ("Created by you · v7 · 2 h ago",
   "github.com/o/r/skills/x @ abc1234", or "Added by <client>"); an estimate
-  such as "≈ 95 tokens in every message", shown only for model-invocable
-  skills; an enable `toggle toggle-sm` (24 px target; the first enable of an
-  imported or MCP skill asks for confirmation); and a kebab menu: Edit, Use in
+  such as "≈ 95 tokens in every message", shown only in mode Auto; a compact
+  **mode control** (a `select select-sm` with Off, Auto and Only when I ask;
+  the first turn-on of an imported or MCP skill asks for confirmation; a
+  reserved name adds "Rename to use /name"); and a kebab menu: Edit, Use in
   new chat (S-12, behind `skills.commands`), Versions, Download .zip, Check for
   updates (GitHub only), Share (S-13), Delete.
 - **Detail:** a click opens `UiSidePanel` (`open({ viewKey: 'skill:<id>' })`),
@@ -1113,9 +1230,9 @@ state in `app/composables/skills-library.ts`.
   @abc1234", v5 "From Claude (MCP), pending"; each has "Compare with current",
   a unified diff with `+` and `-` and text labels, not colour alone, capped at
   `SKILL_DIFF_MAX_LINES`, and "Restore", which creates a new version) and
-  **Settings** (the two invocation toggles, argument hint, licence and source,
-  and later the S-5 scripts toggle). The header holds the enable toggle and an
-  **Edit** button.
+  **Settings** (the mode control with what each mode does, the argument hint,
+  licence and source, and later the S-5 scripts toggle). The header holds the
+  mode control and an **Edit** button.
 - **Use in new chat** (S-12, behind `skills.commands`) opens `/chats/new` with
   the chip queued through
   `useChatInputPrefill().queue()` (`app/composables/chat-input-prefill.ts`).
@@ -1189,8 +1306,8 @@ update" disables the skill again.
   deleted (Apache-2.0 section 4). Files over `SKILL_EDIT_MAX_FILE_BYTES`
   (256 KiB) open read-only. On mobile the tree is a `select`.
 - **Right, when `SKILL.md` is selected:**
-  - **Name** (regex; uniqueness checked on blur; reserved-name check when
-    slash is on) and **Description** (counter out of 1,024);
+  - **Name** (regex; uniqueness checked on blur; a reserved name is allowed and
+    only keeps /name off) and **Description** (counter out of 1,024);
   - a live **token estimate** per model family, using
     `KNOWLEDGE_CHARS_PER_TOKEN` and the most conservative family; above 300
     characters it warns "Shortened in the catalog";
@@ -1261,15 +1378,34 @@ Cancel all ask "Discard your unsaved changes?".
 
 ### 10.5 "+" menu and composer (S-3, S-12)
 
-- **"+" menu section "Skills"** in `ChatInput/ToolsMenu/Content.vue`: one
-  `ToggleRow` per enabled, model-invocable skill (the per-chat catalog choice,
-  stored in `skill_chat_settings`), revealed only when at least one exists; an
-  `ActionRow` "Use a command" that focuses the textarea and opens the picker,
-  so a touch user does not need to type `/`; and an `ActionRow` "Manage
-  skills". A tile appears only when the chat's selection differs from the
-  default ("3 of 5 skills"). With S-5, a `badge badge-soft` "scripts" marks a
-  skill with scripts, or the muted note "Scripts need a Claude model with code
-  execution".
+As built in S-3 (section 5.7):
+
+- **"+" menu section "Skills"** in `ChatInput/ToolsMenu/Content.vue`
+  (`ToolsMenu/SkillsSection.vue`), between Add and web search, revealed only
+  when the `skills` flag is on and the user has at least one enabled skill
+  (the list is fetched once while the flag is on; none when it is off) and
+  hidden for a deep-research model. It lists enabled skills of any mode by
+  name with a one-line description (six at most, then **All skills…**, which
+  opens a searchable dialog, `ChatInput/SkillPicker.client.vue`). Choosing one
+  sets the single invocation (replacing the previous one) and closes the menu.
+  An `ActionRow` **Manage skills** opens `/profile/skills`. This replaces the
+  earlier per-chat `ToggleRow` catalog choice and `skill_chat_settings`: the
+  catalog is every Auto skill.
+- **Tile:** a pill `SettingTile` with `lucide:sparkles`, caption "Skill", the
+  name as value and a remove button, after the setting tiles and before the
+  artifact tiles. Tapping it opens the read-only preview (section 5.7), not the
+  menu.
+- **Send:** the message carries one `data-skill-invocation` part and may have
+  no text. The send button is enabled for a tile alone. A failed send of a new
+  chat restores the tile with the rest of the draft.
+- **Sent messages:** the bubble shows a chip with the skill name above the text
+  (it opens the preview); a shared chat shows nothing for it.
+- **Reasoning and cards:** `activate_skill` is a card in the answer, not a
+  reasoning step (section 5.7).
+
+Planned for S-12 (the typed command), which adds `source: 'text'` to the same
+state:
+
 - **The `/` picker.**
   - **Trigger:** the text before the caret matches `^\s*\/[a-z0-9-]*$`, that is,
     the start of the message only.
@@ -1289,11 +1425,11 @@ Cancel all ask "Discard your unsaved changes?".
   - **Mobile:** the same inline list, not a bottom sheet. A sheet would call
     `showModal`, steal focus and close the iOS keyboard. Rows are `min-h-11`
     and are lifted by the existing `useVisualViewportInset`.
-- **Chip:** a pill `SettingTile` with icon `lucide:square-slash`, caption
-  "Command" and value "/name", plus a remove button. Tapping it opens the
-  read-only side-panel detail. The textarea placeholder shows `argument_hint`.
+- **Chip:** the typed `/name` becomes the same tile as the one in the "+" menu
+  (S-3), with the caption "Command" for a skill that runs only when asked. The
+  textarea placeholder shows `argument_hint`.
 - **Sent messages:** the bubble shows the chip above the text. The context
-  panel lists the invocation under "Used → Skills".
+  panel lists the invocation under "Used" (kind Skill).
 
 Skill cards keep the earlier details: "Added by <client>" for MCP-created
 skills, the status badge, the first-enable confirmation, and with S-5 "Allow
@@ -1385,10 +1521,12 @@ Invariants, each with a spec:
    key builder never yields a path the host skills mount serves.
 2. Shared chats carry nothing from a user skill: `activate_skill` and
    `read_skill_file` tool parts are stripped like all tool parts, and
-   `filterPublicParts` also drops `data-skill-activation` parts **(this doc)**
-   and `data-skill-invocation` parts (S-12). The shared context panel shows no
-   skills section. The shared view shows a neutral "(private command)" where an
-   invocation was. The visible text part of an invocation holds only the
+   `filterPublicParts` also drops `data-skill-activation` and
+   `data-skill-invocation` parts (S-3, with a spec). The shared context panel
+   shows no skills section. A user message that was only an attached skill is
+   left out of the shared view and of a visitor's branch
+   (`dropEmptyUserMessages`), instead of the neutral "(private command)" text
+   planned earlier. The visible text part of an invocation holds only the
    arguments. S-3 and S-12 specs: no skill name or body text in the shared
    payload.
 3. Skill objects have no public or signed-URL route; reads are authenticated
@@ -1576,6 +1714,14 @@ The owner took the plan's defaults:
 | 8 | **Skills authored in the app** are saved enabled with no licence tick (class `authored`). Imports, updates, MCP writes and share copies stay disabled until the user enables them in the app. |
 | 9 | **Runtime** (S-3 and S-12) ships before C-6, under the interim rule in section 2, item 8. The approval card comes with C-6, and connectors cannot exist before C-6 anyway. |
 | 10 | **GitHub update versus local edits** (coordinator, 2026-11-13): the update check compares the skill's `source_version` with the latest upstream commit, and a newer commit creates a persisted pending version, not used until accepted (accepting disables the skill). If any version newer than the last import has origin `editor`, `template`, `mcp`, `rename` or `restore`, the review screen warns "Accepting replaces your local edits since the import" and shows the diff against the current version. There is no merge in the first release. Accepting makes the upstream version current, and the local versions stay in history (within the 20 kept) so the user can restore one (section 3.4). |
+
+### Decided on 2026-11-14
+
+| # | Decision |
+| --- | --- |
+| 11 | **Invocation mode (owner, after testing the S-5 manager on a phone):** one control with Off, Auto and Only when I ask replaces the enable toggle and the two invocation toggles. Every enabled skill is available as `/name` and from the "+" menu. A reserved name keeps `/name` off and the UI says "Rename to use /name". Section 5.7. |
+| 12 | **Visible step:** an `activate_skill` call is a compact card in the answer ("Used skill · name"), which opens a read-only preview with an Edit button. Section 5.7. |
+| 13 | **The invocation core ships in S-3, not S-12:** one invocation per message (`menu` source here, `text` in S-12), a generic 400 for every failure even with the flag off, injection into the latest user turn. Section 5.7. |
 
 The owner also asked for these to be possible, and this document states each:
 adding a skill by archive (`.zip` or `.skill`, section 3.1), adding one by

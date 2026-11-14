@@ -114,6 +114,7 @@ import { CODE_EXECUTION_FILE_DELIVERY } from '#shared/utils/file-delivery'
 import { isOfficeMediaType } from '#shared/utils/office-files'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
+  appendTextAsLastUserTurn,
   appendTextToLastUserTurn,
   buildKnowledgeMediaTurns,
   buildMessagesForModel,
@@ -1670,7 +1671,7 @@ export default defineEventHandler(async (event) => {
 
   const skillsSend = await prepareSkillsForSend({
     db,
-    bucket: useFileStorage(),
+    getBucket: () => useFileStorage(),
     userId,
     isSkillsActive: sendFeatures.isFeatureActive('skills'),
     isToolCallingAllowed: toolCallingAllowed,
@@ -1911,10 +1912,11 @@ export default defineEventHandler(async (event) => {
             knowledge?.excerpts,
             pastChatPreRetrieval?.block,
             artifactContextBlock,
-            skillsSend.invocationBlock,
           ]
             .filter((excerpts): excerpts is string => !!excerpts)
             .join('\n\n') || null,
+          skillInvocationBlock: skillsSend.invocationBlock,
+          userMessageId: newMessage.id,
         })
 
         function recordSdkWarnings(
@@ -3082,6 +3084,8 @@ function buildKnowledgeAwareMessagesForModel(input: {
   modelProviderId: string | undefined
   mediaTurns: UIMessage[]
   excerpts: string | null
+  skillInvocationBlock?: string | null
+  userMessageId?: string
 }): UIMessage[] {
   const history = input.mediaTurns.length > 0
     ? [...input.mediaTurns, ...input.messagesForAI]
@@ -3090,12 +3094,19 @@ function buildKnowledgeAwareMessagesForModel(input: {
     history,
     input.modelProviderId,
   )
+  const withSkill = input.skillInvocationBlock && input.userMessageId
+    ? appendTextAsLastUserTurn(
+      messagesForModel,
+      input.skillInvocationBlock,
+      input.userMessageId,
+    )
+    : messagesForModel
 
   if (!input.excerpts) {
-    return messagesForModel
+    return withSkill
   }
 
-  return appendTextToLastUserTurn(messagesForModel, input.excerpts)
+  return appendTextToLastUserTurn(withSkill, input.excerpts)
 }
 
 /**

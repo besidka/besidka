@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import { filterPublicParts } from '~~/server/utils/chats/share-public-parts'
+import {
+  dropEmptyUserMessages,
+  filterPublicParts,
+} from '~~/server/utils/chats/share-public-parts'
 
 describe('filterPublicParts', () => {
   it('drops tool parts and artifact attachments, keeps the rest', () => {
@@ -102,5 +105,35 @@ describe('filterPublicParts', () => {
     const [message] = filterPublicParts([{ id: 'm1', parts }])
 
     expect(message?.parts).toEqual([])
+  })
+})
+
+describe('dropEmptyUserMessages', () => {
+  it('skips a user message that only attached a skill, keeps everything else', () => {
+    const messages = filterPublicParts([
+      {
+        id: 'u1',
+        role: 'user',
+        parts: [{
+          type: 'data-skill-invocation',
+          data: { skillId: 'skl1', name: 'private', version: 1 },
+        }],
+      },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Done' }] },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Thanks' }] },
+    ] as unknown as Array<{
+      id: string
+      role: string
+      parts: UIMessage['parts']
+    }>)
+
+    expect(dropEmptyUserMessages(messages).map(message => message.id))
+      .toEqual(['a1', 'u2'])
+  })
+
+  it('never drops an assistant message', () => {
+    const messages = [{ id: 'a1', role: 'assistant', parts: [] }]
+
+    expect(dropEmptyUserMessages(messages)).toHaveLength(1)
   })
 })

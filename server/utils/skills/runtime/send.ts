@@ -68,7 +68,7 @@ const EMPTY_SKILLS_SEND: SkillsSend = {
  */
 export async function prepareSkillsForSend(input: {
   db: DbClient
-  bucket: SkillReadBucket
+  getBucket: () => SkillReadBucket
   userId: number
   isSkillsActive: boolean
   isToolCallingAllowed: boolean
@@ -84,7 +84,8 @@ export async function prepareSkillsForSend(input: {
     return EMPTY_SKILLS_SEND
   }
 
-  const { db, bucket, userId, family, logger } = input
+  const { db, userId, family, logger } = input
+  const bucket = input.getBucket()
   const invocation = findSkillInvocation(input.newMessageParts)
   const invocationResult = invocation
     ? await buildSkillInvocationBlock({
