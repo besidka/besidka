@@ -106,7 +106,7 @@ describe('ChatInput/SkillPicker', () => {
   it('links to the skills manager and closes', async () => {
     const wrapper = await mountPicker()
 
-    expect(get('skill-picker-manage').outerHTML).toContain('/profile/skills')
+    expect(get('skill-picker-manage').outerHTML).toContain('/chats/skills')
 
     get('skill-picker-manage').click()
     await flushPromises()

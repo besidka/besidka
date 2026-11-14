@@ -158,7 +158,7 @@ the old wording is in the git history.
     because skills are user content (unlike connectors, see
     `docs/connectors.md` section 2, item 11). `skills:share` is reserved in the
     docs only and is not registered by S-6 (section 11).
-13. **No new nav pill slots.** Profile tab, Search popup row, "+" menu section,
+13. **No new nav pill slots.** History tab, Search popup row, "+" menu row,
     context panel "Used" section. Commands live in the same tab; there is no
     separate tab.
 14. **A command is a skill (this doc).** One entity, one manager, one set of
@@ -842,7 +842,7 @@ the skill name above the text.
 **Preview.** `ChatSkillPreview` is a read-only dialog (a bottom sheet below
 `sm`): name, description, mode and `SKILL.md` as plain monospace text (no
 Markdown, no `v-html`; the first 60,000 characters), with **Edit**, which opens
-`/profile/skills?skill=<id>&edit=1` (the page opens the details and the editor,
+`/chats/skills?skill=<id>&edit=1` (the page opens the details and the editor,
 then removes the two parameters), and an "All skills" link. The composer tile,
 the chip in a sent message and the step card all open it, from one
 `useSkillPreview()` state mounted in the chat layout.
@@ -1220,10 +1220,10 @@ pages through `read_skill_file`.
 
 | Place | What | Ticket |
 | --- | --- | --- |
-| Profile tab | `{ to: '/profile/skills', label: 'Skills', icon: 'lucide:sparkles' }` after Labs (and after Connectors once that exists), flag-gated. Commands live in the same tab. `isTabActive` already covers child routes | S-4 |
-| Search popup | Settings row `search-option-skills`, same icon and label, flag-gated, id in `tests/unit/components/Search/Modal.spec.ts` | S-4 |
+| History tab | `{ id: 'skills', to: '/chats/skills', label: 'Skills', icon: 'lucide:sparkles' }` in `History/PageShell.vue` after Documents and before Shared, flag-gated; not a profile tab (the profile layout has no Skills tab). Commands live in the same tab. Flag off redirects `/chats/skills` to `/chats/history` | S-4 |
+| Search popup | Chat group row `search-option-skills` after Documents, same icon and label, flag-gated, id in `tests/unit/components/Search/Modal.spec.ts` | S-4 |
 | User dropdown | Nothing | S-4 |
-| "+" menu | Section "Skills" in `ToolsMenu/Content.vue` (section 10.5) | S-3, S-12 |
+| "+" menu | Row "Add skill" in the Add section of `ToolsMenu/Content.vue` (section 10.5) | S-3, S-12 |
 | Composer | The `/` picker and the invocation chip (section 10.5) | S-12 |
 | Chat bubble | `Chat/SkillActivation.vue` chip (`badge badge-soft` with `lucide:sparkles`) for an activation, `Chat/SkillInvocation.vue` for an invocation; click opens the P0-11 `UiSidePanel` with `SKILL.md` as **plain monospace text**, version, short SHA, source, "Manage skills" | S-3, S-12 |
 | Context panel | "Used → Skills" (name, activation count, version) from `data-skill-activation` and `data-skill-invocation` parts, owner view only | S-3, S-12 |
@@ -1237,7 +1237,7 @@ row at 768, 1024 and 1440 px in light and dark. If it overflows, use the
 
 ### 10.2 Manager (S-4)
 
-`app/pages/profile/skills.vue`, components in `app/components/Profile/Skills/`
+`app/pages/chats/skills/index.vue` (wrapped in `HistoryPageShell`, one bubble, rows stay flat), components in `app/components/Profile/Skills/`
 (List, Row, Filters, DetailPanel, ImportDialog, WorkspaceDialog, DiffView),
 state in `app/composables/skills-library.ts`.
 
@@ -1437,7 +1437,7 @@ As built in S-3 (section 5.7):
   sheet below `sm`, like the artifact picker) that lists enabled skills of any
   mode with name, one-line description and mode badge, a search field from
   eight skills (`COMPOSER_SKILLS_SEARCH_MIN`) and a "Manage skills" link to
-  `/profile/skills`. Choosing one sets the single invocation (replacing the
+  `/chats/skills`. Choosing one sets the single invocation (replacing the
   previous one) and closes the picker. An earlier inline "Skills" section that
   listed every skill in the menu was removed as too heavy. This replaces the
   per-chat `ToggleRow` catalog choice and `skill_chat_settings`: the catalog is

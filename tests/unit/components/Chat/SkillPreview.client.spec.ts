@@ -118,7 +118,7 @@ describe('Chat/SkillPreview', () => {
     await flushPromises()
 
     expect(mocks.navigateTo).toHaveBeenCalledWith({
-      path: '/profile/skills',
+      path: '/chats/skills',
       query: { skill: 'S1', edit: '1' },
     })
     expect(wrapper.emitted('close')).toBeTruthy()
@@ -127,7 +127,7 @@ describe('Chat/SkillPreview', () => {
   it('links to all skills and closes', async () => {
     const wrapper = await mountPreview()
 
-    expect(get('skill-preview-all').outerHTML).toContain('/profile/skills')
+    expect(get('skill-preview-all').outerHTML).toContain('/chats/skills')
 
     get('skill-preview-dismiss').click()
     await flushPromises()

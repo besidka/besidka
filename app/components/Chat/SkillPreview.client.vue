@@ -78,7 +78,7 @@
           />
           <span>{{ errorMessage }}</span>
           <NuxtLink
-            to="/profile/skills"
+            to="/chats/skills"
             class="btn btn-sm"
             @click="close"
           >
@@ -116,7 +116,7 @@
 
         <div class="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-2">
           <NuxtLink
-            to="/profile/skills"
+            to="/chats/skills"
             class="link link-hover text-sm"
             data-testid="skill-preview-all"
             @click="close"
@@ -273,7 +273,7 @@ async function onEdit() {
 
   close()
   await navigateTo({
-    path: '/profile/skills',
+    path: '/chats/skills',
     query: { skill: id, edit: '1' },
   })
 }

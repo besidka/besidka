@@ -108,8 +108,6 @@ const currentRoute = useRoute()
 
 const isSigningOut = shallowRef<boolean>(false)
 
-const skillsFeature = useFeature('skills')
-
 interface ProfileTab {
   to: string
   label: string
@@ -117,7 +115,7 @@ interface ProfileTab {
   childRoutes: string[]
 }
 
-const baseTabs: ProfileTab[] = [
+const tabs: ProfileTab[] = [
   {
     to: '/profile/security',
     label: 'Security',
@@ -155,17 +153,6 @@ const baseTabs: ProfileTab[] = [
     childRoutes: [],
   },
 ]
-
-const skillsTab: ProfileTab = {
-  to: '/profile/skills',
-  label: 'Skills',
-  icon: 'lucide:sparkles',
-  childRoutes: [],
-}
-
-const tabs = computed(() => {
-  return skillsFeature.value.active ? [...baseTabs, skillsTab] : baseTabs
-})
 
 function isTabActive(tab: ProfileTab) {
   if (currentRoute.path === tab.to) {

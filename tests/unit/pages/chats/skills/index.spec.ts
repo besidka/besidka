@@ -6,8 +6,8 @@ import {
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
-import SkillsPage from '../../../../app/pages/profile/skills.vue'
-import { createSkillSummary } from '../../../setup/helpers/skills-ui'
+import SkillsPage from '../../../../../app/pages/chats/skills/index.vue'
+import { createSkillSummary } from '../../../../setup/helpers/skills-ui'
 
 const mocks = vi.hoisted(() => ({
   navigateTo: vi.fn(),
@@ -110,7 +110,7 @@ function mountPage(route?: string) {
   })
 }
 
-describe('profile skills page', () => {
+describe('chats skills page', () => {
   beforeEach(() => {
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
       .mockImplementation(function (this: HTMLDialogElement) {
@@ -143,6 +143,8 @@ describe('profile skills page', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.get('h1').text()).toBe('Skills')
+    expect(wrapper.find(testId('tab-skills')).attributes('aria-current'))
+      .toBe('page')
     expect(wrapper.text()).toContain(
       'Skills teach the model how to do a task your way. Commands are skills you run with /name.',
     )
@@ -156,11 +158,11 @@ describe('profile skills page', () => {
 
     const wrapper = await mountPage()
 
-    expect(wrapper.find(testId('skills-page')).exists()).toBe(false)
+    expect(wrapper.find(testId('tab-skills')).exists()).toBe(false)
     expect(wrapper.find(testId('skill-row')).exists()).toBe(false)
     expect(wrapper.find(testId('skills-new-trigger')).exists()).toBe(false)
     expect(mocks.navigateTo).toHaveBeenCalledWith(
-      '/profile/security',
+      '/chats/history',
       { replace: true },
     )
   })
@@ -373,7 +375,7 @@ describe('profile skills page', () => {
 
   describe('opening a skill from a link', () => {
     it('opens the details and the editor for ?skill=<id>&edit=1, then clears the query', async () => {
-      await mountPage('/profile/skills?skill=a&edit=1')
+      await mountPage('/chats/skills?skill=a&edit=1')
 
       await vi.waitFor(() => {
         expect(useRoute().query.skill).toBeUndefined()
@@ -385,7 +387,7 @@ describe('profile skills page', () => {
     })
 
     it('opens only the details without edit=1', async () => {
-      await mountPage('/profile/skills?skill=b')
+      await mountPage('/chats/skills?skill=b')
 
       await vi.waitFor(() => {
         expect(useRoute().query.skill).toBeUndefined()
@@ -396,7 +398,7 @@ describe('profile skills page', () => {
     })
 
     it('keeps the other query parameters it did not use', async () => {
-      await mountPage('/profile/skills?skill=a&source=created')
+      await mountPage('/chats/skills?skill=a&source=created')
 
       await vi.waitFor(() => {
         expect(useRoute().query.skill).toBeUndefined()
@@ -406,7 +408,7 @@ describe('profile skills page', () => {
     })
 
     it('warns about a skill that is gone and opens nothing', async () => {
-      await mountPage('/profile/skills?skill=gone&edit=1')
+      await mountPage('/chats/skills?skill=gone&edit=1')
 
       await vi.waitFor(() => {
         expect(useRoute().query.skill).toBeUndefined()

@@ -1512,7 +1512,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const skillsManagerTests = [
-    'tests/unit/pages/profile/skills.spec.ts',
+    'tests/unit/pages/chats/skills/index.spec.ts',
     'tests/unit/composables/skills-library.spec.ts',
     'tests/unit/composables/skill-editor.spec.ts',
     'tests/unit/utils/skill-ui-utils.spec.ts',
@@ -1540,8 +1540,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Skills/WorkspaceDialog.client.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
-    'tests/e2e/profile/skills.spec.ts',
+    'tests/e2e/history/skills.spec.ts',
   ]
 
   const skillsRuntimeTests = [
@@ -1577,7 +1578,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
-    'tests/unit/pages/profile/skills.spec.ts',
+    'tests/unit/pages/chats/skills/index.spec.ts',
     'tests/e2e/chat/skills.spec.ts',
   ]
 
@@ -2986,12 +2987,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/(SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/profile\/skills\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+        /^(app\/components\/Chat\/(SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
       tests: skillsComposerTests,
     },
     {
       pattern:
-        /^(app\/pages\/profile\/skills\.vue|app\/components\/Profile\/Skills\/.*|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
       tests: skillsManagerTests,
     },
     {

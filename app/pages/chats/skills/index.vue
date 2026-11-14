@@ -1,16 +1,35 @@
 <template>
-  <div class="mb-8 text-center">
-    <h1 class="text-4xl font-bold">Skills</h1>
-    <h2 class="mt-2">
+  <HistoryPageShell
+    v-if="skillsFeature.active"
+    active-tab="skills"
+  >
+    <template #title>
+      Skills
+    </template>
+    <template #subtitle>
       Skills teach the model how to do a task your way. Commands are skills
       you run with /name.
-    </h2>
-  </div>
-  <div
-    v-if="skillsFeature.active"
-    class="grid gap-4"
-    data-testid="skills-page"
-  >
+    </template>
+
+    <template #toolbar>
+      <ProfileSkillsFilters
+        v-model:search="search"
+        :source-options="sourceOptions"
+        :kind-options="kindOptions"
+        :source="appliedSource"
+        :kind="appliedKind"
+        :is-search-visible="isSearchVisible"
+        @select-source="setSource"
+        @select-kind="setKind"
+      >
+        <ProfileSkillsNewMenu
+          v-if="!isLibraryEmpty"
+          :can-import-from-url="importFromUrl.active"
+          @select="onNew"
+        />
+      </ProfileSkillsFilters>
+    </template>
+
     <div
       v-if="needsReviewSkills.length"
       class="alert alert-warning alert-soft"
@@ -38,23 +57,6 @@
       </button>
     </div>
 
-    <ProfileSkillsFilters
-      v-model:search="search"
-      :source-options="sourceOptions"
-      :kind-options="kindOptions"
-      :source="appliedSource"
-      :kind="appliedKind"
-      :is-search-visible="isSearchVisible"
-      @select-source="setSource"
-      @select-kind="setKind"
-    >
-      <ProfileSkillsNewMenu
-        v-if="!isLibraryEmpty"
-        :can-import-from-url="importFromUrl.active"
-        @select="onNew"
-      />
-    </ProfileSkillsFilters>
-
     <ProfileSkillsList
       :skills="visibleSkills"
       :has-loaded="hasLoaded"
@@ -75,7 +77,7 @@
       @clear="clearFilters"
       @new="onNew"
     />
-  </div>
+  </HistoryPageShell>
 
   <LazyProfileSkillsCreateDialog
     v-if="createKind"
@@ -119,7 +121,6 @@ import type {
 } from '~/types/skills-ui.d'
 
 definePageMeta({
-  layout: 'profile',
   auth: {
     only: 'user',
   },
@@ -133,7 +134,7 @@ const skillsFeature = useFeature('skills')
 const importFromUrl = useFeature('skills.import-url')
 
 if (!skillsFeature.value.active) {
-  await navigateTo('/profile/security', { replace: true })
+  await navigateTo('/chats/history', { replace: true })
 }
 
 const sidePanel = useSidePanel()

@@ -67,7 +67,7 @@ test('a member uploads a skill, reviews it, installs it and turns it on', async 
 
   expect(grant.status()).toBe(200)
 
-  await page.goto('/profile/skills')
+  await page.goto('/chats/skills')
   await waitForHydration(page)
 
   await expect(
@@ -144,7 +144,7 @@ test('a member creates a skill, edits it in the editor and saves version 2', asy
   const page = await openGrantedMember(browser, 'e2e-skills-editor')
   const skillName = `e2e-editor-${Date.now()}`
 
-  await page.goto('/profile/skills')
+  await page.goto('/chats/skills')
   await waitForHydration(page)
   await expect(page.getByTestId('skills-empty')).toBeVisible()
 

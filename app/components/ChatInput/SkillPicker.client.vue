@@ -127,7 +127,7 @@
         </div>
         <div class="mt-3 flex shrink-0 justify-end">
           <NuxtLink
-            to="/profile/skills"
+            to="/chats/skills"
             class="link link-hover text-sm"
             data-testid="skill-picker-manage"
             @click="close"
