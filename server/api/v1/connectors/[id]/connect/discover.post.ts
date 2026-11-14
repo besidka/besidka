@@ -11,6 +11,7 @@ import {
   requireOwnedConnector,
 } from '~~/server/utils/connectors/route'
 import {
+  readConnectorCredentials,
   readConnectorUrl,
   updateConnector,
 } from '~~/server/utils/connectors/store'
@@ -56,9 +57,13 @@ export default defineEventHandler(async (event) => {
     throw exception
   }
 
-  await updateConnector(db, userId, connector.id, discovery.authType === 'none'
-    ? { authType: 'none', status: 'ready', lastError: null }
-    : { authType: discovery.authType })
+  const credentials = await readConnectorCredentials(db, userId, connector.id)
+
+  if (!credentials) {
+    await updateConnector(db, userId, connector.id, discovery.authType === 'none'
+      ? { authType: 'none', status: 'ready', lastError: null }
+      : { authType: discovery.authType })
+  }
 
   const host = new URL(connector.origin).host
   const issuerHost = discovery.authType === 'oauth'

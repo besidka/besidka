@@ -229,6 +229,56 @@ describe('connector credentials', () => {
         expect(wait).toHaveBeenCalledWith(500)
       })
 
+    it('gives up instead of reusing the refresh token while the owner is '
+      + 'still refreshing', async () => {
+      await storeTokens(new Date(NOW))
+
+      const original = server.fetch.getMockImplementation()!
+      let releaseToken: () => void = () => undefined
+
+      server.fetch.mockImplementation(async (input, init) => {
+        if (String(input) === TOKEN_URL) {
+          await new Promise<void>((resolve) => {
+            releaseToken = resolve
+          })
+        }
+
+        return await original(input, init)
+      })
+
+      const settled = [token(), token()].map((promise) => {
+        return promise.then(
+          (value) => {
+            return { ok: true, value }
+          },
+          (exception: { code?: string }) => {
+            return { ok: false, code: exception.code }
+          },
+        )
+      })
+      const firstSettled = await Promise.race(settled)
+
+      expect(firstSettled).toEqual({
+        ok: false,
+        code: 'CONNECTOR_REFRESH_FAILED',
+      })
+      releaseToken()
+
+      const results = await Promise.all(settled)
+
+      expect(results).toContainEqual({ ok: true, value: 'access-token-r1' })
+      expect(server.requestsTo(TOKEN_URL)).toHaveLength(1)
+      expect(noWait).toHaveBeenCalledTimes(3)
+    })
+
+    it('refreshes at once without a lock when KV fails', async () => {
+      await storeTokens(new Date(NOW))
+      kv.get.mockRejectedValueOnce(new Error('KV unavailable'))
+
+      expect(await token()).toBe('access-token-r1')
+      expect(noWait).not.toHaveBeenCalled()
+    })
+
     it('does not refresh for a 401 on a token that was already replaced',
       async () => {
         await storeTokens(new Date(NOW + 10 * 60 * 1000))

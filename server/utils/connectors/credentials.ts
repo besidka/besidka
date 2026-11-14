@@ -284,6 +284,28 @@ async function performRefresh(
   return tokens.accessToken
 }
 
+async function isRefreshLockHeld(
+  kv: KVNamespace,
+  connectorId: string,
+  now: number,
+): Promise<boolean> {
+  try {
+    const lock = parseLock(await kv.get(refreshLockKey(connectorId)))
+
+    return lock !== null
+      && now - lock.acquiredAt < CONNECTOR_REFRESH_LOCK_TTL_SECONDS * 1000
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Refreshes under the lock. A caller that loses it waits up to three times
+ * for the owner's new token; if the owner still holds the lock after that,
+ * the caller gives up with a retryable error instead of sending the same
+ * refresh token again, which an issuer that rotates refresh tokens treats
+ * as reuse. When KV itself fails, the refresh runs without a lock.
+ */
 async function refreshUnderLock(
   request: AccessTokenRequest,
   credentials: ConnectorCredentials,
@@ -292,6 +314,7 @@ async function refreshUnderLock(
   const now = dependencies.now ?? Date.now
   const wait = dependencies.wait ?? defaultWait
   let owner: string | null = null
+  let lockUnavailable = false
 
   try {
     owner = await acquireRefreshLock(
@@ -300,10 +323,11 @@ async function refreshUnderLock(
       now(),
     )
   } catch {
+    lockUnavailable = true
     logRefresh(dependencies.logger, request.connectorId, 'lock-unavailable')
   }
 
-  if (!owner) {
+  if (!owner && !lockUnavailable) {
     for (
       let attempt = 0;
       attempt < CONNECTOR_REFRESH_LOCK_WAIT_ATTEMPTS;
@@ -322,6 +346,12 @@ async function refreshUnderLock(
 
         return latest.accessToken
       }
+    }
+
+    if (await isRefreshLockHeld(dependencies.kv, request.connectorId, now())) {
+      logRefresh(dependencies.logger, request.connectorId, 'lock-busy')
+
+      throw createConnectorError('CONNECTOR_REFRESH_FAILED')
     }
   }
 

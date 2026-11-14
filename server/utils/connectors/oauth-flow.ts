@@ -25,6 +25,7 @@ import {
   consumeConnectorOAuthState,
   saveConnectorOAuthState,
 } from '~~/server/utils/connectors/oauth-state'
+import { revokeStoredConnectorCredentials } from '~~/server/utils/connectors/revoke'
 import {
   compareGrantedScope,
   degradedScopeNote,
@@ -202,9 +203,11 @@ function isSameResource(resource: string, serverUrl: string | null): boolean {
  * the exact redirect URI the flow started with, that the authorization
  * server returned a code, and that `iss` names the expected issuer (RFC
  * 9207: required when the issuer advertises it, compared whenever present).
- * Only then is the code exchanged, with the verifier and the resource. The
- * granted scope is compared with the requested one; a narrower grant keeps
- * the connector usable with a `degraded` note.
+ * Only then, and while the consent still covers this issuer, is the code
+ * exchanged, with the verifier and the resource. Tokens of an earlier
+ * sign-in are revoked before they are replaced. The granted scope is
+ * compared with the requested one; a narrower grant keeps the connector
+ * usable with a `degraded` note.
  */
 export async function completeConnectorOAuth(
   input: CompleteConnectorOAuthInput,
@@ -251,6 +254,8 @@ export async function completeConnectorOAuth(
     throw createConnectorError('CONNECTOR_NOT_FOUND')
   }
 
+  assertConnectorConsent(connector, issuerHostOf(state.issuer))
+
   const result = await exchangeAuthorizationCode({
     registration: state.registration,
     code: input.query.code,
@@ -269,6 +274,12 @@ export async function completeConnectorOAuth(
     result.tokens.scope,
   )
 
+  await revokeStoredConnectorCredentials(
+    input.db,
+    input.userId,
+    state.connectorId,
+    { logger: input.logger },
+  )
   await replaceConnectorCredentials(input.db, {
     userId: input.userId,
     connectorId: state.connectorId,

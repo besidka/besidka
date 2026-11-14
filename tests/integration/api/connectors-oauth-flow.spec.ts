@@ -548,6 +548,56 @@ describe('connector OAuth flow', () => {
     })
   })
 
+  describe('reconnect', () => {
+    it('revokes the tokens of the earlier sign-in', async () => {
+      const { connector } = await connectedConnector()
+      const approval = server.authorize(await start(connector.id), 'code-two')
+
+      await callback({
+        code: approval.code,
+        state: approval.state,
+        iss: approval.iss,
+      })
+
+      expect(server.requestsTo(REVOKE_URL)).toHaveLength(2)
+      expect(await credentialRows()).toHaveLength(1)
+    })
+
+    it('refuses the callback when the consent was withdrawn after the start',
+      async () => {
+        const connector = await createConnector()
+
+        await consent(connector.id, 'auth.example.com')
+
+        const approval = server.authorize(await start(connector.id))
+
+        await call('~~/server/api/v1/connectors/[id]/consent/withdraw.post', {
+          params: { id: connector.id },
+        })
+
+        expect(await callback({
+          code: approval.code,
+          state: approval.state,
+          iss: approval.iss,
+        })).toBe('/profile/connectors?error=CONNECTOR_CONSENT_REQUIRED')
+        expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
+      })
+
+    it('keeps the auth type of a connected connector on rediscovery',
+      async () => {
+        const connector = await createConnector()
+
+        await consent(connector.id, null)
+        await call('~~/server/api/v1/connectors/[id]/credentials.post', {
+          params: { id: connector.id },
+          body: { headerName: 'Authorization', headerValue: 'Bearer key' },
+        })
+        await discover(connector.id)
+
+        expect((await connectorRow(connector.id)).authType).toBe('header')
+      })
+  })
+
   describe('consent gate', () => {
     it('refuses to start without consent', async () => {
       const connector = await createConnector()

@@ -573,9 +573,16 @@ Choices that differ from or add to sections 5.1 to 5.4 and 14:
   ciphertext (`generation`), not `updated_at`, whose one-second resolution
   cannot tell two writes apart. The KV lock entry lives 60 s (the KV minimum)
   and carries its own 30 s expiry. Calls that share a request-scoped
-  `inFlight` map share one refresh; nothing is cached module-wide.
-  `invalid_grant` re-reads first and deletes only if no other writer stored
-  newer tokens.
+  `inFlight` map share one refresh; nothing is cached module-wide. A caller
+  that loses the lock and still sees the lock held after its three waits
+  answers `CONNECTOR_REFRESH_FAILED` (retryable) instead of sending the same
+  refresh token again, which a rotating issuer treats as reuse; when KV itself
+  fails, the refresh runs at once without a lock. `invalid_grant` re-reads
+  first and deletes only if no other writer stored newer tokens.
+- **Discovery never downgrades a connected connector:** it writes `auth_type`
+  only while no credentials are stored. The callback re-checks the consent
+  for the issuer and revokes an earlier sign-in's tokens before replacing
+  them.
 - **Status after sign-in.** The callback sets `status='ready'` (the ticket's
   rule). C-5 may set `drifted` or `error` after its first `tools/list`.
 - **The OAuth state** in KV is encrypted (it holds the PKCE verifier and, for
