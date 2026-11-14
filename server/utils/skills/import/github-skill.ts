@@ -10,6 +10,7 @@ import { isSkillLicenceFileName } from '#shared/utils/skills/path'
 import {
   createGithubTooLargeError,
   downloadGithubArchive,
+  fetchGithubSkillMarkdown,
   withGithubArchiveSlot,
 } from '~~/server/utils/skills/import/github'
 import type {
@@ -19,6 +20,7 @@ import type {
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 
 const NOTICE_FILE_PATTERN = /^notice/i
+const fatalDecoder = new TextDecoder('utf-8', { fatal: true })
 
 export type GithubSkillLoad
   = | {
@@ -131,5 +133,60 @@ export async function loadGithubSkill(
     folderName: result.folderName,
     skillPath: result.skillPath,
     warnings: merged.warnings,
+  }
+}
+
+/**
+ * A link straight at a `SKILL.md`: only that file is read, from
+ * `raw.githubusercontent.com` at the pinned commit, with no archive. The
+ * folder's other files and the repository licence are not part of it, and the
+ * result says so.
+ */
+export async function loadGithubSkillMarkdown(
+  client: GithubClient,
+  input: GithubRepository & { sha: string, path: string | null },
+): Promise<GithubSkillLoad> {
+  const bytes = await fetchGithubSkillMarkdown(client, {
+    ...input,
+    folder: input.path,
+  })
+
+  if (!bytes) {
+    throw createSkillImportError(
+      'archive-missing-skill-md',
+      'The file was not found in the repository',
+    )
+  }
+
+  let text: string
+
+  try {
+    text = fatalDecoder.decode(bytes)
+  } catch (_exception) {
+    throw createSkillImportError(
+      'archive-not-utf8',
+      'A file is not valid UTF-8 text',
+      'SKILL.md',
+    )
+  }
+
+  if (text.includes('\u0000')) {
+    throw createSkillImportError(
+      'archive-binary-content',
+      'A file contains binary data',
+      'SKILL.md',
+    )
+  }
+
+  return {
+    kind: 'skill',
+    files: [{ path: 'SKILL.md', bytes, text }],
+    folderName: input.path ? input.path.split('/').at(-1)! : null,
+    skillPath: input.path,
+    warnings: [
+      'Only SKILL.md was imported. Link to the folder to import the files '
+      + 'next to it, such as references and scripts, and the repository '
+      + 'licence.',
+    ],
   }
 }

@@ -1,48 +1,47 @@
-import type { KVNamespace } from '@cloudflare/workers-types'
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
 import {
-  SKILL_GITHUB_API_BUDGET_PER_HOUR,
-  SKILL_GITHUB_API_MAX_BYTES,
-  SKILL_GITHUB_BRANCH_CACHE_SECONDS,
   SKILL_GITHUB_REF_CACHE_SECONDS,
+  SKILL_GITHUB_REFS_MAX_BYTES,
   SKILL_GITHUB_REQUEST_DEADLINE_MS,
   SKILL_GITHUB_TIMEOUT_MS,
   SKILL_MAX_GITHUB_ARCHIVE_BYTES,
+  SKILL_MAX_SKILL_MD_BYTES,
 } from '#shared/utils/skills-policy'
 import {
   GITHUB_DEFAULT_REF,
-  GITHUB_FULL_SHA_PATTERN,
-  GITHUB_SEGMENT_PATTERN,
   getGithubRefCandidates,
   isGithubFullSha,
   isGithubShaLikeRef,
   isReservedGithubRef,
+  isValidGithubSegment,
 } from '#shared/utils/skills/github-url'
 import type { ParsedGithubSkillUrl } from '#shared/utils/skills/github-url'
-import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
+import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import {
+  GIT_REFS_SERVICE_QUERY,
+  parseGitRefAdvertisement,
+} from '~~/server/utils/skills/import/git-refs'
+import type { GitRefAdvertisement } from '~~/server/utils/skills/import/git-refs'
 
-export const GITHUB_API_HOST = 'api.github.com'
+export const GITHUB_WEB_HOST = 'github.com'
 export const GITHUB_CODELOAD_HOST = 'codeload.github.com'
+export const GITHUB_RAW_HOST = 'raw.githubusercontent.com'
 export const GITHUB_ALLOWED_HOSTS: ReadonlySet<string> = new Set([
-  GITHUB_API_HOST,
+  GITHUB_WEB_HOST,
   GITHUB_CODELOAD_HOST,
+  GITHUB_RAW_HOST,
 ])
 
 const GITHUB_USER_AGENT = 'Besidka-Skills/1.0'
-const GITHUB_API_VERSION = '2022-11-28'
-const GITHUB_SHA_BODY_MAX_BYTES = 256
 const GITHUB_INITIAL_BUFFER_BYTES = 64 * 1024
-const GITHUB_BUDGET_KEY_PREFIX = 'skills-github-api-budget'
-const GITHUB_BUDGET_WINDOW_SECONDS = 60 * 60
 const GITHUB_CACHE_KEY_PREFIX = 'skills:github'
+const GITHUB_REFS_PATH_PATTERN
+  = /^\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\.git\/info\/refs$/
+const GITHUB_REFS_ACCEPT = '*/*'
 const ARCHIVE_BUSY_RETRY_SECONDS = 5
-const PASS_THROUGH_STATUSES: ReadonlySet<number> = new Set([404, 422])
-const COMMIT_ON_BRANCH_STATUSES: ReadonlySet<string> = new Set([
-  'behind',
-  'identical',
-])
+const PASS_THROUGH_STATUSES: ReadonlySet<number> = new Set([401, 404])
 
 export type GithubFetchPurpose = 'skills-github'
 
@@ -76,7 +75,7 @@ export interface GithubClient {
   logger?: LoggerLike
   kv?: GithubKv
   deadlineAt: number
-  defaultBranches: Map<string, string>
+  refsByRepository: Map<string, GitRefAdvertisement>
 }
 
 export interface GithubRepository {
@@ -88,11 +87,12 @@ export interface GithubResolvedSource {
   sha: string
   ref: string
   path: string | null
+  warnings: string[]
 }
 
 export type GithubRefLookup
   = | { found: true, sha: string }
-    | { found: false, status: number }
+    | { found: false }
 
 let archiveSlotBusy = false
 
@@ -109,7 +109,7 @@ export function createGithubClient(
     logger: options.logger,
     kv: options.kv,
     deadlineAt: (options.now ?? Date.now()) + SKILL_GITHUB_REQUEST_DEADLINE_MS,
-    defaultBranches: new Map(),
+    refsByRepository: new Map(),
   }
 }
 
@@ -118,7 +118,8 @@ export function createGithubNotFoundError() {
     message: 'Private or missing repository',
     status: 404,
     code: 'github-not-found',
-    why: 'GitHub answered 404, and only public repositories can be imported',
+    why: 'GitHub did not show this repository, and only public repositories '
+      + 'can be imported',
     fix: 'Check the link, make sure the repository is public, or upload a zip',
   })
 }
@@ -128,8 +129,10 @@ export function createGithubRefNotFoundError() {
     message: 'Branch, tag or commit not found',
     status: 404,
     code: 'github-ref-not-found',
-    why: 'The repository has no branch, tag or commit with that name',
-    fix: 'Check the link, or paste the link to the folder on the default branch',
+    why: 'The repository has no branch or tag with that name, and no branch '
+      + 'or tag starts with that commit id',
+    fix: 'Use a link with a branch, a tag or the full 40-character commit id, '
+      + 'or paste the link to the folder on the default branch',
   })
 }
 
@@ -138,8 +141,8 @@ export function createGithubRateLimitError() {
     message: 'GitHub rate limit reached',
     status: 429,
     code: 'github-rate-limited',
-    why: 'GitHub allows 60 anonymous requests an hour for this server',
-    fix: 'Try again in an hour or upload a zip',
+    why: 'GitHub answered that this server sent too many requests',
+    fix: 'Try again in a few minutes or upload a zip',
   })
 }
 
@@ -148,13 +151,15 @@ function createGithubRefusedError() {
     message: 'GitHub refused the request',
     status: 502,
     code: 'github-refused',
-    why: 'GitHub answered 403 without a rate limit, for example a blocked '
-      + 'repository',
+    why: 'GitHub answered 403, for example for a blocked repository',
     fix: 'Check that the repository is public, or upload a zip',
   })
 }
 
-function createGithubUnavailableError(why: string, code: string) {
+function createGithubUnavailableError(
+  why: string,
+  code: string = 'github-unavailable',
+) {
   return createError({
     message: 'GitHub did not answer as expected',
     status: 502,
@@ -164,25 +169,25 @@ function createGithubUnavailableError(why: string, code: string) {
   })
 }
 
-function createCommitNotOnRepositoryError(input: GithubRepository) {
-  return createError({
-    message: `This commit is not on any branch of ${input.owner}/${input.repo}`,
-    status: 422,
-    code: 'github-commit-not-on-repository',
-    why: 'A commit id can belong to a fork and still resolve under another '
-      + 'repository, so only commits reachable from the default branch are '
-      + 'imported',
-    fix: 'Use a link to a branch, a tag or a commit of the default branch',
-  })
-}
-
 export function createGithubTooLargeError(limitBytes: number) {
   return createError({
     message: 'This repository is too large to import',
     status: 413,
     code: 'github-too-large',
     why: `GitHub sent more than ${limitBytes / 1024 / 1024} MiB`,
-    fix: 'Upload a zip of the skill folder instead',
+    fix: 'Download just the skill folder as a zip, then upload that zip here',
+  })
+}
+
+function createGithubRefsTooLargeError() {
+  return createError({
+    message: 'This repository has too many branches and tags to read',
+    status: 413,
+    code: 'github-refs-too-large',
+    why: 'The list of its branches and tags is larger than '
+      + `${SKILL_GITHUB_REFS_MAX_BYTES / 1024 / 1024} MiB`,
+    fix: 'Paste a link that holds the full 40-character commit id, or upload '
+      + 'a zip',
   })
 }
 
@@ -210,8 +215,12 @@ function createArchiveBusyError() {
 }
 
 /**
- * The only places a skills import may talk to. The host is never taken from
- * user input, so this guard protects against a future caller, not a user.
+ * The only places a skills import may talk to: the git ref list of a public
+ * repository on `github.com` (that one path and query only), the archive on
+ * `codeload.github.com` and single files on `raw.githubusercontent.com`. The
+ * host is never taken from user input, so this guard protects against a
+ * future caller, not a user. `api.github.com` is not allowed: its anonymous
+ * quota is shared by every Workers address and is already spent.
  */
 export function assertAllowedGithubUrl(input: string): URL {
   let url: URL
@@ -228,19 +237,28 @@ export function assertAllowedGithubUrl(input: string): URL {
     })
   }
 
+  const isWebPathAllowed = url.hostname !== GITHUB_WEB_HOST
+    || (
+      GITHUB_REFS_PATH_PATTERN.test(url.pathname)
+      && url.search === `?${GIT_REFS_SERVICE_QUERY}`
+    )
+
   if (
     url.protocol !== 'https:'
     || !GITHUB_ALLOWED_HOSTS.has(url.hostname)
     || url.username
     || url.password
     || url.port
+    || url.hash
+    || !isWebPathAllowed
   ) {
     throw createError({
       message: 'This address is not allowed',
       status: 400,
       code: 'github-host-not-allowed',
-      why: 'Only https requests to api.github.com and codeload.github.com '
-        + 'are made',
+      why: 'Only https requests for the ref list of a repository on '
+        + 'github.com, the archive on codeload.github.com and files on '
+        + 'raw.githubusercontent.com are made',
       fix: 'Use a github.com link',
     })
   }
@@ -249,6 +267,12 @@ export function assertAllowedGithubUrl(input: string): URL {
 }
 
 function readDeclaredLength(response: Response): number | null {
+  const encoding = response.headers.get('content-encoding')
+
+  if (encoding && encoding.toLowerCase() !== 'identity') {
+    return null
+  }
+
   const header = response.headers.get('content-length')
 
   if (header === null || header.trim() === '') {
@@ -357,7 +381,6 @@ export async function githubFetch(
   if (timeoutMs <= 0) {
     throw createGithubUnavailableError(
       'The import took too long',
-      'github-timeout',
     )
   }
 
@@ -387,9 +410,6 @@ export async function githubFetch(
           headers: {
             'User-Agent': GITHUB_USER_AGENT,
             'Accept': options.accept,
-            ...(url.hostname === GITHUB_API_HOST
-              ? { 'X-GitHub-Api-Version': GITHUB_API_VERSION }
-              : {}),
           },
         }),
         aborted,
@@ -398,13 +418,11 @@ export async function githubFetch(
       if (exception === timeoutError) {
         throw createGithubUnavailableError(
           'GitHub did not answer in time',
-          'github-timeout',
         )
       }
 
       throw createGithubUnavailableError(
         'GitHub could not be reached',
-        'github-unreachable',
       )
     }
 
@@ -435,10 +453,7 @@ export async function githubFetch(
     if (response.status === 403 || response.status === 429) {
       await response.body?.cancel().catch(() => undefined)
 
-      const isQuotaSpent = response.status === 429
-        || response.headers.get('x-ratelimit-remaining') === '0'
-
-      throw isQuotaSpent
+      throw response.status === 429
         ? createGithubRateLimitError()
         : createGithubRefusedError()
     }
@@ -447,6 +462,12 @@ export async function githubFetch(
       await response.body?.cancel().catch(() => undefined)
 
       return { status: response.status, bytes: new Uint8Array() }
+    }
+
+    if (response.status >= 500) {
+      await response.body?.cancel().catch(() => undefined)
+
+      throw createGithubUnavailableError(`GitHub answered ${response.status}`)
     }
 
     if (response.status < 200 || response.status >= 300) {
@@ -471,7 +492,6 @@ export async function githubFetch(
       if (exception === timeoutError) {
         throw createGithubUnavailableError(
           'GitHub did not answer in time',
-          'github-timeout',
         )
       }
 
@@ -503,22 +523,10 @@ export async function withGithubArchiveSlot<T>(
   }
 }
 
-function encodeGithubRef(ref: string): string {
-  return ref.split('/').map(encodeURIComponent).join('/')
-}
-
-function repositoryApiPath(repository: GithubRepository): string {
-  return `https://${GITHUB_API_HOST}/repos/${repository.owner}/${repository.repo}`
-}
-
-function cacheKey(
-  kind: string,
-  repository: GithubRepository,
-  suffix = '',
-): string {
-  return `${GITHUB_CACHE_KEY_PREFIX}:${kind}:${
+function cacheKey(repository: GithubRepository): string {
+  return `${GITHUB_CACHE_KEY_PREFIX}:refs:${
     repository.owner.toLowerCase()
-  }/${repository.repo.toLowerCase()}${suffix ? `:${suffix}` : ''}`
+  }/${repository.repo.toLowerCase()}`
 }
 
 async function readCache(
@@ -531,7 +539,11 @@ async function readCache(
 
   try {
     return await client.kv.get(key)
-  } catch {
+  } catch (_exception) {
+    client.logger?.set({
+      attributes: { skills: { github: { cacheReadFailed: true } } },
+    })
+
     return null
   }
 }
@@ -548,347 +560,214 @@ async function writeCache(
 
   try {
     await client.kv.put(key, value, { expirationTtl: ttlSeconds })
-  } catch {
-    return
-  }
-}
-
-/**
- * GitHub's 60 requests an hour per IP is shared by the whole app, so API
- * calls draw from one global hourly budget in KV. It fails closed: a spent
- * budget, or KV that cannot be read or written, answers with the rate limit
- * message instead of sending the call. Archive downloads do not count.
- */
-async function consumeApiBudget(client: GithubClient): Promise<void> {
-  if (!client.kv) {
-    return
-  }
-
-  try {
-    const storage = createAuthRateLimitStorage(
-      client.kv as unknown as KVNamespace,
-      GITHUB_BUDGET_KEY_PREFIX,
-    )
-    const result = await storage.consume('global', {
-      window: GITHUB_BUDGET_WINDOW_SECONDS,
-      max: SKILL_GITHUB_API_BUDGET_PER_HOUR,
-    })
-
-    if (result.allowed) {
-      return
-    }
-  } catch (exception) {
+  } catch (_exception) {
     client.logger?.set({
-      attributes: {
-        skills: {
-          github: {
-            budgetFailedClosed: true,
-            budgetError: exception instanceof Error
-              ? exception.message
-              : String(exception),
-          },
-        },
-      },
+      attributes: { skills: { github: { cacheWriteFailed: true } } },
     })
   }
-
-  throw createGithubRateLimitError()
 }
 
-async function apiFetch(
-  client: GithubClient,
-  url: string,
-  options: { accept: string, maxResponseBytes: number },
-): Promise<GithubResponse> {
-  await consumeApiBudget(client)
-
-  return await githubFetch(url, {
-    purpose: 'skills-github',
-    accept: options.accept,
-    maxResponseBytes: options.maxResponseBytes,
-    deadlineAt: client.deadlineAt,
-    fetchImpl: client.fetchImpl,
-    logger: client.logger,
-  })
+interface CachedAdvertisement {
+  head: GitRefAdvertisement['head']
+  branches: Array<[string, string]>
+  tags: Array<[string, string]>
 }
 
-function parseJson(bytes: Uint8Array): unknown {
+function serialiseAdvertisement(advertisement: GitRefAdvertisement): string {
+  return JSON.stringify({
+    head: advertisement.head,
+    branches: [...advertisement.branches],
+    tags: [...advertisement.tags],
+  } satisfies CachedAdvertisement)
+}
+
+function readCachedAdvertisement(raw: string): GitRefAdvertisement | null {
   try {
-    return JSON.parse(new TextDecoder().decode(bytes))
-  } catch {
+    const parsed = JSON.parse(raw) as CachedAdvertisement
+
+    if (!Array.isArray(parsed.branches) || !Array.isArray(parsed.tags)) {
+      return null
+    }
+
+    return {
+      head: parsed.head ?? null,
+      branches: new Map(parsed.branches),
+      tags: new Map(parsed.tags),
+    }
+  } catch (_exception) {
     return null
   }
 }
 
-function parseJsonObject(bytes: Uint8Array): Record<string, unknown> | null {
-  const parsed = parseJson(bytes)
-
-  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : null
-}
-
-interface GithubNamedRef {
-  sha: string
-  type: string
-}
-
-async function readNamedRef(
+/**
+ * Every branch and tag of a public repository, read from the git smart HTTP
+ * ref list (`github.com/<owner>/<repo>.git/info/refs`), which has no
+ * per-address quota the way `api.github.com` has. Peeled tags answer with
+ * their commit. A 404 or 401 means the repository is missing or private. The
+ * answer is cached in KV for `SKILL_GITHUB_REF_CACHE_SECONDS`, because the
+ * same link is often tried twice (a pick list, then the choice).
+ */
+export async function fetchGithubRefs(
   client: GithubClient,
-  input: GithubRepository & { namespace: 'heads' | 'tags', ref: string },
-): Promise<GithubNamedRef | null> {
-  const response = await apiFetch(
-    client,
-    `${repositoryApiPath(input)}/git/ref/${input.namespace}/${
-      encodeGithubRef(input.ref)
-    }`,
-    {
-      accept: 'application/vnd.github+json',
-      maxResponseBytes: SKILL_GITHUB_API_MAX_BYTES,
-    },
-  )
+  repository: GithubRepository,
+): Promise<GitRefAdvertisement> {
+  const memoryKey = `${repository.owner}/${repository.repo}`
+  const remembered = client.refsByRepository.get(memoryKey)
+
+  if (remembered) {
+    return remembered
+  }
+
+  const key = cacheKey(repository)
+  const cached = await readCache(client, key)
+  const fromCache = cached ? readCachedAdvertisement(cached) : null
+
+  if (fromCache) {
+    client.refsByRepository.set(memoryKey, fromCache)
+
+    return fromCache
+  }
+
+  let response: GithubResponse
+
+  try {
+    response = await githubFetch(
+      `https://${GITHUB_WEB_HOST}/${repository.owner}/${
+        repository.repo
+      }.git/info/refs?${GIT_REFS_SERVICE_QUERY}`,
+      {
+        purpose: 'skills-github',
+        accept: GITHUB_REFS_ACCEPT,
+        maxResponseBytes: SKILL_GITHUB_REFS_MAX_BYTES,
+        deadlineAt: client.deadlineAt,
+        fetchImpl: client.fetchImpl,
+        logger: client.logger,
+      },
+    )
+  } catch (exception) {
+    if ((exception as { code?: string }).code === 'github-too-large') {
+      throw createGithubRefsTooLargeError()
+    }
+
+    throw exception
+  }
 
   if (response.status !== 200) {
-    return null
+    throw createGithubNotFoundError()
   }
 
-  const body = parseJsonObject(response.bytes)
-  const object = body?.object as Record<string, unknown> | undefined
+  const advertisement = parseGitRefAdvertisement(response.bytes)
 
-  if (
-    body?.ref !== `refs/${input.namespace}/${input.ref}`
-    || typeof object?.sha !== 'string'
-    || typeof object.type !== 'string'
-    || !GITHUB_FULL_SHA_PATTERN.test(object.sha)
-  ) {
-    return null
+  if (!advertisement) {
+    throw createGithubUnavailableError(
+      'GitHub did not send a list of branches and tags this server can read',
+      'github-unexpected-response',
+    )
   }
 
-  return { sha: object.sha, type: object.type }
+  client.refsByRepository.set(memoryKey, advertisement)
+  await writeCache(
+    client,
+    key,
+    serialiseAdvertisement(advertisement),
+    SKILL_GITHUB_REF_CACHE_SECONDS,
+  )
+
+  return advertisement
+}
+
+function findShortShaMatch(
+  advertisement: GitRefAdvertisement,
+  prefix: string,
+): string | null {
+  const matches = new Set<string>()
+
+  for (const sha of [
+    ...advertisement.branches.values(),
+    ...advertisement.tags.values(),
+  ]) {
+    if (sha.startsWith(prefix)) {
+      matches.add(sha)
+    }
+  }
+
+  return matches.size === 1 ? [...matches][0]! : null
 }
 
 /**
- * Turns a branch, tag, `HEAD` or hex id into a commit SHA. A pull request
- * head or merge ref (`pull/N/head`) resolves through the commit lookup to a
- * commit that lives in a fork, so a name must first be confirmed as a branch
- * (`git/ref/heads/<name>`) or a tag (`git/ref/tags/<name>`) of this
- * repository; reserved namespaces are refused outright. `HEAD` is the
- * default branch, and a hex id is left to the reachability check. A lightweight
- * ref answers with its commit; an annotated tag is peeled by the commit
- * lookup. A 404 from the commit lookup is reported as a missing ref, and the
- * caller tells a missing repository from a missing ref.
+ * Turns a branch, tag, `HEAD`, full commit id or short commit id into a full
+ * commit id. A full id is used as it is, with no request. `HEAD` is the
+ * default branch. A name is a branch first, then a tag (a peeled tag gives
+ * its commit); a short id must start exactly one branch or tag tip. Pull
+ * request and internal refs are refused outright.
  */
 export async function resolveGithubRef(
   client: GithubClient,
   input: GithubRepository & { ref: string },
 ): Promise<GithubRefLookup> {
   if (isReservedGithubRef(input.ref)) {
-    return { found: false, status: 422 }
+    return { found: false }
   }
 
-  const isNamedRef = input.ref !== GITHUB_DEFAULT_REF
-    && !isGithubShaLikeRef(input.ref.toLowerCase())
-
-  if (isNamedRef) {
-    const named = await readNamedRef(client, {
-      ...input,
-      namespace: 'heads',
-    }) ?? await readNamedRef(client, { ...input, namespace: 'tags' })
-
-    if (!named) {
-      return { found: false, status: 404 }
-    }
-
-    if (named.type === 'commit') {
-      return { found: true, sha: named.sha }
-    }
+  if (isGithubFullSha(input.ref.toLowerCase())) {
+    return { found: true, sha: input.ref.toLowerCase() }
   }
 
-  const response = await apiFetch(
-    client,
-    `${repositoryApiPath(input)}/commits/${encodeGithubRef(input.ref)}`,
-    {
-      accept: 'application/vnd.github.sha',
-      maxResponseBytes: GITHUB_SHA_BODY_MAX_BYTES,
-    },
-  )
+  const advertisement = await fetchGithubRefs(client, input)
 
-  if (response.status === 404 || response.status === 422) {
-    return { found: false, status: response.status }
+  if (input.ref === GITHUB_DEFAULT_REF) {
+    return advertisement.head
+      ? { found: true, sha: advertisement.head.sha }
+      : { found: false }
   }
 
-  const sha = new TextDecoder().decode(response.bytes).trim()
+  const named = advertisement.branches.get(input.ref)
+    ?? advertisement.tags.get(input.ref)
 
-  if (!GITHUB_FULL_SHA_PATTERN.test(sha)) {
-    throw createGithubUnavailableError(
-      'GitHub did not return a commit id',
-      'github-unexpected-response',
-    )
+  if (named) {
+    return { found: true, sha: named }
   }
 
-  return { found: true, sha }
-}
-
-async function readDefaultBranch(
-  client: GithubClient,
-  repository: GithubRepository,
-): Promise<string> {
-  const memoryKey = `${repository.owner}/${repository.repo}`
-  const remembered = client.defaultBranches.get(memoryKey)
-
-  if (remembered) {
-    return remembered
-  }
-
-  const key = cacheKey('branch', repository)
-  const cached = await readCache(client, key)
-
-  if (cached) {
-    client.defaultBranches.set(memoryKey, cached)
-
-    return cached
-  }
-
-  const response = await apiFetch(client, repositoryApiPath(repository), {
-    accept: 'application/vnd.github+json',
-    maxResponseBytes: SKILL_GITHUB_API_MAX_BYTES,
-  })
-
-  if (response.status !== 200) {
-    throw createGithubNotFoundError()
-  }
-
-  const branch = parseJsonObject(response.bytes)?.default_branch
-  const segments = typeof branch === 'string' ? branch.split('/') : []
-
-  if (
-    segments.length === 0
-    || branch === GITHUB_DEFAULT_REF
-    || !segments.every((segment) => {
-      return segment !== '.'
-        && segment !== '..'
-        && GITHUB_SEGMENT_PATTERN.test(segment)
-    })
-  ) {
-    throw createGithubUnavailableError(
-      'GitHub returned no usable default branch',
-      'github-unexpected-response',
-    )
-  }
-
-  client.defaultBranches.set(memoryKey, branch as string)
-  await writeCache(
-    client,
-    key,
-    branch as string,
-    SKILL_GITHUB_BRANCH_CACHE_SECONDS,
-  )
-
-  return branch as string
-}
-
-/**
- * K18: a commit id can belong to a fork and still resolve under the named
- * repository, so an id that came from the link (or that a short id resolved)
- * is accepted only when it is on the default branch: `compare` must answer
- * `behind` or `identical`. Any other answer, a 404, or a body that cannot be
- * read is the same refusal.
- */
-export async function assertCommitOnRepository(
-  client: GithubClient,
-  input: GithubRepository & { sha: string },
-): Promise<void> {
-  const defaultBranch = await readDefaultBranch(client, input)
-  let response: GithubResponse
-
-  try {
-    response = await apiFetch(
-      client,
-      `${repositoryApiPath(input)}/compare/${
-        encodeGithubRef(defaultBranch)
-      }...${input.sha}?per_page=1`,
-      {
-        accept: 'application/vnd.github+json',
-        maxResponseBytes: SKILL_GITHUB_API_MAX_BYTES,
-      },
-    )
-  } catch (exception) {
-    if ((exception as { code?: string }).code === 'github-too-large') {
-      throw createCommitNotOnRepositoryError(input)
-    }
-
-    throw exception
-  }
-
-  const status = response.status === 200
-    ? parseJsonObject(response.bytes)?.status
+  const lowered = input.ref.toLowerCase()
+  const short = isGithubShaLikeRef(lowered)
+    ? findShortShaMatch(advertisement, lowered)
     : null
 
-  if (typeof status !== 'string' || !COMMIT_ON_BRANCH_STATUSES.has(status)) {
-    throw createCommitNotOnRepositoryError(input)
-  }
+  return short ? { found: true, sha: short } : { found: false }
 }
 
-export function githubRefNeedsReachabilityCheck(
-  ref: string,
-  sha: string,
-): boolean {
-  const lowered = ref.toLowerCase()
-
-  return isGithubShaLikeRef(lowered) && sha.startsWith(lowered)
-}
-
-/**
- * A ref the repository really has, as a commit SHA that passed every check.
- * The verified answer is cached in KV for a minute, because the same link is
- * often tried twice (a pick list, then the choice) and every uncached lookup
- * spends the app-wide GitHub quota.
- */
-export async function resolveVerifiedGithubRef(
-  client: GithubClient,
-  input: GithubRepository & { ref: string },
-): Promise<GithubRefLookup> {
-  const key = cacheKey('ref', input, input.ref)
-  const cached = await readCache(client, key)
-
-  if (cached && GITHUB_FULL_SHA_PATTERN.test(cached)) {
-    return { found: true, sha: cached }
-  }
-
-  const lookup = await resolveGithubRef(client, input)
-
-  if (!lookup.found) {
-    return lookup
-  }
-
-  if (githubRefNeedsReachabilityCheck(input.ref, lookup.sha)) {
-    await assertCommitOnRepository(client, { ...input, sha: lookup.sha })
-  }
-
-  await writeCache(client, key, lookup.sha, SKILL_GITHUB_REF_CACHE_SECONDS)
-
-  return lookup
-}
-
-/**
- * Called when no ref was found: a missing repository and a missing ref both
- * answer 404 on the ref endpoints, so the repository itself is asked once.
- */
-export async function throwGithubRefMissing(
+async function warnWhenCommitIsNotATip(
   client: GithubClient,
   repository: GithubRepository,
-): Promise<never> {
-  await readDefaultBranch(client, repository)
+  sha: string,
+): Promise<string[]> {
+  const warning = `GitHub cannot confirm that commit ${sha.slice(0, 7)} belongs `
+    + `to ${repository.owner}/${repository.repo}: it is not the latest commit of `
+    + 'a branch or a tag, and a commit of a fork can be reached under this name'
 
-  throw createGithubRefNotFoundError()
+  try {
+    const advertisement = await fetchGithubRefs(client, repository)
+    const tips = new Set([
+      ...(advertisement.head ? [advertisement.head.sha] : []),
+      ...advertisement.branches.values(),
+      ...advertisement.tags.values(),
+    ])
+
+    return tips.has(sha) ? [] : [warning]
+  } catch (_exception) {
+    client.logger?.set({
+      attributes: { skills: { github: { tipCheckFailed: true } } },
+    })
+
+    return [warning]
+  }
 }
 
 /**
  * Pins a link to one commit. A ref that contains `/` is tried as up to three
- * splits, shortest first. A 40-character commit id taken from the link goes
- * through the reachability check; a branch or tag is confirmed as one of the
- * repository's own by `resolveGithubRef`, which also refuses pull request
- * refs.
+ * splits, shortest first. A full commit id from the link is used as it is
+ * and carries a warning when it is not the tip of a branch or tag, because
+ * without the API there is no way to prove it belongs to this repository.
  */
 export async function resolveGithubSource(
   client: GithubClient,
@@ -900,27 +779,25 @@ export async function resolveGithubSource(
 
   for (const candidate of candidates) {
     const path = options.path === undefined ? candidate.path : options.path
-
-    if (isGithubFullSha(candidate.ref)) {
-      await assertCommitOnRepository(client, {
-        ...repository,
-        sha: candidate.ref,
-      })
-
-      return { sha: candidate.ref, ref: candidate.ref, path }
-    }
-
-    const lookup = await resolveVerifiedGithubRef(client, {
+    const lookup = await resolveGithubRef(client, {
       ...repository,
       ref: candidate.ref,
     })
 
-    if (lookup.found) {
-      return { sha: lookup.sha, ref: candidate.ref, path }
+    if (!lookup.found) {
+      continue
     }
+
+    const warnings = isGithubFullSha(candidate.ref)
+      ? await warnWhenCommitIsNotATip(client, repository, lookup.sha)
+      : []
+
+    return { sha: lookup.sha, ref: candidate.ref, path, warnings }
   }
 
-  return await throwGithubRefMissing(client, repository)
+  await fetchGithubRefs(client, repository)
+
+  throw createGithubRefNotFoundError()
 }
 
 export async function downloadGithubArchive(
@@ -953,4 +830,42 @@ export async function downloadGithubArchive(
   }
 
   return response.bytes
+}
+
+/**
+ * One `SKILL.md` of a commit from `raw.githubusercontent.com`, for a link
+ * that points straight at the file. `null` when the commit has no file at
+ * that path.
+ */
+export async function fetchGithubSkillMarkdown(
+  client: GithubClient,
+  input: GithubRepository & { sha: string, folder: string | null },
+): Promise<Uint8Array | null> {
+  const segments = input.folder ? input.folder.split('/') : []
+
+  if (
+    !isGithubFullSha(input.sha)
+    || !segments.every(isValidGithubSegment)
+  ) {
+    throw createGithubUnavailableError(
+      'The file address is not valid',
+      'github-unexpected-response',
+    )
+  }
+
+  const response = await githubFetch(
+    `https://${GITHUB_RAW_HOST}/${input.owner}/${input.repo}/${input.sha}/${
+      [...segments, SKILL_MD_FILE_NAME].join('/')
+    }`,
+    {
+      purpose: 'skills-github',
+      accept: 'text/plain',
+      maxResponseBytes: SKILL_MAX_SKILL_MD_BYTES,
+      deadlineAt: client.deadlineAt,
+      fetchImpl: client.fetchImpl,
+      logger: client.logger,
+    },
+  )
+
+  return response.status === 200 ? response.bytes : null
 }

@@ -169,7 +169,6 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
   function moveHeadTo(sha: string, archive: Uint8Array) {
     forgetCachedRefs()
     github.setBranch('main', sha)
-    github.refs.set('HEAD', sha)
     github.archives.set(sha, archive)
   }
 
@@ -212,7 +211,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     expect((await failureOf(check('nope!'))).status).toBe(404)
   })
 
-  it('says up to date after one API call when the commit has not moved', async () => {
+  it('says up to date after one ref list request when the commit has not moved', async () => {
     forgetCachedRefs()
 
     expect(await check()).toEqual({
@@ -223,14 +222,12 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       latestVersion: GITHUB_SHA_ONE,
     })
     expect(github.urls()).toEqual([
-      'https://api.github.com/repos/o/r/git/ref/heads/main',
+      'https://github.com/o/r.git/info/refs?service=git-upload-pack',
     ])
     expect(await versionRows()).toHaveLength(1)
   })
 
   it('has nothing to check for a skill pinned to a commit', async () => {
-    github.compare.set(GITHUB_SHA_ONE, 'identical')
-
     const pinned = await testDb.db.insert(schema.skills).values({
       ...(await skillRow()),
       id: undefined,
@@ -303,7 +300,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       sourceVersion: GITHUB_SHA_TWO,
     })
     expect(github.urls()).toEqual([
-      'https://api.github.com/repos/o/r/git/ref/heads/main',
+      'https://github.com/o/r.git/info/refs?service=git-upload-pack',
       `https://codeload.github.com/o/r/zip/${GITHUB_SHA_TWO}`,
     ])
     expect([...kv.values.keys()].filter((key) => {
@@ -500,16 +497,14 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     expect((await skillRow()).pendingVersion).toBeNull()
   })
 
-  it('checks a hex-like stored ref against the default branch too (K18)', async () => {
+  it('does not resolve a hex-like stored ref that starts no branch or tag tip', async () => {
     await testDb.db.update(schema.skills)
       .set({ sourceRef: '2222222' })
       .where(eq(schema.skills.id, skillId))
-    github.refs.set('2222222', GITHUB_SHA_TWO)
-    github.compare.set(GITHUB_SHA_TWO, 404)
 
     expect(await failureOf(check())).toMatchObject({
-      status: 422,
-      code: 'github-commit-not-on-repository',
+      status: 404,
+      code: 'github-ref-not-found',
     })
     expect((await skillRow()).pendingVersion).toBeNull()
   })
@@ -519,8 +514,6 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       await testDb.db.update(schema.skills)
         .set({ sourceRef: ref })
         .where(eq(schema.skills.id, skillId))
-      github.refs.set(ref, GITHUB_SHA_TWO)
-      github.compare.set(GITHUB_SHA_TWO, 'identical')
       github.fetch.mockClear()
 
       expect(await failureOf(check())).toMatchObject({
@@ -537,14 +530,13 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     await testDb.db.update(schema.skills)
       .set({ sourceRef: 'looks-like-a-branch' })
       .where(eq(schema.skills.id, skillId))
-    github.refs.set('looks-like-a-branch', GITHUB_SHA_TWO)
 
     expect(await failureOf(check())).toMatchObject({
       status: 404,
       code: 'github-ref-not-found',
     })
     expect(github.urls().some((url) => {
-      return url.includes('/commits/')
+      return url.includes('api.github.com')
     })).toBe(false)
   })
 
@@ -602,7 +594,6 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
 
   it('answers 404 when the branch no longer exists', async () => {
     forgetCachedRefs()
-    github.refs.delete('main')
     github.branches.delete('main')
 
     expect(await failureOf(check())).toMatchObject({

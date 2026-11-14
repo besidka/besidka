@@ -24,6 +24,7 @@ import {
 import { skillMarkdown } from '../../../../../setup/helpers/skill-archives'
 import {
   GITHUB_SHA_ONE,
+  GITHUB_SHA_TWO,
   createGithubMock,
   githubRepoArchive,
 } from '../../../../../setup/helpers/github-mock'
@@ -154,7 +155,6 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     bucket = createFakeSkillBucket()
     github = createGithubMock()
     github.setBranch('main', GITHUB_SHA_ONE)
-    github.refs.set('HEAD', GITHUB_SHA_ONE)
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE))
     vi.stubGlobal('fetch', github.fetch)
   })
@@ -217,9 +217,12 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       return file.path
     })).toEqual(['SKILL.md', 'LICENSE', 'references/checklist.md'])
     expect(github.urls()).toEqual([
-      'https://api.github.com/repos/o/r/git/ref/heads/main',
+      'https://github.com/o/r.git/info/refs?service=git-upload-pack',
       `https://codeload.github.com/o/r/zip/${GITHUB_SHA_ONE}`,
     ])
+    expect(github.urls().some((url) => {
+      return url.includes('api.github.com')
+    })).toBe(false)
   })
 
   it('uses the repository-root licence when the skill has none', async () => {
@@ -248,14 +251,29 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     expect(result.licence.class).not.toBe('open')
   })
 
-  it('treats a blob link to SKILL.md as its parent folder', async () => {
+  it('reads a blob link to SKILL.md from raw by commit, without the archive', async () => {
     await signIn()
+    github.raw.set(
+      `${GITHUB_SHA_ONE}/skills/review-pr/SKILL.md`,
+      '---\nname: review-pr\ndescription: Review a pull request\n---\nBody\n',
+    )
 
     const result = await preview({
       url: 'https://github.com/o/r/blob/main/skills/review-pr/SKILL.md',
     })
 
-    expect(result.sourcePath).toBe('skills/review-pr')
+    expect(result).toMatchObject({
+      sourcePath: 'skills/review-pr',
+      sourceVersion: GITHUB_SHA_ONE,
+      skill: { name: 'review-pr' },
+    })
+    expect(github.urls()).toEqual([
+      'https://github.com/o/r.git/info/refs?service=git-upload-pack',
+      `https://raw.githubusercontent.com/o/r/${GITHUB_SHA_ONE}/skills/review-pr/SKILL.md`,
+    ])
+    expect(result.files.map((file: { path: string }) => file.path))
+      .toEqual(['SKILL.md'])
+    expect(result.warnings.join(' ')).toContain('Only SKILL.md was imported')
   })
 
   it('finds the only skill from a bare repository link', async () => {
@@ -309,7 +327,6 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
 
   it('maps a missing or private repository to a clear 404', async () => {
     await signIn()
-    github.refs.clear()
     github.repoStatus = 404
 
     const failure = await failureOf(preview({ url: 'https://github.com/o/r' }))
@@ -333,41 +350,34 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
   it('maps GitHub rate limiting to its message and fix', async () => {
     await signIn()
     github.fetch.mockImplementationOnce(async () => {
-      return new Response('', {
-        status: 403,
-        headers: { 'x-ratelimit-remaining': '0' },
-      })
+      return new Response('', { status: 429 })
     })
 
     const failure = await failureOf(preview({ url: 'https://github.com/o/r' }))
 
     expect(failure).toMatchObject({
       status: 429,
+      code: 'github-rate-limited',
       message: 'GitHub rate limit reached',
-      fix: 'Try again in an hour or upload a zip',
+      fix: 'Try again in a few minutes or upload a zip',
     })
   })
 
-  it('refuses a commit that is only on a fork (K18)', async () => {
+  it('warns that a commit which is not a branch or tag tip cannot be confirmed (K18)', async () => {
     await signIn()
-    github.compare.set(GITHUB_SHA_ONE, 404)
+    github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO))
 
-    const failure = await failureOf(preview({
-      url: `https://github.com/o/r/commit/${GITHUB_SHA_ONE}`,
-    }))
-
-    expect(failure).toMatchObject({
-      status: 422,
-      message: 'This commit is not on any branch of o/r',
+    const result = await preview({
+      url: `https://github.com/o/r/commit/${GITHUB_SHA_TWO}`,
+      path: 'skills/review-pr',
     })
-    expect(github.urls().some((url) => {
-      return url.startsWith('https://codeload.github.com')
-    })).toBe(false)
+
+    expect(result.sourceVersion).toBe(GITHUB_SHA_TWO)
+    expect(result.warnings.join(' ')).toContain('cannot confirm that commit')
   })
 
-  it('imports a commit on the default branch and keeps the SHA as the ref', async () => {
+  it('imports the tip of a branch by its commit id without that warning', async () => {
     await signIn()
-    github.compare.set(GITHUB_SHA_ONE, 'behind')
 
     const result = await preview({
       url: `https://github.com/o/r/commit/${GITHUB_SHA_ONE}`,
@@ -379,6 +389,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       sourceVersion: GITHUB_SHA_ONE,
       sourcePath: 'skills/review-pr',
     })
+    expect(result.warnings.join(' ')).not.toContain('cannot confirm')
   })
 
   it.each([
@@ -402,8 +413,6 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     ['refs/pull', 'https://github.com/o/r/tree/refs/pull/1/head'],
   ])('refuses %s without calling GitHub (K18)', async (_label, url) => {
     await signIn()
-    github.refs.set('pull/1/head', GITHUB_SHA_ONE)
-    github.compare.set(GITHUB_SHA_ONE, 'identical')
 
     const failure = await failureOf(preview({ url }))
 
@@ -426,7 +435,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
   it('answers 413 for an archive over the cap', async () => {
     await signIn()
     github.fetch.mockImplementationOnce(async () => {
-      return new Response(GITHUB_SHA_ONE)
+      return new Response(github.advertisement() as BodyInit)
     })
     github.fetch.mockImplementationOnce(async () => {
       return new Response('x', {

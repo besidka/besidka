@@ -197,7 +197,7 @@ is added by S-13.
 | Template | `template` | One of 3 to 4 Besidka-authored starters in `shared/utils/skills/templates/`; class `authored` | Besidka version 1, origin `template` |
 | Upload `.zip` or `.skill` | `zip` | At most 5 MiB compressed; unzipped in a browser worker for the preview, then the **original archive** is uploaded and the server re-inflates it with hard limits | Provenance `sha256-<16 hex>` of the archive |
 | Paste | `text` | `SKILL.md` text only (`POST /api/v1/skills/import/text`) | Provenance `sha256-<16 hex>` of the text |
-| GitHub URL | `github` | One `api.github.com` call resolves the ref to a commit SHA, then one download of `codeload.github.com/<owner>/<repo>/zip/<sha>`, both through the narrow fetcher below; flag `skills.import-url` | Provenance: commit SHA |
+| GitHub URL | `github` | The ref list of the repository (`github.com/<owner>/<repo>.git/info/refs`) resolves the ref to a commit SHA, then one download of `codeload.github.com/<owner>/<repo>/zip/<sha>` (or `raw.githubusercontent.com` for a link to a `SKILL.md`), through the narrow fetcher below; no `api.github.com`; flag `skills.import-url` | Provenance: commit SHA |
 | MCP `create_skill` | `mcp` | Files as text (section 11) | Provenance `sha256-<16 hex>` of the canonical file set |
 | Share copy (S-13) | `share` | "Import a copy" of a shared skill (section 12.1) | Set by S-13 |
 | Link to a raw `SKILL.md` | `url` | **Later (S-2U), not in the first release.** One `safeFetch` (purpose `skills-url`, at most 256 KiB, `text/*`) once C-3 is on `main`. Folder name from the URL path's parent segment | `sha256-<16 hex>` of the content |
@@ -216,9 +216,15 @@ skill and on the version row (section 8).
 - `github.com/<owner>/<repo>/commit/<sha>`.
 
 A ref that contains `/` is resolved by trying candidate splits from shortest to
-longest, at most 3. The pin is the commit SHA that `api.github.com` returns for
-the ref (one call on import), or the 40-character SHA from the URL when it
-already holds one. The download always uses the SHA. Only entries under the
+longest, at most 3. The pin is the commit SHA of the branch or tag in the ref
+list (a peeled tag gives its commit), a short SHA that starts exactly one
+branch or tag tip, the default branch for a link without a ref, or the
+40-character SHA from the URL when it already holds one (used as it is, with no
+request). A short SHA that matches no tip answers `github-ref-not-found`
+with a fix that names a branch, a tag or the full SHA. The download always
+uses the SHA. A link to a `SKILL.md` (`blob`) reads only that file from
+`raw.githubusercontent.com` at the pinned commit, with no archive, and says in a
+warning that the other files and the repository licence were not imported. Only entries under the
 requested path are inflated, with one exception: the repository-root
 `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` entries are also inflated for a
 subfolder import. They serve licence classification (section 4, step 1). They
@@ -229,7 +235,7 @@ also carries the total and a `truncated` flag). The list is `{ pick }` with no
 `stageId`; the client sends the same link again as `{ url, path }`, where
 `path` is the chosen repository-relative folder, so the ref stays a branch and
 update checks keep working. Each follow-up is a new import: it costs an hourly
-import slot, a REST call and a download. Only public repositories work; a 404
+import slot, a ref list request and a download. Only public repositories work; a 404
 says "Private or missing repository".
 
 **A SHA must be on the named repository.** A commit SHA can belong to a fork
@@ -261,12 +267,13 @@ The host is never user-controlled.
 
 - Besidka parses `owner`, `repo`, `ref` and `path` with strict regexes
   (`[A-Za-z0-9._-]`, length caps) and builds the URLs itself. The allowlist is
-  exactly two hosts. `api.github.com` resolves the ref to a commit SHA (one
-  call on import) and runs the update checks. `codeload.github.com` downloads
-  `https://codeload.github.com/<owner>/<repo>/zip/<sha>`. There is no
-  `github.com/<owner>/<repo>/archive/<ref>.zip` fallback and no zipball
-  redirect. `raw.githubusercontent.com` is not needed, because the zip carries
-  the files.
+  exactly three hosts: `github.com`, for the one path
+  `/<owner>/<repo>.git/info/refs?service=git-upload-pack` (the git smart HTTP
+  ref list, see below); `codeload.github.com`, which downloads
+  `https://codeload.github.com/<owner>/<repo>/zip/<sha>`; and
+  `raw.githubusercontent.com`, for `<sha>/<folder>/SKILL.md`. `api.github.com`
+  is not allowed. There is no `github.com/<owner>/<repo>/archive/<ref>.zip`
+  fallback and no zipball redirect.
 - Fetch rules: `redirect: 'manual'`, https only, an exact-host allowlist, and
   no redirect is followed. The S-2G spike verifies that codeload answers a SHA
   URL directly.
@@ -287,27 +294,33 @@ The host is never user-controlled.
 - The fetcher keeps C-3's call shape (`purpose: 'skills-github'`). When C-3
   lands, it becomes `safeFetch` with the same allowlist, and one line changes.
 
-GitHub's unauthenticated REST limit is 60 requests an hour per IP, shared
-across Workers egress. Observed on 2026-11-08 (pre-check Q4, not
-documented): the archive download does not count against that quota. The REST
-API (`GET /repos/{owner}/{repo}/commits/{ref}` with
-`Accept: application/vnd.github.sha`) does count, and it runs once per import
-and on every update check. An import of a SHA from the URL makes two more
-calls, the repository lookup and the compare. Because the quota is shared by
-the whole app, every API call draws from one global budget of
-`SKILL_GITHUB_API_BUDGET_PER_HOUR` (50) a hour in KV, which fails closed with
-the rate limit message when spent or when KV cannot be read; a verified
-ref-to-SHA answer is cached for `SKILL_GITHUB_REF_CACHE_SECONDS` (60) and a
-default branch for `SKILL_GITHUB_BRANCH_CACHE_SECONDS` (600). A 429, or a 403
-with `x-ratelimit-remaining: 0`, gives "GitHub rate limit reached" with the fix
-"Try again in an hour or upload a zip"; any other 403 gives "GitHub refused
-the request". A per-user GitHub token (`keys.provider = 'github'`, public
-read-only, encrypted) is **not** in the first layer: S-2G measures on the
-preview first (pre-check owner item 3). `keys.provider` is a TypeScript-only
-enum, so adding `github` should generate no SQL; whoever adds it runs
-`pnpm run db:generate` and greps any generated `.sql` for `DROP TABLE` before
-applying (a rebuild of `keys` is the cascade disaster `CLAUDE.md` describes). Never a Besidka-wide token (GitHub
-Terms section H). A connector's GitHub PAT is never reused for imports
+**Why the REST API is not used (spike 2026-11-14).** GitHub's anonymous REST
+limit is 60 requests an hour per IP, and Cloudflare Workers share their egress
+addresses, so the quota of `api.github.com` is effectively always spent: a
+spike from Cloudflare's edge (`wrangler dev --remote`) found it already at
+`remaining 0` (403 and 429) while three other endpoints answered 200 in every
+run with no rate-limit headers. The importer calls only those three, so it
+needs no token and no budget of its own (the per-user import rate limit stays):
+
+| Endpoint | Used for |
+| --- | --- |
+| `https://github.com/<owner>/<repo>.git/info/refs?service=git-upload-pack` | The git smart HTTP ref advertisement: pkt-lines (a 4-hex length prefix, `0000` is a flush packet). The first ref line is `<sha> HEAD`, then a NUL and the capabilities, among them `symref=HEAD:refs/heads/<default branch>`. Every `refs/heads/*` and `refs/tags/*` follows, a peeled tag as `refs/tags/<name>^{}`, which is preferred. About 180 KB for `anthropics/skills` (most of it `refs/pull/*`, which is ignored); capped at `SKILL_GITHUB_REFS_MAX_BYTES` (8 MiB), over which the user is asked for a full commit id or a zip. Parsed in `server/utils/skills/import/git-refs.ts` against a recorded fixture. |
+| `https://codeload.github.com/<owner>/<repo>/zip/<sha>` | The archive of the pinned commit (15 MiB cap, streamed). Over the cap: "This repository is too large to import", with the fix to download just the skill folder as a zip and upload it. |
+| `https://raw.githubusercontent.com/<owner>/<repo>/<sha>/<path>` | A single `SKILL.md`, for a link straight to the file (256 KiB cap). |
+
+The parsed ref list is cached in KV for `SKILL_GITHUB_REF_CACHE_SECONDS` (60)
+per repository, because a pick list and the choice made from it read the same
+list. A 404 or 401 from the ref list means a private or missing repository
+(`github-not-found`; only public repositories are supported, there is no
+token); a 429 is `github-rate-limited`, a 403 `github-refused`, and a 5xx, a
+timeout or an unreachable GitHub is `github-unavailable`. "Check for updates"
+compares the stored commit with the current tip of the stored ref from the same
+list. Logs carry codes, statuses, hosts and sizes only. Because there is no API
+`compare` call any more, a full commit id from a link cannot be proven to
+belong to the repository (it may live in a fork): the preview carries a warning
+when that commit is not the tip of a branch or tag (K18, below). A per-user
+GitHub token (`keys.provider = 'github'`) is **not** built, and a Besidka-wide
+token is not used (GitHub Terms section H). A connector's GitHub PAT is never reused for imports
 (different purpose and consent).
 
 An import from a Claude Code skill folder reads three frontmatter keys only as
@@ -902,7 +915,7 @@ image. `create_document` is a follow-up tool and behaves as it did before.
 | K15 | Slash-name hijack over MCP: an agent renames a skill to a name the user types every day (`/summarize`) | Agent with `skills:write` | `rename_skill` disables the skill and sets `needs-review`, so it never fires until the user re-enables it. The in-app rename keeps the skill enabled | S-6 |
 | K16 | An imported skill makes itself model-invocable or slash-invocable | Skill author | `model_invocable` and `slash_command` are columns the user sets, not frontmatter; Claude Code keys are read only as defaults at import (section 5.5); MCP never sets them on an existing skill | S-2, S-6, S-12 |
 | K17 | Storage and request abuse through saves | Malicious user or injected agent | `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs), per-save caps, 120 saves per hour, 30 MCP skill writes per hour | S-10, S-6 |
-| K18 | A GitHub import shows `owner/repo` as the source for a commit the repository never held: a SHA in the URL can belong to a fork of it | Malicious link author | Before a SHA from a URL is imported, the repository default branch is read and `compare/{default_branch}...{sha}` must answer `behind` or `identical`; otherwise "This commit is not on any branch of owner/repo" (section 3.1). The same check covers a hex-prefix ref. Pull request and internal refs (`pull/N/head`, `pull/N/merge`, `refs/`, `keep-around`, `__gh__`) are refused outright, and any other ref must first be confirmed as a branch or tag of the repository (`git/ref/heads`, `git/ref/tags`), because the commit lookup resolves fork commits through pull refs. Extra API calls count against the app-wide GitHub budget | S-2G |
+| K18 | A GitHub import shows `owner/repo` as the source for a commit the repository never held: a SHA in the URL can belong to a fork of it | Malicious link author | Pull request and internal refs (`pull/N/head`, `pull/N/merge`, `refs/`, `keep-around`, `__gh__`) are refused outright, and any other ref is resolved only through the repository's own branches and tags in the ref list, never through a commit lookup, so a fork commit cannot be reached by name. A full SHA in the URL is used as it is (the API `compare` check was dropped with the API on 2026-11-14, section 3.1); when it is not the tip of a branch or tag, the preview carries the warning "GitHub cannot confirm that commit ... belongs to owner/repo". The residual risk is a provenance label that names the wrong repository, with content the user still reviews | S-2G |
 
 ## 7. Scripts in provider containers (S-5)
 
@@ -1183,12 +1196,10 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_RESERVED_SLASH_NAMES` | `new`, `model`, `search`, `image`, `memory`, `project`, `help` (section 5.6) | S-1 |
 | `SKILL_GITHUB_PICK_MAX` | 10 skills chosen from one repository | S-2G |
 | `SKILL_GITHUB_MAX_ARCHIVE_ENTRIES` | 20,000 entries in a repository archive (the directory scan; the 1,000-entry upload cap does not apply) | S-2G |
-| `SKILL_GITHUB_API_MAX_BYTES` | 2 MiB per `api.github.com` answer | S-2G |
+| `SKILL_GITHUB_REFS_MAX_BYTES` | 8 MiB for the git ref list of a repository | S-2G |
 | `SKILL_GITHUB_TIMEOUT_MS` | 30 s per GitHub request, body read included | S-2G |
 | `SKILL_GITHUB_REQUEST_DEADLINE_MS` | 60 s for all GitHub calls of one request | S-2G |
-| `SKILL_GITHUB_API_BUDGET_PER_HOUR` | 50 `api.github.com` calls an hour for the whole app (KV, fails closed) | S-2G |
-| `SKILL_GITHUB_REF_CACHE_SECONDS` | 60 (verified ref to SHA, KV) | S-2G |
-| `SKILL_GITHUB_BRANCH_CACHE_SECONDS` | 600 (default branch, KV) | S-2G |
+| `SKILL_GITHUB_REF_CACHE_SECONDS` | 60 (the parsed ref list of a repository, KV) | S-2G |
 | `SKILL_DIFF_TOTAL_CELL_BUDGET` | 8,000,000 diff cells for one review; past it files are counted, not diffed | S-2G |
 | `SKILL_DESCRIPTION_CATALOG_SOFT_MAX` | 300 characters | S-11 |
 | `SKILL_STAGE_TTL` | 1 h (import preview only) | S-2 |
@@ -1668,7 +1679,7 @@ Ticket keys without a BES id are new on 2026-11-13.
 | BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built; the phase now covers authoring, versions and commands, and moves ahead of Phase 3 (research deferred by the owner on 2026-11-12) |
 | S-1 BES-264 | One migration with four tables, `CREATE TABLE` and `CREATE INDEX` only (a later nullable `ADD COLUMN` is allowed by the repo rules; only table rebuilds are banned) (section 8): `skills`, `skill_versions`, `skill_files`, `skill_chat_settings`; no FK to `users` on any of them (explicit purge plus the coverage spec); one sentence added to `CLAUDE.md` after the `documents` note, no cascade-list entry; blob layout `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` and `skills-staging/u<userId>/`, with the key builder, blob put and prune in `server/utils/skills/storage.ts`; `SKILL_VERSIONS_KEPT` 20; the reserved-name validator; the purge, the chat-delete cleanup and the hourly orphan sweep; the "Skills" section of `docs/d1-restore-reconciliation.md`; registry: add `skills.commands` and set `skills.scripts` to `spend: 'foreground'`, `optIn: 'required'`; a `besidka-preview` Time Travel bookmark before the bottom layer is created; `DROP TABLE` grep in the PR; status transitions of section 8.6 |
 | S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime for the import preview only; commit writes version 1 with origin `import`, disabled, or, after a name collision (409), takes `asUpdateOf` to turn the staged files into a pending version of the existing skill (replacing any older pending one), or the user renames the incoming skill; the accept and reject routes of section 3.4, gated by `skills` alone and bound to `{ version, sha256 }` (409 "This update changed while you were reviewing it" on a mismatch); Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
-| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/check` with a persisted pending version (the local-edit warning and diff of section 3.4). Accept and reject are in S-2, not here: accept creates a new version row with the next number over the same blobs, so `current_version` only increases, and accepting disables the skill. The ref is resolved with one `api.github.com` call, a SHA from the URL must pass the reachability check of section 3.1 (K18), the repository-root licence files are inflated for subfolder imports, and the zip comes from `codeload.github.com/<owner>/<repo>/zip/<sha>`. Flag `skills.import-url`, which gates only `{ url }` and `update/check`. Not C-3-dependent |
+| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/check` with a persisted pending version (the local-edit warning and diff of section 3.4). Accept and reject are in S-2, not here: accept creates a new version row with the next number over the same blobs, so `current_version` only increases, and accepting disables the skill. The ref was first resolved with `api.github.com` and a reachability check; since 2026-11-14 it comes from the git ref list on `github.com` with a warning for an unconfirmed commit (section 3.1, K18), the repository-root licence files are inflated for subfolder imports, and the zip comes from `codeload.github.com/<owner>/<repo>/zip/<sha>`. Flag `skills.import-url`, which gates only `{ url }` and `update/check`. Not C-3-dependent |
 | S-10 (new) | `feat(skills): versioned saves, file edits, diff and restore API`: list and create from blank or template; `PATCH` for settings only; versions list and save with `{ baseVersion, changes[], note? }` (409 on a stale base); diff, restore, files and download; templates; 120 saves per hour; every save reruns the classifier |
 | S-4 BES-280 | Re-scoped: the manager page of section 10.2 (list, filters, detail panel, import dialog, review screen, diff view); licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed; tab row checked at 768, 1024 and 1440 px |
 | S-11 (new) | `feat(skills): skill and command editor`: the `WorkspaceDialog` in edit mode, file tree, frontmatter fields, Model view, live validation and token estimate, unsaved-changes guard, the 409 flow, the iOS sheet rules |
