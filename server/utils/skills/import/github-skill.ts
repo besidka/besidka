@@ -6,7 +6,7 @@ import {
 import { sortSkillArchiveFiles } from '#shared/utils/skills/archive'
 import type { SkillArchiveFile } from '#shared/utils/skills/archive'
 import { extractGithubSkillArchive } from '#shared/utils/skills/github-archive'
-import { isSkillLicenceFileName } from '#shared/utils/skills/path'
+import { isSkillLicenseFileName } from '#shared/utils/skills/path'
 import {
   createGithubTooLargeError,
   downloadGithubArchive,
@@ -26,7 +26,7 @@ export type GithubSkillLoad
     files: SkillArchiveFile[]
     folderName: string | null
     skillPath: string | null
-    warnings: string[]
+    rootLicenseFiles: string[]
   }
   | {
     kind: 'pick'
@@ -34,33 +34,33 @@ export type GithubSkillLoad
     total: number
   }
 
-function hasMainLicence(files: SkillArchiveFile[]): boolean {
+function hasMainLicense(files: SkillArchiveFile[]): boolean {
   return files.some((file) => {
     return !file.path.includes('/')
-      && isSkillLicenceFileName(file.path)
+      && isSkillLicenseFileName(file.path)
       && !NOTICE_FILE_PATTERN.test(file.path)
   })
 }
 
 /**
- * A skill folder without a licence of its own falls under the repository's
- * root licence. That file is appended to the skill's files, so it is hashed,
- * staged and stored like any other file and the licence gate reads the same
- * bytes the user will keep. A skill that has its own licence ignores the
+ * A skill folder without a license of its own falls under the repository's
+ * root license. That file is appended to the skill's files, so it is hashed,
+ * staged and stored like any other file and the license gate reads the same
+ * bytes the user will keep. A skill that has its own license ignores the
  * root files.
  */
-function withRepositoryLicence(
+function withRepositoryLicense(
   files: SkillArchiveFile[],
-  licenceFiles: SkillArchiveFile[],
-): { files: SkillArchiveFile[], warnings: string[] } {
-  if (licenceFiles.length === 0 || hasMainLicence(files)) {
-    return { files, warnings: [] }
+  licenseFiles: SkillArchiveFile[],
+): { files: SkillArchiveFile[], rootLicenseFiles: string[] } {
+  if (licenseFiles.length === 0 || hasMainLicense(files)) {
+    return { files, rootLicenseFiles: [] }
   }
 
   const taken = new Set(files.map((file) => {
     return file.path.toLowerCase()
   }))
-  const added = licenceFiles.filter((file) => {
+  const added = licenseFiles.filter((file) => {
     return !taken.has(file.path.toLowerCase())
   })
   const totalBytes = [...files, ...added].reduce((total, file) => {
@@ -72,7 +72,7 @@ function withRepositoryLicence(
     || files.length + added.length > SKILL_MAX_FILES
     || totalBytes > SKILL_MAX_TOTAL_BYTES
   ) {
-    return { files, warnings: [] }
+    return { files, rootLicenseFiles: [] }
   }
 
   const merged = [...files, ...added]
@@ -81,19 +81,15 @@ function withRepositoryLicence(
 
   return {
     files: merged,
-    warnings: [
-      `The skill has no licence file, so the licence of the repository root was used: ${
-        added.map((file) => {
-          return file.path
-        }).join(', ')
-      }`,
-    ],
+    rootLicenseFiles: added.map((file) => {
+      return file.path
+    }),
   }
 }
 
 /**
  * Downloads the archive of one commit and reads the skill at `path` out of
- * it, with the repository-root licence added when the skill has none. A
+ * it, with the repository-root license added when the skill has none. A
  * folder that holds several skills (or none at the top) answers with a pick
  * list instead.
  */
@@ -123,13 +119,13 @@ export async function loadGithubSkill(
     }
   }
 
-  const merged = withRepositoryLicence(result.files, result.licenceFiles)
+  const merged = withRepositoryLicense(result.files, result.licenseFiles)
 
   return {
     kind: 'skill',
     files: merged.files,
     folderName: result.folderName,
     skillPath: result.skillPath,
-    warnings: merged.warnings,
+    rootLicenseFiles: merged.rootLicenseFiles,
   }
 }

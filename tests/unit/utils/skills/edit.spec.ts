@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getSkillSourceGroup,
-  isSkillLicenceRootFile,
+  isSkillLicenseRootFile,
   validateSkillEditPath,
 } from '#shared/utils/skills/edit'
 import { SKILL_SOURCE_KINDS } from '#shared/utils/skills-policy'
@@ -46,18 +46,18 @@ describe('validateSkillEditPath', () => {
   })
 })
 
-describe('isSkillLicenceRootFile', () => {
-  it.each(['LICENSE', 'LICENSE.md', 'licence.txt', 'COPYING', 'NOTICE'])(
-    'treats %s at the root as a licence file',
+describe('isSkillLicenseRootFile', () => {
+  it.each(['LICENSE', 'LICENSE.md', 'license.txt', 'COPYING', 'NOTICE'])(
+    'treats %s at the root as a license file',
     (path) => {
-      expect(isSkillLicenceRootFile(path)).toBe(true)
+      expect(isSkillLicenseRootFile(path)).toBe(true)
     },
   )
 
   it.each(['references/LICENSE', 'license-notes.md', 'SKILL.md'])(
     'does not treat %s as one',
     (path) => {
-      expect(isSkillLicenceRootFile(path)).toBe(false)
+      expect(isSkillLicenseRootFile(path)).toBe(false)
     },
   )
 })

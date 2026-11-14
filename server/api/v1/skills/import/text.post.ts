@@ -20,7 +20,7 @@ const TEXT_BODY_MAX_BYTES = 1024 * 1024
 
 /**
  * Pasted `SKILL.md` text in, a staged preview out. A paste is an import:
- * it keeps the licence gate and class `none` without a licence file, and it
+ * it keeps the license gate and class `none` without a license file, and it
  * is committed disabled through `import/commit` like an archive.
  */
 export default defineEventHandler(async (event) => {

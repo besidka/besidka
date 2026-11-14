@@ -2,9 +2,9 @@ import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { getSkillBaseName } from '#shared/utils/skills/path'
 import type { SkillLicenseClass } from '#shared/utils/skills-policy'
 
-export const SKILL_LICENCE_CLASSIFIER_VERSION = 1
+export const SKILL_LICENSE_CLASSIFIER_VERSION = 1
 
-export const ANTHROPIC_PROPRIETARY_LICENCE_SHA256
+export const ANTHROPIC_PROPRIETARY_LICENSE_SHA256
   = 'aeebbce5340433ffe11573d0dab76f753526b908183d7bb31a5fe551607a2f17'
 
 export const APACHE_2_HEAD_SHA256
@@ -13,7 +13,7 @@ export const APACHE_2_HEAD_SHA256
 export const APACHE_2_APPENDIX_SHA256
   = '2ffc09392fc52f86820d96de5bb10eac0e93832bb8ed03968aeadc19af15b707'
 
-export const SHORT_LICENCE_BODY_SHA256: Readonly<Record<string, string>> = {
+export const SHORT_LICENSE_BODY_SHA256: Readonly<Record<string, string>> = {
   'MIT': '56959050891f7b737ac4e803051170c7197f02df73d80bd9a78d968e305bf558',
   'BSD-2-Clause':
     'a63ef1112ebbd402f4b08567180951af8e947e407c24ee835882c6ffa65195d0',
@@ -34,52 +34,52 @@ export const SKILL_PERMISSIVE_SPDX_IDS: ReadonlySet<string> = new Set([
   'zlib',
 ])
 
-export const SKILL_LICENCE_EXCEPTION_HASHES: ReadonlySet<string> = new Set()
+export const SKILL_LICENSE_EXCEPTION_HASHES: ReadonlySet<string> = new Set()
 
 export const ANTHROPIC_RESTRICTED_MESSAGE
-  = 'This copy carries Anthropic\'s earlier proprietary licence. Anthropic moved these skills to Apache-2.0 on 2026-11-06. Import the current version, or use the built-in Anthropic skill on your own Anthropic key.'
+  = 'This copy carries Anthropic\'s earlier proprietary license. Anthropic moved these skills to Apache-2.0 on 2026-11-06. Import the current version, or use the built-in Anthropic skill on your own Anthropic key.'
 
 export const GENERAL_RESTRICTED_MESSAGE
-  = 'Its licence limits use to a named service, or forbids copying. Besidka cannot import it.'
+  = 'Its license limits use to a named service, or forbids copying. Besidka cannot import it.'
 
-export const CUSTOM_LICENCE_MESSAGE
-  = 'Custom licence. Read it before you install.'
+export const CUSTOM_LICENSE_MESSAGE
+  = 'Custom license. Read it before you install.'
 
-export const NO_LICENCE_MESSAGE
-  = 'No licence stated. The author keeps all rights by default. Besidka keeps a private copy for you only. Install it only if you have the right to use it.'
+export const NO_LICENSE_MESSAGE
+  = 'No license stated. The author keeps all rights by default. Besidka keeps a private copy for you only. Install it only if you have the right to use it.'
 
-export const OPEN_LICENCE_MESSAGE = 'Open licence.'
+export const OPEN_LICENSE_MESSAGE = 'Open license.'
 
-export type SkillImportLicenceClass = Exclude<SkillLicenseClass, 'authored'>
+export type SkillImportLicenseClass = Exclude<SkillLicenseClass, 'authored'>
 
-export interface SkillLicenceInputFile {
+export interface SkillLicenseInputFile {
   path: string
   text: string
 }
 
-export interface SkillLicenceInput {
-  files: SkillLicenceInputFile[]
-  fallbackFiles?: SkillLicenceInputFile[]
+export interface SkillLicenseInput {
+  files: SkillLicenseInputFile[]
+  fallbackFiles?: SkillLicenseInputFile[]
   licenseField: string | null
   exceptionHashes?: ReadonlySet<string>
   restrictiveHashes?: ReadonlySet<string>
 }
 
-export interface SkillLicenceResult {
-  class: SkillImportLicenceClass
+export interface SkillLicenseResult {
+  class: SkillImportLicenseClass
   text: string
   matched: string[]
-  licenceFile: string | null
-  licenceFileSha256: string | null
-  licenceText: string | null
+  licenseFile: string | null
+  licenseFileSha256: string | null
+  licenseText: string | null
   spdx: string | null
   licenseField: string | null
   warnings: string[]
   classifierVersion: number
 }
 
-interface LicenceFileVerdict {
-  class: SkillImportLicenceClass
+interface LicenseFileVerdict {
+  class: SkillImportLicenseClass
   matched: string[]
   spdx: string | null
   sha256: string
@@ -87,11 +87,11 @@ interface LicenceFileVerdict {
   isAnthropic: boolean
 }
 
-const LICENCE_ENTRY_PATTERN = /^(?:licen[sc]e|copying|notice)(?:\.[A-Za-z0-9_-]{1,16})?$/i
+const LICENSE_ENTRY_PATTERN = /^(?:licen[sc]e|copying|notice)(?:\.[A-Za-z0-9_-]{1,16})?$/i
 const NOTICE_ENTRY_PATTERN = /^notice(?:\.[A-Za-z0-9_-]{1,16})?$/i
 const END_OF_TERMS_MARKER = 'END OF TERMS AND CONDITIONS'
 const PARAGRAPH_MAX_CHARACTERS = 2000
-const CLASS_STRICTNESS: Record<SkillImportLicenceClass, number> = {
+const CLASS_STRICTNESS: Record<SkillImportLicenseClass, number> = {
   open: 1,
   none: 2,
   custom: 3,
@@ -121,12 +121,12 @@ const ALL_RIGHTS_LINE_PATTERN = /^\s*all rights reserved\.?\s*$/i
 const TITLE_LINE_PATTERN
   = /^\s*(?:the\s+)?(?:mit|isc|bsd(?:[ -]?\d(?:-clause)?)?(?:[ -]clause)?)\s+licen[sc]e(?:\s*\(.*\))?\s*$/i
 
-export function normaliseLicenceText(text: string): string {
+export function normaliseLicenseText(text: string): string {
   return text.replace(/\r\n?/g, '\n').trim()
 }
 
-export function isSkillLicenceEntry(path: string): boolean {
-  return LICENCE_ENTRY_PATTERN.test(getSkillBaseName(path))
+export function isSkillLicenseEntry(path: string): boolean {
+  return LICENSE_ENTRY_PATTERN.test(getSkillBaseName(path))
 }
 
 function isNoticeEntry(path: string): boolean {
@@ -137,8 +137,8 @@ function isNoticeEntry(path: string): boolean {
  * Masks the copyright line and the title, then collapses whitespace, so the
  * wrapping of an SPDX text and of a real file compare equal.
  */
-export function normaliseLicenceBody(text: string): string {
-  return normaliseLicenceText(text)
+export function normaliseLicenseBody(text: string): string {
+  return normaliseLicenseText(text)
     .split('\n')
     .filter((line) => {
       return !COPYRIGHT_LINE_PATTERN.test(line)
@@ -216,10 +216,10 @@ async function isApache2(text: string): Promise<boolean> {
   return await sha256Hex(masked) === APACHE_2_APPENDIX_SHA256
 }
 
-async function findShortOpenLicence(text: string): Promise<string | null> {
-  const bodyHash = await sha256Hex(normaliseLicenceBody(text))
+async function findShortOpenLicense(text: string): Promise<string | null> {
+  const bodyHash = await sha256Hex(normaliseLicenseBody(text))
 
-  for (const [spdx, hash] of Object.entries(SHORT_LICENCE_BODY_SHA256)) {
+  for (const [spdx, hash] of Object.entries(SHORT_LICENSE_BODY_SHA256)) {
     if (hash === bodyHash) {
       return spdx
     }
@@ -228,24 +228,24 @@ async function findShortOpenLicence(text: string): Promise<string | null> {
   return null
 }
 
-async function classifyLicenceFile(
-  file: SkillLicenceInputFile,
-  input: SkillLicenceInput,
-): Promise<LicenceFileVerdict> {
-  const text = normaliseLicenceText(file.text)
+async function classifyLicenseFile(
+  file: SkillLicenseInputFile,
+  input: SkillLicenseInput,
+): Promise<LicenseFileVerdict> {
+  const text = normaliseLicenseText(file.text)
   const sha256 = await sha256Hex(text)
   const verdict = (
-    licenceClass: SkillImportLicenceClass,
+    licenseClass: SkillImportLicenseClass,
     matched: string[],
     spdx: string | null = null,
     isAnthropic = false,
-  ): LicenceFileVerdict => {
-    return { class: licenceClass, matched, spdx, sha256, text, isAnthropic }
+  ): LicenseFileVerdict => {
+    return { class: licenseClass, matched, spdx, sha256, text, isAnthropic }
   }
-  const isException = (input.exceptionHashes ?? SKILL_LICENCE_EXCEPTION_HASHES)
+  const isException = (input.exceptionHashes ?? SKILL_LICENSE_EXCEPTION_HASHES)
     .has(sha256)
   const restrictiveHashes = input.restrictiveHashes
-    ?? new Set([ANTHROPIC_PROPRIETARY_LICENCE_SHA256])
+    ?? new Set([ANTHROPIC_PROPRIETARY_LICENSE_SHA256])
 
   if (!isException) {
     if (restrictiveHashes.has(sha256)) {
@@ -253,7 +253,7 @@ async function classifyLicenceFile(
         'restricted',
         ['known-restrictive-text'],
         null,
-        sha256 === ANTHROPIC_PROPRIETARY_LICENCE_SHA256,
+        sha256 === ANTHROPIC_PROPRIETARY_LICENSE_SHA256,
       )
     }
 
@@ -273,19 +273,19 @@ async function classifyLicenceFile(
     return verdict('open', ['apache-2.0'], 'Apache-2.0')
   }
 
-  const shortSpdx = await findShortOpenLicence(text)
+  const shortSpdx = await findShortOpenLicense(text)
 
   if (shortSpdx) {
     return verdict('open', [shortSpdx.toLowerCase()], shortSpdx)
   }
 
-  return verdict('custom', ['unrecognised-licence-file'])
+  return verdict('custom', ['unrecognised-license-file'])
 }
 
 function pickStricter(
-  current: LicenceFileVerdict | null,
-  candidate: LicenceFileVerdict,
-): LicenceFileVerdict {
+  current: LicenseFileVerdict | null,
+  candidate: LicenseFileVerdict,
+): LicenseFileVerdict {
   if (!current) {
     return candidate
   }
@@ -295,12 +295,12 @@ function pickStricter(
     : current
 }
 
-function resolveLicenceFiles(
-  files: SkillLicenceInputFile[],
-  fallbackFiles: SkillLicenceInputFile[] | undefined,
-): SkillLicenceInputFile[] {
+function resolveLicenseFiles(
+  files: SkillLicenseInputFile[],
+  fallbackFiles: SkillLicenseInputFile[] | undefined,
+): SkillLicenseInputFile[] {
   const inFolder = files.filter((file) => {
-    return !file.path.includes('/') && isSkillLicenceEntry(file.path)
+    return !file.path.includes('/') && isSkillLicenseEntry(file.path)
   })
 
   if (inFolder.length > 0) {
@@ -308,30 +308,30 @@ function resolveLicenceFiles(
   }
 
   return (fallbackFiles ?? []).filter((file) => {
-    return !file.path.includes('/') && isSkillLicenceEntry(file.path)
+    return !file.path.includes('/') && isSkillLicenseEntry(file.path)
   })
 }
 
 function messageFor(
-  licenceClass: SkillImportLicenceClass,
+  licenseClass: SkillImportLicenseClass,
   isAnthropic: boolean,
 ): string {
-  switch (licenceClass) {
+  switch (licenseClass) {
     case 'restricted':
       return isAnthropic
         ? ANTHROPIC_RESTRICTED_MESSAGE
         : GENERAL_RESTRICTED_MESSAGE
     case 'custom':
-      return CUSTOM_LICENCE_MESSAGE
+      return CUSTOM_LICENSE_MESSAGE
     case 'none':
-      return NO_LICENCE_MESSAGE
+      return NO_LICENSE_MESSAGE
     default:
-      return OPEN_LICENCE_MESSAGE
+      return OPEN_LICENSE_MESSAGE
   }
 }
 
 interface FieldVerdict {
-  class: SkillImportLicenceClass
+  class: SkillImportLicenseClass
   matched: string
   spdx: string | null
 }
@@ -353,24 +353,24 @@ function classifyField(field: string | null): FieldVerdict | null {
 }
 
 /**
- * The nine-step gate of docs/skills.md section 4. The licence file decides;
+ * The nine-step gate of docs/skills.md section 4. The license file decides;
  * the `license` field is read only when there is no file, and it can only
  * tighten a file-based result, never loosen it. `authored` is never returned:
  * it belongs to the editor and templates, not to an import.
  */
-export async function classifySkillLicence(
-  input: SkillLicenceInput,
-): Promise<SkillLicenceResult> {
-  const licenceFiles = resolveLicenceFiles(input.files, input.fallbackFiles)
+export async function classifySkillLicense(
+  input: SkillLicenseInput,
+): Promise<SkillLicenseResult> {
+  const licenseFiles = resolveLicenseFiles(input.files, input.fallbackFiles)
   const warnings: string[] = []
   const field = input.licenseField?.trim() || null
   const base = {
     licenseField: field,
     warnings,
-    classifierVersion: SKILL_LICENCE_CLASSIFIER_VERSION,
+    classifierVersion: SKILL_LICENSE_CLASSIFIER_VERSION,
   }
 
-  if (licenceFiles.length === 0) {
+  if (licenseFiles.length === 0) {
     const fieldVerdict = classifyField(field)
 
     if (fieldVerdict) {
@@ -379,9 +379,9 @@ export async function classifySkillLicence(
         class: fieldVerdict.class,
         text: messageFor(fieldVerdict.class, false),
         matched: [fieldVerdict.matched],
-        licenceFile: null,
-        licenceFileSha256: null,
-        licenceText: null,
+        licenseFile: null,
+        licenseFileSha256: null,
+        licenseText: null,
         spdx: fieldVerdict.spdx,
       }
     }
@@ -390,24 +390,24 @@ export async function classifySkillLicence(
       ...base,
       class: 'none',
       text: messageFor('none', false),
-      matched: ['no-licence'],
-      licenceFile: null,
-      licenceFileSha256: null,
-      licenceText: null,
+      matched: ['no-license'],
+      licenseFile: null,
+      licenseFileSha256: null,
+      licenseText: null,
       spdx: null,
     }
   }
 
-  const hasMainLicence = licenceFiles.some((file) => {
+  const hasMainLicense = licenseFiles.some((file) => {
     return !isNoticeEntry(file.path)
   })
-  let strongest: LicenceFileVerdict | null = null
+  let strongest: LicenseFileVerdict | null = null
   let strongestPath: string | null = null
 
-  for (const file of licenceFiles) {
-    const verdict = await classifyLicenceFile(file, input)
+  for (const file of licenseFiles) {
+    const verdict = await classifyLicenseFile(file, input)
     const isIgnorableNotice = isNoticeEntry(file.path)
-      && hasMainLicence
+      && hasMainLicense
       && verdict.class !== 'restricted'
 
     if (NON_COMMERCIAL_PATTERN.test(verdict.text)) {
@@ -438,7 +438,7 @@ export async function classifySkillLicence(
       finalClass = 'custom'
       matched.push('field-disagrees-with-file')
     } else if (decided.class === 'restricted' && fieldVerdict.class === 'open') {
-      matched.push('field-names-open-licence')
+      matched.push('field-names-open-license')
     }
   }
 
@@ -447,9 +447,9 @@ export async function classifySkillLicence(
     class: finalClass,
     text: messageFor(finalClass, decided.isAnthropic),
     matched,
-    licenceFile: strongestPath,
-    licenceFileSha256: decided.sha256,
-    licenceText: decided.text,
+    licenseFile: strongestPath,
+    licenseFileSha256: decided.sha256,
+    licenseText: decided.text,
     spdx: decided.spdx,
   }
 }

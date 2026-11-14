@@ -98,8 +98,8 @@ export async function readSkillUpload(
 }
 
 /**
- * Analyses an extracted skill, applies the licence gate, stages it for one
- * hour and returns what the review screen needs. A restricted licence stops
+ * Analyses an extracted skill, applies the license gate, stages it for one
+ * hour and returns what the review screen needs. A restricted license stops
  * here, so it is never staged.
  */
 export async function createSkillImportPreview(input: {
@@ -111,6 +111,7 @@ export async function createSkillImportPreview(input: {
   sourceVersion: string
   provenance?: SkillImportProvenance
   release?: SkillImportRelease | null
+  licenseFromRepositoryRoot?: boolean
   fileName: string | null
   files: SkillArchiveFile[]
   folderName: string | null
@@ -129,7 +130,7 @@ export async function createSkillImportPreview(input: {
           import: {
             source: input.source,
             rejected: analysis.code,
-            licenceClass: analysis.licence?.class ?? null,
+            licenseClass: analysis.license?.class ?? null,
           },
         },
       },
@@ -165,7 +166,7 @@ export async function createSkillImportPreview(input: {
           files: manifest.files.length,
           bytes: manifest.totalBytes,
           findings: manifest.findingCounts,
-          licenceClass: manifest.licence.class,
+          licenseClass: manifest.license.class,
           installed: installed?.kind ?? null,
           stage: 'preview',
         },
@@ -200,16 +201,17 @@ export async function createSkillImportPreview(input: {
     findings: analysis.findings,
     findingCounts: analysis.findingCounts,
     warnings,
-    licence: {
-      class: analysis.licence.class,
-      text: analysis.licence.text,
-      matched: analysis.licence.matched,
-      file: analysis.licence.licenceFile,
-      spdx: analysis.licence.spdx,
-      licenceText: analysis.licence.licenceText,
-      licenseField: analysis.licence.licenseField,
+    license: {
+      class: analysis.license.class,
+      text: analysis.license.text,
+      matched: analysis.license.matched,
+      file: analysis.license.licenseFile,
+      spdx: analysis.license.spdx,
+      licenseText: analysis.license.licenseText,
+      licenseField: analysis.license.licenseField,
+      fromRepositoryRoot: input.licenseFromRepositoryRoot ?? false,
     },
-    requiresLicenceAcknowledgement: manifest.licence.class === 'none'
-      || manifest.licence.class === 'custom',
+    requiresLicenseAcknowledgement: manifest.license.class === 'none'
+      || manifest.license.class === 'custom',
   }
 }

@@ -31,7 +31,7 @@ import {
 } from '../../../../../setup/helpers/github-mock'
 import type { GithubMock } from '../../../../../setup/helpers/github-mock'
 
-const MIT_LICENCE = [
+const MIT_LICENSE = [
   'MIT License',
   '',
   'Copyright (c) 2026 Example',
@@ -123,7 +123,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
   function archiveAt(sha: string, extra: Record<string, string> = {}) {
     return githubRepoArchive(sha, {
       'README.md': '# Repo\n',
-      'LICENSE': MIT_LICENCE,
+      'LICENSE': MIT_LICENSE,
       'skills/review-pr/SKILL.md': skillMarkdown(),
       'skills/review-pr/references/checklist.md': '- Check tests\n',
       ...extra,
@@ -226,19 +226,23 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     })).toBe(false)
   })
 
-  it('uses the repository-root licence when the skill has none', async () => {
+  it('uses the repository-root license when the skill has none', async () => {
     await signIn()
 
     const result = await preview({
       url: 'https://github.com/o/r/tree/main/skills/review-pr',
     })
 
-    expect(result.licence).toMatchObject({ class: 'open', file: 'LICENSE' })
-    expect(result.requiresLicenceAcknowledgement).toBe(false)
-    expect(result.warnings.join(' ')).toContain('licence of the repository root')
+    expect(result.license).toMatchObject({
+      class: 'open',
+      file: 'LICENSE',
+      fromRepositoryRoot: true,
+    })
+    expect(result.requiresLicenseAcknowledgement).toBe(false)
+    expect(result.warnings).toEqual([])
   })
 
-  it('ignores the root licence when the skill carries its own', async () => {
+  it('ignores the root license when the skill carries its own', async () => {
     await signIn()
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE, {
       'skills/review-pr/LICENSE.txt': 'Custom terms apply to this skill only.\n',
@@ -248,8 +252,9 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       url: 'https://github.com/o/r/tree/main/skills/review-pr',
     })
 
-    expect(result.licence.file).toBe('LICENSE.txt')
-    expect(result.licence.class).not.toBe('open')
+    expect(result.license.file).toBe('LICENSE.txt')
+    expect(result.license.fromRepositoryRoot).toBe(false)
+    expect(result.license.class).not.toBe('open')
   })
 
   it('treats a blob link to SKILL.md as its parent folder and reads the archive', async () => {
@@ -268,11 +273,11 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     ])
   })
 
-  it('still blocks a restricted licence for a blob link to SKILL.md', async () => {
+  it('still blocks a restricted license for a blob link to SKILL.md', async () => {
     await signIn()
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE, {
       'skills/review-pr/LICENSE.txt': readFileSync(
-        'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+        'tests/fixtures/skills/licenses/anthropic-proprietary.txt',
         'utf8',
       ),
     }))
@@ -281,7 +286,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       url: 'https://github.com/o/r/blob/main/skills/review-pr/SKILL.md',
     }))
 
-    expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
+    expect(failure).toMatchObject({ status: 422, code: 'license-restricted' })
   })
 
   it('finds the only skill from a bare repository link', async () => {
@@ -458,11 +463,11 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     expect(failure).toMatchObject({ status: 413, code: 'github-too-large' })
   })
 
-  it('blocks a restricted licence before staging', async () => {
+  it('blocks a restricted license before staging', async () => {
     await signIn()
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE, {
       'skills/review-pr/LICENSE.txt': readFileSync(
-        'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+        'tests/fixtures/skills/licenses/anthropic-proprietary.txt',
         'utf8',
       ),
     }))
@@ -471,7 +476,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       url: 'https://github.com/o/r/tree/main/skills/review-pr',
     }))
 
-    expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
+    expect(failure).toMatchObject({ status: 422, code: 'license-restricted' })
   })
 
   it('commits the staged import with its GitHub provenance, disabled', async () => {

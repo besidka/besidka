@@ -264,8 +264,8 @@ export async function previewGithubImport(input: {
     archiveWarnings: [
       ...source.warnings,
       ...fallbackWarnings,
-      ...loaded.warnings,
     ],
+    licenseFromRepositoryRoot: loaded.rootLicenseFiles.length > 0,
     logger: input.logger,
   })
 }

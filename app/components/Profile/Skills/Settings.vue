@@ -83,16 +83,16 @@
         id="skill-settings-about"
         class="font-semibold"
       >
-        Licence and source
+        License and source
       </h3>
       <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt class="text-base-content/70">
-          Licence
+          License
         </dt>
-        <dd data-testid="skill-setting-licence">
-          {{ getSkillLicenceLabel(skill.licence.class) }}
-          <span v-if="skill.licence.field">
-            ({{ skill.licence.field }})
+        <dd data-testid="skill-setting-license">
+          {{ getSkillLicenseLabel(skill.license.class) }}
+          <span v-if="skill.license.field">
+            ({{ skill.license.field }})
           </span>
         </dd>
         <dt class="text-base-content/70">

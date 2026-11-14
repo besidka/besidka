@@ -9,7 +9,7 @@ import {
 } from '~~/server/utils/skills/versions/read'
 import type { SkillReadBucket } from '~~/server/utils/skills/versions/read'
 import {
-  isLicenceLocked,
+  isLicenseLocked,
   toFileSummary,
 } from '~~/server/utils/skills/versions/view'
 
@@ -60,13 +60,13 @@ export async function readSkillVersionFiles(input: {
     skill.currentVersion,
   )
   const files = await loadVersionFiles(db, userId, skill.id, version)
-  const locksLicenceFiles = isLicenceLocked(skill.licenseClass)
+  const locksLicenseFiles = isLicenseLocked(skill.licenseClass)
 
   if (input.path === undefined) {
     return {
       version,
       files: files.map((file) => {
-        return toFileSummary(file, locksLicenceFiles)
+        return toFileSummary(file, locksLicenseFiles)
       }),
     }
   }
@@ -100,7 +100,7 @@ export async function readSkillVersionFiles(input: {
 
   return {
     version,
-    ...toFileSummary(file, locksLicenceFiles),
+    ...toFileSummary(file, locksLicenseFiles),
     text: textDecoder.decode(bytes),
   }
 }

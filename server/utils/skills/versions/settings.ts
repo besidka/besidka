@@ -103,7 +103,7 @@ export async function updateSkillSettings(input: {
   if (changes.enabled === true && skill.status === 'broken') {
     throw createSkillEditError('skill-broken', {
       message: 'This skill cannot be enabled',
-      why: 'Its files are missing, or its licence is not allowed',
+      why: 'Its files are missing, or its license is not allowed',
       fix: 'Restore an earlier version, or delete the skill',
     })
   }

@@ -9,7 +9,7 @@ import {
   isSkillNameValid,
 } from '#shared/utils/skills-policy'
 import {
-  isSkillLicenceRootFile,
+  isSkillLicenseRootFile,
   validateSkillEditPath,
 } from '#shared/utils/skills/edit'
 import type { SkillChange } from '#shared/utils/skills/edit'
@@ -87,7 +87,7 @@ function getActiveFiles(files: SkillEditorFile[]): SkillEditorFile[] {
  * the import rules (`validateSkillEditPath`) plus what only the working set
  * knows: names are compared without regard to case, a rename may not land on
  * the original path of another file (so the saved renames never depend on
- * their order), and the licence files of an open or custom skill stay as
+ * their order), and the license files of an open or custom skill stay as
  * they are.
  */
 export function validateSkillEditorPath(
@@ -104,8 +104,8 @@ export function validateSkillEditorPath(
     return rejection
   }
 
-  if (input.filesLocked && isSkillLicenceRootFile(path)) {
-    return 'Licence files cannot be changed in this skill'
+  if (input.filesLocked && isSkillLicenseRootFile(path)) {
+    return 'License files cannot be changed in this skill'
   }
 
   const lowerCased = path.toLowerCase()

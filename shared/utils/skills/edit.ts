@@ -1,6 +1,6 @@
 import type { SkillSourceKind } from '#shared/utils/skills-policy'
 import { SKILL_PATH_REJECTION_MESSAGES } from '#shared/utils/skills/archive'
-import { isSkillLicenceEntry } from '#shared/utils/skills/licence'
+import { isSkillLicenseEntry } from '#shared/utils/skills/license'
 import {
   checkSkillRelativePath,
   normaliseSkillEntryName,
@@ -52,9 +52,9 @@ export function validateSkillEditPath(path: string): string | null {
 }
 
 /**
- * Licence and notice files at the skill root, the ones the classifier reads.
+ * License and notice files at the skill root, the ones the classifier reads.
  * Apache-2.0 section 4 keeps them as they are in an open or custom skill.
  */
-export function isSkillLicenceRootFile(path: string): boolean {
-  return !path.includes('/') && isSkillLicenceEntry(path)
+export function isSkillLicenseRootFile(path: string): boolean {
+  return !path.includes('/') && isSkillLicenseEntry(path)
 }

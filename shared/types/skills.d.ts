@@ -77,7 +77,7 @@ export interface SkillFileSummary {
 }
 
 export interface SkillDetail extends SkillSummary {
-  licence: {
+  license: {
     class: SkillLicenseClass
     field: string | null
     fileSha256: string | null
@@ -113,7 +113,7 @@ export interface SkillVersionDiffResponse {
     truncated: boolean
   }
   skipped: Array<{ path: string, status: SkillFileDiffStatus }>
-  licence: {
+  license: {
     changed: boolean
     before: { class: SkillLicenseClass, fileSha256: string | null }
     after: { class: SkillLicenseClass, fileSha256: string | null }
@@ -162,16 +162,17 @@ export interface SkillImportPreview {
   findings: SkillFinding[]
   findingCounts: Record<string, number>
   warnings: string[]
-  licence: {
+  license: {
     class: SkillLicenseClass
     text: string
     matched: string[]
     file: string | null
     spdx: string | null
-    licenceText: string | null
+    licenseText: string | null
     licenseField: string | null
+    fromRepositoryRoot: boolean
   }
-  requiresLicenceAcknowledgement: boolean
+  requiresLicenseAcknowledgement: boolean
 }
 
 export interface SkillGithubPick {
@@ -196,6 +197,6 @@ export interface SkillImportCommitResponse {
   version: number
   pendingVersion?: number
   sha256?: string
-  licenceClass: SkillLicenseClass
+  licenseClass: SkillLicenseClass
   filesCount: number
 }

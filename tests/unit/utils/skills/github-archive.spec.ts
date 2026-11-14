@@ -169,7 +169,7 @@ describe('extractGithubSkillArchive', () => {
       .toBe('archive-missing-skill-md')
   })
 
-  it('returns the repository-root licence files for a subfolder skill', () => {
+  it('returns the repository-root license files for a subfolder skill', () => {
     const bytes = repoArchive({
       'LICENSE': 'MIT License\n',
       'NOTICE': 'notice\n',
@@ -180,7 +180,7 @@ describe('extractGithubSkillArchive', () => {
       extractGithubSkillArchive(bytes, { path: 'skills/review' }),
     )
 
-    expect(result.licenceFiles.map((file) => {
+    expect(result.licenseFiles.map((file) => {
       return file.path
     })).toEqual(['LICENSE', 'NOTICE'])
     expect(result.files.map((file) => {
@@ -188,14 +188,14 @@ describe('extractGithubSkillArchive', () => {
     })).toEqual(['SKILL.md'])
   })
 
-  it('finds the root licence when the link is the repository root', () => {
+  it('finds the root license when the link is the repository root', () => {
     const bytes = repoArchive({
       'LICENSE': 'MIT License\n',
       'skills/review/SKILL.md': skillMarkdown(),
     })
     const result = skillOf(extractGithubSkillArchive(bytes, { path: null }))
 
-    expect(result.licenceFiles.map((file) => {
+    expect(result.licenseFiles.map((file) => {
       return file.path
     })).toEqual(['LICENSE'])
   })
@@ -286,7 +286,7 @@ describe('extractGithubSkillArchive', () => {
       extractGithubSkillArchive(bytes, { path: 'skills/review' }),
     )
 
-    expect(result.licenceFiles.map((file) => {
+    expect(result.licenseFiles.map((file) => {
       return file.path
     })).toEqual(['COPYING.txt', 'LICENSE', 'LICENSE.md'])
   })

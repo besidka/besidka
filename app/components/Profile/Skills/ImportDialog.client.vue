@@ -157,7 +157,7 @@
               {{ workerSummary.name }}:
               {{ workerSummary.files.length }}
               {{ workerSummary.files.length === 1 ? 'file' : 'files' }},
-              {{ getSkillLicenceLabel(workerSummary.licenceClass) }}.
+              {{ getSkillLicenseLabel(workerSummary.licenseClass) }}.
             </p>
           </div>
         </div>
@@ -355,16 +355,16 @@
             I reviewed this skill
           </label>
           <label
-            v-if="preview.requiresLicenceAcknowledgement"
+            v-if="preview.requiresLicenseAcknowledgement"
             class="flex min-h-8 cursor-pointer items-center gap-2"
           >
             <input
-              v-model="isLicenceAcknowledged"
+              v-model="isLicenseAcknowledged"
               type="checkbox"
               class="checkbox checkbox-sm"
-              data-testid="skill-import-licence"
+              data-testid="skill-import-license"
             >
-            {{ licenceTickLabel }}
+            {{ licenseTickLabel }}
           </label>
         </div>
         <button
@@ -507,7 +507,7 @@ const queue = shallowRef<string[]>([])
 const queueIndex = shallowRef<number>(0)
 const queueTotal = shallowRef<number>(0)
 const isReviewed = shallowRef<boolean>(false)
-const isLicenceAcknowledged = shallowRef<boolean>(false)
+const isLicenseAcknowledged = shallowRef<boolean>(false)
 const isCommitting = shallowRef<boolean>(false)
 const collision = shallowRef<Collision | null>(null)
 const installedNotice = shallowRef<SkillImportInstalled | null>(null)
@@ -557,14 +557,14 @@ const canInstall = computed<boolean>(() => {
     return false
   }
 
-  return !preview.value.requiresLicenceAcknowledgement
-    || isLicenceAcknowledged.value
+  return !preview.value.requiresLicenseAcknowledgement
+    || isLicenseAcknowledged.value
 })
 
-const licenceTickLabel = computed<string>(() => {
-  return preview.value?.licence.class === 'none'
+const licenseTickLabel = computed<string>(() => {
+  return preview.value?.license.class === 'none'
     ? 'I have the right to use this skill'
-    : 'I read the licence and may use this skill'
+    : 'I read the license and may use this skill'
 })
 
 function clearError() {
@@ -613,7 +613,7 @@ function onFileChange(event: Event) {
 function resetReview() {
   preview.value = null
   isReviewed.value = false
-  isLicenceAcknowledged.value = false
+  isLicenseAcknowledged.value = false
   collision.value = null
   installedNotice.value = null
   isCopyFormOpen.value = false
@@ -799,8 +799,8 @@ async function onCommit(
         body: {
           stageId: current.stageId,
           acknowledged: true,
-          ...(current.requiresLicenceAcknowledgement
-            ? { licenceAcknowledged: true }
+          ...(current.requiresLicenseAcknowledgement
+            ? { licenseAcknowledged: true }
             : {}),
           ...extra,
         },

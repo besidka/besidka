@@ -1,7 +1,7 @@
 import type { BatchItem } from 'drizzle-orm/batch'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { createError } from 'evlog'
-import { SKILL_LICENCE_CLASSIFIER_VERSION } from '#shared/utils/skills/licence'
+import { SKILL_LICENSE_CLASSIFIER_VERSION } from '#shared/utils/skills/license'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import * as schema from '~~/server/db/schema'
@@ -25,12 +25,12 @@ export interface AcceptPendingInput extends PendingVersionReference {
   bucket: SkillStageBucket
   userId: number
   skillId: string
-  licenceAcknowledged?: boolean
+  licenseAcknowledged?: boolean
 }
 
 export type RejectPendingInput = Omit<
   AcceptPendingInput,
-  'bucket' | 'licenceAcknowledged'
+  'bucket' | 'licenseAcknowledged'
 >
 
 function createSkillNotFoundError() {
@@ -158,32 +158,32 @@ function deletePendingStatements(
 }
 
 /**
- * An update that moves a skill to a licence the user has not acknowledged
+ * An update that moves a skill to a license the user has not acknowledged
  * (none or custom, and different from the current class) needs the same tick
- * the import asks for, so a silent update cannot swap an open licence for
+ * the import asks for, so a silent update cannot swap an open license for
  * one the user never saw.
  */
-function assertLicenceAcknowledged(input: {
+function assertLicenseAcknowledged(input: {
   pendingClass: string
   currentClass: string
-  licenceAcknowledged: boolean | undefined
+  licenseAcknowledged: boolean | undefined
 }): void {
   const needsTick = (input.pendingClass === 'none'
     || input.pendingClass === 'custom')
   && input.pendingClass !== input.currentClass
 
-  if (!needsTick || input.licenceAcknowledged === true) {
+  if (!needsTick || input.licenseAcknowledged === true) {
     return
   }
 
   throw createError({
     message: 'Confirm that you may use the updated skill',
     status: 400,
-    code: 'licence-acknowledgement-required',
+    code: 'license-acknowledgement-required',
     why: input.pendingClass === 'none'
-      ? 'The update states no licence, so the author keeps all rights'
-      : 'The update carries a custom licence',
-    fix: 'Tick the licence box in the update review and accept again',
+      ? 'The update states no license, so the author keeps all rights'
+      : 'The update carries a custom license',
+    fix: 'Tick the license box in the update review and accept again',
   })
 }
 
@@ -222,10 +222,10 @@ export async function acceptPendingSkillVersion(
   const { db, bucket, userId, skillId } = input
   const { skill, pending } = await loadReviewedPending(input)
 
-  assertLicenceAcknowledged({
+  assertLicenseAcknowledged({
     pendingClass: pending.licenseClass,
     currentClass: skill.licenseClass,
-    licenceAcknowledged: input.licenceAcknowledged,
+    licenseAcknowledged: input.licenseAcknowledged,
   })
 
   const pendingFiles = await db.select()
@@ -302,7 +302,7 @@ export async function acceptPendingSkillVersion(
           bytes: pending.bytes,
           licenseClass: pending.licenseClass,
           licenseFileSha256: pending.licenseFileSha256,
-          licenseClassifierVersion: SKILL_LICENCE_CLASSIFIER_VERSION,
+          licenseClassifierVersion: SKILL_LICENSE_CLASSIFIER_VERSION,
           sourceKind: hasProvenance ? pending.sourceKind! : skill.sourceKind,
           sourceUrl: hasProvenance ? pending.sourceUrl : skill.sourceUrl,
           sourceRef: hasProvenance ? pending.sourceRef : skill.sourceRef,

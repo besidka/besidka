@@ -664,7 +664,7 @@ describe('skills create, save, restore and read routes', () => {
         id: skillId,
         name: 'review-pr',
         currentVersion: 1,
-        licence: { class: 'authored', filesLocked: false },
+        license: { class: 'authored', filesLocked: false },
       })
       expect(result.files).toHaveLength(2)
       expect(result).not.toHaveProperty('userId')

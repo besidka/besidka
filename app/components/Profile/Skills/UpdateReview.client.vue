@@ -61,10 +61,10 @@
           </a>
         </dd>
         <dt class="text-base-content/70">
-          Licence
+          License
         </dt>
-        <dd data-testid="skill-update-licence">
-          {{ getSkillLicenceLabel(pending.licenseClass) }}
+        <dd data-testid="skill-update-license">
+          {{ getSkillLicenseLabel(pending.licenseClass) }}
         </dd>
       </dl>
 
@@ -128,10 +128,10 @@
       </div>
 
       <div
-        v-if="diff?.licence.changed"
+        v-if="diff?.license.changed"
         class="alert alert-info alert-soft"
         role="note"
-        data-testid="skill-update-licence-changed"
+        data-testid="skill-update-license-changed"
       >
         <Icon
           name="lucide:info"
@@ -140,9 +140,9 @@
           aria-hidden="true"
         />
         <span>
-          The licence changed from
-          {{ getSkillLicenceLabel(diff.licence.before.class) }} to
-          {{ getSkillLicenceLabel(diff.licence.after.class) }}.
+          The license changed from
+          {{ getSkillLicenseLabel(diff.license.before.class) }} to
+          {{ getSkillLicenseLabel(diff.license.after.class) }}.
         </span>
       </div>
 
@@ -199,18 +199,18 @@
             I reviewed this update
           </label>
           <label
-            v-if="needsLicenceTick"
+            v-if="needsLicenseTick"
             class="flex min-h-8 cursor-pointer items-center gap-2"
           >
             <input
-              v-model="isLicenceAcknowledged"
+              v-model="isLicenseAcknowledged"
               type="checkbox"
               class="checkbox checkbox-sm"
-              data-testid="skill-update-licence-tick"
+              data-testid="skill-update-license-tick"
             >
             {{ pending.licenseClass === 'none'
               ? 'I have the right to use this skill'
-              : 'I read the licence and may use this skill' }}
+              : 'I read the license and may use this skill' }}
           </label>
         </div>
         <button
@@ -295,7 +295,7 @@ const {
 )
 
 const isReviewed = shallowRef<boolean>(false)
-const isLicenceAcknowledged = shallowRef<boolean>(false)
+const isLicenseAcknowledged = shallowRef<boolean>(false)
 const isSubmitting = shallowRef<boolean>(false)
 const errorMessage = shallowRef<string>('')
 
@@ -319,7 +319,7 @@ const localEdits = computed(() => {
   return findLocalEditsSinceImport(versions.value?.versions ?? [])
 })
 
-const needsLicenceTick = computed<boolean>(() => {
+const needsLicenseTick = computed<boolean>(() => {
   const next = pending.value?.licenseClass
   const current = skill.value?.currentVersionInfo?.licenseClass
 
@@ -328,7 +328,7 @@ const needsLicenceTick = computed<boolean>(() => {
 
 const canAccept = computed<boolean>(() => {
   return isReviewed.value
-    && (!needsLicenceTick.value || isLicenceAcknowledged.value)
+    && (!needsLicenseTick.value || isLicenseAcknowledged.value)
 })
 
 const pendingFindingSummary = computed<string>(() => {
@@ -359,7 +359,7 @@ const compareUrl = computed<string | null>(() => {
 
 watch(() => pending.value?.sha256, () => {
   isReviewed.value = false
-  isLicenceAcknowledged.value = false
+  isLicenseAcknowledged.value = false
 })
 
 async function reload() {
@@ -385,7 +385,7 @@ async function onAccept() {
         body: {
           version: next.version,
           sha256: next.sha256,
-          ...(needsLicenceTick.value ? { licenceAcknowledged: true } : {}),
+          ...(needsLicenseTick.value ? { licenseAcknowledged: true } : {}),
         },
       },
     )

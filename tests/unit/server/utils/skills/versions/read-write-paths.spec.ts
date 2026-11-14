@@ -237,7 +237,7 @@ describe('skill reads, settings and delete', () => {
       }))).toMatchObject({ status: 409, code: 'files-missing' })
     })
 
-    it('marks licence files of an open skill and oversized files read-only', async () => {
+    it('marks license files of an open skill and oversized files read-only', async () => {
       const { skillId: openId } = await seedSkillWithFiles(testDb.db, bucket, {
         userId,
         files: {
@@ -342,7 +342,7 @@ describe('skill reads, settings and delete', () => {
       })).toBe(true)
     })
 
-    it('returns the detail with files, licence and the pending version', async () => {
+    it('returns the detail with files, license and the pending version', async () => {
       await save(1, [
         { op: 'put', path: 'references/notes.md', content: 'Edited\n' },
       ])
@@ -366,7 +366,7 @@ describe('skill reads, settings and delete', () => {
       expect(detail).toMatchObject({
         currentVersion: 2,
         pendingVersion: 3,
-        licence: { class: 'authored', filesLocked: false },
+        license: { class: 'authored', filesLocked: false },
       })
       expect(detail.files).toHaveLength(3)
       expect(detail.currentVersionInfo).toMatchObject({

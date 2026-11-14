@@ -17,7 +17,7 @@ import {
   skillMarkdown,
 } from '../../setup/helpers/skill-archives'
 
-const MIT_LICENCE_PATH = resolve('tests/fixtures/skills/licences/mit.txt')
+const MIT_LICENSE_PATH = resolve('tests/fixtures/skills/licenses/mit.txt')
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -31,7 +31,7 @@ function buildSkillArchiveFixture(name: string) {
       extra: 'license: MIT',
       body: '# Meeting recap\n\nList the decisions and who owns each one.\n',
     }),
-    [`${name}/LICENSE.txt`]: readFileSync(MIT_LICENCE_PATH, 'utf8'),
+    [`${name}/LICENSE.txt`]: readFileSync(MIT_LICENSE_PATH, 'utf8'),
   })
 
   return Buffer.from(bytes)
@@ -91,8 +91,8 @@ test('a member uploads a skill, reviews it, installs it and turns it on', async 
 
   await expect(dialog.getByTestId('skill-review')).toBeVisible()
   await expect(dialog.getByTestId('skill-review-name')).toHaveText(skillName)
-  await expect(dialog.getByTestId('skill-review-licence-class'))
-    .toContainText('Open licence')
+  await expect(dialog.getByTestId('skill-review-license-class'))
+    .toContainText('Open license')
   await expect(dialog.getByTestId('skill-review-warning')).toContainText(
     'Installing a skill is like installing software.',
   )

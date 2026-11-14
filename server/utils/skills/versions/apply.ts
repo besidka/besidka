@@ -8,7 +8,7 @@ import {
 } from '#shared/utils/skills-policy'
 import type { SkillFileKind } from '#shared/utils/skills-policy'
 import {
-  isSkillLicenceRootFile,
+  isSkillLicenseRootFile,
   validateSkillEditPath,
 } from '#shared/utils/skills/edit'
 import type { SkillChange } from '#shared/utils/skills/edit'
@@ -55,15 +55,15 @@ function assertPathAllowed(index: number, path: string): void {
   }
 }
 
-function assertLicenceUnlocked(
+function assertLicenseUnlocked(
   index: number,
   path: string,
-  locksLicenceFiles: boolean,
+  locksLicenseFiles: boolean,
 ): void {
-  if (locksLicenceFiles && isSkillLicenceRootFile(path)) {
-    throw createSkillEditError('licence-file-locked', {
-      message: 'Licence files cannot be changed in this skill',
-      why: 'The skill has an open or custom licence, which has to stay as it was published',
+  if (locksLicenseFiles && isSkillLicenseRootFile(path)) {
+    throw createSkillEditError('license-file-locked', {
+      message: 'License files cannot be changed in this skill',
+      why: 'The skill has an open or custom license, which has to stay as it was published',
       fix: 'Leave the LICENSE and NOTICE files as they are',
       data: { changeIndex: index },
     })
@@ -139,14 +139,14 @@ function toPutContent(index: number, content: string): PutContent {
 
 /**
  * Applies the changes of one save, in order, to the file set of the base
- * version. Paths go through the import path rules, SKILL.md stays, licence
- * files stay while the licence is open or custom, and the per-save caps hold.
+ * version. Paths go through the import path rules, SKILL.md stays, license
+ * files stay while the license is open or custom, and the per-save caps hold.
  * Nothing is written here. Only the changed contents are held in memory.
  */
 export async function applySkillChanges(input: {
   baseFiles: WorkingSkillFile[]
   changes: SkillChange[]
-  locksLicenceFiles: boolean
+  locksLicenseFiles: boolean
 }): Promise<AppliedChanges> {
   const files = new Map<string, WorkingSkillFile>(
     input.baseFiles.map((file) => {
@@ -159,7 +159,7 @@ export async function applySkillChanges(input: {
   for (const [index, change] of input.changes.entries()) {
     if (change.op === 'put') {
       assertPathAllowed(index, change.path)
-      assertLicenceUnlocked(index, change.path, input.locksLicenceFiles)
+      assertLicenseUnlocked(index, change.path, input.locksLicenseFiles)
 
       const content = toPutContent(index, change.content)
       const isNew = !files.has(change.path)
@@ -196,7 +196,7 @@ export async function applySkillChanges(input: {
 
     if (change.op === 'delete') {
       assertNotSkillMd(index, change.path)
-      assertLicenceUnlocked(index, change.path, input.locksLicenceFiles)
+      assertLicenseUnlocked(index, change.path, input.locksLicenseFiles)
 
       if (!files.delete(change.path)) {
         throw createSkillEditError('path-missing', {
@@ -212,8 +212,8 @@ export async function applySkillChanges(input: {
 
     assertNotSkillMd(index, change.from)
     assertNotSkillMd(index, change.to)
-    assertLicenceUnlocked(index, change.from, input.locksLicenceFiles)
-    assertLicenceUnlocked(index, change.to, input.locksLicenceFiles)
+    assertLicenseUnlocked(index, change.from, input.locksLicenseFiles)
+    assertLicenseUnlocked(index, change.to, input.locksLicenseFiles)
     assertPathAllowed(index, change.to)
 
     const source = files.get(change.from)

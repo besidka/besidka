@@ -67,7 +67,7 @@ export interface SkillStageManifest {
     modelInvocable: boolean
     argumentHint: string | null
   }
-  licence: {
+  license: {
     class: Exclude<SkillLicenseClass, 'authored'>
     file: string | null
     sha256: string | null
@@ -114,14 +114,14 @@ function buildManifest(input: {
   now: number
 }): SkillStageManifest {
   const { analysis } = input
-  const licenceClass = analysis.licence.class
+  const licenseClass = analysis.license.class
 
-  if (licenceClass === 'restricted') {
+  if (licenseClass === 'restricted') {
     throw createError({
       message: 'A restricted skill cannot be staged',
       status: 500,
-      why: 'The licence gate must reject restricted skills before staging',
-      fix: 'Run the analysis and stop on a restricted licence',
+      why: 'The license gate must reject restricted skills before staging',
+      fix: 'Run the analysis and stop on a restricted license',
     })
   }
 
@@ -146,11 +146,11 @@ function buildManifest(input: {
       modelInvocable: analysis.skill.defaults.modelInvocable,
       argumentHint: analysis.skill.defaults.argumentHint,
     },
-    licence: {
-      class: licenceClass,
-      file: analysis.licence.licenceFile,
-      sha256: analysis.licence.licenceFileSha256,
-      classifierVersion: analysis.licence.classifierVersion,
+    license: {
+      class: licenseClass,
+      file: analysis.license.licenseFile,
+      sha256: analysis.license.licenseFileSha256,
+      classifierVersion: analysis.license.classifierVersion,
     },
     files: analysis.files.map((file) => {
       return {

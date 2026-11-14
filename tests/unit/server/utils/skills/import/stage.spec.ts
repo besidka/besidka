@@ -84,7 +84,7 @@ describe('stageSkillImport', () => {
     expect(JSON.parse(raw)).toMatchObject({
       userId: 7,
       source: 'zip',
-      licence: { class: 'none' },
+      license: { class: 'none' },
     })
   })
 
@@ -105,7 +105,7 @@ describe('stageSkillImport', () => {
       fileName: null,
       analysis: {
         ...analysis,
-        licence: { ...analysis.licence, class: 'restricted' },
+        license: { ...analysis.license, class: 'restricted' },
       },
       files,
     })).rejects.toMatchObject({ status: 500 })

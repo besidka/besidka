@@ -98,7 +98,7 @@ describe('Profile/Skills/EditorPane', () => {
     const wrapper = await mountPane({
       file: createFile({ path: 'LICENSE.txt', isLocked: true }),
       isSkillMd: false,
-      readOnlyReason: 'This licence file stays as it was published.',
+      readOnlyReason: 'This license file stays as it was published.',
     })
 
     expect(wrapper.get(testId('skill-editor-read-only')).text())

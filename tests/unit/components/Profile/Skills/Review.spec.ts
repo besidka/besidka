@@ -11,19 +11,93 @@ function testId(id: string) {
 }
 
 describe('Profile/Skills/Review', () => {
-  it('shows the licence class, the raw license field and the licence excerpt as plain text', async () => {
+  it('shows the license once, as one row with a badge for the class', async () => {
     const wrapper = await mountSuspended(Review, {
       props: { preview: createImportPreview(), fileName: 'review-pr.zip' },
     })
 
-    expect(wrapper.get(testId('skill-review-licence-class')).text())
-      .toBe('Open licence (MIT)')
-    expect(wrapper.get(testId('skill-review-license-field')).text())
-      .toBe('MIT')
-    expect(wrapper.get(testId('skill-review-licence-text')).text())
+    expect(wrapper.get(testId('skill-review-license')).text())
+      .toBe('MIT · open license')
+    expect(wrapper.get(testId('skill-review-license-class')).classes())
+      .toEqual(expect.arrayContaining(['badge', 'badge-soft']))
+    expect(wrapper.find(testId('skill-review-license-field')).exists())
+      .toBe(false)
+    expect(wrapper.find(testId('skill-review-license-root')).exists())
+      .toBe(false)
+    expect(wrapper.findAll('dt').filter((term) => {
+      return /licen[cs]e/i.test(term.text())
+    }).map((term) => {
+      return term.text()
+    })).toEqual(['License'])
+    expect(wrapper.get(testId('skill-review-license-text')).text())
+      .toContain('License text')
+    expect(wrapper.get(testId('skill-review-license-text')).text())
       .toContain('MIT License')
     expect(wrapper.get(testId('skill-review-source')).text())
       .toBe('Uploaded file review-pr.zip')
+  })
+
+  it('shows the raw license field only when it differs from the detected license', async () => {
+    const base = createImportPreview()
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          skill: { ...base.skill, license: 'Apache 2 with extras' },
+        }),
+      },
+    })
+
+    expect(wrapper.get(testId('skill-review-license-field')).text())
+      .toBe('Apache 2 with extras')
+
+    const sameWithOtherCase = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          skill: { ...base.skill, license: 'mit' },
+        }),
+      },
+    })
+
+    expect(sameWithOtherCase.find(testId('skill-review-license-field')).exists())
+      .toBe(false)
+  })
+
+  it('says "From the repository root" once when the root license was used', async () => {
+    const base = createImportPreview()
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          license: { ...base.license, fromRepositoryRoot: true },
+        }),
+      },
+    })
+
+    expect(wrapper.get(testId('skill-review-license-root')).text())
+      .toBe('From the repository root')
+  })
+
+  it('shows a license class without an SPDX id as one badge', async () => {
+    const base = createImportPreview()
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          skill: { ...base.skill, license: null },
+          license: {
+            ...base.license,
+            class: 'none',
+            spdx: null,
+            file: null,
+            licenseText: null,
+            licenseField: null,
+          },
+        }),
+      },
+    })
+
+    expect(wrapper.get(testId('skill-review-license')).text())
+      .toBe('No license stated')
+    expect(wrapper.find(testId('skill-review-license-text')).exists())
+      .toBe(false)
   })
 
   it('scrolls to the line of a finding that is clicked', async () => {
@@ -142,27 +216,27 @@ describe('Profile/Skills/Review', () => {
       .toContain('Skipped __MACOSX')
   })
 
-  it('labels a licence-less skill as no licence stated', async () => {
+  it('labels a license-less skill as no license stated', async () => {
     const wrapper = await mountSuspended(Review, {
       props: {
         preview: createImportPreview({
-          licence: {
+          license: {
             class: 'none',
-            text: 'No licence stated.',
+            text: 'No license stated.',
             matched: [],
             file: null,
             spdx: null,
-            licenceText: null,
+            licenseText: null,
             licenseField: null,
           },
-          requiresLicenceAcknowledgement: true,
+          requiresLicenseAcknowledgement: true,
         }),
       },
     })
 
-    expect(wrapper.get(testId('skill-review-licence-class')).text())
-      .toBe('No licence stated')
-    expect(wrapper.find(testId('skill-review-licence-text')).exists())
+    expect(wrapper.get(testId('skill-review-license-class')).text())
+      .toBe('No license stated')
+    expect(wrapper.find(testId('skill-review-license-text')).exists())
       .toBe(false)
   })
 })

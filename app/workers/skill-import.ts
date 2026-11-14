@@ -119,8 +119,8 @@ export async function inspectSkillArchiveBytes(
       summary: {
         name: analysis.skill.name,
         description: analysis.skill.description,
-        licenceClass: analysis.licence.class,
-        licenceText: analysis.licence.text,
+        licenseClass: analysis.license.class,
+        licenseText: analysis.license.text,
         files: analysis.files.map((file) => {
           return { path: file.path, bytes: file.bytes, kind: file.kind }
         }),

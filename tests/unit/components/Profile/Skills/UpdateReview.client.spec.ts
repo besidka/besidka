@@ -67,8 +67,8 @@ async function check(id: string) {
 }
 
 function setUp(options: {
-  pendingLicence?: 'open' | 'none' | 'custom'
-  currentLicence?: 'open' | 'none' | 'authored'
+  pendingLicense?: 'open' | 'none' | 'custom'
+  currentLicense?: 'open' | 'none' | 'authored'
   history?: Array<{ version: number, origin: string, isPending?: boolean }>
 } = {}) {
   const pending = createVersionSummary({
@@ -76,7 +76,7 @@ function setUp(options: {
     isPending: true,
     sha256: 'c'.repeat(64),
     origin: 'update',
-    licenseClass: options.pendingLicence ?? 'open',
+    licenseClass: options.pendingLicense ?? 'open',
     findings: { url: 2 },
   })
 
@@ -91,7 +91,7 @@ function setUp(options: {
     currentVersionInfo: createVersionSummary({
       version: 3,
       isCurrent: true,
-      licenseClass: options.currentLicence ?? 'open',
+      licenseClass: options.currentLicense ?? 'open',
       findings: { url: 1, shell: 1 },
     }),
     pendingVersionInfo: pending,
@@ -131,11 +131,11 @@ function setUp(options: {
       truncated: false,
     },
     skipped: [],
-    licence: {
-      changed: options.pendingLicence !== undefined
-        && options.pendingLicence !== (options.currentLicence ?? 'open'),
-      before: { class: options.currentLicence ?? 'open', fileSha256: null },
-      after: { class: options.pendingLicence ?? 'open', fileSha256: null },
+    license: {
+      changed: options.pendingLicense !== undefined
+        && options.pendingLicense !== (options.currentLicense ?? 'open'),
+      before: { class: options.currentLicense ?? 'open', fileSha256: null },
+      after: { class: options.pendingLicense ?? 'open', fileSha256: null },
     },
   }
 }
@@ -233,8 +233,8 @@ describe('Profile/Skills/UpdateReview', () => {
     expect(accept.disabled).toBe(false)
   })
 
-  it('needs the licence tick when the class changes to no licence', async () => {
-    setUp({ pendingLicence: 'none', currentLicence: 'open' })
+  it('needs the license tick when the class changes to no license', async () => {
+    setUp({ pendingLicense: 'none', currentLicense: 'open' })
     await mountReview()
 
     const accept = get('skill-update-accept') as HTMLButtonElement
@@ -242,28 +242,28 @@ describe('Profile/Skills/UpdateReview', () => {
     await check('skill-update-reviewed')
 
     expect(accept.disabled).toBe(true)
-    expect(get('skill-update-licence-changed').textContent)
-      .toContain('The licence changed')
+    expect(get('skill-update-license-changed').textContent)
+      .toContain('The license changed')
 
-    await check('skill-update-licence-tick')
+    await check('skill-update-license-tick')
 
     expect(accept.disabled).toBe(false)
   })
 
-  it('does not ask for the licence tick when the class stays open', async () => {
+  it('does not ask for the license tick when the class stays open', async () => {
     setUp()
     await mountReview()
 
-    expect(find('skill-update-licence-tick')).toBeNull()
+    expect(find('skill-update-license-tick')).toBeNull()
   })
 
   it('accepts the reviewed version by its hash and closes', async () => {
-    setUp({ pendingLicence: 'none', currentLicence: 'open' })
+    setUp({ pendingLicense: 'none', currentLicense: 'open' })
 
     const wrapper = await mountReview()
 
     await check('skill-update-reviewed')
-    await check('skill-update-licence-tick')
+    await check('skill-update-license-tick')
     get('skill-update-accept').click()
     await flushPromises()
 
@@ -274,7 +274,7 @@ describe('Profile/Skills/UpdateReview', () => {
         body: {
           version: 4,
           sha256: 'c'.repeat(64),
-          licenceAcknowledged: true,
+          licenseAcknowledged: true,
         },
       },
     )

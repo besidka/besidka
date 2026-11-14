@@ -100,7 +100,7 @@ export interface GithubUpdateReview {
     current: Record<string, number> | null
     pending: Record<string, number> | null
   }
-  licence: {
+  license: {
     changed: boolean
     before: { class: string, fileSha256: string | null }
     after: { class: string, fileSha256: string | null }
@@ -192,7 +192,7 @@ function readLocalEdits(
  * Everything the review screen needs about a persisted pending version:
  * the per-file diff against the CURRENT version (not against the last
  * import, so local edits show up as what accepting would replace), findings
- * that are new in the changed files, any licence change, and the local-edit
+ * that are new in the changed files, any license change, and the local-edit
  * warning. Read from D1 and R2 so a reused pending version gets the same
  * answer as a fresh one.
  */
@@ -261,7 +261,7 @@ async function buildReview(input: {
       current: currentRow?.findings ?? null,
       pending: pending.findings,
     },
-    licence: {
+    license: {
       changed: skill.licenseClass !== pending.licenseClass
         || skill.licenseFileSha256 !== pending.licenseFileSha256,
       before: {
@@ -446,7 +446,7 @@ export async function checkGithubSkillUpdate(
     )
   }
 
-  const warnings = [...loaded.warnings]
+  const warnings: string[] = []
   const files: SkillArchiveFile[] = []
 
   for (const file of loaded.files) {
@@ -525,11 +525,11 @@ export async function checkGithubSkillUpdate(
     sourceUrl: skill.sourceUrl,
     sourceRef: target.ref,
     sourcePath: skill.sourcePath,
-    licence: {
-      class: analysis.licence.class,
-      file: analysis.licence.licenceFile,
-      sha256: analysis.licence.licenceFileSha256,
-      classifierVersion: analysis.licence.classifierVersion,
+    license: {
+      class: analysis.license.class,
+      file: analysis.license.licenseFile,
+      sha256: analysis.license.licenseFileSha256,
+      classifierVersion: analysis.license.classifierVersion,
     },
     files: analysis.files,
     totalBytes: analysis.totalBytes,

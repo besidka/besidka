@@ -31,11 +31,11 @@ const UNIX_FILE_TYPE_MASK = 0xF000
 const UNIX_SYMLINK = 0xA000
 const UNIX_REGULAR_FILE = 0x8000
 const UNIX_DIRECTORY = 0x4000
-const ROOT_LICENCE_FILES_MAX = 8
+const ROOT_LICENSE_FILES_MAX = 8
 const PICK_COLLECT_MARGIN = SKILL_GITHUB_PICK_MAX
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/
-const ROOT_LICENCE_NAME_PATTERN
+const ROOT_LICENSE_NAME_PATTERN
   = /^(?:licen[sc]e|copying|notice)(?:\.(?:md|txt))?$/i
 const UNBOUNDED = Number.MAX_SAFE_INTEGER
 const SKILL_MD_SUFFIX = `/${SKILL_MD_FILE_NAME}`
@@ -57,7 +57,7 @@ export type GithubArchiveResult
     ok: true
     kind: 'skill'
     files: SkillArchiveFile[]
-    licenceFiles: SkillArchiveFile[]
+    licenseFiles: SkillArchiveFile[]
     folderName: string | null
     skillPath: string | null
     totalBytes: number
@@ -156,8 +156,8 @@ function displayPath(path: string): string {
 
 /**
  * Reads the zip `codeload.github.com` serves for one commit. Only entries
- * under the requested folder are inflated, plus the repository-root licence
- * files for licence classification. The directory scan still validates every
+ * under the requested folder are inflated, plus the repository-root license
+ * files for license classification. The directory scan still validates every
  * entry name in the repository (unsafe names, case-only duplicates and an
  * entry count over the cap), so a hostile entry elsewhere fails the import
  * closed rather than being skipped. Inside the skill folder the same rules as
@@ -200,7 +200,7 @@ export function extractGithubSkillArchive(
 
   const scopePrefix = scope.path === null ? '' : `${scope.path}/`
   const inScope: ScopedEntry[] = []
-  const rootLicences: ScopedEntry[] = []
+  const rootLicenses: ScopedEntry[] = []
   let topFolder: string | null = null
 
   for (const [index, entry] of entries.entries()) {
@@ -228,8 +228,8 @@ export function extractGithubSkillArchive(
       fileType: fileTypeOf(attributes[index]!.externalAttributes),
     }
 
-    if (!repoName.includes('/') && ROOT_LICENCE_NAME_PATTERN.test(repoName)) {
-      rootLicences.push(item)
+    if (!repoName.includes('/') && ROOT_LICENSE_NAME_PATTERN.test(repoName)) {
+      rootLicenses.push(item)
     }
 
     if (repoName.startsWith(scopePrefix)) {
@@ -362,10 +362,10 @@ export function extractGithubSkillArchive(
   }
 
   const files = inflated.files
-  const licenceFiles: SkillArchiveFile[] = []
+  const licenseFiles: SkillArchiveFile[] = []
 
   if (skillDirectory !== '') {
-    const licenceSelection = rootLicences
+    const licenseSelection = rootLicenses
       .filter((item) => {
         return item.fileType !== UNIX_SYMLINK
           && isRegularOrUntyped(item.fileType)
@@ -377,30 +377,30 @@ export function extractGithubSkillArchive(
           && normalised.path === item.repoName
           && checkSkillRelativePath(item.repoName) === null
       })
-      .slice(0, ROOT_LICENCE_FILES_MAX)
+      .slice(0, ROOT_LICENSE_FILES_MAX)
       .map((item) => {
         return { entry: item.entry, path: item.repoName }
       })
-    const inflatedLicences = inflateSelectedSkillEntries(
+    const inflatedLicenses = inflateSelectedSkillEntries(
       bytes,
-      licenceSelection,
+      licenseSelection,
     )
 
-    if (!inflatedLicences.ok) {
-      return inflatedLicences.failure
+    if (!inflatedLicenses.ok) {
+      return inflatedLicenses.failure
     }
 
-    licenceFiles.push(...inflatedLicences.files)
+    licenseFiles.push(...inflatedLicenses.files)
   }
 
   sortSkillArchiveFiles(files)
-  sortSkillArchiveFiles(licenceFiles)
+  sortSkillArchiveFiles(licenseFiles)
 
   return {
     ok: true,
     kind: 'skill',
     files,
-    licenceFiles,
+    licenseFiles,
     folderName: skillDirectory === ''
       ? null
       : skillDirectory.split('/').at(-1)!,

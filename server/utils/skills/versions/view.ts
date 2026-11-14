@@ -1,6 +1,6 @@
 import { desc, eq } from 'drizzle-orm'
 import { SKILL_EDIT_MAX_FILE_BYTES } from '#shared/utils/skills-policy'
-import { getSkillSourceGroup, isSkillLicenceRootFile } from '#shared/utils/skills/edit'
+import { getSkillSourceGroup, isSkillLicenseRootFile } from '#shared/utils/skills/edit'
 import * as schema from '~~/server/db/schema'
 import {
   loadOwnedSkill,
@@ -81,18 +81,18 @@ export function toVersionSummary(
   }
 }
 
-export function isLicenceLocked(licenseClass: string): boolean {
+export function isLicenseLocked(licenseClass: string): boolean {
   return licenseClass === 'open' || licenseClass === 'custom'
 }
 
-export function toFileSummary(file: SkillFileRow, locksLicenceFiles: boolean) {
+export function toFileSummary(file: SkillFileRow, locksLicenseFiles: boolean) {
   return {
     path: file.path,
     bytes: file.bytes,
     kind: file.kind,
     sha256: file.blobSha256,
     editable: file.bytes <= SKILL_EDIT_MAX_FILE_BYTES
-      && !(locksLicenceFiles && isSkillLicenceRootFile(file.path)),
+      && !(locksLicenseFiles && isSkillLicenseRootFile(file.path)),
   }
 }
 
@@ -127,7 +127,7 @@ export async function getSkillDetail(
     loadVersionFiles(db, userId, skill.id, skill.currentVersion),
     loadSkillVersions(db, userId, skill.id),
   ])
-  const locksLicenceFiles = isLicenceLocked(skill.licenseClass)
+  const locksLicenseFiles = isLicenseLocked(skill.licenseClass)
   const current = versions.find((row) => {
     return row.version === skill.currentVersion
   })
@@ -137,17 +137,17 @@ export async function getSkillDetail(
 
   return {
     ...toSkillSummary(skill),
-    licence: {
+    license: {
       class: skill.licenseClass,
       field: skill.licenseField,
       fileSha256: skill.licenseFileSha256,
-      filesLocked: locksLicenceFiles,
+      filesLocked: locksLicenseFiles,
     },
     compatibility: skill.compatibility,
     metadata: skill.metadata,
     allowedTools: skill.allowedTools,
     files: files.map((file) => {
-      return toFileSummary(file, locksLicenceFiles)
+      return toFileSummary(file, locksLicenseFiles)
     }),
     currentVersionInfo: current ? toVersionSummary(current, skill) : null,
     pendingVersionInfo: pending ? toVersionSummary(pending, skill) : null,

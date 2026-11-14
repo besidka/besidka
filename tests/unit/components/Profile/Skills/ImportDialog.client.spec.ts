@@ -188,17 +188,17 @@ describe('Profile/Skills/ImportDialog', () => {
     expect(install.disabled).toBe(false)
   })
 
-  it('needs the extra licence tick when no licence is stated', async () => {
+  it('needs the extra license tick when no license is stated', async () => {
     await mountDialog()
     await reachReview(createImportPreview({
-      requiresLicenceAcknowledgement: true,
-      licence: {
+      requiresLicenseAcknowledgement: true,
+      license: {
         class: 'none',
-        text: 'No licence stated.',
+        text: 'No license stated.',
         matched: [],
         file: null,
         spdx: null,
-        licenceText: null,
+        licenseText: null,
         licenseField: null,
       },
     }))
@@ -208,28 +208,28 @@ describe('Profile/Skills/ImportDialog', () => {
     await check('skill-import-reviewed')
 
     expect(install.disabled).toBe(true)
-    expect(get('skill-import-licence').parentElement!.textContent)
+    expect(get('skill-import-license').parentElement!.textContent)
       .toContain('I have the right to use this skill')
 
-    await check('skill-import-licence')
+    await check('skill-import-license')
 
     expect(install.disabled).toBe(false)
   })
 
-  it('commits with the licence acknowledgement and reports what was installed', async () => {
+  it('commits with the license acknowledgement and reports what was installed', async () => {
     const wrapper = await mountDialog()
 
     await reachReview(createImportPreview({
-      requiresLicenceAcknowledgement: true,
+      requiresLicenseAcknowledgement: true,
     }))
     await check('skill-import-reviewed')
-    await check('skill-import-licence')
+    await check('skill-import-license')
     mocks.fetch.mockResolvedValueOnce({
       kind: 'created',
       id: 'NewSkillId',
       name: 'review-pr',
       version: 1,
-      licenceClass: 'none',
+      licenseClass: 'none',
       filesCount: 2,
     })
     await click('skill-import-install')
@@ -241,7 +241,7 @@ describe('Profile/Skills/ImportDialog', () => {
         body: {
           stageId: 'a'.repeat(32),
           acknowledged: true,
-          licenceAcknowledged: true,
+          licenseAcknowledged: true,
         },
       },
     )
@@ -275,7 +275,7 @@ describe('Profile/Skills/ImportDialog', () => {
       name: 'review-pr',
       version: 2,
       pendingVersion: 2,
-      licenceClass: 'open',
+      licenseClass: 'open',
       filesCount: 2,
     })
     await click('skill-import-replace')
@@ -314,7 +314,7 @@ describe('Profile/Skills/ImportDialog', () => {
       id: 'Another',
       name: 'review-pr-two',
       version: 1,
-      licenceClass: 'open',
+      licenseClass: 'open',
       filesCount: 2,
     })
     await click('skill-import-rename-submit')
@@ -349,13 +349,13 @@ describe('Profile/Skills/ImportDialog', () => {
   it('shows a server refusal on the first step', async () => {
     await mountDialog()
     mocks.fetch.mockRejectedValueOnce({
-      data: { message: 'Its licence limits use', fix: 'Pick another skill' },
+      data: { message: 'Its license limits use', fix: 'Pick another skill' },
     })
     await setValue('skill-import-text', 'text')
     await click('skill-import-submit')
 
     expect(get('skill-import-error').textContent)
-      .toContain('Its licence limits use')
+      .toContain('Its license limits use')
     expect(get('skill-import-error').textContent)
       .toContain('Pick another skill')
   })
@@ -553,7 +553,7 @@ describe('Profile/Skills/ImportDialog', () => {
         name: 'review-pr',
         version: 2,
         pendingVersion: 2,
-        licenceClass: 'open',
+        licenseClass: 'open',
         filesCount: 2,
       })
       await click('skill-import-installed-update')
@@ -578,7 +578,7 @@ describe('Profile/Skills/ImportDialog', () => {
         id: 'new-id',
         name: 'review-pr-copy',
         version: 1,
-        licenceClass: 'open',
+        licenseClass: 'open',
         filesCount: 2,
       })
       await click('skill-import-rename-submit')

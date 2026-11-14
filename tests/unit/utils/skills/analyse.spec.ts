@@ -10,9 +10,9 @@ function file(path: string, text: string) {
   return { path, bytes: encoder.encode(text), text }
 }
 
-function licence(name: string): string {
+function license(name: string): string {
   return readFileSync(
-    join(process.cwd(), 'tests/fixtures/skills/licences', name),
+    join(process.cwd(), 'tests/fixtures/skills/licenses', name),
     'utf8',
   )
 }
@@ -27,24 +27,24 @@ describe('analyseSkillFiles', () => {
     expect(result).toMatchObject({
       ok: true,
       skill: { name: 'review-pr' },
-      licence: { class: 'none' },
+      license: { class: 'none' },
       files: [{ path: 'SKILL.md', kind: 'skill-md' }],
     })
   })
 
-  it('blocks a restricted licence on every source', async () => {
+  it('blocks a restricted license on every source', async () => {
     const result = await analyseSkillFiles({
       files: [
         file('SKILL.md', skillMarkdown({ extra: 'license: Proprietary' })),
-        file('LICENSE.txt', licence('anthropic-proprietary.txt')),
+        file('LICENSE.txt', license('anthropic-proprietary.txt')),
       ],
       folderName: 'review-pr',
     })
 
     expect(result).toMatchObject({
       ok: false,
-      code: 'licence-restricted',
-      licence: { class: 'restricted' },
+      code: 'license-restricted',
+      license: { class: 'restricted' },
     })
   })
 
@@ -52,12 +52,12 @@ describe('analyseSkillFiles', () => {
     const result = await analyseSkillFiles({
       files: [
         file('SKILL.md', skillMarkdown()),
-        file('LICENSE', licence('mit.txt')),
+        file('LICENSE', license('mit.txt')),
       ],
       folderName: null,
     })
 
-    expect(result.ok && result.licence.class).toBe('open')
+    expect(result.ok && result.license.class).toBe('open')
   })
 
   it('warns when the folder name differs from the skill name', async () => {

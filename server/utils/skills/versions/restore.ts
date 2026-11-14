@@ -44,7 +44,7 @@ export type RestoreSkillResult
  * over the same blobs: nothing is rewritten and no blob is copied. The
  * restored `SKILL.md` brings its own name back, so the rename rules apply
  * (a free name, no reserved name while the command toggle is on), and the
- * licence classifier runs again. A pending update cannot be restored, since
+ * license classifier runs again. A pending update cannot be restored, since
  * that would activate an unreviewed version without the accept's disable.
  */
 export async function restoreSkillVersion(

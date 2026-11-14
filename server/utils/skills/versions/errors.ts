@@ -13,8 +13,8 @@ export type SkillEditErrorCode
     | 'path-missing'
     | 'path-exists'
     | 'skill-md-required'
-    | 'licence-file-locked'
-    | 'licence-restricted'
+    | 'license-file-locked'
+    | 'license-restricted'
     | 'file-too-large'
     | 'save-too-large'
     | 'skill-too-large'
@@ -39,8 +39,8 @@ const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'path-missing': 400,
   'path-exists': 400,
   'skill-md-required': 400,
-  'licence-file-locked': 403,
-  'licence-restricted': 422,
+  'license-file-locked': 403,
+  'license-restricted': 422,
   'file-too-large': 413,
   'save-too-large': 413,
   'skill-too-large': 413,

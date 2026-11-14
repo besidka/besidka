@@ -2,10 +2,10 @@ import { and, eq, ne } from 'drizzle-orm'
 import { hashSkillFileSet } from '#shared/utils/skills/analyse'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import type { SkillFrontmatter } from '#shared/utils/skills/frontmatter'
-import { classifySkillLicence } from '#shared/utils/skills/licence'
-import type { SkillLicenceResult } from '#shared/utils/skills/licence'
+import { classifySkillLicense } from '#shared/utils/skills/license'
+import type { SkillLicenseResult } from '#shared/utils/skills/license'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
-import { isSkillLicenceRootFile } from '#shared/utils/skills/edit'
+import { isSkillLicenseRootFile } from '#shared/utils/skills/edit'
 import type { SkillLicenseClass } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
 import { createSkillEditError } from '~~/server/utils/skills/versions/errors'
@@ -20,7 +20,7 @@ type DbClient = ReturnType<typeof useDb>
 
 export interface PreparedSkillVersion {
   frontmatter: SkillFrontmatter
-  licence: SkillLicenceResult
+  license: SkillLicenseResult
   licenseClass: SkillLicenseClass
   sha256: string
   totalBytes: number
@@ -46,11 +46,11 @@ async function readEntryText(input: {
 /**
  * Everything the next version of an existing skill has to satisfy, read from
  * the new file set: `SKILL.md` must parse, a changed name must be free, and the
- * licence classifier runs again over the licence files, so a restricted
- * licence file blocks the version. Only `SKILL.md` and the root licence
+ * license classifier runs again over the license files, so a restricted
+ * license file blocks the version. Only `SKILL.md` and the root license
  * files are read; contents the caller already holds are not read again.
  * The class stays `authored` for a skill the user wrote: the classifier can
- * only block it, and only on a restricted licence file, never relabel it.
+ * only block it, and only on a restricted license file, never relabel it.
  */
 export async function prepareSkillVersion(input: {
   db: DbClient
@@ -103,11 +103,11 @@ export async function prepareSkillVersion(input: {
     }
   }
 
-  const licenceFiles: Array<{ path: string, text: string }> = []
+  const licenseFiles: Array<{ path: string, text: string }> = []
 
   for (const file of files) {
-    if (isSkillLicenceRootFile(file.path)) {
-      licenceFiles.push({
+    if (isSkillLicenseRootFile(file.path)) {
+      licenseFiles.push({
         path: file.path,
         text: await readEntryText({
           bucket,
@@ -120,28 +120,28 @@ export async function prepareSkillVersion(input: {
     }
   }
 
-  const licence = await classifySkillLicence({
-    files: licenceFiles,
+  const license = await classifySkillLicense({
+    files: licenseFiles,
     licenseField: frontmatter.license,
   })
 
-  const blocksSave = licence.class === 'restricted'
-    && (skill.licenseClass !== 'authored' || licence.licenceFile !== null)
+  const blocksSave = license.class === 'restricted'
+    && (skill.licenseClass !== 'authored' || license.licenseFile !== null)
 
   if (blocksSave) {
-    throw createSkillEditError('licence-restricted', {
+    throw createSkillEditError('license-restricted', {
       message: 'This skill cannot be saved',
-      why: licence.text,
-      fix: 'Remove the licence file or replace it with one that allows copying',
+      why: license.text,
+      fix: 'Remove the license file or replace it with one that allows copying',
     })
   }
 
   return {
     frontmatter,
-    licence,
+    license,
     licenseClass: skill.licenseClass === 'authored'
       ? 'authored'
-      : licence.class,
+      : license.class,
     sha256: await hashSkillFileSet(files.map((file) => {
       return { path: file.path, sha256: file.blobSha256 }
     })),
@@ -149,6 +149,6 @@ export async function prepareSkillVersion(input: {
       return total + file.bytes
     }, 0),
     renamed,
-    warnings: [...parsed.warnings, ...licence.warnings],
+    warnings: [...parsed.warnings, ...license.warnings],
   }
 }

@@ -43,7 +43,7 @@ function createDetail(overrides = {}) {
     name: 'review-pr',
     currentVersion: 3,
     slashCommand: false,
-    licence: {
+    license: {
       class: 'open',
       field: 'MIT',
       fileSha256: 'a'.repeat(64),
@@ -267,7 +267,7 @@ describe('useSkillEditor', () => {
     expect(editor.changes.value).toEqual([])
   })
 
-  it('does not rename or delete SKILL.md or a locked licence file', async () => {
+  it('does not rename or delete SKILL.md or a locked license file', async () => {
     const editor = await mountEditor()
 
     expect(editor.canRenameSelected.value).toBe(false)
@@ -277,7 +277,7 @@ describe('useSkillEditor', () => {
 
     expect(editor.canRenameSelected.value).toBe(false)
     expect(editor.canDeleteSelected.value).toBe(false)
-    expect(editor.selectedReadOnlyReason.value).toContain('licence file')
+    expect(editor.selectedReadOnlyReason.value).toContain('license file')
 
     editor.setSelectedValue('changed')
 
@@ -286,7 +286,7 @@ describe('useSkillEditor', () => {
 
   it('opens a file over the editing cap read-only', async () => {
     respond(createDetail({
-      licence: { class: 'authored', field: null, fileSha256: null, filesLocked: false },
+      license: { class: 'authored', field: null, fileSha256: null, filesLocked: false },
       files: [
         { path: 'SKILL.md', bytes: 100, kind: 'skill-md', sha256: 'a', editable: true },
         { path: 'data/big.csv', bytes: 300 * 1024, kind: 'other', sha256: 'b', editable: false },
@@ -454,10 +454,10 @@ describe('useSkillEditor', () => {
     it('shows any other failure with its reason and fix', async () => {
       const editor = await mountFailing({
         data: {
-          code: 'licence-restricted',
+          code: 'license-restricted',
           message: 'This skill cannot be saved',
-          why: 'The licence forbids copying',
-          fix: 'Remove the licence file',
+          why: 'The license forbids copying',
+          fix: 'Remove the license file',
         },
       })
 
@@ -465,8 +465,8 @@ describe('useSkillEditor', () => {
 
       expect(editor.saveError.value).toEqual({
         message: 'This skill cannot be saved',
-        why: 'The licence forbids copying',
-        fix: 'Remove the licence file',
+        why: 'The license forbids copying',
+        fix: 'Remove the license file',
       })
     })
   })

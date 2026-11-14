@@ -132,7 +132,7 @@ describe('POST /api/v1/skills/import/commit', () => {
     expect((await failureOf(commit({
       stageId: staged.stageId,
       acknowledged: true,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
     }))).status).toBe(404)
     expect(await testDb.db.select().from(schema.skills)).toHaveLength(0)
   })
@@ -175,7 +175,7 @@ describe('POST /api/v1/skills/import/commit', () => {
       body: {
         stageId: staged.stageId,
         acknowledged: true,
-        licenceAcknowledged: true,
+        licenseAcknowledged: true,
       },
     })
 
@@ -190,7 +190,7 @@ describe('POST /api/v1/skills/import/commit', () => {
     const { result, status } = await commit({
       stageId: staged.stageId,
       acknowledged: true,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
     })
 
     expect(status).toBe(201)
@@ -218,7 +218,7 @@ describe('POST /api/v1/skills/import/commit', () => {
     }))).status).toBe(400)
   })
 
-  it('requires the licence tick for a skill with no licence', async () => {
+  it('requires the license tick for a skill with no license', async () => {
     const staged = await preview()
 
     expect(await failureOf(commit({
@@ -226,7 +226,7 @@ describe('POST /api/v1/skills/import/commit', () => {
       acknowledged: true,
     }))).toMatchObject({
       status: 400,
-      code: 'licence-acknowledgement-required',
+      code: 'license-acknowledgement-required',
     })
   })
 
@@ -236,7 +236,7 @@ describe('POST /api/v1/skills/import/commit', () => {
     await commit({
       stageId: first.stageId,
       acknowledged: true,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
     })
 
     const second = await preview(validSkillArchive({}, skillMarkdown({
@@ -245,7 +245,7 @@ describe('POST /api/v1/skills/import/commit', () => {
     const collision = await failureOf(commit({
       stageId: second.stageId,
       acknowledged: true,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
     }))
 
     expect(collision).toMatchObject({
@@ -257,7 +257,7 @@ describe('POST /api/v1/skills/import/commit', () => {
     const asUpdate = await commit({
       stageId: second.stageId,
       acknowledged: true,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
       asUpdateOf: collision.data!.asUpdateOf,
     })
 
@@ -270,7 +270,7 @@ describe('POST /api/v1/skills/import/commit', () => {
     const renamed = await commit({
       stageId: third.stageId,
       acknowledged: true,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
       name: 'review-pr-copy',
     })
 

@@ -8,7 +8,7 @@ export type SkillImportErrorCode
     | 'invalid-request'
     | 'stage-not-found'
     | 'acknowledgement-required'
-    | 'licence-acknowledgement-required'
+    | 'license-acknowledgement-required'
     | 'skills-limit'
     | 'skills-storage-limit'
     | 'name-taken'
@@ -33,7 +33,7 @@ const STATUS_BY_CODE: Partial<Record<SkillImportErrorCode, number>> = {
   'archive-entry-too-large': 413,
   'archive-skill-md-too-large': 413,
   'skill-md-too-large': 413,
-  'licence-restricted': 422,
+  'license-restricted': 422,
 }
 
 export function createSkillImportError(

@@ -67,7 +67,7 @@ describe('normaliseSkillEntryName', () => {
 })
 
 describe('checkSkillRelativePath', () => {
-  it('allows the text allowlist and licence files with or without extension', () => {
+  it('allows the text allowlist and license files with or without extension', () => {
     for (const path of [
       'SKILL.md',
       'scripts/run.py',

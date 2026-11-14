@@ -69,7 +69,7 @@ describe('skill templates', () => {
     expect(analysis.warnings).toEqual([])
     expect(analysis.skill.name).toBe(template.name)
     expect(analysis.skill.description).toBe(template.description)
-    expect(analysis.licence.class).toBe('none')
+    expect(analysis.license.class).toBe('none')
   })
 
   it.each(SKILL_TEMPLATES.map((template) => {

@@ -6,7 +6,7 @@ import {
   buildBlankSkillFiles,
 } from '#shared/utils/skills/blank'
 import { renameSkillMarkdown } from '#shared/utils/skills/frontmatter'
-import { SKILL_LICENCE_CLASSIFIER_VERSION } from '#shared/utils/skills/licence'
+import { SKILL_LICENSE_CLASSIFIER_VERSION } from '#shared/utils/skills/license'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import { getSkillTemplate } from '#shared/utils/skills/templates'
 import {
@@ -164,7 +164,7 @@ function createNameTakenError(name: string) {
 /**
  * Creates a skill the user writes in the app, from nothing (a skill or a
  * command) or from one of Besidka's own templates. It is class `authored`,
- * saved enabled and `ready` with version 1, and no licence tick is needed:
+ * saved enabled and `ready` with version 1, and no license tick is needed:
  * the user typed every byte. The row goes in first, as a `broken` placeholder
  * under both caps in one statement (the blob keys carry its id); a failure
  * before the batch removes it again.
@@ -245,7 +245,7 @@ export async function createAuthoredSkill(
       licenseField: analysis.skill.license,
       licenseClass: 'authored',
       licenseFileSha256: null,
-      licenseClassifierVersion: SKILL_LICENCE_CLASSIFIER_VERSION,
+      licenseClassifierVersion: SKILL_LICENSE_CLASSIFIER_VERSION,
       compatibility: analysis.skill.compatibility,
       metadata: analysis.skill.metadata,
       allowedTools: analysis.skill.allowedTools,

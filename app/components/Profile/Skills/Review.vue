@@ -45,22 +45,42 @@
         </button>
       </dd>
       <dt class="text-base-content/70">
-        Licence
+        License
       </dt>
       <dd
-        class="flex min-w-0 flex-wrap items-center gap-2"
-        data-testid="skill-review-licence"
+        class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+        data-testid="skill-review-license"
       >
+        <template v-if="preview.license.spdx">
+          <span
+            class="font-medium"
+            data-testid="skill-review-license-spdx"
+          >
+            {{ preview.license.spdx }}
+          </span>
+          <span
+            class="text-base-content/70"
+            aria-hidden="true"
+          >
+            &middot;
+          </span>
+        </template>
         <span
           class="badge badge-soft badge-sm"
-          :class="licenceBadgeClass"
-          data-testid="skill-review-licence-class"
+          :class="licenseBadgeClass"
+          data-testid="skill-review-license-class"
         >
-          {{ licenceLabel }}
+          {{ licenseClassLabel }}
         </span>
-        <span class="min-w-0 break-words">{{ preview.licence.text }}</span>
+        <span
+          v-if="preview.license.fromRepositoryRoot"
+          class="text-xs text-base-content/70"
+          data-testid="skill-review-license-root"
+        >
+          From the repository root
+        </span>
       </dd>
-      <template v-if="preview.skill.license">
+      <template v-if="licenseFieldDiffers">
         <dt class="text-base-content/70">
           License field
         </dt>
@@ -107,14 +127,20 @@
     </dl>
 
     <details
-      v-if="licenceExcerpt"
+      v-if="licenseExcerpt"
       class="rounded-box border border-base-300"
-      data-testid="skill-review-licence-text"
+      data-testid="skill-review-license-text"
     >
       <summary class="cursor-pointer px-3 py-2 text-sm font-medium">
-        Start of the licence file{{ licenceFileSuffix }}
+        License text
+        <span
+          v-if="preview.license.file"
+          class="font-normal text-base-content/70"
+        >
+          &middot; {{ preview.license.file }}
+        </span>
       </summary>
-      <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-base-300 px-3 py-2 font-mono text-xs">{{ licenceExcerpt }}</pre>
+      <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-base-300 px-3 py-2 font-mono text-xs">{{ licenseExcerpt }}</pre>
     </details>
 
     <div
@@ -229,7 +255,7 @@
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type { SkillImportPreview } from '#shared/types/skills.d'
 
-const LICENCE_EXCERPT_LINES = 12
+const LICENSE_EXCERPT_LINES = 12
 
 const props = withDefaults(defineProps<{
   preview: SkillImportPreview
@@ -321,31 +347,35 @@ const switchLabel = computed<string>(() => {
     : ''
 })
 
-const licenceLabel = computed<string>(() => {
-  const label = getSkillLicenceLabel(props.preview.licence.class)
+const licenseClassLabel = computed<string>(() => {
+  const label = getSkillLicenseLabel(props.preview.license.class)
 
-  return props.preview.licence.spdx
-    ? `${label} (${props.preview.licence.spdx})`
-    : label
+  return props.preview.license.spdx ? label.toLowerCase() : label
 })
 
-const licenceBadgeClass = computed<string>(() => {
-  if (props.preview.licence.class === 'open') {
+const licenseFieldDiffers = computed<boolean>(() => {
+  const field = props.preview.skill.license?.trim()
+
+  if (!field) {
+    return false
+  }
+
+  return field.toLowerCase() !== (props.preview.license.spdx ?? '').toLowerCase()
+})
+
+const licenseBadgeClass = computed<string>(() => {
+  if (props.preview.license.class === 'open') {
     return 'badge-success'
   }
 
-  return props.preview.licence.class === 'none' ? 'badge-warning' : ''
+  return props.preview.license.class === 'none' ? 'badge-warning' : ''
 })
 
-const licenceFileSuffix = computed<string>(() => {
-  return props.preview.licence.file ? ` (${props.preview.licence.file})` : ''
-})
-
-const licenceExcerpt = computed<string>(() => {
-  const text = props.preview.licence.licenceText
+const licenseExcerpt = computed<string>(() => {
+  const text = props.preview.license.licenseText
 
   return text
-    ? text.split('\n').slice(0, LICENCE_EXCERPT_LINES).join('\n')
+    ? text.split('\n').slice(0, LICENSE_EXCERPT_LINES).join('\n')
     : ''
 })
 

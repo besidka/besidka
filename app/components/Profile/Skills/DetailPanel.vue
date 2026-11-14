@@ -45,7 +45,7 @@
           /{{ skill.command }}
         </span>
         <span class="badge badge-soft badge-sm">
-          {{ getSkillLicenceLabel(skill.licence.class) }}
+          {{ getSkillLicenseLabel(skill.license.class) }}
         </span>
         <span class="text-base-content/70">
           {{ formatSkillVersions(skill).join(' · ') }} ·

@@ -121,8 +121,8 @@ describe('POST /api/v1/skills/import/preview', () => {
     expect(preview).toMatchObject({
       source: 'zip',
       skill: { name: 'review-pr', modelInvocable: true },
-      licence: { class: 'none' },
-      requiresLicenceAcknowledgement: true,
+      license: { class: 'none' },
+      requiresLicenseAcknowledgement: true,
     })
     expect(preview.skill).not.toHaveProperty('slashCommand')
     expect(preview.stageId).toMatch(/^[a-f0-9]{32}$/)
@@ -141,7 +141,7 @@ describe('POST /api/v1/skills/import/preview', () => {
   it('never assigns authored', async () => {
     const preview = await callPreview(createUploadEvent(validSkillArchive()))
 
-    expect(preview.licence.class).not.toBe('authored')
+    expect(preview.license.class).not.toBe('authored')
   })
 
   it('accepts a .skill file', async () => {
@@ -152,29 +152,29 @@ describe('POST /api/v1/skills/import/preview', () => {
     expect(preview.source).toBe('zip')
   })
 
-  it('shows an open licence without asking for a tick', async () => {
+  it('shows an open license without asking for a tick', async () => {
     const mit = readFileSync(
-      join(process.cwd(), 'tests/fixtures/skills/licences/mit.txt'),
+      join(process.cwd(), 'tests/fixtures/skills/licenses/mit.txt'),
       'utf8',
     )
     const preview = await callPreview(
       createUploadEvent(validSkillArchive({ LICENSE: mit })),
     )
 
-    expect(preview.licence).toMatchObject({ class: 'open', spdx: 'MIT' })
-    expect(preview.requiresLicenceAcknowledgement).toBe(false)
+    expect(preview.license).toMatchObject({ class: 'open', spdx: 'MIT' })
+    expect(preview.requiresLicenseAcknowledgement).toBe(false)
   })
 
-  it('blocks a restricted licence with 422 and stages nothing', async () => {
+  it('blocks a restricted license with 422 and stages nothing', async () => {
     const old = readFileSync(
-      join(process.cwd(), 'tests/fixtures/skills/licences/anthropic-proprietary.txt'),
+      join(process.cwd(), 'tests/fixtures/skills/licenses/anthropic-proprietary.txt'),
       'utf8',
     )
     const failure = await failureOf(callPreview(
       createUploadEvent(validSkillArchive({ 'LICENSE.txt': old })),
     ))
 
-    expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
+    expect(failure).toMatchObject({ status: 422, code: 'license-restricted' })
     expect([...kv.values.keys()].some((key) => {
       return key.startsWith('skills:stage:')
     })).toBe(false)

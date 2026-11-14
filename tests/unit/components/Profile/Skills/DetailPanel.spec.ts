@@ -239,7 +239,7 @@ describe('Profile/Skills/DetailPanel', () => {
         truncated: false,
       },
       skipped: [],
-      licence: { changed: false, before: { class: 'open', fileSha256: null }, after: { class: 'open', fileSha256: null } },
+      license: { changed: false, before: { class: 'open', fileSha256: null }, after: { class: 'open', fileSha256: null } },
     })
 
     const wrapper = await mountPanel()
@@ -478,12 +478,12 @@ describe('Profile/Skills/DetailPanel', () => {
     expect(wrapper.text()).not.toContain('Rename to use')
   })
 
-  it('shows licence, source and requested tools as not granted', async () => {
+  it('shows license, source and requested tools as not granted', async () => {
     useState('skills:detail-tab').value = 'settings'
 
     const wrapper = await mountPanel()
 
-    expect(wrapper.get(testId('skill-setting-licence')).text())
+    expect(wrapper.get(testId('skill-setting-license')).text())
       .toBe('Written by you')
     expect(wrapper.text()).toContain('requested by the author, not granted')
   })

@@ -32,12 +32,12 @@ import {
 } from '../../../../../setup/helpers/github-mock'
 import type { GithubMock } from '../../../../../setup/helpers/github-mock'
 
-const MIT_LICENCE = readFileSync(
-  'tests/fixtures/skills/licences/mit.txt',
+const MIT_LICENSE = readFileSync(
+  'tests/fixtures/skills/licenses/mit.txt',
   'utf8',
 )
-const PROPRIETARY_LICENCE = readFileSync(
-  'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+const PROPRIETARY_LICENSE = readFileSync(
+  'tests/fixtures/skills/licenses/anthropic-proprietary.txt',
   'utf8',
 )
 const SKILL_URL = 'https://github.com/o/r/tree/main/skills/review-pr'
@@ -108,7 +108,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
   ) {
     return githubRepoArchive(sha, {
       'README.md': `# Repo at ${sha.slice(0, 1)}\n`,
-      'LICENSE': MIT_LICENCE,
+      'LICENSE': MIT_LICENSE,
       'skills/review-pr/SKILL.md': markdown,
       'skills/review-pr/references/checklist.md': '- Check tests\n',
       ...files,
@@ -276,7 +276,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       }`,
       reusedPending: false,
       localEdits: { warn: false, versions: [] },
-      licence: { changed: false },
+      license: { changed: false },
     })
     expect(result.sha256).toBe(pending!.sha256)
     expect(result.diff.files.map((file: { path: string, status: string }) => {
@@ -439,26 +439,26 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     })).toBe(true)
   })
 
-  it('shows a licence change and refuses a restricted one', async () => {
+  it('shows a license change and refuses a restricted one', async () => {
     moveHeadTo(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
       'skills/review-pr/LICENSE.txt': 'Terms of use: internal use only.\n',
     }, skillMarkdown({ description: 'Now with its own terms' })))
 
     const changed = await check()
 
-    expect(changed.licence).toMatchObject({
+    expect(changed.license).toMatchObject({
       changed: true,
       before: { class: 'open' },
     })
-    expect(changed.licence.after.class).not.toBe('open')
+    expect(changed.license.after.class).not.toBe('open')
 
     moveHeadTo(GITHUB_SHA_THREE, archiveAt(GITHUB_SHA_THREE, {
-      'skills/review-pr/LICENSE.txt': PROPRIETARY_LICENCE,
+      'skills/review-pr/LICENSE.txt': PROPRIETARY_LICENSE,
     }))
 
     expect(await failureOf(check())).toMatchObject({
       status: 422,
-      code: 'licence-restricted',
+      code: 'license-restricted',
     })
     expect((await skillRow()).pendingVersion).toBe(2)
   })

@@ -69,7 +69,7 @@ export function createSkillDetail(
 ): SkillDetail {
   return {
     ...createSkillSummary(),
-    licence: {
+    license: {
       class: 'authored',
       field: null,
       fileSha256: null,
@@ -136,16 +136,17 @@ export function createImportPreview(
     ],
     findingCounts: { shell: 1, url: 1 },
     warnings: [],
-    licence: {
+    license: {
       class: 'open',
-      text: 'MIT licence',
+      text: 'MIT license',
       matched: ['mit'],
       file: 'LICENSE',
       spdx: 'MIT',
-      licenceText: 'MIT License\n\nCopyright (c) Someone',
+      licenseText: 'MIT License\n\nCopyright (c) Someone',
       licenseField: 'MIT',
+      fromRepositoryRoot: false,
     },
-    requiresLicenceAcknowledgement: false,
+    requiresLicenseAcknowledgement: false,
     ...overrides,
   }
 }
