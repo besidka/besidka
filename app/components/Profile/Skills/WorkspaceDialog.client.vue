@@ -38,7 +38,10 @@
           </form>
         </header>
         <div
-          class="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+          class="min-h-0 flex-1"
+          :class="isEditMode
+            ? 'flex flex-col overflow-hidden'
+            : 'overflow-y-auto px-4 py-4'"
           :inert="isContentInert"
           data-testid="skills-dialog-body"
         >
@@ -46,7 +49,7 @@
         </div>
         <footer
           v-if="$slots.footer"
-          class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-base-300 px-4 py-3 pb-[max(0.75rem,var(--sab))]"
+          class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-base-300 px-4 py-3 pb-[max(0.75rem,var(--sab))] [html[data-keyboard-open]_&]:pb-3"
           :inert="isContentInert"
           data-testid="skills-dialog-footer"
         >
@@ -74,12 +77,16 @@ const FORM_BOX_CLASS = 'max-w-lg max-h-[90dvh]'
 const props = withDefaults(defineProps<{
   title: string
   size?: 'form' | 'workspace'
+  mode?: 'view' | 'edit'
   hookClass?: string
   isBusy?: boolean
+  isDirty?: boolean
 }>(), {
   size: 'form',
+  mode: 'view',
   hookClass: '',
   isBusy: false,
+  isDirty: false,
 })
 
 const emit = defineEmits<{
@@ -91,17 +98,18 @@ const closeButtonRef = useTemplateRef<HTMLButtonElement>('closeButtonRef')
 const titleId = useId()
 const previouslyFocusedElement = shallowRef<HTMLElement | null>(null)
 const isContentInert = shallowRef<boolean>(true)
+const isConfirmingClose = shallowRef<boolean>(false)
+
+const isEditMode = computed<boolean>(() => {
+  return props.mode === 'edit'
+})
 
 function restoreFocus() {
   previouslyFocusedElement.value?.focus()
   previouslyFocusedElement.value = null
 }
 
-function requestClose() {
-  if (props.isBusy) {
-    return
-  }
-
+function closeDialog() {
   if (dialogRef.value?.open) {
     dialogRef.value.close()
 
@@ -109,6 +117,39 @@ function requestClose() {
   }
 
   emit('close')
+}
+
+/**
+ * Every way out of an editing dialog (Escape, the close button, the
+ * backdrop, Cancel) comes through here, so unsaved changes are always
+ * confirmed, the way `TextFileModal` does it.
+ */
+async function requestClose() {
+  if (props.isBusy || isConfirmingClose.value) {
+    return
+  }
+
+  if (!isEditMode.value || !props.isDirty) {
+    closeDialog()
+
+    return
+  }
+
+  isConfirmingClose.value = true
+
+  try {
+    const isDiscarded = await useConfirm({
+      text: 'Discard your unsaved changes?',
+      actions: ['Discard'],
+      labelDecline: 'Keep editing',
+    })
+
+    if (isDiscarded) {
+      closeDialog()
+    }
+  } finally {
+    isConfirmingClose.value = false
+  }
 }
 
 function onClose() {
@@ -141,6 +182,8 @@ async function openDialog() {
 
   await nextTick()
 }
+
+defineExpose({ requestClose, forceClose: closeDialog })
 
 onMounted(openDialog)
 

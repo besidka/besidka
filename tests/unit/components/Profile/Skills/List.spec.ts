@@ -47,6 +47,15 @@ describe('Profile/Skills/List', () => {
     expect(rows[1]!.classes()).toContain('bg-base-200')
   })
 
+  it('forwards the Edit action of a row', async () => {
+    const skill = createSkillSummary({ id: 'a', name: 'alpha' })
+    const wrapper = await mountList({ skills: [skill] })
+
+    await wrapper.get(testId('skill-action-edit')).trigger('click')
+
+    expect(wrapper.emitted('edit')).toEqual([[skill]])
+  })
+
   it('shows the empty state with the New menu', async () => {
     const wrapper = await mountList()
 

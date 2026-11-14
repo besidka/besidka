@@ -1217,6 +1217,48 @@ update" disables the skill again.
 - **Mobile:** full-screen, with the keyboard lift from the `TextFileModal`
   sheet rules.
 
+**As built (S-11).** `EditDialog.client.vue` is the editor and
+`app/composables/skill-editor.ts` holds its state; `WorkspaceDialog` gained
+`mode="edit"` and `isDirty`, so Escape, the close button, the backdrop and
+Cancel all ask "Discard your unsaved changes?".
+
+- **One text for `SKILL.md`.** Name, Description, Advanced (YAML) and the body
+  compose into one string (`shared/utils/skills/compose.ts`, written with
+  `yaml`'s `stringify`). Validation, findings, the Model view and Save all read
+  that string. An untouched file is sent back as it was read: the frontmatter
+  keeps its bytes until the name, description or advanced YAML changes, so
+  opening a skill never makes it dirty. When the frontmatter cannot be split
+  into fields (no block, invalid YAML, a repeated key, a description that is
+  not text) the editor shows the whole file in one box, so a broken skill stays
+  fixable.
+- **Changes** are built from the working set in the order the server applies
+  them: deletes, renames, then the content of every new or changed file at its
+  final path. A rename may not land on the original path of another file, so
+  the saved renames never depend on their order. Files are read lazily from
+  the version the editor opened on; only opened and changed files are sent.
+- **Read-only.** A licence file of an open or custom skill allows nothing
+  (no edit, rename, delete, or a new root `LICENSE` or `NOTICE` name). A file
+  over `SKILL_EDIT_MAX_FILE_BYTES` opens read-only but can still be renamed or
+  deleted. Sizes are counted in bytes.
+- **Validation** runs 300 ms after the last keystroke
+  (`parseSkillMarkdown`, `scanSkillTextWithCounts`). Errors block Save; hidden
+  characters are a warning with the quick fix; findings show in the Model view.
+  The name pattern and the reserved-name rule (only while "Use as /name" is on)
+  are checked as you type, uniqueness on blur against the skills list. A
+  `name-taken` or `reserved-name` answer from the server lands on the Name
+  field.
+- **409 `stale-base`** shows a banner above the editor and turns Save off.
+  Compare shows what was saved since the version the editor opened on
+  (`GET /versions/<latest>/diff?against=<base>`); a base that was pruned says
+  so. Reload fetches the latest version and discards the draft after a
+  confirmation. A rebase of the draft onto the latest version is not built.
+- **Model view** shows the catalog line (`formatSkillCatalogLine`, the same
+  function as the token estimate; no line for a slash-only command), then the
+  text through the plain-text `FileViewer`, and the activation token count
+  against `SKILL_ACTIVATE_MAX_TOKENS`. The byte cap
+  (`SKILL_ACTIVATE_MAX_BYTES`) is not in the policy file yet, so only the token
+  cap is shown.
+
 ### 10.5 "+" menu and composer (S-3, S-12)
 
 - **"+" menu section "Skills"** in `ChatInput/ToolsMenu/Content.vue`: one

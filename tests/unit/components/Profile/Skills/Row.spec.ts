@@ -117,6 +117,18 @@ describe('Profile/Skills/Row', () => {
     ])
   })
 
+  it('offers Edit first in the menu and emits the skill', async () => {
+    const skill = createSkillSummary()
+    const wrapper = await mountRow(skill)
+
+    expect(wrapper.get(`${testId('skill-row-actions-menu')} li button`)
+      .attributes('data-testid')).toBe('skill-action-edit')
+
+    await wrapper.get(testId('skill-action-edit')).trigger('click')
+
+    expect(wrapper.emitted('edit')).toEqual([[skill]])
+  })
+
   it('offers Check for updates only for GitHub skills with the import flag', async () => {
     const github = createSkillSummary({ sourceKind: 'github' })
 

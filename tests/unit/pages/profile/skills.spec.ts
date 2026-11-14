@@ -1,4 +1,8 @@
-import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import {
+  mockComponent,
+  mockNuxtImport,
+  mountSuspended,
+} from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
@@ -42,6 +46,26 @@ mockNuxtImport('useLazyFetch', () => {
 })
 
 enableAutoUnmount(afterEach)
+
+mockComponent('ProfileSkillsEditDialog', async () => {
+  const { defineComponent, h } = await import('vue')
+
+  return defineComponent({
+    props: { skillId: { type: String, required: true } },
+    emits: ['saved', 'close'],
+    setup(props, { emit }) {
+      return () => h('button', {
+        'data-testid': 'edit-dialog-stub',
+        'data-skill-id': props.skillId,
+        'onClick': () => emit('saved', {
+          id: props.skillId,
+          version: 4,
+          isRenamed: true,
+        }),
+      })
+    },
+  })
+})
 
 const skills = [
   createSkillSummary({ id: 'a', name: 'alpha' }),
@@ -108,6 +132,7 @@ describe('profile skills page', () => {
     setList()
     useSidePanel().close()
     useSkillUpdateReview().close()
+    useSkillEditSession().close()
   })
 
   it('renders the heading, the rows and the New menu with the skills flag on', async () => {
@@ -182,7 +207,7 @@ describe('profile skills page', () => {
     expect(sidePanel.currentView.value?.title).toBe('alpha')
   })
 
-  it('creates a command from the New menu and opens it in the side panel', async () => {
+  it('creates a command from the New menu and opens it in the editor', async () => {
     mocks.fetch.mockResolvedValue({ id: 'n1', name: 'summarise' })
 
     const wrapper = await mountPage()
@@ -205,7 +230,64 @@ describe('profile skills page', () => {
       body: { kind: 'command', name: 'summarise' },
     })
     expect(mocks.refreshNuxtData).toHaveBeenCalled()
-    expect(useSidePanel().viewKey.value).toBe('skill:n1')
+    expect(useSkillEditSession().skillId.value).toBe('n1')
+    expect(useSidePanel().viewKey.value).toBeNull()
+  })
+
+  it('opens the editor from the Edit action of a row', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.findAll(testId('skill-action-edit'))[0]!.trigger('click')
+
+    expect(useSkillEditSession().skillId.value).toBe('a')
+  })
+
+  it('mounts the editor for the skill that is being edited', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.findAll(testId('skill-action-edit'))[0]!.trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find(testId('edit-dialog-stub')).exists()).toBe(true)
+    })
+
+    expect(wrapper.get(testId('edit-dialog-stub')).attributes('data-skill-id'))
+      .toBe('a')
+  })
+
+  it('refreshes the open detail panel with the new name after a rename', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.findAll(testId('skill-row-open'))[0]!.trigger('click')
+    expect(useSidePanel().currentView.value?.title).toBe('alpha')
+
+    list.value = {
+      ...(list.value as object),
+      skills: [
+        createSkillSummary({ id: 'a', name: 'alpha-renamed' }),
+        skills[1],
+      ],
+    }
+    await wrapper.findAll(testId('skill-action-edit'))[0]!.trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find(testId('edit-dialog-stub')).exists()).toBe(true)
+    })
+    await wrapper.get(testId('edit-dialog-stub')).trigger('click')
+
+    expect(useSidePanel().currentView.value?.title).toBe('alpha-renamed')
+    expect(useSidePanel().viewKey.value).toBe('skill:a')
+  })
+
+  it('leaves the detail panel alone when another skill is renamed', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.findAll(testId('skill-row-open'))[1]!.trigger('click')
+    await wrapper.findAll(testId('skill-action-edit'))[0]!.trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find(testId('edit-dialog-stub')).exists()).toBe(true)
+    })
+    await wrapper.get(testId('edit-dialog-stub')).trigger('click')
+
+    expect(useSidePanel().currentView.value?.title).toBe('beta')
   })
 
   it('opens the import dialog on the tab that was chosen', async () => {
