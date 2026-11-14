@@ -429,9 +429,62 @@ describe('resolveVerifiedGithubRef and the shared GitHub quota', () => {
 
     expect(failure).toMatchObject({
       status: 429,
-      message: 'GitHub rate limit reached',
+      code: 'github-budget-spent',
+      message: 'Too many GitHub imports right now',
     })
+    expect(failure.why).toContain('at most 50 GitHub requests an hour')
     expect(github.fetch).toHaveBeenCalledTimes(50)
+  })
+
+  it('sends the client token on API calls and trims a blank one away', async () => {
+    const github = createGithubMock()
+
+    github.setBranch('main', SHA)
+
+    await resolveGithubRef(
+      createGithubClient({ fetchImpl: github.fetch, token: ' tok ' }),
+      { ...REPOSITORY, ref: 'main' },
+    )
+    await resolveGithubRef(
+      createGithubClient({ fetchImpl: github.fetch, token: '  ' }),
+      { ...REPOSITORY, ref: 'main' },
+    )
+
+    const calls = github.fetch.mock.calls as Array<[string, RequestInit]>
+    const authorized = calls.map(([, init]) => {
+      return new Headers(init.headers).get('authorization')
+    })
+
+    expect(authorized).toEqual(['Bearer tok', null])
+  })
+
+  it('raises the hourly budget to 1000 with a server token', async () => {
+    const github = createGithubMock()
+    const kv = createFakeSkillKv()
+
+    github.setBranch('main', SHA)
+
+    for (let call = 0; call < 60; call++) {
+      await resolveGithubRef(
+        createGithubClient({ fetchImpl: github.fetch, kv, token: 'tok' }),
+        { ...REPOSITORY, ref: 'main' },
+      )
+    }
+
+    expect(github.fetch).toHaveBeenCalledTimes(60)
+
+    const key = [...kv.values.keys()].find(name => name.includes('budget'))!
+    const stored = JSON.parse(kv.values.get(key)!)
+
+    kv.values.set(key, JSON.stringify({ ...stored, count: 1000 }))
+
+    const failure = await failureOf(resolveGithubRef(
+      createGithubClient({ fetchImpl: github.fetch, kv, token: 'tok' }),
+      { ...REPOSITORY, ref: 'main' },
+    ))
+
+    expect(failure.code).toBe('github-budget-spent')
+    expect(failure.why).toContain('at most 1000 GitHub requests an hour')
   })
 
   it('does not count an archive download against the API budget', async () => {
@@ -458,7 +511,10 @@ describe('resolveVerifiedGithubRef and the shared GitHub quota', () => {
       { ...REPOSITORY, ref: 'main' },
     ))
 
-    expect(failure.message).toBe('GitHub rate limit reached')
+    expect(failure).toMatchObject({
+      status: 503,
+      code: 'github-budget-unavailable',
+    })
     expect(github.fetch).not.toHaveBeenCalled()
   })
 })

@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
     userId,
     skillId: id ?? '',
     kv: useKV(),
+    githubToken: useRuntimeConfig().skillsGithubToken,
     beforeNetwork: async () => {
       await enforceSkillImportRateLimit(event, userId)
     },

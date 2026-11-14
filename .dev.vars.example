@@ -116,6 +116,11 @@ NUXT_PUBLIC_ANTHROPIC_CODE_EXECUTION_FREE_HOURS_PER_MONTH=
 # Brave Search API (owner dev/testing key) — https://api-dashboard.search.brave.com/
 NUXT_BRAVE_SEARCH_API_KEY=
 
+# GitHub token for skill imports from github.com (optional). A fine-grained
+# personal access token with public read-only access and no extra scopes; without
+# it the import shares GitHub's anonymous quota. See docs/skills.md.
+NUXT_SKILLS_GITHUB_TOKEN=
+
 # Exa.ai API (owner dev/testing key) — https://dashboard.exa.ai/
 NUXT_EXA_API_KEY=
 

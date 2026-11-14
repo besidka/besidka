@@ -3,6 +3,7 @@ import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
 import {
   SKILL_GITHUB_API_BUDGET_PER_HOUR,
+  SKILL_GITHUB_API_BUDGET_PER_HOUR_WITH_TOKEN,
   SKILL_GITHUB_API_MAX_BYTES,
   SKILL_GITHUB_BRANCH_CACHE_SECONDS,
   SKILL_GITHUB_REF_CACHE_SECONDS,
@@ -57,6 +58,7 @@ export interface GithubKv {
 
 export interface GithubFetchOptions {
   purpose: GithubFetchPurpose
+  token?: string
   accept: string
   maxResponseBytes: number
   timeoutMs?: number
@@ -75,6 +77,7 @@ export interface GithubClient {
   fetchImpl?: typeof fetch
   logger?: LoggerLike
   kv?: GithubKv
+  token?: string
   deadlineAt: number
   defaultBranches: Map<string, string>
 }
@@ -101,6 +104,7 @@ export function createGithubClient(
     fetchImpl?: typeof fetch
     logger?: LoggerLike
     kv?: GithubKv
+    token?: string
     now?: number
   } = {},
 ): GithubClient {
@@ -108,6 +112,7 @@ export function createGithubClient(
     fetchImpl: options.fetchImpl,
     logger: options.logger,
     kv: options.kv,
+    token: options.token?.trim() || undefined,
     deadlineAt: (options.now ?? Date.now()) + SKILL_GITHUB_REQUEST_DEADLINE_MS,
     defaultBranches: new Map(),
   }
@@ -133,13 +138,73 @@ export function createGithubRefNotFoundError() {
   })
 }
 
-export function createGithubRateLimitError() {
+function formatWait(seconds: number): string {
+  const minutes = Math.max(1, Math.ceil(seconds / 60))
+
+  return minutes === 1 ? 'about a minute' : `about ${minutes} minutes`
+}
+
+function readResetSeconds(headers?: Headers): number | null {
+  const reset = Number(headers?.get('x-ratelimit-reset'))
+
+  if (!Number.isFinite(reset) || reset <= 0) {
+    return null
+  }
+
+  return Math.max(0, Math.ceil(reset - Date.now() / 1000))
+}
+
+/**
+ * GitHub's own quota for this server's address (or token) is spent. The
+ * `x-ratelimit-reset` header says when it comes back.
+ */
+export function createGithubRateLimitError(
+  options: { isAuthenticated?: boolean, headers?: Headers } = {},
+) {
+  const resetSeconds = readResetSeconds(options.headers)
+
   return createError({
     message: 'GitHub rate limit reached',
     status: 429,
     code: 'github-rate-limited',
-    why: 'GitHub allows 60 anonymous requests an hour for this server',
-    fix: 'Try again in an hour or upload a zip',
+    why: options.isAuthenticated
+      ? 'GitHub stopped answering this server because its hourly request '
+      + 'quota is spent'
+      : 'GitHub allows 60 anonymous requests an hour for this server, and '
+        + 'they are spent',
+    fix: resetSeconds === null
+      ? 'Try again in an hour or upload a zip'
+      : `Try again in ${formatWait(resetSeconds)} or upload a zip`,
+  })
+}
+
+/**
+ * Besidka's own hourly cap on GitHub API calls is spent; GitHub was not
+ * asked.
+ */
+export function createGithubBudgetSpentError(
+  options: { max: number, retryAfterSeconds?: number | null },
+) {
+  return createError({
+    message: 'Too many GitHub imports right now',
+    status: 429,
+    code: 'github-budget-spent',
+    why: `This server makes at most ${options.max} GitHub requests an hour `
+      + 'to stay inside GitHub\'s limit, and they are spent',
+    fix: options.retryAfterSeconds
+      ? `Try again in ${formatWait(options.retryAfterSeconds)} or upload a zip`
+      : 'Try again in an hour or upload a zip',
+  })
+}
+
+function createGithubBudgetUnavailableError() {
+  return createError({
+    message: 'GitHub import is unavailable right now',
+    status: 503,
+    code: 'github-budget-unavailable',
+    why: 'The request counter could not be read, so no request was sent to '
+      + 'GitHub',
+    fix: 'Try again in a moment or upload a zip',
   })
 }
 
@@ -335,7 +400,9 @@ async function readCappedBody(
  * shape of the later `safeFetch` (a `purpose`, a body cap, a timeout), but it
  * returns `{ status, bytes }` rather than a `Response`, so the swap needs a
  * small adapter. https only, an exact two-host allowlist, no redirect is ever
- * followed, no credential of any kind is sent, and the body is counted as it
+ * followed, no credential is sent except the optional server token, which goes
+ * to `api.github.com` only (never to codeload, never logged or put in an error
+ * text), and the body is counted as it
  * streams rather than trusted from `Content-Length`. 404 and 422 are returned
  * to the caller, which knows what they mean; a 403 is a rate limit only when
  * GitHub says its quota is spent; every other non-2xx status is an error.
@@ -390,6 +457,9 @@ export async function githubFetch(
             ...(url.hostname === GITHUB_API_HOST
               ? { 'X-GitHub-Api-Version': GITHUB_API_VERSION }
               : {}),
+            ...(url.hostname === GITHUB_API_HOST && options.token
+              ? { Authorization: `Bearer ${options.token}` }
+              : {}),
           },
         }),
         aborted,
@@ -439,7 +509,10 @@ export async function githubFetch(
         || response.headers.get('x-ratelimit-remaining') === '0'
 
       throw isQuotaSpent
-        ? createGithubRateLimitError()
+        ? createGithubRateLimitError({
+          isAuthenticated: !!options.token,
+          headers: response.headers,
+        })
         : createGithubRefusedError()
     }
 
@@ -554,15 +627,20 @@ async function writeCache(
 }
 
 /**
- * GitHub's 60 requests an hour per IP is shared by the whole app, so API
- * calls draw from one global hourly budget in KV. It fails closed: a spent
- * budget, or KV that cannot be read or written, answers with the rate limit
- * message instead of sending the call. Archive downloads do not count.
+ * GitHub's quota per IP is shared by the whole app, so API calls draw from one
+ * global hourly budget in KV: 50 anonymous, 1000 with a server token. It fails
+ * closed: a spent budget (`github-budget-spent`), or KV that cannot be read or
+ * written (`github-budget-unavailable`), refuses the call without sending it.
+ * Archive downloads do not count.
  */
 async function consumeApiBudget(client: GithubClient): Promise<void> {
   if (!client.kv) {
     return
   }
+
+  const max = client.token
+    ? SKILL_GITHUB_API_BUDGET_PER_HOUR_WITH_TOKEN
+    : SKILL_GITHUB_API_BUDGET_PER_HOUR
 
   try {
     const storage = createAuthRateLimitStorage(
@@ -571,13 +649,30 @@ async function consumeApiBudget(client: GithubClient): Promise<void> {
     )
     const result = await storage.consume('global', {
       window: GITHUB_BUDGET_WINDOW_SECONDS,
-      max: SKILL_GITHUB_API_BUDGET_PER_HOUR,
+      max,
     })
 
     if (result.allowed) {
       return
     }
+
+    client.logger?.set({
+      attributes: {
+        skills: {
+          github: { budgetSpent: true, authenticated: !!client.token },
+        },
+      },
+    })
+
+    throw createGithubBudgetSpentError({
+      max,
+      retryAfterSeconds: result.retryAfter,
+    })
   } catch (exception) {
+    if ((exception as { code?: string }).code === 'github-budget-spent') {
+      throw exception
+    }
+
     client.logger?.set({
       attributes: {
         skills: {
@@ -590,9 +685,9 @@ async function consumeApiBudget(client: GithubClient): Promise<void> {
         },
       },
     })
-  }
 
-  throw createGithubRateLimitError()
+    throw createGithubBudgetUnavailableError()
+  }
 }
 
 async function apiFetch(
@@ -604,6 +699,7 @@ async function apiFetch(
 
   return await githubFetch(url, {
     purpose: 'skills-github',
+    token: client.token,
     accept: options.accept,
     maxResponseBytes: options.maxResponseBytes,
     deadlineAt: client.deadlineAt,

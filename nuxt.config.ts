@@ -374,6 +374,7 @@ export default defineNuxtConfig({
     githubClientSecret: '',
     turnstileSecretKey: '',
     turnstileEnforced: false,
+    skillsGithubToken: '',
     filesHardMaxStorageBytes: 1 * 1024 * 1024 * 1024, // 1GB
     filesGlobalTransformLimitMonthly: 1000,
     enableAssistantFilePersistence: false,

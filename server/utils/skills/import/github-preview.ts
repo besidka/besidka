@@ -84,6 +84,7 @@ export async function previewGithubImport(input: {
   userId: number
   body: GithubImportBody
   logger: LoggerLike
+  githubToken?: string
   fetchImpl?: typeof fetch
 }) {
   const parsed = parseGithubSkillUrl(input.body.url)
@@ -97,6 +98,7 @@ export async function previewGithubImport(input: {
     fetchImpl: input.fetchImpl,
     logger: input.logger,
     kv: input.kv,
+    token: input.githubToken,
   })
   const source = await resolveGithubSource(client, parsed.value, {
     path: pickedPath,
