@@ -251,18 +251,21 @@ const featureList = [
     key: 'skills',
     title: 'Skills',
     description: 'Reusable instructions the model loads when it needs them.',
+    available: true,
   }),
   internalFeature({
     key: 'skills.import-url',
     title: 'Import skills from a link',
     description: 'Add a skill from a URL.',
     parent: 'skills',
+    available: true,
   }),
   internalFeature({
     key: 'skills.commands',
     title: 'Skill commands',
     description: 'Run a skill as a slash command from the chat input.',
     parent: 'skills',
+    available: true,
   }),
   internalFeature({
     key: 'skills.scripts',

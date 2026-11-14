@@ -400,6 +400,36 @@ describe('isThinkingToolPart / getToolPartName', () => {
     }
   })
 
+  it('treats the activate_skill call as a reasoning step', () => {
+    for (const state of ['input-streaming', 'input-available']) {
+      const part = {
+        type: 'tool-activate_skill',
+        state,
+      } as UIMessage['parts'][number]
+
+      expect(isThinkingToolPart(part)).toBe(true)
+      expect(isPendingToolPart(part)).toBe(true)
+    }
+
+    const done = {
+      type: 'tool-activate_skill',
+      state: 'output-available',
+    } as UIMessage['parts'][number]
+
+    expect(isThinkingToolPart(done)).toBe(true)
+    expect(isPendingToolPart(done)).toBe(false)
+  })
+
+  it('keeps a skill file read as a reasoning step', () => {
+    const part = {
+      type: 'tool-read_skill_file',
+      state: 'input-available',
+    } as UIMessage['parts'][number]
+
+    expect(isThinkingToolPart(part)).toBe(true)
+    expect(isPendingToolPart(part)).toBe(true)
+  })
+
   it('never treats an artifact tool part as a thinking part', () => {
     const states = ['input-streaming', 'input-available', 'output-available', 'output-error']
 

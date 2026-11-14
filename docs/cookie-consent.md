@@ -407,6 +407,16 @@ dismissed legal change banner no longer has a browser key: it is stored on the
 account (see `docs/legal.md`), and the old `legal-notice:dismissed:*` keys are
 deleted on load.
 
+### Where the Search popup offers it
+
+"Cookie settings" is a visible row of the Search popup's last group,
+**Interface** (Toggle theme, Pin sidebar, Cookie settings), not a hidden
+command: withdrawing consent must stay as easy as giving it. The group is not
+tied to a session, so it shows signed out too, when the Settings group (the
+profile pages only: Security, API Keys, Memory, Preferences, Connected apps,
+Labs) is hidden. It is called "Interface" and not "This device" because the
+pin-sidebar choice syncs to the account through the user settings.
+
 ### Never call consent composables during SSR
 
 `useCookieConsent()` and `useCookieConsentUi()` read and write `useState` keys

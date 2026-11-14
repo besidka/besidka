@@ -20,17 +20,35 @@ message half-written.
 
 The handler reads `text/html` and `text/plain` from the clipboard.
 
-1. Image files on the clipboard: do nothing. The document-level image paste
+1. A dialog that does not hold the textarea is open (`dialog[open]`: the file
+   manager, the search popup, the artifact picker, the skill picker, the skill
+   import): the paste is swallowed with `preventDefault()` and nothing is
+   inserted (`isBlockedByOpenDialog`). The owner once found the app's own page
+   text appended to the composer after pasting while such a dialog had focus.
+   A textarea inside a dialog of its own (project instructions) is not
+   blocked. The document-level image listener in `ChatInput.client.vue` uses
+   the same check, so it also stays quiet behind the artifact and skill
+   dialogs, not only behind the file and search ones.
+2. Image files on the clipboard: do nothing. The document-level image paste
    listener in `ChatInput.client.vue` handles them (desktop only).
-2. The caret is inside an unclosed code fence: paste verbatim, no conversion.
-3. The HTML gate (`shouldConvertHtml`) decides whether the HTML is converted:
+3. The caret is inside an unclosed code fence: paste verbatim, no conversion.
+4. The HTML gate (`shouldConvertHtml`) decides whether the HTML is converted.
+   It first refuses a copy of this app's own page (`isOwnAppHtml`): select-all
+   plus copy on a Besidka page puts Vue scoped-style attributes (`data-v-…`),
+   `data-testid`/`data-theme` attributes or the `__nuxt` root in the HTML, two
+   or more links to the page's own origin, or three or more links with no text
+   (icon-only buttons). Converting that pastes the whole interface as Markdown
+   (`[](https://…/profile/security)`, "Steps(7s)", "Web searchBuilt-in"), so
+   it falls back to `text/plain` (a long one still becomes a chip). Apple Mail,
+   Gmail and ordinary web pages carry none of these markers and convert as
+   before. Otherwise:
    - converted when it has `ul|ol|li|strong|b|em|h1-h6|pre|code|blockquote|table`;
    - or when it has more than one `<p>` or `<div>` block, unless it carries
      `white-space: pre`;
    - otherwise `text/plain` is used unchanged. VS Code and terminals put span
      soup in `text/html` (one `<div>` per line, `white-space: pre`), and the
      plain text is the right input for them.
-4. Conversion is `htmlToChatMarkdown` in
+5. Conversion is `htmlToChatMarkdown` in
    `app/utils/knowledge-html-to-markdown.ts`. It reuses the Turndown setup of
    the project knowledge importer (GFM tables, strikethrough, task lists, link
    scheme hardening, image alt hardening) and adds: removal of `head`, `meta`,
@@ -40,11 +58,11 @@ The handler reads `text/html` and `text/plain` from the clipboard.
    `- x` / `1. x` (outside code fences); trailing whitespace removed; three or
    more newlines collapsed to two. `htmlToKnowledgeMarkdown` is unchanged
    (its existing spec still expects the wide markers).
-5. The module is imported dynamically on the first HTML paste, so Turndown is
+6. The module is imported dynamically on the first HTML paste, so Turndown is
    not in the chat page chunk. `preventDefault()` is called synchronously
    before the import; if the import or conversion fails or yields an empty
    string, the `text/plain` text is inserted instead.
-6. Plain text pastes also get bullet normalization: a line that starts with
+7. Plain text pastes also get bullet normalization: a line that starts with
    optional whitespace, one of `•◦▪‣` and whitespace becomes `- Item`
    (`·` is not a bullet: it is a common middle dot in prose). Nesting is
    kept: the level is the larger of the glyph level (`•`/`‣` 0, `◦` 1, `▪` 2)
@@ -279,6 +297,49 @@ only reaches a composer that already exists, so an action that navigates first
 queues its text with `useChatInputPrefill().queue()`; the composer takes it
 once on mount.
 
+## Typed skill commands: the `/` picker and the mirror overlay
+
+With the `skills.commands` flag on, `ChatInput.client.vue` adds a typed
+`/command` on top of this textarea (`useComposerCommands` in
+`app/composables/composer-commands.ts`, pure rules in
+`app/utils/composer-command.ts`; the product rules are in `docs/skills.md`
+section 10.5). It reuses three things from here:
+
+- **Key order.** The picker's `onKeydown` runs first, before
+  `onMarkdownKeydown` (Tab indent, Enter inside a fence) and before the send
+  handler. While the picker is open it takes ArrowUp, ArrowDown, Enter, Tab and
+  Escape and returns `true`, so **Enter never sends**; on phones the same Enter
+  arrives as an `insertLineBreak` `beforeinput`, which the open picker takes
+  before the list-continuation rule. `isImeEvent` and the
+  `compositionstart` to `compositionend` window leave the keys alone, as the
+  rest of this file does.
+- **The code guards.** The trigger and the token ignore a `/` inside a fenced
+  block (`advanceFence`, now exported from `markdown-textarea.ts`, the same
+  scanner as `isInsideOpenCodeFence`) or an inline code span.
+- **The single insertion helper.** A pick inserts `/command ` and Backspace
+  over a token deletes the name through `insertText(text, snapshot)`, so the
+  edit goes through `execCommand` and native undo still works.
+
+**Mirror overlay (`ChatInput/CommandMirror.vue`).** The textarea stays a plain
+`<textarea>` with a transparent background. While a typed command is the active
+invocation, a `div` is rendered behind it, inside a `relative` wrapper, with the
+same text and the token wrapped in a `<mark>` whose text is transparent and
+whose background is `bg-accent/25` (the inline-code pink). For the two to line
+up it copies the textarea's computed font family, size, weight, letter and word
+spacing, line height, tab size and padding (re-read on a `ResizeObserver`
+tick), uses `white-space: pre-wrap` and `overflow-wrap: break-word`, appends a
+trailing space so a final newline keeps its line, and follows `scroll`. It has
+no padding or border on the `<mark>`, because that would change wrapping. It
+renders text by interpolation only, is `aria-hidden` and `pointer-events-none`,
+and is mounted only while a token is highlighted, so a message without a
+command renders exactly as before. A TipTap or ProseMirror editor stays
+deferred (see "Rejected for now" below). Alignment on iOS Safari is not checked
+by the headless specs and needs the Simulator.
+
+**At send** the active token and the blanks after it are cut from the typed
+text before it is joined with the pasted-text chips, so the stored text, a
+share and a branch never contain the command name.
+
 ## Rendering user messages
 
 User messages are Markdown, not HTML and not MDC. `getParserOptions('user')` in
@@ -475,6 +536,12 @@ than structure-preserving paste.
 - `tests/unit/composables/markdown-textarea.spec.ts`: every paste and keydown
   rule, the Apple Mail and Gmail fixtures, the VS Code span-soup fall-through,
   the IME guard, fences, list continuation and ending, Tab indent, long paste.
+- `tests/unit/utils/composer-command.spec.ts`,
+  `tests/unit/composables/composer-commands.spec.ts` and
+  `tests/unit/components/ChatInput/CommandPicker.spec.ts` / `CommandMirror.spec.ts`
+  (the typed command: trigger, token, strip, keys, IME, backspace, tile sync,
+  overlay), and `tests/e2e/chat/skills.spec.ts` (type `/mee`, pick, highlight,
+  tile, send without the token).
 - `tests/unit/utils/knowledge-html-to-markdown.spec.ts` (`htmlToChatMarkdown`).
 - `tests/unit/utils/remark-disable-html.spec.ts` (the real `parseMarkdown`
   with `getParserOptions('user')`: literal generics and tags, every directive

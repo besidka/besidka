@@ -198,6 +198,7 @@ const emit = defineEmits<{
   'open-files-upload': []
   'open-files-generated': []
   'open-artifact-picker': []
+  'open-skills-picker': []
   'update:use-memory': [value: boolean]
   'remove-tile': [id: ChatInputTileId]
 }>()
@@ -206,7 +207,7 @@ const HIGHLIGHT_DURATION_MS = 1200
 const CHECKED_RADIO_SELECTOR = 'input[type="radio"]:checked:not(:disabled)'
 const FOCUSABLE_SELECTOR = [
   'input:not(:disabled)',
-  'button:not(:disabled)',
+  'button:not(:disabled):not([aria-controls])',
   'a[href]',
 ].join(', ')
 
@@ -326,6 +327,9 @@ const contentListeners = {
   }),
   'onOpenArtifactPicker': closeAfter(() => {
     emit('open-artifact-picker')
+  }),
+  'onOpenSkillsPicker': closeAfter(() => {
+    emit('open-skills-picker')
   }),
 }
 

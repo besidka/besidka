@@ -48,12 +48,27 @@ describe('assertRequestBodyLength', () => {
     }))
   })
 
-  it.each([undefined, null, '', 'abc', 'Infinity', 'NaN'])(
-    'lets a missing or unreadable Content-Length (%j) through',
+  it.each([undefined, null, '', '  '])(
+    'answers 411 for a missing Content-Length (%j)',
     (value) => {
       stubContentLength(value)
 
-      expect(() => check(1000)).not.toThrow()
+      expect(() => check(1000)).toThrowError(expect.objectContaining({
+        status: 411,
+        message: 'Content-Length required',
+      }))
+    },
+  )
+
+  it.each(['abc', 'Infinity', 'NaN', '-5'])(
+    'answers 400 for an unreadable Content-Length (%j)',
+    (value) => {
+      stubContentLength(value)
+
+      expect(() => check(1000)).toThrowError(expect.objectContaining({
+        status: 400,
+        message: 'Invalid Content-Length',
+      }))
     },
   )
 

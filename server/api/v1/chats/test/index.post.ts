@@ -58,6 +58,17 @@ const IMAGE_PRE_RETRIEVAL_CALL_ID: string
   = `${PAST_CHAT_PRE_RETRIEVAL_CALL_PREFIX}test-user-message`
 const IMAGE_PRE_RETRIEVAL_TO_MODEL_DELAY: number = 800
 
+const SKILL_TOOL_CALL_ID: string = 'test-skill-call-0'
+const SKILL_TOOL_CALL_TO_INPUT_DELAY: number = 400
+const SKILL_INPUT_TO_OUTPUT_DELAY: number = 1500
+const SKILL_DEFAULT_ID: string = 'skl-test'
+const SKILL_DEFAULT_NAME: string = 'writing-style'
+
+interface TestSkill {
+  id: string
+  name: string
+}
+
 const GATEWAY_IMAGE_TEXT_TO_FILE_DELAY: number = 1500
 const GATEWAY_IMAGE_TEST_DATA_URL: string
   = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
@@ -339,11 +350,47 @@ function buildGatewayImageGenerationChunks(): TimedChunk[] {
   ]
 }
 
+function buildSkillChunks(skill: TestSkill): TimedChunk[] {
+  return [
+    {
+      chunk: {
+        type: 'tool-input-start',
+        toolCallId: SKILL_TOOL_CALL_ID,
+        toolName: 'activate_skill',
+      },
+    },
+    {
+      chunk: {
+        type: 'tool-input-available',
+        toolCallId: SKILL_TOOL_CALL_ID,
+        toolName: 'activate_skill',
+        input: { name: skill.name },
+      },
+      delay: SKILL_TOOL_CALL_TO_INPUT_DELAY,
+    },
+    {
+      chunk: {
+        type: 'tool-output-available',
+        toolCallId: SKILL_TOOL_CALL_ID,
+        output: {
+          status: 'activated',
+          skillId: skill.id,
+          name: skill.name,
+          version: 1,
+        },
+      },
+      delay: SKILL_INPUT_TO_OUTPUT_DELAY,
+    },
+    ...buildTextChunks(SHORT_TEXT, 'test-skill-text-0'),
+  ]
+}
+
 function getChunksForScenario(
   scenario: Scenario,
   effort: ReasoningLevel,
   imageReasoningFirst: boolean,
   imagePreRetrievalFirst: boolean,
+  skill: TestSkill,
 ): TimedChunk[] {
   const effectiveScenario = scenario === 'reasoning' && effort === 'off'
     ? 'short'
@@ -405,6 +452,8 @@ function getChunksForScenario(
       return buildTextChunks(TEST_MERMAID_MESSAGE, 'test-text-0')
     case 'code':
       return buildCodeChunks(TEST_CODE_STREAM_MESSAGE, 'test-text-0')
+    case 'skill':
+      return buildSkillChunks(skill)
     default:
       return buildTextChunks(SHORT_TEXT, 'test-text-0')
   }
@@ -470,6 +519,8 @@ export default defineEventHandler(async (event) => {
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
     error: z.enum(chatTestErrorIds).optional(),
     format: z.enum(DOCUMENT_FORMATS).default('docx'),
+    skillId: z.string().max(64).default(SKILL_DEFAULT_ID),
+    skillName: z.string().max(64).default(SKILL_DEFAULT_NAME),
     imageReasoningFirst: z
       .enum(['true', 'false'])
       .default('false')
@@ -520,6 +571,7 @@ export default defineEventHandler(async (event) => {
         query.data.effort,
         query.data.imageReasoningFirst,
         query.data.imagePreRetrievalFirst,
+        { id: query.data.skillId, name: query.data.skillName },
       )
 
   const stream = createUIMessageStream({

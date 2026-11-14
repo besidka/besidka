@@ -50,6 +50,29 @@ interface ChatErrorPayload {
 }
 ```
 
+### What the provider said (2026-11-14)
+
+A spend cap or quota problem used to read as a generic "the provider returned
+an internal error". For `provider-unavailable`, `provider-quota-exceeded` and
+`provider-rate-limit`, `normalizeChatError` now puts a short line in `why`
+built by `summarizeProviderError` (`server/utils/chats/provider-error-summary.ts`):
+
+- Google: `Google returned 429 RESOURCE_EXHAUSTED: <message>` (the code is
+  `error.status`).
+- Anthropic: `Anthropic returned 529 overloaded_error: Overloaded` (the code is
+  `error.type`).
+- OpenAI: `OpenAI returned 429 insufficient_quota: <message>` (the code is
+  `error.type` or a string `error.code`).
+- No body: `Google returned 500`. No status at all: the generic copy stays.
+
+Only 402, 429 and 5xx are summarized, because there the provider's text is
+about its own state. A 400 can echo the user's content ("Invalid value: '...'"),
+so it is never included. URLs, key-shaped tokens (`sk-`, `AIza`, `xai-`, long
+opaque strings) and `api_key`/`token`/`Bearer` assignments are removed, control
+characters and runs of spaces collapse, a free-text field cannot pose as the
+code (it must look like an identifier), and the line stops at 160 characters.
+An explicit `why` from the caller always wins.
+
 ### Pre-stream failures
 
 Failures that happen before the AI stream starts return a non-2xx JSON response body that contains the full `ChatErrorPayload`.

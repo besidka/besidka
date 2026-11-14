@@ -4,6 +4,7 @@ import { shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import type { VueWrapper } from '@vue/test-utils'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import { useSkillPreview } from '../../../../app/composables/composer-skills'
 import { isThinkingActive } from '../../../../app/utils/reasoning'
 
 const mocks = vi.hoisted(() => ({
@@ -1744,6 +1745,160 @@ describe('Chat/Reasoning', () => {
       expect(wrapper.find('[data-testid="reasoning-search-step"]').exists())
         .toBe(false)
     })
+
+  describe('skill step', () => {
+    const skillCall = {
+      type: 'tool-activate_skill',
+      toolCallId: 'call-skill',
+      state: 'output-available',
+      input: { name: 'writing-style' },
+      output: { status: 'activated', skillId: 'skl1', name: 'writing-style' },
+    }
+
+    async function mountSkillMessage(
+      parts: unknown[],
+      options: { status?: 'ready' | 'streaming', role?: UIMessage['role'] } = {},
+    ) {
+      return await mountSuspended(Reasoning, {
+        props: {
+          message: {
+            id: 'msg-skill',
+            role: options.role ?? 'assistant',
+            parts,
+          } as UIMessage,
+          status: options.status ?? 'ready',
+          reasoningLevel: 'off',
+          turnStartedAt: 0,
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: { stubs: { MDCCached: true } },
+      })
+    }
+
+    it('renders an applied skill as a step, even with no reasoning text',
+      async () => {
+        const wrapper = await mountSkillMessage([skillCall])
+
+        expect(wrapper.find('[data-testid="reasoning-steps"]').exists())
+          .toBe(true)
+        expect(wrapper.get('[data-testid="reasoning-skill-step-title"]').text())
+          .toBe('Applied skill · writing-style')
+        expect(wrapper.find('[data-testid="skill-step"]').exists()).toBe(false)
+      })
+
+    it('shows a running call as Reading skill and a failed call as failed',
+      async () => {
+        const running = await mountSkillMessage([{
+          ...skillCall,
+          state: 'input-available',
+          output: undefined,
+        }], { status: 'streaming' })
+
+        expect(running.get('[data-testid="reasoning-skill-step-title"]')
+          .text()).toContain('Reading skill · writing-style')
+        expect(running.find('[data-testid="reasoning-skill-step-open"]')
+          .exists()).toBe(false)
+
+        const failed = await mountSkillMessage([{
+          ...skillCall,
+          state: 'output-error',
+          output: undefined,
+        }])
+
+        expect(failed.get('[data-testid="reasoning-skill-step-title"]')
+          .text()).toBe('Could not use skill · writing-style')
+      })
+
+    it('keeps the order the steps happened in', async () => {
+      const wrapper = await mountSkillMessage([
+        skillCall,
+        {
+          type: 'tool-memory_list',
+          toolCallId: 'call-2',
+          state: 'output-available',
+          input: {},
+          output: { notice: 'data', entries: [] },
+        },
+        { type: 'text', text: 'Answer' },
+      ])
+      const steps = wrapper.findAll('[data-testid="reasoning-steps"] > li')
+
+      expect(steps).toHaveLength(2)
+      expect(steps[0]!.find('[data-testid="reasoning-skill-step"]').exists())
+        .toBe(true)
+      expect(steps[1]!.find('[data-testid="reasoning-memory-step"]').exists())
+        .toBe(true)
+    })
+
+    it('makes one step for a call and its activation part, and opens the preview',
+      async () => {
+        const preview = useSkillPreview()
+
+        preview.close()
+
+        const wrapper = await mountSkillMessage([
+          skillCall,
+          {
+            type: 'data-skill-activation',
+            data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+          },
+        ])
+
+        expect(wrapper.findAll('[data-testid="reasoning-skill-step"]'))
+          .toHaveLength(1)
+
+        await wrapper.get('[data-testid="reasoning-skill-step-open"]')
+          .trigger('click')
+
+        expect(preview.skillId.value).toBe('skl1')
+        preview.close()
+      })
+
+    it('builds no step from message metadata alone, as on a shared page',
+      async () => {
+        const wrapper = await mountSuspended(Reasoning, {
+          props: {
+            message: {
+              id: 'msg-shared',
+              role: 'assistant',
+              parts: [{ type: 'text', text: 'Rewritten.' }],
+              metadata: {
+                tools: ['activate_skill'],
+                skills: [{ skillId: 'skl1', name: 'private-skill-name' }],
+              },
+            } as unknown as UIMessage,
+            status: 'ready',
+            reasoningLevel: 'off',
+            turnStartedAt: 0,
+            reasoningAccumulatedMs: 0,
+            reasoningSegmentStartedAt: 0,
+            isTurnThinkingHeld: false,
+          },
+          global: { stubs: { MDCCached: true } },
+        })
+
+        expect(wrapper.find('[data-testid="reasoning-skill-step"]').exists())
+          .toBe(false)
+        expect(wrapper.html()).not.toContain('private-skill-name')
+      })
+
+    it('steps for a lone activation part on an assistant message only',
+      async () => {
+        const activation = {
+          type: 'data-skill-activation',
+          data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+        }
+        const assistant = await mountSkillMessage([activation])
+        const user = await mountSkillMessage([activation], { role: 'user' })
+
+        expect(assistant.get('[data-testid="reasoning-skill-step-title"]')
+          .text()).toBe('Applied skill · writing-style')
+        expect(user.find('[data-testid="reasoning-skill-step"]').exists())
+          .toBe(false)
+      })
+  })
 
   describe('hidden reasoning indicator', () => {
     function createMessageWithUsage(

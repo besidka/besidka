@@ -428,4 +428,56 @@ describe('userMessagePartsSchema artifact attachments', () => {
     expect(userMessagePartsSchema.safeParse([attachment('a1')]).success)
       .toBe(false)
   })
+
+  describe('skill invocation', () => {
+    const text = { type: 'text', text: 'hello' }
+    const invocation = {
+      type: 'data-skill-invocation',
+      data: { skillId: 'skl1', name: 'writing-style', version: 3 },
+    }
+
+    it('accepts text with one attached skill', () => {
+      expect(userMessagePartsSchema.safeParse([text, invocation]).success)
+        .toBe(true)
+    })
+
+    it('accepts a message that is only an attached skill', () => {
+      expect(userMessagePartsSchema.safeParse([invocation]).success).toBe(true)
+    })
+
+    it('still refuses a message with neither text nor a skill', () => {
+      expect(userMessagePartsSchema.safeParse([{
+        type: 'file',
+        mediaType: 'image/png',
+        url: '/files/a.png',
+      }]).success).toBe(false)
+    })
+
+    it('refuses a second attached skill', () => {
+      expect(userMessagePartsSchema.safeParse([
+        text,
+        invocation,
+        { ...invocation, data: { ...invocation.data, skillId: 'skl2' } },
+      ]).success).toBe(false)
+    })
+
+    it('refuses extra keys, a bad version and an overlong id', () => {
+      expect(userMessagePartsSchema.safeParse([
+        text,
+        { ...invocation, data: { ...invocation.data, body: 'x' } },
+      ]).success).toBe(false)
+      expect(userMessagePartsSchema.safeParse([
+        text,
+        { ...invocation, data: { ...invocation.data, version: 0 } },
+      ]).success).toBe(false)
+      expect(userMessagePartsSchema.safeParse([
+        text,
+        { ...invocation, data: { ...invocation.data, skillId: 'a'.repeat(65) } },
+      ]).success).toBe(false)
+      expect(userMessagePartsSchema.safeParse([
+        text,
+        { ...invocation, extra: true },
+      ]).success).toBe(false)
+    })
+  })
 })

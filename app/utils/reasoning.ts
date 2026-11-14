@@ -80,6 +80,11 @@ const TOOL_STEP_TITLES = new Map<string, {
     done: 'Removed from memory',
     failed: 'Removing from memory failed',
   }],
+  ['read_skill_file', {
+    pending: 'Reading a skill file',
+    done: 'Read a skill file',
+    failed: 'Reading the skill file failed',
+  }],
   ['search_project_knowledge', {
     pending: 'Searching project knowledge',
     done: 'Searched project knowledge',

@@ -114,6 +114,7 @@ import { CODE_EXECUTION_FILE_DELIVERY } from '#shared/utils/file-delivery'
 import { isOfficeMediaType } from '#shared/utils/office-files'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
+  appendTextAsLastUserTurn,
   appendTextToLastUserTurn,
   buildKnowledgeMediaTurns,
   buildMessagesForModel,
@@ -305,6 +306,22 @@ import {
   rewriteArtifactToolParts,
 } from '~~/server/utils/artifacts/message-parts'
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
+import { SKILL_TOOL_STEPS } from '#shared/utils/skills-policy'
+import {
+  findSkillInvocation,
+  isDataSkillInvocationPart,
+  isSkillToolName,
+} from '#shared/utils/skills/runtime'
+import {
+  createSkillInvocationUnavailableError,
+  loadSkillInvocationContent,
+  resolveSkillInvocationPart,
+} from '~~/server/utils/skills/runtime/invocation'
+import {
+  appendSkillActivationParts,
+  redactSkillToolPartsForPersistence,
+} from '~~/server/utils/skills/runtime/persist'
+import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
 import {
   appendAnthropicContainerUploads,
   buildCodeExecutionInstruction,
@@ -457,6 +474,35 @@ export default defineEventHandler(async (event) => {
     logger,
     onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
   })
+  const hadSkillInvocation = newMessage.parts.some(isDataSkillInvocationPart)
+
+  newMessage.parts = await resolveSkillInvocationPart({
+    event,
+    db,
+    userId,
+    parts: newMessage.parts,
+    logger,
+    onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
+  })
+
+  if (hadSkillInvocation && newMessage.parts.length === 0) {
+    throw createSkillInvocationUnavailableError()
+  }
+
+  const skillInvocation = findSkillInvocation(newMessage.parts)
+  const preloadedSkillInvocation = skillInvocation && !isStoredUserMessage
+    ? await loadSkillInvocationContent({
+      db,
+      bucket: useFileStorage(),
+      userId,
+      invocation: skillInvocation,
+      logger,
+    })
+    : null
+
+  if (skillInvocation && !isStoredUserMessage && !preloadedSkillInvocation) {
+    throw createSkillInvocationUnavailableError()
+  }
 
   const firstUserMessage = chat.messages.length === 1
     && chat.messages[0]?.role === 'user'
@@ -1590,6 +1636,7 @@ export default defineEventHandler(async (event) => {
       'artifacts.storage',
       'artifacts.llm-bridge',
       'documents',
+      'skills',
       ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
@@ -1651,6 +1698,26 @@ export default defineEventHandler(async (event) => {
     },
   })
 
+  const skillsSend = await prepareSkillsForSend({
+    db,
+    getBucket: () => useFileStorage(),
+    userId,
+    isSkillsActive: sendFeatures.isFeatureActive('skills'),
+    isToolCallingAllowed: toolCallingAllowed,
+    family: resolveKnowledgeTokenFamily({
+      providerId: telemetryProviderId,
+      modelId,
+      gateway: !!gatewayId,
+    }),
+    storedMessages: chat.messages,
+    newMessageParts: newMessage.parts,
+    userMessageText,
+    isStoredUserMessage,
+    preloadedInvocation: preloadedSkillInvocation,
+    guard: chatSearchBudget,
+    logger: aiLogger,
+  })
+
   const knowledgeSendModel: KnowledgeSendModel = gatewayId
     ? {
       providerId: telemetryProviderId,
@@ -1693,6 +1760,7 @@ export default defineEventHandler(async (event) => {
         memoryInstructions,
         artifactInstructions,
         documentsContextLine,
+        skillsInstructionBlock: skillsSend.instructionBlock,
         codeExecutionInputNames: codeExecutionSession?.uploadedFileNames,
       }),
       artifactContextBlock,
@@ -1720,7 +1788,8 @@ export default defineEventHandler(async (event) => {
       requestedTools,
       holdsUntrustedKnowledge: (!!knowledgeContext
         && holdsUntrustedKnowledge(knowledgeContext))
-      || artifactContextBlock !== null,
+      || artifactContextBlock !== null
+      || skillsSend.holdsSkillText,
       holdsPastChatExcerpts: pastChatPreRetrieval !== null,
     })
   }
@@ -1746,6 +1815,13 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (skillsSend.toolsRegistered) {
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...skillsSend.tools },
+    }
+  }
+
   const toolLoop = resolveToolLoop(parsedTools.tools, {
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
@@ -1753,6 +1829,7 @@ export default defineEventHandler(async (event) => {
     knowledgeSteps: knowledgeToolsRegistered
       ? KNOWLEDGE_LIMITS.toolCallsPerSend
       : 0,
+    skillSteps: skillsSend.toolsRegistered ? SKILL_TOOL_STEPS : 0,
     guard: chatSearchBudget,
   })
   const toolLoopOptions = toolLoop
@@ -1764,6 +1841,9 @@ export default defineEventHandler(async (event) => {
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
       .map(([toolName]) => toolName)
       .filter(toolName => !isArtifactToolName(toolName)),
+  )
+  const answerGuaranteeToolNames = new Set(
+    [...followUpToolNames].filter(toolName => !isSkillToolName(toolName)),
   )
 
   const stream = createUIMessageStream({
@@ -1799,6 +1879,10 @@ export default defineEventHandler(async (event) => {
       )
 
       try {
+        for (const activationPart of skillsSend.streamActivations) {
+          writer.write(activationPart)
+        }
+
         if (missingFiles.length > 0) {
           writer.write({
             type: 'data-missing-files',
@@ -1861,6 +1945,8 @@ export default defineEventHandler(async (event) => {
           ]
             .filter((excerpts): excerpts is string => !!excerpts)
             .join('\n\n') || null,
+          skillInvocationBlock: skillsSend.invocationBlock,
+          userMessageId: newMessage.id,
         })
 
         function recordSdkWarnings(
@@ -2016,6 +2102,7 @@ export default defineEventHandler(async (event) => {
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
               documentsContextLine,
+              skillsInstructionBlock: skillsSend.instructionBlock,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
             }),
@@ -2150,7 +2237,10 @@ export default defineEventHandler(async (event) => {
         }
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
-          originalMessages: messagesForAI,
+          originalMessages: endOriginalMessagesOnUserTurn(
+            messagesForAI,
+            newMessage.id,
+          ),
           generateMessageId: () => messagePublicId,
           sendSources: true,
           sendReasoning,
@@ -2249,6 +2339,7 @@ export default defineEventHandler(async (event) => {
               memoryInstructions,
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: false,
+              skillsInstructionBlock: skillsSend.activeSkillsBlock,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -2288,7 +2379,7 @@ export default defineEventHandler(async (event) => {
         const searchAnswerGuarantee = toolLoop
           ? withSearchAnswerGuarantee({
             stream: correctedUiMessageStream,
-            followUpToolNames,
+            followUpToolNames: answerGuaranteeToolNames,
             deliverableToolNames: artifactToolsRegistered
               || documentToolsRegistered
               ? new Set([
@@ -2353,7 +2444,7 @@ export default defineEventHandler(async (event) => {
           gatewayPricing,
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
-          followUpToolNames,
+          followUpToolNames: answerGuaranteeToolNames,
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
           knowledgeMode: knowledgeContext?.decision.mode,
           autoWebSearch: autoWebSearchOutcome,
@@ -2362,6 +2453,8 @@ export default defineEventHandler(async (event) => {
               pastChatPreRetrieval,
             ) as UIMessage['parts'][number]
             : undefined,
+          skillActivationParts: skillsSend.streamActivations as
+            unknown as UIMessage['parts'],
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -3014,6 +3107,24 @@ async function resolveSendKnowledge(input: {
 }
 
 /**
+ * The AI SDK continues the last message when `originalMessages` ends on an
+ * assistant turn. A user message that is only an attached skill is dropped
+ * from the model context, so the list could end on the previous answer and
+ * the reply would be merged into it. A stub user turn keeps the reply a new
+ * message; it is never sent anywhere.
+ */
+function endOriginalMessagesOnUserTurn(
+  messages: UIMessage[],
+  userMessageId: string,
+): UIMessage[] {
+  if (messages.at(-1)?.role !== 'assistant') {
+    return messages
+  }
+
+  return [...messages, { id: userMessageId, role: 'user', parts: [] }]
+}
+
+/**
  * The model-facing turns with project knowledge applied: the media turns
  * lead the history, so `buildMessagesForModel` still enforces Google's
  * leading-user rule and strict alternation over the combined array, and the
@@ -3026,10 +3137,19 @@ function buildKnowledgeAwareMessagesForModel(input: {
   modelProviderId: string | undefined
   mediaTurns: UIMessage[]
   excerpts: string | null
+  skillInvocationBlock?: string | null
+  userMessageId?: string
 }): UIMessage[] {
-  const history = input.mediaTurns.length > 0
+  const combinedHistory = input.mediaTurns.length > 0
     ? [...input.mediaTurns, ...input.messagesForAI]
     : input.messagesForAI
+  const history = input.skillInvocationBlock && input.userMessageId
+    ? appendTextAsLastUserTurn(
+      combinedHistory,
+      input.skillInvocationBlock,
+      input.userMessageId,
+    )
+    : combinedHistory
   const messagesForModel = buildMessagesForModel(
     history,
     input.modelProviderId,
@@ -3438,6 +3558,7 @@ async function persistAssistantMessageFromStream(input: {
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
   getCodeExecutionFileIds?: () => string[]
   pastChatChipPart?: UIMessage['parts'][number]
+  skillActivationParts?: UIMessage['parts']
 }): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
@@ -3535,10 +3656,15 @@ async function persistAssistantMessageFromStream(input: {
         text: getPersistedEmptyAnswerFailureText(),
       }]
       : normalizedParts
-    const finalParts = redactMemoryToolPartsForPersistence(
-      stripUndeliveredInlineDataParts(
-        partsBeforeSizeGuard,
-        input.logger,
+    const finalParts = redactSkillToolPartsForPersistence(
+      redactMemoryToolPartsForPersistence(
+        appendSkillActivationParts([
+          ...(input.skillActivationParts ?? []),
+          ...stripUndeliveredInlineDataParts(
+            partsBeforeSizeGuard,
+            input.logger,
+          ),
+        ]),
       ),
     )
 
@@ -3919,6 +4045,7 @@ function buildChatInstructions(input: {
   hasKnowledgeTools?: boolean
   artifactInstructions?: string | null
   documentsContextLine?: string | null
+  skillsInstructionBlock?: string | null
   codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
@@ -3934,6 +4061,7 @@ function buildChatInstructions(input: {
     hasKnowledgeTools,
     artifactInstructions,
     documentsContextLine,
+    skillsInstructionBlock,
     codeExecutionInputNames,
     now = new Date(),
   } = input
@@ -3957,6 +4085,10 @@ function buildChatInstructions(input: {
 
   if (documentsContextLine) {
     instructions.push(documentsContextLine)
+  }
+
+  if (skillsInstructionBlock) {
+    instructions.push(skillsInstructionBlock)
   }
 
   if (requestedTools.includes('code_execution')) {

@@ -28,6 +28,8 @@ export function useChatTest(
         error: undefined,
         imageReasoningFirst: undefined,
         imagePreRetrievalFirst: undefined,
+        skillId: undefined,
+        skillName: undefined,
       }
     }
 
@@ -55,6 +57,12 @@ export function useChatTest(
       error,
       imageReasoningFirst: 'imageReasoningFirst' in route.query,
       imagePreRetrievalFirst: 'imagePreRetrievalFirst' in route.query,
+      skillId: typeof route.query.skillId === 'string'
+        ? route.query.skillId
+        : undefined,
+      skillName: typeof route.query.skillName === 'string'
+        ? route.query.skillName
+        : undefined,
     }
   })
 
@@ -82,6 +90,14 @@ export function useChatTest(
 
     if (query.value.imagePreRetrievalFirst) {
       searchParams.set('imagePreRetrievalFirst', 'true')
+    }
+
+    if (query.value.skillId) {
+      searchParams.set('skillId', query.value.skillId)
+    }
+
+    if (query.value.skillName) {
+      searchParams.set('skillName', query.value.skillName)
     }
 
     const paramsString = searchParams.toString()

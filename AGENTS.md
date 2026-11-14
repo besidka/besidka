@@ -1160,6 +1160,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
   files.findIndex(file =>
     file.storageKey === storageKey)
   ```
+- Use American English spelling in all UI copy, code, docs and commit messages (license, color, behavior, canceled).
 - Remove unused variables entirely instead of prefixing with `_`. For function parameters, omit them from the signature:
   ```typescript
   // Correct - omit unused parameter

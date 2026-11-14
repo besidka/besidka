@@ -4,6 +4,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '#shared/types/chats.d'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
@@ -2232,6 +2233,102 @@ describe('useChat submit with attached artifacts', () => {
       { type: 'text', text: 'Use both' },
       expect.objectContaining({ type: 'file', filename: 'notes.txt' }),
       { type: 'data-artifact-attachment', data: attachedArtifact },
+    ])
+  })
+})
+
+describe('hasVisibleAssistantContent with a skill step', () => {
+  it('shows a message that only holds a running activate_skill part', () => {
+    const message = {
+      id: 'assistant-skill-step',
+      role: 'assistant',
+      parts: [{
+        type: 'tool-activate_skill',
+        toolCallId: 'call-1',
+        state: 'input-streaming',
+        input: { name: 'writing-style' },
+      }],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(message)).toBe(true)
+  })
+
+  it('does not count the activation data part as content on its own', () => {
+    const message = {
+      id: 'assistant-activation',
+      role: 'assistant',
+      parts: [{
+        type: 'data-skill-activation',
+        data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+      }],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(message)).toBe(false)
+  })
+})
+
+describe('useChat submit with an attached skill', () => {
+  async function mountChat() {
+    let chat: ReturnType<typeof useChat> | null = null
+
+    const host = defineComponent({
+      setup() {
+        chat = useChat({ id: 'chat-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return chat!
+  }
+
+  it('puts the invocation part after the text of the sent message', async () => {
+    const chat = await mountChat()
+    const composer = useComposerSkillInvocation()
+
+    composer.set({ skillId: 'skl1', name: 'writing-style', version: 3 })
+    chat.input.value = 'Draft the email'
+
+    await chat.submit()
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Draft the email' },
+      {
+        type: 'data-skill-invocation',
+        data: { skillId: 'skl1', name: 'writing-style', version: 3 },
+      },
+    ])
+    composer.clear()
+  })
+
+  it('sends a message that is only the invocation', async () => {
+    const chat = await mountChat()
+    const composer = useComposerSkillInvocation()
+
+    composer.set({ skillId: 'skl1', name: 'writing-style', version: 3 })
+    chat.input.value = ''
+
+    await chat.submit()
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([{
+      type: 'data-skill-invocation',
+      data: { skillId: 'skl1', name: 'writing-style', version: 3 },
+    }])
+    composer.clear()
+  })
+
+  it('sends no invocation part when none is attached', async () => {
+    const chat = await mountChat()
+
+    useComposerSkillInvocation().clear()
+    chat.input.value = 'Plain'
+
+    await chat.submit()
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Plain' },
     ])
   })
 })

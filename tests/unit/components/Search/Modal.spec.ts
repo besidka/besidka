@@ -26,6 +26,7 @@ const loggedIn = ref<boolean>(true)
 const isAdmin = ref<boolean>(false)
 const artifactsActive = ref<boolean>(false)
 const documentsActive = ref<boolean>(false)
+const skillsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -48,7 +49,9 @@ mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
     const active = key === 'documents'
       ? documentsActive.value
-      : artifactsActive.value
+      : key === 'skills'
+        ? skillsActive.value
+        : artifactsActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -128,6 +131,7 @@ describe('Search/Modal.client', () => {
     isAdmin.value = false
     artifactsActive.value = false
     documentsActive.value = false
+    skillsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -239,13 +243,13 @@ describe('Search/Modal.client', () => {
       'search-option-history',
       'search-option-attachments',
       'search-option-projects',
-      'search-option-theme',
       'search-option-security',
       'search-option-keys',
       'search-option-memory',
       'search-option-preferences',
       'search-option-connected-apps',
       'search-option-labs',
+      'search-option-theme',
       'search-option-cookies',
     ])
   })
@@ -326,7 +330,40 @@ describe('Search/Modal.client', () => {
     expect(wrapper.find('#search-option-documents').exists()).toBe(false)
   })
 
-  it('shows the Admin rows last in Settings only to admins', async () => {
+  it('adds the Skills row to the Chat group after Documents only with the skills feature', async () => {
+    skillsActive.value = true
+    documentsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.indexOf('search-option-skills'))
+      .toBe(ids.indexOf('search-option-documents') + 1)
+    expect(wrapper.get('#search-option-skills').text()).toBe('Skills')
+    expect(wrapper.get('#search-option-skills .iconify').classes())
+      .toContain('i-lucide:sparkles')
+
+    await wrapper.find('#search-option-skills').trigger('click')
+
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/skills')
+    expect(closeSpy).toHaveBeenCalled()
+  })
+
+  it('omits the Skills row without the skills feature', async () => {
+    artifactsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-skills').exists()).toBe(false)
+  })
+
+  it('shows the Admin rows in their own group, before Interface, only to admins', async () => {
     isAdmin.value = true
     useSearchModal().isModalOpen.value = true
 
@@ -344,9 +381,11 @@ describe('Search/Modal.client', () => {
     const ids = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
 
-    expect(ids.slice(-2)).toEqual([
+    expect(ids.slice(-4)).toEqual([
       'search-option-admin',
       'search-option-admin-reports',
+      'search-option-theme',
+      'search-option-cookies',
     ])
     expect(wrapper.get('#search-option-admin').text()).toBe('Admin')
     expect(wrapper.get('#search-option-admin .iconify').classes())
@@ -417,7 +456,7 @@ describe('Search/Modal.client', () => {
     const orderedIds = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
     const chatEnd = orderedIds.indexOf('search-option-projects')
-    const settingsStart = orderedIds.indexOf('search-option-theme')
+    const settingsStart = orderedIds.indexOf('search-option-security')
 
     expect(chatEnd).toBeLessThan(settingsStart)
     expect(orderedIds.indexOf('search-option-memory'))
@@ -540,10 +579,108 @@ describe('Search/Modal.client', () => {
 
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
+    await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await wrapper.find('input').trigger('keydown', { key: 'Enter' })
 
     expect(mocks.navigateToMock)
       .toHaveBeenCalledWith('/profile/labs')
+  })
+
+  it('keeps Settings for exactly the profile pages and moves the look and consent rows to a last Interface group', async () => {
+    showPinToggle.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const rowsByHeading: Record<string, string[]> = {}
+    let current = ''
+
+    for (const child of wrapper.get('[role="listbox"]').element.children) {
+      if (child.getAttribute('aria-hidden') === 'true') {
+        current = child.textContent?.trim() ?? ''
+        rowsByHeading[current] = []
+      } else if (child.getAttribute('role') === 'option') {
+        rowsByHeading[current]!.push(child.id)
+      }
+    }
+
+    const headings = Object.keys(rowsByHeading)
+    const groupRows = (heading: string) => rowsByHeading[heading]
+
+    expect(headings).toEqual(['Chat', 'Settings', 'Interface'])
+    expect(groupRows('Settings')).toEqual([
+      'search-option-security',
+      'search-option-keys',
+      'search-option-memory',
+      'search-option-preferences',
+      'search-option-connected-apps',
+      'search-option-labs',
+    ])
+    expect(groupRows('Interface')).toEqual([
+      'search-option-theme',
+      'search-option-pin-sidebar',
+      'search-option-cookies',
+    ])
+  })
+
+  it('walks the arrow keys through the groups in order, and wraps from the first row to Cookie settings', async () => {
+    showPinToggle.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const input = wrapper.find('input')
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+    const visited: Array<string | undefined> = []
+
+    for (let step = 0; step < ids.length; step += 1) {
+      visited.push(wrapper.get('[role="option"][aria-selected="true"]')
+        .attributes('id'))
+      await input.trigger('keydown', { key: 'ArrowDown' })
+    }
+
+    expect(visited).toEqual(ids)
+    expect(ids.at(-1)).toBe('search-option-cookies')
+    expect(ids.indexOf('search-option-pin-sidebar'))
+      .toBe(ids.indexOf('search-option-theme') + 1)
+
+    await input.trigger('keydown', { key: 'ArrowUp' })
+
+    expect(wrapper.get('[role="option"][aria-selected="true"]')
+      .attributes('id')).toBe('search-option-cookies')
+  })
+
+  it('still shows the Interface group, with Cookie settings, when signed out and the Settings rows are hidden', async () => {
+    loggedIn.value = false
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const headings = wrapper.findAll('[aria-hidden="true"]')
+      .map(heading => heading.text())
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(headings).toContain('Interface')
+    expect(headings).not.toContain('Settings')
+    expect(ids).not.toContain('search-option-security')
+    expect(ids).toContain('search-option-theme')
+    expect(ids).toContain('search-option-cookies')
+  })
+
+  it('hides the Admin group from a signed-out user even if the flag is set', async () => {
+    loggedIn.value = false
+    isAdmin.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-admin').exists()).toBe(false)
   })
 
   it('marks section headings as aria-hidden', async () => {
@@ -555,7 +692,9 @@ describe('Search/Modal.client', () => {
     const headingTexts = wrapper.findAll('[aria-hidden="true"]')
       .map(heading => heading.text())
 
-    expect(headingTexts).toEqual(expect.arrayContaining(['Chat', 'Settings']))
+    expect(headingTexts).toEqual(
+      expect.arrayContaining(['Chat', 'Settings', 'Interface']),
+    )
   })
 
   it('closes the modal before navigating to Manage Chat History (B6)', async () => {

@@ -108,7 +108,14 @@ const currentRoute = useRoute()
 
 const isSigningOut = shallowRef<boolean>(false)
 
-const tabs = [
+interface ProfileTab {
+  to: string
+  label: string
+  icon: string
+  childRoutes: string[]
+}
+
+const tabs: ProfileTab[] = [
   {
     to: '/profile/security',
     label: 'Security',
@@ -147,7 +154,7 @@ const tabs = [
   },
 ]
 
-function isTabActive(tab: typeof tabs[number]) {
+function isTabActive(tab: ProfileTab) {
   if (currentRoute.path === tab.to) {
     return true
   }

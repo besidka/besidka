@@ -66,6 +66,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatSkillInvocation
+            v-if="m.role === 'user'"
+            :message="m"
+          />
           <ChatArtifactAttachments
             v-if="isArtifactsActive && m.role === 'user'"
             :message="m"
@@ -94,7 +98,7 @@
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
-              'mt-4': isTextPartAfterGeneratedImage(
+              'mt-4': hasGapBeforePart(
                 m,
                 getRenderedMessageParts(m),
                 index,
@@ -307,9 +311,9 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
-  isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { hasGapBeforePart } from '~/utils/message-part-spacing'
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,
