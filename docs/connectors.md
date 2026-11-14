@@ -1,6 +1,7 @@
 # Connectors design (Phase 4a)
 
-Status: **design, 2026-11-08.** Not built. This document is the source of
+Status: **design, 2026-11-08; C-2 to C-5 built** (see the "As built"
+sections 5.5 and 6.1). This document is the source of
 truth for the connectors track: C-2 (BES-235) to C-11 (BES-261) implement it,
 and C-1 (BES-233) wrote it. Where a ticket body and this document disagree,
 this document wins; section 13 lists every ticket that has to change. The
@@ -714,6 +715,84 @@ time; a deleted connector shows its slug. Never the URL, headers or tokens.
 Share dialog: when the chat used a connector, it warns that answers may repeat
 data from it, next to the existing personal-data check.
 
+### 6.1 As built (C-5, 2026-11-14)
+
+Choices that differ from or add to section 6, 10 and 14:
+
+- **`@ai-sdk/mcp` 2.0.93, pinned.** `createMCPClient` takes `transport.fetch`,
+  and Besidka passes a wrapper over `createSafeFetch('mcp')`, so every
+  transport request (initialize, list, call, session `DELETE`) passes the
+  section 4 rules. The SDK's own `redirect` value is ignored by `safeFetch`.
+  A streamable-HTTP server's long-lived `GET` event stream is answered by the
+  wrapper with a local 405 and never leaves the Worker: Besidka supports no
+  server-initiated message, and one open connection per connector would eat
+  the Workers limit of six. The legacy `sse` transport keeps its one stream,
+  with a 540 s session deadline and an 8 MiB cap. The package's main entry
+  imports neither `cross-spawn` nor `node:child_process` (stdio is the
+  separate `@ai-sdk/mcp/mcp-stdio` export, which nothing imports), so the
+  Worker bundle gets no process spawning. The SDK reads `ttlMs` from
+  `tools/list`: its result schema is a loose object, so the field survives
+  and `getConnectorTools` uses it (clamped, default 600 s). Not verified in
+  workerd: the transport against a real server on the preview.
+- **Baseline by first listing.** The C-7 tool review does not exist yet, so a
+  connector with no `connector_tool_settings` rows gets its baseline from its
+  first listing (every tool `enabled`, `approval='ask'`): trust on first use,
+  after the user turned the connector on in a chat. From then on a tool that
+  is new or whose hash changed is hidden and flips the connector to
+  `drifted`; a connector whose listing matches the baseline again returns to
+  `ready`. Until C-7 adds "Accept changes", a drifted tool stays hidden.
+  `drifted` connectors are still selectable in a chat; their other tools run.
+- **The definition hash covers what the model sees.** The description is cut
+  to 1 KiB before hashing, and a tool with a schema over 8 KiB is skipped
+  before it is hashed, so neither can show up later as drift. The hash is
+  SHA-256 over the `fingerprintTools` digest plus the canonical annotations.
+- **Tool list cache** is `connectors:tools:<connectorId>:<generation>` where
+  the generation is the credentials row's `updated_at` in milliseconds
+  (`none` without credentials). It holds the normalized definitions, not the
+  raw `tools/list`. A send whose list comes from KV does not connect at
+  all; the connection opens on the first tool call.
+- **Read-only runs, everything else is refused (until C-6).** This layer
+  applies the ticket rule, not decision 8 of section 2: a tool the server
+  marks `readOnlyHint` runs without a card, and any other tool answers "This
+  tool needs your approval; approvals arrive in the next update." with
+  `outcome='denied'`, `approval='denied'` and no remote call. C-6 replaces
+  this with the section 7.1 order, where `readOnlyHint` never skips a card.
+- **No TypeSafe screening of results.** Section 3 (T8) and section 17 say
+  so; the C-5 brief asked for screening when a TypeSafe key exists, and this
+  layer follows the document, because private third-party data to another
+  processor needs its own consent.
+- **Results.** The call's text is redacted of this connector's token or
+  header value, cut to 64 KiB, and framed with the frame tag neutralized
+  inside it (`<untrusted_tool_result` becomes `‹untrusted_tool_result`).
+  A failed call, a timeout and a refused call answer with a sentence Besidka
+  wrote, never upstream text. Persisted `dynamic-tool` parts are redacted and
+  capped again by `redactConnectorToolPartsForPersistence`, and an error text
+  is replaced by a fixed sentence.
+- **Limits.** 12 calls per send, 60 a minute per user and 30 a minute per
+  user and connector (KV, fail closed), 60 s per call, 10 s per connect, at
+  most three connectors prepared at once. Connector tools count toward the 40
+  tools of the request together with the send's other tools. A connector
+  past the fifth, or one that is off or not connected, is left out with a
+  notice. `connectorIds` accepts up to 20 ids (not 5), so the sixth is
+  reported instead of failing validation.
+- **Audit.** One `connector_tool_calls` row per call with the HKDF-keyed HMAC
+  of the canonical arguments (`besidka/connector-audit-args/v1`), the result
+  size, the outcome, the duration and the connector host. The write never
+  fails a call.
+- **Cleanup.** Every client closes in the `streamText` `onEnd`, `onError` and
+  `onAbort`, and in the `finally` of the stream; closing is idempotent and
+  logs `attributes.connectors.closed`. A close waits at most 2 s per client.
+- **Routes added.** `GET /api/v1/connectors` (safe summaries, for the picker;
+  C-7 extends it), `GET` and `PUT /api/v1/chats/[slug]/connectors` (the
+  per-chat choice, at most five on). The send body field `connectorIds`
+  replaces the stored choice when present and leaves it alone when absent.
+- **Memory.** An assistant turn that called a connector tool is skipped by
+  memory extraction like a turn that recalled memory, because its text quotes
+  a third party's data. Connector parts never reach shares, branches, later
+  model context or the chat search index (specs).
+- **Not wired to the notice.** `data-connectors-notice` is written to the
+  client stream only, so it is not persisted (like the knowledge notice).
+
 ## 7. Approvals
 
 ### 7.1 Decision order
@@ -838,7 +917,7 @@ only, `docs/axiom-map-fields.md`).
 The P0-13 registry gains a `connectors` section in the **Used** group,
 collected from persisted `dynamic-tool` parts whose name starts with `mcp__`:
 connector display name, tool name, call count, last outcome and approval mode.
-It links "Manage connectors" (`/profile/connectors?connector=<id>`). On
+It links "Manage connectors" (`/profile/connectors`; C-7 adds the `?connector=<id>` deep link). On
 shared chats the section is empty because tool parts are already stripped.
 
 ## 8. Data model
@@ -1129,7 +1208,7 @@ No new nav pill slots (roadmap decision).
 | Profile tab | `{ to: '/profile/connectors', label: 'Connectors', icon: 'lucide:cable' }` in `app/layouts/profile.vue`, after Connected apps (and after Labs from P0-7), shown only when `useFeature('connectors')` | C-7 |
 | Search popup | Settings row `search-option-connectors`, same icon and label, flag-gated, id added to `tests/unit/components/Search/Modal.spec.ts` | C-7 |
 | User dropdown | Nothing (`Sidebar/AuthCta.vue` stays Security and API Keys, plus the chat-page rows from P0-13) | C-7 |
-| "+" menu | Section "Connectors" in `app/components/ChatInput/ToolsMenu/Content.vue`: one `ToggleRow` per enabled, ready connector (title, status dot, enabled tool count), revealed only when the user has at least one enabled connector and the model can call tools; `ActionRow` "Manage connectors"; tile "N connectors" from `buildChatInputTiles` (`docs/chats/chat-input-tools-menu.md`) | C-5 |
+| "+" menu | One row "Connectors" in the Add section of `app/components/ChatInput/ToolsMenu/Content.vue` that opens `ChatInput/ConnectorPicker.client.vue` (a toggle per enabled, ready or drifted connector, at most five on, a "Manage connectors" link); never an inline list (owner rule). Shown only when the `connectors` flag is on, the user has a selectable connector and the model can call tools. Tile "N connectors" from `buildChatInputTiles` (`docs/chats/chat-input-tools-menu.md`) | C-5 |
 | Chat bubble | Tool steps in `ChatReasoning`, approval cards (`Chat/ToolApproval.vue`), "Run by OpenAI" badge on native calls | C-5, C-6, C-11 |
 | Context panel | "Used → Connectors" (section 7.5) | C-5 |
 | Labs | `connectors.native` opt-in row | C-11 |
@@ -1352,11 +1431,14 @@ Unverified (C-4 and C-6 settle them in their first commits):
 - That a `fetch` override with `redirect: 'manual'` works for every SDK path in
   workerd, including the internal credential POSTs.
 - That `@ai-sdk/mcp@2.0.93` peers cleanly with the installed `ai@7.0.153` and
-  `zod` (it depends on `@ai-sdk/provider@4.0.37` and
-  `@ai-sdk/provider-utils@5.0.76`; it also pulls `cross-spawn` for stdio, which
-  must not end up in the Worker bundle).
-- Whether the SDK honors `ttlMs` and `cacheScope` from `tools/list`, or C-5
-  must read them from `listTools()` itself.
+  `zod`: settled in C-5 (installed, no peer warning, typecheck clean; it
+  brings `@ai-sdk/provider@4.0.37` and `@ai-sdk/provider-utils@5.0.76` next
+  to the 4.0.34 and 5.0.68 of `ai`). Its main entry has no `cross-spawn`
+  import.
+- Whether the SDK honors `ttlMs` and `cacheScope` from `tools/list`: settled
+  in C-5. The result schema is loose, so `ttlMs` is on the `listTools()`
+  result and `getConnectorTools` reads it; `cacheScope` is not needed (the
+  cache key already holds the connector id and the credentials generation).
 - AI SDK v7 approval continuation semantics (section 7.2 fallback).
 - OpenAI `requireApproval` and MCP output items as they arrive through
   `@ai-sdk/openai` (section 12 gate).
