@@ -55,6 +55,7 @@ const ICONS: Record<ChatContextItemKind, string> = {
   'artifact': 'lucide:app-window',
   'code-execution': 'lucide:square-terminal',
   'document': 'lucide:file-text',
+  'skill': 'lucide:sparkles',
 }
 
 const DETAILS: Record<ChatContextItemKind, string> = {
@@ -69,6 +70,7 @@ const DETAILS: Record<ChatContextItemKind, string> = {
   'artifact': 'Artifact',
   'code-execution': 'Code execution',
   'document': 'Document',
+  'skill': 'Skill',
 }
 
 const thumbnailUrl = computed<string | null>(() => {
@@ -124,7 +126,10 @@ const detail = computed<string>(() => {
     return getDocumentDetail(meta)
   }
 
-  if ((kind === 'memory' || kind === 'chat-search') && meta?.action) {
+  if (
+    (kind === 'memory' || kind === 'chat-search' || kind === 'skill')
+    && meta?.action
+  ) {
     return meta.action
   }
 

@@ -205,7 +205,9 @@ describe('artifact bridge completion API', () => {
     vi.stubGlobal('getRouterParams', (event: { params: unknown }) => {
       return event.params
     })
-    vi.stubGlobal('getRequestHeader', () => undefined)
+    vi.stubGlobal('getRequestHeader', (_event: unknown, name: string) => {
+      return name === 'content-length' ? '100' : undefined
+    })
     vi.stubGlobal('readValidatedBody', async (
       event: { body: unknown },
       validate: (value: unknown) => unknown,
@@ -393,14 +395,22 @@ describe('artifact bridge completion API', () => {
       await expect(call()).resolves.toBeDefined()
     })
 
-    it('does not refuse a request without a usable Content-Length',
-      async () => {
-        stubContentLength(undefined)
-        await expect(call()).resolves.toBeDefined()
+    it('answers 411 for a request without a Content-Length', async () => {
+      const readBody = vi.fn()
 
-        stubContentLength('not-a-number')
-        await expect(call()).resolves.toBeDefined()
-      })
+      stubContentLength(undefined)
+      vi.stubGlobal('readValidatedBody', readBody)
+
+      await expect(call()).rejects.toMatchObject({ status: 411 })
+      expect(readBody).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
+    })
+
+    it('answers 400 for an unreadable Content-Length', async () => {
+      stubContentLength('not-a-number')
+
+      await expect(call()).rejects.toMatchObject({ status: 400 })
+    })
 
     it('still refuses a signed-out request before the size check',
       async () => {

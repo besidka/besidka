@@ -127,6 +127,7 @@
 		"drizzle-orm": "1.0.0-rc.5",
 		"eslint": "^10.13.0",
 		"evlog": "2.33.0",
+		"fflate": "0.8.3",
 		"hashids": "^2.3.0",
 		"jose": "6.2.12",
 		"mammoth": "^1.13.0",
@@ -149,6 +150,7 @@
 		"vue-router": "^5.4.0",
 		"web-haptics": "0.0.6",
 		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+		"yaml": "2.9.0",
 		"zod": "^4.6.7"
 	},
 	"devDependencies": {
@@ -173,7 +175,6 @@
 		"@vue/test-utils": "^2.5.1",
 		"better-sqlite3": "^13.0.3",
 		"esbuild": "0.28.2",
-		"fflate": "0.8.3",
 		"happy-dom": "^21.0.3",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.6.0",
@@ -186,8 +187,7 @@
 		"vitest-environment-nuxt": "^2.0.0",
 		"vue-tsc": "^3.3.13",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.151.1",
-		"yaml": "2.9.0"
+		"wrangler": "^4.151.1"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"

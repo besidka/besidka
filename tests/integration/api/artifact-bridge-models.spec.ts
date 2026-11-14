@@ -157,7 +157,9 @@ describe('artifact bridge models API', () => {
     vi.stubGlobal('getRouterParams', (event: { params: unknown }) => {
       return event.params
     })
-    vi.stubGlobal('getRequestHeader', () => undefined)
+    vi.stubGlobal('getRequestHeader', (_event: unknown, name: string) => {
+      return name === 'content-length' ? '100' : undefined
+    })
   })
 
   afterEach(() => {

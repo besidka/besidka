@@ -1489,6 +1489,141 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
 
+  const skillsVersionsTests = [
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/edit.spec.ts',
+    'tests/unit/utils/skills/templates.spec.ts',
+    'tests/unit/utils/skills/mode.spec.ts',
+    'tests/unit/server/utils/skills/unique-violation.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/skills/pending.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/import/rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/save-rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/versions/statements.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/skills/versions/restore.spec.ts',
+    'tests/unit/server/utils/skills/versions/create.spec.ts',
+    'tests/unit/server/utils/skills/versions/read-write-paths.spec.ts',
+    'tests/unit/server/api/v1/skills/skills-crud.spec.ts',
+    'tests/unit/server/api/v1/skills/update-check.spec.ts',
+  ]
+
+  const skillsImportTests = [
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/path.spec.ts',
+    'tests/unit/utils/skills/frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings.spec.ts',
+    'tests/unit/utils/skills/license.spec.ts',
+    'tests/unit/utils/skills/archive.spec.ts',
+    'tests/unit/utils/skills/analyse.spec.ts',
+    'tests/unit/utils/skills/github-url.spec.ts',
+    'tests/unit/utils/skills/release.spec.ts',
+    'tests/unit/utils/skills/github-archive.spec.ts',
+    'tests/unit/utils/skills/diff.spec.ts',
+    'tests/unit/utils/skills/compose.spec.ts',
+    'tests/unit/server/utils/skills/import/zip.spec.ts',
+    'tests/unit/server/utils/skills/import/rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/stage.spec.ts',
+    'tests/unit/server/utils/skills/import/github.spec.ts',
+    'tests/unit/server/utils/skills/import/github-resolve.spec.ts',
+    'tests/unit/server/utils/skills/import/git-refs.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/import/update-sweep.spec.ts',
+    'tests/integration/server/skills-update-sweep-plugin.spec.ts',
+    'tests/unit/server/utils/skills/pending.spec.ts',
+    'tests/unit/server/api/v1/skills/import-preview.spec.ts',
+    'tests/unit/server/api/v1/skills/import-text.spec.ts',
+    'tests/unit/server/api/v1/skills/import-commit.spec.ts',
+    'tests/unit/server/api/v1/skills/import-github.spec.ts',
+    'tests/unit/server/api/v1/skills/import-stage-files.spec.ts',
+    'tests/unit/server/api/v1/skills/update-pending.spec.ts',
+    'tests/unit/server/api/v1/skills/update-check.spec.ts',
+    'tests/unit/workers/skill-import.spec.ts',
+    'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-request.spec.ts',
+    'tests/integration/api/artifact-complete.spec.ts',
+    'tests/integration/api/artifact-storage.spec.ts',
+  ]
+
+  const skillsManagerTests = [
+    'tests/unit/pages/chats/skills/index.spec.ts',
+    'tests/unit/composables/skills-library.spec.ts',
+    'tests/unit/composables/skill-editor.spec.ts',
+    'tests/unit/utils/skill-ui-utils.spec.ts',
+    'tests/unit/utils/skill-editor.spec.ts',
+    'tests/unit/utils/skills/compose.spec.ts',
+    'tests/unit/utils/skills/mode.spec.ts',
+    'tests/unit/utils/skills/release.spec.ts',
+    'tests/unit/components/Profile/Skills/CreateDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/DetailHeader.spec.ts',
+    'tests/unit/components/Profile/Skills/DetailPanel.spec.ts',
+    'tests/unit/components/Profile/Skills/DiffView.spec.ts',
+    'tests/unit/components/Profile/Skills/EditDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/EditorPane.spec.ts',
+    'tests/unit/components/Profile/Skills/FileTree.spec.ts',
+    'tests/unit/components/Profile/Skills/FileViewer.spec.ts',
+    'tests/unit/components/Profile/Skills/Filters.spec.ts',
+    'tests/unit/components/Profile/Skills/ImportDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/FrontmatterFields.spec.ts',
+    'tests/unit/components/Profile/Skills/List.spec.ts',
+    'tests/unit/components/Profile/Skills/ModeControl.spec.ts',
+    'tests/unit/components/Profile/Skills/ModelView.spec.ts',
+    'tests/unit/components/Profile/Skills/NewMenu.spec.ts',
+    'tests/unit/components/Profile/Skills/RenameForm.spec.ts',
+    'tests/unit/components/Profile/Skills/Review.spec.ts',
+    'tests/unit/components/Profile/Skills/Row.spec.ts',
+    'tests/unit/components/Profile/Skills/UpdateReview.client.spec.ts',
+    'tests/unit/components/Profile/Skills/WorkspaceDialog.client.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/e2e/history/skills.spec.ts',
+  ]
+
+  const skillsRuntimeTests = [
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/mode.spec.ts',
+    'tests/unit/server/utils/skills/runtime/text.spec.ts',
+    'tests/unit/server/utils/skills/runtime/catalog.spec.ts',
+    'tests/unit/server/utils/skills/runtime/persist.spec.ts',
+    'tests/unit/server/utils/skills/runtime/invocation.spec.ts',
+    'tests/unit/server/utils/skills/runtime/tools.spec.ts',
+    'tests/unit/server/utils/skills/runtime/reinject.spec.ts',
+    'tests/unit/server/utils/skills/runtime/send.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/integration/server/image-generation.spec.ts',
+    'tests/integration/server/model-turns.spec.ts',
+    'tests/integration/api/chats-skills.spec.ts',
+  ]
+
+  const skillsComposerTests = [
+    'tests/unit/utils/skill-step.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/composer-skill-invocation.spec.ts',
+    'tests/unit/composables/composer-skills.spec.ts',
+    'tests/unit/composables/composer-commands.spec.ts',
+    'tests/unit/utils/composer-command.spec.ts',
+    'tests/unit/components/ChatInput/CommandPicker.spec.ts',
+    'tests/unit/components/ChatInput/CommandMirror.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/integration/api/shared-chat-view.spec.ts',
+    'tests/unit/components/Chat/SkillInvocation.spec.ts',
+    'tests/unit/components/Chat/SkillPreview.client.spec.ts',
+    'tests/unit/components/ChatInput/SkillPicker.client.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/pages/chats/skills/index.spec.ts',
+    'tests/e2e/chat/skills.spec.ts',
+  ]
+
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
   ]
@@ -1926,7 +2061,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/utils\/generated-images\.ts$/,
-      tests: ['tests/unit/utils/generated-images.spec.ts'],
+      tests: [
+        'tests/unit/utils/generated-images.spec.ts',
+        'tests/unit/utils/message-part-spacing.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/utils\/(message-part-spacing|artifact-parts|code-execution-ui)\.ts$/,
+      tests: [
+        'tests/unit/utils/message-part-spacing.spec.ts',
+        'tests/unit/utils/artifact-parts.spec.ts',
+      ],
     },
     {
       pattern: /^app\/utils\/chat-failure-notice\.ts$/,
@@ -2523,6 +2668,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^wrangler\.jsonc$/,
       tests: [
         'tests/unit/config/wrangler-search-rates.spec.ts',
+        'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
         'tests/unit/config/wrangler-previews.spec.ts',
         'tests/unit/config/wrangler-legal-notice-sweep.spec.ts',
         'tests/unit/utils/consents-rate-limit.spec.ts',
@@ -2725,12 +2871,13 @@ export function getAffectedTests(changedFiles) {
       tests: chatTestEndpointTests,
     },
     {
-      pattern: /^server\/utils\/chats\/errors\.ts$/,
+      pattern: /^server\/utils\/chats\/(errors|provider-error-summary)\.ts$/,
       tests: [
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
         'tests/unit/utils/research/errors.spec.ts',
         'tests/unit/utils/chats/errors.spec.ts',
+        'tests/unit/server/utils/chats/provider-error-summary.spec.ts',
       ],
     },
     {
@@ -2875,6 +3022,31 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/skills-policy\.ts|server\/db\/schemas\/skills\.ts|server\/utils\/skills\/.*\.ts|server\/plugins\/skills-storage-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_normal_the_professor\/.*)$/,
       tests: skillsStorageTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/plugins\/skills-update-sweep\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock|github-mock)\.ts|tests\/fixtures\/skills\/.*)$/,
+      tests: skillsImportTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyse|license|frontmatter|diff|path|findings|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
+      tests: skillsVersionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/runtime\/.*\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts|model-turns)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/shared\/\[slug\]\/index\.get\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
+      tests: skillsRuntimeTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Chat\/(Reasoning|Reasoning\/SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/utils\/reasoning\.ts|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills|composer-commands|markdown-textarea)\.ts|app\/utils\/(skill-step|chat-input-tiles|composer-command)\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(CommandPicker|CommandMirror)\.vue|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+      tests: skillsComposerTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+      tests: skillsManagerTests,
     },
     {
       pattern:

@@ -962,6 +962,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }))
   const files = ref<FileMetadata[]>([])
   const attachedArtifacts = ref<AttachedArtifact[]>([])
+  const composerSkillInvocation = useComposerSkillInvocation()
   const pendingError = shallowRef<ChatErrorPayload | null>(null)
   const transportRequestId = shallowRef<string>()
   const reportedClientErrorIds = new Set<string>()
@@ -1454,6 +1455,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   ): Promise<UIMessage['parts']> {
     const parts: any[] = []
     const artifactParts = attachedArtifacts.value.map(toArtifactAttachmentPart)
+    const skillInvocationPart = composerSkillInvocation.part.value
 
     if (text.trim()) {
       parts.push({
@@ -1469,6 +1471,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }
 
     parts.push(...artifactParts)
+
+    if (skillInvocationPart) {
+      parts.push(skillInvocationPart)
+    }
 
     return parts
   }

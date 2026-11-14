@@ -7,6 +7,8 @@ import {
   isInsideOpenCodeFence,
   isLongPaste,
   normalizeBulletLines,
+  isBlockedByOpenDialog,
+  isOwnAppHtml,
   shouldConvertHtml,
   useMarkdownTextarea,
   type TextSnapshot,
@@ -47,6 +49,17 @@ const VS_CODE_HTML = [
   '<div><span style="color:#569cd6">const</span><span> a = 1</span></div>',
   '<div><span>  return a</span></div></div>',
 ].join('')
+
+const APP_PAGE_HTML = [
+  '<meta charset="utf-8">',
+  '<div data-v-1a2b3c4d class="flex"><a data-v-1a2b3c4d',
+  ' href="https://pr-888-besidka.example.workers.dev/profile/security">',
+  '<svg></svg></a>',
+  '<span data-v-1a2b3c4d>Steps (7s)</span></div>',
+  '<div data-v-1a2b3c4d><span>Web search</span><span>Built-in</span></div>',
+].join('')
+
+const APP_PAGE_PLAIN = 'Steps (7s)\nWeb searchBuilt-in'
 
 interface FakeClipboardItem {
   kind: string
@@ -1006,5 +1019,115 @@ describe('markdown textarea helpers', () => {
     expect(shouldConvertHtml('<b>bold</b>')).toBe(true)
     expect(shouldConvertHtml('<pre>code</pre>')).toBe(true)
     expect(shouldConvertHtml(VS_CODE_HTML)).toBe(false)
+  })
+
+  it('recognises a copy of the app\'s own page and nothing else', () => {
+    const origin = 'https://pr-888-besidka.example.workers.dev'
+
+    expect(isOwnAppHtml(APP_PAGE_HTML)).toBe(true)
+    expect(isOwnAppHtml('<div data-testid="chat-message">x</div>')).toBe(true)
+    expect(isOwnAppHtml('<html data-theme="light"><p>a</p><p>b</p>'))
+      .toBe(true)
+    expect(isOwnAppHtml(
+      `<p><a href="${origin}/a">a</a></p><p><a href="${origin}/b">b</a></p>`,
+      origin,
+    )).toBe(true)
+    expect(isOwnAppHtml(
+      `<p>see <a href="${origin}/shared/x">my chat</a></p><p>thanks</p>`,
+      origin,
+    )).toBe(false)
+    expect(isOwnAppHtml(
+      '<a href="/a"><svg></svg></a><a href="/b"><i></i></a>'
+      + '<a href="/c"> <span></span> </a>',
+    )).toBe(true)
+    expect(isOwnAppHtml(APPLE_MAIL_HTML)).toBe(false)
+    expect(isOwnAppHtml(GMAIL_HTML)).toBe(false)
+    expect(isOwnAppHtml(VS_CODE_HTML)).toBe(false)
+  })
+
+  it('never converts the app\'s own page, even though it has structure', () => {
+    expect(shouldConvertHtml(APP_PAGE_HTML)).toBe(false)
+    expect(shouldConvertHtml(GMAIL_HTML)).toBe(true)
+    expect(shouldConvertHtml(APPLE_MAIL_HTML)).toBe(true)
+  })
+
+  it('leaves a copy of the app\'s own page to the plain text', () => {
+    const { element, onPaste } = setup('Hello ')
+    const { event, preventDefault } = createPasteEvent({
+      html: APP_PAGE_HTML,
+      plain: APP_PAGE_PLAIN,
+    })
+
+    onPaste(event)
+
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(element.value).toBe('Hello ')
+  })
+
+  it('hands a long copy of the app\'s own page over as plain text, with no links', () => {
+    const onLongPaste = vi.fn()
+    const { onPaste } = setup('', 0, onLongPaste)
+    const plain = `${APP_PAGE_PLAIN}\n`.repeat(60)
+    const { event, preventDefault } = createPasteEvent({
+      html: APP_PAGE_HTML,
+      plain,
+    })
+
+    onPaste(event)
+
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(onLongPaste).toHaveBeenCalledTimes(1)
+    expect(onLongPaste.mock.calls[0]![0]).toBe(plain)
+    expect(onLongPaste.mock.calls[0]![0]).not.toContain('](')
+  })
+
+  it('swallows a paste while a dialog that does not hold the textarea is open', () => {
+    const { element, onPaste } = setup('')
+    const dialog = document.createElement('dialog')
+
+    dialog.className = 'js-artifact-picker'
+    dialog.setAttribute('open', '')
+    document.body.appendChild(dialog)
+
+    const { event, preventDefault } = createPasteEvent({
+      html: APPLE_MAIL_HTML,
+      plain: 'Dobry wieczór,',
+    })
+
+    onPaste(event)
+
+    expect(isBlockedByOpenDialog(element)).toBe(true)
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(element.value).toBe('')
+  })
+
+  it('does not block a textarea that sits inside its own open dialog', () => {
+    const dialog = document.createElement('dialog')
+    const element = document.createElement('textarea')
+
+    dialog.setAttribute('open', '')
+    dialog.appendChild(element)
+    document.body.appendChild(dialog)
+
+    expect(isBlockedByOpenDialog(element)).toBe(false)
+  })
+
+  it('pastes normally again once the dialog is closed', async () => {
+    const { element, onPaste } = setup('')
+    const dialog = document.createElement('dialog')
+
+    document.body.appendChild(dialog)
+
+    const { event, preventDefault } = createPasteEvent({
+      html: APPLE_MAIL_HTML,
+      plain: 'Dobry wieczór,',
+    })
+
+    onPaste(event)
+
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => {
+      expect(element.value).toBe(APPLE_MAIL_MARKDOWN)
+    })
   })
 })

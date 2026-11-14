@@ -146,6 +146,12 @@
                 :title="step.title"
                 :pending="step.pending"
               />
+              <ChatReasoningSkillStep
+                v-else-if="step.skill"
+                :data="step.skill"
+                :title="step.title"
+                :pending="step.pending"
+              />
               <details
                 v-else
                 :open="expandedStepId === step.id"
@@ -212,6 +218,7 @@ import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MemoryStepData } from '~/types/memory-step.d'
 import type { SearchStepData } from '~/types/search-step.d'
+import type { SkillStepModel } from '~/utils/skill-step'
 import { formatTokenCount } from '#shared/utils/message-format'
 import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
@@ -240,6 +247,7 @@ interface ReasoningStep {
   failed: boolean
   search: SearchStepData | null
   memory: MemoryStepData | null
+  skill: SkillStepModel | null
 }
 
 const reasoningIcon = computed<string>(() => {
@@ -285,6 +293,10 @@ const isThinkingStreaming = computed<boolean>(() => {
   return props.status === 'streaming' && props.isTurnThinkingHeld
 })
 
+const isAssistantMessage = computed<boolean>(() => {
+  return props.message.role === 'assistant'
+})
+
 const reasoningSteps = computed<ReasoningStep[]>(() => {
   const steps: ReasoningStep[] = []
   let reasoningPartIndex = 0
@@ -309,10 +321,31 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           failed: false,
           search: null,
           memory: null,
+          skill: null,
         })
       }
 
       reasoningPartIndex += 1
+
+      continue
+    }
+
+    const skillStep = isAssistantMessage.value
+      ? getReasoningSkillStep(props.message.parts, partIndex)
+      : null
+
+    if (skillStep) {
+      steps.push({
+        id: `skill-${partIndex}`,
+        title: getSkillStepTitle(skillStep),
+        body: '',
+        kind: 'tool',
+        pending: props.status === 'streaming' && skillStep.state === 'working',
+        failed: skillStep.state === 'failed',
+        search: null,
+        memory: null,
+        skill: skillStep,
+      })
 
       continue
     }
@@ -343,6 +376,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       failed: isFailed,
       search: searchData,
       memory: getMemoryStepData(part),
+      skill: null,
     })
   }
 
