@@ -417,6 +417,16 @@ invocation. A "Skill" tile (sparkles icon) shows it; tapping the tile opens the
 read-only skill preview instead of the menu. The earlier inline Skills section
 was dropped. See `docs/skills.md` section 5.7 and 10.5.
 
+## Add key links in Web search
+
+When Brave or Exa has no key, the Web search section lists one "Add a Brave
+key" / "Add an Exa key" link per missing key under the provider control
+(`web-search-add-key-list`, only rendered when at least one link exists, so
+the section spacing is unchanged otherwise). The list starts `mt-2` below the
+control, and each link is a full-row tap target with the same minimum height
+as an action row (`min-h-9`, `max-md:min-h-11`), the same text size, icon and
+arrow, and a hover background.
+
 ## Project row
 
 The Project row ("Project" in a new chat, "Move to project" in an existing
