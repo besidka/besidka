@@ -177,7 +177,6 @@ import type {
   ToolsSection,
 } from '~/types/chat-input-tools'
 import type { WebSearchSelection } from '~/types/web-search'
-import type { ComposerSkillItem } from '~/composables/composer-skills'
 
 const props = withDefaults(defineProps<{
   state: ChatInputToolsState
@@ -199,9 +198,7 @@ const emit = defineEmits<{
   'open-files-upload': []
   'open-files-generated': []
   'open-artifact-picker': []
-  'select-skill': [item: ComposerSkillItem]
   'open-skills-picker': []
-  'open-skills-manager': []
   'update:use-memory': [value: boolean]
   'remove-tile': [id: ChatInputTileId]
 }>()
@@ -331,14 +328,8 @@ const contentListeners = {
   'onOpenArtifactPicker': closeAfter(() => {
     emit('open-artifact-picker')
   }),
-  'onSelectSkill': closeAfter((item: ComposerSkillItem) => {
-    emit('select-skill', item)
-  }),
   'onOpenSkillsPicker': closeAfter(() => {
     emit('open-skills-picker')
-  }),
-  'onOpenSkillsManager': closeAfter(() => {
-    emit('open-skills-manager')
   }),
 }
 

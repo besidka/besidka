@@ -3,7 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, ref } from 'vue'
 import {
-  COMPOSER_SKILLS_MENU_LIMIT,
+  COMPOSER_SKILLS_SEARCH_MIN,
   toComposerSkillItem,
   useComposerSkills,
   useSkillPreview,
@@ -131,7 +131,7 @@ describe('useComposerSkills', () => {
       version: 4,
       mode: 'auto',
     })
-    expect(COMPOSER_SKILLS_MENU_LIMIT).toBe(6)
+    expect(COMPOSER_SKILLS_SEARCH_MIN).toBe(8)
   })
 })
 

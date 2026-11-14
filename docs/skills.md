@@ -1426,17 +1426,22 @@ Cancel all ask "Discard your unsaved changes?".
 
 As built in S-3 (section 5.7):
 
-- **"+" menu section "Skills"** in `ChatInput/ToolsMenu/Content.vue`
-  (`ToolsMenu/SkillsSection.vue`), between Add and web search, revealed only
-  when the `skills` flag is on and the user has at least one enabled skill
-  (the list is fetched once while the flag is on; none when it is off) and
-  hidden for a deep-research model. It lists enabled skills of any mode by
-  name with a one-line description (six at most, then **All skills…**, which
-  opens a searchable dialog, `ChatInput/SkillPicker.client.vue`). Choosing one
-  sets the single invocation (replacing the previous one) and closes the menu.
-  An `ActionRow` **Manage skills** opens `/profile/skills`. This replaces the
-  earlier per-chat `ToggleRow` catalog choice and `skill_chat_settings`: the
-  catalog is every Auto skill.
+- **"+" menu row "Add skill"** in the Add section of `ChatInput/ToolsMenu/
+  Content.vue`, after "Add artifact" (an `ActionRow`, `lucide:sparkles`, hint
+  "Skills you made or imported", a badge of 1 while a skill is attached,
+  `data-testid="tools-action-skills"`). It is shown only when the `skills` flag
+  is on and the user has at least one enabled skill (the list is fetched once
+  while the flag is on; none when it is off), and hidden for a deep-research
+  model; the Add section renders for this row alone when files are not
+  visible. The row opens `ChatInput/SkillPicker.client.vue`, a dialog (bottom
+  sheet below `sm`, like the artifact picker) that lists enabled skills of any
+  mode with name, one-line description and mode badge, a search field from
+  eight skills (`COMPOSER_SKILLS_SEARCH_MIN`) and a "Manage skills" link to
+  `/profile/skills`. Choosing one sets the single invocation (replacing the
+  previous one) and closes the picker. An earlier inline "Skills" section that
+  listed every skill in the menu was removed as too heavy. This replaces the
+  per-chat `ToggleRow` catalog choice and `skill_chat_settings`: the catalog is
+  every Auto skill.
 - **Tile:** a pill `SettingTile` with `lucide:sparkles`, caption "Skill", the
   name as value and a remove button, after the setting tiles and before the
   artifact tiles. Tapping it opens the read-only preview (section 5.7), not the

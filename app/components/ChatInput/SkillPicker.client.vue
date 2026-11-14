@@ -40,6 +40,7 @@
         </div>
 
         <div
+          v-if="hasSearch"
           ref="searchWrapRef"
           class="shrink-0"
         >
@@ -124,6 +125,16 @@
             </button>
           </div>
         </div>
+        <div class="mt-3 flex shrink-0 justify-end">
+          <NuxtLink
+            to="/profile/skills"
+            class="link link-hover text-sm"
+            data-testid="skill-picker-manage"
+            @click="close"
+          >
+            Manage skills
+          </NuxtLink>
+        </div>
       </div>
       <form
         method="dialog"
@@ -166,6 +177,10 @@ const searchWrapRef = useTemplateRef<HTMLDivElement>('searchWrapRef')
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 const search = shallowRef<string>('')
 
+const hasSearch = computed<boolean>(() => {
+  return props.items.length >= COMPOSER_SKILLS_SEARCH_MIN
+})
+
 const visibleItems = computed<ComposerSkillItem[]>(() => {
   const term = search.value.trim().toLowerCase()
 
@@ -202,7 +217,7 @@ async function showDialog() {
     searchWrap.inert = false
   }
 
-  if (isDesktop) {
+  if (isDesktop && hasSearch.value) {
     searchInputRef.value?.inputRef?.focus({ preventScroll: true })
   }
 }

@@ -1574,7 +1574,6 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/SkillInvocation.spec.ts',
     'tests/unit/components/Chat/SkillPreview.client.spec.ts',
     'tests/unit/components/ChatInput/SkillPicker.client.spec.ts',
-    'tests/unit/components/ChatInput/ToolsMenu/SkillsSection.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
@@ -2987,7 +2986,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/(SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/components\/ChatInput\/(SkillPicker\.client|ToolsMenu\/SkillsSection)\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/profile\/skills\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+        /^(app\/components\/Chat\/(SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/profile\/skills\.vue|shared\/utils\/skills\/runtime\.ts)$/,
       tests: skillsComposerTests,
     },
     {

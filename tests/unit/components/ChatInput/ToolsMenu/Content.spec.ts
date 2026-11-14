@@ -20,6 +20,7 @@ function createState(
     reasoning?: boolean
     lower?: boolean
     skills?: boolean
+    skillAttached?: boolean
   } = {},
 ): ChatInputToolsState {
   const {
@@ -28,6 +29,7 @@ function createState(
     reasoning = true,
     lower = true,
     skills = false,
+    skillAttached = false,
   } = overrides
 
   return {
@@ -63,7 +65,14 @@ function createState(
     artifacts: { visible: false, attached: [] },
     skills: {
       visible: skills,
-      selected: null,
+      selected: skillAttached
+        ? {
+          skillId: 'skl1',
+          name: 'writing-style',
+          version: 1,
+          source: 'menu',
+        }
+        : null,
       items: [{
         id: 'skl1',
         name: 'writing-style',
@@ -97,35 +106,48 @@ function layout(wrapper: ContentWrapper): string[] {
 }
 
 describe('ChatInput/ToolsMenu/Content skills', () => {
-  it('reveals the Skills section only when the user has an enabled skill', async () => {
+  it('adds one Add skill row to the Add section only when the user has an enabled skill', async () => {
     const hidden = await mountContent(createState())
     const shown = await mountContent(createState({ skills: true }))
 
-    expect(layout(hidden)).not.toContain('skills')
-    expect(layout(shown)).toEqual([
-      'add',
-      'skills',
-      '---',
-      'search',
-      '---',
-      'reasoning',
-      '---',
-      'image',
-    ])
+    expect(hidden.find('[data-testid="tools-action-skills"]').exists())
+      .toBe(false)
+    expect(layout(shown)).toEqual(layout(hidden))
+    expect(shown.get('[data-testid="tools-action-skills"]').text())
+      .toContain('Add skill')
+    expect(shown.get('[data-testid="tools-action-skills"]').text())
+      .toContain('Skills you made or imported')
   })
 
-  it('relays choosing a skill, All skills and Manage skills', async () => {
+  it('still renders the Add section when only the skill row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      skills: true,
+    }))
+
+    expect(layout(wrapper)[0]).toBe('add')
+    expect(wrapper.find('[data-testid="tools-action-attach"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="tools-action-skills"]').exists())
+      .toBe(true)
+  })
+
+  it('shows a badge for an attached skill and opens the picker', async () => {
     const wrapper = await mountContent(createState({ skills: true }))
 
-    await wrapper.get('[data-testid="tools-skill-writing-style"]')
-      .trigger('click')
-    await wrapper.get('[data-testid="tools-skills-manage"]').trigger('click')
+    expect(wrapper.get('[data-testid="tools-action-skills"]')
+      .find('.badge').exists()).toBe(false)
 
-    expect(wrapper.emitted('select-skill')?.[0]?.[0]).toMatchObject({
-      id: 'skl1',
-      name: 'writing-style',
+    await wrapper.get('[data-testid="tools-action-skills"]').trigger('click')
+
+    expect(wrapper.emitted('open-skills-picker')).toHaveLength(1)
+
+    await wrapper.setProps({
+      state: createState({ skills: true, skillAttached: true }),
     })
-    expect(wrapper.emitted('open-skills-manager')).toHaveLength(1)
+
+    expect(wrapper.get('[data-testid="tools-action-skills"] .badge').text())
+      .toBe('1')
   })
 })
 

@@ -20,6 +20,7 @@ default shows as a tile at the start of the attachments row.
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
 | "Add artifact" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/ArtifactPicker.client.vue` (below, `docs/artifacts/attach.md`) |
+| "Add skill" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/SkillPicker.client.vue` (below, `docs/skills.md` section 10.5) |
 | Types | `app/types/chat-input-tools.d.ts` |
 | Reasoning icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `REASONING_EXPANDED_ICON`, `REASONING_AUTO_HIDE_ICON`) |
 
@@ -402,12 +403,16 @@ the `<label>` carries `cursor-pointer` (`cursor-not-allowed` when disabled).
 - Keyboard shortcuts (`/` to open the menu from an empty textarea, Cmd/Ctrl+U
   to attach) are a follow-up.
 
-## Skills section (skills layer S-3)
+## Add skill row (skills layer S-3)
 
-The menu has a "Skills" section (`ToolsMenu/SkillsSection.vue`) between Add and
-web search, shown only when the `skills` flag is on, the user has an enabled
-skill and the model is not a deep-research model. It lists up to six enabled
-skills, "All skills…" (a searchable dialog) and "Manage skills". Choosing a
-skill sets the one composer invocation and shows a "Skill" tile (sparkles
-icon); tapping the tile opens the read-only skill preview instead of the menu.
-See `docs/skills.md` section 5.7 and 10.5.
+The Add section ends with one row, "Add skill" (`tools-action-skills`, after
+"Add artifact"), shown only when the `skills` flag is on, the user has an
+enabled skill and the model is not a deep-research model. The Add section
+renders for this row alone when files are not visible, so the row order is:
+Attach files, Add from library, Generated images, Add artifact, Add skill. The
+row (badge 1 while a skill is attached) emits `open-skills-picker`, which opens
+`ChatInput/SkillPicker.client.vue` (a searchable dialog from eight skills,
+with a "Manage skills" link) and attaches the chosen skill as the one composer
+invocation. A "Skill" tile (sparkles icon) shows it; tapping the tile opens the
+read-only skill preview instead of the menu. The earlier inline Skills section
+was dropped. See `docs/skills.md` section 5.7 and 10.5.

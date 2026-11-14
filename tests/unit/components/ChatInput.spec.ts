@@ -152,6 +152,18 @@ const artifactPickerStub = defineComponent({
     + ':data-open="String(open)" />',
 })
 
+const skillPickerStub = defineComponent({
+  name: 'ChatInputSkillPickerStub',
+  props: {
+    open: { type: Boolean, default: false },
+    items: { type: Array, default: () => [] },
+    selectedId: { type: String, default: null },
+  },
+  emits: ['update:open', 'pick'],
+  template: '<div data-testid="skill-picker-stub" '
+    + ':data-open="String(open)" />',
+})
+
 const uiButtonStub = defineComponent({
   name: 'UiButtonStub',
   props: {
@@ -194,6 +206,8 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
         ChatTextFileModal: textFileModalStub,
         LazyChatInputArtifactPicker: artifactPickerStub,
         ChatInputArtifactPicker: artifactPickerStub,
+        LazyChatInputSkillPicker: skillPickerStub,
+        ChatInputSkillPicker: skillPickerStub,
         LazyChatInputModelsTrigger: true,
         LazyChatInputFilesTrigger: true,
         LazyChatInputReasoningTrigger: true,
@@ -4010,23 +4024,49 @@ describe('ChatInput.client', () => {
       })
     }
 
-    it('shows no Skills section without an enabled skill', async () => {
+    function getSkillPicker(wrapper: ChatInputWrapper) {
+      return wrapper.findComponent({ name: 'ChatInputSkillPickerStub' })
+    }
+
+    async function openSkillPicker(wrapper: ChatInputWrapper) {
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-action-skills"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(getSkillPicker(wrapper).exists()).toBe(true)
+      })
+    }
+
+    it('shows no Add skill row and no picker without an enabled skill', async () => {
       const wrapper = await mountChatInput()
 
       await openToolsPanel(wrapper)
 
-      expect(hasTestId(wrapper, 'tools-skills-manage')).toBe(false)
-      expect(wrapper.text()).not.toContain('Manage skills')
+      expect(hasTestId(wrapper, 'tools-action-skills')).toBe(false)
+      expect(getSkillPicker(wrapper).exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Add skill')
     })
 
-    it('lists the skills and attaches the chosen one, closing the menu', async () => {
+    it('opens the skill picker from Add skill, closing the menu', async () => {
       grantSkills(2)
 
       const wrapper = await mountChatInput()
 
-      await openToolsPanel(wrapper)
-      await wrapper.get('[data-testid="tools-skill-writing-style"]')
-        .trigger('click')
+      await openSkillPicker(wrapper)
+
+      expect(getSkillPicker(wrapper).props('open')).toBe(true)
+      expect(getSkillPicker(wrapper).props('items')).toHaveLength(2)
+      expect(wrapper.get('[data-testid="chat-input-tools-trigger"]')
+        .attributes('aria-expanded')).toBe('false')
+    })
+
+    it('attaches the picked skill as a menu invocation', async () => {
+      grantSkills(2)
+
+      const wrapper = await mountChatInput()
+
+      await openSkillPicker(wrapper)
+      getSkillPicker(wrapper).vm.$emit('pick', writingStyle)
       await flushPromises()
 
       expect(useComposerSkillInvocation().invocation.value).toEqual({
@@ -4035,38 +4075,25 @@ describe('ChatInput.client', () => {
         version: 3,
         source: 'menu',
       })
-      expect(wrapper.get('[data-testid="chat-input-tools-trigger"]')
-        .attributes('aria-expanded')).toBe('false')
     })
 
-    it('replaces the attached skill when another one is chosen', async () => {
+    it('replaces the attached skill when another one is picked', async () => {
       grantSkills(2)
 
       const wrapper = await mountChatInput()
 
-      await openToolsPanel(wrapper)
-      await wrapper.get('[data-testid="tools-skill-writing-style"]')
-        .trigger('click')
-      await openToolsPanel(wrapper)
-      await wrapper.get('[data-testid="tools-skill-skill-2"]').trigger('click')
+      await openSkillPicker(wrapper)
+      getSkillPicker(wrapper).vm.$emit('pick', writingStyle)
+      await openSkillPicker(wrapper)
+      getSkillPicker(wrapper).vm.$emit('pick', {
+        ...writingStyle,
+        id: 'skl2',
+        name: 'skill-2',
+      })
       await flushPromises()
 
       expect(useComposerSkillInvocation().invocation.value)
         .toMatchObject({ skillId: 'skl2', name: 'skill-2' })
-    })
-
-    it('navigates to the manager from Manage skills', async () => {
-      grantSkills()
-
-      const wrapper = await mountChatInput()
-      const router = useRouter()
-      const push = vi.spyOn(router, 'push').mockResolvedValue(undefined)
-
-      await openToolsPanel(wrapper)
-      await wrapper.get('[data-testid="tools-skills-manage"]').trigger('click')
-      await flushPromises()
-
-      expect(push).toHaveBeenCalledWith('/profile/skills')
     })
 
     it('enables Send for a message that is only an attached skill', async () => {

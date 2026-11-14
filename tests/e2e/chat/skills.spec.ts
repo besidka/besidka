@@ -6,7 +6,7 @@ test.use({ storageState: { cookies: [], origins: [] } })
 
 test.describe.configure({ mode: 'serial', timeout: 90_000 })
 
-test('a member attaches a skill from the + menu, reads it and opens it in the editor', async ({ browser }) => {
+test('a member attaches a skill from + Add skill, reads it and opens it in the editor', async ({ browser }) => {
   const page = await openGrantedMember(browser, 'e2e-chat-skills')
   const skillName = `e2e-voice-${Date.now()}`
 
@@ -15,12 +15,16 @@ test('a member attaches a skill from the + menu, reads it and opens it in the ed
   await waitForHydration(page)
 
   await page.getByTestId('chat-input-tools-trigger').click()
+  await expect(page.getByTestId('tools-action-skills')).toContainText('Add skill')
+  await page.getByTestId('tools-action-skills').click()
 
-  const row = page.getByTestId(`tools-skill-${skillName}`)
+  const picker = page.getByTestId('skill-picker-dialog')
+  const row = picker.getByTestId(`skill-picker-item-${skillName}`)
 
+  await expect(picker).toBeVisible()
   await expect(row).toBeVisible()
   await expect(row).toContainText('Write in my own voice')
-  await expect(page.getByTestId('tools-skills-manage')).toBeVisible()
+  await expect(picker.getByTestId('skill-picker-manage')).toBeVisible()
   await row.click()
 
   const tile = page.getByTestId('chat-input-tile-skill')
@@ -33,7 +37,8 @@ test('a member attaches a skill from the + menu, reads it and opens it in the ed
   await expect(tile).toHaveCount(0)
 
   await page.getByTestId('chat-input-tools-trigger').click()
-  await page.getByTestId(`tools-skill-${skillName}`).click()
+  await page.getByTestId('tools-action-skills').click()
+  await page.getByTestId(`skill-picker-item-${skillName}`).click()
   await page.getByTestId('chat-input-tile-skill-body').click()
 
   const preview = page.locator('dialog.js-skill-preview')

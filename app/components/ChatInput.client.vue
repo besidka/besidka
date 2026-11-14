@@ -99,9 +99,7 @@
                 @open-files-upload="openFilesModal('upload')"
                 @open-files-generated="openFilesModal('select', 'assistant')"
                 @open-artifact-picker="openArtifactPicker"
-                @select-skill="onSkillSelected"
                 @open-skills-picker="openSkillPicker"
-                @open-skills-manager="openSkillsManager"
                 @update:use-memory="setMemoryUsage"
                 @remove-tile="removeTile"
               />
@@ -1580,10 +1578,6 @@ function onSkillSelected(item: ComposerSkillItem) {
     name: item.name,
     version: item.version,
   }, 'menu')
-}
-
-async function openSkillsManager() {
-  await navigateTo('/profile/skills')
 }
 
 watch(isSkillAttachEnabled, (isEnabled) => {

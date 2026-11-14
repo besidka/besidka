@@ -18,13 +18,14 @@
       </span>
     </div>
     <ChatInputToolsMenuSection
-      v-if="state.files.visible"
+      v-if="isAddSectionVisible"
       id="add"
       title="Add"
       icon="lucide:plus"
       :is-highlighted="highlightedSection === 'add'"
     >
       <ChatInputToolsMenuActionRow
+        v-if="state.files.visible"
         label="Attach files"
         hint="Upload from your device"
         icon="lucide:paperclip"
@@ -32,6 +33,7 @@
         @click="emit('open-files-upload')"
       />
       <ChatInputToolsMenuActionRow
+        v-if="state.files.visible"
         label="Add from library"
         hint="Files you've uploaded"
         icon="lucide:folder-open"
@@ -40,7 +42,7 @@
         @click="emit('open-files-select')"
       />
       <ChatInputToolsMenuActionRow
-        v-if="state.files.isImageInputSupported"
+        v-if="state.files.visible && state.files.isImageInputSupported"
         label="Generated images"
         hint="Images made in your chats"
         icon="lucide:images"
@@ -48,7 +50,7 @@
         @click="emit('open-files-generated')"
       />
       <ChatInputToolsMenuActionRow
-        v-if="state.artifacts.visible"
+        v-if="state.files.visible && state.artifacts.visible"
         label="Add artifact"
         hint="Artifacts from your chats"
         icon="lucide:app-window"
@@ -56,16 +58,16 @@
         data-testid="tools-action-artifacts"
         @click="emit('open-artifact-picker')"
       />
+      <ChatInputToolsMenuActionRow
+        v-if="state.skills?.visible"
+        label="Add skill"
+        hint="Skills you made or imported"
+        icon="lucide:sparkles"
+        :badge="state.skills.selected ? 1 : undefined"
+        data-testid="tools-action-skills"
+        @click="emit('open-skills-picker')"
+      />
     </ChatInputToolsMenuSection>
-    <ChatInputToolsMenuSkillsSection
-      v-if="state.skills?.visible"
-      :items="state.skills.items"
-      :selected-id="state.skills.selected?.skillId ?? null"
-      :is-highlighted="highlightedSection === 'skills'"
-      @select="emit('select-skill', $event)"
-      @open-all="emit('open-skills-picker')"
-      @manage="emit('open-skills-manager')"
-    />
     <div
       v-if="hasDividerBeforeSearch"
       class="h-px mx-2 my-1 bg-base-content/10"
@@ -186,7 +188,6 @@ import type {
   ToolsSection,
 } from '~/types/chat-input-tools'
 import type { WebSearchSelection } from '~/types/web-search'
-import type { ComposerSkillItem } from '~/composables/composer-skills'
 
 const props = defineProps<{
   state: ChatInputToolsState
@@ -206,9 +207,7 @@ const emit = defineEmits<{
   'open-files-upload': []
   'open-files-generated': []
   'open-artifact-picker': []
-  'select-skill': [item: ComposerSkillItem]
   'open-skills-picker': []
-  'open-skills-manager': []
   'update:use-memory': [value: boolean]
 }>()
 
@@ -219,19 +218,17 @@ const isReasoningSectionVisible = computed<boolean>(() => {
     && props.state.reasoning.mode !== 'none'
 })
 
-const isSkillsSectionVisible = computed<boolean>(() => {
-  return props.state.skills?.visible === true
+const isAddSectionVisible = computed<boolean>(() => {
+  return props.state.files.visible || props.state.skills?.visible === true
 })
 
 const hasDividerBeforeSearch = computed<boolean>(() => {
-  return (props.state.files.visible || isSkillsSectionVisible.value)
-    && props.state.webSearch.visible
+  return isAddSectionVisible.value && props.state.webSearch.visible
 })
 
 const hasDividerBeforeReasoning = computed<boolean>(() => {
   return (
-    props.state.files.visible
-    || isSkillsSectionVisible.value
+    isAddSectionVisible.value
     || props.state.webSearch.visible
   ) && isReasoningSectionVisible.value
 })
@@ -245,8 +242,7 @@ const isCodeExecutionRowVisible = computed<boolean>(() => {
 })
 
 const hasUpperSection = computed<boolean>(() => {
-  return props.state.files.visible
-    || isSkillsSectionVisible.value
+  return isAddSectionVisible.value
     || props.state.webSearch.visible
     || isReasoningSectionVisible.value
     || (props.state.isDeepResearchModel && !!props.state.research)

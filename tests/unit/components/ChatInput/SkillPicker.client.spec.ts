@@ -23,6 +23,16 @@ const items: ComposerSkillItem[] = [
   },
 ]
 
+const manyItems: ComposerSkillItem[] = Array.from({ length: 8 }, (_, index) => {
+  return {
+    id: `skl${index + 10}`,
+    name: `skill-${index}`,
+    description: index === 3 ? 'Turn a transcript into notes' : 'Plain skill',
+    version: 1,
+    mode: 'auto' as const,
+  }
+})
+
 function find(id: string): HTMLElement | null {
   return document.body.querySelector(`[data-testid="${id}"]`)
 }
@@ -37,9 +47,12 @@ function get(id: string): HTMLElement {
   return element
 }
 
-async function mountPicker(selectedId: string | null = null) {
+async function mountPicker(
+  selectedId: string | null = null,
+  pickerItems: ComposerSkillItem[] = items,
+) {
   const wrapper = await mountSuspended(SkillPicker, {
-    props: { items, selectedId, open: true },
+    props: { items: pickerItems, selectedId, open: true },
     attachTo: document.body,
     global: { stubs: { teleport: false } },
   })
@@ -79,16 +92,38 @@ describe('ChatInput/SkillPicker', () => {
       .toContain('Only when I ask')
   })
 
-  it('filters by name or description and offers Clear when nothing matches', async () => {
+  it('shows the search field only from eight skills', async () => {
+    await mountPicker()
+
+    expect(document.body.querySelector('input[type="text"]')).toBeNull()
+
+    document.body.innerHTML = ''
+    await mountPicker(null, manyItems)
+
+    expect(document.body.querySelector('input[type="text"]')).not.toBeNull()
+  })
+
+  it('links to the skills manager and closes', async () => {
     const wrapper = await mountPicker()
+
+    expect(get('skill-picker-manage').outerHTML).toContain('/profile/skills')
+
+    get('skill-picker-manage').click()
+    await flushPromises()
+
+    expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
+  })
+
+  it('filters by name or description and offers Clear when nothing matches', async () => {
+    const wrapper = await mountPicker(null, manyItems)
     const input = document.body.querySelector('input[type="text"]')!
 
     ;(input as HTMLInputElement).value = 'transcript'
     input.dispatchEvent(new Event('input'))
     await flushPromises()
 
-    expect(find('skill-picker-item-meeting-notes')).not.toBeNull()
-    expect(find('skill-picker-item-writing-style')).toBeNull()
+    expect(find('skill-picker-item-skill-3')).not.toBeNull()
+    expect(find('skill-picker-item-skill-0')).toBeNull()
 
     ;(input as HTMLInputElement).value = 'zzz'
     input.dispatchEvent(new Event('input'))
@@ -99,7 +134,7 @@ describe('ChatInput/SkillPicker', () => {
     get('skill-picker-clear').click()
     await flushPromises()
 
-    expect(find('skill-picker-item-writing-style')).not.toBeNull()
+    expect(find('skill-picker-item-skill-0')).not.toBeNull()
     expect(wrapper.exists()).toBe(true)
   })
 

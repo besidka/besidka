@@ -2,7 +2,7 @@ import { getSkillMode } from '#shared/utils/skills/mode'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillSummary } from '#shared/types/skills.d'
 
-export const COMPOSER_SKILLS_MENU_LIMIT = 6
+export const COMPOSER_SKILLS_SEARCH_MIN = 8
 
 export interface ComposerSkillItem {
   id: string
