@@ -1,5 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { validateSkillSlashName } from '#shared/utils/skills-policy'
+import { getSkillModeColumns } from '#shared/utils/skills/mode'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createSkillEditError } from '~~/server/utils/skills/versions/errors'
@@ -9,6 +11,7 @@ import { toSkillSummary } from '~~/server/utils/skills/versions/view'
 type DbClient = ReturnType<typeof useDb>
 
 export interface SkillSettingsChanges {
+  mode?: SkillMode
   enabled?: boolean
   modelInvocable?: boolean
   slashCommand?: boolean
@@ -16,9 +19,12 @@ export interface SkillSettingsChanges {
 }
 
 /**
- * Settings are not content: no version is created. Switching "Use as /name"
- * on is refused for a reserved name ("/memory is reserved by Besidka"), and
- * a skill with missing files cannot be enabled.
+ * Settings are not content: no version is created. `mode` sets `enabled`,
+ * `modelInvocable` and `slashCommand` together in one statement, and a
+ * reserved name leaves `slashCommand` off instead of failing. The separate
+ * flags still work for the MCP tools: switching "Use as /name" on is refused
+ * for a reserved name ("/memory is reserved by Besidka"). A skill with
+ * missing files cannot be enabled.
  */
 export async function updateSkillSettings(input: {
   db: DbClient
@@ -27,8 +33,12 @@ export async function updateSkillSettings(input: {
   changes: SkillSettingsChanges
   logger: LoggerLike
 }) {
-  const { db, userId, changes } = input
+  const { db, userId } = input
+  const { mode, ...flagChanges } = input.changes
   const skill = await loadOwnedSkill(db, userId, input.skillId)
+  const changes = mode
+    ? { ...flagChanges, ...getSkillModeColumns(mode, skill.name) }
+    : flagChanges
 
   if (changes.slashCommand === true) {
     const validation = validateSkillSlashName(skill.name)
@@ -73,6 +83,7 @@ export async function updateSkillSettings(input: {
       skills: {
         settings: {
           changed: Object.keys(changes),
+          mode: mode ?? null,
           enabled: updated.enabled,
           modelInvocable: updated.modelInvocable,
           slashCommand: updated.slashCommand,

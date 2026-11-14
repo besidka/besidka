@@ -26,7 +26,35 @@ export interface PreparedSkillVersion {
   sha256: string
   totalBytes: number
   renamed: boolean
+  slashCommand?: boolean
   warnings: string[]
+}
+
+/**
+ * A rename keeps `slashCommand` in step with the name instead of failing:
+ * a reserved new name turns it off, and leaving a reserved name turns it on
+ * again for a skill that is enabled.
+ */
+function resolveRenamedSlashCommand(
+  skill: Pick<SkillRow, 'name' | 'enabled' | 'slashCommand'>,
+  newName: string,
+): boolean | undefined {
+  const isNewNameReserved = isReservedSkillSlashName(newName)
+
+  if (skill.slashCommand && isNewNameReserved) {
+    return false
+  }
+
+  if (
+    skill.enabled
+    && !skill.slashCommand
+    && !isNewNameReserved
+    && isReservedSkillSlashName(skill.name)
+  ) {
+    return true
+  }
+
+  return undefined
 }
 
 async function readEntryText(input: {
@@ -46,8 +74,8 @@ async function readEntryText(input: {
 
 /**
  * Everything the next version of an existing skill has to satisfy, read from
- * the new file set: `SKILL.md` must parse, a changed name must be free and
- * must not be a reserved slash name while the command toggle is on, and the
+ * the new file set: `SKILL.md` must parse, a changed name must be free (a
+ * reserved slash name only switches `slashCommand` off), and the
  * licence classifier runs again over the licence files, so a restricted
  * licence file blocks the version. Only `SKILL.md` and the root licence
  * files are read; contents the caller already holds are not read again.
@@ -87,14 +115,6 @@ export async function prepareSkillVersion(input: {
   const renamed = frontmatter.name !== skill.name
 
   if (renamed) {
-    if (skill.slashCommand && isReservedSkillSlashName(frontmatter.name)) {
-      throw createSkillEditError('reserved-name', {
-        message: `/${frontmatter.name} is reserved by Besidka`,
-        why: 'The skill is used as a / command, and this name belongs to a built-in command',
-        fix: 'Pick another name, or switch off "Use as /name" first',
-      })
-    }
-
     const [taken] = await db.select({ id: schema.skills.id })
       .from(schema.skills)
       .where(and(
@@ -159,6 +179,9 @@ export async function prepareSkillVersion(input: {
       return total + file.bytes
     }, 0),
     renamed,
+    ...(renamed
+      ? { slashCommand: resolveRenamedSlashCommand(skill, frontmatter.name) }
+      : {}),
     warnings: [...parsed.warnings, ...licence.warnings],
   }
 }

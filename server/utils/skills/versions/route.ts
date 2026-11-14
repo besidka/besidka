@@ -10,6 +10,7 @@ import {
   SKILL_SAVE_MAX_CHANGES,
   SKILL_EDIT_MAX_FILE_BYTES,
 } from '#shared/utils/skills-policy'
+import { SKILL_MODES } from '#shared/utils/skills/mode'
 import { hasHiddenCharacter } from '#shared/utils/skills/hidden-characters'
 import { SKILL_DESCRIPTION_MAX } from '#shared/utils/skills/frontmatter'
 import { SKILL_TEMPLATE_IDS } from '#shared/utils/skills/templates'
@@ -80,6 +81,7 @@ export const createBodySchema = z.discriminatedUnion('kind', [
 ])
 
 export const settingsBodySchema = z.object({
+  mode: z.enum(SKILL_MODES).optional(),
   enabled: z.boolean().optional(),
   modelInvocable: z.boolean().optional(),
   slashCommand: z.boolean().optional(),
@@ -88,7 +90,14 @@ export const settingsBodySchema = z.object({
   return Object.values(body).some((value) => {
     return value !== undefined
   })
-}, 'Send at least one setting')
+}, 'Send at least one setting').refine((body) => {
+  return body.mode === undefined
+    || (
+      body.enabled === undefined
+      && body.modelInvocable === undefined
+      && body.slashCommand === undefined
+    )
+}, 'Send mode alone, or the separate settings, not both')
 
 export const versionQuerySchema = z.object({
   version: z.coerce.number().int().min(1).optional(),

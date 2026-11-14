@@ -81,8 +81,14 @@ describe('skill templates', () => {
     }
   })
 
+  it('makes every template a /name command', () => {
+    expect(SKILL_TEMPLATES.every((template) => {
+      return template.slashCommand
+    })).toBe(true)
+  })
+
   it.each(SKILL_TEMPLATES.filter((template) => {
-    return template.slashCommand
+    return !template.modelInvocable
   }).map((template) => {
     return [template.id, template] as const
   }))('%s uses $ARGUMENTS and has an argument hint', (_id, template) => {

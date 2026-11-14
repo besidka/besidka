@@ -58,28 +58,38 @@ describe('Profile/Skills/DetailHeader', () => {
     useSkillEditSession().close()
   })
 
-  it('shows the state of the skill in the enable toggle', async () => {
+  it('shows the mode of the skill in the mode control', async () => {
     const wrapper = await mountSuspended(DetailHeader, {
       props: { skillId: 'S1' },
     })
 
-    expect(wrapper.get(testId('skill-detail-enable')).text()).toBe('Off')
-    expect((wrapper.get(testId('skill-detail-toggle')).element as HTMLInputElement)
-      .checked).toBe(false)
+    expect((wrapper.get(testId('skill-detail-mode-select')).element as HTMLSelectElement)
+      .value).toBe('off')
   })
+
+  async function pickMode(
+    wrapper: Awaited<ReturnType<typeof mountSuspended>>,
+    mode: string,
+  ) {
+    const select = wrapper.get(testId('skill-detail-mode-select'))
+      .element as HTMLSelectElement
+
+    select.value = mode
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+  }
 
   it('turns a skill the user wrote on without a confirmation', async () => {
     const wrapper = await mountSuspended(DetailHeader, {
       props: { skillId: 'S1' },
     })
 
-    await wrapper.get(testId('skill-detail-toggle')).trigger('click')
-    await flushPromises()
+    await pickMode(wrapper, 'auto')
 
     expect(mocks.confirm).not.toHaveBeenCalled()
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/S1', {
       method: 'PATCH',
-      body: { enabled: true },
+      body: { mode: 'auto' },
     })
   })
 
@@ -95,21 +105,20 @@ describe('Profile/Skills/DetailHeader', () => {
       props: { skillId: 'S1' },
     })
 
-    await wrapper.get(testId('skill-detail-toggle')).trigger('click')
-    await flushPromises()
+    await pickMode(wrapper, 'ask')
 
     expect(mocks.confirm).toHaveBeenCalledTimes(1)
     expect(mocks.fetch).not.toHaveBeenCalled()
   })
 
-  it('disables the toggle for a broken skill', async () => {
+  it('disables the mode control for a broken skill', async () => {
     detail.value = createSkillDetail({ id: 'S1', status: 'broken' })
 
     const wrapper = await mountSuspended(DetailHeader, {
       props: { skillId: 'S1' },
     })
 
-    expect(wrapper.get(testId('skill-detail-toggle')).attributes('disabled'))
+    expect(wrapper.get(testId('skill-detail-mode-select')).attributes('disabled'))
       .toBeDefined()
   })
 })

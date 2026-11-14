@@ -323,6 +323,18 @@ describe('profile skills page', () => {
     expect(wrapper.find(testId('skills-empty')).exists()).toBe(true)
   })
 
+  async function pickRowMode(
+    wrapper: Awaited<ReturnType<typeof mountPage>>,
+    mode: string,
+  ) {
+    const select = wrapper.get(testId('skill-row-mode-select'))
+      .element as HTMLSelectElement
+
+    select.value = mode
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+  }
+
   it('asks before turning on a skill the user did not write', async () => {
     mocks.confirm.mockResolvedValue(null)
     setList([createSkillSummary({
@@ -334,8 +346,7 @@ describe('profile skills page', () => {
 
     const wrapper = await mountPage()
 
-    await wrapper.get(testId('skill-row-toggle')).trigger('click')
-    await flushPromises()
+    await pickRowMode(wrapper, 'ask')
 
     expect(mocks.confirm).toHaveBeenCalledTimes(1)
     expect(mocks.fetch).not.toHaveBeenCalled()
@@ -347,13 +358,12 @@ describe('profile skills page', () => {
 
     const wrapper = await mountPage()
 
-    await wrapper.get(testId('skill-row-toggle')).trigger('click')
-    await flushPromises()
+    await pickRowMode(wrapper, 'auto')
 
     expect(mocks.confirm).not.toHaveBeenCalled()
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/a', {
       method: 'PATCH',
-      body: { enabled: true },
+      body: { mode: 'auto' },
     })
   })
 })

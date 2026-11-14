@@ -337,16 +337,52 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ renamed: true })
     })
 
-    it('refuses a reserved name while the skill is used as a command', async () => {
+    it('turns /name off when the skill is renamed to a reserved name', async () => {
       const { skillId } = await seedAuthored(undefined, { slashCommand: true })
-      const failure = await failureOf(save(skillId, [{
+      const result = await save(skillId, [{
         op: 'put',
         path: 'SKILL.md',
         content: skillMarkdown({ name: 'memory' }),
-      }]))
+      }])
 
-      expect(failure).toMatchObject({ status: 400, code: 'reserved-name' })
-      expect(await versionNumbers(skillId)).toEqual([1])
+      expect(result).toMatchObject({ renamed: true })
+      expect(await skillRow(skillId)).toMatchObject({
+        name: 'memory',
+        slashCommand: false,
+      })
+    })
+
+    it('turns /name on again when an enabled skill leaves a reserved name', async () => {
+      const { skillId } = await seedAuthored(
+        { 'SKILL.md': skillMarkdown({ name: 'memory' }) },
+        { name: 'memory', slashCommand: false },
+      )
+      const result = await save(skillId, [{
+        op: 'put',
+        path: 'SKILL.md',
+        content: skillMarkdown({ name: 'my-memory' }),
+      }])
+
+      expect(result).toMatchObject({ renamed: true })
+      expect(await skillRow(skillId)).toMatchObject({
+        name: 'my-memory',
+        slashCommand: true,
+      })
+    })
+
+    it('leaves a disabled skill without /name on rename', async () => {
+      const { skillId } = await seedAuthored(
+        { 'SKILL.md': skillMarkdown({ name: 'memory' }) },
+        { name: 'memory', enabled: false, slashCommand: false },
+      )
+
+      await save(skillId, [{
+        op: 'put',
+        path: 'SKILL.md',
+        content: skillMarkdown({ name: 'my-memory' }),
+      }])
+
+      expect(await skillRow(skillId)).toMatchObject({ slashCommand: false })
     })
 
     it('allows a reserved name when the command toggle is off', async () => {

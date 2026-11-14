@@ -10,43 +10,30 @@
       >
         How it is used
       </h3>
-      <label class="flex cursor-pointer items-start justify-between gap-4">
-        <span class="grid gap-0.5">
-          <span class="text-sm font-medium">
-            The model can use it on its own
-          </span>
-          <span class="text-xs text-base-content/70">
-            Its name and description go in every message, about
-            {{ tokens }} tokens, so the model can load it when a task fits.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          class="toggle toggle-sm mt-1 shrink-0"
-          :checked="skill.modelInvocable"
-          :disabled="isBusy"
-          data-testid="skill-setting-model-invocable"
-          @click.prevent="onSetting({ modelInvocable: !skill.modelInvocable })"
-        >
-      </label>
-      <label class="flex cursor-pointer items-start justify-between gap-4">
-        <span class="grid gap-0.5">
-          <span class="text-sm font-medium">
-            Use as a /{{ skill.name }} command
-          </span>
-          <span class="text-xs text-base-content/70">
-            Run it by typing /{{ skill.name }} at the start of a message.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          class="toggle toggle-sm mt-1 shrink-0"
-          :checked="skill.slashCommand"
-          :disabled="isBusy"
-          data-testid="skill-setting-slash-command"
-          @click.prevent="onSetting({ slashCommand: !skill.slashCommand })"
-        >
-      </label>
+      <ProfileSkillsModeControl
+        :skill="skill"
+        :is-disabled="isBusy"
+        has-label
+        test-id="skill-setting-mode"
+        @select="onSelectMode"
+      />
+      <p
+        class="text-xs text-base-content/70"
+        data-testid="skill-setting-mode-description"
+      >
+        {{ SKILL_MODE_DESCRIPTIONS[mode] }}
+        <template v-if="mode === 'auto'">
+          Its name and description go in every message, about
+          {{ tokens }} tokens.
+        </template>
+      </p>
+      <p
+        v-if="isSlashBlocked"
+        class="text-xs text-warning"
+        data-testid="skill-setting-slash-blocked"
+      >
+        /{{ skill.name }} is reserved by Besidka. Rename to use /name.
+      </p>
       <form
         v-if="skill.slashCommand"
         class="grid gap-1"
@@ -195,6 +182,12 @@
 <script setup lang="ts">
 import { SKILL_ARGUMENT_HINT_MAX } from '#shared/utils/skills-policy'
 import type { SkillDetail } from '#shared/types/skills.d'
+import {
+  SKILL_MODE_DESCRIPTIONS,
+  getSkillMode,
+  isSkillSlashBlocked,
+} from '#shared/utils/skills/mode'
+import type { SkillMode } from '#shared/utils/skills/mode'
 
 const props = defineProps<{
   skill: SkillDetail
@@ -219,6 +212,14 @@ const tokens = computed<number>(() => {
   return estimateSkillCatalogTokens(props.skill)
 })
 
+const mode = computed<SkillMode>(() => {
+  return getSkillMode(props.skill)
+})
+
+const isSlashBlocked = computed<boolean>(() => {
+  return isSkillSlashBlocked(props.skill)
+})
+
 const isHintChanged = computed<boolean>(() => {
   return hint.value.trim() !== (props.skill.argumentHint ?? '')
 })
@@ -239,11 +240,8 @@ watch(() => props.skill.argumentHint, (value) => {
   hint.value = value ?? ''
 })
 
-async function onSetting(changes: {
-  modelInvocable?: boolean
-  slashCommand?: boolean
-}) {
-  await actions.saveSettings(props.skill.id, changes)
+async function onSelectMode(selected: SkillMode) {
+  await actions.setMode(props.skill, selected)
 }
 
 async function onSaveHint() {

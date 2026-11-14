@@ -6,7 +6,6 @@ import {
   SKILL_NAME_MAX,
   SKILL_SAVE_MAX_BYTES,
   SKILL_SAVE_MAX_CHANGES,
-  isReservedSkillSlashName,
   isSkillNameValid,
 } from '#shared/utils/skills-policy'
 import {
@@ -130,14 +129,11 @@ export function validateSkillEditorPath(
 }
 
 /**
- * The name rules that need no list: the pattern, and the built-in command
- * names while "Use as /name" is on. Uniqueness is checked on blur against the
- * skills list.
+ * The name rules that need no list: the pattern. A built-in command name is
+ * allowed (the skill then cannot run as /name). Uniqueness is checked on blur
+ * against the skills list.
  */
-export function getSkillEditorNameError(
-  name: string,
-  options: { slashCommand: boolean },
-): string {
+export function getSkillEditorNameError(name: string): string {
   if (!name) {
     return 'Add a name'
   }
@@ -146,10 +142,6 @@ export function getSkillEditorNameError(
     return `Use lowercase letters, numbers and single hyphens, up to ${
       SKILL_NAME_MAX
     } characters`
-  }
-
-  if (options.slashCommand && isReservedSkillSlashName(name)) {
-    return `/${name} is reserved by Besidka. Pick another name.`
   }
 
   return ''

@@ -67,7 +67,7 @@
       :can-import-from-url="importFromUrl.active"
       @open="openDetail"
       @edit="skill => editSession.open(skill.id)"
-      @toggle="onToggle"
+      @set-mode="onSetMode"
       @review-update="onReviewUpdate"
       @check-updates="onCheckUpdates"
       @delete="onDelete"
@@ -110,6 +110,7 @@ import {
   LazyProfileSkillsDetailPanel,
 } from '#components'
 import type { SkillSummary } from '#shared/types/skills.d'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import type {
   SkillCreateKind,
   SkillDetailTab,
@@ -250,8 +251,8 @@ function onNew(action: SkillNewAction) {
   importTab.value = action
 }
 
-async function onToggle(skill: SkillSummary, enabled: boolean) {
-  await actions.setEnabled(skill, enabled)
+async function onSetMode(skill: SkillSummary, mode: SkillMode) {
+  await actions.setMode(skill, mode)
 }
 
 function onReviewUpdate(skill: SkillSummary) {

@@ -190,20 +190,30 @@ test('a member uploads a skill, reviews it, installs it and turns it on', async 
   await expect(page.getByTestId('skill-detail-description'))
     .toContainText('Summarise a meeting')
 
-  const toggle = row.getByTestId('skill-row-toggle')
+  const mode = row.getByTestId('skill-row-mode-select')
 
-  await expect(toggle).not.toBeChecked()
-  await toggle.click()
+  await expect(mode).toHaveValue('off')
+  await mode.selectOption('auto')
   await page.getByRole('button', { name: 'Turn on' }).click()
 
-  await expect(toggle).toBeChecked()
+  await expect(mode).toHaveValue('auto')
   await expect(row.getByTestId('skill-row-status')).toHaveCount(0)
+  await expect(row.getByTestId('skill-row-tokens')).toContainText('tokens')
+
+  await mode.selectOption('ask')
+  await expect(mode).toHaveValue('ask')
+  await expect(row.getByTestId('skill-row-tokens')).toHaveCount(0)
 
   const list = await page.request.get('/api/v1/skills')
   const body = await list.json()
 
   expect(body.skills).toHaveLength(1)
-  expect(body.skills[0]).toMatchObject({ name: skillName, enabled: true })
+  expect(body.skills[0]).toMatchObject({
+    name: skillName,
+    enabled: true,
+    modelInvocable: false,
+    slashCommand: true,
+  })
 })
 
 test('a member creates a skill, edits it in the editor and saves version 2', async ({ browser }) => {

@@ -11,8 +11,8 @@ import { updateSkillSettings } from '~~/server/utils/skills/versions/settings'
 const BODY_MAX_BYTES = 4096
 
 /**
- * Settings only: `enabled`, `modelInvocable`, `slashCommand` and
- * `argumentHint`. Content (the name, the description, every file) changes
+ * Settings only: `mode` (or `enabled`, `modelInvocable` and `slashCommand`)
+ * and `argumentHint`. Content (the name, the description, every file) changes
  * through a version, so this route never creates one.
  */
 export default defineEventHandler(async (event) => {
@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const changes = await readSkillBody(
     event,
     settingsBodySchema,
-    'Send one or more of enabled, modelInvocable, slashCommand, argumentHint',
+    'Send mode, or one or more of enabled, modelInvocable, slashCommand, argumentHint',
   )
 
   return await updateSkillSettings({
@@ -31,6 +31,7 @@ export default defineEventHandler(async (event) => {
     userId,
     skillId: readSkillIdParam(event),
     changes: {
+      ...(changes.mode === undefined ? {} : { mode: changes.mode }),
       ...(changes.enabled === undefined ? {} : { enabled: changes.enabled }),
       ...(changes.modelInvocable === undefined
         ? {}

@@ -311,11 +311,11 @@ function readAllowedTools(value: unknown, warnings: string[]): string[] | null {
 }
 
 /**
- * Claude Code keys are only defaults for the two columns the user sets:
+ * Claude Code keys are only defaults for the invocation mode the user sets:
  * a skill can never make itself model-invocable or slash-invocable. A skill
- * that turns off model invocation is user-only in Claude Code, so it becomes
- * a slash command here; without any key it stays a plain model-invocable
- * skill.
+ * that turns off model invocation starts as "Only when I ask"; without that
+ * key it starts as Auto. Every skill is also a `/name` command unless the
+ * name is reserved. An import still starts disabled.
  */
 function readInvocationDefaults(
   data: Record<string, unknown>,
@@ -325,14 +325,11 @@ function readInvocationDefaults(
   const disableModelInvocation = toLenientBoolean(
     data['disable-model-invocation'],
   )
-  const userInvocable = toLenientBoolean(data['user-invocable'])
   const modelInvocable = disableModelInvocation !== true
-  let slashCommand = userInvocable === true
-    || (userInvocable !== false && disableModelInvocation === true)
+  const slashCommand = !isReservedSkillSlashName(name)
 
-  if (slashCommand && isReservedSkillSlashName(name)) {
-    slashCommand = false
-    warnings.push(`/${name} is reserved by Besidka, so it is not a command`)
+  if (!slashCommand) {
+    warnings.push(`/${name} is reserved by Besidka, so it cannot run as /${name}`)
   }
 
   const argumentHint = readOptionalText(

@@ -59,6 +59,13 @@
         >
           {{ tokenEstimate }}
         </span>
+        <span
+          v-if="isSlashBlocked"
+          class="text-warning"
+          data-testid="skill-row-slash-blocked"
+        >
+          Rename to use /name
+        </span>
       </div>
       <p
         v-if="skill.status === 'broken'"
@@ -69,21 +76,12 @@
       </p>
     </div>
 
-    <label
-      class="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center sm:min-h-8 sm:min-w-8"
-    >
-      <span class="sr-only">
-        {{ skill.enabled ? 'Turn off' : 'Turn on' }} {{ skill.name }}
-      </span>
-      <input
-        type="checkbox"
-        class="toggle toggle-sm"
-        :checked="skill.enabled"
-        :disabled="isBusy || skill.status === 'broken'"
-        data-testid="skill-row-toggle"
-        @click.prevent="emit('toggle', skill, !skill.enabled)"
-      >
-    </label>
+    <ProfileSkillsModeControl
+      :skill="skill"
+      :is-disabled="isBusy"
+      test-id="skill-row-mode"
+      @select="mode => emit('setMode', skill, mode)"
+    />
 
     <details
       ref="dropdownRef"
@@ -174,6 +172,11 @@
 
 <script setup lang="ts">
 import type { SkillSummary } from '#shared/types/skills.d'
+import {
+  getSkillMode,
+  isSkillSlashBlocked,
+} from '#shared/utils/skills/mode'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillDetailTab } from '~/types/skills-ui.d'
 
 const props = withDefaults(defineProps<{
@@ -189,7 +192,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   open: [skill: SkillSummary, tab: SkillDetailTab]
-  toggle: [skill: SkillSummary, enabled: boolean]
+  setMode: [skill: SkillSummary, mode: SkillMode]
   edit: [skill: SkillSummary]
   reviewUpdate: [skill: SkillSummary]
   checkUpdates: [skill: SkillSummary]
@@ -243,15 +246,15 @@ const metaLine = computed<string>(() => {
 })
 
 const tokenEstimate = computed<string | null>(() => {
-  if (!props.skill.modelInvocable) {
+  if (getSkillMode(props.skill) !== 'auto') {
     return null
   }
 
-  const tokens = estimateSkillCatalogTokens(props.skill)
+  return `≈ ${estimateSkillCatalogTokens(props.skill)} tokens in every message`
+})
 
-  return props.skill.enabled
-    ? `≈ ${tokens} tokens in every message`
-    : `≈ ${tokens} tokens in every message when on`
+const isSlashBlocked = computed<boolean>(() => {
+  return isSkillSlashBlocked(props.skill)
 })
 
 onClickOutside(dropdownRef, closeDropdown)
