@@ -28,7 +28,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@925afb53776cf1a2b738c6bdbed37b4d4000ef13
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe
         env:
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
