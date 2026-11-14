@@ -20,20 +20,20 @@ could not be checked, say so.
 | cursor.directory | Needs the owner | Community list, GitHub sign-in |
 | Google Connected Apps (Gemini, AI Mode) | Needs the owner: join the waitlist | Preview with phased access; eligibility of individuals is not documented |
 | Grok connectors | Does not fit | No submission path. Users add Besidka as a custom connector |
-| Meta Muse | Does not fit | Business verification of an organisation |
+| Meta Muse | Does not fit | Business verification of an organization |
 | Microsoft 365 Copilot Agent Store | Does not fit | Partner Center needs a registered business; MCP certification needs static client credentials |
 | Salesforce AgentExchange | Does not fit | Company partner program and agreements |
 | AWS Marketplace, AI Agents and Tools | Does not fit | AWS says sole proprietors without a registered business cannot pass verification |
 | Glama, PulseMCP, mcp.directory | Follow the official registry | Nothing to submit separately |
 
 The four "does not fit" rows that need a registered business change only
-when Besidka has one. `docs/legal/monetisation-readiness.md` covers that
+when Besidka has one. `docs/legal/monetization-readiness.md` covers that
 decision (JDG, address); do not open a business just for a listing.
 
 ## Official MCP Registry
 
 The registry at `registry.modelcontextprotocol.io` is the upstream list that
-other directories copy. It is still labelled preview. There is no review
+other directories copy. It is still labeled preview. There is no review
 before publishing; moderation afterwards covers only illegal content,
 malware, spam and servers that do not work.
 
@@ -243,7 +243,7 @@ listings: its guidelines forbid any mention of pricing.
 | Field | Value |
 | --- | --- |
 | Name | Besidka |
-| One-liner (Claude, up to 200) | Read and organise your Besidka chats, projects, project knowledge, memory, files and settings from Claude. |
+| One-liner (Claude, up to 200) | Read and organize your Besidka chats, projects, project knowledge, memory, files and settings from Claude. |
 | Short description (ChatGPT, up to 30) | Chats, projects and memory |
 | Server description (registry, up to 100) | Besidka models, providers and key guides, plus your chats, projects, files, memory and settings. |
 | Category | Productivity (Claude: also Knowledge management, if offered) |
@@ -259,7 +259,7 @@ listings: its guidelines forbid any mention of pricing.
 Long description (Claude up to 2000, ChatGPT up to 4000):
 
 > Work with your Besidka account from your assistant. Find and read your
-> chats, organise them into projects, add notes and text to project
+> chats, organize them into projects, add notes and text to project
 > knowledge, review and edit what Besidka remembers, save and read text
 > files, and change your Besidka settings. Every action uses your own
 > Besidka data after you sign in and approve each permission, and deleting
@@ -374,7 +374,7 @@ codes, no magic links, no sign-up during review.
   guidelines at https://developers.openai.com/apps-sdk/app-submission-guidelines.
   Submit at https://platform.openai.com, Plugins, Upload new or existing
   plugin.
-- Who: a verified individual or organisation. Individual verification needs
+- Who: a verified individual or organization. Individual verification needs
   a government ID and possibly a selfie, with no company and no address
   (https://help.openai.com/en/articles/10910291-api-organization-verification).
   Business verification needs a registered address, so use the individual

@@ -55,17 +55,17 @@ const research = {
 } as const
 
 describe('getModelCategory', () => {
-  it('categorises a plain chat model as chat', () => {
+  it('categorizes a plain chat model as chat', () => {
     expect(getModelCategory(createModel())).toBe('chat')
   })
 
-  it('categorises a research model as research', () => {
+  it('categorizes a research model as research', () => {
     const model = createModel({ research })
 
     expect(getModelCategory(model)).toBe('research')
   })
 
-  it('categorises a model with the imageGeneration field as image generation', () => {
+  it('categorizes a model with the imageGeneration field as image generation', () => {
     const model = createModel({
       tools: [],
       imageGeneration: { controllerModel: 'gpt-5-nano' },

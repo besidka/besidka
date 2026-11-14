@@ -176,7 +176,7 @@ test('an admin schedules steps, cancels one and the due step applies', async ({
     .last()
     .click()
   await adminPage.getByTestId('confirmation-action-0').click()
-  await expect(list).toContainText('cancelled')
+  await expect(list).toContainText('canceled')
 
   movePendingSchedulesToThePast()
 

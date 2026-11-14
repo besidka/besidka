@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import { SKILL_VIEWER_FILE_MAX_BYTES } from '#shared/utils/skills-policy'
 import {
   skillStageKey,
@@ -84,7 +84,7 @@ describe('GET /api/v1/skills/import/stages/[stageId]/files', () => {
         text: entry.text,
       }
     })
-    const analysis = await analyseSkillFiles({
+    const analysis = await analyzeSkillFiles({
       files: staged,
       folderName: null,
     })

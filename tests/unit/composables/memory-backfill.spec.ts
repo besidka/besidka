@@ -429,20 +429,20 @@ describe('useMemoryBackfill', () => {
   })
 
   describe('cancel', () => {
-    it('stores the cancelled job', async () => {
+    it('stores the canceled job', async () => {
       mocks.fetch.mockResolvedValue({
         job: createJob({ status: 'cancelled', finishedAt: 'x' }),
       })
 
       const backfill = useMemoryBackfill()
-      const isCancelled = await backfill.cancel()
+      const isCanceled = await backfill.cancel()
 
-      expect(isCancelled).toBe(true)
+      expect(isCanceled).toBe(true)
       expect(mocks.fetch).toHaveBeenCalledWith(CANCEL_URL, {
         method: 'POST',
       })
       expect(backfill.job.value?.status).toBe('cancelled')
-      expect(backfill.isCancelling.value).toBe(false)
+      expect(backfill.isCanceling.value).toBe(false)
     })
 
     it('reloads when the server answers with no job', async () => {
@@ -482,21 +482,21 @@ describe('useMemoryBackfill', () => {
       backfill.startPolling()
       await flushPromises()
 
-      const cancelling = backfill.cancel()
+      const canceling = backfill.cancel()
 
       expect(backfill.isPolling.value).toBe(false)
 
       pending.resolve({
         job: createJob({ status: 'cancelled', finishedAt: 'x' }),
       })
-      await cancelling
+      await canceling
       await vi.advanceTimersByTimeAsync(COOLDOWN_MS * 3)
 
       expect(callsTo(STEP_URL)).toHaveLength(1)
       expect(backfill.job.value?.status).toBe('cancelled')
     })
 
-    it('resumes polling when cancelling fails', async () => {
+    it('resumes polling when canceling fails', async () => {
       mockRunningOverview()
 
       const backfill = useMemoryBackfill()
@@ -514,9 +514,9 @@ describe('useMemoryBackfill', () => {
       backfill.startPolling()
       await flushPromises()
 
-      const isCancelled = await backfill.cancel()
+      const isCanceled = await backfill.cancel()
 
-      expect(isCancelled).toBe(false)
+      expect(isCanceled).toBe(false)
       expect(backfill.error.value?.message).toBe('Could not stop')
 
       await vi.advanceTimersByTimeAsync(COOLDOWN_MS + 500)
@@ -525,7 +525,7 @@ describe('useMemoryBackfill', () => {
       backfill.stopPolling()
     })
 
-    it('drops a late step response after the job was cancelled', async () => {
+    it('drops a late step response after the job was canceled', async () => {
       const pendingStep = deferred<unknown>()
 
       mockRunningOverview()

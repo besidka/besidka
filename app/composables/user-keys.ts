@@ -13,11 +13,11 @@ export type UserKeyStatus = 'saved' | 'missing' | 'unknown'
  * Key presence for every provider and gateway, fetched once into shared state.
  * Several independent components call this on every chat page mount, so the
  * fetch is deduped two ways: `dedupe: 'defer'` makes concurrent first-mount
- * callers share one in-flight request instead of each cancelling and
+ * callers share one in-flight request instead of each canceling and
  * restarting it, and `getCachedData` makes a later mount (a chat-to-chat
  * navigation) reuse the already-fetched rows instead of refetching at all.
  *
- * `server: false` is deliberate, not an SSR optimisation left off by
+ * `server: false` is deliberate, not an SSR optimization left off by
  * accident: every consumer of this summary (`ModelsTrigger.vue`'s picker,
  * `ChatInput.client.vue`'s `useChatInput()`) already renders behind
  * `<ClientOnly>` or lives in a `.client.vue`, so an SSR-side fetch is never
@@ -32,7 +32,7 @@ export type UserKeyStatus = 'saved' | 'missing' | 'unknown'
  * Every lookup fails OPEN — an id the summary does not mention, a request still
  * in flight, and a request that failed all report "has a key". Gating is UI
  * guidance layered on top of the server's 401, so the worst case of failing
- * open is the pre-existing behaviour, while failing closed would disable a
+ * open is the pre-existing behavior, while failing closed would disable a
  * working account's entire model list on a slow or broken response.
  *
  * Lookups read `lastKnownKeys` rather than the raw fetch `data`, so a
@@ -104,7 +104,7 @@ export function useUserKeys() {
 
   /**
    * The keys page's counterpart to `hasKeyForProvider`, and deliberately NOT
-   * fail-open: a still-loading, failed, or unrecognised lookup reports
+   * fail-open: a still-loading, failed, or unrecognized lookup reports
    * `'unknown'` so the UI can stay silent instead of badging a keyless
    * provider as saved. Picker gating wants the opposite trade-off — never
    * swap one for the other.

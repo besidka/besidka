@@ -134,7 +134,7 @@ describe('Artifact/ReportModal.client', () => {
     vi.restoreAllMocks()
   })
 
-  it('opens as a labelled bottom-sheet dialog with all nine reasons',
+  it('opens as a labeled bottom-sheet dialog with all nine reasons',
     async () => {
       const wrapper = await mountModal()
       const dialog = wrapper.get(byTestId('artifact-report-modal'))
@@ -404,7 +404,7 @@ describe('Artifact/ReportModal.client', () => {
       .setValue('My novel, chapter 3, published at example.test')
     await wrapper.get(byTestId('artifact-report-copyright-owner'))
       .setValue('Lee Books')
-    await wrapper.get(byTestId('artifact-report-copyright-unauthorised'))
+    await wrapper.get(byTestId('artifact-report-copyright-unauthorized'))
       .setValue(true)
     await wrapper.get(byTestId('artifact-report-copyright-authority'))
       .setValue(true)

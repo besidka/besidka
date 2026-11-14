@@ -110,7 +110,7 @@ How the checks work, because the obvious implementations are bypassable:
 
 Residual PDF risk: the scan is linear and ignores the cross-reference table.
 A polyglot that hides an object where only a viewer's xref points is not
-modelled. Provider-made PDFs that the app cares about should go through
+modeled. Provider-made PDFs that the app cares about should go through
 `stampDocument`, which rewrites the file with pdf-lib.
 
 ## Provenance
@@ -151,7 +151,7 @@ still best rendered in Node because D-1 saw a 12-byte difference in WebKit.
 package entry points twice with esbuild (client conditions and Worker
 conditions, `node:fs` and `node:https` stubbed as in the D-1 spike, minified,
 `legalComments: 'eof'`), collects every package in the bundle graph with its
-licence text, and merges `packages/doc-renderer/notices/inlined.json` for code
+license text, and merges `packages/doc-renderer/notices/inlined.json` for code
 the graph cannot see (fontkit's Brotli decoder under Apache-2.0,
 `base64-arraybuffer`, `events`, the `fflate` and `nanoid` inlined in `docx`,
 the JSZip MIT election, the Noto Sans OFL text). The committed

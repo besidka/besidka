@@ -1211,7 +1211,7 @@ describe('chat error helpers', () => {
   })
 
   it('blocks recovery when a research job exists, regardless of status, even on a normal model', () => {
-    // Model-independent: a running, failed, or cancelled job kept in memory
+    // Model-independent: a running, failed, or canceled job kept in memory
     // this session all collapse to the same "a research job exists" signal
     // at this predicate's boundary.
     expect(shouldBlockGenerationRecovery(false, true)).toBe(true)

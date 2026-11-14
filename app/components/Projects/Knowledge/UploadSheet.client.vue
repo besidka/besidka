@@ -161,11 +161,11 @@
               </div>
             </div>
             <p
-              v-if="wasCancelled"
+              v-if="wasCanceled"
               class="text-sm"
-              data-testid="knowledge-upload-cancelled"
+              data-testid="knowledge-upload-canceled"
             >
-              The upload was cancelled. Files that finished are kept.
+              The upload was canceled. Files that finished are kept.
             </p>
             <p
               v-if="syncResult || syncSummary"
@@ -372,7 +372,7 @@ const props = withDefaults(defineProps<{
   plan: KnowledgePlanSummary | null
   syncSummary: KnowledgeSyncSummary | null
   syncResult?: KnowledgeSyncResult | null
-  wasCancelled: boolean
+  wasCanceled: boolean
   entries: KnowledgeUploadEntry[]
   progress: KnowledgeUploadProgress
   error: KnowledgeUploadFailure | null

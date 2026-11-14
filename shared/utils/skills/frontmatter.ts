@@ -78,7 +78,7 @@ function failure(
   return { ok: false, code, message }
 }
 
-export function normaliseSkillText(text: string): string {
+export function normalizeSkillText(text: string): string {
   return text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
 }
 
@@ -87,7 +87,7 @@ function isDelimiterLine(line: string): boolean {
 }
 
 export function splitSkillFrontmatter(text: string): FrontmatterSplit {
-  const lines = normaliseSkillText(text).split('\n')
+  const lines = normalizeSkillText(text).split('\n')
 
   if (!isDelimiterLine(lines[0] ?? '')) {
     return failure(
@@ -179,13 +179,13 @@ function toLenientBoolean(value: unknown): boolean | null {
   }
 
   if (typeof value === 'string') {
-    const normalised = value.trim().toLowerCase()
+    const normalized = value.trim().toLowerCase()
 
-    if (normalised === 'true') {
+    if (normalized === 'true') {
       return true
     }
 
-    if (normalised === 'false') {
+    if (normalized === 'false') {
       return false
     }
   }

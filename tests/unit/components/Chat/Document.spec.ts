@@ -284,7 +284,7 @@ describe('ChatDocument', () => {
         expect(button.attributes('aria-expanded')).toBe('true')
       })
 
-    it('is a labelled article, not a landmark section', async () => {
+    it('is a labeled article, not a landmark section', async () => {
       const wrapper = await mountCard({ part: OWNER_PART })
       const card = wrapper.get(testId('document-card'))
 

@@ -61,7 +61,7 @@ function cancelScrollAnimation(scroller: HTMLElement): void {
 }
 
 // A second anchor click while this is in flight calls this again for the
-// same scroller -- cancelling the previous rAF loop and restarting from
+// same scroller -- canceling the previous rAF loop and restarting from
 // whatever scrollTop it left off at (rather than the interrupted target)
 // is what makes the second click win cleanly instead of the two fighting.
 function animateScrollTop(scroller: HTMLElement, targetTop: number): void {
@@ -72,7 +72,7 @@ function animateScrollTop(scroller: HTMLElement, targetTop: number): void {
   const duration = getScrollDuration(distance)
   const startTime = performance.now()
   // The container carries `motion-safe:scroll-smooth` (app.vue), and per
-  // CSSOM-View assigning scrollTop honours `scroll-behavior` -- each frame
+  // CSSOM-View assigning scrollTop honors `scroll-behavior` -- each frame
   // would start its own smooth scroll that the next frame interrupts, so the
   // rAF loop has to own the scrolling outright while it runs.
   const previousBehavior = scroller.style.scrollBehavior

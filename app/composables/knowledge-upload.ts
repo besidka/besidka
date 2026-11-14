@@ -103,7 +103,7 @@ interface SendResult {
 type PrepareOutcome
   = | { kind: 'item', item: PreparedItem }
     | { kind: 'settled' }
-    | { kind: 'cancelled' }
+    | { kind: 'canceled' }
     | { kind: 'stop', failure: KnowledgeUploadFailure }
 
 const MAX_BATCH_ITEMS = 25
@@ -305,7 +305,7 @@ export function useKnowledgeUpload(
   const entries = shallowRef<KnowledgeUploadEntry[]>([])
   const progress = shallowRef<KnowledgeUploadProgress>(createEmptyProgress())
   const error = shallowRef<KnowledgeUploadFailure | null>(null)
-  const wasCancelled = shallowRef<boolean>(false)
+  const wasCanceled = shallowRef<boolean>(false)
   const cleanupFailures = shallowRef<number>(0)
   const hasPendingCommit = shallowRef<boolean>(false)
   const isRetryingCommit = shallowRef<boolean>(false)
@@ -459,7 +459,7 @@ export function useKnowledgeUpload(
     syncResult.value = null
     progress.value = createEmptyProgress()
     error.value = null
-    wasCancelled.value = false
+    wasCanceled.value = false
   }
 
   function registerAccepted(
@@ -797,7 +797,7 @@ export function useKnowledgeUpload(
       if (signal.aborted) {
         updateEntry(key, { status: 'queued' })
 
-        return { kind: 'cancelled' }
+        return { kind: 'canceled' }
       }
 
       failEntry(key, toFailure(parseError(exception)).message)
@@ -846,7 +846,7 @@ export function useKnowledgeUpload(
         if (signal.aborted) {
           updateEntry(key, { status: 'queued' })
 
-          return { kind: 'cancelled' }
+          return { kind: 'canceled' }
         }
 
         const parsed = parseError(exception)
@@ -862,7 +862,7 @@ export function useKnowledgeUpload(
       if (isSuperseded(runState)) {
         await removeUnlinkedUpload(record, false)
 
-        return { kind: 'cancelled' }
+        return { kind: 'canceled' }
       }
 
       updateEntry(key, { status: 'extracting' })
@@ -1326,7 +1326,7 @@ export function useKnowledgeUpload(
 
       const outcome = await prepareEntry(record, runState)
 
-      if (outcome.kind === 'cancelled') {
+      if (outcome.kind === 'canceled') {
         return
       }
 
@@ -1388,7 +1388,7 @@ export function useKnowledgeUpload(
 
     activeRun = runState
     error.value = null
-    wasCancelled.value = false
+    wasCanceled.value = false
     phase.value = 'running'
     publishProgress(runState, null)
 
@@ -1410,7 +1410,7 @@ export function useKnowledgeUpload(
 
     activeRun = null
     publishProgress(runState, null)
-    wasCancelled.value = runState.controller.signal.aborted
+    wasCanceled.value = runState.controller.signal.aborted
 
     const failure = runState.stopFailure ?? finalizeFailure
 
@@ -1489,7 +1489,7 @@ export function useKnowledgeUpload(
     }
 
     activeRun.controller.abort()
-    wasCancelled.value = true
+    wasCanceled.value = true
   }
 
   function reset(): void {
@@ -1521,7 +1521,7 @@ export function useKnowledgeUpload(
     entries,
     progress,
     error,
-    wasCancelled,
+    wasCanceled,
     cleanupFailures,
     failedCount,
     canRetryCommit,

@@ -117,7 +117,7 @@ export async function assertFilesDeliverable(
 }
 
 /**
- * The last line of defence before `convertToModelMessages`: the only `file`
+ * The last line of defense before `convertToModelMessages`: the only `file`
  * parts that may reach a provider are images and PDFs. Anything else (an
  * Office file whose text was not read, a type no provider accepts) would be
  * thrown on by some SDKs and silently dropped by others, so it stops here

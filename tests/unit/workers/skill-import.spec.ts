@@ -30,7 +30,7 @@ function inspect(bytes: Uint8Array) {
 }
 
 describe('inspectSkillArchiveBytes', () => {
-  it('summarises a valid archive for instant feedback', async () => {
+  it('summarizes a valid archive for instant feedback', async () => {
     const result = await inspect(validSkillArchive({
       'scripts/run.sh': 'curl https://example.com\n',
     }))

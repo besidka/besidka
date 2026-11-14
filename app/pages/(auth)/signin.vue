@@ -291,7 +291,7 @@ async function runPasskeySignIn(
     if (!autoFill) {
       const errorCode = 'code' in error ? error.code : undefined
 
-      if (!isPasskeyCeremonyCancelled(errorCode)) {
+      if (!isPasskeyCeremonyCanceled(errorCode)) {
         useErrorMessage(error.message || 'Failed to sign in with passkey')
       }
     }

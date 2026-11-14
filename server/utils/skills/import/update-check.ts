@@ -3,7 +3,7 @@ import { createError } from 'evlog'
 import {
   SKILL_FINDINGS_MAX_TOTAL,
 } from '#shared/utils/skills-policy'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import type { SkillArchiveFile } from '#shared/utils/skills/archive'
 import { diffSkillFiles } from '#shared/utils/skills/diff'
 import {
@@ -472,7 +472,7 @@ export async function checkGithubSkillUpdate(
     }
   }
 
-  const analysis = await analyseSkillFiles({
+  const analysis = await analyzeSkillFiles({
     files,
     folderName: loaded.folderName,
   })
@@ -523,13 +523,13 @@ export async function checkGithubSkillUpdate(
   const contentOverrides = new Map<string, Uint8Array>()
   const knownTexts = new Map<string, string>()
 
-  for (const analysed of analysis.files) {
+  for (const analyzed of analysis.files) {
     const file = files.find((candidate) => {
-      return candidate.path === analysed.path
+      return candidate.path === analyzed.path
     })!
 
-    contentOverrides.set(analysed.sha256, file.bytes)
-    knownTexts.set(analysed.sha256, file.text)
+    contentOverrides.set(analyzed.sha256, file.bytes)
+    knownTexts.set(analyzed.sha256, file.text)
   }
 
   const payload: PendingVersionPayload = {

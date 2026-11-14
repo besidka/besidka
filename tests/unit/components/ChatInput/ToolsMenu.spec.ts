@@ -142,7 +142,7 @@ describe('ChatInput/ToolsMenu', () => {
     useState('chat-input:open-popover').value = null
   })
 
-  it('renders a labelled "+" trigger and nothing else until opened',
+  it('renders a labeled "+" trigger and nothing else until opened',
     async () => {
       const wrapper = await mountMenu()
       const trigger = wrapper.get('[data-testid="chat-input-tools-trigger"]')

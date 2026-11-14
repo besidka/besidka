@@ -162,7 +162,7 @@ describe('mcp project knowledge helpers', () => {
     expect(resolveMcpTextMediaType('Meeting notes')).toBe('text/plain')
   })
 
-  it('summarises items with the flagged state', () => {
+  it('summarizes items with the flagged state', () => {
     expect(toMcpKnowledgeItemSummary(knowledgeItem({
       extractStatus: 'flagged',
     }))).toMatchObject({ id: 'item1', status: 'flagged', flagged: true })

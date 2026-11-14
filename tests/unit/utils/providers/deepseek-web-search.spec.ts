@@ -519,7 +519,7 @@ describe('getDeepSeekWebSearchTools result sanitizing', () => {
       expect(cancel).toHaveBeenCalledTimes(1)
     })
 
-  it('still throws the status error when cancelling the body fails',
+  it('still throws the status error when canceling the body fails',
     async () => {
       vi.stubGlobal('fetch', vi.fn(async () => {
         return {

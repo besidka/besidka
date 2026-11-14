@@ -28,7 +28,7 @@ export const GEMINI_2_5_MODEL_PREFIX = 'gemini-2.5'
 
 export const CODE_EXECUTION_INSTRUCTION = [
   'Run code is on: the AI provider runs code you write in its own sandbox,',
-  'which has no internet access. Use it to analyse attached data, calculate',
+  'which has no internet access. Use it to analyze attached data, calculate',
   'exactly and draw charts, then explain the result in plain language.',
   'Return files the user should keep (a chart or a table, for example) as',
   'png, jpg, webp, csv, tsv, txt, md, json, pdf, docx, xlsx or pptx, at most',

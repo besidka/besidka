@@ -7,7 +7,7 @@ import {
 } from '#shared/utils/past-chat-retrieval'
 
 describe('past-chat pre-retrieval ids', () => {
-  it('recognises only the pre-retrieval call id prefix', () => {
+  it('recognizes only the pre-retrieval call id prefix', () => {
     expect(isPastChatPreRetrievalCallId(
       `${PAST_CHAT_PRE_RETRIEVAL_CALL_PREFIX}user-1`,
     )).toBe(true)

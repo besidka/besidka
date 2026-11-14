@@ -299,7 +299,7 @@ function groupByUser(items: QueuedItem[]): Map<number, QueuedItem[]> {
  * - Without a current legal consent the user's items are deferred (no Jev
  *   call), and they expire with the queue TTL if consent never comes back.
  * - Without a TypeSafe AI key, or with the role switched off, the user's
- *   keys are dropped: that is the behaviour without a key.
+ *   keys are dropped: that is the behavior without a key.
  * - An item that is gone, moved, or no longer `ready` (flagged, allowed,
  *   re-extracted) is dropped.
  * - Otherwise `rescreenQueuedItem` screens the next chunks of the current

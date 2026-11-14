@@ -76,13 +76,13 @@ function readStatus(error: Record<string, unknown>): number | undefined {
   return undefined
 }
 
-function isSummarisedStatus(status: number): boolean {
+function isSummarizedStatus(status: number): boolean {
   return status === QUOTA_STATUS
     || status === RATE_LIMIT_STATUS
     || (status >= SERVER_ERROR_MIN_STATUS && status <= SERVER_ERROR_MAX_STATUS)
 }
 
-function sanitise(text: string): string {
+function sanitize(text: string): string {
   return text
     .replace(CONTROL_CHARACTER_PATTERN, ' ')
     .replace(URL_PATTERN, '')
@@ -143,14 +143,14 @@ export function summarizeProviderError(
 
   const status = readStatus(record)
 
-  if (status === undefined || !isSummarisedStatus(status)) {
+  if (status === undefined || !isSummarizedStatus(status)) {
     return undefined
   }
 
   const body = parseBody(record)
   const providerError = asRecord(body.error) ?? body
   const code = readErrorCode(providerError)
-  const message = sanitise(
+  const message = sanitize(
     readText(providerError.message) ?? readText(record.message) ?? '',
   )
   const name = providerId ? PROVIDER_NAMES[providerId] : 'The provider'

@@ -122,14 +122,14 @@ function createChunkedStream(chunks: Uint8Array[]) {
 }
 
 function createEndlessStream(chunkSize: number) {
-  const state = { pulledChunks: 0, cancelled: false }
+  const state = { pulledChunks: 0, canceled: false }
   const stream = new ReadableStream<Uint8Array>({
     pull(controller) {
       state.pulledChunks += 1
       controller.enqueue(new Uint8Array(chunkSize))
     },
     cancel() {
-      state.cancelled = true
+      state.canceled = true
     },
   }, { highWaterMark: 0 })
 
@@ -559,7 +559,7 @@ describe('files upload API', () => {
       })
 
       expect(arrayBuffer).not.toHaveBeenCalled()
-      expect(state.cancelled).toBe(true)
+      expect(state.canceled).toBe(true)
       expect(state.pulledChunks).toBe(3)
     })
 
@@ -580,7 +580,7 @@ describe('files upload API', () => {
         status: 413,
       })
 
-      expect(state.cancelled).toBe(true)
+      expect(state.canceled).toBe(true)
     })
 
     it('uploads a streamed body within quota when Content-Length is missing', async () => {

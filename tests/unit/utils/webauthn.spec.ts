@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   browserSupportsWebAuthn,
   browserSupportsWebAuthnAutofill,
-  isPasskeyCeremonyCancelled,
+  isPasskeyCeremonyCanceled,
 } from '../../../app/utils/webauthn'
 
 describe('browserSupportsWebAuthn', () => {
@@ -61,21 +61,21 @@ describe('browserSupportsWebAuthnAutofill', () => {
   )
 })
 
-describe('isPasskeyCeremonyCancelled', () => {
+describe('isPasskeyCeremonyCanceled', () => {
   it('returns false when no code is given', () => {
-    expect(isPasskeyCeremonyCancelled(undefined)).toBe(false)
+    expect(isPasskeyCeremonyCanceled(undefined)).toBe(false)
   })
 
   it('returns false for an unrelated error code', () => {
-    expect(isPasskeyCeremonyCancelled('AUTHENTICATION_FAILED')).toBe(false)
+    expect(isPasskeyCeremonyCanceled('AUTHENTICATION_FAILED')).toBe(false)
   })
 
   it('returns true when the user dismissed the browser prompt', () => {
-    expect(isPasskeyCeremonyCancelled('ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY'))
+    expect(isPasskeyCeremonyCanceled('ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY'))
       .toBe(true)
   })
 
   it('returns true when the ceremony was programmatically aborted', () => {
-    expect(isPasskeyCeremonyCancelled('ERROR_CEREMONY_ABORTED')).toBe(true)
+    expect(isPasskeyCeremonyCanceled('ERROR_CEREMONY_ABORTED')).toBe(true)
   })
 })

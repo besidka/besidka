@@ -310,7 +310,7 @@ describe('sweepProjectKnowledge', () => {
       expect(result.orphanProjectObjectsDeleted).toBe(1)
     })
 
-    it('treats the grace boundary as inclusive and honours a custom grace', async () => {
+    it('treats the grace boundary as inclusive and honors a custom grace', async () => {
       const key = knowledgeItemTextKey(OWNER, 99, 1)
       const fake = createFakeBucket({ [key]: YOUNG })
 

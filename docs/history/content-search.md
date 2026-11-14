@@ -312,7 +312,7 @@ Code lives in `server/utils/memory/tools/`:
 | `chat-search-budget.ts` | Per-request call budget, shared by both tools |
 | `search-chats.ts` | The FTS query, AND to OR fallback, best hit per chat |
 | `read-chat.ts` | Ownership-checked, bounded read window |
-| `excerpt.ts` | Neutralising and wrapping of every string that reaches the model |
+| `excerpt.ts` | Neutralizing and wrapping of every string that reaches the model |
 | `index.ts` | `getChatSearchTools()`, the AI SDK tool definitions |
 
 ### Contracts
@@ -333,7 +333,7 @@ citations **only** when `provider` is `brave`, `exa` or `deepseek`.
 whitespace preserved so code blocks survive, at most `READ_CHAT_MAX_CHARS`
 (8000, about 3k Cyrillic tokens; Ukrainian costs roughly 2 to 3 characters
 per token) in total and `READ_CHAT_MESSAGE_MAX_CHARS` (3000) per message,
-centred on `aroundMessageId` or starting at the chat start. When more of the
+centered on `aroundMessageId` or starting at the chat start. When more of the
 chat follows, `nextAroundMessageId` is `from:<publicId>` of the first message
 after the window; passing it back as `aroundMessageId` starts the next window
 at that message and grows only forward, so consecutive calls never repeat a
@@ -361,7 +361,7 @@ AND to OR only. OR with bm25 already ranks documents that match more tokens
 first, and the middle step needs per-token document frequencies that FTS5
 does not expose cheaply.
 
-All LLM text goes through the same normalise, tokenise and escape path as
+All LLM text goes through the same normalize, tokenize and escape path as
 user text (`buildSearchMatchExpression`). The tokenizer splits on everything
 except letters, digits and U+02BC, so `"`, `\`, parentheses, `*`, `^`, `:`
 and braces can never reach the MATCH string, and `AND`/`OR`/`NOT`/`NEAR`

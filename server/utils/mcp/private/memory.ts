@@ -105,7 +105,7 @@ export async function listMcpMemory(
  * Creates an entry through `createMemoryEntry`, so the never-store and
  * sensitive-topic compliance gate and the optional TypeSafe AI check run
  * exactly as on the HTTP route. The stored origin is `user`: the user
- * authorised the client to write on their behalf.
+ * authorized the client to write on their behalf.
  */
 export async function addMcpMemory(
   db: DbClient,

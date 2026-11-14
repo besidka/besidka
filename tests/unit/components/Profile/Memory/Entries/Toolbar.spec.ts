@@ -629,7 +629,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       })
     })
 
-    it('does nothing when the confirmation is cancelled', async () => {
+    it('does nothing when the confirmation is canceled', async () => {
       mocks.confirm.mockResolvedValue(null)
 
       const wrapper = await mountToolbar()

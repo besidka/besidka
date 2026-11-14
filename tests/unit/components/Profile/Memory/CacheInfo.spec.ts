@@ -645,7 +645,7 @@ describe('Profile/Memory/CacheInfo', () => {
     })
   })
 
-  describe('collapse behaviour', () => {
+  describe('collapse behavior', () => {
     it('is open on a desktop viewport', async () => {
       stubViewport(true)
 

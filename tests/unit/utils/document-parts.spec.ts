@@ -186,7 +186,7 @@ describe('getDocumentPartView tool parts', () => {
 })
 
 describe('getDocumentPartView data parts', () => {
-  it('normalises a persisted reference', () => {
+  it('normalizes a persisted reference', () => {
     expect(getDocumentPartView(dataPart())).toMatchObject({
       state: 'ready-to-render',
       documentId: 'doc1',
@@ -211,7 +211,7 @@ describe('getDocumentPartView data parts', () => {
       .toMatchObject({ state: 'failed', persistedStatus: 'failed' })
   })
 
-  it('normalises a shared-view reference without a document id', () => {
+  it('normalizes a shared-view reference without a document id', () => {
     const view = getDocumentPartView(dataPart({
       documentId: null,
       status: 'ready',

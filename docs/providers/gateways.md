@@ -717,7 +717,7 @@ undeclared `open_file` with `{ "cursor": … }`. The SDK rejects the first as
 tool parts with `state: 'output-error'`, never a stream error, and the
 forced-step rejection is dropped by `withSearchAnswerGuarantee()`. Since
 `ai@7.0.153` the forced-step call (`toolChoice: 'none'`) is instead a single
-step `error` with a `ToolChoiceViolationError`, which is labelled and dropped
+step `error` with a `ToolChoiceViolationError`, which is labeled and dropped
 the same way (see "Multi-step tool loop" in `general.md`). Because
 `toUIMessageStream()` routes tool-part errors through the same `onError` as
 stream failures, both used to be persisted as an `unknown` 500 attributed to

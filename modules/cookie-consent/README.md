@@ -95,7 +95,7 @@ A single first-party cookie (default `cookies_consent`, SameSite Lax,
 - The cookie's presence with `v === revision` means "the user has decided".
 - `v !== revision` is treated as undecided → the popup auto-shows again.
 - `id` and `date` are regenerated on every commit — each commit is a new
-  consent receipt. Legacy cookies without `id`/`date` are still recognised
+  consent receipt. Legacy cookies without `id`/`date` are still recognized
   as decided; the receipt fields appear after the next commit.
 - Required categories are always part of `granted` — including before any
   decision, so `isAllowed()` is always `true` for required categories.
@@ -213,7 +213,7 @@ all of these hold:
 
 Showing a request latches it for the rest of the page load, whatever the
 outcome (granted, dismissed, cleared by `openPopup()` / `expand()` or by the
-app on navigation). Decided visitors are never asked: a refusal is honoured
+app on navigation). Decided visitors are never asked: a refusal is honored
 until the consent cookie expires, after which the normal banner asks again.
 
 `grantRequest(expectedId)` commits the already granted ids plus the requested
@@ -257,7 +257,7 @@ or for legacy cookies without receipt fields.
 
 ## Accessibility behavior (owned by the module)
 
-- **Popup**: `role="dialog"`, labelled by its title; initial focus moves to
+- **Popup**: `role="dialog"`, labeled by its title; initial focus moves to
   the dialog container (`tabindex="-1"`); Esc closes; click outside closes;
   Tab cycles within the popup (inner loop across switches and CTA buttons).
 - **Modal**: `role="dialog" aria-modal="true"`; focus trap with Tab /

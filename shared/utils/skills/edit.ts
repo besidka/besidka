@@ -3,7 +3,7 @@ import { SKILL_PATH_REJECTION_MESSAGES } from '#shared/utils/skills/archive'
 import { isSkillLicenseEntry } from '#shared/utils/skills/license'
 import {
   checkSkillRelativePath,
-  normaliseSkillEntryName,
+  normalizeSkillEntryName,
 } from '#shared/utils/skills/path'
 
 export type SkillChange
@@ -30,18 +30,18 @@ export function getSkillSourceGroup(kind: SkillSourceKind): SkillSourceGroup {
 
 /**
  * The same rules an imported entry gets, applied to a path typed in the
- * editor. A path must already be in its normalised form, so what the user
+ * editor. A path must already be in its normalized form, so what the user
  * sees is exactly what is stored. Returns the reason, or null when the path
  * can be saved.
  */
 export function validateSkillEditPath(path: string): string | null {
-  const normalised = normaliseSkillEntryName(path)
+  const normalized = normalizeSkillEntryName(path)
 
-  if (normalised.status === 'reject') {
-    return SKILL_PATH_REJECTION_MESSAGES[normalised.reason]
+  if (normalized.status === 'reject') {
+    return SKILL_PATH_REJECTION_MESSAGES[normalized.reason]
   }
 
-  if (normalised.status === 'skip' || normalised.path !== path) {
+  if (normalized.status === 'skip' || normalized.path !== path) {
     return 'The path must name a file in its plain form, such as '
       + 'references/guide.md'
   }

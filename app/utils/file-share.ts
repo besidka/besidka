@@ -5,7 +5,7 @@ import {
 
 export type FileShareOutcome
   = | 'shared'
-    | 'cancelled'
+    | 'canceled'
     | 'needs-gesture'
     | 'unsupported'
 
@@ -66,7 +66,7 @@ export async function shareFile(file: File): Promise<FileShareOutcome> {
   } catch (exception) {
     if (exception instanceof DOMException) {
       if (exception.name === 'AbortError') {
-        return 'cancelled'
+        return 'canceled'
       }
 
       if (exception.name === 'NotAllowedError') {

@@ -82,7 +82,7 @@ function isTimeoutError(exception: unknown): boolean {
 
 /**
  * Maps a failed Jev call to a status. Every status means Jev was unavailable
- * and the caller falls back to its behaviour without a TypeSafe AI key. A
+ * and the caller falls back to its behavior without a TypeSafe AI key. A
  * refusal answer (`Experimental_DecisionRefusalError`) is `error`.
  */
 export function classifyJevFailure(exception: unknown): JevFailureStatus {

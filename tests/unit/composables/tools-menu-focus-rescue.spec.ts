@@ -110,7 +110,7 @@ describe('restoreToolsMenuFocus', () => {
     expect(document.activeElement).toBe(level)
   })
 
-  it('uses the level group when no neighbour is given', async () => {
+  it('uses the level group when no neighbor is given', async () => {
     const { content, depth, level } = buildMenu()
 
     depth.focus()

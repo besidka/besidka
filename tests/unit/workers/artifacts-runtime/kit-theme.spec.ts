@@ -78,7 +78,7 @@ describe('runtime palette from the Besidka theme', () => {
     expect(KIT_STYLE).not.toMatch(/border-radius: 1rem/)
   })
 
-  it('declares the tokens of both themes and the series colours of dark', () => {
+  it('declares the tokens of both themes and the series colors of dark', () => {
     for (const theme of ['light', 'dark'] as const) {
       expect(Object.keys(PALETTE_TOKENS[theme]))
         .toEqual(expect.arrayContaining(PALETTE_TOKEN_NAMES))
@@ -102,15 +102,15 @@ describe('kit and shell styles use theme variables', () => {
       return { name, source: readFileSync(path.join(KIT_DIRECTORY, name), 'utf8') }
     })
 
-  it('has no colour literal in the kit styles or the shell styles', () => {
+  it('has no color literal in the kit styles or the shell styles', () => {
     expect(withoutPalette(KIT_STYLE)).not.toMatch(COLOR_LITERAL)
     expect(withoutPalette(SHELL_STYLE)).not.toMatch(COLOR_LITERAL)
     expect(KIT_STYLE).toContain(paletteDeclarations('dark'))
   })
 
-  it('has no colour literal in any file of the kit', () => {
+  it('has no color literal in any file of the kit', () => {
     for (const { name, source } of kitSources) {
-      expect(source.match(COLOR_LITERAL), `${name} has a colour literal`)
+      expect(source.match(COLOR_LITERAL), `${name} has a color literal`)
         .toBeNull()
     }
   })

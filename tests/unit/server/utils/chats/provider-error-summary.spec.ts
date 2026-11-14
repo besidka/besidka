@@ -65,7 +65,7 @@ describe('summarizeProviderError', () => {
     )).toBe('Google returned 500: Internal Server Error')
   })
 
-  it('never summarises a status where the text could echo the request', () => {
+  it('never summarizes a status where the text could echo the request', () => {
     expect(summarizeProviderError(apiCallError(400, {
       error: { message: 'Invalid value: \'my secret diary entry\'' },
     }), 'openai')).toBeUndefined()
@@ -161,7 +161,7 @@ describe('normalizeChatError with a provider body', () => {
     )
   })
 
-  it('does not summarise a rejected key or an explicit why', () => {
+  it('does not summarize a rejected key or an explicit why', () => {
     expect(normalizeChatError({
       error: apiCallError(401, { error: { message: 'bad key' } }),
       providerId: 'openai',

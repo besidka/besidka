@@ -28,7 +28,7 @@ describe('neverStoreKinds', () => {
     }
   })
 
-  it('keeps a catch-all kind for extractor-labelled items', () => {
+  it('keeps a catch-all kind for extractor-labeled items', () => {
     expect(neverStoreKindIds).toContain('other')
   })
 })

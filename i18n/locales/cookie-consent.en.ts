@@ -151,13 +151,13 @@ export default defineI18nLocale(() => ({
       },
       'color-mode': {
         description:
-          'Persists your preferred colour theme (light or dark) '
+          'Persists your preferred color theme (light or dark) '
           + 'across sessions.',
         duration: 'Until deleted',
       },
       'color-mode-cookie': {
         description:
-          'Cookie fallback for the colour-mode preference, set by '
+          'Cookie fallback for the color-mode preference, set by '
           + '{\'@\'}nuxtjs/color-mode when localStorage is unavailable.',
         duration: 'Until deleted',
       },
@@ -225,13 +225,13 @@ export default defineI18nLocale(() => ({
       },
       'favorite-models': {
         description:
-          'Keeps your favourite models in the model picker for '
+          'Keeps your favorite models in the model picker for '
           + 'visits when you are not signed in.',
         duration: 'Until deleted',
       },
       'favorite-gateway-models': {
         description:
-          'Keeps your favourite gateway models in the model '
+          'Keeps your favorite gateway models in the model '
           + 'picker for visits when you are not signed in.',
         duration: 'Until deleted',
       },

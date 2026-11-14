@@ -10,7 +10,7 @@
 // Since .output/ does not exist in dev, ASSETS.fetch("/dump.landing.sql")
 // returns an empty response. decompressSQLDump("") throws
 // "TypeError: Failed to fetch" inside the Studio bundle, the draft DB never
-// initialises, and isReady stays false — so the "Edit this page" toolbar
+// initializes, and isReady stays false — so the "Edit this page" toolbar
 // remains hidden and the use-cases/testimonials section is not visible.
 //
 // Fix: remove the ASSETS key from the cloudflare proxy env before the

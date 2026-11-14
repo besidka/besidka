@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "besidka",
   "version": "3.2.0",
-  "description": "Read and organise your Besidka chats, projects, project knowledge, memory, files and settings.",
+  "description": "Read and organize your Besidka chats, projects, project knowledge, memory, files and settings.",
   "author": {
     "name": "Besidka",
     "url": "https://besidka.com"
@@ -16,11 +16,11 @@
       "interface": {
         "displayName": "Besidka",
         "shortDescription": "Chats, projects and memory",
-        "longDescription": "Work with your Besidka account from ChatGPT. Find and read your chats, organise them into projects, add notes and text to project knowledge, review and edit what Besidka remembers, save and read text files, and change your Besidka settings. Every action uses your own Besidka data after you sign in and approve each permission, and deleting anything needs a separate permission. Public tools, which need no sign-in, list the models and providers Besidka supports and link to step-by-step guides for getting a provider key.",
+        "longDescription": "Work with your Besidka account from ChatGPT. Find and read your chats, organize them into projects, add notes and text to project knowledge, review and edit what Besidka remembers, save and read text files, and change your Besidka settings. Every action uses your own Besidka data after you sign in and approve each permission, and deleting anything needs a separate permission. Public tools, which need no sign-in, list the models and providers Besidka supports and link to step-by-step guides for getting a provider key.",
         "developerName": "Besidka",
         "category": "Productivity",
         "capabilities": [
-          "Read and organise chats",
+          "Read and organize chats",
           "Manage project knowledge",
           "Review and edit memory",
           "Read and save text files"

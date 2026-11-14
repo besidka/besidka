@@ -186,7 +186,7 @@ export function normalizeUserRequestText(text: string): string {
 
 /**
  * Code-enforced gate for `memory_write` and `memory_forget`: the model must
- * quote the user's own current message. Normalising (NFKC, lowercase, no
+ * quote the user's own current message. Normalizing (NFKC, lowercase, no
  * whitespace or punctuation) lets a quote survive harmless re-typing, while
  * text that only appears in a web page, file or earlier turn can never pass.
  */

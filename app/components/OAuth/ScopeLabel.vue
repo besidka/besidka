@@ -69,7 +69,7 @@ const scopeDetails: Record<string, ScopeDetails> = {
   },
   'settings:write': {
     title: 'Change your settings',
-    description: 'Change your preferences, favourite models and the memory '
+    description: 'Change your preferences, favorite models and the memory '
       + 'and chat search switches. It cannot add keys, turn on automatic '
       + 'memory updates or change the models memory uses.',
   },

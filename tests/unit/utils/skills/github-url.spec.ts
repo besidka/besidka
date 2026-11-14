@@ -314,7 +314,7 @@ describe('getGithubRefCandidates', () => {
 })
 
 describe('helpers', () => {
-  it('recognises full and abbreviated SHAs', () => {
+  it('recognizes full and abbreviated SHAs', () => {
     expect(isGithubFullSha(SHA)).toBe(true)
     expect(isGithubFullSha('a'.repeat(39))).toBe(false)
     expect(isGithubShaLikeRef('abc1234')).toBe(true)

@@ -154,8 +154,8 @@ does not block documents that already exist.
 - The client path for DOCX, PPTX and PDF is not bound to the spec (only XLSX
   is compared): a user can store a hand-made file that carries the AI mark.
   The file is private to the user; revisit before documents leave `internal`.
-- The chat model context line lists up to 10 document names (sanitised to
-  letters, numbers and a few punctuation marks, labelled as data).
+- The chat model context line lists up to 10 document names (sanitized to
+  letters, numbers and a few punctuation marks, labeled as data).
 
 ## Local development and tests
 

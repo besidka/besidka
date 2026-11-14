@@ -16,7 +16,7 @@ async function mountSelector(
 }
 
 describe('Projects/Knowledge/ModeSelector', () => {
-  it('renders a labelled radio group with the three modes', async () => {
+  it('renders a labeled radio group with the three modes', async () => {
     const wrapper = await mountSelector()
     const fieldset = wrapper.get('[data-testid="knowledge-mode"]')
 

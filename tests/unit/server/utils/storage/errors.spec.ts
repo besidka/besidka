@@ -19,7 +19,7 @@ describe('storage full error', () => {
     })
   })
 
-  it('is recognised by its code only', () => {
+  it('is recognized by its code only', () => {
     expect(isStorageFullError(createStorageFullError(quota))).toBe(true)
     expect(isStorageFullError(new Error('Storage is full'))).toBe(false)
     expect(isStorageFullError(null)).toBe(false)

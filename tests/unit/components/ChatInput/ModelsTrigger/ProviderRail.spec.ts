@@ -37,7 +37,7 @@ function mountRail(
 }
 
 describe('ChatInput/ModelsTrigger/ProviderRail', () => {
-  it('renders one labelled button per provider', async () => {
+  it('renders one labeled button per provider', async () => {
     const wrapper = await mountRail()
     const openai = wrapper.get('[data-testid="models-picker-rail-openai"]')
     const google = wrapper.get('[data-testid="models-picker-rail-google"]')

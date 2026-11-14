@@ -211,7 +211,7 @@ describe('Profile/Memory/Entries/Project', () => {
         .toBe(true)
     })
 
-    it('lists the entries as rows labelled with their category', async () => {
+    it('lists the entries as rows labeled with their category', async () => {
       const wrapper = await mountExpanded()
       const rows = wrapper.findAll('[data-testid="memory-entry-row"]')
 
@@ -279,7 +279,7 @@ describe('Profile/Memory/Entries/Project', () => {
       })
     })
 
-    it('does nothing when the confirmation is cancelled', async () => {
+    it('does nothing when the confirmation is canceled', async () => {
       mocks.confirm.mockResolvedValue(null)
 
       const wrapper = await clickReset()

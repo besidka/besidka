@@ -72,7 +72,7 @@ Rules:
 - Rebase a child onto `origin/<parent-branch>` only after the previous child has
   landed. Never pre-rebase children onto each other's branches: a squash merge
   gives the commits new SHAs, so the replayed commits conflict.
-- With `N` children merged back to back the cost is `N-1` cancelled partial runs
+- With `N` children merged back to back the cost is `N-1` canceled partial runs
   (the Claude review included) plus one full run.
 - The parent only builds once the first code child lands. A docs-only commit is
   in `paths-ignore`, and a docs-only change on top of a built commit reuses that
@@ -81,8 +81,8 @@ Rules:
 Escalation for large umbrellas (not implemented, documented only): replace the
 `cancel-in-progress` value in `preview-build.yml` with
 `${{ !contains(github.event.pull_request.labels.*.name, 'umbrella') }}` and put
-the `umbrella` label on the parent PR. A labelled parent then queues instead of
-cancelling, which gives at most one running and one pending build at a time.
+the `umbrella` label on the parent PR. A labeled parent then queues instead of
+canceling, which gives at most one running and one pending build at a time.
 
 ## Native stack (S)
 
@@ -111,7 +111,7 @@ Day to day:
   PR) atomically: all or nothing, one squash commit per layer, so `main` gets
   `n` commits. Each layer title must be a conventional commit.
 
-## CI behaviour
+## CI behavior
 
 GitHub runs Actions for a stacked PR as if it targeted the base of the whole
 stack, so `on.pull_request.branches: [main]` matches every layer. The
@@ -171,7 +171,7 @@ How the non-top skip works:
   a PR joins a stack, so `stack` is absent at that moment and creating a new
   bottom layer triggers one full build and a `pr-<n>` preview deploy. That
   deploy applied the layer's D1 migration to `besidka-preview`. Later events
-  carry `stack`, so the zero-build behaviour only starts after creation. Plan
+  carry `stack`, so the zero-build behavior only starts after creation. Plan
   for one full build and a preview for each new bottom layer, and take the
   `besidka-preview` Time Travel bookmark before creating a bottom layer that
   carries a migration.

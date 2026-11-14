@@ -276,7 +276,7 @@
       :plan="upload.plan.value"
       :sync-summary="upload.syncSummary.value"
       :sync-result="upload.syncResult.value"
-      :was-cancelled="upload.wasCancelled.value"
+      :was-canceled="upload.wasCanceled.value"
       :entries="upload.entries.value"
       :progress="upload.progress.value"
       :error="upload.error.value"
@@ -902,7 +902,7 @@ async function settleReplacement(phase: KnowledgeUploadPhase) {
 async function persistFolderSync(phase: KnowledgeUploadPhase) {
   const pending = pendingFolderSync.value
 
-  if (!pending || phase !== 'done' || upload.wasCancelled.value) {
+  if (!pending || phase !== 'done' || upload.wasCanceled.value) {
     return
   }
 

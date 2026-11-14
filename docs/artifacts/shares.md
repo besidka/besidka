@@ -246,7 +246,7 @@ is sent.
 Element 3 of the Terms of Use "Copyright complaints" section, the exact URL,
 is the link or shared chat the server resolved, never a URL from the client;
 element 4 is the reporter's name and email. The copyright elements are stored
-as labelled lines under the reporter's text in `details` (no extra columns).
+as labeled lines under the reporter's text in `details` (no extra columns).
 
 The reported version (`artifact_reports.reported_version`) is evidence of
 what the reporter saw. The link route stores the version the link resolved

@@ -417,7 +417,7 @@ alternating, for every provider, with three model-only placeholders:
   otherwise reach the provider back to back.
 - Adjacent assistant turns get an `(earlier message deleted)` user turn
   between them. Single-message delete (`messages/[id].delete.ts`) removes one
-  user turn and leaves its neighbouring replies adjacent.
+  user turn and leaves its neighboring replies adjacent.
 - When the underlying model provider is Google (direct, or a gateway-routed
   `google/*` model) and the history starts with an assistant turn, the same
   `(earlier message deleted)` user turn is prepended, because Google rejects
@@ -549,7 +549,7 @@ long as the invocation does — see "Generation-in-progress guard" in
 declared) also ends as a tool part with `state: 'output-error'`, never as a
 held stream `error`; it counts as a follow-up output, so the forced step
 and, if still needed, the continuation run as usual. Its `errorText` is
-labelled `invalid-provider-output` (422) by `normalizeModelToolCallError()`
+labeled `invalid-provider-output` (422) by `normalizeModelToolCallError()`
 rather than an `unknown` 500, see
 `gateways.md` ("`gpt-oss` tool-call quirks"). A tool `execute()` that
 throws produces a `tool-error` output, which the model sees and answers

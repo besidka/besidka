@@ -219,7 +219,7 @@ export async function seedSkillWithFiles(
   })
   const shas: Record<string, string> = {}
   const { putSkillBlob } = await import('~~/server/utils/skills/storage')
-  const { hashSkillFileSet } = await import('#shared/utils/skills/analyse')
+  const { hashSkillFileSet } = await import('#shared/utils/skills/analyze')
   const { getSkillFileKind } = await import('#shared/utils/skills/path')
 
   for (const [path, text] of Object.entries(input.files)) {

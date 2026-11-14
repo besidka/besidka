@@ -14,7 +14,7 @@ by an **AI SDK v7 `streamText` agentic loop** — `prepareStep` forcing more sea
 timeline, and a clarifying-questions form.
 
 It doesn't deliver. The agentic loop **cannot iterate** with provider-native search,
-so the multi-step machinery is dead code and the shipped behaviour is effectively
+so the multi-step machinery is dead code and the shipped behavior is effectively
 *one grounded model call + high reasoning + cosmetic progress chips* — indistinguishable
 from just enabling web search with high reasoning. A "thorough" run produced ~8 sources,
 2 nominal steps, ~34s. The only genuinely new, valuable piece was the clarifying-questions
@@ -139,7 +139,7 @@ stream anyway.
 ## Decision
 
 Stopped. PR #291 closed without merging. Reasons: the provider-native implementation is
-feature-theatre, evolving it (server-side fan-out) is a dead-end middle tier, and a
+feature-theater, evolving it (server-side fan-out) is a dead-end middle tier, and a
 third-party search key breaks the BYO-key product model and shifts cost onto the operator.
 The honest, high-value path is a future rebuild on the providers' own DR agents.
 

@@ -328,7 +328,7 @@ future session/branch can resume from real evidence instead of re-deriving it.
 
 ### Attempt 5 — `modal-bottom sm:modal-middle` with the global keyboard inset (2026-11-05, PR #633)
 
-- Placement restored to the bottom sheet on phones and centred from `sm` up,
+- Placement restored to the bottom sheet on phones and centered from `sm` up,
   matching every other mobile dialog in the app, at the owner's request on
   2026-11-05. Autofocus skip on coarse pointers unchanged.
 - The overlap is no longer solved per component. One global rule (see

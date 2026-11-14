@@ -158,7 +158,7 @@ describe('entriesFromFileList', () => {
     ])
   })
 
-  it('normalises paths to NFC', () => {
+  it('normalizes paths to NFC', () => {
     const { entries } = entriesFromFileList([
       fileWithPath('é.md', 'root/cafe\u0301/e\u0301.md'),
     ])
@@ -360,7 +360,7 @@ describe('diffFolderSync', () => {
     expect(diff.replace).toEqual([])
   })
 
-  it('compares walked paths after NFC normalisation', () => {
+  it('compares walked paths after NFC normalization', () => {
     const diff = diffFolderSync({
       existing: [
         { id: 'i1', relativePath: 'caf\u00E9.md', contentHash: 'h' },
@@ -457,7 +457,7 @@ describe('readDirectoryHandleEntries', () => {
     expect(result.truncated).toBe(false)
   })
 
-  it('normalises walked paths to NFC', async () => {
+  it('normalizes walked paths to NFC', async () => {
     const result = await readDirectoryHandleEntries(
       fakeDirectory('repo', [
         fakeDirectory('cafe\u0301', [fakeFile('e\u0301.md')]),

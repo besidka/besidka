@@ -17,7 +17,7 @@ function part(overrides: Record<string, unknown>) {
 }
 
 describe('skill step model', () => {
-  it('recognises only the activate_skill tool part', () => {
+  it('recognizes only the activate_skill tool part', () => {
     expect(SKILL_STEP_PART_TYPE).toBe('tool-activate_skill')
     expect(isSkillStepPart(part({}))).toBe(true)
     expect(isSkillStepPart({ type: 'tool-read_skill_file' })).toBe(false)

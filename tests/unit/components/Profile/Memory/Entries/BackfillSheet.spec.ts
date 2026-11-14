@@ -688,7 +688,7 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       })
 
       expect(textOf(wrapper, 'memory-backfill-last-run')).toBe(
-        'Last run: cancelled just now, 1 entry created.',
+        'Last run: canceled just now, 1 entry created.',
       )
     })
 
@@ -895,7 +895,7 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       return wrapper
     }
 
-    it('summarises a completed run with counts, dropped reasons and tokens',
+    it('summarizes a completed run with counts, dropped reasons and tokens',
       async () => {
         const wrapper = await finishRun(createFinishedJob({
           dropped: {
@@ -953,7 +953,7 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       expect(hasTestId(wrapper, 'memory-backfill-dropped')).toBe(false)
     })
 
-    it('summarises a cancelled run', async () => {
+    it('summarizes a canceled run', async () => {
       const wrapper = await finishRun(createFinishedJob({
         status: 'cancelled',
         processedChats: 20,

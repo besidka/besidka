@@ -113,7 +113,7 @@ describe('hasGapBeforePart', () => {
     expect(gapFor([text, stepStart, text], 2)).toBe(false)
   })
 
-  it('does not treat an empty text part as the neighbour', () => {
+  it('does not treat an empty text part as the neighbor', () => {
     const empty = { type: 'text', text: '  ' }
 
     expect(gapFor([document, empty, text], 2)).toBe(true)

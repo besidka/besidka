@@ -130,7 +130,7 @@ Consequences to know:
   created in the chat after that is not in the block until an attachment
   falls out of the chat or the user removes it by starting a new chat.
 - The artifact came from another chat and may hold untrusted text (web
-  results, files). It is wrapped as data and its delimiters are neutralised,
+  results, files). It is wrapped as data and its delimiters are neutralized,
   but a model that obeys it could call `update_artifact` on an attached
   artifact in later turns. The editable set stays owner-only, at most the
   chat's attachments, and each write is a new immutable version.

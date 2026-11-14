@@ -272,7 +272,7 @@ describe('getSkillTools', () => {
     }
   })
 
-  it('cuts a large file at the byte cap and neutralises wrapper tags', async () => {
+  it('cuts a large file at the byte cap and neutralizes wrapper tags', async () => {
     const big = (await seedSkillWithFiles(testDb.db, bucket, {
       userId,
       files: {

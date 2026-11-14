@@ -55,7 +55,7 @@ function wrapCatalog(lines: string[]): string {
  * the descriptions shrink to their first sentence, then to names only; names
  * past the budget are dropped with a count, and the model is told it can
  * still call the tool with an exact name. Names and descriptions pass the
- * same delimiter neutraliser; the returned `names` stay raw because the tool
+ * same delimiter neutralizer; the returned `names` stay raw because the tool
  * enum matches on them. Returns `null` for no skills.
  */
 export function buildSkillCatalog(input: {

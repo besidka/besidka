@@ -70,7 +70,7 @@ ARTIFACT_EVALS_EMAIL=... ARTIFACT_EVALS_PASSWORD=... \
     --models=claude-haiku-5-5,gpt-6-luna,gemini-3.8-flash \
     [--cases=quiz-photosynthesis,edit-flow] [--budget-usd=4]
 
-# 2. Behavioural checks in a real browser (opt-in, never in CI).
+# 2. Behavioral checks in a real browser (opt-in, never in CI).
 ARTIFACT_EVALS=1 \
 ARTIFACT_EVALS_BASE_URL=https://pr-<n>-besidka.chernenko.workers.dev \
 ARTIFACT_EVALS_DIR=.evals/artifacts/<date> \
@@ -136,7 +136,7 @@ Static checks (`scripts/artifact-evals.mjs`, no browser):
   artifact the reply wrote repeated in the reply. Results stored before
   BES-333 have no reply text, so these checks stay `pending` there.
 
-Behavioural check (`tests/e2e/artifacts/evals-render.spec.ts`, opt-in with
+Behavioral check (`tests/e2e/artifacts/evals-render.spec.ts`, opt-in with
 `ARTIFACT_EVALS=1`, skipped otherwise): opens each chat, opens the artifact
 in the side panel, requires the runtime to render within 5 s, clicks up to
 four buttons, radios or labels and requires the frame text to change, and
@@ -297,7 +297,7 @@ ships it once from its own origin (one lazy chunk, 105 KiB brotli, cached
 `ARTIFACT_DESIGN_INSTRUCTIONS` in `server/utils/ai/artifact-tools.ts` is a
 compact rule and component sheet condensed from the daisyUI 5 component
 reference (llms.txt): no CDN or fonts, class names over CSS, the theme
-colour names and what each is for, no fixed colours or `dark:` variants
+color names and what each is for, no fixed colors or `dark:` variants
 (the host theme switches the frame), the common components with their parts
 and modifiers, one example, padding, a short `<style>` only for what classes
 cannot do, and accessibility. It is appended to the artifact instructions
@@ -388,7 +388,7 @@ $0.18 re-run).
 | no-artifact-snippet | pass $0.0007 | pass $0.0004 | pass $0.0027 |
 | **Passed, total** | **13/13**, $0.036 | **12/13**, $0.018 | **12/13**, $0.403 |
 
-"Classes" counts distinct daisyUI-specific classes and theme colour
+"Classes" counts distinct daisyUI-specific classes and theme color
 utilities in the artifact (`btn-*`, `card-body`, `badge-*`, `bg-base-200`,
 `text-base-content/70` and so on), a rough proxy that the screenshots in
 #784 confirm. Run 1 artifacts had none: Claude and GPT wrote their own CSS
@@ -418,7 +418,7 @@ the A-10 tuning, so `network-temptation` also differs for that reason.
 17 to 26 KB) vary run to run and the design system does not touch them.
 
 Rendering (`interactive`, 15 html and react cases with a check): 13 pass,
-2 fail on the harness limit above; every artifact initialised in 197 to
+2 fail on the harness limit above; every artifact initialized in 197 to
 2,218 ms. On iOS: the deployed preview renders the Git cheat sheets and
 the React quiz in Safari on the iOS 27 simulator in light and dark (opened
 through artifact share links, no sign-in needed); the home-screen PWA mode

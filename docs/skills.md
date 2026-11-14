@@ -400,7 +400,7 @@ never trusts the client's result.
   `LICENCE`, `COPYING` and `NOTICE` with or without an extension. Denylist:
   `.pyc .so .dll .exe .bin .class .jar .wasm`. Any file that fails
   `TextDecoder('utf-8', { fatal: true })` is rejected.
-- Paths are NFC-normalised. The skill root is one top-level folder that holds
+- Paths are NFC-normalized. The skill root is one top-level folder that holds
   `SKILL.md`, or `SKILL.md` at the archive root. Two candidate roots reject.
 - GitHub archives inflate only entries under the requested path, plus the
   repository-root `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` entries for
@@ -639,7 +639,7 @@ returns `{ class, text, matched }`. Steps, in order (from the pre-check):
 
 1. **Resolve.** Read `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` in the
    skill folder; only if there are none, the repository root (GitHub imports).
-2. **Normalise.** CRLF to LF, trim, SHA-256.
+2. **Normalize.** CRLF to LF, trim, SHA-256.
 3. **Known restrictive text.** The whole file hashes to the old Anthropic text
    (`aeebbce5340433ffe11573d0dab76f753526b908183d7bb31a5fe551607a2f17`):
    `restricted`.
@@ -676,7 +676,7 @@ returns `{ class, text, matched }`. Steps, in order (from the pre-check):
 deleted or changed when the class is `open` or `custom` (Apache-2.0 section 4).
 Only `authored` skills and `open` skills may be shared (section 12.1).
 
-A license containing `NonCommercial` shows a warning (monetisation guard).
+A license containing `NonCommercial` shows a warning (monetization guard).
 When the owner adds a restrictive hash or phrase, stored skills are
 re-classified (`licenseClassifierVersion` bump) and a newly `restricted` skill
 is disabled with a notice. The classifier reads only the skill's license file;
@@ -746,7 +746,7 @@ catalog"), and why slash-only commands stay out of the catalog.
   `guard.untrustedResultSeen = true`. Emits a `data-skill-activation` part
   `{ skillId, name, version, activatedAt }`.
 - `read_skill_file({ skill: z.enum(enabledNames), path: z.string().max(200) })`
-  normalises the path, requires it in `skill_files` for the current version,
+  normalizes the path, requires it in `skill_files` for the current version,
   returns text cut at 64 KiB with a notice, and sets the guard. Screened with
   `screenTextsForInjection` (`server/utils/search/injection-screening.ts`) only
   when the user has a TypeSafe AI key and the toggle on, as for knowledge.
@@ -860,7 +860,7 @@ user-message part, rewritten on the server from the D1 row, removed by
    `authored`, so third-party text never becomes trusted user text by default.
 6. **The memory write lock is preset** (the `presetMemoryWriteLock` pattern)
    whenever an invoked or re-injected skill is in context. All skill text, the
-   user's own included, is treated as untrusted. The invocation is labelled as
+   user's own included, is treated as untrusted. The invocation is labeled as
    user-selected but stays subordinate to the user's message and Besidka's
    rules. Arguments are the user's own text, so they add no injection
    channel.
@@ -925,7 +925,7 @@ are separate.
 `<available_skills>` from the user's enabled, model-invocable skills that are
 not broken, at 1,500 tokens (`SKILL_CATALOG_BUDGET_TOKENS`), with the framing
 that descriptions are untrusted. The name and the description of every line go
-through the same delimiter neutraliser (the tool's name enum keeps the raw
+through the same delimiter neutralizer (the tool's name enum keeps the raw
 names). `tools.ts` registers `activate_skill` and
 `read_skill_file` only when the catalog is not empty and the model can call
 tools, both with a follow-up turn and a loop budget of
@@ -994,7 +994,7 @@ to the turn being sent only when its id matches, otherwise as a new turn, so an
 older user turn never receives it. Regenerating a stored skill-only message
 whose skill is gone is the same generic 400 (there is nothing left to send).
 
-**Skill step (a reasoning step, not a card).** The owner rejected a grey card
+**Skill step (a reasoning step, not a card).** The owner rejected a gray card
 above the answer (too big, no gap to the text), so skill use is a step inside
 the reasoning box, like the search and memory steps
 (`app/components/Chat/Reasoning/SkillStep.vue`, built by `Reasoning.vue`
@@ -1064,8 +1064,8 @@ image. `create_document` is a follow-up tool and behaves as it did before.
 
 | # | Threat | Attacker | Mitigation | Ticket |
 | --- | --- | --- | --- | --- |
-| K1 | Malicious instructions that steer the model to exfiltrate data or act (Snyk ToxicSkills, 2026-02: 36.82% of 3,984 public skills flawed, 13.4% critical) | Skill author | Full-content review before install with a required tick; skill text wrapped and framed as untrusted (an invocation is labelled user-selected but stays subordinate to the user's message); the interim tool rule until C-6 (section 2, item 8), then F1 forced approvals for every tool not marked read-only while a skill is active; memory write lock, preset on invocation; disabled by default for everything but text the user wrote in the app; per-skill and per-chat toggles | S-3, S-4, S-12, C-6 |
-| K2 | Scanner bypass (Trail of Bits, 2026-06: newline padding, `.pyc`, prompts aimed at LLM analysers) | Skill author | Scanners are not a boundary: findings are highlights; padding and long lines are findings themselves; `.pyc` and binaries rejected; no LLM judges a skill | S-2, S-4 |
+| K1 | Malicious instructions that steer the model to exfiltrate data or act (Snyk ToxicSkills, 2026-02: 36.82% of 3,984 public skills flawed, 13.4% critical) | Skill author | Full-content review before install with a required tick; skill text wrapped and framed as untrusted (an invocation is labeled user-selected but stays subordinate to the user's message); the interim tool rule until C-6 (section 2, item 8), then F1 forced approvals for every tool not marked read-only while a skill is active; memory write lock, preset on invocation; disabled by default for everything but text the user wrote in the app; per-skill and per-chat toggles | S-3, S-4, S-12, C-6 |
+| K2 | Scanner bypass (Trail of Bits, 2026-06: newline padding, `.pyc`, prompts aimed at LLM analyzers) | Skill author | Scanners are not a boundary: findings are highlights; padding and long lines are findings themselves; `.pyc` and binaries rejected; no LLM judges a skill | S-2, S-4 |
 | K3 | Hidden text: bidi overrides, zero-width characters, padding below the fold | Skill author | Hidden characters shown as `⟨U+…⟩`; plain monospace viewer, no Markdown rendering; line and blank-run findings | S-2, S-4 |
 | K4 | Silent update that turns a reviewed skill malicious | Repository owner | Pinned SHA, never auto-updated; update = diff + new findings + license change + review + accept, and the skill is disabled again | S-2, S-4 |
 | K5 | Archive attacks: zip slip, symlinks, zip bombs, zip64, huge entries | Skill author | Section 3.2 rules on client and server, streaming inflate with abort | S-2 |
@@ -1100,7 +1100,7 @@ containers" toggle is on; the skill is enabled for the chat.
    Anthropic workspace; Agent Skills is not covered by zero data retention;
    files stay until deleted and then follow Anthropic's standard retention;
    running them uses the code execution tool (container data kept up to 30
-   days, hours billed to the user's organisation beyond the free allowance of
+   days, hours billed to the user's organization beyond the free allowance of
    1,550 container-hours a month, then $0.05 an hour with a 5-minute minimum);
    "Use Skills only from trusted sources".
 2. **Upload** with `uploadSkill({ api: anthropic.skills(), files, displayTitle })`
@@ -1235,7 +1235,7 @@ Indexes: unique (`skill_id`, `version`); (`user_id`).
 | `skill_id` | text | |
 | `user_id` | integer | |
 | `version` | integer | |
-| `path` | text | normalised relative path |
+| `path` | text | normalized relative path |
 | `blob_sha256` | text | the R2 blob (section 3.5) |
 | `bytes` | integer | |
 | `kind` | text | `skill-md`, `reference`, `script`, `asset`, `license`, `other` (rows written before 2026-11-14 hold the earlier spelling `licence`; `normalizeSkillFileKind` reads it as `license` when `loadVersionFiles` loads a version and when a pending version is accepted, so new rows are always `license`, no code sees the old value and there is no migration or data UPDATE; both `LICENSE*` and `LICENCE*` file names are still recognized, since real repositories use both) |
@@ -1334,7 +1334,7 @@ In S-13's own migration, not S-1's:
   `token_encrypted`, `pinned_version`, `created_via`, `client_id`,
   `expires_at`, `revoked_at`, `takedown_at`, `takedown_reason`,
   `import_count`.
-- `skill_share_reports`: modelled on `artifact_reports`.
+- `skill_share_reports`: modeled on `artifact_reports`.
 
 ## 9. Limits
 
@@ -1528,7 +1528,7 @@ update is accepted; shared with the editor in read-only mode;
   (an expired import, one over 1 MiB) says why in plain text.
 - Footer: required checkbox "I reviewed this skill" (plus "I read the license
   and may use this skill" for class `custom`, or "I have the right to
-  use this skill" for class `none`), "Install", "Cancel". The muted line "Installs switched off. Turn it on from the skill's mode." sits under the checkboxes, because a button labelled "(disabled)" looks disabled even when it is not.
+  use this skill" for class `none`), "Install", "Cancel". The muted line "Installs switched off. Turn it on from the skill's mode." sits under the checkboxes, because a button labeled "(disabled)" looks disabled even when it is not.
 
 Update diff: per-file unified diff with `+` and `-` markers and a text label,
 not color alone, against the **current** version; new findings and license
@@ -1548,7 +1548,7 @@ update" disables the skill again.
   `docs/chats/model-picker.md`: wrapper `inert` during `showModal()`, close
   button focused.
 - **Left, the file tree.** Toolbar: Add file, Rename, Delete. Paths are
-  validated live with the same `normaliseSkillPath` and extension allowlist as
+  validated live with the same `normalizeSkillPath` and extension allowlist as
   import. Imported `LICENSE*` and `NOTICE*` files are read-only and cannot be
   deleted (Apache-2.0 section 4). Files over `SKILL_EDIT_MAX_FILE_BYTES`
   (256 KiB) open read-only. On mobile the tree is a `select`.
@@ -1766,7 +1766,7 @@ Commands are skills, so there are no separate command tools. Outputs include
 **Rules.**
 
 - Files as text only, no URLs, no binaries. The same validation as the app
-  (`parseSkillMarkdown`, `normaliseSkillPath`, `scanSkillText`, the license
+  (`parseSkillMarkdown`, `normalizeSkillPath`, `scanSkillText`, the license
   classifier, which rejects `restricted` with a clear error).
 - MCP never enables a skill and never sets toggles on an existing skill.
   Create-time toggles (`slashCommand`, `modelInvocable`, `argumentHint`) take

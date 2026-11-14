@@ -551,7 +551,7 @@ describe('memory tools', () => {
   })
 
   describe('user request quote gate', () => {
-    it('normalises case, punctuation, whitespace and compatibility forms',
+    it('normalizes case, punctuation, whitespace and compatibility forms',
       () => {
         expect(normalizeUserRequestText('  Remember,   THIS!! ')).toBe(
           'rememberthis',
@@ -592,7 +592,7 @@ describe('memory tools', () => {
       }).toThrow(/does not appear/)
     })
 
-    it('rejects a quote under four characters after normalising', () => {
+    it('rejects a quote under four characters after normalizing', () => {
       expect(() => {
         assertUserRequestQuote('a b!', 'a b! and more text')
       }).toThrow(/wrong length/)

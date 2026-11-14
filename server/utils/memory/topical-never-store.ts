@@ -29,7 +29,7 @@ const STREET_ABBREVIATIONS_UK = 'вул|просп|пров|бульв|пл'
 const ADDRESS_QUALIFIERS_EN = 'home |postal |mailing |residential |street '
 
 const CASED_HOUSE_NUMBER = String.raw`\d{1,5}[A-Za-z]?,?`
-const CAPITALISED_NAME_WORDS = String.raw`(?:[A-Z][\p{L}'.-]*,? ){1,3}`
+const CAPITALIZED_NAME_WORDS = String.raw`(?:[A-Z][\p{L}'.-]*,? ){1,3}`
 const STREET_WORDS_CASED = [
   '[Ss]treet',
   'St\\.?',
@@ -98,7 +98,7 @@ const POSSESSIVE_UK = String.raw`мій|моя|мою|моєї|його|її`
  * lowercase and without Polish diacritics and are matched against the folded
  * text; `casedSources` keep capital letters and are matched against the
  * case-preserving view. Each shape needs a strong signal: a house number next
- * to a capitalised street name, an address cue next to a number, or a status
+ * to a capitalized street name, an address cue next to a number, or a status
  * term stated about a person ("my work permit expires", "I have temporary
  * protection"), so an address book app, a work permit template or a book
  * about criminal records are not caught.
@@ -118,8 +118,8 @@ const topicalNeverStoreRules: readonly TopicalNeverStoreRule[] = [
       String.raw`(?:моя|наша) (?:домашня |поштова )?адреса(?: —| -|:)\s*${SHORT_GAP}\d`,
     ],
     casedSources: [
-      String.raw`${CASED_HOUSE_NUMBER} ${CAPITALISED_NAME_WORDS}(?:${STREET_WORDS_CASED})`,
-      String.raw`[Mm]ieszka(?:m|my|ja)? przy (?:ul\.\s*)?${CAPITALISED_NAME_WORDS}${CASED_HOUSE_NUMBER}`,
+      String.raw`${CASED_HOUSE_NUMBER} ${CAPITALIZED_NAME_WORDS}(?:${STREET_WORDS_CASED})`,
+      String.raw`[Mm]ieszka(?:m|my|ja)? przy (?:ul\.\s*)?${CAPITALIZED_NAME_WORDS}${CASED_HOUSE_NUMBER}`,
     ],
   },
   {
@@ -198,7 +198,7 @@ const compiledTopicalRules = topicalNeverStoreRules.map((rule) => {
  * The topical never-store kinds (home address, immigration or residence
  * status, criminal history) found in a memory entry's text, matched over the
  * same normalized and diacritic-folded view as the sensitive-topic
- * classifier, plus a case-preserving view for the capitalised street shapes.
+ * classifier, plus a case-preserving view for the capitalized street shapes.
  * Only `evaluateMemoryEntry` calls it, so it rejects writes on every path
  * without redacting ordinary chat transcripts.
  */

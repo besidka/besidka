@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import {
   BLANK_COMMAND_ARGUMENT_HINT,
   BLANK_SKILL_DESCRIPTION,
@@ -193,7 +193,7 @@ export async function createAuthoredSkill(
 
     return { path: file.path, bytes, text: file.content }
   })
-  const analysis = await analyseSkillFiles({ files, folderName: null })
+  const analysis = await analyzeSkillFiles({ files, folderName: null })
 
   if (!analysis.ok) {
     throw createSkillEditError('frontmatter-invalid', {

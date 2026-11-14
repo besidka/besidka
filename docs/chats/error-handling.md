@@ -65,7 +65,7 @@ built by `summarizeProviderError` (`server/utils/chats/provider-error-summary.ts
   `error.type` or a string `error.code`).
 - No body: `Google returned 500`. No status at all: the generic copy stays.
 
-Only 402, 429 and 5xx are summarised, because there the provider's text is
+Only 402, 429 and 5xx are summarized, because there the provider's text is
 about its own state. A 400 can echo the user's content ("Invalid value: '...'"),
 so it is never included. URLs, key-shaped tokens (`sk-`, `AIza`, `xai-`, long
 opaque strings) and `api_key`/`token`/`Bearer` assignments are removed, control

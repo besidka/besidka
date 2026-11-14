@@ -80,7 +80,7 @@ const skillsFeature = useFeature('skills')
 
 /**
  * Inactive tabs keep only their icon when the row cannot hold every label.
- * Six labelled tabs need about 570px (measured with Nunito: 82, 96, 100, 118,
+ * Six labeled tabs need about 570px (measured with Nunito: 82, 96, 100, 118,
  * 80 and 91px), five need about 480px, so the container width that triggers
  * the collapse grows with the tab count. The class strings are written out in
  * full so Tailwind can see them.

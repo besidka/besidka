@@ -586,7 +586,7 @@ export async function getBackfillProgress(input: {
 }
 
 /**
- * Marks the user's running job cancelled. Idempotent: with nothing running it
+ * Marks the user's running job canceled. Idempotent: with nothing running it
  * changes nothing and returns the latest job as it is.
  */
 export async function cancelBackfill(input: {

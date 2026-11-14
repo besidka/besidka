@@ -73,13 +73,13 @@ function getGrammar(resolved: ResolvedCodeHighlighter): unknown {
 }
 
 /**
- * Colours code that may still be streaming in, one line at a time. Plain
+ * Colors code that may still be streaming in, one line at a time. Plain
  * lines show first; once the language loads, lines are tokenized
  * incrementally with `@shikijs/stream`, so a finished line is tokenized and
  * rendered once and keeps the same object (and DOM node) while later chunks
  * arrive. Only the incomplete last line changes per chunk. Edits that are not
  * appends, a theme switch or a rebuilt highlighter start over, reusing every
- * line whose colours did not change.
+ * line whose colors did not change.
  */
 export function useCodeStream(options: CodeStreamOptions): {
   lines: ShallowRef<CodeLine[]>

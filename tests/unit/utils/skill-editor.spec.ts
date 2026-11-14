@@ -315,7 +315,7 @@ describe('hidden characters', () => {
 })
 
 describe('isSkillEditorMarkdownPath', () => {
-  it('recognises markdown files', () => {
+  it('recognizes markdown files', () => {
     expect(isSkillEditorMarkdownPath('SKILL.md')).toBe(true)
     expect(isSkillEditorMarkdownPath('scripts/run.py')).toBe(false)
   })

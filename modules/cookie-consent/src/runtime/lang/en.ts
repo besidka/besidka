@@ -34,7 +34,7 @@ export default defineI18nLocale(() => ({
         description:
           'These cookies allow the website to remember choices you make, '
           + 'such as your language or region, and provide enhanced, more '
-          + 'personalised features.',
+          + 'personalized features.',
       },
       analytics: {
         title: 'Analytics',

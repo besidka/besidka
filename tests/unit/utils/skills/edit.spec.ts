@@ -41,7 +41,7 @@ describe('validateSkillEditPath', () => {
     expect(validateSkillEditPath(path)).toEqual(expect.any(String))
   })
 
-  it('rejects a path that is not in its normalised form', () => {
+  it('rejects a path that is not in its normalized form', () => {
     expect(validateSkillEditPath('é.md')).toEqual(expect.any(String))
   })
 })

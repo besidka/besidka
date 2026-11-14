@@ -85,7 +85,7 @@ ORDER BY flag
 FORMAT JSON`.trim()
 }
 
-export function summariseExposures(rows) {
+export function summarizeExposures(rows) {
   const totals = new Map()
 
   for (const row of rows) {
@@ -140,7 +140,7 @@ async function main() {
 
     console.log(`Dataset ${options.dataset}, last ${options.days} day(s), `
       + `flags ${options.prefix}*`)
-    console.table(summariseExposures(rows))
+    console.table(summarizeExposures(rows))
   } catch (exception) {
     console.error(exception instanceof Error ? exception.message : exception)
     process.exit(1)

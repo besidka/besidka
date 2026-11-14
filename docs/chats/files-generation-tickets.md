@@ -201,7 +201,7 @@ Scope:
 
 - Add the image-mode developer instruction.
 - Force the selected image tool on the single MVP model step.
-- Stop after the ready tool result without a prose acknowledgement step.
+- Stop after the ready tool result without a prose acknowledgment step.
 - Ensure a selected image request cannot fall back to a text-only refusal.
 - Preserve generation guard, resume, replay, abort, and persistence behavior.
 - Treat tool and file parts as visible assistant content.

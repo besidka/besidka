@@ -1164,7 +1164,7 @@ describe('VideoPlayer.client.vue', () => {
       expect(wrapper.find('.animate-spin').exists()).toBe(true)
     })
 
-    it('keeps the grey skeleton while loading without a poster',
+    it('keeps the gray skeleton while loading without a poster',
       async () => {
         const wrapper = await mountSuspended(VideoPlayer, {
           props: { src: '/videos/demo.mp4' },

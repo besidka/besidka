@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import type { SkillAnalysisErrorCode } from '#shared/utils/skills/analyse'
+import type { SkillAnalysisErrorCode } from '#shared/utils/skills/analyze'
 import type { SkillArchiveErrorCode } from '#shared/utils/skills/archive'
 
 export type SkillImportErrorCode

@@ -4,7 +4,7 @@ import {
   scanSkillText,
   scanSkillTextWithCounts,
   showHiddenCharacters,
-  summariseSkillFindings,
+  summarizeSkillFindings,
 } from '#shared/utils/skills/findings'
 
 function types(text: string): string[] {
@@ -112,14 +112,14 @@ describe('scanSkillText', () => {
   })
 })
 
-describe('summariseSkillFindings', () => {
+describe('summarizeSkillFindings', () => {
   it('counts findings by type', () => {
     const findings = scanSkillText(
       'SKILL.md',
       'https://a.example\nhttps://b.example\nwget x',
     )
 
-    expect(summariseSkillFindings(findings)).toEqual({ url: 2, shell: 1 })
+    expect(summarizeSkillFindings(findings)).toEqual({ url: 2, shell: 1 })
   })
 })
 

@@ -161,7 +161,7 @@ describe('Profile/Skills/CreateDialog', () => {
     expect(find('skill-create-command')).toBeNull()
     expect(find('skill-create-hint')).toBeNull()
 
-    await setValue('skill-create-name', 'summarise')
+    await setValue('skill-create-name', 'summarize')
     await submit()
 
     expect(mocks.fetch.mock.calls[0]![1].body).not.toHaveProperty('command')
@@ -174,7 +174,7 @@ describe('Profile/Skills/CreateDialog', () => {
     expect(find('skill-create-command')).not.toBeNull()
     expect(find('skill-create-hint')).toBeNull()
 
-    await setValue('skill-create-command', '/summarise')
+    await setValue('skill-create-command', '/summarize')
 
     expect(find('skill-create-hint')).not.toBeNull()
 
@@ -186,19 +186,19 @@ describe('Profile/Skills/CreateDialog', () => {
   it('posts a skill with a command and an argument hint', async () => {
     commandsActive.value = true
     await mountDialog('skill')
-    await setValue('skill-create-name', 'summarise')
-    await setValue('skill-create-command', ' /summarise ')
-    await setValue('skill-create-hint', 'What to summarise')
+    await setValue('skill-create-name', 'summarize')
+    await setValue('skill-create-command', ' /summarize ')
+    await setValue('skill-create-hint', 'What to summarize')
     await submit()
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills', {
       method: 'POST',
       body: {
         kind: 'blank',
-        name: 'summarise',
+        name: 'summarize',
         mode: 'auto',
-        command: 'summarise',
-        argumentHint: 'What to summarise',
+        command: 'summarize',
+        argumentHint: 'What to summarize',
       },
     })
   })
@@ -206,15 +206,15 @@ describe('Profile/Skills/CreateDialog', () => {
   it('leaves the hint out when the command is cleared again', async () => {
     commandsActive.value = true
     await mountDialog('skill')
-    await setValue('skill-create-name', 'summarise')
-    await setValue('skill-create-command', 'summarise')
-    await setValue('skill-create-hint', 'What to summarise')
+    await setValue('skill-create-name', 'summarize')
+    await setValue('skill-create-command', 'summarize')
+    await setValue('skill-create-hint', 'What to summarize')
     await setValue('skill-create-command', '')
     await submit()
 
     expect(mocks.fetch.mock.calls[0]![1].body).toEqual({
       kind: 'blank',
-      name: 'summarise',
+      name: 'summarize',
       mode: 'auto',
     })
   })
@@ -380,26 +380,26 @@ describe('Profile/Skills/CreateDialog', () => {
     commandsActive.value = true
     mocks.fetch.mockRejectedValue({
       data: {
-        message: '/summarise is already a command',
+        message: '/summarize is already a command',
         code: 'command-taken',
       },
     })
 
     const wrapper = await mountDialog('skill')
 
-    await setValue('skill-create-name', 'summarise')
-    await setValue('skill-create-command', 'summarise')
+    await setValue('skill-create-name', 'summarize')
+    await setValue('skill-create-command', 'summarize')
     await submit()
 
     expect(get('skill-create-command-help').textContent)
-      .toContain('/summarise is already a command')
+      .toContain('/summarize is already a command')
     expect(get('skill-create-command-help').getAttribute('role'))
       .toBe('alert')
     expect(get('skill-create-name-help').textContent)
       .not.toContain('already a command')
     expect(wrapper.emitted('close')).toBeUndefined()
 
-    await setValue('skill-create-command', 'summarise-2')
+    await setValue('skill-create-command', 'summarize-2')
 
     expect(get('skill-create-command-help').textContent)
       .not.toContain('already a command')

@@ -42,7 +42,7 @@ command below is for the operator, preview first.
 | Feature opt-outs and `experiments` objections (`feature_opt_ins`) | Withdrawn opt-ins come back, so a feature can spend a user's key again | High (consent) | No |
 | Revoked roles (`user_roles`), deny grants and grant revocations (`feature_grants`) | Revoked testers and grants work again; deny grants vanish | High | No |
 | Kill switch and rollout changes (`feature_flag_rules`) | Revert to B | Medium | No |
-| `feature_audit_log` | Rolled back with the rows it describes, so it cannot be the replay source; rows anonymised in the window lose their scrub | Medium (erasure) | No |
+| `feature_audit_log` | Rolled back with the rows it describes, so it cannot be the replay source; rows anonymized in the window lose their scrub | Medium (erasure) | No |
 | Artifact links revoked or taken down in the window (A-7 writes them) | Public again; a takedown is undone, also inside shared chats | High (privacy, notice-and-action) | No |
 | Artifacts deleted in the window | Rows return; R2 objects stay gone, so reads answer 410 | Medium (erasure) | No |
 | Artifact reports and decisions in the window | Rolled back or reopened; legal holds set in the window vanish | High (TCO preservation) | No |
@@ -427,7 +427,7 @@ have no foreign key to `users`, so nothing cascades to them. A restore:
 - brings back revoked `tester` roles and revoked allow grants, and removes
   deny grants set in the window,
 - reverts kill-switch, rollout and variant changes made after B, and the
-  scheduled steps created, cancelled or applied after B: a step that applied
+  scheduled steps created, canceled or applied after B: a step that applied
   in the window is `pending` again and would apply a second time on the next
   cron tick, so before the first tick re-create or cancel it from the
   `schedule.create`, `schedule.cancel` and `rule.set` (`actorKind: 'schedule'`,

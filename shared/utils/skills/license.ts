@@ -121,7 +121,7 @@ const ALL_RIGHTS_LINE_PATTERN = /^\s*all rights reserved\.?\s*$/i
 const TITLE_LINE_PATTERN
   = /^\s*(?:the\s+)?(?:mit|isc|bsd(?:[ -]?\d(?:-clause)?)?(?:[ -]clause)?)\s+licen[sc]e(?:\s*\(.*\))?\s*$/i
 
-export function normaliseLicenseText(text: string): string {
+export function normalizeLicenseText(text: string): string {
   return text.replace(/\r\n?/g, '\n').trim()
 }
 
@@ -137,8 +137,8 @@ function isNoticeEntry(path: string): boolean {
  * Masks the copyright line and the title, then collapses whitespace, so the
  * wrapping of an SPDX text and of a real file compare equal.
  */
-export function normaliseLicenseBody(text: string): string {
-  return normaliseLicenseText(text)
+export function normalizeLicenseBody(text: string): string {
+  return normalizeLicenseText(text)
     .split('\n')
     .filter((line) => {
       return !COPYRIGHT_LINE_PATTERN.test(line)
@@ -217,7 +217,7 @@ async function isApache2(text: string): Promise<boolean> {
 }
 
 async function findShortOpenLicense(text: string): Promise<string | null> {
-  const bodyHash = await sha256Hex(normaliseLicenseBody(text))
+  const bodyHash = await sha256Hex(normalizeLicenseBody(text))
 
   for (const [spdx, hash] of Object.entries(SHORT_LICENSE_BODY_SHA256)) {
     if (hash === bodyHash) {
@@ -232,7 +232,7 @@ async function classifyLicenseFile(
   file: SkillLicenseInputFile,
   input: SkillLicenseInput,
 ): Promise<LicenseFileVerdict> {
-  const text = normaliseLicenseText(file.text)
+  const text = normalizeLicenseText(file.text)
   const sha256 = await sha256Hex(text)
   const verdict = (
     licenseClass: SkillImportLicenseClass,

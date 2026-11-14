@@ -336,7 +336,7 @@ describe('buildChatInputTiles', () => {
       })
     })
 
-    it('appears when the model cannot honour the saved default', () => {
+    it('appears when the model cannot honor the saved default', () => {
       const [tile] = buildChatInputTiles(createState({
         reasoning: {
           level: 'off',

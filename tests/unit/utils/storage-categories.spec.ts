@@ -20,14 +20,14 @@ describe('storage categories', () => {
     ])
   })
 
-  it('recognises only categories it knows how to show', () => {
+  it('recognizes only categories it knows how to show', () => {
     expect(isKnownStorageCategory('artifacts')).toBe(true)
     expect(isKnownStorageCategory('skills')).toBe(true)
     expect(isKnownStorageCategory('notes')).toBe(false)
     expect(isKnownStorageCategory('toString')).toBe(false)
   })
 
-  it('pluralises the count per category', () => {
+  it('pluralizes the count per category', () => {
     expect(formatStorageCount('uploads', 1)).toBe('1 file')
     expect(formatStorageCount('uploads', 0)).toBe('0 files')
     expect(formatStorageCount('knowledge', 2)).toBe('2 items')

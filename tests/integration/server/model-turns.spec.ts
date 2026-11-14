@@ -407,12 +407,12 @@ describe('appendTextToLastUserTurn', () => {
 
 describe('appendTextAsLastUserTurn', () => {
   it('appends to the last user turn when there is one', () => {
-    const messages = [createUserMessage('user-1', 'Summarise this')]
+    const messages = [createUserMessage('user-1', 'Summarize this')]
     const result = appendTextAsLastUserTurn(messages, 'skill text', 'user-1')
 
     expect(result).toHaveLength(1)
     expect(result[0]?.parts).toEqual([
-      { type: 'text', text: 'Summarise this' },
+      { type: 'text', text: 'Summarize this' },
       { type: 'text', text: 'skill text' },
     ])
   })

@@ -4,7 +4,7 @@
  * Prints the revision hash of every legal document, in the shape of
  * shared/utils/legal-document-revisions.ts. The hash covers only the markdown
  * body: the frontmatter (title, description, updatedAt, summary) is left out,
- * and line endings are normalised. A date-only change, a git-derived date and
+ * and line endings are normalized. A date-only change, a git-derived date and
  * the lists generated from registries (::account-email-list,
  * ::legal-change-history) therefore never move it. The same function backs
  * tests/unit/content/legal-revisions.spec.ts. See "Notifying users of
@@ -28,19 +28,19 @@ export const LEGAL_DOCUMENT_IDS = [
 ]
 
 export function extractLegalBody(source) {
-  const normalised = source.replace(/\r\n?/g, '\n')
+  const normalized = source.replace(/\r\n?/g, '\n')
 
-  if (!normalised.startsWith('---\n')) {
-    return normalised
+  if (!normalized.startsWith('---\n')) {
+    return normalized
   }
 
-  const frontmatterEnd = normalised.indexOf('\n---\n', 3)
+  const frontmatterEnd = normalized.indexOf('\n---\n', 3)
 
   if (frontmatterEnd === -1) {
-    return normalised
+    return normalized
   }
 
-  return normalised.slice(frontmatterEnd + '\n---\n'.length)
+  return normalized.slice(frontmatterEnd + '\n---\n'.length)
 }
 
 export function hashLegalDocument(source) {

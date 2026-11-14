@@ -93,7 +93,7 @@ export async function hashSkillFileSet(
  * way. The license gate runs here, so a restricted skill never gets past
  * the preview.
  */
-export async function analyseSkillFiles(
+export async function analyzeSkillFiles(
   input: SkillAnalysisInput,
 ): Promise<SkillAnalysis> {
   const skillMdFile = input.files.find((file) => {

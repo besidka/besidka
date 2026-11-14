@@ -55,7 +55,7 @@ export function extractMessageSearchText(parts: unknown): string {
 }
 
 /**
- * NFC-normalises, canonicalises every apostrophe variant (U+0027, U+2019,
+ * NFC-normalizes, canonicalizes every apostrophe variant (U+0027, U+2019,
  * U+0060, U+00B4) to U+02BC, strips the private-use-area FTS5 snippet
  * sentinels (U+E000/U+E001) so message content can never inject fake
  * highlight boundaries into a `snippet()` result, and collapses

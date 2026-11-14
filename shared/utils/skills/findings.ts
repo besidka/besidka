@@ -291,7 +291,7 @@ export function capSkillFindings(
   return kept
 }
 
-export function summariseSkillFindings(
+export function summarizeSkillFindings(
   findings: SkillFinding[],
 ): Record<string, number> {
   const counts: Record<string, number> = {}

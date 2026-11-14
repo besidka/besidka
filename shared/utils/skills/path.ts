@@ -110,9 +110,9 @@ export function isSkillLicenseFileName(path: string): boolean {
 /**
  * Applies the archive path rules to one entry name as stored in a zip:
  * rejects what can escape the skill folder or spoof a file name, skips
- * directories and macOS noise, and returns the NFC-normalised path.
+ * directories and macOS noise, and returns the NFC-normalized path.
  */
-export function normaliseSkillEntryName(rawName: string): SkillEntryName {
+export function normalizeSkillEntryName(rawName: string): SkillEntryName {
   if (rawName.length === 0) {
     return { status: 'reject', reason: 'empty' }
   }

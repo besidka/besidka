@@ -36,7 +36,7 @@ type StatusFetchResult
     | 'unavailable'
     | 'error'
     | 'timeout'
-type PollOutcome = 'settled' | 'stuck' | 'cancelled'
+type PollOutcome = 'settled' | 'stuck' | 'canceled'
 type ClientRenderOutcome = 'uploaded' | 'skipped'
 
 const CONFLICT_STATUS = 409
@@ -268,13 +268,13 @@ export function useDocumentFlow(
       const shouldContinue = await wait(DOCUMENT_POLL_INTERVAL_MS)
 
       if (!shouldContinue || !isCurrent(run)) {
-        return 'cancelled'
+        return 'canceled'
       }
 
       const result = await fetchStatus(id, run)
 
       if (!isCurrent(run)) {
-        return 'cancelled'
+        return 'canceled'
       }
 
       if (result === 'unavailable') {

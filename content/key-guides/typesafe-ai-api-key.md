@@ -68,7 +68,7 @@ faq:
   - question: Where does my data go?
     answer: Only after you save a TypeSafe AI key, and only for the checks you leave on. Memory checks send the text of each memory entry about to be saved, after removing data that is never stored, plus a short excerpt of your text. The memory pre-filter sends chat text, with never-stored data removed, before memory is generated. Auto web search and past-chat retrieval send your message and the last three turns, never-stored data removed. A link, a domain or a word such as "today" is searched without sending anything. Screening sends project files and notes and Brave or Exa results. Results from a chat model's own built-in web search go straight to the model, so they cannot be screened. A project file added while TypeSafe AI is unavailable is checked again later, usually within the hour. Project files are screened on their extracted text, so a PDF with no text layer, such as a scan, is not screened, and the images on the pages of a PDF sent as a PDF are not screened either. Re-ranking sends the search query and short excerpts of the candidates. The share check sends the chat text you are about to share, with emails, phone numbers and card numbers removed. Entries Besidka's own checks already blocked are never sent. Besidka's logs keep only counts, scores, statuses and timing for these checks, never the text. TypeSafe AI hosts its service in the United States. Its privacy policy says it does not train models on your input, and its data processing agreement is its own contract with you as the account holder, not with Besidka, and covers transfers with the EU Standard Contractual Clauses and the UK Addendum.
   - question: How accurate is Jev?
-    answer: In Besidka's tests on synthetic text, written and labelled by one person, the yes/no checks reached 94.6% to 100% precision and 100% recall at the chosen thresholds, on sets of 64 to 179 items in English, Ukrainian, Polish and Russian. A 100% there means no error on that set, not a measured error rate. With 54 positive examples, a real miss rate of up to about 7% would still fit. The tests were run from a developer's computer, not from Besidka's servers, and not on real chats or on text written to fool Jev. So memory checks can only add blocks, the thresholds lean toward searching, generating memory and flagging, and they will be re-tuned on real use. The section above has the numbers per check.
+    answer: In Besidka's tests on synthetic text, written and labeled by one person, the yes/no checks reached 94.6% to 100% precision and 100% recall at the chosen thresholds, on sets of 64 to 179 items in English, Ukrainian, Polish and Russian. A 100% there means no error on that set, not a measured error rate. With 54 positive examples, a real miss rate of up to about 7% would still fit. The tests were run from a developer's computer, not from Besidka's servers, and not on real chats or on text written to fool Jev. So memory checks can only add blocks, the thresholds lean toward searching, generating memory and flagging, and they will be re-tuned on real use. The section above has the numbers per check.
   - question: How do I switch the checks off or remove the key?
     answer: In Besidka, open the TypeSafe AI card under Profile, API Keys, Smart checks and delete the key. Every check stops right away. To keep the key and stop only some checks, switch off single checks in the TypeSafe AI checks section on the same tab. You can also revoke the key in the TypeSafe AI console.
 ---
@@ -174,7 +174,7 @@ The [Privacy Policy](/privacy-policy#typesafe-ai-checks) lists what each check s
 
 ## How well it works: the eval, with caveats
 
-Before shipping, every check was tested against `jev-1.14.0` with data sets written for the test, in English, Ukrainian, Polish and, for most checks, Russian. For the two checks that scored perfectly at first, a second, harder set was written and labelled before any of its results were seen.
+Before shipping, every check was tested against `jev-1.14.0` with data sets written for the test, in English, Ukrainian, Polish and, for most checks, Russian. For the two checks that scored perfectly at first, a second, harder set was written and labeled before any of its results were seen.
 
 Results at the shipped thresholds:
 
@@ -188,7 +188,7 @@ Results at the shipped thresholds:
 
 Read these numbers with their limits:
 
-- **Synthetic and small.** One person wrote and labelled every item, and each was run once. A 100% means no error on that set, not a measured error rate. With 54 positive examples, a real miss rate of up to about 7% would still fit.
+- **Synthetic and small.** One person wrote and labeled every item, and each was run once. A 100% means no error on that set, not a measured error rate. With 54 positive examples, a real miss rate of up to about 7% would still fit.
 - **Tuned on the same data.** The thresholds were picked on these sets, which flatters them. They are starting points and will be re-tuned on real use, from scores Besidka logs without any text.
 - **Not tested yet.** Calls from Besidka's servers (the timings were measured from a developer's computer), real chat traffic, personal data hidden inside pasted code, and text written specifically to fool Jev. TypeSafe AI itself says adversarial text can move Jev's answers, and that languages other than English work less well.
 - **Search re-ranking ships in a slightly different request shape** than the one tested, so its cut-off may need re-tuning.
@@ -198,7 +198,7 @@ Read these numbers with their limits:
 Jev complements Besidka's built-in checks and never replaces them:
 
 - **Memory.** The built-in check, fixed word and pattern rules in English, Ukrainian, Polish and Russian, runs on every way memory can be written, with or without a key. It decides what is never stored. Jev can only refuse more.
-- **Injection.** Screening is an extra signal next to the defences that are always on: memory writes are locked after a web search or another tool result, and retrieved text is passed to the model as quoted data, never as instructions.
+- **Injection.** Screening is an extra signal next to the defenses that are always on: memory writes are locked after a web search or another tool result, and retrieved text is passed to the model as quoted data, never as instructions.
 - **Failures.** A failed call never blocks you. Each check falls back to what Besidka does without the key.
 
 For what memory is and how to edit it, see [How memory works](/memory). For the rest of the BYOK setup, see the [BYOK guide](/byok).

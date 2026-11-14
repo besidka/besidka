@@ -89,7 +89,7 @@ describe('resolveFileDelivery', () => {
       })).toEqual({ delivery: 'text' })
     })
 
-    it('normalises the media type before matching', () => {
+    it('normalizes the media type before matching', () => {
       expect(resolveFileDelivery({
         route: 'direct',
         providerId: 'anthropic',

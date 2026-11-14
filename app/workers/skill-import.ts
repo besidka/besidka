@@ -3,7 +3,7 @@ import type {
   SkillImportWorkerResponse,
   SkillImportWorkerResult,
 } from '~/types/skill-import.d'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import { extractSkillArchive } from '#shared/utils/skills/archive'
 import {
   SKILL_MAX_FILES,
@@ -105,7 +105,7 @@ export async function inspectSkillArchiveBytes(
       }
     }
 
-    const analysis = await analyseSkillFiles({
+    const analysis = await analyzeSkillFiles({
       files: archive.files,
       folderName: archive.folderName,
     })

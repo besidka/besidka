@@ -578,7 +578,7 @@ interface CachedAdvertisement {
   tags: Array<[string, string]>
 }
 
-function serialiseAdvertisement(advertisement: GitRefAdvertisement): string {
+function serializeAdvertisement(advertisement: GitRefAdvertisement): string {
   return JSON.stringify({
     head: advertisement.head,
     branches: [...advertisement.branches],
@@ -674,7 +674,7 @@ export async function fetchGithubRefs(
   await writeCache(
     client,
     key,
-    serialiseAdvertisement(advertisement),
+    serializeAdvertisement(advertisement),
     SKILL_GITHUB_REF_CACHE_SECONDS,
   )
 

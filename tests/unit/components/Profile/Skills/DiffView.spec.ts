@@ -25,7 +25,7 @@ const files: SkillFileDiff[] = [{
 }]
 
 describe('Profile/Skills/DiffView', () => {
-  it('shows + and - markers with text labels, not colour alone', async () => {
+  it('shows + and - markers with text labels, not color alone', async () => {
     const wrapper = await mountSuspended(DiffView, {
       props: { files, added: 1, removed: 1 },
     })
@@ -38,7 +38,7 @@ describe('Profile/Skills/DiffView', () => {
     expect(removed.text()).toContain('Removed:')
   })
 
-  it('summarises the change and shows the file status', async () => {
+  it('summarizes the change and shows the file status', async () => {
     const wrapper = await mountSuspended(DiffView, {
       props: { files, added: 1, removed: 1 },
     })

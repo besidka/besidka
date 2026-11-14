@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '2ad1b675898da2bd365b671fff165f57e44112a48e73660e1083574e4fc6dd75',
+    hash: 'fae6474d9b8d114d313ddafd7129a2801f72f9e4abfe36e5ec927efb56518abe',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -29,10 +29,12 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'clarifications (BES-393): artifacts count against the one storage '
       + 'limit instead of a separate 25 MB, and Read your settings includes '
       + 'storage use by type; no new purpose, recipient, transfer or '
-      + 'retention.',
+      + 'retention. An earlier edit changed British spellings to American '
+      + 'English, with no change of meaning, so it adds no new '
+      + 'classification.',
   },
   'terms-of-use': {
-    hash: '932cd71ac59355cde03b3ac7edf4b5bba2565374b97e13579305dfd4cfee2b05',
+    hash: '74f82cf285bd82700c1393da884409cb1626b78e8f336c0b3852e19a69f4bb0b',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'New prohibited use for code run with Run code or written through '
@@ -40,15 +42,21 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'critical infrastructure), the provider\'s usage policy and '
       + 'Anthropic\'s skills, documents and code results not checked by '
       + 'Besidka, and the AI mark on documents. Body still includes the '
-      + '2026-12-artifacts changes, effective 2026-12-19.',
+      + '2026-12-artifacts changes, effective 2026-12-19.'
+      + ' Latest edit is spelling only (British variants changed to '
+      + 'American English), with no change of meaning, so it adds no '
+      + 'new classification.',
   },
   'cookie-policy': {
-    hash: 'c7809319c1007ef392fcd62dca5eb0e9880487b76fecced602c0c01cc7118c02',
+    hash: '23698e9dfcd63b36e96015181acd14ee63db8d28cf75e09ea09993897450f58c',
     classification: 'minor',
     note: 'Turnstile also on the artifact report form for signed-out '
       + 'visitors (same bot-protection purpose and recipient), the '
       + 'artifacts:auto-opened and artifacts:share-return sessionStorage '
       + 'rows, and no Web Analytics on public artifact pages; no new '
-      + 'cookie, purpose or recipient.',
+      + 'cookie, purpose or recipient.'
+      + ' Latest edit is spelling only (British variants changed to '
+      + 'American English), with no change of meaning, so it adds no '
+      + 'new classification.',
   },
 } as const satisfies Record<LegalDocumentId, LegalDocumentRevision>

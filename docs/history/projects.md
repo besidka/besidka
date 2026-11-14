@@ -119,7 +119,7 @@ Move semantics:
 ## Project Memory
 
 > **Superseded (W6b, 2026-10-26).** Project memory is now project-scope
-> `memory_entries` (categorised entries, see `docs/memory-architecture.md`
+> `memory_entries` (categorized entries, see `docs/memory-architecture.md`
 > 3.14). The blob pipeline described below (per-chat summaries, synthesis into
 > `projects.memory`, the automatic refresh triggers) is retired and kept here
 > as history only. What still applies: the per-project refresh lease, the
@@ -134,7 +134,7 @@ on or off and trigger a refresh), and also request-time context.
 - Refreshed from chats currently assigned to the project
 - Generated on the user's own BYOK key with the cheapest available provider
   (see "Model selection")
-- The refresh behaviour below lives in `server/utils/projects/` (`memory.ts`,
+- The refresh behavior below lives in `server/utils/projects/` (`memory.ts`,
   `memory-limits.ts`, `memory-lease.ts`, `instructions.ts`); the model it runs
   on is decided by `server/utils/memory/resolve-model.ts` (see "Model choice
   and redaction (W3, 2026-10-25)")
@@ -202,7 +202,7 @@ capped by `PROJECT_MEMORY_LIMITS` (`memory-limits.ts`):
 | Limit | Value |
 |---|---|
 | Chats considered (newest activity first) | 20 |
-| Chats summarised per refresh | 6 |
+| Chats summarized per refresh | 6 |
 | Messages per transcript | 60 |
 | Characters per transcript | 12k |
 | Characters per user message | 3k |
@@ -213,17 +213,17 @@ capped by `PROJECT_MEMORY_LIMITS` (`memory-limits.ts`):
 Rules:
 
 - Chats are read by `activityAt` descending and cut at 20. Chats beyond the
-  20 most recently active are not summarised and do not contribute to memory
+  20 most recently active are not summarized and do not contribute to memory
 - Staleness is judged from the newest persisted message of each chat
   (`projectMemorySummaryUpdatedAt >= newest message createdAt`), not from
   `activityAt`
 - Fresh chats reuse their cached `projectMemorySummary`; stale chats are
-  summarised newest first, at most 6 per refresh, one sequential LLM call each
+  summarized newest first, at most 6 per refresh, one sequential LLM call each
 - Leftover stale chats keep their cached (older) summary, which still feeds
   the merge, and the project ends `stale` with `memoryDirtyAt` set so the next
   refresh continues. The project is `ready` only when nothing is pending
 - A `NONE` summary counts as fresh: it is stored as `null` with an updated
-  timestamp, so the chat is not re-summarised until a new message arrives
+  timestamp, so the chat is not re-summarized until a new message arrives
 - A transcript keeps the newest messages that fit the 12k budget (message
   separators and the marker count toward it) and is prefixed with
   `[earlier messages omitted]` only when older messages were dropped; exactly
@@ -255,12 +255,12 @@ Rules:
 
 - User text is the primary source; assistant text is secondary context only
   because it can echo web, tool or file content
-- Only `text` parts are ever fed to the summariser. Tool, file, source,
+- Only `text` parts are ever fed to the summarizer. Tool, file, source,
   reasoning and data parts are never included
 - Transcripts and chat summaries are data, not instructions: the transcript is
   wrapped in `<transcript>` tags and each summary in `<summary index="n">`
   tags, both prompts call the tagged content untrusted data, and the
-  summariser must not record instructions or claims that appear only in
+  summarizer must not record instructions or claims that appear only in
   assistant text or in quoted or pasted material
 
 ### Model selection
@@ -318,13 +318,13 @@ how a refresh picks its model and what it may store.
   not catalog-checked at resolution time, so an unusable one fails the
   refresh instead of falling through.
 - Both the per-chat summaries (`chats.projectMemorySummary`) and the
-  synthesised `projects.memory` pass through never-store redaction
+  synthesized `projects.memory` pass through never-store redaction
   (`redactNeverStore`): card, IBAN, government and tax IDs, passports, API
   keys, JWTs, credentials and private keys become `[redacted]`. Only counts
   are logged, as `attributes.memoryCompliance` with origin
   `project-memory-summary` or `project-memory`. A chat summary cached before
-  this change stays unredacted until that chat is next summarised; the
-  synthesised memory is always redacted on write.
+  this change stays unredacted until that chat is next summarized; the
+  synthesized memory is always redacted on write.
 - Both prompts gained one instruction sentence telling the model not to
   record card, bank, government or tax ID, passport or credential data.
 - Both `generateText` calls now pass `maxOutputTokens`
@@ -348,7 +348,7 @@ how a refresh picks its model and what it may store.
 Workstream W6 of `docs/memory-architecture.md` moves project memory into
 `memory_entries`. The legacy `projects.memory` blob is superseded once a
 project has entries, but never blanket: extraction is off by default, so a
-project that has no entries keeps today's behaviour and its memory does not
+project that has no entries keeps today's behavior and its memory does not
 freeze.
 
 - `projectUsesMemoryEntries(project, userId, db?)` in
@@ -361,7 +361,7 @@ freeze.
   still render, and a project whose only content was the blob yields `null`.
   The chat route passes the result of `projectUsesMemoryEntries`.
 - `refreshProjectMemory()` checks the gate after taking the refresh lease. When
-  entries are in use it neither synthesises nor overwrites `projects.memory`: it
+  entries are in use it neither synthesizes nor overwrites `projects.memory`: it
   returns the current state unchanged and still releases the lease.
 - `markProjectsMemoryStale()` skips projects with `memory_migrated_at` set and
   projects that already have memory entries, so the project page stops
@@ -521,7 +521,7 @@ Covered cases (project memory utils):
   special-category omission sentence present only when the flag is not `true`
 - model resolution through `resolveMemoryModel` (setting, chat, fallback,
   gateway providers) and never-store redaction of summaries and the
-  synthesised memory, with count-only logging
+  synthesized memory, with count-only logging
   (`tests/unit/utils/memory/resolve-model.spec.ts`,
   `tests/unit/utils/memory/compliance.spec.ts`)
 

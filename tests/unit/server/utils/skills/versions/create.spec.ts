@@ -171,24 +171,24 @@ describe('createAuthoredSkill', () => {
   it('creates a blank skill with a command that uses $ARGUMENTS', async () => {
     const created = await create({
       kind: 'blank',
-      name: 'summarise',
+      name: 'summarize',
       mode: 'ask',
-      command: 'summarise',
-      argumentHint: ' What to summarise ',
+      command: 'summarize',
+      argumentHint: ' What to summarize ',
     })
     const row = await skillRow(created.id)
 
     expect(created).toMatchObject({
       modelInvocable: false,
-      command: 'summarise',
-      argumentHint: 'What to summarise',
+      command: 'summarize',
+      argumentHint: 'What to summarize',
       enabled: true,
     })
     expect(row).toMatchObject({
       modelInvocable: false,
       slashCommand: false,
-      slashName: 'summarise',
-      argumentHint: 'What to summarise',
+      slashName: 'summarize',
+      argumentHint: 'What to summarize',
       enabled: true,
     })
     expect(await skillMarkdownOf(created.id)).toContain('$ARGUMENTS')
@@ -197,8 +197,8 @@ describe('createAuthoredSkill', () => {
   it('uses the default argument hint when a command has none', async () => {
     const created = await create({
       kind: 'blank',
-      name: 'summarise',
-      command: 'summarise',
+      name: 'summarize',
+      command: 'summarize',
     })
 
     expect(created.argumentHint).toBe(BLANK_COMMAND_ARGUMENT_HINT)

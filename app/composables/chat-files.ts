@@ -21,7 +21,7 @@ export interface UploadingFile {
 }
 
 export interface ClassifiedUploadError {
-  type: 'network' | 'validation' | 'server' | 'quota' | 'timeout' | 'cancelled'
+  type: 'network' | 'validation' | 'server' | 'quota' | 'timeout' | 'canceled'
   message: string
   retryable: boolean
 }
@@ -102,10 +102,10 @@ export function useChatFiles(
       }
     }
 
-    if (error.message?.includes('cancelled') || error.message?.includes('abort')) {
+    if (error.message?.includes('cancel') || error.message?.includes('abort')) {
       return {
-        type: 'cancelled',
-        message: 'Upload was cancelled',
+        type: 'canceled',
+        message: 'Upload was canceled',
         retryable: false,
       }
     }
@@ -474,7 +474,7 @@ export function useChatFiles(
       uploadFile.status = 'failed'
       uploadFile.error = classifiedError.message
 
-      if (classifiedError.type !== 'cancelled') {
+      if (classifiedError.type !== 'canceled') {
         useErrorMessage(
           `Failed to upload ${uploadFile.file.name}: ${classifiedError.message}`,
         )

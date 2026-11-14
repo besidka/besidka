@@ -116,7 +116,7 @@ function throwNotFound(): never {
  * The caller's own client-visible features that they have access to, as on
  * the Labs page (a feature without access is never advertised): opt-in,
  * active state and variant. The opt-in itself is never writable over MCP,
- * because it authorises spending the user's keys.
+ * because it authorizes spending the user's keys.
  */
 export async function listMyFeatures(
   db: DbClient,

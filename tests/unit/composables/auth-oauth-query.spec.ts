@@ -113,7 +113,7 @@ describe('appendSignedOAuthQueryToPath', () => {
 })
 
 describe('signedOAuthQueryToString', () => {
-  it('serialises repeated values as repeated parameters', () => {
+  it('serializes repeated values as repeated parameters', () => {
     const value = signedOAuthQueryToString({
       sig: 'signature',
       ba_param: ['ba_param', 'scope'],

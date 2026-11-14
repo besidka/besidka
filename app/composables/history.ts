@@ -706,7 +706,7 @@ export function useHistory() {
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage(
-          `Sharing cancelled for ${chatIds.length} `
+          `Sharing canceled for ${chatIds.length} `
           + `chat${chatIds.length === 1 ? '' : 's'}`,
         )
       })
@@ -833,7 +833,7 @@ export function useHistory() {
       })
 
       nuxtApp.runWithContext(() => {
-        useSuccessMessage('Sharing cancelled')
+        useSuccessMessage('Sharing canceled')
       })
     } catch (exception) {
       const parsedException = parseError(exception)

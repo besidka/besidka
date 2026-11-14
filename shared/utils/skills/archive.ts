@@ -15,7 +15,7 @@ import {
   SKILL_MD_FILE_NAME,
   checkSkillRelativePath,
   detectSkillRoot,
-  normaliseSkillEntryName,
+  normalizeSkillEntryName,
 } from '#shared/utils/skills/path'
 import type { SkillPathRejection } from '#shared/utils/skills/path'
 
@@ -451,25 +451,25 @@ export function extractSkillArchive(bytes: Uint8Array): SkillArchiveResult {
       )
     }
 
-    const normalised = normaliseSkillEntryName(entry.name)
+    const normalized = normalizeSkillEntryName(entry.name)
 
-    if (normalised.status === 'reject') {
+    if (normalized.status === 'reject') {
       return failure(
         'archive-path-rejected',
-        SKILL_PATH_REJECTION_MESSAGES[normalised.reason],
+        SKILL_PATH_REJECTION_MESSAGES[normalized.reason],
         entry.name,
       )
     }
 
-    if (normalised.status === 'skip') {
-      if (normalised.reason !== 'directory') {
+    if (normalized.status === 'skip') {
+      if (normalized.reason !== 'directory') {
         skippedNoise += 1
       }
 
       continue
     }
 
-    kept.push({ entry, path: normalised.path })
+    kept.push({ entry, path: normalized.path })
   }
 
   const paths = kept.map((item) => {

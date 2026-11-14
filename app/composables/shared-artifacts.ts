@@ -228,7 +228,7 @@ export function useSharedArtifacts(options: { enabled: Ref<boolean> }) {
       }
 
       removedIds.value = new Set([...removedIds.value, artifact.id])
-      useSuccessMessage('Sharing cancelled')
+      useSuccessMessage('Sharing canceled')
 
       return true
     } catch (exception) {

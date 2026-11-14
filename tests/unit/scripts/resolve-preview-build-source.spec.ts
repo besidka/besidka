@@ -286,7 +286,7 @@ describe('resolveSource', () => {
     expect(decision.sourceSha).toBe('c'.repeat(40))
   })
 
-  it('builds when the only earlier runs were cancelled or failed', async () => {
+  it('builds when the only earlier runs were canceled or failed', async () => {
     const listedRunIds: number[] = []
     const decision = await resolve({
       runs: [
@@ -305,7 +305,7 @@ describe('resolveSource', () => {
     expect(listedRunIds).toEqual([])
   })
 
-  it('never takes the baseline from a cancelled run newer than a built one', async () => {
+  it('never takes the baseline from a canceled run newer than a built one', async () => {
     const decision = await resolve({
       runs: [
         createRun({

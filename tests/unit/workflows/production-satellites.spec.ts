@@ -84,7 +84,7 @@ describe('production.yml satellite Workers', () => {
     }
   })
 
-  it('serialises satellite deploys in one concurrency group', () => {
+  it('serializes satellite deploys in one concurrency group', () => {
     expect(satellites.concurrency).toEqual({
       'group': 'satellites-besidka',
       'cancel-in-progress': false,

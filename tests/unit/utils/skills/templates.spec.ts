@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import {
   BLANK_SKILL_DESCRIPTION,
   buildBlankSkillFiles,
@@ -53,7 +53,7 @@ describe('skill templates', () => {
   it.each(SKILL_TEMPLATES.map((template) => {
     return [template.id, template] as const
   }))('%s passes the importer analysis with no findings', async (_id, template) => {
-    const analysis = await analyseSkillFiles({
+    const analysis = await analyzeSkillFiles({
       files: toAnalysisFiles(template.files),
       folderName: null,
     })
@@ -124,7 +124,7 @@ describe('buildBlankSkillFiles', () => {
       description: BLANK_SKILL_DESCRIPTION,
       kind,
     })
-    const analysis = await analyseSkillFiles({
+    const analysis = await analyzeSkillFiles({
       files: toAnalysisFiles(files),
       folderName: null,
     })

@@ -104,9 +104,9 @@ describe('getCodeExecutionNote', () => {
     })).toBe(
       'Runs in Anthropic\'s sandbox on your API key. Anthropic bills '
       + 'container time at $0.05 per hour after 1,550 free hours a month '
-      + 'for your organisation, with a 5-minute minimum, and bills '
+      + 'for your organization, with a 5-minute minimum, and bills '
       + 'attached files even if no code runs. Free hours depend on your '
-      + `organisation. ${DISCLAIMER}`,
+      + `organization. ${DISCLAIMER}`,
     )
   })
 
