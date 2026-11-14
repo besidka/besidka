@@ -1,4 +1,7 @@
-import { CONNECTOR_REVOKE_DEADLINE_MS } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_REVOKE_CONCURRENCY,
+  CONNECTOR_REVOKE_DEADLINE_MS,
+} from '#shared/utils/connectors-policy'
 import { revokeToken } from '~~/server/utils/connectors/oauth-client'
 import {
   listUserConnectorCredentials,
@@ -74,10 +77,47 @@ export async function revokeStoredConnectorCredentials(
 }
 
 /**
- * Before an account purge: revokes every connector token of the user, one
- * connector after another (the Workers connection limit), under one overall
- * deadline. Never throws, so a slow or broken authorization server cannot
- * block the deletion of the account.
+ * Revokes a list of credentials with at most four connectors in flight
+ * (each sends its two revocations one after the other), inside the Workers
+ * limit of six simultaneous connections. The list is read before the fan-out
+ * and the workers only call `fetch`, so no binding is resolved inside it.
+ * When `signal` aborts, in-flight requests are canceled and no new one
+ * starts; the caller deletes the credentials either way.
+ */
+export async function revokeCredentialsBatch(
+  credentials: readonly ConnectorCredentials[],
+  options: { signal?: AbortSignal, logger?: LoggerLike } = {},
+): Promise<RevocationResult> {
+  let next = 0
+  let attempted = false
+  let revoked = 0
+
+  async function worker() {
+    while (next < credentials.length && !options.signal?.aborted) {
+      const entry = credentials[next++]!
+      const result = await revokeConnectorCredentials(entry, {
+        signal: options.signal,
+      })
+
+      attempted ||= result.attempted
+      revoked += result.revoked
+    }
+  }
+
+  await Promise.all(Array.from(
+    { length: Math.min(CONNECTOR_REVOKE_CONCURRENCY, credentials.length) },
+    worker,
+  ))
+
+  return { attempted, revoked }
+}
+
+/**
+ * Before an account purge: revokes every connector token of the user, at
+ * most four connectors at a time, under one overall deadline (10 s). Never
+ * throws, so a slow or broken authorization server cannot block the
+ * deletion of the account; whatever is not revoked by the deadline is
+ * deleted unrevoked.
  */
 export async function revokeAllUserConnectorTokens(
   db: DbClient,
@@ -89,25 +129,15 @@ export async function revokeAllUserConnectorTokens(
   const timer = setTimeout(() => {
     controller.abort()
   }, deadlineMs)
-  let attempted = false
-  let revoked = 0
+  let result: RevocationResult = { attempted: false, revoked: 0 }
   let failed = false
 
   try {
     const credentials = await listUserConnectorCredentials(db, userId)
 
-    for (const entry of credentials) {
-      if (controller.signal.aborted) {
-        break
-      }
-
-      const result = await revokeConnectorCredentials(entry, {
-        signal: controller.signal,
-      })
-
-      attempted ||= result.attempted
-      revoked += result.revoked
-    }
+    result = await revokeCredentialsBatch(credentials, {
+      signal: controller.signal,
+    })
   } catch {
     failed = true
   } finally {
@@ -118,12 +148,12 @@ export async function revokeAllUserConnectorTokens(
     attributes: {
       connectors: {
         step: 'account-revoke',
-        revoked,
+        revoked: result.revoked,
         failed,
         timedOut: controller.signal.aborted,
       },
     },
   })
 
-  return { attempted, revoked }
+  return result
 }

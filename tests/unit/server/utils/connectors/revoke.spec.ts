@@ -111,6 +111,30 @@ describe('connector revocation', () => {
     expect(JSON.stringify(logger.set.mock.calls)).not.toContain('access-')
   })
 
+  it('keeps at most four connectors in flight', async () => {
+    for (let index = 0; index < 6; index++) {
+      await connectWithTokens(`c${index}.example.com`, REVOKE_URL)
+    }
+
+    let inFlight = 0
+    let maxInFlight = 0
+
+    fetchMock.mockImplementation(async () => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise((resolve) => {
+        setTimeout(resolve, 5)
+      })
+      inFlight -= 1
+
+      return new Response(null, { status: 200 })
+    })
+
+    expect(await revokeAllUserConnectorTokens(testDb.db, userId))
+      .toEqual({ attempted: true, revoked: 12 })
+    expect(maxInFlight).toBe(4)
+  })
+
   it('stops at the deadline and never throws', async () => {
     await connectWithTokens('one.example.com', REVOKE_URL)
     await connectWithTokens('two.example.com', REVOKE_URL)
@@ -130,7 +154,7 @@ describe('connector revocation', () => {
     )
 
     expect(result.revoked).toBe(0)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('never throws when the database read fails', async () => {

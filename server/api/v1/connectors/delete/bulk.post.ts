@@ -5,12 +5,14 @@ import {
   CONNECTOR_REVOKE_DEADLINE_MS,
 } from '#shared/utils/connectors-policy'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
-import { revokeStoredConnectorCredentials } from '~~/server/utils/connectors/revoke'
+import { revokeCredentialsBatch } from '~~/server/utils/connectors/revoke'
 import { requireConnectorAccess } from '~~/server/utils/connectors/route'
 import {
   deleteConnector,
   getConnector,
+  readConnectorCredentials,
 } from '~~/server/utils/connectors/store'
+import type { ConnectorCredentials } from '~~/server/utils/connectors/store'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const bodySchema = z.object({
@@ -21,9 +23,11 @@ const bodySchema = z.object({
 
 /**
  * Deletes connectors (POST, because a DELETE body may be stripped at the
- * edge). Each one owned by the user has its tokens revoked best effort, one
- * after another, then its row, credentials and settings are removed; audit
- * rows stay. Deleting withdraws the consent, which is logged per connector.
+ * edge). The owned connectors and their credentials are read first; their
+ * tokens are then revoked best effort, at most four connectors at a time
+ * under a 10 s deadline, and the rows, credentials and settings are removed
+ * one by one; audit rows stay. Deleting withdraws the consent, which is
+ * logged with the hosts.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireConnectorAccess(event)
@@ -32,37 +36,54 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const deleted: string[] = []
   const withdrawnHosts: string[] = []
+  const owned: Array<{ id: string, host: string, consented: boolean }> = []
+  const credentials: ConnectorCredentials[] = []
+
+  for (const connectorId of new Set(body.ids)) {
+    const connector = await getConnector(db, userId, connectorId)
+
+    if (!connector) {
+      continue
+    }
+
+    owned.push({
+      id: connectorId,
+      host: new URL(connector.origin).host,
+      consented: connector.consentedAt !== null,
+    })
+
+    const stored = await readConnectorCredentials(db, userId, connectorId)
+
+    if (stored) {
+      credentials.push(stored)
+    }
+  }
+
   const revocationDeadline = new AbortController()
   const timer = setTimeout(() => {
     revocationDeadline.abort()
   }, CONNECTOR_REVOKE_DEADLINE_MS)
 
   try {
-    for (const connectorId of new Set(body.ids)) {
-      const connector = await getConnector(db, userId, connectorId)
-
-      if (!connector) {
-        continue
-      }
-
-      await revokeStoredConnectorCredentials(db, userId, connectorId, {
-        signal: revocationDeadline.signal,
-      })
-
-      const result = await deleteConnector(db, userId, connectorId)
-
-      if (!result.connectorDeleted) {
-        continue
-      }
-
-      deleted.push(connectorId)
-
-      if (connector.consentedAt) {
-        withdrawnHosts.push(new URL(connector.origin).host)
-      }
-    }
+    await revokeCredentialsBatch(credentials, {
+      signal: revocationDeadline.signal,
+    })
   } finally {
     clearTimeout(timer)
+  }
+
+  for (const connector of owned) {
+    const result = await deleteConnector(db, userId, connector.id)
+
+    if (!result.connectorDeleted) {
+      continue
+    }
+
+    deleted.push(connector.id)
+
+    if (connector.consented) {
+      withdrawnHosts.push(connector.host)
+    }
   }
 
   if (withdrawnHosts.length > 0) {
