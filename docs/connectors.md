@@ -770,7 +770,9 @@ Choices that differ from or add to section 6, 10 and 14:
   is replaced by a fixed sentence.
 - **Limits.** 12 calls per send, 60 a minute per user and 30 a minute per
   user and connector (KV, fail closed), 60 s per call, 10 s per connect, at
-  most three connectors prepared at once. Connector tools count toward the 40
+  most three connectors prepared at once and at most three tool calls running
+  at once (a step with six parallel calls queues, so the Workers limit of six
+  connections holds). Connector tools count toward the 40
   tools of the request together with the send's other tools. A connector
   past the fifth, or one that is off or not connected, is left out with a
   notice. `connectorIds` accepts up to 20 ids (not 5), so the sixth is
@@ -782,9 +784,20 @@ Choices that differ from or add to section 6, 10 and 14:
 - **Cleanup.** Every client closes in the `streamText` `onEnd`, `onError` and
   `onAbort`, and in the `finally` of the stream; closing is idempotent and
   logs `attributes.connectors.closed`. A close waits at most 2 s per client.
+- **Answer guarantee.** Connector tools are not in `answerGuaranteeToolNames`
+  (their results are framed text, not search results the continuation can
+  quote). A loop that still ends on a connector call, which an Anthropic
+  model can do on the forced last step, persists the empty-answer notice
+  like the other tool families: `isFollowUpToolPart` matches `dynamic-tool`
+  parts by name, and persistence gets the connector names as follow-up tools.
+- **Share dialog.** `GET /api/v1/chats/[slug]/share` returns `usedConnector`
+  (any answer with a connector call), and the dialog shows "Replies may
+  repeat data from a connected service" next to the memory note.
 - **Routes added.** `GET /api/v1/connectors` (safe summaries, for the picker;
   C-7 extends it), `GET` and `PUT /api/v1/chats/[slug]/connectors` (the
-  per-chat choice, at most five on). The send body field `connectorIds`
+  per-chat choice, at most five on; the `PUT` has its own bucket of 60 a
+  minute instead of the 10 of the connector routes, so picker toggles are not
+  throttled). The send body field `connectorIds`
   replaces the stored choice when present and leaves it alone when absent.
 - **Memory.** An assistant turn that called a connector tool is skipped by
   memory extraction like a turn that recalled memory, because its text quotes
