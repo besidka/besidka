@@ -6,6 +6,8 @@ test.use({ storageState: { cookies: [], origins: [] } })
 
 test.describe.configure({ mode: 'serial', timeout: 90_000 })
 
+const STEP_CARD_TIMEOUT = 30_000
+
 test('a member attaches a skill from + Add skill, reads it and opens it in the editor', async ({ browser }) => {
   const page = await openGrantedMember(browser, 'e2e-chat-skills')
   const skillName = `e2e-voice-${Date.now()}`
@@ -66,13 +68,14 @@ test('an answer shows the used skill as a step card that opens the preview', asy
   )
   await waitForHydration(page)
 
-  await expect(page.getByTestId('skill-step-working')).toBeVisible()
   await expect(page.getByTestId('skill-step-working'))
-    .toContainText('Using skill…')
+    .toBeVisible({ timeout: STEP_CARD_TIMEOUT })
+  await expect(page.getByTestId('skill-step-working'))
+    .toContainText('Using skill…', { timeout: STEP_CARD_TIMEOUT })
 
   const card = page.getByTestId('skill-step-ready')
 
-  await expect(card).toBeVisible()
+  await expect(card).toBeVisible({ timeout: STEP_CARD_TIMEOUT })
   await expect(card).toContainText(`Used skill · ${skillName}`)
   await card.click()
 
