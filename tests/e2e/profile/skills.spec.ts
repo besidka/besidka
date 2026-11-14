@@ -1,72 +1,27 @@
-import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { Browser, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import {
-  authenticateUserByApi,
   createUniqueUser,
   waitForHydration,
 } from '../helpers/auth'
+import {
+  E2E_ADMIN_EMAIL,
+  markEmailVerified,
+  openGrantedMember,
+  openSignedInPage,
+  readUserId,
+} from '../helpers/skills'
 import {
   buildArchive,
   skillMarkdown,
 } from '../../setup/helpers/skill-archives'
 
-const E2E_ADMIN_EMAIL = 'e2e-admin@example.com'
 const MIT_LICENCE_PATH = resolve('tests/fixtures/skills/licences/mit.txt')
-const CONSENT_COOKIE_NAME = 'cookies_consent'
-const ONE_DAY_IN_SECONDS = 60 * 60 * 24
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test.describe.configure({ mode: 'serial', timeout: 90_000 })
-
-function markEmailVerified(email: string) {
-  execFileSync('pnpm', [
-    'exec',
-    'wrangler',
-    'd1',
-    'execute',
-    'DB',
-    '--local',
-    '--command',
-    `update users set email_verified = 1 where email = '${email}'`,
-  ], { stdio: 'ignore' })
-}
-
-async function openSignedInPage(
-  browser: Browser,
-  user: ReturnType<typeof createUniqueUser>,
-): Promise<Page> {
-  const context = await browser.newContext({ storageState: undefined })
-
-  await context.addCookies([{
-    name: CONSENT_COOKIE_NAME,
-    value: encodeURIComponent(JSON.stringify({
-      v: 2,
-      granted: ['necessary', 'preferences'],
-      id: 'e2e-skills',
-      date: '2026-01-01T00:00:00.000Z',
-    })),
-    domain: 'localhost',
-    path: '/',
-    expires: Math.floor(Date.now() / 1000) + ONE_DAY_IN_SECONDS,
-  }])
-
-  const page = await context.newPage()
-
-  await authenticateUserByApi(page, user)
-
-  return page
-}
-
-async function readUserId(page: Page): Promise<number> {
-  const response = await page.request.get('/api/auth/get-session')
-  const session = await response.json()
-
-  return Number(session.user.id)
-}
 
 function buildSkillArchiveFixture(name: string) {
   const bytes = buildArchive({
@@ -80,37 +35,6 @@ function buildSkillArchiveFixture(name: string) {
   })
 
   return Buffer.from(bytes)
-}
-
-async function openGrantedMember(
-  browser: Browser,
-  prefix: string,
-): Promise<Page> {
-  const admin = {
-    ...createUniqueUser('e2e-admin'),
-    name: 'E2E Admin',
-    email: E2E_ADMIN_EMAIL,
-  }
-  const member = createUniqueUser(prefix)
-  const adminPage = await openSignedInPage(browser, admin)
-  const page = await openSignedInPage(browser, member)
-
-  markEmailVerified(E2E_ADMIN_EMAIL)
-
-  const grant = await adminPage.request.post(
-    '/api/v1/admin/features/skills/grants',
-    {
-      data: {
-        userId: await readUserId(page),
-        effect: 'allow',
-        expiresInDays: 1,
-      },
-    },
-  )
-
-  expect(grant.status()).toBe(200)
-
-  return page
 }
 
 test('a member uploads a skill, reviews it, installs it and turns it on', async ({ browser }) => {

@@ -2,13 +2,14 @@
   <li
     class="
       list-row items-center gap-3 group py-3 sm:py-2 relative
+      max-sm:grid-flow-row max-sm:grid-cols-[minmax(0,1fr)_auto]
       [&:has(details[open])]:z-30
     "
     :class="{ 'bg-base-200': isSelected }"
     data-testid="skill-row"
     :data-skill-id="skill.id"
   >
-    <div class="list-col-grow flex-1 min-w-0">
+    <div class="list-col-grow flex-1 min-w-0 max-sm:col-start-1 max-sm:row-start-1">
       <button
         type="button"
         class="link no-underline rounded-box block w-full truncate py-1 text-left font-medium"
@@ -79,13 +80,14 @@
     <ProfileSkillsModeControl
       :skill="skill"
       :is-disabled="isBusy"
+      class="max-sm:col-start-1 max-sm:row-start-2 max-sm:justify-self-start"
       test-id="skill-row-mode"
       @select="mode => emit('setMode', skill, mode)"
     />
 
     <details
       ref="dropdownRef"
-      class="dropdown dropdown-end relative z-20 open:z-40"
+      class="dropdown dropdown-end relative z-20 open:z-40 max-sm:col-start-2 max-sm:row-start-1 max-sm:self-start"
       :class="isFlippedUp ? 'dropdown-top' : 'dropdown-bottom'"
       @toggle="updatePlacement"
     >

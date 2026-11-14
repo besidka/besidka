@@ -1,0 +1,78 @@
+import { expect, test } from '@playwright/test'
+import { waitForHydration } from '../helpers/auth'
+import { createSkillByApi, openGrantedMember } from '../helpers/skills'
+
+test.use({ storageState: { cookies: [], origins: [] } })
+
+test.describe.configure({ mode: 'serial', timeout: 90_000 })
+
+test('a member attaches a skill from the + menu, reads it and opens it in the editor', async ({ browser }) => {
+  const page = await openGrantedMember(browser, 'e2e-chat-skills')
+  const skillName = `e2e-voice-${Date.now()}`
+
+  await createSkillByApi(page, skillName, 'Write in my own voice')
+  await page.goto('/chats/new')
+  await waitForHydration(page)
+
+  await page.getByTestId('chat-input-tools-trigger').click()
+
+  const row = page.getByTestId(`tools-skill-${skillName}`)
+
+  await expect(row).toBeVisible()
+  await expect(row).toContainText('Write in my own voice')
+  await expect(page.getByTestId('tools-skills-manage')).toBeVisible()
+  await row.click()
+
+  const tile = page.getByTestId('chat-input-tile-skill')
+
+  await expect(tile).toBeVisible()
+  await expect(tile).toContainText('Skill')
+  await expect(tile).toContainText(skillName)
+
+  await page.getByTestId('chat-input-tile-skill-remove').click()
+  await expect(tile).toHaveCount(0)
+
+  await page.getByTestId('chat-input-tools-trigger').click()
+  await page.getByTestId(`tools-skill-${skillName}`).click()
+  await page.getByTestId('chat-input-tile-skill-body').click()
+
+  const preview = page.locator('dialog.js-skill-preview')
+
+  await expect(preview).toBeVisible()
+  await expect(preview.getByTestId('skill-preview-name')).toHaveText(skillName)
+  await expect(preview.getByTestId('skill-preview-mode')).toHaveText('Auto')
+  await expect(preview.getByTestId('skill-preview-text'))
+    .toContainText(`name: ${skillName}`)
+
+  await preview.getByTestId('skill-preview-edit').click()
+
+  await expect(page).toHaveURL(/\/profile\/skills$/)
+  await expect(page.locator('dialog.js-skill-edit-modal')).toBeVisible()
+})
+
+test('an answer shows the used skill as a step card that opens the preview', async ({ browser }) => {
+  const page = await openGrantedMember(browser, 'e2e-skill-step')
+  const skillName = `e2e-step-${Date.now()}`
+  const skillId = await createSkillByApi(page, skillName, 'Write in my voice')
+
+  await page.goto(
+    `/chats/test?scenario=skill&skillId=${skillId}&skillName=${skillName}`
+    + '&regenerate',
+  )
+  await waitForHydration(page)
+
+  await expect(page.getByTestId('skill-step-working')).toBeVisible()
+  await expect(page.getByTestId('skill-step-working'))
+    .toContainText('Using skill…')
+
+  const card = page.getByTestId('skill-step-ready')
+
+  await expect(card).toBeVisible()
+  await expect(card).toContainText(`Used skill · ${skillName}`)
+  await card.click()
+
+  const preview = page.locator('dialog.js-skill-preview')
+
+  await expect(preview).toBeVisible()
+  await expect(preview.getByTestId('skill-preview-name')).toHaveText(skillName)
+})
