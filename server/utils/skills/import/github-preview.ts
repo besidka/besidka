@@ -179,6 +179,7 @@ async function describeRelease(
  * version, so what the user reviews is exactly what `import/commit` installs.
  */
 export async function previewGithubImport(input: {
+  db: ReturnType<typeof useDb>
   kv: SkillStageKv
   bucket: SkillStageBucket
   userId: number
@@ -245,6 +246,7 @@ export async function previewGithubImport(input: {
     : []
 
   return await createSkillImportPreview({
+    db: input.db,
     kv: input.kv,
     bucket: input.bucket,
     userId: input.userId,

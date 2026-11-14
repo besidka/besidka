@@ -129,6 +129,14 @@ export interface SkillImportRelease {
   switchable: boolean
 }
 
+export interface SkillImportInstalled {
+  kind: 'same-source' | 'same-name'
+  skillId: string
+  name: string
+  sourceLabel: string | null
+  isUpToDate: boolean
+}
+
 export interface SkillImportPreview {
   stageId: string
   source: string
@@ -137,6 +145,7 @@ export interface SkillImportPreview {
   sourceRef: string | null
   sourcePath: string | null
   release: SkillImportRelease | null
+  installed: SkillImportInstalled | null
   expiresAt: number
   skill: {
     name: string

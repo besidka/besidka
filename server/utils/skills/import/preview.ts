@@ -7,6 +7,7 @@ import { SKILL_MAX_UPLOAD_BYTES } from '#shared/utils/skills-policy'
 import type { SkillImportRelease } from '#shared/types/skills.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
+import { findInstalledSkill } from '~~/server/utils/skills/import/installed'
 import { stageSkillImport } from '~~/server/utils/skills/import/stage'
 import type {
   SkillImportProvenance,
@@ -102,6 +103,7 @@ export async function readSkillUpload(
  * here, so it is never staged.
  */
 export async function createSkillImportPreview(input: {
+  db: ReturnType<typeof useDb>
   kv: SkillStageKv
   bucket: SkillStageBucket
   userId: number
@@ -148,6 +150,12 @@ export async function createSkillImportPreview(input: {
     files: input.files,
   })
   const warnings = [...input.archiveWarnings, ...analysis.warnings]
+  const installed = await findInstalledSkill({
+    db: input.db,
+    userId: input.userId,
+    analysis,
+    provenance: input.provenance,
+  })
 
   input.logger.set({
     attributes: {
@@ -158,6 +166,7 @@ export async function createSkillImportPreview(input: {
           bytes: manifest.totalBytes,
           findings: manifest.findingCounts,
           licenceClass: manifest.licence.class,
+          installed: installed?.kind ?? null,
           stage: 'preview',
         },
       },
@@ -172,6 +181,7 @@ export async function createSkillImportPreview(input: {
     sourceRef: manifest.sourceRef ?? null,
     sourcePath: manifest.sourcePath ?? null,
     release: input.release ?? null,
+    installed,
     expiresAt: manifest.expiresAt,
     skill: {
       name: analysis.skill.name,

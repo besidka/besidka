@@ -69,6 +69,7 @@ export default defineEventHandler(async (event) => {
   logger.set({ userId })
 
   return await createSkillImportPreview({
+    db: useDb(),
     kv: useKV(),
     bucket: useFileStorage(),
     userId,

@@ -12,6 +12,7 @@ import type {
 import {
   createFakeSkillBucket,
   createFakeSkillKv,
+  seedSkillWithFiles,
 } from '../../../../../setup/helpers/skills-db'
 import type {
   FakeSkillBucket,
@@ -688,6 +689,140 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
         sourceRef: 'main',
         release: { tag: null, switchable: false, channel: 'branch' },
       })
+    })
+  })
+
+  describe('an already installed skill', () => {
+    const FOLDER_URL = 'https://github.com/o/r/tree/main/skills/review-pr'
+
+    function forgetCachedRefs() {
+      for (const key of [...kv.values.keys()]) {
+        if (key.startsWith('skills:github:')) {
+          kv.values.delete(key)
+        }
+      }
+    }
+
+    async function install(url = FOLDER_URL) {
+      const staged = await preview({ url })
+
+      return await commit({ stageId: staged.stageId, acknowledged: true })
+    }
+
+    it('reports nothing for a skill the account does not have', async () => {
+      await signIn()
+
+      expect((await preview({ url: FOLDER_URL })).installed).toBeNull()
+    })
+
+    it('says up to date when the same files are imported again', async () => {
+      await signIn()
+      await install()
+
+      expect((await preview({ url: FOLDER_URL })).installed).toEqual({
+        kind: 'same-source',
+        skillId: expect.any(String),
+        name: 'review-pr',
+        sourceLabel: GITHUB_SHA_ONE.slice(0, 7),
+        isUpToDate: true,
+      })
+    })
+
+    it('offers an update when the same folder has other files, and matches the repository case-insensitively', async () => {
+      await signIn()
+      await install()
+      await testDb.db.update(schema.skills)
+        .set({ sourceUrl: 'https://github.com/O/R' })
+      forgetCachedRefs()
+      github.setBranch('main', GITHUB_SHA_TWO)
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
+        'skills/review-pr/references/checklist.md': '- Check docs\n',
+      }))
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result.installed).toMatchObject({
+        kind: 'same-source',
+        name: 'review-pr',
+        sourceLabel: GITHUB_SHA_ONE.slice(0, 7),
+        isUpToDate: false,
+      })
+    })
+
+    it('shows the release tag the installed copy came from', async () => {
+      await signIn()
+      github.tags.set('2.1.2', { sha: GITHUB_SHA_ONE })
+      await install()
+      forgetCachedRefs()
+      github.tags.set('2.2.0', { sha: GITHUB_SHA_TWO })
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
+        'skills/review-pr/references/checklist.md': '- Check docs\n',
+      }))
+
+      expect((await preview({ url: FOLDER_URL })).installed).toMatchObject({
+        kind: 'same-source',
+        sourceLabel: '2.1.2',
+        isUpToDate: false,
+      })
+    })
+
+    it('recognises a copy that was renamed on the account, and updates it under its own name', async () => {
+      await signIn()
+
+      const created = await install()
+
+      await testDb.db.update(schema.skills)
+        .set({ name: 'my-review' })
+        .where(eq(schema.skills.id, created.id))
+      forgetCachedRefs()
+      github.setBranch('main', GITHUB_SHA_TWO)
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
+        'skills/review-pr/references/checklist.md': '- Check docs\n',
+      }))
+
+      const staged = await preview({ url: FOLDER_URL })
+
+      expect(staged.installed).toMatchObject({
+        kind: 'same-source',
+        name: 'my-review',
+        isUpToDate: false,
+      })
+
+      const updated = await commit({
+        stageId: staged.stageId,
+        acknowledged: true,
+        asUpdateOf: created.id,
+      })
+      const [skill] = await testDb.db.select().from(schema.skills)
+
+      expect(updated).toMatchObject({ kind: 'pending', name: 'my-review' })
+      expect(skill).toMatchObject({ name: 'my-review', pendingVersion: 2 })
+    })
+
+    it('reports a skill of the same name from another source as a name match', async () => {
+      await signIn()
+      await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': skillMarkdown() },
+        skill: { name: 'review-pr', sourceKind: 'zip' },
+      })
+
+      expect((await preview({ url: FOLDER_URL })).installed).toMatchObject({
+        kind: 'same-name',
+        name: 'review-pr',
+        isUpToDate: false,
+      })
+    })
+
+    it('does not report the placeholder of an import that never finished', async () => {
+      await signIn()
+
+      const created = await install()
+
+      await testDb.db.delete(schema.skillVersions)
+        .where(eq(schema.skillVersions.skillId, created.id))
+
+      expect((await preview({ url: FOLDER_URL })).installed).toBeNull()
     })
   })
 })

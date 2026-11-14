@@ -2,6 +2,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createMemoryExtractionTestDb,
+} from '../../../../../setup/helpers/memory-extraction-db'
+import type {
+  MemoryExtractionTestDb,
+} from '../../../../../setup/helpers/memory-extraction-db'
+import {
   createFakeSkillBucket,
   createFakeSkillKv,
 } from '../../../../../setup/helpers/skills-db'
@@ -71,16 +77,19 @@ async function failureOf(promise: Promise<unknown>) {
 describe('POST /api/v1/skills/import/preview', () => {
   let kv: FakeSkillKv
   let bucket: FakeSkillBucket
+  let testDb: MemoryExtractionTestDb
 
   beforeEach(() => {
+    testDb = createMemoryExtractionTestDb()
     mocks.featureOn = true
     delete mocks.env.SKILLS_RATE_LIMITER
     kv = createFakeSkillKv()
     bucket = createFakeSkillBucket()
-    stubSkillsRouteGlobals({ userId: 5, db: null, kv, bucket })
+    stubSkillsRouteGlobals({ userId: 5, db: testDb.db, kv, bucket })
   })
 
   afterEach(() => {
+    testDb.close()
     vi.unstubAllGlobals()
   })
 
@@ -97,7 +106,7 @@ describe('POST /api/v1/skills/import/preview', () => {
   })
 
   it('answers 401 without a session', async () => {
-    stubSkillsRouteGlobals({ userId: 0, db: null, kv, bucket })
+    stubSkillsRouteGlobals({ userId: 0, db: testDb.db, kv, bucket })
 
     expect((await failureOf(
       callPreview(createUploadEvent(validSkillArchive())),
@@ -228,7 +237,7 @@ describe('POST /api/v1/skills/import/preview', () => {
       await callPreview(createUploadEvent(validSkillArchive()))
     }
 
-    stubSkillsRouteGlobals({ userId: 6, db: null, kv, bucket })
+    stubSkillsRouteGlobals({ userId: 6, db: testDb.db, kv, bucket })
 
     await expect(callPreview(createUploadEvent(validSkillArchive())))
       .resolves.toMatchObject({ source: 'zip' })

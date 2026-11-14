@@ -513,4 +513,101 @@ describe('Profile/Skills/ImportDialog', () => {
     expect(get('skill-review-switch-source').textContent)
       .toContain('Use the latest release 2.1.2 instead')
   })
+
+  describe('an already installed skill', () => {
+    function installedPreview(installed: Record<string, unknown>) {
+      return createImportPreview({
+        installed: {
+          kind: 'same-source',
+          skillId: 'skill-id-1',
+          name: 'review-pr',
+          sourceLabel: '2.1.2',
+          isUpToDate: false,
+          ...installed,
+        },
+      } as never)
+    }
+
+    async function reviewAndConfirm(
+      preview: ReturnType<typeof createImportPreview>,
+    ) {
+      await mountDialog()
+      await reachReview(preview)
+      await check('skill-import-reviewed')
+    }
+
+    it('warns before review and offers an update or a copy', async () => {
+      await reviewAndConfirm(installedPreview({}))
+
+      expect(get('skill-import-installed').className).toContain('alert-info')
+      expect(get('skill-import-installed-title').textContent)
+        .toContain('You already have review-pr (from the same source')
+      expect(get('skill-import-installed-title').textContent)
+        .toContain('@ 2.1.2')
+      expect(find('skill-import-collision')).toBeNull()
+      expect(find('skill-import-rename')).toBeNull()
+
+      mocks.fetch.mockResolvedValueOnce({
+        kind: 'pending',
+        id: 'skill-id-1',
+        name: 'review-pr',
+        version: 2,
+        pendingVersion: 2,
+        licenceClass: 'open',
+        filesCount: 2,
+      })
+      await click('skill-import-installed-update')
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        '/api/v1/skills/import/commit',
+        expect.objectContaining({
+          body: expect.objectContaining({ asUpdateOf: 'skill-id-1' }),
+        }),
+      )
+    })
+
+    it('installs a copy under another name', async () => {
+      await reviewAndConfirm(installedPreview({}))
+      await click('skill-import-installed-copy')
+
+      expect((get('skill-import-rename') as HTMLInputElement).value)
+        .toBe('review-pr-copy')
+
+      mocks.fetch.mockResolvedValueOnce({
+        kind: 'created',
+        id: 'new-id',
+        name: 'review-pr-copy',
+        version: 1,
+        licenceClass: 'open',
+        filesCount: 2,
+      })
+      await click('skill-import-rename-submit')
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        '/api/v1/skills/import/commit',
+        expect.objectContaining({
+          body: expect.objectContaining({ name: 'review-pr-copy' }),
+        }),
+      )
+    })
+
+    it('says up to date and keeps Install disabled', async () => {
+      await reviewAndConfirm(installedPreview({ isUpToDate: true }))
+
+      expect(get('skill-import-installed-title').textContent?.trim())
+        .toBe('Already installed and up to date')
+      expect(find('skill-import-installed-update')).toBeNull()
+      expect((get('skill-import-install') as HTMLButtonElement).disabled)
+        .toBe(true)
+    })
+
+    it('shows a same-name skill from another source as a collision before review', async () => {
+      await reviewAndConfirm(installedPreview({ kind: 'same-name' }))
+
+      expect(get('skill-import-collision').textContent)
+        .toContain('A skill named review-pr exists.')
+      expect(find('skill-import-installed')).toBeNull()
+      expect(find('skill-import-replace')).not.toBeNull()
+    })
+  })
 })

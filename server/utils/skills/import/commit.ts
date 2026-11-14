@@ -240,6 +240,55 @@ async function prepareRenamedImport(input: {
   }
 }
 
+/**
+ * An update keeps the local name. When the skill was renamed on this account
+ * after it was imported, and the staged import is the same repository and
+ * folder, the staged `SKILL.md` is written under the local name, the way an
+ * update check does, so "Update it to this version" works for a renamed copy.
+ * Any other name mismatch is left for `replaceAsUpdate` to refuse.
+ */
+async function prepareUpdateImport(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  manifest: SkillStageManifest
+  skillId: string
+}): Promise<PreparedImport> {
+  const { db, manifest } = input
+  const unchanged: PreparedImport = { manifest, contentOverrides: new Map() }
+
+  if (!isDecodableSkillPublicId(input.skillId)) {
+    return unchanged
+  }
+
+  const [skill] = await db.select({
+    name: schema.skills.name,
+    sourceKind: schema.skills.sourceKind,
+    sourceUrl: schema.skills.sourceUrl,
+    sourcePath: schema.skills.sourcePath,
+  })
+    .from(schema.skills)
+    .where(and(
+      eq(schema.skills.id, input.skillId),
+      eq(schema.skills.userId, manifest.userId),
+    ))
+    .limit(1)
+  const isSameSource = skill?.sourceKind === 'github'
+    && manifest.source === 'github'
+    && !!skill.sourceUrl
+    && skill.sourceUrl.toLowerCase() === (manifest.sourceUrl ?? '').toLowerCase()
+    && (skill.sourcePath ?? '') === (manifest.sourcePath ?? '')
+
+  if (!skill || skill.name === manifest.skill.name || !isSameSource) {
+    return unchanged
+  }
+
+  return await prepareRenamedImport({
+    bucket: input.bucket,
+    manifest,
+    name: skill.name,
+  })
+}
+
 async function copyStagedBlobs(input: {
   bucket: SkillStageBucket
   manifest: PendingVersionPayload
@@ -913,7 +962,12 @@ export async function commitSkillImport(
       result = await replaceAsUpdate({
         db,
         bucket,
-        prepared: { manifest, contentOverrides: new Map() },
+        prepared: await prepareUpdateImport({
+          db,
+          bucket,
+          manifest,
+          skillId: input.asUpdateOf,
+        }),
         skillId: input.asUpdateOf,
       })
     } catch (exception) {

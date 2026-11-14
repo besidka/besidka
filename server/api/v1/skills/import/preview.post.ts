@@ -84,6 +84,7 @@ export default defineEventHandler(async (event) => {
     logger.set({ userId })
 
     return await previewGithubImport({
+      db: useDb(),
       kv: useKV(),
       bucket: useFileStorage(),
       userId,
@@ -98,6 +99,7 @@ export default defineEventHandler(async (event) => {
   logger.set({ userId })
 
   return await createSkillImportPreview({
+    db: useDb(),
     kv: useKV(),
     bucket: useFileStorage(),
     userId,

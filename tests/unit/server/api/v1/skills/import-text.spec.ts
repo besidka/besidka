@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createMemoryExtractionTestDb,
+} from '../../../../../setup/helpers/memory-extraction-db'
+import type {
+  MemoryExtractionTestDb,
+} from '../../../../../setup/helpers/memory-extraction-db'
+import {
   createFakeSkillBucket,
   createFakeSkillKv,
 } from '../../../../../setup/helpers/skills-db'
@@ -63,15 +69,18 @@ async function failureOf(promise: Promise<unknown>) {
 describe('POST /api/v1/skills/import/text', () => {
   let kv: FakeSkillKv
   let bucket: FakeSkillBucket
+  let testDb: MemoryExtractionTestDb
 
   beforeEach(() => {
+    testDb = createMemoryExtractionTestDb()
     mocks.featureOn = true
     kv = createFakeSkillKv()
     bucket = createFakeSkillBucket()
-    stubSkillsRouteGlobals({ userId: 5, db: null, kv, bucket })
+    stubSkillsRouteGlobals({ userId: 5, db: testDb.db, kv, bucket })
   })
 
   afterEach(() => {
+    testDb.close()
     vi.unstubAllGlobals()
   })
 

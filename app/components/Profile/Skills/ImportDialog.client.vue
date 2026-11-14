@@ -251,40 +251,77 @@
               </button>
             </div>
           </div>
-          <form
-            class="grid gap-2"
-            @submit.prevent="onCommit({ name: renamedName.trim() })"
+          <ProfileSkillsRenameForm
+            v-model="renamedName"
+            :is-disabled="isCommitting || !canInstall"
+            @submit="name => onCommit({ name })"
+          />
+        </div>
+      </div>
+
+      <div
+        v-if="installedNotice"
+        class="alert alert-info alert-soft items-start"
+        role="status"
+        data-testid="skill-import-installed"
+      >
+        <Icon
+          name="lucide:info"
+          size="18"
+          class="mt-0.5 shrink-0"
+          aria-hidden="true"
+        />
+        <div class="grid w-full gap-3 text-sm">
+          <p
+            v-if="installedNotice.isUpToDate"
+            class="font-medium"
+            data-testid="skill-import-installed-title"
           >
-            <label
-              for="skill-import-rename"
-              class="font-medium"
-            >
-              Or import under a new name
-            </label>
-            <div class="join w-full">
-              <input
-                id="skill-import-rename"
-                v-model="renamedName"
-                type="text"
-                class="input input-sm join-item w-full text-base-content"
-                :maxlength="SKILL_NAME_MAX"
-                autocapitalize="none"
-                autocomplete="off"
-                spellcheck="false"
-                data-testid="skill-import-rename"
-              >
+            Already installed and up to date
+          </p>
+          <p
+            v-else
+            class="font-medium"
+            data-testid="skill-import-installed-title"
+          >
+            You already have {{ installedNotice.name }} (from the same
+            source<template v-if="installedNotice.sourceLabel">
+              , @ {{ installedNotice.sourceLabel }}
+            </template>)
+          </p>
+          <p v-if="installedNotice.isUpToDate">
+            {{ installedNotice.name }} has exactly these files, so there is
+            nothing to install.
+          </p>
+          <template v-else>
+            <div class="flex flex-wrap gap-2">
               <button
-                type="submit"
-                class="btn btn-sm join-item"
-                :disabled="isCommitting
-                  || !canInstall
-                  || !isSkillNameValid(renamedName.trim())"
-                data-testid="skill-import-rename-submit"
+                type="button"
+                class="btn btn-sm"
+                :disabled="isCommitting || !canInstall"
+                data-testid="skill-import-installed-update"
+                @click="onCommit({ asUpdateOf: installedNotice.skillId })"
               >
-                Import
+                Update it to this version
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm"
+                :disabled="isCommitting"
+                data-testid="skill-import-installed-copy"
+                @click="isCopyFormOpen = true"
+              >
+                Install a copy under another name
               </button>
             </div>
-          </form>
+            <ProfileSkillsRenameForm
+              v-if="isCopyFormOpen"
+              v-model="renamedName"
+              label="Name of the copy"
+              :is-disabled="isCommitting || !canInstall"
+              @submit="name => onCommit({ name })"
+            />
+          </template>
         </div>
       </div>
 
@@ -404,13 +441,11 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import { extractSkillArchive } from '#shared/utils/skills/archive'
-import {
-  SKILL_NAME_MAX,
-  isSkillNameValid,
-} from '#shared/utils/skills-policy'
+import { SKILL_NAME_MAX } from '#shared/utils/skills-policy'
 import type {
   SkillGithubPick,
   SkillImportCommitResponse,
+  SkillImportInstalled,
   SkillImportPreview,
   SkillImportPreviewResponse,
 } from '#shared/types/skills.d'
@@ -475,6 +510,8 @@ const isReviewed = shallowRef<boolean>(false)
 const isLicenceAcknowledged = shallowRef<boolean>(false)
 const isCommitting = shallowRef<boolean>(false)
 const collision = shallowRef<Collision | null>(null)
+const installedNotice = shallowRef<SkillImportInstalled | null>(null)
+const isCopyFormOpen = shallowRef<boolean>(false)
 const renamedName = shallowRef<string>('')
 const archiveTexts = shallowRef<Map<string, string> | null>(null)
 
@@ -513,6 +550,10 @@ const canSubmit = computed<boolean>(() => {
 
 const canInstall = computed<boolean>(() => {
   if (!preview.value || !isReviewed.value) {
+    return false
+  }
+
+  if (installedNotice.value?.isUpToDate) {
     return false
   }
 
@@ -574,6 +615,8 @@ function resetReview() {
   isReviewed.value = false
   isLicenceAcknowledged.value = false
   collision.value = null
+  installedNotice.value = null
+  isCopyFormOpen.value = false
   archiveTexts.value = null
 }
 
@@ -589,7 +632,29 @@ function applyPreview(response: SkillImportPreviewResponse) {
   resetReview()
   preview.value = response
   renamedName.value = response.skill.name
+  applyInstalled(response)
   step.value = 'review'
+}
+
+function applyInstalled(response: SkillImportPreview) {
+  const installed = response.installed
+
+  if (!installed) {
+    return
+  }
+
+  if (installed.kind === 'same-name' && !installed.isUpToDate) {
+    collision.value = {
+      stageId: response.stageId,
+      asUpdateOf: installed.skillId,
+      name: installed.name,
+    }
+
+    return
+  }
+
+  installedNotice.value = installed
+  renamedName.value = `${response.skill.name}-copy`.slice(0, SKILL_NAME_MAX)
 }
 
 async function previewUpload() {
@@ -758,6 +823,7 @@ async function onCommit(
         asUpdateOf: data.asUpdateOf,
         name: data.name ?? current.skill.name,
       }
+      installedNotice.value = null
       errorMessage.value = ''
     } else if (parsedException.code === 'stage-not-found') {
       resetReview()

@@ -491,6 +491,25 @@ in history, within the 20 kept, so the user can restore one.
 Writing and editing in the app is a separate path (S-10): create from blank or
 template, and `POST /api/v1/skills/[id]/versions` for a save (section 8.7).
 
+**Already installed, shown before review (2026-11-14).** The preview response
+carries `installed`, so the dialog warns before the user reads anything. The
+server (`server/utils/skills/import/installed.ts`) looks for, in this order, a
+GitHub skill of the same repository (compared case-insensitively) and folder,
+then a skill of the same name. A row with no current version row is the
+placeholder of an import that died half way and is never reported (the commit
+reclaims it after its grace period). `isUpToDate` compares the incoming content
+hash with the current version's, under the local name: the import hash covers
+the `name:` line, so a copy renamed on the account is hashed with its own name.
+The dialog shows three states: same source and changed, an `alert-info` "You
+already have X (from the same source, @ 2.1.2)" with "Update it to this
+version" (`asUpdateOf`) and "Install a copy under another name"; identical
+content, "Already installed and up to date" with Install disabled; and the same
+name from another source, the collision flow below, shown up front. For a copy
+renamed on the account, `asUpdateOf` writes the staged `SKILL.md` under the
+local name (the update check does the same), but only for the same repository
+and folder; any other name mismatch is still refused. The 409 below remains
+the race fallback.
+
 **A name collision at commit** answers 409 "A skill named X exists", and the
 user chooses one of two ways. It works the same for zip, `.skill`, paste and
 GitHub imports.
