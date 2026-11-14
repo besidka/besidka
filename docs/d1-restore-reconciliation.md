@@ -403,10 +403,10 @@ not just stale data.
   given before B and only the credentials are untrusted.
 - **Deletions come back.** A connector deleted in the window, or with its
   account, returns with its rows. Replay the deletes from Axiom
-  (`attributes.connectors` for connector deletes, `attributes.connectors.cleanup`
-  for chats and `attributes.accountPurge` for account purges): delete the
-  restored rows of deleted accounts and connectors, `connector_tool_calls`
-  included. The connector id is logged with every delete.
+  (`attributes.connectors.cleanup.connectorDelete`, which carries the connector
+  id, for single deletes; `attributes.connectors.cleanup.chatDelete` for chats
+  and `attributes.accountPurge` for account purges): delete the restored rows
+  of deleted accounts and connectors, `connector_tool_calls` included.
 - **Withdrawn consent comes back.** A connector whose consent was withdrawn
   in the window returns with `consent_withdrawn_at` unset. Replay the
   `connector-withdrawn` rows from Axiom (`attributes.legalConsent`) and set

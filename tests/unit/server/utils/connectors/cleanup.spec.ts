@@ -168,6 +168,23 @@ describe('connector deletion hooks', () => {
       }
     })
 
+    it('deletes from exactly the connector tables that have a user_id', async () => {
+      const deletedTables: string[] = []
+      const originalDelete = testDb.db.delete.bind(testDb.db)
+
+      vi.spyOn(testDb.db, 'delete').mockImplementation(((table: SQLiteTable) => {
+        deletedTables.push(getTableName(table))
+
+        return originalDelete(table)
+      }) as typeof testDb.db.delete)
+
+      await purgeUserConnectors(testDb.db, userId, logger)
+
+      expect(deletedTables.sort()).toEqual(
+        userTables.map(getTableName).sort(),
+      )
+    })
+
     it('covers every connector table that has a user_id column', async () => {
       await seedConnectorData(userId)
 

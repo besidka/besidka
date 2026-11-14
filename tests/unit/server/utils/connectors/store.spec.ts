@@ -110,6 +110,13 @@ describe('connectors store', () => {
       ).toBe(SECRET_URL)
     })
 
+    it('allocates a slug for a base that sanitization changes', async () => {
+      const first = await addConnector(userId, 'a.b')
+      const second = await addConnector(userId, 'a.b')
+
+      expect([first.slug, second.slug]).toEqual(['a-b', 'a-b-2'])
+    })
+
     it('numbers a taken slug per user', async () => {
       const first = await addConnector(userId)
       const second = await addConnector(userId)
@@ -470,6 +477,38 @@ describe('connectors store', () => {
         .not.toBeNull()
       expect(await testDb.db.select().from(schema.connectorToolCalls))
         .toHaveLength(1)
+    })
+
+    it('logs the connector id and the counts for the restore runbook', async () => {
+      const connector = await addConnector(userId)
+      const logger = { set: vi.fn() }
+
+      await deleteConnector(testDb.db, userId, connector.id, logger)
+
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          connectors: {
+            cleanup: {
+              connectorDelete: {
+                connectorId: connector.id,
+                connectorDeleted: true,
+                credentialsDeleted: 0,
+                toolSettingsDeleted: 0,
+                chatSettingsDeleted: 0,
+              },
+            },
+          },
+        },
+      })
+    })
+
+    it('logs nothing for a connector of another user', async () => {
+      const connector = await addConnector(otherUserId)
+      const logger = { set: vi.fn() }
+
+      await deleteConnector(testDb.db, userId, connector.id, logger)
+
+      expect(logger.set).not.toHaveBeenCalled()
     })
 
     it('does nothing for a connector of another user', async () => {

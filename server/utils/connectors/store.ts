@@ -1,5 +1,5 @@
 import {
-  and, asc, desc, eq, getTableColumns, like,
+  and, asc, desc, eq, getTableColumns,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
@@ -18,6 +18,7 @@ import type {
   ConnectorTransport,
 } from '#shared/utils/connectors-policy'
 import * as schema from '~~/server/db/schema'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 import { isUniqueViolation } from '~~/server/utils/skills/unique-violation'
 
 type DbClient = ReturnType<typeof useDb>
@@ -159,14 +160,10 @@ async function decryptOptional(
 async function listTakenSlugs(
   db: DbClient,
   userId: number,
-  slugBase: string,
 ): Promise<Set<string>> {
   const rows = await db.select({ slug: schema.connectors.slug })
     .from(schema.connectors)
-    .where(and(
-      eq(schema.connectors.userId, userId),
-      like(schema.connectors.slug, `${slugBase.slice(0, 12)}%`),
-    ))
+    .where(eq(schema.connectors.userId, userId))
 
   return new Set(rows.map((row) => {
     return row.slug
@@ -188,7 +185,7 @@ export async function createConnector(
   for (let attempt = 0; attempt < SLUG_ALLOCATION_ATTEMPTS; attempt++) {
     const slug = allocateConnectorSlug(
       input.slugBase,
-      await listTakenSlugs(db, input.userId, input.slugBase),
+      await listTakenSlugs(db, input.userId),
     )
 
     try {
@@ -303,6 +300,7 @@ export async function deleteConnector(
   db: DbClient,
   userId: number,
   connectorId: string,
+  logger?: LoggerLike,
 ): Promise<DeleteConnectorResult> {
   const existing = await getConnector(db, userId, connectorId)
 
@@ -342,12 +340,20 @@ export async function deleteConnector(
       .returning({ id: schema.connectors.id }),
   ])
 
-  return {
+  const result: DeleteConnectorResult = {
     connectorDeleted: connectors.length > 0,
     credentialsDeleted: credentials.length,
     toolSettingsDeleted: toolSettings.length,
     chatSettingsDeleted: chatSettings.length,
   }
+
+  logger?.set({
+    attributes: {
+      connectors: { cleanup: { connectorDelete: { connectorId, ...result } } },
+    },
+  })
+
+  return result
 }
 
 /**
