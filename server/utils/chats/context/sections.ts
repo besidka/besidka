@@ -21,6 +21,11 @@ import {
   SEARCH_CHATS_TOOL_NAME,
 } from '~~/server/utils/memory/tools/constants'
 import { PROJECT_KNOWLEDGE_TOOL_NAMES } from '~~/server/utils/ai/knowledge-tools'
+import {
+  SKILL_ACTIVATE_TOOL_NAME,
+  isDataSkillActivationPart,
+  isDataSkillInvocationPart,
+} from '#shared/utils/skills/runtime'
 
 export type ChatContextVisibility = 'private' | 'public'
 
@@ -599,6 +604,66 @@ const codeExecutionSection: ChatContextSection = {
   },
 }
 
+const skillsSection: ChatContextSection = {
+  id: 'skills',
+  group: 'used',
+  visibility: 'private',
+  collect(message, accumulator) {
+    for (const part of message.parts) {
+      if (isDataSkillInvocationPart(part)) {
+        accumulator.add('used', {
+          id: `skill:${part.data.skillId}`,
+          sectionId: 'skills',
+          kind: 'skill',
+          title: toTitle(part.data.name),
+          messageId: message.id,
+          meta: { action: 'Attached', version: part.data.version },
+        })
+
+        continue
+      }
+
+      if (isDataSkillActivationPart(part)) {
+        accumulator.add('used', {
+          id: `skill:${part.data.skillId}`,
+          sectionId: 'skills',
+          kind: 'skill',
+          title: toTitle(part.data.name),
+          messageId: message.id,
+          meta: { action: 'Used', version: part.data.version },
+        })
+
+        continue
+      }
+
+      if (
+        !isRecord(part)
+        || getContextPartToolName(part) !== SKILL_ACTIVATE_TOOL_NAME
+        || part.state !== 'output-available'
+        || !isRecord(part.output)
+      ) {
+        continue
+      }
+
+      const skillId = readString(part.output.skillId)
+      const name = readString(part.output.name)
+
+      if (!skillId || !name) {
+        continue
+      }
+
+      accumulator.add('used', {
+        id: `skill:${skillId}`,
+        sectionId: 'skills',
+        kind: 'skill',
+        title: toTitle(name),
+        messageId: message.id,
+        meta: { action: 'Used' },
+      })
+    }
+  },
+}
+
 export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   generatedImagesSection,
   researchReportsSection,
@@ -609,6 +674,7 @@ export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   projectKnowledgeSection,
   memorySection,
   chatSearchSection,
+  skillsSection,
   codeExecutionSection,
   webSourcesSection,
 ]

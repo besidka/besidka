@@ -66,4 +66,41 @@ describe('filterPublicParts', () => {
 
     expect(message?.parts.map(part => part.type)).toEqual(['data-document'])
   })
+
+  it('drops the skill invocation and activation parts, so a skill name never reaches a share', () => {
+    const parts = [
+      { type: 'text', text: 'Translate this' },
+      {
+        type: 'data-skill-invocation',
+        data: { skillId: 'skl1', name: 'private-skill-name', version: 2 },
+      },
+      {
+        type: 'data-skill-activation',
+        data: { skillId: 'skl1', name: 'private-skill-name', version: 2 },
+      },
+      {
+        type: 'tool-activate_skill',
+        toolCallId: 't1',
+        state: 'output-available',
+        input: { name: 'private-skill-name' },
+        output: { skillId: 'skl1', name: 'private-skill-name', version: 2 },
+      },
+    ] as unknown as UIMessage['parts']
+
+    const [message] = filterPublicParts([{ id: 'm1', parts }])
+
+    expect(message?.parts.map(part => part.type)).toEqual(['text'])
+    expect(JSON.stringify(message)).not.toContain('private-skill-name')
+  })
+
+  it('leaves a message that only attached a skill with no visible parts', () => {
+    const parts = [{
+      type: 'data-skill-invocation',
+      data: { skillId: 'skl1', name: 'private-skill-name', version: 2 },
+    }] as unknown as UIMessage['parts']
+
+    const [message] = filterPublicParts([{ id: 'm1', parts }])
+
+    expect(message?.parts).toEqual([])
+  })
 })

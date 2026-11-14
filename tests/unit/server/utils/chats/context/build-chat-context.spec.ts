@@ -1484,3 +1484,54 @@ describe('attached artifacts section', () => {
       .toEqual(['artifact:art-1'])
   })
 })
+
+describe('skills in the used group', () => {
+  it('lists an attached skill, an activation and an activate_skill call once each', () => {
+    const context = privateContext([
+      message('m1', 'user', [
+        { type: 'text', text: 'hi' },
+        {
+          type: 'data-skill-invocation',
+          data: { skillId: 'skl1', name: 'translate', version: 2 },
+        },
+      ]),
+      message('m2', 'assistant', [
+        {
+          type: 'data-skill-activation',
+          data: { skillId: 'skl1', name: 'translate', version: 2 },
+        },
+        {
+          type: 'tool-activate_skill',
+          toolCallId: 't1',
+          state: 'output-available',
+          output: { skillId: 'skl2', name: 'writing-style', version: 1 },
+        },
+        {
+          type: 'tool-activate_skill',
+          toolCallId: 't2',
+          state: 'output-error',
+          errorText: 'no',
+        },
+      ]),
+    ])
+
+    expect(context.used.map((item) => {
+      return [item.kind, item.title, item.meta?.action]
+    })).toEqual([
+      ['skill', 'translate', 'Attached'],
+      ['skill', 'writing-style', 'Used'],
+    ])
+    expect(context.kindCounts.skill).toBe(2)
+  })
+
+  it('never lists a skill on a shared chat', () => {
+    const context = publicContext([
+      message('m1', 'user', [{
+        type: 'data-skill-invocation',
+        data: { skillId: 'skl1', name: 'translate', version: 2 },
+      }]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+})

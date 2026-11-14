@@ -15,6 +15,7 @@ export type ChatContextItemKind
     | 'artifact'
     | 'code-execution'
     | 'document'
+    | 'skill'
 
 export interface ChatContextItemMeta {
   url?: string

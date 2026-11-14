@@ -1544,6 +1544,23 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/profile/skills.spec.ts',
   ]
 
+  const skillsRuntimeTests = [
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/mode.spec.ts',
+    'tests/unit/server/utils/skills/runtime/text.spec.ts',
+    'tests/unit/server/utils/skills/runtime/catalog.spec.ts',
+    'tests/unit/server/utils/skills/runtime/persist.spec.ts',
+    'tests/unit/server/utils/skills/runtime/invocation.spec.ts',
+    'tests/unit/server/utils/skills/runtime/tools.spec.ts',
+    'tests/unit/server/utils/skills/runtime/reinject.spec.ts',
+    'tests/unit/server/utils/skills/runtime/send.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/integration/server/image-generation.spec.ts',
+  ]
+
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
   ]
@@ -2939,12 +2956,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyse|licence|frontmatter|diff|path|findings)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
+        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyse|licence|frontmatter|diff|path|findings|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
       tests: skillsVersionsTests,
     },
     {
       pattern:
-        /^(app\/pages\/profile\/skills\.vue|app\/components\/Profile\/Skills\/.*|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts)$/,
+        /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/runtime\/.*\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
+      tests: skillsRuntimeTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/profile\/skills\.vue|app\/components\/Profile\/Skills\/.*|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts)$/,
       tests: skillsManagerTests,
     },
     {

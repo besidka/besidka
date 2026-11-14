@@ -305,6 +305,14 @@ import {
   rewriteArtifactToolParts,
 } from '~~/server/utils/artifacts/message-parts'
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
+import { SKILL_TOOL_STEPS } from '#shared/utils/skills-policy'
+import { isSkillToolName } from '#shared/utils/skills/runtime'
+import { resolveSkillInvocationPart } from '~~/server/utils/skills/runtime/invocation'
+import {
+  appendSkillActivationParts,
+  redactSkillToolPartsForPersistence,
+} from '~~/server/utils/skills/runtime/persist'
+import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
 import {
   appendAnthropicContainerUploads,
   buildCodeExecutionInstruction,
@@ -450,6 +458,14 @@ export default defineEventHandler(async (event) => {
   })
 
   newMessage.parts = await resolveArtifactAttachmentParts({
+    event,
+    db,
+    userId,
+    parts: newMessage.parts,
+    logger,
+    onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
+  })
+  newMessage.parts = await resolveSkillInvocationPart({
     event,
     db,
     userId,
@@ -1590,6 +1606,7 @@ export default defineEventHandler(async (event) => {
       'artifacts.storage',
       'artifacts.llm-bridge',
       'documents',
+      'skills',
       ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
@@ -1651,6 +1668,25 @@ export default defineEventHandler(async (event) => {
     },
   })
 
+  const skillsSend = await prepareSkillsForSend({
+    db,
+    bucket: useFileStorage(),
+    userId,
+    isSkillsActive: sendFeatures.isFeatureActive('skills'),
+    isToolCallingAllowed: toolCallingAllowed,
+    family: resolveKnowledgeTokenFamily({
+      providerId: telemetryProviderId,
+      modelId,
+      gateway: !!gatewayId,
+    }),
+    storedMessages: chat.messages,
+    newMessageParts: newMessage.parts,
+    userMessageText,
+    isStoredUserMessage,
+    guard: chatSearchBudget,
+    logger: aiLogger,
+  })
+
   const knowledgeSendModel: KnowledgeSendModel = gatewayId
     ? {
       providerId: telemetryProviderId,
@@ -1693,6 +1729,7 @@ export default defineEventHandler(async (event) => {
         memoryInstructions,
         artifactInstructions,
         documentsContextLine,
+        skillsInstructionBlock: skillsSend.instructionBlock,
         codeExecutionInputNames: codeExecutionSession?.uploadedFileNames,
       }),
       artifactContextBlock,
@@ -1720,7 +1757,8 @@ export default defineEventHandler(async (event) => {
       requestedTools,
       holdsUntrustedKnowledge: (!!knowledgeContext
         && holdsUntrustedKnowledge(knowledgeContext))
-      || artifactContextBlock !== null,
+      || artifactContextBlock !== null
+      || skillsSend.holdsSkillText,
       holdsPastChatExcerpts: pastChatPreRetrieval !== null,
     })
   }
@@ -1746,6 +1784,13 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (skillsSend.toolsRegistered) {
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...skillsSend.tools },
+    }
+  }
+
   const toolLoop = resolveToolLoop(parsedTools.tools, {
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
@@ -1753,6 +1798,7 @@ export default defineEventHandler(async (event) => {
     knowledgeSteps: knowledgeToolsRegistered
       ? KNOWLEDGE_LIMITS.toolCallsPerSend
       : 0,
+    skillSteps: skillsSend.toolsRegistered ? SKILL_TOOL_STEPS : 0,
     guard: chatSearchBudget,
   })
   const toolLoopOptions = toolLoop
@@ -1764,6 +1810,9 @@ export default defineEventHandler(async (event) => {
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
       .map(([toolName]) => toolName)
       .filter(toolName => !isArtifactToolName(toolName)),
+  )
+  const answerGuaranteeToolNames = new Set(
+    [...followUpToolNames].filter(toolName => !isSkillToolName(toolName)),
   )
 
   const stream = createUIMessageStream({
@@ -1799,6 +1848,10 @@ export default defineEventHandler(async (event) => {
       )
 
       try {
+        for (const activationPart of skillsSend.streamActivations) {
+          writer.write(activationPart)
+        }
+
         if (missingFiles.length > 0) {
           writer.write({
             type: 'data-missing-files',
@@ -1858,6 +1911,7 @@ export default defineEventHandler(async (event) => {
             knowledge?.excerpts,
             pastChatPreRetrieval?.block,
             artifactContextBlock,
+            skillsSend.invocationBlock,
           ]
             .filter((excerpts): excerpts is string => !!excerpts)
             .join('\n\n') || null,
@@ -2016,6 +2070,7 @@ export default defineEventHandler(async (event) => {
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
               documentsContextLine,
+              skillsInstructionBlock: skillsSend.instructionBlock,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
             }),
@@ -2249,6 +2304,7 @@ export default defineEventHandler(async (event) => {
               memoryInstructions,
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: false,
+              skillsInstructionBlock: skillsSend.activeSkillsBlock,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -2288,7 +2344,7 @@ export default defineEventHandler(async (event) => {
         const searchAnswerGuarantee = toolLoop
           ? withSearchAnswerGuarantee({
             stream: correctedUiMessageStream,
-            followUpToolNames,
+            followUpToolNames: answerGuaranteeToolNames,
             deliverableToolNames: artifactToolsRegistered
               || documentToolsRegistered
               ? new Set([
@@ -3535,10 +3591,14 @@ async function persistAssistantMessageFromStream(input: {
         text: getPersistedEmptyAnswerFailureText(),
       }]
       : normalizedParts
-    const finalParts = redactMemoryToolPartsForPersistence(
-      stripUndeliveredInlineDataParts(
-        partsBeforeSizeGuard,
-        input.logger,
+    const finalParts = redactSkillToolPartsForPersistence(
+      redactMemoryToolPartsForPersistence(
+        appendSkillActivationParts(
+          stripUndeliveredInlineDataParts(
+            partsBeforeSizeGuard,
+            input.logger,
+          ),
+        ),
       ),
     )
 
@@ -3919,6 +3979,7 @@ function buildChatInstructions(input: {
   hasKnowledgeTools?: boolean
   artifactInstructions?: string | null
   documentsContextLine?: string | null
+  skillsInstructionBlock?: string | null
   codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
@@ -3934,6 +3995,7 @@ function buildChatInstructions(input: {
     hasKnowledgeTools,
     artifactInstructions,
     documentsContextLine,
+    skillsInstructionBlock,
     codeExecutionInputNames,
     now = new Date(),
   } = input
@@ -3957,6 +4019,10 @@ function buildChatInstructions(input: {
 
   if (documentsContextLine) {
     instructions.push(documentsContextLine)
+  }
+
+  if (skillsInstructionBlock) {
+    instructions.push(skillsInstructionBlock)
   }
 
   if (requestedTools.includes('code_execution')) {
