@@ -671,17 +671,37 @@ and C-2 row also ask for a cascade FK and a `CLAUDE.md` cascade-list entry;
 this document overrides that, because a cascade only adds blast radius to a
 future `users` rebuild and gives nothing explicit purge does not. With no
 cascade, the `CLAUDE.md` list does not change. Per-chat rows store the chat
-public id as text and are deleted by the chat-deletion cleanup.
+public id and are deleted by the chat-deletion cleanup.
+
+**Id columns (C-2 deviation from this table, 2026-11-14).** `connector_id` and
+`chat_public_id` are stored as `publicId()`, an integer-backed column that
+encodes to the public id in TypeScript, not as `text`. This is the precedent
+of the merged skills tables (`skill_chat_settings.chat_public_id`,
+`skill_files.skill_id`) and of `research_jobs.chat_id`. It keeps
+`connector_id` comparable to `connectors.id` in SQL (SQLite compares an
+`INTEGER` and a `TEXT` column with different affinity), and it does not tie
+the stored value to the Hashids salt. The column type cannot change later
+without a table rebuild, so it is decided here.
+
+`connectors.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`, so an id is never
+reused after a delete: the audit rows in `connector_tool_calls`, which outlive
+a deleted connector, and any log line can never name a different connector
+later. Drizzle's custom `publicId()` type does not support `autoIncrement`
+(drizzle-orm issue 818, noted in `server/utils/schema.ts`), so the column is a
+plain integer in the schema and `server/utils/connectors/store.ts` encodes it
+to the public id on the way out (`encodePublicId`) and decodes it on the way in
+(`decodePublicId`). Every other table stores the same integer in a
+`publicId()` column.
 
 ### 8.1 `connectors`
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `id` | publicId | |
+| `id` | integer, autoincrement | exposed as a public id by the store |
 | `user_id` | integer, not null | |
 | `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). Other hosts use the second-to-last label (`mcp.example.com` gives `example`), or the third-to-last when the second-to-last has 3 characters or fewer and another label exists (`mcp.example.co.uk` gives `example`), cut to 16. On collision `-2`, `-3` |
 | `title` | text | user-editable, at most 80 characters |
-| `origin` | text | `https://host[:port]`, plain, for display and consent |
+| `origin` | text | `https://host[:port]`, plain, for display and consent. Derived from the URL inside `createConnector`, never taken from the caller |
 | `url_encrypted` | text | full canonical URL, encrypted (paths and queries can carry secrets) |
 | `transport` | text | `streamable-http` or `sse` (TypeScript enum) |
 | `auth_type` | text, null | `none`, `oauth` or `header`; null until discovery |
@@ -696,18 +716,26 @@ public id as text and are deleted by the chat-deletion cleanup.
 | `consented_at` | timestamp, null | |
 | `consent_withdrawn_at` | timestamp, null | |
 | `native_opt_in_at` | timestamp, null | OpenAI-run calls opt-in (section 12) |
-| `last_error` | json, null | code and safe message; includes the scope `degraded` note |
+| `last_error` | json, null | a fixed code plus a short fixed message, and the scope `degraded` note. **Never upstream text**: no response body, no remote error message, no URL (a URL can carry a secret, and upstream text is attacker-controlled and shown on the card). Map every failure to a code and a message Besidka wrote |
 | `last_connected_at` | timestamp, null | |
 | `created_at`, `updated_at` | timestamps | |
 
 Indexes: unique (`user_id`, `slug`); (`user_id`, `updated_at`).
+
+The store (`server/utils/connectors/store.ts`) enforces the rules a route
+must not be trusted with: `createConnector` inserts and enforces
+`CONNECTORS_PER_USER` in one batch (the row is deleted again in the same
+batch when it would be over the cap), `updateConnector` writes only a
+whitelist of columns, and every write to a child table (`saveConnectorCredentials`,
+`upsertConnectorToolSettings`, `upsertConnectorChatSettings`) first checks that
+the connector belongs to the user and never rewrites `user_id` on conflict.
 
 ### 8.2 `connector_credentials`
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | publicId | |
-| `connector_id` | text | no foreign key |
+| `connector_id` | publicId | no foreign key |
 | `user_id` | integer | |
 | `issuer` | text | AS issuer; empty string for header auth |
 | `client_registration` | text, encrypted, null | `{ client_id, registrationKind: 'cimd' \| 'dcr', client_secret? }` |
@@ -729,7 +757,7 @@ connector-level fingerprint column).
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | publicId | |
-| `connector_id` | text | |
+| `connector_id` | publicId | |
 | `user_id` | integer | |
 | `tool_name` | text | remote name |
 | `definition_hash` | text | SHA-256 hex over `{ name, title, description, inputSchema, annotations }` as canonical JSON; computed from the `fingerprintTools` digest plus the canonical annotations |
@@ -747,8 +775,8 @@ Unique (`connector_id`, `tool_name`).
 | --- | --- | --- |
 | `id` | publicId | |
 | `user_id` | integer | |
-| `chat_public_id` | text | |
-| `connector_id` | text | |
+| `chat_public_id` | publicId | |
+| `connector_id` | publicId | |
 | `enabled` | integer (bool) | |
 | `always_allow_tools` | json | `Record<toolName, definitionHash>` ("Allow in this chat") |
 | `created_at`, `updated_at` | timestamps | |
@@ -762,9 +790,9 @@ Phase 6 routines.
 | --- | --- | --- |
 | `id` | integer, autoincrement | |
 | `user_id` | integer | |
-| `connector_id` | text | plain, no foreign key |
+| `connector_id` | publicId | plain, no foreign key |
 | `connector_host` | text | plain |
-| `chat_public_id` | text, null | |
+| `chat_public_id` | publicId, null | |
 | `tool_name` | text | remote name |
 | `args_hmac` | text | section 7.4 |
 | `result_bytes` | integer | |
@@ -776,6 +804,12 @@ Phase 6 routines.
 
 Indexes: (`user_id`, `created_at`); (`created_at`) for the sweep. A pending
 row is updated in place when the approval is answered.
+
+`chat_public_id` deliberately outlives the chat: chat delete cleanup removes
+`connector_chat_settings` rows but leaves the audit rows, so the trail of what
+ran in a deleted chat stays for the 90-day retention and a stolen session
+cannot erase it by deleting chats. The audit rows hold no chat content, only
+the id.
 
 ### 8.6 `mcp_registry_servers`
 
