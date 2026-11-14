@@ -27,11 +27,17 @@ export default defineEventHandler(async (event) => {
   const artifactsFeature = await evaluateFeatureForEvent(event, 'artifacts', {
     recordExposure: false,
   })
+  const connectorsFeature = await evaluateFeatureForEvent(event, 'connectors', {
+    recordExposure: false,
+  })
   const context = await loadOwnedChatContext(
     useDb(),
     parseInt(session.user.id),
     params.data.slug,
-    { includeArtifacts: artifactsFeature.active },
+    {
+      includeArtifacts: artifactsFeature.active,
+      includeConnectors: connectorsFeature.active,
+    },
   )
 
   if (!context) {

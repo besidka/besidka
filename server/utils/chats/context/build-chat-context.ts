@@ -52,6 +52,7 @@ function createAccumulator() {
       if (existing) {
         existing.meta = {
           ...existing.meta,
+          ...item.meta,
           count: (existing.meta?.count ?? 1) + 1,
         }
 
@@ -74,7 +75,9 @@ function createAccumulator() {
  * public variant runs only sections that may appear on a shared chat, and the
  * caller must pass parts that already went through `filterPublicParts`.
  * Artifacts are listed only when the caller passes the artifact rows it
- * loaded for this chat (`loadChatContextArtifacts`).
+ * loaded for this chat (`loadChatContextArtifacts`), and connector calls only
+ * when it passes the owner's connector titles (`loadChatContextConnectors`).
+ * The last outcome of a repeated call wins.
  */
 export function buildChatContext(
   messages: readonly ChatContextMessage[],
@@ -83,6 +86,7 @@ export function buildChatContext(
     sections?: readonly ChatContextSection[]
     truncated?: boolean
     artifacts?: ReadonlyMap<string, ChatContextArtifact>
+    connectors?: ReadonlyMap<string, string> | null
   },
 ): ChatContextItems {
   const sections = (options.sections ?? CHAT_CONTEXT_SECTIONS)
@@ -93,6 +97,7 @@ export function buildChatContext(
   const { groups, accumulator } = createAccumulator()
   const scope: ChatContextScope = {
     artifacts: options.artifacts ?? NO_ARTIFACTS,
+    connectors: options.connectors ?? null,
   }
 
   for (const message of messages) {

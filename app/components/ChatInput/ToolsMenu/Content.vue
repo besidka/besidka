@@ -192,6 +192,15 @@
         @click="emit('open-skills-picker')"
       />
       <ChatInputToolsMenuActionRow
+        v-if="state.connectors?.visible"
+        label="Connectors"
+        hint="Let the model use your tools"
+        icon="lucide:cable"
+        :badge="state.connectors.selectedIds.length || undefined"
+        data-testid="tools-action-connectors"
+        @click="emit('open-connectors-picker')"
+      />
+      <ChatInputToolsMenuActionRow
         v-if="state.project.visible"
         :label="state.isNewChat ? 'Project' : 'Move to project'"
         icon="lucide:folder"
@@ -232,6 +241,7 @@ const emit = defineEmits<{
   'open-files-generated': []
   'open-artifact-picker': []
   'open-skills-picker': []
+  'open-connectors-picker': []
   'update:use-memory': [value: boolean]
 }>()
 
@@ -248,6 +258,7 @@ const isReasoningSectionVisible = computed<boolean>(() => {
 const isAddSectionVisible = computed<boolean>(() => {
   return props.state.files.visible
     || props.state.skills?.visible === true
+    || props.state.connectors?.visible === true
     || props.state.project.visible
 })
 

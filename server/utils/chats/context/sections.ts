@@ -8,6 +8,7 @@ import {
   isDataArtifactPart,
 } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
 import { isDataDocumentPart } from '#shared/utils/documents'
 import { isHiddenFilePart } from '#shared/utils/files'
 import {
@@ -54,10 +55,13 @@ export interface ChatContextArtifact {
 /**
  * Data a section needs beyond the message parts, loaded once per request
  * before the build: artifacts maps each listable artifact id (owned by the
- * chat owner, not deleted, not taken down) to its row.
+ * chat owner, not deleted, not taken down) to its row; connectors maps each
+ * of the owner's connector slugs to its title, and is null while the
+ * `connectors` flag is off, which keeps the connectors section empty.
  */
 export interface ChatContextScope {
   artifacts: ReadonlyMap<string, ChatContextArtifact>
+  connectors: ReadonlyMap<string, string> | null
 }
 
 /**
@@ -664,6 +668,34 @@ const skillsSection: ChatContextSection = {
   },
 }
 
+const connectorsSection: ChatContextSection = {
+  id: 'connectors',
+  group: 'used',
+  visibility: 'private',
+  collect(message, accumulator, scope) {
+    if (message.role !== 'assistant' || !scope.connectors) {
+      return
+    }
+
+    for (const part of message.parts) {
+      const call = getConnectorToolCall(part)
+
+      if (!call || !call.outcome) {
+        continue
+      }
+
+      accumulator.increment('used', {
+        id: `connector:${call.slug}:${call.tool}`,
+        sectionId: 'connectors',
+        kind: 'connector',
+        title: toTitle(scope.connectors.get(call.slug) ?? call.slug),
+        messageId: message.id,
+        meta: { tool: call.tool, outcome: call.outcome },
+      })
+    }
+  },
+}
+
 export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   generatedImagesSection,
   researchReportsSection,
@@ -675,6 +707,7 @@ export const CHAT_CONTEXT_SECTIONS: readonly ChatContextSection[] = [
   memorySection,
   chatSearchSection,
   skillsSection,
+  connectorsSection,
   codeExecutionSection,
   webSourcesSection,
 ]

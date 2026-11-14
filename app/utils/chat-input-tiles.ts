@@ -327,6 +327,40 @@ function buildSkillTile(
   }
 }
 
+function buildConnectorsTile(
+  state: ChatInputToolsState,
+): ChatInputTile | null {
+  const connectors = state.connectors
+
+  if (!connectors?.visible) {
+    return null
+  }
+
+  const itemIds = new Set(connectors.items.map(item => item.id))
+  const count = connectors.selectedIds.filter(id => itemIds.has(id)).length
+
+  if (count === 0) {
+    return null
+  }
+
+  const label = count === 1 ? '1 connector' : `${count} connectors`
+
+  return {
+    id: 'connectors',
+    section: 'connectors',
+    icon: { kind: 'icon', name: 'lucide:cable' },
+    caption: 'Connectors',
+    value: String(count),
+    chipLabel: label,
+    ariaLabel: `${label} on for this chat. Open to change.`,
+    removeLabel: 'Turn off connectors',
+    isNeutral: false,
+    isAuto: false,
+    isLocked: false,
+    isDisabled: false,
+  }
+}
+
 export const ARTIFACT_TILE_ID_PREFIX = 'artifact-'
 
 function buildArtifactTiles(state: ChatInputToolsState): ChatInputTile[] {
@@ -379,6 +413,7 @@ export function buildChatInputTiles(
       buildSearchTile,
       buildCodeExecutionTile,
       buildReasoningTile,
+      buildConnectorsTile,
     ]
 
   const settingTiles = builders

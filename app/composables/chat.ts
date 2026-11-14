@@ -34,6 +34,10 @@ import {
 } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
 import {
+  CONNECTORS_NOTICE_PART_TYPE,
+  getConnectorToolCall,
+} from '#shared/utils/connectors-parts'
+import {
   DOCUMENT_DATA_PART_TYPE,
   isDocumentToolPartType,
 } from '#shared/utils/documents'
@@ -296,6 +300,13 @@ function hasMeaningfulPersistedAssistantParts(
         && (
           part.state === 'output-available'
           || part.state === 'output-error'
+        )
+      )
+      || (
+        getConnectorToolCall(part) !== null
+        && (
+          (part as { state?: string }).state === 'output-available'
+          || (part as { state?: string }).state === 'output-error'
         )
       )
   })
@@ -604,6 +615,7 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
     }
 
     return part.type !== 'data-omitted-context-files'
+      && part.type !== CONNECTORS_NOTICE_PART_TYPE
       && !isPastChatPreRetrievalPart(part)
   })
 }
@@ -941,6 +953,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isPreferred: isAutoWebSearchPreferred,
     resolveWebSearchMode,
   } = useAutoWebSearch()
+  const connectorsFeature = useFeature('connectors')
+  const { selection: connectorSelection } = useChatConnectorSelection()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   // App-wide signal for whether any chat turn is actively streaming, read by
@@ -968,6 +982,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const reportedClientErrorIds = new Set<string>()
 
   chat = toValue(chat)
+
+  const chatSlug = chat.slug
 
   const tools = shallowRef<Tools>(resolveInitialChatTools(chat.messages, {
     isAutoWebSearchPreferred: isAutoWebSearchPreferred.value,
@@ -1011,6 +1027,20 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // the same currentTurnStartedAt and immediately computes the correct
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
+
+  function getConnectorIdsField(): { connectorIds?: string[] } {
+    const { chatKey, ids, isKnown } = connectorSelection.value
+
+    if (
+      !connectorsFeature.value.active
+      || !isKnown
+      || chatKey !== chatSlug
+    ) {
+      return {}
+    }
+
+    return { connectorIds: ids }
+  }
 
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
 
@@ -1056,6 +1086,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             exaSearchLevel: normalizeExaSearchLevel(
               prefStorage.getItem('settings_exa_search_level'),
             ),
+            ...getConnectorIdsField(),
           },
         }
       },

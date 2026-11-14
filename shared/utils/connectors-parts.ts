@@ -1,0 +1,142 @@
+import {
+  CONNECTOR_RESULT_TAG,
+  CONNECTOR_TOOL_NAME_PREFIX,
+} from '#shared/utils/connectors-policy'
+
+export const CONNECTORS_NOTICE_PART_TYPE = 'data-connectors-notice'
+
+export const CONNECTOR_APPROVAL_DENIAL_TEXT = 'This tool needs your approval; '
+  + 'approvals arrive in the next update.'
+
+const TOOL_NAME_SEPARATOR = '__'
+const FRAMED_OUTPUT_PREFIX = `<${CONNECTOR_RESULT_TAG}`
+const RUNNING_STATES = new Set<string>(['input-streaming', 'input-available'])
+const FAILED_STATES = new Set<string>(['output-error', 'output-denied'])
+
+export type ConnectorToolOutcome = 'ok' | 'error' | 'denied'
+
+export interface ParsedConnectorToolName {
+  slug: string
+  tool: string
+}
+
+export interface ConnectorToolCallModel {
+  slug: string
+  tool: string
+  isRunning: boolean
+  outcome: ConnectorToolOutcome | null
+  isFramed: boolean
+  input: unknown
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Splits an exposed connector tool name (`mcp__<slug>__<tool>`). Slugs never
+ * contain underscores, so the slug is the text up to the next `__`.
+ */
+export function parseConnectorToolName(
+  toolName: string,
+): ParsedConnectorToolName | null {
+  if (!toolName.startsWith(CONNECTOR_TOOL_NAME_PREFIX)) {
+    return null
+  }
+
+  const remainder = toolName.slice(CONNECTOR_TOOL_NAME_PREFIX.length)
+  const separatorIndex = remainder.indexOf(TOOL_NAME_SEPARATOR)
+
+  if (separatorIndex <= 0) {
+    return null
+  }
+
+  const tool = remainder.slice(separatorIndex + TOOL_NAME_SEPARATOR.length)
+
+  if (!tool) {
+    return null
+  }
+
+  return { slug: remainder.slice(0, separatorIndex), tool }
+}
+
+export function isFramedConnectorOutput(output: unknown): boolean {
+  return typeof output === 'string'
+    && output.trimStart().startsWith(FRAMED_OUTPUT_PREFIX)
+}
+
+export function isConnectorApprovalDenial(output: unknown): boolean {
+  return typeof output === 'string'
+    && output.trim().startsWith(CONNECTOR_APPROVAL_DENIAL_TEXT)
+}
+
+/**
+ * The persisted `dynamic-tool` part of one connector call as a render model,
+ * or null for every other part. A denial arrives as a successful result with
+ * a plain sentence, so the outcome is read from the output text, not only
+ * from the part state.
+ */
+export function getConnectorToolCall(
+  part: unknown,
+): ConnectorToolCallModel | null {
+  if (
+    !isRecord(part)
+    || part.type !== 'dynamic-tool'
+    || typeof part.toolName !== 'string'
+  ) {
+    return null
+  }
+
+  const parsed = parseConnectorToolName(part.toolName)
+
+  if (!parsed) {
+    return null
+  }
+
+  const state = typeof part.state === 'string' ? part.state : ''
+  const isRunning = RUNNING_STATES.has(state)
+  let outcome: ConnectorToolOutcome | null = null
+
+  if (!isRunning) {
+    if (FAILED_STATES.has(state)) {
+      outcome = 'error'
+    } else if (isConnectorApprovalDenial(part.output)) {
+      outcome = 'denied'
+    } else {
+      outcome = 'ok'
+    }
+  }
+
+  return {
+    ...parsed,
+    isRunning,
+    outcome,
+    isFramed: isFramedConnectorOutput(part.output),
+    input: part.input,
+  }
+}
+
+export function getConnectorNoticeLines(
+  message: { parts: readonly unknown[] },
+): string[] {
+  const lines: string[] = []
+
+  for (const part of message.parts) {
+    if (
+      !isRecord(part)
+      || part.type !== CONNECTORS_NOTICE_PART_TYPE
+      || !isRecord(part.data)
+      || !Array.isArray(part.data.lines)
+    ) {
+      continue
+    }
+
+    for (const line of part.data.lines) {
+      if (typeof line === 'string' && line.trim()) {
+        lines.push(line.trim())
+      }
+    }
+  }
+
+  return [...new Set(lines)]
+}

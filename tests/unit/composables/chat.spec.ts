@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '#shared/types/chats.d'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
+import { useChatConnectorSelection } from '../../../app/composables/composer-connectors'
+import { useFeatures } from '../../../app/composables/features'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
@@ -2330,5 +2332,170 @@ describe('useChat submit with an attached skill', () => {
     expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
       { type: 'text', text: 'Plain' },
     ])
+  })
+})
+
+describe('connector tool parts in assistant messages', () => {
+  const failureNotice = {
+    type: 'text',
+    text: 'Image generation failed. Revise the prompt or try a'
+      + ' different provider.',
+  }
+
+  function connectorPart(state: string, toolName = 'mcp__notion__search') {
+    return {
+      type: 'dynamic-tool',
+      toolName,
+      toolCallId: 'call-1',
+      state,
+      input: { query: 'roadmap' },
+      output: '<untrusted_tool_result connector="notion" tool="search">x'
+        + '</untrusted_tool_result>',
+    }
+  }
+
+  function isFailureOnly(parts: unknown[]): boolean {
+    return isFailureOnlyAssistantMessage({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts,
+    } as unknown as UIMessage)
+  }
+
+  it('counts a finished or failed connector call as assistant content', () => {
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('output-available'),
+      failureNotice,
+    ])).toBe(false)
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('output-error'),
+      failureNotice,
+    ])).toBe(false)
+  })
+
+  it('does not count a connector call that never finished', () => {
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('input-available'),
+      failureNotice,
+    ])).toBe(true)
+  })
+
+  it('does not count a dynamic tool that is not a connector', () => {
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('output-available', 'other_tool'),
+      failureNotice,
+    ])).toBe(true)
+  })
+
+  it('does not count the connectors notice as an answer', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{
+        type: 'data-connectors-notice',
+        data: { lines: ['Connectors are off for this message'] },
+      }],
+    } as unknown as UIMessage)).toBe(false)
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'data-connectors-notice',
+          data: { lines: ['Connectors are off for this message'] },
+        },
+        { type: 'text', text: 'Answer' },
+      ],
+    } as unknown as UIMessage)).toBe(true)
+  })
+})
+
+describe('useChat request body connectorIds', () => {
+  function setConnectorsFlag(isActive: boolean) {
+    useFeatures().features.value = {
+      isAdmin: false,
+      features: {
+        connectors: { enabled: isActive, active: isActive, variant: null },
+      },
+    } as never
+  }
+
+  async function buildRequestBody(): Promise<Record<string, unknown>> {
+    sdkMocks.transportOptions.length = 0
+
+    const host = defineComponent({
+      setup() {
+        useChat({ id: 'chat-1', slug: 'slug-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return sdkMocks.transportOptions.at(-1)!.prepareSendMessagesRequest({
+      messages: [{ id: 'user-1', role: 'user', parts: [] }],
+    }).body
+  }
+
+  function setSelection(chatKey: string, ids: string[], isKnown: boolean) {
+    useChatConnectorSelection().selection.value = { chatKey, ids, isKnown }
+  }
+
+  beforeEach(() => {
+    setSelection('new', [], true)
+  })
+
+  afterEach(() => {
+    useFeatures().features.value = null
+  })
+
+  it('sends the known selection of this chat while the flag is on', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-1', ['c1', 'c2'], true)
+
+    const body = await buildRequestBody()
+
+    expect(body.connectorIds).toEqual(['c1', 'c2'])
+  })
+
+  it('sends an empty array when the user turned every connector off', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-1', [], true)
+
+    const body = await buildRequestBody()
+
+    expect(body.connectorIds).toEqual([])
+  })
+
+  it('omits the field while the flag is off', async () => {
+    setConnectorsFlag(false)
+    setSelection('slug-1', ['c1'], true)
+
+    const body = await buildRequestBody()
+
+    expect('connectorIds' in body).toBe(false)
+  })
+
+  it('omits the field until the stored choice is known', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-1', [], false)
+
+    const body = await buildRequestBody()
+
+    expect('connectorIds' in body).toBe(false)
+  })
+
+  it('omits the field when the selection belongs to another chat', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-2', ['c1'], true)
+
+    const body = await buildRequestBody()
+
+    expect('connectorIds' in body).toBe(false)
   })
 })

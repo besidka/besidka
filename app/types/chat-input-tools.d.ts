@@ -6,6 +6,7 @@ import type {
 import type { ModelResearchConfig } from '#shared/types/research.d'
 import type { DataArtifactPartData } from '#shared/utils/artifacts'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
+import type { ComposerConnectorItem } from '~/composables/composer-connectors'
 import type { ComposerSkillInvocation } from '~/composables/composer-skill-invocation'
 import type { ComposerSkillItem } from '~/composables/composer-skills'
 import type {
@@ -16,6 +17,7 @@ import type {
 export type ToolsSection
   = | 'add'
     | 'skills'
+    | 'connectors'
     | 'search'
     | 'reasoning'
     | 'code'
@@ -33,6 +35,7 @@ export type ChatInputTileId
     | 'code'
     | 'reasoning'
     | 'skill'
+    | 'connectors'
     | ChatInputArtifactTileId
 
 export type AttachedArtifact = DataArtifactPartData
@@ -117,6 +120,11 @@ export interface ChatInputToolsState {
     visible: boolean
     items: ComposerSkillItem[]
     selected: ComposerSkillInvocation | null
+  }
+  connectors?: {
+    visible: boolean
+    items: ComposerConnectorItem[]
+    selectedIds: string[]
   }
   project: {
     visible: boolean

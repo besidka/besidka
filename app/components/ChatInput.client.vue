@@ -137,6 +137,7 @@
                 @open-files-generated="openFilesModal('select', 'assistant')"
                 @open-artifact-picker="openArtifactPicker"
                 @open-skills-picker="openSkillPicker"
+                @open-connectors-picker="openConnectorPicker"
                 @update:use-memory="setMemoryUsage"
                 @remove-tile="removeTile"
               />
@@ -209,6 +210,15 @@
       v-if="isArtifactPickerMounted && isArtifactAttachEnabled"
       v-model:open="isArtifactPickerOpen"
       @pick="onArtifactPicked"
+    />
+    <LazyChatInputConnectorPicker
+      v-if="isConnectorPickerMounted && isConnectorsEnabled"
+      v-model:open="isConnectorPickerOpen"
+      :items="composerConnectors.items.value"
+      :selected-ids="composerConnectors.selectedIds.value"
+      :is-at-limit="composerConnectors.isAtLimit.value"
+      :is-saving="composerConnectors.isSaving.value"
+      @toggle="composerConnectors.toggle"
     />
     <LazyChatInputSkillPicker
       v-if="isSkillPickerMounted && composerSkills.isVisible.value"
@@ -919,6 +929,9 @@ const shouldDisplayProjectPicker = computed<boolean>(() => {
 
 const artifactsFeature = useFeature('artifacts')
 const composerSkills = useComposerSkills()
+const composerConnectors = useComposerConnectors(() => {
+  return route.name === 'chats-slug' ? String(route.params.slug) : null
+})
 const skillInvocation = useComposerSkillInvocation()
 const skillPreview = useSkillPreview()
 const commandPicker = useTemplateRef<{
@@ -932,6 +945,14 @@ const isArtifactAttachEnabled = computed<boolean>(() => {
 
 const isSkillAttachEnabled = computed<boolean>(() => {
   return composerSkills.isVisible.value && !isDeepResearchModel.value
+})
+
+const isConnectorsEnabled = computed<boolean>(() => {
+  return composerConnectors.isVisible.value
+    && isToolCallingSupported.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
 })
 
 const commands = useComposerCommands({
@@ -991,6 +1012,11 @@ const toolsState = computed<ChatInputToolsState>(() => {
         ? skillInvocation.invocation.value
         : null,
     },
+    connectors: {
+      visible: isConnectorsEnabled.value,
+      items: composerConnectors.items.value,
+      selectedIds: composerConnectors.selectedIds.value,
+    },
     project: {
       visible: shouldDisplayProjectPicker.value,
       context: props.projectContext ?? null,
@@ -1028,6 +1054,12 @@ function openToolsMenu(
     return
   }
 
+  if (section === 'connectors') {
+    openConnectorPicker()
+
+    return
+  }
+
   toolsMenu.value?.open(section, origin)
 }
 
@@ -1054,6 +1086,8 @@ function removeTile(id: ChatInputTileId) {
     } else {
       skillInvocation.clear()
     }
+  } else if (id === 'connectors') {
+    composerConnectors.clear()
   } else if (id === 'project') {
     emit('clear-project-context')
   } else if (id === 'memory') {
@@ -1665,6 +1699,24 @@ watch(isSkillAttachEnabled, (isEnabled) => {
 
 onUnmounted(() => {
   skillInvocation.clear()
+})
+
+const isConnectorPickerMounted = shallowRef<boolean>(false)
+const isConnectorPickerOpen = shallowRef<boolean>(false)
+
+function openConnectorPicker() {
+  if (!isConnectorsEnabled.value) {
+    return
+  }
+
+  isConnectorPickerMounted.value = true
+  isConnectorPickerOpen.value = true
+}
+
+watch(isConnectorsEnabled, (isEnabled) => {
+  if (!isEnabled) {
+    isConnectorPickerOpen.value = false
+  }
 })
 
 const isArtifactPickerMounted = shallowRef<boolean>(false)

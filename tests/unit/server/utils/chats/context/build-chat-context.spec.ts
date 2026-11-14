@@ -1535,3 +1535,136 @@ describe('skills in the used group', () => {
     expect(context.used).toEqual([])
   })
 })
+
+describe('connector calls in the used group', () => {
+  const framed = '<untrusted_tool_result connector="notion" tool="search">'
+    + 'x</untrusted_tool_result>'
+  const denial = 'This tool needs your approval; approvals arrive in the next'
+    + ' update.'
+
+  function connectorPart(
+    toolName: string,
+    toolCallId: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      type: 'dynamic-tool',
+      toolName,
+      toolCallId,
+      state: 'output-available',
+      input: {},
+      output: framed,
+      ...overrides,
+    }
+  }
+
+  function connectorContext(messages: ChatContextMessage[]) {
+    return buildChatContext(messages, {
+      visibility: 'private',
+      connectors: new Map([['notion', 'Notion']]),
+    })
+  }
+
+  it('lists each connector tool once with the display title, call count and last outcome', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+        connectorPart('mcp__notion__search', 't2', {
+          output: undefined,
+          state: 'output-error',
+        }),
+        connectorPart('mcp__notion__fetch', 't3', { output: denial }),
+      ]),
+      message('m2', 'assistant', [
+        connectorPart('mcp__notion__search', 't4'),
+      ]),
+    ])
+
+    expect(context.used.map((item) => {
+      return [
+        item.kind,
+        item.title,
+        item.meta?.tool,
+        item.meta?.count,
+        item.meta?.outcome,
+      ]
+    })).toEqual([
+      ['connector', 'Notion', 'search', 3, 'ok'],
+      ['connector', 'Notion', 'fetch', 1, 'denied'],
+    ])
+    expect(context.kindCounts.connector).toBe(2)
+  })
+
+  it('reports an error as the last outcome when the final call failed', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+        connectorPart('mcp__notion__search', 't2', {
+          state: 'output-error',
+          output: undefined,
+        }),
+      ]),
+    ])
+
+    expect(context.used[0]?.meta).toMatchObject({
+      count: 2,
+      outcome: 'error',
+    })
+  })
+
+  it('falls back to the slug for a connector that was deleted', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__gone__lookup', 't1'),
+      ]),
+    ])
+
+    expect(context.used[0]?.title).toBe('gone')
+  })
+
+  it('skips calls that never finished', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1', {
+          state: 'input-available',
+          output: undefined,
+        }),
+      ]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('is empty while the connectors flag is off', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+      ]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('ignores dynamic tools that are not connector tools', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('some_other_tool', 't1'),
+      ]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('never lists connector calls on a shared chat', () => {
+    const context = buildChatContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+      ]),
+    ], {
+      visibility: 'public',
+      connectors: new Map([['notion', 'Notion']]),
+    })
+
+    expect(context.used).toEqual([])
+  })
+})

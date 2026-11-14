@@ -152,6 +152,12 @@
                 :title="step.title"
                 :pending="step.pending"
               />
+              <ChatReasoningConnectorStep
+                v-else-if="step.connector"
+                :data="step.connector"
+                :title="step.title"
+                :pending="step.pending"
+              />
               <details
                 v-else
                 :open="expandedStepId === step.id"
@@ -219,6 +225,12 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MemoryStepData } from '~/types/memory-step.d'
 import type { SearchStepData } from '~/types/search-step.d'
 import type { SkillStepModel } from '~/utils/skill-step'
+import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import {
+  getConnectorStepTitle,
+  isConnectorStepFailed,
+} from '~/utils/connector-step'
 import { formatTokenCount } from '#shared/utils/message-format'
 import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
@@ -237,6 +249,7 @@ const props = defineProps<{
 }>()
 
 const { imageComponents } = useChatFormat()
+const { titlesBySlug } = useConnectorTitles()
 
 interface ReasoningStep {
   id: string
@@ -248,6 +261,7 @@ interface ReasoningStep {
   search: SearchStepData | null
   memory: MemoryStepData | null
   skill: SkillStepModel | null
+  connector: ConnectorToolCallModel | null
 }
 
 const reasoningIcon = computed<string>(() => {
@@ -322,6 +336,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           search: null,
           memory: null,
           skill: null,
+          connector: null,
         })
       }
 
@@ -345,6 +360,31 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         search: null,
         memory: null,
         skill: skillStep,
+        connector: null,
+      })
+
+      continue
+    }
+
+    const connectorCall = isAssistantMessage.value
+      ? getConnectorToolCall(part)
+      : null
+
+    if (connectorCall) {
+      steps.push({
+        id: `tool-${(part as { toolCallId?: string }).toolCallId || partIndex}`,
+        title: getConnectorStepTitle(
+          connectorCall,
+          titlesBySlug.value.get(connectorCall.slug),
+        ),
+        body: '',
+        kind: 'tool',
+        pending: props.status === 'streaming' && connectorCall.isRunning,
+        failed: isConnectorStepFailed(connectorCall),
+        search: null,
+        memory: null,
+        skill: null,
+        connector: connectorCall,
       })
 
       continue
@@ -377,6 +417,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       search: searchData,
       memory: getMemoryStepData(part),
       skill: null,
+      connector: null,
     })
   }
 

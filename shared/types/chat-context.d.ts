@@ -16,6 +16,9 @@ export type ChatContextItemKind
     | 'code-execution'
     | 'document'
     | 'skill'
+    | 'connector'
+
+export type ChatContextConnectorOutcome = 'ok' | 'error' | 'denied'
 
 export interface ChatContextItemMeta {
   url?: string
@@ -31,6 +34,8 @@ export interface ChatContextItemMeta {
   latestVersion?: number
   documentId?: string
   documentFormat?: DocumentFormat
+  tool?: string
+  outcome?: ChatContextConnectorOutcome
 }
 
 export interface ChatContextItem {
