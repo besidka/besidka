@@ -136,6 +136,29 @@ describe('admin path query stripping', () => {
   })
 })
 
+describe('connector OAuth callback query stripping', () => {
+  const callbackPath = '/api/v1/connectors/oauth/callback'
+    + '?code=auth-code-secret&state=state-secret&iss=https%3A%2F%2Fa.example'
+
+  it('keeps the code and the state out of every drained field', () => {
+    const context = {
+      request: { method: 'GET', path: callbackPath },
+      headers: {},
+      event: { path: callbackPath },
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/api/v1/connectors/oauth/callback',
+      message: 'GET /api/v1/connectors/oauth/callback',
+    })
+    expect(context.request.path).toBe('/api/v1/connectors/oauth/callback')
+    expect(JSON.stringify(context)).not.toContain('auth-code-secret')
+    expect(JSON.stringify(context)).not.toContain('state-secret')
+  })
+})
+
 describe('artifact share token redaction', () => {
   const TOKEN = 'Q2hhbmdlTWVQbGVhc2VJdHNBU2VjcmV0VG9rZW4xMjM0NQ'
 
