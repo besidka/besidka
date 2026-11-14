@@ -51,7 +51,7 @@ test('a member attaches a skill from + Add skill, reads it and opens it in the e
 
   await preview.getByTestId('skill-preview-edit').click()
 
-  await expect(page).toHaveURL(/\/profile\/skills$/)
+  await expect(page).toHaveURL(/\/chats\/skills$/)
   await expect(page.locator('dialog.js-skill-edit-modal')).toBeVisible()
 })
 

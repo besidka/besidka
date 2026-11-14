@@ -197,7 +197,7 @@ is added by S-13.
 | Template | `template` | One of 3 to 4 Besidka-authored starters in `shared/utils/skills/templates/`; class `authored` | Besidka version 1, origin `template` |
 | Upload `.zip` or `.skill` | `zip` | At most 5 MiB compressed; unzipped in a browser worker for the preview, then the **original archive** is uploaded and the server re-inflates it with hard limits | Provenance `sha256-<16 hex>` of the archive |
 | Paste | `text` | `SKILL.md` text only (`POST /api/v1/skills/import/text`) | Provenance `sha256-<16 hex>` of the text |
-| GitHub URL | `github` | The ref list of the repository (`github.com/<owner>/<repo>.git/info/refs`) resolves the ref to a commit SHA, then one download of `codeload.github.com/<owner>/<repo>/zip/<sha>` (or `raw.githubusercontent.com` for a link to a `SKILL.md`), through the narrow fetcher below; no `api.github.com`; flag `skills.import-url` | Provenance: commit SHA |
+| GitHub URL | `github` | The ref list of the repository (`github.com/<owner>/<repo>.git/info/refs`) resolves the ref to a commit SHA, then one download of `codeload.github.com/<owner>/<repo>/zip/<sha>` through the narrow fetcher below; no `api.github.com`; flag `skills.import-url` | Provenance: commit SHA |
 | MCP `create_skill` | `mcp` | Files as text (section 11) | Provenance `sha256-<16 hex>` of the canonical file set |
 | Share copy (S-13) | `share` | "Import a copy" of a shared skill (section 12.1) | Set by S-13 |
 | Link to a raw `SKILL.md` | `url` | **Later (S-2U), not in the first release.** One `safeFetch` (purpose `skills-url`, at most 256 KiB, `text/*`) once C-3 is on `main`. Folder name from the URL path's parent segment | `sha256-<16 hex>` of the content |
@@ -222,9 +222,9 @@ branch or tag tip, the default branch for a link without a ref, or the
 40-character SHA from the URL when it already holds one (used as it is, with no
 request). A short SHA that matches no tip answers `github-ref-not-found`
 with a fix that names a branch, a tag or the full SHA. The download always
-uses the SHA. A link to a `SKILL.md` (`blob`) reads only that file from
-`raw.githubusercontent.com` at the pinned commit, with no archive, and says in a
-warning that the other files and the repository licence were not imported. Only entries under the
+uses the SHA. A link to a `SKILL.md` (`blob`) imports its parent folder from the same
+archive, so the folder's licence files and the repository licence still reach
+the licence gate. Only entries under the
 requested path are inflated, with one exception: the repository-root
 `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` entries are also inflated for a
 subfolder import. They serve licence classification (section 4, step 1). They
@@ -238,41 +238,37 @@ update checks keep working. Each follow-up is a new import: it costs an hourly
 import slot, a ref list request and a download. Only public repositories work; a 404
 says "Private or missing repository".
 
-**A SHA must be on the named repository.** A commit SHA can belong to a fork
-and still resolve under another repository's URL. So before importing a SHA that
-came from the URL, Besidka checks that it is reachable from the named
-repository: it reads the default branch with `GET /repos/{owner}/{repo}` (one
-call, cached within the import) and then calls
-`GET /repos/{owner}/{repo}/compare/{default_branch}...{sha}`. Only the status
-`behind` or `identical` passes. Otherwise the import is rejected with "This
-commit is not on any branch of owner/repo". The same check runs for a ref that
-is a hex prefix of the SHA it resolved to, because the commit lookup also
-resolves abbreviated ids from forks.
+**A SHA cannot be proven to belong to the named repository.** A commit SHA can
+belong to a fork and still resolve under another repository's URL. Until
+2026-11-14 the importer refused a SHA that failed
+`compare/{default_branch}...{sha}` on `api.github.com`; that call is gone with
+the API (see below). A full SHA from a link is now used as it is, and when it is
+not the tip of a branch or tag in the ref list the preview carries the warning
+"GitHub cannot confirm that commit ... belongs to owner/repo". A short SHA is
+resolved only against the tips in the ref list, so an abbreviated id from a fork
+never resolves.
 
-**A ref must be a branch or tag of the named repository.** The commit lookup
-answers for any ref GitHub knows, including `pull/N/head` and `pull/N/merge`,
-whose commits live in forks. So a link whose ref starts with `pull`, `refs`,
-`keep-around` or `__gh__` is refused by the parser, never offered as a ref
-candidate, and refused again when a stored ref is rechecked by an update check.
-Any other name (not `HEAD`, not a hex id) is first confirmed with
-`GET /repos/{owner}/{repo}/git/ref/heads/{ref}` and, on a 404,
-`git/ref/tags/{ref}`; only then is the SHA trusted. A lightweight ref answers
-with its commit, and an annotated tag is peeled by the commit lookup. When no
-candidate exists, one `GET /repos/{owner}/{repo}` tells a missing repository
-(404, "Private or missing repository") from a missing ref ("Branch, tag or
-commit not found").
+**A ref must be a branch or tag of the named repository.** A link whose ref
+starts with `pull`, `refs`, `keep-around` or `__gh__` (`pull/N/head`,
+`pull/N/merge`, whose commits live in forks) is refused by the parser, never
+offered as a ref candidate, and refused again when a stored ref is rechecked by
+an update check. Any other name (not `HEAD`, not a hex id) must be a
+`refs/heads/*` or `refs/tags/*` entry of the ref list, so a fork ref cannot be
+reached by name. When no candidate exists, the ref list itself tells a missing
+repository (404 or 401, "Private or missing repository") from a missing ref
+("Branch, tag or commit not found").
 
 **The GitHub fetcher is a narrow, allowlisted fetcher, not C-3 (this doc).**
 The host is never user-controlled.
 
 - Besidka parses `owner`, `repo`, `ref` and `path` with strict regexes
   (`[A-Za-z0-9._-]`, length caps) and builds the URLs itself. The allowlist is
-  exactly three hosts: `github.com`, for the one path
+  exactly two hosts: `github.com`, for the one path
   `/<owner>/<repo>.git/info/refs?service=git-upload-pack` (the git smart HTTP
-  ref list, see below); `codeload.github.com`, which downloads
-  `https://codeload.github.com/<owner>/<repo>/zip/<sha>`; and
-  `raw.githubusercontent.com`, for `<sha>/<folder>/SKILL.md`. `api.github.com`
-  is not allowed. There is no `github.com/<owner>/<repo>/archive/<ref>.zip`
+  ref list, see below), and `codeload.github.com`, which downloads
+  `https://codeload.github.com/<owner>/<repo>/zip/<sha>`. `api.github.com` and
+  `raw.githubusercontent.com` are not allowed (a single raw `SKILL.md` would
+  skip the licence files, so a link to a file is read from the archive too). There is no `github.com/<owner>/<repo>/archive/<ref>.zip`
   fallback and no zipball redirect.
 - Fetch rules: `redirect: 'manual'`, https only, an exact-host allowlist, and
   no redirect is followed. The S-2G spike verifies that codeload answers a SHA
@@ -299,14 +295,14 @@ limit is 60 requests an hour per IP, and Cloudflare Workers share their egress
 addresses, so the quota of `api.github.com` is effectively always spent: a
 spike from Cloudflare's edge (`wrangler dev --remote`) found it already at
 `remaining 0` (403 and 429) while three other endpoints answered 200 in every
-run with no rate-limit headers. The importer calls only those three, so it
+run with no rate-limit headers (`raw.githubusercontent.com` answered 200 as
+well, but is not used, see above). The importer calls only the two others, so it
 needs no token and no budget of its own (the per-user import rate limit stays):
 
 | Endpoint | Used for |
 | --- | --- |
 | `https://github.com/<owner>/<repo>.git/info/refs?service=git-upload-pack` | The git smart HTTP ref advertisement: pkt-lines (a 4-hex length prefix, `0000` is a flush packet). The first ref line is `<sha> HEAD`, then a NUL and the capabilities, among them `symref=HEAD:refs/heads/<default branch>`. Every `refs/heads/*` and `refs/tags/*` follows, a peeled tag as `refs/tags/<name>^{}`, which is preferred. About 180 KB for `anthropics/skills` (most of it `refs/pull/*`, which is ignored); capped at `SKILL_GITHUB_REFS_MAX_BYTES` (8 MiB), over which the user is asked for a full commit id or a zip. Parsed in `server/utils/skills/import/git-refs.ts` against a recorded fixture. |
 | `https://codeload.github.com/<owner>/<repo>/zip/<sha>` | The archive of the pinned commit (15 MiB cap, streamed). Over the cap: "This repository is too large to import", with the fix to download just the skill folder as a zip and upload it. |
-| `https://raw.githubusercontent.com/<owner>/<repo>/<sha>/<path>` | A single `SKILL.md`, for a link straight to the file (256 KiB cap). |
 
 The parsed ref list is cached in KV for `SKILL_GITHUB_REF_CACHE_SECONDS` (60)
 per repository, because a pick list and the choice made from it read the same

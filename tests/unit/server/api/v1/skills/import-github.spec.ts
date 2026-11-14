@@ -251,29 +251,36 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     expect(result.licence.class).not.toBe('open')
   })
 
-  it('reads a blob link to SKILL.md from raw by commit, without the archive', async () => {
+  it('treats a blob link to SKILL.md as its parent folder and reads the archive', async () => {
     await signIn()
-    github.raw.set(
-      `${GITHUB_SHA_ONE}/skills/review-pr/SKILL.md`,
-      '---\nname: review-pr\ndescription: Review a pull request\n---\nBody\n',
-    )
 
     const result = await preview({
       url: 'https://github.com/o/r/blob/main/skills/review-pr/SKILL.md',
     })
 
-    expect(result).toMatchObject({
-      sourcePath: 'skills/review-pr',
-      sourceVersion: GITHUB_SHA_ONE,
-      skill: { name: 'review-pr' },
-    })
+    expect(result.sourcePath).toBe('skills/review-pr')
+    expect(result.files.map((file: { path: string }) => file.path))
+      .toEqual(['SKILL.md', 'LICENSE', 'references/checklist.md'])
     expect(github.urls()).toEqual([
       'https://github.com/o/r.git/info/refs?service=git-upload-pack',
-      `https://raw.githubusercontent.com/o/r/${GITHUB_SHA_ONE}/skills/review-pr/SKILL.md`,
+      `https://codeload.github.com/o/r/zip/${GITHUB_SHA_ONE}`,
     ])
-    expect(result.files.map((file: { path: string }) => file.path))
-      .toEqual(['SKILL.md'])
-    expect(result.warnings.join(' ')).toContain('Only SKILL.md was imported')
+  })
+
+  it('still blocks a restricted licence for a blob link to SKILL.md', async () => {
+    await signIn()
+    github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE, {
+      'skills/review-pr/LICENSE.txt': readFileSync(
+        'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+        'utf8',
+      ),
+    }))
+
+    const failure = await failureOf(preview({
+      url: 'https://github.com/o/r/blob/main/skills/review-pr/SKILL.md',
+    }))
+
+    expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
   })
 
   it('finds the only skill from a bare repository link', async () => {

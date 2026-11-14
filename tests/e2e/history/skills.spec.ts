@@ -71,7 +71,7 @@ test('a member uploads a skill, reviews it, installs it and turns it on', async 
   await waitForHydration(page)
 
   await expect(
-    page.getByRole('navigation', { name: 'Account sections' })
+    page.getByRole('navigation', { name: 'History sections' })
       .getByRole('link', { name: 'Skills' }),
   ).toBeVisible()
   await expect(page.getByTestId('skills-empty')).toBeVisible()

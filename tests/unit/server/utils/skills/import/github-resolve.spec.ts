@@ -18,7 +18,7 @@ import { createFakeSkillKv } from '../../../../../setup/helpers/skills-db'
 
 const SHA = 'a'.repeat(40)
 const REFS = 'https://github.com/o/r.git/info/refs?service=git-upload-pack'
-const RAW = 'https://raw.githubusercontent.com/o/r'
+const ARCHIVE = `https://codeload.github.com/o/r/zip/${'a'.repeat(40)}`
 const OPTIONS = {
   purpose: 'skills-github' as const,
   accept: 'application/json',
@@ -479,7 +479,7 @@ describe('the body buffer', () => {
 
   it('ignores a Content-Length that counts the compressed body', async () => {
     const response = await githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       {
         ...OPTIONS,
         fetchImpl: fetchOf(() => {
@@ -496,7 +496,7 @@ describe('the body buffer', () => {
 
   it('sizes the buffer from Content-Length when it is sent', async () => {
     const response = await githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       {
         ...OPTIONS,
         fetchImpl: fetchOf(() => {

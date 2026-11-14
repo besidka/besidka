@@ -14,10 +14,7 @@ import {
   createGithubClient,
   resolveGithubSource,
 } from '~~/server/utils/skills/import/github'
-import {
-  loadGithubSkill,
-  loadGithubSkillMarkdown,
-} from '~~/server/utils/skills/import/github-skill'
+import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
 import { createSkillImportPreview } from '~~/server/utils/skills/import/preview'
 import type {
   SkillStageBucket,
@@ -105,14 +102,11 @@ export async function previewGithubImport(input: {
     path: pickedPath,
   })
   const repository = { owner: parsed.value.owner, repo: parsed.value.repo }
-  const loadSource = {
+  const loaded = await loadGithubSkill(client, {
     ...repository,
     sha: source.sha,
     path: source.path,
-  }
-  const loaded = parsed.value.kind === 'blob' && pickedPath === undefined
-    ? await loadGithubSkillMarkdown(client, loadSource)
-    : await loadGithubSkill(client, loadSource)
+  })
 
   if (loaded.kind === 'pick') {
     input.logger.set({

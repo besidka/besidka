@@ -17,7 +17,6 @@ export interface GithubMock {
   tags: Map<string, GithubTagFixture>
   setBranch: (name: string, sha: string) => void
   archives: Map<string, Uint8Array>
-  raw: Map<string, string>
   defaultBranch: string
   repoStatus: number
   advertisement: () => Uint8Array
@@ -41,16 +40,15 @@ export function pktLine(text: string): string {
 }
 
 /**
- * A stand-in for the three GitHub hosts the skills import may call: the git
- * ref list on github.com, the archive on codeload.github.com and single files
- * on raw.githubusercontent.com. Anything else, `api.github.com` included,
- * throws, so a test fails loudly if the code reaches for another URL.
+ * A stand-in for the two GitHub hosts the skills import may call: the git ref
+ * list on github.com and the archive on codeload.github.com. Anything else,
+ * `api.github.com` included, throws, so a test fails loudly if the code
+ * reaches for another URL.
  */
 export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
   const branches = new Map<string, string>()
   const tags = new Map<string, GithubTagFixture>()
   const archives = new Map<string, Uint8Array>()
-  const raw = new Map<string, string>()
   const state = {
     defaultBranch: 'main',
     repoStatus: 200,
@@ -86,7 +84,6 @@ export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
   const refsUrl = `https://github.com/${owner}/${repo}.git/info/refs`
     + '?service=git-upload-pack'
   const archivePrefix = `https://codeload.github.com/${owner}/${repo}/zip/`
-  const rawPrefix = `https://raw.githubusercontent.com/${owner}/${repo}/`
   const fetchMock = vi.fn(async (input: string | URL) => {
     const url = String(input)
 
@@ -104,14 +101,6 @@ export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
         : new Response('', { status: 404 })
     }
 
-    if (url.startsWith(rawPrefix)) {
-      const text = raw.get(url.slice(rawPrefix.length))
-
-      return text === undefined
-        ? new Response('', { status: 404 })
-        : new Response(text)
-    }
-
     throw new Error(`Unexpected request: ${url}`)
   })
 
@@ -123,7 +112,6 @@ export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
       branches.set(name, sha)
     },
     archives,
-    raw,
     get defaultBranch() {
       return state.defaultBranch
     },

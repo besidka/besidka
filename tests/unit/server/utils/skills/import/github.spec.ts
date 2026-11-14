@@ -3,12 +3,11 @@ import {
   assertAllowedGithubUrl,
   createGithubClient,
   downloadGithubArchive,
-  fetchGithubSkillMarkdown,
   githubFetch,
 } from '~~/server/utils/skills/import/github'
 
 const SHA = 'a'.repeat(40)
-const RAW = 'https://raw.githubusercontent.com/o/r'
+const ARCHIVE = `https://codeload.github.com/o/r/zip/${'a'.repeat(40)}`
 const REFS = 'https://github.com/o/r.git/info/refs?service=git-upload-pack'
 const OPTIONS = {
   purpose: 'skills-github' as const,
@@ -48,12 +47,10 @@ afterEach(() => {
 })
 
 describe('assertAllowedGithubUrl', () => {
-  it('accepts the ref list, the archive and a raw file, nothing else', () => {
+  it('accepts the ref list and the archive, nothing else', () => {
     expect(assertAllowedGithubUrl(REFS).hostname).toBe('github.com')
     expect(assertAllowedGithubUrl(`https://codeload.github.com/o/r/zip/${SHA}`)
       .hostname).toBe('codeload.github.com')
-    expect(assertAllowedGithubUrl(`${RAW}/${SHA}/SKILL.md`).hostname)
-      .toBe('raw.githubusercontent.com')
   })
 
   it.each([
@@ -64,10 +61,11 @@ describe('assertAllowedGithubUrl', () => {
     ['the ref list without the service query', 'https://github.com/o/r.git/info/refs'],
     ['the ref list for another service', 'https://github.com/o/r.git/info/refs?service=git-receive-pack'],
     ['an extra query on the ref list', `${REFS}&x=1`],
-    ['a lookalike host', 'https://raw.githubusercontent.com.evil.test/o/r/a'],
-    ['plain http', 'http://raw.githubusercontent.com/o/r/a'],
-    ['credentials', 'https://user:pw@raw.githubusercontent.com/o/r/a'],
-    ['a port', 'https://raw.githubusercontent.com:8443/o/r/a'],
+    ['raw.githubusercontent.com', `https://raw.githubusercontent.com/o/r/${SHA}/SKILL.md`],
+    ['a lookalike host', 'https://codeload.github.com.evil.test/o/r/a'],
+    ['plain http', 'http://codeload.github.com/o/r/a'],
+    ['credentials', 'https://user:pw@codeload.github.com/o/r/a'],
+    ['a port', 'https://codeload.github.com:8443/o/r/a'],
     ['an IP literal', 'https://140.82.112.5/o/r'],
     ['garbage', 'not a url'],
   ])('refuses %s', (_label, url) => {
@@ -94,7 +92,7 @@ describe('githubFetch', () => {
     const fetchImpl = fetchOf(() => text('x'))
 
     const failure = await failureOf(githubFetch(
-      'http://raw.githubusercontent.com/o/r/x',
+      'http://codeload.github.com/o/r/x',
       { ...OPTIONS, fetchImpl },
     ))
 
@@ -105,7 +103,7 @@ describe('githubFetch', () => {
   it('sends a User-Agent, manual redirects and no credential', async () => {
     const fetchImpl = fetchOf(() => text('ok'))
 
-    await githubFetch(`${RAW}/x`, { ...OPTIONS, fetchImpl })
+    await githubFetch(ARCHIVE, { ...OPTIONS, fetchImpl })
 
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
     const headers = new Headers(init.headers)
@@ -143,14 +141,14 @@ describe('githubFetch', () => {
     const fetchImpl = fetchOf(() => opaque)
 
     expect((await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl },
     ))).code).toBe('github-redirect')
   })
 
   it('maps 429 to the rate limit message', async () => {
     const failure = await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl: fetchOf(() => text('', 429)) },
     ))
 
@@ -164,7 +162,7 @@ describe('githubFetch', () => {
 
   it('calls a 403 a refusal', async () => {
     const failure = await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl: fetchOf(() => text('', 403)) },
     ))
 
@@ -177,26 +175,26 @@ describe('githubFetch', () => {
 
   it('returns 404 and 401 to the caller and errors on 5xx and others', async () => {
     expect(await githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl: fetchOf(() => text('', 404)) },
     )).toMatchObject({ status: 404 })
     expect(await githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl: fetchOf(() => text('', 401)) },
     )).toMatchObject({ status: 401 })
     expect(await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl: fetchOf(() => text('', 503)) },
     ))).toMatchObject({ status: 502, code: 'github-unavailable' })
     expect((await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl: fetchOf(() => text('', 400)) },
     ))).code).toBe('github-unexpected-response')
   })
 
   it('refuses a declared Content-Length over the cap before reading', async () => {
     const failure = await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       {
         ...OPTIONS,
         fetchImpl: fetchOf(() => {
@@ -217,7 +215,7 @@ describe('githubFetch', () => {
       },
     })
     const failure = await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, fetchImpl: fetchOf(() => new Response(stream)) },
     ))
 
@@ -258,7 +256,7 @@ describe('githubFetch', () => {
       })
     })
     const pending = failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       { ...OPTIONS, timeoutMs: 1000, fetchImpl },
     ))
 
@@ -279,7 +277,7 @@ describe('githubFetch', () => {
       },
     })
     const pending = failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       {
         ...OPTIONS,
         timeoutMs: 1000,
@@ -294,7 +292,7 @@ describe('githubFetch', () => {
 
   it('reports a network failure as unavailable', async () => {
     const failure = await failureOf(githubFetch(
-      `${RAW}/x`,
+      ARCHIVE,
       {
         ...OPTIONS,
         fetchImpl: fetchOf(() => {
@@ -337,55 +335,5 @@ describe('downloadGithubArchive', () => {
       createGithubClient({ fetchImpl: fetchOf(() => text('', 404)) }),
       { owner: 'o', repo: 'r', sha: SHA },
     ))).message).toBe('Private or missing repository')
-  })
-})
-
-describe('fetchGithubSkillMarkdown', () => {
-  it('reads SKILL.md from raw by commit, at the root or in a folder', async () => {
-    const fetchImpl = fetchOf(() => text('# Skill'))
-    const client = createGithubClient({ fetchImpl })
-
-    await fetchGithubSkillMarkdown(client, {
-      owner: 'o',
-      repo: 'r',
-      sha: SHA,
-      folder: null,
-    })
-    await fetchGithubSkillMarkdown(client, {
-      owner: 'o',
-      repo: 'r',
-      sha: SHA,
-      folder: 'skills/review-pr',
-    })
-
-    expect(fetchImpl.mock.calls.map(call => call[0])).toEqual([
-      `${RAW}/${SHA}/SKILL.md`,
-      `${RAW}/${SHA}/skills/review-pr/SKILL.md`,
-    ])
-  })
-
-  it('answers null for a missing file and refuses a branch name or a bad folder', async () => {
-    const fetchImpl = fetchOf(() => text('', 404))
-    const client = createGithubClient({ fetchImpl })
-
-    expect(await fetchGithubSkillMarkdown(client, {
-      owner: 'o',
-      repo: 'r',
-      sha: SHA,
-      folder: null,
-    })).toBeNull()
-
-    for (const input of [
-      { sha: 'main', folder: null },
-      { sha: SHA, folder: '../etc' },
-    ]) {
-      await failureOf(fetchGithubSkillMarkdown(client, {
-        owner: 'o',
-        repo: 'r',
-        ...input,
-      }))
-    }
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })

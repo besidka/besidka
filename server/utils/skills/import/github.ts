@@ -6,7 +6,6 @@ import {
   SKILL_GITHUB_REQUEST_DEADLINE_MS,
   SKILL_GITHUB_TIMEOUT_MS,
   SKILL_MAX_GITHUB_ARCHIVE_BYTES,
-  SKILL_MAX_SKILL_MD_BYTES,
 } from '#shared/utils/skills-policy'
 import {
   GITHUB_DEFAULT_REF,
@@ -14,10 +13,8 @@ import {
   isGithubFullSha,
   isGithubShaLikeRef,
   isReservedGithubRef,
-  isValidGithubSegment,
 } from '#shared/utils/skills/github-url'
 import type { ParsedGithubSkillUrl } from '#shared/utils/skills/github-url'
-import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   GIT_REFS_SERVICE_QUERY,
@@ -27,11 +24,9 @@ import type { GitRefAdvertisement } from '~~/server/utils/skills/import/git-refs
 
 export const GITHUB_WEB_HOST = 'github.com'
 export const GITHUB_CODELOAD_HOST = 'codeload.github.com'
-export const GITHUB_RAW_HOST = 'raw.githubusercontent.com'
 export const GITHUB_ALLOWED_HOSTS: ReadonlySet<string> = new Set([
   GITHUB_WEB_HOST,
   GITHUB_CODELOAD_HOST,
-  GITHUB_RAW_HOST,
 ])
 
 const GITHUB_USER_AGENT = 'Besidka-Skills/1.0'
@@ -216,8 +211,8 @@ function createArchiveBusyError() {
 
 /**
  * The only places a skills import may talk to: the git ref list of a public
- * repository on `github.com` (that one path and query only), the archive on
- * `codeload.github.com` and single files on `raw.githubusercontent.com`. The
+ * repository on `github.com` (that one path and query only) and the archive on
+ * `codeload.github.com`. The
  * host is never taken from user input, so this guard protects against a
  * future caller, not a user. `api.github.com` is not allowed: its anonymous
  * quota is shared by every Workers address and is already spent.
@@ -257,8 +252,7 @@ export function assertAllowedGithubUrl(input: string): URL {
       status: 400,
       code: 'github-host-not-allowed',
       why: 'Only https requests for the ref list of a repository on '
-        + 'github.com, the archive on codeload.github.com and files on '
-        + 'raw.githubusercontent.com are made',
+        + 'github.com and the archive on codeload.github.com are made',
       fix: 'Use a github.com link',
     })
   }
@@ -830,42 +824,4 @@ export async function downloadGithubArchive(
   }
 
   return response.bytes
-}
-
-/**
- * One `SKILL.md` of a commit from `raw.githubusercontent.com`, for a link
- * that points straight at the file. `null` when the commit has no file at
- * that path.
- */
-export async function fetchGithubSkillMarkdown(
-  client: GithubClient,
-  input: GithubRepository & { sha: string, folder: string | null },
-): Promise<Uint8Array | null> {
-  const segments = input.folder ? input.folder.split('/') : []
-
-  if (
-    !isGithubFullSha(input.sha)
-    || !segments.every(isValidGithubSegment)
-  ) {
-    throw createGithubUnavailableError(
-      'The file address is not valid',
-      'github-unexpected-response',
-    )
-  }
-
-  const response = await githubFetch(
-    `https://${GITHUB_RAW_HOST}/${input.owner}/${input.repo}/${input.sha}/${
-      [...segments, SKILL_MD_FILE_NAME].join('/')
-    }`,
-    {
-      purpose: 'skills-github',
-      accept: 'text/plain',
-      maxResponseBytes: SKILL_MAX_SKILL_MD_BYTES,
-      deadlineAt: client.deadlineAt,
-      fetchImpl: client.fetchImpl,
-      logger: client.logger,
-    },
-  )
-
-  return response.status === 200 ? response.bytes : null
 }
