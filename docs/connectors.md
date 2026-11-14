@@ -527,6 +527,74 @@ overwritten by a stale one. `invalid_grant` on refresh is terminal: delete the
 credentials, `status='needs-auth'`. Routes are rate-limited like
 `enforceKeysRateLimit` (10 per minute per user).
 
+### 5.5 As built (C-4, 2026-11-14)
+
+Choices that differ from or add to sections 5.1 to 5.4 and 14:
+
+- **No `@ai-sdk/mcp` and no `OAuthClientProvider` in C-4.** The OAuth client
+  is Besidka's own code over `safeFetch` (`server/utils/connectors/oauth-*.ts`),
+  so every outbound URL passes the section 4 rules and no SDK path can pick
+  its own `redirect` or skip CIMD. The contract C-5 uses is
+  `getValidAccessToken({ userId, connectorId, rejectedToken? })` in
+  `credentials.ts`. C-5 adds `@ai-sdk/mcp`, sends
+  `Authorization: Bearer <token>` (or wraps the function in a small provider
+  whose `tokens()` calls it and whose `invalidateCredentials` passes the
+  rejected token), uses `createSafeFetch('mcp')` as the transport `fetch`, and
+  settles the section 14 "Unverified" items.
+- **Routes:** `POST /api/v1/connectors`, `POST [id]/connect/discover`,
+  `POST [id]/consent`, `POST [id]/consent/withdraw`, `POST [id]/oauth/start`,
+  `GET oauth/callback`, `POST [id]/credentials`, `POST [id]/disconnect`,
+  `PATCH [id]`, `POST delete/bulk`. No list route: C-7 adds the one its page
+  needs. All share one rate-limit bucket (10 per minute per user, failing
+  closed when KV cannot count), refuse `Sec-Fetch-Site: cross-site` on writes
+  and cap bodies at 8 KiB.
+- **Consent gate (server side only).** `CONNECTOR_CONSENT_VERSION` is
+  `2026-11-a` in `shared/utils/connectors-policy.ts`. The consent route
+  stores the origin, the issuer host the dialog showed, the version and the
+  time, and needs a current sign-up consent. `oauth/start`, `credentials` and
+  enabling refuse with `CONNECTOR_CONSENT_REQUIRED` when the consent is
+  missing, withdrawn, for an older version, for another origin, or (OAuth)
+  for another issuer host than a fresh discovery finds. The wording and its
+  text-hash spec (like `CURRENT_CONSENT_TEXT_SHA256`) belong to the C-7
+  dialog; bump the version when the wording changes what users agree to.
+- **Discovery probe** is a JSON-RPC `initialize` (the stateless
+  `server/discover` probe is the SDK's, added in C-5). A 2xx sets
+  `auth_type='none'` and `status='ready'`. The PRM `resource` must cover the
+  connector URL by the SDK rule (same origin, path prefix on a segment
+  boundary); without one, the resource is the URL's origin and path, never its
+  query, because a query can carry a secret.
+- **Pinned endpoints.** The encrypted `client_registration` JSON also holds
+  the token and revocation endpoints, the resource, the redirect URI and the
+  token-endpoint auth method of the sign-in, so a refresh or revocation never
+  rediscovers metadata. A DCR registration is reused only for the same issuer
+  and redirect URI, so each preview host registers its own client. Saving a
+  sign-in or a header replaces every credentials row of the connector.
+- **Refresh.** The compare-and-set token is the stored access-token
+  ciphertext (`generation`), not `updated_at`, whose one-second resolution
+  cannot tell two writes apart. The KV lock entry lives 60 s (the KV minimum)
+  and carries its own 30 s expiry. Calls that share a request-scoped
+  `inFlight` map share one refresh; nothing is cached module-wide.
+  `invalid_grant` re-reads first and deletes only if no other writer stored
+  newer tokens.
+- **Status after sign-in.** The callback sets `status='ready'` (the ticket's
+  rule). C-5 may set `drifted` or `error` after its first `tools/list`.
+- **The OAuth state** in KV is encrypted (it holds the PKCE verifier and, for
+  a confidential DCR client, its secret) and refused after 600 s even when KV
+  still returns it. KV has no atomic read-and-delete, so the authorization
+  server's single-use code is the backstop against a cross-location replay.
+- **Logs.** The callback path is logged without its query
+  (`server/plugins/evlog-request-observability.ts`). Logs carry connector id,
+  host, step and fixed codes only.
+- **Revocation** also runs before a bulk delete and before an account purge,
+  one connector after another under a 10 s overall deadline, never throwing.
+- **CIMD rejected on a preview host.** The client cannot see that rejection
+  (it happens in the browser at the authorization server), so there is no
+  automatic switch to DCR. If Notion or Linear refuse a preview CIMD, record
+  it in the section 5.3 table and decide then.
+- **Production check.** `NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS` is set only in the
+  `previews` block of `wrangler.jsonc`; production has none, so the CIMD
+  there always uses `NUXT_PUBLIC_BASE_URL`.
+
 ## 6. Per-send lifecycle
 
 C-5 wires connectors into `server/api/v1/chats/[slug]/index.post.ts` after the
