@@ -91,7 +91,7 @@ describe('createAuthoredSkill', () => {
       licenseClass: 'authored',
       filesCount: 1,
       modelInvocable: true,
-      slashCommand: false,
+      slashCommand: true,
     })
     expect(row).toMatchObject({
       name: 'my-skill',

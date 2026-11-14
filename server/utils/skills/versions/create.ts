@@ -115,7 +115,7 @@ function resolveNewSkill(request: CreateSkillRequest): ResolvedNewSkill {
         }
       }),
       modelInvocable: template.modelInvocable,
-      slashCommand: template.slashCommand,
+      slashCommand: template.slashCommand && !isReservedSkillSlashName(name),
       argumentHint: template.argumentHint,
     }
   }
@@ -131,7 +131,7 @@ function resolveNewSkill(request: CreateSkillRequest): ResolvedNewSkill {
       kind: isCommand ? 'command' : 'skill',
     }),
     modelInvocable: !isCommand,
-    slashCommand: isCommand,
+    slashCommand: isCommand || !isReservedSkillSlashName(request.name),
     argumentHint: isCommand
       ? (request.argumentHint?.trim() || BLANK_COMMAND_ARGUMENT_HINT)
       : null,

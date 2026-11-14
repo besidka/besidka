@@ -4,6 +4,7 @@ import { convertToModelMessages } from 'ai'
 import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-text'
 import { sanitizeMessagesForModelContext } from '../../../server/utils/files/assistant-files'
 import {
+  appendTextAsLastUserTurn,
   appendTextToLastUserTurn,
   buildKnowledgeMediaTurns,
   buildMessagesForModel,
@@ -402,4 +403,76 @@ describe('appendTextToLastUserTurn', () => {
       expect(appendTextToLastUserTurn(messages, 'excerpts')).toBe(messages)
       expect(appendTextToLastUserTurn([], 'excerpts')).toEqual([])
     })
+})
+
+describe('appendTextAsLastUserTurn', () => {
+  it('appends to the last user turn when there is one', () => {
+    const messages = [createUserMessage('user-1', 'Summarise this')]
+    const result = appendTextAsLastUserTurn(messages, 'skill text', 'user-1')
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Summarise this' },
+      { type: 'text', text: 'skill text' },
+    ])
+  })
+
+  it('adds a user turn when the message was only an attached skill, so the conversation does not end on the assistant', () => {
+    const messages = [
+      createUserMessage('user-1', 'Hello'),
+      createAssistantMessage('assistant-1', [{ type: 'text', text: 'Hi.' }]),
+    ]
+    const result = appendTextAsLastUserTurn(messages, 'skill text', 'user-2')
+
+    expect(result.map(message => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect(result[2]).toEqual({
+      id: 'user-2',
+      role: 'user',
+      parts: [{ type: 'text', text: 'skill text' }],
+    })
+    expect(messages).toHaveLength(2)
+  })
+
+  it('adds a turn instead of using an older user turn whose reply was dropped', () => {
+    const messages = [createUserMessage('user-1', 'Earlier question')]
+    const result = appendTextAsLastUserTurn(messages, 'skill text', 'user-2')
+
+    expect(result).toHaveLength(2)
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Earlier question' },
+    ])
+    expect(result[1]).toMatchObject({ id: 'user-2', role: 'user' })
+  })
+
+  it('starts the conversation with that turn for the first message of a chat', () => {
+    expect(appendTextAsLastUserTurn([], 'skill text', 'user-1')).toEqual([{
+      id: 'user-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'skill text' }],
+    }])
+  })
+
+  it('is what an invocation-only message needs: the sanitizer drops it', () => {
+    const attachedOnly = {
+      id: 'user-2',
+      role: 'user',
+      parts: [{
+        type: 'data-skill-invocation',
+        data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+      }],
+    } as unknown as UIMessage
+    const sanitized = sanitizeMessagesForModelContext([
+      createUserMessage('user-1', 'Hello'),
+      createAssistantMessage('assistant-1', [{ type: 'text', text: 'Hi.' }]),
+      attachedOnly,
+    ])
+
+    expect(sanitized.at(-1)?.role).toBe('assistant')
+    expect(appendTextAsLastUserTurn(sanitized, 'skill text', 'user-2').at(-1))
+      .toMatchObject({ role: 'user' })
+  })
 })

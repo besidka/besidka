@@ -44,6 +44,11 @@ export const SKILL_FILE_KINDS = [
   'other',
 ] as const
 
+export const SKILL_AUTHORED_SOURCE_KINDS: readonly SkillSourceKind[] = [
+  'editor',
+  'template',
+]
+
 export type SkillSourceKind = typeof SKILL_SOURCE_KINDS[number]
 export type SkillLicenseClass = typeof SKILL_LICENSE_CLASSES[number]
 export type SkillStatus = typeof SKILL_STATUSES[number]
@@ -59,12 +64,10 @@ export const SKILL_MAX_SKILL_MD_BYTES = 256 * KIBIBYTE
 export const SKILL_MAX_UPLOAD_BYTES = 5 * MEBIBYTE
 export const SKILL_MAX_GITHUB_ARCHIVE_BYTES = 15 * MEBIBYTE
 export const SKILL_GITHUB_MAX_ARCHIVE_ENTRIES = 20000
-export const SKILL_GITHUB_API_MAX_BYTES = 2 * MEBIBYTE
+export const SKILL_GITHUB_REFS_MAX_BYTES = 8 * MEBIBYTE
 export const SKILL_GITHUB_TIMEOUT_MS = 30 * 1000
 export const SKILL_GITHUB_REQUEST_DEADLINE_MS = 60 * 1000
-export const SKILL_GITHUB_API_BUDGET_PER_HOUR = 50
 export const SKILL_GITHUB_REF_CACHE_SECONDS = 60
-export const SKILL_GITHUB_BRANCH_CACHE_SECONDS = 10 * 60
 export const SKILL_DIFF_TOTAL_CELL_BUDGET = 8_000_000
 export const SKILL_DIFF_MAX_LINES = 2000
 export const SKILL_MAX_RATIO = 100
@@ -93,6 +96,12 @@ export const SKILL_ARGUMENT_HINT_MAX = 100
 export const SKILL_INVOCATIONS_PER_MESSAGE = 1
 export const SKILL_GITHUB_PICK_MAX = 10
 export const SKILL_ACTIVATE_MAX_TOKENS = 6000
+export const SKILL_ACTIVATE_MAX_BYTES = 40 * KIBIBYTE
+export const SKILL_ARGUMENTS_MAX_BYTES = 8 * KIBIBYTE
+export const SKILL_READ_FILE_MAX_BYTES = 64 * KIBIBYTE
+export const SKILL_CATALOG_BUDGET_TOKENS = 1500
+export const SKILL_ACTIVE_BLOCK_MAX_TOKENS = 12000
+export const SKILL_TOOL_STEPS = 4
 export const SKILL_DESCRIPTION_CATALOG_SOFT_MAX = 300
 export const SKILL_NAME_MAX = 64
 export const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
@@ -120,6 +129,16 @@ export type SkillSlashNameValidation
 const reservedSlashNames: ReadonlySet<string> = new Set(
   SKILL_RESERVED_SLASH_NAMES,
 )
+
+/**
+ * Only text the user wrote in the editor, or took from a Besidka template,
+ * is trusted; every other source (and any kind added later) is third-party
+ * text and keeps `memory_write` locked while it sits in the prompt.
+ */
+export function isAuthoredSkillSource(sourceKind: string): boolean {
+  return (SKILL_AUTHORED_SOURCE_KINDS as readonly string[])
+    .includes(sourceKind)
+}
 
 export function isSkillNameValid(name: string): boolean {
   return name.length > 0

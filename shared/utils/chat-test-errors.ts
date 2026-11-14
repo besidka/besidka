@@ -11,6 +11,7 @@ export const chatTestScenarios = [
   'markdown',
   'code',
   'document',
+  'skill',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]

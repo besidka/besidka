@@ -57,6 +57,7 @@ type HistoryTab
     | 'projects'
     | 'artifacts'
     | 'documents'
+    | 'skills'
     | 'shared'
 
 interface HistoryTabLink {
@@ -74,6 +75,7 @@ defineProps<{
 
 const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
+const skillsFeature = useFeature('skills')
 
 const tabs = computed<HistoryTabLink[]>(() => {
   const tabLinks: HistoryTabLink[] = [
@@ -106,6 +108,15 @@ const tabs = computed<HistoryTabLink[]>(() => {
       to: '/chats/documents',
       label: 'Documents',
       icon: 'lucide:file-text',
+    })
+  }
+
+  if (skillsFeature.value.active) {
+    tabLinks.push({
+      id: 'skills',
+      to: '/chats/skills',
+      label: 'Skills',
+      icon: 'lucide:sparkles',
     })
   }
 

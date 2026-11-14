@@ -6,6 +6,8 @@ import type {
 import type { ModelResearchConfig } from '#shared/types/research.d'
 import type { DataArtifactPartData } from '#shared/utils/artifacts'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
+import type { ComposerSkillInvocation } from '~/composables/composer-skill-invocation'
+import type { ComposerSkillItem } from '~/composables/composer-skills'
 import type {
   WebSearchOption,
   WebSearchSelection,
@@ -13,11 +15,11 @@ import type {
 
 export type ToolsSection
   = | 'add'
+    | 'skills'
     | 'search'
     | 'reasoning'
     | 'code'
     | 'image'
-    | 'project'
     | 'memory'
 
 export type ChatInputArtifactTileId = `artifact-${string}`
@@ -30,6 +32,7 @@ export type ChatInputTileId
     | 'search'
     | 'code'
     | 'reasoning'
+    | 'skill'
     | ChatInputArtifactTileId
 
 export type AttachedArtifact = DataArtifactPartData
@@ -109,6 +112,11 @@ export interface ChatInputToolsState {
   artifacts: {
     visible: boolean
     attached: AttachedArtifact[]
+  }
+  skills?: {
+    visible: boolean
+    items: ComposerSkillItem[]
+    selected: ComposerSkillInvocation | null
   }
   project: {
     visible: boolean

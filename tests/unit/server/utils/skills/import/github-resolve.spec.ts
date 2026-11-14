@@ -1,21 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  assertCommitOnRepository,
   createGithubClient,
-  downloadGithubArchive,
+  fetchGithubRefs,
   githubFetch,
   resolveGithubRef,
   resolveGithubSource,
-  resolveVerifiedGithubRef,
   withGithubArchiveSlot,
 } from '~~/server/utils/skills/import/github'
 import { parseGithubSkillUrl } from '#shared/utils/skills/github-url'
-import { createGithubMock } from '../../../../../setup/helpers/github-mock'
+import {
+  GITHUB_SHA_ONE,
+  GITHUB_SHA_THREE,
+  GITHUB_SHA_TWO,
+  createGithubMock,
+} from '../../../../../setup/helpers/github-mock'
 import { createFakeSkillKv } from '../../../../../setup/helpers/skills-db'
 
 const SHA = 'a'.repeat(40)
-const OTHER_SHA = 'b'.repeat(40)
-const API = 'https://api.github.com/repos/o/r'
+const REFS = 'https://github.com/o/r.git/info/refs?service=git-upload-pack'
+const ARCHIVE = `https://codeload.github.com/o/r/zip/${'a'.repeat(40)}`
 const OPTIONS = {
   purpose: 'skills-github' as const,
   accept: 'application/json',
@@ -33,10 +36,6 @@ function fetchOf(handler: Handler) {
 
 function text(body: string, status = 200, headers: HeadersInit = {}) {
   return new Response(body, { status, headers })
-}
-
-function json(body: unknown, status = 200) {
-  return text(JSON.stringify(body), status)
 }
 
 async function failureOf(promise: Promise<unknown>) {
@@ -68,45 +67,89 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+function mockWithRefs() {
+  const github = createGithubMock()
+
+  github.setBranch('main', GITHUB_SHA_ONE)
+  github.setBranch('feature/x', GITHUB_SHA_TWO)
+  github.tags.set('v1', { sha: GITHUB_SHA_THREE, peeled: 'c'.repeat(40) })
+  github.tags.set('v2', { sha: 'd'.repeat(40) })
+
+  return github
+}
+
+function resolve(github: ReturnType<typeof mockWithRefs>, ref: string) {
+  return resolveGithubRef(
+    createGithubClient({ fetchImpl: github.fetch }),
+    { ...REPOSITORY, ref },
+  )
+}
+
 describe('resolveGithubRef', () => {
-  it('confirms a branch first and takes its commit without a second call', async () => {
-    const github = createGithubMock()
+  it('takes a branch, with a slash in its name, from the ref list', async () => {
+    const github = mockWithRefs()
 
-    github.setBranch('feature/x', SHA)
-
-    expect(await resolveGithubRef(
-      createGithubClient({ fetchImpl: github.fetch }),
-      { ...REPOSITORY, ref: 'feature/x' },
-    )).toEqual({ found: true, sha: SHA })
-    expect(github.urls()).toEqual([`${API}/git/ref/heads/feature/x`])
+    expect(await resolve(github, 'feature/x'))
+      .toEqual({ found: true, sha: GITHUB_SHA_TWO })
+    expect(github.urls()).toEqual([REFS])
   })
 
-  it('falls back to a tag and peels an annotated one through the commit lookup', async () => {
-    const github = createGithubMock()
+  it('takes the peeled commit of an annotated tag and a lightweight tag as it is', async () => {
+    const github = mockWithRefs()
 
-    github.tags.set('v1', { sha: OTHER_SHA, type: 'tag' })
-    github.refs.set('v1', SHA)
-
-    expect(await resolveGithubRef(
-      createGithubClient({ fetchImpl: github.fetch }),
-      { ...REPOSITORY, ref: 'v1' },
-    )).toEqual({ found: true, sha: SHA })
-    expect(github.urls()).toEqual([
-      `${API}/git/ref/heads/v1`,
-      `${API}/git/ref/tags/v1`,
-      `${API}/commits/v1`,
-    ])
+    expect(await resolve(github, 'v1'))
+      .toEqual({ found: true, sha: 'c'.repeat(40) })
+    expect(await resolve(github, 'v2'))
+      .toEqual({ found: true, sha: 'd'.repeat(40) })
   })
 
-  it('takes a lightweight tag as its commit', async () => {
-    const github = createGithubMock()
+  it('reads HEAD as the tip of the default branch', async () => {
+    const github = mockWithRefs()
 
-    github.tags.set('v2', { sha: SHA, type: 'commit' })
+    github.defaultBranch = 'feature/x'
 
-    expect(await resolveGithubRef(
-      createGithubClient({ fetchImpl: github.fetch }),
-      { ...REPOSITORY, ref: 'v2' },
-    )).toEqual({ found: true, sha: SHA })
+    expect(await resolve(github, 'HEAD'))
+      .toEqual({ found: true, sha: GITHUB_SHA_TWO })
+  })
+
+  it('uses a full commit id as it is, in any case, without a request', async () => {
+    const github = mockWithRefs()
+
+    expect(await resolve(github, SHA.toUpperCase()))
+      .toEqual({ found: true, sha: SHA })
+    expect(github.fetch).not.toHaveBeenCalled()
+  })
+
+  it('resolves a short commit id that starts exactly one branch or tag tip', async () => {
+    const github = mockWithRefs()
+
+    expect(await resolve(github, '2222222'))
+      .toEqual({ found: true, sha: GITHUB_SHA_TWO })
+    expect(await resolve(github, 'ccccccc'))
+      .toEqual({ found: true, sha: 'c'.repeat(40) })
+  })
+
+  it('does not resolve a short commit id that starts no tip or more than one', async () => {
+    const github = mockWithRefs()
+
+    github.setBranch('other', `1${'9'.repeat(39)}`)
+
+    expect(await resolve(github, '9999999')).toEqual({ found: false })
+    expect(await resolve(github, '1')).toEqual({ found: false })
+    expect(await resolve(github, 'deadbeef')).toEqual({ found: false })
+  })
+
+  it('prefers a branch over a tag of the same name', async () => {
+    const github = mockWithRefs()
+
+    github.tags.set('main', { sha: 'e'.repeat(40) })
+
+    expect(await resolve(github, 'main'))
+      .toEqual({ found: true, sha: GITHUB_SHA_ONE })
+  })
+
+  it('does not find a name that is neither a branch nor a tag', async () => {
+    expect(await resolve(mockWithRefs(), 'nope')).toEqual({ found: false })
   })
 
   it.each([
@@ -118,348 +161,259 @@ describe('resolveGithubRef', () => {
     '__gh__/x',
     'Pull/9/head',
   ])('refuses %s without calling GitHub', async (ref) => {
-    const github = createGithubMock()
+    const github = mockWithRefs()
 
-    github.refs.set(ref, SHA)
-
-    expect(await resolveGithubRef(
-      createGithubClient({ fetchImpl: github.fetch }),
-      { ...REPOSITORY, ref },
-    )).toEqual({ found: false, status: 422 })
-    expect(github.fetch).not.toHaveBeenCalled()
-  })
-
-  it('does not trust the commit lookup for a name that is no branch or tag', async () => {
-    const github = createGithubMock()
-
-    github.refs.set('hidden-fork-ref', SHA)
-
-    expect(await resolveGithubRef(
-      createGithubClient({ fetchImpl: github.fetch }),
-      { ...REPOSITORY, ref: 'hidden-fork-ref' },
-    )).toEqual({ found: false, status: 404 })
-    expect(github.urls().some((url) => {
-      return url.includes('/commits/')
-    })).toBe(false)
-  })
-
-  it('refuses a ref answer that is not exactly the branch asked for', async () => {
-    const fetchImpl = fetchOf((url) => {
-      return url.includes('/git/ref/heads/')
-        ? json({
-          ref: 'refs/heads/main/extra',
-          object: { sha: SHA, type: 'commit' },
-        })
-        : text('', 404)
-    })
-
-    expect(await resolveGithubRef(
-      createGithubClient({ fetchImpl }),
-      { ...REPOSITORY, ref: 'main' },
-    )).toEqual({ found: false, status: 404 })
-  })
-
-  it('reads HEAD and a hex id through the commit lookup with the sha media type', async () => {
-    const fetchImpl = fetchOf(() => text(`${SHA}\n`))
-    const client = createGithubClient({ fetchImpl })
-
-    expect(await resolveGithubRef(client, { ...REPOSITORY, ref: 'HEAD' }))
-      .toEqual({ found: true, sha: SHA })
-    expect(await resolveGithubRef(client, { ...REPOSITORY, ref: 'aaaaaaa' }))
-      .toEqual({ found: true, sha: SHA })
-
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
-
-    expect(url).toBe(`${API}/commits/HEAD`)
-    expect(new Headers(init.headers).get('accept'))
-      .toBe('application/vnd.github.sha')
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
-  })
-
-  it('answers a 404 or 422 from the commit lookup as a missing ref', async () => {
-    for (const status of [404, 422]) {
-      expect(await resolveGithubRef(
-        createGithubClient({ fetchImpl: fetchOf(() => text('', status)) }),
-        { ...REPOSITORY, ref: 'HEAD' },
-      )).toEqual({ found: false, status })
-    }
-  })
-
-  it('refuses a body that is not a commit SHA', async () => {
-    const client = createGithubClient({
-      fetchImpl: fetchOf(() => text('<html>')),
-    })
-
-    expect((await failureOf(resolveGithubRef(
-      client,
-      { ...REPOSITORY, ref: 'HEAD' },
-    ))).code).toBe('github-unexpected-response')
-  })
-})
-
-describe('resolveGithubSource', () => {
-  it('resolves a bare repository through HEAD with one call', async () => {
-    const fetchImpl = fetchOf(() => text(SHA))
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r'),
-    )
-
-    expect(source).toEqual({ sha: SHA, ref: 'HEAD', path: null })
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(fetchImpl.mock.calls[0]![0]).toBe(`${API}/commits/HEAD`)
-  })
-
-  it('tries splits shortest first and stops at the first existing branch', async () => {
-    const github = createGithubMock()
-
-    github.setBranch('feature/x', SHA)
-
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl: github.fetch }),
-      parsed('github.com/o/r/tree/feature/x/skills/a'),
-    )
-
-    expect(source).toEqual({ sha: SHA, ref: 'feature/x', path: 'skills/a' })
-    expect(github.urls()).toEqual([
-      `${API}/git/ref/heads/feature`,
-      `${API}/git/ref/tags/feature`,
-      `${API}/git/ref/heads/feature/x`,
-    ])
-  })
-
-  it('makes at most three ref candidates, then checks the repository once', async () => {
-    const github = createGithubMock()
-    const failure = await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl: github.fetch }),
-      parsed('github.com/o/r/tree/a/b/c/d/e'),
-    ))
-    const refCalls = github.urls().filter((url) => {
-      return url.includes('/git/ref/')
-    })
-
-    expect(refCalls).toHaveLength(6)
-    expect(github.urls().at(-1)).toBe(API)
-    expect(failure).toMatchObject({ code: 'github-ref-not-found', status: 404 })
-  })
-
-  it('reports a missing repository when the repository call is a 404', async () => {
-    const github = createGithubMock()
-
-    github.repoStatus = 404
-
-    const failure = await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl: github.fetch }),
-      parsed('github.com/o/r/tree/a/b/c'),
-    ))
-
-    expect(failure.message).toBe('Private or missing repository')
-  })
-
-  it('checks a 40-character SHA from the link against the default branch', async () => {
-    const fetchImpl = fetchOf((url) => {
-      return url === API
-        ? json({ default_branch: 'main' })
-        : json({ status: 'behind' })
-    })
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed(`github.com/o/r/commit/${SHA}`),
-    )
-
-    expect(source).toEqual({ sha: SHA, ref: SHA, path: null })
-    expect(fetchImpl.mock.calls.map((call) => {
-      return call[0]
-    })).toEqual([API, `${API}/compare/main...${SHA}?per_page=1`])
-  })
-
-  it('rejects a SHA from the link that is on a fork only', async () => {
-    const fetchImpl = fetchOf((url) => {
-      return url === API ? json({ default_branch: 'main' }) : text('', 404)
-    })
-
-    expect((await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed(`github.com/o/r/tree/${SHA}/skills/a`),
-    ))).code).toBe('github-commit-not-on-repository')
-  })
-
-  it('also checks an abbreviated SHA that resolved to a commit', async () => {
-    const fetchImpl = fetchOf((url) => {
-      if (url.endsWith('/commits/aaaaaaa')) {
-        return text(SHA)
-      }
-
-      return url === API ? json({ default_branch: 'main' }) : text('', 404)
-    })
-
-    expect((await failureOf(resolveGithubSource(
-      createGithubClient({ fetchImpl }),
-      parsed('github.com/o/r/tree/aaaaaaa/skills/a'),
-    ))).code).toBe('github-commit-not-on-repository')
-  })
-
-  it('does not run the compare check for a branch the repository has', async () => {
-    const github = createGithubMock()
-
-    github.setBranch('main', OTHER_SHA)
-
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl: github.fetch }),
-      parsed('github.com/o/r/tree/main/skills/a'),
-    )
-
-    expect(source.sha).toBe(OTHER_SHA)
-    expect(github.urls()).toEqual([`${API}/git/ref/heads/main`])
-  })
-
-  it('lets a picked path replace the one in the link', async () => {
-    const github = createGithubMock()
-
-    github.setBranch('main', SHA)
-
-    const source = await resolveGithubSource(
-      createGithubClient({ fetchImpl: github.fetch }),
-      parsed('github.com/o/r/tree/main/skills'),
-      { path: 'skills/a' },
-    )
-
-    expect(source.path).toBe('skills/a')
-  })
-
-  it('never reaches a pull request ref, whatever the link says', () => {
-    const github = createGithubMock()
-
-    github.refs.set('pull/1/head', SHA)
-
-    expect(parseGithubSkillUrl('github.com/o/r/tree/pull/1/head/skills/a').ok)
-      .toBe(false)
-    expect(parseGithubSkillUrl('github.com/o/r/tree/pull/1/merge').ok)
-      .toBe(false)
-    expect(parseGithubSkillUrl('github.com/o/r/blob/pull/1/head/SKILL.md').ok)
-      .toBe(false)
+    expect(await resolve(github, ref)).toEqual({ found: false })
     expect(github.fetch).not.toHaveBeenCalled()
   })
 })
 
-describe('resolveVerifiedGithubRef and the shared GitHub quota', () => {
-  it('caches a verified ref for a minute in KV', async () => {
-    const github = createGithubMock()
-    const kv = createFakeSkillKv()
+describe('fetchGithubRefs', () => {
+  it.each([404, 401])('answers a missing or private repository on %i', async (status) => {
+    const github = mockWithRefs()
 
-    github.setBranch('main', SHA)
+    github.repoStatus = status
 
-    const first = createGithubClient({ fetchImpl: github.fetch, kv })
-    const second = createGithubClient({ fetchImpl: github.fetch, kv })
-
-    await resolveVerifiedGithubRef(first, { ...REPOSITORY, ref: 'main' })
-    github.fetch.mockClear()
-
-    expect(await resolveVerifiedGithubRef(
-      second,
-      { ...REPOSITORY, ref: 'main' },
-    )).toEqual({ found: true, sha: SHA })
-    expect(github.fetch).not.toHaveBeenCalled()
-
-    const cachePut = kv.put.mock.calls.find((call) => {
-      return String(call[0]).includes(':ref:')
-    })
-
-    expect(cachePut![2]).toEqual({ expirationTtl: 60 })
+    expect(await failureOf(fetchGithubRefs(
+      createGithubClient({ fetchImpl: github.fetch }),
+      REPOSITORY,
+    ))).toMatchObject({ status: 404, code: 'github-not-found' })
   })
 
-  it('does not cache a ref that was not found', async () => {
-    const github = createGithubMock()
-    const kv = createFakeSkillKv()
-    const client = createGithubClient({ fetchImpl: github.fetch, kv })
-
-    expect(await resolveVerifiedGithubRef(
-      client,
-      { ...REPOSITORY, ref: 'nope' },
-    )).toMatchObject({ found: false })
-    expect([...kv.values.keys()].some((key) => {
-      return key.includes(':ref:')
-    })).toBe(false)
+  it('maps a 5xx to github-unavailable', async () => {
+    expect(await failureOf(fetchGithubRefs(
+      createGithubClient({ fetchImpl: fetchOf(() => text('', 502)) }),
+      REPOSITORY,
+    ))).toMatchObject({ status: 502, code: 'github-unavailable' })
   })
 
-  it('caches the default branch for ten minutes', async () => {
-    const github = createGithubMock()
-    const kv = createFakeSkillKv()
-
-    github.compare.set(SHA, 'identical')
-
-    await assertCommitOnRepository(
-      createGithubClient({ fetchImpl: github.fetch, kv }),
-      { ...REPOSITORY, sha: SHA },
-    )
-    github.fetch.mockClear()
-    await assertCommitOnRepository(
-      createGithubClient({ fetchImpl: github.fetch, kv }),
-      { ...REPOSITORY, sha: SHA },
-    )
-
-    expect(github.urls()).toEqual([`${API}/compare/main...${SHA}?per_page=1`])
-
-    const branchPut = kv.put.mock.calls.find((call) => {
-      return String(call[0]).includes(':branch:')
-    })
-
-    expect(branchPut![2]).toEqual({ expirationTtl: 600 })
+  it('refuses an answer that is not a ref list', async () => {
+    expect(await failureOf(fetchGithubRefs(
+      createGithubClient({ fetchImpl: fetchOf(() => text('<html>')) }),
+      REPOSITORY,
+    ))).toMatchObject({ status: 502, code: 'github-unexpected-response' })
   })
 
-  it('spends one hourly budget of 50 API calls for the whole app, then fails closed', async () => {
-    const github = createGithubMock()
-    const kv = createFakeSkillKv()
-
-    github.setBranch('main', SHA)
-
-    for (let call = 0; call < 50; call++) {
-      await resolveGithubRef(
-        createGithubClient({ fetchImpl: github.fetch, kv }),
-        { ...REPOSITORY, ref: 'main' },
-      )
-    }
-
-    expect(github.fetch).toHaveBeenCalledTimes(50)
-
-    const failure = await failureOf(resolveGithubRef(
-      createGithubClient({ fetchImpl: github.fetch, kv }),
-      { ...REPOSITORY, ref: 'main' },
+  it('refuses a ref list over the cap with a way out', async () => {
+    const failure = await failureOf(fetchGithubRefs(
+      createGithubClient({
+        fetchImpl: fetchOf(() => {
+          return text('x', 200, { 'content-length': String(9 * 1024 * 1024) })
+        }),
+      }),
+      REPOSITORY,
     ))
 
     expect(failure).toMatchObject({
-      status: 429,
-      message: 'GitHub rate limit reached',
+      status: 413,
+      code: 'github-refs-too-large',
     })
-    expect(github.fetch).toHaveBeenCalledTimes(50)
+    expect(failure.fix).toContain('40-character commit id')
   })
 
-  it('does not count an archive download against the API budget', async () => {
+  it('caches the parsed refs for a minute in KV and reuses them', async () => {
+    const github = mockWithRefs()
     const kv = createFakeSkillKv()
-    const fetchImpl = fetchOf(() => text('PK'))
 
-    await downloadGithubArchive(
-      createGithubClient({ fetchImpl, kv }),
-      { ...REPOSITORY, sha: SHA },
+    await fetchGithubRefs(
+      createGithubClient({ fetchImpl: github.fetch, kv }),
+      REPOSITORY,
     )
+
+    const refsPut = kv.put.mock.calls.find((call) => {
+      return String(call[0]).includes(':refs:')
+    })
+
+    expect(refsPut![2]).toEqual({ expirationTtl: 60 })
+
+    const again = await fetchGithubRefs(
+      createGithubClient({ fetchImpl: github.fetch, kv }),
+      REPOSITORY,
+    )
+
+    expect(github.fetch).toHaveBeenCalledTimes(1)
+    expect(again.branches.get('main')).toBe(GITHUB_SHA_ONE)
+    expect(again.tags.get('v1')).toBe('c'.repeat(40))
+    expect(again.head?.branch).toBe('main')
+  })
+
+  it('does not cache a repository that was not found', async () => {
+    const github = mockWithRefs()
+    const kv = createFakeSkillKv()
+
+    github.repoStatus = 404
+
+    await failureOf(fetchGithubRefs(
+      createGithubClient({ fetchImpl: github.fetch, kv }),
+      REPOSITORY,
+    ))
 
     expect(kv.put).not.toHaveBeenCalled()
   })
 
-  it('fails closed when KV cannot be read or written', async () => {
+  it('falls back to GitHub when KV fails or holds a broken value', async () => {
+    const github = mockWithRefs()
     const kv = createFakeSkillKv()
-    const github = createGithubMock()
 
-    kv.get.mockRejectedValue(new Error('kv down'))
-    github.setBranch('main', SHA)
+    kv.get.mockRejectedValueOnce(new Error('kv down'))
+    kv.put.mockRejectedValue(new Error('kv down'))
 
-    const failure = await failureOf(resolveGithubRef(
+    expect((await fetchGithubRefs(
       createGithubClient({ fetchImpl: github.fetch, kv }),
-      { ...REPOSITORY, ref: 'main' },
+      REPOSITORY,
+    )).branches.get('main')).toBe(GITHUB_SHA_ONE)
+
+    const healthy = createFakeSkillKv()
+
+    healthy.values.set('skills:github:refs:o/r', '{not json')
+
+    expect((await fetchGithubRefs(
+      createGithubClient({ fetchImpl: github.fetch, kv: healthy }),
+      REPOSITORY,
+    )).branches.get('main')).toBe(GITHUB_SHA_ONE)
+  })
+})
+
+describe('resolveGithubSource', () => {
+  it('resolves a bare repository through HEAD with one request', async () => {
+    const github = mockWithRefs()
+    const source = await resolveGithubSource(
+      createGithubClient({ fetchImpl: github.fetch }),
+      parsed('https://github.com/o/r'),
+    )
+
+    expect(source).toEqual({
+      sha: GITHUB_SHA_ONE,
+      ref: 'HEAD',
+      path: null,
+      warnings: [],
+    })
+    expect(github.urls()).toEqual([REFS])
+  })
+
+  it('tries splits shortest first and stops at the first existing branch', async () => {
+    const github = mockWithRefs()
+    const source = await resolveGithubSource(
+      createGithubClient({ fetchImpl: github.fetch }),
+      parsed('https://github.com/o/r/tree/feature/x/skills/a'),
+    )
+
+    expect(source).toMatchObject({
+      sha: GITHUB_SHA_TWO,
+      ref: 'feature/x',
+      path: 'skills/a',
+    })
+    expect(github.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers github-ref-not-found when no split exists, after one request', async () => {
+    const github = mockWithRefs()
+    const failure = await failureOf(resolveGithubSource(
+      createGithubClient({ fetchImpl: github.fetch }),
+      parsed('https://github.com/o/r/tree/a/b/c/d/skills'),
     ))
 
-    expect(failure.message).toBe('GitHub rate limit reached')
-    expect(github.fetch).not.toHaveBeenCalled()
+    expect(failure).toMatchObject({ status: 404, code: 'github-ref-not-found' })
+    expect(failure.fix).toContain('branch, a tag or the full 40-character')
+    expect(github.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers github-not-found for a missing repository', async () => {
+    const github = mockWithRefs()
+
+    github.repoStatus = 404
+
+    expect((await failureOf(resolveGithubSource(
+      createGithubClient({ fetchImpl: github.fetch }),
+      parsed('https://github.com/o/r/tree/main/skills/a'),
+    ))).code).toBe('github-not-found')
+  })
+
+  it('answers a short commit id that starts no tip with the ref message', async () => {
+    const github = mockWithRefs()
+
+    expect((await failureOf(resolveGithubSource(
+      createGithubClient({ fetchImpl: github.fetch }),
+      parsed('https://github.com/o/r/tree/1234567/skills/a'),
+    ))).code).toBe('github-ref-not-found')
+  })
+
+  it('takes a full commit id from the link as it is, with no warning for a branch tip', async () => {
+    const github = mockWithRefs()
+    const source = await resolveGithubSource(
+      createGithubClient({ fetchImpl: github.fetch }),
+      parsed(`https://github.com/o/r/commit/${GITHUB_SHA_ONE}`),
+      { path: 'skills/a' },
+    )
+
+    expect(source).toMatchObject({
+      sha: GITHUB_SHA_ONE,
+      ref: GITHUB_SHA_ONE,
+      path: 'skills/a',
+      warnings: [],
+    })
+  })
+
+  it('warns that a commit which is no branch or tag tip cannot be confirmed', async () => {
+    const github = mockWithRefs()
+    const source = await resolveGithubSource(
+      createGithubClient({ fetchImpl: github.fetch }),
+      parsed(`https://github.com/o/r/commit/${'f'.repeat(40)}`),
+      { path: 'skills/a' },
+    )
+
+    expect(source.sha).toBe('f'.repeat(40))
+    expect(source.warnings.join(' ')).toContain('cannot confirm that commit')
+  })
+
+  it('still imports a full commit id with the same warning when the ref list is unreadable', async () => {
+    const source = await resolveGithubSource(
+      createGithubClient({ fetchImpl: fetchOf(() => text('', 503)) }),
+      parsed(`https://github.com/o/r/commit/${SHA}`),
+      { path: null },
+    )
+
+    expect(source.sha).toBe(SHA)
+    expect(source.warnings).toHaveLength(1)
+  })
+
+  it('lets a picked path replace the one in the link', async () => {
+    const source = await resolveGithubSource(
+      createGithubClient({ fetchImpl: mockWithRefs().fetch }),
+      parsed('https://github.com/o/r'),
+      { path: 'skills/picked' },
+    )
+
+    expect(source.path).toBe('skills/picked')
+  })
+
+  it('never reaches a pull request ref, whatever the link says', () => {
+    for (const url of [
+      'https://github.com/o/r/tree/pull/1/head/skills',
+      'https://github.com/o/r/blob/refs/pull/1/head/SKILL.md',
+    ]) {
+      expect(parseGithubSkillUrl(url).ok).toBe(false)
+    }
+  })
+
+  it('never sends a request to api.github.com', async () => {
+    const github = mockWithRefs()
+    const client = createGithubClient({ fetchImpl: github.fetch })
+
+    await resolveGithubSource(client, parsed('https://github.com/o/r'))
+    await resolveGithubSource(
+      client,
+      parsed('https://github.com/o/r/tree/feature/x/skills'),
+    )
+    await resolveGithubSource(
+      client,
+      parsed(`https://github.com/o/r/commit/${'f'.repeat(40)}`),
+      { path: null },
+    )
+
+    expect(github.urls().every((url) => {
+      return !url.includes('api.github.com')
+    })).toBe(true)
   })
 })
 
@@ -471,7 +425,7 @@ describe('the request deadline', () => {
     expect((await failureOf(resolveGithubRef(
       client,
       { ...REPOSITORY, ref: 'HEAD' },
-    ))).code).toBe('github-timeout')
+    ))).code).toBe('github-unavailable')
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
@@ -493,7 +447,7 @@ describe('the request deadline', () => {
 
     await vi.advanceTimersByTimeAsync(5_001)
 
-    expect(await pending).toMatchObject({ code: 'github-timeout' })
+    expect(await pending).toMatchObject({ code: 'github-unavailable' })
   })
 })
 
@@ -523,9 +477,26 @@ describe('the body buffer', () => {
     expect(Array.from(response.bytes.slice(-3))).toEqual([1, 2, 3])
   })
 
+  it('ignores a Content-Length that counts the compressed body', async () => {
+    const response = await githubFetch(
+      ARCHIVE,
+      {
+        ...OPTIONS,
+        fetchImpl: fetchOf(() => {
+          return text('x'.repeat(500), 200, {
+            'content-length': '120',
+            'content-encoding': 'gzip',
+          })
+        }),
+      },
+    )
+
+    expect(response.bytes.byteLength).toBe(500)
+  })
+
   it('sizes the buffer from Content-Length when it is sent', async () => {
     const response = await githubFetch(
-      `${API}/x`,
+      ARCHIVE,
       {
         ...OPTIONS,
         fetchImpl: fetchOf(() => {

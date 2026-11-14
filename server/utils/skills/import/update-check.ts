@@ -32,8 +32,7 @@ import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import {
   createGithubClient,
   createGithubRefNotFoundError,
-  resolveVerifiedGithubRef,
-  throwGithubRefMissing,
+  resolveGithubRef,
 } from '~~/server/utils/skills/import/github'
 import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
 import type { GithubKv } from '~~/server/utils/skills/import/github'
@@ -363,13 +362,13 @@ export async function checkGithubSkillUpdate(
 
   await input.beforeNetwork?.()
 
-  const lookup = await resolveVerifiedGithubRef(client, {
+  const lookup = await resolveGithubRef(client, {
     ...repository,
     ref: skill.sourceRef,
   })
 
   if (!lookup.found) {
-    return await throwGithubRefMissing(client, repository)
+    throw createGithubRefNotFoundError()
   }
 
   if (lookup.sha === skill.sourceVersion) {

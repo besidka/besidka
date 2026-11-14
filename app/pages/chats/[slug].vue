@@ -66,6 +66,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatSkillInvocation
+            v-if="m.role === 'user'"
+            :message="m"
+          />
           <ChatArtifactAttachments
             v-if="isArtifactsActive && m.role === 'user'"
             :message="m"
@@ -124,6 +128,10 @@
                 ? getCodeExecutionSkippedFiles(m.parts)
                 : []"
               :fallback-key="`${m.id}-${index}`"
+            />
+            <ChatSkillStep
+              v-else-if="isSkillStepPart(part)"
+              :part="part"
             />
             <ChatDocument
               v-else-if="isDocumentPart(part)"

@@ -2,13 +2,14 @@
   <li
     class="
       list-row items-center gap-3 group py-3 sm:py-2 relative
+      max-sm:grid-flow-row max-sm:grid-cols-[minmax(0,1fr)_auto]
       [&:has(details[open])]:z-30
     "
     :class="{ 'bg-base-200': isSelected }"
     data-testid="skill-row"
     :data-skill-id="skill.id"
   >
-    <div class="list-col-grow flex-1 min-w-0">
+    <div class="list-col-grow flex-1 min-w-0 max-sm:col-start-1 max-sm:row-start-1">
       <button
         type="button"
         class="link no-underline rounded-box block w-full truncate py-1 text-left font-medium"
@@ -59,6 +60,13 @@
         >
           {{ tokenEstimate }}
         </span>
+        <span
+          v-if="isSlashBlocked"
+          class="text-warning"
+          data-testid="skill-row-slash-blocked"
+        >
+          Rename to use /name
+        </span>
       </div>
       <p
         v-if="skill.status === 'broken'"
@@ -69,25 +77,17 @@
       </p>
     </div>
 
-    <label
-      class="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center sm:min-h-8 sm:min-w-8"
-    >
-      <span class="sr-only">
-        {{ skill.enabled ? 'Turn off' : 'Turn on' }} {{ skill.name }}
-      </span>
-      <input
-        type="checkbox"
-        class="toggle toggle-sm"
-        :checked="skill.enabled"
-        :disabled="isBusy || skill.status === 'broken'"
-        data-testid="skill-row-toggle"
-        @click.prevent="emit('toggle', skill, !skill.enabled)"
-      >
-    </label>
+    <ProfileSkillsModeControl
+      :skill="skill"
+      :is-disabled="isBusy"
+      class="max-sm:col-start-1 max-sm:row-start-2 max-sm:justify-self-start"
+      test-id="skill-row-mode"
+      @select="mode => emit('setMode', skill, mode)"
+    />
 
     <details
       ref="dropdownRef"
-      class="dropdown dropdown-end relative z-20 open:z-40"
+      class="dropdown dropdown-end relative z-20 open:z-40 max-sm:col-start-2 max-sm:row-start-1 max-sm:self-start"
       :class="isFlippedUp ? 'dropdown-top' : 'dropdown-bottom'"
       @toggle="updatePlacement"
     >
@@ -174,6 +174,11 @@
 
 <script setup lang="ts">
 import type { SkillSummary } from '#shared/types/skills.d'
+import {
+  getSkillMode,
+  isSkillSlashBlocked,
+} from '#shared/utils/skills/mode'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillDetailTab } from '~/types/skills-ui.d'
 
 const props = withDefaults(defineProps<{
@@ -189,7 +194,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   open: [skill: SkillSummary, tab: SkillDetailTab]
-  toggle: [skill: SkillSummary, enabled: boolean]
+  setMode: [skill: SkillSummary, mode: SkillMode]
   edit: [skill: SkillSummary]
   reviewUpdate: [skill: SkillSummary]
   checkUpdates: [skill: SkillSummary]
@@ -243,15 +248,15 @@ const metaLine = computed<string>(() => {
 })
 
 const tokenEstimate = computed<string | null>(() => {
-  if (!props.skill.modelInvocable) {
+  if (getSkillMode(props.skill) !== 'auto') {
     return null
   }
 
-  const tokens = estimateSkillCatalogTokens(props.skill)
+  return `≈ ${estimateSkillCatalogTokens(props.skill)} tokens in every message`
+})
 
-  return props.skill.enabled
-    ? `≈ ${tokens} tokens in every message`
-    : `≈ ${tokens} tokens in every message when on`
+const isSlashBlocked = computed<boolean>(() => {
+  return isSkillSlashBlocked(props.skill)
 })
 
 onClickOutside(dropdownRef, closeDropdown)

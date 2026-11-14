@@ -253,16 +253,14 @@ describe('getSkillEditorFileBytes', () => {
 
 describe('name and description rules', () => {
   it('requires a valid name', () => {
-    expect(getSkillEditorNameError('', { slashCommand: false })).toBe('Add a name')
-    expect(getSkillEditorNameError('Bad Name', { slashCommand: false }))
+    expect(getSkillEditorNameError('')).toBe('Add a name')
+    expect(getSkillEditorNameError('Bad Name'))
       .toContain('lowercase')
-    expect(getSkillEditorNameError('review-pr', { slashCommand: false })).toBe('')
+    expect(getSkillEditorNameError('review-pr')).toBe('')
   })
 
-  it('refuses a reserved name only while the command toggle is on', () => {
-    expect(getSkillEditorNameError('help', { slashCommand: true }))
-      .toContain('reserved')
-    expect(getSkillEditorNameError('help', { slashCommand: false })).toBe('')
+  it('allows a reserved command name, which only switches /name off', () => {
+    expect(getSkillEditorNameError('help')).toBe('')
   })
 
   it('finds a name taken by another skill', () => {

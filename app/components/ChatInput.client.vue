@@ -99,6 +99,7 @@
                 @open-files-upload="openFilesModal('upload')"
                 @open-files-generated="openFilesModal('select', 'assistant')"
                 @open-artifact-picker="openArtifactPicker"
+                @open-skills-picker="openSkillPicker"
                 @update:use-memory="setMemoryUsage"
                 @remove-tile="removeTile"
               />
@@ -172,6 +173,13 @@
       v-model:open="isArtifactPickerOpen"
       @pick="onArtifactPicked"
     />
+    <LazyChatInputSkillPicker
+      v-if="isSkillPickerMounted && composerSkills.isVisible.value"
+      v-model:open="isSkillPickerOpen"
+      :items="composerSkills.items.value"
+      :selected-id="skillInvocation.invocation.value?.skillId ?? null"
+      @pick="onSkillSelected"
+    />
     <LazyChatTextFileModal
       v-if="openedPastedText"
       :key="openedPastedText.id"
@@ -198,6 +206,7 @@
 import type { StyleValue } from 'vue'
 import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
+import type { ComposerSkillItem } from '~/composables/composer-skills'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
@@ -774,6 +783,7 @@ const {
 const hasMessage = computed<boolean>(() => {
   return !!input.value?.trim().length
     || hasPastedTextContent(pastedTexts.value)
+    || skillInvocation.invocation.value !== null
 })
 
 const canShowRegenerate = computed<boolean>(() => {
@@ -871,9 +881,16 @@ const shouldDisplayProjectPicker = computed<boolean>(() => {
 })
 
 const artifactsFeature = useFeature('artifacts')
+const composerSkills = useComposerSkills()
+const skillInvocation = useComposerSkillInvocation()
+const skillPreview = useSkillPreview()
 
 const isArtifactAttachEnabled = computed<boolean>(() => {
   return artifactsFeature.value.active && !isDeepResearchModel.value
+})
+
+const isSkillAttachEnabled = computed<boolean>(() => {
+  return composerSkills.isVisible.value && !isDeepResearchModel.value
 })
 
 const toolsState = computed<ChatInputToolsState>(() => {
@@ -918,6 +935,13 @@ const toolsState = computed<ChatInputToolsState>(() => {
       visible: isArtifactAttachEnabled.value,
       attached: isArtifactAttachEnabled.value ? attachedArtifacts.value : [],
     },
+    skills: {
+      visible: isSkillAttachEnabled.value,
+      items: composerSkills.items.value,
+      selected: isSkillAttachEnabled.value
+        ? skillInvocation.invocation.value
+        : null,
+    },
     project: {
       visible: shouldDisplayProjectPicker.value,
       context: props.projectContext ?? null,
@@ -947,6 +971,14 @@ function openToolsMenu(
   section: ToolsSection | null,
   origin: HTMLElement,
 ) {
+  const attachedSkill = skillInvocation.invocation.value
+
+  if (section === 'skills' && attachedSkill) {
+    skillPreview.open(attachedSkill.skillId)
+
+    return
+  }
+
   toolsMenu.value?.open(section, origin)
 }
 
@@ -967,6 +999,8 @@ function removeTile(id: ChatInputTileId) {
     attachedArtifacts.value = attachedArtifacts.value.filter((artifact) => {
       return artifact.artifactId !== artifactId
     })
+  } else if (id === 'skill') {
+    skillInvocation.clear()
   } else if (id === 'project') {
     emit('clear-project-context')
   } else if (id === 'memory') {
@@ -1517,9 +1551,47 @@ async function sendMessage() {
   message.value = ''
   files.value = []
   attachedArtifacts.value = []
+  skillInvocation.clear()
   pastedTexts.value = []
   nuxtApp.callHook('chat:submit', { text })
 }
+
+const isSkillPickerMounted = shallowRef<boolean>(false)
+const isSkillPickerOpen = shallowRef<boolean>(false)
+
+function openSkillPicker() {
+  if (!isSkillAttachEnabled.value) {
+    return
+  }
+
+  isSkillPickerMounted.value = true
+  isSkillPickerOpen.value = true
+}
+
+function onSkillSelected(item: ComposerSkillItem) {
+  if (!isSkillAttachEnabled.value) {
+    return
+  }
+
+  skillInvocation.set({
+    skillId: item.id,
+    name: item.name,
+    version: item.version,
+  }, 'menu')
+}
+
+watch(isSkillAttachEnabled, (isEnabled) => {
+  if (isEnabled) {
+    return
+  }
+
+  isSkillPickerOpen.value = false
+  skillInvocation.clear()
+})
+
+onUnmounted(() => {
+  skillInvocation.clear()
+})
 
 const isArtifactPickerMounted = shallowRef<boolean>(false)
 const isArtifactPickerOpen = shallowRef<boolean>(false)

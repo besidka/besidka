@@ -150,7 +150,7 @@ export async function previewGithubImport(input: {
     fileName: null,
     files: loaded.files,
     folderName: loaded.folderName,
-    archiveWarnings: loaded.warnings,
+    archiveWarnings: [...source.warnings, ...loaded.warnings],
     logger: input.logger,
   })
 }

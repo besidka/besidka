@@ -62,7 +62,7 @@
       :is-selected="skill.id === selectedId"
       :can-import-from-url="canImportFromUrl"
       @open="(target, tab) => emit('open', target, tab)"
-      @toggle="(target, enabled) => emit('toggle', target, enabled)"
+      @set-mode="(target, mode) => emit('setMode', target, mode)"
       @edit="target => emit('edit', target)"
       @review-update="target => emit('reviewUpdate', target)"
       @check-updates="target => emit('checkUpdates', target)"
@@ -121,6 +121,7 @@
 
 <script setup lang="ts">
 import type { SkillSummary } from '#shared/types/skills.d'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillDetailTab, SkillNewAction } from '~/types/skills-ui.d'
 
 withDefaults(defineProps<{
@@ -145,7 +146,7 @@ withDefaults(defineProps<{
 
 const emit = defineEmits<{
   open: [skill: SkillSummary, tab: SkillDetailTab]
-  toggle: [skill: SkillSummary, enabled: boolean]
+  setMode: [skill: SkillSummary, mode: SkillMode]
   edit: [skill: SkillSummary]
   reviewUpdate: [skill: SkillSummary]
   checkUpdates: [skill: SkillSummary]

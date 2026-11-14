@@ -301,7 +301,7 @@ describe('restoreSkillVersion', () => {
     })
   })
 
-  it('refuses to bring back a reserved name while used as a command', async () => {
+  it('turns /name off when it brings back a reserved name', async () => {
     const reserved = await seedSkillWithFiles(testDb.db, bucket, {
       userId,
       files: { 'SKILL.md': skillMarkdown({ name: 'memory' }) },
@@ -326,7 +326,7 @@ describe('restoreSkillVersion', () => {
       .set({ slashCommand: true })
       .where(eq(schema.skills.id, reserved.skillId))
 
-    expect(await failureOf(restoreSkillVersion({
+    await restoreSkillVersion({
       db: testDb.db,
       bucket,
       userId,
@@ -334,7 +334,13 @@ describe('restoreSkillVersion', () => {
       version: 1,
       note: null,
       logger,
-    }))).toMatchObject({ status: 400, code: 'reserved-name' })
+    })
+
+    const [row] = await testDb.db.select()
+      .from(schema.skills)
+      .where(eq(schema.skills.id, reserved.skillId))
+
+    expect(row).toMatchObject({ name: 'memory', slashCommand: false })
   })
 
   it('writes nothing when the restored files equal the current ones', async () => {

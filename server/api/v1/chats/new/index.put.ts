@@ -1,6 +1,7 @@
 import { createError } from 'evlog'
 import type { FileUIPart, TextUIPart } from 'ai'
 import { isDataArtifactAttachmentPart } from '#shared/utils/artifacts'
+import { isDataSkillInvocationPart } from '#shared/utils/skills/runtime'
 import { and, eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
@@ -10,6 +11,7 @@ import {
 } from '~~/server/utils/chats/request-schema'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { resolveArtifactAttachmentParts } from '~~/server/utils/artifacts/attachments'
+import { resolveSkillInvocationPart } from '~~/server/utils/skills/runtime/invocation'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import { trackLandingEvent } from '~~/server/utils/landing/analytics-events'
@@ -90,7 +92,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const activityAt = new Date()
-  const parts = await resolveArtifactAttachmentParts({
+  const attachmentParts = await resolveArtifactAttachmentParts({
     event,
     db,
     userId,
@@ -99,6 +101,23 @@ export default defineEventHandler(async (event) => {
       : body.data.parts,
     logger,
   })
+  const parts = await resolveSkillInvocationPart({
+    event,
+    db,
+    userId,
+    parts: body.data.research
+      ? attachmentParts.filter(part => !isDataSkillInvocationPart(part))
+      : attachmentParts,
+    logger,
+  })
+
+  if (parts.length === 0) {
+    throw createError({
+      message: 'Invalid request body',
+      status: 400,
+      why: 'A message needs text, a file or an attached skill.',
+    })
+  }
 
   let projectId: string | undefined
 

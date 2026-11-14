@@ -144,7 +144,7 @@ describe('skills create, save, restore and read routes', () => {
     ['list', {}],
     ['create', { body: { kind: 'blank', name: 'new-one' } }],
     ['detail', {}],
-    ['patch', { body: { enabled: false } }],
+    ['patch', { body: { mode: 'off' } }],
     ['remove', {}],
     ['versions', {}],
     ['save', {
@@ -191,7 +191,7 @@ describe('skills create, save, restore and read routes', () => {
     'download',
   ] as RouteName[])('%s with a bad skill id', (name) => {
     const bodies: Partial<Record<RouteName, unknown>> = {
-      patch: { enabled: false },
+      patch: { mode: 'off' },
       save: {
         baseVersion: 1,
         changes: [{ op: 'put', path: 'a.md', content: 'x' }],
@@ -299,33 +299,55 @@ describe('skills create, save, restore and read routes', () => {
     it('changes settings only', async () => {
       const { result } = await call('patch', {
         body: {
-          enabled: false,
-          slashCommand: true,
+          mode: 'ask',
           argumentHint: '  Pull request link ',
         },
       })
 
       expect(result).toMatchObject({
-        enabled: false,
+        enabled: true,
+        modelInvocable: false,
         slashCommand: true,
         argumentHint: 'Pull request link',
         currentVersion: 1,
       })
     })
 
-    it('refuses content fields, an empty body and a reserved command name', async () => {
+    it('refuses content fields, an empty body and the old separate flags', async () => {
+      const [before] = await testDb.db.select().from(schema.skills)
+
       expect((await failureOf(call('patch', {
         body: { name: 'other-name' },
       }))).status).toBe(400)
       expect((await failureOf(call('patch', { body: {} }))).status).toBe(400)
 
+      for (const body of [
+        { enabled: false },
+        { modelInvocable: true },
+        { slashCommand: true },
+        { mode: 'auto', slashCommand: false },
+      ]) {
+        expect((await failureOf(call('patch', { body }))).status).toBe(400)
+      }
+
+      const [after] = await testDb.db.select().from(schema.skills)
+
+      expect(after).toEqual(before)
+    })
+
+    it('leaves a reserved name as a skill and /name off', async () => {
       await testDb.db.update(schema.skills)
-        .set({ name: 'memory' })
+        .set({ name: 'memory', slashCommand: false })
         .where(eq(schema.skills.id, skillId))
 
-      expect(await failureOf(call('patch', {
-        body: { slashCommand: true },
-      }))).toMatchObject({ status: 400, code: 'reserved-name' })
+      const { result } = await call('patch', { body: { mode: 'auto' } })
+
+      expect(result).toMatchObject({
+        name: 'memory',
+        enabled: true,
+        modelInvocable: true,
+        slashCommand: false,
+      })
     })
   })
 

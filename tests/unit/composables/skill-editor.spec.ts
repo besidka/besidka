@@ -208,14 +208,14 @@ describe('useSkillEditor', () => {
     expect(editor.nameError.value).toBe('')
   })
 
-  it('refuses a reserved name while the command toggle is on', async () => {
+  it('allows a reserved name, which only keeps /name off', async () => {
     respond(createDetail({ slashCommand: true }))
 
     const editor = await mountEditor()
 
     editor.setPart('name', 'help')
 
-    expect(editor.nameError.value).toContain('reserved')
+    expect(editor.nameError.value).toBe('')
   })
 
   it('requires a description', async () => {

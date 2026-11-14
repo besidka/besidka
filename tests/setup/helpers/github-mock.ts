@@ -6,16 +6,20 @@ export const GITHUB_SHA_ONE = '1'.repeat(40)
 export const GITHUB_SHA_TWO = '2'.repeat(40)
 export const GITHUB_SHA_THREE = '3'.repeat(40)
 
+export interface GithubTagFixture {
+  sha: string
+  peeled?: string
+}
+
 export interface GithubMock {
   fetch: ReturnType<typeof vi.fn>
-  refs: Map<string, string>
   branches: Map<string, string>
-  tags: Map<string, { sha: string, type: string }>
+  tags: Map<string, GithubTagFixture>
   setBranch: (name: string, sha: string) => void
   archives: Map<string, Uint8Array>
-  compare: Map<string, string | number>
   defaultBranch: string
   repoStatus: number
+  advertisement: () => Uint8Array
   urls: () => string[]
 }
 
@@ -31,68 +35,63 @@ export function githubRepoArchive(
   ))
 }
 
+export function pktLine(text: string): string {
+  return `${(text.length + 4).toString(16).padStart(4, '0')}${text}`
+}
+
 /**
- * A stand-in for the two GitHub hosts the skills import may call. Anything
- * else throws, so a test fails loudly if the code reaches for another URL.
+ * A stand-in for the two GitHub hosts the skills import may call: the git ref
+ * list on github.com and the archive on codeload.github.com. Anything else,
+ * `api.github.com` included, throws, so a test fails loudly if the code
+ * reaches for another URL.
  */
 export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
-  const refs = new Map<string, string>()
   const branches = new Map<string, string>()
-  const tags = new Map<string, { sha: string, type: string }>()
+  const tags = new Map<string, GithubTagFixture>()
   const archives = new Map<string, Uint8Array>()
-  const compare = new Map<string, string | number>()
   const state = {
     defaultBranch: 'main',
     repoStatus: 200,
   }
-  const apiBase = `https://api.github.com/repos/${owner}/${repo}`
+
+  function advertisement(): Uint8Array {
+    const headSha = branches.get(state.defaultBranch)
+      ?? '0'.repeat(40)
+    const lines = [
+      pktLine('# service=git-upload-pack\n'),
+      '0000',
+      pktLine(`${headSha} HEAD\0multi_ack symref=HEAD:refs/heads/${
+        state.defaultBranch
+      } agent=git/github\n`),
+      ...[...branches].map(([name, sha]) => {
+        return pktLine(`${sha} refs/heads/${name}\n`)
+      }),
+      pktLine(`${'9'.repeat(40)} refs/pull/1/head\n`),
+      ...[...tags].flatMap(([name, tag]) => {
+        return [
+          pktLine(`${tag.sha} refs/tags/${name}\n`),
+          ...(tag.peeled
+            ? [pktLine(`${tag.peeled} refs/tags/${name}^{}\n`)]
+            : []),
+        ]
+      }),
+      '0000',
+    ]
+
+    return new TextEncoder().encode(lines.join(''))
+  }
+
+  const refsUrl = `https://github.com/${owner}/${repo}.git/info/refs`
+    + '?service=git-upload-pack'
+  const archivePrefix = `https://codeload.github.com/${owner}/${repo}/zip/`
   const fetchMock = vi.fn(async (input: string | URL) => {
     const url = String(input)
 
-    for (const namespace of ['heads', 'tags'] as const) {
-      const prefix = `${apiBase}/git/ref/${namespace}/`
-
-      if (url.startsWith(prefix)) {
-        const name = url.slice(prefix.length)
-        const found = namespace === 'heads'
-          ? branches.has(name)
-            ? { sha: branches.get(name)!, type: 'commit' }
-            : undefined
-          : tags.get(name)
-
-        return found
-          ? new Response(JSON.stringify({
-            ref: `refs/${namespace}/${name}`,
-            object: { sha: found.sha, type: found.type },
-          }))
-          : new Response('', { status: 404 })
-      }
+    if (url === refsUrl) {
+      return state.repoStatus === 200
+        ? new Response(advertisement() as BodyInit)
+        : new Response('', { status: state.repoStatus })
     }
-
-    if (url.startsWith(`${apiBase}/commits/`)) {
-      const ref = url.slice(`${apiBase}/commits/`.length)
-      const sha = refs.get(ref)
-
-      return new Response(sha ?? '', { status: sha ? 200 : 422 })
-    }
-
-    if (url === apiBase) {
-      return new Response(
-        JSON.stringify({ default_branch: state.defaultBranch }),
-        { status: state.repoStatus },
-      )
-    }
-
-    if (url.startsWith(`${apiBase}/compare/`)) {
-      const sha = url.split('...')[1]!.split('?')[0]!
-      const result = compare.get(sha) ?? 404
-
-      return typeof result === 'number'
-        ? new Response('', { status: result })
-        : new Response(JSON.stringify({ status: result }))
-    }
-
-    const archivePrefix = `https://codeload.github.com/${owner}/${repo}/zip/`
 
     if (url.startsWith(archivePrefix)) {
       const archive = archives.get(url.slice(archivePrefix.length))
@@ -107,15 +106,12 @@ export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
 
   return {
     fetch: fetchMock,
-    refs,
     branches,
     tags,
     setBranch: (name: string, sha: string) => {
       branches.set(name, sha)
-      refs.set(name, sha)
     },
     archives,
-    compare,
     get defaultBranch() {
       return state.defaultBranch
     },
@@ -128,6 +124,7 @@ export function createGithubMock(owner = 'o', repo = 'r'): GithubMock {
     set repoStatus(value: number) {
       state.repoStatus = value
     },
+    advertisement,
     urls: () => {
       return fetchMock.mock.calls.map((call) => {
         return String(call[0])

@@ -187,17 +187,17 @@ describe('parseSkillMarkdown', () => {
 })
 
 describe('Claude Code keys as defaults for the user-set columns', () => {
-  it('defaults to a model-invocable skill that is not a command', () => {
+  it('defaults to an Auto skill that is also a /name command', () => {
     const { defaults } = parseOk(markdown('name: a\ndescription: b')).frontmatter
 
     expect(defaults).toEqual({
       modelInvocable: true,
-      slashCommand: false,
+      slashCommand: true,
       argumentHint: null,
     })
   })
 
-  it('turns disable-model-invocation into a slash-only command', () => {
+  it('turns disable-model-invocation into Only when I ask', () => {
     const { defaults } = parseOk(markdown(
       'name: a\ndescription: b\ndisable-model-invocation: true\nargument-hint: "[issue]"',
     )).frontmatter
@@ -209,21 +209,21 @@ describe('Claude Code keys as defaults for the user-set columns', () => {
     })
   })
 
-  it('honours user-invocable in both directions', () => {
+  it('ignores user-invocable: every skill is a /name command', () => {
     expect(parseOk(markdown(
-      'name: a\ndescription: b\nuser-invocable: true',
+      'name: a\ndescription: b\nuser-invocable: false',
     )).frontmatter.defaults.slashCommand).toBe(true)
     expect(parseOk(markdown(
       'name: a\ndescription: b\ndisable-model-invocation: true\nuser-invocable: false',
     )).frontmatter.defaults).toMatchObject({
       modelInvocable: false,
-      slashCommand: false,
+      slashCommand: true,
     })
   })
 
   it('refuses the slash default for a reserved name', () => {
     const result = parseOk(markdown(
-      'name: search\ndescription: b\nuser-invocable: true',
+      'name: search\ndescription: b',
     ))
 
     expect(result.frontmatter.defaults.slashCommand).toBe(false)

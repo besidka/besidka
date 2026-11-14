@@ -72,36 +72,19 @@ describe('profile layout', () => {
     ])
   })
 
-  it('adds the Skills tab after Labs only with the skills flag', async () => {
-    skillsActive.value = true
-    mocks.routePath = '/profile/skills'
-
-    const wrapper = await mountLayout()
-    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
-
-    expect(tabs.map(tab => tab.text())).toEqual([
-      'Security',
-      'API Keys',
-      'Memory',
-      'Preferences',
-      'Connected apps',
-      'Labs',
-      'Skills',
-    ])
-    expect(tabs[6]?.attributes('to')).toBe('/profile/skills')
-    expect(tabs[6]?.classes()).toContain('tab-active')
-    expect(tabs[6]?.find('.iconify').classes())
-      .toContain('i-lucide:sparkles')
-  })
-
-  it('has no Skills tab without the skills flag', async () => {
+  it('has no Skills tab, with or without the skills flag', async () => {
     mocks.routePath = '/profile/security'
 
-    const wrapper = await mountLayout()
-    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+    for (const isActive of [false, true]) {
+      skillsActive.value = isActive
 
-    expect(tabs.map(tab => tab.attributes('to')))
-      .not.toContain('/profile/skills')
+      const wrapper = await mountLayout()
+      const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+      expect(tabs.map(tab => tab.text())).not.toContain('Skills')
+      expect(tabs.map(tab => tab.attributes('to')))
+        .not.toContain('/chats/skills')
+    }
   })
 
   it('highlights the Security tab when visiting /profile/security', async () => {

@@ -283,6 +283,14 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
             run: () => goTo('/chats/documents'),
           }]
           : []),
+        ...(skillsFeature.value.active
+          ? [{
+            id: 'search-option-skills',
+            iconName: 'lucide:sparkles',
+            label: 'Skills',
+            run: () => goTo('/chats/skills'),
+          }]
+          : []),
       ],
     },
     {
@@ -331,14 +339,6 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Labs',
           run: () => goTo('/profile/labs'),
         },
-        ...(skillsFeature.value.active
-          ? [{
-            id: 'search-option-skills',
-            iconName: 'lucide:sparkles',
-            label: 'Skills',
-            run: () => goTo('/profile/skills'),
-          }]
-          : []),
         ...(showPinToggle.value
           ? [{
             id: 'search-option-pin-sidebar',

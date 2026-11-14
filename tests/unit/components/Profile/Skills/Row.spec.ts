@@ -33,15 +33,22 @@ describe('Profile/Skills/Row', () => {
     expect(wrapper.get(testId('skill-row-kind')).text()).toBe('Skill')
   })
 
-  it('shows /name for a slash command with both badges when it is both', async () => {
+  it('shows /name only for a command, which is a skill that runs only when asked', async () => {
     const wrapper = await mountRow(createSkillSummary({
       slashCommand: true,
-      modelInvocable: true,
+      modelInvocable: false,
     }))
 
     expect(wrapper.get(testId('skill-row-open')).text()).toBe('/review-pr')
     expect(wrapper.findAll(testId('skill-row-kind')).map(badge => badge.text()))
-      .toEqual(['Skill', 'Command'])
+      .toEqual(['Command'])
+
+    const auto = await mountRow(createSkillSummary({
+      slashCommand: true,
+      modelInvocable: true,
+    }))
+
+    expect(auto.get(testId('skill-row-open')).text()).toBe('review-pr')
   })
 
   it('shows the Off badge for a skill that is switched off', async () => {
@@ -61,13 +68,13 @@ describe('Profile/Skills/Row', () => {
     expect(wrapper.find(testId('skill-row-pending')).exists()).toBe(true)
   })
 
-  it('explains a broken skill and disables its toggle', async () => {
+  it('explains a broken skill and disables its mode control', async () => {
     const wrapper = await mountRow(createSkillSummary({ status: 'broken' }))
 
     expect(wrapper.get(testId('skill-row-status')).text()).toBe('Broken')
     expect(wrapper.get(testId('skill-row-broken')).text())
       .toBe('Files are missing. Restore an earlier version or delete it.')
-    expect(wrapper.get(testId('skill-row-toggle')).attributes('disabled'))
+    expect(wrapper.get(testId('skill-row-mode-select')).attributes('disabled'))
       .toBeDefined()
   })
 
@@ -95,14 +102,65 @@ describe('Profile/Skills/Row', () => {
     expect(commandOnly.find(testId('skill-row-tokens')).exists()).toBe(false)
   })
 
-  it('emits toggle with the next state without flipping the checkbox itself', async () => {
-    const wrapper = await mountRow(createSkillSummary({ enabled: true }))
-    const toggle = wrapper.get(testId('skill-row-toggle'))
+  it('shows no token estimate for an Auto skill that is switched off', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      enabled: false,
+      modelInvocable: true,
+    }))
 
-    await toggle.trigger('click')
+    expect(wrapper.find(testId('skill-row-tokens')).exists()).toBe(false)
+  })
 
-    expect(wrapper.emitted('toggle')?.[0]?.[1]).toBe(false)
-    expect((toggle.element as HTMLInputElement).checked).toBe(true)
+  it('shows the mode and emits the chosen mode without changing it itself', async () => {
+    const skill = createSkillSummary({
+      enabled: true,
+      modelInvocable: true,
+      slashCommand: true,
+    })
+    const wrapper = await mountRow(skill)
+    const select = wrapper.get(testId('skill-row-mode-select'))
+      .element as HTMLSelectElement
+
+    expect(select.value).toBe('auto')
+    expect([...select.options].map(option => option.textContent?.trim()))
+      .toEqual(['Off', 'Auto', 'Only when I ask'])
+
+    select.value = 'ask'
+    select.dispatchEvent(new Event('change'))
+
+    expect(wrapper.emitted('setMode')).toEqual([[skill, 'ask']])
+    expect(select.value).toBe('auto')
+  })
+
+  it('reads Off, Auto and Only when I ask from the three columns', async () => {
+    const off = await mountRow(createSkillSummary({ enabled: false }))
+    const ask = await mountRow(createSkillSummary({
+      enabled: true,
+      modelInvocable: false,
+      slashCommand: true,
+    }))
+
+    expect((off.get(testId('skill-row-mode-select')).element as HTMLSelectElement).value)
+      .toBe('off')
+    expect((ask.get(testId('skill-row-mode-select')).element as HTMLSelectElement).value)
+      .toBe('ask')
+  })
+
+  it('says to rename a reserved name that cannot run as /name', async () => {
+    const blocked = await mountRow(createSkillSummary({
+      name: 'memory',
+      enabled: true,
+      modelInvocable: true,
+      slashCommand: false,
+    }))
+    const fine = await mountRow(createSkillSummary({
+      enabled: true,
+      slashCommand: true,
+    }))
+
+    expect(blocked.get(testId('skill-row-slash-blocked')).text())
+      .toBe('Rename to use /name')
+    expect(fine.find(testId('skill-row-slash-blocked')).exists()).toBe(false)
   })
 
   it('opens the detail on a click and the versions tab from the menu', async () => {

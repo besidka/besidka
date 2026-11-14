@@ -111,7 +111,7 @@ describe('POST /api/v1/skills/import/preview', () => {
 
     expect(preview).toMatchObject({
       source: 'zip',
-      skill: { name: 'review-pr', modelInvocable: true, slashCommand: false },
+      skill: { name: 'review-pr', modelInvocable: true, slashCommand: true },
       licence: { class: 'none' },
       requiresLicenceAcknowledgement: true,
     })

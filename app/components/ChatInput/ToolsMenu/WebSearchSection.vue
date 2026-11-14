@@ -54,26 +54,32 @@
       />
       This model can't call tools, so Brave and Exa aren't available.
     </p>
-    <NuxtLink
-      v-for="option in keylessOptions"
-      :key="option.value"
-      :to="option.addKeyHref"
-      class="flex items-center gap-2 px-2 pb-1.5 text-xs text-warning hover:underline"
-      :data-testid="`web-search-add-key-${option.providerId}`"
+    <div
+      v-if="keylessOptions.length"
+      class="mt-2 mb-1 flex flex-col"
+      data-testid="web-search-add-key-list"
     >
-      <ProviderIcon
-        :provider-id="option.providerId ?? ''"
-        class="!size-3.5"
-      />
-      <span class="grow">
-        Add {{ option.value === 'web_search_brave' ? 'a Brave' : 'an Exa' }} key
-      </span>
-      <Icon
-        name="lucide:arrow-right"
-        size="14"
-        class="shrink-0"
-      />
-    </NuxtLink>
+      <NuxtLink
+        v-for="option in keylessOptions"
+        :key="option.value"
+        :to="option.addKeyHref"
+        class="flex items-center gap-2 min-h-9 max-md:min-h-11 px-2 rounded-box text-xs text-warning hover:underline hover:bg-base-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+        :data-testid="`web-search-add-key-${option.providerId}`"
+      >
+        <ProviderIcon
+          :provider-id="option.providerId ?? ''"
+          class="!size-3.5"
+        />
+        <span class="grow">
+          {{ getAddKeyLabel(option) }}
+        </span>
+        <Icon
+          name="lucide:arrow-right"
+          size="14"
+          class="shrink-0"
+        />
+      </NuxtLink>
+    </div>
     <ChatInputToolsMenuReveal
       v-if="hasExaOption"
       :is-open="isExaSelected"
@@ -203,6 +209,12 @@ const offeredOptions = computed<WebSearchOption[]>(() => {
     return option.value === 'web_search' || props.isToolCallingSupported
   })
 })
+
+function getAddKeyLabel(option: WebSearchOption): string {
+  return option.value === 'web_search_brave'
+    ? 'Add a Brave key'
+    : 'Add an Exa key'
+}
 
 const keylessOptions = computed<WebSearchOption[]>(() => {
   return offeredOptions.value.filter((option) => {
