@@ -18,6 +18,7 @@ import type { ParsedGithubSkillUrl } from '#shared/utils/skills/github-url'
 import { sortReleaseTagsDescending } from '#shared/utils/skills/release'
 import type { GithubReleaseTag } from '#shared/utils/skills/release'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
 import {
   GIT_REFS_SERVICE_QUERY,
   parseGitRefAdvertisement,
@@ -257,6 +258,7 @@ export function assertAllowedGithubUrl(input: string): URL {
     || url.port
     || url.hash
     || !isWebPathAllowed
+    || !parseSafeOutboundUrl(input).ok
   ) {
     throw createError({
       message: 'This address is not allowed',
