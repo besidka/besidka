@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai'
 import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
+import { isAuthoredSkillSource } from '#shared/utils/skills-policy'
 import {
   findSkillInvocation,
   toSkillActivationPart,
@@ -12,6 +13,7 @@ import {
   buildSkillInvocationBlock,
   createSkillInvocationUnavailableError,
 } from '~~/server/utils/skills/runtime/invocation'
+import type { LoadedSkillInvocation } from '~~/server/utils/skills/runtime/invocation'
 import {
   findRunnableSkill,
   listCatalogSkills,
@@ -20,6 +22,7 @@ import type { RuntimeSkillRow } from '~~/server/utils/skills/runtime/load'
 import {
   buildActiveSkillsBlock,
   collectActivatedSkillIds,
+  collectActivatedSkillNames,
 } from '~~/server/utils/skills/runtime/reinject'
 import { getSkillTools } from '~~/server/utils/skills/runtime/tools'
 import type { SkillReadBucket } from '~~/server/utils/skills/versions/read'
@@ -77,6 +80,7 @@ export async function prepareSkillsForSend(input: {
   newMessageParts: readonly unknown[]
   userMessageText: string | null
   isStoredUserMessage: boolean
+  preloadedInvocation?: LoadedSkillInvocation | null
   guard?: UntrustedContentGuard
   logger: LoggerLike
 }): Promise<SkillsSend> {
@@ -95,6 +99,7 @@ export async function prepareSkillsForSend(input: {
       invocation,
       argumentsText: input.userMessageText ?? '',
       family,
+      preloaded: input.preloadedInvocation,
       logger,
     })
     : null
@@ -120,6 +125,7 @@ export async function prepareSkillsForSend(input: {
     bucket,
     userId,
     skillIds: activatedSkillIds,
+    skillNames: collectActivatedSkillNames(input.storedMessages),
     skipSkillIds: new Set(
       invocationResult ? [invocationResult.skillId] : [],
     ),
@@ -159,6 +165,8 @@ export async function prepareSkillsForSend(input: {
     })
   }
 
+  const catalogHoldsImportedText = catalog !== null
+    && catalogSkills.some(skill => !isAuthoredSkillSource(skill.sourceKind))
   const instructionBlock = [catalog?.block, active?.block]
     .filter((block): block is string => !!block)
     .join('\n\n') || null
@@ -174,6 +182,7 @@ export async function prepareSkillsForSend(input: {
         activeCount: active?.activeSkillIds.length ?? 0,
         activeUnavailable: active?.unavailable ?? 0,
         activeOmitted: active?.omitted ?? 0,
+        catalogHoldsImportedText,
       },
     },
   })
@@ -184,7 +193,9 @@ export async function prepareSkillsForSend(input: {
     instructionBlock,
     activeSkillsBlock: active?.block ?? null,
     invocationBlock: invocationResult?.block ?? null,
-    holdsSkillText: active !== null || invocationResult !== null,
+    holdsSkillText: active !== null
+      || invocationResult !== null
+      || catalogHoldsImportedText,
     streamActivations,
     getToolActivations: toolsRun?.getActivations ?? (() => []),
   }

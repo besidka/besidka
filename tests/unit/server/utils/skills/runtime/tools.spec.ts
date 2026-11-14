@@ -20,7 +20,11 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await skillPublicIdMockFactory()
 })
 
-const { getSkillTools, SKILL_READ_FILE_CALLS_PER_SEND } = await import(
+const {
+  getSkillTools,
+  SKILL_ACTIVATE_CALLS_PER_SEND,
+  SKILL_READ_FILE_CALLS_PER_SEND,
+} = await import(
   '~~/server/utils/skills/runtime/tools'
 )
 const { toolRequiresFollowUpTurn } = await import(
@@ -287,6 +291,38 @@ describe('getSkillTools', () => {
     expect(result.truncated).toBe(true)
     expect(result.content.length).toBeLessThanOrEqual(65_536)
     expect(result.content).not.toContain('</skill_content>')
+  })
+
+  it('refuses a fourth activation of one send with a plain result that stores no activation', async () => {
+    const names = ['alpha-skill', 'beta-skill', 'gamma-skill', 'delta-skill']
+
+    for (const name of names) {
+      await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': `---\nname: ${name}\ndescription: D\n---\nBody of ${name}\n` },
+        skill: { name, enabled: true, modelInvocable: true },
+      })
+    }
+
+    const { run, activate } = await makeTools()
+
+    for (const name of names.slice(0, SKILL_ACTIVATE_CALLS_PER_SEND)) {
+      expect(await activate.execute({ name }, {})).toMatchObject({
+        status: 'activated',
+      })
+    }
+
+    const refused = await activate.execute({ name: names.at(-1) }, {}) as {
+      status: string
+      content: string
+      skillId?: string
+    }
+
+    expect(SKILL_ACTIVATE_CALLS_PER_SEND).toBe(3)
+    expect(refused.status).toBe('limit-reached')
+    expect(refused.skillId).toBeUndefined()
+    expect(refused.content).not.toContain('Body of')
+    expect(run.getActivations()).toHaveLength(SKILL_ACTIVATE_CALLS_PER_SEND)
   })
 
   it('caps the file reads of one send', async () => {

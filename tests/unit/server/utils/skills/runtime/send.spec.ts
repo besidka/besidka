@@ -20,6 +20,8 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await skillPublicIdMockFactory()
 })
 
+const schema = await import('~~/server/db/schema')
+const { eq } = await import('drizzle-orm')
 const { prepareSkillsForSend } = await import(
   '~~/server/utils/skills/runtime/send'
 )
@@ -139,8 +141,48 @@ describe('prepareSkillsForSend', () => {
     expect(result.holdsSkillText).toBe(false)
   })
 
+  it('locks the memory write for a catalog that lists an imported skill, not for authored ones only', async () => {
+    const authored = await prepare()
+
+    expect(authored.holdsSkillText).toBe(false)
+
+    const importedId = await seed('imported-skill', 'IMPORTED BODY', {
+      modelInvocable: true,
+    })
+
+    for (const sourceKind of ['zip', 'text', 'github', 'url', 'mcp', 'share']) {
+      await testDb.db.update(schema.skills)
+        .set({ sourceKind })
+        .where(eq(schema.skills.id, importedId))
+
+      const result = await prepare()
+
+      expect(result.instructionBlock).toContain('- imported-skill:')
+      expect(result.holdsSkillText).toBe(true)
+    }
+  })
+
+  it('keeps the lock off for template skills and for an imported skill that is not in the catalog', async () => {
+    await seed('from-template', 'T', { modelInvocable: true, sourceKind: 'template' })
+    await seed('imported-ask', 'A', {
+      modelInvocable: false,
+      sourceKind: 'zip',
+    })
+
+    expect((await prepare()).holdsSkillText).toBe(false)
+  })
+
+  it('does not lock for an imported skill when tool calling is off and no catalog is built', async () => {
+    await seed('imported-auto', 'A', { modelInvocable: true, sourceKind: 'zip' })
+
+    const result = await prepare({ isToolCallingAllowed: false })
+
+    expect(result.instructionBlock).toBeNull()
+    expect(result.holdsSkillText).toBe(false)
+  })
+
   it('registers no tool and no catalog when the user has no model-invocable skill', async () => {
-    await testDb.db.update((await import('~~/server/db/schema')).skills)
+    await testDb.db.update(schema.skills)
       .set({ modelInvocable: false })
 
     const result = await prepare()
@@ -265,6 +307,30 @@ describe('prepareSkillsForSend', () => {
       status: 400,
       code: 'skill_invocation_unavailable',
     })
+  })
+
+  it('uses a preloaded invocation and does not read the skill twice', async () => {
+    const { loadSkillInvocationContent } = await import(
+      '~~/server/utils/skills/runtime/invocation'
+    )
+    const preloaded = await loadSkillInvocationContent({
+      db: testDb.db,
+      bucket,
+      userId,
+      invocation: { skillId: askId, name: 'ask-skill', version: 1 },
+    })
+
+    bucket.get.mockClear()
+
+    const result = await prepare({
+      newMessageParts: [invocation(askId, 'ask-skill')],
+      userMessageText: 'go',
+      preloadedInvocation: preloaded,
+    })
+
+    expect(preloaded).not.toBeNull()
+    expect(result.invocationBlock).toContain('ASK BODY go')
+    expect(bucket.get).not.toHaveBeenCalled()
   })
 
   it('lets a stored message run without a skill that can no longer be read', async () => {

@@ -17,6 +17,10 @@ import {
   findRunnableSkill,
   loadSkillContent,
 } from '~~/server/utils/skills/runtime/load'
+import type {
+  LoadedSkillContent,
+  RuntimeSkillRow,
+} from '~~/server/utils/skills/runtime/load'
 import type { SkillReadBucket } from '~~/server/utils/skills/versions/read'
 
 type DbClient = ReturnType<typeof useDb>
@@ -53,10 +57,21 @@ export function createSkillInvocationUnavailableError() {
 
 async function isSkillsFeatureActive(
   event: Pick<RequestEvent, 'context'>,
+  logger: LoggerLike,
 ): Promise<boolean> {
   try {
     return (await evaluateFeatureForEvent(event, 'skills')).active
-  } catch {
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        skills: {
+          featureCheckError: exception instanceof Error
+            ? exception.message
+            : String(exception),
+        },
+      },
+    })
+
     return false
   }
 }
@@ -112,7 +127,7 @@ export async function resolveSkillInvocationPart<
 
   const invocation = invocations[0]!
 
-  if (!await isSkillsFeatureActive(input.event)) {
+  if (!await isSkillsFeatureActive(input.event, input.logger)) {
     if (isDropping) {
       return withoutInvocations()
     }
@@ -149,23 +164,24 @@ export async function resolveSkillInvocationPart<
   })
 }
 
+export interface LoadedSkillInvocation {
+  row: RuntimeSkillRow
+  loaded: LoadedSkillContent
+}
+
 /**
- * The text that goes into the latest user turn, never the system prompt, so
- * the prompt cache is untouched: the current version of the skill as
- * `<skill_content ... invoked="user">` with `$ARGUMENTS` filled from the
- * user's text. It needs no tool, so it works on a model without tool
- * calling. Returns `null` when the skill can no longer be read; the caller
- * decides whether that fails the send.
+ * The attached skill's row and current version, read from D1 and R2 for this
+ * user, or `null` when it cannot be run or read (the error cause goes to the
+ * log, never to the caller). The chat route calls it before it stores a new
+ * user message, so a skill that cannot be read stores nothing.
  */
-export async function buildSkillInvocationBlock(input: {
+export async function loadSkillInvocationContent(input: {
   db: DbClient
   bucket: SkillReadBucket
   userId: number
   invocation: SkillInvocationPartData
-  argumentsText: string
-  family: KnowledgeTokenFamily
   logger?: LoggerLike
-}): Promise<SkillInvocationBlock | null> {
+}): Promise<LoadedSkillInvocation | null> {
   const row = await findRunnableSkill(
     input.db,
     input.userId,
@@ -183,24 +199,8 @@ export async function buildSkillInvocationBlock(input: {
       userId: input.userId,
       skill: row,
     })
-    const formatted = formatSkillContent({
-      skill: loaded,
-      family: input.family,
-      invokedBy: 'user',
-      argumentsText: input.argumentsText,
-    })
 
-    input.logger?.set({
-      attributes: { skills: { invocationTruncated: formatted.isTruncated } },
-    })
-
-    return {
-      block: `${SKILL_INVOCATION_INSTRUCTION}\n${formatted.text}`,
-      skillId: row.id,
-      name: row.name,
-      version: row.currentVersion,
-      keepsActive: row.modelInvocable,
-    }
+    return { row, loaded }
   } catch (exception) {
     input.logger?.set({
       attributes: {
@@ -213,5 +213,52 @@ export async function buildSkillInvocationBlock(input: {
     })
 
     return null
+  }
+}
+
+/**
+ * The text that goes into the latest user turn, never the system prompt, so
+ * the prompt cache is untouched: the current version of the skill as
+ * `<skill_content ... invoked="user">` with `$ARGUMENTS` filled from the
+ * user's text (cut at `SKILL_ARGUMENTS_MAX_BYTES`). It needs no tool, so it
+ * works on a model without tool calling. Returns `null` when the skill can no
+ * longer be read; the caller decides whether that fails the send. `preloaded`
+ * is the result of `loadSkillInvocationContent` when the route already read
+ * the skill, so it is not read twice.
+ */
+export async function buildSkillInvocationBlock(input: {
+  db: DbClient
+  bucket: SkillReadBucket
+  userId: number
+  invocation: SkillInvocationPartData
+  argumentsText: string
+  family: KnowledgeTokenFamily
+  preloaded?: LoadedSkillInvocation | null
+  logger?: LoggerLike
+}): Promise<SkillInvocationBlock | null> {
+  const source = input.preloaded ?? await loadSkillInvocationContent(input)
+
+  if (!source) {
+    return null
+  }
+
+  const { row, loaded } = source
+  const formatted = formatSkillContent({
+    skill: loaded,
+    family: input.family,
+    invokedBy: 'user',
+    argumentsText: input.argumentsText,
+  })
+
+  input.logger?.set({
+    attributes: { skills: { invocationTruncated: formatted.isTruncated } },
+  })
+
+  return {
+    block: `${SKILL_INVOCATION_INSTRUCTION}\n${formatted.text}`,
+    skillId: row.id,
+    name: row.name,
+    version: row.currentVersion,
+    keepsActive: row.modelInvocable,
   }
 }

@@ -54,7 +54,9 @@ function wrapCatalog(lines: string[]): string {
  * sorted by name. Over the token budget (Cyrillic-aware, per model family)
  * the descriptions shrink to their first sentence, then to names only; names
  * past the budget are dropped with a count, and the model is told it can
- * still call the tool with an exact name. Returns `null` for no skills.
+ * still call the tool with an exact name. Names and descriptions pass the
+ * same delimiter neutraliser; the returned `names` stay raw because the tool
+ * enum matches on them. Returns `null` for no skills.
  */
 export function buildSkillCatalog(input: {
   skills: readonly SkillCatalogInput[]
@@ -75,7 +77,7 @@ export function buildSkillCatalog(input: {
       detail: 'full',
       lines: sorted.map((skill) => {
         return formatSkillCatalogLine(
-          skill.name,
+          toSkillSingleLine(skill.name),
           toSkillSingleLine(skill.description),
         )
       }),
@@ -84,7 +86,7 @@ export function buildSkillCatalog(input: {
       detail: 'first-sentence',
       lines: sorted.map((skill) => {
         return formatSkillCatalogLine(
-          skill.name,
+          toSkillSingleLine(skill.name),
           firstSentence(toSkillSingleLine(skill.description)),
         )
       }),
@@ -100,7 +102,7 @@ export function buildSkillCatalog(input: {
     }
   }
 
-  const nameLines = sorted.map(skill => `- ${skill.name}`)
+  const nameLines = sorted.map(skill => `- ${toSkillSingleLine(skill.name)}`)
   let kept = nameLines.length
 
   while (kept > 0) {

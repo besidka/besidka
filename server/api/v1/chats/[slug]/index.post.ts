@@ -308,11 +308,13 @@ import {
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
 import { SKILL_TOOL_STEPS } from '#shared/utils/skills-policy'
 import {
+  findSkillInvocation,
   isDataSkillInvocationPart,
   isSkillToolName,
 } from '#shared/utils/skills/runtime'
 import {
   createSkillInvocationUnavailableError,
+  loadSkillInvocationContent,
   resolveSkillInvocationPart,
 } from '~~/server/utils/skills/runtime/invocation'
 import {
@@ -484,6 +486,21 @@ export default defineEventHandler(async (event) => {
   })
 
   if (hadSkillInvocation && newMessage.parts.length === 0) {
+    throw createSkillInvocationUnavailableError()
+  }
+
+  const skillInvocation = findSkillInvocation(newMessage.parts)
+  const preloadedSkillInvocation = skillInvocation && !isStoredUserMessage
+    ? await loadSkillInvocationContent({
+      db,
+      bucket: useFileStorage(),
+      userId,
+      invocation: skillInvocation,
+      logger,
+    })
+    : null
+
+  if (skillInvocation && !isStoredUserMessage && !preloadedSkillInvocation) {
     throw createSkillInvocationUnavailableError()
   }
 
@@ -1696,6 +1713,7 @@ export default defineEventHandler(async (event) => {
     newMessageParts: newMessage.parts,
     userMessageText,
     isStoredUserMessage,
+    preloadedInvocation: preloadedSkillInvocation,
     guard: chatSearchBudget,
     logger: aiLogger,
   })
@@ -2426,7 +2444,7 @@ export default defineEventHandler(async (event) => {
           gatewayPricing,
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
-          followUpToolNames,
+          followUpToolNames: answerGuaranteeToolNames,
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
           knowledgeMode: knowledgeContext?.decision.mode,
           autoWebSearch: autoWebSearchOutcome,

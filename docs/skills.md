@@ -744,9 +744,11 @@ reserved name (`SKILL_RESERVED_SLASH_NAMES`) never fails the request: the mode
 is applied and `slash_command` stays off, and the UI says "Rename to use
 /name". A rename recomputes `slash_command` in both directions (a reserved new
 name turns it off, leaving a reserved name turns it on again for an enabled
-skill), so a reserved name no longer blocks a save. The separate flags still
-work on the same route for MCP callers, and still refuse a reserved
-`slash_command`. The first turn-on of a skill the user did not write keeps its
+skill), so a reserved name no longer blocks a save. `PATCH /api/v1/skills/[id]`
+takes only `mode` and `argumentHint` (a strict schema: the old `enabled`,
+`modelInvocable` and `slashCommand` fields answer 400), so the three columns are
+never written one by one; the MCP tools of S-6 use `mode` as well. The first
+turn-on of a skill the user did not write keeps its
 confirmation. In the manager, a **skill** is a skill with `model_invocable` on
 and a **command** is one that runs only when asked; the "≈ N tokens in every
 message" estimate is shown for Auto only. Blank skills and the writing-style
@@ -758,12 +760,16 @@ default mode is Auto unless the frontmatter sets `disable-model-invocation`
 **Catalog and tools** (`server/utils/skills/runtime/`). `catalog.ts` builds
 `<available_skills>` from the user's enabled, model-invocable skills that are
 not broken, at 1,500 tokens (`SKILL_CATALOG_BUDGET_TOKENS`), with the framing
-that descriptions are untrusted. `tools.ts` registers `activate_skill` and
+that descriptions are untrusted. The name and the description of every line go
+through the same delimiter neutraliser (the tool's name enum keeps the raw
+names). `tools.ts` registers `activate_skill` and
 `read_skill_file` only when the catalog is not empty and the model can call
 tools, both with a follow-up turn and a loop budget of
 `SKILL_TOOL_STEPS` (4). Neither adds a tool, both set the memory write guard,
-a skill already active is not loaded twice, and `read_skill_file` is capped at
-8 reads and 64 KiB. Deep-research models are refused earlier, so they get no
+a skill already active is not loaded twice, `activate_skill` loads at most 3
+skills per send (`SKILL_ACTIVATE_CALLS_PER_SEND`; past that it answers
+`limit-reached` with no skill identity, so no activation part is stored), and
+`read_skill_file` is capped at 8 reads and 64 KiB. Deep-research models are refused earlier, so they get no
 catalog. `section 5.1` (`skillIds` and `skill_chat_settings`) is not built:
 the catalog is simply every qualifying skill.
 
@@ -776,9 +782,13 @@ start of the send **and** handed to the persistence step: the stored reply is
 built from the model's stream, so a chunk written only to the outer writer
 would reach the screen but never D1 (the past-chat chip is passed the same way).
 `reinject.ts` reads those parts from the chat's stored messages, loads each
-skill's current version (12,000 tokens in all, newest first), and adds the
-`<active_skills>` block to the system prompt, also when tool calling is off. A
-deleted or disabled skill gets a one-line notice. The activation part counts as
+skill's current version (12,000 tokens in all, newest first, and it stops
+reading once the budget is spent), and adds the `<active_skills>` block to the
+system prompt, also when tool calling is off. Only a skill that is still
+model-invocable is re-injected: after a switch to Only when I ask, an earlier
+activation does not carry over. Deleted, disabled, broken, switched or
+unreadable skills share one `<skill_notice>` that names at most three of them
+(from the stored activation parts) and counts the rest. The activation part counts as
 a meaningful part only next to text, and `filterPublicParts` drops both skill
 parts.
 
@@ -799,7 +809,13 @@ through the PUT route (which validates and throws) and then the POST route
 dropped). `prepareSkillsForSend` builds the text for the latest user turn: the
 current body as `<skill_content name source version invoked="user">`, with
 `$ARGUMENTS` replaced by splitting and joining (never a string replace, so
-`$&` in the user's text stays text) or "ARGUMENTS: ..." appended. A message
+`$&` in the user's text stays text) or "ARGUMENTS: ..." appended. The user's
+text is cut at 8 KiB (`SKILL_ARGUMENTS_MAX_BYTES`) and the expansion stops
+once it is past the 40 KiB body cap, so many placeholders cannot multiply it.
+The send route reads the attached skill before it stores a new user message
+(`loadSkillInvocationContent`), so an attached skill that cannot be read stores
+nothing; a stored message (a resend, a Regenerate, the first message of a new
+chat) still drops it silently. A message
 that is only an attached skill has no text for the model context sanitizer to
 keep, so `appendTextAsLastUserTurn` adds a user turn instead of leaving the
 conversation on the assistant. An Auto skill stays active through the
@@ -849,8 +865,12 @@ for the message. While a skill is active `generate_image` is limited to one
 call per send, which the image tool already guarantees by claiming its single
 execution (a second call fails with `generation-busy`, covered in
 `tests/integration/server/image-generation.spec.ts`). The memory write lock is
-set when an invoked or re-injected skill is in context, and by any
-`activate_skill` or `read_skill_file` result.
+set when an invoked or re-injected skill is in context, when the catalog lists
+a skill whose source is not authored (anything but `editor` and `template`,
+`isAuthoredSkillSource`, so a new source kind is locked by default), and by any
+`activate_skill` or `read_skill_file` result. The persisted reply of a send
+that ran only skill tools and ended without text gets no failure text (the
+skill tools are outside the answer guarantee).
 
 **Context panel.** An attached skill, an activation and a successful
 `activate_skill` call appear once each under Used (kind `skill`, label

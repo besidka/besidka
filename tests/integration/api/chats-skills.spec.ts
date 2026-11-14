@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
+import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-text'
 import {
   keyProviderIdForGateway,
   readOpenRouterCost,
@@ -32,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   skills: new Map<string, FakeSkill>(),
   skillsFlagActive: true,
   historyMessages: [] as Array<Record<string, unknown>>,
+  lastInsertValues: null as ReturnType<typeof vi.fn> | null,
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -154,7 +156,7 @@ vi.mock('~~/server/utils/skills/runtime/load', () => {
       return skillIds.flatMap((skillId) => {
         const skill = mocks.skills.get(skillId)
 
-        return skill?.enabled ? [toRow(skill)] : []
+        return skill?.enabled && skill.modelInvocable ? [toRow(skill)] : []
       })
     }),
     loadSkillContent: vi.fn(async (input: { skill: FakeSkill }) => {
@@ -224,6 +226,8 @@ function createScriptedModel(steps: Array<Array<Record<string, unknown>>>) {
 
 function createDb() {
   const insertValues = vi.fn()
+
+  mocks.lastInsertValues = insertValues
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
     publicId: 'db-generated-public-id',
@@ -579,6 +583,80 @@ describe('skills on the chat send path', () => {
       type: 'data-skill-activation',
       data: expect.objectContaining({ skillId: 'skl1' }),
     }))
+  })
+
+  it('stores no failure text for a skill-only tool round that ends without text', async () => {
+    const { assistantInsert } = await runSend({
+      steps: [
+        toolCall('call-1', 'activate_skill', { name: 'writing-style' }),
+        [{
+          type: 'finish' as const,
+          finishReason: { unified: 'stop' as const, raw: undefined },
+          usage: createUsage(),
+        }],
+      ],
+    })
+    const texts = (assistantInsert?.parts ?? [])
+      .filter((part: any) => part.type === 'text')
+      .map((part: any) => part.text)
+
+    expect(texts).not.toContain(getPersistedEmptyAnswerFailureText())
+    expect(assistantInsert).toBeUndefined()
+  })
+
+  it('does not re-inject a skill that was switched to Only when I ask after its activation', async () => {
+    mocks.skills.get('skl1')!.modelInvocable = false
+    mocks.historyMessages = [
+      {
+        id: 'm-1',
+        publicId: 'p-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Earlier question' }],
+        tools: [],
+        reasoning: 'off',
+      },
+      {
+        id: 'm-2',
+        publicId: 'p-2',
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Earlier answer.' },
+          {
+            type: 'data-skill-activation',
+            data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+          },
+        ],
+        tools: [],
+        reasoning: 'off',
+      },
+    ]
+
+    const { doStream } = await runSend({ steps: [text('Hello.')] })
+    const call = doStream.mock.calls[0]?.[0] as any
+
+    expect(readSystemPrompt(call)).not.toContain('SKILL BODY')
+    expect(readSystemPrompt(call)).toContain('no longer available')
+  })
+
+  it('stores nothing and answers 400 when the attached skill cannot be read', async () => {
+    const { loadSkillContent } = await import(
+      '~~/server/utils/skills/runtime/load'
+    )
+
+    vi.mocked(loadSkillContent).mockRejectedValueOnce(new Error('R2 miss'))
+
+    const failure = runSend({
+      steps: [text('Done.')],
+      userMessageId: 'user-public-2',
+      parts: [invocationPart('skl2', 'meeting-notes')],
+    })
+
+    await expect(failure).rejects.toMatchObject({
+      status: 400,
+      code: 'skill_invocation_unavailable',
+    })
+    expect(mocks.lastInsertValues).not.toBeNull()
+    expect(mocks.lastInsertValues).not.toHaveBeenCalled()
   })
 
   it('carries a message that is only an attached skill to the model as a new user turn and a new reply', async () => {

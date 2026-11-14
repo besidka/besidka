@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import {
+  SKILL_ACTIVATE_MAX_BYTES,
+  SKILL_ARGUMENTS_MAX_BYTES,
+} from '#shared/utils/skills-policy'
+import {
   applySkillArguments,
   neutralizeSkillDelimiters,
   toSkillAttributeValue,
@@ -32,6 +36,44 @@ describe('skill text helpers', () => {
     it('fills the placeholder with nothing for empty arguments', () => {
       expect(applySkillArguments('Do $ARGUMENTS now', '')).toBe('Do  now')
     })
+
+    it('cuts the arguments at the arguments cap', () => {
+      const result = applySkillArguments('Do $ARGUMENTS', 'x'.repeat(50_000))
+
+      expect(result).toBe(`Do ${'x'.repeat(SKILL_ARGUMENTS_MAX_BYTES)}`)
+    })
+
+    it('bounds the output of many placeholders times long arguments', () => {
+      const body = '$ARGUMENTS\n'.repeat(20_000)
+      const startedAt = performance.now()
+      const result = applySkillArguments(body, 'y'.repeat(SKILL_ARGUMENTS_MAX_BYTES))
+      const elapsed = performance.now() - startedAt
+
+      expect(result.length).toBeGreaterThan(SKILL_ACTIVATE_MAX_BYTES)
+      expect(result.length).toBeLessThan(
+        SKILL_ACTIVATE_MAX_BYTES + SKILL_ARGUMENTS_MAX_BYTES + 16,
+      )
+      expect(result).not.toContain('$ARGUMENTS')
+      expect(elapsed).toBeLessThan(500)
+    })
+
+    it('leaves a result that fits the cap exactly as before', () => {
+      const body = `${'Line $ARGUMENTS.\n'.repeat(10)}tail`
+
+      expect(applySkillArguments(body, ' a $& b '))
+        .toBe(`${'Line a $& b.\n'.repeat(10)}tail`)
+    })
+
+    it('trims a long trailing whitespace run of a body without a placeholder quickly', () => {
+      const startedAt = performance.now()
+      const result = applySkillArguments(
+        `Body${' \t'.repeat(130_000)}x${' '.repeat(100_000)}`,
+        'text',
+      )
+
+      expect(result.endsWith('\n\nARGUMENTS: text')).toBe(true)
+      expect(performance.now() - startedAt).toBeLessThan(200)
+    })
   })
 
   describe('neutralizeSkillDelimiters', () => {
@@ -47,6 +89,31 @@ describe('skill text helpers', () => {
     it('leaves code and ordinary tags alone', () => {
       expect(neutralizeSkillDelimiters('<div>1 < 2</div> <skill_contents_not>'))
         .toBe('<div>1 < 2</div> <skill_contents_not>')
+    })
+
+    it('defuses the tags with a long whitespace run in linear time', () => {
+      const attacks = [
+        `<${' '.repeat(64 * 1024)}`,
+        `<${' '.repeat(64 * 1024)}x`,
+        `< /${' '.repeat(64 * 1024)}x`,
+        `${'< '.repeat(32 * 1024)}`,
+      ]
+
+      for (const attack of attacks) {
+        const startedAt = performance.now()
+
+        neutralizeSkillDelimiters(attack)
+
+        expect(performance.now() - startedAt).toBeLessThan(100)
+      }
+    })
+
+    it('keeps the whitespace and slash variants and the self-closing form', () => {
+      expect(neutralizeSkillDelimiters('<skill_content/>')).toBe('‹skill_content/>')
+      expect(neutralizeSkillDelimiters('<\n\t/ \n SKILL_notice >'))
+        .toBe('‹\n\t/ \n SKILL_notice >')
+      expect(neutralizeSkillDelimiters('<  active_skills'))
+        .toBe('‹  active_skills')
     })
 
     it('escapes an attribute value', () => {

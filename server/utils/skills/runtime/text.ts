@@ -1,5 +1,9 @@
 import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
+import {
+  SKILL_ACTIVATE_MAX_BYTES,
+  SKILL_ARGUMENTS_MAX_BYTES,
+} from '#shared/utils/skills-policy'
 
 export const SKILL_ARGUMENTS_PLACEHOLDER = '$ARGUMENTS'
 export const SKILL_CONTENT_TAG = 'skill_content'
@@ -15,7 +19,7 @@ const SKILL_DELIMITER_TAGS = [
   'skill_notice',
 ]
 const DELIMITER_OPENING = new RegExp(
-  `<(\\s*\\/?\\s*)(${SKILL_DELIMITER_TAGS.join('|')})(?![\\w-])`,
+  `<(\\s*(?:\\/\\s*)?)(${SKILL_DELIMITER_TAGS.join('|')})(?![\\w-])`,
   'gi',
 )
 const WHITESPACE_RUN = /\s+/g
@@ -53,22 +57,38 @@ export function toSkillSingleLine(value: string): string {
 /**
  * Substitutes the user's text for every `$ARGUMENTS` with split and join,
  * never a string replacement, because user text such as `$&` or `$1` would
- * otherwise be read as a replacement pattern. A body without the placeholder
- * gets the text appended as `ARGUMENTS: ...`, and nothing when there is none.
+ * otherwise be read as a replacement pattern. The text is cut at
+ * `SKILL_ARGUMENTS_MAX_BYTES`, and the expansion stops once it is past the
+ * activation byte cap, so a body full of placeholders cannot multiply a long
+ * text into megabytes (the caller cuts the result to the cap). A body without
+ * the placeholder gets the text appended as `ARGUMENTS: ...`, and nothing
+ * when there is none.
  */
 export function applySkillArguments(
   body: string,
   argumentsText: string,
 ): string {
-  const trimmed = argumentsText.trim()
+  const trimmed = truncateToByteBudget(
+    argumentsText,
+    SKILL_ARGUMENTS_MAX_BYTES,
+  ).text.trim()
 
-  if (body.includes(SKILL_ARGUMENTS_PLACEHOLDER)) {
-    return body.split(SKILL_ARGUMENTS_PLACEHOLDER).join(trimmed)
+  if (!body.includes(SKILL_ARGUMENTS_PLACEHOLDER)) {
+    return trimmed ? `${body.trimEnd()}\n\nARGUMENTS: ${trimmed}` : body
   }
 
-  return trimmed
-    ? `${body.replace(/\s+$/, '')}\n\nARGUMENTS: ${trimmed}`
-    : body
+  const segments = body.split(SKILL_ARGUMENTS_PLACEHOLDER)
+  let expanded = segments[0]!
+
+  for (const segment of segments.slice(1)) {
+    if (expanded.length > SKILL_ACTIVATE_MAX_BYTES) {
+      break
+    }
+
+    expanded += trimmed + segment
+  }
+
+  return expanded
 }
 
 export function isOverTokenBudget(

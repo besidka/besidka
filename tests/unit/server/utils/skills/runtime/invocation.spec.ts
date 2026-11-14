@@ -186,6 +186,9 @@ describe('skill invocation', () => {
       mocks.evaluateFeatureForEvent.mockRejectedValue(new Error('boom'))
 
       expect((await failureOf(resolve([part()]))).status).toBe(400)
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: { skills: { featureCheckError: 'boom' } },
+      })
     })
 
     it('drops a part that no longer resolves for a stored message', async () => {
@@ -241,6 +244,13 @@ describe('skill invocation', () => {
       const result = await build('cost is $& and $1')
 
       expect(result!.block).toContain('Translate this: cost is $& and $1')
+    })
+
+    it('cuts very long arguments at the arguments cap', async () => {
+      const result = await build('z'.repeat(30_000))
+
+      expect(result!.block).toContain(`Translate this: ${'z'.repeat(8192)}\n`)
+      expect(result!.block).not.toContain('z'.repeat(8193))
     })
 
     it('appends ARGUMENTS when the skill has no placeholder', async () => {

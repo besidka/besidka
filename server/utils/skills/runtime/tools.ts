@@ -31,7 +31,10 @@ import type { SkillReadBucket } from '~~/server/utils/skills/versions/read'
 
 type DbClient = ReturnType<typeof useDb>
 
+export const SKILL_ACTIVATE_CALLS_PER_SEND = 3
 export const SKILL_READ_FILE_CALLS_PER_SEND = 8
+export const SKILL_ACTIVATE_LIMIT_TEXT = 'Skill activation limit for this '
+  + 'message reached. Answer with the skills already loaded.'
 export const SKILL_ALREADY_ACTIVE_TEXT = 'Already active; its content is in '
   + 'context.'
 
@@ -66,7 +69,11 @@ function createSkillToolError(message: string, why: string, fix: string) {
  * before anything is read, which locks `memory_write` and `memory_forget`
  * for the rest of the send. Neither tool adds another tool, and a skill
  * already active (re-injected, invoked by the user or activated earlier in
- * this send) is not loaded twice.
+ * this send) is not loaded twice. A send loads at most
+ * `SKILL_ACTIVATE_CALLS_PER_SEND` skills and reads at most
+ * `SKILL_READ_FILE_CALLS_PER_SEND` files; past the activation cap the tool
+ * answers with a plain refusal and no skill identity, so no activation part
+ * is stored.
  */
 export function getSkillTools(input: {
   db: DbClient
@@ -83,6 +90,7 @@ export function getSkillTools(input: {
     return [skill.name, skill]
   }))
   const activations = new Map<string, SkillActivationPartData>()
+  let activateCalls = 0
   let readFileCalls = 0
 
   function markUntrusted() {
@@ -127,6 +135,15 @@ export function getSkillTools(input: {
               content: SKILL_ALREADY_ACTIVE_TEXT,
             }
           }
+
+          if (activateCalls >= SKILL_ACTIVATE_CALLS_PER_SEND) {
+            return {
+              status: 'limit-reached' as const,
+              content: SKILL_ACTIVATE_LIMIT_TEXT,
+            }
+          }
+
+          activateCalls += 1
 
           try {
             const loaded = await loadSkillContent({

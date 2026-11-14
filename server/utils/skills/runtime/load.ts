@@ -88,6 +88,12 @@ export async function findRunnableSkill(
   return row ?? null
 }
 
+/**
+ * The skills a chat may keep re-injecting: the same rows as
+ * `findRunnableSkill`, and also model-invocable. A skill switched to Only
+ * when I ask runs once per explicit invocation, so an earlier activation of
+ * it does not carry over.
+ */
 export async function findRunnableSkills(
   db: DbClient,
   userId: number,
@@ -105,6 +111,7 @@ export async function findRunnableSkills(
       inArray(schema.skills.id, decodable),
       eq(schema.skills.userId, userId),
       eq(schema.skills.enabled, true),
+      eq(schema.skills.modelInvocable, true),
       ne(schema.skills.status, 'broken'),
     ))
 }
