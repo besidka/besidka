@@ -691,6 +691,12 @@ describe('skills on the chat send path', () => {
     const chunks = await readClientStream()
     const start = chunks.find(chunk => chunk.type === 'start')
 
+    const storedUserRow = mocks.lastInsertValues?.mock.calls.find(([value]) => {
+      return value.role === 'user'
+    })?.[0]
+
+    expect(storedUserRow?.parts).toEqual([invocationPart('skl2', 'meeting-notes')])
+    expect(JSON.stringify(storedUserRow)).not.toContain('SKILL BODY')
     expect(roles).toEqual(['user', 'assistant', 'user'])
     expect(readLastUserText(call)).toContain('SKILL BODY')
     expect(start?.messageId).not.toBe('p-2')

@@ -869,8 +869,13 @@ set when an invoked or re-injected skill is in context, when the catalog lists
 a skill whose source is not authored (anything but `editor` and `template`,
 `isAuthoredSkillSource`, so a new source kind is locked by default), and by any
 `activate_skill` or `read_skill_file` result. The persisted reply of a send
-that ran only skill tools and ended without text gets no failure text (the
-skill tools are outside the answer guarantee).
+uses the same follow-up tool list as the live answer guarantee, which leaves
+the skill tools out. A send that ran only skill tools and ended without text
+therefore stores no reply and no empty-answer failure text (the reply has no
+meaningful part, so the activation part is not stored either and a reload
+shows no reply); before, it stored the failure text. A skill round followed by
+`generate_image` and no closing text no longer gets the failure text after the
+image. `create_document` is a follow-up tool and behaves as it did before.
 
 **Context panel.** An attached skill, an activation and a successful
 `activate_skill` call appear once each under Used (kind `skill`, label
