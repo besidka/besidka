@@ -1459,6 +1459,25 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
 
+  const skillsVersionsTests = [
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/edit.spec.ts',
+    'tests/unit/utils/skills/templates.spec.ts',
+    'tests/unit/server/utils/skills/unique-violation.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/skills/pending.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/import/rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/save-rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/versions/statements.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/skills/versions/restore.spec.ts',
+    'tests/unit/server/utils/skills/versions/create.spec.ts',
+    'tests/unit/server/utils/skills/versions/read-write-paths.spec.ts',
+    'tests/unit/server/api/v1/skills/skills-crud.spec.ts',
+    'tests/unit/server/api/v1/skills/update-check.spec.ts',
+  ]
+
   const skillsImportTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/skills/path.spec.ts',
@@ -2882,6 +2901,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock|github-mock)\.ts|tests\/fixtures\/skills\/.*)$/,
       tests: skillsImportTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/(edit|blank|templates\/.*|archive|analyse|licence|frontmatter|diff|path|findings)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
+      tests: skillsVersionsTests,
     },
     {
       pattern:

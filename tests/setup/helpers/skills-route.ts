@@ -5,6 +5,7 @@ export interface SkillsRouteEvent {
   params: Record<string, string>
   headers: Record<string, string>
   body?: unknown
+  query?: Record<string, string>
   status?: number
   req: { formData: () => Promise<FormData> }
   res: { headers: Headers }
@@ -26,6 +27,7 @@ export async function skillsNuxtServerMockFactory() {
       return event.headers[name.toLowerCase()]
     },
     getRouterParams: (event: SkillsRouteEvent) => event.params,
+    getQuery: (event: SkillsRouteEvent) => event.query ?? {},
     setResponseStatus: (event: SkillsRouteEvent, status: number) => {
       event.status = status
     },

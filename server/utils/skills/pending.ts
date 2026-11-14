@@ -11,10 +11,9 @@ import {
   pruneSkillVersions,
   skillBlobKey,
 } from '~~/server/utils/skills/storage'
+import { isUniqueViolation } from '~~/server/utils/skills/unique-violation'
 
 type DbClient = ReturnType<typeof useDb>
-
-const MAX_ERROR_CAUSE_DEPTH = 5
 
 export interface PendingVersionReference {
   version: number
@@ -52,24 +51,6 @@ function createPendingChangedError() {
     why: 'The pending version is gone or is not the one you reviewed',
     fix: 'Open the update again and review the new version',
   })
-}
-
-function isUniqueViolation(exception: unknown): boolean {
-  let current: unknown = exception
-
-  for (let depth = 0; depth < MAX_ERROR_CAUSE_DEPTH; depth++) {
-    if (!(current instanceof Error)) {
-      return false
-    }
-
-    if (current.message.includes('UNIQUE constraint failed')) {
-      return true
-    }
-
-    current = current.cause
-  }
-
-  return false
 }
 
 async function loadReviewedPending(input: RejectPendingInput) {
