@@ -2,7 +2,10 @@ import type { BatchItem } from 'drizzle-orm/batch'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { SKILL_LICENSE_CLASSIFIER_VERSION } from '#shared/utils/skills/license'
-import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
+import {
+  SKILL_MD_FILE_NAME,
+  normalizeSkillFileKind,
+} from '#shared/utils/skills/path'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import * as schema from '~~/server/db/schema'
 import { isDecodableSkillPublicId } from '~~/server/utils/skills/ids'
@@ -289,7 +292,7 @@ export async function acceptPendingSkillVersion(
           path: file.path,
           blobSha256: file.blobSha256,
           bytes: file.bytes,
-          kind: file.kind,
+          kind: normalizeSkillFileKind(file.kind),
         })
       }),
       db.update(schema.skills)

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { extractSkillArchive } from '#shared/utils/skills/archive'
 import { SKILL_DIFF_MAX_FILES } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
@@ -257,6 +257,43 @@ describe('skill reads, settings and delete', () => {
       expect(Object.fromEntries(result.files.map((file) => {
         return [file.path, file.editable]
       }))).toEqual({ 'SKILL.md': true, 'LICENSE': false, 'big.md': false })
+    })
+
+    it('reads a file stored with the earlier spelling `licence` as `license`', async () => {
+      const { skillId: oldId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: {
+          'SKILL.md': skillMarkdown({ name: 'old-rows' }),
+          'LICENSE': 'MIT text\n',
+        },
+        skill: { name: 'old-rows', licenseClass: 'open' },
+      })
+
+      await testDb.db.update(schema.skillFiles)
+        .set({ kind: 'licence' as never })
+        .where(and(
+          eq(schema.skillFiles.skillId, oldId),
+          eq(schema.skillFiles.path, 'LICENSE'),
+        ))
+
+      const [stored] = await testDb.db.select().from(schema.skillFiles)
+        .where(and(
+          eq(schema.skillFiles.skillId, oldId),
+          eq(schema.skillFiles.path, 'LICENSE'),
+        ))
+      const list = await readSkillVersionFiles({
+        db: testDb.db,
+        bucket,
+        userId,
+        skillId: oldId,
+      })
+      const detail = await getSkillDetail(testDb.db, userId, oldId)
+
+      expect(stored!.kind).toBe('licence')
+      expect(list.files.find(file => file.path === 'LICENSE')!.kind)
+        .toBe('license')
+      expect(detail.files.find(file => file.path === 'LICENSE')!.kind)
+        .toBe('license')
     })
 
     it('builds a zip the importer reads back', async () => {

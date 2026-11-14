@@ -4,6 +4,7 @@ import {
   detectSkillRoot,
   getSkillFileKind,
   normaliseSkillEntryName,
+  normalizeSkillFileKind,
 } from '#shared/utils/skills/path'
 
 describe('normaliseSkillEntryName', () => {
@@ -127,6 +128,35 @@ describe('detectSkillRoot', () => {
       ok: false,
       code: 'missing-skill-md',
     })
+  })
+})
+
+describe('normalizeSkillFileKind', () => {
+  it('reads a row stored with the earlier spelling as license', () => {
+    expect(normalizeSkillFileKind('licence')).toBe('license')
+    expect(normalizeSkillFileKind('license')).toBe('license')
+  })
+
+  it('keeps every current kind and turns anything else into other', () => {
+    for (const kind of [
+      'skill-md',
+      'reference',
+      'script',
+      'asset',
+      'license',
+      'other',
+    ]) {
+      expect(normalizeSkillFileKind(kind)).toBe(kind)
+    }
+
+    expect(normalizeSkillFileKind('')).toBe('other')
+    expect(normalizeSkillFileKind('Licence')).toBe('other')
+  })
+
+  it('still recognises both spellings of the license file name', () => {
+    for (const name of ['LICENSE', 'LICENCE', 'License.md', 'licence.txt']) {
+      expect(getSkillFileKind(name)).toBe('license')
+    }
   })
 })
 

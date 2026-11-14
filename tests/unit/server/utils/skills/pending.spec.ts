@@ -166,6 +166,28 @@ describe('pending skill versions', () => {
   })
 
   describe('acceptPendingSkillVersion', () => {
+    it('writes the file kinds of the accepted version in the current spelling', async () => {
+      await testDb.db.update(schema.skillFiles)
+        .set({ kind: 'licence' as never })
+        .where(and(
+          eq(schema.skillFiles.skillId, skillId),
+          eq(schema.skillFiles.version, 2),
+          eq(schema.skillFiles.path, 'references/checklist.md'),
+        ))
+
+      await acceptPendingSkillVersion(baseInput())
+
+      const accepted = await testDb.db.select()
+        .from(schema.skillFiles)
+        .where(and(
+          eq(schema.skillFiles.skillId, skillId),
+          eq(schema.skillFiles.version, 3),
+          eq(schema.skillFiles.path, 'references/checklist.md'),
+        ))
+
+      expect(accepted[0]!.kind).toBe('license')
+    })
+
     it('creates version max+1 over the same blobs and makes it current', async () => {
       const putsBefore = bucket.put.mock.calls.length
       const result = await acceptPendingSkillVersion(baseInput())

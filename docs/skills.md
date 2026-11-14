@@ -1225,7 +1225,7 @@ Indexes: unique (`skill_id`, `version`); (`user_id`).
 | `path` | text | normalised relative path |
 | `blob_sha256` | text | the R2 blob (section 3.5) |
 | `bytes` | integer | |
-| `kind` | text | `skill-md`, `reference`, `script`, `asset`, `license`, `other` (rows written before 2026-11-14 hold the earlier spelling `licence`; nothing branches on the value, it is only listed, so no data migration was needed) |
+| `kind` | text | `skill-md`, `reference`, `script`, `asset`, `license`, `other` (rows written before 2026-11-14 hold the earlier spelling `licence`; `normalizeSkillFileKind` reads it as `license` when `loadVersionFiles` loads a version and when a pending version is accepted, so new rows are always `license`, no code sees the old value and there is no migration or data UPDATE; both `LICENSE*` and `LICENCE*` file names are still recognized, since real repositories use both) |
 
 There is no `r2_key` column (section 3.5). Indexes: unique (`skill_id`,
 `version`, `path`); (`user_id`); (`skill_id`, `blob_sha256`) for pruning.
