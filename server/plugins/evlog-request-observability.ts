@@ -72,11 +72,16 @@ export function moveMcpContextToAttributes(event: Record<string, unknown>) {
   delete event.mcp
 }
 
-const QUERY_FREE_PATH_PREFIXES = ['/api/v1/admin/']
+const QUERY_FREE_PATH_PREFIXES = [
+  '/api/v1/admin/',
+  '/api/v1/connectors/oauth/callback',
+]
 
 /**
  * Drops the query string from admin API paths, so an admin's user search
- * text (`?q=`) never reaches the wide event (compliance pre-check C15).
+ * text (`?q=`) never reaches the wide event (compliance pre-check C15), and
+ * from the connector OAuth callback, whose query carries the authorization
+ * code and the state.
  */
 export function toLoggedPath(path: unknown): unknown {
   if (typeof path !== 'string' || !path.includes('?')) {
@@ -110,9 +115,9 @@ export default defineNitroPlugin((nitroApp) => {
 
   nitroApp.hooks.hook('evlog:enrich', (context) => {
     if (typeof context.request?.path === 'string') {
-      context.request.path = redactArtifactStorageKeyPath(
+      context.request.path = toLoggedPath(redactArtifactStorageKeyPath(
         redactArtifactSharePath(context.request.path),
-      ) as string
+      )) as string
     }
 
     redactArtifactShareTokens(context.event)

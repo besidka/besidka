@@ -15,6 +15,7 @@ import { purgeUserArtifacts } from '~~/server/utils/artifacts/store'
 import { purgeUserDocuments } from '~~/server/utils/documents/cleanup'
 import { purgeUserSkills } from '~~/server/utils/skills/cleanup'
 import { purgeUserConnectors } from '~~/server/utils/connectors/cleanup'
+import { revokeAllUserConnectorTokens } from '~~/server/utils/connectors/revoke'
 
 const r2BatchDeleteLimit = 1000
 
@@ -91,7 +92,8 @@ export interface PurgeUserDataResult {
  *   - connectors: the `connectors`, `connector_credentials`,
  *     `connector_tool_settings`, `connector_chat_settings` and
  *     `connector_tool_calls` rows (no FK to `users`; the audit rows go with
- *     the account, not with the connector),
+ *     the account, not with the connector), after a best-effort RFC 7009
+ *     revocation of every connector token under a short deadline,
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
@@ -266,6 +268,8 @@ export async function purgeUserData(
 
     throw exception
   }
+
+  await revokeAllUserConnectorTokens(db, userId, logger)
 
   let connectorPurge: Awaited<ReturnType<typeof purgeUserConnectors>>
 
