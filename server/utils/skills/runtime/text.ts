@@ -133,6 +133,15 @@ export function truncateToTokenBudget(
   return { text: '', isTruncated: true }
 }
 
+const UTF8_CONTINUATION_MASK = 0xC0
+const UTF8_CONTINUATION_BITS = 0x80
+
+/**
+ * Cuts text to at most `maxBytes` of UTF-8 on a character boundary. The cut
+ * steps back over continuation bytes from the end instead of decoding and
+ * stripping replacement characters, so it stays linear and keeps a genuine
+ * U+FFFD that sits right before the cut.
+ */
 export function truncateToByteBudget(
   text: string,
   maxBytes: number,
@@ -143,8 +152,17 @@ export function truncateToByteBudget(
     return { text, isTruncated: false }
   }
 
-  const decoder = new TextDecoder('utf-8', { fatal: false })
-  const decoded = decoder.decode(encoded.slice(0, maxBytes))
+  let cutIndex = Math.max(0, maxBytes)
 
-  return { text: decoded.replace(/�+$/, ''), isTruncated: true }
+  while (
+    cutIndex > 0
+    && (encoded[cutIndex]! & UTF8_CONTINUATION_MASK) === UTF8_CONTINUATION_BITS
+  ) {
+    cutIndex--
+  }
+
+  return {
+    text: new TextDecoder().decode(encoded.subarray(0, cutIndex)),
+    isTruncated: true,
+  }
 }

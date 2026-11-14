@@ -164,5 +164,33 @@ describe('skill text helpers', () => {
         .toBeLessThanOrEqual(51)
       expect(result.text).not.toContain('�')
     })
+
+    it('cuts a long run of replacement characters in linear time', () => {
+      const text = '�'.repeat(40_000)
+      const startedAt = performance.now()
+      const result = truncateToByteBudget(text, 90_000)
+      const elapsed = performance.now() - startedAt
+
+      expect(result.isTruncated).toBe(true)
+      expect(result.text).toBe('�'.repeat(30_000))
+      expect(elapsed).toBeLessThan(200)
+    })
+
+    it('never cuts inside a multi-byte character at any budget', () => {
+      const text = 'a€😀яb'.repeat(20)
+
+      for (let maxBytes = 0; maxBytes < 60; maxBytes++) {
+        const result = truncateToByteBudget(text, maxBytes)
+
+        expect(new TextEncoder().encode(result.text).byteLength)
+          .toBeLessThanOrEqual(maxBytes)
+        expect(text.startsWith(result.text)).toBe(true)
+        expect(result.text).not.toContain('�')
+      }
+    })
+
+    it('keeps a genuine replacement character before the cut', () => {
+      expect(truncateToByteBudget('a�b', 4).text).toBe('a�')
+    })
   })
 })
