@@ -27,6 +27,11 @@ import { deleteOwnedFile } from '~~/server/utils/files/delete-files'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { persistFile } from '~~/server/utils/files/persist-file'
 import type { PersistedFile } from '~~/server/utils/files/persist-file'
+import {
+  STORAGE_FULL_MESSAGE,
+  STORAGE_PAGE_PATH,
+  isStorageFullError,
+} from '~~/server/utils/storage/errors'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -51,8 +56,6 @@ export interface FinalizeRenderedDocumentInput {
   logger: LoggerLike
 }
 
-const QUOTA_ERROR_MESSAGE_PREFIX = 'Not enough storage'
-
 export function setDocumentLog(
   logger: LoggerLike,
   fields: DocumentLogFields,
@@ -61,18 +64,7 @@ export function setDocumentLog(
 }
 
 export function isStorageQuotaError(exception: unknown): boolean {
-  if (typeof exception !== 'object' || exception === null) {
-    return false
-  }
-
-  const { status, message } = exception as {
-    status?: unknown
-    message?: unknown
-  }
-
-  return status === 400
-    && typeof message === 'string'
-    && message.startsWith(QUOTA_ERROR_MESSAGE_PREFIX)
+  return isStorageFullError(exception)
 }
 
 /**
@@ -218,7 +210,7 @@ async function grantActiveShareAccess(
 
 /**
  * Stores validated or server-rendered bytes as the document's file and marks
- * the claimed row ready. A quota error becomes a 507 and the claim is given
+ * the claimed row ready. A quota error becomes a 413 and the claim is given
  * back by `withClaimRelease`, so a retry works after space was freed. When
  * the lease was taken over meanwhile, the freshly stored file is deleted
  * again and the caller gets a 409.
@@ -250,11 +242,13 @@ export async function finalizeRenderedDocument(
       })
 
       throw createError({
-        message: 'Not enough storage space',
-        status: 507,
+        message: STORAGE_FULL_MESSAGE,
+        status: 413,
         code: DOCUMENT_ERROR_CODES.quotaExceeded,
-        why: DOCUMENT_ERROR_CODES.quotaExceeded,
-        fix: 'Delete some files and try again',
+        why: (exception as { why?: string }).why
+          ?? DOCUMENT_ERROR_CODES.quotaExceeded,
+        fix: 'Free space on the Storage page',
+        link: STORAGE_PAGE_PATH,
       })
     }
 

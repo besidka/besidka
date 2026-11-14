@@ -4,10 +4,10 @@ import type { FilePolicy } from '#shared/types/files.d'
 import { and, eq, lt, sql } from 'drizzle-orm'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import * as schema from '~~/server/db/schema'
+import { userStorageUsedBytesSql } from '~~/server/utils/storage/usage'
 import {
   isFileNotLinkedToKnowledgeSql,
 } from '~~/server/utils/knowledge/linked-files'
-import { userKnowledgeTextBytesSql } from '~~/server/utils/knowledge/quota'
 
 export function extractStorageKeyFromFileUrl(url: string): string | null {
   return extractLocalFileStorageKey(url)
@@ -95,8 +95,8 @@ export function getCurrentMonthKey(now: Date = new Date()): string {
 
 export async function getOrCreateStoragePolicyRow(
   userId: number,
+  db: ReturnType<typeof useDb> = useDb(),
 ): Promise<StoragePolicyRow> {
-  const db = useDb()
   const existingRow = await db.query.storages.findFirst({
     where: { userId },
     columns: storagePolicyRowColumns,
@@ -179,8 +179,9 @@ export function getEffectiveFilePolicy(
 
 export async function getEffectiveUserFilePolicy(
   userId: number,
+  db: ReturnType<typeof useDb> = useDb(),
 ): Promise<FilePolicy> {
-  const row = await getOrCreateStoragePolicyRow(userId)
+  const row = await getOrCreateStoragePolicyRow(userId, db)
 
   return getEffectiveFilePolicy(row)
 }
@@ -195,18 +196,13 @@ export async function getEffectiveRetentionDays(
 
 export async function getUserStorageUsageBytes(
   userId: number,
+  db: ReturnType<typeof useDb> = useDb(),
 ): Promise<number> {
-  const db = useDb()
-  const result = await db
-    .select({
-      used: sql<number>`coalesce(sum(${schema.files.size}), 0)
-        + ${userKnowledgeTextBytesSql(userId)}`,
-    })
-    .from(schema.files)
-    .where(eq(schema.files.userId, userId))
-    .get()
+  const [row] = await db.all<{ used: number }>(
+    sql`select ${userStorageUsedBytesSql(userId)} as used`,
+  )
 
-  return result?.used ?? 0
+  return Number(row?.used ?? 0)
 }
 
 export interface RecomputeUserFileExpiryOptions {

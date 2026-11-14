@@ -1,5 +1,7 @@
 import { createError } from 'evlog'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { createStorageFullError } from '~~/server/utils/storage/errors'
+import type { StorageFullErrorInput } from '~~/server/utils/storage/errors'
 
 export const UPLOAD_FILE_NAME_MAX_LENGTH = 255
 
@@ -37,7 +39,7 @@ export function decodeUploadFileName(rawFileName: string | undefined): string {
 
 export function assertUploadContentLength(
   contentLengthHeader: string | undefined,
-  remainingStorageBytes: number,
+  quota: StorageFullErrorInput,
 ): number | null {
   if (contentLengthHeader === undefined || contentLengthHeader === '') {
     return null
@@ -59,13 +61,8 @@ export function assertUploadContentLength(
     })
   }
 
-  if (contentLength > Math.max(remainingStorageBytes, 0)) {
-    throw createError({
-      message: 'Not enough storage space. Please delete some files.',
-      status: 413,
-      why: 'The upload is larger than the remaining storage quota',
-      fix: 'Delete some files or upload a smaller file',
-    })
+  if (contentLength > Math.max(quota.totalBytes - quota.usedBytes, 0)) {
+    throw createStorageFullError(quota)
   }
 
   return contentLength
@@ -73,14 +70,15 @@ export function assertUploadContentLength(
 
 export async function readUploadBody(
   body: ReadableStream<Uint8Array> | null,
-  remainingStorageBytes: number,
+  maxUploadBytes: number,
+  quota: StorageFullErrorInput,
   createTooLargeError?: () => Error,
 ): Promise<Uint8Array> {
   if (!body) {
     return new Uint8Array(0)
   }
 
-  const maxBytes = Math.max(remainingStorageBytes, 0)
+  const maxBytes = Math.max(maxUploadBytes, 0)
   const chunks: Uint8Array[] = []
   const reader = body.getReader()
   let totalBytes = 0
@@ -101,12 +99,7 @@ export async function readUploadBody(
         throw createTooLargeError()
       }
 
-      throw createError({
-        message: 'Not enough storage space. Please delete some files.',
-        status: 413,
-        why: 'The upload is larger than the remaining storage quota',
-        fix: 'Delete some files or upload a smaller file',
-      })
+      throw createStorageFullError(quota)
     }
 
     chunks.push(value)

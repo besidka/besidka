@@ -134,6 +134,12 @@ const tabs = [
     childRoutes: [],
   },
   {
+    to: '/profile/storage',
+    label: 'Storage',
+    icon: 'lucide:hard-drive',
+    childRoutes: [],
+  },
+  {
     to: '/profile/connected-apps',
     label: 'Connected apps',
     icon: 'lucide:plug',

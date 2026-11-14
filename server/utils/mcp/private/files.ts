@@ -275,10 +275,10 @@ export async function createMcpFile(
     getUserStorageUsageBytes(userId),
   ])
 
-  assertUploadContentLength(
-    String(fileData.byteLength),
-    policy.maxStorageBytes - totalFilesSize,
-  )
+  assertUploadContentLength(String(fileData.byteLength), {
+    usedBytes: totalFilesSize,
+    totalBytes: policy.maxStorageBytes,
+  })
 
   const storedFile = await persistFile({
     userId,

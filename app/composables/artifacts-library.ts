@@ -9,7 +9,6 @@ import type {
 import {
   ARTIFACT_BULK_DELETE_MAX,
   ARTIFACT_KINDS,
-  ARTIFACT_USER_QUOTA_BYTES,
 } from '#shared/utils/artifacts'
 import { formatFileSize } from '#shared/utils/files'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
@@ -110,8 +109,7 @@ export function toArtifactSearchTerm(value: string): string {
 }
 
 export function formatArtifactUsage(usedBytes: number): string {
-  return `Using ${formatFileSize(usedBytes)} of `
-    + formatFileSize(ARTIFACT_USER_QUOTA_BYTES)
+  return `Using ${formatFileSize(usedBytes)} of your storage`
 }
 
 function chunkIds(ids: string[]): string[][] {

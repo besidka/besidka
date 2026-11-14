@@ -496,7 +496,7 @@ async function assertGeneratedImageStorageAvailable(
     message: 'Not enough storage space to generate an image.',
     status: 400,
     why: 'Image generation requires at least 10 MB of available file storage.',
-    fix: 'Delete files in the file manager, then try again.',
+    fix: 'Free space on the Storage page, then try again.',
   })
 }
 

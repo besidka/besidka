@@ -66,7 +66,7 @@ export interface KnowledgeTestDb {
 /**
  * Creates an in-memory SQLite DB with the tables the project knowledge code
  * touches (`project_knowledge_items`, `projects`, `files`, `storages`,
- * `documents`) as the
+ * `documents`, `artifacts`) as the
  * migrations define them, minus the foreign keys, so a spec can seed a user,
  * a project or a file without a `users` row. The `project_knowledge_items`
  * DDL and its indexes are the exact `20261025214938_project_knowledge`
@@ -208,6 +208,23 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
     );
 
     CREATE INDEX idx_documents_file ON documents (file_id);
+
+    CREATE TABLE artifacts (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      user_id integer NOT NULL,
+      origin_chat_id integer,
+      origin_message_id text,
+      kind text NOT NULL,
+      title text NOT NULL,
+      current_version integer NOT NULL,
+      total_bytes integer NOT NULL,
+      created_via text NOT NULL,
+      takedown_at integer,
+      takedown_reason text,
+      legal_hold_until integer
+    );
   `)
 
   const db = drizzle({ client: sqlite, relations }) as unknown as ReturnType<

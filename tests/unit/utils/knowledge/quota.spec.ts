@@ -21,7 +21,18 @@ function createDb(sqlite: SqliteDatabase) {
       user_id integer NOT NULL,
       storage_key text NOT NULL,
       name text NOT NULL,
-      size integer NOT NULL
+      size integer NOT NULL,
+      type text NOT NULL DEFAULT 'text/plain',
+      source text NOT NULL DEFAULT 'upload'
+    );
+
+    CREATE TABLE artifacts (
+      id integer PRIMARY KEY,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      user_id integer NOT NULL,
+      current_version integer NOT NULL,
+      total_bytes integer NOT NULL
     );
 
     CREATE TABLE project_knowledge_items (
@@ -37,6 +48,9 @@ function createDb(sqlite: SqliteDatabase) {
   const builder = drizzle({ client: sqlite })
 
   return {
+    all: vi.fn(async (query: Parameters<typeof builder.all>[0]) => {
+      return builder.all(query)
+    }),
     select(fields: Parameters<typeof builder.select>[0]) {
       return {
         from(table: Parameters<ReturnType<typeof builder.select>['from']>[0]) {
@@ -81,6 +95,21 @@ describe('knowledge quota', () => {
         VALUES (?, 0, 0, ?, ?, 'f', ?)
       `)
       .run(nextId, userId, `key-${nextId}`, size)
+  }
+
+  function insertArtifact(
+    userId: number,
+    totalBytes: number,
+    currentVersion = 1,
+  ): void {
+    nextId++
+    sqlite
+      .prepare(`
+        INSERT INTO artifacts
+          (id, created_at, updated_at, user_id, current_version, total_bytes)
+        VALUES (?, 0, 0, ?, ?, ?)
+      `)
+      .run(nextId, userId, currentVersion, totalBytes)
   }
 
   function insertKnowledgeItem(userId: number, textBytes: number): void {
@@ -171,17 +200,21 @@ describe('knowledge quota', () => {
       expect(await getUserStorageUsageBytes(2)).toBe(120_000)
     })
 
-    it('runs as a single query ending in one get call', async () => {
-      const get = vi.fn(async () => ({ used: 42 }))
-      const where = vi.fn(() => ({ get }))
-      const from = vi.fn(() => ({ where }))
-      const select = vi.fn(() => ({ from }))
+    it('adds artifact bytes to the same total', async () => {
+      insertFile(1, 1_000)
+      insertArtifact(1, 4_000)
+      insertArtifact(1, 0, 0)
+      insertArtifact(2, 90_000)
+      insertKnowledgeItem(1, 500)
 
-      vi.stubGlobal('useDb', () => ({ select }))
+      expect(await getUserStorageUsageBytes(1)).toBe(5_500)
+    })
 
-      expect(await getUserStorageUsageBytes(1)).toBe(42)
-      expect(select).toHaveBeenCalledTimes(1)
-      expect(get).toHaveBeenCalledTimes(1)
+    it('runs as a single statement', async () => {
+      const all = vi.fn(async () => [{ used: 42 }])
+
+      expect(await getUserStorageUsageBytes(1, { all } as never)).toBe(42)
+      expect(all).toHaveBeenCalledTimes(1)
     })
   })
 })

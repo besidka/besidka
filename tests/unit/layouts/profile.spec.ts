@@ -34,7 +34,7 @@ async function mountLayout() {
 }
 
 describe('profile layout', () => {
-  it('lists Security, API Keys, Memory, Preferences, Connected apps and Labs tabs in that order', async () => {
+  it('lists Security, API Keys, Memory, Preferences, Storage, Connected apps and Labs tabs in that order', async () => {
     mocks.routePath = '/profile/security'
 
     const wrapper = await mountLayout()
@@ -45,6 +45,7 @@ describe('profile layout', () => {
       'API Keys',
       'Memory',
       'Preferences',
+      'Storage',
       'Connected apps',
       'Labs',
     ])
@@ -53,6 +54,7 @@ describe('profile layout', () => {
       '/profile/keys',
       '/profile/memory',
       '/profile/preferences',
+      '/profile/storage',
       '/profile/connected-apps',
       '/profile/labs',
     ])
@@ -100,6 +102,18 @@ describe('profile layout', () => {
     expect(tabs[3]?.classes()).toContain('tab-active')
     expect(tabs[3]?.find('.iconify').classes())
       .toContain('i-lucide:sliders-horizontal')
+  })
+
+  it('highlights the Storage tab with its icon when visiting /profile/storage', async () => {
+    mocks.routePath = '/profile/storage'
+
+    const wrapper = await mountLayout()
+    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+    expect(tabs[3]?.classes()).not.toContain('tab-active')
+    expect(tabs[4]?.classes()).toContain('tab-active')
+    expect(tabs[4]?.find('.iconify').classes())
+      .toContain('i-lucide:hard-drive')
   })
 
   it.each([

@@ -183,6 +183,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
+- `docs/storage.md` - The one storage allowance (BES-393): the five categories
+  (AI images, uploads, generated files, artifacts, project knowledge) and how
+  each is told apart from existing `files` columns with no migration, what is
+  not counted, the single usage number (`userStorageUsedBytesSql`, shared with
+  the atomic knowledge guards), enforcement on every write path (413 `Storage
+  is full` with a link to `/profile/storage`, plain tool errors for models, the
+  retired 25 MB artifact quota), the `storage-stats:<userId>` cache, the
+  Storage page, the `get_settings` storage block and how a feature (skills)
+  registers a category with one entry
 - `docs/d1-restore-reconciliation.md` - What a whole-database D1 Time Travel
   restore brings back that users had already revoked or deleted: sessions
   revived through Better Auth's D1 fallback, `users.id` reuse handing

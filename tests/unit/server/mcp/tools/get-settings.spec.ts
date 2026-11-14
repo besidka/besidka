@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     enforceMcpToolRateLimit: vi.fn(),
     requireMcpLegalConsent: vi.fn(),
     getMcpSettings: vi.fn(),
+    getMcpStorage: vi.fn(),
   }
 })
 
@@ -43,7 +44,10 @@ vi.mock('~~/server/utils/mcp/private-access', async (importOriginal) => {
 })
 
 vi.mock('~~/server/utils/mcp/private/settings', () => {
-  return { getMcpSettings: mocks.getMcpSettings }
+  return {
+    getMcpSettings: mocks.getMcpSettings,
+    getMcpStorage: mocks.getMcpStorage,
+  }
 })
 
 const AUTH = { ...TEST_MCP_AUTH, scopes: ['settings:read'] }
@@ -61,6 +65,12 @@ describe('get_settings tool', () => {
     mocks.enforceMcpToolRateLimit.mockReset()
     mocks.requireMcpLegalConsent.mockReset()
     mocks.getMcpSettings.mockReset()
+    mocks.getMcpStorage.mockReset()
+    mocks.getMcpStorage.mockResolvedValue({
+      usedBytes: 12,
+      totalBytes: 20,
+      categories: [{ id: 'artifacts', bytes: 12, count: 1 }],
+    })
     mocks.getMcpSettings.mockResolvedValue({
       reasoningExpanded: false,
       memoryExtractionEnabled: false,
@@ -86,13 +96,26 @@ describe('get_settings tool', () => {
     const payload = parseToolPayload(await tool.handler())
 
     expect(mocks.getMcpSettings).toHaveBeenCalledWith({ marker: 'db' }, 42)
+    expect(mocks.getMcpStorage).toHaveBeenCalledWith({ marker: 'db' }, 42)
     expect(payload).toEqual({
       reasoningExpanded: false,
       memoryExtractionEnabled: false,
+      storage: {
+        usedBytes: 12,
+        totalBytes: 20,
+        categories: [{ id: 'artifacts', bytes: 12, count: 1 }],
+      },
     })
     expect(mocks.logger.set).toHaveBeenCalledWith({
       mcp: { user_id: 42, client_id: 'client-abc', tool_kind: 'read' },
     })
+  })
+
+  it('describes the storage block in the tool description', async () => {
+    const tool = await loadTool({ mcpAuth: AUTH })
+
+    expect(tool.description).toContain('storage')
+    expect(tool.description).toContain('project knowledge')
   })
 
   it('refuses a token without settings:read', async () => {
@@ -102,6 +125,7 @@ describe('get_settings tool', () => {
 
     await expect(tool.handler()).rejects.toMatchObject({ status: 403 })
     expect(mocks.getMcpSettings).not.toHaveBeenCalled()
+    expect(mocks.getMcpStorage).not.toHaveBeenCalled()
   })
 
   it('refuses a request without a verified token', async () => {

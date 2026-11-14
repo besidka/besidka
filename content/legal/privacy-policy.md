@@ -327,7 +327,7 @@ On the approval screen you choose what the app may do. These are the permissions
 - **Read your projects**: your projects, their instructions and their knowledge items, and each project's memory state, including its own automatic memory updates setting and whether automatic updates are in effect for it.
 - **Read your memory**: your memory entries.
 - **Read your files**: your file list and storage use, and the text of your text files.
-- **Read your settings**: your display preferences, favourite models and memory switches, including which models memory uses and whether automatic memory updates are on.
+- **Read your settings**: your display preferences, favourite models and memory switches, including which models memory uses and whether automatic memory updates are on, and your storage use by type (the sizes and counts shown on the Storage page, not file names or content).
 - **Change your chats** (off until you tick it): rename, pin, move and copy (branch) chats, exclude a chat from memory or include it again, and stop sharing a chat.
 - **Change your projects** (off until you tick it): create, rename, pin and archive projects, edit a project's instructions and settings, including its memory switch and, for its automatic memory updates, setting it to follow your account setting or to off, never on, and add and edit notes and text in its project knowledge.
 - **Change your memory** (off until you tick it): add and edit memory entries. Everything it writes goes through the same never-stored and sensitive-topic checks as any other memory (see [What memory never keeps](#what-memory-never-keeps)).
@@ -422,7 +422,7 @@ An artifact is something the assistant makes for you in a chat, or an AI app you
 
 - **The content of every version.** Each change makes a new version, and earlier versions are kept so you can go back. The content is stored in Cloudflare R2, under your account.
 - **A short record of each artifact**: its title, its kind, which chat and message it came from, whether it was made in a chat or by a connected app, the size and a checksum of each version, which model wrote a version where that is recorded, and when it was created and changed.
-- **Limits.** A version can be up to 512 KB, an artifact can have up to 50 versions, and all your artifacts together can use up to 25 MB.
+- **Limits.** A version can be up to 512 KB and an artifact can have up to 50 versions. Your artifacts count against the same storage limit as your files and project knowledge, which you can see on the Storage page in your settings. When the limit is reached, existing artifacts stay and a new artifact or version is refused until you free space.
 
 The content is whatever the assistant or the app wrote, which is usually built from what you wrote in the chat. It can contain personal data, including sensitive information and other people's data. With every later message in that chat, the latest version of up to three of its artifacts, up to 30,000 characters each, is sent to the AI provider of the chat as part of the chat, so that the assistant can keep working on them (see [The AI provider you choose](#the-ai-provider-you-choose)).
 

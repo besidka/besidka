@@ -226,7 +226,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the eleven documented command rows in order for an empty query', async () => {
+  it('renders the twelve documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -244,6 +244,7 @@ describe('Search/Modal.client', () => {
       'search-option-keys',
       'search-option-memory',
       'search-option-preferences',
+      'search-option-storage',
       'search-option-connected-apps',
       'search-option-labs',
       'search-option-cookies',
@@ -400,7 +401,7 @@ describe('Search/Modal.client', () => {
       return wrapper.get(`#${id} .iconify`).classes()
     }
 
-    expect(rows).toHaveLength(11)
+    expect(rows).toHaveLength(12)
     expect(labelOf('search-option-projects')).toBe('Projects')
     expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
     expect(labelOf('search-option-memory')).toBe('Memory')
@@ -408,6 +409,8 @@ describe('Search/Modal.client', () => {
     expect(labelOf('search-option-preferences')).toBe('Preferences')
     expect(iconOf('search-option-preferences'))
       .toContain('i-lucide:sliders-horizontal')
+    expect(labelOf('search-option-storage')).toBe('Storage')
+    expect(iconOf('search-option-storage')).toContain('i-lucide:hard-drive')
     expect(labelOf('search-option-connected-apps')).toBe('Connected apps')
     expect(iconOf('search-option-connected-apps'))
       .toContain('i-lucide:plug')
@@ -424,8 +427,10 @@ describe('Search/Modal.client', () => {
       .toBeGreaterThan(settingsStart)
     expect(orderedIds.indexOf('search-option-preferences'))
       .toBeGreaterThan(orderedIds.indexOf('search-option-memory'))
+    expect(orderedIds.indexOf('search-option-storage'))
+      .toBe(orderedIds.indexOf('search-option-preferences') + 1)
     expect(orderedIds.indexOf('search-option-connected-apps'))
-      .toBeGreaterThan(orderedIds.indexOf('search-option-preferences'))
+      .toBe(orderedIds.indexOf('search-option-storage') + 1)
     expect(orderedIds.indexOf('search-option-labs'))
       .toBe(orderedIds.indexOf('search-option-connected-apps') + 1)
   })
@@ -434,6 +439,7 @@ describe('Search/Modal.client', () => {
     ['search-option-projects', '/chats/projects'],
     ['search-option-memory', '/profile/memory'],
     ['search-option-preferences', '/profile/preferences'],
+    ['search-option-storage', '/profile/storage'],
     ['search-option-connected-apps', '/profile/connected-apps'],
     ['search-option-labs', '/profile/labs'],
   ])('closes the modal and navigates from %s to %s', async (id, path) => {

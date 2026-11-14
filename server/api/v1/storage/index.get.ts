@@ -2,8 +2,8 @@ import type { StorageStats } from '#shared/types/files.d'
 import {
   getEffectiveUserFilePolicy,
   getGlobalMonthlyTransformStats,
-  getUserStorageUsageBytes,
 } from '~~/server/utils/files/file-governance'
+import { getUserStorageBreakdown } from '~~/server/utils/storage/usage'
 import {
   resolveServerLogger,
 } from '~~/server/utils/files/logger'
@@ -34,7 +34,7 @@ export default defineEventHandler(async (event): Promise<StorageStats> => {
   try {
     const cached = await kv.get<StorageStats>(cacheKey, 'json')
 
-    if (cached) {
+    if (cached?.breakdown) {
       return cached
     }
   } catch (exception) {
@@ -51,12 +51,13 @@ export default defineEventHandler(async (event): Promise<StorageStats> => {
     })
   }
 
-  const [policy, used, globalTransformStats] = await Promise.all([
+  const [policy, breakdown, globalTransformStats] = await Promise.all([
     getEffectiveUserFilePolicy(userId),
-    getUserStorageUsageBytes(userId),
+    getUserStorageBreakdown(userId),
     getGlobalMonthlyTransformStats(),
   ])
   const total = policy.maxStorageBytes
+  const used = breakdown.totalBytes
 
   const percentage = total > 0 ? Math.round((used / total) * 100) : 0
 
@@ -72,6 +73,7 @@ export default defineEventHandler(async (event): Promise<StorageStats> => {
     imageTransformLimitTotal: policy.imageTransformLimitTotal,
     imageTransformUsedTotal: policy.imageTransformUsedTotal,
     globalTransformRemainingMonth: globalTransformStats.remaining,
+    breakdown,
   }
 
   try {

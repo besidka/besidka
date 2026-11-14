@@ -840,22 +840,22 @@ describe('createMcpDocument', () => {
     it('answers a full library with the current usage and no leftovers',
       async () => {
         mocks.persistFile.mockRejectedValue(Object.assign(
-          new Error('Not enough storage space. Please delete some files.'),
-          { status: 400 },
+          new Error('Storage is full'),
+          { status: 413, code: 'storage_full' },
         ))
 
         await expect(createMcpDocument(context(), input()))
           .rejects.toMatchObject({
             status: 413,
-            message: expect.stringContaining('900 of 1000 bytes'),
+            message: expect.stringContaining('900 B of 1000 B used'),
           })
         await expectFailedWithoutLeftovers('quota_exceeded')
       })
 
     it('can create again after the storage was freed', async () => {
       mocks.persistFile.mockRejectedValueOnce(Object.assign(
-        new Error('Not enough storage space. Please delete some files.'),
-        { status: 400 },
+        new Error('Storage is full'),
+        { status: 413, code: 'storage_full' },
       ))
 
       await expect(createMcpDocument(context(), input()))

@@ -294,6 +294,16 @@ export const handlers = [
       imageTransformLimitTotal: 0,
       imageTransformUsedTotal: 0,
       globalTransformRemainingMonth: 1000,
+      breakdown: {
+        totalBytes: 123456,
+        categories: [
+          { id: 'aiImages', bytes: 23456, count: 2 },
+          { id: 'uploads', bytes: 100000, count: 3 },
+          { id: 'generatedFiles', bytes: 0, count: 0 },
+          { id: 'artifacts', bytes: 0, count: 0 },
+          { id: 'knowledge', bytes: 0, count: 0 },
+        ],
+      },
     })
   }),
 ]

@@ -808,7 +808,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read your Besidka preferences: reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The memory extraction switch and the memory models are included for reference but cannot be changed through MCP. Requires signing in (settings:read).",
+      "description": "Read your Besidka preferences: reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The memory extraction switch and the memory models are included for reference but cannot be changed through MCP. Also returns your storage: bytes used, the allowance and a breakdown by AI images, uploads, generated files, artifacts and project knowledge. Requires signing in (settings:read).",
       "inputSchema": {
         "properties": {},
         "type": "object"

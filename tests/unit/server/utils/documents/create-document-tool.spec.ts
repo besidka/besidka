@@ -569,6 +569,24 @@ describe('create_document tool', () => {
       expect(await countDocuments()).toBe(0)
     })
 
+    it('returns a plain tool error and writes nothing when storage is full', async () => {
+      testDb.sqlite.prepare(`
+        insert into artifacts (user_id, kind, title, current_version,
+          total_bytes, created_via, created_at, updated_at)
+        values (?, 'html', 'Big', 1, ?, 'chat', 1, 1)
+      `).run(userId, 20 * 1024 * 1024)
+
+      await expect(createTool().execute(PDF_SPEC, {})).rejects.toMatchObject({
+        code: DOCUMENT_TOOL_ERROR_CODES.storageFull,
+        message: expect.stringContaining(
+          'Storage is full. 20.0 MB of 20.0 MB used. Tell the user to free '
+          + 'space on the Storage page',
+        ),
+      })
+      expect(await countDocuments()).toBe(0)
+      expect(storage.put).not.toHaveBeenCalled()
+    })
+
     it('logs counts and error codes, never the title or text', async () => {
       await createTool().execute({ ...PDF_SPEC, title: SECRET_TEXT }, {})
       await createTool().execute({

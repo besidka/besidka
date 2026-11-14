@@ -189,8 +189,10 @@ function createUploadEvent(
 
 function createQuotaError() {
   return createError({
-    message: 'Not enough storage space. Please delete some files.',
-    status: 400,
+    message: 'Storage is full',
+    status: 413,
+    code: 'storage_full',
+    why: '20.0 MB of 20.0 MB used',
   })
 }
 
@@ -612,16 +614,23 @@ describe('documents API', () => {
       expect(mocks.persistFile).toHaveBeenCalledTimes(1)
     })
 
-    it('answers 507 on a full quota, frees the claim and works on retry', async () => {
+    it('answers 413 on a full quota, frees the claim and works on retry', async () => {
       const documentId = await createRowWithTool()
       const handler = await handlers.file()
 
       mocks.persistFile.mockRejectedValueOnce(createQuotaError())
 
-      await expectRejection(
+      const exception = await expectRejection(
         handler(createUploadEvent(documentId)),
-        { status: 507, why: 'quota_exceeded' },
+        { status: 413, why: '20.0 MB of 20.0 MB used' },
       )
+
+      expect(exception).toMatchObject({
+        message: 'Storage is full',
+        code: 'quota_exceeded',
+        fix: 'Free space on the Storage page',
+        link: '/profile/storage',
+      })
       expect(await readDocument(testDb.db, documentId)).toMatchObject({
         status: 'spec_ready',
         renderLeaseUntil: null,
@@ -1182,7 +1191,7 @@ describe('documents API', () => {
       })
     })
 
-    it('answers 507 on a full quota and frees the claim', async () => {
+    it('answers 413 on a full quota and frees the claim', async () => {
       mocks.persistFile.mockRejectedValueOnce(createQuotaError())
 
       const documentId = await createRowWithTool()
@@ -1190,7 +1199,7 @@ describe('documents API', () => {
 
       await expectRejection(
         handler(createEvent({ documentId })),
-        { status: 507, why: 'quota_exceeded' },
+        { status: 413, why: '20.0 MB of 20.0 MB used' },
       )
       expect(await readDocument(testDb.db, documentId)).toMatchObject({
         status: 'spec_ready',
