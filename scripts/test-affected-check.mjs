@@ -1482,6 +1482,15 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/auth/signin.spec.ts',
   ]
 
+  const connectorsSafeFetchTests = [
+    'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/server/utils/net/safe-url.spec.ts',
+    'tests/unit/server/utils/net/safe-fetch.spec.ts',
+    'tests/unit/server/utils/skills/import/github-safe-url-gate.spec.ts',
+    'tests/unit/server/utils/skills/import/github.spec.ts',
+    'tests/unit/server/utils/skills/import/github-resolve.spec.ts',
+  ]
+
   const connectorsStorageTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
     'tests/unit/utils/connectors-slug.spec.ts',
@@ -3036,6 +3045,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/connectors-policy\.ts|server\/utils\/net\/(safe-url|safe-fetch|own-hosts)\.ts|server\/utils\/auth-hosts\.ts|server\/utils\/skills\/import\/github\.ts)$/,
+      tests: connectorsSafeFetchTests,
     },
     {
       pattern:
