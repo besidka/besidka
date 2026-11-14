@@ -248,7 +248,7 @@ Deleting sits on the existing `data:delete`.
 - **Writes** call the artifact store (`createArtifact`,
   `appendArtifactVersion`) with `createdVia: 'mcp'` and version
   `createdBy: 'mcp'`. Content is at most 200,000 characters and the store's
-  512 KiB and 25 MB checks still apply. `update_artifact` takes exactly one
+  512 KiB version limit and the shared storage allowance (`docs/storage.md`) still apply. `update_artifact` takes exactly one
   of `edits` (1 to 20 find-and-replace pairs, `applyArtifactEdits`, the same
   function and error wording as the in-chat `update_artifact` model tool:
   "Edit N failed: old_string does not occur..." and nothing is written) or
@@ -868,7 +868,7 @@ text only and capped.
 | `update_memory` | `memory:write` | yes | Change category, title, description or body | `updateMemoryEntry`. `MEMORY_LIMITS` |
 | `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
 | `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
-| `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
+| `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only. Since 3.2.0 also a `storage` block: `usedBytes`, `totalBytes` and `categories` (`id`, `bytes`, `count` for `aiImages`, `uploads`, `generatedFiles`, `artifacts`, `knowledge`), the same numbers as the Storage page | `getMcpSettings`, `getMcpStorage` (`getUserStorageBreakdown`) |
 | `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
 | `list_feature_flags` | `admin:features` | no | Admins only. Every registry flag with stage, roles, rule (enabled, rollout percentage, variants), kill switch and grant counts. Read-only | `listAdminFeatures` (the `/admin` query) |
 | `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email` (an unknown user is a 404 either way); with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`), `truncated: true` when there are more |
@@ -877,7 +877,7 @@ text only and capped.
 | `list_artifacts` | `artifacts:read` | no | Artifacts by recent change with `id`, `title`, `kind`, `version`, `updatedAt`, `originChatSlug` (null when the chat is gone), `activeShares` and `takenDown`; optional `query` (title), `kind`, `limit` and an opaque `cursor` | `listArtifacts` (the library query). `limit` up to 50; the cursor is a base64 offset, so a page can shift when artifacts change between calls |
 | `get_artifact` | `artifacts:read` | no | One version's full content (latest by default), `title`, `kind` and the list of version numbers | `readArtifactVersion`, `getArtifactDetail`. Content up to 512 KB; a taken-down artifact is refused (451) |
 | `list_artifact_shares` | `artifacts:read` | no | Active public links of one artifact: URL, `createdVia`, `createdByApp`, `pinnedVersion`, `expiresAt`, `storageAllowed`, `bridgeAllowed` | `listArtifactShares` (active only) |
-| `create_artifact` | `artifacts:write` | no | Create an artifact from a `kind`, a `title` (120 characters) and `content`; returns `id`, `version: 1` and `url_in_app` (`/chats/artifacts?artifact=<id>`) | `createArtifact` with `createdVia: 'mcp'`. Content up to 200,000 characters, then the store's 512 KiB and 25 MB checks. `react` needs `artifacts.react` |
+| `create_artifact` | `artifacts:write` | no | Create an artifact from a `kind`, a `title` (120 characters) and `content`; returns `id`, `version: 1` and `url_in_app` (`/chats/artifacts?artifact=<id>`) | `createArtifact` with `createdVia: 'mcp'`. Content up to 200,000 characters, then the store's 512 KiB version limit and the shared storage allowance (413 `Storage is full`, folded into the message). `react` needs `artifacts.react` |
 | `update_artifact` | `artifacts:write` | no | New version from exactly one of `edits` (1 to 20 pairs) or `content`; optional `title`. Older versions are kept | `applyArtifactEdits`, `appendArtifactVersion` with `expectedVersion`. At most 50 versions |
 | `revoke_artifact_shares` | `artifacts:write` | yes | Revoke links by `shareIds` or by `artifactIds` (exactly one, 1 to 50); `{ revoked, notFound }` | `revokeArtifactShares` (soft revoke; the artifacts stay) |
 | `share_artifact` | `artifacts:share` | no | Public link for one artifact: `expiresInDays` 1 to 30 (required), optional `pinnedVersion`; returns `shareId`, `url`, `expiresAt`, `warnings`. Storage and bridge forced off, never indexed | `createArtifactShare` with `createdVia: 'mcp'`, `detectSharePii`, 10 creations a day per user (`MCP_ARTIFACT_SHARE_DAILY_LIMIT`), `artifacts.share` flag |
@@ -968,7 +968,11 @@ Notes:
   description and `parseDocumentSpec` is the only validator.
 - `get_settings` returns `memoryExtractionEnabled`, the memory models and
   nothing about keys, so a client can explain why extraction is off, but
-  `update_settings` cannot change them (see the exclusions below).
+  `update_settings` cannot change them (see the exclusions below). Since
+  3.2.0 it also returns the `storage` block (used bytes, the allowance and the
+  breakdown by category). It is read-only and sits behind `settings:read`
+  because it holds counts and sizes, no names or content; space is freed with
+  `delete_files`, `delete_artifacts` and `delete_project_knowledge_items`.
 - `create_project` needs no extra gate: `withMcpPrivateTool` already applies
   the consent check and both MCP call limits (`MCP_PRIVATE_TOOL_RATE_LIMIT`,
   `MCP_PRIVATE_WRITE_RATE_LIMIT`). `PUT /projects` has no consent check of its

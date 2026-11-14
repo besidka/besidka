@@ -321,7 +321,7 @@ test('lists artifacts from chats, deleted chats and connected apps',
     await expect(getRow(page, MCP_ID).getByTestId('artifact-row-origin'))
       .toHaveText('Created by a connected app')
     await expect(page.getByTestId('artifact-library-usage'))
-      .toHaveText('Using 12.0 KB of 25.0 MB')
+      .toHaveText('Using 12.0 KB of your storage')
   })
 
 test('opens the artifact in the side panel from a row and a deep link',
@@ -515,7 +515,7 @@ test('bulk deletes the selected artifacts after a confirmation',
     await expect(getRow(page, LIVE_ID)).toBeVisible()
     expect(state.deletedBatches).toEqual([[DELETED_CHAT_ID, MCP_ID]])
     await expect(page.getByTestId('artifact-library-usage'))
-      .toHaveText('Using 4.0 KB of 25.0 MB')
+      .toHaveText('Using 4.0 KB of your storage')
   })
 
 test.describe('on a phone', () => {

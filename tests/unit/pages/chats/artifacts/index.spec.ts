@@ -355,7 +355,7 @@ describe('pages/chats/artifacts/index', () => {
 
     expect(wrapper.findAll(testId('artifact-row'))).toHaveLength(2)
     expect(wrapper.get(testId('artifact-library-usage')).text())
-      .toBe('Using 3.0 MB of 25.0 MB')
+      .toBe('Using 3.0 MB of your storage')
 
     await wrapper.get(testId('artifact-library-load-more')).trigger('click')
 

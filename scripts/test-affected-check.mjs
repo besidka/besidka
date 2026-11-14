@@ -177,6 +177,34 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/knowledge-zip.spec.ts',
   ]
+  const storageQuotaTests = [
+    'tests/unit/server/utils/storage/usage.spec.ts',
+    'tests/unit/server/utils/storage/errors.spec.ts',
+    'tests/unit/server/utils/storage/guard.spec.ts',
+    'tests/integration/api/storage.spec.ts',
+    'tests/unit/server/utils/artifacts/store.spec.ts',
+    'tests/unit/server/utils/ai/artifact-tools.spec.ts',
+    'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
+    'tests/unit/server/utils/files/persist-file.spec.ts',
+    'tests/unit/utils/knowledge/quota.spec.ts',
+    'tests/unit/utils/knowledge/ingest.spec.ts',
+    'tests/integration/api/files-upload.spec.ts',
+    'tests/integration/api/projects-knowledge-items.spec.ts',
+    'tests/integration/api/documents.spec.ts',
+    'tests/integration/api/chats-documents.spec.ts',
+    'tests/unit/server/utils/documents/create-document-tool.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
+    'tests/unit/server/utils/mcp/private-files.spec.ts',
+    'tests/unit/server/utils/mcp/private-settings-storage.spec.ts',
+    'tests/unit/server/mcp/tools/get-settings.spec.ts',
+    'tests/unit/composables/artifacts-library.spec.ts',
+  ]
+  const storagePageTests = [
+    'tests/unit/pages/profile/storage.spec.ts',
+    'tests/unit/utils/storage-categories.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+  ]
   const artifactsRuntimeTests = [
     'tests/unit/packages/artifacts-protocol/jsonrpc.spec.ts',
     'tests/unit/packages/artifacts-protocol/connection.spec.ts',
@@ -3005,7 +3033,28 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/api\/v1\/storage\/index\.get\.ts$/,
-      tests: filesModuleTests,
+      tests: [...filesModuleTests, ...storageQuotaTests, ...storagePageTests],
+    },
+    {
+      pattern: /^server\/utils\/storage\/.*\.ts$/,
+      tests: [...storageQuotaTests, ...storagePageTests],
+    },
+    {
+      pattern: /^(shared\/types\/files\.d\.ts|tests\/setup\/mocks\/api\.ts)$/,
+      tests: [...storageQuotaTests, ...storagePageTests],
+    },
+    {
+      pattern:
+        /^server\/utils\/(files\/(file-governance|persist-file|upload-request)|artifacts\/store|knowledge\/(ingest|quota)|documents\/(create-document-tool|finalize)|ai\/(artifact-tools|image-generation(-errors)?)|mcp\/private\/(settings|files|documents|artifacts))\.ts$/,
+      tests: storageQuotaTests,
+    },
+    {
+      pattern: /^server\/mcp\/tools\/get-settings\.ts$/,
+      tests: storageQuotaTests,
+    },
+    {
+      pattern: /^app\/(pages\/profile\/storage\.vue|utils\/storage-categories\.ts)$/,
+      tests: storagePageTests,
     },
     {
       pattern: /^server\/utils\/files\/.*\.ts$/,
