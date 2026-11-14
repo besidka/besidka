@@ -131,6 +131,7 @@ const { loggedIn } = useAuth()
 const isAdmin = useIsAdmin()
 const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
+const skillsFeature = useFeature('skills')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
@@ -330,6 +331,14 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Labs',
           run: () => goTo('/profile/labs'),
         },
+        ...(skillsFeature.value.active
+          ? [{
+            id: 'search-option-skills',
+            iconName: 'lucide:sparkles',
+            label: 'Skills',
+            run: () => goTo('/profile/skills'),
+          }]
+          : []),
         ...(showPinToggle.value
           ? [{
             id: 'search-option-pin-sidebar',

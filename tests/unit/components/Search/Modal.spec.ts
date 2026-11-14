@@ -26,6 +26,7 @@ const loggedIn = ref<boolean>(true)
 const isAdmin = ref<boolean>(false)
 const artifactsActive = ref<boolean>(false)
 const documentsActive = ref<boolean>(false)
+const skillsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -48,7 +49,9 @@ mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
     const active = key === 'documents'
       ? documentsActive.value
-      : artifactsActive.value
+      : key === 'skills'
+        ? skillsActive.value
+        : artifactsActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -128,6 +131,7 @@ describe('Search/Modal.client', () => {
     isAdmin.value = false
     artifactsActive.value = false
     documentsActive.value = false
+    skillsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -324,6 +328,38 @@ describe('Search/Modal.client', () => {
 
     expect(wrapper.find('#search-option-artifacts').exists()).toBe(true)
     expect(wrapper.find('#search-option-documents').exists()).toBe(false)
+  })
+
+  it('adds the Skills row after Labs only with the skills feature', async () => {
+    skillsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.indexOf('search-option-skills'))
+      .toBe(ids.indexOf('search-option-labs') + 1)
+    expect(wrapper.get('#search-option-skills').text()).toBe('Skills')
+    expect(wrapper.get('#search-option-skills .iconify').classes())
+      .toContain('i-lucide:sparkles')
+
+    await wrapper.find('#search-option-skills').trigger('click')
+
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/profile/skills')
+    expect(closeSpy).toHaveBeenCalled()
+  })
+
+  it('omits the Skills row without the skills feature', async () => {
+    artifactsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-skills').exists()).toBe(false)
   })
 
   it('shows the Admin rows last in Settings only to admins', async () => {
