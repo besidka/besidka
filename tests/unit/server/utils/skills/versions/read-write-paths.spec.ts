@@ -377,15 +377,13 @@ describe('skill reads, settings and delete', () => {
   })
 
   describe('settings', () => {
-    it('changes the toggles without creating a version', async () => {
+    it('changes the mode and the hint without creating a version', async () => {
       const result = await updateSkillSettings({
         db: testDb.db,
         userId,
         skillId,
         changes: {
-          enabled: false,
-          modelInvocable: true,
-          slashCommand: true,
+          mode: 'off',
           argumentHint: 'What to review',
         },
         logger,
@@ -396,8 +394,6 @@ describe('skill reads, settings and delete', () => {
 
       expect(result).toMatchObject({
         enabled: false,
-        modelInvocable: true,
-        slashCommand: true,
         argumentHint: 'What to review',
         currentVersion: 1,
       })
@@ -477,34 +473,6 @@ describe('skill reads, settings and delete', () => {
       }))).toMatchObject({ status: 409, code: 'skill-broken' })
     })
 
-    it('refuses to switch a reserved name on as a command', async () => {
-      await testDb.db.update(schema.skills)
-        .set({ name: 'memory' })
-        .where(eq(schema.skills.id, skillId))
-
-      const failure = await failureOf(updateSkillSettings({
-        db: testDb.db,
-        userId,
-        skillId,
-        changes: { slashCommand: true },
-        logger,
-      }))
-
-      expect(failure).toMatchObject({
-        status: 400,
-        code: 'reserved-name',
-        message: '/memory is reserved by Besidka',
-      })
-
-      await expect(updateSkillSettings({
-        db: testDb.db,
-        userId,
-        skillId,
-        changes: { modelInvocable: false },
-        logger,
-      })).resolves.toMatchObject({ slashCommand: false })
-    })
-
     it('refuses to enable a broken skill but allows needs-review', async () => {
       await testDb.db.update(schema.skills)
         .set({ status: 'broken', enabled: false })
@@ -514,7 +482,7 @@ describe('skill reads, settings and delete', () => {
         db: testDb.db,
         userId,
         skillId,
-        changes: { enabled: true },
+        changes: { mode: 'auto' },
         logger,
       }))).toMatchObject({ status: 409, code: 'skill-broken' })
 
@@ -526,7 +494,7 @@ describe('skill reads, settings and delete', () => {
         db: testDb.db,
         userId,
         skillId,
-        changes: { enabled: true },
+        changes: { mode: 'auto' },
         logger,
       })).resolves.toMatchObject({ enabled: true })
     })
@@ -538,7 +506,7 @@ describe('skill reads, settings and delete', () => {
         db: testDb.db,
         userId: otherUserId,
         skillId,
-        changes: { enabled: false },
+        changes: { mode: 'off' },
         logger,
       }))).toMatchObject({ status: 404 })
     })

@@ -82,22 +82,12 @@ export const createBodySchema = z.discriminatedUnion('kind', [
 
 export const settingsBodySchema = z.object({
   mode: z.enum(SKILL_MODES).optional(),
-  enabled: z.boolean().optional(),
-  modelInvocable: z.boolean().optional(),
-  slashCommand: z.boolean().optional(),
   argumentHint: argumentHintSchema.nullable().optional(),
 }).strict().refine((body) => {
   return Object.values(body).some((value) => {
     return value !== undefined
   })
-}, 'Send at least one setting').refine((body) => {
-  return body.mode === undefined
-    || (
-      body.enabled === undefined
-      && body.modelInvocable === undefined
-      && body.slashCommand === undefined
-    )
-}, 'Send mode alone, or the separate settings, not both')
+}, 'Send at least one setting')
 
 export const versionQuerySchema = z.object({
   version: z.coerce.number().int().min(1).optional(),

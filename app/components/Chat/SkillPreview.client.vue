@@ -187,40 +187,54 @@ const headingId = useId()
 const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const boxRef = useTemplateRef<HTMLDivElement>('boxRef')
 
-const loadState = shallowRef<'loading' | 'ready' | 'error'>('loading')
-const errorMessage = shallowRef<string>('')
-const skill = shallowRef<SkillSummary | null>(null)
-const text = shallowRef<string>('')
-const isTruncated = shallowRef<boolean>(false)
+const { data: preview, error: previewError } = useLazyAsyncData(
+  `skill-preview:${props.skillId}`,
+  async () => {
+    const [detail, file] = await Promise.all([
+      $fetch(`/api/v1/skills/${props.skillId}`),
+      $fetch(`/api/v1/skills/${props.skillId}/files`, {
+        query: { path: SKILL_MD_FILE_NAME },
+      }),
+    ])
+    const fileText = 'text' in file && typeof file.text === 'string'
+      ? file.text
+      : ''
+    const isFileTruncated = fileText.length > PREVIEW_TEXT_MAX_CHARS
+
+    return {
+      skill: detail,
+      isTruncated: isFileTruncated,
+      text: isFileTruncated
+        ? fileText.slice(0, PREVIEW_TEXT_MAX_CHARS)
+        : fileText,
+    }
+  },
+)
+
+const loadState = computed<'loading' | 'ready' | 'error'>(() => {
+  if (previewError.value) {
+    return 'error'
+  }
+
+  return preview.value ? 'ready' : 'loading'
+})
+const errorMessage = computed<string>(() => {
+  return (previewError.value && parseError(previewError.value).message)
+    || 'This skill is not available any more.'
+})
+const skill = computed<SkillSummary | null>(() => {
+  return preview.value?.skill ?? null
+})
+const text = computed<string>(() => {
+  return preview.value?.text ?? ''
+})
+const isTruncated = computed<boolean>(() => {
+  return preview.value?.isTruncated ?? false
+})
 
 const mode = computed<SkillMode>(() => {
   return skill.value ? getSkillMode(skill.value) : 'off'
 })
-
-async function load() {
-  loadState.value = 'loading'
-
-  try {
-    const detail = await $fetch(`/api/v1/skills/${props.skillId}`)
-    const file = await $fetch(`/api/v1/skills/${props.skillId}/files`, {
-      query: { path: SKILL_MD_FILE_NAME },
-    })
-    const fileText = 'text' in file && typeof file.text === 'string'
-      ? file.text
-      : ''
-
-    skill.value = detail
-    isTruncated.value = fileText.length > PREVIEW_TEXT_MAX_CHARS
-    text.value = isTruncated.value
-      ? fileText.slice(0, PREVIEW_TEXT_MAX_CHARS)
-      : fileText
-    loadState.value = 'ready'
-  } catch (exception) {
-    errorMessage.value = parseError(exception).message
-      || 'This skill is not available any more.'
-    loadState.value = 'error'
-  }
-}
 
 async function showDialog() {
   const dialog = await until(dialogRef).toBeTruthy({
@@ -266,6 +280,5 @@ async function onEdit() {
 
 onMounted(async () => {
   await showDialog()
-  await load()
 })
 </script>
