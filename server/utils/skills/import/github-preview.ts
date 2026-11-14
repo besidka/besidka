@@ -47,7 +47,7 @@ function createInvalidLinkError(why: string) {
     status: 400,
     code: 'invalid-request',
     why,
-    fix: 'Paste a link like https://github.com/owner/repo/tree/main/skills/name',
+    fix: 'Paste a link to a repository, a skill folder, or its SKILL.md',
   })
 }
 

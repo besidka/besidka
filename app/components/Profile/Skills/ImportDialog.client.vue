@@ -96,7 +96,7 @@
             v-model="githubUrl"
             type="url"
             class="input w-full"
-            placeholder="https://github.com/owner/repo/tree/main/skills/name"
+            placeholder="Link to a repository, a skill folder, or its SKILL.md"
             autocapitalize="none"
             autocomplete="off"
             spellcheck="false"
@@ -109,8 +109,9 @@
             id="skill-import-url-help"
             class="text-xs text-base-content/70"
           >
-            A link to a public repository or to a skill folder. The skill is
-            pinned to the commit it is read from.
+            Link to a repository, a skill folder, or its SKILL.md. The
+            repository must be public. The skill is pinned to the version
+            it is read from.
           </p>
         </template>
 

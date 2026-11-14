@@ -177,7 +177,7 @@ export function parseGithubSkillUrl(input: string): GithubUrlParseResult {
 
   if (!SPLIT_KINDS.has(kind)) {
     return rejected(
-      'Use a link to the repository, a folder (tree), a SKILL.md (blob) or a commit',
+      'Use a link to the repository, a skill folder, its SKILL.md or a commit',
     )
   }
 
@@ -198,10 +198,8 @@ export function parseGithubSkillUrl(input: string): GithubUrlParseResult {
     )
   }
 
-  if (kind === 'blob') {
-    if (rest.length < 2 || rest.at(-1) !== SKILL_FILE_NAME) {
-      return rejected('A file link must point to a SKILL.md')
-    }
+  if (rest.length === 1 && rest[0] === SKILL_FILE_NAME) {
+    return rejected('The link must name a branch, tag or commit before SKILL.md')
   }
 
   return {
@@ -227,10 +225,12 @@ function isPathWithinLimits(path: string | null): boolean {
 
 /**
  * The ways a link can split into a ref and a folder, shortest ref first and
- * at most three. A branch named `feature/x` makes `tree/feature/x/skills`
- * ambiguous, so the caller tries each split against the GitHub API in this
- * order and takes the first ref that exists. A full SHA never contains `/`,
- * so it has exactly one split.
+ * at most three. `tree` and `blob` links read alike: a path that ends in
+ * `SKILL.md` names that file's folder, and any other path is a folder, since
+ * GitHub itself sends a `blob` link to a folder on to `tree`. A branch named
+ * `feature/x` makes `tree/feature/x/skills` ambiguous, so the caller tries
+ * each split against the GitHub API in this order and takes the first ref
+ * that exists. A full SHA never contains `/`, so it has exactly one split.
  */
 export function getGithubRefCandidates(
   parsed: ParsedGithubSkillUrl,
@@ -243,7 +243,7 @@ export function getGithubRefCandidates(
     return [{ ref: parsed.commitSha!, path: null }]
   }
 
-  const segments = parsed.kind === 'blob'
+  const segments = parsed.refAndPath.at(-1) === SKILL_FILE_NAME
     ? parsed.refAndPath.slice(0, -1)
     : parsed.refAndPath
   const lowered = segments[0]?.toLowerCase() ?? ''

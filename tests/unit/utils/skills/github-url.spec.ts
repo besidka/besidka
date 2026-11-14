@@ -117,10 +117,18 @@ describe('parseGithubSkillUrl', () => {
       .toContain('Paste')
   })
 
-  it('requires a blob link to end in SKILL.md', () => {
-    expect(rejection('https://github.com/o/r/blob/main/README.md'))
-      .toContain('SKILL.md')
+  it('accepts a blob link to a folder or to a file other than SKILL.md', () => {
+    expect(parse('https://github.com/o/r/blob/main/skills/a'))
+      .toMatchObject({ kind: 'blob' })
+    expect(parse('https://github.com/o/r/blob/main/README.md'))
+      .toMatchObject({ kind: 'blob' })
+    expect(parse('https://github.com/o/r/blob/main'))
+      .toMatchObject({ kind: 'blob' })
+  })
+
+  it('refuses a SKILL.md with no branch, tag or commit before it', () => {
     expect(rejection('https://github.com/o/r/blob/SKILL.md')).toContain('SKILL.md')
+    expect(rejection('https://github.com/o/r/tree/SKILL.md')).toContain('SKILL.md')
   })
 
   it('caps the length of the path', () => {
@@ -164,6 +172,33 @@ describe('getGithubRefCandidates', () => {
   it('gives a tree link to the repository root a null path', () => {
     expect(getGithubRefCandidates(parse('github.com/o/r/tree/main')))
       .toEqual([{ ref: 'main', path: null }])
+  })
+
+  it('reads the blob link of a skill folder like a tree link', () => {
+    const url = 'https://github.com/AminBlg/SimpleEnglish/blob/main/skills/simple-english'
+
+    expect(getGithubRefCandidates(parse(url))).toEqual([
+      { ref: 'main', path: 'skills/simple-english' },
+      { ref: 'main/skills', path: 'simple-english' },
+      { ref: 'main/skills/simple-english', path: null },
+    ])
+    expect(getGithubRefCandidates(parse(
+      url.replace('/blob/', '/tree/'),
+    ))).toEqual(getGithubRefCandidates(parse(url)))
+  })
+
+  it('treats any non-SKILL.md blob path as a folder', () => {
+    expect(getGithubRefCandidates(
+      parse('github.com/o/r/blob/main/docs/README.md'),
+    )[0]).toEqual({ ref: 'main', path: 'docs/README.md' })
+    expect(getGithubRefCandidates(parse('github.com/o/r/blob/main')))
+      .toEqual([{ ref: 'main', path: null }])
+  })
+
+  it('strips a trailing SKILL.md from a tree link too', () => {
+    expect(getGithubRefCandidates(
+      parse('github.com/o/r/tree/main/skills/a/SKILL.md'),
+    )[0]).toEqual({ ref: 'main', path: 'skills/a' })
   })
 
   it('uses the parent folder of a blob link', () => {

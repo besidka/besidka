@@ -212,8 +212,10 @@ skill and on the version row (section 8).
 
 - `github.com/<owner>/<repo>`;
 - `github.com/<owner>/<repo>/tree/<ref>[/<path>]`;
-- `github.com/<owner>/<repo>/blob/<ref>/<path>/SKILL.md` (the parent folder is
-  used);
+- `github.com/<owner>/<repo>/blob/<ref>[/<path>]`, read like `tree`: GitHub
+  sends a `blob` link to a folder on to `tree`, and people paste both. A path
+  that ends in `SKILL.md` names that file's folder, on `tree` as well, and any
+  other path is a folder;
 - `github.com/<owner>/<repo>/commit/<sha>`.
 
 A ref that contains `/` is resolved by trying candidate splits from shortest to
@@ -223,7 +225,7 @@ branch or tag tip, the default branch for a link without a ref, or the
 40-character SHA from the URL when it already holds one (used as it is, with no
 request). A short SHA that matches no tip answers `github-ref-not-found`
 with a fix that names a branch, a tag or the full SHA. The download always
-uses the SHA. A link to a `SKILL.md` (`blob`) imports its parent folder from the same
+uses the SHA. A link to a `SKILL.md` imports its parent folder from the same
 archive, so the folder's licence files and the repository licence still reach
 the licence gate. Only entries under the
 requested path are inflated, with one exception: the repository-root
