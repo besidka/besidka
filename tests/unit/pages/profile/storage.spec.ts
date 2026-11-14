@@ -98,10 +98,9 @@ describe('profile storage page', () => {
     expect(wrapper.get('[data-testid="storage-usage-text"]').text())
       .toBe('12.0 MB of 20.0 MB used')
     expect(progress.element.tagName).toBe('PROGRESS')
-    expect(progress.classes()).toEqual(expect.arrayContaining([
-      'progress',
-      'progress-primary',
-    ]))
+    expect(progress.classes()).toContain('progress')
+    expect(progress.classes()).not.toContain('progress-warning')
+    expect(progress.classes()).not.toContain('progress-error')
     expect(progress.attributes('value')).toBe('60')
     expect(progress.attributes('max')).toBe('100')
     expect(wrapper.get('[data-testid="storage-percentage"]').text())

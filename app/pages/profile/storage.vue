@@ -197,7 +197,7 @@ const progressTone = computed(() => {
 
 const progressClass = computed<string>(() => {
   const classes = {
-    primary: 'progress-primary',
+    default: '',
     warning: 'progress-warning',
     error: 'progress-error',
   } as const
@@ -207,7 +207,7 @@ const progressClass = computed<string>(() => {
 
 const percentageBadgeClass = computed<string>(() => {
   const tones = {
-    primary: 'badge-neutral',
+    default: '',
     warning: 'badge-warning',
     error: 'badge-error',
   } as const

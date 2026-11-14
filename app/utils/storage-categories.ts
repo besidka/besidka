@@ -78,10 +78,10 @@ export function formatStorageCount(
 
 export function getStorageProgressTone(
   percentage: number,
-): 'primary' | 'warning' | 'error' {
+): 'default' | 'warning' | 'error' {
   if (percentage >= 100) {
     return 'error'
   }
 
-  return percentage >= 80 ? 'warning' : 'primary'
+  return percentage >= 80 ? 'warning' : 'default'
 }

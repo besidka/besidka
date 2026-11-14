@@ -33,8 +33,8 @@ describe('storage categories', () => {
   })
 
   it('picks the progress tone from the percentage', () => {
-    expect(getStorageProgressTone(0)).toBe('primary')
-    expect(getStorageProgressTone(79)).toBe('primary')
+    expect(getStorageProgressTone(0)).toBe('default')
+    expect(getStorageProgressTone(79)).toBe('default')
     expect(getStorageProgressTone(80)).toBe('warning')
     expect(getStorageProgressTone(99)).toBe('warning')
     expect(getStorageProgressTone(100)).toBe('error')
