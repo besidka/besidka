@@ -2838,12 +2838,13 @@ export function getAffectedTests(changedFiles) {
       tests: chatTestEndpointTests,
     },
     {
-      pattern: /^server\/utils\/chats\/errors\.ts$/,
+      pattern: /^server\/utils\/chats\/(errors|provider-error-summary)\.ts$/,
       tests: [
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
         'tests/unit/utils/research/errors.spec.ts',
         'tests/unit/utils/chats/errors.spec.ts',
+        'tests/unit/server/utils/chats/provider-error-summary.spec.ts',
       ],
     },
     {
