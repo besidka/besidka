@@ -145,7 +145,7 @@ Worker's network position), and the integrity of what the model reads.
 | # | Threat | Attacker | Mitigation | Ticket |
 | --- | --- | --- | --- | --- |
 | T1 | SSRF to cloud metadata, private ranges or loopback through the server URL, PRM, AS metadata, authorization, token, registration or revocation endpoint | Malicious user, malicious server returning crafted metadata | `parseSafeOutboundUrl` on every outbound URL (section 4): https only, IP literals rejected, special names rejected, ports 443/8443; `classifyIp` for vetted range checks; `safeFetch` with per-hop re-validation | C-3 |
-| T2 | DNS rebinding: a public name that resolves to a private address at fetch time | Malicious user or server | `global_fetch_strictly_public` compatibility flag (workerd refuses private destinations at connect time) plus per-hop validation. Workers cannot pin DNS or read the resolved IP, so the app-level check cannot stop a name like `127.0.0.1.nip.io`; only the flag does. Stated limit, tested (section 4.4) | C-3 |
+| T2 | DNS rebinding: a public name that resolves to a private address at fetch time | Malicious user or server | **No complete mitigation on Workers** (section 4.5). Per-hop validation of every URL, https only, no IP literals, no special names, ports 443 and 8443, the response-size and time caps, and purpose-tagged logs of host and status. Workers cannot pin DNS or read the resolved IP, so the app-level check cannot stop a name like `127.0.0.1.nip.io`. Cloudflare documents no guarantee that `fetch()` refuses a hostname that resolves to a private address, and `global_fetch_strictly_public` is not that guarantee (it only changes how requests to the Worker's own zone are routed). Stated limit, tested (section 4.4) | C-3 |
 | T3 | Env or template interpolation in a user URL or header (LibreChat CVE-2026-32625: `${VAR}` from `process.env` interpolated into a user MCP URL leaked secrets) | Malicious user | Never interpolate anything into user-supplied URLs or headers. Registry entries with `{var}` or `${...}` in the URL are skipped. Header names validated by regex, values stored encrypted and sent verbatim | C-3, C-8 |
 | T4 | Token theft at rest | Database or backup leak | Access, refresh and header values encrypted with `useEncryptText` (`server/utils/encryption.ts`, `NUXT_ENCRYPTION_KEY`); full server URL encrypted (paths and queries can carry secrets); never logged, never returned by any API or MCP tool | C-2, C-4 |
 | T5 | Confused deputy and token passthrough: Besidka's own session or MCP token sent to a remote server, or one server's token sent to another | Malicious server | Credentials keyed per user × connector × issuer; a connector sends only tokens issued by its own authorization server (MCP authorization spec); RFC 8707 `resource` binds the token audience; `Authorization` stripped on any origin change; Besidka session cookies and `/mcp` tokens never leave the Worker | C-4 |
@@ -266,14 +266,78 @@ Accepted:
 hop is rejected; a cross-origin hop for purpose `oauth` drops `Authorization`;
 a cross-origin hop for purpose `mcp` stops with `CONNECTOR_ORIGIN_CHANGED`; a
 body over the cap aborts; a timeout aborts. One test documents that
-`https://127.0.0.1.nip.io` passes `parseSafeOutboundUrl` and is stopped only by
-`global_fetch_strictly_public` (checked on the preview, not in unit tests).
+`https://127.0.0.1.nip.io` passes `parseSafeOutboundUrl`: the app-level guard
+cannot see the address a name resolves to (section 4.5).
 
-`global_fetch_strictly_public` goes into `compatibility_flags` at the top level
-and under `env.production` in `wrangler.jsonc`. It affects every outbound
-fetch, so C-3 regression-checks DeepSeek web search, the shared-chat avatar
-route, Brave, Exa, provider SDKs, push, email and image generation on the PR
-preview.
+### 4.5 What Workers can and cannot do (C-3, 2026-11-14)
+
+This section replaces the earlier plan to add the `global_fetch_strictly_public`
+compatibility flag as the DNS-rebinding defense. The flag is **not added** in
+C-3.
+
+- **What the flag does.** Cloudflare's compatibility-flags page says that with
+  `global_fetch_strictly_public` the global `fetch()` "will strictly route
+  requests as if they were made on the public Internet": a request to the
+  Worker's own zone loops back through Cloudflare's front door instead of going
+  straight to the zone's origin server. That is a routing change for the
+  Worker's own zone. No Cloudflare document read for C-3 says it blocks
+  private, loopback or link-local destinations, or hostnames that resolve to
+  them.
+- **What Workers do not let us do.** A Worker cannot pin a DNS resolution,
+  cannot read the address a hostname resolved to, and cannot pass a resolved
+  address to `fetch()`. So no code in the Worker can check the destination
+  address of a request it is about to make, and `classifyIp` has nothing to
+  classify for a DNS name.
+- **What Cloudflare documents about private addresses.** Workers `fetch()` is
+  documented to take URLs, not IP addresses, for subrequests (known issues),
+  and private networks are reachable only through explicit bindings (Workers
+  VPC, Tunnel). Cloudflare documents no promise that a public DNS name
+  pointing to a private address is refused. Treat it as unverified.
+- **What this means.** A name such as `127.0.0.1.nip.io`, `localtest.me` or
+  `10.0.0.1.sslip.io` passes `parseSafeOutboundUrl` and `safeFetch`. The
+  guard stops everything that is visible in the URL, and nothing that is only
+  visible in DNS. The residual risk is a request to whatever the Workers
+  network allows for such a name.
+- **Mitigations that stay in place.** https only (a private service rarely
+  has a valid certificate for a name the attacker controls, and the TLS
+  handshake fails otherwise), no IP literals in any form, no special names or
+  single-label hosts, ports 443 and 8443 only, every redirect hop re-validated
+  with the `mcp` purpose never leaving its origin, a response-size cap and one
+  deadline that covers the body, no credential header across origins, no
+  cookies, results treated as untrusted data (section 3, T8), and logs of
+  host, purpose and status for every outbound call (`attributes.net`).
+- **Self-host.** Unchanged (section 15): an egress proxy or firewall with an IP
+  denylist applied after DNS resolution is required, and on Node a custom DNS
+  `lookup` is recommended as well.
+- **Revisit.** Reopen this when Cloudflare documents a private-destination
+  guarantee for Workers `fetch()` (and under which flag), or when a verified
+  preview test shows that a name resolving to a private address is refused. Do
+  that test on a preview with a hostname you control that resolves to
+  `127.0.0.1` and to an RFC 1918 address, and record the result here.
+
+Other C-3 choices that differ from or add to the text above:
+
+- `parseSafeOutboundUrl` also rejects the suffixes `.localdomain`, `.lan`,
+  `.home`, `.corp` and `.intranet`, and takes `{ allowPath: false }`, which
+  rejects a path or a query (reason `path`).
+- `classifyIp` allows only global unicast (IPv6 inside `2000::/3`), so a range
+  the parser learns later is refused by default. IPv4-mapped addresses are
+  judged by the inner IPv4 address; 6to4, Teredo, NAT64 and the other
+  transition ranges are refused whole.
+- A hop to another origin keeps only `Accept`, `Accept-Language` and
+  `Content-Language`, drops the body and becomes a GET, so a connector's own
+  header name (`X-Api-Key`) never crosses origins, not only `Authorization`.
+  `Cookie` and `Host` are never forwarded, on any hop.
+- One deadline covers every hop and the whole body; the timer is cleared when
+  the body ends or is canceled. A response above the cap is cut as it streams,
+  and a `Content-Length` over the cap is refused before reading.
+- The local-development `http://localhost` allowance is not built.
+- `skills-github` and `skills-url` have policies (30 s and 15 MiB, 10 s and
+  256 KiB) but nothing uses them yet: `githubFetch` keeps its own transport
+  (it returns `{ status, bytes }` and passes 401 and 404 through), and only
+  its URL check gained `parseSafeOutboundUrl`. That check now also refuses an
+  address with an embedded newline or tab, which the URL parser used to strip
+  silently.
 
 ## 5. Adding and connecting a connector
 
@@ -1177,7 +1241,7 @@ Unverified (C-4 and C-6 settle them in their first commits):
 
 | Concern | Cloudflare (hosted Besidka) | Self-host on a VPS, Node or Vercel |
 | --- | --- | --- |
-| Private-range egress block | `global_fetch_strictly_public` | Required replacement: an egress proxy or firewall that refuses private, loopback, link-local, ULA and metadata addresses after DNS resolution (for example a forward proxy with an IP denylist), and all connector traffic forced through it. Without it, DNS rebinding reaches the host's network |
+| Private-range egress block | None documented (section 4.5) | Required: an egress proxy or firewall that refuses private, loopback, link-local, ULA and metadata addresses after DNS resolution (for example a forward proxy with an IP denylist), and all connector traffic forced through it. Without it, DNS rebinding reaches the host's network |
 | DNS pinning | Not possible | Possible on Node (custom `lookup` that validates the resolved IP); recommended in addition to the proxy |
 | KV (state, locks, caches) | Workers KV | Any key-value store with TTL (Redis, unstorage driver); locks must stay best effort with compare-and-set in the database |
 | D1 | D1 | SQLite or libSQL with the same migrations |

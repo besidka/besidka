@@ -757,7 +757,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/connectors.md` - Connectors design (Phase 4a, C-1, not built yet):
   user-brought remote MCP servers that Besidka calls as an MCP client
   (outbound, unlike Connected apps); the threat model with the mitigating
-  ticket per row (SSRF, DNS rebinding and `global_fetch_strictly_public`,
+  ticket per row (SSRF, DNS rebinding and the Workers limits of section 4.5,
   LibreChat-style interpolation, token passthrough, lookalike hosts, rug
   pulls, cross-connector exfiltration, CIMD tampering); the SSRF validator
   rules and test vectors; the add-without-request, connect, consent and
