@@ -40,6 +40,24 @@ describe('Profile/Skills/DetailHeader', () => {
     detail.value = createSkillDetail({ id: 'S1', enabled: false })
   })
 
+  it('opens the editor from the Edit button', async () => {
+    useSkillEditSession().close()
+    detail.value = createSkillDetail({ id: 'S1', name: 'review-pr' })
+
+    const wrapper = await mountSuspended(DetailHeader, {
+      props: { skillId: 'S1' },
+    })
+    const edit = wrapper.get(testId('skill-detail-edit'))
+
+    expect(edit.text()).toBe('Edit')
+    expect(edit.attributes('aria-label')).toBe('Edit review-pr')
+
+    await edit.trigger('click')
+
+    expect(useSkillEditSession().skillId.value).toBe('S1')
+    useSkillEditSession().close()
+  })
+
   it('shows the state of the skill in the enable toggle', async () => {
     const wrapper = await mountSuspended(DetailHeader, {
       props: { skillId: 'S1' },
