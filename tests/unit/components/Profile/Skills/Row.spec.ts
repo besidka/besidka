@@ -112,6 +112,28 @@ describe('Profile/Skills/Row', () => {
     expect(wrapper.find(testId('skill-row-pending')).exists()).toBe(true)
   })
 
+  it('shows "Update 2.1.3" as a soft info badge when the daily check found one', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      updateAvailable: { label: '2.1.3', ref: '2.1.3' },
+    }))
+    const badge = wrapper.get(testId('skill-row-update'))
+
+    expect(badge.text()).toBe('Update 2.1.3')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-soft', 'badge-info']),
+    )
+  })
+
+  it('shows only "Update to review" when a pending update exists', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      pendingVersion: 8,
+      updateAvailable: { label: '2.1.3', ref: '2.1.3' },
+    }))
+
+    expect(wrapper.find(testId('skill-row-update')).exists()).toBe(false)
+    expect(wrapper.find(testId('skill-row-pending')).exists()).toBe(true)
+  })
+
   it('explains a broken skill and disables its mode control', async () => {
     const wrapper = await mountRow(createSkillSummary({ status: 'broken' }))
 

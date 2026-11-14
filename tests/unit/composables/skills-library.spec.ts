@@ -299,6 +299,40 @@ describe('useSkillActions', () => {
     expect(mocks.successMessage).toHaveBeenCalled()
   })
 
+  it('says "No changes in 2.1.3" when the new release holds the same skill', async () => {
+    mocks.fetch.mockResolvedValue({
+      upToDate: true,
+      pinned: false,
+      contentUnchanged: true,
+      latestVersion: 'c'.repeat(40),
+      latestTag: '2.1.3',
+    })
+
+    await expect(useSkillActions().checkForUpdates(createSkillSummary()))
+      .resolves.toBe('up-to-date')
+    expect(mocks.successMessage).toHaveBeenCalledWith(
+      'No changes in 2.1.3',
+      expect.stringContaining('nothing needs updating'),
+    )
+  })
+
+  it('names a commit when a branch moved but the skill did not change', async () => {
+    mocks.fetch.mockResolvedValue({
+      upToDate: true,
+      pinned: false,
+      contentUnchanged: true,
+      latestVersion: 'abcdef1234567890'.padEnd(40, '0'),
+      latestTag: null,
+    })
+
+    await useSkillActions().checkForUpdates(createSkillSummary())
+
+    expect(mocks.successMessage).toHaveBeenCalledWith(
+      'No changes in abcdef1',
+      expect.any(String),
+    )
+  })
+
   it('returns update when the check found a newer commit', async () => {
     mocks.fetch.mockResolvedValue({ upToDate: false, version: 8 })
 

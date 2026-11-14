@@ -26,6 +26,7 @@ export function createSkillSummary(
     sourcePath: null,
     sourceVersion: null,
     metadataVersion: null,
+    updateAvailable: null,
     currentVersion: 7,
     pendingVersion: null,
     filesCount: 1,

@@ -543,6 +543,47 @@ GitHub imports.
 
 Rate limit: 10 imports per hour per user; at most `SKILLS_PER_USER` skills.
 
+**The daily update check (2026-11-14).** `server/plugins/skills-update-sweep.ts`
+runs on the existing hourly cron (`0 * * * *`, no new schedule) and calls
+`sweepSkillUpdates` (`server/utils/skills/import/update-sweep.ts`). Each run
+looks, for at most 50 skills (`SKILL_UPDATE_SWEEP_LIMIT`), at the GitHub skills
+that were not looked at in the last 24 hours, and for each reads the git ref
+list only (the same `info/refs` and the same 60-second per-repository KV cache
+as an import), through `resolveGithubUpstream`: a skill on a release tag
+follows the highest release tag, a skill on a branch follows its head, a skill
+pinned to a commit is skipped. It downloads no archive, changes no skill and
+uses no key and no model, so it spends nothing. Requests are sequential (one
+connection at a time, grouped by repository so one ref list serves all the
+skills of a repository). The run cap exists to keep one invocation short; a
+backlog drains over the next hours.
+
+What it finds is remembered in KV (`skills:update-state:<userId>`, one JSON map
+of skill id to `{ checkedAt, retryAfter?, latest?, seen? }`, 45 days, refreshed
+on every write). `latest` is the newest upstream version found; the list
+and detail endpoints turn it into `updateAvailable: { label, ref }` and the
+manager shows a `badge-soft badge-info` "Update 2.1.3" on the row and in the
+detail's Settings. A pending update shows "Update to review" instead. "Check
+for updates" is unchanged: it downloads the new version and opens the review
+with the diff. No migration: the state is not a source of truth (losing it
+loses a badge).
+
+Outcomes: a newer version records `latest`; the same version clears it; a repo
+or branch that is gone clears it and flags nothing; a network error changes
+nothing and waits six hours (`retryAfter`), so a failing repository cannot
+starve the others; a GitHub 429 ends the run. Wide events carry counts only
+(`skillsUpdateSweep`: considered, checked, updatesFound, upToDate, missing,
+failed, rateLimited), never skill ids, names or URLs.
+
+**A new release does not mean this skill changed.** `info/refs` cannot say
+whether the skill's folder differs at the new tag, and the sweep downloads
+nothing, so the badge says "Update 2.1.3" until the review looks. When "Check
+for updates" finds the folder identical at the new version, it answers "No
+changes in 2.1.3" (no pending version is created), records that version as
+`seen`, and the badge goes away; the next newer version shows it again. The
+sweep never writes `seen`. Accounts are not filtered by feature flag: only a
+user who could import has GitHub skills, and the badge shows only in the
+flagged manager.
+
 ### 3.5 R2 layout
 
 | Prefix | Content | Lifetime |
@@ -1190,6 +1231,7 @@ Unchanged by the 2026-11-13 amendments.
 | Key | TTL | Content |
 | --- | --- | --- |
 | `skills:stage:<stageId>` | 1 h | staged manifest of an import preview, before `import/commit`; never used by update checks or MCP |
+| `skills:update-state:<userId>` | 45 days, refreshed on write | per account: when each GitHub skill was last looked at by the daily check, the newest upstream version found and the version the review saw hold no change (section 3.4); not a source of truth |
 
 ### 8.6 Status transitions
 

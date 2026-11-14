@@ -30,6 +30,7 @@ export interface SkillSummary {
   sourcePath: string | null
   sourceVersion: string | null
   metadataVersion: string | null
+  updateAvailable: { label: string, ref: string } | null
   currentVersion: number
   pendingVersion: number | null
   filesCount: number

@@ -115,6 +115,22 @@
             {{ formatSkillSource(skill) }}
           </template>
         </dd>
+        <template v-if="skill.updateAvailable && skill.pendingVersion === null">
+          <dt class="text-base-content/70">
+            Update
+          </dt>
+          <dd class="flex min-w-0 flex-wrap items-center gap-2">
+            <span
+              class="badge badge-soft badge-info badge-sm"
+              data-testid="skill-setting-update"
+            >
+              Update {{ skill.updateAvailable.label }}
+            </span>
+            <span class="text-xs text-base-content/70">
+              Found by the daily check. Check for updates shows what changed.
+            </span>
+          </dd>
+        </template>
         <template v-if="skill.compatibility">
           <dt class="text-base-content/70">
             Compatibility

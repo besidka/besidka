@@ -33,6 +33,10 @@ import {
   createGithubRefNotFoundError,
 } from '~~/server/utils/skills/import/github'
 import { resolveGithubUpstream } from '~~/server/utils/skills/import/upstream'
+import {
+  clearSkillUpdate,
+  markSkillUpdateSeen,
+} from '~~/server/utils/skills/import/update-state'
 import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
 import type { GithubKv } from '~~/server/utils/skills/import/github'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
@@ -375,6 +379,11 @@ export async function checkGithubSkillUpdate(
   }
 
   if (target.sha === skill.sourceVersion && target.ref === skill.sourceRef) {
+    await clearSkillUpdate(input.kv, {
+      userId: input.userId,
+      skillId: input.skillId,
+    })
+
     return {
       upToDate: true,
       pinned: false,
@@ -489,6 +498,12 @@ export async function checkGithubSkillUpdate(
     })
 
   if (knownContent.includes(analysis.contentSha256)) {
+    await markSkillUpdateSeen(input.kv, {
+      userId: input.userId,
+      skillId: input.skillId,
+      target: { ref: target.ref, sha: target.sha, tag: target.tag },
+    })
+
     return {
       upToDate: true,
       pinned: false,

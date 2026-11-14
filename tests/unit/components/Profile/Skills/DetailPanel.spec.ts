@@ -280,6 +280,35 @@ describe('Profile/Skills/DetailPanel', () => {
     )
   })
 
+  it('shows the update the daily check found, in the Settings tab', async () => {
+    useState('skills:detail-tab').value = 'settings'
+    detail.value = createSkillDetail({
+      id: 'SkillPublicId01',
+      updateAvailable: { label: '2.1.3', ref: '2.1.3' },
+    })
+
+    const wrapper = await mountPanel()
+    const badge = wrapper.get(testId('skill-setting-update'))
+
+    expect(badge.text()).toBe('Update 2.1.3')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-soft', 'badge-info']),
+    )
+  })
+
+  it('shows no update badge in Settings while an update is already pending', async () => {
+    useState('skills:detail-tab').value = 'settings'
+    detail.value = createSkillDetail({
+      id: 'SkillPublicId01',
+      pendingVersion: 8,
+      updateAvailable: { label: '2.1.3', ref: '2.1.3' },
+    })
+
+    const wrapper = await mountPanel()
+
+    expect(wrapper.find(testId('skill-setting-update')).exists()).toBe(false)
+  })
+
   it('saves the mode through PATCH as one request', async () => {
     useState('skills:detail-tab').value = 'settings'
     mocks.fetch.mockResolvedValue({})

@@ -3,6 +3,14 @@ import { SKILL_EDIT_MAX_FILE_BYTES } from '#shared/utils/skills-policy'
 import { getSkillSourceGroup, isSkillLicenseRootFile } from '#shared/utils/skills/edit'
 import * as schema from '~~/server/db/schema'
 import {
+  getSkillUpdateAvailable,
+  readSkillUpdateState,
+} from '~~/server/utils/skills/import/update-state'
+import type {
+  SkillUpdateAvailable,
+  SkillUpdateKv,
+} from '~~/server/utils/skills/import/update-state'
+import {
   loadOwnedSkill,
   loadSkillVersions,
   loadVersionFiles,
@@ -25,7 +33,10 @@ function readMetadataVersion(
     : null
 }
 
-export function toSkillSummary(row: SkillRow) {
+export function toSkillSummary(
+  row: SkillRow,
+  updateAvailable: SkillUpdateAvailable | null = null,
+) {
   return {
     id: row.id,
     name: row.name,
@@ -44,6 +55,7 @@ export function toSkillSummary(row: SkillRow) {
     sourcePath: row.sourcePath,
     sourceVersion: row.sourceVersion,
     metadataVersion: readMetadataVersion(row.metadata),
+    updateAvailable,
     currentVersion: row.currentVersion,
     pendingVersion: row.pendingVersion,
     filesCount: row.filesCount,
@@ -100,19 +112,30 @@ export function toFileSummary(file: SkillFileRow, locksLicenseFiles: boolean) {
  * The user's skills, newest edit first, with the counts the manager's source
  * filter shows (created, imported, from apps).
  */
-export async function listUserSkills(db: DbClient, userId: number) {
+export async function listUserSkills(
+  db: DbClient,
+  userId: number,
+  kv?: SkillUpdateKv,
+) {
   const rows = await db.select()
     .from(schema.skills)
     .where(eq(schema.skills.userId, userId))
     .orderBy(desc(schema.skills.updatedAt), desc(schema.skills.id))
   const sources = { all: rows.length, created: 0, imported: 0, apps: 0 }
+  const updates = kv && rows.some((row) => {
+    return row.sourceKind === 'github'
+  })
+    ? await readSkillUpdateState(kv, userId)
+    : {}
 
   for (const row of rows) {
     sources[getSkillSourceGroup(row.sourceKind)] += 1
   }
 
   return {
-    skills: rows.map(toSkillSummary),
+    skills: rows.map((row) => {
+      return toSkillSummary(row, getSkillUpdateAvailable(updates[row.id], row))
+    }),
     counts: { sources },
   }
 }
@@ -121,8 +144,12 @@ export async function getSkillDetail(
   db: DbClient,
   userId: number,
   skillId: string,
+  kv?: SkillUpdateKv,
 ) {
   const skill = await loadOwnedSkill(db, userId, skillId)
+  const updates = kv && skill.sourceKind === 'github'
+    ? await readSkillUpdateState(kv, userId)
+    : {}
   const [files, versions] = await Promise.all([
     loadVersionFiles(db, userId, skill.id, skill.currentVersion),
     loadSkillVersions(db, userId, skill.id),
@@ -136,7 +163,7 @@ export async function getSkillDetail(
   })
 
   return {
-    ...toSkillSummary(skill),
+    ...toSkillSummary(skill, getSkillUpdateAvailable(updates[skill.id], skill)),
     license: {
       class: skill.licenseClass,
       field: skill.licenseField,

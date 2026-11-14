@@ -12,5 +12,10 @@ import { getSkillDetail } from '~~/server/utils/skills/versions/view'
 export default defineEventHandler(async (event) => {
   const { userId } = await requireSkillsSession(event)
 
-  return await getSkillDetail(useDb(), userId, readSkillIdParam(event))
+  return await getSkillDetail(
+    useDb(),
+    userId,
+    readSkillIdParam(event),
+    useKV(),
+  )
 })

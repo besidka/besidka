@@ -48,6 +48,13 @@
           Update to review
         </span>
         <span
+          v-if="skill.updateAvailable && skill.pendingVersion === null"
+          class="badge badge-soft badge-info badge-sm"
+          data-testid="skill-row-update"
+        >
+          Update {{ skill.updateAvailable.label }}
+        </span>
+        <span
           class="min-w-0 truncate"
           data-testid="skill-row-meta"
         >

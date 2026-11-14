@@ -611,6 +611,18 @@ export function useSkillActions() {
         await refreshSkillData(skill.id)
 
         if (result.upToDate) {
+          if ('contentUnchanged' in result && result.contentUnchanged) {
+            const newVersion = result.latestTag
+              ?? result.latestVersion?.slice(0, 7)
+
+            useSuccessMessage(
+              `No changes in ${newVersion ?? 'the new version'}`,
+              `${skill.name} is the same there, so nothing needs updating.`,
+            )
+
+            return 'up-to-date'
+          }
+
           useSuccessMessage(
             `${skill.name} is up to date`,
             'pinned' in result && result.pinned

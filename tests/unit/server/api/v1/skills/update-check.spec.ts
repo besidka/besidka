@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
+  getSkillUpdateAvailable,
+  readSkillUpdateState,
+} from '~~/server/utils/skills/import/update-state'
+import {
   createMemoryExtractionTestDb,
   seedUser,
 } from '../../../../../setup/helpers/memory-extraction-db'
@@ -728,6 +732,56 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
         sourceRef: '2.1.10',
         sourceVersion: NEWER_SHA,
       })
+    })
+
+    it('records that a new release holds the same skill, so the badge goes away', async () => {
+      await pinToTag()
+      github.tags.set('2.1.3', { sha: NEWER_SHA })
+      github.archives.set(NEWER_SHA, archiveAt(NEWER_SHA))
+      forgetCachedRefs()
+
+      const result = await check()
+      const state = await readSkillUpdateState(kv, userId)
+
+      expect(result).toMatchObject({
+        upToDate: true,
+        contentUnchanged: true,
+        latestTag: '2.1.3',
+        latestVersion: NEWER_SHA,
+      })
+      expect(state[skillId]!.seen).toEqual({
+        ref: '2.1.3',
+        sha: NEWER_SHA,
+        tag: '2.1.3',
+      })
+      expect(getSkillUpdateAvailable(state[skillId], {
+        sourceRef: '2.1.2',
+        sourceVersion: TAG_SHA,
+      })).toBeNull()
+    })
+
+    it('forgets a remembered update when the check finds the newest release', async () => {
+      await pinToTag()
+      await kv.put(
+        `skills:update-state:${userId}`,
+        JSON.stringify({
+          [skillId]: {
+            checkedAt: 1,
+            latest: { ref: '2.1.3', sha: NEWER_SHA, tag: '2.1.3' },
+          },
+        }),
+      )
+      github.tags.set('2.1.2', { sha: TAG_SHA })
+      await testDb.db.update(schema.skills)
+        .set({ sourceRef: '2.1.3', sourceVersion: NEWER_SHA })
+        .where(eq(schema.skills.id, skillId))
+      github.tags.set('2.1.3', { sha: NEWER_SHA })
+      forgetCachedRefs()
+
+      await check()
+
+      expect((await readSkillUpdateState(kv, userId))[skillId]!.latest)
+        .toBeUndefined()
     })
 
     it('says 404 when the tag is gone and no release replaces it', async () => {

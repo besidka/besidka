@@ -1499,6 +1499,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/import/github-resolve.spec.ts',
     'tests/unit/server/utils/skills/import/git-refs.spec.ts',
     'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/import/update-sweep.spec.ts',
+    'tests/integration/server/skills-update-sweep-plugin.spec.ts',
     'tests/unit/server/utils/skills/pending.spec.ts',
     'tests/unit/server/api/v1/skills/import-preview.spec.ts',
     'tests/unit/server/api/v1/skills/import-text.spec.ts',
@@ -2992,7 +2994,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock|github-mock)\.ts|tests\/fixtures\/skills\/.*)$/,
+        /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/plugins\/skills-update-sweep\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock|github-mock)\.ts|tests\/fixtures\/skills\/.*)$/,
       tests: skillsImportTests,
     },
     {
