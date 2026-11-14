@@ -127,7 +127,9 @@ describe('connector chat selection routes', () => {
     sessionUserId = userId
     chat = await seedChat(testDb.db, userId)
     vi.stubGlobal('useDb', () => testDb.db)
-    vi.stubGlobal('useKV', () => createFakeConnectorKv())
+    const kv = createFakeConnectorKv()
+
+    vi.stubGlobal('useKV', () => kv)
     vi.stubGlobal('useEncryptText', vi.fn(async (plain: string) => {
       return fakeEncrypt(plain)
     }))
@@ -263,6 +265,23 @@ describe('connector chat selection routes', () => {
       expect((await failureOf(call(getPath, {
         params: { slug: 'not-a-ulid' },
       }))).status).toBe(400)
+    })
+
+    it('does not throttle picker toggles like connector changes, and '
+      + 'still caps a flood at 60 a minute', async () => {
+      const connectorId = await addConnector('linear')
+
+      for (let toggle = 0; toggle < 60; toggle++) {
+        await call(putPath, {
+          params: { slug: chat.slug },
+          body: { connectorIds: toggle % 2 === 0 ? [connectorId] : [] },
+        })
+      }
+
+      expect((await failureOf(call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [] },
+      }))).status).toBe(429)
     })
 
     it('is hidden behind the connectors flag', async () => {

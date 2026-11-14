@@ -694,6 +694,26 @@ describe('connector tools in the chat send', () => {
     )
   })
 
+  it('persists the empty-answer notice, not a silent tool-only message, '
+    + 'when the loop ends on a connector call', async () => {
+    const callEveryStep = toolCallChunks(
+      'call-n',
+      'mcp__linear__list_issues',
+      { state: 'open' },
+    )
+    const { assistantInsert } = await runSend({
+      server,
+      connectorIds: [CONNECTOR_ID],
+      steps: [callEveryStep],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(parts.some((part: any) => part.type === 'dynamic-tool')).toBe(true)
+    expect(parts.at(-1)).toMatchObject({ type: 'text' })
+    expect(parts.at(-1).text.length).toBeGreaterThan(0)
+    expect(parts.at(-1).text).not.toBe('')
+  })
+
   it('refuses the send without a current consent before any request',
     async () => {
       seedConnector({ consentVersion: 'old-version' })

@@ -24,6 +24,10 @@ export function useChatShare() {
     'chat-share:target-has-files',
     () => false,
   )
+  const targetUsedConnector = useState<boolean>(
+    'chat-share:target-used-connector',
+    () => false,
+  )
   const share = useState<ChatShare | null>(
     'chat-share:active-share',
     () => null,
@@ -57,6 +61,7 @@ export function useChatShare() {
       }
 
       targetHasFiles.value = response.hasFiles
+      targetUsedConnector.value = response.usedConnector === true
       share.value = response.share?.slug
         ? {
           ...response.share,
@@ -90,6 +95,7 @@ export function useChatShare() {
     isModalOpen.value = false
     targetChatSlug.value = null
     targetHasFiles.value = false
+    targetUsedConnector.value = false
     share.value = null
     shareCheck.value = { ...IDLE_SHARE_CHECK }
   }
@@ -337,6 +343,7 @@ export function useChatShare() {
     isModalOpen,
     targetChatSlug,
     targetHasFiles,
+    targetUsedConnector,
     share,
     shareCheck,
     isLoading,

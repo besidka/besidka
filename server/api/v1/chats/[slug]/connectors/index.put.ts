@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const userId = await requireConnectorAccess(event)
+  const userId = await requireConnectorAccess(event, { selection: true })
   const body = await readConnectorBody(event, bodySchema)
   const db = useDb()
   const chat = await db.query.chats.findFirst({

@@ -598,6 +598,47 @@ describe('getConnectorTools', () => {
       expect(alpha.callCount('tools/call')).toBe(CONNECTOR_CALLS_PER_TURN)
     })
 
+    it('runs at most three tool calls at once when the model asks for '
+      + 'six in one step', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+      const mockFetch = createMockMcpFetch([alpha])
+      let active = 0
+      let peak = 0
+
+      vi.stubGlobal('fetch', vi.fn(async (
+        input: string | URL | Request,
+        init?: RequestInit,
+      ) => {
+        const isCall = typeof init?.body === 'string'
+          && init.body.includes('"tools/call"')
+
+        if (isCall) {
+          active += 1
+          peak = Math.max(peak, active)
+          await new Promise(resolve => setTimeout(resolve, 15))
+          active -= 1
+        }
+
+        return await mockFetch(input, init)
+      }))
+
+      await Promise.all(Array.from({ length: 6 }, () => {
+        return execute(tools, 'mcp__alpha__list_issues')
+      }))
+
+      expect(alpha.callCount('tools/call')).toBe(6)
+      expect(peak).toBe(3)
+    })
+
     it('refuses a call when the per-minute limiter says no', async () => {
       const alpha = server('mcp.alpha.example.com')
       const seeds: ConnectorSeed[] = [{

@@ -375,6 +375,7 @@ export async function getConnectorTools(
   const { db, kv, userId, logger } = input
   const connectLimiter = createConcurrencyLimiter()
   const prepareLimiter = createConcurrencyLimiter()
+  const callLimiter = createConcurrencyLimiter()
   const limitCalls = input.dependencies?.limitCalls
     ?? createConnectorCallLimiter(kv)
   const now = input.dependencies?.now ?? Date.now
@@ -599,86 +600,94 @@ export async function getConnectorTools(
   }
 
   function buildExecute(candidate: Candidate) {
-    return async (args: unknown, options?: { abortSignal?: AbortSignal }) => {
-      const startedAt = now()
-      const deny = async (text: string) => {
-        await recordCall({
-          candidate,
-          args,
-          resultBytes: 0,
-          outcome: 'denied',
-          startedAt,
-        })
+    return (args: unknown, options?: { abortSignal?: AbortSignal }) => {
+      return callLimiter.run(() => executeCall(candidate, args, options))
+    }
+  }
 
-        return text
-      }
+  async function executeCall(
+    candidate: Candidate,
+    args: unknown,
+    options?: { abortSignal?: AbortSignal },
+  ): Promise<string> {
+    const startedAt = now()
+    const deny = async (text: string) => {
+      await recordCall({
+        candidate,
+        args,
+        resultBytes: 0,
+        outcome: 'denied',
+        startedAt,
+      })
 
-      if (!candidate.isReadOnly) {
-        return await deny(CONNECTOR_APPROVAL_DENIAL_TEXT)
-      }
+      return text
+    }
 
-      if (callsThisTurn >= CONNECTOR_CALLS_PER_TURN) {
-        return await deny(CONNECTOR_CALL_LIMIT_TEXT)
-      }
+    if (!candidate.isReadOnly) {
+      return await deny(CONNECTOR_APPROVAL_DENIAL_TEXT)
+    }
 
-      callsThisTurn += 1
+    if (callsThisTurn >= CONNECTOR_CALLS_PER_TURN) {
+      return await deny(CONNECTOR_CALL_LIMIT_TEXT)
+    }
 
-      if (!await limitCalls(userId, candidate.connector.id)) {
-        return await deny(CONNECTOR_RATE_LIMIT_TEXT)
-      }
+    callsThisTurn += 1
 
-      if (input.guard) {
-        input.guard.untrustedResultSeen = true
-      }
+    if (!await limitCalls(userId, candidate.connector.id)) {
+      return await deny(CONNECTOR_RATE_LIMIT_TEXT)
+    }
 
-      const timeoutSignal = AbortSignal.timeout(CONNECTOR_CALL_TIMEOUT_MS)
-      const signal = options?.abortSignal
-        ? AbortSignal.any([timeoutSignal, options.abortSignal])
-        : timeoutSignal
+    if (input.guard) {
+      input.guard.untrustedResultSeen = true
+    }
 
-      try {
-        const client = await candidate.handle.getClient()
-        const result = await client.callTool({
-          name: candidate.definition.name,
-          arguments: isRecord(args) ? args : {},
-          options: { signal, timeout: CONNECTOR_CALL_TIMEOUT_MS },
-        })
-        const framed = frameUntrustedResult({
-          slug: candidate.connector.slug,
-          toolName: candidate.definition.name,
-          text: redactSecrets(
-            callToolResultToText(result),
-            [...candidate.secrets],
-          ),
-        })
-        const outcome = (result as { isError?: boolean }).isError
-          ? 'error'
-          : 'ok'
+    const timeoutSignal = AbortSignal.timeout(CONNECTOR_CALL_TIMEOUT_MS)
+    const signal = options?.abortSignal
+      ? AbortSignal.any([timeoutSignal, options.abortSignal])
+      : timeoutSignal
 
-        await recordCall({
-          candidate,
-          args,
-          resultBytes: framed.bytes,
-          outcome,
-          startedAt,
-        })
+    try {
+      const client = await candidate.handle.getClient()
+      const result = await client.callTool({
+        name: candidate.definition.name,
+        arguments: isRecord(args) ? args : {},
+        options: { signal, timeout: CONNECTOR_CALL_TIMEOUT_MS },
+      })
+      const framed = frameUntrustedResult({
+        slug: candidate.connector.slug,
+        toolName: candidate.definition.name,
+        text: redactSecrets(
+          callToolResultToText(result),
+          [...candidate.secrets],
+        ),
+      })
+      const outcome = (result as { isError?: boolean }).isError
+        ? 'error'
+        : 'ok'
 
-        return framed.text
-      } catch {
-        const outcome = timeoutSignal.aborted ? 'timeout' : 'error'
+      await recordCall({
+        candidate,
+        args,
+        resultBytes: framed.bytes,
+        outcome,
+        startedAt,
+      })
 
-        await recordCall({
-          candidate,
-          args,
-          resultBytes: 0,
-          outcome,
-          startedAt,
-        })
+      return framed.text
+    } catch {
+      const outcome = timeoutSignal.aborted ? 'timeout' : 'error'
 
-        return outcome === 'timeout'
-          ? CONNECTOR_TIMEOUT_TEXT
-          : CONNECTOR_FAILURE_TEXT
-      }
+      await recordCall({
+        candidate,
+        args,
+        resultBytes: 0,
+        outcome,
+        startedAt,
+      })
+
+      return outcome === 'timeout'
+        ? CONNECTOR_TIMEOUT_TEXT
+        : CONNECTOR_FAILURE_TEXT
     }
   }
 

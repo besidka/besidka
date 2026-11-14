@@ -236,6 +236,7 @@ import {
   buildSearchAnswerContinuationMessages,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
+  isFollowUpToolPart,
   omitPromptCacheControl,
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
@@ -1950,6 +1951,10 @@ export default defineEventHandler(async (event) => {
       return !isSkillToolName(toolName) && !isConnectorToolName(toolName)
     }),
   )
+  const persistenceFollowUpToolNames = new Set([
+    ...answerGuaranteeToolNames,
+    ...[...followUpToolNames].filter(isConnectorToolName),
+  ])
 
   const stream = createUIMessageStream({
     onError(error) {
@@ -2561,7 +2566,7 @@ export default defineEventHandler(async (event) => {
           gatewayPricing,
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
-          followUpToolNames: answerGuaranteeToolNames,
+          followUpToolNames: persistenceFollowUpToolNames,
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
           knowledgeMode: knowledgeContext?.decision.mode,
           autoWebSearch: autoWebSearchOutcome,
@@ -3763,8 +3768,7 @@ async function persistAssistantMessageFromStream(input: {
       })
       && responseParts.some((part) => {
         return isToolUIPart(part)
-          && part.type.startsWith('tool-')
-          && input.followUpToolNames.has(part.type.slice('tool-'.length))
+          && isFollowUpToolPart(part, input.followUpToolNames)
           && (
             part.state === 'output-available'
             || part.state === 'output-error'

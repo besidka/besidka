@@ -1527,6 +1527,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/chat-selection.spec.ts',
     'tests/unit/server/utils/connectors/persist.spec.ts',
     'tests/unit/server/utils/connectors/context-isolation.spec.ts',
+    'tests/unit/server/utils/connectors/persistence-pipeline.spec.ts',
+    'tests/unit/server/utils/chats/share-used-connector.spec.ts',
+    'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/server/utils/chats/share-public-parts.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/memory/extract-input.spec.ts',
@@ -1541,6 +1544,8 @@ export function getAffectedTests(changedFiles) {
   const connectorsChatToolsUiTests = [
     'tests/unit/composables/composer-connectors.spec.ts',
     'tests/unit/composables/chat.spec.ts',
+    'tests/unit/composables/chat-share.spec.ts',
+    'tests/unit/components/Chat/ShareModal.client.spec.ts',
     'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
@@ -3111,12 +3116,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/index\.get\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/index\.get\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
       tests: connectorsChatToolsTests,
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat)\.ts|app\/utils\/(connector-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
+        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
       tests: connectorsChatToolsUiTests,
     },
     {

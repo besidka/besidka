@@ -1,7 +1,10 @@
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
 import { getRequestHeader, getRouterParam } from 'nuxt/server'
-import { CONNECTOR_ROUTES_PER_MINUTE } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_ROUTES_PER_MINUTE,
+  CONNECTOR_SELECTION_WRITES_PER_MINUTE,
+} from '#shared/utils/connectors-policy'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
 import { getConnector } from '~~/server/utils/connectors/store'
@@ -11,6 +14,7 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origin'
 
 const RATE_LIMIT_KEY_PREFIX = 'connectors-rate-limit'
+const SELECTION_RATE_LIMIT_KEY_PREFIX = 'connectors-selection-rate-limit'
 const RATE_LIMIT_WINDOW_SECONDS = 60
 const RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 const CONNECTOR_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/
@@ -47,14 +51,32 @@ export function assertConnectorWriteRequest(event: RequestEvent): void {
   }
 }
 
-function tooManyRequests(event: RequestEvent, retryAfterSeconds: number) {
+interface RateLimitBucket {
+  prefix: string
+  max: number
+}
+
+const DEFAULT_BUCKET: RateLimitBucket = {
+  prefix: RATE_LIMIT_KEY_PREFIX,
+  max: CONNECTOR_ROUTES_PER_MINUTE,
+}
+
+const SELECTION_BUCKET: RateLimitBucket = {
+  prefix: SELECTION_RATE_LIMIT_KEY_PREFIX,
+  max: CONNECTOR_SELECTION_WRITES_PER_MINUTE,
+}
+
+function tooManyRequests(
+  event: RequestEvent,
+  retryAfterSeconds: number,
+  max: number,
+) {
   event.res.headers.set('Retry-After', String(retryAfterSeconds))
 
   return createError({
     message: 'Too many connector requests',
     status: 429,
-    why: `At most ${CONNECTOR_ROUTES_PER_MINUTE} connector changes are `
-      + 'allowed per minute',
+    why: `At most ${max} connector changes are allowed per minute`,
     fix: 'Wait a moment before retrying',
   })
 }
@@ -69,28 +91,34 @@ function tooManyRequests(event: RequestEvent, retryAfterSeconds: number) {
 export async function enforceConnectorRateLimit(
   event: RequestEvent,
   userId: number,
+  bucket: RateLimitBucket = DEFAULT_BUCKET,
 ): Promise<void> {
   let result: { allowed: boolean, retryAfter: number | null }
 
   try {
-    const storage = createAuthRateLimitStorage(useKV(), RATE_LIMIT_KEY_PREFIX)
+    const storage = createAuthRateLimitStorage(useKV(), bucket.prefix)
 
     result = await storage.consume(String(userId), {
       window: RATE_LIMIT_WINDOW_SECONDS,
-      max: CONNECTOR_ROUTES_PER_MINUTE,
+      max: bucket.max,
     })
   } catch {
     useRequestLogger(event).set({
       attributes: { connectors: { rateLimit: 'unavailable' } },
     })
 
-    throw tooManyRequests(event, RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS)
+    throw tooManyRequests(
+      event,
+      RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS,
+      bucket.max,
+    )
   }
 
   if (!result.allowed) {
     throw tooManyRequests(
       event,
       result.retryAfter ?? RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS,
+      bucket.max,
     )
   }
 }
@@ -99,11 +127,18 @@ export async function enforceConnectorRateLimit(
  * The common gate of the connector routes, in this order: the write guard
  * (unless `write: false`, only the GET callback), a session, the
  * `connectors` flag (and `connectors.oauth` for sign-in routes), then the
- * per-user limit. Ownership lookups come after it in the route.
+ * per-user limit (`selection: true` uses the looser bucket of the per-chat
+ * toggles, 60 a minute, so flipping switches in the picker is not throttled
+ * like connecting a server). Ownership lookups come after it in the route.
  */
 export async function requireConnectorAccess(
   event: RequestEvent,
-  options: { oauth?: boolean, rateLimit?: boolean, write?: boolean } = {},
+  options: {
+    oauth?: boolean
+    rateLimit?: boolean
+    selection?: boolean
+    write?: boolean
+  } = {},
 ): Promise<number> {
   if (options.write !== false) {
     assertConnectorWriteRequest(event)
@@ -124,7 +159,11 @@ export async function requireConnectorAccess(
   const userId = parseInt(session.user.id)
 
   if (options.rateLimit !== false) {
-    await enforceConnectorRateLimit(event, userId)
+    await enforceConnectorRateLimit(
+      event,
+      userId,
+      options.selection ? SELECTION_BUCKET : DEFAULT_BUCKET,
+    )
   }
 
   useRequestLogger(event).set({ userId })

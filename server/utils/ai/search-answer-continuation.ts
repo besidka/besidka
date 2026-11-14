@@ -210,6 +210,24 @@ export function omitPromptCacheControl(
 }
 
 /**
+ * Whether a persisted part is a call of one of the named tools: a static
+ * `tool-<name>` part, or a `dynamic-tool` part carrying the name (connector
+ * tools, whose names are only known at run time).
+ */
+export function isFollowUpToolPart(
+  part: { type: string, [key: string]: unknown },
+  followUpToolNames: ReadonlySet<string>,
+): boolean {
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string'
+      && followUpToolNames.has(part.toolName)
+  }
+
+  return part.type.startsWith('tool-')
+    && followUpToolNames.has(part.type.slice('tool-'.length))
+}
+
+/**
  * True when visible assistant text exists after the last completed follow-up
  * tool part. Text before it (a "Let me look that up." preamble) is not an
  * answer to the search results.
@@ -219,8 +237,7 @@ export function hasVisibleTextAfterLastFollowUpTool(input: {
   followUpToolNames: ReadonlySet<string>
 }): boolean {
   const lastFollowUpToolIndex = input.parts.findLastIndex((part) => {
-    return part.type.startsWith('tool-')
-      && input.followUpToolNames.has(part.type.slice('tool-'.length))
+    return isFollowUpToolPart(part, input.followUpToolNames)
       && (part.state === 'output-available' || part.state === 'output-error')
   })
 
