@@ -839,21 +839,38 @@ to the turn being sent only when its id matches, otherwise as a new turn, so an
 older user turn never receives it. Regenerating a stored skill-only message
 whose skill is gone is the same generic 400 (there is nothing left to send).
 
-**Step card.** An `activate_skill` call renders as a compact card in the
-assistant message, in the style of the artifact and document cards: "Using
-skill…" while it runs, "Used skill · name" with `lucide:sparkles` when it
-returned (a click opens the preview), "Could not use skill" on an error. It is
-excluded from the reasoning box's tool steps, and counts as visible assistant
-content so the bubble shows before any text. A `read_skill_file` call stays a
-reasoning step ("Read a skill file"). The sent user bubble shows a chip with
-the skill name above the text.
+**Skill step (a reasoning step, not a card).** The owner rejected a grey card
+above the answer (too big, no gap to the text), so skill use is a step inside
+the reasoning box, like the search and memory steps
+(`app/components/Chat/Reasoning/SkillStep.vue`, built by `Reasoning.vue`
+through `getReasoningSkillStep` in `app/utils/skill-step.ts`). An
+`activate_skill` call is a step titled "Reading skill · name" while it runs,
+"Applied skill · name" once it returned and "Could not use skill · name" on an
+error. A `data-skill-activation` part with no `activate_skill` call for the
+same skill (a skill the user attached to an Auto send) is one "Applied skill"
+step; a call and its activation part make a single step. Only assistant
+messages build one. The name opens the read-only preview. Steps keep the order
+they happened in, so a skill read before an answer shows above the other steps.
+`activate_skill` is a thinking tool part (`isThinkingToolPart`), so the box
+renders and the bubble shows even when the model wrote no reasoning text. The
+step reads only the `activate_skill` and `data-skill-activation` parts, which
+`filterPublicParts` strips, never message metadata, so a shared chat and the
+shared page show no skill (`tests/integration/api/shared-chat-view.spec.ts`).
+A `read_skill_file` call stays a reasoning step ("Read a skill file"). The sent
+user bubble shows a chip with the skill name above the text.
+
+**Spacing around cards.** Output cards (artifacts and documents) are ordered
+after the answer text (`orderOutputCardPartsLast`). Text and a card never
+touch: a text part right after a card, and a card right after a text part, get
+`mt-4` on the chat and shared pages (`hasGapBeforePart`, covering generated
+images, artifacts, documents and code execution).
 
 **Preview.** `ChatSkillPreview` is a read-only dialog (a bottom sheet below
 `sm`): name, description, mode and `SKILL.md` as plain monospace text (no
 Markdown, no `v-html`; the first 60,000 characters), with **Edit**, which opens
 `/chats/skills?skill=<id>&edit=1` (the page opens the details and the editor,
 then removes the two parameters), and an "All skills" link. The composer tile,
-the chip in a sent message and the step card all open it, from one
+the chip in a sent message and the reasoning step all open it, from one
 `useSkillPreview()` state mounted in the chat layout.
 
 **Existing skills.** Skills that were enabled before this layer keep
@@ -864,7 +881,7 @@ the attach path do not need `slash_command`; S-12 must treat a missing
 one-time backfill, since a data migration is outside the additive-only rule.
 
 **Not verified in S-3.** No model send ran with `skills` on: there is no
-provider key on the test account, and the step card in the browser comes from
+provider key on the test account, and the skill step in the browser comes from
 the `/chats/test?scenario=skill` fixture. The send path is covered by
 `tests/integration/api/chats-skills.spec.ts` with a scripted model.
 
@@ -1458,8 +1475,8 @@ As built in S-3 (section 5.7):
   chat restores the tile with the rest of the draft.
 - **Sent messages:** the bubble shows a chip with the skill name above the text
   (it opens the preview); a shared chat shows nothing for it.
-- **Reasoning and cards:** `activate_skill` is a card in the answer, not a
-  reasoning step (section 5.7).
+- **Reasoning:** `activate_skill` is a step in the reasoning box, not a card
+  (section 5.7).
 
 Planned for S-12 (the typed command), which adds `source: 'text'` to the same
 state:
@@ -1778,7 +1795,7 @@ The owner took the plan's defaults:
 | # | Decision |
 | --- | --- |
 | 11 | **Invocation mode (owner, after testing the S-5 manager on a phone):** one control with Off, Auto and Only when I ask replaces the enable toggle and the two invocation toggles. Every enabled skill is available as `/name` and from the "+" menu. A reserved name keeps `/name` off and the UI says "Rename to use /name". Section 5.7. |
-| 12 | **Visible step:** an `activate_skill` call is a compact card in the answer ("Used skill · name"), which opens a read-only preview with an Edit button. Section 5.7. |
+| 12 | **Visible step:** an `activate_skill` call is a reasoning step ("Applied skill · name", 2026-11-14: the card was rejected), whose name opens a read-only preview with an Edit button. Section 5.7. |
 | 13 | **The invocation core ships in S-3, not S-12:** one invocation per message (`menu` source here, `text` in S-12), a generic 400 for every failure even with the flag off, injection into the latest user turn. Section 5.7. |
 
 The owner also asked for these to be possible, and this document states each:

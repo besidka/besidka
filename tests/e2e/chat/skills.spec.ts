@@ -57,7 +57,7 @@ test('a member attaches a skill from + Add skill, reads it and opens it in the e
   await expect(page.locator('dialog.js-skill-edit-modal')).toBeVisible()
 })
 
-test('an answer shows the used skill as a step card that opens the preview', async ({ browser }) => {
+test('an answer shows the used skill as a reasoning step that opens the preview', async ({ browser }) => {
   const page = await openGrantedMember(browser, 'e2e-skill-step')
   const skillName = `e2e-step-${Date.now()}`
   const skillId = await createSkillByApi(page, skillName, 'Write in my voice')
@@ -68,16 +68,24 @@ test('an answer shows the used skill as a step card that opens the preview', asy
   )
   await waitForHydration(page)
 
-  await expect(page.getByTestId('skill-step-working'))
-    .toBeVisible({ timeout: STEP_CARD_TIMEOUT })
-  await expect(page.getByTestId('skill-step-working'))
-    .toContainText('Using skill…', { timeout: STEP_CARD_TIMEOUT })
+  const stepTitle = page.getByTestId('reasoning-skill-step-title')
 
-  const card = page.getByTestId('skill-step-ready')
+  await expect(page.getByTestId('skill-step')).toHaveCount(0)
+  await expect(page.getByTestId('reasoning-skill-step').first())
+    .toBeAttached({ timeout: STEP_CARD_TIMEOUT })
 
-  await expect(card).toBeVisible({ timeout: STEP_CARD_TIMEOUT })
-  await expect(card).toContainText(`Used skill · ${skillName}`)
-  await card.click()
+  const summary = page.locator('[data-testid="chat-messages-container"] summary')
+    .first()
+
+  if (!await stepTitle.first().isVisible()) {
+    await summary.click()
+  }
+
+  await expect(stepTitle.first())
+    .toContainText(`Applied skill · ${skillName}`, {
+      timeout: STEP_CARD_TIMEOUT,
+    })
+  await page.getByTestId('reasoning-skill-step-open').first().click()
 
   const preview = page.locator('dialog.js-skill-preview')
 

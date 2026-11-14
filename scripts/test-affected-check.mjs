@@ -1572,7 +1572,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/composer-skill-invocation.spec.ts',
     'tests/unit/composables/composer-skills.spec.ts',
     'tests/unit/composables/chat.spec.ts',
-    'tests/unit/components/Chat/SkillStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/integration/api/shared-chat-view.spec.ts',
     'tests/unit/components/Chat/SkillInvocation.spec.ts',
     'tests/unit/components/Chat/SkillPreview.client.spec.ts',
     'tests/unit/components/ChatInput/SkillPicker.client.spec.ts',
@@ -2020,7 +2021,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/utils\/generated-images\.ts$/,
-      tests: ['tests/unit/utils/generated-images.spec.ts'],
+      tests: [
+        'tests/unit/utils/generated-images.spec.ts',
+        'tests/unit/utils/message-part-spacing.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/utils\/(message-part-spacing|artifact-parts|code-execution-ui)\.ts$/,
+      tests: [
+        'tests/unit/utils/message-part-spacing.spec.ts',
+        'tests/unit/utils/artifact-parts.spec.ts',
+      ],
     },
     {
       pattern: /^app\/utils\/chat-failure-notice\.ts$/,
@@ -2988,7 +2999,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/(SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+        /^(app\/components\/Chat\/(Reasoning|Reasoning\/SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/utils\/reasoning\.ts|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
       tests: skillsComposerTests,
     },
     {
