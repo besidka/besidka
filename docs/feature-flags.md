@@ -406,8 +406,8 @@ As built:
   sitemap `exclude` and the agent-discovery `excludePrefixes`. A signed-out
   visitor is redirected to `/signin` by the global auth middleware, like
   every other signed-in route.
-- **Entry**: the Search popup shows "Admin" (`search-option-admin`, last in
-  Settings) only when `useIsAdmin()` is true. Admin never gets a nav pill
+- **Entry**: the Search popup shows "Admin" (`search-option-admin`, in its own
+  Admin group before Interface) only when `useIsAdmin()` is true. Admin never gets a nav pill
   slot.
 - Rule changes take effect within 5 minutes on other locations (the KV TTL);
   the UI says so.
