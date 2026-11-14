@@ -40,7 +40,7 @@ export const SKILL_FILE_KINDS = [
   'reference',
   'script',
   'asset',
-  'licence',
+  'license',
   'other',
 ] as const
 

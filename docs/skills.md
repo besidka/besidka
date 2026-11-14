@@ -1174,7 +1174,7 @@ Indexes: unique (`skill_id`, `version`); (`user_id`).
 | `path` | text | normalised relative path |
 | `blob_sha256` | text | the R2 blob (section 3.5) |
 | `bytes` | integer | |
-| `kind` | text | `skill-md`, `reference`, `script`, `asset`, `licence`, `other` (the stored value `licence` keeps its original spelling: renaming it would need a data migration, and it is never shown) |
+| `kind` | text | `skill-md`, `reference`, `script`, `asset`, `license`, `other` (rows written before 2026-11-14 hold the earlier spelling `licence`; nothing branches on the value, it is only listed, so no data migration was needed) |
 
 There is no `r2_key` column (section 3.5). Indexes: unique (`skill_id`,
 `version`, `path`); (`user_id`); (`skill_id`, `blob_sha256`) for pruning.

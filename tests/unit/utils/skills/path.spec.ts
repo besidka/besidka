@@ -133,8 +133,8 @@ describe('detectSkillRoot', () => {
 describe('getSkillFileKind', () => {
   it('classifies files by name and folder', () => {
     expect(getSkillFileKind('SKILL.md')).toBe('skill-md')
-    expect(getSkillFileKind('LICENSE.txt')).toBe('licence')
-    expect(getSkillFileKind('NOTICE')).toBe('licence')
+    expect(getSkillFileKind('LICENSE.txt')).toBe('license')
+    expect(getSkillFileKind('NOTICE')).toBe('license')
     expect(getSkillFileKind('scripts/run.sh')).toBe('script')
     expect(getSkillFileKind('references/a.md')).toBe('reference')
     expect(getSkillFileKind('assets/t.json')).toBe('asset')

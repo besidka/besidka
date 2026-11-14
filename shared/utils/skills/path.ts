@@ -248,7 +248,7 @@ export function getSkillFileKind(relativePath: string): SkillFileKind {
   const segments = relativePath.split('/')
 
   if (segments.length === 1 && isSkillLicenseFileName(relativePath)) {
-    return 'licence'
+    return 'license'
   }
 
   const firstSegment = segments[0]

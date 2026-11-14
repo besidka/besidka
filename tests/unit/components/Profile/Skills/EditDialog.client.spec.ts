@@ -51,7 +51,7 @@ function detail(overrides = {}) {
     files: [
       { path: 'SKILL.md', bytes: 60, kind: 'skill-md', sha256: 'a', editable: true },
       { path: 'references/guide.md', bytes: 8, kind: 'reference', sha256: 'b', editable: true },
-      { path: 'LICENSE.txt', bytes: 4, kind: 'licence', sha256: 'c', editable: false },
+      { path: 'LICENSE.txt', bytes: 4, kind: 'license', sha256: 'c', editable: false },
     ],
     ...overrides,
   })
