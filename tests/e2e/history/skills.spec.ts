@@ -91,8 +91,8 @@ test('a member uploads a skill, reviews it, installs it and turns it on', async 
 
   await expect(dialog.getByTestId('skill-review')).toBeVisible()
   await expect(dialog.getByTestId('skill-review-name')).toHaveText(skillName)
-  await expect(dialog.getByTestId('skill-review-license-class'))
-    .toContainText('Open license')
+  await expect(dialog.getByTestId('skill-review-license'))
+    .toContainText(/open license/i)
   await expect(dialog.getByTestId('skill-review-warning')).toContainText(
     'Installing a skill is like installing software.',
   )

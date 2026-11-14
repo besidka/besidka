@@ -284,10 +284,7 @@
             class="font-medium"
             data-testid="skill-import-installed-title"
           >
-            You already have {{ installedNotice.name }} (from the same
-            source<template v-if="installedNotice.sourceLabel">
-              , @ {{ installedNotice.sourceLabel }}
-            </template>)
+            {{ installedTitle }}
           </p>
           <p v-if="installedNotice.isUpToDate">
             {{ installedNotice.name }} has exactly these files, so there is
@@ -534,6 +531,20 @@ const dialogTitle = computed<string>(() => {
   }
 
   return step.value === 'pick' ? 'Choose skills' : 'Add a skill'
+})
+
+const installedTitle = computed<string>(() => {
+  const installed = installedNotice.value
+
+  if (!installed) {
+    return ''
+  }
+
+  const source = installed.sourceLabel
+    ? `from the same source, @ ${installed.sourceLabel}`
+    : 'from the same source'
+
+  return `You already have ${installed.name} (${source})`
 })
 
 const canSubmit = computed<boolean>(() => {
