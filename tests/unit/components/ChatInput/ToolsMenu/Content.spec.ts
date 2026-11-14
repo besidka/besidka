@@ -19,6 +19,7 @@ function createState(
     search?: boolean
     reasoning?: boolean
     lower?: boolean
+    skills?: boolean
   } = {},
 ): ChatInputToolsState {
   const {
@@ -26,6 +27,7 @@ function createState(
     search = true,
     reasoning = true,
     lower = true,
+    skills = false,
   } = overrides
 
   return {
@@ -59,6 +61,17 @@ function createState(
     image: { supported: lower, enabled: false, required: false },
     files: { visible: files, count: 0, isImageInputSupported: true },
     artifacts: { visible: false, attached: [] },
+    skills: {
+      visible: skills,
+      selected: null,
+      items: [{
+        id: 'skl1',
+        name: 'writing-style',
+        description: 'Write in my voice',
+        version: 1,
+        mode: 'auto',
+      }],
+    },
     project: { visible: false, context: null },
     memory: { excluded: null },
     research: null,
@@ -82,6 +95,39 @@ function layout(wrapper: ContentWrapper): string[] {
         : '?')
   })
 }
+
+describe('ChatInput/ToolsMenu/Content skills', () => {
+  it('reveals the Skills section only when the user has an enabled skill', async () => {
+    const hidden = await mountContent(createState())
+    const shown = await mountContent(createState({ skills: true }))
+
+    expect(layout(hidden)).not.toContain('skills')
+    expect(layout(shown)).toEqual([
+      'add',
+      'skills',
+      '---',
+      'search',
+      '---',
+      'reasoning',
+      '---',
+      'image',
+    ])
+  })
+
+  it('relays choosing a skill, All skills and Manage skills', async () => {
+    const wrapper = await mountContent(createState({ skills: true }))
+
+    await wrapper.get('[data-testid="tools-skill-writing-style"]')
+      .trigger('click')
+    await wrapper.get('[data-testid="tools-skills-manage"]').trigger('click')
+
+    expect(wrapper.emitted('select-skill')?.[0]?.[0]).toMatchObject({
+      id: 'skl1',
+      name: 'writing-style',
+    })
+    expect(wrapper.emitted('open-skills-manager')).toHaveLength(1)
+  })
+})
 
 describe('ChatInput/ToolsMenu/Content dividers', () => {
   it('separates every group with one divider when all are present',

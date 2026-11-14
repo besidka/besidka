@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
+import type { ComposerSkillItem } from '../../../app/composables/composer-skills'
+import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { usePastedTexts } from '../../../app/composables/pasted-texts'
@@ -103,6 +105,16 @@ const mockRoute = reactive<{ path: string }>({ path: '/chats/abc123' })
 
 mockNuxtImport('useRoute', () => {
   return () => mockRoute
+})
+
+const composerSkillItems = shallowRef<ComposerSkillItem[]>([])
+
+mockNuxtImport('useComposerSkills', () => {
+  return () => ({
+    items: computed(() => composerSkillItems.value),
+    isVisible: computed(() => composerSkillItems.value.length > 0),
+    refresh: vi.fn(),
+  })
 })
 
 const filesModalOpenMock = vi.fn()
@@ -342,6 +354,8 @@ describe('ChatInput.client', () => {
     keyboardInset.value = 0
     safeAreaBottom.value = 0
     artifactsFeature.value = { enabled: false, active: false, variant: null }
+    composerSkillItems.value = []
+    useComposerSkillInvocation().clear()
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
@@ -3972,6 +3986,180 @@ describe('ChatInput.client', () => {
       await flushPromises()
 
       expect(lastAttached(wrapper)).toEqual([])
+    })
+  })
+
+  describe('skills', () => {
+    const writingStyle: ComposerSkillItem = {
+      id: 'skl1',
+      name: 'writing-style',
+      description: 'Write in my voice',
+      version: 3,
+      mode: 'auto',
+    }
+
+    function grantSkills(count = 1) {
+      composerSkillItems.value = Array.from({ length: count }, (_, index) => {
+        return index === 0
+          ? writingStyle
+          : {
+            ...writingStyle,
+            id: `skl${index + 1}`,
+            name: `skill-${index + 1}`,
+          }
+      })
+    }
+
+    it('shows no Skills section without an enabled skill', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'tools-skills-manage')).toBe(false)
+      expect(wrapper.text()).not.toContain('Manage skills')
+    })
+
+    it('lists the skills and attaches the chosen one, closing the menu', async () => {
+      grantSkills(2)
+
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-skill-writing-style"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value).toEqual({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+        source: 'menu',
+      })
+      expect(wrapper.get('[data-testid="chat-input-tools-trigger"]')
+        .attributes('aria-expanded')).toBe('false')
+    })
+
+    it('replaces the attached skill when another one is chosen', async () => {
+      grantSkills(2)
+
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-skill-writing-style"]')
+        .trigger('click')
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-skill-skill-2"]').trigger('click')
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value)
+        .toMatchObject({ skillId: 'skl2', name: 'skill-2' })
+    })
+
+    it('navigates to the manager from Manage skills', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+      const router = useRouter()
+      const push = vi.spyOn(router, 'push').mockResolvedValue(undefined)
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-skills-manage"]').trigger('click')
+      await flushPromises()
+
+      expect(push).toHaveBeenCalledWith('/profile/skills')
+    })
+
+    it('enables Send for a message that is only an attached skill', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeDefined()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeUndefined()
+    })
+
+    it('clears the attached skill when the message is sent', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      await wrapper.get('textarea').setValue('Draft it')
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
+    })
+
+    it('drops the attached skill when a deep research model is picked', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      mocks.useChatInput.mock.results[0]!.value
+        .isDeepResearchModel.value = true
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
+      expect(wrapper.exists()).toBe(true)
+    })
+
+    it('drops the attached skill when the composer goes away', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      wrapper.unmount()
+
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
+    })
+
+    it('removes the skill from the tiles in the bottom sheet', async () => {
+      isPopoverLayout.value = false
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      await flushPromises()
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'chat-input-tools-chip-skill')).toBe(true)
+
+      await wrapper.get('[data-testid="chat-input-tools-chip-skill-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
     })
   })
 })

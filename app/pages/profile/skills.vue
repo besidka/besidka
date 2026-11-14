@@ -196,6 +196,46 @@ const selectedId = computed<string | null>(() => {
     : null
 })
 
+const route = useRoute()
+const router = useRouter()
+
+watch(
+  [hasLoaded, () => route.query.skill],
+  async ([isLoaded, requestedId]) => {
+    if (!isLoaded || typeof requestedId !== 'string') {
+      return
+    }
+
+    const shouldEdit = route.query.edit === '1'
+    const requested = skills.value.find((candidate) => {
+      return candidate.id === requestedId
+    })
+
+    if (requested) {
+      openDetail(requested)
+
+      if (shouldEdit) {
+        editSession.open(requested.id)
+      }
+    } else {
+      useWarningMessage(
+        'That skill is not available',
+        'It may have been deleted. Pick one from the list.',
+      )
+    }
+
+    await router.replace({
+      path: route.path,
+      query: Object.fromEntries(
+        Object.entries(route.query).filter(([key]) => {
+          return key !== 'skill' && key !== 'edit'
+        }),
+      ),
+    })
+  },
+  { immediate: true },
+)
+
 watch(sourceOptions, async (options) => {
   if (
     options.length

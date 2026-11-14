@@ -1561,6 +1561,24 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/image-generation.spec.ts',
   ]
 
+  const skillsComposerTests = [
+    'tests/unit/utils/skill-step.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/composer-skill-invocation.spec.ts',
+    'tests/unit/composables/composer-skills.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/components/Chat/SkillStep.spec.ts',
+    'tests/unit/components/Chat/SkillInvocation.spec.ts',
+    'tests/unit/components/Chat/SkillPreview.client.spec.ts',
+    'tests/unit/components/ChatInput/SkillPicker.client.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/SkillsSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/pages/profile/skills.spec.ts',
+  ]
+
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
   ]
@@ -2963,6 +2981,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/runtime\/.*\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
       tests: skillsRuntimeTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Chat\/(SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/components\/ChatInput\/(SkillPicker\.client|ToolsMenu\/SkillsSection)\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/pages\/profile\/skills\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+      tests: skillsComposerTests,
     },
     {
       pattern:

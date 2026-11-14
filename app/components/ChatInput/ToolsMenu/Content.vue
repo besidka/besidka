@@ -57,6 +57,15 @@
         @click="emit('open-artifact-picker')"
       />
     </ChatInputToolsMenuSection>
+    <ChatInputToolsMenuSkillsSection
+      v-if="state.skills?.visible"
+      :items="state.skills.items"
+      :selected-id="state.skills.selected?.skillId ?? null"
+      :is-highlighted="highlightedSection === 'skills'"
+      @select="emit('select-skill', $event)"
+      @open-all="emit('open-skills-picker')"
+      @manage="emit('open-skills-manager')"
+    />
     <div
       v-if="hasDividerBeforeSearch"
       class="h-px mx-2 my-1 bg-base-content/10"
@@ -177,6 +186,7 @@ import type {
   ToolsSection,
 } from '~/types/chat-input-tools'
 import type { WebSearchSelection } from '~/types/web-search'
+import type { ComposerSkillItem } from '~/composables/composer-skills'
 
 const props = defineProps<{
   state: ChatInputToolsState
@@ -196,6 +206,9 @@ const emit = defineEmits<{
   'open-files-upload': []
   'open-files-generated': []
   'open-artifact-picker': []
+  'select-skill': [item: ComposerSkillItem]
+  'open-skills-picker': []
+  'open-skills-manager': []
   'update:use-memory': [value: boolean]
 }>()
 
@@ -206,13 +219,21 @@ const isReasoningSectionVisible = computed<boolean>(() => {
     && props.state.reasoning.mode !== 'none'
 })
 
+const isSkillsSectionVisible = computed<boolean>(() => {
+  return props.state.skills?.visible === true
+})
+
 const hasDividerBeforeSearch = computed<boolean>(() => {
-  return props.state.files.visible && props.state.webSearch.visible
+  return (props.state.files.visible || isSkillsSectionVisible.value)
+    && props.state.webSearch.visible
 })
 
 const hasDividerBeforeReasoning = computed<boolean>(() => {
-  return (props.state.files.visible || props.state.webSearch.visible)
-    && isReasoningSectionVisible.value
+  return (
+    props.state.files.visible
+    || isSkillsSectionVisible.value
+    || props.state.webSearch.visible
+  ) && isReasoningSectionVisible.value
 })
 
 const isImageRowVisible = computed<boolean>(() => {
@@ -225,6 +246,7 @@ const isCodeExecutionRowVisible = computed<boolean>(() => {
 
 const hasUpperSection = computed<boolean>(() => {
   return props.state.files.visible
+    || isSkillsSectionVisible.value
     || props.state.webSearch.visible
     || isReasoningSectionVisible.value
     || (props.state.isDeepResearchModel && !!props.state.research)
