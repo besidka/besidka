@@ -7,6 +7,7 @@
     data-testid="command-mirror"
   >{{ before }}<mark
     class="composer-command-token"
+    :data-caret="caretEdge ?? undefined"
     data-testid="command-mirror-token"
   >{{ tokenText }}</mark>{{ after }}</div>
 </template>
@@ -40,6 +41,7 @@ const props = defineProps<{
 
 const mirrorRef = useTemplateRef<HTMLDivElement>('mirrorRef')
 const metrics = shallowRef<StyleValue>({})
+const caretEdge = shallowRef<'start' | 'end' | null>(null)
 
 const before = computed<string>(() => props.text.slice(0, props.start))
 const tokenText = computed<string>(() => {
@@ -63,6 +65,33 @@ function copyMetrics() {
   )
 }
 
+/**
+ * The badge pads its sides with a box-shadow, which paints over the textarea's
+ * own caret. While the caret rests exactly at the token's start or end, that
+ * side's padding is dropped (`data-caret`), so the caret stays visible.
+ */
+function readCaret() {
+  const element = props.textarea
+
+  if (
+    !element
+    || document.activeElement !== element
+    || element.selectionStart !== element.selectionEnd
+  ) {
+    caretEdge.value = null
+
+    return
+  }
+
+  if (element.selectionStart === props.end) {
+    caretEdge.value = 'end'
+  } else if (element.selectionStart === props.start) {
+    caretEdge.value = 'start'
+  } else {
+    caretEdge.value = null
+  }
+}
+
 function syncScroll() {
   if (mirrorRef.value && props.textarea) {
     mirrorRef.value.scrollTop = props.textarea.scrollTop
@@ -71,8 +100,15 @@ function syncScroll() {
 
 useResizeObserver(() => props.textarea, copyMetrics)
 useEventListener(() => props.textarea, 'scroll', syncScroll)
+useEventListener(document, 'selectionchange', readCaret)
+useEventListener(
+  () => props.textarea,
+  ['input', 'keyup', 'click', 'focus', 'blur'],
+  readCaret,
+)
 
 watch(() => props.textarea, copyMetrics, { immediate: true })
+watch([() => props.start, () => props.end], readCaret, { flush: 'post' })
 watch(() => props.text, async () => {
   await nextTick()
   syncScroll()
@@ -81,5 +117,6 @@ watch(() => props.text, async () => {
 onMounted(() => {
   copyMetrics()
   syncScroll()
+  readCaret()
 })
 </script>

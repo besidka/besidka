@@ -1248,11 +1248,13 @@ div:focus-visible:not([role="region"]) {
  * mirror overlay (ChatInput/CommandMirror.vue) over the textarea. It reuses
  * the accent tile tones (`ACCENT_TILE_TONE` in utils/chat-input-tiles.ts) but
  * as one opaque color, because the textarea's own glyphs sit under it and must
- * not show through. The badge padding is a box-shadow spread, which paints
- * outside the line box, so no glyph moves and the text still lines up with the
- * textarea underneath. It extends only to the left: the caret of the textarea
- * sits right after the token while the user types, under this overlay, and a
- * right-hand spread would paint over it.
+ * not show through. The side padding is two zero-spread box-shadows offset
+ * sideways in the badge color, which paint outside the box and never touch
+ * layout: unlike `padding-inline`, they move no glyph, add no space where a
+ * token wraps at a hyphen, and (with `box-decoration-break: clone`) round every
+ * wrapped piece. The caret of the textarea sits under this overlay, so while it
+ * rests at the token's start or end that side's shadow is dropped
+ * (`data-caret`) and the caret stays visible.
  */
 .composer-command-token {
   --composer-command-token-bg: color-mix(
@@ -1260,11 +1262,17 @@ div:focus-visible:not([role="region"]) {
     var(--color-accent) 10%,
     var(--color-base-100)
   );
+  --composer-command-token-pad-start: 0.25em;
+  --composer-command-token-pad-end: 0.25em;
 
   color: var(--color-accent-text);
   background-color: var(--composer-command-token-bg);
   border-radius: var(--radius-selector);
-  box-shadow: -0.3em 0 0 0 var(--composer-command-token-bg);
+  box-shadow:
+    var(--composer-command-token-pad-end) 0 0 0
+      var(--composer-command-token-bg),
+    calc(var(--composer-command-token-pad-start) * -1) 0 0 0
+      var(--composer-command-token-bg);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 
@@ -1276,5 +1284,13 @@ div:focus-visible:not([role="region"]) {
     );
 
     color: var(--color-accent);
+  }
+
+  &[data-caret='start'] {
+    --composer-command-token-pad-start: 0em;
+  }
+
+  &[data-caret='end'] {
+    --composer-command-token-pad-end: 0em;
   }
 }

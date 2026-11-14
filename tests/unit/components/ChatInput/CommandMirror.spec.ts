@@ -57,6 +57,58 @@ afterEach(() => {
 })
 
 describe('ChatInput/CommandMirror', () => {
+  it('drops the badge padding on the side the caret rests on, so the caret stays visible', async () => {
+    const textarea = createTextarea()
+
+    textarea.value = 'Please /c this'
+    textarea.focus()
+
+    const wrapper = await mountMirror({ textarea, start: 7, end: 9 })
+    const token = () => {
+      return wrapper.get('[data-testid="command-mirror-token"]')
+    }
+
+    textarea.setSelectionRange(9, 9)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-caret')).toBe('end')
+
+    textarea.setSelectionRange(7, 7)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-caret')).toBe('start')
+
+    textarea.setSelectionRange(8, 8)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-caret')).toBeUndefined()
+
+    textarea.setSelectionRange(7, 9)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(token().attributes('data-caret')).toBeUndefined()
+  })
+
+  it('keeps both paddings when the textarea does not have focus', async () => {
+    const textarea = createTextarea()
+
+    textarea.value = 'Please /c this'
+    textarea.setSelectionRange(9, 9)
+    textarea.blur()
+
+    const wrapper = await mountMirror({ textarea, start: 7, end: 9 })
+
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="command-mirror-token"]')
+      .attributes('data-caret')).toBeUndefined()
+  })
+
   it('draws the token as a soft badge above the textarea without changing its metrics', async () => {
     const wrapper = await mountMirror()
     const token = wrapper.get('[data-testid="command-mirror-token"]')
