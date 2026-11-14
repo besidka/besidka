@@ -67,6 +67,15 @@
         data-testid="tools-action-skills"
         @click="emit('open-skills-picker')"
       />
+      <ChatInputToolsMenuActionRow
+        v-if="state.project.visible"
+        :label="state.isNewChat ? 'Project' : 'Move to project'"
+        icon="lucide:folder"
+        :value="state.project.context?.name ?? 'None'"
+        has-chevron
+        data-testid="tools-project"
+        @click="emit('open-project-picker')"
+      />
     </ChatInputToolsMenuSection>
     <div
       v-if="hasDividerBeforeSearch"
@@ -146,21 +155,6 @@
       />
     </ChatInputToolsMenuSection>
     <ChatInputToolsMenuSection
-      v-if="state.project.visible"
-      id="project"
-      label="Project"
-      :is-highlighted="highlightedSection === 'project'"
-    >
-      <ChatInputToolsMenuActionRow
-        :label="state.isNewChat ? 'Project' : 'Move to project'"
-        icon="lucide:folder"
-        :value="state.project.context?.name ?? 'None'"
-        has-chevron
-        data-testid="tools-project"
-        @click="emit('open-project-picker')"
-      />
-    </ChatInputToolsMenuSection>
-    <ChatInputToolsMenuSection
       v-if="state.memory.excluded !== null"
       id="memory"
       :label="CHAT_MEMORY_USE_LABEL"
@@ -219,7 +213,9 @@ const isReasoningSectionVisible = computed<boolean>(() => {
 })
 
 const isAddSectionVisible = computed<boolean>(() => {
-  return props.state.files.visible || props.state.skills?.visible === true
+  return props.state.files.visible
+    || props.state.skills?.visible === true
+    || props.state.project.visible
 })
 
 const hasDividerBeforeSearch = computed<boolean>(() => {
@@ -251,7 +247,6 @@ const hasUpperSection = computed<boolean>(() => {
 const hasLowerSection = computed<boolean>(() => {
   return isImageRowVisible.value
     || isCodeExecutionRowVisible.value
-    || props.state.project.visible
     || props.state.memory.excluded !== null
 })
 </script>

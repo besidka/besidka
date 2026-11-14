@@ -20,7 +20,6 @@ export type ToolsSection
     | 'reasoning'
     | 'code'
     | 'image'
-    | 'project'
     | 'memory'
 
 export type ChatInputArtifactTileId = `artifact-${string}`

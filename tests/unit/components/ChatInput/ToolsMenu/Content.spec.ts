@@ -21,6 +21,8 @@ function createState(
     lower?: boolean
     skills?: boolean
     skillAttached?: boolean
+    project?: boolean
+    projectName?: string
   } = {},
 ): ChatInputToolsState {
   const {
@@ -30,6 +32,8 @@ function createState(
     lower = true,
     skills = false,
     skillAttached = false,
+    project = false,
+    projectName,
   } = overrides
 
   return {
@@ -81,7 +85,10 @@ function createState(
         mode: 'auto',
       }],
     },
-    project: { visible: false, context: null },
+    project: {
+      visible: project,
+      context: projectName ? { id: 'p1', name: projectName } : null,
+    },
     memory: { excluded: null },
     research: null,
     isDeepResearchModel: false,
@@ -148,6 +155,57 @@ describe('ChatInput/ToolsMenu/Content skills', () => {
 
     expect(wrapper.get('[data-testid="tools-action-skills"] .badge').text())
       .toBe('1')
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content project row', () => {
+  it('ends the Add section with the Project row after Add skill', async () => {
+    const wrapper = await mountContent(createState({
+      skills: true,
+      project: true,
+      projectName: 'Q4 launch',
+    }))
+    const rows = wrapper.findAll(
+      '[data-section="add"] button[data-testid^="tools-"]',
+    )
+
+    expect(rows.at(-1)?.attributes('data-testid')).toBe('tools-project')
+    expect(rows.at(-2)?.attributes('data-testid')).toBe('tools-action-skills')
+    expect(rows.at(-1)?.text()).toContain('Q4 launch')
+    expect(wrapper.find('[data-section="project"]').exists()).toBe(false)
+  })
+
+  it('renders the Add section when only the Project row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      search: false,
+      reasoning: false,
+      lower: false,
+      project: true,
+    }))
+
+    expect(layout(wrapper)).toEqual(['add'])
+    expect(wrapper.get('[data-testid="tools-project"]').text())
+      .toContain('None')
+  })
+
+  it('draws a divider between the Add section and the lower rows', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      search: false,
+      reasoning: false,
+      project: true,
+    }))
+
+    expect(layout(wrapper)).toEqual(['add', '---', 'image'])
+  })
+
+  it('emits open-project-picker when the row is clicked', async () => {
+    const wrapper = await mountContent(createState({ project: true }))
+
+    await wrapper.get('[data-testid="tools-project"]').trigger('click')
+
+    expect(wrapper.emitted('open-project-picker')).toHaveLength(1)
   })
 })
 

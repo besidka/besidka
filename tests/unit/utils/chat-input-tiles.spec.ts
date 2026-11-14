@@ -134,7 +134,7 @@ describe('buildChatInputTiles', () => {
 
       expect(tile).toMatchObject({
         id: 'project',
-        section: 'project',
+        section: 'add',
         caption: 'Project',
         value: 'Q4 launch roadmap',
         ariaLabel: 'Project: Q4 launch roadmap',

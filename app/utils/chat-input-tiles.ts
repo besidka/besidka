@@ -110,7 +110,7 @@ function buildProjectTile(
 
   return {
     id: 'project',
-    section: 'project',
+    section: 'add',
     icon: { kind: 'icon', name: 'lucide:folder' },
     caption: 'Project',
     value: project.name,
