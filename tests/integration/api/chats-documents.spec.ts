@@ -259,7 +259,21 @@ function createDb(documentsDb: MemoryExtractionTestDb['db']) {
         findFirst: vi.fn(async () => ({ apiKey: 'encrypted-key' })),
       },
       messages: { findFirst: vi.fn(async () => undefined) },
+      storages: {
+        findFirst: vi.fn(async () => ({
+          tier: 'free',
+          storage: 20 * 1024 * 1024,
+          maxFilesPerMessage: 10,
+          maxMessageFilesBytes: 1024 * 1024 * 1024,
+          fileRetentionDays: 30,
+          imageTransformLimitTotal: 0,
+          imageTransformUsedTotal: 0,
+        })),
+      },
     },
+    all: vi.fn((query: Parameters<typeof documentsDb.all>[0]) => {
+      return documentsDb.all(query)
+    }),
     insert: vi.fn((table: unknown) => {
       return isDocumentsTable(table)
         ? documentsDb.insert(table as typeof schema.documents)

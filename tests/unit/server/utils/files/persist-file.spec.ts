@@ -99,4 +99,30 @@ describe('persistFile logging', () => {
     expect(logged).toContain('"fileExtension":"csv"')
     expect(logged).toContain(`"fileNameLength":${SECRET_NAME.length}`)
   })
+
+  it('refuses a file over the shared allowance before writing anything', async () => {
+    const { persistFile } = await import('~~/server/utils/files/persist-file')
+
+    await expect(persistFile({
+      userId: 1,
+      fileName: 'notes.txt',
+      mediaType: 'text/plain',
+      fileData: new Uint8Array([1, 2, 3]),
+      logger: mocks.logger,
+      policy: {
+        maxStorageBytes: 10,
+        fileRetentionDays: 30,
+      } as never,
+      totalFilesSize: 8,
+    })).rejects.toMatchObject({
+      status: 413,
+      message: 'Storage is full',
+      code: 'storage_full',
+      why: '8 B of 10 B used',
+      fix: 'Free space on the Storage page',
+      link: '/profile/storage',
+    })
+
+    expect(mocks.put).not.toHaveBeenCalled()
+  })
 })

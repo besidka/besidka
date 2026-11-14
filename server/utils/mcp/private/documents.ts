@@ -55,6 +55,7 @@ import {
   getUserStorageUsageBytes,
 } from '~~/server/utils/files/file-governance'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { formatFileSize } from '#shared/utils/files'
 import { MCP_FILE_TEXT_MAX_CHARS } from '~~/server/utils/mcp/private/files'
 import { toIsoTimestamp } from '~~/server/utils/mcp/private/text'
 import type { RenderSuccess } from '~~/workers/doc-renderer/src/contract'
@@ -361,9 +362,10 @@ async function createQuotaError(userId: number) {
 
   return createRejectedError(
     413,
-    'Not enough storage space for this document: you have used '
-    + `${usedBytes} of ${policy.maxStorageBytes} bytes. Delete files in `
-    + 'Besidka and try again. No document was created.',
+    'Storage is full, so this document was not created: '
+    + `${formatFileSize(usedBytes)} of `
+    + `${formatFileSize(policy.maxStorageBytes)} used. Free space on the `
+    + 'Storage page in Besidka and try again. No document was created.',
   )
 }
 

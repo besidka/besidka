@@ -8,6 +8,7 @@ import {
 import { createError, useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+import { createStorageFullError } from '~~/server/utils/storage/errors'
 import { isOfficeMediaType } from '#shared/utils/office-files'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { extractAndStoreOfficeText } from '~~/server/utils/files/office-text'
@@ -92,9 +93,9 @@ export async function persistFile(
   const expiresAt = getExpiresAtByRetentionDays(policy.fileRetentionDays)
 
   if (wouldExceed) {
-    throw createError({
-      message: 'Not enough storage space. Please delete some files.',
-      status: 400,
+    throw createStorageFullError({
+      usedBytes: totalFilesSize,
+      totalBytes: policy.maxStorageBytes,
     })
   }
 
@@ -239,9 +240,9 @@ export async function persistFile(
       logger,
     })
 
-    throw createError({
-      message: 'Not enough storage space. Please delete some files.',
-      status: 400,
+    throw createStorageFullError({
+      usedBytes: updatedStorageUsage,
+      totalBytes: policy.maxStorageBytes,
     })
   }
 

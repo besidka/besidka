@@ -714,9 +714,11 @@ describe('knowledge ingestion', () => {
         ingest([fileItem({ text: 'x'.repeat(41) })]),
       ).rejects.toMatchObject({
         status: 413,
-        message: 'Not enough storage space. Please delete some files.',
-        why: 'The upload is larger than the remaining storage quota',
-        fix: 'Delete some files or upload a smaller file',
+        message: 'Storage is full',
+        code: 'storage_full',
+        why: '60 B of 100 B used',
+        fix: 'Free space on the Storage page',
+        link: '/profile/storage',
       })
 
       expect(harness.testDb.countItems()).toBe(0)
@@ -1724,13 +1726,35 @@ describe('knowledge ingestion', () => {
       await expect(ingest([fileItem({ text: 'x'.repeat(20) })]))
         .rejects.toMatchObject({
           status: 413,
-          message: 'Not enough storage space. Please delete some files.',
-          why: 'The upload is larger than the remaining storage quota',
-          fix: 'Delete some files or upload a smaller file',
+          message: 'Storage is full',
+          why: '95 B of 100 B used',
+          fix: 'Free space on the Storage page',
         })
 
       expect(harness.testDb.countItems(PROJECT)).toBe(0)
       expect(harness.bucket.calls).toEqual([])
+    })
+
+    it('counts artifact bytes in the guarded quota', async () => {
+      harness.testDb.sqlite.prepare('delete from storages').run()
+      harness.testDb.insertStorage({ userId: OWNER, storage: 100 })
+      harness.beforeBatchHooks.push(() => {
+        harness.testDb.sqlite.prepare(`
+          insert into artifacts (created_at, updated_at, user_id, kind, title,
+            current_version, total_bytes, created_via)
+          values (0, 0, ?, 'html', 'Big', 1, 95, 'chat')
+        `).run(OWNER)
+        harness.beforeBatchHooks.length = 0
+      })
+
+      await expect(ingest([fileItem({ text: 'x'.repeat(20) })]))
+        .rejects.toMatchObject({
+          status: 413,
+          message: 'Storage is full',
+          why: '95 B of 100 B used',
+        })
+
+      expect(harness.testDb.countItems(PROJECT)).toBe(0)
     })
 
     it('counts knowledge text of other projects in the guarded quota', async () => {

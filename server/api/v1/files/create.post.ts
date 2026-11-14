@@ -7,6 +7,7 @@ import {
   reserveImageTransformSlots,
 } from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
+import { createStorageFullError } from '~~/server/utils/storage/errors'
 import {
   assertUploadContentLength,
   decodeUploadFileName,
@@ -85,9 +86,14 @@ export default defineEventHandler(async (event) => {
 
   const remainingStorageBytes = policy.maxStorageBytes - totalFilesSize
 
+  const quota = {
+    usedBytes: totalFilesSize,
+    totalBytes: policy.maxStorageBytes,
+  }
+
   const contentLength = assertUploadContentLength(
     getRequestHeader(event, 'content-length'),
-    remainingStorageBytes,
+    quota,
   )
 
   if (officeFormat) {
@@ -99,6 +105,7 @@ export default defineEventHandler(async (event) => {
     officeFormat
       ? Math.min(remainingStorageBytes, OFFICE_UPLOAD_MAX_BYTES)
       : remainingStorageBytes,
+    quota,
     officeFormat ? createOfficeFileTooLargeError : undefined,
   )
 
@@ -135,10 +142,7 @@ export default defineEventHandler(async (event) => {
   const wouldExceed = totalFilesSize + parsedFileSize > policy.maxStorageBytes
 
   if (wouldExceed) {
-    throw createError({
-      message: 'Not enough storage space. Please delete some files.',
-      status: 400,
-    })
+    throw createStorageFullError(quota)
   }
 
   const arrayBuffer = new ArrayBuffer(fileBuffer.length)

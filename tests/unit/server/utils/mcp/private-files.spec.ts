@@ -389,7 +389,9 @@ describe('mcp file tools', () => {
           mocks.logger,
         )).rejects.toMatchObject({
           status: 413,
-          message: 'Not enough storage space. Please delete some files.',
+          message: 'Storage is full',
+          code: 'storage_full',
+          link: '/profile/storage',
         })
         expect(mocks.persistFile).not.toHaveBeenCalled()
       })
