@@ -46,7 +46,9 @@ async function mountPreview() {
     global: { stubs: { teleport: false } },
   })
 
-  await flushPromises()
+  await vi.waitFor(() => {
+    expect(find('skill-preview-loading')).toBeNull()
+  })
 
   return wrapper
 }

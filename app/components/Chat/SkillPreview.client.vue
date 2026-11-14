@@ -187,7 +187,7 @@ const headingId = useId()
 const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const boxRef = useTemplateRef<HTMLDivElement>('boxRef')
 
-const { data: preview, error: previewError } = await useLazyAsyncData(
+const { data: preview, error: previewError } = useLazyAsyncData(
   `skill-preview:${props.skillId}`,
   async () => {
     const [detail, file] = await Promise.all([
