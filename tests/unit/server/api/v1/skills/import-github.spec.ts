@@ -434,6 +434,22 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     expect(github.fetch).not.toHaveBeenCalled()
   })
 
+  it('names what is wrong with a GitHub page link, with the fix given once', async () => {
+    await signIn()
+
+    const failure = await failureOf(preview({
+      url: 'https://github.com/o/r/issues/1',
+    }))
+
+    expect(failure).toMatchObject({
+      status: 400,
+      message: 'This link cannot be imported',
+      why: 'github.com/o/r/issues is a GitHub page, not a folder of the repository',
+    })
+    expect(failure.fix).toContain('github.com/owner/repo/skills/name')
+    expect(github.fetch).not.toHaveBeenCalled()
+  })
+
   it('does not echo the validation message of a bad body', async () => {
     await signIn()
 
@@ -563,6 +579,21 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       expect(result).toMatchObject({
         sourceRef: '2.10.0',
         release: { tag: '2.10.0', channel: 'release' },
+      })
+    })
+
+    it('pins a link without tree or blob to the latest release too', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({
+        url: 'https://github.com/o/r/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceRef: '2.10.0',
+        sourcePath: 'skills/review-pr',
+        release: { tag: '2.10.0', channel: 'release', switchable: true },
       })
     })
 

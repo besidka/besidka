@@ -25,7 +25,44 @@ export const GITHUB_RESERVED_REF_ROOTS: ReadonlySet<string> = new Set([
 ])
 const SPLIT_KINDS: ReadonlySet<string> = new Set(['tree', 'blob'])
 
-export type GithubSkillUrlKind = 'repo' | 'tree' | 'blob' | 'commit'
+/**
+ * First path segments after `owner/repo` that are pages of GitHub itself. A
+ * link like `github.com/o/r/skills/name` (no `tree` or `blob`, as people type
+ * or trim it) is a folder of the default branch, unless it starts with one of
+ * these, which would read an issue list or a settings page as a folder.
+ * `tree`, `blob` and `commit` are handled before this list is consulted.
+ */
+export const GITHUB_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
+  'issues',
+  'pull',
+  'pulls',
+  'releases',
+  'actions',
+  'wiki',
+  'tags',
+  'branches',
+  'commits',
+  'compare',
+  'discussions',
+  'security',
+  'pulse',
+  'graphs',
+  'settings',
+  'projects',
+  'packages',
+  'deployments',
+  'archive',
+  'raw',
+  'blame',
+  'labels',
+  'milestones',
+  'network',
+  'stargazers',
+  'watchers',
+  'forks',
+])
+
+export type GithubSkillUrlKind = 'repo' | 'tree' | 'blob' | 'commit' | 'path'
 
 export interface ParsedGithubSkillUrl {
   owner: string
@@ -99,7 +136,7 @@ export function parseGithubSkillUrl(input: string): GithubUrlParseResult {
   const trimmed = input.trim()
 
   if (trimmed.length === 0 || trimmed.length > GITHUB_URL_MAX_LENGTH) {
-    return rejected('Paste a link to a GitHub repository or folder')
+    return rejected('The link is empty or longer than 600 characters')
   }
 
   const withScheme = SCHEME_PATTERN.test(trimmed)
@@ -175,10 +212,14 @@ export function parseGithubSkillUrl(input: string): GithubUrlParseResult {
     }
   }
 
-  if (!SPLIT_KINDS.has(kind)) {
+  if (GITHUB_ROUTE_SEGMENTS.has(kind.toLowerCase())) {
     return rejected(
-      'Use a link to the repository, a skill folder, its SKILL.md or a commit',
+      `github.com/${owner}/${repo}/${kind} is a GitHub page, not a folder of the repository`,
     )
+  }
+
+  if (!SPLIT_KINDS.has(kind)) {
+    return readDefaultBranchPath({ owner, repo, segments: [kind, ...rest] })
   }
 
   if (rest.length === 0 || !rest.every(isValidGithubSegment)) {
@@ -214,6 +255,38 @@ export function parseGithubSkillUrl(input: string): GithubUrlParseResult {
   }
 }
 
+function readDefaultBranchPath(input: {
+  owner: string
+  repo: string
+  segments: string[]
+}): GithubUrlParseResult {
+  const { owner, repo, segments } = input
+
+  if (!segments.every(isValidGithubSegment)) {
+    return rejected(
+      'The folder in the link has characters that GitHub paths do not use',
+    )
+  }
+
+  if (
+    segments.length > GITHUB_PATH_MAX_SEGMENTS
+    || segments.join('/').length > GITHUB_PATH_MAX_LENGTH
+  ) {
+    return rejected('The path in the link is too long')
+  }
+
+  return {
+    ok: true,
+    value: {
+      owner,
+      repo,
+      kind: 'path',
+      commitSha: null,
+      refAndPath: segments,
+    },
+  }
+}
+
 function isPathWithinLimits(path: string | null): boolean {
   if (path === null) {
     return true
@@ -237,6 +310,17 @@ export function getGithubRefCandidates(
 ): GithubRefCandidate[] {
   if (parsed.kind === 'repo') {
     return [{ ref: GITHUB_DEFAULT_REF, path: null }]
+  }
+
+  if (parsed.kind === 'path') {
+    const folder = parsed.refAndPath.at(-1) === SKILL_FILE_NAME
+      ? parsed.refAndPath.slice(0, -1)
+      : parsed.refAndPath
+
+    return [{
+      ref: GITHUB_DEFAULT_REF,
+      path: folder.length === 0 ? null : folder.join('/'),
+    }]
   }
 
   if (parsed.kind === 'commit') {

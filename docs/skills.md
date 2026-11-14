@@ -217,7 +217,21 @@ skill and on the version row (section 8).
   sends a `blob` link to a folder on to `tree`, and people paste both. A path
   that ends in `SKILL.md` names that file's folder, on `tree` as well, and any
   other path is a folder;
+- `github.com/<owner>/<repo>/<path>` with no `tree` or `blob`, as people type
+  or trim a link: a folder of the default branch, so it gets the same release
+  pinning as a bare repository link. A first segment that is a GitHub page
+  (`issues`, `pull`, `pulls`, `releases`, `actions`, `wiki`, `tags`,
+  `branches`, `commits`, `compare`, `discussions`, `security`, `pulse`,
+  `graphs`, `settings`, `projects`, `packages`, `deployments`, `archive`,
+  `raw`, `blame`, `labels`, `milestones`, `network`, `stargazers`, `watchers`,
+  `forks`; the list is `GITHUB_ROUTE_SEGMENTS`) is refused with "github.com/o/r/issues is a
+  GitHub page, not a folder of the repository", so an issue list is never read
+  as a folder;
 - `github.com/<owner>/<repo>/commit/<sha>`.
+
+A scheme, `www.`, a trailing `/` or `.git`, a query and a hash are all
+accepted and ignored. The error box says what was wrong with this link in
+`why` and shows the format once in `fix`; the two never say the same thing.
 
 A ref that contains `/` is resolved by trying candidate splits from shortest to
 longest, at most 3. The pin is the commit SHA of the branch or tag in the ref
