@@ -545,9 +545,19 @@ Choices that differ from or add to sections 5.1 to 5.4 and 14:
   `POST [id]/consent`, `POST [id]/consent/withdraw`, `POST [id]/oauth/start`,
   `GET oauth/callback`, `POST [id]/credentials`, `POST [id]/disconnect`,
   `PATCH [id]`, `POST delete/bulk`. No list route: C-7 adds the one its page
-  needs. All share one rate-limit bucket (10 per minute per user, failing
-  closed when KV cannot count), refuse `Sec-Fetch-Site: cross-site` on writes
-  and cap bodies at 8 KiB.
+  needs. Every write route first runs a CSRF guard, before any KV or D1
+  work: `Sec-Fetch-Site`, when sent, must be `same-origin` (a sibling
+  subdomain's `same-site` is refused), and `Origin` must be present and equal
+  the app's public origin for the request. The write routes then share one
+  rate-limit bucket (10 per minute per user) and cap bodies at 8 KiB. That
+  limiter is a KV read-then-write, not atomic, so concurrent requests can
+  slip a few over the limit; it fails closed (429 with `Retry-After: 60`)
+  when KV cannot count.
+- **The callback never spends that bucket** and never answers 429. A
+  malformed `state` is refused before any KV read; failed callbacks count
+  against a separate budget of 20 per 10 minutes per client IP (stored as a
+  SHA-256, failures only, failing open when KV errors). Over the budget, or on
+  any error, it redirects to `/profile/connectors?error=<code>`.
 - **Consent gate (server side only).** `CONNECTOR_CONSENT_VERSION` is
   `2026-11-a` in `shared/utils/connectors-policy.ts`. The consent route
   stores the origin, the issuer host the dialog showed, the version and the
@@ -559,10 +569,16 @@ Choices that differ from or add to sections 5.1 to 5.4 and 14:
   dialog; bump the version when the wording changes what users agree to.
 - **Discovery probe** is a JSON-RPC `initialize` (the stateless
   `server/discover` probe is the SDK's, added in C-5). A 2xx sets
-  `auth_type='none'` and `status='ready'`. The PRM `resource` must cover the
-  connector URL by the SDK rule (same origin, path prefix on a segment
-  boundary); without one, the resource is the URL's origin and path, never its
-  query, because a query can carry a secret.
+  `auth_type='none'` and `status='ready'`. The PRM `resource` is required
+  (RFC 9728) and must cover the connector URL by the SDK rule (same origin,
+  path prefix on a segment boundary); it is the RFC 8707 resource sent.
+- **CIMD only with `iss`.** The public CIMD `client_id` is used only with an
+  issuer that advertises both `client_id_metadata_document_supported` and
+  `authorization_response_iss_parameter_supported`, and a CIMD callback
+  without `iss` is refused. Anyone can start a flow with a public client id,
+  so without `iss` an authorization-server mix-up would go unnoticed; an
+  issuer without RFC 9207 support gets DCR, whose client id is private to
+  that issuer.
 - **Pinned endpoints.** The encrypted `client_registration` JSON also holds
   the token and revocation endpoints, the resource, the redirect URI and the
   token-endpoint auth method of the sign-in, so a refresh or revocation never
@@ -581,19 +597,32 @@ Choices that differ from or add to sections 5.1 to 5.4 and 14:
   first and deletes only if no other writer stored newer tokens.
 - **Discovery never downgrades a connected connector:** it writes `auth_type`
   only while no credentials are stored. The callback re-checks the consent
-  for the issuer and revokes an earlier sign-in's tokens before replacing
-  them.
+  for the issuer. When the new sign-in comes from another issuer or client,
+  the stored tokens are revoked before the code exchange; a re-authorization
+  with the same issuer and client revokes nothing, because an authorization
+  server that revokes per grant would kill the tokens it just issued.
 - **Status after sign-in.** The callback sets `status='ready'` (the ticket's
   rule). C-5 may set `drifted` or `error` after its first `tools/list`.
 - **The OAuth state** in KV is encrypted (it holds the PKCE verifier and, for
   a confidential DCR client, its secret) and refused after 600 s even when KV
   still returns it. KV has no atomic read-and-delete, so the authorization
   server's single-use code is the backstop against a cross-location replay.
-- **Logs.** The callback path is logged without its query
-  (`server/plugins/evlog-request-observability.ts`). Logs carry connector id,
-  host, step and fixed codes only.
+- **Logs.** evlog logs the callback path without its query
+  (`server/plugins/evlog-request-observability.ts`), and its wide events carry
+  connector id, host, step and fixed codes only. That claim covers evlog
+  only: Cloudflare Workers observability records the full request URL of the
+  callback, code and state included. The exposure is bounded (the code is
+  single use, short-lived and bound to the PKCE verifier, which never leaves
+  the Worker; the state is single use), but treat Workers logs as holding
+  them.
 - **Revocation** also runs before a bulk delete and before an account purge,
-  one connector after another under a 10 s overall deadline, never throwing.
+  never throwing. The credentials are read first; then at most four
+  connectors are revoked at a time (each sends its refresh-token and
+  access-token revocations one after the other, so at most four connections,
+  under the Workers limit of six), with no binding resolved inside the
+  fan-out. One 10 s deadline covers the batch: when it fires, in-flight
+  requests are canceled, no new one starts, and the rows are deleted
+  unrevoked.
 - **CIMD rejected on a preview host.** The client cannot see that rejection
   (it happens in the browser at the authorization server), so there is no
   automatic switch to DCR. If Notion or Linear refuse a preview CIMD, record
