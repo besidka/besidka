@@ -1,3 +1,4 @@
+import { isConnectorUsedMarker } from '#shared/utils/connectors-parts'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import type { UIMessage } from 'ai'
 import type {
@@ -163,6 +164,10 @@ export function isMemoryExtractionRecallMessage(row: {
   }
 
   return row.parts.some((part) => {
+    if (isConnectorUsedMarker(part)) {
+      return true
+    }
+
     const toolName = memoryExtractionPartToolName(part)
 
     return toolName !== null

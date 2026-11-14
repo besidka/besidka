@@ -1,15 +1,23 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
 import { detectToolDrift, dynamicTool, jsonSchema } from 'ai'
 import type { ToolSet } from 'ai'
+import { createError } from 'evlog'
 import {
   CONNECTOR_CALL_TIMEOUT_MS,
   CONNECTOR_CALLS_PER_TURN,
+  CONNECTOR_CLOSE_TIMEOUT_MS,
   CONNECTOR_LIST_PAGES_MAX,
+  CONNECTOR_LIST_TIMEOUT_MS,
   CONNECTOR_LISTED_TOOLS_MAX,
-  CONNECTOR_TOOL_DESCRIPTIONS_MAX_BYTES,
+  CONNECTOR_PREPARE_DEADLINE_MS,
+  CONNECTOR_SSE_PER_SEND,
+  CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
   CONNECTOR_TOOLS_PER_REQUEST,
 } from '#shared/utils/connectors-policy'
-import { CONNECTOR_APPROVAL_DENIAL_TEXT } from '#shared/utils/connectors-parts'
+import {
+  CONNECTOR_APPROVAL_DENIAL_TEXT,
+  CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+} from '#shared/utils/connectors-parts'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import { auditConnectorCall } from '~~/server/utils/connectors/audit'
@@ -62,6 +70,7 @@ import {
   callToolResultToText,
   frameUntrustedResult,
   hashToolDefinitions,
+  isDefinitionAutoRunnable,
   isDefinitionReadOnly,
   normalizeToolDefinitions,
   redactSecrets,
@@ -122,6 +131,7 @@ export interface GetConnectorToolsInput {
   dependencies?: ConnectorClientDependencies & {
     limitCalls?: ConnectorCallLimiter
     now?: () => number
+    prepareDeadlineMs?: number
   }
 }
 
@@ -239,7 +249,49 @@ function resolveAuth(input: {
   }
 }
 
-async function listRemoteDefinitions(client: ConnectorClient): Promise<{
+function rejectWhenAborted(signal: AbortSignal): Promise<never> {
+  return new Promise<never>((_resolve, reject) => {
+    const fail = () => reject(createConnectorError('CONNECTOR_UNREACHABLE'))
+
+    if (signal.aborted) {
+      fail()
+
+      return
+    }
+
+    signal.addEventListener('abort', fail, { once: true })
+  })
+}
+
+function untilDeadline<Result>(
+  task: Promise<Result>,
+  signal: AbortSignal,
+): Promise<Result> {
+  return Promise.race([task, rejectWhenAborted(signal)])
+}
+
+async function waitAtMost(
+  task: Promise<unknown>,
+  timeoutMs: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    await Promise.race([
+      task,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function listRemoteDefinitions(
+  client: ConnectorClient,
+  signal: AbortSignal,
+): Promise<{
   definitions: ConnectorToolDefinition[]
   ttlMs: unknown
 }> {
@@ -248,9 +300,10 @@ async function listRemoteDefinitions(client: ConnectorClient): Promise<{
   let cursor: string | undefined
 
   for (let page = 0; page < CONNECTOR_LIST_PAGES_MAX; page++) {
-    const result = await client.listTools(
-      cursor ? { params: { cursor } } : undefined,
-    )
+    const result = await client.listTools({
+      ...(cursor ? { params: { cursor } } : {}),
+      options: { signal, timeout: CONNECTOR_LIST_TIMEOUT_MS },
+    })
 
     rawTools.push(...result.tools)
     ttlMs ??= (result as { ttlMs?: unknown }).ttlMs
@@ -349,25 +402,31 @@ async function syncDriftStatus(
  * (else `CONNECTOR_CONSENT_REQUIRED` and the send does not start), the access
  * token or header comes from this connector's own credentials, and the tool
  * list is read from KV, or from a connection that stays open for the send.
- * The list is hashed and compared with the reviewed baseline in
+ * The connect and list phase of all connectors shares one 8 s deadline, so a
+ * server that stalls is skipped with a notice and never holds the send. At
+ * most two connectors that use the legacy SSE transport join a send. The list
+ * is hashed and compared with the reviewed baseline in
  * `connector_tool_settings`: a connector with no baseline gets one from its
  * first listing, a tool that is new or changed is hidden and flips the
  * connector to `drifted`, a removed tool is dropped. Tools the user turned
  * off are dropped too.
  *
- * Across connectors, tools the server marks read-only come first, then the
- * list stops at 40 tools (counting the send's other tools) or 16 KiB of
- * descriptions. Each exposed tool is `mcp__<slug>__<tool>` and marked
- * `withFollowUpTurn()`.
+ * Across connectors, tools that run without a card come first, then the
+ * list stops at 40 tools (counting the send's other tools) or 32 KiB of
+ * descriptions plus input schemas. Each exposed tool is
+ * `mcp__<slug>__<tool>` and marked `withFollowUpTurn()`.
  *
- * A call to a tool without `readOnlyHint` is refused with a plain sentence
- * and never reaches the server (approvals arrive in C-6). A read-only call
+ * A call to a tool that is not read-only, or that is also marked destructive,
+ * is refused with a plain sentence and never reaches the server (approvals
+ * arrive in C-6). The first connector a send calls owns the send: a call to
+ * any other connector is refused the same way (rule F2). A read-only call
  * has a 60 s timeout, is limited to 12 per send and to 60 a minute per user
  * and 30 per connector, and its text is redacted of this connector's secrets,
  * cut to 64 KiB, framed as untrusted, and raises `guard.untrustedResultSeen`.
  * Every call writes one audit row with ids, size, outcome and duration only.
- * An upstream error text never reaches the model: a failed call answers with
- * a sentence Besidka wrote.
+ * An upstream error text never reaches the model: a call that fails or times
+ * out throws an error with a sentence Besidka wrote, so the persisted tool
+ * part is an error.
  */
 export async function getConnectorTools(
   input: GetConnectorToolsInput,
@@ -379,6 +438,8 @@ export async function getConnectorTools(
   const limitCalls = input.dependencies?.limitCalls
     ?? createConnectorCallLimiter(kv)
   const now = input.dependencies?.now ?? Date.now
+  const prepareDeadlineMs = input.dependencies?.prepareDeadlineMs
+    ?? CONNECTOR_PREPARE_DEADLINE_MS
   const inFlight = new Map<string, Promise<string | null>>()
   const notices: string[] = []
   const summary: ConnectorSendSummary = {
@@ -390,8 +451,28 @@ export async function getConnectorTools(
     failedConnectors: 0,
   }
   const credentialsByConnector = new Map<string, ConnectorCredentials | null>()
+  const connectors: ConnectorRecord[] = []
+  let sseConnectors = 0
 
   for (const connector of input.connectors) {
+    if (connector.transport === 'sse') {
+      if (sseConnectors >= CONNECTOR_SSE_PER_SEND) {
+        notices.push(
+          `${connector.title} was left out: a message can use at most ${
+            CONNECTOR_SSE_PER_SEND
+          } connectors that use the legacy SSE transport.`,
+        )
+
+        continue
+      }
+
+      sseConnectors += 1
+    }
+
+    connectors.push(connector)
+  }
+
+  for (const connector of connectors) {
     const credentials = await readConnectorCredentials(
       db,
       userId,
@@ -402,18 +483,39 @@ export async function getConnectorTools(
 
     if (connector.authType === 'oauth' && credentials?.issuer) {
       assertConnectorConsent(connector, issuerHostOf(credentials.issuer))
-    } else if (connector.authType !== 'oauth') {
+    } else {
       assertConnectorConsent(connector)
     }
   }
 
   const handles: ConnectorClientHandle[] = []
+  let isClosed = false
 
-  async function prepare(connector: ConnectorRecord): Promise<ConnectorPlan> {
+  async function closeHandles(): Promise<void> {
+    if (isClosed) {
+      return
+    }
+
+    isClosed = true
+
+    await waitAtMost(
+      Promise.allSettled(handles.map(handle => handle.close())),
+      CONNECTOR_CLOSE_TIMEOUT_MS,
+    )
+  }
+
+  async function prepare(
+    connector: ConnectorRecord,
+    signal: AbortSignal,
+  ): Promise<ConnectorPlan> {
     const credentials = credentialsByConnector.get(connector.id) ?? null
     const secrets = new Set<string>()
 
     try {
+      if (signal.aborted) {
+        throw createConnectorError('CONNECTOR_UNREACHABLE')
+      }
+
       const resolver = resolveAuth({
         connector,
         credentials,
@@ -456,8 +558,11 @@ export async function getConnectorTools(
       const fromCache = definitions !== null
 
       if (!definitions) {
-        const client = await handle.getClient()
-        const listed = await listRemoteDefinitions(client)
+        const client = await untilDeadline(handle.getClient(), signal)
+        const listed = await untilDeadline(
+          listRemoteDefinitions(client, signal),
+          signal,
+        )
 
         definitions = listed.definitions
         await writeCachedToolDefinitions(
@@ -484,7 +589,13 @@ export async function getConnectorTools(
 
       summary.failedConnectors += 1
       logger.set({
-        attributes: { connectors: { id: connector.id, listError: code } },
+        attributes: {
+          connectors: {
+            id: connector.id,
+            listError: code,
+            ...(signal.aborted ? { deadlineExceeded: true } : {}),
+          },
+        },
       })
       await recordConnectorFailure(db, userId, connector, code)
 
@@ -492,297 +603,331 @@ export async function getConnectorTools(
     }
   }
 
-  const plans = await Promise.all(input.connectors.map((connector) => {
-    return prepareLimiter.run(() => prepare(connector))
-  }))
-  const candidates: Candidate[] = []
+  async function prepareAll(): Promise<ConnectorPlan[]> {
+    const deadline = new AbortController()
+    const timer = setTimeout(() => deadline.abort(), prepareDeadlineMs)
 
-  for (const plan of plans) {
-    if (plan.notice) {
-      notices.push(plan.notice)
+    try {
+      return await Promise.all(connectors.map((connector) => {
+        return prepareLimiter.run(() => prepare(connector, deadline.signal))
+      }))
+    } finally {
+      clearTimeout(timer)
     }
+  }
 
-    if (!plan.prepared) {
-      continue
-    }
+  try {
+    const plans = await prepareAll()
+    const candidates: Candidate[] = []
 
-    const { connector, definitions, hashes, handle, secrets } = plan.prepared
+    for (const plan of plans) {
+      if (plan.notice) {
+        notices.push(plan.notice)
+      }
 
-    if (plan.prepared.fromCache) {
-      summary.cacheHits += 1
-    }
-
-    const settings = await listConnectorToolSettings(db, userId, connector.id)
-    let enabledNames: Set<string>
-    let hiddenCount = 0
-
-    if (settings.length === 0) {
-      await saveBaseline(db, userId, connector.id, definitions, hashes)
-      enabledNames = new Set(definitions.map(definition => definition.name))
-    } else {
-      const drift = detectToolDrift(
-        Object.fromEntries(hashes),
-        Object.fromEntries(settings.map((setting) => {
-          return [setting.toolName, setting.definitionHash]
-        })),
-      )
-
-      hiddenCount = drift.added.length + drift.changed.length
-      enabledNames = new Set(
-        settings
-          .filter(setting => setting.enabled)
-          .map(setting => setting.toolName)
-          .filter((name) => {
-            return !drift.added.includes(name) && !drift.changed.includes(name)
-          }),
-      )
-    }
-
-    await syncDriftStatus(db, userId, connector, hiddenCount)
-
-    if (hiddenCount > 0) {
-      summary.hiddenTools += hiddenCount
-      notices.push(
-        `${hiddenCount} tool${hiddenCount === 1 ? '' : 's'} of ${
-          connector.title
-        } changed and ${hiddenCount === 1 ? 'is' : 'are'} hidden until you `
-        + `review ${hiddenCount === 1 ? 'it' : 'them'}.`,
-      )
-    }
-
-    for (const definition of definitions) {
-      if (!enabledNames.has(definition.name)) {
+      if (!plan.prepared) {
         continue
       }
 
-      candidates.push({
-        connector,
-        definition,
-        isReadOnly: isDefinitionReadOnly(definition),
-        handle,
-        secrets,
-      })
-    }
-  }
+      const { connector, definitions, hashes, handle, secrets } = plan.prepared
 
-  const ordered = [
-    ...candidates.filter(candidate => candidate.isReadOnly),
-    ...candidates.filter(candidate => !candidate.isReadOnly),
-  ]
-  const toolBudget = Math.max(
-    0,
-    CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount,
-  )
-  const tools: ToolSet = {}
-  let descriptionBytes = 0
-  let callsThisTurn = 0
-  let isCapped = false
+      if (plan.prepared.fromCache) {
+        summary.cacheHits += 1
+      }
 
-  function recordCall(call: {
-    candidate: Candidate
-    args: unknown
-    resultBytes: number
-    outcome: 'ok' | 'error' | 'denied' | 'timeout'
-    startedAt: number
-  }) {
-    return auditConnectorCall(db, input.hashArgs, {
-      userId,
-      connectorId: call.candidate.connector.id,
-      connectorHost: hostOf(call.candidate.connector),
-      chatPublicId: input.chatPublicId,
-      toolName: call.candidate.definition.name,
-      args: call.args,
-      resultBytes: call.resultBytes,
-      outcome: call.outcome,
-      approval: call.outcome === 'denied' ? 'denied' : 'not-applicable',
-      durationMs: Math.max(0, now() - call.startedAt),
-    }, logger)
-  }
+      const settings = await listConnectorToolSettings(
+        db,
+        userId,
+        connector.id,
+      )
+      let enabledNames: Set<string>
+      let hiddenCount = 0
 
-  function buildExecute(candidate: Candidate) {
-    return (args: unknown, options?: { abortSignal?: AbortSignal }) => {
-      return callLimiter.run(() => executeCall(candidate, args, options))
-    }
-  }
+      if (settings.length === 0) {
+        await saveBaseline(db, userId, connector.id, definitions, hashes)
+        enabledNames = new Set(definitions.map(definition => definition.name))
+      } else {
+        const drift = detectToolDrift(
+          Object.fromEntries(hashes),
+          Object.fromEntries(settings.map((setting) => {
+            return [setting.toolName, setting.definitionHash]
+          })),
+        )
 
-  async function executeCall(
-    candidate: Candidate,
-    args: unknown,
-    options?: { abortSignal?: AbortSignal },
-  ): Promise<string> {
-    const startedAt = now()
-    const deny = async (text: string) => {
-      await recordCall({
-        candidate,
-        args,
-        resultBytes: 0,
-        outcome: 'denied',
-        startedAt,
-      })
+        hiddenCount = drift.added.length + drift.changed.length
+        enabledNames = new Set(
+          settings
+            .filter(setting => setting.enabled)
+            .map(setting => setting.toolName)
+            .filter((name) => {
+              return !drift.added.includes(name)
+                && !drift.changed.includes(name)
+            }),
+        )
+      }
 
-      return text
+      await syncDriftStatus(db, userId, connector, hiddenCount)
+
+      if (hiddenCount > 0) {
+        summary.hiddenTools += hiddenCount
+        notices.push(
+          `${hiddenCount} tool${hiddenCount === 1 ? '' : 's'} of ${
+            connector.title
+          } changed and ${hiddenCount === 1 ? 'is' : 'are'} hidden until you `
+          + `review ${hiddenCount === 1 ? 'it' : 'them'}.`,
+        )
+      }
+
+      for (const definition of definitions) {
+        if (!enabledNames.has(definition.name)) {
+          continue
+        }
+
+        candidates.push({
+          connector,
+          definition,
+          isReadOnly: isDefinitionAutoRunnable(definition),
+          handle,
+          secrets,
+        })
+      }
     }
 
-    if (!candidate.isReadOnly) {
-      return await deny(CONNECTOR_APPROVAL_DENIAL_TEXT)
-    }
-
-    if (callsThisTurn >= CONNECTOR_CALLS_PER_TURN) {
-      return await deny(CONNECTOR_CALL_LIMIT_TEXT)
-    }
-
-    callsThisTurn += 1
-
-    if (!await limitCalls(userId, candidate.connector.id)) {
-      return await deny(CONNECTOR_RATE_LIMIT_TEXT)
-    }
-
-    if (input.guard) {
-      input.guard.untrustedResultSeen = true
-    }
-
-    const timeoutSignal = AbortSignal.timeout(CONNECTOR_CALL_TIMEOUT_MS)
-    const signal = options?.abortSignal
-      ? AbortSignal.any([timeoutSignal, options.abortSignal])
-      : timeoutSignal
-
-    try {
-      const client = await candidate.handle.getClient()
-      const result = await client.callTool({
-        name: candidate.definition.name,
-        arguments: isRecord(args) ? args : {},
-        options: { signal, timeout: CONNECTOR_CALL_TIMEOUT_MS },
-      })
-      const framed = frameUntrustedResult({
-        slug: candidate.connector.slug,
-        toolName: candidate.definition.name,
-        text: redactSecrets(
-          callToolResultToText(result),
-          [...candidate.secrets],
-        ),
-      })
-      const outcome = (result as { isError?: boolean }).isError
-        ? 'error'
-        : 'ok'
-
-      await recordCall({
-        candidate,
-        args,
-        resultBytes: framed.bytes,
-        outcome,
-        startedAt,
-      })
-
-      return framed.text
-    } catch {
-      const outcome = timeoutSignal.aborted ? 'timeout' : 'error'
-
-      await recordCall({
-        candidate,
-        args,
-        resultBytes: 0,
-        outcome,
-        startedAt,
-      })
-
-      return outcome === 'timeout'
-        ? CONNECTOR_TIMEOUT_TEXT
-        : CONNECTOR_FAILURE_TEXT
-    }
-  }
-
-  for (const candidate of ordered) {
-    const bytes = byteLength(candidate.definition.description)
-
-    if (
-      Object.keys(tools).length >= toolBudget
-      || descriptionBytes + bytes > CONNECTOR_TOOL_DESCRIPTIONS_MAX_BYTES
-    ) {
-      isCapped = true
-      summary.cappedTools += 1
-
-      continue
-    }
-
-    const exposedName = await buildExposedToolName(
-      candidate.connector.slug,
-      candidate.definition.name,
+    const ordered = [
+      ...candidates.filter(candidate => candidate.isReadOnly),
+      ...candidates.filter(candidate => !candidate.isReadOnly),
+    ]
+    const toolBudget = Math.max(
+      0,
+      CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount,
     )
+    const tools: ToolSet = {}
+    let definitionBytes = 0
+    let callsThisTurn = 0
+    let sourceConnectorId: string | null = null
+    let isCapped = false
 
-    if (Object.hasOwn(tools, exposedName)) {
+    function recordCall(call: {
+      candidate: Candidate
+      args: unknown
+      resultBytes: number
+      outcome: 'ok' | 'error' | 'denied' | 'timeout'
+      startedAt: number
+    }) {
+      return auditConnectorCall(db, input.hashArgs, {
+        userId,
+        connectorId: call.candidate.connector.id,
+        connectorHost: hostOf(call.candidate.connector),
+        chatPublicId: input.chatPublicId,
+        toolName: call.candidate.definition.name,
+        args: call.args,
+        resultBytes: call.resultBytes,
+        outcome: call.outcome,
+        approval: call.outcome === 'denied' ? 'denied' : 'not-applicable',
+        durationMs: Math.max(0, now() - call.startedAt),
+      }, logger)
+    }
+
+    function buildExecute(candidate: Candidate) {
+      return (args: unknown, options?: { abortSignal?: AbortSignal }) => {
+        return callLimiter.run(() => executeCall(candidate, args, options))
+      }
+    }
+
+    async function executeCall(
+      candidate: Candidate,
+      args: unknown,
+      options?: { abortSignal?: AbortSignal },
+    ): Promise<string> {
+      const startedAt = now()
+      const deny = async (text: string) => {
+        await recordCall({
+          candidate,
+          args,
+          resultBytes: 0,
+          outcome: 'denied',
+          startedAt,
+        })
+
+        return text
+      }
+
+      if (!candidate.isReadOnly) {
+        return await deny(CONNECTOR_APPROVAL_DENIAL_TEXT)
+      }
+
+      if (
+        sourceConnectorId !== null
+        && sourceConnectorId !== candidate.connector.id
+      ) {
+        return await deny(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
+      }
+
+      sourceConnectorId = candidate.connector.id
+
+      if (callsThisTurn >= CONNECTOR_CALLS_PER_TURN) {
+        return await deny(CONNECTOR_CALL_LIMIT_TEXT)
+      }
+
+      callsThisTurn += 1
+
+      if (!await limitCalls(userId, candidate.connector.id)) {
+        return await deny(CONNECTOR_RATE_LIMIT_TEXT)
+      }
+
+      if (input.guard) {
+        input.guard.untrustedResultSeen = true
+      }
+
+      const timeoutSignal = AbortSignal.timeout(CONNECTOR_CALL_TIMEOUT_MS)
+      const signal = options?.abortSignal
+        ? AbortSignal.any([timeoutSignal, options.abortSignal])
+        : timeoutSignal
+
+      try {
+        const client = await candidate.handle.getClient()
+        const result = await client.callTool({
+          name: candidate.definition.name,
+          arguments: isRecord(args) ? args : {},
+          options: { signal, timeout: CONNECTOR_CALL_TIMEOUT_MS },
+        })
+        const framed = frameUntrustedResult({
+          slug: candidate.connector.slug,
+          toolName: candidate.definition.name,
+          text: redactSecrets(
+            callToolResultToText(result),
+            [...candidate.secrets],
+          ),
+        })
+        const outcome = (result as { isError?: boolean }).isError
+          ? 'error'
+          : 'ok'
+
+        await recordCall({
+          candidate,
+          args,
+          resultBytes: framed.bytes,
+          outcome,
+          startedAt,
+        })
+
+        return framed.text
+      } catch {
+        const outcome = timeoutSignal.aborted ? 'timeout' : 'error'
+
+        await recordCall({
+          candidate,
+          args,
+          resultBytes: 0,
+          outcome,
+          startedAt,
+        })
+
+        throw createError({
+          message: outcome === 'timeout'
+            ? CONNECTOR_TIMEOUT_TEXT
+            : CONNECTOR_FAILURE_TEXT,
+          status: outcome === 'timeout' ? 504 : 502,
+          why: 'The connected service did not return a result.',
+          fix: 'Answer without it and tell the user to check the connector.',
+        })
+      }
+    }
+
+    for (const candidate of ordered) {
+      const bytes = byteLength(candidate.definition.description)
+        + byteLength(JSON.stringify(candidate.definition.inputSchema))
+
+      if (
+        Object.keys(tools).length >= toolBudget
+        || definitionBytes + bytes > CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
+      ) {
+        isCapped = true
+        summary.cappedTools += 1
+
+        continue
+      }
+
+      const exposedName = await buildExposedToolName(
+        candidate.connector.slug,
+        candidate.definition.name,
+      )
+
+      if (Object.hasOwn(tools, exposedName)) {
+        logger.set({
+          attributes: {
+            connectors: { id: candidate.connector.id, nameCollision: true },
+          },
+        })
+
+        continue
+      }
+
+      definitionBytes += bytes
+      tools[exposedName] = withFollowUpTurn(dynamicTool({
+        description: candidate.definition.description,
+        ...(candidate.definition.title
+          ? { title: candidate.definition.title }
+          : {}),
+        inputSchema: jsonSchema(
+          candidate.definition.inputSchema as Parameters<typeof jsonSchema>[0],
+        ),
+        execute: buildExecute(candidate),
+      })) as ToolSet[string]
+    }
+
+    summary.tools = Object.keys(tools).length
+
+    if (isCapped) {
+      notices.push(
+        `Some connector tools were left out to stay within the tool limits `
+        + `of a message (${CONNECTOR_TOOLS_PER_REQUEST} tools, 32 KiB of `
+        + 'definitions).',
+      )
+    }
+
+    async function close(): Promise<void> {
+      if (isClosed) {
+        return
+      }
+
+      await closeHandles()
+
       logger.set({
         attributes: {
-          connectors: { id: candidate.connector.id, nameCollision: true },
+          connectors: {
+            closed: true,
+            handles: handles.length,
+            calls: callsThisTurn,
+            tools: summary.tools,
+          },
         },
       })
-
-      continue
-    }
-
-    descriptionBytes += bytes
-    tools[exposedName] = withFollowUpTurn(dynamicTool({
-      description: candidate.definition.description,
-      ...(candidate.definition.title
-        ? { title: candidate.definition.title }
-        : {}),
-      inputSchema: jsonSchema(
-        candidate.definition.inputSchema as Parameters<typeof jsonSchema>[0],
-      ),
-      execute: buildExecute(candidate),
-    })) as ToolSet[string]
-  }
-
-  summary.tools = Object.keys(tools).length
-
-  if (isCapped) {
-    notices.push(
-      `Some connector tools were left out to stay within ${
-        CONNECTOR_TOOLS_PER_REQUEST
-      } tools per message.`,
-    )
-  }
-
-  let isClosed = false
-
-  async function close(): Promise<void> {
-    if (isClosed) {
-      return
-    }
-
-    isClosed = true
-
-    for (const handle of handles) {
-      await handle.close()
     }
 
     logger.set({
       attributes: {
         connectors: {
-          closed: true,
-          handles: handles.length,
-          calls: callsThisTurn,
-          tools: summary.tools,
+          selected: summary.connectors,
+          exposedTools: summary.tools,
+          cappedTools: summary.cappedTools,
+          hiddenTools: summary.hiddenTools,
+          cacheHits: summary.cacheHits,
+          failed: summary.failedConnectors,
         },
       },
     })
+
+    function collectSecrets(): string[] {
+      return [
+        ...new Set(candidates.flatMap(candidate => [...candidate.secrets])),
+      ]
+    }
+
+    return { tools, handles, notices, summary, secrets: collectSecrets, close }
+  } catch (exception) {
+    await closeHandles()
+
+    throw exception
   }
-
-  logger.set({
-    attributes: {
-      connectors: {
-        selected: summary.connectors,
-        exposedTools: summary.tools,
-        cappedTools: summary.cappedTools,
-        hiddenTools: summary.hiddenTools,
-        cacheHits: summary.cacheHits,
-        failed: summary.failedConnectors,
-      },
-    },
-  })
-
-  function collectSecrets(): string[] {
-    return [...new Set(candidates.flatMap(candidate => [...candidate.secrets]))]
-  }
-
-  return { tools, handles, notices, summary, secrets: collectSecrets, close }
 }

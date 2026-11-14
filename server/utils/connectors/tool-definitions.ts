@@ -187,6 +187,18 @@ export function isDefinitionReadOnly(
 }
 
 /**
+ * The interim auto-run rule until approvals (C-6): a tool runs without a card
+ * only when the server marks it read-only and does not also mark it
+ * destructive. A server that sends both hints is treated as unsafe.
+ */
+export function isDefinitionAutoRunnable(
+  definition: Pick<ConnectorToolDefinition, 'annotations'>,
+): boolean {
+  return definition.annotations.readOnlyHint === true
+    && definition.annotations.destructiveHint !== true
+}
+
+/**
  * The per-tool baseline: SHA-256 over the `fingerprintTools` digest of the
  * name-keyed definition (description, resolved input schema, title) and the
  * canonical annotations, which that digest omits. A server that flips

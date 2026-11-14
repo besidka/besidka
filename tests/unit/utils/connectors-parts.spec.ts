@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildConnectorUsedMarkerPart,
   CONNECTOR_APPROVAL_DENIAL_TEXT,
+  CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
   getConnectorNoticeLines,
   getConnectorToolCall,
+  isConnectorUsagePart,
+  isConnectorUsedMarker,
   isFramedConnectorOutput,
   parseConnectorToolName,
 } from '#shared/utils/connectors-parts'
@@ -90,6 +94,35 @@ describe('getConnectorToolCall', () => {
     expect(getConnectorToolCall(createPart({
       output: CONNECTOR_APPROVAL_DENIAL_TEXT,
     }))).toMatchObject({ outcome: 'denied', isFramed: false })
+  })
+})
+
+describe('the cross-connector refusal', () => {
+  it('reads as a denial like the approval sentence', () => {
+    expect(getConnectorToolCall(createPart({
+      output: CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+    }))).toMatchObject({ outcome: 'denied', isFramed: false })
+  })
+})
+
+describe('the used-connector marker', () => {
+  it('is recognized as usage but is no call and has no notice lines', () => {
+    const marker = buildConnectorUsedMarkerPart()
+
+    expect(isConnectorUsedMarker(marker)).toBe(true)
+    expect(isConnectorUsagePart(marker)).toBe(true)
+    expect(getConnectorToolCall(marker)).toBeNull()
+    expect(getConnectorNoticeLines({ parts: [marker] })).toEqual([])
+  })
+
+  it('counts a connector call as usage and nothing else', () => {
+    expect(isConnectorUsagePart(createPart())).toBe(true)
+    expect(isConnectorUsagePart({ type: 'text', text: 'x' })).toBe(false)
+    expect(isConnectorUsagePart({
+      type: 'data-connectors-notice',
+      data: { lines: ['x'] },
+    })).toBe(false)
+    expect(isConnectorUsedMarker(null)).toBe(false)
   })
 })
 

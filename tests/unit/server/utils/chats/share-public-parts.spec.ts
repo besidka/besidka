@@ -167,8 +167,44 @@ describe('connector parts in shares and branches', () => {
     expect(JSON.stringify(message)).not.toContain('Linear')
   })
 
-  it('never copies a connector call or notice into a branch', () => {
-    expect(stripToolPartsFromBranchedMessage(connectorParts)).toEqual([
+  it('never copies a connector call or notice into a branch, only a slim '
+    + 'marker that the chat used a connector', () => {
+    const branched = stripToolPartsFromBranchedMessage(connectorParts)
+
+    expect(branched).toEqual([
+      { type: 'text', text: 'Here are your issues' },
+      {
+        type: 'data-connectors-notice',
+        data: { lines: [], usedConnector: true },
+      },
+    ])
+    expect(JSON.stringify(branched)).not.toContain('customer')
+    expect(JSON.stringify(branched)).not.toContain('Linear')
+    expect(JSON.stringify(branched)).not.toContain('linear')
+  })
+
+  it('keeps one marker when a branch is branched again', () => {
+    const once = stripToolPartsFromBranchedMessage(connectorParts)
+
+    expect(stripToolPartsFromBranchedMessage(once)).toEqual(once)
+  })
+
+  it('adds no marker to a message without connector calls', () => {
+    expect(stripToolPartsFromBranchedMessage([
+      { type: 'text', text: 'Plain answer' },
+      { type: 'data-connectors-notice', data: { lines: ['A notice'] } },
+    ] as unknown as UIMessage['parts'])).toEqual([
+      { type: 'text', text: 'Plain answer' },
+    ])
+  })
+
+  it('drops the marker from a public share', () => {
+    const [message] = filterPublicParts([{
+      id: 'm1',
+      parts: stripToolPartsFromBranchedMessage(connectorParts),
+    }])
+
+    expect(message!.parts).toEqual([
       { type: 'text', text: 'Here are your issues' },
     ])
   })

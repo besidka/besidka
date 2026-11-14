@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import {
   CONNECTOR_CALLS_PER_TURN,
   CONNECTOR_CONSENT_VERSION,
   CONNECTOR_RESULT_MAX_BYTES,
+  CONNECTOR_SSE_PER_SEND,
+  CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
   CONNECTOR_TOOLS_PER_REQUEST,
 } from '#shared/utils/connectors-policy'
-import { CONNECTOR_APPROVAL_DENIAL_TEXT } from '#shared/utils/connectors-parts'
+import {
+  CONNECTOR_APPROVAL_DENIAL_TEXT,
+  CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+} from '#shared/utils/connectors-parts'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -75,6 +80,7 @@ interface ConnectorSeed {
   slug: string
   url: string
   auth: 'header' | 'oauth' | 'none'
+  transport?: 'streamable-http' | 'sse'
 }
 
 describe('getConnectorTools', () => {
@@ -94,6 +100,7 @@ describe('getConnectorTools', () => {
       url: seed.url,
       slugBase: seed.slug,
       createdVia: 'app',
+      ...(seed.transport ? { transport: seed.transport } : {}),
     })
 
     if (seed.auth === 'oauth') {
@@ -136,8 +143,12 @@ describe('getConnectorTools', () => {
     existingToolCount?: number
     guard?: { untrustedResultSeen: boolean }
     limitCalls?: () => Promise<boolean>
+    prepareDeadlineMs?: number
+    wrapFetch?: (base: typeof fetch) => typeof fetch
   }) {
-    vi.stubGlobal('fetch', createMockMcpFetch(options.servers))
+    const baseFetch = createMockMcpFetch(options.servers) as typeof fetch
+
+    vi.stubGlobal('fetch', options.wrapFetch?.(baseFetch) ?? baseFetch)
 
     const connectors = await listConnectors(testDb.db, userId)
     const result = await getConnectorTools({
@@ -152,7 +163,12 @@ describe('getConnectorTools', () => {
       hashArgs,
       guard: options.guard,
       logger: { set: (values: unknown) => logged.push(values) },
-      dependencies: { limitCalls: options.limitCalls ?? allowCalls },
+      dependencies: {
+        limitCalls: options.limitCalls ?? allowCalls,
+        ...(options.prepareDeadlineMs
+          ? { prepareDeadlineMs: options.prepareDeadlineMs }
+          : {}),
+      },
     })
 
     closers.push(result.close)
@@ -337,12 +353,115 @@ describe('getConnectorTools', () => {
         throw new TypeError('socket to https://mcp.alpha.example.com/mcp?k=1')
       }))
 
-      const output = await execute(tools, 'mcp__alpha__list_issues')
+      const exception = await execute(tools, 'mcp__alpha__list_issues')
+        .catch((caught: Error) => caught)
 
-      expect(output).toBe('The connector tool call failed.')
-      expect(output).not.toContain('socket')
+      expect(exception).toBeInstanceOf(Error)
+      expect((exception as Error).message).toBe(
+        'The connector tool call failed.',
+      )
+      expect((exception as Error).message).not.toContain('socket')
       expect((await auditRows())[0]).toMatchObject({ outcome: 'error' })
     })
+
+    it('refuses a tool marked both read-only and destructive', async () => {
+      const alpha = server('mcp.alpha.example.com', {
+        tools: [
+          READ_TOOL,
+          {
+            name: 'purge',
+            description: 'Purge.',
+            annotations: { readOnlyHint: true, destructiveHint: true },
+          },
+        ],
+      })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(await execute(tools, 'mcp__alpha__purge'))
+        .toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
+      expect(alpha.callCount('tools/call')).toBe(0)
+      expect((await auditRows())[0]).toMatchObject({
+        toolName: 'purge',
+        outcome: 'denied',
+      })
+      expect(await execute(tools, 'mcp__alpha__list_issues'))
+        .toContain('untrusted_tool_result')
+    })
+
+    it('refuses a call to a second connector once the send used one, '
+      + 'and still serves the first', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const beta = server('mcp.beta.example.com')
+      const seeds: ConnectorSeed[] = [
+        { slug: 'alpha', url: alpha.url, auth: 'header' },
+        { slug: 'beta', url: beta.url, auth: 'header' },
+      ]
+
+      for (const seed of seeds) {
+        await addConnector(seed)
+      }
+
+      const { tools } = await run({
+        connectorSeeds: seeds,
+        servers: [alpha, beta],
+      })
+
+      expect(await execute(tools, 'mcp__alpha__list_issues'))
+        .toContain('untrusted_tool_result')
+      expect(await execute(tools, 'mcp__beta__list_issues'))
+        .toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
+      expect(await execute(tools, 'mcp__alpha__list_issues'))
+        .toContain('untrusted_tool_result')
+      expect(beta.callCount('tools/call')).toBe(0)
+      expect(alpha.callCount('tools/call')).toBe(2)
+
+      const denied = (await auditRows()).filter((row) => {
+        return row.outcome === 'denied'
+      })
+
+      expect(denied).toHaveLength(1)
+      expect(denied[0]).toMatchObject({
+        connectorHost: 'mcp.beta.example.com',
+        approval: 'denied',
+        resultBytes: 0,
+      })
+    })
+
+    it('lets only the first connector called in a parallel step run',
+      async () => {
+        const alpha = server('mcp.alpha.example.com')
+        const beta = server('mcp.beta.example.com')
+        const seeds: ConnectorSeed[] = [
+          { slug: 'alpha', url: alpha.url, auth: 'header' },
+          { slug: 'beta', url: beta.url, auth: 'header' },
+        ]
+
+        for (const seed of seeds) {
+          await addConnector(seed)
+        }
+
+        const { tools } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha, beta],
+        })
+        const [first, second] = await Promise.all([
+          execute(tools, 'mcp__beta__list_issues'),
+          execute(tools, 'mcp__alpha__list_issues'),
+        ])
+
+        expect(first).toContain('untrusted_tool_result')
+        expect(second).toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
+        expect(alpha.callCount('tools/call')).toBe(0)
+        expect(beta.callCount('tools/call')).toBe(1)
+      })
 
     it('frames a server-reported error as untrusted and audits it as an '
       + 'error', async () => {
@@ -471,7 +590,9 @@ describe('getConnectorTools', () => {
             return `mcp__alpha__tool_${String(index * 2).padStart(2, '0')}`
           }),
         )
-        expect(notices.join(' ')).toContain('40 tools per message')
+        expect(notices.join(' ')).toContain(
+          'Some connector tools were left out',
+        )
       })
 
     it('is deterministic for the same input', async () => {
@@ -494,16 +615,63 @@ describe('getConnectorTools', () => {
       expect(Object.keys(second.tools)).toEqual(Object.keys(first.tools))
     })
 
-    it('cuts a description to 1 KiB and stops at 16 KiB in total', async () => {
-      const longTools: MockMcpTool[] = Array.from(
-        { length: 30 },
+    it('cuts a description to 1 KiB and stops at 32 KiB of definitions',
+      async () => {
+        const schemaBytes = JSON.stringify({
+          type: 'object',
+          properties: {},
+        }).length
+        const perTool = 1024 + schemaBytes
+        const expectedCount = Math.floor(
+          CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES / perTool,
+        )
+        const longTools: MockMcpTool[] = Array.from(
+          { length: CONNECTOR_TOOLS_PER_REQUEST },
+          (_unused, index) => ({
+            name: `long_${index}`,
+            description: 'd'.repeat(4000),
+            annotations: { readOnlyHint: true },
+          }),
+        )
+        const alpha = server('mcp.alpha.example.com', { tools: longTools })
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'header',
+        }]
+
+        await addConnector(seeds[0]!)
+
+        const { tools, notices } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha],
+        })
+        const descriptions = Object.values(tools)
+          .map(tool => (tool as { description: string }).description)
+
+        expect(descriptions.every(text => text.length === 1024)).toBe(true)
+        expect(descriptions).toHaveLength(expectedCount)
+        expect(expectedCount).toBeLessThan(CONNECTOR_TOOLS_PER_REQUEST)
+        expect(notices.join(' ')).toContain('Some connector tools were left out')
+      })
+
+    it('counts the input schema toward the 32 KiB budget and drops the rest '
+      + 'deterministically', async () => {
+      const heavyTools: MockMcpTool[] = Array.from(
+        { length: 10 },
         (_unused, index) => ({
-          name: `long_${index}`,
-          description: 'd'.repeat(4000),
+          name: `heavy_${index}`,
+          description: 'Heavy.',
           annotations: { readOnlyHint: true },
+          inputSchema: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'x'.repeat(7000) },
+            },
+          },
         }),
       )
-      const alpha = server('mcp.alpha.example.com', { tools: longTools })
+      const alpha = server('mcp.alpha.example.com', { tools: heavyTools })
       const seeds: ConnectorSeed[] = [{
         slug: 'alpha',
         url: alpha.url,
@@ -512,12 +680,19 @@ describe('getConnectorTools', () => {
 
       await addConnector(seeds[0]!)
 
-      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
-      const descriptions = Object.values(tools)
-        .map(tool => (tool as { description: string }).description)
+      const first = await run({ connectorSeeds: seeds, servers: [alpha] })
+      const second = await run({ connectorSeeds: seeds, servers: [alpha] })
+      const names = Object.keys(first.tools)
 
-      expect(descriptions.every(text => text.length === 1024)).toBe(true)
-      expect(descriptions).toHaveLength(16)
+      expect(names).toHaveLength(4)
+      expect(names).toEqual(Object.keys(second.tools))
+      expect(names).toEqual([
+        'mcp__alpha__heavy_0',
+        'mcp__alpha__heavy_1',
+        'mcp__alpha__heavy_2',
+        'mcp__alpha__heavy_3',
+      ])
+      expect(first.summary.cappedTools).toBe(6)
     })
 
     it('skips a tool whose input schema is over 8 KiB', async () => {
@@ -997,6 +1172,172 @@ describe('getConnectorTools', () => {
         expect(notices).toEqual([
           'down could not be reached, so its tools were not used.',
         ])
+      })
+
+    it('skips a connector whose tool list stalls and keeps the others',
+      async () => {
+        const stall = server('mcp.stall.example.com')
+        const up = server('mcp.up.example.com')
+        const seeds: ConnectorSeed[] = [
+          { slug: 'stall', url: stall.url, auth: 'none' },
+          { slug: 'up', url: up.url, auth: 'none' },
+        ]
+
+        for (const seed of seeds) {
+          await addConnector(seed)
+        }
+
+        const startedAt = Date.now()
+        const { tools, notices, summary } = await run({
+          connectorSeeds: seeds,
+          servers: [stall, up],
+          prepareDeadlineMs: 150,
+          wrapFetch: base => (async (input, init) => {
+            const url = new URL(
+              typeof input === 'string' || input instanceof URL
+                ? input
+                : input.url,
+            )
+            const isListing = typeof init?.body === 'string'
+              && init.body.includes('"tools/list"')
+
+            if (isListing && url.host === stall.host) {
+              return await new Promise<Response>(() => {})
+            }
+
+            return await base(input, init)
+          }) as typeof fetch,
+        })
+
+        expect(Date.now() - startedAt).toBeLessThan(2000)
+        expect(Object.keys(tools).every(name => name.startsWith('mcp__up__')))
+          .toBe(true)
+        expect(Object.keys(tools)).not.toHaveLength(0)
+        expect(notices).toEqual([
+          'stall could not be reached, so its tools were not used.',
+        ])
+        expect(summary.failedConnectors).toBe(1)
+      })
+
+    it('skips connectors on the legacy SSE transport past the second, before '
+      + 'any request', async () => {
+      const sseServers = ['one', 'two', 'three'].map((name) => {
+        return server(`mcp.${name}.example.com`)
+      })
+      const http = server('mcp.http.example.com')
+      const seeds: ConnectorSeed[] = [
+        ...['one', 'two', 'three'].map((name, index) => {
+          return {
+            slug: name,
+            url: sseServers[index]!.url,
+            auth: 'none' as const,
+            transport: 'sse' as const,
+          }
+        }),
+        { slug: 'http', url: http.url, auth: 'none' },
+      ]
+
+      for (const seed of seeds) {
+        await addConnector(seed)
+      }
+
+      const { tools, notices } = await run({
+        connectorSeeds: seeds,
+        servers: [...sseServers, http],
+        prepareDeadlineMs: 300,
+      })
+
+      expect(CONNECTOR_SSE_PER_SEND).toBe(2)
+      const skippedNotices = notices.filter((notice) => {
+        return notice.endsWith(
+          ' was left out: a message can use at most 2 connectors that use '
+          + 'the legacy SSE transport.',
+        )
+      })
+
+      expect(skippedNotices).toHaveLength(1)
+      expect(
+        sseServers.filter(sseServer => sseServer.requests.length === 0),
+      ).toHaveLength(1)
+      expect(Object.keys(tools).some(name => name.startsWith('mcp__http__')))
+        .toBe(true)
+    })
+
+    it('asks for consent on an OAuth connector that has no credentials',
+      async () => {
+        const alpha = server('mcp.alpha.example.com')
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'oauth',
+        }]
+        const connectorId = await addConnector(seeds[0]!)
+
+        await testDb.db.delete(schema.connectorCredentials)
+          .where(eq(schema.connectorCredentials.userId, userId))
+        await updateConnector(testDb.db, userId, connectorId, {
+          consentVersion: 'old-version',
+        })
+
+        await expect(run({ connectorSeeds: seeds, servers: [alpha] }))
+          .rejects.toMatchObject({
+            code: 'CONNECTOR_CONSENT_REQUIRED',
+            data: { connectorId },
+          })
+        expect(alpha.requests).toHaveLength(0)
+      })
+
+    it('closes the connections it opened when a later step throws',
+      async () => {
+        const alpha = server('mcp.alpha.example.com')
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'none',
+        }]
+
+        await addConnector(seeds[0]!)
+        testDb.db.run(sql`DROP TABLE connector_tool_settings`)
+
+        await expect(run({ connectorSeeds: seeds, servers: [alpha] }))
+          .rejects.toBeTruthy()
+        expect(alpha.callCount('initialize')).toBe(1)
+        expect(alpha.requests.some(request => request.method === 'DELETE'))
+          .toBe(true)
+      })
+
+    it('closes every connection in parallel under one 2 s deadline',
+      async () => {
+        let hangDeletes = false
+        const names = ['one', 'two', 'three']
+        const servers = names.map((name) => {
+          return server(`mcp.${name}.example.com`)
+        })
+        const seeds: ConnectorSeed[] = names.map((name, index) => {
+          return { slug: name, url: servers[index]!.url, auth: 'none' }
+        })
+
+        for (const seed of seeds) {
+          await addConnector(seed)
+        }
+
+        const { close } = await run({
+          connectorSeeds: seeds,
+          servers,
+          wrapFetch: base => (async (input, init) => {
+            if (hangDeletes && init?.method === 'DELETE') {
+              return await new Promise<Response>(() => {})
+            }
+
+            return await base(input, init)
+          }) as typeof fetch,
+        })
+        const startedAt = Date.now()
+
+        hangDeletes = true
+        await close()
+
+        expect(Date.now() - startedAt).toBeLessThan(3500)
       })
 
     it('asks the user to sign in again when an OAuth connector has no '

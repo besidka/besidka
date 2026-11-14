@@ -33,6 +33,29 @@ describe('connector results stay out of later context', () => {
     ])
   })
 
+  it('drops the used-connector marker from the next model context', () => {
+    const messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'list' }] },
+      {
+        id: 'a1',
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Here you go' },
+          {
+            type: 'data-connectors-notice',
+            data: { lines: [], usedConnector: true },
+          },
+        ],
+      },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'thanks' }] },
+    ] as unknown as UIMessage[]
+    const context = sanitizeMessagesForModelContext(messages)
+
+    expect(context.find(message => message.id === 'a1')?.parts).toEqual([
+      { type: 'text', text: 'Here you go' },
+    ])
+  })
+
   it('never indexes the result for chat search', () => {
     expect(extractMessageSearchText([
       connectorPart,

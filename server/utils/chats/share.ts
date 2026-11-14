@@ -1,7 +1,7 @@
 import type { RequestEvent } from 'nuxt/server'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import { isConnectorUsagePart } from '#shared/utils/connectors-parts'
 import * as schema from '~~/server/db/schema'
 import { listChatDocumentFileIds } from '~~/server/utils/documents/chat-files'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -132,7 +132,7 @@ export async function chatUsedConnector(chatId: string): Promise<boolean> {
   })
 
   return messages.some((message) => {
-    return message.parts.some(part => getConnectorToolCall(part) !== null)
+    return message.parts.some(part => isConnectorUsagePart(part))
   })
 }
 

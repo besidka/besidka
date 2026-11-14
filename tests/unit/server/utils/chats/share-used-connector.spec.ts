@@ -54,6 +54,31 @@ describe('chatUsedConnector', () => {
     expect(await chatUsedConnector(chat.id)).toBe(true)
   })
 
+  it('is true on a branched chat that kept only the marker', async () => {
+    const chat = await seedChat(testDb.db, userId)
+
+    await seedMessage(testDb.db, chat.id, 'assistant', [
+      textPart('Done'),
+      {
+        type: 'data-connectors-notice',
+        data: { lines: [], usedConnector: true },
+      },
+    ], minutesBefore(10))
+
+    expect(await chatUsedConnector(chat.id)).toBe(true)
+  })
+
+  it('is false for a notice without the marker', async () => {
+    const chat = await seedChat(testDb.db, userId)
+
+    await seedMessage(testDb.db, chat.id, 'assistant', [
+      textPart('Done'),
+      { type: 'data-connectors-notice', data: { lines: ['A notice'] } },
+    ], minutesBefore(10))
+
+    expect(await chatUsedConnector(chat.id)).toBe(false)
+  })
+
   it('is false for other tools and for a chat without tool calls', async () => {
     const chat = await seedChat(testDb.db, userId)
 

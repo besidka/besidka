@@ -8,6 +8,14 @@ export const CONNECTORS_NOTICE_PART_TYPE = 'data-connectors-notice'
 export const CONNECTOR_APPROVAL_DENIAL_TEXT = 'This tool needs your approval; '
   + 'approvals arrive in the next update.'
 
+export const CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT = 'This tool belongs to a '
+  + 'different connector than the one already used in this message, so it '
+  + 'cannot run without your approval; approvals arrive in the next update.'
+
+const DENIAL_TEXTS: readonly string[] = [
+  CONNECTOR_APPROVAL_DENIAL_TEXT,
+  CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+]
 const TOOL_NAME_SEPARATOR = '__'
 const FRAMED_OUTPUT_PREFIX = `<${CONNECTOR_RESULT_TAG}`
 const RUNNING_STATES = new Set<string>(['input-streaming', 'input-available'])
@@ -66,8 +74,13 @@ export function isFramedConnectorOutput(output: unknown): boolean {
 }
 
 export function isConnectorApprovalDenial(output: unknown): boolean {
-  return typeof output === 'string'
-    && output.trim().startsWith(CONNECTOR_APPROVAL_DENIAL_TEXT)
+  if (typeof output !== 'string') {
+    return false
+  }
+
+  const trimmed = output.trim()
+
+  return DENIAL_TEXTS.some(text => trimmed.startsWith(text))
 }
 
 /**
@@ -139,4 +152,26 @@ export function getConnectorNoticeLines(
   }
 
   return [...new Set(lines)]
+}
+
+export function buildConnectorUsedMarkerPart() {
+  return {
+    type: CONNECTORS_NOTICE_PART_TYPE,
+    data: { lines: [], usedConnector: true },
+  }
+}
+
+export function isConnectorUsedMarker(part: unknown): boolean {
+  return isRecord(part)
+    && part.type === CONNECTORS_NOTICE_PART_TYPE
+    && isRecord(part.data)
+    && part.data.usedConnector === true
+}
+
+/**
+ * Whether a persisted part shows that the answer used a connector: a connector
+ * call, or the slim marker a branch keeps in place of the calls it strips.
+ */
+export function isConnectorUsagePart(part: unknown): boolean {
+  return getConnectorToolCall(part) !== null || isConnectorUsedMarker(part)
 }

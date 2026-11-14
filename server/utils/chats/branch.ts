@@ -3,7 +3,11 @@ import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
+import {
+  buildConnectorUsedMarkerPart,
+  CONNECTORS_NOTICE_PART_TYPE,
+  isConnectorUsagePart,
+} from '#shared/utils/connectors-parts'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
@@ -71,7 +75,16 @@ export function stripToolPartsFromBranchedMessage(
     return []
   }
 
-  return parts.filter(isNonToolMessagePart)
+  const keptParts = parts.filter(isNonToolMessagePart)
+
+  if (!parts.some(isConnectorUsagePart)) {
+    return keptParts
+  }
+
+  return [
+    ...keptParts,
+    buildConnectorUsedMarkerPart() as UIMessage['parts'][number],
+  ]
 }
 
 function isNonToolMessagePart(
