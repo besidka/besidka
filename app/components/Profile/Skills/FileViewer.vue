@@ -30,10 +30,17 @@
         :key="line.number"
         :data-line="line.number"
         class="flex flex-wrap gap-x-2 px-2"
-        :class="{ 'bg-warning/20': line.findings.length }"
-        :data-testid="line.findings.length
-          ? 'skill-file-line-flagged'
-          : undefined"
+        :class="{
+          'bg-warning/20': line.findings.length,
+          'outline outline-2 -outline-offset-2 outline-accent':
+            line.number === focusLine,
+        }"
+        :aria-current="line.number === focusLine ? 'location' : undefined"
+        :data-testid="line.number === focusLine
+          ? 'skill-file-line-focused'
+          : line.findings.length
+            ? 'skill-file-line-flagged'
+            : undefined"
       >
         <span
           class="w-10 shrink-0 select-none text-right text-base-content/60"
@@ -147,5 +154,5 @@ watch(() => props.focusLine, async (line) => {
   linesRef.value
     ?.querySelector(`[data-line="${line}"]`)
     ?.scrollIntoView({ block: 'center' })
-}, { flush: 'post' })
+}, { flush: 'post', immediate: true })
 </script>

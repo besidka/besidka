@@ -1506,6 +1506,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/api/v1/skills/import-text.spec.ts',
     'tests/unit/server/api/v1/skills/import-commit.spec.ts',
     'tests/unit/server/api/v1/skills/import-github.spec.ts',
+    'tests/unit/server/api/v1/skills/import-stage-files.spec.ts',
     'tests/unit/server/api/v1/skills/update-pending.spec.ts',
     'tests/unit/server/api/v1/skills/update-check.spec.ts',
     'tests/unit/workers/skill-import.spec.ts',

@@ -165,16 +165,119 @@ describe('Profile/Skills/Review', () => {
     expect(wrapper.get(testId('skill-file-marker')).text()).toBe('Command')
   })
 
-  it('does not preview a file whose text the browser does not have', async () => {
+  it('fetches a file the browser does not have, shows it once and never refetches it', async () => {
+    const loadFile = vi.fn(async (path: string) => `echo from ${path}`)
     const wrapper = await mountSuspended(Review, {
-      props: { preview: createImportPreview() },
+      props: { preview: createImportPreview(), loadFile },
+    })
+    const items = wrapper.findAll(testId('skill-file-tree-item'))
+
+    await items[1]!.trigger('click')
+    await flushPromises()
+
+    expect(loadFile).toHaveBeenCalledWith('scripts/run.sh')
+    expect(wrapper.get(testId('skill-file-viewer-lines')).text())
+      .toContain('echo from scripts/run.sh')
+
+    await items[0]!.trigger('click')
+    await flushPromises()
+    await items[1]!.trigger('click')
+    await flushPromises()
+
+    expect(loadFile).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).not.toContain('not shown before you install')
+  })
+
+  it('shows the plain text with line numbers, the highlight and hidden characters', async () => {
+    const loadFile = vi.fn(async () => 'one\ntwo https://x.test\u200bz\nthree')
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview(), loadFile },
+    })
+
+    await wrapper.findAll(testId('skill-file-tree-item'))[1]!.trigger('click')
+    await flushPromises()
+
+    const lines = wrapper.findAll('[data-line]')
+
+    expect(lines).toHaveLength(3)
+    expect(lines[0]!.text()).toContain('1')
+    expect(lines[0]!.attributes('data-testid')).toBe('skill-file-line-flagged')
+    expect(lines[1]!.text()).toContain('⟨U+200B⟩')
+    expect(wrapper.find('script').exists()).toBe(false)
+  })
+
+  it('shows a loading state while the file is on its way', async () => {
+    let resolveFile: (text: string) => void = () => undefined
+    const loadFile = vi.fn(() => new Promise<string>((resolve) => {
+      resolveFile = resolve
+    }))
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview(), loadFile },
     })
 
     await wrapper.findAll(testId('skill-file-tree-item'))[1]!.trigger('click')
 
-    expect(wrapper.find(testId('skill-review-not-previewed')).exists())
+    expect(wrapper.find(testId('skill-review-file-loading')).exists())
       .toBe(true)
+
+    resolveFile('echo hi')
+    await flushPromises()
+
+    expect(wrapper.find(testId('skill-review-file-loading')).exists())
+      .toBe(false)
+    expect(wrapper.get('code').text()).toBe('echo hi')
+  })
+
+  it('says why a file cannot be shown, in plain text', async () => {
+    const loadFile = vi.fn(async () => {
+      throw { data: {
+        message: 'This file is too large to show',
+        why: 'The review shows files up to 1 MiB',
+      } }
+    })
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview(), loadFile },
+    })
+
+    await wrapper.findAll(testId('skill-file-tree-item'))[1]!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get(testId('skill-review-file-error')).text()).toBe(
+      'This file is too large to show. The review shows files up to 1 MiB',
+    )
     expect(wrapper.find(testId('skill-file-viewer')).exists()).toBe(false)
+  })
+
+  it('ignores a slow answer for a file that is no longer selected', async () => {
+    const answers: Record<string, (text: string) => void> = {}
+    const loadFile = vi.fn((path: string) => new Promise<string>((resolve) => {
+      answers[path] = resolve
+    }))
+    const base = createImportPreview()
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          files: [
+            ...base.files,
+            { path: 'references/a.md', bytes: 3, kind: 'reference' },
+          ],
+        }),
+        loadFile,
+      },
+    })
+    const items = wrapper.findAll(testId('skill-file-tree-item'))
+    const itemFor = (name: string) => {
+      return items.find(item => item.text().includes(name))!
+    }
+
+    await itemFor('run.sh').trigger('click')
+    await itemFor('a.md').trigger('click')
+    answers['references/a.md']!('second file')
+    await flushPromises()
+    answers['scripts/run.sh']!('first file')
+    await flushPromises()
+
+    expect(wrapper.get('code').text()).toBe('second file')
   })
 
   it('previews another file when the caller can read it', async () => {
@@ -190,19 +293,73 @@ describe('Profile/Skills/Review', () => {
     expect(wrapper.get('code').text()).toBe('echo hi')
   })
 
-  it('opens the file of a finding from the highlights list', async () => {
+  it('opens the file of a finding from the highlights list, scrolls to its line and marks it', async () => {
+    const scrollIntoView = vi.fn()
+
+    Element.prototype.scrollIntoView = scrollIntoView
+
+    const loadFile = vi.fn(async () => 'echo a\necho b\nhttps://x.test')
+    const base = createImportPreview()
     const wrapper = await mountSuspended(Review, {
       props: {
-        preview: createImportPreview(),
-        readFile: () => 'echo hi',
+        preview: createImportPreview({
+          findings: [{
+            type: 'url',
+            path: 'scripts/run.sh',
+            line: 3,
+            snippet: 'https://x.test',
+            detail: null,
+          }, ...base.findings.slice(0, 1)],
+        }),
+        loadFile,
+      },
+    })
+
+    await wrapper.findAll(testId('skill-review-finding'))[0]!.trigger('click')
+    await flushPromises()
+
+    expect(loadFile).toHaveBeenCalledWith('scripts/run.sh')
+    expect(wrapper.get(testId('skill-file-viewer')).text())
+      .toContain('scripts/run.sh')
+
+    const focused = wrapper.get(testId('skill-file-line-focused'))
+
+    expect(focused.attributes('data-line')).toBe('3')
+    expect(focused.attributes('aria-current')).toBe('location')
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+  })
+
+  it('moves the mark when another highlight of the same file is clicked', async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+
+    const loadFile = vi.fn(async () => 'a\nb\nc\nd')
+    const base = createImportPreview()
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          findings: [
+            { type: 'url', path: 'scripts/run.sh', line: 2, snippet: 'b', detail: null },
+            { type: 'url', path: 'scripts/run.sh', line: 4, snippet: 'd', detail: null },
+          ],
+          files: base.files,
+        }),
+        loadFile,
       },
     })
     const items = wrapper.findAll(testId('skill-review-finding'))
 
-    await items[1]!.trigger('click')
+    await items[0]!.trigger('click')
+    await flushPromises()
 
-    expect(wrapper.get(testId('skill-file-viewer')).text())
-      .toContain('scripts/run.sh')
+    expect(wrapper.get(testId('skill-file-line-focused')).attributes('data-line'))
+      .toBe('2')
+
+    await items[1]!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get(testId('skill-file-line-focused')).attributes('data-line'))
+      .toBe('4')
+    expect(loadFile).toHaveBeenCalledTimes(1)
   })
 
   it('shows archive warnings', async () => {

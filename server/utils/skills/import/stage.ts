@@ -273,6 +273,57 @@ export async function readSkillStage(input: {
   return manifest
 }
 
+export type SkillStageLookup
+  = | { state: 'ready', manifest: SkillStageManifest }
+    | { state: 'expired' }
+    | { state: 'foreign' }
+
+/**
+ * Like `readSkillStage`, but says why there is no manifest: the stage ids are
+ * 128-bit random, so a stage that belongs to another account (`foreign`, 404)
+ * can only be reached by someone who was handed the id, while a missing or
+ * old one (`expired`, 410) is what an hour of waiting produces. Used by the
+ * review screen, which needs to tell the user to start again.
+ */
+export async function lookupSkillStage(input: {
+  kv: SkillStageKv
+  userId: number
+  stageId: string
+  now?: number
+}): Promise<SkillStageLookup> {
+  if (!SKILL_STAGE_ID_PATTERN.test(input.stageId)) {
+    return { state: 'expired' }
+  }
+
+  const raw = await input.kv.get(skillStageKey(input.stageId))
+
+  if (!raw) {
+    return { state: 'expired' }
+  }
+
+  let manifest: SkillStageManifest
+
+  try {
+    manifest = JSON.parse(raw) as SkillStageManifest
+  } catch {
+    return { state: 'expired' }
+  }
+
+  if (manifest.stageId !== input.stageId) {
+    return { state: 'expired' }
+  }
+
+  if (manifest.userId !== input.userId) {
+    return { state: 'foreign' }
+  }
+
+  if (manifest.expiresAt <= (input.now ?? Date.now())) {
+    return { state: 'expired' }
+  }
+
+  return { state: 'ready', manifest }
+}
+
 export async function readStagedFile(input: {
   bucket: SkillStageBucket
   manifest: SkillStageManifest

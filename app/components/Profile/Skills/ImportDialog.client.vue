@@ -334,6 +334,7 @@
       <ProfileSkillsReview
         :preview="preview"
         :read-file="readArchiveFile"
+        :load-file="loadStagedFile"
         :file-name="file?.name ?? null"
         @switch-channel="onSwitchChannel"
       />
@@ -351,6 +352,12 @@
             >
             I reviewed this skill
           </label>
+          <p
+            class="text-xs text-base-content/70"
+            data-testid="skill-import-install-note"
+          >
+            Installs switched off. Turn it on from the skill's mode.
+          </p>
           <label
             v-if="preview.requiresLicenseAcknowledgement"
             class="flex min-h-8 cursor-pointer items-center gap-2"
@@ -384,7 +391,7 @@
             v-if="isCommitting"
             class="loading loading-spinner loading-xs"
           />
-          Install (disabled)
+          Install
         </button>
       </template>
       <template v-else-if="step === 'pick'">
@@ -847,6 +854,21 @@ async function onCommit(
   } finally {
     isCommitting.value = false
   }
+}
+
+async function loadStagedFile(path: string): Promise<string> {
+  const current = preview.value
+
+  if (!current) {
+    throw new Error('There is no import to read')
+  }
+
+  const result = await $fetch(
+    `/api/v1/skills/import/stages/${current.stageId}/files`,
+    { query: { path } },
+  )
+
+  return result.text
 }
 
 function readArchiveFile(path: string): string | null {

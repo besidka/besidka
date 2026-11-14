@@ -200,20 +200,30 @@
       />
       <div class="min-w-0">
         <ProfileSkillsFileViewer
-          v-if="selectedText !== null"
+          v-if="fileStatus === 'ready' && fileText !== null"
           :path="selectedPath"
-          :text="selectedText"
+          :text="fileText"
           :findings="preview.findings"
           :focus-line="focusLine"
         />
+        <div
+          v-else-if="fileStatus === 'loading'"
+          class="grid gap-2 rounded-box bg-base-200 p-3"
+          role="status"
+          aria-label="Loading the file"
+          data-testid="skill-review-file-loading"
+        >
+          <div class="skeleton skeleton--default h-4 w-1/2" />
+          <div class="skeleton skeleton--default h-4 w-full" />
+          <div class="skeleton skeleton--default h-4 w-3/4" />
+        </div>
         <p
           v-else
           class="rounded-box bg-base-200 p-3 text-sm"
-          data-testid="skill-review-not-previewed"
+          role="alert"
+          data-testid="skill-review-file-error"
         >
-          This file is not shown before you install. A new skill is installed
-          switched off, and you can read every file in the Files tab before
-          you turn it on.
+          {{ fileError }}
         </p>
       </div>
     </div>
@@ -252,6 +262,7 @@
 </template>
 
 <script setup lang="ts">
+import { parseError } from 'evlog'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type { SkillImportPreview } from '#shared/types/skills.d'
 
@@ -260,9 +271,11 @@ const LICENSE_EXCERPT_LINES = 12
 const props = withDefaults(defineProps<{
   preview: SkillImportPreview
   readFile?: (path: string) => string | null
+  loadFile?: (path: string) => Promise<string>
   fileName?: string | null
 }>(), {
   readFile: () => null,
+  loadFile: undefined,
   fileName: null,
 })
 
@@ -404,11 +417,83 @@ watch(selectedPath, () => {
   focusLine.value = null
 })
 
-const selectedText = computed<string | null>(() => {
-  if (selectedPath.value === SKILL_MD_FILE_NAME) {
-    return props.preview.skillMd
+const fileStatus = shallowRef<'ready' | 'loading' | 'error'>('ready')
+const fileText = shallowRef<string | null>(null)
+const fileError = shallowRef<string>('')
+let loadedTexts = new Map<string, string>()
+let loadedStageId = ''
+
+function showFile(text: string) {
+  fileText.value = text
+  fileError.value = ''
+  fileStatus.value = 'ready'
+}
+
+function describeLoadFailure(exception: unknown): string {
+  const parsedException = parseError(exception)
+
+  return [
+    parsedException.message || 'The file could not be loaded.',
+    parsedException.why,
+  ].filter(Boolean).join('. ')
+}
+
+/**
+ * The text of the selected file: `SKILL.md` comes with the preview, a file of
+ * an uploaded archive is read in the browser, anything else is fetched from
+ * the staged copy on the server (`loadFile`), once per file. A file that
+ * cannot be loaded (expired import, too large) says why in plain text.
+ */
+async function loadSelectedFile() {
+  const path = selectedPath.value
+
+  if (props.preview.stageId !== loadedStageId) {
+    loadedStageId = props.preview.stageId
+    loadedTexts = new Map()
   }
 
-  return props.readFile(selectedPath.value)
-})
+  const known = path === SKILL_MD_FILE_NAME
+    ? props.preview.skillMd
+    : props.readFile(path) ?? loadedTexts.get(path) ?? null
+
+  if (known !== null) {
+    showFile(known)
+
+    return
+  }
+
+  if (!props.loadFile) {
+    fileText.value = null
+    fileError.value = 'This file cannot be shown here.'
+    fileStatus.value = 'error'
+
+    return
+  }
+
+  fileText.value = null
+  fileStatus.value = 'loading'
+
+  try {
+    const text = await props.loadFile(path)
+
+    loadedTexts.set(path, text)
+
+    if (selectedPath.value === path) {
+      showFile(text)
+    }
+  } catch (exception) {
+    if (selectedPath.value !== path) {
+      return
+    }
+
+    fileError.value = describeLoadFailure(exception)
+    fileStatus.value = 'error'
+  }
+}
+
+watch(
+  [selectedPath, () => props.preview.stageId],
+  loadSelectedFile,
+  { immediate: true },
+)
 </script>

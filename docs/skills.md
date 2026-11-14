@@ -436,6 +436,16 @@ never use staging: their pending version is persisted directly (see step 3).
    `skills-staging/u<userId>/<stageId>/<path>` (1 h, plus the hourly
    sweep). Returns the frontmatter, file list, `SKILL.md`, findings, warnings
    and license class.
+   `GET /api/v1/skills/import/stages/<stageId>/files?path=<path>` (gated by
+   `skills`) serves one file of a staged import to the review screen as JSON
+   `{ path, bytes, kind, text }`. The stage must belong to the signed-in user
+   (another account's stage answers 404 `stage-not-found`), the path must be a
+   file the stage's manifest lists (anything else, `..` included, is 404
+   `file-not-found`, so no other R2 key can be named), the object is read by its
+   content hash, a missing or old stage answers 410 `stage-expired` ("This
+   import has expired"), and a file over `SKILL_VIEWER_FILE_MAX_BYTES` (1 MiB)
+   answers 413 `file-too-large` with a reason instead of the text. The client
+   shows the text as plain text only, like the installed file viewer.
 2. `POST /api/v1/skills/import/commit` `{ stageId, acknowledged: true }` (and,
    for class `none` or `custom`, `licenseAcknowledged: true`) moves the files to
    the content-addressed blob layout of section 3.5, writes **version 1 with
@@ -1465,7 +1475,7 @@ state in `app/composables/skills-library.ts`.
   text, so they are not presets of third-party skills.
 - **Archive, paste and GitHub import:** a dialog `modal modal-bottom
   sm:modal-middle js-skill-import-modal` with tabs Upload, Paste and GitHub.
-  It leads to the review screen below, then "Install (disabled)". A GitHub
+  It leads to the review screen below, then "Install" (the skill is installed switched off; the footer says so next to the checkbox). A GitHub
   repository with several skills shows a checklist ("This repository has 17
   skills. Choose which to import."), up to `SKILL_GITHUB_PICK_MAX` (10). The
   GitHub tab is hidden without `skills.import-url`.
@@ -1494,10 +1504,18 @@ update is accepted; shared with the editor in read-only mode;
 - File tree (`menu menu-sm`, a `select` on mobile) and a plain monospace
   viewer with line numbers, a wrap toggle, findings marked with a background
   and a text marker (not colour alone), hidden characters shown as
-  `⟨U+…⟩`.
+  `⟨U+…⟩`. **Every file can be read before installing** (2026-11-14; the review
+  once said "This file is not shown before you install" for everything but
+  `SKILL.md`, while the highlights pointed into those files). `SKILL.md` comes
+  with the preview, a file of an uploaded archive is read in the browser, and
+  any other file is fetched from the staged copy with
+  `GET /api/v1/skills/import/stages/<stageId>/files?path=` (below), once per
+  file. Clicking a highlight row opens its file, scrolls to the line and marks
+  it (`aria-current="location"`, an outline). A file that cannot be loaded
+  (an expired import, one over 1 MiB) says why in plain text.
 - Footer: required checkbox "I reviewed this skill" (plus "I read the license
   and may use this skill" for class `custom`, or "I have the right to
-  use this skill" for class `none`), "Install (disabled)", "Cancel".
+  use this skill" for class `none`), "Install", "Cancel". The muted line "Installs switched off. Turn it on from the skill's mode." sits under the checkboxes, because a button labelled "(disabled)" looks disabled even when it is not.
 
 Update diff: per-file unified diff with `+` and `-` markers and a text label,
 not colour alone, against the **current** version; new findings and license

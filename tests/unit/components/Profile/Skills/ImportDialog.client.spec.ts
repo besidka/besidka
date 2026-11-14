@@ -176,7 +176,9 @@ describe('Profile/Skills/ImportDialog', () => {
     const install = get('skill-import-install') as HTMLButtonElement
 
     expect(install.disabled).toBe(true)
-    expect(install.textContent).toContain('Install (disabled)')
+    expect(install.textContent?.trim()).toBe('Install')
+    expect(get('skill-import-install-note').textContent?.trim())
+      .toBe('Installs switched off. Turn it on from the skill\'s mode.')
 
     install.click()
     await flushPromises()
@@ -608,6 +610,85 @@ describe('Profile/Skills/ImportDialog', () => {
         .toContain('A skill named review-pr exists.')
       expect(find('skill-import-installed')).toBeNull()
       expect(find('skill-import-replace')).not.toBeNull()
+    })
+  })
+
+  describe('reading the files before installing', () => {
+    function treeItem(name: string): HTMLElement {
+      const item = [...document.body.querySelectorAll(
+        '[data-testid="skill-file-tree-item"]',
+      )].find(candidate => candidate.textContent?.includes(name))
+
+      if (!item) {
+        throw new Error(`Missing file ${name}`)
+      }
+
+      return item as HTMLElement
+    }
+
+    it('fetches another file of a pasted or GitHub import from the staged copy and shows it', async () => {
+      await mountDialog()
+      await reachReview()
+      mocks.fetch.mockResolvedValueOnce({
+        path: 'scripts/run.sh',
+        bytes: 8,
+        kind: 'script',
+        text: 'echo one\necho two',
+      })
+      treeItem('run.sh').click()
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        `/api/v1/skills/import/stages/${'a'.repeat(32)}/files`,
+        { query: { path: 'scripts/run.sh' } },
+      )
+      expect(document.body.textContent).not.toContain(
+        'not shown before you install',
+      )
+      expect(get('skill-file-viewer-lines').textContent).toContain('echo two')
+    })
+
+    it('opens the file of a highlight and marks its line', async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      await mountDialog()
+      await reachReview()
+      mocks.fetch.mockResolvedValueOnce({
+        path: 'scripts/run.sh',
+        bytes: 8,
+        kind: 'script',
+        text: 'echo one\nhttps://x.test',
+      })
+
+      const findings = document.body.querySelectorAll(
+        '[data-testid="skill-review-finding"]',
+      )
+
+      ;(findings[1] as HTMLElement).click()
+      await flushPromises()
+
+      expect(get('skill-file-line-focused').getAttribute('data-line'))
+        .toBe('1')
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        `/api/v1/skills/import/stages/${'a'.repeat(32)}/files`,
+        { query: { path: 'scripts/run.sh' } },
+      )
+    })
+
+    it('says in plain text that an import has expired when its file is asked for later', async () => {
+      await mountDialog()
+      await reachReview()
+      mocks.fetch.mockRejectedValueOnce({
+        data: {
+          message: 'This import has expired',
+          why: 'Staged files are kept for one hour',
+        },
+      })
+      treeItem('run.sh').click()
+      await flushPromises()
+
+      expect(get('skill-review-file-error').textContent).toContain(
+        'This import has expired',
+      )
     })
   })
 })
