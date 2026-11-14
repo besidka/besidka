@@ -205,12 +205,14 @@ const featureList = [
     key: 'connectors',
     title: 'Connectors',
     description: 'Connect remote MCP servers and apps to your chats.',
+    available: true,
   }),
   internalFeature({
     key: 'connectors.oauth',
     title: 'Connectors with sign-in',
     description: 'Connectors that sign in with OAuth.',
     parent: 'connectors',
+    available: true,
   }),
   internalFeature({
     key: 'connectors.registry',

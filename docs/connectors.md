@@ -70,6 +70,12 @@ Feature flags (registered by C-2 in the P0-3 registry at stage `internal`,
 | `connectors.registry` | Registry search tab and `GET /api/v1/connectors/registry` | `none` |
 | `connectors.native` | OpenAI-run MCP calls (section 12), Labs opt-in | `foreground`, so `optIn: 'required'` |
 
+`connectors` and `connectors.oauth` are `available: true` since C-4, still at
+stage `internal`: an unavailable flag evaluates to off with `NOT_AVAILABLE`
+whatever the role or grant, so testers and previews could not reach the C-4
+routes. Stage `internal` keeps both admin- and grant-only. `connectors.registry`
+and `connectors.native` stay unavailable until their tickets ship.
+
 ## 2. Decisions
 
 Every decision below is binding for C-2 to C-11. A decision marked **(pre-check)**
