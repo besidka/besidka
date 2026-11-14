@@ -3552,10 +3552,12 @@ describe('ChatInput.client', () => {
     }
 
     function getPaddingBox(wrapper: ChatInputWrapper): HTMLElement {
-      const parent = wrapper.get('textarea').element.parentElement
+      const parent = wrapper.get('textarea').element.closest<HTMLElement>(
+        '.p-1.pb-0',
+      )
 
       if (!parent) {
-        throw new Error('textarea has no parent')
+        throw new Error('padding box not found')
       }
 
       return parent

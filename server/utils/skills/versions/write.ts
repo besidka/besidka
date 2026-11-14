@@ -209,9 +209,6 @@ export async function writeSkillVersion(
       allowedTools: prepared.frontmatter.allowedTools,
       filesCount: input.files.length,
       bytes: prepared.totalBytes,
-      ...(prepared.slashCommand === undefined
-        ? {}
-        : { slashCommand: prepared.slashCommand }),
       ...(markReady ? { status: 'ready' as const } : {}),
     },
   })
@@ -225,7 +222,7 @@ export async function writeSkillVersion(
     if (violation?.includes('skills.name')) {
       throw createSkillEditError('name-taken', {
         message: `A skill named ${prepared.frontmatter.name} exists`,
-        why: 'Skill names are unique, because they are the names of /commands too',
+        why: 'Skill names are unique per account',
         fix: 'Pick another name',
       })
     }

@@ -38,9 +38,12 @@ describe('skill templates', () => {
     })).size).toBe(SKILL_TEMPLATES.length)
   })
 
-  it('offers both a skill and a command', () => {
+  it('offers templates with and without a command', () => {
     expect(SKILL_TEMPLATES.some((template) => {
-      return template.slashCommand
+      return template.command !== null
+    })).toBe(true)
+    expect(SKILL_TEMPLATES.some((template) => {
+      return template.command === null
     })).toBe(true)
     expect(SKILL_TEMPLATES.some((template) => {
       return template.modelInvocable
@@ -81,10 +84,22 @@ describe('skill templates', () => {
     }
   })
 
-  it('makes every template a /name command', () => {
-    expect(SKILL_TEMPLATES.every((template) => {
-      return template.slashCommand
-    })).toBe(true)
+  it('gives templates a valid, unreserved command or none', () => {
+    for (const template of SKILL_TEMPLATES) {
+      if (template.command === null) {
+        continue
+      }
+
+      expect(validateSkillSlashName(template.command).valid).toBe(true)
+    }
+  })
+
+  it('ships the commands of the two command templates', () => {
+    expect(getSkillTemplate('meeting-notes')?.command).toBe('meeting-notes')
+    expect(getSkillTemplate('translate-with-glossary')?.command)
+      .toBe('translate')
+    expect(getSkillTemplate('writing-style')?.command).toBeNull()
+    expect(getSkillTemplate('code-review-checklist')?.command).toBeNull()
   })
 
   it.each(SKILL_TEMPLATES.filter((template) => {

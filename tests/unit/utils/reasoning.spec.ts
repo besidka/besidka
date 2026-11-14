@@ -400,18 +400,24 @@ describe('isThinkingToolPart / getToolPartName', () => {
     }
   })
 
-  it('shows the activate_skill step as a card, never as a reasoning step', () => {
-    const states = ['input-streaming', 'input-available', 'output-available', 'output-error']
-
-    for (const state of states) {
+  it('treats the activate_skill call as a reasoning step', () => {
+    for (const state of ['input-streaming', 'input-available']) {
       const part = {
         type: 'tool-activate_skill',
         state,
       } as UIMessage['parts'][number]
 
-      expect(isThinkingToolPart(part)).toBe(false)
-      expect(isPendingToolPart(part)).toBe(false)
+      expect(isThinkingToolPart(part)).toBe(true)
+      expect(isPendingToolPart(part)).toBe(true)
     }
+
+    const done = {
+      type: 'tool-activate_skill',
+      state: 'output-available',
+    } as UIMessage['parts'][number]
+
+    expect(isThinkingToolPart(done)).toBe(true)
+    expect(isPendingToolPart(done)).toBe(false)
   })
 
   it('keeps a skill file read as a reasoning step', () => {

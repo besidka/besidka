@@ -265,6 +265,7 @@ const featureList = [
     title: 'Skill commands',
     description: 'Run a skill as a slash command from the chat input.',
     parent: 'skills',
+    available: true,
   }),
   internalFeature({
     key: 'skills.scripts',

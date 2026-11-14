@@ -111,10 +111,11 @@ describe('POST /api/v1/skills/import/preview', () => {
 
     expect(preview).toMatchObject({
       source: 'zip',
-      skill: { name: 'review-pr', modelInvocable: true, slashCommand: true },
+      skill: { name: 'review-pr', modelInvocable: true },
       licence: { class: 'none' },
       requiresLicenceAcknowledgement: true,
     })
+    expect(preview.skill).not.toHaveProperty('slashCommand')
     expect(preview.stageId).toMatch(/^[a-f0-9]{32}$/)
     expect(preview.sourceVersion).toMatch(/^sha256-[a-f0-9]{16}$/)
     expect(preview.skillMd).toContain('name: review-pr')

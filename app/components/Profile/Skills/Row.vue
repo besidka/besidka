@@ -16,7 +16,7 @@
         data-testid="skill-row-open"
         @click="emit('open', skill, 'instructions')"
       >
-        {{ displayName }}
+        {{ skill.name }}
       </button>
       <p
         class="truncate text-sm text-base-content/70"
@@ -26,12 +26,11 @@
       </p>
       <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/70">
         <span
-          v-for="label in kindLabels"
-          :key="label"
+          v-if="skill.command && commandsFeature.active"
           class="badge badge-soft badge-sm"
-          data-testid="skill-row-kind"
+          data-testid="skill-row-command"
         >
-          {{ label }}
+          /{{ skill.command }}
         </span>
         <span
           v-if="statusBadge"
@@ -59,13 +58,6 @@
           data-testid="skill-row-tokens"
         >
           {{ tokenEstimate }}
-        </span>
-        <span
-          v-if="isSlashBlocked"
-          class="text-warning"
-          data-testid="skill-row-slash-blocked"
-        >
-          Rename to use /name
         </span>
       </div>
       <p
@@ -174,10 +166,7 @@
 
 <script setup lang="ts">
 import type { SkillSummary } from '#shared/types/skills.d'
-import {
-  getSkillMode,
-  isSkillSlashBlocked,
-} from '#shared/utils/skills/mode'
+import { getSkillMode } from '#shared/utils/skills/mode'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillDetailTab } from '~/types/skills-ui.d'
 
@@ -204,15 +193,8 @@ const emit = defineEmits<{
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
 const { isFlippedUp, updatePlacement } = useDropdownPlacement(dropdownRef)
 const { onDownloadClick } = useFileDownload()
+const commandsFeature = useFeature('skills.commands')
 const isMounted = shallowRef<boolean>(false)
-
-const displayName = computed<string>(() => {
-  return getSkillDisplayName(props.skill)
-})
-
-const kindLabels = computed<string[]>(() => {
-  return getSkillKindLabels(props.skill)
-})
 
 const canCheckForUpdates = computed<boolean>(() => {
   return props.skill.sourceKind === 'github' && props.canImportFromUrl
@@ -253,10 +235,6 @@ const tokenEstimate = computed<string | null>(() => {
   }
 
   return `≈ ${estimateSkillCatalogTokens(props.skill)} tokens in every message`
-})
-
-const isSlashBlocked = computed<boolean>(() => {
-  return isSkillSlashBlocked(props.skill)
 })
 
 onClickOutside(dropdownRef, closeDropdown)

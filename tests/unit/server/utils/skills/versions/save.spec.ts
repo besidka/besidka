@@ -337,8 +337,10 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ renamed: true })
     })
 
-    it('turns /name off when the skill is renamed to a reserved name', async () => {
-      const { skillId } = await seedAuthored(undefined, { slashCommand: true })
+    it('keeps the command when the skill is renamed to a reserved name', async () => {
+      const { skillId } = await seedAuthored(undefined, {
+        slashName: 'run-review',
+      })
       const result = await save(skillId, [{
         op: 'put',
         path: 'SKILL.md',
@@ -348,14 +350,14 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ renamed: true })
       expect(await skillRow(skillId)).toMatchObject({
         name: 'memory',
-        slashCommand: false,
+        slashName: 'run-review',
       })
     })
 
-    it('turns /name on again when an enabled skill leaves a reserved name', async () => {
+    it('keeps the command when a skill leaves a reserved name', async () => {
       const { skillId } = await seedAuthored(
         { 'SKILL.md': skillMarkdown({ name: 'memory' }) },
-        { name: 'memory', slashCommand: false },
+        { name: 'memory', slashName: 'run-review' },
       )
       const result = await save(skillId, [{
         op: 'put',
@@ -366,14 +368,14 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ renamed: true })
       expect(await skillRow(skillId)).toMatchObject({
         name: 'my-memory',
-        slashCommand: true,
+        slashName: 'run-review',
       })
     })
 
-    it('leaves a disabled skill without /name on rename', async () => {
+    it('leaves a skill without a command without one on rename', async () => {
       const { skillId } = await seedAuthored(
         { 'SKILL.md': skillMarkdown({ name: 'memory' }) },
-        { name: 'memory', enabled: false, slashCommand: false },
+        { name: 'memory', enabled: false },
       )
 
       await save(skillId, [{
@@ -382,10 +384,13 @@ describe('saveSkillChanges', () => {
         content: skillMarkdown({ name: 'my-memory' }),
       }])
 
-      expect(await skillRow(skillId)).toMatchObject({ slashCommand: false })
+      expect(await skillRow(skillId)).toMatchObject({
+        slashName: null,
+        slashCommand: false,
+      })
     })
 
-    it('allows a reserved name when the command toggle is off', async () => {
+    it('allows a reserved name', async () => {
       const { skillId } = await seedAuthored()
       const result = await save(skillId, [{
         op: 'put',

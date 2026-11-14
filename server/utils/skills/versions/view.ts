@@ -1,10 +1,6 @@
 import { desc, eq } from 'drizzle-orm'
 import { SKILL_EDIT_MAX_FILE_BYTES } from '#shared/utils/skills-policy'
 import { getSkillSourceGroup, isSkillLicenceRootFile } from '#shared/utils/skills/edit'
-import {
-  isSkillCommandKind,
-  isSkillSkillKind,
-} from '#shared/utils/skills/mode'
 import * as schema from '~~/server/db/schema'
 import {
   loadOwnedSkill,
@@ -26,7 +22,8 @@ export function toSkillSummary(row: SkillRow) {
     description: row.description,
     enabled: row.enabled,
     modelInvocable: row.modelInvocable,
-    slashCommand: row.slashCommand,
+    command: row.slashName,
+    slashCommand: row.slashName !== null,
     argumentHint: row.argumentHint,
     status: row.status,
     licenseClass: row.licenseClass,
@@ -89,9 +86,8 @@ export function toFileSummary(file: SkillFileRow, locksLicenceFiles: boolean) {
 }
 
 /**
- * The user's skills, newest edit first, with the counts the manager's filter
- * rows show: by source group (created, imported, from apps) and by kind. A
- * command is a skill that runs only when asked; an Auto skill is a skill.
+ * The user's skills, newest edit first, with the counts the manager's source
+ * filter shows (created, imported, from apps).
  */
 export async function listUserSkills(db: DbClient, userId: number) {
   const rows = await db.select()
@@ -99,23 +95,14 @@ export async function listUserSkills(db: DbClient, userId: number) {
     .where(eq(schema.skills.userId, userId))
     .orderBy(desc(schema.skills.updatedAt), desc(schema.skills.id))
   const sources = { all: rows.length, created: 0, imported: 0, apps: 0 }
-  const kinds = { all: rows.length, skills: 0, commands: 0 }
 
   for (const row of rows) {
     sources[getSkillSourceGroup(row.sourceKind)] += 1
-
-    if (isSkillCommandKind(row)) {
-      kinds.commands += 1
-    }
-
-    if (isSkillSkillKind(row)) {
-      kinds.skills += 1
-    }
   }
 
   return {
     skills: rows.map(toSkillSummary),
-    counts: { sources, kinds },
+    counts: { sources },
   }
 }
 

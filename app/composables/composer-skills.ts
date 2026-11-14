@@ -10,6 +10,7 @@ export interface ComposerSkillItem {
   description: string
   version: number
   mode: SkillMode
+  command: string | null
 }
 
 export function toComposerSkillItem(skill: SkillSummary): ComposerSkillItem {
@@ -19,6 +20,7 @@ export function toComposerSkillItem(skill: SkillSummary): ComposerSkillItem {
     description: skill.description,
     version: skill.currentVersion,
     mode: getSkillMode(skill),
+    command: skill.command,
   }
 }
 

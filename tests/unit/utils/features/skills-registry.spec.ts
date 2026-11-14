@@ -14,9 +14,10 @@ describe('skills feature flags', () => {
     expect(FEATURE_REGISTRY.skills.parent).toBeUndefined()
   })
 
-  it('ships skills.commands internal, off and without spend', () => {
+  it('ships skills.commands available, internal, off and without spend', () => {
     expect(FEATURE_REGISTRY['skills.commands']).toEqual(
       expect.objectContaining({
+        available: true,
         stage: 'internal',
         default: false,
         allowRoles: ['admin'],

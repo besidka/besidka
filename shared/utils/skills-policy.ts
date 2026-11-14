@@ -151,8 +151,24 @@ export function isReservedSkillSlashName(name: string): boolean {
 }
 
 /**
- * A skill may carry a reserved name; only its "Use as /name" toggle is
- * refused, so the caller runs this when `slash_command` is switched on.
+ * What the user typed in a Command field, ready to validate: trimmed, one
+ * leading `/` dropped (the placeholder is `/my-command`, so people type it).
+ * Empty means "no command" and is `null`.
+ */
+export function normalizeSkillCommand(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = (value ?? '').trim()
+  const withoutSlash = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed
+
+  return withoutSlash.length > 0 ? withoutSlash : null
+}
+
+/**
+ * A command follows the same pattern as a skill name and must not be one of
+ * the names Besidka reserves for its built-in commands. A skill name and its
+ * command are separate: a skill may keep a reserved name, only a reserved
+ * command is refused.
  */
 export function validateSkillSlashName(
   name: string,
@@ -174,4 +190,22 @@ export function validateSkillSlashName(
   }
 
   return { valid: true }
+}
+
+/**
+ * The inline message for what the user typed in a Command field, or an empty
+ * string when it is empty (no command) or valid.
+ */
+export function getSkillCommandProblem(
+  value: string | null | undefined,
+): string {
+  const command = normalizeSkillCommand(value)
+
+  if (command === null) {
+    return ''
+  }
+
+  const validation = validateSkillSlashName(command)
+
+  return validation.valid ? '' : validation.message
 }

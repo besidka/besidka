@@ -14,6 +14,7 @@ export function createSkillSummary(
     description: 'Review a pull request carefully',
     enabled: true,
     modelInvocable: true,
+    command: null,
     slashCommand: false,
     argumentHint: null,
     status: 'ready',
@@ -108,7 +109,6 @@ export function createImportPreview(
       metadata: null,
       allowedTools: ['Read'],
       modelInvocable: true,
-      slashCommand: false,
       argumentHint: null,
     },
     files: [

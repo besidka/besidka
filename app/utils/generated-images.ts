@@ -423,25 +423,6 @@ export function isGeneratedImagePart(
   )
 }
 
-/**
- * True when `parts[index]` is a text part immediately preceded by a
- * generated-image card, so callers can add spacing between the two without
- * affecting a leading image or text that precedes an image.
- */
-export function isTextPartAfterGeneratedImage(
-  message: UIMessage,
-  parts: UIMessage['parts'],
-  index: number,
-): boolean {
-  const part = parts[index]
-
-  if (!part || part.type !== 'text' || index === 0) {
-    return false
-  }
-
-  return isGeneratedImagePart(message, parts[index - 1])
-}
-
 export interface AssistantGeneratedImageDisplay {
   imageUrl: string
   downloadUrl: string

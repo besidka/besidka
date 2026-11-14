@@ -8,7 +8,7 @@ export const codeReviewChecklistTemplate: SkillTemplate = {
   description:
     'Review a code change against my checklist for correctness, tests and readability. Use when I paste a diff or ask for a review.',
   modelInvocable: true,
-  slashCommand: true,
+  command: null,
   argumentHint: null,
   files: [
     {

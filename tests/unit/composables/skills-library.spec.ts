@@ -1,15 +1,10 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  buildSkillKindOptions,
   buildSkillSourceOptions,
   estimateSkillCatalogTokens,
   filterSkills,
   formatSkillSource,
-  getSkillDisplayName,
-  getSkillKindLabels,
-  isSkillKind,
-  parseSkillKindFilter,
   parseSkillSourceFilter,
   requiresEnableConfirmation,
   useSkillActions,
@@ -32,7 +27,6 @@ mockNuxtImport('useSuccessMessage', () => mocks.successMessage)
 
 const counts = {
   sources: { all: 5, created: 3, imported: 2, apps: 0 },
-  kinds: { all: 5, skills: 4, commands: 2 },
 }
 
 describe('skills-library helpers', () => {
@@ -47,56 +41,11 @@ describe('skills-library helpers', () => {
   it('hides the source row when only one group exists', () => {
     expect(buildSkillSourceOptions({
       sources: { all: 3, created: 3, imported: 0, apps: 0 },
-      kinds: counts.kinds,
     })).toEqual([])
     expect(buildSkillSourceOptions(null)).toEqual([])
   })
 
-  it('uses the server total for All kinds, because a skill can be both', () => {
-    const options = buildSkillKindOptions(counts)
-
-    expect(options.map(option => option.value)).toEqual([
-      'all',
-      'skills',
-      'commands',
-    ])
-    expect(options[0]!.count).toBe(5)
-    expect(options[1]!.count + options[2]!.count).toBeGreaterThan(5)
-  })
-
-  it('hides the kind row when only one kind exists', () => {
-    expect(buildSkillKindOptions({
-      sources: counts.sources,
-      kinds: { all: 3, skills: 3, commands: 0 },
-    })).toEqual([])
-  })
-
-  it('mirrors the server rule for kinds: Auto is a skill, Only when I ask a command', () => {
-    const auto = createSkillSummary({
-      modelInvocable: true,
-      slashCommand: true,
-    })
-    const commandOnly = createSkillSummary({
-      modelInvocable: false,
-      slashCommand: true,
-    })
-    const plain = createSkillSummary({
-      modelInvocable: false,
-      slashCommand: false,
-    })
-
-    expect(isSkillKind(auto, 'skills')).toBe(true)
-    expect(isSkillKind(auto, 'commands')).toBe(false)
-    expect(isSkillKind(commandOnly, 'skills')).toBe(false)
-    expect(isSkillKind(commandOnly, 'commands')).toBe(true)
-    expect(isSkillKind(plain, 'skills')).toBe(true)
-    expect(getSkillKindLabels(auto)).toEqual(['Skill'])
-    expect(getSkillKindLabels(commandOnly)).toEqual(['Command'])
-    expect(getSkillDisplayName(auto)).toBe('review-pr')
-    expect(getSkillDisplayName(commandOnly)).toBe('/review-pr')
-  })
-
-  it('filters by source, kind and search text', () => {
+  it('filters by source and search text', () => {
     const skills = [
       createSkillSummary({ id: 'a', name: 'alpha', sourceKind: 'editor' }),
       createSkillSummary({
@@ -110,6 +59,7 @@ describe('skills-library helpers', () => {
         name: 'gamma',
         sourceKind: 'mcp',
         modelInvocable: false,
+        command: 'run-gamma',
         slashCommand: true,
       }),
     ]
@@ -118,27 +68,35 @@ describe('skills-library helpers', () => {
       return filterSkills(skills, input).map(skill => skill.id)
     }
 
-    expect(ids({ source: 'all', kind: 'all', query: '' })).toEqual([
-      'a',
-      'b',
-      'c',
-    ])
-    expect(ids({ source: 'imported', kind: 'all', query: '' })).toEqual(['b'])
-    expect(ids({ source: 'apps', kind: 'commands', query: '' })).toEqual(['c'])
-    expect(ids({ source: 'all', kind: 'skills', query: 'TRANSLATE' }))
-      .toEqual(['b'])
+    expect(ids({ source: 'all', query: '' })).toEqual(['a', 'b', 'c'])
+    expect(ids({ source: 'imported', query: '' })).toEqual(['b'])
+    expect(ids({ source: 'apps', query: '' })).toEqual(['c'])
+    expect(ids({ source: 'all', query: 'TRANSLATE' })).toEqual(['b'])
   })
 
-  it('parses unknown filter values to all', () => {
+  it('matches the search text against the command too', () => {
+    const skills = [
+      createSkillSummary({ id: 'a', name: 'alpha' }),
+      createSkillSummary({
+        id: 'c',
+        name: 'gamma',
+        command: 'run-gamma',
+        slashCommand: true,
+      }),
+    ]
+
+    expect(filterSkills(skills, { source: 'all', query: 'run-gam' })
+      .map(skill => skill.id)).toEqual(['c'])
+    expect(filterSkills(skills, { source: 'all', query: '  RUN-gamma ' })
+      .map(skill => skill.id)).toEqual(['c'])
+    expect(filterSkills(skills, { source: 'all', query: 'run-missing' }))
+      .toEqual([])
+  })
+
+  it('parses unknown source filter values to all', () => {
     expect(parseSkillSourceFilter('imported')).toBe('imported')
     expect(parseSkillSourceFilter('bogus')).toBe('all')
-    expect(parseSkillKindFilter('commands')).toBe('commands')
-    expect(parseSkillKindFilter(['x'])).toBe('all')
-  })
-
-  it('shows /name only when the skill is a slash command', () => {
-    expect(getSkillDisplayName({ name: 'x', slashCommand: true })).toBe('/x')
-    expect(getSkillDisplayName({ name: 'x', slashCommand: false })).toBe('x')
+    expect(parseSkillSourceFilter(['x'])).toBe('all')
   })
 
   it('describes the source of each kind of skill', () => {
@@ -248,6 +206,40 @@ describe('useSkillActions', () => {
     expect(result).toBe(false)
     expect(mocks.errorMessage).toHaveBeenCalled()
     expect(mocks.refreshNuxtData).toHaveBeenCalled()
+  })
+
+  it('saves a command and its hint and returns no message', async () => {
+    await expect(useSkillActions().saveCommand('id', {
+      command: 'review-pr',
+      argumentHint: 'A link',
+    })).resolves.toBeNull()
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/id', {
+      method: 'PATCH',
+      body: { command: 'review-pr', argumentHint: 'A link' },
+    })
+    expect(mocks.refreshNuxtData).toHaveBeenCalled()
+    expect(mocks.errorMessage).not.toHaveBeenCalled()
+  })
+
+  it('clears a command with null', async () => {
+    await useSkillActions().saveCommand('id', { command: null })
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/id', {
+      method: 'PATCH',
+      body: { command: null },
+    })
+  })
+
+  it('returns the server reason for a refused command without a toast', async () => {
+    mocks.fetch.mockRejectedValue({
+      data: { message: '/review-pr is already a command' },
+    })
+
+    await expect(useSkillActions().saveCommand('id', {
+      command: 'review-pr',
+    })).resolves.toBe('/review-pr is already a command')
+    expect(mocks.errorMessage).not.toHaveBeenCalled()
   })
 
   it('deletes only after a confirmation', async () => {

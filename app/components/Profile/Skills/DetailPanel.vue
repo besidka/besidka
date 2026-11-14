@@ -38,11 +38,11 @@
       </p>
       <div class="flex flex-wrap items-center gap-2 text-xs">
         <span
-          v-for="label in getSkillKindLabels(skill)"
-          :key="label"
+          v-if="skill.command && commandsFeature.active"
           class="badge badge-soft badge-sm"
+          data-testid="skill-detail-command"
         >
-          {{ label }}
+          /{{ skill.command }}
         </span>
         <span class="badge badge-soft badge-sm">
           {{ getSkillLicenceLabel(skill.licence.class) }}
@@ -180,6 +180,7 @@ const { data: skill, status, error, refresh } = useSkillDetail(
   () => props.skillId,
 )
 const actions = useSkillActions()
+const commandsFeature = useFeature('skills.commands')
 const updateReview = useSkillUpdateReview()
 const activeTab = useState<SkillDetailTab>(
   'skills:detail-tab',

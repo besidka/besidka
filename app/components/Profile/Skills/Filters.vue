@@ -15,15 +15,8 @@
       test-id-prefix="skills-source"
       @select="value => emit('selectSource', parseSkillSourceFilter(value))"
     />
-    <div class="flex items-start justify-between gap-3">
-      <HistoryFilterButtons
-        :options="kindOptions"
-        :model-value="kind"
-        label="Filter by kind"
-        test-id-prefix="skills-kind"
-        @select="value => emit('selectKind', parseSkillKindFilter(value))"
-      />
-      <div class="ml-auto shrink-0">
+    <div class="flex items-start justify-end gap-3">
+      <div class="shrink-0">
         <slot />
       </div>
     </div>
@@ -33,21 +26,17 @@
 <script setup lang="ts">
 import type {
   SkillFilterOption,
-  SkillKindFilter,
   SkillSourceFilter,
 } from '~/composables/skills-library'
 
 defineProps<{
   sourceOptions: Array<SkillFilterOption<SkillSourceFilter>>
-  kindOptions: Array<SkillFilterOption<SkillKindFilter>>
   source: SkillSourceFilter
-  kind: SkillKindFilter
   isSearchVisible: boolean
 }>()
 
 const emit = defineEmits<{
   selectSource: [source: SkillSourceFilter]
-  selectKind: [kind: SkillKindFilter]
 }>()
 
 const search = defineModel<string>('search', { required: true })

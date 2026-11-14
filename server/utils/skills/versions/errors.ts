@@ -6,6 +6,7 @@ export type SkillEditErrorCode
     | 'file-not-found'
     | 'stale-base'
     | 'name-taken'
+    | 'command-taken'
     | 'reserved-name'
     | 'invalid-request'
     | 'invalid-path'
@@ -31,6 +32,7 @@ const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'file-not-found': 404,
   'stale-base': 409,
   'name-taken': 409,
+  'command-taken': 409,
   'reserved-name': 400,
   'invalid-request': 400,
   'invalid-path': 400,
@@ -98,5 +100,13 @@ export function createFilesMissingError() {
     message: 'The files of this skill are missing',
     why: 'A stored file could not be read',
     fix: 'Restore an earlier version, or delete the skill',
+  })
+}
+
+export function createSkillCommandTakenError(command: string) {
+  return createSkillEditError('command-taken', {
+    message: `/${command} is already a command`,
+    why: 'Another of your skills already uses this command',
+    fix: 'Pick another command, or clear it on the other skill first',
   })
 }

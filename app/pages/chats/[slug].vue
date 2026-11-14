@@ -98,7 +98,7 @@
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
-              'mt-4': isTextPartAfterGeneratedImage(
+              'mt-4': hasGapBeforePart(
                 m,
                 getRenderedMessageParts(m),
                 index,
@@ -128,10 +128,6 @@
                 ? getCodeExecutionSkippedFiles(m.parts)
                 : []"
               :fallback-key="`${m.id}-${index}`"
-            />
-            <ChatSkillStep
-              v-else-if="isSkillStepPart(part)"
-              :part="part"
             />
             <ChatDocument
               v-else-if="isDocumentPart(part)"
@@ -315,9 +311,9 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
-  isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { hasGapBeforePart } from '~/utils/message-part-spacing'
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,

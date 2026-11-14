@@ -7,20 +7,17 @@
       Skills
     </template>
     <template #subtitle>
-      Skills teach the model how to do a task your way. Commands are skills
-      you run with /name.
+      Skills teach the model how to do a task your way. Give a skill a
+      command to run it with /command.
     </template>
 
     <template #toolbar>
       <ProfileSkillsFilters
         v-model:search="search"
         :source-options="sourceOptions"
-        :kind-options="kindOptions"
         :source="appliedSource"
-        :kind="appliedKind"
         :is-search-visible="isSearchVisible"
         @select-source="setSource"
-        @select-kind="setKind"
       >
         <ProfileSkillsNewMenu
           v-if="!isLibraryEmpty"
@@ -145,10 +142,8 @@ const detailTab = useState<SkillDetailTab>(
 const {
   search,
   appliedSource,
-  appliedKind,
   appliedQuery,
   setSource,
-  setKind,
   clearFilters,
 } = useSkillsFilters()
 const {
@@ -156,7 +151,6 @@ const {
   visibleSkills,
   needsReviewSkills,
   sourceOptions,
-  kindOptions,
   isSearchVisible,
   hasLoaded,
   hasError,
@@ -165,7 +159,6 @@ const {
   refresh,
 } = useSkillsLibrary({
   source: appliedSource,
-  kind: appliedKind,
   query: appliedQuery,
 })
 const actions = useSkillActions()
@@ -186,7 +179,6 @@ const isLibraryEmpty = computed<boolean>(() => {
 const isFiltered = computed<boolean>(() => {
   return !!appliedQuery.value
     || appliedSource.value !== 'all'
-    || appliedKind.value !== 'all'
 })
 
 const selectedId = computed<string | null>(() => {
@@ -246,15 +238,6 @@ watch(sourceOptions, async (options) => {
   }
 }, { immediate: true })
 
-watch(kindOptions, async (options) => {
-  if (
-    options.length
-    && !options.some(option => option.value === appliedKind.value)
-  ) {
-    await setKind('all', { replace: true })
-  }
-}, { immediate: true })
-
 function openDetail(
   skill: Pick<SkillSummary, 'id' | 'name'>,
   tab: SkillDetailTab = 'instructions',
@@ -283,7 +266,7 @@ function closeDetailFor(skillId: string) {
 }
 
 function onNew(action: SkillNewAction) {
-  if (action === 'blank' || action === 'command' || action === 'template') {
+  if (action === 'skill' || action === 'template') {
     createKind.value = action
 
     return
