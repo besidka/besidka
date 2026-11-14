@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createMemoryExtractionTestDb,
+} from '../../../../../setup/helpers/memory-extraction-db'
+import type {
+  MemoryExtractionTestDb,
+} from '../../../../../setup/helpers/memory-extraction-db'
+import {
   createFakeSkillBucket,
   createFakeSkillKv,
 } from '../../../../../setup/helpers/skills-db'
@@ -63,15 +69,18 @@ async function failureOf(promise: Promise<unknown>) {
 describe('POST /api/v1/skills/import/text', () => {
   let kv: FakeSkillKv
   let bucket: FakeSkillBucket
+  let testDb: MemoryExtractionTestDb
 
   beforeEach(() => {
+    testDb = createMemoryExtractionTestDb()
     mocks.featureOn = true
     kv = createFakeSkillKv()
     bucket = createFakeSkillBucket()
-    stubSkillsRouteGlobals({ userId: 5, db: null, kv, bucket })
+    stubSkillsRouteGlobals({ userId: 5, db: testDb.db, kv, bucket })
   })
 
   afterEach(() => {
+    testDb.close()
     vi.unstubAllGlobals()
   })
 
@@ -89,8 +98,8 @@ describe('POST /api/v1/skills/import/text', () => {
     expect(preview).toMatchObject({
       source: 'text',
       skill: { name: 'review-pr' },
-      licence: { class: 'none' },
-      requiresLicenceAcknowledgement: true,
+      license: { class: 'none' },
+      requiresLicenseAcknowledgement: true,
       files: [{ path: 'SKILL.md', kind: 'skill-md' }],
     })
     expect(preview.sourceVersion).toMatch(/^sha256-[a-f0-9]{16}$/)
@@ -101,22 +110,22 @@ describe('POST /api/v1/skills/import/text', () => {
       text: skillMarkdown({ extra: 'license: Proprietary' }),
     }))
 
-    expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
+    expect(failure).toMatchObject({ status: 422, code: 'license-restricted' })
     expect([...kv.values.keys()].some((key) => {
       return key.startsWith('skills:stage:')
     })).toBe(false)
   })
 
-  it('lets an open license field name an open licence and stays an import', async () => {
+  it('lets an open license field name an open license and stays an import', async () => {
     const preview = await callText({
       text: skillMarkdown({ extra: 'license: MIT' }),
     })
 
-    expect(preview.licence).toMatchObject({
+    expect(preview.license).toMatchObject({
       class: 'open',
       matched: ['field-only'],
     })
-    expect(preview.licence.class).not.toBe('authored')
+    expect(preview.license.class).not.toBe('authored')
   })
 
   it('rejects invalid frontmatter, an empty body and an oversized paste', async () => {

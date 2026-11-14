@@ -9,7 +9,7 @@ import { checkGithubSkillUpdate } from '~~/server/utils/skills/import/update-che
  * Looks for a newer commit of a skill imported from GitHub. Unchanged: the
  * answer is `{ upToDate: true }`. Changed: the new files become a persisted
  * pending version and the answer carries its diff against the current
- * version, the findings that are new in it and any licence change. The skill
+ * version, the findings that are new in it and any license change. The skill
  * keeps running on its current version until the pending one is accepted.
  * The import limit is spent only when GitHub is about to be called, so a
  * pinned or non-GitHub skill answers without using it.

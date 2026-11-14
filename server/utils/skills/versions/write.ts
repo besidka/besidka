@@ -1,5 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm'
-import { SKILL_LICENCE_CLASSIFIER_VERSION } from '#shared/utils/skills/licence'
+import { SKILL_LICENSE_CLASSIFIER_VERSION } from '#shared/utils/skills/license'
 import {
   SKILLS_MAX_USER_BYTES,
 } from '#shared/utils/skills-policy'
@@ -191,7 +191,7 @@ export async function writeSkillVersion(
       filesCount: input.files.length,
       bytes: prepared.totalBytes,
       licenseClass: prepared.licenseClass,
-      licenseFileSha256: prepared.licence.licenceFileSha256,
+      licenseFileSha256: prepared.license.licenseFileSha256,
       findings: input.findingCounts,
       note: input.note,
     },
@@ -202,16 +202,13 @@ export async function writeSkillVersion(
       description: prepared.frontmatter.description,
       licenseField: prepared.frontmatter.license,
       licenseClass: prepared.licenseClass,
-      licenseFileSha256: prepared.licence.licenceFileSha256,
-      licenseClassifierVersion: SKILL_LICENCE_CLASSIFIER_VERSION,
+      licenseFileSha256: prepared.license.licenseFileSha256,
+      licenseClassifierVersion: SKILL_LICENSE_CLASSIFIER_VERSION,
       compatibility: prepared.frontmatter.compatibility,
       metadata: prepared.frontmatter.metadata,
       allowedTools: prepared.frontmatter.allowedTools,
       filesCount: input.files.length,
       bytes: prepared.totalBytes,
-      ...(prepared.slashCommand === undefined
-        ? {}
-        : { slashCommand: prepared.slashCommand }),
       ...(markReady ? { status: 'ready' as const } : {}),
     },
   })
@@ -225,7 +222,7 @@ export async function writeSkillVersion(
     if (violation?.includes('skills.name')) {
       throw createSkillEditError('name-taken', {
         message: `A skill named ${prepared.frontmatter.name} exists`,
-        why: 'Skill names are unique, because they are the names of /commands too',
+        why: 'Skill names are unique per account',
         fix: 'Pick another name',
       })
     }

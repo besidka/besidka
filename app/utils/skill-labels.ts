@@ -1,26 +1,30 @@
 import type { SkillLicenseClass } from '#shared/utils/skills-policy'
 import type { SkillVersionSummary } from '#shared/types/skills.d'
+import { formatGithubSourceVersion } from '#shared/utils/skills/release'
 
-const SHORT_SHA_LENGTH = 7
-
-const LICENCE_LABELS: Record<SkillLicenseClass, string> = {
-  open: 'Open licence',
-  custom: 'Custom licence',
-  none: 'No licence stated',
-  restricted: 'Restricted licence',
+const LICENSE_LABELS: Record<SkillLicenseClass, string> = {
+  open: 'Open license',
+  custom: 'Custom license',
+  none: 'No license stated',
+  restricted: 'Restricted license',
   authored: 'Written by you',
 }
 
-export function getSkillLicenceLabel(licenceClass: SkillLicenseClass): string {
-  return LICENCE_LABELS[licenceClass]
+export function getSkillLicenseLabel(licenseClass: SkillLicenseClass): string {
+  return LICENSE_LABELS[licenseClass]
 }
 
 function shortSha(
-  version: Pick<SkillVersionSummary, 'sourceKind' | 'sourceVersion'>,
+  version: Pick<
+    SkillVersionSummary,
+    'sourceKind' | 'sourceRef' | 'sourceVersion'
+  >,
 ): string {
-  return version.sourceKind === 'github' && version.sourceVersion
-    ? ` @${version.sourceVersion.slice(0, SHORT_SHA_LENGTH)}`
-    : ''
+  const label = version.sourceKind === 'github'
+    ? formatGithubSourceVersion(version)
+    : null
+
+  return label ? ` @${label}` : ''
 }
 
 /**
@@ -30,7 +34,7 @@ function shortSha(
 export function describeSkillVersionOrigin(
   version: Pick<
     SkillVersionSummary,
-    'origin' | 'sourceKind' | 'sourceVersion' | 'isPending'
+    'origin' | 'sourceKind' | 'sourceRef' | 'sourceVersion' | 'isPending'
   >,
 ): string {
   const suffix = version.isPending ? ', pending' : ''

@@ -121,11 +121,11 @@ describe('validateSkillEditorPath', () => {
     })).toBeNull()
   })
 
-  it('refuses a root licence name while licence files are locked', () => {
+  it('refuses a root license name while license files are locked', () => {
     expect(validateSkillEditorPath('NOTICE.md', {
       files,
       filesLocked: true,
-    })).toContain('Licence files')
+    })).toContain('License files')
     expect(validateSkillEditorPath('NOTICE.md', {
       files,
       filesLocked: false,

@@ -31,10 +31,9 @@
           :name="tab.icon"
         />
         <span
-          :class="{
-            '@max-md:sr-only': tabs.length > BASE_TAB_COUNT
-              && activeTab !== tab.id,
-          }"
+          :class="tabs.length > BASE_TAB_COUNT && activeTab !== tab.id
+            ? collapseClass
+            : ''"
         >
           {{ tab.label }}
         </span>
@@ -68,6 +67,8 @@ interface HistoryTabLink {
 }
 
 const BASE_TAB_COUNT = 3
+const FIVE_TAB_COUNT = 5
+const SIX_TAB_COUNT = 6
 
 defineProps<{
   activeTab: HistoryTab
@@ -76,6 +77,23 @@ defineProps<{
 const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
 const skillsFeature = useFeature('skills')
+
+/**
+ * Inactive tabs keep only their icon when the row cannot hold every label.
+ * Six labelled tabs need about 570px (measured with Nunito: 82, 96, 100, 118,
+ * 80 and 91px), five need about 480px, so the container width that triggers
+ * the collapse grows with the tab count. The class strings are written out in
+ * full so Tailwind can see them.
+ */
+const collapseClass = computed<string>(() => {
+  if (tabs.value.length >= SIX_TAB_COUNT) {
+    return '@max-[40rem]:sr-only'
+  }
+
+  return tabs.value.length === FIVE_TAB_COUNT
+    ? '@max-[34rem]:sr-only'
+    : '@max-md:sr-only'
+})
 
 const tabs = computed<HistoryTabLink[]>(() => {
   const tabLinks: HistoryTabLink[] = [

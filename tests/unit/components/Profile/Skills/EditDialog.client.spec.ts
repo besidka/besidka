@@ -42,7 +42,7 @@ function detail(overrides = {}) {
     id: 'S1',
     name: 'review-pr',
     currentVersion: 3,
-    licence: {
+    license: {
       class: 'open',
       field: 'MIT',
       fileSha256: 'a'.repeat(64),
@@ -51,7 +51,7 @@ function detail(overrides = {}) {
     files: [
       { path: 'SKILL.md', bytes: 60, kind: 'skill-md', sha256: 'a', editable: true },
       { path: 'references/guide.md', bytes: 8, kind: 'reference', sha256: 'b', editable: true },
-      { path: 'LICENSE.txt', bytes: 4, kind: 'licence', sha256: 'c', editable: false },
+      { path: 'LICENSE.txt', bytes: 4, kind: 'license', sha256: 'c', editable: false },
     ],
     ...overrides,
   })
@@ -374,15 +374,15 @@ describe('Profile/Skills/EditDialog', () => {
     await setValue('skill-editor-textarea', 'changed')
     mocks.fetch.mockRejectedValueOnce({
       data: {
-        code: 'licence-restricted',
+        code: 'license-restricted',
         message: 'This skill cannot be saved',
-        why: 'The licence forbids copying',
+        why: 'The license forbids copying',
       },
     })
     await click('skill-edit-save')
 
     expect(get('skill-edit-save-error').textContent)
-      .toContain('The licence forbids copying')
+      .toContain('The license forbids copying')
   })
 
   it('opens another file, edits it and saves it with SKILL.md untouched', async () => {
@@ -410,17 +410,17 @@ describe('Profile/Skills/EditDialog', () => {
     }])
   })
 
-  it('opens a locked licence file read-only', async () => {
+  it('opens a locked license file read-only', async () => {
     await mountDialog()
 
     const items = document.body.querySelectorAll(
       '[data-testid="skill-file-tree-item"]',
     )
-    const licence = [...items].find((item) => {
+    const license = [...items].find((item) => {
       return item.textContent?.includes('LICENSE.txt')
     })
 
-    ;(licence as HTMLElement).click()
+    ;(license as HTMLElement).click()
     await flushPromises()
 
     expect(find('skill-editor-read-only')).not.toBeNull()

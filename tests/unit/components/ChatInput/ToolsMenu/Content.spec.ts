@@ -132,7 +132,7 @@ describe('ChatInput/ToolsMenu/Content skills', () => {
       skills: true,
     }))
 
-    expect(layout(wrapper)[0]).toBe('add')
+    expect(layout(wrapper).at(-1)).toBe('add')
     expect(wrapper.find('[data-testid="tools-action-attach"]').exists())
       .toBe(false)
     expect(wrapper.find('[data-testid="tools-action-skills"]').exists())
@@ -197,7 +197,7 @@ describe('ChatInput/ToolsMenu/Content project row', () => {
       project: true,
     }))
 
-    expect(layout(wrapper)).toEqual(['add', '---', 'image'])
+    expect(layout(wrapper)).toEqual(['image', '---', 'add'])
   })
 
   it('emits open-project-picker when the row is clicked', async () => {
@@ -215,13 +215,13 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
       const wrapper = await mountContent(createState())
 
       expect(layout(wrapper)).toEqual([
-        'add',
-        '---',
-        'search',
+        'image',
         '---',
         'reasoning',
         '---',
-        'image',
+        'search',
+        '---',
+        'add',
       ])
     })
 
@@ -243,11 +243,11 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     const wrapper = await mountContent(createState({ search: false }))
 
     expect(layout(wrapper)).toEqual([
-      'add',
+      'image',
       '---',
       'reasoning',
       '---',
-      'image',
+      'add',
     ])
   })
 
@@ -255,18 +255,18 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     async () => {
       const wrapper = await mountContent(createState({ reasoning: false }))
 
-      expect(layout(wrapper)).toEqual(['add', '---', 'search', '---', 'image'])
+      expect(layout(wrapper)).toEqual(['image', '---', 'search', '---', 'add'])
     })
 
   it('draws no leading divider when the Add group is absent', async () => {
     const wrapper = await mountContent(createState({ files: false }))
 
     expect(layout(wrapper)).toEqual([
-      'search',
+      'image',
       '---',
       'reasoning',
       '---',
-      'image',
+      'search',
     ])
   })
 
@@ -306,14 +306,14 @@ describe('ChatInput/ToolsMenu/Content Run code row', () => {
       }))
 
       expect(layout(wrapper)).toEqual([
-        'add',
-        '---',
-        'search',
+        'code',
+        'image',
         '---',
         'reasoning',
         '---',
-        'code',
-        'image',
+        'search',
+        '---',
+        'add',
       ])
       expect(wrapper.find('[data-testid="tools-code-execution-toggle"]')
         .exists()).toBe(true)
@@ -380,11 +380,11 @@ describe('ChatInput/ToolsMenu/Content section titles', () => {
     }
   })
 
-  it('titles the sections Add, Web search and Reasoning', async () => {
+  it('titles the sections Reasoning, Web search and Add, top to bottom', async () => {
     const wrapper = await mountContent(createState())
     const titles = wrapper.findAll('h3').map(heading => heading.text())
 
-    expect(titles).toEqual(['Add', 'Web search', 'Reasoning'])
+    expect(titles).toEqual(['Reasoning', 'Web search', 'Add'])
   })
 })
 
@@ -408,13 +408,13 @@ describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
       expect(explicit.find(ARTIFACT_ROW).exists()).toBe(false)
       expect(explicit.html()).toBe(without.html())
       expect(layout(explicit)).toEqual([
-        'add',
-        '---',
-        'search',
+        'image',
         '---',
         'reasoning',
         '---',
-        'image',
+        'search',
+        '---',
+        'add',
       ])
       expect(explicit.text()).not.toContain('Add artifact')
     })
@@ -470,5 +470,69 @@ describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
     await wrapper.find(ARTIFACT_ROW).trigger('click')
 
     expect(wrapper.emitted('open-artifact-picker')).toHaveLength(1)
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content memory row', () => {
+  function withMemory(excluded: boolean): ChatInputToolsState {
+    return { ...createState(), memory: { excluded } }
+  }
+
+  it('sits first, above Reasoning, Web search and Add, because the menu opens upward', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const sections = layout(wrapper).filter(section => section !== '---')
+
+    expect(sections).toEqual(['memory', 'image', 'reasoning', 'search', 'add'])
+  })
+
+  it('is one line: the label and the toggle, with no description under it', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const row = wrapper.get('[data-section="memory"] label')
+
+    expect(row.text()).toBe('Use memory')
+    expect((wrapper.get('[data-testid="new-chat-memory-note"]')
+      .element as HTMLElement).style.display).toBe('none')
+    expect(row.text()).not.toContain('Learns from this chat')
+  })
+
+  it('shows the description from an info button, like the Auto row', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const info = wrapper.get('[data-testid="new-chat-memory-info"]')
+
+    expect(info.attributes('aria-expanded')).toBe('false')
+
+    await info.trigger('click')
+
+    const note = wrapper.get('[data-testid="new-chat-memory-note"]')
+
+    expect(info.attributes('aria-expanded')).toBe('true')
+    expect(info.attributes('aria-controls')).toBe(note.attributes('id'))
+    expect((note.element as HTMLElement).style.display).not.toBe('none')
+    expect(note.text()).toBe('Learns from this chat and finds it in chat search.')
+  })
+
+  it('keeps the excluded-memory helper in the same note', async () => {
+    const wrapper = await mountContent(withMemory(true))
+
+    await wrapper.get('[data-testid="new-chat-memory-info"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="new-chat-memory-note"]').text())
+      .toContain('won\'t learn from this chat')
+  })
+
+  it('does not toggle memory when the info button is pressed', async () => {
+    const wrapper = await mountContent(withMemory(false))
+
+    await wrapper.get('[data-testid="new-chat-memory-info"]').trigger('click')
+
+    expect(wrapper.emitted('update:use-memory')).toBeUndefined()
+  })
+
+  it('still emits the new value from the toggle', async () => {
+    const wrapper = await mountContent(withMemory(false))
+
+    await wrapper.get('[data-testid="new-chat-memory-toggle"]').setValue(false)
+
+    expect(wrapper.emitted('update:use-memory')).toEqual([[false]])
   })
 })

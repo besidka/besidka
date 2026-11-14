@@ -18,7 +18,7 @@ const BODY_MAX_BYTES = 4096
 const bodySchema = z.object({
   stageId: z.string().regex(SKILL_STAGE_ID_PATTERN),
   acknowledged: z.literal(true),
-  licenceAcknowledged: z.boolean().optional(),
+  licenseAcknowledged: z.boolean().optional(),
   asUpdateOf: z.string().regex(/^[A-Za-z0-9]{1,64}$/).optional(),
   name: z.string().min(1).max(SKILL_NAME_MAX).optional(),
 })
@@ -66,7 +66,7 @@ export default defineEventHandler(async (event) => {
     kv: useKV(),
     userId,
     stageId: body.data.stageId,
-    licenceAcknowledged: body.data.licenceAcknowledged,
+    licenseAcknowledged: body.data.licenseAcknowledged,
     name: body.data.name,
     asUpdateOf: body.data.asUpdateOf,
     logger,

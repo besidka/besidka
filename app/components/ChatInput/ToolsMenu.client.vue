@@ -207,7 +207,7 @@ const HIGHLIGHT_DURATION_MS = 1200
 const CHECKED_RADIO_SELECTOR = 'input[type="radio"]:checked:not(:disabled)'
 const FOCUSABLE_SELECTOR = [
   'input:not(:disabled)',
-  'button:not(:disabled)',
+  'button:not(:disabled):not([aria-controls])',
   'a[href]',
 ].join(', ')
 

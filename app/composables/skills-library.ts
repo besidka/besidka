@@ -4,9 +4,9 @@ import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { formatSkillCatalogLine } from '#shared/utils/skills/compose'
 import { getSkillSourceGroup } from '#shared/utils/skills/edit'
 import {
-  isSkillCommandKind,
-  isSkillSkillKind,
-} from '#shared/utils/skills/mode'
+  formatGithubSourceVersion,
+  isSemverTag,
+} from '#shared/utils/skills/release'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillSourceGroup } from '#shared/utils/skills/edit'
 import type {
@@ -15,7 +15,6 @@ import type {
 } from '#shared/types/skills.d'
 
 export type SkillSourceFilter = SkillSourceGroup | 'all'
-export type SkillKindFilter = 'skills' | 'commands' | 'all'
 
 export interface SkillFilterOption<Value extends string> {
   value: Value
@@ -41,22 +40,7 @@ const SOURCE_FILTER_LABELS: Record<SkillSourceGroup, string> = {
   imported: 'Imported',
   apps: 'From apps',
 }
-const KIND_FILTERS = ['skills', 'commands'] as const
-const KIND_FILTER_LABELS: Record<typeof KIND_FILTERS[number], string> = {
-  skills: 'Skills',
-  commands: 'Commands',
-}
-const SHORT_SHA_LENGTH = 7
 const GITHUB_HOST_PREFIX = /^https?:\/\//
-
-export function isSkillKind(
-  skill: Pick<SkillSummary, 'modelInvocable' | 'slashCommand'>,
-  kind: Exclude<SkillKindFilter, 'all'>,
-): boolean {
-  return kind === 'commands'
-    ? isSkillCommandKind(skill)
-    : isSkillSkillKind(skill)
-}
 
 /**
  * The source chips: only groups the user has, each with its count, preceded
@@ -90,37 +74,6 @@ export function buildSkillSourceOptions(
   ]
 }
 
-/**
- * The kind chips. A skill that is both a skill and a command counts in both,
- * so All uses the server's total and not the sum of the two.
- */
-export function buildSkillKindOptions(
-  counts: SkillsListResponse['counts'] | null,
-): Array<SkillFilterOption<SkillKindFilter>> {
-  if (!counts) {
-    return []
-  }
-
-  const available = KIND_FILTERS.filter((kind) => {
-    return counts.kinds[kind] > 0
-  })
-
-  if (available.length < SKILLS_FILTER_MIN_OPTIONS) {
-    return []
-  }
-
-  return [
-    { value: 'all', label: 'All', count: counts.kinds.all },
-    ...available.map((kind) => {
-      return {
-        value: kind,
-        label: KIND_FILTER_LABELS[kind],
-        count: counts.kinds[kind],
-      }
-    }),
-  ]
-}
-
 export function parseSkillSourceFilter(value: unknown): SkillSourceFilter {
   return typeof value === 'string'
     && (SOURCE_FILTERS as readonly string[]).includes(value)
@@ -128,16 +81,9 @@ export function parseSkillSourceFilter(value: unknown): SkillSourceFilter {
     : 'all'
 }
 
-export function parseSkillKindFilter(value: unknown): SkillKindFilter {
-  return typeof value === 'string'
-    && (KIND_FILTERS as readonly string[]).includes(value)
-    ? value as typeof KIND_FILTERS[number]
-    : 'all'
-}
-
 export function filterSkills(
   skills: SkillSummary[],
-  filters: { source: SkillSourceFilter, kind: SkillKindFilter, query: string },
+  filters: { source: SkillSourceFilter, query: string },
 ): SkillSummary[] {
   const term = filters.query.trim().toLowerCase()
 
@@ -149,39 +95,20 @@ export function filterSkills(
       return false
     }
 
-    if (filters.kind !== 'all' && !isSkillKind(skill, filters.kind)) {
-      return false
-    }
-
     if (!term) {
       return true
     }
 
     return skill.name.toLowerCase().includes(term)
       || skill.description.toLowerCase().includes(term)
+      || (skill.command ?? '').includes(term)
   })
-}
-
-export function getSkillKindLabels(
-  skill: Pick<SkillSummary, 'modelInvocable' | 'slashCommand'>,
-): string[] {
-  return KIND_FILTERS
-    .filter(kind => isSkillKind(skill, kind))
-    .map((kind) => {
-      return kind === 'skills' ? 'Skill' : 'Command'
-    })
-}
-
-export function getSkillDisplayName(
-  skill: Pick<SkillSummary, 'name' | 'slashCommand' | 'modelInvocable'>,
-): string {
-  return isSkillCommandKind(skill) ? `/${skill.name}` : skill.name
 }
 
 export function formatSkillSource(
   skill: Pick<
     SkillSummary,
-    'sourceKind' | 'sourceUrl' | 'sourcePath' | 'sourceVersion'
+    'sourceKind' | 'sourceUrl' | 'sourceRef' | 'sourcePath' | 'sourceVersion'
   >,
 ): string {
   if (skill.sourceKind === 'github' && skill.sourceUrl) {
@@ -189,9 +116,9 @@ export function formatSkillSource(
     const location = skill.sourcePath
       ? `${repository}/${skill.sourcePath}`
       : repository
-    const commit = skill.sourceVersion?.slice(0, SHORT_SHA_LENGTH)
+    const version = formatGithubSourceVersion(skill)
 
-    return commit ? `${location} @ ${commit}` : location
+    return version ? `${location} @ ${version}` : location
   }
 
   if (skill.sourceKind === 'zip') {
@@ -215,6 +142,38 @@ export function formatSkillSource(
   }
 
   return 'Created by you'
+}
+
+/**
+ * The version words of a skill's meta line. A release tag already sits in the
+ * source (`github.com/o/r @ 2.1.2`); a `metadata.version` from the SKILL.md
+ * is added when no tag applies. Besidka's own numbering then reads "edit v3",
+ * so it is not mistaken for the author's version, and plain "v3" when there
+ * is no other version on the line.
+ */
+export function formatSkillVersions(
+  skill: Pick<
+    SkillSummary,
+    'sourceKind' | 'sourceRef' | 'metadataVersion' | 'currentVersion'
+  >,
+): string[] {
+  const isTagged = skill.sourceKind === 'github'
+    && !!skill.sourceRef
+    && isSemverTag(skill.sourceRef)
+  const authorVersion = isTagged ? null : skill.metadataVersion
+  const parts: string[] = []
+
+  if (authorVersion) {
+    parts.push(`version ${authorVersion}`)
+  }
+
+  const hasAuthorVersion = isTagged || !!authorVersion
+
+  parts.push(hasAuthorVersion
+    ? `edit v${skill.currentVersion}`
+    : `v${skill.currentVersion}`)
+
+  return parts
 }
 
 /**
@@ -246,8 +205,8 @@ export function requiresEnableConfirmation(
 }
 
 /**
- * Source, kind and search text of the manager. The URL query is the source of
- * truth (`?source=...&kind=...&query=...`), so a filter change is a history
+ * Source and search text of the manager. The URL query is the source of
+ * truth (`?source=...&query=...`), so a filter change is a history
  * entry and Back restores the previous filters.
  */
 export function useSkillsFilters() {
@@ -256,9 +215,6 @@ export function useSkillsFilters() {
 
   const appliedSource = computed<SkillSourceFilter>(() => {
     return parseSkillSourceFilter(route.query.source)
-  })
-  const appliedKind = computed<SkillKindFilter>(() => {
-    return parseSkillKindFilter(route.query.kind)
   })
   const appliedQuery = computed<string>(() => {
     return toArtifactSearchTerm(parseArtifactSearch(route.query.query))
@@ -312,24 +268,12 @@ export function useSkillsFilters() {
     await commitQuery({ source: source === 'all' ? undefined : source }, options)
   }
 
-  async function setKind(
-    kind: SkillKindFilter,
-    options: { replace?: boolean } = {},
-  ) {
-    if (kind === appliedKind.value) {
-      return
-    }
-
-    await commitQuery({ kind: kind === 'all' ? undefined : kind }, options)
-  }
-
   async function clearFilters() {
     search.value = ''
 
     await commitQuery({
       query: undefined,
       source: undefined,
-      kind: undefined,
     })
   }
 
@@ -352,22 +296,18 @@ export function useSkillsFilters() {
   return {
     search,
     appliedSource,
-    appliedKind,
     appliedQuery,
     setSource,
-    setKind,
     clearFilters,
   }
 }
 
 /**
  * The user's skills: one `useLazyFetch` with a 300 ms skeleton delay, so a
- * fast response never flashes a skeleton. Counts come from the server because
- * a skill that is both a skill and a command counts in both kinds.
+ * fast response never flashes a skeleton. Counts come from the server.
  */
 export function useSkillsLibrary(filters: {
   source: Ref<SkillSourceFilter>
-  kind: Ref<SkillKindFilter>
   query: Ref<string>
 }) {
   const { data, status, error, refresh } = useLazyFetch('/api/v1/skills', {
@@ -411,7 +351,6 @@ export function useSkillsLibrary(filters: {
   const visibleSkills = computed<SkillSummary[]>(() => {
     return filterSkills(skills.value, {
       source: filters.source.value,
-      kind: filters.kind.value,
       query: filters.query.value,
     })
   })
@@ -424,10 +363,6 @@ export function useSkillsLibrary(filters: {
 
   const sourceOptions = computed(() => {
     return buildSkillSourceOptions(counts.value)
-  })
-
-  const kindOptions = computed(() => {
-    return buildSkillKindOptions(counts.value)
   })
 
   const isSearchVisible = computed<boolean>(() => {
@@ -465,7 +400,6 @@ export function useSkillsLibrary(filters: {
     needsReviewSkills,
     counts,
     sourceOptions,
-    kindOptions,
     isSearchVisible,
     hasLoaded,
     hasError,
@@ -548,6 +482,7 @@ export function useSkillActions() {
     skillId: string,
     changes: {
       mode?: SkillMode
+      command?: string | null
       argumentHint?: string | null
     },
   ): Promise<boolean> {
@@ -570,6 +505,33 @@ export function useSkillActions() {
         await refreshSkillData(skillId)
 
         return false
+      }
+    })
+  }
+
+  /**
+   * Saves the command (and its hint) without a toast: the settings form shows
+   * the server's reason next to the field. Returns that message, or null once
+   * the save went through.
+   */
+  async function saveCommand(
+    skillId: string,
+    changes: { command: string | null, argumentHint?: string | null },
+  ): Promise<string | null> {
+    return await runExclusive(skillId, async () => {
+      try {
+        await $fetch(`/api/v1/skills/${skillId}`, {
+          method: 'PATCH',
+          body: changes,
+        })
+        await refreshSkillData(skillId)
+
+        return null
+      } catch (exception) {
+        const parsedException = parseError(exception)
+
+        return parsedException.message
+          || 'The command could not be saved.'
       }
     })
   }
@@ -649,6 +611,18 @@ export function useSkillActions() {
         await refreshSkillData(skill.id)
 
         if (result.upToDate) {
+          if ('contentUnchanged' in result && result.contentUnchanged) {
+            const newVersion = result.latestTag
+              ?? result.latestVersion?.slice(0, 7)
+
+            useSuccessMessage(
+              `No changes in ${newVersion ?? 'the new version'}`,
+              `${skill.name} is the same there, so nothing needs updating.`,
+            )
+
+            return 'up-to-date'
+          }
+
           useSuccessMessage(
             `${skill.name} is up to date`,
             'pinned' in result && result.pinned
@@ -677,6 +651,7 @@ export function useSkillActions() {
     busyIds,
     isBusy,
     saveSettings,
+    saveCommand,
     setMode,
     deleteSkill,
     checkForUpdates,

@@ -230,7 +230,7 @@ export const JEV_SHARE_PII_CHECK = {
     criteria: {
       true: 'The chat includes information that identifies or describes a '
         + 'real private individual: a home or postal address, phone number, '
-        + 'personal or work email, government ID, bank account or licence '
+        + 'personal or work email, government ID, bank account or license '
         + 'plate, health information about an identifiable person, or the '
         + 'full name of a private person together with details about them.',
       false: 'The chat has no such data. Public figures, fictional '

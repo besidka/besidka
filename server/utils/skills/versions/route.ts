@@ -61,27 +61,29 @@ export const restoreBodySchema = z.object({
   note: noteSchema,
 }).strict()
 
+const commandSchema = z.string().max(SKILL_NAME_MAX + 1).nullable()
+
 export const createBodySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('blank'),
     name: nameSchema,
     description: z.string().max(SKILL_DESCRIPTION_MAX).optional(),
-  }).strict(),
-  z.object({
-    kind: z.literal('command'),
-    name: nameSchema,
-    description: z.string().max(SKILL_DESCRIPTION_MAX).optional(),
+    mode: z.enum(SKILL_MODES).optional(),
+    command: commandSchema.optional(),
     argumentHint: argumentHintSchema.nullable().optional(),
   }).strict(),
   z.object({
     kind: z.literal('template'),
     template: z.enum(SKILL_TEMPLATE_IDS),
     name: nameSchema.optional(),
+    mode: z.enum(SKILL_MODES).optional(),
+    command: commandSchema.optional(),
   }).strict(),
 ])
 
 export const settingsBodySchema = z.object({
   mode: z.enum(SKILL_MODES).optional(),
+  command: commandSchema.optional(),
   argumentHint: argumentHintSchema.nullable().optional(),
 }).strict().refine((body) => {
   return Object.values(body).some((value) => {

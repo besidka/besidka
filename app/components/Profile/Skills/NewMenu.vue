@@ -119,8 +119,7 @@ const sheetTitleId = useId()
 
 const items = computed<NewMenuItem[]>(() => {
   const menuItems: NewMenuItem[] = [
-    { action: 'blank', label: 'Blank skill', icon: 'lucide:file-plus' },
-    { action: 'command', label: 'Blank command', icon: 'lucide:square-slash' },
+    { action: 'skill', label: 'New skill', icon: 'lucide:file-plus' },
     {
       action: 'template',
       label: 'From a template',

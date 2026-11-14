@@ -8,7 +8,7 @@ import { listUserSkills } from '~~/server/utils/skills/versions/view'
  */
 export default defineEventHandler(async (event) => {
   const { logger, userId } = await requireSkillsSession(event)
-  const result = await listUserSkills(useDb(), userId)
+  const result = await listUserSkills(useDb(), userId, useKV())
 
   logger.set({
     attributes: { skills: { list: { count: result.skills.length } } },

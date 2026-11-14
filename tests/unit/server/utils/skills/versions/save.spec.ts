@@ -30,14 +30,14 @@ const { saveSkillChanges } = await import(
 )
 
 const logger = { set: vi.fn() }
-const MIT_LICENCE = readFileSync(
-  join(process.cwd(), 'tests/fixtures/skills/licences/mit.txt'),
+const MIT_LICENSE = readFileSync(
+  join(process.cwd(), 'tests/fixtures/skills/licenses/mit.txt'),
   'utf-8',
 )
-const ANTHROPIC_LICENCE = readFileSync(
+const ANTHROPIC_LICENSE = readFileSync(
   join(
     process.cwd(),
-    'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+    'tests/fixtures/skills/licenses/anthropic-proprietary.txt',
   ),
   'utf-8',
 )
@@ -337,8 +337,10 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ renamed: true })
     })
 
-    it('turns /name off when the skill is renamed to a reserved name', async () => {
-      const { skillId } = await seedAuthored(undefined, { slashCommand: true })
+    it('keeps the command when the skill is renamed to a reserved name', async () => {
+      const { skillId } = await seedAuthored(undefined, {
+        slashName: 'run-review',
+      })
       const result = await save(skillId, [{
         op: 'put',
         path: 'SKILL.md',
@@ -348,14 +350,14 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ renamed: true })
       expect(await skillRow(skillId)).toMatchObject({
         name: 'memory',
-        slashCommand: false,
+        slashName: 'run-review',
       })
     })
 
-    it('turns /name on again when an enabled skill leaves a reserved name', async () => {
+    it('keeps the command when a skill leaves a reserved name', async () => {
       const { skillId } = await seedAuthored(
         { 'SKILL.md': skillMarkdown({ name: 'memory' }) },
-        { name: 'memory', slashCommand: false },
+        { name: 'memory', slashName: 'run-review' },
       )
       const result = await save(skillId, [{
         op: 'put',
@@ -366,14 +368,14 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ renamed: true })
       expect(await skillRow(skillId)).toMatchObject({
         name: 'my-memory',
-        slashCommand: true,
+        slashName: 'run-review',
       })
     })
 
-    it('leaves a disabled skill without /name on rename', async () => {
+    it('leaves a skill without a command without one on rename', async () => {
       const { skillId } = await seedAuthored(
         { 'SKILL.md': skillMarkdown({ name: 'memory' }) },
-        { name: 'memory', enabled: false, slashCommand: false },
+        { name: 'memory', enabled: false },
       )
 
       await save(skillId, [{
@@ -382,10 +384,13 @@ describe('saveSkillChanges', () => {
         content: skillMarkdown({ name: 'my-memory' }),
       }])
 
-      expect(await skillRow(skillId)).toMatchObject({ slashCommand: false })
+      expect(await skillRow(skillId)).toMatchObject({
+        slashName: null,
+        slashCommand: false,
+      })
     })
 
-    it('allows a reserved name when the command toggle is off', async () => {
+    it('allows a reserved name', async () => {
       const { skillId } = await seedAuthored()
       const result = await save(skillId, [{
         op: 'put',
@@ -542,13 +547,13 @@ describe('saveSkillChanges', () => {
     })
   })
 
-  describe('licence', () => {
+  describe('license', () => {
     it.each(['open', 'custom'] as const)(
       'keeps LICENSE and NOTICE as they are in a %s skill',
       async (licenseClass) => {
         const { skillId } = await seedAuthored({
           'SKILL.md': skillMarkdown(),
-          'LICENSE': MIT_LICENCE,
+          'LICENSE': MIT_LICENSE,
           'NOTICE.md': 'Notice\n',
         }, { licenseClass })
         const attempts = [
@@ -564,7 +569,7 @@ describe('saveSkillChanges', () => {
 
           expect(failure).toMatchObject({
             status: 403,
-            code: 'licence-file-locked',
+            code: 'license-file-locked',
           })
         }
 
@@ -575,7 +580,7 @@ describe('saveSkillChanges', () => {
     it('lets other files change in an open skill', async () => {
       const { skillId } = await seedAuthored({
         'SKILL.md': skillMarkdown(),
-        'LICENSE': MIT_LICENCE,
+        'LICENSE': MIT_LICENSE,
       }, { licenseClass: 'open' })
       const result = await save(skillId, [
         { op: 'put', path: 'references/guide.md', content: 'Guide\n' },
@@ -584,21 +589,21 @@ describe('saveSkillChanges', () => {
       expect(result).toMatchObject({ version: 2, licenseClass: 'open' })
     })
 
-    it('blocks a restricted licence file with the section 4 message', async () => {
+    it('blocks a restricted license file with the section 4 message', async () => {
       const { skillId } = await seedAuthored()
       const failure = await failureOf(save(skillId, [
-        { op: 'put', path: 'LICENSE.txt', content: ANTHROPIC_LICENCE },
+        { op: 'put', path: 'LICENSE.txt', content: ANTHROPIC_LICENSE },
       ]))
 
-      expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
+      expect(failure).toMatchObject({ status: 422, code: 'license-restricted' })
       expect(failure.why).toContain('Anthropic')
       expect(await versionNumbers(skillId)).toEqual([1])
     })
 
-    it('keeps class authored when a permissive licence file is added', async () => {
+    it('keeps class authored when a permissive license file is added', async () => {
       const { skillId } = await seedAuthored()
       const result = await save(skillId, [
-        { op: 'put', path: 'LICENSE', content: MIT_LICENCE },
+        { op: 'put', path: 'LICENSE', content: MIT_LICENSE },
       ])
       const row = await skillRow(skillId)
 
@@ -613,14 +618,14 @@ describe('saveSkillChanges', () => {
         sourceKind: 'zip',
       })
       const result = await save(skillId, [
-        { op: 'put', path: 'LICENSE', content: MIT_LICENCE },
+        { op: 'put', path: 'LICENSE', content: MIT_LICENSE },
       ])
 
       expect(result).toMatchObject({ licenseClass: 'open' })
       expect((await skillRow(skillId)).licenseClass).toBe('open')
     })
 
-    it('does not block an authored skill on a proprietary licence field alone', async () => {
+    it('does not block an authored skill on a proprietary license field alone', async () => {
       const { skillId } = await seedAuthored()
       const result = await save(skillId, [{
         op: 'put',

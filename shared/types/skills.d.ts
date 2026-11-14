@@ -18,6 +18,7 @@ export interface SkillSummary {
   description: string
   enabled: boolean
   modelInvocable: boolean
+  command: string | null
   slashCommand: boolean
   argumentHint: string | null
   status: SkillStatus
@@ -28,6 +29,8 @@ export interface SkillSummary {
   sourceRef: string | null
   sourcePath: string | null
   sourceVersion: string | null
+  metadataVersion: string | null
+  updateAvailable: { label: string, ref: string } | null
   currentVersion: number
   pendingVersion: number | null
   filesCount: number
@@ -43,7 +46,6 @@ export interface SkillsListResponse {
   skills: SkillSummary[]
   counts: {
     sources: { all: number, created: number, imported: number, apps: number }
-    kinds: { all: number, skills: number, commands: number }
   }
 }
 
@@ -76,7 +78,7 @@ export interface SkillFileSummary {
 }
 
 export interface SkillDetail extends SkillSummary {
-  licence: {
+  license: {
     class: SkillLicenseClass
     field: string | null
     fileSha256: string | null
@@ -112,11 +114,28 @@ export interface SkillVersionDiffResponse {
     truncated: boolean
   }
   skipped: Array<{ path: string, status: SkillFileDiffStatus }>
-  licence: {
+  license: {
     changed: boolean
     before: { class: SkillLicenseClass, fileSha256: string | null }
     after: { class: SkillLicenseClass, fileSha256: string | null }
   }
+}
+
+export interface SkillImportRelease {
+  tag: string | null
+  isLatestRelease: boolean
+  latestTag: string | null
+  defaultBranch: string | null
+  channel: 'release' | 'branch'
+  switchable: boolean
+}
+
+export interface SkillImportInstalled {
+  kind: 'same-source' | 'same-name'
+  skillId: string
+  name: string
+  sourceLabel: string | null
+  isUpToDate: boolean
 }
 
 export interface SkillImportPreview {
@@ -126,6 +145,8 @@ export interface SkillImportPreview {
   sourceUrl: string | null
   sourceRef: string | null
   sourcePath: string | null
+  release: SkillImportRelease | null
+  installed: SkillImportInstalled | null
   expiresAt: number
   skill: {
     name: string
@@ -135,7 +156,6 @@ export interface SkillImportPreview {
     metadata: Record<string, string> | null
     allowedTools: string[] | null
     modelInvocable: boolean
-    slashCommand: boolean
     argumentHint: string | null
   }
   files: Array<{ path: string, bytes: number, kind: SkillFileKind }>
@@ -143,16 +163,17 @@ export interface SkillImportPreview {
   findings: SkillFinding[]
   findingCounts: Record<string, number>
   warnings: string[]
-  licence: {
+  license: {
     class: SkillLicenseClass
     text: string
     matched: string[]
     file: string | null
     spdx: string | null
-    licenceText: string | null
+    licenseText: string | null
     licenseField: string | null
+    fromRepositoryRoot: boolean
   }
-  requiresLicenceAcknowledgement: boolean
+  requiresLicenseAcknowledgement: boolean
 }
 
 export interface SkillGithubPick {
@@ -177,6 +198,6 @@ export interface SkillImportCommitResponse {
   version: number
   pendingVersion?: number
   sha256?: string
-  licenceClass: SkillLicenseClass
+  licenseClass: SkillLicenseClass
   filesCount: number
 }

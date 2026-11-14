@@ -12,6 +12,7 @@ import type {
 import {
   createFakeSkillBucket,
   createFakeSkillKv,
+  seedSkillWithFiles,
 } from '../../../../../setup/helpers/skills-db'
 import type {
   FakeSkillBucket,
@@ -30,7 +31,7 @@ import {
 } from '../../../../../setup/helpers/github-mock'
 import type { GithubMock } from '../../../../../setup/helpers/github-mock'
 
-const MIT_LICENCE = [
+const MIT_LICENSE = [
   'MIT License',
   '',
   'Copyright (c) 2026 Example',
@@ -122,7 +123,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
   function archiveAt(sha: string, extra: Record<string, string> = {}) {
     return githubRepoArchive(sha, {
       'README.md': '# Repo\n',
-      'LICENSE': MIT_LICENCE,
+      'LICENSE': MIT_LICENSE,
       'skills/review-pr/SKILL.md': skillMarkdown(),
       'skills/review-pr/references/checklist.md': '- Check tests\n',
       ...extra,
@@ -225,19 +226,23 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     })).toBe(false)
   })
 
-  it('uses the repository-root licence when the skill has none', async () => {
+  it('uses the repository-root license when the skill has none', async () => {
     await signIn()
 
     const result = await preview({
       url: 'https://github.com/o/r/tree/main/skills/review-pr',
     })
 
-    expect(result.licence).toMatchObject({ class: 'open', file: 'LICENSE' })
-    expect(result.requiresLicenceAcknowledgement).toBe(false)
-    expect(result.warnings.join(' ')).toContain('licence of the repository root')
+    expect(result.license).toMatchObject({
+      class: 'open',
+      file: 'LICENSE',
+      fromRepositoryRoot: true,
+    })
+    expect(result.requiresLicenseAcknowledgement).toBe(false)
+    expect(result.warnings).toEqual([])
   })
 
-  it('ignores the root licence when the skill carries its own', async () => {
+  it('ignores the root license when the skill carries its own', async () => {
     await signIn()
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE, {
       'skills/review-pr/LICENSE.txt': 'Custom terms apply to this skill only.\n',
@@ -247,8 +252,9 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       url: 'https://github.com/o/r/tree/main/skills/review-pr',
     })
 
-    expect(result.licence.file).toBe('LICENSE.txt')
-    expect(result.licence.class).not.toBe('open')
+    expect(result.license.file).toBe('LICENSE.txt')
+    expect(result.license.fromRepositoryRoot).toBe(false)
+    expect(result.license.class).not.toBe('open')
   })
 
   it('treats a blob link to SKILL.md as its parent folder and reads the archive', async () => {
@@ -267,11 +273,11 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     ])
   })
 
-  it('still blocks a restricted licence for a blob link to SKILL.md', async () => {
+  it('still blocks a restricted license for a blob link to SKILL.md', async () => {
     await signIn()
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE, {
       'skills/review-pr/LICENSE.txt': readFileSync(
-        'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+        'tests/fixtures/skills/licenses/anthropic-proprietary.txt',
         'utf8',
       ),
     }))
@@ -280,7 +286,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       url: 'https://github.com/o/r/blob/main/skills/review-pr/SKILL.md',
     }))
 
-    expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
+    expect(failure).toMatchObject({ status: 422, code: 'license-restricted' })
   })
 
   it('finds the only skill from a bare repository link', async () => {
@@ -428,6 +434,22 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     expect(github.fetch).not.toHaveBeenCalled()
   })
 
+  it('names what is wrong with a GitHub page link, with the fix given once', async () => {
+    await signIn()
+
+    const failure = await failureOf(preview({
+      url: 'https://github.com/o/r/issues/1',
+    }))
+
+    expect(failure).toMatchObject({
+      status: 400,
+      message: 'This link cannot be imported',
+      why: 'github.com/o/r/issues is a GitHub page, not a folder of the repository',
+    })
+    expect(failure.fix).toContain('github.com/owner/repo/skills/name')
+    expect(github.fetch).not.toHaveBeenCalled()
+  })
+
   it('does not echo the validation message of a bad body', async () => {
     await signIn()
 
@@ -457,11 +479,11 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
     expect(failure).toMatchObject({ status: 413, code: 'github-too-large' })
   })
 
-  it('blocks a restricted licence before staging', async () => {
+  it('blocks a restricted license before staging', async () => {
     await signIn()
     github.archives.set(GITHUB_SHA_ONE, archiveAt(GITHUB_SHA_ONE, {
       'skills/review-pr/LICENSE.txt': readFileSync(
-        'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+        'tests/fixtures/skills/licenses/anthropic-proprietary.txt',
         'utf8',
       ),
     }))
@@ -470,7 +492,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       url: 'https://github.com/o/r/tree/main/skills/review-pr',
     }))
 
-    expect(failure).toMatchObject({ status: 422, code: 'licence-restricted' })
+    expect(failure).toMatchObject({ status: 422, code: 'license-restricted' })
   })
 
   it('commits the staged import with its GitHub provenance, disabled', async () => {
@@ -508,5 +530,335 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       eq(schema.skillFiles.skillId, skill!.id),
       eq(schema.skillFiles.path, 'LICENSE'),
     ))).toHaveLength(1)
+  })
+
+  describe('release tags', () => {
+    const LATEST_SHA = '4'.repeat(40)
+    const OLDER_SHA = '5'.repeat(40)
+    const FOLDER_URL = 'https://github.com/o/r/tree/main/skills/review-pr'
+
+    function addReleases() {
+      github.tags.set('2.9.0', { sha: OLDER_SHA })
+      github.tags.set('2.10.0', { sha: 'a'.repeat(40), peeled: LATEST_SHA })
+      github.tags.set('2.10.0-rc.1', { sha: '6'.repeat(40) })
+      github.tags.set('latest', { sha: '7'.repeat(40) })
+      github.archives.set(LATEST_SHA, archiveAt(LATEST_SHA))
+      github.archives.set(OLDER_SHA, archiveAt(OLDER_SHA))
+    }
+
+    it('pins a default-branch link to the highest release tag', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceVersion: LATEST_SHA,
+        sourceRef: '2.10.0',
+        sourcePath: 'skills/review-pr',
+        release: {
+          tag: '2.10.0',
+          isLatestRelease: true,
+          latestTag: '2.10.0',
+          defaultBranch: 'main',
+          channel: 'release',
+          switchable: true,
+        },
+      })
+      expect(github.urls().at(-1)).toBe(
+        `https://codeload.github.com/o/r/zip/${LATEST_SHA}`,
+      )
+    })
+
+    it('pins a bare repository link to the highest release tag', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({ url: 'https://github.com/o/r' })
+
+      expect(result).toMatchObject({
+        sourceRef: '2.10.0',
+        release: { tag: '2.10.0', channel: 'release' },
+      })
+    })
+
+    it('pins a link without tree or blob to the latest release too', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({
+        url: 'https://github.com/o/r/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceRef: '2.10.0',
+        sourcePath: 'skills/review-pr',
+        release: { tag: '2.10.0', channel: 'release', switchable: true },
+      })
+    })
+
+    it('keeps the default branch when the user asks for the latest commit', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({ url: FOLDER_URL, channel: 'branch' })
+
+      expect(result).toMatchObject({
+        sourceVersion: GITHUB_SHA_ONE,
+        sourceRef: 'main',
+        release: {
+          tag: null,
+          isLatestRelease: false,
+          latestTag: '2.10.0',
+          channel: 'branch',
+          switchable: true,
+        },
+      })
+    })
+
+    it('keeps a link that names another branch and offers no switch', async () => {
+      await signIn()
+      addReleases()
+      github.setBranch('next', GITHUB_SHA_TWO)
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO))
+
+      const result = await preview({
+        url: 'https://github.com/o/r/tree/next/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceVersion: GITHUB_SHA_TWO,
+        sourceRef: 'next',
+        release: { tag: null, channel: 'branch', switchable: false },
+      })
+    })
+
+    it('keeps a link that names a tag', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({
+        url: 'https://github.com/o/r/tree/2.9.0/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceVersion: OLDER_SHA,
+        sourceRef: '2.9.0',
+        release: { tag: '2.9.0', isLatestRelease: false, switchable: false },
+      })
+    })
+
+    it('shows the tag of a branch commit that is the tip of a release', async () => {
+      await signIn()
+      addReleases()
+      github.setBranch('next', OLDER_SHA)
+
+      const result = await preview({
+        url: 'https://github.com/o/r/tree/next/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceRef: 'next',
+        sourceVersion: OLDER_SHA,
+        release: { tag: '2.9.0', isLatestRelease: false },
+      })
+    })
+
+    it('moves to the next release when the folder is missing from the newest', async () => {
+      await signIn()
+      addReleases()
+      github.archives.set(LATEST_SHA, githubRepoArchive(LATEST_SHA, {
+        'README.md': '# Repo\n',
+      }))
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceRef: '2.9.0',
+        sourceVersion: OLDER_SHA,
+        release: { tag: '2.9.0', isLatestRelease: false },
+      })
+    })
+
+    it('falls back to the default branch when no release holds the folder', async () => {
+      await signIn()
+      addReleases()
+
+      for (const sha of [LATEST_SHA, OLDER_SHA]) {
+        github.archives.set(sha, githubRepoArchive(sha, {
+          'README.md': '# Repo\n',
+        }))
+      }
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceRef: 'main',
+        sourceVersion: GITHUB_SHA_ONE,
+        release: { channel: 'branch', switchable: true },
+      })
+      expect(result.warnings.join(' ')).toContain('None of the latest releases')
+    })
+
+    it('stores the tag as the source ref and the commit as the version', async () => {
+      await signIn()
+      addReleases()
+
+      const staged = await preview({ url: FOLDER_URL })
+
+      await commit({ stageId: staged.stageId, acknowledged: true })
+
+      const [skill] = await testDb.db.select().from(schema.skills)
+
+      expect(skill).toMatchObject({
+        sourceRef: '2.10.0',
+        sourceVersion: LATEST_SHA,
+      })
+    })
+
+    it('imports a skill when the repository has no release', async () => {
+      await signIn()
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceRef: 'main',
+        release: { tag: null, switchable: false, channel: 'branch' },
+      })
+    })
+  })
+
+  describe('an already installed skill', () => {
+    const FOLDER_URL = 'https://github.com/o/r/tree/main/skills/review-pr'
+
+    function forgetCachedRefs() {
+      for (const key of [...kv.values.keys()]) {
+        if (key.startsWith('skills:github:')) {
+          kv.values.delete(key)
+        }
+      }
+    }
+
+    async function install(url = FOLDER_URL) {
+      const staged = await preview({ url })
+
+      return await commit({ stageId: staged.stageId, acknowledged: true })
+    }
+
+    it('reports nothing for a skill the account does not have', async () => {
+      await signIn()
+
+      expect((await preview({ url: FOLDER_URL })).installed).toBeNull()
+    })
+
+    it('says up to date when the same files are imported again', async () => {
+      await signIn()
+      await install()
+
+      expect((await preview({ url: FOLDER_URL })).installed).toEqual({
+        kind: 'same-source',
+        skillId: expect.any(String),
+        name: 'review-pr',
+        sourceLabel: GITHUB_SHA_ONE.slice(0, 7),
+        isUpToDate: true,
+      })
+    })
+
+    it('offers an update when the same folder has other files, and matches the repository case-insensitively', async () => {
+      await signIn()
+      await install()
+      await testDb.db.update(schema.skills)
+        .set({ sourceUrl: 'https://github.com/O/R' })
+      forgetCachedRefs()
+      github.setBranch('main', GITHUB_SHA_TWO)
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
+        'skills/review-pr/references/checklist.md': '- Check docs\n',
+      }))
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result.installed).toMatchObject({
+        kind: 'same-source',
+        name: 'review-pr',
+        sourceLabel: GITHUB_SHA_ONE.slice(0, 7),
+        isUpToDate: false,
+      })
+    })
+
+    it('shows the release tag the installed copy came from', async () => {
+      await signIn()
+      github.tags.set('2.1.2', { sha: GITHUB_SHA_ONE })
+      await install()
+      forgetCachedRefs()
+      github.tags.set('2.2.0', { sha: GITHUB_SHA_TWO })
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
+        'skills/review-pr/references/checklist.md': '- Check docs\n',
+      }))
+
+      expect((await preview({ url: FOLDER_URL })).installed).toMatchObject({
+        kind: 'same-source',
+        sourceLabel: '2.1.2',
+        isUpToDate: false,
+      })
+    })
+
+    it('recognises a copy that was renamed on the account, and updates it under its own name', async () => {
+      await signIn()
+
+      const created = await install()
+
+      await testDb.db.update(schema.skills)
+        .set({ name: 'my-review' })
+        .where(eq(schema.skills.id, created.id))
+      forgetCachedRefs()
+      github.setBranch('main', GITHUB_SHA_TWO)
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
+        'skills/review-pr/references/checklist.md': '- Check docs\n',
+      }))
+
+      const staged = await preview({ url: FOLDER_URL })
+
+      expect(staged.installed).toMatchObject({
+        kind: 'same-source',
+        name: 'my-review',
+        isUpToDate: false,
+      })
+
+      const updated = await commit({
+        stageId: staged.stageId,
+        acknowledged: true,
+        asUpdateOf: created.id,
+      })
+      const [skill] = await testDb.db.select().from(schema.skills)
+
+      expect(updated).toMatchObject({ kind: 'pending', name: 'my-review' })
+      expect(skill).toMatchObject({ name: 'my-review', pendingVersion: 2 })
+    })
+
+    it('reports a skill of the same name from another source as a name match', async () => {
+      await signIn()
+      await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': skillMarkdown() },
+        skill: { name: 'review-pr', sourceKind: 'zip' },
+      })
+
+      expect((await preview({ url: FOLDER_URL })).installed).toMatchObject({
+        kind: 'same-name',
+        name: 'review-pr',
+        isUpToDate: false,
+      })
+    })
+
+    it('does not report the placeholder of an import that never finished', async () => {
+      await signIn()
+
+      const created = await install()
+
+      await testDb.db.delete(schema.skillVersions)
+        .where(eq(schema.skillVersions.skillId, created.id))
+
+      expect((await preview({ url: FOLDER_URL })).installed).toBeNull()
+    })
   })
 })

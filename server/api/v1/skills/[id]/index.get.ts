@@ -6,11 +6,16 @@ import {
 import { getSkillDetail } from '~~/server/utils/skills/versions/view'
 
 /**
- * One skill with its current files, its licence and its pending update.
+ * One skill with its current files, its license and its pending update.
  * File contents come from `GET /skills/[id]/files`.
  */
 export default defineEventHandler(async (event) => {
   const { userId } = await requireSkillsSession(event)
 
-  return await getSkillDetail(useDb(), userId, readSkillIdParam(event))
+  return await getSkillDetail(
+    useDb(),
+    userId,
+    readSkillIdParam(event),
+    useKV(),
+  )
 })

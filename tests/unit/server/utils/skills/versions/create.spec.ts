@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { SKILLS_PER_USER } from '#shared/utils/skills-policy'
+import { BLANK_COMMAND_ARGUMENT_HINT } from '#shared/utils/skills/blank'
 import {
   createMemoryExtractionTestDb,
   seedUser,
@@ -91,7 +92,8 @@ describe('createAuthoredSkill', () => {
       licenseClass: 'authored',
       filesCount: 1,
       modelInvocable: true,
-      slashCommand: true,
+      command: null,
+      argumentHint: null,
     })
     expect(row).toMatchObject({
       name: 'my-skill',
@@ -105,6 +107,10 @@ describe('createAuthoredSkill', () => {
       pendingVersion: null,
       sourceVersion: null,
       allowScripts: false,
+      modelInvocable: true,
+      slashCommand: false,
+      slashName: null,
+      argumentHint: null,
     })
 
     const [version] = await testDb.db.select()
@@ -125,45 +131,122 @@ describe('createAuthoredSkill', () => {
     expect(bucket.objects.size).toBe(1)
   })
 
-  it('creates a blank command that uses $ARGUMENTS', async () => {
+  async function skillMarkdownOf(skillId: string) {
+    const [file] = await testDb.db.select()
+      .from(schema.skillFiles)
+      .where(eq(schema.skillFiles.skillId, skillId))
+    const object = bucket.objects.get(
+      `user-skills/u${userId}/${skillId}/blobs/${file!.blobSha256}`,
+    )
+
+    return new TextDecoder().decode(object!.bytes)
+  }
+
+  it('creates a blank skill with a command that uses $ARGUMENTS', async () => {
     const created = await create({
-      kind: 'command',
+      kind: 'blank',
       name: 'summarise',
+      mode: 'ask',
+      command: 'summarise',
       argumentHint: ' What to summarise ',
     })
     const row = await skillRow(created.id)
 
-    expect(created).toMatchObject({ modelInvocable: false, slashCommand: true })
-    expect(row).toMatchObject({
+    expect(created).toMatchObject({
       modelInvocable: false,
-      slashCommand: true,
+      command: 'summarise',
       argumentHint: 'What to summarise',
       enabled: true,
     })
-
-    const [file] = await testDb.db.select()
-      .from(schema.skillFiles)
-      .where(eq(schema.skillFiles.skillId, created.id))
-    const object = bucket.objects.get(
-      `user-skills/u${userId}/${created.id}/blobs/${file!.blobSha256}`,
-    )
-
-    expect(new TextDecoder().decode(object!.bytes)).toContain('$ARGUMENTS')
+    expect(row).toMatchObject({
+      modelInvocable: false,
+      slashCommand: false,
+      slashName: 'summarise',
+      argumentHint: 'What to summarise',
+      enabled: true,
+    })
+    expect(await skillMarkdownOf(created.id)).toContain('$ARGUMENTS')
   })
 
-  it('creates a skill from a template with its own toggles', async () => {
+  it('uses the default argument hint when a command has none', async () => {
+    const created = await create({
+      kind: 'blank',
+      name: 'summarise',
+      command: 'summarise',
+    })
+
+    expect(created.argumentHint).toBe(BLANK_COMMAND_ARGUMENT_HINT)
+  })
+
+  it('keeps the skill body and no hint when there is no command', async () => {
+    const created = await create({
+      kind: 'blank',
+      name: 'plain-skill',
+      argumentHint: 'ignored',
+    })
+    const row = await skillRow(created.id)
+
+    expect(row.argumentHint).toBeNull()
+    expect(await skillMarkdownOf(created.id)).not.toContain('$ARGUMENTS')
+  })
+
+  it('drops one leading slash and trims the command', async () => {
+    const created = await create({
+      kind: 'blank',
+      name: 'review',
+      command: ' /review-pr ',
+    })
+
+    expect(created.command).toBe('review-pr')
+    expect((await skillRow(created.id)).slashName).toBe('review-pr')
+  })
+
+  it('treats a blank command as no command', async () => {
+    const created = await create({
+      kind: 'blank',
+      name: 'review',
+      command: '  ',
+    })
+
+    expect(created.command).toBeNull()
+    expect((await skillRow(created.id)).slashName).toBeNull()
+  })
+
+  it.each([
+    ['off', { enabled: false, modelInvocable: false }],
+    ['auto', { enabled: true, modelInvocable: true }],
+    ['ask', { enabled: true, modelInvocable: false }],
+  ] as const)('creates a blank skill in the %s mode', async (mode, expected) => {
+    const created = await create({
+      kind: 'blank',
+      name: 'moded',
+      mode,
+    })
+
+    expect(created.enabled).toBe(expected.enabled)
+    expect(created.modelInvocable).toBe(expected.modelInvocable)
+    expect(await skillRow(created.id)).toMatchObject(expected)
+  })
+
+  it('creates a skill from a template with its own mode and no command', async () => {
     const created = await create({
       kind: 'template',
       template: 'meeting-notes',
     })
     const row = await skillRow(created.id)
 
-    expect(created).toMatchObject({ name: 'meeting-notes', filesCount: 1 })
+    expect(created).toMatchObject({
+      name: 'meeting-notes',
+      filesCount: 1,
+      modelInvocable: false,
+      command: null,
+    })
     expect(row).toMatchObject({
       sourceKind: 'template',
-      slashCommand: true,
+      slashCommand: false,
+      slashName: null,
       modelInvocable: false,
-      argumentHint: 'Paste the raw notes',
+      argumentHint: null,
       licenseClass: 'authored',
       enabled: true,
     })
@@ -173,6 +256,36 @@ describe('createAuthoredSkill', () => {
       .where(eq(schema.skillVersions.skillId, created.id))
 
     expect(version!.origin).toBe('template')
+  })
+
+  it('creates a template skill with the command the user chose', async () => {
+    const created = await create({
+      kind: 'template',
+      template: 'meeting-notes',
+      mode: 'auto',
+      command: 'meeting-notes',
+    })
+    const row = await skillRow(created.id)
+
+    expect(created).toMatchObject({
+      modelInvocable: true,
+      command: 'meeting-notes',
+      argumentHint: 'Paste the raw notes',
+    })
+    expect(row).toMatchObject({
+      slashName: 'meeting-notes',
+      argumentHint: 'Paste the raw notes',
+      modelInvocable: true,
+    })
+  })
+
+  it('defaults a model-invocable template to Auto', async () => {
+    const created = await create({
+      kind: 'template',
+      template: 'writing-style',
+    })
+
+    expect(created.modelInvocable).toBe(true)
   })
 
   it('renames a template skill inside its SKILL.md', async () => {
@@ -222,11 +335,71 @@ describe('createAuthoredSkill', () => {
       .toMatchObject({ name: 'same-name' })
   })
 
-  it('refuses a reserved name for a command but not for a skill', async () => {
-    expect(await failureOf(create({ kind: 'command', name: 'memory' })))
-      .toMatchObject({ status: 400, code: 'reserved-name' })
+  it('allows a reserved skill name', async () => {
     expect(await create({ kind: 'blank', name: 'memory' }))
-      .toMatchObject({ name: 'memory', slashCommand: false })
+      .toMatchObject({ name: 'memory', command: null, enabled: true })
+  })
+
+  it('refuses a reserved command with reserved-name', async () => {
+    const failure = await failureOf(create({
+      kind: 'blank',
+      name: 'my-skill',
+      command: 'memory',
+    }))
+    const rows = await testDb.db.select()
+      .from(schema.skills)
+      .where(eq(schema.skills.userId, userId))
+
+    expect(failure).toMatchObject({ status: 400, code: 'reserved-name' })
+    expect(rows).toEqual([])
+  })
+
+  it('refuses a command with an invalid pattern', async () => {
+    expect(await failureOf(create({
+      kind: 'blank',
+      name: 'my-skill',
+      command: 'Not Valid',
+    }))).toMatchObject({ status: 400, code: 'reserved-name' })
+    expect(await failureOf(create({
+      kind: 'blank',
+      name: 'my-skill',
+      command: '/Foo',
+    }))).toMatchObject({ status: 400, code: 'reserved-name' })
+  })
+
+  it('refuses a command another skill already has with command-taken', async () => {
+    await create({ kind: 'blank', name: 'first', command: 'run-it' })
+
+    const failure = await failureOf(create({
+      kind: 'blank',
+      name: 'second',
+      command: 'run-it',
+    }))
+    const rows = await testDb.db.select()
+      .from(schema.skills)
+      .where(eq(schema.skills.userId, userId))
+
+    expect(failure).toMatchObject({
+      status: 409,
+      code: 'command-taken',
+      message: '/run-it is already a command',
+    })
+    expect(rows).toHaveLength(1)
+  })
+
+  it('allows the command of another user', async () => {
+    const otherUserId = await seedUser(testDb.db)
+
+    await createAuthoredSkill({
+      db: testDb.db,
+      bucket,
+      userId: otherUserId,
+      request: { kind: 'blank', name: 'theirs', command: 'run-it' },
+      logger,
+    })
+
+    expect(await create({ kind: 'blank', name: 'mine', command: 'run-it' }))
+      .toMatchObject({ command: 'run-it' })
   })
 
   it.each([

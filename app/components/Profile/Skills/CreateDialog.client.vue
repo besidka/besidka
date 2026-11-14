@@ -95,8 +95,44 @@
         />
       </div>
 
+      <div class="grid gap-1">
+        <label
+          for="skill-create-mode"
+          class="text-sm font-medium"
+        >
+          Mode
+        </label>
+        <select
+          id="skill-create-mode"
+          v-model="mode"
+          class="select w-full"
+          data-testid="skill-create-mode"
+        >
+          <option
+            v-for="option in SKILL_MODES"
+            :key="option"
+            :value="option"
+          >
+            {{ SKILL_MODE_LABELS[option] }}
+          </option>
+        </select>
+        <p
+          class="text-xs text-base-content/70"
+          data-testid="skill-create-mode-help"
+        >
+          {{ SKILL_MODE_DESCRIPTIONS[mode] }}
+        </p>
+      </div>
+
+      <ProfileSkillsCommandField
+        v-if="commandsFeature.active"
+        v-model="command"
+        :server-error="commandError"
+        test-id="skill-create-command"
+      />
+
       <div
-        v-if="kind === 'command'"
+        v-if="commandsFeature.active && kind !== 'template' && hasCommand"
         class="grid gap-1"
       >
         <label
@@ -149,10 +185,17 @@ import { parseError } from 'evlog'
 import {
   SKILL_ARGUMENT_HINT_MAX,
   SKILL_NAME_MAX,
+  getSkillCommandProblem,
   isSkillNameValid,
-  validateSkillSlashName,
+  normalizeSkillCommand,
 } from '#shared/utils/skills-policy'
 import { SKILL_DESCRIPTION_MAX } from '#shared/utils/skills/frontmatter'
+import {
+  SKILL_MODES,
+  SKILL_MODE_DESCRIPTIONS,
+  SKILL_MODE_LABELS,
+} from '#shared/utils/skills/mode'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import { SKILL_TEMPLATES } from '#shared/utils/skills/templates'
 import type { SkillCreateKind } from '~/types/skills-ui.d'
 
@@ -168,28 +211,43 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const commandsFeature = useFeature('skills.commands')
+
 const name = shallowRef<string>('')
 const description = shallowRef<string>('')
+const mode = shallowRef<SkillMode>('auto')
+const command = shallowRef<string>('')
 const argumentHint = shallowRef<string>('')
 const templateId = shallowRef<string>(SKILL_TEMPLATES[0]?.id ?? '')
 const isSubmitting = shallowRef<boolean>(false)
 const serverError = shallowRef<string>('')
+const commandError = shallowRef<string>('')
 
 const title = computed<string>(() => {
-  if (props.kind === 'command') {
-    return 'New command'
-  }
-
   return props.kind === 'template' ? 'New skill from a template' : 'New skill'
 })
 
-const selectedTemplateName = computed<string>(() => {
+const selectedTemplate = computed(() => {
   return SKILL_TEMPLATES.find((template) => {
     return template.id === templateId.value
-  })?.name ?? ''
+  }) ?? null
+})
+
+const selectedTemplateName = computed<string>(() => {
+  return selectedTemplate.value?.name ?? ''
 })
 
 const trimmedName = computed<string>(() => name.value.trim())
+
+const normalizedCommand = computed<string | null>(() => {
+  return commandsFeature.value.active
+    ? normalizeSkillCommand(command.value)
+    : null
+})
+
+const hasCommand = computed<boolean>(() => {
+  return normalizedCommand.value !== null
+})
 
 const nameError = computed<string>(() => {
   if (serverError.value) {
@@ -200,20 +258,23 @@ const nameError = computed<string>(() => {
     return ''
   }
 
-  if (!isSkillNameValid(trimmedName.value)) {
-    return 'Use lowercase letters, numbers and single hyphens (max 64)'
-  }
+  return isSkillNameValid(trimmedName.value)
+    ? ''
+    : 'Use lowercase letters, numbers and single hyphens (max 64)'
+})
 
-  if (props.kind === 'command') {
-    const validation = validateSkillSlashName(trimmedName.value)
-
-    return validation.valid ? '' : validation.message
-  }
-
-  return ''
+const hasCommandProblem = computed<boolean>(() => {
+  return !!commandError.value || (
+    commandsFeature.value.active
+    && !!getSkillCommandProblem(command.value)
+  )
 })
 
 const canSubmit = computed<boolean>(() => {
+  if (hasCommandProblem.value) {
+    return false
+  }
+
   if (nameError.value && !serverError.value) {
     return false
   }
@@ -225,33 +286,47 @@ watch(name, () => {
   serverError.value = ''
 })
 
+watch(command, () => {
+  commandError.value = ''
+})
+
+watch([templateId, commandsFeature], () => {
+  if (props.kind !== 'template' || !selectedTemplate.value) {
+    return
+  }
+
+  mode.value = selectedTemplate.value.modelInvocable ? 'auto' : 'ask'
+  command.value = commandsFeature.value.active
+    ? selectedTemplate.value.command ?? ''
+    : ''
+}, { immediate: true })
+
 function buildBody() {
+  const settings = {
+    mode: mode.value,
+    ...(normalizedCommand.value ? { command: normalizedCommand.value } : {}),
+  }
+
   if (props.kind === 'template') {
     return {
       kind: 'template' as const,
       template: templateId.value,
       ...(trimmedName.value ? { name: trimmedName.value } : {}),
+      ...settings,
     }
   }
 
-  const base = {
+  return {
+    kind: 'blank' as const,
     name: trimmedName.value,
     ...(description.value.trim()
       ? { description: description.value.trim() }
       : {}),
+    ...settings,
+    ...(hasCommand.value && argumentHint.value.trim()
+      ? { argumentHint: argumentHint.value.trim() }
+      : {}),
   }
-
-  if (props.kind === 'command') {
-    return {
-      kind: 'command' as const,
-      ...base,
-      ...(argumentHint.value.trim()
-        ? { argumentHint: argumentHint.value.trim() }
-        : {}),
-    }
-  }
-
-  return { kind: 'blank' as const, ...base }
 }
 
 async function onSubmit() {
@@ -271,10 +346,18 @@ async function onSubmit() {
     emit('close')
   } catch (exception) {
     const parsedException = parseError(exception)
-
-    serverError.value = parsedException.why
+    const reason = parsedException.why
       ? `${parsedException.message}. ${parsedException.why}`
       : parsedException.message || 'The skill could not be created.'
+
+    if (
+      parsedException.code === 'command-taken'
+      || parsedException.code === 'reserved-name'
+    ) {
+      commandError.value = reason
+    } else {
+      serverError.value = reason
+    }
   } finally {
     isSubmitting.value = false
   }

@@ -16,7 +16,6 @@ const EXCLUDED_TOOL_STEP_NAMES = new Set<string>([
   'create_artifact',
   'update_artifact',
   'code_execution',
-  'activate_skill',
 ])
 const PENDING_TOOL_STATES = new Set<string>([
   'input-streaming',

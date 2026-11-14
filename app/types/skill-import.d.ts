@@ -10,8 +10,8 @@ export interface SkillImportWorkerRequest {
 export interface SkillImportWorkerSummary {
   name: string
   description: string
-  licenceClass: 'open' | 'custom' | 'none' | 'restricted'
-  licenceText: string
+  licenseClass: 'open' | 'custom' | 'none' | 'restricted'
+  licenseText: string
   files: Array<{ path: string, bytes: number, kind: SkillFileKind }>
   totalBytes: number
   findings: SkillFinding[]

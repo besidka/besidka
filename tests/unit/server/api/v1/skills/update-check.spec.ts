@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
+  getSkillUpdateAvailable,
+  readSkillUpdateState,
+} from '~~/server/utils/skills/import/update-state'
+import {
   createMemoryExtractionTestDb,
   seedUser,
 } from '../../../../../setup/helpers/memory-extraction-db'
@@ -32,12 +36,12 @@ import {
 } from '../../../../../setup/helpers/github-mock'
 import type { GithubMock } from '../../../../../setup/helpers/github-mock'
 
-const MIT_LICENCE = readFileSync(
-  'tests/fixtures/skills/licences/mit.txt',
+const MIT_LICENSE = readFileSync(
+  'tests/fixtures/skills/licenses/mit.txt',
   'utf8',
 )
-const PROPRIETARY_LICENCE = readFileSync(
-  'tests/fixtures/skills/licences/anthropic-proprietary.txt',
+const PROPRIETARY_LICENSE = readFileSync(
+  'tests/fixtures/skills/licenses/anthropic-proprietary.txt',
   'utf8',
 )
 const SKILL_URL = 'https://github.com/o/r/tree/main/skills/review-pr'
@@ -108,7 +112,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
   ) {
     return githubRepoArchive(sha, {
       'README.md': `# Repo at ${sha.slice(0, 1)}\n`,
-      'LICENSE': MIT_LICENCE,
+      'LICENSE': MIT_LICENSE,
       'skills/review-pr/SKILL.md': markdown,
       'skills/review-pr/references/checklist.md': '- Check tests\n',
       ...files,
@@ -220,6 +224,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       contentUnchanged: false,
       sourceVersion: GITHUB_SHA_ONE,
       latestVersion: GITHUB_SHA_ONE,
+      latestTag: null,
     })
     expect(github.urls()).toEqual([
       'https://github.com/o/r.git/info/refs?service=git-upload-pack',
@@ -275,7 +280,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       }`,
       reusedPending: false,
       localEdits: { warn: false, versions: [] },
-      licence: { changed: false },
+      license: { changed: false },
     })
     expect(result.sha256).toBe(pending!.sha256)
     expect(result.diff.files.map((file: { path: string, status: string }) => {
@@ -438,26 +443,26 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     })).toBe(true)
   })
 
-  it('shows a licence change and refuses a restricted one', async () => {
+  it('shows a license change and refuses a restricted one', async () => {
     moveHeadTo(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO, {
       'skills/review-pr/LICENSE.txt': 'Terms of use: internal use only.\n',
     }, skillMarkdown({ description: 'Now with its own terms' })))
 
     const changed = await check()
 
-    expect(changed.licence).toMatchObject({
+    expect(changed.license).toMatchObject({
       changed: true,
       before: { class: 'open' },
     })
-    expect(changed.licence.after.class).not.toBe('open')
+    expect(changed.license.after.class).not.toBe('open')
 
     moveHeadTo(GITHUB_SHA_THREE, archiveAt(GITHUB_SHA_THREE, {
-      'skills/review-pr/LICENSE.txt': PROPRIETARY_LICENCE,
+      'skills/review-pr/LICENSE.txt': PROPRIETARY_LICENSE,
     }))
 
     expect(await failureOf(check())).toMatchObject({
       status: 422,
-      code: 'licence-restricted',
+      code: 'license-restricted',
     })
     expect((await skillRow()).pendingVersion).toBe(2)
   })
@@ -651,5 +656,143 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     expect((await versionRows()).find((row) => {
       return row.version === 3
     })).toMatchObject({ origin: 'update', sourceVersion: GITHUB_SHA_TWO })
+  })
+
+  describe('a skill pinned to a release tag', () => {
+    const TAG_SHA = '4'.repeat(40)
+    const NEWER_SHA = '5'.repeat(40)
+
+    async function pinToTag() {
+      github.tags.set('2.1.2', { sha: TAG_SHA })
+      github.archives.set(TAG_SHA, archiveAt(TAG_SHA))
+      await testDb.db.update(schema.skills)
+        .set({ sourceRef: '2.1.2', sourceVersion: TAG_SHA })
+        .where(eq(schema.skills.id, skillId))
+      forgetCachedRefs()
+      github.fetch.mockClear()
+    }
+
+    it('is up to date while no higher release tag exists, whatever the branch does', async () => {
+      await pinToTag()
+      github.setBranch('main', GITHUB_SHA_TWO)
+
+      expect(await check()).toEqual({
+        upToDate: true,
+        pinned: false,
+        contentUnchanged: false,
+        sourceVersion: TAG_SHA,
+        latestVersion: TAG_SHA,
+        latestTag: '2.1.2',
+      })
+      expect(github.urls()).toEqual([
+        'https://github.com/o/r.git/info/refs?service=git-upload-pack',
+      ])
+    })
+
+    it('ignores pre-release and non-version tags', async () => {
+      await pinToTag()
+      github.tags.set('2.2.0-rc.1', { sha: NEWER_SHA })
+      github.tags.set('latest', { sha: NEWER_SHA })
+      forgetCachedRefs()
+
+      expect(await check()).toMatchObject({ upToDate: true, latestTag: '2.1.2' })
+    })
+
+    it('stores a higher release tag as the pending version and accepts it onto the skill', async () => {
+      await pinToTag()
+      github.tags.set('2.1.10', { sha: NEWER_SHA })
+      github.archives.set(NEWER_SHA, archiveAt(NEWER_SHA, {}, skillMarkdown({
+        description: 'Released as 2.1.10',
+      })))
+      forgetCachedRefs()
+
+      const result = await check()
+
+      expect(result).toMatchObject({
+        upToDate: false,
+        sourceRef: '2.1.10',
+        sourceVersion: NEWER_SHA,
+        previousSourceRef: '2.1.2',
+        previousSourceVersion: TAG_SHA,
+      })
+      expect(github.urls().at(-1)).toBe(
+        `https://codeload.github.com/o/r/zip/${NEWER_SHA}`,
+      )
+
+      const accept = await importHandler(
+        '~~/server/api/v1/skills/[id]/update/accept.post',
+      )
+
+      await accept(createSkillsRouteEvent({
+        params: { id: skillId },
+        body: { version: result.version, sha256: result.sha256 },
+      }))
+
+      expect(await skillRow()).toMatchObject({
+        sourceRef: '2.1.10',
+        sourceVersion: NEWER_SHA,
+      })
+    })
+
+    it('records that a new release holds the same skill, so the badge goes away', async () => {
+      await pinToTag()
+      github.tags.set('2.1.3', { sha: NEWER_SHA })
+      github.archives.set(NEWER_SHA, archiveAt(NEWER_SHA))
+      forgetCachedRefs()
+
+      const result = await check()
+      const state = await readSkillUpdateState(kv, userId)
+
+      expect(result).toMatchObject({
+        upToDate: true,
+        contentUnchanged: true,
+        latestTag: '2.1.3',
+        latestVersion: NEWER_SHA,
+      })
+      expect(state[skillId]!.seen).toEqual({
+        ref: '2.1.3',
+        sha: NEWER_SHA,
+        tag: '2.1.3',
+      })
+      expect(getSkillUpdateAvailable(state[skillId], {
+        sourceRef: '2.1.2',
+        sourceVersion: TAG_SHA,
+      })).toBeNull()
+    })
+
+    it('forgets a remembered update when the check finds the newest release', async () => {
+      await pinToTag()
+      await kv.put(
+        `skills:update-state:${userId}`,
+        JSON.stringify({
+          [skillId]: {
+            checkedAt: 1,
+            latest: { ref: '2.1.3', sha: NEWER_SHA, tag: '2.1.3' },
+          },
+        }),
+      )
+      github.tags.set('2.1.2', { sha: TAG_SHA })
+      await testDb.db.update(schema.skills)
+        .set({ sourceRef: '2.1.3', sourceVersion: NEWER_SHA })
+        .where(eq(schema.skills.id, skillId))
+      github.tags.set('2.1.3', { sha: NEWER_SHA })
+      forgetCachedRefs()
+
+      await check()
+
+      expect((await readSkillUpdateState(kv, userId))[skillId]!.latest)
+        .toBeUndefined()
+    })
+
+    it('says 404 when the tag is gone and no release replaces it', async () => {
+      await pinToTag()
+      github.tags.delete('2.1.2')
+      forgetCachedRefs()
+
+      expect(await failureOf(check())).toMatchObject({
+        status: 404,
+        code: 'github-ref-not-found',
+      })
+    })
   })
 })

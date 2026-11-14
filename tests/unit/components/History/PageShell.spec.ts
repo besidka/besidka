@@ -151,7 +151,7 @@ describe('HistoryPageShell', () => {
         .findAll('a')
       const labels = wrapper.findAll('nav a span:not(.iconify)')
       const collapsed = labels.filter((label) => {
-        return label.classes().includes('@max-md:sr-only')
+        return label.classes().includes('@max-[34rem]:sr-only')
       })
 
       expect(links.map(link => link.attributes('href'))).toEqual([
@@ -179,7 +179,7 @@ describe('HistoryPageShell', () => {
       const links = wrapper.get('nav[aria-label="History sections"]')
         .findAll('a')
       const collapsed = wrapper.findAll('nav a span:not(.iconify)')
-        .filter(label => label.classes().includes('@max-md:sr-only'))
+        .filter(label => label.classes().includes('@max-[40rem]:sr-only'))
 
       expect(links.map(link => link.attributes('href'))).toEqual([
         '/chats/history',

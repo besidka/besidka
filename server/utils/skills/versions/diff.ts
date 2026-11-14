@@ -69,7 +69,7 @@ export async function diffSkillVersions(input: {
       unchanged: texts.unchanged,
     },
     skipped: texts.skipped,
-    licence: {
+    license: {
       changed: beforeRow.licenseClass !== afterRow.licenseClass
         || beforeRow.licenseFileSha256 !== afterRow.licenseFileSha256,
       before: {

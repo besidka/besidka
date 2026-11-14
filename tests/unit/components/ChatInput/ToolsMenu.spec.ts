@@ -162,11 +162,11 @@ describe('ChatInput/ToolsMenu', () => {
     await open(wrapper)
 
     expect(sectionIds(wrapper)).toEqual([
-      'add',
-      'search',
-      'reasoning',
-      'image',
       'memory',
+      'image',
+      'reasoning',
+      'search',
+      'add',
     ])
     expect(
       wrapper.findAll('[data-section="add"] [data-testid="tools-project"]'),
@@ -209,7 +209,7 @@ describe('ChatInput/ToolsMenu', () => {
     await open(wrapper)
 
     expect(has(wrapper, 'tools-deep-research-note')).toBe(true)
-    expect(sectionIds(wrapper)).toEqual(['add', 'memory'])
+    expect(sectionIds(wrapper)).toEqual(['memory', 'add'])
   })
 
   it('marks Create image required and checked for an image-only model',
@@ -385,7 +385,7 @@ describe('ChatInput/ToolsMenu', () => {
       await open(wrapper)
 
       expect(document.activeElement).toBe(
-        wrapper.get('[data-testid="tools-action-attach"]').element,
+        wrapper.get('[data-testid="new-chat-memory-toggle"]').element,
       )
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))

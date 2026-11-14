@@ -1,9 +1,20 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { computed, ref } from 'vue'
 import type { SkillSummary } from '../../../../../shared/types/skills.d'
 import SkillRow from '../../../../../app/components/Profile/Skills/Row.vue'
 import { createSkillSummary } from '../../../../setup/helpers/skills-ui'
+
+const commandsActive = ref<boolean>(false)
+
+mockNuxtImport('useFeature', () => {
+  return (key: string) => computed(() => {
+    const active = key === 'skills.commands' && commandsActive.value
+
+    return { enabled: active, active, variant: null }
+  })
+})
 
 enableAutoUnmount(afterEach)
 
@@ -21,7 +32,11 @@ function testId(id: string) {
 }
 
 describe('Profile/Skills/Row', () => {
-  it('shows the name, the description and the Skill badge as plain text', async () => {
+  beforeEach(() => {
+    commandsActive.value = false
+  })
+
+  it('shows the name and the description as plain text', async () => {
     const wrapper = await mountRow(createSkillSummary({
       description: '<img src=x onerror=alert(1)> Review a pull request',
     }))
@@ -30,25 +45,54 @@ describe('Profile/Skills/Row', () => {
     expect(wrapper.get(testId('skill-row-description')).text())
       .toContain('<img src=x onerror=alert(1)>')
     expect(wrapper.find('img').exists()).toBe(false)
-    expect(wrapper.get(testId('skill-row-kind')).text()).toBe('Skill')
+    expect(wrapper.find(testId('skill-row-kind')).exists()).toBe(false)
   })
 
-  it('shows /name only for a command, which is a skill that runs only when asked', async () => {
+  it('shows the plain skill name whatever the mode and the command', async () => {
+    for (const modelInvocable of [true, false]) {
+      commandsActive.value = true
+
+      const wrapper = await mountRow(createSkillSummary({
+        modelInvocable,
+        command: 'run-it',
+        slashCommand: true,
+      }))
+
+      expect(wrapper.get(testId('skill-row-open')).text()).toBe('review-pr')
+      expect(wrapper.find(testId('skill-row-kind')).exists()).toBe(false)
+    }
+  })
+
+  it('shows the command as a soft badge when the commands feature is on', async () => {
+    commandsActive.value = true
+
     const wrapper = await mountRow(createSkillSummary({
+      command: 'run-it',
       slashCommand: true,
-      modelInvocable: false,
+    }))
+    const badge = wrapper.get(testId('skill-row-command'))
+
+    expect(badge.text()).toBe('/run-it')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-soft']),
+    )
+  })
+
+  it('hides the command badge when the commands feature is off', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      command: 'run-it',
+      slashCommand: true,
     }))
 
-    expect(wrapper.get(testId('skill-row-open')).text()).toBe('/review-pr')
-    expect(wrapper.findAll(testId('skill-row-kind')).map(badge => badge.text()))
-      .toEqual(['Command'])
+    expect(wrapper.find(testId('skill-row-command')).exists()).toBe(false)
+  })
 
-    const auto = await mountRow(createSkillSummary({
-      slashCommand: true,
-      modelInvocable: true,
-    }))
+  it('shows no command badge for a skill without a command', async () => {
+    commandsActive.value = true
 
-    expect(auto.get(testId('skill-row-open')).text()).toBe('review-pr')
+    const wrapper = await mountRow(createSkillSummary())
+
+    expect(wrapper.find(testId('skill-row-command')).exists()).toBe(false)
   })
 
   it('shows the Off badge for a skill that is switched off', async () => {
@@ -65,6 +109,28 @@ describe('Profile/Skills/Row', () => {
 
     expect(wrapper.get(testId('skill-row-status')).text())
       .toBe('Needs review')
+    expect(wrapper.find(testId('skill-row-pending')).exists()).toBe(true)
+  })
+
+  it('shows "Update 2.1.3" as a soft info badge when the daily check found one', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      updateAvailable: { label: '2.1.3', ref: '2.1.3' },
+    }))
+    const badge = wrapper.get(testId('skill-row-update'))
+
+    expect(badge.text()).toBe('Update 2.1.3')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-soft', 'badge-info']),
+    )
+  })
+
+  it('shows only "Update to review" when a pending update exists', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      pendingVersion: 8,
+      updateAvailable: { label: '2.1.3', ref: '2.1.3' },
+    }))
+
+    expect(wrapper.find(testId('skill-row-update')).exists()).toBe(false)
     expect(wrapper.find(testId('skill-row-pending')).exists()).toBe(true)
   })
 
@@ -90,10 +156,24 @@ describe('Profile/Skills/Row', () => {
       .toContain('github.com/o/r/skills/x @ abcdef1 · v7')
   })
 
+  it('calls Besidka\'s own version "edit" when a release tag is on the line', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      sourceKind: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourcePath: 'skills/x',
+      sourceRef: '2.1.2',
+      sourceVersion: 'abcdef1234567890',
+    }))
+
+    expect(wrapper.get(testId('skill-row-meta')).text())
+      .toContain('github.com/o/r/skills/x @ 2.1.2 · edit v7')
+  })
+
   it('shows the token estimate only for model-invocable skills', async () => {
     const invocable = await mountRow(createSkillSummary())
     const commandOnly = await mountRow(createSkillSummary({
       modelInvocable: false,
+      command: 'run-it',
       slashCommand: true,
     }))
 
@@ -115,7 +195,6 @@ describe('Profile/Skills/Row', () => {
     const skill = createSkillSummary({
       enabled: true,
       modelInvocable: true,
-      slashCommand: true,
     })
     const wrapper = await mountRow(skill)
     const select = wrapper.get(testId('skill-row-mode-select'))
@@ -137,7 +216,6 @@ describe('Profile/Skills/Row', () => {
     const ask = await mountRow(createSkillSummary({
       enabled: true,
       modelInvocable: false,
-      slashCommand: true,
     }))
 
     expect((off.get(testId('skill-row-mode-select')).element as HTMLSelectElement).value)
@@ -146,21 +224,17 @@ describe('Profile/Skills/Row', () => {
       .toBe('ask')
   })
 
-  it('says to rename a reserved name that cannot run as /name', async () => {
-    const blocked = await mountRow(createSkillSummary({
+  it('never says to rename a reserved skill name', async () => {
+    const wrapper = await mountRow(createSkillSummary({
       name: 'memory',
       enabled: true,
       modelInvocable: true,
-      slashCommand: false,
-    }))
-    const fine = await mountRow(createSkillSummary({
-      enabled: true,
-      slashCommand: true,
     }))
 
-    expect(blocked.get(testId('skill-row-slash-blocked')).text())
-      .toBe('Rename to use /name')
-    expect(fine.find(testId('skill-row-slash-blocked')).exists()).toBe(false)
+    expect(wrapper.get(testId('skill-row-open')).text()).toBe('memory')
+    expect(wrapper.find(testId('skill-row-slash-blocked')).exists())
+      .toBe(false)
+    expect(wrapper.text()).not.toContain('Rename to use')
   })
 
   it('opens the detail on a click and the versions tab from the menu', async () => {

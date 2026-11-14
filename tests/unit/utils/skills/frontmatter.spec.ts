@@ -187,12 +187,11 @@ describe('parseSkillMarkdown', () => {
 })
 
 describe('Claude Code keys as defaults for the user-set columns', () => {
-  it('defaults to an Auto skill that is also a /name command', () => {
+  it('defaults to an Auto skill with no argument hint', () => {
     const { defaults } = parseOk(markdown('name: a\ndescription: b')).frontmatter
 
     expect(defaults).toEqual({
       modelInvocable: true,
-      slashCommand: true,
       argumentHint: null,
     })
   })
@@ -204,30 +203,29 @@ describe('Claude Code keys as defaults for the user-set columns', () => {
 
     expect(defaults).toEqual({
       modelInvocable: false,
-      slashCommand: true,
       argumentHint: '[issue]',
     })
   })
 
-  it('ignores user-invocable: every skill is a /name command', () => {
-    expect(parseOk(markdown(
-      'name: a\ndescription: b\nuser-invocable: false',
-    )).frontmatter.defaults.slashCommand).toBe(true)
-    expect(parseOk(markdown(
+  it('ignores user-invocable and never defaults a command', () => {
+    const { defaults } = parseOk(markdown(
       'name: a\ndescription: b\ndisable-model-invocation: true\nuser-invocable: false',
-    )).frontmatter.defaults).toMatchObject({
+    )).frontmatter
+
+    expect(defaults).toEqual({
       modelInvocable: false,
-      slashCommand: true,
+      argumentHint: null,
     })
+    expect(defaults).not.toHaveProperty('slashCommand')
   })
 
-  it('refuses the slash default for a reserved name', () => {
+  it('accepts a reserved skill name without a warning', () => {
     const result = parseOk(markdown(
       'name: search\ndescription: b',
     ))
 
-    expect(result.frontmatter.defaults.slashCommand).toBe(false)
-    expect(result.warnings.join(' ')).toContain('/search is reserved')
+    expect(result.frontmatter.name).toBe('search')
+    expect(result.warnings).toEqual([])
   })
 
   it('cuts the argument hint to 100 characters', () => {

@@ -107,7 +107,7 @@ describe('pending skill versions', () => {
       kv,
       userId,
       stageId: manifest.stageId,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
       asUpdateOf: skillId,
       logger,
     })
@@ -148,7 +148,7 @@ describe('pending skill versions', () => {
     skillId,
     version: 2,
     sha256: pendingSha256,
-    licenceAcknowledged: true,
+    licenseAcknowledged: true,
   })
 
   beforeEach(async () => {
@@ -166,6 +166,28 @@ describe('pending skill versions', () => {
   })
 
   describe('acceptPendingSkillVersion', () => {
+    it('writes the file kinds of the accepted version in the current spelling', async () => {
+      await testDb.db.update(schema.skillFiles)
+        .set({ kind: 'licence' as never })
+        .where(and(
+          eq(schema.skillFiles.skillId, skillId),
+          eq(schema.skillFiles.version, 2),
+          eq(schema.skillFiles.path, 'references/checklist.md'),
+        ))
+
+      await acceptPendingSkillVersion(baseInput())
+
+      const accepted = await testDb.db.select()
+        .from(schema.skillFiles)
+        .where(and(
+          eq(schema.skillFiles.skillId, skillId),
+          eq(schema.skillFiles.version, 3),
+          eq(schema.skillFiles.path, 'references/checklist.md'),
+        ))
+
+      expect(accepted[0]!.kind).toBe('license')
+    })
+
     it('creates version max+1 over the same blobs and makes it current', async () => {
       const putsBefore = bucket.put.mock.calls.length
       const result = await acceptPendingSkillVersion(baseInput())
@@ -273,33 +295,33 @@ describe('pending skill versions', () => {
       expect((await skillRow()).pendingVersion).toBe(2)
     })
 
-    it('asks for the licence tick when the update moves to none or custom', async () => {
+    it('asks for the license tick when the update moves to none or custom', async () => {
       const failure = await rejection(acceptPendingSkillVersion({
         ...baseInput(),
-        licenceAcknowledged: undefined,
+        licenseAcknowledged: undefined,
       }))
 
       expect(failure).toMatchObject({
         status: 400,
-        code: 'licence-acknowledgement-required',
+        code: 'license-acknowledgement-required',
       })
-      expect(failure.fix).toContain('licence box')
+      expect(failure.fix).toContain('license box')
       expect(await versionNumbers()).toEqual([1, 2])
       expect((await skillRow()).pendingVersion).toBe(2)
       expect(await rejection(acceptPendingSkillVersion({
         ...baseInput(),
-        licenceAcknowledged: false,
+        licenseAcknowledged: false,
       }))).toMatchObject({ status: 400 })
     })
 
-    it('does not ask when the licence class is unchanged or the update is open', async () => {
+    it('does not ask when the license class is unchanged or the update is open', async () => {
       await testDb.db.update(schema.skills)
         .set({ licenseClass: 'none' })
         .where(eq(schema.skills.id, skillId))
 
       await acceptPendingSkillVersion({
         ...baseInput(),
-        licenceAcknowledged: undefined,
+        licenseAcknowledged: undefined,
       })
 
       expect((await skillRow()).currentVersion).toBe(3)
@@ -312,7 +334,7 @@ describe('pending skill versions', () => {
 
       await acceptPendingSkillVersion({
         ...baseInput(),
-        licenceAcknowledged: undefined,
+        licenseAcknowledged: undefined,
       })
 
       expect((await skillRow()).currentVersion).toBe(3)

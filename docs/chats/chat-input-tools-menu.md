@@ -29,6 +29,31 @@ the tile builder only read it; every change goes back through ChatInput's
 existing handlers (`selectWebSearchProvider`, `toggleImageGeneration`, the
 clamp and restore watchers), so capability gating has one owner.
 
+## Row order: the most used rows nearest the "+"
+
+The menu opens above the composer (a popover above "+", a bottom sheet below
+md), so the rows nearest the trigger are the cheapest to reach. The order is
+therefore, top to bottom: the deep-research note (research models only),
+**Use memory**, Create image and Run code (the rarely used toggles), then
+**Reasoning**, **Web search**, and the **Add** section last (Attach files, Add
+from library, Generated images, Add artifact, Add skill, Project). It used to
+run the other way, with Add on top and memory at the bottom, which put the
+rows people use on every message farthest from the thumb. Dividers separate
+the groups (memory/image/code, Reasoning, Web search, Add) and render only
+when something visible sits on the other side, so a missing group never
+leaves a double divider.
+
+**Use memory is one compact line.** The label and the toggle, with no
+description line. The description sits behind an info button next to the label
+(`new-chat-memory-info`), the same pattern as the Auto row of web search: it
+toggles an `InfoNote` (`new-chat-memory-note`) and pressing it never flips the
+toggle. The note says "Learns from this chat and finds it in chat search.", and
+when the chat is excluded from memory it says the excluded-memory helper
+instead ("Besidka won't learn from this chat or find it in chat search..."), so
+that text is still one tap away. Info buttons carry `aria-controls`, which the
+focus logic uses to skip them: opening the menu from the keyboard focuses the
+first real control (the memory toggle), never an info icon.
+
 ## Shells
 
 - At `min-width: 48rem` (`useMediaQuery`, so a narrowed desktop window gets
@@ -379,9 +404,10 @@ later open are not guarded either.
 - Reasoning level segments carry the per-level think icons
   (`SvgoThinkOff|Low|Medium|High`; a toggle-mode model gets Off and the one
   level's icon on "On").
-- The groups are separated by one divider each (Add, Web search, Reasoning,
-  then the lower rows). A divider renders only when something above it is
-  visible, so a missing group never leaves a double divider.
+- The groups are separated by one divider each (memory and the other toggles,
+  Reasoning, Web search, then Add; see "Row order"). A divider renders only
+  when something above it and something below it is visible, so a missing
+  group never leaves a double divider.
 
 ### Why the segments had hover dead zones
 
@@ -416,6 +442,21 @@ with a "Manage skills" link) and attaches the chosen skill as the one composer
 invocation. A "Skill" tile (sparkles icon) shows it; tapping the tile opens the
 read-only skill preview instead of the menu. The earlier inline Skills section
 was dropped. See `docs/skills.md` section 5.7 and 10.5.
+
+### The `/` picker and the Skill tile (skills layer S-12)
+
+The tile and the "+" menu row are the same invocation state as a typed
+`/command` (`source: 'menu'` or `'text'`, `docs/skills.md` section 10.5). A
+typed command that matches an enabled command puts the "Skill" tile in the
+attachments row at once; its remove button deletes the token from the text when
+the tile came from the text and only clears the invocation when it came from the
+menu. One skill per message: a typed command replaces a menu pick, and a menu
+pick replaces the tile of a typed one (that token then stays plain text). The
+`/` picker itself is not part of this menu: it is `ChatInput/CommandPicker.vue`,
+anchored above the composer, never a dialog or a bottom sheet (focus and the iOS
+keyboard), gated on `skills.commands`, and it does not use
+`chat-input:open-popover`. The "+" menu keeps listing every enabled skill, with
+or without a command.
 
 ## Add key links in Web search
 

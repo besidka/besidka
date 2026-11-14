@@ -287,6 +287,7 @@ describe('resolveGithubSource', () => {
       ref: 'HEAD',
       path: null,
       warnings: [],
+      release: null,
     })
     expect(github.urls()).toEqual([REFS])
   })

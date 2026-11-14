@@ -3,14 +3,14 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
-  ANTHROPIC_PROPRIETARY_LICENCE_SHA256,
+  ANTHROPIC_PROPRIETARY_LICENSE_SHA256,
   ANTHROPIC_RESTRICTED_MESSAGE,
   GENERAL_RESTRICTED_MESSAGE,
-  classifySkillLicence,
-  normaliseLicenceText,
-} from '#shared/utils/skills/licence'
+  classifySkillLicense,
+  normaliseLicenseText,
+} from '#shared/utils/skills/license'
 
-const FIXTURES = join(process.cwd(), 'tests/fixtures/skills/licences')
+const FIXTURES = join(process.cwd(), 'tests/fixtures/skills/licenses')
 
 function fixture(name: string): string {
   return readFileSync(join(FIXTURES, name), 'utf8')
@@ -26,9 +26,9 @@ const mit = fixture('mit.txt').replace(
 function classify(
   files: Array<[string, string]>,
   licenseField: string | null = null,
-  extra: Partial<Parameters<typeof classifySkillLicence>[0]> = {},
+  extra: Partial<Parameters<typeof classifySkillLicense>[0]> = {},
 ) {
-  return classifySkillLicence({
+  return classifySkillLicense({
     files: files.map(([path, text]) => {
       return { path, text }
     }),
@@ -37,13 +37,13 @@ function classify(
   })
 }
 
-describe('classifySkillLicence: restricted', () => {
+describe('classifySkillLicense: restricted', () => {
   it('blocks the old Anthropic text by hash with the Anthropic message', async () => {
     const hash = createHash('sha256')
-      .update(normaliseLicenceText(anthropicOld))
+      .update(normaliseLicenseText(anthropicOld))
       .digest('hex')
 
-    expect(hash).toBe(ANTHROPIC_PROPRIETARY_LICENCE_SHA256)
+    expect(hash).toBe(ANTHROPIC_PROPRIETARY_LICENSE_SHA256)
 
     const result = await classify([['LICENSE.txt', anthropicOld]])
 
@@ -51,7 +51,7 @@ describe('classifySkillLicence: restricted', () => {
       class: 'restricted',
       matched: ['known-restrictive-text'],
       text: ANTHROPIC_RESTRICTED_MESSAGE,
-      licenceFile: 'LICENSE.txt',
+      licenseFile: 'LICENSE.txt',
     })
   })
 
@@ -132,7 +132,7 @@ describe('classifySkillLicence: restricted', () => {
   it('releases a false positive through the exception list', async () => {
     const text = 'All rights reserved.\n\nYou may not copy this without credit.'
     const hash = createHash('sha256')
-      .update(normaliseLicenceText(text))
+      .update(normaliseLicenseText(text))
       .digest('hex')
     const blocked = await classify([['LICENSE', text]])
     const released = await classify([['LICENSE', text]], null, {
@@ -144,7 +144,7 @@ describe('classifySkillLicence: restricted', () => {
   })
 
   it('lets the owner add a restrictive hash', async () => {
-    const text = 'A perfectly custom licence.'
+    const text = 'A perfectly custom license.'
     const hash = createHash('sha256').update(text).digest('hex')
     const result = await classify([['LICENSE', text]], null, {
       restrictiveHashes: new Set([hash]),
@@ -169,12 +169,12 @@ describe('classifySkillLicence: restricted', () => {
     expect(result.class).toBe('restricted')
     expect(result.matched).toEqual([
       'known-restrictive-text',
-      'field-names-open-licence',
+      'field-names-open-license',
     ])
   })
 })
 
-describe('classifySkillLicence: open', () => {
+describe('classifySkillLicense: open', () => {
   it('recognises Apache-2.0 with the appendix unfilled', async () => {
     const result = await classify([['LICENSE.txt', apache]])
 
@@ -183,7 +183,7 @@ describe('classifySkillLicence: open', () => {
       class: 'open',
       spdx: 'Apache-2.0',
       matched: ['apache-2.0'],
-      licenceFile: 'LICENSE.txt',
+      licenseFile: 'LICENSE.txt',
     })
   })
 
@@ -252,16 +252,16 @@ describe('classifySkillLicence: open', () => {
     ])
 
     expect(result.class).toBe('open')
-    expect(result.licenceFile).toBe('LICENSE')
+    expect(result.licenseFile).toBe('LICENSE')
   })
 
-  it('names an open licence with no file, as the design says', async () => {
+  it('names an open license with no file, as the design says', async () => {
     const result = await classify([], 'Apache-2.0')
 
     expect(result).toMatchObject({
       class: 'open',
       matched: ['field-only'],
-      licenceFile: null,
+      licenseFile: null,
     })
   })
 
@@ -272,13 +272,13 @@ describe('classifySkillLicence: open', () => {
   })
 })
 
-describe('classifySkillLicence: custom and none', () => {
-  it('classes a licence file that matched nothing as custom', async () => {
+describe('classifySkillLicense: custom and none', () => {
+  it('classes a license file that matched nothing as custom', async () => {
     const result = await classify([['LICENSE.md', 'Use it for good.']])
 
     expect(result).toMatchObject({
       class: 'custom',
-      matched: ['unrecognised-licence-file'],
+      matched: ['unrecognised-license-file'],
     })
   })
 
@@ -305,13 +305,13 @@ describe('classifySkillLicence: custom and none', () => {
 
     expect(result).toMatchObject({
       class: 'none',
-      matched: ['no-licence'],
-      licenceFile: null,
-      licenceFileSha256: null,
+      matched: ['no-license'],
+      licenseFile: null,
+      licenseFileSha256: null,
     })
   })
 
-  it('reads the repository root only when the folder has no licence file', async () => {
+  it('reads the repository root only when the folder has no license file', async () => {
     const fromRoot = await classify([['SKILL.md', 'x']], null, {
       fallbackFiles: [{ path: 'LICENSE', text: mit }],
     })
@@ -323,7 +323,7 @@ describe('classifySkillLicence: custom and none', () => {
     expect(folderWins.class).toBe('custom')
   })
 
-  it('ignores licence files in sub-folders', async () => {
+  it('ignores license files in sub-folders', async () => {
     const result = await classify([['scripts/vendor/LICENSE', mit]])
 
     expect(result.class).toBe('none')

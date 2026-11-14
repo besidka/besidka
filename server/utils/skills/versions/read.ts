@@ -1,4 +1,5 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
+import { normalizeSkillFileKind } from '#shared/utils/skills/path'
 import * as schema from '~~/server/db/schema'
 import { isDecodableSkillPublicId } from '~~/server/utils/skills/ids'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
@@ -52,7 +53,7 @@ export async function loadVersionFiles(
   skillId: string,
   version: number,
 ): Promise<SkillFileRow[]> {
-  return await db.select()
+  const rows = await db.select()
     .from(schema.skillFiles)
     .where(and(
       eq(schema.skillFiles.skillId, skillId),
@@ -60,6 +61,10 @@ export async function loadVersionFiles(
       eq(schema.skillFiles.version, version),
     ))
     .orderBy(asc(schema.skillFiles.path))
+
+  return rows.map((row) => {
+    return { ...row, kind: normalizeSkillFileKind(row.kind) }
+  })
 }
 
 export async function loadVersionRow(

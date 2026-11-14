@@ -14,6 +14,7 @@ export function createSkillSummary(
     description: 'Review a pull request carefully',
     enabled: true,
     modelInvocable: true,
+    command: null,
     slashCommand: false,
     argumentHint: null,
     status: 'ready',
@@ -24,6 +25,8 @@ export function createSkillSummary(
     sourceRef: null,
     sourcePath: null,
     sourceVersion: null,
+    metadataVersion: null,
+    updateAvailable: null,
     currentVersion: 7,
     pendingVersion: null,
     filesCount: 1,
@@ -67,7 +70,7 @@ export function createSkillDetail(
 ): SkillDetail {
   return {
     ...createSkillSummary(),
-    licence: {
+    license: {
       class: 'authored',
       field: null,
       fileSha256: null,
@@ -99,6 +102,7 @@ export function createImportPreview(
     sourceUrl: null,
     sourceRef: null,
     sourcePath: null,
+    release: null,
     expiresAt: 1_800_000_000,
     skill: {
       name: 'review-pr',
@@ -108,7 +112,6 @@ export function createImportPreview(
       metadata: null,
       allowedTools: ['Read'],
       modelInvocable: true,
-      slashCommand: false,
       argumentHint: null,
     },
     files: [
@@ -134,16 +137,17 @@ export function createImportPreview(
     ],
     findingCounts: { shell: 1, url: 1 },
     warnings: [],
-    licence: {
+    license: {
       class: 'open',
-      text: 'MIT licence',
+      text: 'MIT license',
       matched: ['mit'],
       file: 'LICENSE',
       spdx: 'MIT',
-      licenceText: 'MIT License\n\nCopyright (c) Someone',
+      licenseText: 'MIT License\n\nCopyright (c) Someone',
       licenseField: 'MIT',
+      fromRepositoryRoot: false,
     },
-    requiresLicenceAcknowledgement: false,
+    requiresLicenseAcknowledgement: false,
     ...overrides,
   }
 }

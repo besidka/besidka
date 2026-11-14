@@ -15,6 +15,8 @@ import {
   isReservedGithubRef,
 } from '#shared/utils/skills/github-url'
 import type { ParsedGithubSkillUrl } from '#shared/utils/skills/github-url'
+import { sortReleaseTagsDescending } from '#shared/utils/skills/release'
+import type { GithubReleaseTag } from '#shared/utils/skills/release'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   GIT_REFS_SERVICE_QUERY,
@@ -78,11 +80,20 @@ export interface GithubRepository {
   repo: string
 }
 
+export const GITHUB_RELEASE_FALLBACK_TAGS = 3
+
+export interface GithubReleaseOptions {
+  tags: GithubReleaseTag[]
+  latestTag: string
+  defaultBranch: string | null
+}
+
 export interface GithubResolvedSource {
   sha: string
   ref: string
   path: string | null
   warnings: string[]
+  release: GithubReleaseOptions | null
 }
 
 export type GithubRefLookup
@@ -758,10 +769,44 @@ async function warnWhenCommitIsNotATip(
 }
 
 /**
+ * The release tags a link without its own version can be pinned to: only a
+ * link to the repository or to its default branch qualifies, because a link
+ * that names another branch, a tag or a commit asks for exactly that. The
+ * highest `MAJOR.MINOR.PATCH` tags come first, up to the number a caller
+ * may try; null when the repository has none.
+ */
+function readReleaseOptions(
+  advertisement: GitRefAdvertisement,
+  ref: string,
+): GithubReleaseOptions | null {
+  const defaultBranch = advertisement.head?.branch ?? null
+  const followsDefaultBranch = ref === GITHUB_DEFAULT_REF
+    || (defaultBranch !== null && ref === defaultBranch)
+
+  if (!followsDefaultBranch) {
+    return null
+  }
+
+  const tags = sortReleaseTagsDescending(advertisement.tags)
+
+  if (tags.length === 0) {
+    return null
+  }
+
+  return {
+    tags: tags.slice(0, GITHUB_RELEASE_FALLBACK_TAGS),
+    latestTag: tags[0]!.tag,
+    defaultBranch,
+  }
+}
+
+/**
  * Pins a link to one commit. A ref that contains `/` is tried as up to three
  * splits, shortest first. A full commit id from the link is used as it is
  * and carries a warning when it is not the tip of a branch or tag, because
  * without the API there is no way to prove it belongs to this repository.
+ * The commit is the default branch head even when `release` lists tags: the
+ * caller reads the tags first and falls back to this commit.
  */
 export async function resolveGithubSource(
   client: GithubClient,
@@ -785,8 +830,14 @@ export async function resolveGithubSource(
     const warnings = isGithubFullSha(candidate.ref)
       ? await warnWhenCommitIsNotATip(client, repository, lookup.sha)
       : []
+    const release = isGithubFullSha(candidate.ref)
+      ? null
+      : readReleaseOptions(
+        await fetchGithubRefs(client, repository),
+        candidate.ref,
+      )
 
-    return { sha: lookup.sha, ref: candidate.ref, path, warnings }
+    return { sha: lookup.sha, ref: candidate.ref, path, warnings, release }
   }
 
   await fetchGithubRefs(client, repository)

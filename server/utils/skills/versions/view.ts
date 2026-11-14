@@ -1,11 +1,15 @@
 import { desc, eq } from 'drizzle-orm'
 import { SKILL_EDIT_MAX_FILE_BYTES } from '#shared/utils/skills-policy'
-import { getSkillSourceGroup, isSkillLicenceRootFile } from '#shared/utils/skills/edit'
-import {
-  isSkillCommandKind,
-  isSkillSkillKind,
-} from '#shared/utils/skills/mode'
+import { getSkillSourceGroup, isSkillLicenseRootFile } from '#shared/utils/skills/edit'
 import * as schema from '~~/server/db/schema'
+import {
+  getSkillUpdateAvailable,
+  readSkillUpdateState,
+} from '~~/server/utils/skills/import/update-state'
+import type {
+  SkillUpdateAvailable,
+  SkillUpdateKv,
+} from '~~/server/utils/skills/import/update-state'
 import {
   loadOwnedSkill,
   loadSkillVersions,
@@ -19,14 +23,28 @@ import type {
 
 type DbClient = ReturnType<typeof useDb>
 
-export function toSkillSummary(row: SkillRow) {
+function readMetadataVersion(
+  metadata: SkillRow['metadata'],
+): string | null {
+  const version = metadata?.version
+
+  return typeof version === 'string' && version.trim() !== ''
+    ? version.trim().slice(0, 64)
+    : null
+}
+
+export function toSkillSummary(
+  row: SkillRow,
+  updateAvailable: SkillUpdateAvailable | null = null,
+) {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     enabled: row.enabled,
     modelInvocable: row.modelInvocable,
-    slashCommand: row.slashCommand,
+    command: row.slashName,
+    slashCommand: row.slashName !== null,
     argumentHint: row.argumentHint,
     status: row.status,
     licenseClass: row.licenseClass,
@@ -36,6 +54,8 @@ export function toSkillSummary(row: SkillRow) {
     sourceRef: row.sourceRef,
     sourcePath: row.sourcePath,
     sourceVersion: row.sourceVersion,
+    metadataVersion: readMetadataVersion(row.metadata),
+    updateAvailable,
     currentVersion: row.currentVersion,
     pendingVersion: row.pendingVersion,
     filesCount: row.filesCount,
@@ -73,49 +93,50 @@ export function toVersionSummary(
   }
 }
 
-export function isLicenceLocked(licenseClass: string): boolean {
+export function isLicenseLocked(licenseClass: string): boolean {
   return licenseClass === 'open' || licenseClass === 'custom'
 }
 
-export function toFileSummary(file: SkillFileRow, locksLicenceFiles: boolean) {
+export function toFileSummary(file: SkillFileRow, locksLicenseFiles: boolean) {
   return {
     path: file.path,
     bytes: file.bytes,
     kind: file.kind,
     sha256: file.blobSha256,
     editable: file.bytes <= SKILL_EDIT_MAX_FILE_BYTES
-      && !(locksLicenceFiles && isSkillLicenceRootFile(file.path)),
+      && !(locksLicenseFiles && isSkillLicenseRootFile(file.path)),
   }
 }
 
 /**
- * The user's skills, newest edit first, with the counts the manager's filter
- * rows show: by source group (created, imported, from apps) and by kind. A
- * command is a skill that runs only when asked; an Auto skill is a skill.
+ * The user's skills, newest edit first, with the counts the manager's source
+ * filter shows (created, imported, from apps).
  */
-export async function listUserSkills(db: DbClient, userId: number) {
+export async function listUserSkills(
+  db: DbClient,
+  userId: number,
+  kv?: SkillUpdateKv,
+) {
   const rows = await db.select()
     .from(schema.skills)
     .where(eq(schema.skills.userId, userId))
     .orderBy(desc(schema.skills.updatedAt), desc(schema.skills.id))
   const sources = { all: rows.length, created: 0, imported: 0, apps: 0 }
-  const kinds = { all: rows.length, skills: 0, commands: 0 }
+  const updates = kv && rows.some((row) => {
+    return row.sourceKind === 'github'
+  })
+    ? await readSkillUpdateState(kv, userId)
+    : {}
 
   for (const row of rows) {
     sources[getSkillSourceGroup(row.sourceKind)] += 1
-
-    if (isSkillCommandKind(row)) {
-      kinds.commands += 1
-    }
-
-    if (isSkillSkillKind(row)) {
-      kinds.skills += 1
-    }
   }
 
   return {
-    skills: rows.map(toSkillSummary),
-    counts: { sources, kinds },
+    skills: rows.map((row) => {
+      return toSkillSummary(row, getSkillUpdateAvailable(updates[row.id], row))
+    }),
+    counts: { sources },
   }
 }
 
@@ -123,13 +144,17 @@ export async function getSkillDetail(
   db: DbClient,
   userId: number,
   skillId: string,
+  kv?: SkillUpdateKv,
 ) {
   const skill = await loadOwnedSkill(db, userId, skillId)
+  const updates = kv && skill.sourceKind === 'github'
+    ? await readSkillUpdateState(kv, userId)
+    : {}
   const [files, versions] = await Promise.all([
     loadVersionFiles(db, userId, skill.id, skill.currentVersion),
     loadSkillVersions(db, userId, skill.id),
   ])
-  const locksLicenceFiles = isLicenceLocked(skill.licenseClass)
+  const locksLicenseFiles = isLicenseLocked(skill.licenseClass)
   const current = versions.find((row) => {
     return row.version === skill.currentVersion
   })
@@ -138,18 +163,18 @@ export async function getSkillDetail(
   })
 
   return {
-    ...toSkillSummary(skill),
-    licence: {
+    ...toSkillSummary(skill, getSkillUpdateAvailable(updates[skill.id], skill)),
+    license: {
       class: skill.licenseClass,
       field: skill.licenseField,
       fileSha256: skill.licenseFileSha256,
-      filesLocked: locksLicenceFiles,
+      filesLocked: locksLicenseFiles,
     },
     compatibility: skill.compatibility,
     metadata: skill.metadata,
     allowedTools: skill.allowedTools,
     files: files.map((file) => {
-      return toFileSummary(file, locksLicenceFiles)
+      return toFileSummary(file, locksLicenseFiles)
     }),
     currentVersionInfo: current ? toVersionSummary(current, skill) : null,
     pendingVersionInfo: pending ? toVersionSummary(pending, skill) : null,

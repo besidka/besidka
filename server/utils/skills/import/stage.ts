@@ -65,10 +65,9 @@ export interface SkillStageManifest {
     metadata: Record<string, string> | null
     allowedTools: string[] | null
     modelInvocable: boolean
-    slashCommand: boolean
     argumentHint: string | null
   }
-  licence: {
+  license: {
     class: Exclude<SkillLicenseClass, 'authored'>
     file: string | null
     sha256: string | null
@@ -115,14 +114,14 @@ function buildManifest(input: {
   now: number
 }): SkillStageManifest {
   const { analysis } = input
-  const licenceClass = analysis.licence.class
+  const licenseClass = analysis.license.class
 
-  if (licenceClass === 'restricted') {
+  if (licenseClass === 'restricted') {
     throw createError({
       message: 'A restricted skill cannot be staged',
       status: 500,
-      why: 'The licence gate must reject restricted skills before staging',
-      fix: 'Run the analysis and stop on a restricted licence',
+      why: 'The license gate must reject restricted skills before staging',
+      fix: 'Run the analysis and stop on a restricted license',
     })
   }
 
@@ -145,14 +144,13 @@ function buildManifest(input: {
       metadata: analysis.skill.metadata,
       allowedTools: analysis.skill.allowedTools,
       modelInvocable: analysis.skill.defaults.modelInvocable,
-      slashCommand: analysis.skill.defaults.slashCommand,
       argumentHint: analysis.skill.defaults.argumentHint,
     },
-    licence: {
-      class: licenceClass,
-      file: analysis.licence.licenceFile,
-      sha256: analysis.licence.licenceFileSha256,
-      classifierVersion: analysis.licence.classifierVersion,
+    license: {
+      class: licenseClass,
+      file: analysis.license.licenseFile,
+      sha256: analysis.license.licenseFileSha256,
+      classifierVersion: analysis.license.classifierVersion,
     },
     files: analysis.files.map((file) => {
       return {
@@ -273,6 +271,57 @@ export async function readSkillStage(input: {
   }
 
   return manifest
+}
+
+export type SkillStageLookup
+  = | { state: 'ready', manifest: SkillStageManifest }
+    | { state: 'expired' }
+    | { state: 'foreign' }
+
+/**
+ * Like `readSkillStage`, but says why there is no manifest: the stage ids are
+ * 128-bit random, so a stage that belongs to another account (`foreign`, 404)
+ * can only be reached by someone who was handed the id, while a missing or
+ * old one (`expired`, 410) is what an hour of waiting produces. Used by the
+ * review screen, which needs to tell the user to start again.
+ */
+export async function lookupSkillStage(input: {
+  kv: SkillStageKv
+  userId: number
+  stageId: string
+  now?: number
+}): Promise<SkillStageLookup> {
+  if (!SKILL_STAGE_ID_PATTERN.test(input.stageId)) {
+    return { state: 'expired' }
+  }
+
+  const raw = await input.kv.get(skillStageKey(input.stageId))
+
+  if (!raw) {
+    return { state: 'expired' }
+  }
+
+  let manifest: SkillStageManifest
+
+  try {
+    manifest = JSON.parse(raw) as SkillStageManifest
+  } catch {
+    return { state: 'expired' }
+  }
+
+  if (manifest.stageId !== input.stageId) {
+    return { state: 'expired' }
+  }
+
+  if (manifest.userId !== input.userId) {
+    return { state: 'foreign' }
+  }
+
+  if (manifest.expiresAt <= (input.now ?? Date.now())) {
+    return { state: 'expired' }
+  }
+
+  return { state: 'ready', manifest }
 }
 
 export async function readStagedFile(input: {

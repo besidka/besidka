@@ -4,6 +4,7 @@ import {
   detectSkillRoot,
   getSkillFileKind,
   normaliseSkillEntryName,
+  normalizeSkillFileKind,
 } from '#shared/utils/skills/path'
 
 describe('normaliseSkillEntryName', () => {
@@ -67,7 +68,7 @@ describe('normaliseSkillEntryName', () => {
 })
 
 describe('checkSkillRelativePath', () => {
-  it('allows the text allowlist and licence files with or without extension', () => {
+  it('allows the text allowlist and license files with or without extension', () => {
     for (const path of [
       'SKILL.md',
       'scripts/run.py',
@@ -130,11 +131,40 @@ describe('detectSkillRoot', () => {
   })
 })
 
+describe('normalizeSkillFileKind', () => {
+  it('reads a row stored with the earlier spelling as license', () => {
+    expect(normalizeSkillFileKind('licence')).toBe('license')
+    expect(normalizeSkillFileKind('license')).toBe('license')
+  })
+
+  it('keeps every current kind and turns anything else into other', () => {
+    for (const kind of [
+      'skill-md',
+      'reference',
+      'script',
+      'asset',
+      'license',
+      'other',
+    ]) {
+      expect(normalizeSkillFileKind(kind)).toBe(kind)
+    }
+
+    expect(normalizeSkillFileKind('')).toBe('other')
+    expect(normalizeSkillFileKind('Licence')).toBe('other')
+  })
+
+  it('still recognises both spellings of the license file name', () => {
+    for (const name of ['LICENSE', 'LICENCE', 'License.md', 'licence.txt']) {
+      expect(getSkillFileKind(name)).toBe('license')
+    }
+  })
+})
+
 describe('getSkillFileKind', () => {
   it('classifies files by name and folder', () => {
     expect(getSkillFileKind('SKILL.md')).toBe('skill-md')
-    expect(getSkillFileKind('LICENSE.txt')).toBe('licence')
-    expect(getSkillFileKind('NOTICE')).toBe('licence')
+    expect(getSkillFileKind('LICENSE.txt')).toBe('license')
+    expect(getSkillFileKind('NOTICE')).toBe('license')
     expect(getSkillFileKind('scripts/run.sh')).toBe('script')
     expect(getSkillFileKind('references/a.md')).toBe('reference')
     expect(getSkillFileKind('assets/t.json')).toBe('asset')

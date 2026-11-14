@@ -186,7 +186,7 @@
             v-for="(part, index) in getRenderedMessageParts(m)"
             :key="`message-${m.id}-${getRenderedPartKey(m, index)}`"
             :class="{
-              'mt-4': isTextPartAfterGeneratedImage(
+              'mt-4': hasGapBeforePart(
                 m,
                 getRenderedMessageParts(m),
                 index,
@@ -280,10 +280,10 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
-  isTextPartAfterGeneratedImage,
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { hasGapBeforePart } from '~/utils/message-part-spacing'
 import {
   collectArtifactVersions,
   getRenderedPartKeys,

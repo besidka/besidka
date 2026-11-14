@@ -111,7 +111,7 @@ describe('POST /api/v1/skills/[id]/update/{accept,reject}', () => {
       body: {
         stageId: staged.stageId,
         acknowledged: true,
-        licenceAcknowledged: true,
+        licenseAcknowledged: true,
         ...(markdown ? { asUpdateOf: skillId } : {}),
       },
     }))
@@ -169,7 +169,7 @@ describe('POST /api/v1/skills/[id]/update/{accept,reject}', () => {
     },
   )
 
-  it('asks for licenceAcknowledged when the update moves an open skill to none', async () => {
+  it('asks for licenseAcknowledged when the update moves an open skill to none', async () => {
     await testDb.db.update(schema.skills)
       .set({ licenseClass: 'open' })
       .where(eq(schema.skills.id, skillId))
@@ -178,7 +178,7 @@ describe('POST /api/v1/skills/[id]/update/{accept,reject}', () => {
       call('accept', { version: 2, sha256: pendingSha256 }),
     )).toMatchObject({
       status: 400,
-      code: 'licence-acknowledgement-required',
+      code: 'license-acknowledgement-required',
     })
     expect((await testDb.db.select().from(schema.skills))[0]!.pendingVersion)
       .toBe(2)
@@ -186,7 +186,7 @@ describe('POST /api/v1/skills/[id]/update/{accept,reject}', () => {
     const result = await call('accept', {
       version: 2,
       sha256: pendingSha256,
-      licenceAcknowledged: true,
+      licenseAcknowledged: true,
     })
 
     expect(result).toMatchObject({ id: skillId, version: 3 })

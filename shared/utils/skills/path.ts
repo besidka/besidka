@@ -1,4 +1,5 @@
 import {
+  SKILL_FILE_KINDS,
   SKILL_MAX_PATH_DEPTH,
   SKILL_MAX_PATH_LENGTH,
 } from '#shared/utils/skills-policy'
@@ -52,7 +53,7 @@ const SCRIPT_EXTENSIONS: ReadonlySet<string> = new Set([
   'go',
 ])
 
-const LICENCE_BASENAME_PATTERN
+const LICENSE_BASENAME_PATTERN
   = /^(?:licen[sc]e|copying|notice)(?:\.[A-Za-z0-9_-]{1,16})?$/i
 
 // eslint-disable-next-line no-control-regex
@@ -102,8 +103,8 @@ export function getSkillExtension(path: string): string {
   return baseName.slice(separatorIndex + 1).toLowerCase()
 }
 
-export function isSkillLicenceFileName(path: string): boolean {
-  return LICENCE_BASENAME_PATTERN.test(getSkillBaseName(path))
+export function isSkillLicenseFileName(path: string): boolean {
+  return LICENSE_BASENAME_PATTERN.test(getSkillBaseName(path))
 }
 
 /**
@@ -196,7 +197,7 @@ export function checkSkillRelativePath(
 
   if (
     SKILL_ALLOWED_EXTENSIONS.has(extension)
-    || isSkillLicenceFileName(relativePath)
+    || isSkillLicenseFileName(relativePath)
   ) {
     return null
   }
@@ -240,6 +241,24 @@ export function detectSkillRoot(paths: string[]): SkillRootResult {
   return { ok: true, root: `${folderName}/`, folderName: folderName! }
 }
 
+const SKILL_FILE_KIND_SPELLINGS: Readonly<Record<string, SkillFileKind>> = {
+  licence: 'license',
+}
+
+/**
+ * The file kind of a stored row. Rows written before the American spelling
+ * hold `licence`; they read as `license`, so no code outside this function
+ * ever sees the old value and no data migration is needed. A value that is no
+ * kind at all reads as `other`.
+ */
+export function normalizeSkillFileKind(kind: string): SkillFileKind {
+  if (SKILL_FILE_KINDS.includes(kind as SkillFileKind)) {
+    return kind as SkillFileKind
+  }
+
+  return SKILL_FILE_KIND_SPELLINGS[kind] ?? 'other'
+}
+
 export function getSkillFileKind(relativePath: string): SkillFileKind {
   if (relativePath === SKILL_MD_FILE_NAME) {
     return 'skill-md'
@@ -247,8 +266,8 @@ export function getSkillFileKind(relativePath: string): SkillFileKind {
 
   const segments = relativePath.split('/')
 
-  if (segments.length === 1 && isSkillLicenceFileName(relativePath)) {
-    return 'licence'
+  if (segments.length === 1 && isSkillLicenseFileName(relativePath)) {
+    return 'license'
   }
 
   const firstSegment = segments[0]

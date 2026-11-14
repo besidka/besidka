@@ -17,7 +17,6 @@ import {
 } from '#shared/utils/skills/frontmatter'
 import {
   isGithubFullSha,
-  isReservedGithubRef,
   parseGithubSkillUrl,
 } from '#shared/utils/skills/github-url'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
@@ -32,8 +31,12 @@ import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import {
   createGithubClient,
   createGithubRefNotFoundError,
-  resolveGithubRef,
 } from '~~/server/utils/skills/import/github'
+import { resolveGithubUpstream } from '~~/server/utils/skills/import/upstream'
+import {
+  clearSkillUpdate,
+  markSkillUpdateSeen,
+} from '~~/server/utils/skills/import/update-state'
 import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
 import type { GithubKv } from '~~/server/utils/skills/import/github'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
@@ -80,6 +83,7 @@ export type GithubUpdateCheckResult
     contentUnchanged: boolean
     sourceVersion: string
     latestVersion: string | null
+    latestTag: string | null
   }
   | ({ upToDate: false } & GithubUpdateReview)
 
@@ -87,7 +91,9 @@ export interface GithubUpdateReview {
   version: number
   sha256: string
   sourceVersion: string
+  sourceRef: string | null
   previousSourceVersion: string | null
+  previousSourceRef: string | null
   compareUrl: string | null
   reusedPending: boolean
   filesCount: number
@@ -98,7 +104,7 @@ export interface GithubUpdateReview {
     current: Record<string, number> | null
     pending: Record<string, number> | null
   }
-  licence: {
+  license: {
     changed: boolean
     before: { class: string, fileSha256: string | null }
     after: { class: string, fileSha256: string | null }
@@ -190,7 +196,7 @@ function readLocalEdits(
  * Everything the review screen needs about a persisted pending version:
  * the per-file diff against the CURRENT version (not against the last
  * import, so local edits show up as what accepting would replace), findings
- * that are new in the changed files, any licence change, and the local-edit
+ * that are new in the changed files, any license change, and the local-edit
  * warning. Read from D1 and R2 so a reused pending version gets the same
  * answer as a fresh one.
  */
@@ -243,7 +249,9 @@ async function buildReview(input: {
     version: pending.version,
     sha256: pending.sha256,
     sourceVersion: pending.sourceVersion ?? '',
+    sourceRef: pending.sourceRef,
     previousSourceVersion: skill.sourceVersion,
+    previousSourceRef: skill.sourceRef,
     compareUrl,
     reusedPending: input.reusedPending,
     filesCount: pending.filesCount,
@@ -257,7 +265,7 @@ async function buildReview(input: {
       current: currentRow?.findings ?? null,
       pending: pending.findings,
     },
-    licence: {
+    license: {
       changed: skill.licenseClass !== pending.licenseClass
         || skill.licenseFileSha256 !== pending.licenseFileSha256,
       before: {
@@ -312,12 +320,13 @@ async function keepLocalName(
 }
 
 /**
- * Checks a GitHub skill for a newer commit and, when there is one, stores it
+ * Checks a GitHub skill for a newer version and, when there is one, stores it
  * as a persisted pending version (origin `update`) for the user to review.
- * The skill keeps running on its current version and stays as enabled as it
- * was; only accepting the pending version changes that. One REST call
- * resolves the ref again, one archive download follows only when the commit
- * moved, and a pinned commit has nothing to check.
+ * A skill pinned to a release tag looks for a higher release tag; a skill on
+ * a branch looks at the branch head. The skill keeps running on its current
+ * version and stays as enabled as it was; only accepting the pending version
+ * changes that. One ref list read resolves the target, one archive download
+ * follows only when it moved, and a pinned commit has nothing to check.
  */
 export async function checkGithubSkillUpdate(
   input: GithubUpdateCheckInput,
@@ -336,20 +345,6 @@ export async function checkGithubSkillUpdate(
     throw createNotGithubSkillError()
   }
 
-  if (isGithubFullSha(skill.sourceRef)) {
-    return {
-      upToDate: true,
-      pinned: true,
-      contentUnchanged: false,
-      sourceVersion: skill.sourceVersion,
-      latestVersion: null,
-    }
-  }
-
-  if (isReservedGithubRef(skill.sourceRef)) {
-    throw createGithubRefNotFoundError()
-  }
-
   const repository = {
     owner: parsedUrl.value.owner,
     repo: parsedUrl.value.repo,
@@ -360,24 +355,42 @@ export async function checkGithubSkillUpdate(
     kv: input.kv,
   })
 
+  if (isGithubFullSha(skill.sourceRef)) {
+    return {
+      upToDate: true,
+      pinned: true,
+      contentUnchanged: false,
+      sourceVersion: skill.sourceVersion,
+      latestVersion: null,
+      latestTag: null,
+    }
+  }
+
   await input.beforeNetwork?.()
 
-  const lookup = await resolveGithubRef(client, {
-    ...repository,
-    ref: skill.sourceRef,
-  })
+  const target = await resolveGithubUpstream(
+    client,
+    repository,
+    skill.sourceRef,
+  )
 
-  if (!lookup.found) {
+  if (target.kind !== 'found') {
     throw createGithubRefNotFoundError()
   }
 
-  if (lookup.sha === skill.sourceVersion) {
+  if (target.sha === skill.sourceVersion && target.ref === skill.sourceRef) {
+    await clearSkillUpdate(input.kv, {
+      userId: input.userId,
+      skillId: input.skillId,
+    })
+
     return {
       upToDate: true,
       pinned: false,
       contentUnchanged: false,
       sourceVersion: skill.sourceVersion,
-      latestVersion: lookup.sha,
+      latestVersion: target.sha,
+      latestTag: target.tag,
     }
   }
 
@@ -399,7 +412,11 @@ export async function checkGithubSkillUpdate(
     })
   }
 
-  if (existingPending && existingPending.sourceVersion === lookup.sha) {
+  if (
+    existingPending
+    && existingPending.sourceVersion === target.sha
+    && existingPending.sourceRef === target.ref
+  ) {
     return {
       upToDate: false,
       ...await buildReview({
@@ -419,7 +436,7 @@ export async function checkGithubSkillUpdate(
   try {
     loaded = await loadGithubSkill(client, {
       ...repository,
-      sha: lookup.sha,
+      sha: target.sha,
       path: skill.sourcePath,
     })
   } catch (exception) {
@@ -438,7 +455,7 @@ export async function checkGithubSkillUpdate(
     )
   }
 
-  const warnings = [...loaded.warnings]
+  const warnings: string[] = []
   const files: SkillArchiveFile[] = []
 
   for (const file of loaded.files) {
@@ -481,12 +498,19 @@ export async function checkGithubSkillUpdate(
     })
 
   if (knownContent.includes(analysis.contentSha256)) {
+    await markSkillUpdateSeen(input.kv, {
+      userId: input.userId,
+      skillId: input.skillId,
+      target: { ref: target.ref, sha: target.sha, tag: target.tag },
+    })
+
     return {
       upToDate: true,
       pinned: false,
       contentUnchanged: true,
       sourceVersion: skill.sourceVersion,
-      latestVersion: lookup.sha,
+      latestVersion: target.sha,
+      latestTag: target.tag,
     }
   }
 
@@ -512,15 +536,15 @@ export async function checkGithubSkillUpdate(
   const payload: PendingVersionPayload = {
     userId: input.userId,
     source: 'github',
-    sourceVersion: lookup.sha,
+    sourceVersion: target.sha,
     sourceUrl: skill.sourceUrl,
-    sourceRef: skill.sourceRef,
+    sourceRef: target.ref,
     sourcePath: skill.sourcePath,
-    licence: {
-      class: analysis.licence.class,
-      file: analysis.licence.licenceFile,
-      sha256: analysis.licence.licenceFileSha256,
-      classifierVersion: analysis.licence.classifierVersion,
+    license: {
+      class: analysis.license.class,
+      file: analysis.license.licenseFile,
+      sha256: analysis.license.licenseFileSha256,
+      classifierVersion: analysis.license.classifierVersion,
     },
     files: analysis.files,
     totalBytes: analysis.totalBytes,

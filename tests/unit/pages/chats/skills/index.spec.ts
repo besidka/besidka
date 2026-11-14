@@ -85,7 +85,6 @@ function setList(items = skills) {
     skills: items,
     counts: {
       sources: { all: items.length, created: 1, imported: 1, apps: 0 },
-      kinds: { all: items.length, skills: items.length, commands: 0 },
     },
   }
 }
@@ -146,11 +145,19 @@ describe('chats skills page', () => {
     expect(wrapper.find(testId('tab-skills')).attributes('aria-current'))
       .toBe('page')
     expect(wrapper.text()).toContain(
-      'Skills teach the model how to do a task your way. Commands are skills you run with /name.',
+      'Skills teach the model how to do a task your way. Give a skill a command to run it with /command.',
     )
     expect(wrapper.findAll(testId('skill-row'))).toHaveLength(2)
     expect(wrapper.find(testId('skills-new-trigger')).exists()).toBe(true)
     expect(wrapper.find(testId('skills-new-github')).exists()).toBe(true)
+  })
+
+  it('has no kind filter and no blank skill or command entries', async () => {
+    const wrapper = await mountPage()
+
+    expect(wrapper.find(testId('skills-kind-filter')).exists()).toBe(false)
+    expect(wrapper.find(testId('skills-new-blank')).exists()).toBe(false)
+    expect(wrapper.find(testId('skills-new-command')).exists()).toBe(false)
   })
 
   it('renders no content and leaves the page when the skills flag is off', async () => {
@@ -213,12 +220,12 @@ describe('chats skills page', () => {
     expect(sidePanel.currentView.value?.title).toBe('alpha')
   })
 
-  it('creates a command from the New menu and opens it in the editor', async () => {
+  it('creates a skill from the New menu and opens it in the editor', async () => {
     mocks.fetch.mockResolvedValue({ id: 'n1', name: 'summarise' })
 
     const wrapper = await mountPage()
 
-    await wrapper.get(testId('skills-new-command')).trigger('click')
+    await wrapper.get(testId('skills-new-skill')).trigger('click')
     await vi.waitFor(() => {
       expect(findInBody('skill-create-form')).not.toBeNull()
     })
@@ -233,7 +240,7 @@ describe('chats skills page', () => {
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills', {
       method: 'POST',
-      body: { kind: 'command', name: 'summarise' },
+      body: { kind: 'blank', name: 'summarise', mode: 'auto' },
     })
     expect(mocks.refreshNuxtData).toHaveBeenCalled()
     expect(useSkillEditSession().skillId.value).toBe('n1')

@@ -110,17 +110,26 @@ describe('parseGithubSkillUrl', () => {
   it('refuses links that name no repository or an unknown kind', () => {
     expect(rejection('https://github.com/')).toContain('owner')
     expect(rejection('https://github.com/o')).toContain('owner')
-    expect(rejection('https://github.com/o/r/issues/1')).toContain('Use a link')
+    expect(rejection('https://github.com/o/r/issues/1'))
+      .toContain('github.com/o/r/issues is a GitHub page')
     expect(rejection('https://github.com/o/r/tree')).toContain('not valid')
-    expect(rejection('')).toContain('Paste')
+    expect(rejection('')).toContain('empty or longer')
     expect(rejection(`https://github.com/o/${'r'.repeat(700)}`))
-      .toContain('Paste')
+      .toContain('empty or longer')
   })
 
-  it('requires a blob link to end in SKILL.md', () => {
-    expect(rejection('https://github.com/o/r/blob/main/README.md'))
-      .toContain('SKILL.md')
+  it('accepts a blob link to a folder or to a file other than SKILL.md', () => {
+    expect(parse('https://github.com/o/r/blob/main/skills/a'))
+      .toMatchObject({ kind: 'blob' })
+    expect(parse('https://github.com/o/r/blob/main/README.md'))
+      .toMatchObject({ kind: 'blob' })
+    expect(parse('https://github.com/o/r/blob/main'))
+      .toMatchObject({ kind: 'blob' })
+  })
+
+  it('refuses a SKILL.md with no branch, tag or commit before it', () => {
     expect(rejection('https://github.com/o/r/blob/SKILL.md')).toContain('SKILL.md')
+    expect(rejection('https://github.com/o/r/tree/SKILL.md')).toContain('SKILL.md')
   })
 
   it('caps the length of the path', () => {
@@ -128,6 +137,98 @@ describe('parseGithubSkillUrl', () => {
 
     expect(rejection(`https://github.com/o/r/tree/main/${segments}`))
       .toContain('too long')
+  })
+})
+
+describe('a link without tree or blob', () => {
+  const ROUTES = [
+    'issues',
+    'pull',
+    'pulls',
+    'releases',
+    'actions',
+    'wiki',
+    'tags',
+    'branches',
+    'commits',
+    'compare',
+    'discussions',
+    'security',
+    'pulse',
+    'graphs',
+    'settings',
+    'projects',
+    'packages',
+    'deployments',
+    'archive',
+    'raw',
+    'blame',
+    'labels',
+    'milestones',
+    'network',
+    'stargazers',
+    'watchers',
+    'forks',
+  ]
+
+  it('reads github.com/owner/repo/path as a folder of the default branch', () => {
+    const value = parse(
+      'https://github.com/AminBlg/SimpleEnglish/skills/simple-english',
+    )
+
+    expect(value).toMatchObject({
+      owner: 'AminBlg',
+      repo: 'SimpleEnglish',
+      kind: 'path',
+      refAndPath: ['skills', 'simple-english'],
+    })
+    expect(getGithubRefCandidates(value)).toEqual([
+      { ref: 'HEAD', path: 'skills/simple-english' },
+    ])
+  })
+
+  it.each([
+    'github.com/o/r/skills/a',
+    'www.github.com/o/r/skills/a',
+    'https://www.github.com/o/r/skills/a/',
+    'https://github.com/o/r/skills/a?tab=readme-ov-file',
+    'https://github.com/o/r/skills/a#readme',
+    'https://github.com/o/r/skills/a/?x=1#y',
+    '  https://github.com/o/r/skills/a  ',
+  ])('reads %s', (input) => {
+    expect(getGithubRefCandidates(parse(input)))
+      .toEqual([{ ref: 'HEAD', path: 'skills/a' }])
+  })
+
+  it('reads a trailing SKILL.md as its folder, and a bare one as the root', () => {
+    expect(getGithubRefCandidates(parse('github.com/o/r/skills/a/SKILL.md')))
+      .toEqual([{ ref: 'HEAD', path: 'skills/a' }])
+    expect(getGithubRefCandidates(parse('github.com/o/r/SKILL.md')))
+      .toEqual([{ ref: 'HEAD', path: null }])
+  })
+
+  it('still strips .git from the repository name', () => {
+    expect(parse('https://github.com/o/r.git/skills/a')).toMatchObject({
+      repo: 'r',
+      kind: 'path',
+    })
+  })
+
+  it.each(ROUTES)('refuses github.com/o/r/%s as a GitHub page', (route) => {
+    expect(rejection(`https://github.com/o/r/${route}/anything`))
+      .toBe(`github.com/o/r/${route} is a GitHub page, not a folder of the repository`)
+  })
+
+  it('refuses a path with a character GitHub paths do not use or one that is too long', () => {
+    expect(rejection('https://github.com/o/r/skills/a b')).toContain('Encoded')
+    expect(rejection('https://github.com/o/r/skills/a:b')).toContain('characters')
+    expect(rejection(`https://github.com/o/r/${
+      Array.from({ length: 12 }, () => 'a').join('/')
+    }`)).toContain('too long')
+  })
+
+  it('never repeats the reason in the fix', () => {
+    expect(rejection('https://github.com/o/r/issues/1')).not.toContain('Paste')
   })
 })
 
@@ -164,6 +265,33 @@ describe('getGithubRefCandidates', () => {
   it('gives a tree link to the repository root a null path', () => {
     expect(getGithubRefCandidates(parse('github.com/o/r/tree/main')))
       .toEqual([{ ref: 'main', path: null }])
+  })
+
+  it('reads the blob link of a skill folder like a tree link', () => {
+    const url = 'https://github.com/AminBlg/SimpleEnglish/blob/main/skills/simple-english'
+
+    expect(getGithubRefCandidates(parse(url))).toEqual([
+      { ref: 'main', path: 'skills/simple-english' },
+      { ref: 'main/skills', path: 'simple-english' },
+      { ref: 'main/skills/simple-english', path: null },
+    ])
+    expect(getGithubRefCandidates(parse(
+      url.replace('/blob/', '/tree/'),
+    ))).toEqual(getGithubRefCandidates(parse(url)))
+  })
+
+  it('treats any non-SKILL.md blob path as a folder', () => {
+    expect(getGithubRefCandidates(
+      parse('github.com/o/r/blob/main/docs/README.md'),
+    )[0]).toEqual({ ref: 'main', path: 'docs/README.md' })
+    expect(getGithubRefCandidates(parse('github.com/o/r/blob/main')))
+      .toEqual([{ ref: 'main', path: null }])
+  })
+
+  it('strips a trailing SKILL.md from a tree link too', () => {
+    expect(getGithubRefCandidates(
+      parse('github.com/o/r/tree/main/skills/a/SKILL.md'),
+    )[0]).toEqual({ ref: 'main', path: 'skills/a' })
   })
 
   it('uses the parent folder of a blob link', () => {

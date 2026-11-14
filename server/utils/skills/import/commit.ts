@@ -8,7 +8,6 @@ import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import {
   SKILLS_MAX_USER_BYTES,
   SKILLS_PER_USER,
-  isReservedSkillSlashName,
   isSkillNameValid,
 } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
@@ -52,7 +51,7 @@ export interface CommitSkillImportInput {
   kv: SkillStageKv
   userId: number
   stageId: string
-  licenceAcknowledged?: boolean
+  licenseAcknowledged?: boolean
   name?: string
   asUpdateOf?: string
   logger: LoggerLike
@@ -67,7 +66,7 @@ export type CommitSkillImportResult
     version: number
     enabled: false
     status: 'ready'
-    licenceClass: SkillStageManifest['licence']['class']
+    licenseClass: SkillStageManifest['license']['class']
     filesCount: number
   }
   | {
@@ -77,7 +76,7 @@ export type CommitSkillImportResult
     version: number
     pendingVersion: number
     sha256: string
-    licenceClass: SkillStageManifest['licence']['class']
+    licenseClass: SkillStageManifest['license']['class']
     filesCount: number
   }
 
@@ -90,7 +89,7 @@ function createNameTakenError(
     message: `A skill named ${name} exists`,
     status: 409,
     code: 'name-taken',
-    why: 'Skill names are unique, because they are the names of /commands too',
+    why: 'Skill names are unique per account',
     fix: 'Replace the existing skill with this one as an update, or rename '
       + 'the incoming skill',
     data: { stageId, asUpdateOf: existingSkillId, name },
@@ -99,27 +98,27 @@ function createNameTakenError(
 
 function assertAcknowledgements(
   manifest: SkillStageManifest,
-  licenceAcknowledged: boolean | undefined,
+  licenseAcknowledged: boolean | undefined,
 ): void {
-  if (manifest.licence.class === 'restricted') {
+  if (manifest.license.class === 'restricted') {
     throw createSkillImportError(
-      'licence-restricted',
-      'Its licence limits use to a named service, or forbids copying',
+      'license-restricted',
+      'Its license limits use to a named service, or forbids copying',
     )
   }
 
-  const needsLicenceTick = manifest.licence.class === 'none'
-    || manifest.licence.class === 'custom'
+  const needsLicenseTick = manifest.license.class === 'none'
+    || manifest.license.class === 'custom'
 
-  if (needsLicenceTick && licenceAcknowledged !== true) {
+  if (needsLicenseTick && licenseAcknowledged !== true) {
     throw createError({
       message: 'Confirm that you may use this skill',
       status: 400,
-      code: 'licence-acknowledgement-required',
-      why: manifest.licence.class === 'none'
-        ? 'The skill states no licence, so the author keeps all rights'
-        : 'The skill carries a custom licence',
-      fix: 'Tick the licence box in the review step',
+      code: 'license-acknowledgement-required',
+      why: manifest.license.class === 'none'
+        ? 'The skill states no license, so the author keeps all rights'
+        : 'The skill carries a custom license',
+      fix: 'Tick the license box in the review step',
     })
   }
 }
@@ -163,7 +162,7 @@ export type PendingVersionPayload = Pick<
   | 'sourceUrl'
   | 'sourceRef'
   | 'sourcePath'
-  | 'licence'
+  | 'license'
   | 'files'
   | 'totalBytes'
   | 'contentSha256'
@@ -241,6 +240,55 @@ async function prepareRenamedImport(input: {
   }
 }
 
+/**
+ * An update keeps the local name. When the skill was renamed on this account
+ * after it was imported, and the staged import is the same repository and
+ * folder, the staged `SKILL.md` is written under the local name, the way an
+ * update check does, so "Update it to this version" works for a renamed copy.
+ * Any other name mismatch is left for `replaceAsUpdate` to refuse.
+ */
+async function prepareUpdateImport(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  manifest: SkillStageManifest
+  skillId: string
+}): Promise<PreparedImport> {
+  const { db, manifest } = input
+  const unchanged: PreparedImport = { manifest, contentOverrides: new Map() }
+
+  if (!isDecodableSkillPublicId(input.skillId)) {
+    return unchanged
+  }
+
+  const [skill] = await db.select({
+    name: schema.skills.name,
+    sourceKind: schema.skills.sourceKind,
+    sourceUrl: schema.skills.sourceUrl,
+    sourcePath: schema.skills.sourcePath,
+  })
+    .from(schema.skills)
+    .where(and(
+      eq(schema.skills.id, input.skillId),
+      eq(schema.skills.userId, manifest.userId),
+    ))
+    .limit(1)
+  const isSameSource = skill?.sourceKind === 'github'
+    && manifest.source === 'github'
+    && !!skill.sourceUrl
+    && skill.sourceUrl.toLowerCase() === (manifest.sourceUrl ?? '').toLowerCase()
+    && (skill.sourcePath ?? '') === (manifest.sourcePath ?? '')
+
+  if (!skill || skill.name === manifest.skill.name || !isSameSource) {
+    return unchanged
+  }
+
+  return await prepareRenamedImport({
+    bucket: input.bucket,
+    manifest,
+    name: skill.name,
+  })
+}
+
 async function copyStagedBlobs(input: {
   bucket: SkillStageBucket
   manifest: PendingVersionPayload
@@ -315,8 +363,8 @@ function buildImportVersionStatements(input: {
     sha256: manifest.contentSha256,
     filesCount: manifest.files.length,
     bytes: manifest.totalBytes,
-    licenseClass: manifest.licence.class,
-    licenseFileSha256: manifest.licence.sha256,
+    licenseClass: manifest.license.class,
+    licenseFileSha256: manifest.license.sha256,
     findings: manifest.findingCounts,
   }, manifest.files.map((file) => {
     return {
@@ -400,9 +448,9 @@ async function createSkillFromStage(input: {
       name,
       description: manifest.skill.description,
       licenseField: manifest.skill.license,
-      licenseClass: manifest.licence.class,
-      licenseFileSha256: manifest.licence.sha256,
-      licenseClassifierVersion: manifest.licence.classifierVersion,
+      licenseClass: manifest.license.class,
+      licenseFileSha256: manifest.license.sha256,
+      licenseClassifierVersion: manifest.license.classifierVersion,
       compatibility: manifest.skill.compatibility,
       metadata: manifest.skill.metadata,
       allowedTools: manifest.skill.allowedTools,
@@ -417,8 +465,8 @@ async function createSkillFromStage(input: {
       bytes: manifest.totalBytes,
       enabled: false,
       modelInvocable: manifest.skill.modelInvocable,
-      slashCommand: manifest.skill.slashCommand
-        && !isReservedSkillSlashName(name),
+      slashCommand: false,
+      slashName: null,
       argumentHint: manifest.skill.argumentHint,
       allowScripts: false,
       status: 'broken',
@@ -481,7 +529,7 @@ async function createSkillFromStage(input: {
     version: 1,
     enabled: false,
     status: 'ready',
-    licenceClass: manifest.licence.class,
+    licenseClass: manifest.license.class,
     filesCount: manifest.files.length,
   }
 }
@@ -803,7 +851,7 @@ async function replaceAsUpdate(input: {
     version,
     pendingVersion: version,
     sha256: manifest.contentSha256,
-    licenceClass: manifest.licence.class,
+    licenseClass: manifest.license.class,
     filesCount: manifest.files.length,
   }
 }
@@ -872,7 +920,7 @@ export async function commitSkillImport(
     throw createStageNotFoundError()
   }
 
-  assertAcknowledgements(manifest, input.licenceAcknowledged)
+  assertAcknowledgements(manifest, input.licenseAcknowledged)
 
   if (input.asUpdateOf && input.name !== undefined) {
     throw createError({
@@ -914,7 +962,12 @@ export async function commitSkillImport(
       result = await replaceAsUpdate({
         db,
         bucket,
-        prepared: { manifest, contentOverrides: new Map() },
+        prepared: await prepareUpdateImport({
+          db,
+          bucket,
+          manifest,
+          skillId: input.asUpdateOf,
+        }),
         skillId: input.asUpdateOf,
       })
     } catch (exception) {
@@ -970,7 +1023,7 @@ export async function commitSkillImport(
           files: manifest.files.length,
           bytes: manifest.totalBytes,
           findings: manifest.findingCounts,
-          licenceClass: manifest.licence.class,
+          licenseClass: manifest.license.class,
           outcome: result.kind,
         },
       },

@@ -390,7 +390,7 @@ const {
 
 const title = computed<string>(() => {
   return skill.value
-    ? `Edit ${getSkillDisplayName(skill.value)} · v${baseVersion.value}`
+    ? `Edit ${skill.value.name} · v${baseVersion.value}`
     : 'Edit skill'
 })
 

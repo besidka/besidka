@@ -5,7 +5,7 @@ document is the source of truth for the skills track: S-1 (BES-264) to S-6
 (BES-292) implement it, together with the tickets S-0, S-2G, S-10, S-11 and
 S-12 added on 2026-11-13, and C-1 (BES-233) wrote it. Where a ticket body and
 this document disagree, this document wins; section 13 lists every ticket that
-has to change. The legal reasoning (licence gate, never-public invariant, S-5
+has to change. The legal reasoning (license gate, never-public invariant, S-5
 provider verdicts) is in the compliance pre-check
 `docs/legal/prechecks/skills.md` (S-8, BES-315, PR #739), which has a dated
 addendum for the 2026-11-13 amendments. The shared approval model and the
@@ -22,7 +22,7 @@ calls for it. A **command** is a skill the user runs on purpose with `/name`
 the design treats them like software the user installs: pinned, reviewed in
 full, disabled until the user enables them, and never trusted to override the
 user or Besidka's rules. Text the user typed in the app is also treated as
-untrusted when it reaches the model, but it needs no licence tick and is saved
+untrusted when it reaches the model, but it needs no license tick and is saved
 enabled (section 2, items 4 and 6).
 
 ## Contents
@@ -30,7 +30,7 @@ enabled (section 2, items 4 and 6).
 1. [Agent Skills format](#1-agent-skills-format)
 2. [Decisions](#2-decisions)
 3. [Import, pinning and archive rules](#3-import-pinning-and-archive-rules)
-4. [Licence gate](#4-licence-gate)
+4. [License gate](#4-license-gate)
 5. [Runtime and commands](#5-runtime-and-commands)
 6. [Threat model](#6-threat-model)
 7. [Scripts in provider containers (S-5)](#7-scripts-in-provider-containers-s-5)
@@ -59,8 +59,8 @@ Markdown body.
 | --- | --- | --- |
 | `name` | Required, 1 to 64 characters, lowercase letters, digits and hyphens, no leading, trailing or double hyphen, equal to the folder name | Required, `^[a-z0-9]+(-[a-z0-9]+)*$`, 1 to 64; invalid rejects. A folder-name mismatch is a **warning**, the frontmatter `name` wins |
 | `description` | Required, 1 to 1,024 characters | Required; longer is cut to 1,024 with a warning |
-| `license` | Optional, a licence name or a reference to a bundled file | Shown as plain text; a hint for the licence gate, never a reason to allow (section 4) |
-| `compatibility` | Optional, at most 500 characters (environment, intended product) | Shown, at most 500; never read as a licence |
+| `license` | Optional, a license name or a reference to a bundled file | Shown as plain text; a hint for the license gate, never a reason to allow (section 4) |
+| `compatibility` | Optional, at most 500 characters (environment, intended product) | Shown, at most 500; never read as a license |
 | `metadata` | Optional string map | Non-string values stringified with a warning |
 | `allowed-tools` | Optional, experimental | Informational only ("requested tools, not granted"); never grants a tool |
 
@@ -94,7 +94,8 @@ the old wording is in the git history.
    optional and built later (S-13, section 12.1); nothing in the first release
    shares a skill.
 2. **Imports are pinned. Edits make versions.** A GitHub import is pinned to a
-   40-character commit SHA; other sources to `sha256-<first 16 hex>` of the
+   40-character commit SHA (shown as the release tag when it was imported from
+   one, see "Releases" in section 3.1); other sources to `sha256-<first 16 hex>` of the
    content. An import is never auto-updated. An update is an explicit check, a
    diff, a review and an accept. Every skill, imported or written, keeps
    numbered versions (1, 2, 3, and so on). A version is never rewritten: an
@@ -110,17 +111,17 @@ the old wording is in the git history.
    keeps the skill's current enabled state.
 5. **Scanners are not a boundary.** Besidka highlights links, commands and
    hidden characters for the user's review; it never calls a skill "safe".
-6. **Licence gate on every source (pre-check).** The licence **file** at the
+6. **License gate on every source (pre-check).** The license **file** at the
    pinned commit decides, through the classifier in section 4; the `license`
    field alone never allows. Restricted skills are blocked with no override.
    One class is not decided by the classifier: text the user writes in the app
    (source `editor` or `template`) is class `authored` and needs no
-   right-to-use tick (**this doc**). A licence file the user adds to such a
+   right-to-use tick (**this doc**). A license file the user adds to such a
    skill still goes through the classifier, so restricted text still blocks.
    Pasted `SKILL.md` text is an import: it keeps class `none` and its tick.
 7. **Anthropic's document skills (docx, pdf, pptx, xlsx) are Apache-2.0 since
    2026-11-06 (pre-check).** Copies pinned before commit `2c5958ec` carry the
-   old proprietary licence and are blocked by licence content, not by path or
+   old proprietary license and are blocked by license content, not by path or
    date. Not bundling or presetting them is an owner choice, not a legal need;
    the built-in ids stay reachable on the user's own Anthropic key (D-8).
 8. **Skill text is untrusted instructions.** Wrapped as `<skill_content>`,
@@ -162,11 +163,12 @@ the old wording is in the git history.
     context panel "Used" section. Commands live in the same tab; there is no
     separate tab.
 14. **A command is a skill (this doc).** One entity, one manager, one set of
-    tables. Two columns the user sets, never the skill's own frontmatter,
-    decide how a skill can be used: `model_invocable` and `slash_command`
-    (section 5.5). Since 2026-11-14 the user never sees the columns: one
-    **invocation mode** (Off, Auto, Only when I ask) sets `enabled`,
-    `model_invocable` and `slash_command` together (section 5.7).
+    tables. The user sets, never the skill's own frontmatter, how a skill can
+    be used: the **invocation mode** (Off, Auto, Only when I ask) sets
+    `enabled` and `model_invocable` together (section 5.7), and an optional
+    **command** (`slash_name`) lets it run as `/command` (section 5.5). The two
+    are independent (owner decision, 2026-11-14, S-12: the S-3 rule that every
+    enabled skill is also a `/name` is gone).
 15. **Nothing spends without Send.** Opening the picker, "Use in new chat", the
     manager and every MCP tool make no model call. Only the user's Send
     spends. There is no prefetch, no background work and no MCP run or
@@ -211,9 +213,25 @@ skill and on the version row (section 8).
 
 - `github.com/<owner>/<repo>`;
 - `github.com/<owner>/<repo>/tree/<ref>[/<path>]`;
-- `github.com/<owner>/<repo>/blob/<ref>/<path>/SKILL.md` (the parent folder is
-  used);
+- `github.com/<owner>/<repo>/blob/<ref>[/<path>]`, read like `tree`: GitHub
+  sends a `blob` link to a folder on to `tree`, and people paste both. A path
+  that ends in `SKILL.md` names that file's folder, on `tree` as well, and any
+  other path is a folder;
+- `github.com/<owner>/<repo>/<path>` with no `tree` or `blob`, as people type
+  or trim a link: a folder of the default branch, so it gets the same release
+  pinning as a bare repository link. A first segment that is a GitHub page
+  (`issues`, `pull`, `pulls`, `releases`, `actions`, `wiki`, `tags`,
+  `branches`, `commits`, `compare`, `discussions`, `security`, `pulse`,
+  `graphs`, `settings`, `projects`, `packages`, `deployments`, `archive`,
+  `raw`, `blame`, `labels`, `milestones`, `network`, `stargazers`, `watchers`,
+  `forks`; the list is `GITHUB_ROUTE_SEGMENTS`) is refused with "github.com/o/r/issues is a
+  GitHub page, not a folder of the repository", so an issue list is never read
+  as a folder;
 - `github.com/<owner>/<repo>/commit/<sha>`.
+
+A scheme, `www.`, a trailing `/` or `.git`, a query and a hash are all
+accepted and ignored. The error box says what was wrong with this link in
+`why` and shows the format once in `fix`; the two never say the same thing.
 
 A ref that contains `/` is resolved by trying candidate splits from shortest to
 longest, at most 3. The pin is the commit SHA of the branch or tag in the ref
@@ -222,14 +240,14 @@ branch or tag tip, the default branch for a link without a ref, or the
 40-character SHA from the URL when it already holds one (used as it is, with no
 request). A short SHA that matches no tip answers `github-ref-not-found`
 with a fix that names a branch, a tag or the full SHA. The download always
-uses the SHA. A link to a `SKILL.md` (`blob`) imports its parent folder from the same
-archive, so the folder's licence files and the repository licence still reach
-the licence gate. Only entries under the
+uses the SHA. A link to a `SKILL.md` imports its parent folder from the same
+archive, so the folder's license files and the repository license still reach
+the license gate. Only entries under the
 requested path are inflated, with one exception: the repository-root
 `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` entries are also inflated for a
-subfolder import. They serve licence classification (section 4, step 1). They
+subfolder import. They serve license classification (section 4, step 1). They
 are not stored as skill files unless the skill has none of its own; then they
-are stored verbatim as the skill's licence. A repository that holds several skills
+are stored verbatim as the skill's license. A repository that holds several skills
 returns a list to pick from, up to `SKILL_GITHUB_PICK_MAX` (10; the answer
 also carries the total and a `truncated` flag). The list is `{ pick }` with no
 `stageId`; the client sends the same link again as `{ url, path }`, where
@@ -237,6 +255,46 @@ also carries the total and a `truncated` flag). The list is `{ pick }` with no
 update checks keep working. Each follow-up is a new import: it costs an hourly
 import slot, a ref list request and a download. Only public repositories work; a 404
 says "Private or missing repository".
+
+**Releases (2026-11-14).** A link with no version of its own is pinned to
+the latest release, not to a branch head. "No version of its own" means a
+repository link, or a link whose ref is the repository's default branch (the
+`HEAD` symref of the ref list): GitHub writes the branch name into every link
+people copy, so a rule that applied only to bare repository links would almost
+never fire. A link that names any other branch, a tag or a commit keeps exactly
+that ref. A release tag is a ref-list tag that is strictly
+`MAJOR.MINOR.PATCH` with an optional leading `v` (`2.1.2`, `v2.1.2`), compared
+numerically (`2.10.0` is above `2.9.0`); pre-releases (`2.1.2-rc.1`) and names
+like `latest` are never releases. The tag's peeled commit is the pin, so the
+download is still by SHA, and `info/refs` is the only source of tags (no
+`api.github.com`). "Contains the folder" costs an archive download per
+candidate: the preview tries the three highest releases in turn, moving on only
+when the folder or its `SKILL.md` is missing, and then falls back to the
+default branch head with the warning "None of the latest releases contain this
+skill". The user can switch the review to "Latest commit on main" (body field
+`channel: 'branch'`, sent again with the same `path`) and back to "Latest
+release X".
+
+Storage reuses the existing columns, with no migration: `source_ref` holds the
+tag name (`2.1.2`) and `source_version` the commit SHA, as for a branch. A
+`source_ref` that is a release tag is what marks a skill as release-pinned.
+Display everywhere (list meta, detail, settings, review, versions list) is
+`github.com/o/r/path @ 2.1.2` for a tag and `@ 300432a` otherwise; the
+review also shows "Latest release" and, when a branch commit is the tip of a
+release (the preview reads the ref list anyway), shows that tag. That last case
+is preview-only: the list cannot know it without a ref list request, so a
+branch-pinned skill keeps showing its commit there. A `metadata.version` from
+the `SKILL.md` frontmatter is shown (`version 1.4.0`) when no tag applies, and
+Besidka's own numbering then reads "edit v3" instead of "v3", only on lines
+where an author version also appears.
+
+An update check follows the pin: a skill whose `source_ref` is a release tag
+looks for a higher release tag (the pending version stores the new tag as its
+`source_ref`, and accepting copies it onto the skill), a skill on a branch
+looks at the branch head as before, and a skill pinned to a SHA has nothing to
+check. A link that named a release tag explicitly is release-pinned too, since
+the stored ref cannot tell the two apart; the check offers newer releases, and
+nothing is installed until the user accepts.
 
 **A SHA cannot be proven to belong to the named repository.** A commit SHA can
 belong to a fork and still resolve under another repository's URL. Until
@@ -268,7 +326,7 @@ The host is never user-controlled.
   ref list, see below), and `codeload.github.com`, which downloads
   `https://codeload.github.com/<owner>/<repo>/zip/<sha>`. `api.github.com` and
   `raw.githubusercontent.com` are not allowed (a single raw `SKILL.md` would
-  skip the licence files, so a link to a file is read from the archive too). There is no `github.com/<owner>/<repo>/archive/<ref>.zip`
+  skip the license files, so a link to a file is read from the archive too). There is no `github.com/<owner>/<repo>/archive/<ref>.zip`
   fallback and no zipball redirect.
 - Fetch rules: `redirect: 'manual'`, https only, an exact-host allowlist, and
   no redirect is followed. The S-2G spike verifies that codeload answers a SHA
@@ -346,7 +404,7 @@ never trusts the client's result.
   `SKILL.md`, or `SKILL.md` at the archive root. Two candidate roots reject.
 - GitHub archives inflate only entries under the requested path, plus the
   repository-root `LICENSE*`, `LICENCE*`, `COPYING*` and `NOTICE*` entries for
-  licence classification (section 3.1). The same size and text rules apply to
+  license classification (section 3.1). The same size and text rules apply to
   them.
 
 ### 3.3 Findings
@@ -373,13 +431,23 @@ skill (see "A name collision" below). An update check and an MCP `update_skill`
 never use staging: their pending version is persisted directly (see step 3).
 
 1. `POST /api/v1/skills/import/preview` (multipart `file` or JSON `{ url }`;
-   `{ url }` is a GitHub link, S-2G) validates, classifies the licence, scans,
+   `{ url }` is a GitHub link, S-2G) validates, classifies the license, scans,
    and stages: manifest in KV `skills:stage:<stageId>` (1 h), files in R2
    `skills-staging/u<userId>/<stageId>/<path>` (1 h, plus the hourly
    sweep). Returns the frontmatter, file list, `SKILL.md`, findings, warnings
-   and licence class.
+   and license class.
+   `GET /api/v1/skills/import/stages/<stageId>/files?path=<path>` (gated by
+   `skills`) serves one file of a staged import to the review screen as JSON
+   `{ path, bytes, kind, text }`. The stage must belong to the signed-in user
+   (another account's stage answers 404 `stage-not-found`), the path must be a
+   file the stage's manifest lists (anything else, `..` included, is 404
+   `file-not-found`, so no other R2 key can be named), the object is read by its
+   content hash, a missing or old stage answers 410 `stage-expired` ("This
+   import has expired"), and a file over `SKILL_VIEWER_FILE_MAX_BYTES` (1 MiB)
+   answers 413 `file-too-large` with a reason instead of the text. The client
+   shows the text as plain text only, like the installed file viewer.
 2. `POST /api/v1/skills/import/commit` `{ stageId, acknowledged: true }` (and,
-   for class `none` or `custom`, `licenceAcknowledged: true`) moves the files to
+   for class `none` or `custom`, `licenseAcknowledged: true`) moves the files to
    the content-addressed blob layout of section 3.5, writes **version 1 with
    origin `import`**, and creates the row with `enabled=false`,
    `status='ready'`. A GitHub repository that holds several skills first shows
@@ -397,7 +465,7 @@ never use staging: their pending version is persisted directly (see step 3).
    `user-skills/u<userId>/<skillPublicId>/blobs/`, and `skills.pending_version`
    pointing at it. `current_version` does not change, and the skill keeps
    running. The response carries a per-file diff (at most 2,000 lines), new
-   findings and any licence change. Nothing is staged in KV or `skills-staging/`.
+   findings and any license change. Nothing is staged in KV or `skills-staging/`.
    A pending version that did not come from an update check (an import that
    replaced the skill) is never replaced by a check: it answers 409 "Review or
    reject the pending version first". A pinned (SHA) skill answers
@@ -405,11 +473,11 @@ never use staging: their pending version is persisted directly (see step 3).
 4. `POST /api/v1/skills/[id]/update/accept` (S-2, gated by `skills` alone)
    `{ version, sha256, acknowledged: true }`, where `sha256` is that of the
    pending version the user reviewed. On a mismatch it answers 409 "This update
-   changed while you were reviewing it". When the pending version's licence
+   changed while you were reviewing it". When the pending version's license
    class is `none` or `custom` and differs from the current version's class,
-   the body must also carry `licenceAcknowledged: true`, or the answer is 400
-   `licence-acknowledgement-required`, so an update cannot silently swap an
-   open licence for one the user never saw. Otherwise it
+   the body must also carry `licenseAcknowledged: true`, or the answer is 400
+   `license-acknowledgement-required`, so an update cannot silently swap an
+   open license for one the user never saw. Otherwise it
    **creates a new `skill_versions` row with the next number** (the highest
    existing number plus 1) that points at the same blobs, with no blob copy and
    with the pending row's origin and its `source_kind`, `source_url`,
@@ -447,6 +515,25 @@ in history, within the 20 kept, so the user can restore one.
 Writing and editing in the app is a separate path (S-10): create from blank or
 template, and `POST /api/v1/skills/[id]/versions` for a save (section 8.7).
 
+**Already installed, shown before review (2026-11-14).** The preview response
+carries `installed`, so the dialog warns before the user reads anything. The
+server (`server/utils/skills/import/installed.ts`) looks for, in this order, a
+GitHub skill of the same repository (compared case-insensitively) and folder,
+then a skill of the same name. A row with no current version row is the
+placeholder of an import that died half way and is never reported (the commit
+reclaims it after its grace period). `isUpToDate` compares the incoming content
+hash with the current version's, under the local name: the import hash covers
+the `name:` line, so a copy renamed on the account is hashed with its own name.
+The dialog shows three states: same source and changed, an `alert-info` "You
+already have X (from the same source, @ 2.1.2)" with "Update it to this
+version" (`asUpdateOf`) and "Install a copy under another name"; identical
+content, "Already installed and up to date" with Install disabled; and the same
+name from another source, the collision flow below, shown up front. For a copy
+renamed on the account, `asUpdateOf` writes the staged `SKILL.md` under the
+local name (the update check does the same), but only for the same repository
+and folder; any other name mismatch is still refused. The 409 below remains
+the race fallback.
+
 **A name collision at commit** answers 409 "A skill named X exists", and the
 user chooses one of two ways. It works the same for zip, `.skill`, paste and
 GitHub imports.
@@ -465,6 +552,47 @@ GitHub imports.
 - **Rename the incoming skill** and commit it as a new skill (step 2).
 
 Rate limit: 10 imports per hour per user; at most `SKILLS_PER_USER` skills.
+
+**The daily update check (2026-11-14).** `server/plugins/skills-update-sweep.ts`
+runs on the existing hourly cron (`0 * * * *`, no new schedule) and calls
+`sweepSkillUpdates` (`server/utils/skills/import/update-sweep.ts`). Each run
+looks, for at most 50 skills (`SKILL_UPDATE_SWEEP_LIMIT`), at the GitHub skills
+that were not looked at in the last 24 hours, and for each reads the git ref
+list only (the same `info/refs` and the same 60-second per-repository KV cache
+as an import), through `resolveGithubUpstream`: a skill on a release tag
+follows the highest release tag, a skill on a branch follows its head, a skill
+pinned to a commit is skipped. It downloads no archive, changes no skill and
+uses no key and no model, so it spends nothing. Requests are sequential (one
+connection at a time, grouped by repository so one ref list serves all the
+skills of a repository). The run cap exists to keep one invocation short; a
+backlog drains over the next hours.
+
+What it finds is remembered in KV (`skills:update-state:<userId>`, one JSON map
+of skill id to `{ checkedAt, retryAfter?, latest?, seen? }`, 45 days, refreshed
+on every write). `latest` is the newest upstream version found; the list
+and detail endpoints turn it into `updateAvailable: { label, ref }` and the
+manager shows a `badge-soft badge-info` "Update 2.1.3" on the row and in the
+detail's Settings. A pending update shows "Update to review" instead. "Check
+for updates" is unchanged: it downloads the new version and opens the review
+with the diff. No migration: the state is not a source of truth (losing it
+loses a badge).
+
+Outcomes: a newer version records `latest`; the same version clears it; a repo
+or branch that is gone clears it and flags nothing; a network error changes
+nothing and waits six hours (`retryAfter`), so a failing repository cannot
+starve the others; a GitHub 429 ends the run. Wide events carry counts only
+(`skillsUpdateSweep`: considered, checked, updatesFound, upToDate, missing,
+failed, rateLimited), never skill ids, names or URLs.
+
+**A new release does not mean this skill changed.** `info/refs` cannot say
+whether the skill's folder differs at the new tag, and the sweep downloads
+nothing, so the badge says "Update 2.1.3" until the review looks. When "Check
+for updates" finds the folder identical at the new version, it answers "No
+changes in 2.1.3" (no pending version is created), records that version as
+`seen`, and the badge goes away; the next newer version shows it again. The
+sweep never writes `seen`. Accounts are not filtered by feature flag: only a
+user who could import has GitHub skills, and the badge shows only in the
+flagged manager.
 
 ### 3.5 R2 layout
 
@@ -490,9 +618,9 @@ list-by-prefix and batch-delete code (`storage.delete(keys)`, at most 1,000
 keys per call). Reads go through `readSkillFile`, which checks ownership in D1
 first; there is no public or signed-URL route to these objects.
 
-## 4. Licence gate
+## 4. License gate
 
-`shared/utils/skills/licence.ts` (S-2) runs on every source, on update, on
+`shared/utils/skills/license.ts` (S-2) runs on every source, on update, on
 every in-app save (S-10) and on MCP `create_skill` and `update_skill`, and
 returns `{ class, text, matched }`. Steps, in order (from the pre-check):
 
@@ -514,10 +642,10 @@ returns `{ class, text, matched }`. Steps, in order (from the pre-check):
    tail is empty or the standard appendix with one copyright line. MIT, BSD
    and similar: mask the copyright line, compare the body. A match with no
    phrase hit: `open`.
-6. **Field only** (no licence file): a known permissive SPDX id gives `open`
-   ("licence named, no file"); "Proprietary" or "All rights reserved" gives
+6. **Field only** (no license file): a known permissive SPDX id gives `open`
+   ("license named, no file"); "Proprietary" or "All rights reserved" gives
    `restricted`; anything else `custom`.
-7. **A licence file that matched nothing:** `custom`.
+7. **A license file that matched nothing:** `custom`.
 8. **Disagreement:** open file but "Proprietary" field gives `custom` (both
    shown); open field but restricted file gives `restricted`. The stricter
    reading wins.
@@ -525,27 +653,27 @@ returns `{ class, text, matched }`. Steps, in order (from the pre-check):
 
 | Class | What happens |
 | --- | --- |
-| `restricted` | Blocked on every source, no user override. General message: "Its licence limits use to <named service>, or forbids copying. Besidka cannot import it." Anthropic case message: "This copy carries Anthropic's earlier proprietary licence. Anthropic moved these skills to Apache-2.0 on 2026-11-06. Import the current version, or use the built-in Anthropic skill on your own Anthropic key." |
-| `open` | Allowed. SPDX badge and "Licence file: LICENSE.txt (view)". `LICENSE` and `NOTICE` stored verbatim (Apache-2.0 section 4) |
-| `custom` | Allowed after the user reads the licence and ticks an extra box "I read the licence and may use this skill": "Custom licence. Read it before you install." |
-| `none` | Allowed with an extra tick "I have the right to use this skill": "No licence stated. The author keeps all rights by default. Besidka keeps a private copy for you only. Install it only if you have the right to use it." |
-| `authored` | Assigned by source, never by the classifier: only the editor and templates produce it, and **an import never does**. Saved enabled with no licence tick, because the user wrote the text (or took Besidka's own template). A licence file the user adds still goes through the classifier above, so a restricted licence file blocks the save with the `restricted` message |
+| `restricted` | Blocked on every source, no user override. General message: "Its license limits use to <named service>, or forbids copying. Besidka cannot import it." Anthropic case message: "This copy carries Anthropic's earlier proprietary license. Anthropic moved these skills to Apache-2.0 on 2026-11-06. Import the current version, or use the built-in Anthropic skill on your own Anthropic key." |
+| `open` | Allowed. SPDX badge and "License file: LICENSE.txt (view)". `LICENSE` and `NOTICE` stored verbatim (Apache-2.0 section 4) |
+| `custom` | Allowed after the user reads the license and ticks an extra box "I read the license and may use this skill": "Custom license. Read it before you install." |
+| `none` | Allowed with an extra tick "I have the right to use this skill": "No license stated. The author keeps all rights by default. Besidka keeps a private copy for you only. Install it only if you have the right to use it." |
+| `authored` | Assigned by source, never by the classifier: only the editor and templates produce it, and **an import never does**. Saved enabled with no license tick, because the user wrote the text (or took Besidka's own template). A license file the user adds still goes through the classifier above, so a restricted license file blocks the save with the `restricted` message |
 
 `LICENSE` and `NOTICE` files are read-only in the editor and cannot be
 deleted or changed when the class is `open` or `custom` (Apache-2.0 section 4).
 Only `authored` skills and `open` skills may be shared (section 12.1).
 
-A licence containing `NonCommercial` shows a warning (monetisation guard).
+A license containing `NonCommercial` shows a warning (monetisation guard).
 When the owner adds a restrictive hash or phrase, stored skills are
 re-classified (`licenseClassifierVersion` bump) and a newly `restricted` skill
-is disabled with a notice. The classifier reads only the skill's licence file;
-third-party code bundled inside a skill with its own licence is not detected
+is disabled with a notice. The classifier reads only the skill's license file;
+third-party code bundled inside a skill with its own license is not detected
 (stated limit).
 
 Fixtures (`tests/fixtures/skills/`): the old Anthropic `LICENSE.txt` at
 `ef740771ac` and the `document-skills/` copy at `b118d29ea4`; the current
 Apache text and its 11,345-byte and 10,174-byte variants; an MIT skill; a
-skill with no licence (`doc-coauthoring`); a "Proprietary" field with no file;
+skill with no license (`doc-coauthoring`); a "Proprietary" field with no file;
 an Apache header with restrictions appended.
 
 ## 5. Runtime and commands
@@ -646,26 +774,31 @@ catalog, so it misses the cache once.
 
 ### 5.5 Commands (slash invocation)
 
-A **command** is a skill that runs when the user asks for it by name, either
-with `/name` or by attaching it. Since 2026-11-14 that is the mode **Only when
-I ask**, and every enabled skill is also available as `/name` (section 5.7).
-It is not a second entity. A command is built the way a skill is: the same
+A **command** is a skill that has an optional **Command** (`slash_name`), so it
+can run as `/command` as well as by attaching it from the "+" menu. Mode and
+command are independent (2026-11-14, section 5.7): a skill in any mode can have
+a command, and a skill without one has no slash form. It is not a second
+entity. A command is built the way a skill is: the same
 `SKILL.md` plus files, the same manager, the same tables, the same import,
-licence gate, findings, versions, review, purge, restore and MCP tools. A
+license gate, findings, versions, review, purge, restore and MCP tools. A
 separate entity would duplicate every one of those and need its own
 `commands:*` scopes, which means another major MCP version.
 
-Two columns on `skills`, set by the user and never by frontmatter, decide how a
+Two settings on `skills`, set by the user and never by frontmatter, decide how a
 skill can be used:
 
-| Column | UI label | Effect |
+| Setting | UI | Effect |
 | --- | --- | --- |
-| `model_invocable` | Mode Auto | Listed in the catalog. The model can call `activate_skill`. |
-| `slash_command` | Every enabled skill (unless the name is reserved) | Offered in the composer's `/` picker. The user invokes it explicitly. |
+| `model_invocable` (with `enabled`) | Mode Auto / Only when I ask / Off | Auto lists the skill in the catalog, so the model can call `activate_skill`. |
+| `slash_name` (nullable) | Command field | When set, the skill also runs as `/<command>` from the composer's `/` picker. When empty there is no slash command. |
 
-"New command" in the manager creates a skill with `model_invocable` off,
-`slash_command` on, and a short body that uses `$ARGUMENTS`: mode Only when I
-ask. A blank skill and the skill templates start as Auto.
+The old `slash_command` boolean column stays in the table but is no longer
+written (inserts set it to false); `slashCommand` in the API is derived
+(`slash_name IS NOT NULL`). "New skill" in the manager is the only create
+action: Name, Description, Mode (default Auto), an optional Command and, when a
+command is set, the argument hint. A skill with a command gets a short body
+that uses `$ARGUMENTS`. Templates prefill the command where they used to be
+commands (meeting-notes, translate), and an import has no command.
 
 Why columns and not frontmatter: skill text is untrusted, and `allowed-tools`
 "never grants a tool" (section 1). An imported skill must not be able to make
@@ -680,9 +813,10 @@ and from Claude Code and agentskills.io.
 user-message part, rewritten on the server from the D1 row, removed by
 `filterPublicParts`, and dropped on replay when it no longer resolves.
 
-1. **Choosing in the picker** removes the `/query` text and adds a chip to the
-   attachments row. Nothing is sent and nothing is fetched for the model. The
-   user types arguments and presses Send. That press is the only consent and
+1. **Choosing in the picker** replaces the `/query` text with `/command `,
+   which is highlighted and adds the "Skill" tile to the attachments row; the
+   token is stripped from the text at Send (section 10.5). Nothing is sent and
+   nothing is fetched for the model. The user types arguments and presses Send. That press is the only consent and
    the only spend.
 2. **The send** carries
    `{ type: 'data-skill-invocation', data: { skillId, name, version } }`, at
@@ -691,7 +825,7 @@ user-message part, rewritten on the server from the D1 row, removed by
    (`server/utils/chats/request-schema.ts`) to allow it.
    `resolveSkillInvocationPart` (new,
    `server/utils/skills/runtime/invocation.ts`) is called by both chat routes.
-   It checks owner, `enabled`, `slash_command` and the flag, and answers one
+   It checks owner, `enabled` and the flag, and answers one
    generic 400 for every failure so that ids cannot be probed.
 3. **The server injects** the current version's body as
    `<skill_content name source version invoked="user">`, with `$ARGUMENTS`
@@ -707,7 +841,7 @@ user-message part, rewritten on the server from the D1 row, removed by
    and to a Regenerate of it.
 5. **Never public.** The part is filtered from shares, so the skill name never
    reaches a shared chat (section 12). The visible text part holds only the
-   arguments, because typing `/name␠` turns into the chip before sending. A
+   arguments, because the typed `/command` token is stripped before sending. A
    client-side "Insert as text" (chip menu) expands the template into the
    textarea as the user's own text. It is offered only for skills of class
    `authored`, so third-party text never becomes trusted user text by default.
@@ -732,39 +866,47 @@ The picker, chip and composer rules are in section 10.
   visible composer state. They never send and never become parts. They appear
   in the same picker under a "Besidka" group.
 - **Reserve their names now.** The S-1 name validator holds
-  `SKILL_RESERVED_SLASH_NAMES`. A skill can still have such a name, but its
-  slash toggle is refused with "/memory is reserved by Besidka".
+  `SKILL_RESERVED_SLASH_NAMES`. A skill can still have such a name, but a
+  reserved **command** is rejected on save with the inline error "/memory is
+  reserved by Besidka" (400 `reserved-name`).
 
 ### 5.7 As built (S-3)
 
-**Invocation mode (owner decision, 2026-11-14).** The enable toggle and the two
-invocation toggles are replaced by one control with three values, and it is
-the only UI that writes `enabled`, `model_invocable` and `slash_command`
+**Invocation mode (owner decision, 2026-11-14).** The enable toggle and the
+invocation toggle are replaced by one control with three values, and it is the
+only UI that writes `enabled` and `model_invocable`
 (`shared/utils/skills/mode.ts`, `PATCH /api/v1/skills/[id]` with `mode`):
 
 | Mode | Columns | Meaning |
 | --- | --- | --- |
-| Off | `enabled=false` (the other two columns are left as they were) | Not available in chats |
-| Auto | `enabled`, `model_invocable`, `slash_command` all true | "The model uses it when the description matches. You can also run it with /name." |
-| Only when I ask | `enabled`, `slash_command` true, `model_invocable` false | "Runs only when you attach it or type /name." |
+| Off | `enabled=false` (`model_invocable` is left as it was) | Not available in chats |
+| Auto | `enabled`, `model_invocable` true | "The model uses it when the description matches. You can also attach it yourself." |
+| Only when I ask | `enabled` true, `model_invocable` false | "Runs only when you attach it from the + menu or type its command." |
 
-The server derives the three columns from the mode in one statement. A
-reserved name (`SKILL_RESERVED_SLASH_NAMES`) never fails the request: the mode
-is applied and `slash_command` stays off, and the UI says "Rename to use
-/name". A rename recomputes `slash_command` in both directions (a reserved new
-name turns it off, leaving a reserved name turns it on again for an enabled
-skill), so a reserved name no longer blocks a save. `PATCH /api/v1/skills/[id]`
-takes only `mode` and `argumentHint` (a strict schema: the old `enabled`,
-`modelInvocable` and `slashCommand` fields answer 400), so the three columns are
-never written one by one; the MCP tools of S-6 use `mode` as well. The first
-turn-on of a skill the user did not write keeps its
-confirmation. In the manager, a **skill** is a skill with `model_invocable` on
-and a **command** is one that runs only when asked; the "≈ N tokens in every
-message" estimate is shown for Auto only. Blank skills and the writing-style
-and code-review templates start as Auto; blank commands and the other two
-templates start as Only when I ask. An import still starts Off, and its
-default mode is Auto unless the frontmatter sets `disable-model-invocation`
-(then Only when I ask); `user-invocable` is ignored.
+The server derives the columns from the mode in one statement. The mode does
+not read or write the command. `PATCH /api/v1/skills/[id]` takes `mode`,
+`command` (nullable) and `argumentHint` (a strict schema: the old `enabled`,
+`modelInvocable` and `slashCommand` fields answer 400), and so does create
+(`mode`, `command`, `argumentHint`; `kind: 'command'` is gone), so the columns
+are never written one by one; the MCP tools of S-6 use `mode` as well. The
+first turn-on of a skill the user did not write keeps its confirmation. The
+"≈ N tokens in every message" estimate is shown for Auto only. Blank skills
+start as Auto; a template starts as Auto or Only when I ask by its own
+`modelInvocable`. An import still starts Off and without a command; its default
+mode is Auto unless the frontmatter sets `disable-model-invocation` (then Only
+when I ask); `user-invocable` is ignored.
+
+**Command validation (S-12).** A command uses the pattern of a skill name
+(lowercase letters, digits, single hyphens, up to 64) after the client or the
+server drops one leading `/` and trims (`normalizeSkillCommand`). It is unique
+per user among commands (unique index `uq_skills_user_slash_name`; SQLite allows
+many NULLs): a taken command is 409 `command-taken` ("/x is already a
+command"), checked first and again from the database error. A reserved command
+(`SKILL_RESERVED_SLASH_NAMES`) or one that does not match the pattern is 400
+`reserved-name`, shown inline under the field; a rename of the skill never
+touches its command, and a skill name may be reserved. The 409 for a duplicate
+skill name now says names are unique per account; a skill name and a command
+are separate.
 
 **Catalog and tools** (`server/utils/skills/runtime/`). `catalog.ts` builds
 `<available_skills>` from the user's enabled, model-invocable skills that are
@@ -839,32 +981,47 @@ to the turn being sent only when its id matches, otherwise as a new turn, so an
 older user turn never receives it. Regenerating a stored skill-only message
 whose skill is gone is the same generic 400 (there is nothing left to send).
 
-**Step card.** An `activate_skill` call renders as a compact card in the
-assistant message, in the style of the artifact and document cards: "Using
-skill…" while it runs, "Used skill · name" with `lucide:sparkles` when it
-returned (a click opens the preview), "Could not use skill" on an error. It is
-excluded from the reasoning box's tool steps, and counts as visible assistant
-content so the bubble shows before any text. A `read_skill_file` call stays a
-reasoning step ("Read a skill file"). The sent user bubble shows a chip with
-the skill name above the text.
+**Skill step (a reasoning step, not a card).** The owner rejected a grey card
+above the answer (too big, no gap to the text), so skill use is a step inside
+the reasoning box, like the search and memory steps
+(`app/components/Chat/Reasoning/SkillStep.vue`, built by `Reasoning.vue`
+through `getReasoningSkillStep` in `app/utils/skill-step.ts`). An
+`activate_skill` call is a step titled "Reading skill · name" while it runs,
+"Applied skill · name" once it returned and "Could not use skill · name" on an
+error. A `data-skill-activation` part with no `activate_skill` call for the
+same skill (a skill the user attached to an Auto send) is one "Applied skill"
+step; a call and its activation part make a single step. Only assistant
+messages build one. The name opens the read-only preview. Steps keep the order
+they happened in, so a skill read before an answer shows above the other steps.
+`activate_skill` is a thinking tool part (`isThinkingToolPart`), so the box
+renders and the bubble shows even when the model wrote no reasoning text. The
+step reads only the `activate_skill` and `data-skill-activation` parts, which
+`filterPublicParts` strips, never message metadata, so a shared chat and the
+shared page show no skill (`tests/integration/api/shared-chat-view.spec.ts`).
+A `read_skill_file` call stays a reasoning step ("Read a skill file"). The sent
+user bubble shows a chip with the skill name above the text.
+
+**Spacing around cards.** Output cards (artifacts and documents) are ordered
+after the answer text (`orderOutputCardPartsLast`). Text and a card never
+touch: a text part right after a card, and a card right after a text part, get
+`mt-4` on the chat and shared pages (`hasGapBeforePart`, covering generated
+images, artifacts, documents and code execution).
 
 **Preview.** `ChatSkillPreview` is a read-only dialog (a bottom sheet below
 `sm`): name, description, mode and `SKILL.md` as plain monospace text (no
 Markdown, no `v-html`; the first 60,000 characters), with **Edit**, which opens
 `/chats/skills?skill=<id>&edit=1` (the page opens the details and the editor,
 then removes the two parameters), and an "All skills" link. The composer tile,
-the chip in a sent message and the step card all open it, from one
+the chip in a sent message and the reasoning step all open it, from one
 `useSkillPreview()` state mounted in the chat layout.
 
-**Existing skills.** Skills that were enabled before this layer keep
-`slash_command=false` (the old default), and selecting the mode they already
-show does nothing, because the control only sends a change. The "+" menu and
-the attach path do not need `slash_command`; S-12 must treat a missing
-`slash_command` on an enabled skill as "not offered as /name yet" and offer a
-one-time backfill, since a data migration is outside the additive-only rule.
+**Existing skills.** Skills that existed before S-12 have no command (the old
+`slash_command` column is ignored and not backfilled, because only preview data
+exists), so they are not offered in the `/` picker until the user sets a
+command in the skill's Settings.
 
 **Not verified in S-3.** No model send ran with `skills` on: there is no
-provider key on the test account, and the step card in the browser comes from
+provider key on the test account, and the skill step in the browser comes from
 the `/chats/test?scenario=skill` fixture. The send path is covered by
 `tests/integration/api/chats-skills.spec.ts` with a scripted model.
 
@@ -897,19 +1054,19 @@ image. `create_document` is a follow-up tool and behaves as it did before.
 | K1 | Malicious instructions that steer the model to exfiltrate data or act (Snyk ToxicSkills, 2026-02: 36.82% of 3,984 public skills flawed, 13.4% critical) | Skill author | Full-content review before install with a required tick; skill text wrapped and framed as untrusted (an invocation is labelled user-selected but stays subordinate to the user's message); the interim tool rule until C-6 (section 2, item 8), then F1 forced approvals for every tool not marked read-only while a skill is active; memory write lock, preset on invocation; disabled by default for everything but text the user wrote in the app; per-skill and per-chat toggles | S-3, S-4, S-12, C-6 |
 | K2 | Scanner bypass (Trail of Bits, 2026-06: newline padding, `.pyc`, prompts aimed at LLM analysers) | Skill author | Scanners are not a boundary: findings are highlights; padding and long lines are findings themselves; `.pyc` and binaries rejected; no LLM judges a skill | S-2, S-4 |
 | K3 | Hidden text: bidi overrides, zero-width characters, padding below the fold | Skill author | Hidden characters shown as `⟨U+…⟩`; plain monospace viewer, no Markdown rendering; line and blank-run findings | S-2, S-4 |
-| K4 | Silent update that turns a reviewed skill malicious | Repository owner | Pinned SHA, never auto-updated; update = diff + new findings + licence change + review + accept, and the skill is disabled again | S-2, S-4 |
+| K4 | Silent update that turns a reviewed skill malicious | Repository owner | Pinned SHA, never auto-updated; update = diff + new findings + license change + review + accept, and the skill is disabled again | S-2, S-4 |
 | K5 | Archive attacks: zip slip, symlinks, zip bombs, zip64, huge entries | Skill author | Section 3.2 rules on client and server, streaming inflate with abort | S-2 |
 | K6 | YAML attacks: alias expansion ("billion laughs"), huge frontmatter | Skill author | `yaml` with `maxAliasCount: 0`, size cap, or a minimal frontmatter splitter | S-2 |
 | K7 | Scripts executing arbitrary code | Skill author | Never in Besidka; only in the user's own provider container with no network, behind flag, opt-in, per-skill toggle and per-chat confirmation | S-5 |
 | K8 | SSRF through import URLs | Malicious user | GitHub import: the narrow allowlisted fetcher (section 3.1): the host is never user-controlled, `redirect: 'manual'`, exact-host allowlist. A raw-link import (S-2U) waits for `safeFetch` purpose `skills-url` (`docs/connectors.md` section 4) | S-2G, S-2U, C-3 |
-| K9 | Licence or copyright breach by an import | User | Licence gate on every source; restricted blocked; private storage only; Terms right-to-use promise and disable power (S-7) | S-2, S-7 |
-| K10 | Injected agent installs instructions over MCP | Agent with `skills:write` | Created, updated and renamed skills are disabled with status `needs-review`; no enable, no toggles on an existing skill, no `allowScripts`, no URL import, no activation over MCP; licence gate runs; 30 skill writes per hour per user | S-6 |
+| K9 | License or copyright breach by an import | User | License gate on every source; restricted blocked; private storage only; Terms right-to-use promise and disable power (S-7) | S-2, S-7 |
+| K10 | Injected agent installs instructions over MCP | Agent with `skills:write` | Created, updated and renamed skills are disabled with status `needs-review`; no enable, no toggles on an existing skill, no `allowScripts`, no URL import, no activation over MCP; license gate runs; 30 skill writes per hour per user | S-6 |
 | K11 | Skill content leaks to the public | Bug | Never-public invariant with specs (section 12) | S-1, S-3, S-6 |
 | K12 | D1 restore revives a deleted malicious skill, enabled | Operator restore | `docs/d1-restore-reconciliation.md`: `UPDATE skills SET enabled = 0` for rows touched in the window (or all), replay deletions from Axiom, mark rows whose R2 blob is gone `broken` (section 8.8) | S-1 |
 | K13 | Provider-side copy outlives the user's intent | n/a | Provider skill id stored in D1; the copy is deleted when scripts are turned off, the skill or the account is deleted, before the key is purged | S-5 |
 | K14 | Cross-connector exfiltration triggered by a skill | Skill author | `docs/connectors.md` rule F2 applies regardless of skills | C-6 |
 | K15 | Slash-name hijack over MCP: an agent renames a skill to a name the user types every day (`/summarize`) | Agent with `skills:write` | `rename_skill` disables the skill and sets `needs-review`, so it never fires until the user re-enables it. The in-app rename keeps the skill enabled | S-6 |
-| K16 | An imported skill makes itself model-invocable or slash-invocable | Skill author | `model_invocable` and `slash_command` are columns the user sets, not frontmatter; Claude Code keys are read only as defaults at import (section 5.5); MCP never sets them on an existing skill | S-2, S-6, S-12 |
+| K16 | An imported skill makes itself model-invocable or slash-invocable | Skill author | `model_invocable` and the command (`slash_name`) are settings the user makes, not frontmatter; Claude Code keys are read only as defaults at import (section 5.5); MCP never sets them on an existing skill | S-2, S-6, S-12 |
 | K17 | Storage and request abuse through saves | Malicious user or injected agent | `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs), per-save caps, 120 saves per hour, 30 MCP skill writes per hour | S-10, S-6 |
 | K18 | A GitHub import shows `owner/repo` as the source for a commit the repository never held: a SHA in the URL can belong to a fork of it | Malicious link author | Pull request and internal refs (`pull/N/head`, `pull/N/merge`, `refs/`, `keep-around`, `__gh__`) are refused outright, and any other ref is resolved only through the repository's own branches and tags in the ref list, never through a commit lookup, so a fork commit cannot be reached by name. A full SHA in the URL is used as it is (the API `compare` check was dropped with the API on 2026-11-14, section 3.1); when it is not the tip of a branch or tag, the preview carries the warning "GitHub cannot confirm that commit ... belongs to owner/repo". The residual risk is a provenance label that names the wrong repository, with content the user still reviews | S-2G |
 
@@ -997,7 +1154,7 @@ see section 13). Activations and invocations are message parts, not a table.
 | --- | --- | --- |
 | `id` | publicId | |
 | `user_id` | integer, not null | |
-| `name` | text | unique per user, so slash names are unique too |
+| `name` | text | unique per user |
 | `description` | text | at most 1,024 |
 | `license_field` | text, null | raw `license` frontmatter |
 | `license_class` | text | `open`, `custom`, `none`, `restricted`, `authored` |
@@ -1016,7 +1173,8 @@ see section 13). Activations and invocations are message parts, not a table.
 | `files_count`, `bytes` | integer | of the current version, for the list |
 | `enabled` | integer (bool) | false on import, update, MCP write and share copy; true on creation in the app |
 | `model_invocable` | integer (bool) | section 5.5 |
-| `slash_command` | integer (bool) | section 5.5 |
+| `slash_command` | integer (bool) | legacy, no longer written (inserts set false); `slashCommand` is derived from `slash_name` |
+| `slash_name` | text, null | the command (section 5.5); unique per user among non-null values |
 | `argument_hint` | text, null | at most 100; read as a default from Claude Code's `argument-hint` on import |
 | `allow_scripts` | integer (bool) | S-5, default false |
 | `status` | text | `ready`, `needs-review`, `broken` |
@@ -1030,7 +1188,7 @@ see section 13). Activations and invocations are message parts, not a table.
 
 The `sha256` column of the earlier design is dropped (it moves to the version
 row). Indexes:
-unique (`user_id`, `name`); (`user_id`, `updated_at`).
+unique (`user_id`, `name`); unique (`user_id`, `slash_name`); (`user_id`, `updated_at`).
 
 ### 8.2 `skill_versions`
 
@@ -1067,7 +1225,7 @@ Indexes: unique (`skill_id`, `version`); (`user_id`).
 | `path` | text | normalised relative path |
 | `blob_sha256` | text | the R2 blob (section 3.5) |
 | `bytes` | integer | |
-| `kind` | text | `skill-md`, `reference`, `script`, `asset`, `licence`, `other` |
+| `kind` | text | `skill-md`, `reference`, `script`, `asset`, `license`, `other` (rows written before 2026-11-14 hold the earlier spelling `licence`; `normalizeSkillFileKind` reads it as `license` when `loadVersionFiles` loads a version and when a pending version is accepted, so new rows are always `license`, no code sees the old value and there is no migration or data UPDATE; both `LICENSE*` and `LICENCE*` file names are still recognized, since real repositories use both) |
 
 There is no `r2_key` column (section 3.5). Indexes: unique (`skill_id`,
 `version`, `path`); (`user_id`); (`skill_id`, `blob_sha256`) for pruning.
@@ -1083,6 +1241,7 @@ Unchanged by the 2026-11-13 amendments.
 | Key | TTL | Content |
 | --- | --- | --- |
 | `skills:stage:<stageId>` | 1 h | staged manifest of an import preview, before `import/commit`; never used by update checks or MCP |
+| `skills:update-state:<userId>` | 45 days, refreshed on write | per account: when each GitHub skill was last looked at by the daily check, the newest upstream version found and the version the review saw hold no change (section 3.4); not a source of truth |
 
 ### 8.6 Status transitions
 
@@ -1098,13 +1257,13 @@ Unchanged by the 2026-11-13 amendments.
 | Update accepted in the app | `ready` | false until the user enables |
 | Share copy imported (S-13) | as for an app import | false |
 | R2 blob missing on read, or after a restore | `broken` | false |
-| Licence re-classified as `restricted` | `broken` with a licence notice | false |
+| License re-classified as `restricted` | `broken` with a license notice | false |
 
 ### 8.7 Versioning and storage
 
-**Settings versus content.** The toggles (`model_invocable`, `slash_command`),
-`argument_hint` and `enabled` are settings. Changing them does not create a
-version. The name, the description and every file are content. Every save,
+**Settings versus content.** The mode (`enabled`, `model_invocable`), the
+command (`slash_name`) and `argument_hint` are settings. Changing them does not
+create a version. The name, the description and every file are content. Every save,
 rename, restore or import creates a version.
 
 **A save writes only the files that changed.**
@@ -1249,23 +1408,22 @@ row at 768, 1024 and 1440 px in light and dark. If it overflows, use the
 state in `app/composables/skills-library.ts`.
 
 - **Header:** one line, "Skills teach the model how to do a task your way.
-  Commands are skills you run with /name." On the right, a `btn btn-primary
-  btn-sm` **New** that opens a daisyUI `dropdown` (a `modal modal-bottom`
-  sheet below `sm`) with: Blank skill, Blank command, From a template, Upload
+  Give a skill a command to run it with /command." On the right, a `btn
+  btn-primary btn-sm` **New** that opens a daisyUI `dropdown` (a `modal
+  modal-bottom` sheet below `sm`) with: New skill, From a template, Upload
   .zip or .skill, Paste SKILL.md, and From GitHub (behind `skills.import-url`).
 - **Filters** follow the documents-library precedent
   (`app/pages/chats/documents/index.vue`, `buildFilterOptions`). Top row:
   `HistoryBoxTabs` by source: **All sources**, Created, Imported, From apps.
-  Kind row: `HistoryFilterButtons` with `badge-xs` counts: **All**, Skills,
-  Commands (a skill that is both counts in both). Each row is hidden when it
-  has fewer than two options, so there are never two identical "All" controls.
-  `UiSearchInput` appears from 8 items. State lives in the URL query
-  (`?source=&kind=&query=`).
+  There is no Skills/Commands kind row any more (S-12); the source row is
+  hidden when it has fewer than two options, so there are never two identical
+  "All" controls. `UiSearchInput` appears from 8 items and also matches the
+  command. State lives in the URL query (`?source=&query=`).
 - **Review banner:** `alert alert-warning alert-soft` "N skills need review"
   when any skill is `needs-review`, linking to the first one.
-- **Rows** (`ul.list`, like `HistoryArtifactRow`): the name (shown as `/name`
-  for a command) and a one-line description, as plain text; `badge
-  badge-soft` for Skill and Command, and a status badge (Off, Needs review,
+- **Rows** (`ul.list`, like `HistoryArtifactRow`): the name and a one-line
+  description, as plain text; a `badge badge-soft` `/command` when the skill has
+  one (behind `skills.commands`), and a status badge (Off, Needs review,
   Broken); a meta line ("Created by you · v7 · 2 h ago",
   "github.com/o/r/skills/x @ abc1234", or "Added by <client>"); an estimate
   such as "≈ 95 tokens in every message", shown only in mode Auto; a compact
@@ -1284,9 +1442,9 @@ state in `app/composables/skills-library.ts`.
   a unified diff with `+` and `-` and text labels, not colour alone, capped at
   `SKILL_DIFF_MAX_LINES`, and "Restore", which creates a new version) and
   **Settings** (the mode control with what each mode does, the argument hint,
-  licence and source, and later the S-5 scripts toggle). The header holds the
+  license and source, and later the S-5 scripts toggle). The header holds the
   mode control and an **Edit** button.
-- **Use in new chat** (S-12, behind `skills.commands`) opens `/chats/new` with
+- **Use in new chat** (planned for S-12 but not built there; still open) opens `/chats/new` with
   the chip queued through
   `useChatInputPrefill().queue()` (`app/composables/chat-input-prefill.ts`).
   Nothing is sent.
@@ -1302,16 +1460,22 @@ state in `app/composables/skills-library.ts`.
 
 ### 10.3 Create and import
 
-- **Blank skill or blank command** opens the editor with a minimal template
-  (frontmatter name and description, plus a body). The command template uses
-  `$ARGUMENTS`.
+- **New skill** (one action; the old blank skill and blank command are gone)
+  opens a dialog with Name, Description, a Mode select (default Auto), an
+  optional Command (placeholder `/my-command`, behind `skills.commands`) and,
+  once a command is typed, the argument hint, then the editor with a minimal
+  template (frontmatter name and description, plus a body that uses
+  `$ARGUMENTS` when a command is set). A reserved or invalid command and a
+  taken command show inline under the field. The detail Settings section edits
+  the command and the hint; the editor's frontmatter is unchanged, the command
+  is a Besidka setting and not part of `SKILL.md`.
 - **From a template:** 3 to 4 Besidka-authored starters shipped as text under
   `shared/utils/skills/templates/`, for example writing style, code-review
   checklist, meeting notes, and translate with glossary. They are Besidka's own
   text, so they are not presets of third-party skills.
 - **Archive, paste and GitHub import:** a dialog `modal modal-bottom
   sm:modal-middle js-skill-import-modal` with tabs Upload, Paste and GitHub.
-  It leads to the review screen below, then "Install (disabled)". A GitHub
+  It leads to the review screen below, then "Install" (the skill is installed switched off; the footer says so next to the checkbox). A GitHub
   repository with several skills shows a checklist ("This repository has 17
   skills. Choose which to import."), up to `SKILL_GITHUB_PICK_MAX` (10). The
   GitHub tab is hidden without `skills.import-url`.
@@ -1320,10 +1484,19 @@ Review screen (S-4; required before an import is installed and before an
 update is accepted; shared with the editor in read-only mode;
 `max-w-5xl h-[85vh]` on desktop, full-screen sheet on mobile):
 
-- Top: name, description, source (owner/repo/path with the short SHA, the
-  link, or "Uploaded file"), licence class badge with the first lines of the
-  licence file, the raw `license` field as plain text, `compatibility`, and
+- Top: name, description, source (owner/repo/path with the release tag or the
+  short SHA, the link, or "Uploaded file"), `compatibility`, and
   `allowed-tools` as "requested tools, not granted".
+- License, once (2026-11-14; it used to appear four times, as the class, the
+  raw field, the file excerpt and the "repository root was used" warning):
+  one row "License: MIT · open license" (the SPDX id, then a `badge-soft` for
+  the class; one badge alone when no id was detected), a collapsible "License
+  text" with the first lines of the license file, and one muted line "From the
+  repository root" only when the folder had no license of its own. That line
+  comes from `license.fromRepositoryRoot` in the preview response, not from the
+  warnings list. The raw `license` field gets its own "License field" row only
+  when it differs from the detected license (compared without case), and is
+  plain text.
 - `alert alert-warning` "Installing a skill is like installing software. Only
   continue if you trust its author." plus finding counts by type, and the line
   "Besidka highlights links and commands so you can review them. It cannot tell
@@ -1331,13 +1504,21 @@ update is accepted; shared with the editor in read-only mode;
 - File tree (`menu menu-sm`, a `select` on mobile) and a plain monospace
   viewer with line numbers, a wrap toggle, findings marked with a background
   and a text marker (not colour alone), hidden characters shown as
-  `⟨U+…⟩`.
-- Footer: required checkbox "I reviewed this skill" (plus "I read the licence
+  `⟨U+…⟩`. **Every file can be read before installing** (2026-11-14; the review
+  once said "This file is not shown before you install" for everything but
+  `SKILL.md`, while the highlights pointed into those files). `SKILL.md` comes
+  with the preview, a file of an uploaded archive is read in the browser, and
+  any other file is fetched from the staged copy with
+  `GET /api/v1/skills/import/stages/<stageId>/files?path=` (below), once per
+  file. Clicking a highlight row opens its file, scrolls to the line and marks
+  it (`aria-current="location"`, an outline). A file that cannot be loaded
+  (an expired import, one over 1 MiB) says why in plain text.
+- Footer: required checkbox "I reviewed this skill" (plus "I read the license
   and may use this skill" for class `custom`, or "I have the right to
-  use this skill" for class `none`), "Install (disabled)", "Cancel".
+  use this skill" for class `none`), "Install", "Cancel". The muted line "Installs switched off. Turn it on from the skill's mode." sits under the checkboxes, because a button labelled "(disabled)" looks disabled even when it is not.
 
 Update diff: per-file unified diff with `+` and `-` markers and a text label,
-not colour alone, against the **current** version; new findings and licence
+not colour alone, against the **current** version; new findings and license
 changes called out; when local edits exist since the import, the warning
 "Accepting replaces your local edits since the import" (section 3.4); "Accept
 update" disables the skill again.
@@ -1406,7 +1587,7 @@ Cancel all ask "Discard your unsaved changes?".
   final path. A rename may not land on the original path of another file, so
   the saved renames never depend on their order. Files are read lazily from
   the version the editor opened on; only opened and changed files are sent.
-- **Read-only.** A licence file of an open or custom skill allows nothing
+- **Read-only.** A license file of an open or custom skill allows nothing
   (no edit, rename, delete, or a new root `LICENSE` or `NOTICE` name). A file
   over `SKILL_EDIT_MAX_FILE_BYTES` opens read-only but can still be renamed or
   deleted. Sizes are counted in bytes.
@@ -1458,34 +1639,69 @@ As built in S-3 (section 5.7):
   chat restores the tile with the rest of the draft.
 - **Sent messages:** the bubble shows a chip with the skill name above the text
   (it opens the preview); a shared chat shows nothing for it.
-- **Reasoning and cards:** `activate_skill` is a card in the answer, not a
-  reasoning step (section 5.7).
+- **Reasoning:** `activate_skill` is a step in the reasoning box, not a card
+  (section 5.7).
 
-Planned for S-12 (the typed command), which adds `source: 'text'` to the same
-state:
+As built in S-12 (the typed command, flag `skills.commands`; it adds
+`source: 'text'` to the same state). The owner decisions of 2026-11-14 replace
+the earlier plan (start-of-message only, no picker when a chip exists, a
+"Command" caption, a backfill for old skills). The code is
+`app/utils/composer-command.ts` (pure rules), `app/composables/composer-commands.ts`
+(state and keys), `ChatInput/CommandPicker.vue` and `ChatInput/CommandMirror.vue`.
 
-- **The `/` picker.**
-  - **Trigger:** the text before the caret matches `^\s*\/[a-z0-9-]*$`, that is,
-    the start of the message only.
-  - **When it does not open:** during IME composition (`isImeEvent`), inside an
-    open fence (guarded even though it cannot happen at the start), or when an
-    invocation chip already exists.
-  - **Shared state:** `useState('chat-input:open-popover')`, so opening it
-    closes the tools menu and the model picker.
-  - **Rendering:** an anchored `ul role="listbox"` above the textarea (the
-    combobox pattern with `aria-expanded` and `aria-activedescendant`), up to 8
-    rows: `/name`, a one-line description and a Skill or Command badge. A
-    footer row "Manage skills". The empty state reads "No command named /xyz.
-    Esc keeps it as text." A loading row comes first, then results.
-  - **Keys:** Up and Down move; Enter and Tab choose. While the picker is open,
-    `onKeydown` returns `true`, so **Enter never sends**. Esc closes and keeps
-    the text. A space after an exact name chooses it.
-  - **Mobile:** the same inline list, not a bottom sheet. A sheet would call
-    `showModal`, steal focus and close the iOS keyboard. Rows are `min-h-11`
-    and are lifted by the existing `useVisualViewportInset`.
-- **Chip:** the typed `/name` becomes the same tile as the one in the "+" menu
-  (S-3), with the caption "Command" for a skill that runs only when asked. The
-  textarea placeholder shows `argument_hint`.
+- **Trigger.** A `/` at the start of the text or right after whitespace, with
+  the caret right after the typed `[a-z0-9-]` letters and the next character
+  blank or the end (`findCommandTrigger`). Not after a letter or another `/`
+  (so not URLs, `and/or`, `//`), not once a second `/` is typed (`/usr/bin`),
+  not inside a fenced block or an inline code span, not with a range selected,
+  and not during IME composition. The picker is also closed for a deep-research
+  model and with the flag off.
+- **Picker.** `ChatInput/CommandPicker.vue`, an `ul role="listbox"` anchored
+  above the composer (`absolute bottom-full` on the composer root, so it rides
+  the keyboard lift; a card of `md:w-md` at md and up, the full width as an
+  inline list on phones, rows `min-h-11`), never a dialog, because `showModal`
+  steals focus and closes the iOS keyboard. The textarea carries the combobox
+  attributes. Up to 8 enabled skills that have a command, each with `/command`,
+  name, a one-line description and a mode badge, filtered as the user types
+  (prefix before contains, on the command and the name). Rows use
+  `mousedown.prevent`, so the textarea keeps focus. **Which cases open it:** at
+  least one match, or the user has no commands at all (then the empty state
+  reads "No commands. Add one on the Skills page", with a link to
+  `/chats/skills`). A query that matches nothing while commands exist closes the
+  picker, so typing a path never traps Enter.
+- **Keys.** The picker's handler runs before the markdown rules (Tab indent,
+  fence Enter) and before the send handler. ArrowUp and ArrowDown move (wrap),
+  Enter and Tab pick, Esc closes and keeps the text (it stays closed until the
+  `/` moves). While it is open `onKeydown` returns `true` for those keys, so
+  **Enter never sends**, in the empty state too. A composition (`isImeEvent`,
+  `compositionstart` to `compositionend`) is never touched. On phones Enter is a
+  line-break `beforeinput`, which the open picker takes as well. A pick inserts
+  `/command ` through `useMarkdownTextarea().insertText` with a snapshot, so
+  native undo works.
+- **Token and highlight.** The first `/name` in the text that is exactly an
+  enabled command (followed by whitespace or the end, outside code) is the
+  token; later ones stay plain text. It is highlighted through a mirror overlay
+  (`CommandMirror.vue`) behind the transparent textarea, with a pink
+  `bg-accent/25` background like inline code, only while it is the active
+  text-sourced invocation. The mirror copies the textarea's computed font,
+  spacing and padding, wraps with `pre-wrap` and `break-words`, adds a trailing
+  space filler, follows the textarea's scroll, renders text only (never
+  `v-html`) and is `aria-hidden` and `pointer-events-none`.
+- **Backspace.** With the caret right after the active token, Backspace deletes
+  the name back to the `/` and reopens the picker.
+- **Tile.** A token that matches puts the "Skill" tile (`source: 'text'`) in the
+  composer at once; erasing the token removes only a text-sourced tile, and the
+  tile's x deletes the token. There is one invocation per message: a typed
+  command replaces one from the "+" menu, and a "+" menu pick made while a
+  token is in the text replaces the tile, after which that token is plain text
+  (not highlighted, not stripped). After a failed send, `restore()` brings the
+  tile back as `menu`, because the token is gone from the stripped text.
+- **At send.** The token and the blanks after it are stripped from the text on
+  the client (`stripCommandToken`, in `ChatInput.client.vue` before the text is
+  joined with pasted texts), so a share never sees the name; the rest is
+  `$ARGUMENTS`. The part is built exactly as in S-3.
+- **Not built.** "Use in new chat" in the manager and the `argument_hint`
+  placeholder in the textarea are not part of S-12.
 - **Sent messages:** the bubble shows the chip above the text. The context
   panel lists the invocation under "Used" (kind Skill).
 
@@ -1518,7 +1734,7 @@ Commands are skills, so there are no separate command tools. Outputs include
 | --- | --- | --- | --- | --- |
 | `list_skills` | `skills:read` | `readOnlyHint` | `{ cursor?, limit? ≤ 50, kind? 'skill' or 'command' }` | Metadata only: `[{ id, name, description, enabled, status, licenseClass, sourceKind, sourceUrl?, sourceRef?, version, filesCount, bytes, createdVia, modelInvocable, slashCommand, argumentHint?, updatedAt }]` |
 | `get_skill` | `skills:read` | `readOnlyHint` | `{ id, version?, path? }` | Metadata and file list; with `path`, the file text (at most 200,000 characters) plus a `truncated` flag |
-| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; slashCommand?, modelInvocable?, argumentHint? }` | Saved disabled with `needs-review`. The licence gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
+| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; slashCommand?, modelInvocable?, argumentHint? }` | Saved disabled with `needs-review`. The license gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
 | `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Writes a persisted pending version (section 3.4), disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, its `sha256`, `findings`, `reviewUrl` and `diffSummary`. The app's accept and reject are bound to `{ version, sha256 }`, so a change after the user opened the review is refused with 409 |
 | `rename_skill` | `skills:write` | `idempotentHint`, not destructive | `{ id, name }` (regex, 1 to 64 characters, unique per user, reserved slash names refused) | Rewrites only the frontmatter `name`, as a new version (origin `rename`, note "Renamed from x"). Disables the skill and sets `needs-review` |
 | `delete_skills` | `data:delete` | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`, plus provider-copy deletion with S-5 |
@@ -1537,7 +1753,7 @@ Commands are skills, so there are no separate command tools. Outputs include
 **Rules.**
 
 - Files as text only, no URLs, no binaries. The same validation as the app
-  (`parseSkillMarkdown`, `normaliseSkillPath`, `scanSkillText`, the licence
+  (`parseSkillMarkdown`, `normaliseSkillPath`, `scanSkillText`, the license
   classifier, which rejects `restricted` with a clear error).
 - MCP never enables a skill and never sets toggles on an existing skill.
   Create-time toggles (`slashCommand`, `modelInvocable`, `argumentHint`) take
@@ -1618,10 +1834,10 @@ own legal notice. Flag `skills.share`. It comes after the stack
   version, and pruning keeps it. It expires in 7 days by default and 30 at most
   (shares created over MCP: 30 at most). It is revocable, with "Revoke all".
 - **What the viewer sees:** the `WorkspaceDialog` in read-only mode, with every
-  file in plain text, findings highlighted and the licence class shown.
+  file in plain text, findings highlighted and the license class shown.
 - **"Import a copy"** runs the normal staged review. The copy has
   `source_kind = 'share'`, the classifier reruns, and it is saved **disabled**.
-- **Licence rule:** share only `authored` skills and `open` skills (with
+- **License rule:** share only `authored` skills and `open` skills (with
   `LICENSE` and `NOTICE` included; a modified `open` skill gains a CHANGES note
   under Apache-2.0 section 4(b)). Never `none`, `custom` or `restricted`,
   because Besidka would then distribute third-party text it holds no right to.
@@ -1674,18 +1890,18 @@ Ticket keys without a BES id are new on 2026-11-13.
 | S-0 (new) | `docs(skills): authoring, versions, commands and GitHub import in the first release`. This amendment, the pre-check addendum, and the roadmap order. Plain PR, no flag |
 | BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built; the phase now covers authoring, versions and commands, and moves ahead of Phase 3 (research deferred by the owner on 2026-11-12) |
 | S-1 BES-264 | One migration with four tables, `CREATE TABLE` and `CREATE INDEX` only (a later nullable `ADD COLUMN` is allowed by the repo rules; only table rebuilds are banned) (section 8): `skills`, `skill_versions`, `skill_files`, `skill_chat_settings`; no FK to `users` on any of them (explicit purge plus the coverage spec); one sentence added to `CLAUDE.md` after the `documents` note, no cascade-list entry; blob layout `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>` and `skills-staging/u<userId>/`, with the key builder, blob put and prune in `server/utils/skills/storage.ts`; `SKILL_VERSIONS_KEPT` 20; the reserved-name validator; the purge, the chat-delete cleanup and the hourly orphan sweep; the "Skills" section of `docs/d1-restore-reconciliation.md`; registry: add `skills.commands` and set `skills.scripts` to `spend: 'foreground'`, `optIn: 'required'`; a `besidka-preview` Time Travel bookmark before the bottom layer is created; `DROP TABLE` grep in the PR; status transitions of section 8.6 |
-| S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; licence classifier on every source, and `authored` never assigned by import; `licenceAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime for the import preview only; commit writes version 1 with origin `import`, disabled, or, after a name collision (409), takes `asUpdateOf` to turn the staged files into a pending version of the existing skill (replacing any older pending one), or the user renames the incoming skill; the accept and reject routes of section 3.4, gated by `skills` alone and bound to `{ version, sha256 }` (409 "This update changed while you were reviewing it" on a mismatch); Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
-| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/check` with a persisted pending version (the local-edit warning and diff of section 3.4). Accept and reject are in S-2, not here: accept creates a new version row with the next number over the same blobs, so `current_version` only increases, and accepting disables the skill. The ref was first resolved with `api.github.com` and a reachability check; since 2026-11-14 it comes from the git ref list on `github.com` with a warning for an unconfirmed commit (section 3.1, K18), the repository-root licence files are inflated for subfolder imports, and the zip comes from `codeload.github.com/<owner>/<repo>/zip/<sha>`. Flag `skills.import-url`, which gates only `{ url }` and `update/check`. Not C-3-dependent |
+| S-2 BES-268 | Re-scoped to archive and paste: `.zip`, `.skill` and pasted `SKILL.md`; license classifier on every source, and `authored` never assigned by import; `licenseAcknowledged` for `none` and `custom`; staging in KV and R2 with a 1 h lifetime for the import preview only; commit writes version 1 with origin `import`, disabled, or, after a name collision (409), takes `asUpdateOf` to turn the staged files into a pending version of the existing skill (replacing any older pending one), or the user renames the incoming skill; the accept and reject routes of section 3.4, gated by `skills` alone and bound to `{ version, sha256 }` (409 "This update changed while you were reviewing it" on a mismatch); Claude Code frontmatter mapped to toggle defaults; `yaml` and `fflate` as direct dependencies; route 404 spec when the flag is off |
+| S-2G (new) | `feat(skills): import from GitHub links pinned to a commit`: the narrow fetcher (`server/utils/skills/import/github.ts`), the URL parser (`shared/utils/skills/github-url.ts`), `{ url }` on the import routes, and `update/check` with a persisted pending version (the local-edit warning and diff of section 3.4). Accept and reject are in S-2, not here: accept creates a new version row with the next number over the same blobs, so `current_version` only increases, and accepting disables the skill. The ref was first resolved with `api.github.com` and a reachability check; since 2026-11-14 it comes from the git ref list on `github.com` with a warning for an unconfirmed commit (section 3.1, K18), the repository-root license files are inflated for subfolder imports, and the zip comes from `codeload.github.com/<owner>/<repo>/zip/<sha>`. Flag `skills.import-url`, which gates only `{ url }` and `update/check`. Not C-3-dependent |
 | S-10 (new) | `feat(skills): versioned saves, file edits, diff and restore API`: list and create from blank or template; `PATCH` for settings only; versions list and save with `{ baseVersion, changes[], note? }` (409 on a stale base); diff, restore, files and download; templates; 120 saves per hour; every save reruns the classifier |
-| S-4 BES-280 | Re-scoped: the manager page of section 10.2 (list, filters, detail panel, import dialog, review screen, diff view); licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed; tab row checked at 768, 1024 and 1440 px |
+| S-4 BES-280 | Re-scoped: the manager page of section 10.2 (list, filters, detail panel, import dialog, review screen, diff view); license class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed; tab row checked at 768, 1024 and 1440 px |
 | S-11 (new) | `feat(skills): skill and command editor`: the `WorkspaceDialog` in edit mode, file tree, frontmatter fields, Model view, live validation and token estimate, unsaved-changes guard, the 409 flow, the iOS sheet rules |
 | S-3 BES-276 | Re-scoped: catalog from model-invocable skills only, with Cyrillic-aware caps and `SKILL_ACTIVATE_MAX_TOKENS`; the **interim rule** of section 2 item 8 instead of the approval card (a spec for each point; C-6 later adds the card as an acceptance criterion on BES-244, not a blocker); side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB and 6,000 tokens points to `read_skill_file`; memory write lock spec |
 | S-12 (new) | `feat(skills): slash commands in the composer`: section 5.5 and the picker of section 10.5; `data-skill-invocation` part and `resolveSkillInvocationPart`; `$ARGUMENTS` substitution; one-shot versus persistent invocation; `filterPublicParts` drops the part; replay drops a part that no longer resolves; Enter never sends while the picker is open; iOS Simulator check that the keyboard stays open; the manager's "Use in new chat" action (the `useChatInputPrefill().queue()` chip). Flag `skills.commands` |
 | S-5 BES-285 | Anthropic only; provider id in D1 columns, KV cache removed; substring rename rule; disclosure text of section 7; pinned version; deletion triggers; re-upload lazily when `current_version` differs from the uploaded version, not on every save; its own stack, needs C-6 and D-7 |
-| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); licence classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` (a persisted pending version, which the app's accept (S-2, bound to `{ version, sha256 }`) turns into a new numbered version over the same blobs) and `rename_skill` set `needs-review` and disable the skill; `skills:share` not registered (reserved in the docs only); MCP `4.0.0`; the top layer, so it is the preview PR |
-| S-7 BES-294 | Re-scoped to `docs(legal): skills and commands`; a plain PR in parallel with the stack that must merge, and its `LEGAL_NOTICES` entry be published, at least 30 days before `skills` leaves `internal`. Uses this document's licence and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material). Also: Art. 30 row 10b reads "created or imported"; retention of up to 20 versions; an invocation equals a send to the same provider; DPIA rows for authored text and for commands; the Terms right-to-use promise for "create, paste or import" |
+| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); license classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` (a persisted pending version, which the app's accept (S-2, bound to `{ version, sha256 }`) turns into a new numbered version over the same blobs) and `rename_skill` set `needs-review` and disable the skill; `skills:share` not registered (reserved in the docs only); MCP `4.0.0`; the top layer, so it is the preview PR |
+| S-7 BES-294 | Re-scoped to `docs(legal): skills and commands`; a plain PR in parallel with the stack that must merge, and its `LEGAL_NOTICES` entry be published, at least 30 days before `skills` leaves `internal`. Uses this document's license and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material). Also: Art. 30 row 10b reads "created or imported"; retention of up to 20 versions; an invocation equals a send to the same provider; DPIA rows for authored text and for commands; the Terms right-to-use promise for "create, paste or import" |
 | S-8 pre-check (PR #739) | Its S-1 row and question 8 ask to add the skills tables to the `CLAUDE.md` cascade list; with no FK to `users` there is nothing to add (section 8). Staging prefix kept as `skills-staging/`, committed files moved to `user-skills/` as it recommends. A dated 2026-11-13 addendum records authoring, `authored`, enabled-on-save, 20 kept versions and commands. Coordinator to confirm |
-| S-9 BES-316 | Plain PR after the testers. Never says "safe". Names the licence block. Claims no affiliation with the Agent Skills project or Anthropic |
+| S-9 BES-316 | Plain PR after the testers. Never says "safe". Names the license block. Claims no affiliation with the Agent Skills project or Anthropic |
 | S-13 (new, optional) | `feat(skills): share a skill or command by link`: its own stack (S-8b legal addendum as a plain PR, D1 layer, routes and UI, MCP layer); section 12.1. Flag `skills.share` |
 | S-2U (later) | `feat(skills): import a raw SKILL.md from any link`: needs `safeFetch` purpose `skills-url`, so it waits for C-3 |
 | S-14 (optional) | `feat(composer): built-in slash commands`: client only; flag `composer.builtin-commands` (section 5.6) |
@@ -1711,10 +1927,10 @@ them as direct dependencies.
 
 | Alternative | Why not |
 | --- | --- |
-| A skills marketplace or a public gallery | Moderation, DSA notice-and-action and licence exposure; skills stay private hosting |
+| A skills marketplace or a public gallery | Moderation, DSA notice-and-action and license exposure; skills stay private hosting |
 | Presets of third-party skills | Besidka's own templates are the only starters; presets that set model, reasoning or tools are deferred and, if built, are visible removable tiles (section 5.6) |
 | Sharing in the first release | Optional and later (S-13, section 12.1): it reverses the never-public invariant and needs its own pre-check addendum and legal notice |
-| A separate "commands" entity | It would duplicate import, licence gate, findings, versions, review, purge, restore, MCP and legal rows, and need `commands:*` scopes, which means another major MCP version (section 5.5) |
+| A separate "commands" entity | It would duplicate import, license gate, findings, versions, review, purge, restore, MCP and legal rows, and need `commands:*` scopes, which means another major MCP version (section 5.5) |
 | Command flags in frontmatter | Skill text is untrusted; an imported skill must not make itself model-invocable or slash-invocable |
 | Injecting an invoked skill into the system prompt | It would break the prompt cache; the body goes into the latest user turn |
 | Pulling C-3 in for GitHub import | Its threats come from user-chosen hosts; the fixed-host narrow fetcher is enough (section 3.1) |
@@ -1722,7 +1938,7 @@ them as direct dependencies.
 | Trusting a scanner or an LLM judge | Known bypasses (Trail of Bits 2026-06); an LLM judge is itself injectable |
 | Running scripts in the Worker | Arbitrary code next to user data and keys |
 | OpenAI shell skills in v1 | OpenAI's guide names this design as one to avoid (pre-check Q5) |
-| Licence decided by repository, path, date or the `license` field | A fork or an old pin defeats each; only the licence file content is reliable |
+| License decided by repository, path, date or the `license` field | A fork or an old pin defeats each; only the license file content is reliable |
 | One Besidka-wide GitHub token | GitHub Terms section H (sharing tokens to exceed limits) |
 | Rendering `SKILL.md` as Markdown | Image URLs leak the viewer's IP and rendering hides text |
 | A skill activations table | Activations are message parts, rebuilt from D1 each send |
@@ -1744,7 +1960,7 @@ them as direct dependencies.
 - **Presets**: if built, as visible, removable composer tiles (section 5.6).
 - **Interim tool rule (section 2, item 8)**: replaced by the C-6 approval card
   when C-6 ships.
-- **Licence classifier**: when a new restrictive licence family appears in
+- **License classifier**: when a new restrictive license family appears in
   imports, add its hash or phrase and bump the classifier version.
 - **Catalog budget (1,500 tokens) and active block (12,000 tokens)**: retune
   after measuring Cyrillic chats.
@@ -1756,10 +1972,10 @@ them as direct dependencies.
 | # | Question | Owner | Default until answered |
 | --- | --- | --- | --- |
 | 1 | Keep S-5 Anthropic-only, or defer S-5 for both providers for consistency | Owner | Anthropic-only (coordinator decision) |
-| 2 | Allow `none`-licence skills with the extra tick, or block them | Owner | Allow with the tick (pre-check owner item 2) |
+| 2 | Allow `none`-license skills with the extra tick, or block them | Owner | Allow with the tick (pre-check owner item 2) |
 | 3 | Ship the per-user GitHub token in the first importer layer | Owner, after S-2G measures | Not in the first layer |
 | 4 | Publish the skills legal notice when `skills` leaves `internal` (material, 30 days) | Owner, S-7 | One notice at that point |
-| 5 | Whether the 2026-11-06 relicence reaches older copies | Counsel or Anthropic | Treat older copies as restricted |
+| 5 | Whether the 2026-11-06 relicense reaches older copies | Counsel or Anthropic | Treat older copies as restricted |
 | 6 | Seven or eight profile tabs, or one "Integrations" tab | Owner, after S-4 and C-7 measure the row | Separate tabs if they fit |
 
 ### Decided on 2026-11-13
@@ -1769,17 +1985,18 @@ The owner took the plan's defaults:
 | # | Decision |
 | --- | --- |
 | 7 | **Sharing (S-13):** built later as the last optional stack. Authored and open skills only, signed-in viewers, 7 days by default and 30 at most, with its own legal notice. The name `skills:share` is reserved in the docs only. S-6 does not register a scope that has no tools. If S-13 is ready before S-6 merges, the scope joins 4.0.0; otherwise it ships with S-13 as its own major bump. |
-| 8 | **Skills authored in the app** are saved enabled with no licence tick (class `authored`). Imports, updates, MCP writes and share copies stay disabled until the user enables them in the app. |
+| 8 | **Skills authored in the app** are saved enabled with no license tick (class `authored`). Imports, updates, MCP writes and share copies stay disabled until the user enables them in the app. |
 | 9 | **Runtime** (S-3 and S-12) ships before C-6, under the interim rule in section 2, item 8. The approval card comes with C-6, and connectors cannot exist before C-6 anyway. |
-| 10 | **GitHub update versus local edits** (coordinator, 2026-11-13): the update check compares the skill's `source_version` with the latest upstream commit, and a newer commit creates a persisted pending version, not used until accepted (accepting disables the skill). If any version newer than the last import has origin `editor`, `template`, `mcp`, `rename` or `restore`, the review screen warns "Accepting replaces your local edits since the import" and shows the diff against the current version. There is no merge in the first release. Accepting makes the upstream version current, and the local versions stay in history (within the 20 kept) so the user can restore one (section 3.4). |
+| 10 | **GitHub update versus local edits** (coordinator, 2026-11-13): the update check compares the skill's `source_version` with the latest upstream commit (or, for a release-pinned skill, the highest release tag), and a newer commit creates a persisted pending version, not used until accepted (accepting disables the skill). If any version newer than the last import has origin `editor`, `template`, `mcp`, `rename` or `restore`, the review screen warns "Accepting replaces your local edits since the import" and shows the diff against the current version. There is no merge in the first release. Accepting makes the upstream version current, and the local versions stay in history (within the 20 kept) so the user can restore one (section 3.4). |
 
 ### Decided on 2026-11-14
 
 | # | Decision |
 | --- | --- |
 | 11 | **Invocation mode (owner, after testing the S-5 manager on a phone):** one control with Off, Auto and Only when I ask replaces the enable toggle and the two invocation toggles. Every enabled skill is available as `/name` and from the "+" menu. A reserved name keeps `/name` off and the UI says "Rename to use /name". Section 5.7. |
-| 12 | **Visible step:** an `activate_skill` call is a compact card in the answer ("Used skill · name"), which opens a read-only preview with an Edit button. Section 5.7. |
+| 12 | **Visible step:** an `activate_skill` call is a reasoning step ("Applied skill · name", 2026-11-14: the card was rejected), whose name opens a read-only preview with an Edit button. Section 5.7. |
 | 13 | **The invocation core ships in S-3, not S-12:** one invocation per message (`menu` source here, `text` in S-12), a generic 400 for every failure even with the flag off, injection into the latest user turn. Section 5.7. |
+| 14 | **Skills and commands merged (owner, S-12):** everything is a skill; an optional Command (`slash_name`, unique per user, same pattern as names, reserved names refused inline) lets it also run as `/command`, independent of the mode. The Skills/Commands kind filter and the blank command are gone; a skill loads only when attached (the "+" menu or `/command`) or when the model picks it in Auto. The 2026-11-14 row 11 rule that every enabled skill is also `/name` is superseded. Sections 5.5, 5.7, 8.1 and 10.5. |
 
 The owner also asked for these to be possible, and this document states each:
 adding a skill by archive (`.zip` or `.skill`, section 3.1), adding one by

@@ -3,12 +3,12 @@ import type { SkillTemplate } from '#shared/utils/skills/templates/types'
 export const meetingNotesTemplate: SkillTemplate = {
   id: 'meeting-notes',
   title: 'Meeting notes',
-  summary: 'A command that turns raw notes into a summary, decisions and actions.',
+  summary: 'Runs as /meeting-notes: turns raw notes into a summary, decisions and actions.',
   name: 'meeting-notes',
   description:
     'Turn raw meeting notes into a short summary, the decisions and the action items.',
   modelInvocable: false,
-  slashCommand: true,
+  command: 'meeting-notes',
   argumentHint: 'Paste the raw notes',
   files: [
     {

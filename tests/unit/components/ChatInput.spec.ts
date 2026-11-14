@@ -436,7 +436,10 @@ describe('ChatInput.client', () => {
   afterEach(() => {
     vi.useRealTimers()
     document
-      .querySelectorAll('dialog.js-files-modal, dialog.js-search-modal')
+      .querySelectorAll(
+        'dialog.js-files-modal, dialog.js-search-modal, '
+        + 'dialog.js-artifact-picker, dialog.js-skill-import-modal',
+      )
       .forEach((dialog) => {
         dialog.remove()
       })
@@ -514,6 +517,21 @@ describe('ChatInput.client', () => {
 
       expect(mocks.uploadFiles).not.toHaveBeenCalled()
     })
+
+    it.each(['js-artifact-picker', 'js-skill-import-modal'])(
+      'ignores a pasted image while the %s dialog is open',
+      async (hookClass) => {
+        await mountChatInput()
+
+        appendBlockingDialog(hookClass)
+
+        const file = new File(['data'], 'clip.png', { type: 'image/png' })
+
+        document.dispatchEvent(createPasteEvent([file]))
+
+        expect(mocks.uploadFiles).not.toHaveBeenCalled()
+      },
+    )
 
     it('ignores a pasted image while the search modal dialog is open', async () => {
       await mountChatInput()
@@ -3552,10 +3570,12 @@ describe('ChatInput.client', () => {
     }
 
     function getPaddingBox(wrapper: ChatInputWrapper): HTMLElement {
-      const parent = wrapper.get('textarea').element.parentElement
+      const parent = wrapper.get('textarea').element.closest<HTMLElement>(
+        '.p-1.pb-0',
+      )
 
       if (!parent) {
-        throw new Error('textarea has no parent')
+        throw new Error('padding box not found')
       }
 
       return parent

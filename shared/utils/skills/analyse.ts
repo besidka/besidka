@@ -11,8 +11,8 @@ import {
   scanSkillTextWithCounts,
 } from '#shared/utils/skills/findings'
 import type { SkillFinding } from '#shared/utils/skills/findings'
-import { classifySkillLicence } from '#shared/utils/skills/licence'
-import type { SkillLicenceResult } from '#shared/utils/skills/licence'
+import { classifySkillLicense } from '#shared/utils/skills/license'
+import type { SkillLicenseResult } from '#shared/utils/skills/license'
 import {
   SKILL_MD_FILE_NAME,
   getSkillFileKind,
@@ -34,7 +34,7 @@ export interface SkillAnalysisFile {
 export type SkillAnalysisErrorCode
   = | 'skill-md-missing'
     | 'skill-md-too-large'
-    | 'licence-restricted'
+    | 'license-restricted'
     | 'frontmatter-missing'
     | 'frontmatter-unterminated'
     | 'frontmatter-too-large'
@@ -52,7 +52,7 @@ export type SkillAnalysis
     findings: SkillFinding[]
     findingCounts: Record<string, number>
     warnings: string[]
-    licence: SkillLicenceResult
+    license: SkillLicenseResult
     totalBytes: number
     contentSha256: string
   }
@@ -60,13 +60,13 @@ export type SkillAnalysis
     ok: false
     code: SkillAnalysisErrorCode
     message: string
-    licence?: SkillLicenceResult
+    license?: SkillLicenseResult
   }
 
 export interface SkillAnalysisInput {
   files: SkillAnalysisInputFile[]
   folderName: string | null
-  fallbackLicenceFiles?: Array<{ path: string, text: string }>
+  fallbackLicenseFiles?: Array<{ path: string, text: string }>
 }
 
 /**
@@ -90,7 +90,7 @@ export async function hashSkillFileSet(
 /**
  * Everything an import needs to know about an already extracted file set,
  * shared by the browser worker and the server so both read a skill the same
- * way. The licence gate runs here, so a restricted skill never gets past
+ * way. The license gate runs here, so a restricted skill never gets past
  * the preview.
  */
 export async function analyseSkillFiles(
@@ -130,22 +130,22 @@ export async function analyseSkillFiles(
     )
   }
 
-  const licence = await classifySkillLicence({
+  const license = await classifySkillLicense({
     files: input.files,
-    fallbackFiles: input.fallbackLicenceFiles,
+    fallbackFiles: input.fallbackLicenseFiles,
     licenseField: parsed.frontmatter.license,
   })
 
-  if (licence.class === 'restricted') {
+  if (license.class === 'restricted') {
     return {
       ok: false,
-      code: 'licence-restricted',
-      message: licence.text,
-      licence,
+      code: 'license-restricted',
+      message: license.text,
+      license,
     }
   }
 
-  warnings.push(...licence.warnings)
+  warnings.push(...license.warnings)
 
   const files: SkillAnalysisFile[] = []
   const findings: SkillFinding[] = []
@@ -189,7 +189,7 @@ export async function analyseSkillFiles(
     findings: shownFindings,
     findingCounts,
     warnings,
-    licence,
+    license,
     totalBytes,
     contentSha256: await hashSkillFileSet(files),
   }

@@ -130,7 +130,13 @@ describe('useComposerSkills', () => {
       description: 'd',
       version: 4,
       mode: 'auto',
+      command: null,
     })
+    expect(toComposerSkillItem(createSkillSummary({
+      id: 'y',
+      name: 'two',
+      command: 'two-cmd',
+    }))).toMatchObject({ command: 'two-cmd' })
     expect(COMPOSER_SKILLS_SEARCH_MIN).toBe(8)
   })
 })

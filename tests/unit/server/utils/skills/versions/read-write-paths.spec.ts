@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { extractSkillArchive } from '#shared/utils/skills/archive'
 import { SKILL_DIFF_MAX_FILES } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
@@ -237,7 +237,7 @@ describe('skill reads, settings and delete', () => {
       }))).toMatchObject({ status: 409, code: 'files-missing' })
     })
 
-    it('marks licence files of an open skill and oversized files read-only', async () => {
+    it('marks license files of an open skill and oversized files read-only', async () => {
       const { skillId: openId } = await seedSkillWithFiles(testDb.db, bucket, {
         userId,
         files: {
@@ -257,6 +257,43 @@ describe('skill reads, settings and delete', () => {
       expect(Object.fromEntries(result.files.map((file) => {
         return [file.path, file.editable]
       }))).toEqual({ 'SKILL.md': true, 'LICENSE': false, 'big.md': false })
+    })
+
+    it('reads a file stored with the earlier spelling `licence` as `license`', async () => {
+      const { skillId: oldId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: {
+          'SKILL.md': skillMarkdown({ name: 'old-rows' }),
+          'LICENSE': 'MIT text\n',
+        },
+        skill: { name: 'old-rows', licenseClass: 'open' },
+      })
+
+      await testDb.db.update(schema.skillFiles)
+        .set({ kind: 'licence' as never })
+        .where(and(
+          eq(schema.skillFiles.skillId, oldId),
+          eq(schema.skillFiles.path, 'LICENSE'),
+        ))
+
+      const [stored] = await testDb.db.select().from(schema.skillFiles)
+        .where(and(
+          eq(schema.skillFiles.skillId, oldId),
+          eq(schema.skillFiles.path, 'LICENSE'),
+        ))
+      const list = await readSkillVersionFiles({
+        db: testDb.db,
+        bucket,
+        userId,
+        skillId: oldId,
+      })
+      const detail = await getSkillDetail(testDb.db, userId, oldId)
+
+      expect(stored!.kind).toBe('licence')
+      expect(list.files.find(file => file.path === 'LICENSE')!.kind)
+        .toBe('license')
+      expect(detail.files.find(file => file.path === 'LICENSE')!.kind)
+        .toBe('license')
     })
 
     it('builds a zip the importer reads back', async () => {
@@ -296,7 +333,7 @@ describe('skill reads, settings and delete', () => {
   })
 
   describe('list and detail', () => {
-    it('counts sources and kinds', async () => {
+    it('counts sources and exposes the command', async () => {
       const seed = async (
         name: string,
         values: Partial<typeof schema.skills.$inferInsert>,
@@ -311,8 +348,11 @@ describe('skill reads, settings and delete', () => {
       await seed('imported-skill', { sourceKind: 'zip' })
       await seed('from-github', { sourceKind: 'github' })
       await seed('from-agent', { sourceKind: 'mcp' })
-      await seed('only-command', { slashCommand: true, modelInvocable: false })
-      await seed('auto', { slashCommand: true, modelInvocable: true })
+      await seed('only-command', {
+        slashName: 'run-it',
+        modelInvocable: false,
+      })
+      await seed('auto', { modelInvocable: true })
 
       const otherUserId = await seedUser(testDb.db)
 
@@ -327,14 +367,19 @@ describe('skill reads, settings and delete', () => {
       expect(result.skills).toHaveLength(6)
       expect(result.counts).toEqual({
         sources: { all: 6, created: 3, imported: 2, apps: 1 },
-        kinds: { all: 6, skills: 5, commands: 1 },
       })
+      expect(result.skills.find((skill) => {
+        return skill.name === 'only-command'
+      })).toMatchObject({ command: 'run-it', slashCommand: true })
+      expect(result.skills.find((skill) => {
+        return skill.name === 'auto'
+      })).toMatchObject({ command: null, slashCommand: false })
       expect(result.skills.every((skill) => {
         return !('userId' in skill)
       })).toBe(true)
     })
 
-    it('returns the detail with files, licence and the pending version', async () => {
+    it('returns the detail with files, license and the pending version', async () => {
       await save(1, [
         { op: 'put', path: 'references/notes.md', content: 'Edited\n' },
       ])
@@ -358,7 +403,7 @@ describe('skill reads, settings and delete', () => {
       expect(detail).toMatchObject({
         currentVersion: 2,
         pendingVersion: 3,
-        licence: { class: 'authored', filesLocked: false },
+        license: { class: 'authored', filesLocked: false },
       })
       expect(detail.files).toHaveLength(3)
       expect(detail.currentVersionInfo).toMatchObject({
@@ -400,63 +445,179 @@ describe('skill reads, settings and delete', () => {
       expect(versions).toHaveLength(1)
     })
 
-    it('sets the three columns from one mode in a single update', async () => {
+    function patch(changes: Parameters<typeof updateSkillSettings>[0]['changes']) {
+      return updateSkillSettings({
+        db: testDb.db,
+        userId,
+        skillId,
+        changes,
+        logger,
+      })
+    }
+
+    async function slashNameOf(id: string) {
+      const [row] = await testDb.db
+        .select({ slashName: schema.skills.slashName })
+        .from(schema.skills)
+        .where(eq(schema.skills.id, id))
+
+      return row!.slashName
+    }
+
+    it('sets the two columns from one mode and never touches the command', async () => {
       await testDb.db.update(schema.skills)
-        .set({ enabled: false, modelInvocable: false, slashCommand: false })
+        .set({
+          enabled: false,
+          modelInvocable: false,
+          slashName: 'keep-me',
+        })
         .where(eq(schema.skills.id, skillId))
 
-      await expect(updateSkillSettings({
-        db: testDb.db,
-        userId,
-        skillId,
-        changes: { mode: 'auto' },
-        logger,
-      })).resolves.toMatchObject({
+      await expect(patch({ mode: 'auto' })).resolves.toMatchObject({
         enabled: true,
         modelInvocable: true,
-        slashCommand: true,
+        command: 'keep-me',
       })
-      await expect(updateSkillSettings({
-        db: testDb.db,
-        userId,
-        skillId,
-        changes: { mode: 'ask' },
-        logger,
-      })).resolves.toMatchObject({
+      await expect(patch({ mode: 'ask' })).resolves.toMatchObject({
         enabled: true,
         modelInvocable: false,
-        slashCommand: true,
+        command: 'keep-me',
       })
-      await expect(updateSkillSettings({
-        db: testDb.db,
-        userId,
-        skillId,
-        changes: { mode: 'off' },
-        logger,
-      })).resolves.toMatchObject({
+      await expect(patch({ mode: 'off' })).resolves.toMatchObject({
         enabled: false,
         modelInvocable: false,
-        slashCommand: true,
+        command: 'keep-me',
       })
     })
 
-    it('succeeds for a reserved name and leaves /name off', async () => {
+    it('succeeds for a reserved skill name', async () => {
       await testDb.db.update(schema.skills)
-        .set({ name: 'memory', enabled: false, slashCommand: false })
+        .set({ name: 'memory', enabled: false })
         .where(eq(schema.skills.id, skillId))
 
-      await expect(updateSkillSettings({
-        db: testDb.db,
-        userId,
-        skillId,
-        changes: { mode: 'auto' },
-        logger,
-      })).resolves.toMatchObject({
+      await expect(patch({ mode: 'auto' })).resolves.toMatchObject({
         name: 'memory',
         enabled: true,
         modelInvocable: true,
+        command: null,
         slashCommand: false,
       })
+    })
+
+    it('sets a command and derives slashCommand from it', async () => {
+      const result = await patch({ command: 'review-pr' })
+
+      expect(result).toMatchObject({
+        command: 'review-pr',
+        slashCommand: true,
+        enabled: true,
+      })
+      expect(await slashNameOf(skillId)).toBe('review-pr')
+    })
+
+    it('trims the command and drops one leading slash', async () => {
+      await expect(patch({ command: '  /review-pr ' })).resolves
+        .toMatchObject({ command: 'review-pr' })
+    })
+
+    it('clears the command with null and keeps the mode', async () => {
+      await patch({ command: 'review-pr' })
+
+      const result = await patch({ command: null })
+
+      expect(result).toMatchObject({
+        command: null,
+        slashCommand: false,
+        enabled: true,
+      })
+      expect(await slashNameOf(skillId)).toBeNull()
+    })
+
+    it('treats an empty command as clearing it', async () => {
+      await patch({ command: 'review-pr' })
+
+      await expect(patch({ command: '   ' })).resolves
+        .toMatchObject({ command: null, slashCommand: false })
+    })
+
+    it('keeps the command when only the hint changes', async () => {
+      await patch({ command: 'review-pr' })
+
+      await expect(patch({ argumentHint: 'A link' })).resolves
+        .toMatchObject({ command: 'review-pr', argumentHint: 'A link' })
+    })
+
+    it('allows setting the command the skill already has', async () => {
+      await patch({ command: 'review-pr' })
+
+      await expect(patch({ command: 'review-pr' })).resolves
+        .toMatchObject({ command: 'review-pr' })
+    })
+
+    it.each(['memory', '/model', 'help', 'new'])(
+      'refuses the reserved command %s with 400 reserved-name',
+      async (command) => {
+        expect(await failureOf(patch({ command })))
+          .toMatchObject({ status: 400, code: 'reserved-name' })
+        expect(await slashNameOf(skillId)).toBeNull()
+      },
+    )
+
+    it.each(['Foo', '/Foo', 'a_b', 'a--b', 'two words'])(
+      'refuses the invalid command %j with 400 reserved-name',
+      async (command) => {
+        expect(await failureOf(patch({ command })))
+          .toMatchObject({ status: 400, code: 'reserved-name' })
+        expect(await slashNameOf(skillId)).toBeNull()
+      },
+    )
+
+    it('refuses a command another skill of the user has with 409', async () => {
+      await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': skillMarkdown({ name: 'other-skill' }) },
+        skill: { name: 'other-skill', slashName: 'shared' },
+      })
+
+      const failure = await failureOf(patch({ command: 'shared' }))
+
+      expect(failure).toMatchObject({
+        status: 409,
+        code: 'command-taken',
+        message: '/shared is already a command',
+      })
+      expect(await slashNameOf(skillId)).toBeNull()
+    })
+
+    it('allows a command another user has', async () => {
+      const otherUserId = await seedUser(testDb.db)
+
+      await seedSkillWithFiles(testDb.db, bucket, {
+        userId: otherUserId,
+        files: { 'SKILL.md': skillMarkdown({ name: 'theirs' }) },
+        skill: { name: 'theirs', slashName: 'shared' },
+      })
+
+      await expect(patch({ command: 'shared' })).resolves
+        .toMatchObject({ command: 'shared' })
+    })
+
+    it('changes the mode and the command together', async () => {
+      await expect(patch({ mode: 'ask', command: 'review-pr' })).resolves
+        .toMatchObject({
+          enabled: true,
+          modelInvocable: false,
+          command: 'review-pr',
+        })
+    })
+
+    it('logs whether the skill has a command, not the command', async () => {
+      await patch({ command: 'private-command' })
+
+      const logged = JSON.stringify(logger.set.mock.calls)
+
+      expect(logged).toContain('"hasCommand":true')
+      expect(logged).not.toContain('private-command')
     })
 
     it('refuses a broken skill for Auto and Only when I ask', async () => {

@@ -65,4 +65,49 @@ describe('useComposerSkillInvocation', () => {
 
     expect(second.invocation.value).toBeNull()
   })
+
+  it('restores a text invocation as a menu one', () => {
+    const composer = useComposerSkillInvocation()
+
+    composer.restore({
+      skillId: 'skl1',
+      name: 'one',
+      version: 3,
+      source: 'text',
+    })
+
+    expect(composer.invocation.value).toEqual({
+      skillId: 'skl1',
+      name: 'one',
+      version: 3,
+      source: 'menu',
+    })
+
+    composer.clear()
+  })
+
+  it('keeps a restored menu invocation as a menu one', () => {
+    const composer = useComposerSkillInvocation()
+
+    composer.restore({
+      skillId: 'skl2',
+      name: 'two',
+      version: 1,
+      source: 'menu',
+    })
+
+    expect(composer.invocation.value?.source).toBe('menu')
+
+    composer.clear()
+  })
+
+  it('clears the invocation when restoring null', () => {
+    const composer = useComposerSkillInvocation()
+
+    composer.set({ skillId: 'skl1', name: 'one', version: 1 }, 'text')
+    composer.restore(null)
+
+    expect(composer.invocation.value).toBeNull()
+    expect(composer.part.value).toBeNull()
+  })
 })

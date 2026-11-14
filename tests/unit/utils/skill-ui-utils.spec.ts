@@ -8,7 +8,7 @@ import {
 import {
   describeSkillVersionOrigin,
   findLocalEditsSinceImport,
-  getSkillLicenceLabel,
+  getSkillLicenseLabel,
 } from '../../../app/utils/skill-labels'
 
 describe('relative time', () => {
@@ -70,9 +70,9 @@ describe('skill findings helpers', () => {
 })
 
 describe('skill labels', () => {
-  it('names every licence class', () => {
-    expect(getSkillLicenceLabel('none')).toBe('No licence stated')
-    expect(getSkillLicenceLabel('authored')).toBe('Written by you')
+  it('names every license class', () => {
+    expect(getSkillLicenseLabel('none')).toBe('No license stated')
+    expect(getSkillLicenseLabel('authored')).toBe('Written by you')
   })
 
   it('describes where a version came from', () => {

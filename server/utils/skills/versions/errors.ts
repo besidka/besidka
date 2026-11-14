@@ -6,14 +6,15 @@ export type SkillEditErrorCode
     | 'file-not-found'
     | 'stale-base'
     | 'name-taken'
+    | 'command-taken'
     | 'reserved-name'
     | 'invalid-request'
     | 'invalid-path'
     | 'path-missing'
     | 'path-exists'
     | 'skill-md-required'
-    | 'licence-file-locked'
-    | 'licence-restricted'
+    | 'license-file-locked'
+    | 'license-restricted'
     | 'file-too-large'
     | 'save-too-large'
     | 'skill-too-large'
@@ -31,14 +32,15 @@ const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'file-not-found': 404,
   'stale-base': 409,
   'name-taken': 409,
+  'command-taken': 409,
   'reserved-name': 400,
   'invalid-request': 400,
   'invalid-path': 400,
   'path-missing': 400,
   'path-exists': 400,
   'skill-md-required': 400,
-  'licence-file-locked': 403,
-  'licence-restricted': 422,
+  'license-file-locked': 403,
+  'license-restricted': 422,
   'file-too-large': 413,
   'save-too-large': 413,
   'skill-too-large': 413,
@@ -98,5 +100,13 @@ export function createFilesMissingError() {
     message: 'The files of this skill are missing',
     why: 'A stored file could not be read',
     fix: 'Restore an earlier version, or delete the skill',
+  })
+}
+
+export function createSkillCommandTakenError(command: string) {
+  return createSkillEditError('command-taken', {
+    message: `/${command} is already a command`,
+    why: 'Another of your skills already uses this command',
+    fix: 'Pick another command, or clear it on the other skill first',
   })
 }

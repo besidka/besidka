@@ -153,7 +153,7 @@ export async function saveSkillChanges(
   const applied = await applySkillChanges({
     baseFiles,
     changes: input.changes,
-    locksLicenceFiles: skill.licenseClass === 'open'
+    locksLicenseFiles: skill.licenseClass === 'open'
       || skill.licenseClass === 'custom',
   })
   const heldTexts = new Map<string, string>()
@@ -226,7 +226,7 @@ export async function saveSkillChanges(
           recovered: written.recovered,
           files: written.filesCount,
           bytes: written.bytes,
-          licenceClass: written.licenseClass,
+          licenseClass: written.licenseClass,
           findings: written.findingCounts,
         },
       },

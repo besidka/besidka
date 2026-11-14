@@ -38,7 +38,6 @@ import {
   isDocumentToolPartType,
 } from '#shared/utils/documents'
 import { isArtifactToolPartType } from '~/utils/artifact-parts'
-import { isSkillStepPart } from '~/utils/skill-step'
 import {
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
@@ -483,7 +482,6 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
       || isDocumentToolPartType(part.type)
       || part.type === CODE_EXECUTION_PART_TYPE
       || isVisibleGenerateImageToolPart(part)
-      || isSkillStepPart(part)
     ) {
       return true
     }

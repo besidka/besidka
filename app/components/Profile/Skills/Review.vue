@@ -23,28 +23,64 @@
         Source
       </dt>
       <dd
-        class="min-w-0 break-words"
+        class="grid min-w-0 gap-1 break-words"
         data-testid="skill-review-source"
       >
-        {{ sourceLabel }}
+        <span data-testid="skill-review-source-label">{{ sourceLabel }}</span>
+        <span
+          v-if="releaseNote"
+          class="text-xs text-base-content/70"
+          data-testid="skill-review-release"
+        >
+          {{ releaseNote }}
+        </span>
+        <button
+          v-if="switchLabel"
+          type="button"
+          class="link w-fit text-left text-xs"
+          data-testid="skill-review-switch-source"
+          @click="emit('switchChannel', switchTarget)"
+        >
+          {{ switchLabel }}
+        </button>
       </dd>
       <dt class="text-base-content/70">
-        Licence
+        License
       </dt>
       <dd
-        class="flex min-w-0 flex-wrap items-center gap-2"
-        data-testid="skill-review-licence"
+        class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+        data-testid="skill-review-license"
       >
+        <template v-if="preview.license.spdx">
+          <span
+            class="font-medium"
+            data-testid="skill-review-license-spdx"
+          >
+            {{ preview.license.spdx }}
+          </span>
+          <span
+            class="text-base-content/70"
+            aria-hidden="true"
+          >
+            &middot;
+          </span>
+        </template>
         <span
           class="badge badge-soft badge-sm"
-          :class="licenceBadgeClass"
-          data-testid="skill-review-licence-class"
+          :class="licenseBadgeClass"
+          data-testid="skill-review-license-class"
         >
-          {{ licenceLabel }}
+          {{ licenseClassLabel }}
         </span>
-        <span class="min-w-0 break-words">{{ preview.licence.text }}</span>
+        <span
+          v-if="preview.license.fromRepositoryRoot"
+          class="text-xs text-base-content/70"
+          data-testid="skill-review-license-root"
+        >
+          From the repository root
+        </span>
       </dd>
-      <template v-if="preview.skill.license">
+      <template v-if="licenseFieldDiffers">
         <dt class="text-base-content/70">
           License field
         </dt>
@@ -91,14 +127,20 @@
     </dl>
 
     <details
-      v-if="licenceExcerpt"
+      v-if="licenseExcerpt"
       class="rounded-box border border-base-300"
-      data-testid="skill-review-licence-text"
+      data-testid="skill-review-license-text"
     >
       <summary class="cursor-pointer px-3 py-2 text-sm font-medium">
-        Start of the licence file{{ licenceFileSuffix }}
+        License text
+        <span
+          v-if="preview.license.file"
+          class="font-normal text-base-content/70"
+        >
+          &middot; {{ preview.license.file }}
+        </span>
       </summary>
-      <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-base-300 px-3 py-2 font-mono text-xs">{{ licenceExcerpt }}</pre>
+      <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-base-300 px-3 py-2 font-mono text-xs">{{ licenseExcerpt }}</pre>
     </details>
 
     <div
@@ -158,20 +200,30 @@
       />
       <div class="min-w-0">
         <ProfileSkillsFileViewer
-          v-if="selectedText !== null"
+          v-if="fileStatus === 'ready' && fileText !== null"
           :path="selectedPath"
-          :text="selectedText"
+          :text="fileText"
           :findings="preview.findings"
           :focus-line="focusLine"
         />
+        <div
+          v-else-if="fileStatus === 'loading'"
+          class="grid gap-2 rounded-box bg-base-200 p-3"
+          role="status"
+          aria-label="Loading the file"
+          data-testid="skill-review-file-loading"
+        >
+          <div class="skeleton skeleton--default h-4 w-1/2" />
+          <div class="skeleton skeleton--default h-4 w-full" />
+          <div class="skeleton skeleton--default h-4 w-3/4" />
+        </div>
         <p
           v-else
           class="rounded-box bg-base-200 p-3 text-sm"
-          data-testid="skill-review-not-previewed"
+          role="alert"
+          data-testid="skill-review-file-error"
         >
-          This file is not shown before you install. A new skill is installed
-          switched off, and you can read every file in the Files tab before
-          you turn it on.
+          {{ fileError }}
         </p>
       </div>
     </div>
@@ -210,19 +262,26 @@
 </template>
 
 <script setup lang="ts">
+import { parseError } from 'evlog'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type { SkillImportPreview } from '#shared/types/skills.d'
 
-const LICENCE_EXCERPT_LINES = 12
+const LICENSE_EXCERPT_LINES = 12
 
 const props = withDefaults(defineProps<{
   preview: SkillImportPreview
   readFile?: (path: string) => string | null
+  loadFile?: (path: string) => Promise<string>
   fileName?: string | null
 }>(), {
   readFile: () => null,
+  loadFile: undefined,
   fileName: null,
 })
+
+const emit = defineEmits<{
+  switchChannel: [channel: 'release' | 'branch']
+}>()
 
 const selectedPath = shallowRef<string>(SKILL_MD_FILE_NAME)
 const focusLine = shallowRef<number | null>(null)
@@ -233,15 +292,23 @@ const totalBytes = computed<number>(() => {
   }, 0)
 })
 
+const authorVersion = computed<string | null>(() => {
+  const version = props.preview.skill.metadata?.version
+
+  return !props.preview.release?.tag && version ? version : null
+})
+
 const sourceLabel = computed<string>(() => {
-  const { source, sourceUrl, sourcePath, sourceVersion } = props.preview
+  const { source, sourceUrl, sourcePath, sourceVersion, release }
+    = props.preview
 
   if (source === 'github' && sourceUrl) {
     const location = sourcePath
       ? `${sourceUrl.replace(/^https?:\/\//, '')}/${sourcePath}`
       : sourceUrl.replace(/^https?:\/\//, '')
+    const version = release?.tag ?? sourceVersion.slice(0, 7)
 
-    return `${location} @ ${sourceVersion.slice(0, 7)}`
+    return `${location} @ ${version}`
   }
 
   if (source === 'text') {
@@ -251,31 +318,77 @@ const sourceLabel = computed<string>(() => {
   return props.fileName ? `Uploaded file ${props.fileName}` : 'Uploaded file'
 })
 
-const licenceLabel = computed<string>(() => {
-  const label = getSkillLicenceLabel(props.preview.licence.class)
+const releaseNote = computed<string>(() => {
+  const { release } = props.preview
 
-  return props.preview.licence.spdx
-    ? `${label} (${props.preview.licence.spdx})`
-    : label
+  if (props.preview.source !== 'github') {
+    return ''
+  }
+
+  if (release?.tag) {
+    return release.isLatestRelease
+      ? 'Latest release'
+      : 'A release, not the latest'
+  }
+
+  if (authorVersion.value) {
+    return `Version ${authorVersion.value} (from SKILL.md)`
+  }
+
+  return release?.channel === 'branch' && release.defaultBranch
+    ? `Latest commit on ${release.defaultBranch}`
+    : ''
 })
 
-const licenceBadgeClass = computed<string>(() => {
-  if (props.preview.licence.class === 'open') {
+const switchTarget = computed<'release' | 'branch'>(() => {
+  return props.preview.release?.channel === 'release' ? 'branch' : 'release'
+})
+
+const switchLabel = computed<string>(() => {
+  const { release } = props.preview
+
+  if (!release?.switchable) {
+    return ''
+  }
+
+  if (release.channel === 'release') {
+    return `Use the latest commit on ${release.defaultBranch ?? 'the default branch'} instead`
+  }
+
+  return release.latestTag
+    ? `Use the latest release ${release.latestTag} instead`
+    : ''
+})
+
+const licenseClassLabel = computed<string>(() => {
+  const label = getSkillLicenseLabel(props.preview.license.class)
+
+  return props.preview.license.spdx ? label.toLowerCase() : label
+})
+
+const licenseFieldDiffers = computed<boolean>(() => {
+  const field = props.preview.skill.license?.trim()
+
+  if (!field) {
+    return false
+  }
+
+  return field.toLowerCase() !== (props.preview.license.spdx ?? '').toLowerCase()
+})
+
+const licenseBadgeClass = computed<string>(() => {
+  if (props.preview.license.class === 'open') {
     return 'badge-success'
   }
 
-  return props.preview.licence.class === 'none' ? 'badge-warning' : ''
+  return props.preview.license.class === 'none' ? 'badge-warning' : ''
 })
 
-const licenceFileSuffix = computed<string>(() => {
-  return props.preview.licence.file ? ` (${props.preview.licence.file})` : ''
-})
-
-const licenceExcerpt = computed<string>(() => {
-  const text = props.preview.licence.licenceText
+const licenseExcerpt = computed<string>(() => {
+  const text = props.preview.license.licenseText
 
   return text
-    ? text.split('\n').slice(0, LICENCE_EXCERPT_LINES).join('\n')
+    ? text.split('\n').slice(0, LICENSE_EXCERPT_LINES).join('\n')
     : ''
 })
 
@@ -304,11 +417,83 @@ watch(selectedPath, () => {
   focusLine.value = null
 })
 
-const selectedText = computed<string | null>(() => {
-  if (selectedPath.value === SKILL_MD_FILE_NAME) {
-    return props.preview.skillMd
+const fileStatus = shallowRef<'ready' | 'loading' | 'error'>('ready')
+const fileText = shallowRef<string | null>(null)
+const fileError = shallowRef<string>('')
+let loadedTexts = new Map<string, string>()
+let loadedStageId = ''
+
+function showFile(text: string) {
+  fileText.value = text
+  fileError.value = ''
+  fileStatus.value = 'ready'
+}
+
+function describeLoadFailure(exception: unknown): string {
+  const parsedException = parseError(exception)
+
+  return [
+    parsedException.message || 'The file could not be loaded.',
+    parsedException.why,
+  ].filter(Boolean).join('. ')
+}
+
+/**
+ * The text of the selected file: `SKILL.md` comes with the preview, a file of
+ * an uploaded archive is read in the browser, anything else is fetched from
+ * the staged copy on the server (`loadFile`), once per file. A file that
+ * cannot be loaded (expired import, too large) says why in plain text.
+ */
+async function loadSelectedFile() {
+  const path = selectedPath.value
+
+  if (props.preview.stageId !== loadedStageId) {
+    loadedStageId = props.preview.stageId
+    loadedTexts = new Map()
   }
 
-  return props.readFile(selectedPath.value)
-})
+  const known = path === SKILL_MD_FILE_NAME
+    ? props.preview.skillMd
+    : props.readFile(path) ?? loadedTexts.get(path) ?? null
+
+  if (known !== null) {
+    showFile(known)
+
+    return
+  }
+
+  if (!props.loadFile) {
+    fileText.value = null
+    fileError.value = 'This file cannot be shown here.'
+    fileStatus.value = 'error'
+
+    return
+  }
+
+  fileText.value = null
+  fileStatus.value = 'loading'
+
+  try {
+    const text = await props.loadFile(path)
+
+    loadedTexts.set(path, text)
+
+    if (selectedPath.value === path) {
+      showFile(text)
+    }
+  } catch (exception) {
+    if (selectedPath.value !== path) {
+      return
+    }
+
+    fileError.value = describeLoadFailure(exception)
+    fileStatus.value = 'error'
+  }
+}
+
+watch(
+  [selectedPath, () => props.preview.stageId],
+  loadSelectedFile,
+  { immediate: true },
+)
 </script>

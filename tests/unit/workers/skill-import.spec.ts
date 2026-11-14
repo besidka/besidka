@@ -39,7 +39,7 @@ describe('inspectSkillArchiveBytes', () => {
       ok: true,
       summary: {
         name: 'review-pr',
-        licenceClass: 'none',
+        licenseClass: 'none',
         findingCounts: { url: 1, shell: 1 },
       },
     })
@@ -51,14 +51,14 @@ describe('inspectSkillArchiveBytes', () => {
     }
   })
 
-  it('stops a restricted licence before upload', async () => {
+  it('stops a restricted license before upload', async () => {
     const old = readFileSync(
-      join(process.cwd(), 'tests/fixtures/skills/licences/anthropic-proprietary.txt'),
+      join(process.cwd(), 'tests/fixtures/skills/licenses/anthropic-proprietary.txt'),
       'utf8',
     )
     const result = await inspect(validSkillArchive({ 'LICENSE.txt': old }))
 
-    expect(result).toMatchObject({ ok: false, code: 'licence-restricted' })
+    expect(result).toMatchObject({ ok: false, code: 'license-restricted' })
   })
 
   it('refuses an archive over 5 MiB compressed', async () => {

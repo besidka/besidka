@@ -10,7 +10,7 @@ import {
   splitSkillMarkdownParts,
 } from '#shared/utils/skills/compose'
 import type { SkillMarkdownParts } from '#shared/utils/skills/compose'
-import { isSkillLicenceRootFile } from '#shared/utils/skills/edit'
+import { isSkillLicenseRootFile } from '#shared/utils/skills/edit'
 import { scanSkillTextWithCounts } from '#shared/utils/skills/findings'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
@@ -32,8 +32,8 @@ export interface SkillEditorSaveResult {
 }
 
 const READ_ONLY_REASON_LOCKED
-  = 'This licence file stays as it was published. Licence files of an open '
-    + 'or custom licence cannot be edited, renamed or deleted.'
+  = 'This license file stays as it was published. License files of an open '
+    + 'or custom license cannot be edited, renamed or deleted.'
 const READ_ONLY_REASON_LARGE = `Files over ${
   SKILL_EDIT_MAX_FILE_BYTES / 1024
 } KiB open read-only. You can still rename or delete this file.`
@@ -66,7 +66,7 @@ function createEditorFile(
   summary: SkillDetail['files'][number],
   filesLocked: boolean,
 ): SkillEditorFile {
-  const isLocked = filesLocked && isSkillLicenceRootFile(summary.path)
+  const isLocked = filesLocked && isSkillLicenseRootFile(summary.path)
 
   return {
     key: `file:${summary.path}`,
@@ -115,7 +115,7 @@ export function useSkillEditor(skillId: MaybeRefOrGetter<string>) {
   let newFileCounter = 0
 
   const filesLocked = computed<boolean>(() => {
-    return skill.value?.licence.filesLocked ?? false
+    return skill.value?.license.filesLocked ?? false
   })
 
   const skillMdText = computed<string>(() => {
@@ -460,7 +460,7 @@ export function useSkillEditor(skillId: MaybeRefOrGetter<string>) {
 
     try {
       const detail = await $fetch(`/api/v1/skills/${toValue(skillId)}`)
-      const locked = detail.licence.filesLocked
+      const locked = detail.license.filesLocked
 
       skill.value = detail
       baseVersion.value = detail.currentVersion

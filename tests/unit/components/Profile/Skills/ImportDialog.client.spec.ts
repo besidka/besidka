@@ -176,7 +176,9 @@ describe('Profile/Skills/ImportDialog', () => {
     const install = get('skill-import-install') as HTMLButtonElement
 
     expect(install.disabled).toBe(true)
-    expect(install.textContent).toContain('Install (disabled)')
+    expect(install.textContent?.trim()).toBe('Install')
+    expect(get('skill-import-install-note').textContent?.trim())
+      .toBe('Installs switched off. Turn it on from the skill\'s mode.')
 
     install.click()
     await flushPromises()
@@ -188,17 +190,17 @@ describe('Profile/Skills/ImportDialog', () => {
     expect(install.disabled).toBe(false)
   })
 
-  it('needs the extra licence tick when no licence is stated', async () => {
+  it('needs the extra license tick when no license is stated', async () => {
     await mountDialog()
     await reachReview(createImportPreview({
-      requiresLicenceAcknowledgement: true,
-      licence: {
+      requiresLicenseAcknowledgement: true,
+      license: {
         class: 'none',
-        text: 'No licence stated.',
+        text: 'No license stated.',
         matched: [],
         file: null,
         spdx: null,
-        licenceText: null,
+        licenseText: null,
         licenseField: null,
       },
     }))
@@ -208,28 +210,28 @@ describe('Profile/Skills/ImportDialog', () => {
     await check('skill-import-reviewed')
 
     expect(install.disabled).toBe(true)
-    expect(get('skill-import-licence').parentElement!.textContent)
+    expect(get('skill-import-license').parentElement!.textContent)
       .toContain('I have the right to use this skill')
 
-    await check('skill-import-licence')
+    await check('skill-import-license')
 
     expect(install.disabled).toBe(false)
   })
 
-  it('commits with the licence acknowledgement and reports what was installed', async () => {
+  it('commits with the license acknowledgement and reports what was installed', async () => {
     const wrapper = await mountDialog()
 
     await reachReview(createImportPreview({
-      requiresLicenceAcknowledgement: true,
+      requiresLicenseAcknowledgement: true,
     }))
     await check('skill-import-reviewed')
-    await check('skill-import-licence')
+    await check('skill-import-license')
     mocks.fetch.mockResolvedValueOnce({
       kind: 'created',
       id: 'NewSkillId',
       name: 'review-pr',
       version: 1,
-      licenceClass: 'none',
+      licenseClass: 'none',
       filesCount: 2,
     })
     await click('skill-import-install')
@@ -241,7 +243,7 @@ describe('Profile/Skills/ImportDialog', () => {
         body: {
           stageId: 'a'.repeat(32),
           acknowledged: true,
-          licenceAcknowledged: true,
+          licenseAcknowledged: true,
         },
       },
     )
@@ -275,7 +277,7 @@ describe('Profile/Skills/ImportDialog', () => {
       name: 'review-pr',
       version: 2,
       pendingVersion: 2,
-      licenceClass: 'open',
+      licenseClass: 'open',
       filesCount: 2,
     })
     await click('skill-import-replace')
@@ -314,7 +316,7 @@ describe('Profile/Skills/ImportDialog', () => {
       id: 'Another',
       name: 'review-pr-two',
       version: 1,
-      licenceClass: 'open',
+      licenseClass: 'open',
       filesCount: 2,
     })
     await click('skill-import-rename-submit')
@@ -349,13 +351,13 @@ describe('Profile/Skills/ImportDialog', () => {
   it('shows a server refusal on the first step', async () => {
     await mountDialog()
     mocks.fetch.mockRejectedValueOnce({
-      data: { message: 'Its licence limits use', fix: 'Pick another skill' },
+      data: { message: 'Its license limits use', fix: 'Pick another skill' },
     })
     await setValue('skill-import-text', 'text')
     await click('skill-import-submit')
 
     expect(get('skill-import-error').textContent)
-      .toContain('Its licence limits use')
+      .toContain('Its license limits use')
     expect(get('skill-import-error').textContent)
       .toContain('Pick another skill')
   })
@@ -453,5 +455,240 @@ describe('Profile/Skills/ImportDialog', () => {
     expect(mocks.fetch).not.toHaveBeenCalled()
     expect(get('skill-import-error').textContent)
       .toContain('The archive contains a symbolic link')
+  })
+
+  it('shows the release and switches to the latest commit with the channel in the request', async () => {
+    await mountDialog({ canImportFromUrl: true, initialTab: 'github' })
+    mocks.fetch.mockResolvedValueOnce(createImportPreview({
+      source: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourcePath: 'skills/a',
+      sourceRef: '2.1.2',
+      sourceVersion: 'c'.repeat(40),
+      release: {
+        tag: '2.1.2',
+        isLatestRelease: true,
+        latestTag: '2.1.2',
+        defaultBranch: 'main',
+        channel: 'release',
+        switchable: true,
+      },
+    }))
+    await setValue('skill-import-url', 'https://github.com/o/r/tree/main/skills/a')
+    await click('skill-import-submit')
+
+    expect(get('skill-review-source-label').textContent)
+      .toBe('github.com/o/r/skills/a @ 2.1.2')
+    expect(get('skill-review-release').textContent).toContain('Latest release')
+    expect(get('skill-review-switch-source').textContent)
+      .toContain('Use the latest commit on main instead')
+
+    mocks.fetch.mockResolvedValueOnce(createImportPreview({
+      source: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourcePath: 'skills/a',
+      sourceRef: 'main',
+      sourceVersion: '300432a'.padEnd(40, '0'),
+      release: {
+        tag: null,
+        isLatestRelease: false,
+        latestTag: '2.1.2',
+        defaultBranch: 'main',
+        channel: 'branch',
+        switchable: true,
+      },
+    }))
+    await click('skill-review-switch-source')
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/skills/import/preview',
+      {
+        method: 'POST',
+        body: {
+          url: 'https://github.com/o/r/tree/main/skills/a',
+          channel: 'branch',
+        },
+      },
+    )
+    expect(get('skill-review-source-label').textContent)
+      .toBe('github.com/o/r/skills/a @ 300432a')
+    expect(get('skill-review-switch-source').textContent)
+      .toContain('Use the latest release 2.1.2 instead')
+  })
+
+  describe('an already installed skill', () => {
+    function installedPreview(installed: Record<string, unknown>) {
+      return createImportPreview({
+        installed: {
+          kind: 'same-source',
+          skillId: 'skill-id-1',
+          name: 'review-pr',
+          sourceLabel: '2.1.2',
+          isUpToDate: false,
+          ...installed,
+        },
+      } as never)
+    }
+
+    async function reviewAndConfirm(
+      preview: ReturnType<typeof createImportPreview>,
+    ) {
+      await mountDialog()
+      await reachReview(preview)
+      await check('skill-import-reviewed')
+    }
+
+    it('warns before review and offers an update or a copy', async () => {
+      await reviewAndConfirm(installedPreview({}))
+
+      expect(get('skill-import-installed').className).toContain('alert-info')
+      expect(get('skill-import-installed-title').textContent)
+        .toContain('You already have review-pr (from the same source')
+      expect(get('skill-import-installed-title').textContent)
+        .toContain('@ 2.1.2')
+      expect(find('skill-import-collision')).toBeNull()
+      expect(find('skill-import-rename')).toBeNull()
+
+      mocks.fetch.mockResolvedValueOnce({
+        kind: 'pending',
+        id: 'skill-id-1',
+        name: 'review-pr',
+        version: 2,
+        pendingVersion: 2,
+        licenseClass: 'open',
+        filesCount: 2,
+      })
+      await click('skill-import-installed-update')
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        '/api/v1/skills/import/commit',
+        expect.objectContaining({
+          body: expect.objectContaining({ asUpdateOf: 'skill-id-1' }),
+        }),
+      )
+    })
+
+    it('installs a copy under another name', async () => {
+      await reviewAndConfirm(installedPreview({}))
+      await click('skill-import-installed-copy')
+
+      expect((get('skill-import-rename') as HTMLInputElement).value)
+        .toBe('review-pr-copy')
+
+      mocks.fetch.mockResolvedValueOnce({
+        kind: 'created',
+        id: 'new-id',
+        name: 'review-pr-copy',
+        version: 1,
+        licenseClass: 'open',
+        filesCount: 2,
+      })
+      await click('skill-import-rename-submit')
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        '/api/v1/skills/import/commit',
+        expect.objectContaining({
+          body: expect.objectContaining({ name: 'review-pr-copy' }),
+        }),
+      )
+    })
+
+    it('says up to date and keeps Install disabled', async () => {
+      await reviewAndConfirm(installedPreview({ isUpToDate: true }))
+
+      expect(get('skill-import-installed-title').textContent?.trim())
+        .toBe('Already installed and up to date')
+      expect(find('skill-import-installed-update')).toBeNull()
+      expect((get('skill-import-install') as HTMLButtonElement).disabled)
+        .toBe(true)
+    })
+
+    it('shows a same-name skill from another source as a collision before review', async () => {
+      await reviewAndConfirm(installedPreview({ kind: 'same-name' }))
+
+      expect(get('skill-import-collision').textContent)
+        .toContain('A skill named review-pr exists.')
+      expect(find('skill-import-installed')).toBeNull()
+      expect(find('skill-import-replace')).not.toBeNull()
+    })
+  })
+
+  describe('reading the files before installing', () => {
+    function treeItem(name: string): HTMLElement {
+      const item = [...document.body.querySelectorAll(
+        '[data-testid="skill-file-tree-item"]',
+      )].find(candidate => candidate.textContent?.includes(name))
+
+      if (!item) {
+        throw new Error(`Missing file ${name}`)
+      }
+
+      return item as HTMLElement
+    }
+
+    it('fetches another file of a pasted or GitHub import from the staged copy and shows it', async () => {
+      await mountDialog()
+      await reachReview()
+      mocks.fetch.mockResolvedValueOnce({
+        path: 'scripts/run.sh',
+        bytes: 8,
+        kind: 'script',
+        text: 'echo one\necho two',
+      })
+      treeItem('run.sh').click()
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        `/api/v1/skills/import/stages/${'a'.repeat(32)}/files`,
+        { query: { path: 'scripts/run.sh' } },
+      )
+      expect(document.body.textContent).not.toContain(
+        'not shown before you install',
+      )
+      expect(get('skill-file-viewer-lines').textContent).toContain('echo two')
+    })
+
+    it('opens the file of a highlight and marks its line', async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      await mountDialog()
+      await reachReview()
+      mocks.fetch.mockResolvedValueOnce({
+        path: 'scripts/run.sh',
+        bytes: 8,
+        kind: 'script',
+        text: 'echo one\nhttps://x.test',
+      })
+
+      const findings = document.body.querySelectorAll(
+        '[data-testid="skill-review-finding"]',
+      )
+
+      ;(findings[1] as HTMLElement).click()
+      await flushPromises()
+
+      expect(get('skill-file-line-focused').getAttribute('data-line'))
+        .toBe('1')
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        `/api/v1/skills/import/stages/${'a'.repeat(32)}/files`,
+        { query: { path: 'scripts/run.sh' } },
+      )
+    })
+
+    it('says in plain text that an import has expired when its file is asked for later', async () => {
+      await mountDialog()
+      await reachReview()
+      mocks.fetch.mockRejectedValueOnce({
+        data: {
+          message: 'This import has expired',
+          why: 'Staged files are kept for one hour',
+        },
+      })
+      treeItem('run.sh').click()
+      await flushPromises()
+
+      expect(get('skill-review-file-error').textContent).toContain(
+        'This import has expired',
+      )
+    })
   })
 })

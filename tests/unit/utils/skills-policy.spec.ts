@@ -24,7 +24,9 @@ import {
   SKILL_VERSIONS_KEPT,
   SKILLS_MAX_USER_BYTES,
   isReservedSkillSlashName,
+  getSkillCommandProblem,
   isSkillNameValid,
+  normalizeSkillCommand,
   validateSkillSlashName,
 } from '#shared/utils/skills-policy'
 
@@ -129,5 +131,51 @@ describe('validateSkillSlashName', () => {
     expect(validateSkillSlashName('Not Valid')).toEqual(
       expect.objectContaining({ valid: false, reason: 'invalid-name' }),
     )
+  })
+})
+
+describe('normalizeSkillCommand', () => {
+  it('trims and drops one leading slash', () => {
+    expect(normalizeSkillCommand('review-pr')).toBe('review-pr')
+    expect(normalizeSkillCommand('  /review-pr  ')).toBe('review-pr')
+  })
+
+  it('drops only one leading slash', () => {
+    expect(normalizeSkillCommand('//review-pr')).toBe('/review-pr')
+  })
+
+  it('does not change the case', () => {
+    expect(normalizeSkillCommand('/Foo')).toBe('Foo')
+  })
+
+  it.each(['', '   ', '/', ' / ', null, undefined])(
+    'turns %j into no command',
+    (value) => {
+      expect(normalizeSkillCommand(value)).toBeNull()
+    },
+  )
+})
+
+describe('getSkillCommandProblem', () => {
+  it('is empty for no command and for a valid one', () => {
+    expect(getSkillCommandProblem('')).toBe('')
+    expect(getSkillCommandProblem(null)).toBe('')
+    expect(getSkillCommandProblem('/')).toBe('')
+    expect(getSkillCommandProblem('review-pr')).toBe('')
+    expect(getSkillCommandProblem('/review-pr')).toBe('')
+  })
+
+  it('names a reserved command', () => {
+    expect(getSkillCommandProblem('/memory'))
+      .toBe('/memory is reserved by Besidka')
+  })
+
+  it('explains an invalid pattern, including uppercase', () => {
+    const message = 'Use lowercase letters, digits and single hyphens (max 64)'
+
+    expect(getSkillCommandProblem('Foo')).toBe(message)
+    expect(getSkillCommandProblem('/Foo')).toBe(message)
+    expect(getSkillCommandProblem('a--b')).toBe(message)
+    expect(getSkillCommandProblem('a b')).toBe(message)
   })
 })

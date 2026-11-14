@@ -2,7 +2,6 @@ import { parse } from 'yaml'
 import {
   SKILL_ARGUMENT_HINT_MAX,
   SKILL_MAX_FRONTMATTER_BYTES,
-  isReservedSkillSlashName,
   isSkillNameValid,
 } from '#shared/utils/skills-policy'
 
@@ -42,7 +41,6 @@ export type SkillFrontmatterErrorCode
 
 export interface SkillInvocationDefaults {
   modelInvocable: boolean
-  slashCommand: boolean
   argumentHint: string | null
 }
 
@@ -312,26 +310,19 @@ function readAllowedTools(value: unknown, warnings: string[]): string[] | null {
 
 /**
  * Claude Code keys are only defaults for the invocation mode the user sets:
- * a skill can never make itself model-invocable or slash-invocable. A skill
- * that turns off model invocation starts as "Only when I ask"; without that
- * key it starts as Auto. Every skill is also a `/name` command unless the
- * name is reserved. An import still starts disabled.
+ * a skill can never make itself model-invocable or give itself a command. A
+ * skill that turns off model invocation starts as "Only when I ask"; without
+ * that key it starts as Auto. An import starts disabled and without a
+ * command.
  */
 function readInvocationDefaults(
   data: Record<string, unknown>,
-  name: string,
   warnings: string[],
 ): SkillInvocationDefaults {
   const disableModelInvocation = toLenientBoolean(
     data['disable-model-invocation'],
   )
   const modelInvocable = disableModelInvocation !== true
-  const slashCommand = !isReservedSkillSlashName(name)
-
-  if (!slashCommand) {
-    warnings.push(`/${name} is reserved by Besidka, so it cannot run as /${name}`)
-  }
-
   const argumentHint = readOptionalText(
     data['argument-hint'],
     'argument-hint',
@@ -339,7 +330,7 @@ function readInvocationDefaults(
     warnings,
   )
 
-  return { modelInvocable, slashCommand, argumentHint }
+  return { modelInvocable, argumentHint }
 }
 
 /**
@@ -437,7 +428,7 @@ export function parseSkillMarkdown(text: string): ParsedSkillMarkdown {
       ),
       metadata: readMetadata(data.metadata, warnings),
       allowedTools: readAllowedTools(data['allowed-tools'], warnings),
-      defaults: readInvocationDefaults(data, name, warnings),
+      defaults: readInvocationDefaults(data, warnings),
     },
     body: split.body,
     warnings,
