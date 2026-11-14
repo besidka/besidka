@@ -163,7 +163,7 @@ Worker's network position), and the integrity of what the model reads.
 | T10 | Exfiltration through write tools of the same connector | Injected content | Write tools ask after untrusted content even when set to "Always allow" (rule F1); the approval card shows the real arguments | C-6 |
 | T11 | Credential theft through a stolen Besidka session | Session thief | Connecting, enabling, "Always allow" and the consent are app-only actions behind the session; MCP can only reduce; audit rows survive connector deletion for 90 days, so a thief cannot erase the trail; the breach runbook gains a connector-credential containment row (C-10) | C-4, C-9, C-10 |
 | T12 | CIMD tampering: a changed `redirect_uris` in Besidka's Client ID Metadata Document captures authorization codes | Attacker with deploy access, or a host-header trick | Document built from configuration only (section 5.3), never from the request except an allowlisted preview host; one exact `redirect_uri`; no secrets in it; `client_id` never changed as a fix (remote caches hold it for hours); breach runbook row | C-4, C-10 |
-| T13 | Token bloat and denial of service: huge tool lists, descriptions or results exhaust the context window, CPU or memory | Malicious server | Limits in section 9: 5 connectors and 40 tools per send, 16 KiB of descriptions, 1 KiB per description, 8 KiB per input schema, 64 KiB per result, 1 MiB raw response cap, 60 s per call, 12 calls per turn | C-5 |
+| T13 | Token bloat and denial of service: huge tool lists, descriptions or results exhaust the context window, CPU or memory | Malicious server | Limits in section 9: 5 connectors and 40 tools per send, 32 KiB of descriptions plus input schemas, 1 KiB per description, 8 KiB per input schema, 8 s to connect and list, 2 SSE connectors, 64 KiB per result, 1 MiB raw response cap, 60 s per call, 12 calls per turn | C-5 |
 | T14 | Slow server holds the generation lease | Malicious or slow server | Per-call timeout 60 s (`TOOL_LOOP_TOOL_TIMEOUT_MS`) keeps the 120 s generation lease heartbeating; connect timeout 10 s; at most 3 parallel connects | C-5 |
 | T15 | Encryption-key loss or rotation | Operator | Rotating `NUXT_ENCRYPTION_KEY` without re-encryption makes every stored connector credential undecryptable. Procedure: wipe `connector_credentials`, set every connector to `needs-auth`, users reconnect. Self-hosters must back up the key | C-4 |
 | T16 | D1 restore revives revoked credentials or deleted connectors | Operator restore | `docs/d1-restore-reconciliation.md` entry: after a restore, delete all `connector_credentials` rows and set connectors to `needs-auth`; replay connector deletions from Axiom `attributes.connectors` | C-2 |
@@ -658,8 +658,11 @@ message".
    connectors in parallel (the 6-connection Workers limit also covers KV and
    R2). `getValidAccessToken`, then
    `createMCPClient({ transport: { type: 'http', url, headers, fetch: createSafeFetch('mcp') } })`.
-   Connect timeout 10 s; a connector that fails is skipped with a notice and
-   its `lastError` is updated.
+   Connect timeout 10 s, and one 8 s deadline for the connect and list phase of
+   the whole send; a connector that fails or runs past the deadline is skipped
+   with a notice and its `lastError` is updated. At most two connectors that
+   use the legacy SSE transport join a send; the rest are skipped with a
+   notice.
 4. **List tools.** KV cache `connectors:tools:<connectorId>:<credentialGeneration>`
    (the credential row's `updatedAt`, so a reconnect invalidates it). TTL is
    the server's `ttlMs` clamped to 60 s to 3,600 s, default 600 s. A
@@ -670,8 +673,9 @@ message".
    differs); a drifted or new tool sets `status='drifted'` with a count, and
    the card asks for review. Truncate each description to 1,024 bytes, skip a
    tool whose input schema exceeds 8 KiB, and stop adding at 40 tools or
-   16 KiB of descriptions across all connectors, preferring tools the server
-   marks read-only and tools the user set to "Always allow".
+   32 KiB of descriptions plus input schemas across all connectors,
+   preferring tools the server marks read-only and tools the user set to
+   "Always allow".
 6. **Name.** `mcp__<slug>__<tool>`, characters outside `[a-zA-Z0-9_-]`
    replaced by `_`. When the result is over 64 characters, the tool part is cut
    and suffixed with `_` and the first 6 hex characters of SHA-256 of the
@@ -753,10 +757,21 @@ Choices that differ from or add to section 6, 10 and 14:
   all; the connection opens on the first tool call.
 - **Read-only runs, everything else is refused (until C-6).** This layer
   applies the ticket rule, not decision 8 of section 2: a tool the server
-  marks `readOnlyHint` runs without a card, and any other tool answers "This
+  marks `readOnlyHint` and does not also mark `destructiveHint` runs without a
+  card (`isDefinitionAutoRunnable`; the stored `server_read_only` still
+  records the `readOnlyHint` alone), and any other tool answers "This
   tool needs your approval; approvals arrive in the next update." with
   `outcome='denied'`, `approval='denied'` and no remote call. C-6 replaces
   this with the section 7.1 order, where `readOnlyHint` never skips a card.
+- **F2 stopgap: the first connector called owns the send.** Until C-6 has
+  approvals, a call to a connector other than the first one this send called
+  is refused with "This tool belongs to a different connector than the one
+  already used in this message, so it cannot run without your approval;
+  approvals arrive in the next update." (`outcome='denied'`, no remote
+  call, shown as denied in the step). The mark is set when a call starts, with
+  no `await` before it, so two parallel calls to different connectors let
+  only the first one run. This is stricter than section 7.1, which asks only
+  after a result was read; C-6 replaces it with the real F2 card.
 - **No TypeSafe screening of results.** Section 3 (T8) and section 17 say
   so; the C-5 brief asked for screening when a TypeSafe key exists, and this
   layer follows the document, because private third-party data to another
@@ -764,16 +779,23 @@ Choices that differ from or add to section 6, 10 and 14:
 - **Results.** The call's text is redacted of this connector's token or
   header value, cut to 64 KiB, and framed with the frame tag neutralized
   inside it (`<untrusted_tool_result` becomes `‹untrusted_tool_result`).
-  A failed call, a timeout and a refused call answer with a sentence Besidka
-  wrote, never upstream text. Persisted `dynamic-tool` parts are redacted and
-  capped again by `redactConnectorToolPartsForPersistence`, and an error text
-  is replaced by a fixed sentence.
+  A refused call answers with a sentence Besidka wrote. A call that fails or
+  times out throws an error whose message is a sentence Besidka wrote (never
+  upstream text), so the AI SDK ends the part in the `output-error` state: the
+  model sees the sentence and the step shows "Failed". A result the server
+  flagged `isError` is not a failure of the call: it stays framed untrusted
+  output. Persisted `dynamic-tool` parts are redacted and capped again by
+  `redactConnectorToolPartsForPersistence`, and an error text is replaced by a
+  fixed sentence.
 - **Limits.** 12 calls per send, 60 a minute per user and 30 a minute per
   user and connector (KV, fail closed), 60 s per call, 10 s per connect, at
   most three connectors prepared at once and at most three tool calls running
   at once (a step with six parallel calls queues, so the Workers limit of six
   connections holds). Connector tools count toward the 40
-  tools of the request together with the send's other tools. A connector
+  tools of the request together with the send's other tools, and the
+  descriptions plus serialized input schemas of the exposed tools count
+  toward one budget of 32 KiB (a tool that does not fit is dropped, in the
+  same order every time, with the same notice). A connector
   past the fifth, or one that is off or not connected, is left out with a
   notice. `connectorIds` accepts up to 20 ids (not 5), so the sixth is
   reported instead of failing validation.
@@ -791,8 +813,36 @@ Choices that differ from or add to section 6, 10 and 14:
   like the other tool families: `isFollowUpToolPart` matches `dynamic-tool`
   parts by name, and persistence gets the connector names as follow-up tools.
 - **Share dialog.** `GET /api/v1/chats/[slug]/share` returns `usedConnector`
-  (any answer with a connector call), and the dialog shows "Replies may
-  repeat data from a connected service" next to the memory note.
+  (any answer with a connector call or the marker below), and the dialog
+  shows "Replies may repeat data from a connected service" next to the memory
+  note.
+- **Branches keep a marker, not the calls.** Branching strips the connector
+  call parts, so `stripToolPartsFromBranchedMessage` appends one slim
+  `data-connectors-notice` part with `data: { lines: [], usedConnector: true }`
+  to an assistant message that had a call (or already had the marker). It
+  renders nothing, never reaches a public share (`filterPublicParts` drops the
+  notice type), the model context (the sanitizer keeps only text) or the
+  search index, and it keeps both the share warning (`chatUsedConnector`) and
+  the memory extraction skip (`isMemoryExtractionRecallMessage`) working on
+  the branch. A visitor's branch of a public share never gets it, because the
+  shared parts are already filtered.
+- **Timeouts and cleanup (2026-11-15 audit).** `listTools` gets the send's
+  abort signal and an 8 s timeout, and every connector's connect and list is
+  raced against one shared 8 s deadline, so a server that stalls costs the
+  send at most 8 s and is skipped with the usual notice. Anything that throws
+  after a client opened (settings, baseline, tool building) closes the opened
+  clients before it rethrows. Clients close in parallel under one shared 2 s
+  deadline instead of one after another. An OAuth connector with no issuer on
+  file still asserts the base consent.
+- **Known gaps, left for C-6 (2026-11-15 audit).**
+  - H2: a connector result can still steer the model into the artifact and
+    document write tools, which run without a card and are outside the F1 and
+    F2 stopgaps above. Closing it needs the C-6 approval path (F1 covers
+    every non-read-only tool after untrusted content), so it is recorded here
+    and not patched in C-5.
+  - `ai` must be bumped to 7.0.173 or newer before C-6 builds on
+    `toolApproval`: that release fixes the approval replay security issue, and
+    the repo locks 7.0.153 today (`^7.0.153` in `package.json`).
 - **Routes added.** `GET /api/v1/connectors` (safe summaries, for the picker;
   C-7 extends it), `GET` and `PUT /api/v1/chats/[slug]/connectors` (the
   per-chat choice, at most five on; the `PUT` has its own bucket of 60 a
@@ -1156,7 +1206,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTORS_MCP_DISABLED_MAX` | 5 disabled MCP-added connectors per user | C-9 |
 | `CONNECTORS_PER_SEND` | 5 | C-5 |
 | `CONNECTOR_TOOLS_PER_REQUEST` | 40 | C-5 |
-| `CONNECTOR_TOOL_DESCRIPTIONS_MAX_BYTES` | 16,384 per request | C-5 |
+| `CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES` | 32,768 per request: each tool counts its description bytes plus its serialized input schema bytes | C-5 |
 | `CONNECTOR_TOOL_DESCRIPTION_MAX_BYTES` | 1,024 per tool (truncated) | C-5 |
 | `CONNECTOR_TOOL_SCHEMA_MAX_BYTES` | 8,192 per tool (tool skipped) | C-5 |
 | `CONNECTOR_TOOL_NAME_MAX_LENGTH` | 64 (exposed name) | C-5 |
@@ -1166,6 +1216,9 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_CALL_TIMEOUT_MS` | 60,000 (= `TOOL_LOOP_TOOL_TIMEOUT_MS`) | C-5 |
 | `CONNECTOR_CONNECT_TIMEOUT_MS` | 10,000 | C-5 |
 | `CONNECTOR_PARALLEL_CONNECTS` | 3 | C-5 |
+| `CONNECTOR_LIST_TIMEOUT_MS` | 8,000 per `tools/list` request | C-5 |
+| `CONNECTOR_PREPARE_DEADLINE_MS` | 8,000 for the connect and list phase of all connectors in one send | C-5 |
+| `CONNECTOR_SSE_PER_SEND` | 2 connectors on the legacy SSE transport | C-5 |
 | `CONNECTOR_STEPS_PER_TURN` | 4 | C-5 |
 | `CONNECTOR_CALLS_PER_TURN` | 12 | C-5 |
 | `CONNECTOR_CALLS_PER_MINUTE` | 60 per user, all connectors | C-5 |
