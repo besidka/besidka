@@ -100,6 +100,32 @@ describe('hasGapBeforePart', () => {
     expect(gapFor([artifact, document], 1)).toBe(false)
   })
 
+  it('looks past parts that render nothing between a card and its text', () => {
+    const stepStart = { type: 'step-start' }
+    const source = { type: 'source-url', url: 'https://example.com' }
+    const activation = { type: 'data-skill-activation', data: {} }
+    const reasoning = { type: 'reasoning', text: 'Thinking' }
+
+    expect(gapFor([document, stepStart, text], 2)).toBe(true)
+    expect(gapFor([imageTool, source, activation, text], 3)).toBe(true)
+    expect(gapFor([text, stepStart, reasoning, document], 3)).toBe(true)
+    expect(gapFor([stepStart, text], 1)).toBe(false)
+    expect(gapFor([text, stepStart, text], 2)).toBe(false)
+  })
+
+  it('does not treat an empty text part as the neighbour', () => {
+    const empty = { type: 'text', text: '  ' }
+
+    expect(gapFor([document, empty, text], 2)).toBe(true)
+    expect(gapFor([text, empty, document], 2)).toBe(true)
+  })
+
+  it('counts an error text part as rendered text', () => {
+    const failure = { type: 'text', text: '', error: { message: 'Failed' } }
+
+    expect(gapFor([document, failure], 1)).toBe(true)
+  })
+
   it('ignores a message with no card', () => {
     expect(gapFor([{ type: 'reasoning', text: 'x' }, text], 1)).toBe(false)
   })

@@ -150,6 +150,19 @@ describe('ChatInput/CommandPicker', () => {
     expect(wrapper.findAll('[role="option"]')).toHaveLength(0)
   })
 
+  it('keeps focus in the textarea when the Skills link is pressed', async () => {
+    const wrapper = await mountPicker({ matches: [], hasNoCommands: true })
+    const manage = wrapper.get('[data-testid="command-picker-manage"]')
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    })
+
+    manage.element.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+
   it('does not render the empty state while there are commands', async () => {
     const wrapper = await mountPicker()
 

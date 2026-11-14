@@ -49,6 +49,7 @@
           to="/chats/skills"
           class="link link-accent"
           data-testid="command-picker-manage"
+          @mousedown.prevent
         >
           Add one on the Skills page
         </NuxtLink>

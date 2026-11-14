@@ -23,11 +23,28 @@ function isTextMessagePart(part: unknown): boolean {
     && (part as { type?: unknown }).type === 'text'
 }
 
+function rendersNothing(message: UIMessage, part: unknown): boolean {
+  if (isCardMessagePart(message, part)) {
+    return false
+  }
+
+  if (!isTextMessagePart(part)) {
+    return true
+  }
+
+  const { text, error } = part as { text?: unknown, error?: unknown }
+
+  return error === undefined
+    && (typeof text !== 'string' || text.trim().length === 0)
+}
+
 /**
  * True when `parts[index]` touches a part of the other kind: a text part
- * right after a card, or a card right after a text part. The page gives that
- * part `mt-4`, so text and cards never touch. Two cards, two texts and a
- * leading part are left alone.
+ * right after a card, or a card right after a text part. Parts that render
+ * nothing in between (`step-start`, reasoning, source links, search and memory
+ * tool parts, skill activation) are skipped, because a real answer has them
+ * between a card and its text. The page gives that part `mt-4`, so text and
+ * cards never touch. Two cards, two texts and a leading part are left alone.
  */
 export function hasGapBeforePart(
   message: UIMessage,
@@ -35,9 +52,20 @@ export function hasGapBeforePart(
   index: number,
 ): boolean {
   const part = parts[index]
-  const previous = parts[index - 1]
 
-  if (!part || !previous) {
+  if (!part) {
+    return false
+  }
+
+  let previousIndex = index - 1
+
+  while (previousIndex >= 0 && rendersNothing(message, parts[previousIndex])) {
+    previousIndex -= 1
+  }
+
+  const previous = parts[previousIndex]
+
+  if (!previous) {
     return false
   }
 
