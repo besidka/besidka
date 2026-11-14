@@ -553,7 +553,9 @@ describe('files upload API', () => {
 
       await expect(handler(event as any)).rejects.toMatchObject({
         status: 413,
-        message: 'Not enough storage space. Please delete some files.',
+        message: 'Storage is full',
+        why: '5 B of 15 B used',
+        link: '/profile/storage',
       })
 
       expect(arrayBuffer).not.toHaveBeenCalled()

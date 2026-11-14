@@ -363,6 +363,29 @@ describe('MCP artifact logic', () => {
       expect(exception.message).toContain('smaller')
     })
 
+    it('says storage is full in plain text and writes nothing', async () => {
+      testDb.sqlite.prepare(`
+        insert into files (user_id, storage_key, name, size, type, source,
+          created_at, updated_at)
+        values (?, 'key-1', 'file', ?, 'application/pdf', 'upload', 1, 1)
+      `).run(ownerId, 20 * 1024 * 1024)
+
+      const exception = await createMcpArtifact(context(), {
+        kind: 'markdown',
+        title: 'Notes',
+        content: 'hello',
+      }).catch((error) => {
+        return error
+      })
+
+      expect(exception.status).toBe(413)
+      expect(exception.message).toBe(
+        'Storage is full. 20.0 MB of 20.0 MB used. Free space on the '
+        + 'Storage page.',
+      )
+      expect(countRows('artifacts')).toBe(0)
+    })
+
     it('rejects an unknown kind', async () => {
       await expect(createMcpArtifact(context(), {
         kind: 'pdf' as never,
@@ -599,6 +622,25 @@ describe('MCP artifact logic', () => {
         id: 'pub-9999',
         content: 'x',
       })).rejects.toMatchObject({ status: 404 })
+      expect(countRows('artifact_versions')).toBe(1)
+    })
+
+    it('refuses a new version when storage is full and keeps the old one', async () => {
+      const artifact = await createOwned()
+
+      testDb.sqlite.prepare(`
+        insert into files (user_id, storage_key, name, size, type, source,
+          created_at, updated_at)
+        values (?, 'key-1', 'file', ?, 'application/pdf', 'upload', 1, 1)
+      `).run(ownerId, 20 * 1024 * 1024)
+
+      await expect(updateMcpArtifact(context(), {
+        id: artifact.artifactId,
+        content: 'new text',
+      })).rejects.toMatchObject({
+        status: 413,
+        message: expect.stringContaining('Storage is full'),
+      })
       expect(countRows('artifact_versions')).toBe(1)
     })
 

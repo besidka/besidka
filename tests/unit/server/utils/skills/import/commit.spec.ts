@@ -3,7 +3,6 @@ import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import type { SkillArchiveFile } from '#shared/utils/skills/archive'
-import { SKILLS_MAX_USER_BYTES } from '#shared/utils/skills-policy'
 import {
   createMemoryExtractionTestDb,
   seedUser,
@@ -12,8 +11,10 @@ import type {
   MemoryExtractionTestDb,
 } from '../../../../../setup/helpers/memory-extraction-db'
 import {
+  STORAGE_ALLOWANCE_BYTES,
   createFakeSkillBucket,
   createFakeSkillKv,
+  seedArtifactBytes,
   seedSkill,
   seedSkillVersion,
   shaOf,
@@ -26,6 +27,14 @@ import { skillMarkdown } from '../../../../../setup/helpers/skill-archives'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+const storageCacheMocks = vi.hoisted(() => ({
+  invalidateStorageCache: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/api/v1/storage/index.get', () => ({
+  invalidateStorageCache: storageCacheMocks.invalidateStorageCache,
+}))
+
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
     '../../../../../setup/helpers/skills-public-id-mock'
@@ -34,7 +43,11 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await skillPublicIdMockFactory()
 })
 
-const { commitSkillImport, discardUnfinishedSkill } = await import(
+const {
+  commitSkillImport,
+  discardUnfinishedSkill,
+  insertSkillWithinLimits,
+} = await import(
   '~~/server/utils/skills/import/commit'
 )
 const { stageSkillImport, skillStageKey } = await import(
@@ -130,6 +143,7 @@ describe('commitSkillImport', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    storageCacheMocks.invalidateStorageCache.mockClear()
     testDb = createMemoryExtractionTestDb()
     bucket = createFakeSkillBucket()
     kv = createFakeSkillKv()
@@ -641,6 +655,48 @@ describe('commitSkillImport', () => {
     })
   })
 
+  describe('storage stats cache', () => {
+    it('is dropped after an import creates a skill', async () => {
+      const manifest = await stage(openSkillFiles())
+
+      await commit(manifest.stageId)
+
+      expect(storageCacheMocks.invalidateStorageCache)
+        .toHaveBeenCalledWith(userId, logger)
+    })
+
+    it('is dropped after an import becomes a pending update', async () => {
+      const existingId = await seedSkill(testDb.db, userId, {
+        name: 'review-pr',
+      })
+
+      await seedSkillVersion(testDb.db, {
+        skillId: existingId,
+        userId,
+        version: 1,
+        files: [{ path: 'SKILL.md', sha256: shaOf('x') }],
+      })
+
+      const manifest = await stage(openSkillFiles())
+
+      await commit(manifest.stageId, { asUpdateOf: existingId })
+
+      expect(storageCacheMocks.invalidateStorageCache)
+        .toHaveBeenCalledWith(userId, logger)
+    })
+
+    it('is kept when the allowance refuses the import', async () => {
+      seedArtifactBytes(testDb.sqlite, userId, STORAGE_ALLOWANCE_BYTES)
+
+      const manifest = await stage(openSkillFiles())
+
+      expect(await rejection(commit(manifest.stageId))).toMatchObject({
+        status: 413,
+      })
+      expect(storageCacheMocks.invalidateStorageCache).not.toHaveBeenCalled()
+    })
+  })
+
   describe('atomic limits', () => {
     it('lets only one of two racing commits take the last skill slot', async () => {
       for (let index = 0; index < 49; index += 1) {
@@ -671,20 +727,43 @@ describe('commitSkillImport', () => {
       expect(await allSkills()).toHaveLength(50)
     })
 
-    it('refuses the insert itself when the skills table would pass 50 MiB', async () => {
-      await seedSkill(testDb.db, userId, {
-        name: 'heavy',
-        bytes: SKILLS_MAX_USER_BYTES - 10,
-      })
+    it('refuses with the shared storage error when other categories fill the allowance', async () => {
+      seedArtifactBytes(testDb.sqlite, userId, STORAGE_ALLOWANCE_BYTES - 10)
 
       const manifest = await stage(openSkillFiles())
 
       expect(await rejection(commit(manifest.stageId))).toMatchObject({
         status: 413,
-        code: 'skills-storage-limit',
+        code: 'storage_full',
+        message: 'Storage is full',
+        link: '/profile/storage',
       })
-      expect(await allSkills()).toHaveLength(1)
+      expect(await allSkills()).toHaveLength(0)
       expect(kv.values.has(skillStageKey(manifest.stageId))).toBe(true)
+    })
+
+    it('refuses the insert itself when the shared total would pass the allowance', async () => {
+      seedArtifactBytes(testDb.sqlite, userId, STORAGE_ALLOWANCE_BYTES - 10)
+
+      const now = new Date()
+      const insertedId = await insertSkillWithinLimits(testDb.db, {
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        name: 'too-big',
+        description: 'A skill',
+        licenseClass: 'authored',
+        licenseClassifierVersion: 1,
+        sourceKind: 'editor',
+        currentVersion: 1,
+        filesCount: 1,
+        bytes: 11,
+        status: 'broken',
+        createdVia: 'app',
+      })
+
+      expect(insertedId).toBeNull()
+      expect(await allSkills()).toHaveLength(0)
     })
 
     it('inserts the full row, including the columns Drizzle would default', async () => {
@@ -987,7 +1066,7 @@ describe('commitSkillImport', () => {
       })).resolves.toMatchObject({ kind: 'pending' })
     })
 
-    it('answers 413 when unique blobs would pass 50 MiB', async () => {
+    it('answers 413 when unique blobs would pass the shared allowance', async () => {
       const skillId = await seedSkill(testDb.db, userId, { name: 'big' })
 
       await testDb.db.insert(schema.skillFiles).values({
@@ -996,7 +1075,7 @@ describe('commitSkillImport', () => {
         version: 1,
         path: 'SKILL.md',
         blobSha256: shaOf('big'),
-        bytes: SKILLS_MAX_USER_BYTES - 10,
+        bytes: STORAGE_ALLOWANCE_BYTES - 10,
         kind: 'skill-md',
       })
 
@@ -1004,7 +1083,7 @@ describe('commitSkillImport', () => {
 
       expect(await rejection(commit(manifest.stageId))).toMatchObject({
         status: 413,
-        code: 'skills-storage-limit',
+        code: 'storage_full',
       })
     })
 
@@ -1018,7 +1097,7 @@ describe('commitSkillImport', () => {
           version,
           path: 'SKILL.md',
           blobSha256: shaOf('same-blob'),
-          bytes: SKILLS_MAX_USER_BYTES / 2,
+          bytes: STORAGE_ALLOWANCE_BYTES / 2,
           kind: 'skill-md',
         })
       }

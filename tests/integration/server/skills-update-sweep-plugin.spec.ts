@@ -7,7 +7,9 @@ import type {
   MemoryExtractionTestDb,
 } from '../../setup/helpers/memory-extraction-db'
 import {
+  SKILLS_FEATURE_CONFIG,
   createFakeSkillKv,
+  grantFeature,
   seedSkill,
 } from '../../setup/helpers/skills-db'
 import {
@@ -49,6 +51,7 @@ describe('skills update sweep plugin', () => {
     vi.stubGlobal('defineNitroPlugin', (plugin: unknown) => plugin)
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, null)
+    await grantFeature(testDb.db, userId)
   })
 
   afterEach(() => {
@@ -76,6 +79,7 @@ describe('skills update sweep plugin', () => {
       db: testDb.db,
       kv: createFakeSkillKv(),
       fetchImpl: github.fetch as unknown as typeof fetch,
+      featureConfig: SKILLS_FEATURE_CONFIG,
     })
 
     expect(createLogger).toHaveBeenCalledWith({
@@ -94,10 +98,50 @@ describe('skills update sweep plugin', () => {
           missing: 0,
           failed: 0,
           rateLimited: false,
+          usersSkipped: 0,
+          killSwitched: false,
         },
       },
     })
     expect(JSON.stringify(set.mock.calls)).not.toMatch(/https?:|o\/r|main/)
+    expect(emit).toHaveBeenCalledWith({ status: 200 })
+  })
+
+  it('makes no GitHub request while the skills kill switch is on', async () => {
+    const github = createGithubMock()
+
+    github.setBranch('main', GITHUB_SHA_TWO)
+    await seedSkill(testDb.db, userId, {
+      sourceKind: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourceRef: 'main',
+      sourceVersion: GITHUB_SHA_ONE,
+    })
+
+    const { set, emit, createLogger } = createLoggerDouble()
+    const { runSkillsUpdateSweepJob } = await importSweep()
+
+    await runSkillsUpdateSweepJob({
+      controller: { cron: HOURLY_CRON, scheduledTime: SCHEDULED_TIME },
+      createLogger,
+      db: testDb.db,
+      kv: createFakeSkillKv(),
+      fetchImpl: github.fetch as unknown as typeof fetch,
+      featureConfig: {
+        ...SKILLS_FEATURE_CONFIG,
+        featuresDisabled: 'skills',
+      },
+    })
+
+    expect(github.fetch).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith({
+      attributes: {
+        skillsUpdateSweep: expect.objectContaining({
+          killSwitched: true,
+          skillsChecked: 0,
+        }),
+      },
+    })
     expect(emit).toHaveBeenCalledWith({ status: 200 })
   })
 

@@ -7,6 +7,7 @@ import {
   markSkillUpdateSeen,
   readSkillUpdateState,
 } from '~~/server/utils/skills/import/update-state'
+import type { FeatureEvaluationConfig } from '~~/server/utils/features/provider'
 import { sweepSkillUpdates } from '~~/server/utils/skills/import/update-sweep'
 import {
   createMemoryExtractionTestDb,
@@ -16,7 +17,9 @@ import type {
   MemoryExtractionTestDb,
 } from '../../../../../setup/helpers/memory-extraction-db'
 import {
+  SKILLS_FEATURE_CONFIG,
   createFakeSkillKv,
+  grantFeature,
   seedSkill,
 } from '../../../../../setup/helpers/skills-db'
 import type { FakeSkillKv } from '../../../../../setup/helpers/skills-db'
@@ -59,7 +62,12 @@ describe('sweepSkillUpdates', () => {
   }
 
   async function sweep(
-    options: { now?: Date, limit?: number, fetchImpl?: typeof fetch } = {},
+    options: {
+      now?: Date
+      limit?: number
+      fetchImpl?: typeof fetch
+      featureConfig?: FeatureEvaluationConfig
+    } = {},
   ) {
     return await sweepSkillUpdates({
       db: testDb.db,
@@ -67,6 +75,7 @@ describe('sweepSkillUpdates', () => {
       now: options.now ?? NOW,
       limit: options.limit,
       fetchImpl: options.fetchImpl ?? github.fetch as unknown as typeof fetch,
+      featureConfig: options.featureConfig ?? SKILLS_FEATURE_CONFIG,
     })
   }
 
@@ -84,6 +93,7 @@ describe('sweepSkillUpdates', () => {
     github = createGithubMock()
     github.setBranch('main', GITHUB_SHA_ONE)
     userId = await seedUser(testDb.db, null)
+    await grantFeature(testDb.db, userId)
   })
 
   afterEach(() => {
@@ -312,6 +322,141 @@ describe('sweepSkillUpdates', () => {
       (await readSkillUpdateState(kv, userId))[skillId],
       skill,
     )).toEqual({ label: '2.1.4', ref: '2.1.4' })
+  })
+
+  describe('feature gate', () => {
+    async function seedOtherUserSkill(
+      grant: 'allow' | 'deny' | null,
+      values: Partial<typeof schema.skills.$inferInsert> = {},
+    ) {
+      const otherUserId = await seedUser(testDb.db, null)
+
+      if (grant) {
+        await grantFeature(testDb.db, otherUserId, 'skills', grant)
+      }
+
+      await seedSkill(testDb.db, otherUserId, {
+        sourceKind: 'github',
+        sourceUrl: 'https://github.com/o/r',
+        sourceRef: 'main',
+        sourcePath: 'skills/other',
+        sourceVersion: GITHUB_SHA_ONE,
+        ...values,
+      })
+
+      return otherUserId
+    }
+
+    it('skips an account that does not have the skills feature', async () => {
+      const ungrantedUserId = await seedOtherUserSkill(null)
+
+      await seedGithubSkill()
+
+      const result = await sweep()
+
+      expect(result).toMatchObject({
+        skillsConsidered: 1,
+        skillsChecked: 1,
+        usersSkipped: 1,
+        killSwitched: false,
+      })
+      expect(await readSkillUpdateState(kv, ungrantedUserId)).toEqual({})
+    })
+
+    it('skips an account with a deny grant', async () => {
+      const deniedUserId = await seedOtherUserSkill('deny')
+
+      await seedGithubSkill()
+
+      const result = await sweep()
+
+      expect(result).toMatchObject({ skillsChecked: 1, usersSkipped: 1 })
+      expect(await readSkillUpdateState(kv, deniedUserId)).toEqual({})
+    })
+
+    it('makes no GitHub request when nobody has the feature', async () => {
+      await seedOtherUserSkill(null)
+      testDb.sqlite.prepare('delete from feature_grants').run()
+      await seedGithubSkill()
+
+      const result = await sweep()
+
+      expect(result).toMatchObject({
+        skillsChecked: 0,
+        skillsConsidered: 0,
+        usersSkipped: 2,
+      })
+      expect(github.fetch).not.toHaveBeenCalled()
+    })
+
+    it('evaluates an account once however many skills it has', async () => {
+      await seedGithubSkill()
+      await seedGithubSkill({ sourcePath: 'skills/b' })
+      await seedGithubSkill({ sourcePath: 'skills/c' })
+
+      const batchSpy = vi.spyOn(testDb.db, 'batch')
+      const result = await sweep()
+
+      expect(result.skillsChecked).toBe(3)
+      expect(batchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('stops on a kill switch before reading anything or calling GitHub', async () => {
+      await seedGithubSkill()
+
+      const selectSpy = vi.spyOn(testDb.db, 'select')
+      const result = await sweep({
+        featureConfig: {
+          ...SKILLS_FEATURE_CONFIG,
+          featuresDisabled: 'skills',
+        },
+      })
+
+      expect(result).toMatchObject({
+        killSwitched: true,
+        skillsChecked: 0,
+        skillsConsidered: 0,
+      })
+      expect(github.fetch).not.toHaveBeenCalled()
+      expect(selectSpy).not.toHaveBeenCalled()
+      expect(kv.get).not.toHaveBeenCalled()
+      expect(await readSkillUpdateState(kv, userId)).toEqual({})
+    })
+
+    it('stops on the wildcard kill switch', async () => {
+      await seedGithubSkill()
+
+      const result = await sweep({
+        featureConfig: { ...SKILLS_FEATURE_CONFIG, featuresDisabled: '*' },
+      })
+
+      expect(result.killSwitched).toBe(true)
+      expect(github.fetch).not.toHaveBeenCalled()
+    })
+
+    it('ignores a kill switch on another flag', async () => {
+      await seedGithubSkill()
+
+      const result = await sweep({
+        featureConfig: {
+          ...SKILLS_FEATURE_CONFIG,
+          featuresDisabled: 'artifacts',
+        },
+      })
+
+      expect(result).toMatchObject({ killSwitched: false, skillsChecked: 1 })
+    })
+
+    it('stops when the host mode turns features off', async () => {
+      await seedGithubSkill()
+
+      const result = await sweep({
+        featureConfig: { ...SKILLS_FEATURE_CONFIG, featuresHostMode: 'off' },
+      })
+
+      expect(result).toMatchObject({ skillsChecked: 0, usersSkipped: 1 })
+      expect(github.fetch).not.toHaveBeenCalled()
+    })
   })
 
   it('changes no skill row', async () => {

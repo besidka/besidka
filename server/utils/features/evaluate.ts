@@ -1,4 +1,3 @@
-import type { KVNamespace } from '@cloudflare/workers-types'
 import type {
   FeatureDefinition,
   FeatureRole,
@@ -35,7 +34,15 @@ const featureHostModes: readonly FeatureHostMode[] = ['off', 'byok', 'hosted']
 
 type FeatureDatabase = ReturnType<typeof useDb>
 
-type FeatureKv = Pick<KVNamespace, 'get' | 'put' | 'delete'>
+export interface FeatureKv {
+  get: (key: string) => Promise<string | null>
+  put: (
+    key: string,
+    value: string,
+    options?: { expirationTtl?: number },
+  ) => Promise<unknown>
+  delete: (key: string) => Promise<unknown>
+}
 
 interface FeatureRuntimeConfig {
   adminEmails?: unknown

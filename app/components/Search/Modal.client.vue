@@ -261,6 +261,12 @@ function buildSettingsGroup(): SearchModalGroup<SearchModalEntry> {
         run: () => goTo('/profile/preferences'),
       },
       {
+        id: 'search-option-storage',
+        iconName: 'lucide:hard-drive',
+        label: 'Storage',
+        run: () => goTo('/profile/storage'),
+      },
+      {
         id: 'search-option-connected-apps',
         iconName: 'lucide:plug',
         label: 'Connected apps',

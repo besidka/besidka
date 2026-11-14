@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import * as schema from '~~/server/db/schema'
+import type { FeatureEvaluationConfig } from '~~/server/utils/features/provider'
 import { skillBlobKey } from '~~/server/utils/skills/storage'
 
 type TestDb = ReturnType<typeof import('~~/server/utils/db').useDb>
@@ -260,4 +261,39 @@ export async function seedSkillWithFiles(
   }
 
   return { skillId, shas }
+}
+
+export const SKILLS_FEATURE_CONFIG: FeatureEvaluationConfig = {
+  featuresDisabled: '',
+  featuresHostMode: 'byok',
+  featuresRolloutEnabled: false,
+  adminEmails: '',
+  requireAdminTwoFactor: false,
+}
+
+export async function grantFeature(
+  db: TestDb,
+  userId: number,
+  flag = 'skills',
+  effect: 'allow' | 'deny' = 'allow',
+): Promise<void> {
+  await db.insert(schema.featureGrants).values({ userId, flag, effect })
+}
+
+export const STORAGE_ALLOWANCE_BYTES = 20 * 1024 * 1024
+
+interface SqliteLike {
+  prepare: (sql: string) => { run: (...values: unknown[]) => unknown }
+}
+
+export function seedArtifactBytes(
+  sqlite: SqliteLike,
+  userId: number,
+  totalBytes: number,
+): void {
+  sqlite.prepare(`
+    insert into artifacts (user_id, kind, title, current_version,
+      total_bytes, created_via, created_at, updated_at)
+    values (?, 'html', 'Artifact', 1, ?, 'chat', 1, 1)
+  `).run(userId, totalBytes)
 }

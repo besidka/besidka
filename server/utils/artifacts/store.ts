@@ -12,13 +12,14 @@ import {
   ARTIFACT_KINDS,
   ARTIFACT_MAX_VERSIONS,
   ARTIFACT_TITLE_MAX,
-  ARTIFACT_USER_QUOTA_BYTES,
   ARTIFACT_VERSION_MAX_BYTES,
 } from '#shared/utils/artifacts'
 import * as schema from '~~/server/db/schema'
 import { decodePublicId, encodePublicId } from '~~/server/utils/custom-db-types'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { resolveServerLogger } from '~~/server/utils/files/logger'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+import { assertStorageAvailable } from '~~/server/utils/storage/guard'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -27,7 +28,6 @@ export const ARTIFACT_ID_CHUNK_SIZE = 90
 
 export const ARTIFACT_ERROR_CODES = {
   tooLarge: 'artifact_too_large',
-  quotaExceeded: 'artifact_quota_exceeded',
   versionCap: 'artifact_version_cap',
   versionConflict: 'artifact_version_conflict',
   notFound: 'artifact_not_found',
@@ -37,7 +37,6 @@ export const ARTIFACT_ERROR_CODES = {
   writeFailed: 'artifact_write_failed',
 } as const
 
-const BYTES_PER_MEGABYTE = 1024 * 1024
 const SHARED_UNTITLED_ARTIFACT = 'Untitled artifact'
 
 interface ArtifactStoreDeps {
@@ -148,10 +147,6 @@ function createInvalidInputError(why: string) {
   })
 }
 
-function formatMegabytes(bytes: number): string {
-  return `${(bytes / BYTES_PER_MEGABYTE).toFixed(2)} MB`
-}
-
 export function normalizeArtifactTitle(title: string): string {
   const normalized = title.replace(/\s+/g, ' ').trim()
 
@@ -215,28 +210,6 @@ export async function getArtifactUsageBytes(
     .where(eq(schema.artifacts.userId, userId))
 
   return Number(row?.total ?? 0)
-}
-
-async function assertArtifactQuota(
-  db: DbClient,
-  userId: number,
-  additionalBytes: number,
-): Promise<void> {
-  const usedBytes = await getArtifactUsageBytes(db, userId)
-
-  if (usedBytes + additionalBytes <= ARTIFACT_USER_QUOTA_BYTES) {
-    return
-  }
-
-  throw createError({
-    message: 'Not enough artifact storage',
-    status: 413,
-    code: ARTIFACT_ERROR_CODES.quotaExceeded,
-    why: `Artifacts use ${formatMegabytes(usedBytes)} of `
-      + `${formatMegabytes(ARTIFACT_USER_QUOTA_BYTES)}, this version needs `
-      + `${formatMegabytes(additionalBytes)} more`,
-    fix: 'Delete artifacts in History → Artifacts',
-  })
 }
 
 function createWriteFailedError() {
@@ -329,7 +302,11 @@ export async function createArtifact(
   const title = normalizeArtifactTitle(input.title)
   const bytes = encodeArtifactContent(input.content)
 
-  await assertArtifactQuota(input.db, input.userId, bytes.byteLength)
+  await assertStorageAvailable({
+    userId: input.userId,
+    additionalBytes: bytes.byteLength,
+    db: input.db,
+  })
 
   const sha256 = await sha256Hex(bytes)
   const [header] = await input.db
@@ -390,6 +367,8 @@ export async function createArtifact(
 
     throw createWriteFailedError()
   }
+
+  await invalidateStorageCache(input.userId, logger)
 
   return {
     artifactId: encodeArtifactId(header.id),
@@ -514,7 +493,11 @@ export async function appendArtifactVersion(
     : normalizeArtifactTitle(input.title)
   const bytes = encodeArtifactContent(input.content)
 
-  await assertArtifactQuota(input.db, input.userId, bytes.byteLength)
+  await assertStorageAvailable({
+    userId: input.userId,
+    additionalBytes: bytes.byteLength,
+    db: input.db,
+  })
 
   const version = artifact.currentVersion + 1
   const sha256 = await sha256Hex(bytes)
@@ -582,6 +565,8 @@ export async function appendArtifactVersion(
 
     throw createVersionConflictError()
   }
+
+  await invalidateStorageCache(input.userId, logger)
 
   return {
     artifactId: input.artifactId,
@@ -851,71 +836,77 @@ async function deleteArtifactsByInternalIds(input: {
     objectsDeleted: 0,
   }
 
-  for (const chunk of chunkIds(input.internalIds)) {
-    const owned = await input.db
-      .select({
-        id: schema.artifacts.id,
-        legalHoldUntil: schema.artifacts.legalHoldUntil,
-      })
-      .from(schema.artifacts)
-      .where(and(
-        eq(schema.artifacts.userId, input.userId),
-        inArray(schema.artifacts.id, chunk),
-      ))
-    const deletable: number[] = []
-
-    const held: number[] = []
-
-    for (const artifact of owned) {
-      if (artifact.legalHoldUntil && artifact.legalHoldUntil > input.now) {
-        held.push(artifact.id)
-      } else {
-        deletable.push(artifact.id)
-      }
-    }
-
-    if (held.length > 0) {
-      await input.db.update(schema.artifactShares)
-        .set({ revokedAt: input.now })
-        .where(and(
-          inArray(schema.artifactShares.artifactId, held),
-          isNull(schema.artifactShares.revokedAt),
-        ))
-      result.heldIds.push(...held.map(encodeArtifactId))
-    }
-
-    if (deletable.length === 0) {
-      continue
-    }
-
-    const versions = await input.db
-      .select({ r2Key: schema.artifactVersions.r2Key })
-      .from(schema.artifactVersions)
-      .where(inArray(schema.artifactVersions.artifactId, deletable))
-    const keys = versions.map((version) => {
-      return version.r2Key
-    })
-
-    if (keys.length > 0) {
-      await input.storage.delete(keys)
-    }
-
-    await input.db.batch([
-      input.db.delete(schema.artifactVersions)
-        .where(inArray(schema.artifactVersions.artifactId, deletable)),
-      input.db.delete(schema.artifactShares)
-        .where(inArray(schema.artifactShares.artifactId, deletable)),
-      input.db.delete(schema.artifactStorage)
-        .where(inArray(schema.artifactStorage.artifactId, deletable)),
-      input.db.delete(schema.artifacts)
+  try {
+    for (const chunk of chunkIds(input.internalIds)) {
+      const owned = await input.db
+        .select({
+          id: schema.artifacts.id,
+          legalHoldUntil: schema.artifacts.legalHoldUntil,
+        })
+        .from(schema.artifacts)
         .where(and(
           eq(schema.artifacts.userId, input.userId),
-          inArray(schema.artifacts.id, deletable),
-        )),
-    ])
+          inArray(schema.artifacts.id, chunk),
+        ))
+      const deletable: number[] = []
 
-    result.objectsDeleted += keys.length
-    result.deletedIds.push(...deletable.map(encodeArtifactId))
+      const held: number[] = []
+
+      for (const artifact of owned) {
+        if (artifact.legalHoldUntil && artifact.legalHoldUntil > input.now) {
+          held.push(artifact.id)
+        } else {
+          deletable.push(artifact.id)
+        }
+      }
+
+      if (held.length > 0) {
+        await input.db.update(schema.artifactShares)
+          .set({ revokedAt: input.now })
+          .where(and(
+            inArray(schema.artifactShares.artifactId, held),
+            isNull(schema.artifactShares.revokedAt),
+          ))
+        result.heldIds.push(...held.map(encodeArtifactId))
+      }
+
+      if (deletable.length === 0) {
+        continue
+      }
+
+      const versions = await input.db
+        .select({ r2Key: schema.artifactVersions.r2Key })
+        .from(schema.artifactVersions)
+        .where(inArray(schema.artifactVersions.artifactId, deletable))
+      const keys = versions.map((version) => {
+        return version.r2Key
+      })
+
+      if (keys.length > 0) {
+        await input.storage.delete(keys)
+      }
+
+      await input.db.batch([
+        input.db.delete(schema.artifactVersions)
+          .where(inArray(schema.artifactVersions.artifactId, deletable)),
+        input.db.delete(schema.artifactShares)
+          .where(inArray(schema.artifactShares.artifactId, deletable)),
+        input.db.delete(schema.artifactStorage)
+          .where(inArray(schema.artifactStorage.artifactId, deletable)),
+        input.db.delete(schema.artifacts)
+          .where(and(
+            eq(schema.artifacts.userId, input.userId),
+            inArray(schema.artifacts.id, deletable),
+          )),
+      ])
+
+      result.objectsDeleted += keys.length
+      result.deletedIds.push(...deletable.map(encodeArtifactId))
+    }
+  } finally {
+    if (result.deletedIds.length > 0) {
+      await invalidateStorageCache(input.userId, input.logger)
+    }
   }
 
   return result

@@ -389,15 +389,17 @@ describe('mcp file tools', () => {
           mocks.logger,
         )).rejects.toMatchObject({
           status: 413,
-          message: 'Not enough storage space. Please delete some files.',
+          message: 'Storage is full',
+          code: 'storage_full',
+          link: '/profile/storage',
         })
         expect(mocks.persistFile).not.toHaveBeenCalled()
       })
 
     it('passes a persistFile quota error through', async () => {
       mocks.persistFile.mockRejectedValue(Object.assign(
-        new Error('Not enough storage space. Please delete some files.'),
-        { status: 400 },
+        new Error('Storage is full'),
+        { status: 413, code: 'storage_full' },
       ))
 
       const { createMcpFile } = await load()
@@ -406,7 +408,7 @@ describe('mcp file tools', () => {
         OWNER,
         { name: 'a.txt', text: 'hello' },
         mocks.logger,
-      )).rejects.toMatchObject({ status: 400 })
+      )).rejects.toMatchObject({ status: 413, code: 'storage_full' })
     })
 
     it('rejects names with invisible or control characters', async () => {

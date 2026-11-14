@@ -567,6 +567,18 @@ connection at a time, grouped by repository so one ref list serves all the
 skills of a repository). The run cap exists to keep one invocation short; a
 backlog drains over the next hours.
 
+**Feature gate.** The sweep acts only for accounts that have the `skills`
+feature, evaluated with the server feature evaluator
+(`createBackgroundFeatureCheck` in `server/utils/features/background.ts`, the
+same "active" rule as `requireFeature`: the rules from KV or D1, the user's
+roles, grants and Labs toggle). An account is evaluated at most once per run,
+before its KV state is read, and no account is evaluated once the run already
+holds 50 skills. A kill switch on `skills` (or `*`) in `featuresDisabled` ends
+the run before the database or GitHub is touched, so a kill switch stops every
+GitHub request of the sweep. The manual "Check for updates" route also needs
+`skills.import-url`; the sweep does not, so an account with `skills` on and
+`skills.import-url` off still gets a badge it cannot act on.
+
 What it finds is remembered in KV (`skills:update-state:<userId>`, one JSON map
 of skill id to `{ checkedAt, retryAfter?, latest?, seen? }`, 45 days, refreshed
 on every write). `latest` is the newest upstream version found; the list
@@ -582,7 +594,8 @@ or branch that is gone clears it and flags nothing; a network error changes
 nothing and waits six hours (`retryAfter`), so a failing repository cannot
 starve the others; a GitHub 429 ends the run. Wide events carry counts only
 (`skillsUpdateSweep`: considered, checked, updatesFound, upToDate, missing,
-failed, rateLimited), never skill ids, names or URLs.
+failed, rateLimited, usersSkipped, killSwitched), never skill ids, names or
+URLs.
 
 **A new release does not mean this skill changed.** `info/refs` cannot say
 whether the skill's folder differs at the new tag, and the sweep downloads
@@ -590,9 +603,9 @@ nothing, so the badge says "Update 2.1.3" until the review looks. When "Check
 for updates" finds the folder identical at the new version, it answers "No
 changes in 2.1.3" (no pending version is created), records that version as
 `seen`, and the badge goes away; the next newer version shows it again. The
-sweep never writes `seen`. Accounts are not filtered by feature flag: only a
-user who could import has GitHub skills, and the badge shows only in the
-flagged manager.
+sweep never writes `seen`. Accounts without the `skills` feature are skipped
+(see "Feature gate" above), so the sweep never spends a GitHub request on an
+account that cannot see the badge.
 
 ### 3.5 R2 layout
 
@@ -1067,7 +1080,7 @@ image. `create_document` is a follow-up tool and behaves as it did before.
 | K14 | Cross-connector exfiltration triggered by a skill | Skill author | `docs/connectors.md` rule F2 applies regardless of skills | C-6 |
 | K15 | Slash-name hijack over MCP: an agent renames a skill to a name the user types every day (`/summarize`) | Agent with `skills:write` | `rename_skill` disables the skill and sets `needs-review`, so it never fires until the user re-enables it. The in-app rename keeps the skill enabled | S-6 |
 | K16 | An imported skill makes itself model-invocable or slash-invocable | Skill author | `model_invocable` and the command (`slash_name`) are settings the user makes, not frontmatter; Claude Code keys are read only as defaults at import (section 5.5); MCP never sets them on an existing skill | S-2, S-6, S-12 |
-| K17 | Storage and request abuse through saves | Malicious user or injected agent | `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs), per-save caps, 120 saves per hour, 30 MCP skill writes per hour | S-10, S-6 |
+| K17 | Storage and request abuse through saves | Malicious user or injected agent | the shared storage allowance (`docs/storage.md`; the unique blobs of the account count against it, a refusal is 413 `Storage is full`), per-save caps, 120 saves per hour, 30 MCP skill writes per hour | S-10, S-6 |
 | K18 | A GitHub import shows `owner/repo` as the source for a commit the repository never held: a SHA in the URL can belong to a fork of it | Malicious link author | Pull request and internal refs (`pull/N/head`, `pull/N/merge`, `refs/`, `keep-around`, `__gh__`) are refused outright, and any other ref is resolved only through the repository's own branches and tags in the ref list, never through a commit lookup, so a fork commit cannot be reached by name. A full SHA in the URL is used as it is (the API `compare` check was dropped with the API on 2026-11-14, section 3.1); when it is not the tip of a branch or tag, the preview carries the warning "GitHub cannot confirm that commit ... belongs to owner/repo". The residual risk is a provenance label that names the wrong repository, with content the user still reviews | S-2G |
 
 ## 7. Scripts in provider containers (S-5)
@@ -1283,8 +1296,9 @@ next number, its blobs under the same `blobs/` prefix, and
 **Prune.** Keep `SKILL_VERSIONS_KEPT` (20) versions. A pending version, and a
 version pinned by a share, are never pruned. After a version's rows are
 deleted, the blobs that no remaining row references are deleted. Deleting a
-skill is one prefix delete. `SKILLS_MAX_USER_BYTES` (50 MiB of unique blobs)
-caps the worst case of rewriting 1 MiB files across 20 versions and 50 skills.
+skill is one prefix delete. The shared storage allowance (`docs/storage.md`)
+caps the worst case of rewriting 1 MiB files across 20 versions and 50 skills:
+the unique blobs of every skill are the `skills` category of that allowance.
 
 **Accept** also creates a new version. It does not promote the pending row's
 number: it adds a row with the next number that points at the same blobs, then
@@ -1340,7 +1354,6 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_MAX_PATH_DEPTH` | 6 | S-2 |
 | `SKILLS_PER_USER` | 50 | S-2, S-6 |
 | `SKILL_VERSIONS_KEPT` | 20 (was 2) | S-1, S-2, S-10 |
-| `SKILLS_MAX_USER_BYTES` | 50 MiB of unique blobs per user | S-1, S-10 |
 | `SKILL_IMPORTS_PER_HOUR` | 10 per user | S-2, S-2G |
 | `SKILL_SAVES_PER_HOUR` | 120 per user | S-10 |
 | `SKILL_SAVE_MAX_CHANGES` | 50 per save | S-10 |

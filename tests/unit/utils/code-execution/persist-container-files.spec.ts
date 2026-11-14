@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createStorageFullError } from '~~/server/utils/storage/errors'
 
 const mocks = vi.hoisted(() => ({
   persistFile: vi.fn(),
@@ -185,7 +186,10 @@ describe('persistContainerFiles', () => {
 
   it('reports a storage failure per file and keeps going', async () => {
     mocks.persistFile
-      .mockRejectedValueOnce(new Error('Not enough storage space'))
+      .mockRejectedValueOnce(createStorageFullError({
+        usedBytes: 20,
+        totalBytes: 20,
+      }))
       .mockResolvedValueOnce({ id: 'row-b', storageKey: 'key-b', size: 9 })
 
     const { result } = await run({

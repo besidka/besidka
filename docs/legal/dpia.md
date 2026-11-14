@@ -845,7 +845,8 @@ below as `planned` unless it says `built`.
   (A-3; at most 3 writes a turn), or a connected client writes it with
   `artifacts:write` (A-8). Kinds: HTML, React, SVG, Mermaid, Markdown.
   Content is stored in R2 under `artifacts/<userId>/<artifactId>/v<n>`, at most
-  512 KB a version, 50 versions an artifact, 25 MB a user; metadata in D1
+  512 KB a version, 50 versions an artifact, and artifact bytes count against
+  the user's one storage limit (`docs/storage.md`); metadata in D1
   (`artifacts`, `artifact_versions`: title, kind, origin chat and message,
   `createdVia`, sizes, SHA-256, optional `modelId`), with no foreign key to
   `users` or `chats` (A-1). Messages store only a reference part

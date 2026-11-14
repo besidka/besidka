@@ -624,7 +624,9 @@ describe('artifact tools', () => {
       content: 'a',
     })).rejects.toMatchObject({
       code: 'artifact-quota',
-      message: expect.stringContaining('25.00 MB'),
+      message: expect.stringContaining(
+        'Storage is full. 25.0 MB of 20.0 MB used. Free space on the Storage page.',
+      ),
     })
   })
 

@@ -15,6 +15,7 @@ import {
 } from '#shared/utils/skills-policy'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import * as schema from '~~/server/db/schema'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   assertLimits,
@@ -29,10 +30,7 @@ import {
   findUniqueViolation,
   isUniqueViolation,
 } from '~~/server/utils/skills/unique-violation'
-import {
-  countUserSkills,
-  getUserSkillsUsageBytes,
-} from '~~/server/utils/skills/usage'
+import { countUserSkills } from '~~/server/utils/skills/usage'
 import {
   createSkillCommandTakenError,
   createSkillEditError,
@@ -205,14 +203,10 @@ export async function createAuthoredSkill(
     })
   }
 
-  const [skillsCount, usageBytes] = await Promise.all([
-    countUserSkills(db, userId),
-    getUserSkillsUsageBytes(db, userId),
-  ])
-
-  assertLimits({
-    skillsCount,
-    usageBytes,
+  await assertLimits({
+    db,
+    userId,
+    skillsCount: await countUserSkills(db, userId),
     incomingBytes: analysis.totalBytes,
     isNewSkill: true,
   })
@@ -338,6 +332,8 @@ export async function createAuthoredSkill(
 
     throw exception
   }
+
+  await invalidateStorageCache(userId, logger)
 
   logger.set({
     attributes: {

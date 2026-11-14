@@ -11,11 +11,21 @@ import type {
   MemoryExtractionTestDb,
 } from '../../../../../setup/helpers/memory-extraction-db'
 import {
+  STORAGE_ALLOWANCE_BYTES,
   createFakeSkillBucket,
+  seedArtifactBytes,
   seedSkillWithFiles,
 } from '../../../../../setup/helpers/skills-db'
 import type { FakeSkillBucket } from '../../../../../setup/helpers/skills-db'
 import { skillMarkdown } from '../../../../../setup/helpers/skill-archives'
+
+const storageCacheMocks = vi.hoisted(() => ({
+  invalidateStorageCache: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/api/v1/storage/index.get', () => ({
+  invalidateStorageCache: storageCacheMocks.invalidateStorageCache,
+}))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
@@ -46,7 +56,12 @@ async function failureOf(promise: Promise<unknown>) {
   try {
     await promise
   } catch (exception) {
-    return exception as { status: number, code?: string, why?: string }
+    return exception as {
+      status: number
+      code?: string
+      why?: string
+      link?: string
+    }
   }
 
   throw new Error('Expected a rejection')
@@ -89,6 +104,10 @@ describe('saveSkillChanges', () => {
     })
   }
 
+  function insertArtifactBytes(totalBytes: number) {
+    seedArtifactBytes(testDb.sqlite, userId, totalBytes)
+  }
+
   async function skillRow(skillId: string) {
     const [row] = await testDb.db.select()
       .from(schema.skills)
@@ -129,6 +148,7 @@ describe('saveSkillChanges', () => {
     userId = await seedUser(testDb.db)
     otherUserId = await seedUser(testDb.db)
     logger.set.mockClear()
+    storageCacheMocks.invalidateStorageCache.mockClear()
   })
 
   afterEach(() => {
@@ -191,6 +211,17 @@ describe('saveSkillChanges', () => {
         return key.endsWith(shas['SKILL.md']!)
       }),
     ).toBe(false)
+  })
+
+  it('drops the storage stats cache of the user after a save', async () => {
+    const { skillId } = await seedAuthored()
+
+    await save(skillId, [
+      { op: 'put', path: 'references/notes.md', content: 'Second note\n' },
+    ])
+
+    expect(storageCacheMocks.invalidateStorageCache)
+      .toHaveBeenCalledWith(userId, logger)
   })
 
   it('refuses a stale base version and leaves nothing behind', async () => {
@@ -525,7 +556,7 @@ describe('saveSkillChanges', () => {
       expect(failure).toMatchObject({ status: 413, code: 'too-many-files' })
     })
 
-    it('refuses when the unique blobs of the user would exceed the cap', async () => {
+    it('refuses with the shared storage error when skill blobs fill the allowance', async () => {
       const { skillId } = await seedAuthored()
 
       await testDb.db.insert(schema.skillFiles).values({
@@ -534,7 +565,7 @@ describe('saveSkillChanges', () => {
         version: 1,
         path: 'huge.md',
         blobSha256: 'a'.repeat(64),
-        bytes: 50 * 1024 * 1024,
+        bytes: STORAGE_ALLOWANCE_BYTES,
         kind: 'other',
       })
 
@@ -542,8 +573,51 @@ describe('saveSkillChanges', () => {
         { op: 'put', path: 'references/notes.md', content: 'New content\n' },
       ]))
 
-      expect(failure).toMatchObject({ status: 413, code: 'skills-storage-limit' })
+      expect(failure).toMatchObject({
+        status: 413,
+        code: 'storage_full',
+        message: 'Storage is full',
+        link: '/profile/storage',
+      })
       expect(await versionNumbers(skillId)).toEqual([1])
+    })
+
+    it('counts bytes from other categories against the same allowance', async () => {
+      const { skillId } = await seedAuthored()
+
+      insertArtifactBytes(STORAGE_ALLOWANCE_BYTES - 1)
+
+      const failure = await failureOf(save(skillId, [
+        { op: 'put', path: 'references/notes.md', content: 'New content\n' },
+      ]))
+
+      expect(failure).toMatchObject({ status: 413, code: 'storage_full' })
+      expect(await versionNumbers(skillId)).toEqual([1])
+    })
+
+    it('saves a change that adds no bytes while the account is over the allowance', async () => {
+      const { skillId } = await seedAuthored()
+
+      insertArtifactBytes(STORAGE_ALLOWANCE_BYTES + 1000)
+
+      const result = await save(skillId, [
+        { op: 'delete', path: 'references/notes.md' },
+      ])
+
+      expect(result).toMatchObject({ unchanged: false, version: 2 })
+      expect(await versionNumbers(skillId)).toEqual([1, 2])
+    })
+
+    it('saves when the new blobs just fit the allowance', async () => {
+      const { skillId } = await seedAuthored()
+
+      insertArtifactBytes(STORAGE_ALLOWANCE_BYTES - 1_000_000)
+
+      const result = await save(skillId, [
+        { op: 'put', path: 'references/notes.md', content: 'New content\n' },
+      ])
+
+      expect(result).toMatchObject({ unchanged: false, version: 2 })
     })
   })
 

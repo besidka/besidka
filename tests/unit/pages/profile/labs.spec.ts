@@ -386,13 +386,13 @@ describe('profile labs page', () => {
     expect(text).toContain('may change or be removed')
   })
 
-  it('is the sixth tab of the profile layout', async () => {
+  it('is the last tab of the profile layout', async () => {
     const layout = await mountSuspended(ProfileLayout, {
       global: { stubs: { NuxtPage: true, SidebarThemeSwitcher: true } },
     })
     const tabs = layout.findAll('nav[aria-label="Account sections"] a')
 
-    expect(tabs).toHaveLength(6)
+    expect(tabs).toHaveLength(7)
     expect(tabs.at(-1)?.text()).toBe('Labs')
   })
 })

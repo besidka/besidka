@@ -41,7 +41,11 @@ vi.mock('~~/server/utils/files/convert-files-for-ai', () => ({
   invalidateFileCache: mocks.invalidateFileCache,
 }))
 
-const { cleanupSkillsForDeletedChats, purgeUserSkills } = await import(
+const {
+  cleanupSkillsForDeletedChats,
+  deleteUserSkill,
+  purgeUserSkills,
+} = await import(
   '~~/server/utils/skills/cleanup'
 )
 const { deleteChat } = await import('~~/server/utils/chats/lifecycle')
@@ -132,6 +136,33 @@ describe('skills deletion hooks', () => {
   afterEach(() => {
     testDb.close()
     vi.unstubAllGlobals()
+  })
+
+  describe('deleteUserSkill', () => {
+    it('drops the storage stats cache of the user', async () => {
+      const skillId = await seedFullSkill(userId)
+
+      await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(mocks.invalidateStorageCache)
+        .toHaveBeenCalledWith(userId, mocks.logger)
+    })
+
+    it('keeps the cache when the skill is not the caller\'s', async () => {
+      const skillId = await seedFullSkill(otherUserId)
+
+      await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(mocks.invalidateStorageCache).not.toHaveBeenCalled()
+    })
   })
 
   describe('purgeUserSkills', () => {

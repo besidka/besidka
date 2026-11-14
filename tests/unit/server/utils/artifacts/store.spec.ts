@@ -5,7 +5,6 @@ import * as schema from '~~/server/db/schema'
 import {
   ARTIFACT_KINDS,
   ARTIFACT_MAX_VERSIONS,
-  ARTIFACT_USER_QUOTA_BYTES,
   ARTIFACT_VERSION_MAX_BYTES,
 } from '#shared/utils/artifacts'
 import {
@@ -158,22 +157,26 @@ describe('artifact store', () => {
       })
     })
 
-    it('rejects a write that would exceed the quota with used and limit', async () => {
+    it('rejects a write that would exceed the shared quota with used and limit', async () => {
+      const quotaBytes = 20 * 1024 * 1024
+
       testDb.sqlite.prepare(`
         insert into artifacts (user_id, kind, title, current_version,
           total_bytes, created_via, created_at, updated_at)
         values (?, 'html', 'Big', 1, ?, 'chat', 1, 1)
-      `).run(userId, ARTIFACT_USER_QUOTA_BYTES - 10)
+      `).run(userId, quotaBytes - 10)
 
       const exception = await create({ content: 'a'.repeat(11) })
         .catch((error: unknown) => error)
 
       expect(exception).toMatchObject({
         status: 413,
-        code: 'artifact_quota_exceeded',
-        fix: 'Delete artifacts in History → Artifacts',
+        code: 'storage_full',
+        message: 'Storage is full',
+        fix: 'Free space on the Storage page',
+        link: '/profile/storage',
       })
-      expect((exception as { why: string }).why).toContain('25.00 MB')
+      expect((exception as { why: string }).why).toBe('20.0 MB of 20.0 MB used')
       expect(storage.putCalls).toEqual([])
       await expect(create({ content: 'a'.repeat(10) })).resolves
         .toMatchObject({ version: 1 })
@@ -669,5 +672,106 @@ describe('artifact store', () => {
       .where(eq(schema.artifacts.id, decodeArtifactId(created.artifactId)!))
 
     expect(row?.originChatId).toBe(chat.id)
+  })
+  describe('shared storage quota', () => {
+    const quotaBytes = 20 * 1024 * 1024
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    function insertFile(size: number): void {
+      testDb.sqlite.prepare(`
+        insert into files (user_id, storage_key, name, size, type, source,
+          created_at, updated_at)
+        values (?, 'key-1', 'file', ?, 'application/pdf', 'upload', 1, 1)
+      `).run(userId, size)
+    }
+
+    it('refuses a new artifact when uploaded files fill the allowance', async () => {
+      insertFile(quotaBytes - 5)
+
+      await expect(create({ content: 'a'.repeat(6) })).rejects.toMatchObject({
+        status: 413,
+        code: 'storage_full',
+        link: '/profile/storage',
+      })
+      expect(storage.putCalls).toEqual([])
+      expect(readRows().artifacts).toEqual([])
+    })
+
+    it('refuses a new version over the allowance and keeps the artifact', async () => {
+      const created = await create()
+
+      insertFile(quotaBytes - 20)
+
+      await expect(appendArtifactVersion({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactId: created.artifactId,
+        content: 'a'.repeat(4),
+        createdBy: 'model',
+        logger,
+      })).rejects.toMatchObject({ status: 413, code: 'storage_full' })
+
+      const { artifacts, versions } = readRows()
+
+      expect(artifacts).toEqual([
+        expect.objectContaining({ current_version: 1, total_bytes: 17 }),
+      ])
+      expect(versions).toHaveLength(1)
+      expect(storage.objects.size).toBe(1)
+    })
+
+    it('drops the storage cache on create, new version and delete', async () => {
+      const kvDelete = vi.fn(async () => undefined)
+
+      vi.stubGlobal('useKV', () => ({ delete: kvDelete }))
+
+      const created = await create()
+
+      expect(kvDelete).toHaveBeenCalledWith(`storage-stats:${userId}`)
+      kvDelete.mockClear()
+
+      await appendArtifactVersion({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactId: created.artifactId,
+        content: 'next',
+        createdBy: 'model',
+        logger,
+      })
+
+      expect(kvDelete).toHaveBeenCalledWith(`storage-stats:${userId}`)
+      kvDelete.mockClear()
+
+      await deleteArtifacts({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactIds: [created.artifactId],
+        logger,
+      })
+
+      expect(kvDelete).toHaveBeenCalledWith(`storage-stats:${userId}`)
+    })
+
+    it('leaves the cache alone when a delete removes nothing', async () => {
+      const kvDelete = vi.fn(async () => undefined)
+
+      vi.stubGlobal('useKV', () => ({ delete: kvDelete }))
+
+      await deleteArtifacts({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactIds: ['garbage'],
+        logger,
+      })
+
+      expect(kvDelete).not.toHaveBeenCalled()
+    })
   })
 })

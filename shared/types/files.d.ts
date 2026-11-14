@@ -37,9 +37,29 @@ export interface FilePolicyResponse {
   globalTransformRemainingMonth: number
 }
 
+export type StorageCategoryId
+  = | 'aiImages'
+    | 'uploads'
+    | 'generatedFiles'
+    | 'artifacts'
+    | 'knowledge'
+    | 'skills'
+
+export interface StorageCategoryUsage {
+  id: StorageCategoryId
+  bytes: number
+  count: number
+}
+
+export interface StorageBreakdown {
+  categories: StorageCategoryUsage[]
+  totalBytes: number
+}
+
 export interface StorageStats extends FilePolicy {
   used: number
   total: number
   percentage: number
   globalTransformRemainingMonth: number
+  breakdown: StorageBreakdown
 }

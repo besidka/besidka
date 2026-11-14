@@ -4,6 +4,10 @@ import {
   parseGithubSkillUrl,
 } from '#shared/utils/skills/github-url'
 import * as schema from '~~/server/db/schema'
+import { createBackgroundFeatureCheck } from '~~/server/utils/features/background'
+import type { BackgroundFeatureCheck } from '~~/server/utils/features/background'
+import type { FeatureKv } from '~~/server/utils/features/evaluate'
+import type { FeatureEvaluationConfig } from '~~/server/utils/features/provider'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createGithubClient } from '~~/server/utils/skills/import/github'
 import { resolveGithubUpstream } from '~~/server/utils/skills/import/upstream'
@@ -21,6 +25,7 @@ import type {
 type DbClient = ReturnType<typeof useDb>
 
 export const SKILL_UPDATE_SWEEP_LIMIT = 50
+export const SKILL_UPDATE_SWEEP_FLAG = 'skills'
 const SKILL_UPDATE_SWEEP_ROW_LIMIT = 2000
 const GITHUB_RATE_LIMIT_CODE = 'github-rate-limited'
 const GITHUB_REPOSITORY_GONE_CODE = 'github-not-found'
@@ -33,14 +38,17 @@ export interface SkillUpdateSweepResult {
   missing: number
   failed: number
   rateLimited: boolean
+  usersSkipped: number
+  killSwitched: boolean
 }
 
 export interface SweepSkillUpdatesInput {
   db: DbClient
-  kv: SkillUpdateKv
+  kv: SkillUpdateKv & FeatureKv
   now?: Date
   limit?: number
   fetchImpl?: typeof fetch
+  featureConfig?: FeatureEvaluationConfig
   logger?: LoggerLike
 }
 
@@ -59,18 +67,23 @@ function repositoryKey(candidate: Candidate): string {
 
 /**
  * The GitHub skills that are due for a look: not pinned to a commit, not
- * looked at in the last 24 hours, and not waiting out a failed attempt. One
- * KV read per account (the skills of an account share a state key), never
- * more than `limit` skills in total.
+ * looked at in the last 24 hours, and not waiting out a failed attempt, of
+ * accounts that have the `skills` feature. An account is evaluated at most
+ * once, before its KV state is read, and no account is evaluated once the
+ * run has `limit` skills (`considered` is then a lower bound). One KV read
+ * per account (the skills of an account share a state key), never more than
+ * `limit` skills in total.
  */
 async function listDueSkills(input: {
   db: DbClient
   kv: SkillUpdateKv
   now: number
   limit: number
+  featureCheck: BackgroundFeatureCheck
 }): Promise<{
   due: Candidate[]
   considered: number
+  usersSkipped: number
   states: Map<number, SkillUpdateState>
 }> {
   const rows = await input.db.select({
@@ -90,6 +103,7 @@ async function listDueSkills(input: {
     .orderBy(asc(schema.skills.userId), asc(schema.skills.id))
     .limit(SKILL_UPDATE_SWEEP_ROW_LIMIT)
   const states = new Map<number, SkillUpdateState>()
+  const eligibility = new Map<number, boolean>()
   const due: Candidate[] = []
   let considered = 0
 
@@ -100,11 +114,24 @@ async function listDueSkills(input: {
       continue
     }
 
-    considered += 1
-
     if (due.length >= input.limit) {
+      considered += eligibility.get(row.userId) === true ? 1 : 0
+
       continue
     }
+
+    if (!eligibility.has(row.userId)) {
+      eligibility.set(
+        row.userId,
+        await input.featureCheck.isActiveForUser(row.userId),
+      )
+    }
+
+    if (!eligibility.get(row.userId)) {
+      continue
+    }
+
+    considered += 1
 
     if (!states.has(row.userId)) {
       states.set(row.userId, await readSkillUpdateState(input.kv, row.userId))
@@ -124,7 +151,11 @@ async function listDueSkills(input: {
     })
   }
 
-  return { due, considered, states }
+  const usersSkipped = [...eligibility.values()].filter((isEligible) => {
+    return !isEligible
+  }).length
+
+  return { due, considered, usersSkipped, states }
 }
 
 function forgetUpdate(
@@ -147,9 +178,11 @@ function forgetUpdate(
  * downloaded and no skill is changed, so it cannot say whether the skill's
  * folder changed (only the review can). Skills are checked one after another,
  * grouped by repository so one ref list serves them all, and at most
- * `SKILL_UPDATE_SWEEP_LIMIT` per run. A repository that is gone clears any
- * remembered update; a network failure changes nothing and waits six hours; a
- * GitHub rate limit ends the run.
+ * `SKILL_UPDATE_SWEEP_LIMIT` per run. Only accounts that have the `skills`
+ * feature are looked at, and a kill switch on `skills` (or `*`) ends the run
+ * before the database or GitHub is touched. A repository that is gone clears
+ * any remembered update; a network failure changes nothing and waits six
+ * hours; a GitHub rate limit ends the run.
  */
 export async function sweepSkillUpdates(
   input: SweepSkillUpdatesInput,
@@ -163,17 +196,35 @@ export async function sweepSkillUpdates(
     missing: 0,
     failed: 0,
     rateLimited: false,
+    usersSkipped: 0,
+    killSwitched: false,
   }
-  const { due, considered, states } = await listDueSkills({
+  const featureCheck = createBackgroundFeatureCheck({
+    flag: SKILL_UPDATE_SWEEP_FLAG,
+    db: input.db,
+    kv: input.kv,
+    config: input.featureConfig,
+    logger: input.logger,
+  })
+
+  if (featureCheck.isKillSwitched) {
+    result.killSwitched = true
+
+    return result
+  }
+
+  const { due, considered, usersSkipped, states } = await listDueSkills({
     db: input.db,
     kv: input.kv,
     now,
     limit: input.limit ?? SKILL_UPDATE_SWEEP_LIMIT,
+    featureCheck,
   })
   const dirtyUsers = new Set<number>()
   const byRepository = new Map<string, Candidate[]>()
 
   result.skillsConsidered = considered
+  result.usersSkipped = usersSkipped
 
   for (const candidate of due) {
     const group = byRepository.get(repositoryKey(candidate)) ?? []

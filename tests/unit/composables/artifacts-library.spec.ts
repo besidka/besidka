@@ -215,9 +215,9 @@ describe('artifacts-library helpers', () => {
   })
 
   it('formats the quota line', () => {
-    expect(formatArtifactUsage(0)).toBe('Using 0 B of 25.0 MB')
+    expect(formatArtifactUsage(0)).toBe('Using 0 B of your storage')
     expect(formatArtifactUsage(3 * 1024 * 1024))
-      .toBe('Using 3.0 MB of 25.0 MB')
+      .toBe('Using 3.0 MB of your storage')
   })
 })
 

@@ -22,6 +22,7 @@ import {
   UPDATE_ARTIFACT_TOOL_NAME,
 } from '~~/server/utils/artifacts/message-parts'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { STORAGE_FULL_CODE } from '~~/server/utils/storage/errors'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -43,7 +44,7 @@ export const ARTIFACT_TOOL_ERROR_CODES = {
 
 const STORE_TO_TOOL_ERROR_CODES: Record<string, string> = {
   [ARTIFACT_ERROR_CODES.tooLarge]: ARTIFACT_TOOL_ERROR_CODES.tooLarge,
-  [ARTIFACT_ERROR_CODES.quotaExceeded]: ARTIFACT_TOOL_ERROR_CODES.quota,
+  [STORAGE_FULL_CODE]: ARTIFACT_TOOL_ERROR_CODES.quota,
   [ARTIFACT_ERROR_CODES.versionCap]: ARTIFACT_TOOL_ERROR_CODES.versionCap,
   [ARTIFACT_ERROR_CODES.versionConflict]:
     ARTIFACT_TOOL_ERROR_CODES.versionConflict,

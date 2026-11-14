@@ -10,7 +10,6 @@ export type SkillImportErrorCode
     | 'acknowledgement-required'
     | 'license-acknowledgement-required'
     | 'skills-limit'
-    | 'skills-storage-limit'
     | 'name-taken'
     | 'pending-changed'
     | 'pending-not-found'

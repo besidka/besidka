@@ -41,7 +41,7 @@ const scopeDetails: Record<string, ScopeDetails> = {
   },
   'settings:read': {
     title: 'Read your settings',
-    description: 'See your preferences and memory switches.',
+    description: 'See your preferences, memory switches and storage use.',
   },
   'artifacts:read': {
     title: 'Read your artifacts and their share links',

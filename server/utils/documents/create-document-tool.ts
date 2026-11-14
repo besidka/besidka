@@ -26,6 +26,11 @@ import { resolveOwnedImageFiles } from '~~/server/utils/documents/images'
 import { createDocument } from '~~/server/utils/documents/store'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import {
+  describeStorageFullForModel,
+  isStorageFullError,
+} from '~~/server/utils/storage/errors'
+import { assertStorageAvailable } from '~~/server/utils/storage/guard'
 import type { RenderSuccess } from '~~/workers/doc-renderer/src/contract'
 
 type DbClient = ReturnType<typeof useDb>
@@ -34,6 +39,7 @@ export const DOCUMENT_TOOL_ERROR_CODES = {
   invalidInput: 'document-invalid-input',
   formatDisabled: 'document-format-disabled',
   turnLimit: 'document-turn-limit',
+  storageFull: 'document-storage-full',
   unknownImage: 'document-unknown-image',
   writeFailed: 'document-write-failed',
 } as const
@@ -494,6 +500,12 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
         const stats = toDocumentStats(validSpec)
 
         try {
+          await assertStorageAvailable({
+            userId: input.userId,
+            additionalBytes: 1,
+            db: input.db,
+          })
+
           const row = await createDocument(input.db, {
             userId: input.userId,
             format: validSpec.format,
@@ -521,6 +533,17 @@ export function createDocumentTool(input: CreateDocumentToolInput): ToolSet {
           } satisfies DocumentToolOutput
         } catch (exception) {
           rejected += 1
+
+          if (isStorageFullError(exception)) {
+            logCounts({ lastError: DOCUMENT_TOOL_ERROR_CODES.storageFull })
+
+            throw createToolError(
+              DOCUMENT_TOOL_ERROR_CODES.storageFull,
+              `${describeStorageFullForModel(exception)} No document was `
+              + 'created.',
+            )
+          }
+
           logCounts({
             lastError: DOCUMENT_TOOL_ERROR_CODES.writeFailed,
             writeError: exceptionMessage(exception),

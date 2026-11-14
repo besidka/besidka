@@ -34,8 +34,9 @@ Shared, Artifacts) and has no slot in the nav pill.
 `{ items, total, usedBytes }`. `items` are `ArtifactSummary` rows, now with
 `originChatTitle` (the chat's title, `null` when the chat is gone) next to
 `originChatSlug`. `usedBytes` is `getArtifactUsageBytes()` for the user, the
-number behind "Using X of 25 MB" (`ARTIFACT_USER_QUOTA_BYTES`). Two details
-matter:
+number behind "Using X of your storage". Artifacts no longer have a quota of
+their own (it was 25 MB): their bytes count against the one storage allowance
+shown on `/profile/storage` (`docs/storage.md`). Two details matter:
 
 - `originChatTitle` is selected with an explicit `origin_chat_title` alias.
   `artifacts.title` and `chats.title` share a column name and D1 returns rows

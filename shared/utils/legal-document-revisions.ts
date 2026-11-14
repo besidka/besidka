@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '3fe6d1fbec240824f08044b571e45bdafaa06d73028140bdd25bb17d4a01d9c7',
+    hash: 'fae6474d9b8d114d313ddafd7129a2801f72f9e4abfe36e5ec927efb56518abe',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -25,10 +25,13 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'within an hour if it is cut off, and files the Anthropic sandbox '
       + 'made stay in the user\'s Anthropic account. Body '
       + 'still includes the 2026-11-experimental-features and '
-      + '2026-12-artifacts changes, effective 2026-12-19.'
-      + ' Latest edit is spelling only (British variants changed to '
-      + 'American English), with no change of meaning, so it adds no '
-      + 'new classification.',
+      + '2026-12-artifacts changes, effective 2026-12-19. Also minor '
+      + 'clarifications (BES-393): artifacts count against the one storage '
+      + 'limit instead of a separate 25 MB, and Read your settings includes '
+      + 'storage use by type; no new purpose, recipient, transfer or '
+      + 'retention. An earlier edit changed British spellings to American '
+      + 'English, with no change of meaning, so it adds no new '
+      + 'classification.',
   },
   'terms-of-use': {
     hash: '74f82cf285bd82700c1393da884409cb1626b78e8f336c0b3852e19a69f4bb0b',

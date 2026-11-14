@@ -23,6 +23,14 @@ import type {
 } from '../../../../setup/helpers/skills-db'
 import { skillMarkdown } from '../../../../setup/helpers/skill-archives'
 
+const storageCacheMocks = vi.hoisted(() => ({
+  invalidateStorageCache: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/api/v1/storage/index.get', () => ({
+  invalidateStorageCache: storageCacheMocks.invalidateStorageCache,
+}))
+
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { skillPublicIdMockFactory } = await import(
     '../../../../setup/helpers/skills-public-id-mock'
@@ -166,6 +174,23 @@ describe('pending skill versions', () => {
   })
 
   describe('acceptPendingSkillVersion', () => {
+    it('drops the storage stats cache of the user', async () => {
+      storageCacheMocks.invalidateStorageCache.mockClear()
+
+      await acceptPendingSkillVersion({
+        db: testDb.db,
+        bucket,
+        userId,
+        skillId,
+        version: 2,
+        sha256: pendingSha256,
+        licenseAcknowledged: true,
+      })
+
+      expect(storageCacheMocks.invalidateStorageCache)
+        .toHaveBeenCalledWith(userId)
+    })
+
     it('writes the file kinds of the accepted version in the current spelling', async () => {
       await testDb.db.update(schema.skillFiles)
         .set({ kind: 'licence' as never })
@@ -452,6 +477,21 @@ describe('pending skill versions', () => {
   })
 
   describe('rejectPendingSkillVersion', () => {
+    it('drops the storage stats cache of the user', async () => {
+      storageCacheMocks.invalidateStorageCache.mockClear()
+
+      await rejectPendingSkillVersion({
+        db: testDb.db,
+        userId,
+        skillId,
+        version: 2,
+        sha256: pendingSha256,
+      })
+
+      expect(storageCacheMocks.invalidateStorageCache)
+        .toHaveBeenCalledWith(userId)
+    })
+
     it('deletes the pending rows and clears the pointer', async () => {
       const result = await rejectPendingSkillVersion({
         db: testDb.db,
