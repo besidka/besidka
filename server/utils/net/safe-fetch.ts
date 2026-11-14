@@ -25,7 +25,7 @@ export const SAFE_FETCH_PURPOSES = [
 
 export type SafeFetchPurpose = typeof SAFE_FETCH_PURPOSES[number]
 
-export type SafeFetchRedirectPolicy = 'same-origin' | 'validated'
+export type SafeFetchRedirectPolicy = 'none' | 'same-origin' | 'validated'
 
 export interface SafeFetchPurposePolicy {
   redirects: SafeFetchRedirectPolicy
@@ -59,7 +59,7 @@ export const SAFE_FETCH_PURPOSE_POLICY: Readonly<
     userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,
   },
   'skills-github': {
-    redirects: 'validated',
+    redirects: 'none',
     timeoutMs: SKILLS_GITHUB_TIMEOUT_MS,
     maxResponseBytes: SKILL_MAX_GITHUB_ARCHIVE_BYTES,
     userAgent: SAFE_FETCH_SKILLS_USER_AGENT,
@@ -155,6 +155,16 @@ function createOriginChangedError() {
     why: 'The server answered with a redirect to a different origin, which '
       + 'is never followed',
     fix: 'Edit the connector address to the new one',
+  })
+}
+
+function createRedirectRefusedError() {
+  return createError({
+    message: 'The server answered with a redirect',
+    status: 502,
+    code: 'safe-fetch-redirect-refused',
+    why: 'Redirects are never followed for this kind of request',
+    fix: 'Use the final address of the server',
   })
 }
 
@@ -547,6 +557,10 @@ export async function safeFetch(
       }
 
       await response.body?.cancel().catch(() => undefined)
+
+      if (purposePolicy.redirects === 'none') {
+        throw createRedirectRefusedError()
+      }
 
       if (redirects >= maxRedirects) {
         throw createTooManyRedirectsError()

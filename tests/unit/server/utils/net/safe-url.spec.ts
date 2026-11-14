@@ -161,6 +161,96 @@ describe('parseSafeOutboundUrl', () => {
     })
   })
 
+  describe('empty labels and repeated trailing dots', () => {
+    it.each([
+      'https://127.0.0.1../',
+      'https://127.0.0.1.%2e/',
+      'https://127.0.0.1%2e%2e/',
+      'https://169.254.169.254../latest/meta-data',
+      'https://localhost../',
+      'https://localhost.%2e/',
+      'https://metadata.google.internal../',
+      'https://example.com../',
+      'https://example..com/',
+      'https://.example.com/',
+      'https://example.com.%2e/',
+    ])('rejects %s', (input) => {
+      const result = parseSafeOutboundUrl(input)
+
+      expect(result.ok, input).toBe(false)
+    })
+
+    it.each([
+      'https://127.0.0.1../',
+      'https://localhost../',
+      'https://metadata.google.internal../',
+    ])('never lets %s become an accepted URL', (input) => {
+      const result = parseSafeOutboundUrl(input)
+
+      expect(result).toEqual({ ok: false, reason: 'invalid' })
+    })
+  })
+
+  describe('normalization is a fixed point', () => {
+    const inputs = [
+      'https://mcp.notion.com/mcp',
+      'https://EXAMPLE.com./path#frag',
+      'https://bücher.example/mcp',
+      'https://example.com:443/mcp',
+      'https://example.com:8443/mcp?x=1#y',
+      'https://example.com./',
+      '  https://example.com/a  ',
+      'https://127.0.0.1../',
+      'https://localhost../',
+      'https://127.0.0.1.%2e/',
+      'https://example.com../',
+      'https://a.b.c.d.example.com/',
+      'https://xn--bcher-kva.example/',
+      'https://EXAMPLE.COM/',
+      'https://example.com\\path',
+    ]
+
+    it.each(inputs)('accepts or rejects %j and re-parses identically', (input) => {
+      const first = parseSafeOutboundUrl(input)
+
+      if (!first.ok) {
+        return
+      }
+
+      const second = parseSafeOutboundUrl(first.url.toString())
+
+      expect(second.ok, input).toBe(true)
+
+      if (second.ok) {
+        expect(second.url.toString()).toBe(first.url.toString())
+      }
+    })
+
+    it('never accepts a host that classifies as an address or a special name', () => {
+      const hosts = [
+        '127.0.0.1', '127.0.0.1.', '127.0.0.1..', 'localhost', 'localhost.',
+        'localhost..', 'a.localhost', 'a.localhost.', 'metadata.google.internal',
+        'metadata.google.internal.', '169.254.169.254', '169.254.169.254.',
+        '0x7f.1', '2130706433', '[::1]', '[::ffff:7f00:1]',
+      ]
+      const suffixes = ['', '.', '..', '%2e', '.%2e', '%2e%2e']
+
+      for (const host of hosts) {
+        for (const suffix of suffixes) {
+          const result = parseSafeOutboundUrl(`https://${host}${suffix}/p`)
+
+          if (result.ok) {
+            const reparsed = new URL(result.url.toString())
+
+            expect(reparsed.hostname, `${host}${suffix}`).not.toMatch(
+              /^(\[.*\]|\d+\.\d+\.\d+\.\d+|localhost\.?|.*\.localhost\.?|metadata\.google\.internal\.?)$/,
+            )
+          }
+        }
+      }
+    })
+  })
+
   describe('credentials', () => {
     it.each([
       'https://user:pass@example.com',

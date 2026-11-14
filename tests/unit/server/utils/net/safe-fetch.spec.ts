@@ -400,6 +400,29 @@ describe('safeFetch', () => {
       })
     })
 
+    describe('purpose skills-github', () => {
+      it('never follows a redirect', async () => {
+        fetchMock.mockImplementationOnce(async () => {
+          return redirect(302, 'https://codeload.github.com/o/r/zip/abc')
+        })
+
+        const exception = await errorOf(safeFetch(
+          'https://github.com/o/r.git/info/refs?service=git-upload-pack',
+          { purpose: 'skills-github' },
+        ))
+
+        expect(exception.code).toBe('safe-fetch-redirect-refused')
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      })
+
+      it('has the none policy and the skills user agent', () => {
+        expect(SAFE_FETCH_PURPOSE_POLICY['skills-github'].redirects)
+          .toBe('none')
+        expect(SAFE_FETCH_PURPOSE_POLICY['skills-github'].userAgent)
+          .toBe('Besidka-Skills/1.0')
+      })
+    })
+
     describe('purpose mcp', () => {
       it('follows a same-origin redirect', async () => {
         fetchMock

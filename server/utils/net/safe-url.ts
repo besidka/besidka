@@ -145,6 +145,20 @@ function isSpecialHostname(hostname: string): boolean {
   })
 }
 
+function hasEmptyLabel(hostname: string): boolean {
+  if (hostname === '') {
+    return true
+  }
+
+  if (hostname.startsWith('[')) {
+    return false
+  }
+
+  return hostname.split('.').some((label) => {
+    return label === ''
+  })
+}
+
 function isIpLiteralHostname(hostname: string): boolean {
   return hostname.startsWith('[') || ipaddr.IPv4.isValid(hostname)
 }
@@ -194,9 +208,18 @@ export function parseSafeOutboundUrl(
     return reject('credentials')
   }
 
-  const hostname = url.hostname.toLowerCase().replace(/\.$/, '')
+  const strippedHostname = url.hostname.toLowerCase().replace(/\.$/, '')
 
-  if (hostname === '') {
+  if (hasEmptyLabel(strippedHostname)) {
+    return reject('invalid')
+  }
+
+  url.hostname = strippedHostname
+  url.hash = ''
+
+  const hostname = url.hostname.toLowerCase()
+
+  if (hostname !== strippedHostname) {
     return reject('invalid')
   }
 
@@ -219,9 +242,6 @@ export function parseSafeOutboundUrl(
   if (options.allowPath === false && (url.pathname !== '/' || url.search)) {
     return reject('path')
   }
-
-  url.hostname = hostname
-  url.hash = ''
 
   return { ok: true, url }
 }
