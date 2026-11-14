@@ -9,7 +9,7 @@
     </span>
     <select
       ref="selectRef"
-      class="select select-sm max-sm:min-h-11 w-auto min-w-34"
+      class="select select-check-end select-sm max-sm:min-h-11 w-auto min-w-34"
       :title="SKILL_MODE_DESCRIPTIONS[mode]"
       :value="mode"
       :disabled="isDisabled || skill.status === 'broken'"

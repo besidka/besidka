@@ -57,6 +57,16 @@ afterEach(() => {
 })
 
 describe('ChatInput/CommandMirror', () => {
+  it('draws the token as a soft badge above the textarea without changing its metrics', async () => {
+    const wrapper = await mountMirror()
+    const token = wrapper.get('[data-testid="command-mirror-token"]')
+
+    expect(token.classes()).toContain('composer-command-token')
+    expect(token.classes()).not.toContain('text-transparent')
+    expect(wrapper.classes()).toContain('z-10')
+    expect(token.attributes('style')).toBeUndefined()
+  })
+
   it('marks exactly the token and leaves the rest unmarked', async () => {
     const wrapper = await mountMirror()
     const marks = wrapper.findAll('mark')
@@ -73,6 +83,7 @@ describe('ChatInput/CommandMirror', () => {
     expect(wrapper.attributes('aria-hidden')).toBe('true')
     expect(wrapper.classes()).toContain('pointer-events-none')
     expect(wrapper.classes()).toContain('text-transparent')
+    expect(wrapper.classes()).toContain('z-10')
   })
 
   it('mirrors the textarea text plus a trailing space filler', async () => {

@@ -82,4 +82,12 @@ describe('Profile/Skills/ModeControl', () => {
 
     expect(wrapper.text()).toContain('Mode for writing-style')
   })
+
+  it('moves the check mark of the open list to the right with select-check-end', async () => {
+    const wrapper = await mountSuspended(ModeControl, {
+      props: { skill: createSkillSummary() },
+    })
+
+    expect(wrapper.get('select').classes()).toContain('select-check-end')
+  })
 })

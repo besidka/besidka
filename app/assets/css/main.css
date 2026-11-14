@@ -1225,3 +1225,56 @@ div:focus-visible:not([role="region"]) {
     --custom-outline-color: var(--color-primary-content);
   }
 }
+
+/*
+ * Customizable selects (daisyUI turns on `appearance: base-select`) reserve a
+ * column for the check mark at the start of every option, so each hover row
+ * shows an empty gap on its left. `.select-check-end` hides the mark on
+ * unselected options and moves it to the right edge of the selected one, which
+ * leaves the left padding uniform and the hover full width.
+ */
+.select-check-end option:not(:checked)::checkmark {
+  display: none;
+}
+
+.select-check-end option::checkmark {
+  order: 1;
+  margin-inline-start: auto;
+  padding-inline-start: 0.75rem;
+}
+
+/*
+ * The highlighted `/command` of the composer: a soft pink badge drawn by the
+ * mirror overlay (ChatInput/CommandMirror.vue) over the textarea. It reuses
+ * the accent tile tones (`ACCENT_TILE_TONE` in utils/chat-input-tiles.ts) but
+ * as one opaque color, because the textarea's own glyphs sit under it and must
+ * not show through. The badge padding is a box-shadow spread, which paints
+ * outside the line box, so no glyph moves and the text still lines up with the
+ * textarea underneath. It extends only to the left: the caret of the textarea
+ * sits right after the token while the user types, under this overlay, and a
+ * right-hand spread would paint over it.
+ */
+.composer-command-token {
+  --composer-command-token-bg: color-mix(
+    in oklab,
+    var(--color-accent) 10%,
+    var(--color-base-100)
+  );
+
+  color: var(--color-accent-text);
+  background-color: var(--composer-command-token-bg);
+  border-radius: var(--radius-selector);
+  box-shadow: -0.3em 0 0 0 var(--composer-command-token-bg);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+
+  @variant dark {
+    --composer-command-token-bg: color-mix(
+      in oklab,
+      var(--color-accent-bg) 60%,
+      var(--color-base-100)
+    );
+
+    color: var(--color-accent);
+  }
+}

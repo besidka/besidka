@@ -1,12 +1,12 @@
 <template>
   <div
     ref="mirrorRef"
-    class="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-transparent"
+    class="pointer-events-none absolute inset-0 z-10 overflow-hidden whitespace-pre-wrap break-words text-transparent"
     :style="metrics"
     aria-hidden="true"
     data-testid="command-mirror"
   >{{ before }}<mark
-    class="rounded-sm bg-accent/25 text-transparent"
+    class="composer-command-token"
     data-testid="command-mirror-token"
   >{{ tokenText }}</mark>{{ after }}</div>
 </template>
