@@ -3048,7 +3048,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/connectors-policy\.ts|server\/utils\/net\/safe-(url|fetch)\.ts|server\/utils\/skills\/import\/github\.ts)$/,
+        /^(shared\/utils\/connectors-policy\.ts|server\/utils\/net\/(safe-url|safe-fetch|own-hosts)\.ts|server\/utils\/auth-hosts\.ts|server\/utils\/skills\/import\/github\.ts)$/,
       tests: connectorsSafeFetchTests,
     },
     {
