@@ -1559,6 +1559,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/chats/share-public-parts.spec.ts',
     'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
+    'tests/integration/server/model-turns.spec.ts',
+    'tests/integration/api/chats-skills.spec.ts',
   ]
 
   const skillsComposerTests = [
@@ -2980,7 +2982,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/runtime\/.*\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts)\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
+        /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/runtime\/.*\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts|model-turns)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/shared\/\[slug\]\/index\.get\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
       tests: skillsRuntimeTests,
     },
     {

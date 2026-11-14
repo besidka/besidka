@@ -147,8 +147,9 @@ export function buildKnowledgeMediaTurns(
  * Carries a skill the user attached into the model's conversation. The model
  * context sanitizer drops a user turn that has no text and no file, which is
  * exactly a message that is only an attached skill, so the conversation would
- * end on an assistant turn and the skill would never arrive. This appends the
- * text to the last user turn when there is one, and otherwise adds a user
+ * end on an earlier turn and the skill would never arrive. This appends the
+ * text to the last turn when it is the message being sent (matched by id, so
+ * an older user turn is never the one that gets it), and otherwise adds a user
  * turn that holds it. Nothing is mutated.
  */
 export function appendTextAsLastUserTurn(
@@ -156,7 +157,9 @@ export function appendTextAsLastUserTurn(
   text: string,
   userMessageId: string,
 ): UIMessage[] {
-  if (messages.at(-1)?.role === 'user') {
+  const lastMessage = messages.at(-1)
+
+  if (lastMessage?.role === 'user' && lastMessage.id === userMessageId) {
     return appendTextToLastUserTurn(messages, text)
   }
 

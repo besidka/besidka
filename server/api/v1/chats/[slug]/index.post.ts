@@ -307,8 +307,14 @@ import {
 } from '~~/server/utils/artifacts/message-parts'
 import { resolveSendFeatures } from '~~/server/utils/features/send-features'
 import { SKILL_TOOL_STEPS } from '#shared/utils/skills-policy'
-import { isSkillToolName } from '#shared/utils/skills/runtime'
-import { resolveSkillInvocationPart } from '~~/server/utils/skills/runtime/invocation'
+import {
+  isDataSkillInvocationPart,
+  isSkillToolName,
+} from '#shared/utils/skills/runtime'
+import {
+  createSkillInvocationUnavailableError,
+  resolveSkillInvocationPart,
+} from '~~/server/utils/skills/runtime/invocation'
 import {
   appendSkillActivationParts,
   redactSkillToolPartsForPersistence,
@@ -466,6 +472,8 @@ export default defineEventHandler(async (event) => {
     logger,
     onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
   })
+  const hadSkillInvocation = newMessage.parts.some(isDataSkillInvocationPart)
+
   newMessage.parts = await resolveSkillInvocationPart({
     event,
     db,
@@ -474,6 +482,10 @@ export default defineEventHandler(async (event) => {
     logger,
     onUnavailable: isStoredUserMessage ? 'drop' : 'throw',
   })
+
+  if (hadSkillInvocation && newMessage.parts.length === 0) {
+    throw createSkillInvocationUnavailableError()
+  }
 
   const firstUserMessage = chat.messages.length === 1
     && chat.messages[0]?.role === 'user'
@@ -2207,7 +2219,10 @@ export default defineEventHandler(async (event) => {
         }
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
-          originalMessages: messagesForAI,
+          originalMessages: endOriginalMessagesOnUserTurn(
+            messagesForAI,
+            newMessage.id,
+          ),
           generateMessageId: () => messagePublicId,
           sendSources: true,
           sendReasoning,
@@ -2420,6 +2435,8 @@ export default defineEventHandler(async (event) => {
               pastChatPreRetrieval,
             ) as UIMessage['parts'][number]
             : undefined,
+          skillActivationParts: skillsSend.streamActivations as
+            unknown as UIMessage['parts'],
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -3072,6 +3089,24 @@ async function resolveSendKnowledge(input: {
 }
 
 /**
+ * The AI SDK continues the last message when `originalMessages` ends on an
+ * assistant turn. A user message that is only an attached skill is dropped
+ * from the model context, so the list could end on the previous answer and
+ * the reply would be merged into it. A stub user turn keeps the reply a new
+ * message; it is never sent anywhere.
+ */
+function endOriginalMessagesOnUserTurn(
+  messages: UIMessage[],
+  userMessageId: string,
+): UIMessage[] {
+  if (messages.at(-1)?.role !== 'assistant') {
+    return messages
+  }
+
+  return [...messages, { id: userMessageId, role: 'user', parts: [] }]
+}
+
+/**
  * The model-facing turns with project knowledge applied: the media turns
  * lead the history, so `buildMessagesForModel` still enforces Google's
  * leading-user rule and strict alternation over the combined array, and the
@@ -3087,26 +3122,26 @@ function buildKnowledgeAwareMessagesForModel(input: {
   skillInvocationBlock?: string | null
   userMessageId?: string
 }): UIMessage[] {
-  const history = input.mediaTurns.length > 0
+  const combinedHistory = input.mediaTurns.length > 0
     ? [...input.mediaTurns, ...input.messagesForAI]
     : input.messagesForAI
+  const history = input.skillInvocationBlock && input.userMessageId
+    ? appendTextAsLastUserTurn(
+      combinedHistory,
+      input.skillInvocationBlock,
+      input.userMessageId,
+    )
+    : combinedHistory
   const messagesForModel = buildMessagesForModel(
     history,
     input.modelProviderId,
   )
-  const withSkill = input.skillInvocationBlock && input.userMessageId
-    ? appendTextAsLastUserTurn(
-      messagesForModel,
-      input.skillInvocationBlock,
-      input.userMessageId,
-    )
-    : messagesForModel
 
   if (!input.excerpts) {
-    return withSkill
+    return messagesForModel
   }
 
-  return appendTextToLastUserTurn(withSkill, input.excerpts)
+  return appendTextToLastUserTurn(messagesForModel, input.excerpts)
 }
 
 /**
@@ -3505,6 +3540,7 @@ async function persistAssistantMessageFromStream(input: {
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
   getCodeExecutionFileIds?: () => string[]
   pastChatChipPart?: UIMessage['parts'][number]
+  skillActivationParts?: UIMessage['parts']
 }): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
@@ -3604,12 +3640,13 @@ async function persistAssistantMessageFromStream(input: {
       : normalizedParts
     const finalParts = redactSkillToolPartsForPersistence(
       redactMemoryToolPartsForPersistence(
-        appendSkillActivationParts(
-          stripUndeliveredInlineDataParts(
+        appendSkillActivationParts([
+          ...(input.skillActivationParts ?? []),
+          ...stripUndeliveredInlineDataParts(
             partsBeforeSizeGuard,
             input.logger,
           ),
-        ),
+        ]),
       ),
     )
 

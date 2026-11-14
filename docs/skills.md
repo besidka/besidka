@@ -711,6 +711,21 @@ user-message part, rewritten on the server from the D1 row, removed by
 
 The picker, chip and composer rules are in section 10.
 
+### 5.6 Presets and built-in commands
+
+- **Presets** (model, reasoning, tools) are deferred. If they are built later,
+  they are D1 settings applied as **visible, removable composer tiles before
+  Send**, never applied silently, because a preset that changes the model or
+  tools is a spend escalation.
+- **Built-in commands** are optional and later (S-14, flag
+  `composer.builtin-commands`): `/new`, `/model`, `/search`, `/image`,
+  `/memory`, `/project`, `/help`. They are client-only UI actions that change
+  visible composer state. They never send and never become parts. They appear
+  in the same picker under a "Besidka" group.
+- **Reserve their names now.** The S-1 name validator holds
+  `SKILL_RESERVED_SLASH_NAMES`. A skill can still have such a name, but its
+  slash toggle is refused with "/memory is reserved by Besidka".
+
 ### 5.7 As built (S-3)
 
 **Invocation mode (owner decision, 2026-11-14).** The enable toggle and the two
@@ -756,7 +771,10 @@ the catalog is simply every qualifying skill.
 the skill id, name, version, status and path before they are stored
 (`persist.ts`), because the body is read again from the current version on
 every later send. A `data-skill-activation` part is added for each activated
-skill, and is also written at the start of a send whose attached skill is Auto.
+skill. For an attached Auto skill the part is written to the client at the
+start of the send **and** handed to the persistence step: the stored reply is
+built from the model's stream, so a chunk written only to the outer writer
+would reach the screen but never D1 (the past-chat chip is passed the same way).
 `reinject.ts` reads those parts from the chat's stored messages, loads each
 skill's current version (12,000 tokens in all, newest first), and adds the
 `<active_skills>` block to the system prompt, also when tool calling is off. A
@@ -788,7 +806,13 @@ conversation on the assistant. An Auto skill stays active through the
 activation part; an Only when I ask skill is one-shot and applies to its own
 turn and to a Regenerate of it, because the stored part resolves again. The
 shared view and a visitor's branch drop a user message that is left with no
-part (`dropEmptyUserMessages`).
+part (`dropEmptyUserMessages`). The same sanitizer drop would make the AI SDK
+continue the previous answer (it continues the last message of
+`originalMessages` when that is an assistant turn), so the stream is given a
+stub user turn to end on and the reply stays a new message. The text is added
+to the turn being sent only when its id matches, otherwise as a new turn, so an
+older user turn never receives it. Regenerating a stored skill-only message
+whose skill is gone is the same generic 400 (there is nothing left to send).
 
 **Step card.** An `activate_skill` call renders as a compact card in the
 assistant message, in the style of the artifact and document cards: "Using
@@ -807,6 +831,18 @@ then removes the two parameters), and an "All skills" link. The composer tile,
 the chip in a sent message and the step card all open it, from one
 `useSkillPreview()` state mounted in the chat layout.
 
+**Existing skills.** Skills that were enabled before this layer keep
+`slash_command=false` (the old default), and selecting the mode they already
+show does nothing, because the control only sends a change. The "+" menu and
+the attach path do not need `slash_command`; S-12 must treat a missing
+`slash_command` on an enabled skill as "not offered as /name yet" and offer a
+one-time backfill, since a data migration is outside the additive-only rule.
+
+**Not verified in S-3.** No model send ran with `skills` on: there is no
+provider key on the test account, and the step card in the browser comes from
+the `/chats/test?scenario=skill` fixture. The send path is covered by
+`tests/integration/api/chats-skills.spec.ts` with a scripted model.
+
 **Interim rule, as built.** The skill tools never add a tool. The web search
 tools, `generate_image` and code execution stay exactly what the user picked
 for the message. While a skill is active `generate_image` is limited to one
@@ -819,21 +855,6 @@ set when an invoked or re-injected skill is in context, and by any
 **Context panel.** An attached skill, an activation and a successful
 `activate_skill` call appear once each under Used (kind `skill`, label
 "Attached" or "Used"); the shared context panel shows none.
-
-### 5.6 Presets and built-in commands
-
-- **Presets** (model, reasoning, tools) are deferred. If they are built later,
-  they are D1 settings applied as **visible, removable composer tiles before
-  Send**, never applied silently, because a preset that changes the model or
-  tools is a spend escalation.
-- **Built-in commands** are optional and later (S-14, flag
-  `composer.builtin-commands`): `/new`, `/model`, `/search`, `/image`,
-  `/memory`, `/project`, `/help`. They are client-only UI actions that change
-  visible composer state. They never send and never become parts. They appear
-  in the same picker under a "Besidka" group.
-- **Reserve their names now.** The S-1 name validator holds
-  `SKILL_RESERVED_SLASH_NAMES`. A skill can still have such a name, but its
-  slash toggle is refused with "/memory is reserved by Besidka".
 
 ## 6. Threat model
 

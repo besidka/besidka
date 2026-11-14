@@ -437,6 +437,17 @@ describe('appendTextAsLastUserTurn', () => {
     expect(messages).toHaveLength(2)
   })
 
+  it('adds a turn instead of using an older user turn whose reply was dropped', () => {
+    const messages = [createUserMessage('user-1', 'Earlier question')]
+    const result = appendTextAsLastUserTurn(messages, 'skill text', 'user-2')
+
+    expect(result).toHaveLength(2)
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Earlier question' },
+    ])
+    expect(result[1]).toMatchObject({ id: 'user-2', role: 'user' })
+  })
+
   it('starts the conversation with that turn for the first message of a chat', () => {
     expect(appendTextAsLastUserTurn([], 'skill text', 'user-1')).toEqual([{
       id: 'user-1',
