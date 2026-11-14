@@ -56,7 +56,7 @@ CREATE TABLE `connector_tool_settings` (
 );
 --> statement-breakpoint
 CREATE TABLE `connectors` (
-	`id` integer PRIMARY KEY,
+	`id` integer PRIMARY KEY AUTOINCREMENT,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	`user_id` integer NOT NULL,

@@ -23,6 +23,7 @@ const {
   cleanupConnectorsForDeletedChats,
   purgeUserConnectors,
 } = await import('~~/server/utils/connectors/cleanup')
+const { encodePublicId } = await import('~~/server/utils/custom-db-types')
 
 const REGISTRY_TABLE_NAME = 'mcp_registry_servers'
 
@@ -91,7 +92,7 @@ describe('connector deletion hooks', () => {
       enabled: true,
       createdVia: 'app',
     }).returning({ id: schema.connectors.id })
-    const connectorId = connector!.id
+    const connectorId = encodePublicId(connector!.id)
     const chat = await seedChat(testDb.db, owner)
 
     await testDb.db.insert(schema.connectorCredentials).values({

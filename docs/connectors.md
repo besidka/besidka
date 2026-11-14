@@ -683,11 +683,21 @@ of the merged skills tables (`skill_chat_settings.chat_public_id`,
 the stored value to the Hashids salt. The column type cannot change later
 without a table rebuild, so it is decided here.
 
+`connectors.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`, so an id is never
+reused after a delete: the audit rows in `connector_tool_calls`, which outlive
+a deleted connector, and any log line can never name a different connector
+later. Drizzle's custom `publicId()` type does not support `autoIncrement`
+(drizzle-orm issue 818, noted in `server/utils/schema.ts`), so the column is a
+plain integer in the schema and `server/utils/connectors/store.ts` encodes it
+to the public id on the way out (`encodePublicId`) and decodes it on the way in
+(`decodePublicId`). Every other table stores the same integer in a
+`publicId()` column.
+
 ### 8.1 `connectors`
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `id` | publicId | |
+| `id` | integer, autoincrement | exposed as a public id by the store |
 | `user_id` | integer, not null | |
 | `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). Other hosts use the second-to-last label (`mcp.example.com` gives `example`), or the third-to-last when the second-to-last has 3 characters or fewer and another label exists (`mcp.example.co.uk` gives `example`), cut to 16. On collision `-2`, `-3` |
 | `title` | text | user-editable, at most 80 characters |

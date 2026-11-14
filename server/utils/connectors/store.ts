@@ -18,6 +18,10 @@ import type {
   ConnectorTransport,
 } from '#shared/utils/connectors-policy'
 import * as schema from '~~/server/db/schema'
+import {
+  decodePublicId,
+  encodePublicId,
+} from '~~/server/utils/custom-db-types'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { isUniqueViolation } from '~~/server/utils/skills/unique-violation'
 
@@ -30,10 +34,9 @@ const {
   ...connectorPublicColumns
 } = getTableColumns(schema.connectors)
 
-export type ConnectorRecord = Omit<
-  typeof schema.connectors.$inferSelect,
-  'urlEncrypted'
->
+type ConnectorRow = Omit<typeof schema.connectors.$inferSelect, 'urlEncrypted'>
+
+export type ConnectorRecord = Omit<ConnectorRow, 'id'> & { id: string }
 
 export type ConnectorPatch = Partial<Pick<
   typeof schema.connectors.$inferInsert,
@@ -133,6 +136,14 @@ export interface DeleteConnectorResult {
   chatSettingsDeleted: number
 }
 
+function toConnectorRecord(row: ConnectorRow): ConnectorRecord {
+  return { ...row, id: encodePublicId(row.id) }
+}
+
+function connectorIdEquals(connectorId: string) {
+  return eq(schema.connectors.id, decodePublicId(connectorId))
+}
+
 function normalizeTitle(title: string): string {
   return title.trim().slice(0, CONNECTOR_TITLE_MAX_LENGTH)
 }
@@ -204,7 +215,7 @@ export async function createConnector(
         createdByClientId: input.createdByClientId ?? null,
       }).returning(connectorPublicColumns)
 
-      return created!
+      return toConnectorRecord(created!)
     } catch (exception) {
       if (!isUniqueViolation(exception)) {
         throw exception
@@ -224,10 +235,12 @@ export async function listConnectors(
   db: DbClient,
   userId: number,
 ): Promise<ConnectorRecord[]> {
-  return await db.select(connectorPublicColumns)
+  const rows = await db.select(connectorPublicColumns)
     .from(schema.connectors)
     .where(eq(schema.connectors.userId, userId))
     .orderBy(desc(schema.connectors.updatedAt))
+
+  return rows.map(toConnectorRecord)
 }
 
 export async function getConnector(
@@ -239,11 +252,11 @@ export async function getConnector(
     .from(schema.connectors)
     .where(and(
       eq(schema.connectors.userId, userId),
-      eq(schema.connectors.id, connectorId),
+      connectorIdEquals(connectorId),
     ))
     .limit(1)
 
-  return connector ?? null
+  return connector ? toConnectorRecord(connector) : null
 }
 
 /**
@@ -260,7 +273,7 @@ export async function readConnectorUrl(
     .from(schema.connectors)
     .where(and(
       eq(schema.connectors.userId, userId),
-      eq(schema.connectors.id, connectorId),
+      connectorIdEquals(connectorId),
     ))
     .limit(1)
 
@@ -284,11 +297,11 @@ export async function updateConnector(
     .set(values)
     .where(and(
       eq(schema.connectors.userId, userId),
-      eq(schema.connectors.id, connectorId),
+      connectorIdEquals(connectorId),
     ))
     .returning(connectorPublicColumns)
 
-  return updated ?? null
+  return updated ? toConnectorRecord(updated) : null
 }
 
 /**
@@ -335,7 +348,7 @@ export async function deleteConnector(
     db.delete(schema.connectors)
       .where(and(
         eq(schema.connectors.userId, userId),
-        eq(schema.connectors.id, connectorId),
+        connectorIdEquals(connectorId),
       ))
       .returning({ id: schema.connectors.id }),
   ])

@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "a7bc3365-7203-4d35-99b7-f92f5cc341d9",
+  "id": "beffaaac-5113-41c6-a5e7-8ac3249a9038",
   "prevIds": [
     "af059d6d-7e39-4731-ba16-c77ea8efda34"
   ],
@@ -6971,7 +6971,7 @@
       "name": "id",
       "type": "integer",
       "notNull": false,
-      "autoincrement": false,
+      "autoincrement": true,
       "default": null,
       "generated": null,
       "entityType": "columns"

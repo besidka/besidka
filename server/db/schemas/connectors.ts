@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm/sqlite-core'
 import {
   defaultSchemaCreatedAtOnly,
+  defaultSchema,
   defaultSchemaIdOnly,
   defaultSchemaWithPublicId,
 } from '../../utils/schema'
@@ -28,7 +29,7 @@ export interface ConnectorLastError {
 export const connectors = snakeCase.table(
   'connectors',
   {
-    ...defaultSchemaWithPublicId,
+    ...defaultSchema,
     userId: integer({ mode: 'number' }).notNull(),
     slug: text().notNull(),
     title: text().notNull(),

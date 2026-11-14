@@ -418,11 +418,12 @@ not just stale data.
 - **Per-chat choices.** `connector_chat_settings` rows of chats deleted in the
   window return with a chat id that no longer exists. They do nothing and
   disappear with the account purge; no repair is needed.
-- **Ids.** `connectors.id` is a public id encoded from an integer primary key
-  without `AUTOINCREMENT`, so the id of the newest connector can be reused
-  after a delete or a restore. `connector_tool_calls` uses `AUTOINCREMENT`:
-  record `sqlite_sequence` before the restore (runbook step 0) and push it
-  past the old high-water mark (step 3).
+- **Ids.** `connectors.id` and `connector_tool_calls.id` use `AUTOINCREMENT`,
+  so an id is never reused after a delete. After a restore the sequence is
+  rolled back too, though: record `sqlite_sequence` before the restore
+  (runbook step 0) and push both sequences past the old high-water marks
+  (step 3), or a new connector can take an id that surviving audit rows and
+  Axiom lines already name.
 - **Encryption key.** The key is not part of D1. A restore never needs it
   rotated, and rotating it makes every stored credential undecryptable (wipe
   `connector_credentials`, as above).
