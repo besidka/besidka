@@ -52,6 +52,10 @@ command below is for the operator, preview first.
 | Spec objects written in the window | No row, no owner | Medium (privacy) | No |
 | Skills disabled, deleted or pruned in the window (`skills`, `skill_versions`, `skill_files`) | Rows return as they were at B, often enabled; their blobs in R2 stay gone, so a restored skill reads `broken` | High (a disabled skill is live instruction text again) | No |
 | Skill blobs written in the window | No `skill_files` row references them | Low (privacy) | Yes (the hourly sweep, after one hour) |
+| Connectors deleted, disconnected or disabled in the window (`connectors`, `connector_tool_settings`, `connector_chat_settings`) | Rows return as they were at B, often enabled, with their consent columns | High (a switched-off data channel to a third-party server is open again) | No |
+| Connector credentials revoked in the window (`connector_credentials`) | Encrypted access and refresh tokens and header values return, usable again; the provider may or may not have revoked them | **High (a revoked credential works again)** | No |
+| `connector_tool_calls` audit rows | Rolled back, so the window's calls vanish from the audit trail; rows older than the retention that the sweep deleted return | Medium | Yes (the 90-day sweep) |
+| `mcp_registry_servers` | Rolled back to B | None | Yes (the next sync) |
 | `d1_migrations` | Rolled back, so the next deploy re-applies migrations | **Blocking** | No |
 
 ## Sessions: why a restore revives revoked sessions
@@ -371,6 +375,58 @@ just stale data.
   so replay the revocations from Axiom and keep the share flag off until that
   is done.
 
+## Connectors
+
+A restore rolls back the six connector tables (`connectors`,
+`connector_credentials`, `connector_tool_settings`, `connector_chat_settings`,
+`connector_tool_calls` and `mcp_registry_servers`,
+`server/db/schemas/connectors.ts`) to the bookmark B. None has a foreign key,
+so nothing cascades, and KV keeps its current state. The tables hold tokens
+and consent for third-party servers, so a stale row is a security regression,
+not just stale data.
+
+- **Revoked credentials come back.** A user who disconnected a connector, or
+  an operator who revoked a stolen session's connector, in the window gets the
+  credential row back exactly as it was at B: the encrypted access token,
+  refresh token or header value works again unless the provider revoked it
+  too. Right after the restore, before users can send:
+
+  ```sql
+  DELETE FROM connector_credentials;
+  UPDATE connectors SET enabled = 0, status = 'needs-auth';
+  ```
+
+  Credentials created or updated in the window are lost with the restore and
+  need no repair. Rows touched in the window cannot be told apart after the
+  restore, so every connector goes back to `needs-auth` and users reconnect.
+  Say so in the user notice (step 7). Consent columns stay: the consent was
+  given before B and only the credentials are untrusted.
+- **Deletions come back.** A connector deleted in the window, or with its
+  account, returns with its rows. Replay the deletes from Axiom
+  (`attributes.connectors` for connector deletes, `attributes.connectors.cleanup`
+  for chats and `attributes.accountPurge` for account purges): delete the
+  restored rows of deleted accounts and connectors, `connector_tool_calls`
+  included. The connector id is logged with every delete.
+- **Withdrawn consent comes back.** A connector whose consent was withdrawn
+  in the window returns with `consent_withdrawn_at` unset. Replay the
+  `connector-withdrawn` rows from Axiom (`attributes.legalConsent`) and set
+  `consent_withdrawn_at` again; the credentials wipe above already stops any
+  call.
+- **Audit rows.** The audit table is rolled back with the rows it describes,
+  so it cannot be the replay source (Axiom is). Rows the 90-day sweep deleted
+  in the window return and are pruned again by the next sweep.
+- **Per-chat choices.** `connector_chat_settings` rows of chats deleted in the
+  window return with a chat id that no longer exists. They do nothing and
+  disappear with the account purge; no repair is needed.
+- **Ids.** `connectors.id` is a public id encoded from an integer primary key
+  without `AUTOINCREMENT`, so the id of the newest connector can be reused
+  after a delete or a restore. `connector_tool_calls` uses `AUTOINCREMENT`:
+  record `sqlite_sequence` before the restore (runbook step 0) and push it
+  past the old high-water mark (step 3).
+- **Encryption key.** The key is not part of D1. A restore never needs it
+  rotated, and rotating it makes every stored credential undecryptable (wipe
+  `connector_credentials`, as above).
+
 ## Migrations re-apply on the next deploy (blocking)
 
 `d1_migrations` lives in the same database, so a restore rolls it back too.
@@ -525,6 +581,18 @@ The `DELETE /api/v1/chats/<slug>` alternative in step 4 is anchored with
 (`DELETE /api/v1/chats/<slug>/messages/<id>`), which logs the same
 `chatSlug`, and step 4 would then delete whole chats.
 
+### 2a. Wipe connector credentials
+
+Right after the session wipe, run on `besidka-preview` and then `besidka`:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="DELETE FROM connector_credentials; UPDATE connectors SET enabled = 0, status = 'needs-auth';"
+```
+
+See "Connectors" above for why every connector is reset. Nothing in KV needs
+a wipe: the OAuth state and refresh locks expire within minutes, and the tool
+cache is keyed by the credential generation.
+
 ### 3. Push id sequences past the pre-restore high-water marks
 
 For each table from step 0.3 whose restored `seq` is lower:
@@ -664,7 +732,8 @@ removes data that users already asked to delete.
 
 For artifacts, documents and skills, run the R2 diffs of the Artifacts,
 Documents and Skills sections as well. Run `UPDATE skills SET enabled = 0;`
-before the diffs, so no restored skill stays live while they run.
+before the diffs, so no restored skill stays live while they run. Connectors
+have no R2 objects; step 2a covers them.
 
 1. `files` rows whose object is missing: delete those rows. This lowers the
    owners' quota usage.

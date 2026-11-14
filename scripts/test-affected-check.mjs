@@ -1482,6 +1482,19 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/auth/signin.spec.ts',
   ]
 
+  const connectorsStorageTests = [
+    'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/utils/connectors-slug.spec.ts',
+    'tests/unit/utils/features/connectors-registry.spec.ts',
+    'tests/unit/config/connectors-catalog.spec.ts',
+    'tests/unit/scripts/check-connector-presets.spec.ts',
+    'tests/unit/server/utils/connectors/store.spec.ts',
+    'tests/unit/server/utils/connectors/cleanup.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/server/utils/chats/lifecycle.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+
   const skillsStorageTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
@@ -3023,6 +3036,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(connectors-policy|connectors-slug)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_quiet_nitro\/.*)$/,
+      tests: connectorsStorageTests,
     },
     {
       pattern:

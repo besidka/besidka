@@ -14,6 +14,7 @@ import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { purgeUserArtifacts } from '~~/server/utils/artifacts/store'
 import { purgeUserDocuments } from '~~/server/utils/documents/cleanup'
 import { purgeUserSkills } from '~~/server/utils/skills/cleanup'
+import { purgeUserConnectors } from '~~/server/utils/connectors/cleanup'
 
 const r2BatchDeleteLimit = 1000
 
@@ -51,6 +52,11 @@ export interface PurgeUserDataResult {
   skillChatSettingsDeleted: number
   skillObjectsDeleted: number
   skillStagingObjectsDeleted: number
+  connectorsDeleted: number
+  connectorCredentialsDeleted: number
+  connectorToolSettingsDeleted: number
+  connectorChatSettingsDeleted: number
+  connectorToolCallsDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -82,6 +88,10 @@ export interface PurgeUserDataResult {
  *   - skills: the `skills`, `skill_versions`, `skill_files` and
  *     `skill_chat_settings` rows (no FK to `users`) and every object under
  *     `user-skills/u<userId>/` and `skills-staging/u<userId>/`,
+ *   - connectors: the `connectors`, `connector_credentials`,
+ *     `connector_tool_settings`, `connector_chat_settings` and
+ *     `connector_tool_calls` rows (no FK to `users`; the audit rows go with
+ *     the account, not with the connector),
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
@@ -257,6 +267,26 @@ export async function purgeUserData(
     throw exception
   }
 
+  let connectorPurge: Awaited<ReturnType<typeof purgeUserConnectors>>
+
+  try {
+    connectorPurge = await purgeUserConnectors(db, userId, logger)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'connectors-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   for (const storageKey of storageKeys) {
     await invalidateFileCache(storageKey, logger)
   }
@@ -362,6 +392,7 @@ export async function purgeUserData(
     ...artifactPurge,
     ...documentPurge,
     ...skillPurge,
+    ...connectorPurge,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
@@ -385,6 +416,11 @@ export async function purgeUserData(
     skillChatSettingsDeleted,
     skillObjectsDeleted,
     skillStagingObjectsDeleted,
+    connectorsDeleted,
+    connectorCredentialsDeleted,
+    connectorToolSettingsDeleted,
+    connectorChatSettingsDeleted,
+    connectorToolCallsDeleted,
     featureGrantsDeleted,
     featureOptInsDeleted,
     userRolesDeleted,
@@ -415,6 +451,11 @@ export async function purgeUserData(
         skillChatSettingsDeleted,
         skillObjectsDeleted,
         skillStagingObjectsDeleted,
+        connectorsDeleted,
+        connectorCredentialsDeleted,
+        connectorToolSettingsDeleted,
+        connectorChatSettingsDeleted,
+        connectorToolCallsDeleted,
         featureGrantsDeleted,
         featureOptInsDeleted,
         userRolesDeleted,

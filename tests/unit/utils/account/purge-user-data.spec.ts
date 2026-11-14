@@ -31,6 +31,14 @@ const skillPurgeCounts = {
   skillStagingObjectsDeleted: 1,
 }
 
+const connectorPurgeCounts = {
+  connectorsDeleted: 2,
+  connectorCredentialsDeleted: 2,
+  connectorToolSettingsDeleted: 8,
+  connectorChatSettingsDeleted: 3,
+  connectorToolCallsDeleted: 12,
+}
+
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
   invalidateStorageCache: vi.fn(),
@@ -38,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   purgeUserArtifacts: vi.fn(),
   purgeUserDocuments: vi.fn(),
   purgeUserSkills: vi.fn(),
+  purgeUserConnectors: vi.fn(),
   artifactBlobStore: { delete: vi.fn() },
 }))
 
@@ -51,6 +60,10 @@ vi.mock('~~/server/utils/documents/cleanup', () => ({
 
 vi.mock('~~/server/utils/skills/cleanup', () => ({
   purgeUserSkills: mocks.purgeUserSkills,
+}))
+
+vi.mock('~~/server/utils/connectors/cleanup', () => ({
+  purgeUserConnectors: mocks.purgeUserConnectors,
 }))
 
 vi.mock('~~/server/utils/artifacts/blob-store', () => ({
@@ -151,6 +164,7 @@ describe('purgeUserData', () => {
     mocks.purgeUserArtifacts.mockResolvedValue(artifactPurgeCounts)
     mocks.purgeUserDocuments.mockResolvedValue(documentPurgeCounts)
     mocks.purgeUserSkills.mockResolvedValue(skillPurgeCounts)
+    mocks.purgeUserConnectors.mockResolvedValue(connectorPurgeCounts)
   })
 
   it('removes every R2 object in a single batched delete call', async () => {
@@ -180,6 +194,7 @@ describe('purgeUserData', () => {
       ...artifactPurgeCounts,
       ...documentPurgeCounts,
       ...skillPurgeCounts,
+      ...connectorPurgeCounts,
       fileCacheKeysInvalidated: 3,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
@@ -369,6 +384,7 @@ describe('purgeUserData', () => {
           ...artifactPurgeCounts,
           ...documentPurgeCounts,
           ...skillPurgeCounts,
+          ...connectorPurgeCounts,
           ...featureAccessCounts,
         },
       },
@@ -485,6 +501,40 @@ describe('purgeUserData', () => {
     expect(kv.delete).not.toHaveBeenCalled()
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
       accountPurge: { phase: 'skills-delete', userId: 14 },
+    }))
+  })
+
+  it('purges the user connectors with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 15, logger })
+
+    expect(mocks.purgeUserConnectors).toHaveBeenCalledWith(db, 15, logger)
+    expect(result).toEqual(expect.objectContaining(connectorPurgeCounts))
+  })
+
+  it('aborts and stays retryable when the connectors purge fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserConnectors.mockRejectedValueOnce(new Error('d1 down'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 16, logger })).rejects.toThrow(
+      'd1 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'connectors-delete', userId: 16 },
     }))
   })
 
@@ -632,6 +682,7 @@ describe('purgeUserData', () => {
       ...artifactPurgeCounts,
       ...documentPurgeCounts,
       ...skillPurgeCounts,
+      ...connectorPurgeCounts,
       fileCacheKeysInvalidated: 0,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
