@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   SKILL_ARGUMENT_HINT_MAX,
+  SKILL_IMPORTS_PER_HOUR,
+  SKILL_MAX_FILES,
+  SKILL_MAX_FILE_BYTES,
+  SKILL_MAX_PATH_DEPTH,
+  SKILL_MAX_PATH_LENGTH,
+  SKILL_MAX_RATIO,
+  SKILL_MAX_SKILL_MD_BYTES,
+  SKILL_MAX_TOTAL_BYTES,
+  SKILL_MAX_UPLOAD_BYTES,
+  SKILL_STAGE_TTL,
+  SKILLS_PER_USER,
   SKILL_INVOCATIONS_PER_MESSAGE,
   SKILL_RESERVED_SLASH_NAMES,
   SKILL_VERSIONS_KEPT,
@@ -16,6 +27,20 @@ describe('skills policy constants', () => {
     expect(SKILLS_MAX_USER_BYTES).toBe(50 * 1024 * 1024)
     expect(SKILL_ARGUMENT_HINT_MAX).toBe(100)
     expect(SKILL_INVOCATIONS_PER_MESSAGE).toBe(1)
+  })
+
+  it('keeps the import limits of the design', () => {
+    expect(SKILL_MAX_FILES).toBe(200)
+    expect(SKILL_MAX_TOTAL_BYTES).toBe(5 * 1024 * 1024)
+    expect(SKILL_MAX_FILE_BYTES).toBe(1024 * 1024)
+    expect(SKILL_MAX_SKILL_MD_BYTES).toBe(256 * 1024)
+    expect(SKILL_MAX_UPLOAD_BYTES).toBe(5 * 1024 * 1024)
+    expect(SKILL_MAX_RATIO).toBe(100)
+    expect(SKILL_MAX_PATH_LENGTH).toBe(200)
+    expect(SKILL_MAX_PATH_DEPTH).toBe(6)
+    expect(SKILLS_PER_USER).toBe(50)
+    expect(SKILL_IMPORTS_PER_HOUR).toBe(10)
+    expect(SKILL_STAGE_TTL).toBe(3600)
   })
 
   it('reserves the seven built-in command names', () => {

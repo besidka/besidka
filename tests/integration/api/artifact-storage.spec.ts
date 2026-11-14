@@ -144,7 +144,9 @@ describe('artifact viewer storage API', () => {
     vi.stubGlobal('getRouterParams', (event: { params: unknown }) => {
       return event.params
     })
-    vi.stubGlobal('getRequestHeader', () => undefined)
+    vi.stubGlobal('getRequestHeader', (_event: unknown, name: string) => {
+      return name === 'content-length' ? '100' : undefined
+    })
     vi.stubGlobal('readValidatedBody', async (
       event: { body: unknown },
       validate: (value: unknown) => unknown,
@@ -799,14 +801,22 @@ describe('artifact viewer storage API', () => {
       await expect(put('score', 1)).resolves.toBeDefined()
     })
 
-    it('does not refuse a request without a usable Content-Length',
-      async () => {
-        stubContentLength(undefined)
-        await expect(put('first', 1)).resolves.toBeDefined()
+    it('answers 411 for a write without a Content-Length', async () => {
+      const readBody = vi.fn()
 
-        stubContentLength('not-a-number')
-        await expect(put('second', 2)).resolves.toBeDefined()
-      })
+      stubContentLength(undefined)
+      vi.stubGlobal('readValidatedBody', readBody)
+
+      await expect(put('first', 1)).rejects.toMatchObject({ status: 411 })
+      expect(readBody).not.toHaveBeenCalled()
+      await expect(readRows(ownerId)).resolves.toHaveLength(0)
+    })
+
+    it('answers 400 for an unreadable Content-Length', async () => {
+      stubContentLength('not-a-number')
+
+      await expect(put('second', 2)).rejects.toMatchObject({ status: 400 })
+    })
 
     it('does not check the size on delete, reset or list', async () => {
       stubContentLength(String(ARTIFACT_STORAGE_BODY_MAX_BYTES * 10))
@@ -1120,7 +1130,9 @@ describe('artifact viewer storage API', () => {
       })
 
     it('does not read the share header for an owner', async () => {
-      const readHeader = vi.fn(() => 'some-token')
+      const readHeader = vi.fn((_event: unknown, name: string) => {
+        return name === 'content-length' ? '100' : 'some-token'
+      })
 
       vi.stubGlobal('getRequestHeader', readHeader)
 
