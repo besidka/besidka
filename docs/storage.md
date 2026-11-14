@@ -78,6 +78,14 @@ An account over its allowance (for example because artifacts now count) keeps
 everything. Every new write is refused until it is back under, and the Storage
 page clamps the bar at 100%.
 
+## Not counted yet: skills
+
+The skills tables (`skills`, `skill_versions`, `skill_files`, with `bytes`
+per skill) are already on `main` (#864), but no skill writer or route exists
+yet and skills are not in `STORAGE_CATEGORIES`. The layer that adds the
+writers registers a `skills` category as described under "Adding a category"
+and makes its writes call the guard.
+
 ## Cache
 
 `GET /api/v1/storage` is cached in KV for 60 seconds under
@@ -116,8 +124,9 @@ entry:
    `countSql(userId)` that are scalar subqueries (`select coalesce(sum(bytes),
    0) from skills where user_id = ...`).
 3. Add its label, icon, noun and action to `STORAGE_CATEGORY_META` in
-   `app/utils/storage-categories.ts`. The page and the MCP block skip ids the
-   page does not know, so this step is what makes it visible.
+   `app/utils/storage-categories.ts`. The page skips ids it does not know, so
+   this step is what makes the category visible there. The API, the guards and
+   the MCP block return every registered category regardless.
 4. Make its writers call `assertStorageAvailable` (or embed
    `userStorageUsedBytesSql` in an atomic statement) and
    `invalidateStorageCache` after writes and deletes.

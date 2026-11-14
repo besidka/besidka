@@ -169,7 +169,7 @@ const SKELETON_DELAY_MS = 300
 const SKELETON_ROWS = 5
 const FILE_MANAGER_TARGET_PATH = '/chats/new'
 
-const { data: stats, status, error, refresh } = useLazyFetch(
+const { data: stats, status, error, refresh } = await useLazyFetch(
   '/api/v1/storage',
   { key: 'profile-storage' },
 )

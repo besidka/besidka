@@ -198,6 +198,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/private-settings-storage.spec.ts',
     'tests/unit/server/mcp/tools/get-settings.spec.ts',
     'tests/unit/composables/artifacts-library.spec.ts',
+    'tests/unit/utils/ai/image-generation-errors.spec.ts',
+    'tests/unit/utils/code-execution/persist-container-files.spec.ts',
   ]
   const storagePageTests = [
     'tests/unit/pages/profile/storage.spec.ts',
