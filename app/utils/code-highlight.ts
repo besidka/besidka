@@ -130,14 +130,14 @@ export function findEmbeddedLanguageCandidates(code: string): Set<string> {
 }
 
 /**
- * Hands out shiki core highlighters that colour code exactly like the eager
+ * Hands out shiki core highlighters that color code exactly like the eager
  * web bundle while loading grammars on demand. Every root language gets its
  * own highlighter, built in one `loadLanguage` call from the root, the
  * grammars that inject into it and the languages the code embeds. Shiki
  * freezes a grammar's injections the first time any loaded grammar references
  * it, and a grammar compiled before a lazily embedded language arrived never
  * picks that language up, so a shared or incrementally grown registry would
- * colour a block differently depending on what the reader opened before.
+ * color a block differently depending on what the reader opened before.
  * When code names a new embedded language (a fence in Markdown, `lang="…"` in
  * Vue), the root's highlighter is rebuilt with it. Unknown languages resolve
  * to plain `text`.
@@ -146,7 +146,7 @@ export function createCodeHighlighterPool(
   options: CodeHighlighterPoolOptions,
 ): CodeHighlighterPool {
   const { languageImports } = options
-  const catalogue = Object.keys(languageImports)
+  const catalog = Object.keys(languageImports)
   const registrationImports = new Map<
     string,
     Promise<LanguageRegistration[]>
@@ -181,7 +181,7 @@ export function createCodeHighlighterPool(
   }
 
   /**
-   * Registrations of several language modules in catalogue order, each
+   * Registrations of several language modules in catalog order, each
    * grammar once. The eager bundle registered its languages in that order,
    * and the order decides the order of a scope's injections.
    */
@@ -189,7 +189,7 @@ export function createCodeHighlighterPool(
     ids: readonly string[],
   ): Promise<LanguageRegistration[]> {
     const sortedIds = [...new Set(ids)].sort((left, right) => {
-      return catalogue.indexOf(left) - catalogue.indexOf(right)
+      return catalog.indexOf(left) - catalog.indexOf(right)
     })
     const byName = new Map<string, LanguageRegistration>()
 

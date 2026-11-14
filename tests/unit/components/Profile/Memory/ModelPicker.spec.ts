@@ -124,7 +124,7 @@ describe('Profile/Memory/ModelPicker', () => {
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
-  it('centres the radio of the specific model row', async () => {
+  it('centers the radio of the specific model row', async () => {
     const { wrapper } = await mountPicker()
     const radio = wrapper.get('[data-testid="memory-model-specific"]')
 

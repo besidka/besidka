@@ -736,7 +736,7 @@ async function onCancelSharing(chatId: string) {
     setChatShared(chatId, false)
 
     nuxtApp.runWithContext(() => {
-      useSuccessMessage('Sharing cancelled')
+      useSuccessMessage('Sharing canceled')
     })
   } catch (exception) {
     const parsedException = parseError(exception)

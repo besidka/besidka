@@ -332,7 +332,7 @@ function buildArtifactTiles(state: ChatInputToolsState): ChatInputTile[] {
 /**
  * The settings that differ from their defaults, in display order. Nothing is
  * returned until the model's capabilities resolve, so a saved choice the
- * model cannot honour never paints for a frame.
+ * model cannot honor never paints for a frame.
  */
 export function buildChatInputTiles(
   state: ChatInputToolsState,

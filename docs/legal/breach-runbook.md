@@ -36,13 +36,13 @@ one can lead to a fine.
 ### 1.1 What counts as a breach
 
 A personal-data breach is a security incident that destroys, loses, changes,
-discloses or gives unauthorised access to personal data (GDPR Art. 4(12)). EDPB
+discloses or gives unauthorized access to personal data (GDPR Art. 4(12)). EDPB
 sorts them in three kinds. One incident can be more than one.
 
 | Kind | Meaning | Besidka example |
 |---|---|---|
 | Confidentiality | Someone who should not see the data can | A stolen session. A public share link to a private chat. A public R2 object. A leaked secret |
-| Integrity | Data changed without authorisation | An attacker edits chats or memory. A bad migration rewrites rows |
+| Integrity | Data changed without authorization | An attacker edits chats or memory. A bad migration rewrites rows |
 | Availability | Data is gone or unreachable | A migration that wipes tables (D1 section in `CLAUDE.md`). A lost database. A long outage |
 
 Personal data means anything about an identifiable person: email, name, chat
@@ -84,7 +84,7 @@ is not a breach. Record it anyway (section 7).
      (M5). Start with a time-bounded query:
      `['besidka-prod'] | where _time between (datetime(...) .. datetime(...)) | order by _time asc`
    - **Cloudflare audit log** (account) and **Security events** (zone). Note any
-     change, token or login you do not recognise.
+     change, token or login you do not recognize.
    - **GitHub** Actions runs and audit log, if a secret may have leaked through
      the repository, a workflow or a token.
 
@@ -138,7 +138,7 @@ Rotate it only if the secret itself leaked. It also encrypts every stored TOTP
 secret, every 2FA backup code, the `jwks.private_key` that signs MCP tokens, and
 the HMAC on pending OAuth links. Rotation makes the TOTP secrets and backup codes
 permanently undecryptable. Every 2FA user is locked out until you disable and
-re-enrol their 2FA. MCP tokens fail until the `jwks` rows are deleted and a new
+re-enroll their 2FA. MCP tokens fail until the `jwks` rows are deleted and a new
 key is minted (`docs/auth-security.md`, "Two-factor authentication"). Plan for
 that, rotate, then also run 2.3. Production secrets are Worker secrets
 (`wrangler secret put ... --env production`). Previews are separate

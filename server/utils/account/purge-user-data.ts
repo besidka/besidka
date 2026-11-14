@@ -89,7 +89,7 @@ export interface PurgeUserDataResult {
  *   - rows carrying a `userId` with no foreign key to `users`
  *     (`image_generation_locks`, `verifications` whose `value` is the id,
  *     and the feature access tables `feature_grants`, `feature_opt_ins`,
- *     `user_roles`; `feature_audit_log` rows are anonymised instead),
+ *     `user_roles`; `feature_audit_log` rows are anonymized instead),
  *   - `message_search` FTS5 rows: a standalone virtual table with no FK to
  *     `messages`, scoped only by an `owner` tag column, so a deleted user's
  *     indexed message text would otherwise sit until the hourly GC sweep

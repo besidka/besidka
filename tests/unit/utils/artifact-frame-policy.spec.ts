@@ -26,7 +26,7 @@ describe('buildArtifactFrameSrc', () => {
     expect(buildArtifactFrameSrc(ARTIFACTS_ORIGIN)).toBe(EXPECTED_POLICY)
   })
 
-  it('normalises the origin', () => {
+  it('normalizes the origin', () => {
     expect(buildArtifactFrameSrc(`${ARTIFACTS_ORIGIN}/v1/index.html?x=1`))
       .toBe(EXPECTED_POLICY)
     expect(toArtifactsFrameOrigin('http://localhost:8788/'))

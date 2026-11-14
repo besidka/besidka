@@ -105,7 +105,7 @@ function toJsonValue(value: unknown): JsonValue {
 
   if (normalized === undefined || !isJsonValue(normalized)) {
     throw new TypeError(
-      'Storage values must be JSON-serialisable and at most 100 KB.',
+      'Storage values must be JSON-serializable and at most 100 KB.',
     )
   }
 

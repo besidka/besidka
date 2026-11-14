@@ -5,7 +5,7 @@ export interface EscapeCsvCellOptions {
 }
 
 /**
- * Neutralises spreadsheet formula injection in one CSV field. Cells starting
+ * Neutralizes spreadsheet formula injection in one CSV field. Cells starting
  * with =, +, -, @, tab, CR, LF or their full-width variants (U+FF1D, U+FF0B,
  * U+FF0D, U+FF20) are changed. The default is the OWASP Excel-resistant form:
  * a tab prefix inside a quoted field. The apostrophe form is not reliable in

@@ -143,11 +143,11 @@
       </template>
       <div
         v-if="job.status === 'cancelled'"
-        data-testid="research-pending-cancelled"
+        data-testid="research-pending-canceled"
         class="flex items-center gap-2 text-base-content/70"
       >
         <Icon name="lucide:circle-off" size="16" />
-        <span>Research cancelled by user</span>
+        <span>Research canceled by user</span>
       </div>
       <div
         v-if="job.status === 'failed'"

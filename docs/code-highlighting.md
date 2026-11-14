@@ -40,27 +40,27 @@ generator (`scopeName("validate")`), not a grammar, and it was there before.
 
 `createJavaScriptRegexEngine()` (no WASM), themes
 `github-dark-high-contrast` and `github-light-high-contrast`, picked from the
-colour mode. Switching the colour mode re-tokenizes the block once.
+color mode. Switching the color mode re-tokenizes the block once.
 
 ### Languages load on first use
 
-A block's language is normalised (trimmed, lower case) and looked up in
+A block's language is normalized (trimmed, lower case) and looked up in
 `shiki/langs`, which knows every bundled language and alias. An unknown
-language renders as plain `text`. Today's chat therefore colours Go, Rust,
+language renders as plain `text`. Today's chat therefore colors Go, Rust,
 C#, Ruby, Kotlin, Swift, diff, TOML, Dockerfile, PowerShell and the other
 languages that were not in the web bundle.
 
 ### One highlighter per root language
 
-Shiki's registry has two behaviours that make one shared, incrementally
-grown highlighter colour the same block differently depending on which
+Shiki's registry has two behaviors that make one shared, incrementally
+grown highlighter color the same block differently depending on which
 blocks the reader opened first:
 
 1. A grammar captures its list of injections (for example ts-tags' `css\``
    and `sql\`` templates inside TypeScript) the first time *any* loaded
    grammar references it, and never again. Markdown and Vue reference
    TypeScript and JSX lazily, so after a Markdown block a later TypeScript
-   block lost its tagged-template colours.
+   block lost its tagged-template colors.
 2. A grammar compiled before a lazily embedded language arrives (a Python
    fence in Markdown) never picks that language up.
 
@@ -77,7 +77,7 @@ language, in one `loadLanguage` call, from:
   attributes, Pug/Haml `:filters`, YAML/TOML front matter.
 
 When a later block of the same root names a new embedded language, that
-root's highlighter is rebuilt with it. Registrations are passed in catalogue
+root's highlighter is rebuilt with it. Registrations are passed in catalog
 order, as the eager bundle did, because the order decides the order of a
 scope's injections.
 
@@ -96,7 +96,7 @@ block's `textContent` is exactly the source (copy-as-HTML in
 `app/utils/clipboard-html.ts` and the Copy button read the source, not the
 spans).
 
-- Before the language has loaded, the lines render as plain text. Colouring
+- Before the language has loaded, the lines render as plain text. Coloring
   replaces the spans inside each line without changing the text, so nothing
   moves.
 - While a block streams, only the appended text is fed to
@@ -114,7 +114,7 @@ spans).
   root sees in one session.
 - An edit that is not an append (mermaid Edit/Reset, regenerate), a theme
   switch or a rebuilt highlighter starts the tokenizer over; every line whose
-  colours did not change keeps its object and DOM node.
+  colors did not change keeps its object and DOM node.
 
 ## Parity with the old highlighter
 
@@ -128,10 +128,10 @@ time limit off (the first line a big grammar such as C++ sees can hit it
 while its regular expressions compile, which made the old highlighter's own
 output vary between runs). Result on 2026-11-09: 4,104 comparisons, 0
 differences. It also checks that TypeScript after Vue and Markdown keeps its
-tagged-template colours, that `CODE_LANGUAGE_INJECTORS` matches the
+tagged-template colors, that `CODE_LANGUAGE_INJECTORS` matches the
 injections the eager highlighter collects (read from shiki's private
 registry fields, so a shiki upgrade that moves them fails the spec loudly),
-and that a Go fence in Markdown, plain before, is now coloured.
+and that a Go fence in Markdown, plain before, is now colored.
 
 Re-run it on every shiki upgrade.
 
@@ -153,19 +153,19 @@ median of three runs.
 ### First highlight of a persisted chat
 
 TypeScript 50 and 300 lines, Go, Rust, diff and an unknown language in one
-message. Times are from the block appearing to its first coloured span.
+message. Times are from the block appearing to its first colored span.
 Cold is a fresh browser context; warm is a reload with the HTTP cache.
 
 | | Before | After |
 | --- | --- | --- |
 | TypeScript 50 lines, cold / warm | 4,198 / 3,936 ms | 643 / 286 ms |
 | TypeScript 300 lines, cold / warm | 4,198 / 3,936 ms | 643 / 286 ms |
-| Go, Rust, diff, cold / warm | never coloured | 392 / 157 ms |
+| Go, Rust, diff, cold / warm | never colored | 392 / 157 ms |
 | Long tasks while loading | 1, 3.9 s | 1, 205 ms (cold), 112 ms (warm) |
 | Shiki JavaScript loaded | 59 files, 3.48 MB, 489 KB gzip | 19 files, 877 KB, 150 KB gzip |
 | All JavaScript transferred (cold) | 1.32 MB | 1.00 MB |
 
-The 50 and 300 line blocks colour in the same frame: both wait for the same
+The 50 and 300 line blocks color in the same frame: both wait for the same
 load, and tokenizing 300 lines is a few milliseconds.
 
 ### Streaming a 1,047-line TypeScript block
@@ -176,7 +176,7 @@ load, and tokenizing 300 lines is a few milliseconds.
 | --- | --- | --- |
 | Wall time until the stream finished rendering | 43.0 s | 11.2 s |
 | Long tasks during the stream | 18, 41.8 s in total, longest 25 s | 2, 182 ms in total, longest 125 ms |
-| Last line coloured after the stream ended | 25 ms | 4 ms |
+| Last line colored after the stream ended | 25 ms | 4 ms |
 
 Before, `ShikiCachedRenderer` re-rendered every token on every chunk, so the
 page fell four times behind the stream and froze for seconds. The remaining
@@ -190,25 +190,25 @@ parsing, which both versions share.
 library, against about 389 KB (80 KB gzip) for shiki core, both themes and
 the TSX grammar. It was rejected because:
 
-- **It recolours finished lines while streaming.** rangi has no resumable
+- **It recolors finished lines while streaming.** rangi has no resumable
   tokenizer state, so every chunk re-tokenizes the whole block, and a later
   chunk can change an earlier line: in the evaluation's 300-line TSX sample
-  line 235 changed colour after it was complete, at every chunk size tried
+  line 235 changed color after it was complete, at every chunk size tried
   (1, 5 to 15 and 20 to 50 characters).
 - Weaker JSX and TSX: coarser token types than the TextMate grammars.
 - No themes that match the GitHub high-contrast pair this app uses, so every
-  colour would change.
+  color would change.
 - 46 languages against about 240.
 - About three months old at the time.
 
 ### When to revisit
 
 Look again if rangi (or another small highlighter) gains resumable state or
-otherwise never recolours finished lines while streaming, covers the
+otherwise never recolors finished lines while streaming, covers the
 languages people paste into chat (at least the old web bundle's 57 plus Go,
 Rust, C#, Ruby, Kotlin, Swift, diff, TOML, Dockerfile, PowerShell), can
-reproduce the GitHub high-contrast colours, and has a release history of a
-year or more. Also revisit the ts-tags companion if tagged-template colours
+reproduce the GitHub high-contrast colors, and has a release history of a
+year or more. Also revisit the ts-tags companion if tagged-template colors
 are judged not worth about 70 KB gzip on TypeScript and JavaScript blocks:
 drop `ts-tags` from `CODE_LANGUAGE_INJECTORS` and accept the parity
 difference for tagged templates.

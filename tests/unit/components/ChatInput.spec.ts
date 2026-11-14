@@ -1403,7 +1403,7 @@ describe('ChatInput.client', () => {
     ) {
       const textarea = wrapper.get('textarea')
 
-      await textarea.setValue('Analyse the data')
+      await textarea.setValue('Analyze the data')
       await textarea.trigger('keydown.enter')
       await flushPromises()
     }

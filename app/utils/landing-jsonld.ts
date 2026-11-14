@@ -40,7 +40,7 @@ export type LandingLdIds = {
   applicationId: string
 }
 
-// `new URL` normalises to a trailing slash so every schema URL is
+// `new URL` normalizes to a trailing slash so every schema URL is
 // byte-identical to the canonical app.vue emits.
 export function buildLandingLdIds(baseUrl: string): LandingLdIds {
   const siteUrl = new URL('/', baseUrl).href

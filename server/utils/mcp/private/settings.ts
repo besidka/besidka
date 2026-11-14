@@ -143,7 +143,7 @@ async function assertMemoryEnableDoesNotResumeExtraction(
 
 /**
  * Updates the display and chat preferences a connected app may change.
- * Settings that authorise spend or change who receives data (automatic
+ * Settings that authorize spend or change who receives data (automatic
  * memory extraction, the memory models and gateways, the TypeSafe AI roles,
  * the "about me" text, consents) are not in the schema, and a strict
  * schema refuses any key it does not list. Writes go through the same

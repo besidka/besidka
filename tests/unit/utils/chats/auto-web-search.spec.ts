@@ -132,7 +132,7 @@ beforeEach(() => {
 
 describe('shouldForceAutoWebSearch', () => {
   it.each([
-    'Summarise https://example.com/post',
+    'Summarize https://example.com/post',
     'What does besidka.com say about keys?',
     'What is the weather in Kraków?',
     'Latest Nuxt release notes',

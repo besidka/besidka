@@ -51,7 +51,7 @@ export function resolveCodeExecutionRates(
 /**
  * "Always record the count, conditionally record the cost". OpenAI bills one
  * container session per container the send used, at the configured rate.
- * Anthropic bills container time after an organisation-wide free allowance
+ * Anthropic bills container time after an organization-wide free allowance
  * that Besidka cannot see, and its responses carry no billable usage, so the
  * cost is `null` rather than a guess. Gemini adds no charge beyond tokens.
  */

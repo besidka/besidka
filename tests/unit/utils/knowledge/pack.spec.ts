@@ -2408,7 +2408,7 @@ describe('knowledge pack', () => {
       expect(projectRow().knowledge_pack_version).toBe(3)
     })
 
-    it('still honours the failure backoff when the interval is ignored', async () => {
+    it('still honors the failure backoff when the interval is ignored', async () => {
       kv.values.set(
         `knowledge-pack-backoff:${PROJECT}`,
         JSON.stringify({ count: 3, version: 2 }),

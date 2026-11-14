@@ -51,7 +51,7 @@ offers them to the model, and runs the calls the user approves.
 | Tool definition hash | SHA-256 over a tool's name, title, description, input schema and annotations. The per-tool baseline that approvals and drift checks use (section 8). |
 | Fingerprint | The output of `fingerprintTools` from `ai` (name to digest over description, input schema and title; annotations are **not** included). Used as one input of the definition hash. |
 | Drift | A tool whose definition hash differs from the stored baseline, or a tool that appeared since the last review. Drifted tools are hidden from the model until the user reviews them. |
-| Rug pull | A server that changes a tool's description or schema after the user approved it, to steer the model. Drift detection is the defence. |
+| Rug pull | A server that changes a tool's description or schema after the user approved it, to steer the model. Drift detection is the defense. |
 | Approval | A per-call user decision in the chat (Allow once, Allow in this chat, Always allow, Deny). Section 7. |
 | Connector consent | The per-connector GDPR consent (Art. 49(1)(a) transfer and Art. 9(2)(a) sensitive data) given on the connect screen, bound to the origin. |
 
@@ -149,7 +149,7 @@ Worker's network position), and the integrity of what the model reads.
 | T3 | Env or template interpolation in a user URL or header (LibreChat CVE-2026-32625: `${VAR}` from `process.env` interpolated into a user MCP URL leaked secrets) | Malicious user | Never interpolate anything into user-supplied URLs or headers. Registry entries with `{var}` or `${...}` in the URL are skipped. Header names validated by regex, values stored encrypted and sent verbatim | C-3, C-8 |
 | T4 | Token theft at rest | Database or backup leak | Access, refresh and header values encrypted with `useEncryptText` (`server/utils/encryption.ts`, `NUXT_ENCRYPTION_KEY`); full server URL encrypted (paths and queries can carry secrets); never logged, never returned by any API or MCP tool | C-2, C-4 |
 | T5 | Confused deputy and token passthrough: Besidka's own session or MCP token sent to a remote server, or one server's token sent to another | Malicious server | Credentials keyed per user × connector × issuer; a connector sends only tokens issued by its own authorization server (MCP authorization spec); RFC 8707 `resource` binds the token audience; `Authorization` stripped on any origin change; Besidka session cookies and `/mcp` tokens never leave the Worker | C-4 |
-| T6 | Spoofed host lookalike (`notlon.so`, `mcp.linear.app.evil.com`, IDN homograph) presented as a known service | Phishing link, malicious registry entry | The consent screen and every card show the punycode host in plain text; presets match by exact URL only, so a typed host never inherits preset trust; registry rows labelled "Not reviewed by Besidka"; no logos that could lend credibility | C-7, C-8 |
+| T6 | Spoofed host lookalike (`notlon.so`, `mcp.linear.app.evil.com`, IDN homograph) presented as a known service | Phishing link, malicious registry entry | The consent screen and every card show the punycode host in plain text; presets match by exact URL only, so a typed host never inherits preset trust; registry rows labeled "Not reviewed by Besidka"; no logos that could lend credibility | C-7, C-8 |
 | T7 | Tool rug pull: a tool's description or schema changes after approval to steer the model | Malicious or compromised server | Per-tool definition hash (section 8) computed on every `tools/list`; changed or added tools hidden until reviewed in the drift dialog; "Always allow" is bound to the hash and falls away on change; annotations are part of the hash because `fingerprintTools` omits them | C-2, C-5, C-6, C-7 |
 | T8 | Prompt injection through tool results | Content in a third-party system (an issue body, a Notion page) | Results wrapped as `<untrusted_tool_result connector="<slug>" tool="<name>">` with a system rule that the content is data; `UntrustedContentGuard` (`server/utils/ai/tool-loop.ts`) set after any connector result; write calls after untrusted content always ask (section 7); memory write lock extended; results never reach memory extraction or chat search. TypeSafe AI screening is **not** applied to connector results in v1 (pre-check Q13: private third-party data needs its own consent) | C-5, C-6 |
 | T9 | Cross-connector exfiltration: a result from connector A makes the model send A's data to connector B | Injected content | Any call to a connector other than the ones whose results the send has already read asks, read-only or not, "always" or not (section 7, rule F2) | C-6 |
@@ -181,7 +181,7 @@ and `classifyIp(address)`. Steps, in order:
 4. No userinfo (`credentials`).
 5. Lowercase the hostname and strip one trailing dot. IDN hosts are already
    punycode after parsing.
-6. Reject any IP literal (`ip-literal`): IPv4 after URL normalisation (so
+6. Reject any IP literal (`ip-literal`): IPv4 after URL normalization (so
    `0x7f.0.0.1`, `0177.0.0.1`, `2130706433` and `127.1` all arrive as
    `127.0.0.1` and are rejected) and every bracketed IPv6. Users give a
    hostname.
@@ -196,7 +196,7 @@ pinned; no hand-rolled regexes) and blocks `unspecified`, `loopback`,
 `private`, `linkLocal`, `uniqueLocal` (fc00::/7), `carrierGradeNat`
 (100.64/10), `multicast`, `broadcast`, `reserved`, and the inner address of
 IPv4-mapped, 6to4 and Teredo IPv6. Step 6 already rejects every literal, so
-`classifyIp` is defence in depth for any future path that sees an address.
+`classifyIp` is defense in depth for any future path that sees an address.
 
 ### 4.2 Fetch wrapper
 
@@ -235,7 +235,7 @@ encrypted and sent verbatim, never templated.
 ### 4.4 Test vectors
 
 The C-3 specs (`tests/unit/server/utils/net/safe-url.spec.ts`,
-`safe-fetch.spec.ts`) assert these results after URL normalisation.
+`safe-fetch.spec.ts`) assert these results after URL normalization.
 
 Rejected:
 
@@ -326,7 +326,7 @@ The card's **Connect** button runs this flow. All requests go through
    `connector-granted` with the host. Refusal keeps the connector
    disconnected. The gate consent (sign-up consent) must be current too, as
    for MCP private tools. Accessibility (WCAG 2.2 AA, pre-check gate item 7):
-   focus moves into the dialog and back, the warning is not carried by colour
+   focus moves into the dialog and back, the warning is not carried by color
    alone, the host is plain text, targets are at least 24 px, and the
    connection status after the callback is announced (`aria-live`). Consents
    are listed and withdrawable per connector on the Connectors page and in
@@ -662,7 +662,7 @@ generated SQL for `DROP TABLE` before applying). Defaults in application code
 cascade to `chats` on any table (this doc):** `purgeUserData`
 (`server/utils/account/purge-user-data.ts`) deletes every row explicitly, and
 a spec fails when a table with a `user_id` column is not covered. This follows
-the programme-wide planning decision "no `users` columns or FKs"
+the program-wide planning decision "no `users` columns or FKs"
 (`docs/agentic-capabilities-roadmap.md`, the precedent of `research_jobs` and
 the P0-2 feature tables) and meets the purpose of the pre-check's audit-table
 row (rows go with the account and are not deleted with the connector;
@@ -817,7 +817,7 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `github` | GitHub | `https://api.githubcopilot.com/mcp/` | `['header']` | "Use a fine-grained personal access token with the fewest permissions you need." |
 | `notion` | Notion | `https://mcp.notion.com/mcp` | `['oauth']` | "If your workspace limits MCP clients, ask the admin to approve Besidka." |
 | `linear` | Linear | `https://mcp.linear.app/mcp` | `['oauth', 'header']` | none |
-| `atlassian` | Atlassian | `https://mcp.atlassian.com/v2/mcp` | `['oauth', 'header']` | "Your Atlassian admin must allow besidka.com (or enable API tokens). Some tools use Rovo credits from your organisation." |
+| `atlassian` | Atlassian | `https://mcp.atlassian.com/v2/mcp` | `['oauth', 'header']` | "Your Atlassian admin must allow besidka.com (or enable API tokens). Some tools use Rovo credits from your organization." |
 
 Text names only, no icons. The catalog footer reads "Names belong to their
 owners. Besidka is not affiliated with them." No referral or affiliate
@@ -997,7 +997,7 @@ Coordinator decision of 2026-11-08, from pre-check question 9:
   per-connector opt-in with its own consent text that names OpenAI as an extra
   recipient of the token and the tool results, the ZDR and residency notes,
   that the remote server is contacted from OpenAI's infrastructure (IP
-  allowlists change), and the current `store` behaviour (30-day retention when
+  allowlists change), and the current `store` behavior (30-day retention when
   `store=true`). Stored as `connectors.native_opt_in_at`.
 
 When the native path applies to a tool (all must hold):
@@ -1117,7 +1117,7 @@ Design consequences:
    applies `redirect: 'manual'` with the section 4.2 rule (a 3xx where the SDK
    asked for `error` is surfaced as an error, which keeps the SDK's intent).
 3. **SSRF seams**: `validateAuthorizationServerURL` and `validateResourceURL`
-   call `parseSafeOutboundUrl`; the SDK's own endpoint guard is defence in
+   call `parseSafeOutboundUrl`; the SDK's own endpoint guard is defense in
    depth, not a replacement.
 4. **Refresh races**: `invalidateCredentials('tokens', { tokens })` must
    compare-and-delete by the token generation (`updated_at`).
@@ -1133,7 +1133,7 @@ Unverified (C-4 and C-6 settle them in their first commits):
   `zod` (it depends on `@ai-sdk/provider@4.0.37` and
   `@ai-sdk/provider-utils@5.0.76`; it also pulls `cross-spawn` for stdio, which
   must not end up in the Worker bundle).
-- Whether the SDK honours `ttlMs` and `cacheScope` from `tools/list`, or C-5
+- Whether the SDK honors `ttlMs` and `cacheScope` from `tools/list`, or C-5
   must read them from `listTools()` itself.
 - AI SDK v7 approval continuation semantics (section 7.2 fallback).
 - OpenAI `requireApproval` and MCP output items as they arrive through
@@ -1172,7 +1172,7 @@ term forbids third-party MCP clients or the preset text.
 | Alternative | Why not |
 | --- | --- |
 | Cloudflare Agents SDK `MCPClientManager` | Durable Object lock-in, state outside D1, no self-host path |
-| A connector marketplace or sponsored catalog | Curation and liability Besidka cannot carry; monetisation guard; four presets plus registry search cover discovery |
+| A connector marketplace or sponsored catalog | Curation and liability Besidka cannot carry; monetization guard; four presets plus registry search cover discovery |
 | Reusing `settings:*` scopes | Consent is stored by scope name, so the new tools would silently reach existing grants |
 | Probing the server when it is added | The pre-check requires no request at add time; it also lets an MCP client make Besidka contact arbitrary hosts |
 | Holding the stream open for approvals | Client disconnect kills the invocation and the lease is 120 s (section 7.2) |

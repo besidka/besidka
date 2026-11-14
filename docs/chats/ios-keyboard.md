@@ -65,7 +65,7 @@ a scrolled window with an `offsetTop` of 0 never adds height. A negative
   and the WebKit bug below where `offsetTop` is stale inside the handler.
 - The inset is forced to 0 unless the active element is a text-entry element
   (a textarea, a text-like input, or contenteditable content, not read-only or
-  disabled). This neutralises the iOS 26 drift where the visual viewport
+  disabled). This neutralizes the iOS 26 drift where the visual viewport
   values stay off after the keyboard has closed.
 - The inset is forced to 0 while the page is pinch-zoomed
   (`visualViewport.scale` above 1.01), because zooming in also shrinks the
@@ -96,7 +96,7 @@ lifted onto the keyboard is no longer in the home-indicator zone.
 
 The `device-keyboard:state-changed` hook still fires from focus and blur
 (150 ms blur debounce), and focus still calls `chat:scroll-to-bottom` when the
-composer is collapsed, so desktop behaviour and the sidebar
+composer is collapsed, so desktop behavior and the sidebar
 (`app/components/Sidebar.client.vue`) are unchanged.
 
 ### Message list
@@ -164,7 +164,7 @@ and a true pan with no scroll.
 ## Keyboard-aware dialogs
 
 Every `<dialog class="modal">` opened with `showModal()` is `position: fixed;
-inset: 0` over the full layout viewport, so `modal-middle` centred its box
+inset: 0` over the full layout viewport, so `modal-middle` centered its box
 behind the keyboard and `modal-bottom` docked it under the keyboard. One
 global rule fixes all of them instead of each component lifting itself.
 
@@ -223,7 +223,7 @@ global rule fixes all of them instead of each component lifting itself.
   `.modal`), so a shortened dialog left the strip behind the keyboard, the
   Safari URL pill and the accessory bar undimmed. The dialog therefore keeps
   its full height and the inset is taken from its grid content area with
-  `padding-bottom`: `place-items` docks or centres the box in what remains
+  `padding-bottom`: `place-items` docks or centers the box in what remains
   while the dim still covers everything.
 - **Why unlayered:** per-component utilities such as `max-h-[85dvh]`,
   `max-h-[80vh]`, `max-h-[90dvh]` and `h-[85dvh]` are layered Tailwind
@@ -267,7 +267,7 @@ global rule fixes all of them instead of each component lifting itself.
   dialog: on iOS they also scroll the window or pan the visual viewport.
 - **Phone bottom sheets with a text field:** the chat rename, project name,
   file rename and search dialogs are `modal modal-bottom sm:modal-middle`
-  like the rest of the app (they were `modal-middle`, which centred the box
+  like the rest of the app (they were `modal-middle`, which centered the box
   in the visible area and looked detached on a phone). Their box carries the
   `sheet-safe-padding` utility from `main.css`: below `sm` it pads the bottom
   by `max(1rem + --sab, env(safe-area-inset-bottom))`, and by `1rem` while
@@ -295,7 +295,7 @@ global rule fixes all of them instead of each component lifting itself.
   bottom corners equal to the top ones and goes back to the screen edge with
   square bottom corners, that a resize without a focused text field does not
   open the keyboard state, and that the chat composer lifts above the
-  keyboard. At 1280 by 800 it checks that the centred dialog keeps four
+  keyboard. At 1280 by 800 it checks that the centered dialog keeps four
   rounded corners and no `padding-bottom`. The fake covers the CSS and the
   wiring from the viewport reading to the `<html>` attribute, variables and
   lifted composer. It cannot cover real iOS quirks such as `offsetTop`
@@ -389,7 +389,7 @@ case only shows in the PWA):
 7. Open a dialog with a text field (rename a chat, the search popup, the file
    or note editors, the models sheet) and tap the field. The dialog must end
    above the keyboard: a bottom sheet docked on the keyboard, a middle dialog
-   centred in the visible part, nothing taller than the visible height.
+   centered in the visible part, nothing taller than the visible height.
 8. Dismiss the keyboard with the dialog open: it grows back with the keyboard
    instead of snapping.
 9. Send a message with the keyboard up: the composer follows the keyboard down
@@ -400,4 +400,4 @@ The unit specs (`tests/unit/composables/visual-viewport-inset.spec.ts`,
 `tests/unit/components/ChatInput.spec.ts`,
 `tests/unit/composables/chat-scroll-spacer.spec.ts`) cover the arithmetic,
 the settle schedule, the focus gate and the class matrix, but happy-dom has no
-keyboard, so only the simulator or a device shows the real behaviour.
+keyboard, so only the simulator or a device shows the real behavior.

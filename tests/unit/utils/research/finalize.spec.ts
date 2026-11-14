@@ -194,7 +194,7 @@ describe('finalizeResearchJob', () => {
     expect(mocks.getDecryptedProviderKey).not.toHaveBeenCalled()
   })
 
-  it('is a no-op when the job already terminated as failed or cancelled', async () => {
+  it('is a no-op when the job already terminated as failed or canceled', async () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db } = createDb()
 
@@ -204,7 +204,7 @@ describe('finalizeResearchJob', () => {
       vapid: {},
       logger,
     })
-    const { outcome: cancelledOutcome } = await finalizeResearchJob({
+    const { outcome: canceledOutcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob({ status: 'cancelled' }) as any,
       vapid: {},
@@ -212,7 +212,7 @@ describe('finalizeResearchJob', () => {
     })
 
     expect(failedOutcome).toBe('failed')
-    expect(cancelledOutcome).toBe('failed')
+    expect(canceledOutcome).toBe('failed')
   })
 
   it('marks the job failed when it has no provider job id', async () => {
@@ -449,7 +449,7 @@ describe('finalizeResearchJob', () => {
     }))
   })
 
-  it('marks the job cancelled when the provider reports it cancelled', async () => {
+  it('marks the job canceled when the provider reports it canceled', async () => {
     mocks.getResearchAdapter.mockReturnValue({
       status: vi.fn(async () => ({ status: 'cancelled' })),
     })

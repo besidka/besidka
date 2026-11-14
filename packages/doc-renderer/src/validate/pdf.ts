@@ -485,7 +485,7 @@ function tokenKindOfStream(objectTokens: Token[]): string | null {
 
 /**
  * Structural validation for PDFs. Besidka-made files and provider-made files
- * (D-7, D-8) go through the same path: every object is tokenised, object
+ * (D-7, D-8) go through the same path: every object is tokenized, object
  * streams are inflated under a byte cap and scanned too, and denied names are
  * matched after `#xx` decoding, so names hidden inside compressed object
  * streams are found where a byte grep sees nothing.

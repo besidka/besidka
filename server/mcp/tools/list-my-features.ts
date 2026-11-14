@@ -7,7 +7,7 @@ export default defineMcpTool({
   description: 'List the experimental Besidka features your account has '
     + 'access to, with whether you are opted in, whether the feature is '
     + 'active and any A/B variant. Opting in '
-    + 'authorises spending your API keys, so it is only possible on the '
+    + 'authorizes spending your API keys, so it is only possible on the '
     + 'Labs page, never through MCP. Requires signing in (settings:read).',
   annotations: {
     readOnlyHint: true,

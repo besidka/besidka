@@ -97,7 +97,7 @@ describe('composables/image-zoom createDoubleTapDetector', () => {
     expect(tap(detector, { timeStamp: 200 })).toBe(false)
   })
 
-  it('ignores taps whose pointer travelled like a pan', () => {
+  it('ignores taps whose pointer traveled like a pan', () => {
     const detector = createDoubleTapDetector()
     const first = pointer({ pointerId: 50 })
 
@@ -142,13 +142,13 @@ describe('composables/image-zoom createDoubleTapDetector', () => {
       .toBe(false)
   })
 
-  it('forgets a pending tap after a cancelled pointer', () => {
+  it('forgets a pending tap after a canceled pointer', () => {
     const detector = createDoubleTapDetector()
-    const cancelled = pointer({ pointerId: 70 })
+    const canceled = pointer({ pointerId: 70 })
 
     tap(detector, { timeStamp: 0 })
-    detector.onPointerDown(cancelled)
-    detector.onPointerCancel(cancelled)
+    detector.onPointerDown(canceled)
+    detector.onPointerCancel(canceled)
 
     expect(tap(detector, { timeStamp: 100 })).toBe(false)
   })

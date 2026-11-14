@@ -975,7 +975,7 @@ export default defineEventHandler(async (event) => {
   const parentRequestId = logger.getContext().requestId as string | undefined
   // Required on Cloudflare Workers — without this, the Axiom drain `fetch()`
   // initiated by `aiLogger.emit()` (running after the Response body finishes)
-  // gets cancelled when the Worker deallocates. waitUntil() asks the runtime
+  // gets canceled when the Worker deallocates. waitUntil() asks the runtime
   // to keep the Worker alive until the drain HTTP request resolves. This is
   // the same path evlog's own Nitro plugin uses for the request logger.
   type WaitUntilCtx = {

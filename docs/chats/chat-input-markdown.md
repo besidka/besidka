@@ -44,7 +44,7 @@ The handler reads `text/html` and `text/plain` from the clipboard.
    not in the chat page chunk. `preventDefault()` is called synchronously
    before the import; if the import or conversion fails or yields an empty
    string, the `text/plain` text is inserted instead.
-6. Plain text pastes also get bullet normalisation: a line that starts with
+6. Plain text pastes also get bullet normalization: a line that starts with
    optional whitespace, one of `•◦▪‣` and whitespace becomes `- Item`
    (`·` is not a bullet: it is a common middle dot in prose). Nesting is
    kept: the level is the larger of the glyph level (`•`/`‣` 0, `◦` 1, `▪` 2)
@@ -74,7 +74,7 @@ another field does not lose it.
 
 ## Long paste becomes a pasted text chip
 
-After conversion and normalisation, a text longer than
+After conversion and normalization, a text longer than
 `LONG_PASTE_MIN_CHARACTERS` (1200) or with more than `LONG_PASTE_MIN_LINES`
 (40) lines is not inserted into the textarea. The owner's calibration
 (2026-11-05): one 15-line, 330-character email stays text; three of them
@@ -180,7 +180,7 @@ Uploaded text files (`text/plain`, `text/markdown`) in the same row also use
 open the modal read-only with Copy, Open raw and Download (not loaded above
 `TEXT_FILE_VIEW_MAX_BYTES`). The file picker in `Files/Modal/Upload.client.vue`
 adds `.md,.markdown,.txt` to its `accept` list next to the MIME types, because
-some systems have no MIME mapping for `.md` and would grey those files out;
+some systems have no MIME mapping for `.md` and would gray those files out;
 the extensions are listed only while a text format is accepted.
 
 ### Why not a file, and why not a message part
@@ -362,7 +362,7 @@ bold, and no bubble tint.
 Why not `navigator.clipboard.write`: Chromium sanitizes the `text/html` of an
 async `ClipboardItem` by re-serializing it in the page's style context. Every
 element gets its computed style inlined: `font-family: Nunito`, an `oklch()`
-colour, the bubble's `background-color`, `margin: 0; padding: 0` and Tailwind
+color, the bubble's `background-color`, `margin: 0; padding: 0` and Tailwind
 preflight's `list-style: none`. A copy of one short message put about 9.7 KB of
 that on the pasteboard, and Mail showed a pink background, Nunito, no bullets
 and no paragraph spacing.
@@ -402,7 +402,7 @@ Apple Mail and Google Docs):
 The rules:
 
 - Everything sits in one `<div style="font-size: 12px">`: no font family and no
-  colour, so the target keeps its own face.
+  color, so the target keeps its own face.
 - A paragraph is a `<div>`. Consecutive top-level blocks get a `<div><br></div>`
   spacer between them, except between a paragraph and a list directly after it
   (the list hangs under its intro line). After a list the spacer is present.
@@ -436,7 +436,7 @@ Native selection copy is intercepted by `@copy` on the root element of
 `Chat/Message.vue`, which both `/chats/[slug]` and `/shared/[slug]` use. It
 acts only when every range of the selection lies inside one `.js-message-text`;
 a selection that touches the avatar, reasoning, tools or two messages keeps
-the browser's behaviour. Each range is `cloneContents()`-ed, wrapped back in
+the browser's behavior. Each range is `cloneContents()`-ed, wrapped back in
 its list or table when the selection started inside one (an ordered list keeps
 its numbers through `start`), cleaned, and rendered to plain text by
 `domToPlainText`: `- ` for bullets, `1. ` numbering, indented nested lists,

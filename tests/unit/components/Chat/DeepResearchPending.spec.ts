@@ -565,7 +565,7 @@ describe('Chat/DeepResearchPending', () => {
       .toBe(true)
   })
 
-  it('shows cancelled text with no buttons at all', async () => {
+  it('shows canceled text with no buttons at all', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'cancelled' }),
@@ -573,11 +573,11 @@ describe('Chat/DeepResearchPending', () => {
       },
     })
 
-    const cancelledBlock = wrapper.get(
-      '[data-testid="research-pending-cancelled"]',
+    const canceledBlock = wrapper.get(
+      '[data-testid="research-pending-canceled"]',
     )
 
-    expect(cancelledBlock.text()).toBe('Research cancelled by user')
+    expect(canceledBlock.text()).toBe('Research canceled by user')
     expect(wrapper.find('[data-testid="research-cancel"]').exists())
       .toBe(false)
     expect(wrapper.find('[data-testid="research-dismiss"]').exists())

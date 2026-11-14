@@ -104,7 +104,7 @@ What makes the consent valid (Arts. 4(11), 7, 9(2)(a); EDPB 05/2020):
   does not qualify. Two-stage verification is offered as a further option, not
   a requirement. **[C]**
 - **Specific and informed.** It must name the categories, the purpose
-  (personalising future answers), the storage location, the recipients (the
+  (personalizing future answers), the storage location, the recipients (the
   provider you chat with), and the right to withdraw. **[C, Art. 7/13]**
 - **Separate from the ToU.** Art. 7(2) requires it to be "clearly
   distinguishable" from other matters. **[C]**
@@ -116,7 +116,7 @@ What makes the consent valid (Arts. 4(11), 7, 9(2)(a); EDPB 05/2020):
 
 **Does a UI toggle plus confirmation dialog suffice?** Yes, if the dialog
 contains a positive consent statement the user actively confirms (an unticked
-checkbox plus a "Turn on" button, or a button labelled "I consent") and a
+checkbox plus a "Turn on" button, or a button labeled "I consent") and a
 per-user receipt is stored. A bare toggle without the dialog is weaker,
 because flipping a switch is a "clear affirmative action" but not obviously an
 "express statement". **[I]**
@@ -168,7 +168,7 @@ extraction plus LLM adds criteria 8 and 10. A one-person operator can write a
 proportionate DPIA of 6-10 pages. Art. 36 prior consultation only applies if
 high residual risk remains. **[I]**
 
-### 1.3 Art. 30 records, retention, minimisation
+### 1.3 Art. 30 records, retention, minimization
 
 - **Art. 30.** The under-250 exemption in Art. 30(5) does **not** apply when
   processing "is not occasional" or "includes special categories". **[C]**
@@ -178,7 +178,7 @@ high residual risk remains. **[I]**
   or the account is deleted. Disclose the 30-day D1 Time Travel residue.
   Suggested addition: a periodic "review your sensitive memories" prompt, e.g.
   every 12 months. **[I]**
-- **Minimisation (Art. 5(1)(c), Art. 25).** The existing caps (30 entries,
+- **Minimization (Art. 5(1)(c), Art. 25).** The existing caps (30 entries,
   2 KB) help. The bigger lever is **what the extractor writes**. Store the
   preference, not the sensitive reason ("vegetarian", not "vegetarian for
   religious reasons"). **[I]**
@@ -207,7 +207,7 @@ Inference widens Art. 9:
   because health can be inferred by "mental association or inference".
   Explicit consent is needed. **[S]**
 - **Third parties.** The `people` category will capture "my wife's
-  chemotherapy" or "my brother is gay". The user's consent cannot legitimise
+  chemotherapy" or "my brother is gay". The user's consent cannot legitimize
   *someone else's* Art. 9 data. Recital 18 keeps Besidka in scope even where
   the user acts privately (see 1.6). **Recommend: special-category data about
   identifiable third parties is never-store, regardless of the toggle.**
@@ -264,17 +264,17 @@ already treats providers as independent controllers with no Besidka contract.
 
 | Provider | Special-category / profiling restrictions | Training on API data |
 |---|---|---|
-| **Anthropic** | Usage Policy (version effective **12 Nov 2026**, upcoming): no collecting private information "such as ... health data" *without permission*. No compiling profiles "for sale, licensing, or disclosure to third parties" without awareness and agreement. No *biometric* categorisation to infer Art. 9 traits. Chatbots must disclose AI. **[C]** The version in force today was not read; check it via the page's version history. **[unverified]** A memory the user consents to, for the user's own use, is not caught. **[I]** | No, for API. 30-day deletion per the Privacy Center. **[S]** BAA only for HIPAA (US); irrelevant here. **[I]** |
+| **Anthropic** | Usage Policy (version effective **12 Nov 2026**, upcoming): no collecting private information "such as ... health data" *without permission*. No compiling profiles "for sale, licensing, or disclosure to third parties" without awareness and agreement. No *biometric* categorization to infer Art. 9 traits. Chatbots must disclose AI. **[C]** The version in force today was not read; check it via the page's version history. **[unverified]** A memory the user consents to, for the user's own use, is not caught. **[I]** | No, for API. 30-day deletion per the Privacy Center. **[S]** BAA only for HIPAA (US); irrelevant here. **[I]** |
 | **OpenAI** | Usage policies (in force: **29 Oct 2025**; new version effective **20 Nov 2026**): no attempts to "aggregate, monitor, profile, or distribute individuals' private or sensitive information *without their authorization*". **Never** use for "evaluation or classification of individuals based on their social behavior, personal traits, or biometric data (including social scoring, profiling, or inferring sensitive attributes)". **[C]** See 2.1. | Not by default; logs up to 30 days (Privacy Policy, already cited). **[S]** |
 | **Google Gemini API** | Additional Terms (last updated 2026-04-28): no clinical practice or medical advice. Use is "for professional or business purposes, not for consumer use". **[C]** | Unpaid: Google may use content and human reviewers may read it; "Do not submit sensitive, confidential, or personal information". **But for EEA, Switzerland and UK users the Paid data terms "apply to all Services, including ... unpaid quota".** API Clients for EEA/CH/UK users may use "only Paid Services". **[C]** The current Privacy Policy's free-tier warning omits the EEA rule. BYOK-wide issue: 2.2. |
 | **xAI** | No special-category clause found. **[S]** | Not without permission; 30-day retention; ZDR enterprise-only. DPA as processor for the customer. **[S]** |
 | **DeepSeek** | Privacy Policy (10 Feb 2026): "do not provide sensitive Personal Data". Data stored **in the PRC**. Lists model training with an opt-out right. Says it does not cover end-user data of developer apps, whose developers are controllers. EU representative: Prighter. **[C]** | Unclear for API traffic. **[S]** Garante block (Jan 2025); Berlin DPA DSA notice (27 Jun 2025) calling the China transfer unlawful. **[S]** |
-| **Moonshot (Kimi)** | OpenPlatform Privacy Policy (30 Apr 2025), contracting entity **MOONSHOT AI PTE. LTD., servers in Singapore**. "User content" is used to optimise and train models. Uploading "sensitive information" is listed as a "high-risk operation". Besidka calls `api.moonshot.ai`. **[C]** | Yes, per the policy text. **[C]** |
+| **Moonshot (Kimi)** | OpenPlatform Privacy Policy (30 Apr 2025), contracting entity **MOONSHOT AI PTE. LTD., servers in Singapore**. "User content" is used to optimize and train models. Uploading "sensitive information" is listed as a "high-risk operation". Besidka calls `api.moonshot.ai`. **[C]** | Yes, per the policy text. **[C]** |
 | **Alibaba Qwen** | Besidka calls `dashscope-intl.aliyuncs.com` (**Singapore**, ap-southeast-1). **[C]** | "Will never use your data for model training" (Model Studio FAQ); 30-day retention at most. **[S]** |
-| **OpenRouter** | ToS (31 Aug 2026): the user decides fitness for "sensitive" use. Prompt logging (opt-in) grants a broad licence. Some upstream models "may store or train on your Inputs". Routes to any vendor, including PRC-hosted. **[C]** | OpenRouter: no; upstream: varies. **[C]** |
+| **OpenRouter** | ToS (31 Aug 2026): the user decides fitness for "sensitive" use. Prompt logging (opt-in) grants a broad license. Some upstream models "may store or train on your Inputs". Routes to any vendor, including PRC-hosted. **[C]** | OpenRouter: no; upstream: varies. **[C]** |
 | **Vercel / Cloudflare AI Gateway** | No special-category clauses found. Cloudflare logs prompts to the user's dashboard by default (Privacy Policy, already cited). Vercel routes to the vendor behind the model. **[S]** | Stated no. **[S]** |
 
-**Model behaviour.** Anthropic's memory-tool documentation says model refusals
+**Model behavior.** Anthropic's memory-tool documentation says model refusals
 are not a control. This is the basis for 3.5 in the architecture doc. **[C, as
 recorded in repo]** No provider documentation was found saying a model refuses
 to process user-volunteered health content in ordinary chat. Do not rely on
@@ -388,7 +388,7 @@ The same key later also powers per-role checks beyond memory (Auto web
 search, a memory pre-filter that sends chat text, injection screening,
 re-ranking, a share personal-data check and past-chat retrieval; seven roles in
 all, `JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`, all on once the key is
-saved, each with its own switch, and each failing toward the behaviour without
+saved, each with its own switch, and each failing toward the behavior without
 the key). Those are
 DPIA risk rows 21 to 24, and the wording question they raise is open in
 `docs/legal.md`.
@@ -402,7 +402,7 @@ DPIA risk rows 21 to 24, and the wording question they raise is open in
   "removes any sensitive items already saved". Government ID numbers, criminal
   history, financial account numbers and immigration status are "never saved to
   memory, even if you ask". Not available to HIPAA or public-sector
-  organisations. Deleting a chat does not delete derived memory. **[C,
+  organizations. Deleting a chat does not delete derived memory. **[C,
   support.claude.com]** No public statement on EU-specific timing for Claude
   memory was found. **[unverified]**
 - **ChatGPT.** OpenAI says ChatGPT is "trained not to proactively remember
@@ -446,7 +446,7 @@ Summary of the gaps, for the Privacy Policy:
 4. Replace "Special category data": delete "I have no lawful basis to process
    it", state the basis and safeguards, keep the advice as advice.
 5. Replace the profiling sentence: memory is profiling under Art. 4(4); state
-   that it only personalises answers for the user, that no decisions are made
+   that it only personalizes answers for the user, that no decisions are made
    about the user, and that Art. 22 does not apply.
 6. Recipients and transfers: sensitive memory goes only to allowlisted
    providers; name the excluded providers and why.

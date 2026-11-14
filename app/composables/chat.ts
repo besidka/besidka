@@ -393,7 +393,7 @@ export function shouldDisplayRegenerate(
 // streaming endpoint 400s for DR models. `userModel` is a global preference
 // (see useUserModel), decoupled from the chat it currently renders, so it can
 // drift after a mid-session model switch — the model check alone is not
-// robust. A present research job of ANY status (including a cancelled one
+// robust. A present research job of ANY status (including a canceled one
 // still held in memory this session) is a model-independent second signal,
 // so a present job or a DR model selected either one marks this a research
 // context that must not auto-regenerate through the normal chat endpoint.
@@ -1281,9 +1281,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   // Union gate (see shouldBlockGenerationRecovery above): blocks recovery
   // whenever the globally-selected model is a DR model, OR this chat still
-  // holds a research job of any status (running, failed, or a cancelled job
+  // holds a research job of any status (running, failed, or a canceled job
   // kept in memory for the rest of the session — see dismissResearchJob's
-  // callers, which intentionally never clear a cancelled job).
+  // callers, which intentionally never clear a canceled job).
   const shouldBlockGenerationRecovery = computed<boolean>(() => {
     return isResearchModelSelected.value || researchJob.value !== null
   })

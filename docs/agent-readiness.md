@@ -57,7 +57,7 @@ ready, a manual step is open), **not done** (deliberate, reason given).
 | ARD catalog | `/.well-known/ai-catalog.json` from `server/routes/.well-known/ai-catalog.json.get.ts` | done | ARD `ai-catalog` |
 | Poppy | `/.well-known/poppy.json`, web-only declaration | done in production; fails on preview hosts by design, see [Preview scan](#preview-scan-2026-10-29) | Informational |
 | A2A Agent Card (`/.well-known/agent-card.json`) | Nothing | not applicable | Besidka is not an A2A agent: it exposes no agent that other agents delegate tasks to |
-| Commerce: x402, MPP, UCP, ACP | Nothing | not applicable | Besidka sells nothing; see `docs/legal/monetisation-readiness.md` |
+| Commerce: x402, MPP, UCP, ACP | Nothing | not applicable | Besidka sells nothing; see `docs/legal/monetization-readiness.md` |
 
 The module also serves its own `/.well-known/skills/index.json`. That is an
 older format than the v0.2.0 index. Both stay: the module's one is harmless

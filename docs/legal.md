@@ -289,7 +289,7 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   **not** on `user_settings`, **not** in `CONSENT_DB`, and **not** a copy of the
   gate record above. Two things it is, and it must not be read as anything
   more:
-  - an **authorisation instruction** to Besidka to disclose the approved data
+  - an **authorization instruction** to Besidka to disclose the approved data
     to that client (the Art. 6(1)(b) basis, a judgment call: `docs/legal/dpia.md`
     section 6, item 13), and
   - the carrier of the **Art. 9(2)(a) explicit consent** for sensitive data in
@@ -396,7 +396,7 @@ list that document. The failure message prints the new hash.
 
 **The hash covers only the markdown body.** The frontmatter (`title`,
 `description`, `summary`, `updatedAt`) is excluded and line endings are
-normalised, so a date change and the git-derived date never trigger the gate.
+normalized, so a date change and the git-derived date never trigger the gate.
 The lists generated from registries (`::account-email-list`,
 `::legal-change-history`) are directives in the body, so growing
 `shared/utils/account-emails.ts` or `LEGAL_NOTICES` never moves a hash and a new
@@ -416,7 +416,7 @@ Material, so a `LEGAL_NOTICES` entry is required:
 - a change in which rights users have, or how to exercise them;
 - a change of controller or contact;
 - in the Terms: new obligations or restrictions on users, fees or
-  monetisation, changes to liability, grounds for termination or suspension,
+  monetization, changes to liability, grounds for termination or suspension,
   or dispute rules.
 
 Minor, so record the new hash as `minor` with a note:
@@ -527,7 +527,7 @@ retention (until the account is deleted).
   every notice in its send window oldest first, and both stay in the change
   history. The dismissal race above stays harmless because the two ids are
   dismissed through separate banners, never together. A component test pins
-  the newest-wins behaviour with the real registry.
+  the newest-wins behavior with the real registry.
 - **Three active notices (decided 2026-11-08).** `2026-12-artifacts`
   (Privacy Policy and Terms) is published at 2026-11-15T07:00Z, one hour after
   `2026-11-experimental-features`, so that both take effect on 2026-12-19, the
@@ -696,8 +696,8 @@ defensible while the service generates no revenue at all:
   address satisfies both. Art. 12(2) preserves existing ECD duties, it does not
   import an address duty onto someone outside their scope.
 
-Consequences of monetising in any form (ads, sponsorship, donations, a paid
-tier, data monetisation):
+Consequences of monetizing in any form (ads, sponsorship, donations, a paid
+tier, data monetization):
 1. The activity becomes `zarobkowa`, so UŚUDE Art. 5(2) attaches and a postal
    address MUST be published.
 2. The operator may become a `przedsiębiorca` (KC Art. 43-1), which creates a
@@ -708,13 +708,13 @@ tier, data monetisation):
    implementing act's fines can reach the operator (see "2026-10-28 compliance
    review: decisions").
 
-So: before adding any monetisation, revisit this file, the Privacy Policy and
+So: before adding any monetization, revisit this file, the Privacy Policy and
 the Cookie Policy.
 
-The ordered checklist for monetising (business form, virtual office address,
+The ordered checklist for monetizing (business form, virtual office address,
 tax, VAT and merchant of record, consumer and subscription law, DMCA agent,
 legal text, consent bump, and the repo files to change) is
-`docs/legal/monetisation-readiness.md`. Owner decision 2026-10-28: nothing of
+`docs/legal/monetization-readiness.md`. Owner decision 2026-10-28: nothing of
 the kind is published for now.
 
 ## Status of the underlying research
@@ -790,7 +790,7 @@ re-prompted.
   transactional or relationship messages, never marketing. The notices are
   listed with a legitimate-interests basis (Art. 6(1)(f)). A new email kind
   means editing that section, the legal-basis row and Art. 30 row 20.
-- **DSA: stop self-labelling as an "online platform".** The Terms said "I host
+- **DSA: stop self-labeling as an "online platform".** The Terms said "I host
   user content and treat myself as an online platform". It now says Besidka
   hosts content users choose to publish and voluntarily follows the DSA
   notice-and-action rules (Arts. 11, 12, 14, 16, 17, 18), with the existing
@@ -815,14 +815,14 @@ re-prompted.
     law yet.
   - *Even if the DSA applies.* A natural person is at most a micro enterprise,
     exempt from Arts. 15 and 19 to 28 except Art. 24(3).
-  - Monetisation breaks all of this at once: the "no revenue" premise carries
+  - Monetization breaks all of this at once: the "no revenue" premise carries
     the postal-address conclusion, the DSA fining conclusion and the
     non-`przedsiębiorca` position. Revisit this file before adding any.
 - **DMCA / copyright.** The Terms have a "Copyright complaints" section (after
   illegal-content reporting): notice elements from 17 U.S.C. §512(c)(3)(A),
   removal and notice to the user, and a way to say a removal was a mistake
   (reply to the statement of reasons or write to the contact address). The
-  §512(g)(3) counter-notice procedure is not offered and no US safe harbour is
+  §512(g)(3) counter-notice procedure is not offered and no US safe harbor is
   claimed; the user's name and contact details go to the complainant only with
   the user's consent. The Terms also have a repeat-infringement rule (material
   repeatedly removed on copyright notices: sharing restricted, account
@@ -830,8 +830,8 @@ re-prompted.
   warning. The Privacy Policy has a "Reports and notices about content"
   section, a legal-basis row (Art. 6(1)(c)/(f)) and a retention row: 12 months,
   24 months for the note on a copyright removal (compliance review, follow-ups).
-  - **Decided 2026-10-28 (owner): no DMCA designated agent, no US safe harbour
-    claimed; revisit only if a JDG is opened.** The §512(c)(2) safe harbour
+  - **Decided 2026-10-28 (owner): no DMCA designated agent, no US safe harbor
+    claimed; revisit only if a JDG is opened.** The §512(c)(2) safe harbor
     needs a registered designated agent.
     Registration is at dmca.copyright.gov through Login.gov, $6 per designation,
     renewed every 3 years. Under 37 CFR 201.38(b)(1)(i) the **service
@@ -844,13 +844,13 @@ re-prompted.
     Terms stays as published, written to be complete without agent details;
     nothing in the text names an agent or a registration. DSA Art. 6
     notice-and-takedown is the primary shield. Register when a business
-    address exists (`docs/legal/monetisation-readiness.md` section 4.7), then
+    address exists (`docs/legal/monetization-readiness.md` section 4.7), then
     add the agent to the Terms.
-- **Owner decision 2026-10-28: no monetisation, donations or earning
-  intentions are published.** Same reason as the DMCA decision: monetising
+- **Owner decision 2026-10-28: no monetization, donations or earning
+  intentions are published.** Same reason as the DMCA decision: monetizing
   would require a published address (UŚUDE Art. 5) and a business form, and
   the owner cannot open a JDG at present. What would have to happen first is
-  in `docs/legal/monetisation-readiness.md`.
+  in `docs/legal/monetization-readiness.md`.
 - **Owner decision 2026-10-28: existing shared chats keep their saved
   settings.** There is no bulk change to their indexing or other flags; the
   new OFF defaults apply to new shares only. Most existing shares were made

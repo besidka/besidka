@@ -1,5 +1,5 @@
 export const MEMORY_IMPORT_PROMPT = [
-  'I am moving my notes about myself to another assistant. List everything you have remembered about me as plain text, organised by topic.',
+  'I am moving my notes about myself to another assistant. List everything you have remembered about me as plain text, organized by topic.',
   '',
   'Format:',
   '- Start each topic on its own line with a short title (for example Career, Dev tools, Hobbies, Languages, Projects), followed by a bullet list of the details.',

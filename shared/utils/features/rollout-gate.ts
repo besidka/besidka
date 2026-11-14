@@ -42,13 +42,13 @@ export function parseFeatureRolloutOverride(
     return 'off'
   }
 
-  const normalised = String(value ?? '').trim().toLowerCase()
+  const normalized = String(value ?? '').trim().toLowerCase()
 
-  if (OVERRIDE_ON_VALUES.has(normalised)) {
+  if (OVERRIDE_ON_VALUES.has(normalized)) {
     return 'on'
   }
 
-  if (!normalised || normalised === 'auto') {
+  if (!normalized || normalized === 'auto') {
     return 'auto'
   }
 

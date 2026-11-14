@@ -172,7 +172,7 @@ describe('History/DocumentRow', () => {
     expect(wrapper.emitted('preview')?.[0]).toEqual([item])
   })
 
-  it('never uses a colour fill on the row chrome',
+  it('never uses a color fill on the row chrome',
     async () => {
       const wrapper = await mountRow(createItem())
 

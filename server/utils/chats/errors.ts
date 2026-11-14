@@ -543,7 +543,7 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
     case 'research-timeout':
       return 'The research run timed out.'
     case 'research-cancelled':
-      return 'The research run was cancelled.'
+      return 'The research run was canceled.'
     case 'research-start-failed':
       return 'Could not start the research job.'
     case 'clarification-failed':
@@ -586,7 +586,7 @@ function getDefaultChatWhy(
     case 'research-timeout':
       return 'The research run exceeded the maximum allowed time.'
     case 'research-cancelled':
-      return 'The research job was cancelled before it finished.'
+      return 'The research job was canceled before it finished.'
     case 'research-start-failed':
       return errorMessage
     case 'clarification-failed':

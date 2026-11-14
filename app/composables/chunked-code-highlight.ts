@@ -96,7 +96,7 @@ function isCacheOverLimit(): boolean {
 }
 
 /**
- * Keeps finished colours in least-recently-used order, bounded both by the
+ * Keeps finished colors in least-recently-used order, bounded both by the
  * number of entries and by the total number of lines, so a few very large
  * artifacts cannot hold tens of megabytes of tokens. The newest entry always
  * stays.
@@ -195,12 +195,12 @@ function waitForFrame(): Promise<void> {
 }
 
 /**
- * Colours finished code in blocks of lines without blocking the page. The
+ * Colors finished code in blocks of lines without blocking the page. The
  * plain text renders at once, one text node per block. Each animation frame
  * then tokenizes blocks for up to `TOKENIZE_BUDGET_MS`, carrying the grammar
  * state from block to block, and swaps at most `CODE_BLOCKS_PER_FRAME`
- * coloured blocks in. A block that is already coloured keeps its object, so
- * it never renders again. Finished colours are cached per `cacheKey` (or the
+ * colored blocks in. A block that is already colored keeps its object, so
+ * it never renders again. Finished colors are cached per `cacheKey` (or the
  * code itself), language and theme; reopening the same version replays them
  * without tokenizing. For code that is still streaming in use
  * `useCodeStream`.
@@ -303,11 +303,11 @@ export function useChunkedCodeHighlight(
 
       const startedAt = performance.now()
       const next = [...blocks.value]
-      let colouredThisFrame = 0
+      let coloredThisFrame = 0
 
       while (
         index < next.length
-        && colouredThisFrame < CODE_BLOCKS_PER_FRAME
+        && coloredThisFrame < CODE_BLOCKS_PER_FRAME
         && performance.now() - startedAt < TOKENIZE_BUDGET_MS
       ) {
         const block = next[index]!
@@ -325,7 +325,7 @@ export function useChunkedCodeHighlight(
         blockTokens[index] = tokens
         next[index] = { ...block, tokens }
         index++
-        colouredThisFrame++
+        coloredThisFrame++
       }
 
       blocks.value = next

@@ -20,7 +20,7 @@ rewritten or marked as history.
 
 Goal: make Besidka feel like Claude.ai / ChatGPT memory — a chat can know what
 other chats know, "tell me everything you know about me" works, projects get
-categorised memory plus knowledge files — without blowing the per-turn token
+categorized memory plus knowledge files — without blowing the per-turn token
 budget (the user pays every token with their own key) and with hard,
 code-enforced compliance rules for sensitive data.
 
@@ -53,7 +53,7 @@ Gaps and bugs found:
 | G2 | **Fixed in W1.** Refresh is one synchronous HTTP request over **all** messages of **all** chats in the project, unbounded input, unbounded output. | `memory.ts:122-251` |
 | G3 | **Fixed in W1.** A Worker dying mid-refresh leaves `refreshing` forever; refresh returns early on that status and nothing sweeps it. Now a live KV lease decides, and a `refreshing` row without one is reported as `stale` on read. Final writes never override `disabled`, a message arriving mid-pass keeps the project `stale` (detected by comparing `memoryDirtyAt` with its start-of-pass snapshot; a second message in the same second as the existing marker is missed, an accepted limitation), and the 20-chat window never wipes existing memory when it yields nothing. The lease get/put is not atomic and the first finisher deletes the key (no owner token), an accepted limitation shared with the generation guard. | `memory.ts`, `memory-lease.ts` |
 | G4 | **Fixed in W1.** Anthropic/xAI/DeepSeek/Moonshot/Qwen-only users get `unavailable`. | `resolveProjectMemoryModel` |
-| G5 | Memory is not editable, not categorised, no provenance, on by default and silently spends the user's key. | `MemoryCard.vue`, schema default `idle` |
+| G5 | Memory is not editable, not categorized, no provenance, on by default and silently spends the user's key. | `MemoryCard.vue`, schema default `idle` |
 | G6 | No account-level memory, no "about me", no custom instructions. **Fixed:** account memory in W4; the free-text "About me" is now the account `profile` entry (section 7, "About me becomes a profile entry"). | `user_settings` |
 | G7 | No cross-chat path at all outside a project's blob; FTS index is never exposed to the model. | — |
 | G8 | No project files; files have no `projectId`. | `server/db/schemas/files.ts` |
@@ -430,7 +430,7 @@ the reason the opt-in is out of v1 (section 7).
   an entry is deleted only when extraction is its sole author.
 - Chat search tool **on** by default (no new data processing — it reads the
   user's own chats on demand, nothing stored).
-- Existing project memory: harmonised with the above — existing projects keep
+- Existing project memory: harmonized with the above — existing projects keep
   their current state; new projects follow the account toggle.
 
 ### 3.9 Model choice (owner direction 2026-10-25)
@@ -507,7 +507,7 @@ it is saved, not when it is used.
 
 Accepted consequence: the `chat` step can pick an expensive model, since the
 owner's rule is that the default is the model the user is chatting with, not
-the cheapest one. Only the `fallback` step optimises for cost. A user who
+the cheapest one. Only the `fallback` step optimizes for cost. A user who
 wants cheap memory work sets an explicit model.
 
 Resolution is two-phase. `resolveMemoryModel` only decides and logs, and
@@ -529,7 +529,7 @@ removal (section 7) changed a point, the passage says so.
 Branch `feat/w3-memory-contract-8bbac3`. W3 shipped the contract only: nothing
 outside the settings API read `memoryEnabled`, `chatSearchEnabled`,
 `memoryIncludeSensitive`, `aboutMe` or `useAccountMemory`, and no code
-created `memory_entries` rows (W4 changed that, see 3.11). The one behavioural change is project memory
+created `memory_entries` rows (W4 changed that, see 3.11). The one behavioral change is project memory
 (resolver and redaction, below).
 
 **Settings semantics decided in W3**
@@ -681,7 +681,7 @@ Known limits (deliberate, covered or implied by the spec):
 - A hyphenated word of 20+ characters after `sk-` matches the key shape.
 - The topical classes above are extractor-label only (see the table note).
 
-**Project memory and the gate (history).** In W3 the summarise and synthesise
+**Project memory and the gate (history).** In W3 the summarize and synthesize
 prompts of the blob pipeline gained one sentence forbidding card, bank,
 government/tax ID, passport and credential data, and both outputs were redacted
 (a hit became `[redacted]`, the rest of the text was kept). The Art. 9 control
@@ -722,7 +722,7 @@ in it, it is never injected once entries are in use, and an unconverted blob
   ownership (3.11).
 - The fallback tries OpenAI first, a provider the user may not have chatted
   with; it only needs a saved key. A chosen or chat-derived model may be
-  expensive (3.9); only the fallback optimises for cost.
+  expensive (3.9); only the fallback optimizes for cost.
 
 ### 3.11 As built (W4, 2026-10-25)
 
@@ -852,7 +852,7 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
   +512 tokens per scope: Ukrainian with 30 + 15 entries is 4120 untrimmed and
   2222 after `preferences-body`, `descriptions-60` and `descriptions-40`.
   `overBudget` exists but cannot happen within the entry caps.
-- Entry text is neutralised: `<` and `>` (and look-alikes) become `‹` and `›`,
+- Entry text is neutralized: `<` and `>` (and look-alikes) become `‹` and `›`,
   titles and descriptions are collapsed to one line (titles are also
   single-line at the schema level), so an entry cannot close `<memory>` or
   forge an index line. Legacy `special` entries are always skipped,
@@ -938,7 +938,7 @@ hidden. Anything else is a 404 tool error.
   the user's current message explicitly asks, never because of web, file,
   search or chat content, and never to store instructions for the model.
   **Code-enforced request gate:** `userRequestQuote` (at most 300 characters,
-  at least `min(12, length of the normalised message)` and never below 4, so a
+  at least `min(12, length of the normalized message)` and never below 4, so a
   short message such as "forget it" must be quoted whole) must occur in the
   user's current message after NFKC, lowercase and stripping whitespace,
   punctuation, symbols and the modifier apostrophe U+02BC.
@@ -1021,7 +1021,7 @@ already removes project-scope entries through the cascade FK.
 entries (`projectUsesMemoryEntries`: `memoryMigratedAt` set or any entry scoped
 to the project) the route passes no blob to `buildProjectSystemPrompt`
 (`resolveLegacyProjectMemory`, `server/utils/projects/legacy-memory.ts`).
-Project instructions and name stay. A failing lookup keeps the old behaviour
+Project instructions and name stay. A failing lookup keeps the old behavior
 (blob injected) and logs `attributes.projectMemory.dedupeError`. It does not
 depend on `memoryEnabled`: with memory off and entries present, no project
 memory is injected (paused). The export also carries `memoryExtractionEnabled`.
@@ -1097,7 +1097,7 @@ deterministic only: no LLM ever labels or infers sensitive attributes, and the
   `special` entries from the injected index and the tools. None of these exist
   in the code.
 
-**Other behaviour fixed in the review pass**
+**Other behavior fixed in the review pass**
 
 - `PATCH /api/v1/memory/entries/[id]` is the user's own edit (and the chip's
   Undo), so it re-marks the entry `origin: 'user'`: a hand-edited extraction
@@ -1219,7 +1219,7 @@ what the prompt only requests:
 - **Evidence grounding (addition to the original design)**: each create or
   update op must carry a verbatim quote that occurs in the window's user text
   (or the legacy blob); otherwise it is dropped as `ungrounded`. This is the
-  code-level defence against assistant echo of web/tool/file content.
+  code-level defense against assistant echo of web/tool/file content.
 - **Extraction only edits what extraction wrote**: update and delete apply only
   to `origin = 'extraction'` rows. Entries written by the user, a tool or an
   import are shown to the model as locked context and are never changed by the
@@ -1314,7 +1314,7 @@ model) and nothing is saved. `aboutMe` accepts only `null`.
 - Branching a chat copies messages: share-branched chats ignore messages
   within 30 s of the chat's creation, and any message older than the chat is
   ignored (own-chat branches keep original timestamps). W4 may also stamp
-  `memory_extracted_at` in the branch endpoints as defence in depth.
+  `memory_extracted_at` in the branch endpoints as defense in depth.
 - Turning extraction (or `memoryEnabled`) back on records the cut-over
   `memory_extraction_enabled_at` and stamps the chats that may hold activity
   from the off period (never stamped, or stamped before their last activity),
@@ -1346,7 +1346,7 @@ model) and nothing is saved. `aboutMe` accepts only `null`.
   history, by narrow deterministic detectors (3.17); live location and
   "other" stay extractor-only. Art. 9 data is classified by the server (3.11), not by
   the extractor, and extraction drops flagged ops (3.14). User-pasted text that
-  contains instructions is still user-role text (prompt-level defence only).
+  contains instructions is still user-role text (prompt-level defense only).
 - The extraction sweep is not run on Previews (no crons); use `extract-now`.
 
 ### 3.13 Project memory as entries (W6b, 2026-10-26)
@@ -1475,7 +1475,7 @@ by sweep passes, together with `memoryUpdatedAt` and status `ready`);
 `legacyMemory` is the unconverted blob while `memory_migrated_at` is null and the blob is non-blank (also when entries already exist: show it read-only as "Earlier project memory (not converted yet)").
 `POST .../refresh` returns the card, so no second call is needed. Disabling
 (`PATCH { enabled: false }`) keeps the entries and the blob, stops injecting
-and refreshing (the old behaviour cleared the blob; deleting entries is left to
+and refreshing (the old behavior cleared the blob; deleting entries is left to
 the user); enabling refreshes only when memory is on. Tool writes into a disabled
 project are refused too.
 
@@ -1527,7 +1527,7 @@ other path may store such data.
   (3.11); the About-me migration (section 7) runs the same gate and keeps rejected text in `about_me`.
 - The classifier is merged and wired in, so there is no ship gate on it. Its
   recall limits (names, slang, unusual phrasing; see 3.11) apply to extraction
-  as well; the prompt instruction remains the first line of defence.
+  as well; the prompt instruction remains the first line of defense.
 
 ### 3.15 Rich memory, backfill and import (W6c, 2026-10-26)
 
@@ -1558,7 +1558,7 @@ topic granularity like Claude (Career, Dev tools, Hobbies, Projects/areas, one
 People entry per person), and shows the existing bodies (index body budget
 12000 -> 48000 chars, ordered by `updatedAt` desc, the rest `bodyHidden`).
 New op **`append`**: only the new bullet lines; the server drops lines already
-present (normalised compare) and appends the rest within the category cap
+present (normalized compare) and appends the rest within the category cap
 (`cap-reached` otherwise); it works on editable entries even when the body is
 hidden, so merging no longer depends on the body budget. `update` is a full
 rewrite for corrections only; `create` for a topic without an entry. Per pass:
@@ -1584,7 +1584,7 @@ against extraction, whose same-topic `create` collides as `duplicate`.
 
 **Grounding (fix of the "I'm vegetarian" drop).** The preview dropped "I'm
 vegetarian" as `ungrounded` because the evidence floor was 20 chars and 3
-words, and typographic apostrophes (`I’m`) did not match. The normaliser now
+words, and typographic apostrophes (`I’m`) did not match. The normalizer now
 maps typographic quotes, dashes and ellipses to ASCII. Rule: the quote must be
 a verbatim substring of the user's text (or, for the legacy blob, of the blob,
 for `create` only) and, in both branches, shares a content token (>= 4 letters
@@ -1622,7 +1622,7 @@ comes from `resolveBackfillWindow`, without any schema change:
 - No finished job yet: a fresh window, every eligible chat created up to now,
   from the newest.
 - The latest finished job stopped before its queue ran out (it reached the
-  chat cap, was cancelled, or failed): the new job **continues** it. It keeps
+  chat cap, was canceled, or failed): the new job **continues** it. It keeps
   that job's `created_before` and starts after its `cursor_activity_at` /
   `cursor_chat_id`, which are copied into the new row, so no chat is paid for
   twice and older history stays reachable 200 chats at a time. The sheet
@@ -1649,7 +1649,7 @@ comes from `resolveBackfillWindow`, without any schema change:
 
 Passes run with
 `trigger: 'backfill'`: gate `memoryEnabled !== false` and
-`memoryExtractionEnabled === true` (a job is cancelled when either is switched
+`memoryExtractionEnabled === true` (a job is canceled when either is switched
 off, or when the user resets memory), project chats skipped, the chat's history
 up to its current `memory_extracted_at` (the opt-in stamp, so the pre-opt-in
 history; messages after the stamp belong to the forward sweep; history the
@@ -1659,7 +1659,7 @@ messages / 36000 chars of a chat, `memory_extracted_at` advanced only when it
 was NULL, no attempted/failures stamping. The cron path uses a 150 s model
 timeout, the request-bound drive endpoint at most 90 s (or the remaining step
 budget). A D1 step claim (`lease_until`, one atomic `UPDATE ... RETURNING`)
-serialises the cron ticks and the drive endpoint; it is released only while
+serializes the cron ticks and the drive endpoint; it is released only while
 it still holds the value that step wrote, so a step that outlived its lease
 never clears the claim of the step that took the job over. Memory read by the
 model is redacted of never-store data first (all chat passes, not only
@@ -1675,7 +1675,7 @@ background path was the `*/5` sweep at 3 chats per tick, about 5.5 hours for
   `NUXT_MEMORY_BACKFILL_SWEEP_ENABLED`, `NUXT_MEMORY_BACKFILL_SWEEP_MAX_RUNTIME_MS`
   = 45 s) runs `sweepBackfillJobs` every minute. The `*/5` sweep still
   services backfill from the budget its normal batch leaves; at :00, :05 and
-  so on both fire and the job lease serialises them.
+  so on both fire and the job lease serializes them.
 - `sweepBackfillJobs` reads up to `backfillJobsPerTick` (20) running jobs,
   least recently progressed first, and serves them round-robin in slices of
   `backfillChatsPerJobSlice` (5) chats, each slice its own leased step, until
@@ -1790,7 +1790,7 @@ API (all session-scoped; POSTs have the cross-site guard):
   would cut the per-chat overhead.
 
 **Import from another assistant** (`POST /api/v1/memory/import`). Body
-`{ text }` (<= 60000 chars). It is the legacy-blob pass generalised
+`{ text }` (<= 60000 chars). It is the legacy-blob pass generalized
 (`extractMemoryFromText`): pasted text is user-provenance and grounds create,
 append and update; never-store text is redacted before anything is sent;
 chunks of 24k chars, at most 3 per request, one shared deadline (90 s), the
@@ -1798,7 +1798,7 @@ rest reported as `truncated` with `consumedChars` so the client can resubmit
 `text.slice(consumedChars)` (the cooldown is written before the first model call
 to stop parallel POSTs and released again when the result is `truncated`, so
 the continuation is not blocked); up to 20 ops per chunk; no `delete` ops; the same compliance gates, caps
-and merge behaviour; created rows get `origin: 'import'`, updated rows keep
+and merge behavior; created rows get `origin: 'import'`, updated rows keep
 theirs; `user` and `tool` rows stay locked. Requires `memoryEnabled !== false`
 only (explicit action), 60 s per-user cooldown after a model call (429), 409
 when no model resolves or an import is running, 400 when nothing storable is
@@ -1870,19 +1870,19 @@ handled separately.
   writes `[redacted]` into extraction input, import chunks and the legacy
   `projects.memory` blob. It is now 0% on those inputs; four space-separated
   4-digit numbers stay at about 6% because that is a real card layout.
-- Topical detectors: the street rule needs a house number plus a capitalised
+- Topical detectors: the street rule needs a house number plus a capitalized
   street name (a case-preserving view), or an address cue ("my address:",
-  "I live at", "mieszkam przy" plus a capitalised name, "мешкаю за
+  "I live at", "mieszkam przy" plus a capitalized name, "мешкаю за
   адресою"). Permit, protection, refugee, green card, visa and immigration
   status terms need a first-person or possessive status statement ("my work
   permit expires", "I have temporary protection"). Criminal-record terms need
   a possessive or "has a criminal record".
-- Classifier normalisation: Latin letters lose their accents after
+- Classifier normalization: Latin letters lose their accents after
   decomposition (`diabétes`), Polish diacritics and Cyrillic letters are
   kept, and look-alikes inside a mixed-script word are folded to the word's
   main script in both directions (`hіv`, `дiабет`); the `heroinę` escape still
   works.
-- Smoke-test gaps (2026-10-26): a 48-snippet labelled smoke test (EN, PL,
+- Smoke-test gaps (2026-10-26): a 48-snippet labeled smoke test (EN, PL,
   UK) showed 11 gate errors, now all fixed and pinned in
   `compliance-evasion.spec.ts` as a table with the expected label of every
   snippet. Political opinion: party votes without "for" ("I vote Labour",
@@ -2037,7 +2037,7 @@ stored or echoed.
 
 The public explainer for all of memory, including this check, is `/memory`
 (`content/guides/memory.md`, `docs/seo.md` "The memory explainer"). Its copy
-quotes the behaviour documented in 3.1 to 3.19, so re-check it when any of
+quotes the behavior documented in 3.1 to 3.19, so re-check it when any of
 those change.
 
 TypeSafe AI Jev is an optional helper that runs on the user's own TypeSafe AI
@@ -2063,7 +2063,7 @@ The memory check (next section) is the first of seven roles that share one
 client in `server/utils/jev/`. The same key powers all of them. Each role is
 assistive. Six of the seven fail toward what Besidka does without the key: when
 TypeSafe AI errors, times out or is rate-limited, the answer is the built-in
-behaviour. The exception is `pastChatRetrieval` (J6), which fails toward
+behavior. The exception is `pastChatRetrieval` (J6), which fails toward
 acting: without a key it does not pre-search, but a Jev failure makes it
 search. The "Failure direction" column below is the single statement of this
 for every role; each role's section repeats it in the same words.
@@ -2156,7 +2156,7 @@ throws on a Jev failure:
 (`null` or a partial role map). `PATCH` takes `typesafeRoles` as a strict
 partial map of booleans, merged into the stored object with SQLite
 `json_patch` in the same UPDATE, so two toggles saved at once cannot drop each
-other; `null` resets every role to on. The `memoryChecks` role is honoured by
+other; `null` resets every role to on. The `memoryChecks` role is honored by
 `resolveMemoryJevChecker`.
 
 #### Memory checks (`memoryChecks`)
@@ -2497,7 +2497,7 @@ The logic lives in `server/utils/memory/extract-prefilter.ts`.
 Jev screens third-party text with the policy `JEV_INJECTION_SCREENING`
 (`i2_attack` at or above 0.3). The core is `screenTextsForInjection` in
 `server/utils/jev/injection-screening.ts`, and every caller fails toward
-Besidka's behaviour without a key.
+Besidka's behavior without a key.
 
 - **Chunking.** Each text is cut at line breaks into chunks of at most
   `maxChunkTokens` (2,000), estimated with the Cyrillic-aware knowledge
@@ -2564,7 +2564,7 @@ status `ready` and text are sent, and the key is read once per request.
   within half of its runtime budget: one KV list page of at most
   `rescreenItemsPerSweep` (10) keys, users one at a time, items one at a
   time. A user without a current legal consent is deferred (no Jev call);
-  without a key or with the role off the keys are dropped (the behaviour
+  without a key or with the role off the keys are dropped (the behavior
   without a key); an item that is gone, foreign or no longer `ready` is
   dropped; otherwise `rescreenQueuedItem` screens the next
   `rescreenMaxCallsPerItem` (12, at most 4 waves, so about 10 s at the
@@ -2622,7 +2622,7 @@ PDF's extractor produced, never the attached pages, so:
 - A `no-text` or `failed` PDF (a scan, a broken file) has no text to screen,
   yet "Send as PDF" stays available for it, because sending the pages is the
   only way such a file reaches the model (transcription is not built).
-  Refusing it would change behaviour for users without a TypeSafe AI key.
+  Refusing it would change behavior for users without a TypeSafe AI key.
   Instead the item sheet marks it **"Not screened for prompt injection"**
   (`knowledge-item-sheet-native-pdf-unscreened`), and a `ready` PDF's toggle
   says screening reads the extracted text only. The `/memory` guide and the
@@ -2637,7 +2637,7 @@ A spec asserts the lock with an all-clean screening.
 **Adversarial residual risk** (DPIA risk 24). Text written to manipulate Jev
 into flagging a legitimate document can only cause a review prompt for a file
 (one click puts it back) or withhold one web result with a visible note. It
-can never delete content. A false negative leaves the existing defences: the
+can never delete content. A false negative leaves the existing defenses: the
 write lock, the data-not-instructions wrapping and the memory gate.
 
 #### J4: Re-ranking (`rerank`)
@@ -2693,7 +2693,7 @@ therefore never has fewer entries than the BM25 order would have had.
 and is lazy and memoized: the key and the role settings are read on the first
 search that has two or more candidates, so a send whose tools never search
 costs no D1 read. The route builds it after `requireLegalConsent`, and
-`resolveJevRoleModel` already honours the `rerank` toggle.
+`resolveJevRoleModel` already honors the `rerank` toggle.
 
 **Safe direction.** Without a key, with the role off, with fewer than two
 candidates, on 401, 403, 429, 529, a timeout, a network error, a refusal, an
@@ -2719,7 +2719,7 @@ which is not part of this role. The `/memory` guide FAQ says the same.
 **Fragile seams.** `JEV_RERANK` wording and `dropBelow` come from a synthetic
 eval of 8 queries with passages of one or two sentences; re-tune them on the
 logged scores. The `search_chats` snippet is only 32 FTS5 tokens
-(`SEARCH_CHATS_SNIPPET_TOKEN_COUNT`), so the relevance judgement there sees
+(`SEARCH_CHATS_SNIPPET_TOKEN_COUNT`), so the relevance judgment there sees
 less text than the eval did; widening it is a separate change.
 
 #### J5: Share check (`sharePiiCheck`)
@@ -2896,7 +2896,7 @@ generation) while **Search and reference chats** is on in the settings.
 #### Delta audit fixes (#560)
 
 The 2026-10-26 security audit of the Jev roles (J0 to J6) was fixed in #560.
-The behaviour is described in the section of the role it changed; this is the
+The behavior is described in the section of the role it changed; this is the
 index, so a reader can see the whole set in one place.
 
 | Finding | Fix | Described in |
@@ -2963,10 +2963,10 @@ special-category data, W6c), 3.16 (W5), 3.17 and 3.18 to 3.19, and
   `server/api/v1/chats/[slug]/project-context/*`.
 
   *Implemented* (branch `feat/w1-project-memory-fixes-e3c95e`, no schema
-  change; behaviour documented in `docs/history/projects.md`): G1 injects the
+  change; behavior documented in `docs/history/projects.md`): G1 injects the
   last-known-good memory for every status except `disabled`; G3 replaces the
   sticky `refreshing` status with a 120 s KV lease and 30 s heartbeat; G2
-  bounds the refresh (20 chats considered, 6 summarised per refresh,
+  bounds the refresh (20 chats considered, 6 summarized per refresh,
   per-transcript, per-message, per-summary and 4k-char memory caps, leftovers
   continue on the next refresh); G4 flags one `forProjectMemory` model per
   direct provider. Decisions: the provider order is a cost ranking (openai
@@ -3234,7 +3234,7 @@ under `memoryCompliance` with origin `about-me-migration`, as everywhere else.
    entry or removes it. Truncating would silently drop what the user wrote.
    Alternative: raise the `profile` cap or split the text into several entries.
 2. **An existing profile entry is never overwritten.** Merging two texts is a
-   judgement the server should not make; the user decides on the Memory page.
+   judgment the server should not make; the user decides on the Memory page.
 3. **Memory-off users are not migrated.** The migration runs when they switch
    memory on (the next GET). While memory is off nothing about the user is
    injected, the leftover text included.
@@ -3283,7 +3283,7 @@ attempted/failures).
 
 **Why.** No spend and no memory creation without consent: a background model
 call on the user's own API key, reading their chats, is only acceptable after an
-explicit opt-in. The earlier owner rule favoured not regressing the old
+explicit opt-in. The earlier owner rule favored not regressing the old
 automatic project refresh; that was withdrawn for exactly this reason. Model for
 every run is unchanged (`resolveMemoryModel`, project scope for project chats),
 and the compliance gate applies like everywhere else.
@@ -3449,7 +3449,7 @@ larger interactive steps (10 instead of 2) and from a 3 s drive cooldown.
 index before the model call and applies its ops against that snapshot.
 `extract-apply.ts` drops an update whose base changed meanwhile as `conflict`
 and refuses a create whose slug a parallel pass just took, so two passes over
-neighbouring chats (often the same topic) would silently lose ops or write
+neighboring chats (often the same topic) would silently lose ops or write
 near-duplicates; sequential passes see each other's entries and merge. The
 cursor and the single `retried_chat_id` attempt marker also assume one chat in
 flight. Parallelism across different users' jobs is safe for memory but needs

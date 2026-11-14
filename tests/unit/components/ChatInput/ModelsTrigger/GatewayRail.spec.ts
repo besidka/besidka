@@ -34,7 +34,7 @@ function mountRail(
 }
 
 describe('ChatInput/ModelsTrigger/GatewayRail', () => {
-  it('renders one labelled button per gateway', async () => {
+  it('renders one labeled button per gateway', async () => {
     const wrapper = await mountRail()
     const vercel = wrapper.get('[data-testid="models-picker-gateway-vercel"]')
     const openrouter = wrapper.get(

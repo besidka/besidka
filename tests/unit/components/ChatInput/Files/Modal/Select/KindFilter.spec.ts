@@ -39,7 +39,7 @@ describe('ChatInput/Files/Modal/Select/KindFilter', () => {
         .toBe(1)
     })
 
-  it('never uses a button or a colour fill', async () => {
+  it('never uses a button or a color fill', async () => {
     const wrapper = await mountSuspended(KindFilter, {
       props: { modelValue: 'document' },
     })

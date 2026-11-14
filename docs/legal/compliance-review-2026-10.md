@@ -21,8 +21,8 @@
 | 3 | Session replay and CIPA | Not applicable today | Nothing | Do not add session replay or ad trackers without revisiting |
 | 4 | Marketing email and CAN-SPAM | Not applicable. All mail is transactional | Privacy Policy email list corrected | None |
 | 5 | Subscriptions and California ARL | Not applicable. Nothing is sold | Nothing | Revisit before any paid tier |
-| 6 | Uploads and the DMCA | Decided 2026-10-28: no agent; no safe harbour claimed; revisit only if a JDG is opened. Notice process published | New Terms section "Copyright complaints", Privacy Policy "Reports and notices about content", share defaults off, retention 12 and 24 months | None |
-| 7 | DSA | Untested argument that it does not apply. Followed voluntarily | Stopped self-labelling as an "online platform" | Counsel check |
+| 6 | Uploads and the DMCA | Decided 2026-10-28: no agent; no safe harbor claimed; revisit only if a JDG is opened. Notice process published | New Terms section "Copyright complaints", Privacy Policy "Reports and notices about content", share defaults off, retention 12 and 24 months | None |
+| 7 | DSA | Untested argument that it does not apply. Followed voluntarily | Stopped self-labeling as an "online platform" | Counsel check |
 | 8 | AI Act Art. 50 | Partly done 2026-11-04: provider C2PA kept byte-identical, an IPTC XMP tag (model id only) added otherwise, visible badge stays; no own signature or watermark, so xAI, Qwen and unverified gateway images likely fall short (see 3.2) | Image marking module `server/utils/ai/image-provenance.ts`, called before both image paths save to R2; Terms sentences on the machine-readable mark | Decide before 2.12.2026 what to do for providers and gateway models with no C2PA or watermark (see 3.2) |
 | 9 | TCO Regulation 2021/784 | Watch | Nothing | Keep the contact address monitored |
 | 10 | GDPR Art. 33 breach procedure | Done 2026-11-04: runbook written (`docs/legal/breach-runbook.md`) | Runbook: 72-hour clock, first-hour containment, risk table, UODO and user notices, processor notices, private breach record | Get a Profil Zaufany if not already held. Keep the breach record privately, not in this repository |
@@ -139,12 +139,12 @@
   not apply. The Terms already say there is no payment and describe what would
   change if that ever did.
 - **Owner.** Revisit before any paid tier, together with `docs/legal.md` "Why no
-  postal address is published". Monetisation changes several conclusions at once.
+  postal address is published". Monetization changes several conclusions at once.
 
 ### 2.6 User uploads, share pages and the DMCA
 
 - **Risk.** Users upload files and publish chats that can contain others'
-  copyrighted material. The US safe harbour for hosting (17 U.S.C. 512(c))
+  copyrighted material. The US safe harbor for hosting (17 U.S.C. 512(c))
   protects a service provider that has a designated agent registered with the
   Copyright Office, a notice-and-takedown procedure and a repeat-infringer
   policy.
@@ -157,7 +157,7 @@
     repeat-infringement rule (material repeatedly removed on copyright notices:
     sharing restricted, account suspended or terminated, a statement of reasons
     each time) and a false-notice warning. It names no agent, claims no
-    registration and no US safe harbour, and does not offer a 512(g)
+    registration and no US safe harbor, and does not offer a 512(g)
     counter-notice procedure.
   - **Privacy Policy.** A new section "Reports and notices about content", a
     legal-basis row (Art. 6(1)(c) where the law requires action, otherwise
@@ -170,8 +170,8 @@
     them rebuilds `chat_shares` on D1 and cascades `chat_share_files`
     (`docs/d1-restore-reconciliation.md`).
 - **The designated-agent decision (decided 2026-10-28: no agent; no safe
-  harbour claimed; revisit only if a JDG is opened).** Without a registered
-  agent the 512(c) safe harbour is not available, so the procedure above is good
+  harbor claimed; revisit only if a JDG is opened).** Without a registered
+  agent the 512(c) safe harbor is not available, so the procedure above is good
   practice and a commitment, not a shield. Registering is done at dmca.copyright.gov
   through Login.gov, costs $6 per designation and is renewed every 3 years. The
   catch: 37 CFR 201.38(b)(1)(i) requires the **service provider's own physical
@@ -293,7 +293,7 @@
     to `trainedAlgorithmicMedia` (`compositeWithTrainedAlgorithmicMedia` when
     the model edited a user's image) and `Iptc4xmpExt:AISystemUsed` set to the
     model id. Nothing else: no `xmp:CreatorTool`, no prompt, no user data
-    (owner decision, data minimisation).
+    (owner decision, data minimization).
   - The result is logged as `attributes.imageGeneration.provenance` or
     `attributes.assistantFiles.provenance` with one of `upstream-c2pa`,
     `upstream-xmp`, `existing-xmp-unmarked`, `added-xmp`, `merged-xmp`,
@@ -310,7 +310,7 @@
   - Guidelines para 81 says technical feasibility is objective and does not
     depend on a provider's resources. Cost counts (paras 80 and 85), but para 86
     accepts metadata-only marking only in narrow closed-environment cases. The
-    Code of Practice on marking and labelling AI-generated content (final 10
+    Code of Practice on marking and labeling AI-generated content (final 10
     June 2026) asks for at least two layers (digitally signed metadata plus an
     imperceptible watermark) and retention of existing markings (Measures 1.1
     and 1.2). It is voluntary and Besidka is not a signatory. Besidka keeps
@@ -347,7 +347,7 @@
   `.md` and `.svg` downloads get a one-line comment; `.jsx` and `.mmd`
   downloads stay unmarked as source code (A-4). **Decision on downloads:**
   mark them as above; this closes the gap the ticket named. Content written
-  through MCP may be human-written; over-labelling is harmless. **Open:**
+  through MCP may be human-written; over-labeling is harmless. **Open:**
   whether a bare meta tag is "effective, interoperable, robust" (treat it as a
   best-effort layer); where SVG sits between code and image; whether a feature
   added after 2.8.2026 keeps the Art. 111(4) grace (plan to mark at launch).
@@ -415,7 +415,7 @@
   - a cheap Workers-compatible watermark library appears.
 - **What changed.** The marking module and its two call sites, the log
   attribute, the Terms sentences (recorded as `minor` in
-  `shared/utils/legal-document-revisions.ts`: they describe service behaviour
+  `shared/utils/legal-document-revisions.ts`: they describe service behavior
   and add no purpose, recipient or obligation), and the unit tests
   (`tests/unit/utils/ai/image-provenance.spec.ts`).
 - **Sources.** Commission guidelines on Art. 50:
@@ -498,7 +498,7 @@ publish. Watch the appeal.
 
 ## 4. Owner follow-ups, in one list
 
-1. DMCA designated agent (2.6). Decided 2026-10-28: no agent; no safe harbour
+1. DMCA designated agent (2.6). Decided 2026-10-28: no agent; no safe harbor
    claimed; revisit only if a JDG is opened.
 2. Retention for reports and notices (2.6). Decided: 12 months, 24 months for
    the copyright-removal note.

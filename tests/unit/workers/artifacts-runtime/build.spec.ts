@@ -44,8 +44,8 @@ describe('runtime response headers', () => {
   })
 })
 
-describe('licence allowlist', () => {
-  it('accepts permissive licences and compound AND expressions', () => {
+describe('license allowlist', () => {
+  it('accepts permissive licenses and compound AND expressions', () => {
     expect(isAllowedLicense('MIT')).toBe(true)
     expect(isAllowedLicense('Apache-2.0')).toBe(true)
     expect(isAllowedLicense('MIT AND ISC AND BSD-3-Clause')).toBe(true)

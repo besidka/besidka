@@ -93,7 +93,7 @@ export function backfillCappedChatIds(
  * Where the next backfill job starts, so no chat is paid for twice. With no
  * finished job it is a fresh window: every eligible chat created up to `now`,
  * from the newest. When the user's latest finished job stopped before its
- * queue ran out (it reached `backfillMaxChats`, was cancelled or failed), the
+ * queue ran out (it reached `backfillMaxChats`, was canceled or failed), the
  * new job continues that job's queue: same `createdBefore`, starting after its
  * cursor. When the latest job completed because its queue ran out, every
  * past chat has been read and `null` is returned; chats created since are

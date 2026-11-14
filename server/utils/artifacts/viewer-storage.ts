@@ -55,7 +55,7 @@ function createStorageFullError(why: string) {
 }
 
 /**
- * Serialises a stored value exactly as D1 will keep it. Anything
+ * Serializes a stored value exactly as D1 will keep it. Anything
  * `JSON.stringify` cannot represent (a missing value, a lone `undefined`)
  * is refused with 400, so a value that reads back differently is never
  * stored.
@@ -73,7 +73,7 @@ export function serializeArtifactStorageValue(value: unknown): string {
     throw createError({
       message: 'Invalid saved value',
       status: 400,
-      why: 'The value is not JSON-serialisable',
+      why: 'The value is not JSON-serializable',
       fix: 'Save strings, numbers, booleans, null, arrays or plain objects.',
     })
   }

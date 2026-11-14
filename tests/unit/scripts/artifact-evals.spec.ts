@@ -23,8 +23,8 @@ import {
   SessionClient,
   rescoreResult,
   scoreStaticChecks,
-  summariseCheckStatus,
-  summariseResults,
+  summarizeCheckStatus,
+  summarizeResults,
   validateEvalCases,
   writeEvalResult,
 } from '../../../scripts/artifact-evals.mjs'
@@ -113,7 +113,7 @@ describe('prompts file', () => {
 })
 
 describe('static checks', () => {
-  it('passes a clean quiz and leaves the behavioural check pending', () => {
+  it('passes a clean quiz and leaves the behavioral check pending', () => {
     const checks = scoreStaticChecks(QUIZ_CASE, {
       writes: [{ toolName: 'create_artifact', input: { content: 'x' } }],
       artifacts: [{
@@ -126,7 +126,7 @@ describe('static checks', () => {
     expect(checks.kind).toEqual({ status: 'pass', note: 'html' })
     expect(checks['no-network'].status).toBe('pass')
     expect(checks.interactive.status).toBe('pending')
-    expect(summariseCheckStatus(checks)).toBe('pending')
+    expect(summarizeCheckStatus(checks)).toBe('pending')
   })
 
   it('fails network, navigation and wrong kinds', () => {
@@ -145,7 +145,7 @@ describe('static checks', () => {
     expect(checks.kind.status).toBe('fail')
     expect(checks['no-network'].status).toBe('fail')
     expect(checks['no-navigation'].status).toBe('fail')
-    expect(summariseCheckStatus(checks)).toBe('fail')
+    expect(summarizeCheckStatus(checks)).toBe('fail')
   })
 
   it('scores edits, storage, bridge, timer and Cyrillic', () => {
@@ -470,7 +470,7 @@ describe('result files', () => {
     rmSync(directory, { recursive: true, force: true })
   })
 
-  it('writes, reads back and summarises results', () => {
+  it('writes, reads back and summarizes results', () => {
     directory = mkdtempSync(join(tmpdir(), 'artifact-evals-'))
 
     const base = {
@@ -494,7 +494,7 @@ describe('result files', () => {
     expect(path).toBe(join(directory, 'model_a', 'quiz.json'))
     expect(JSON.parse(readFileSync(path, 'utf8')).status).toBe('pass')
     expect(readEvalResults(directory)).toHaveLength(2)
-    expect(summariseResults(readEvalResults(directory))).toBe([
+    expect(summarizeResults(readEvalResults(directory))).toBe([
       '| Case | model-b | model/a |',
       '| --- | --- | --- |',
       '| quiz | fail $0.0100 | pass $0.0100 |',
@@ -607,7 +607,7 @@ describe('stalled preview requests', () => {
     return exception
   }
 
-  it('recognises abort and timeout errors only', () => {
+  it('recognizes abort and timeout errors only', () => {
     expect(isRequestTimeout(timeoutError())).toBe(true)
     expect(isRequestTimeout(Object.assign(new Error('x'), {
       name: 'AbortError',

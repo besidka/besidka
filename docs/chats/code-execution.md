@@ -131,7 +131,7 @@ its `citations` list (`stripContainerFileReferences`). The tool call id
 Always recorded: `attributes.codeExecution { provider, calls, containers,
 files, bytes, skipped }`. The cost only when computable: OpenAI per container
 session from `NUXT_PUBLIC_OPENAI_CODE_INTERPRETER_COST_PER_SESSION_USD`;
-Anthropic `null` (free container hours belong to the organisation and the
+Anthropic `null` (free container hours belong to the organization and the
 response carries no billable usage); Gemini 0 beyond tokens. The composer
 note reads the public rates from the same config. The message usage line in
 the UI is unchanged.

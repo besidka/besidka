@@ -36,7 +36,7 @@ describe('sha256Hex', () => {
       .toBe(await sha256Hex(text))
   })
 
-  it('does not normalise the content, so NFC and NFD texts differ', async () => {
+  it('does not normalize the content, so NFC and NFD texts differ', async () => {
     const composed = 'caf\u00E9'
     const decomposed = 'cafe\u0301'
 

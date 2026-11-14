@@ -12,7 +12,7 @@ vi.mock('~~/server/utils/legal/consent', () => {
  * endpoints answer with the shapes a live account returns, Brave answers
  * with LLM Context fixtures, and chat completions answer with SSE shaped
  * like Workers AI's `@cf/openai/gpt-oss-120b` stream, including its
- * behaviour when a request omits `max_tokens`: a 256-token default that the
+ * behavior when a request omits `max_tokens`: a 256-token default that the
  * model spends entirely on `reasoning_content`, ending in
  * `finish_reason: length` with empty `content`.
  */

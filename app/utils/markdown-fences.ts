@@ -103,7 +103,7 @@ function normalizeFenceContent(content: string): string {
 
 /**
  * Whether `code`, as rendered by the markdown pipeline, matches a closed
- * fenced block in the source. Exact equality after normalisation is
+ * fenced block in the source. Exact equality after normalization is
  * deliberate: the rendered code lags the source by a chunk while streaming,
  * and a prefix match would accept a half-received block.
  */

@@ -56,19 +56,19 @@ function clampChannel(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
-function relativeLuminance(colourReference: string): number {
-  if (colourReference === 'var(--color-white)') {
+function relativeLuminance(colorReference: string): number {
+  if (colorReference === 'var(--color-white)') {
     return 1
   }
 
-  const variable = /^var\((--color-[a-z]+-\d+)\)$/.exec(colourReference)?.[1]
+  const variable = /^var\((--color-[a-z]+-\d+)\)$/.exec(colorReference)?.[1]
   const pattern = new RegExp(
     `${variable}: oklch\\(([\\d.]+)% ([\\d.]+) ([\\d.]+)\\)`,
   )
   const match = pattern.exec(TAILWIND_THEME_CSS)
 
   if (!variable || !match) {
-    throw new Error(`No Tailwind OKLCH colour for ${colourReference}`)
+    throw new Error(`No Tailwind OKLCH color for ${colorReference}`)
   }
 
   const lightness = Number(match[1]) / 100
@@ -115,7 +115,7 @@ const APP_VALUES_UNDER_OVERRIDE = {
   },
 }
 
-const SEMANTIC_COLOURS = [
+const SEMANTIC_COLORS = [
   'primary',
   'secondary',
   'accent',
@@ -254,11 +254,11 @@ describe('Besidka theme for artifacts', () => {
     describe(`${themeName} contrast of every semantic pair`, () => {
       const page = readThemeToken(themeName, '--color-base-100')
 
-      for (const colour of SEMANTIC_COLOURS) {
-        const fill = readThemeToken(themeName, `--color-${colour}`)
-        const content = readThemeToken(themeName, `--color-${colour}-content`)
+      for (const color of SEMANTIC_COLORS) {
+        const fill = readThemeToken(themeName, `--color-${color}`)
+        const content = readThemeToken(themeName, `--color-${color}-content`)
 
-        it(`${colour} content reads on its fill and the fill stands out from the page`, () => {
+        it(`${color} content reads on its fill and the fill stands out from the page`, () => {
           expect(contrastRatio(fill, content))
             .toBeGreaterThanOrEqual(CONTENT_CONTRAST_MINIMUM)
           expect(contrastRatio(fill, page))

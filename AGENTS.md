@@ -96,7 +96,7 @@ These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `u
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
-`user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymises `feature_audit_log` (see `docs/feature-flags.md`).
+`user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymizes `feature_audit_log` (see `docs/feature-flags.md`).
 
 `documents` (`server/db/schemas/documents.ts`) has no FK and no cascade: `purgeUserData` deletes its rows and the spec objects under `documents/<userId>/`, and the deletion hooks in `server/utils/documents/cleanup.ts` remove the rest (see `docs/d1-restore-reconciliation.md`).
 
@@ -231,7 +231,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (`useMarkdownTextarea`, also on the project instructions card): HTML paste
   conversion from Apple Mail, Gmail and web pages (the `shouldConvertHtml` gate
   that lets VS Code span soup fall through, `htmlToChatMarkdown`, bullet glyph
-  normalisation for `text/plain`), long paste (over 1200 characters or 40
+  normalization for `text/plain`), long paste (over 1200 characters or 40
   lines) becoming a visual-only "Pasted text" chip (edit, Insert as text, max
   10) that is appended to the message as plain text on send, and why it is
   neither an uploaded file nor a message part, the keyboard rules (Enter
@@ -418,7 +418,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   breach record template (Art. 33(5), never in this public repo), and the
   unconfirmed points (e-form for a private individual, Cloudflare notice
   channel, KSC amendment, CERT Polska)
-- `docs/legal/monetisation-readiness.md` - Everything that must happen before
+- `docs/legal/monetization-readiness.md` - Everything that must happen before
   and when Besidka earns in any form (donations, ads, affiliate links, a paid
   tier, credits, paid support; selling data excluded), engineer-drafted,
   research date 2026-10-28: decision triggers (an unused tip link already
@@ -430,13 +430,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   RFC 8058, DSA and AI Act effects, the DMCA agent, open questions for counsel,
   and the repo files to change; read before adding any payment or donation link
 - `docs/legal/agentic-capabilities-precheck.md` - Compliance pre-checks for
-  the Agentic capabilities programme (engineer-drafted, not lawyer-reviewed,
+  the Agentic capabilities program (engineer-drafted, not lawyer-reviewed,
   2026-11-07): the shared gate G1 to G7 every track runs before building
   (GDPR records and transfers, public documents, materiality and consent
-  version, review items and breach runbook, third-party terms, monetisation
+  version, review items and breach runbook, third-party terms, monetization
   guard, accessibility), the accessibility decision for all tracks (European
   Accessibility Act most likely not applicable through the microenterprise
-  services exemption, revisit on monetisation; WCAG 2.2 AA as the engineering
+  services exemption, revisit on monetization; WCAG 2.2 AA as the engineering
   target with the criteria that matter, such as 2.5.7 dragging alternatives
   and 2.4.11 focus not obscured), and the Phase 0 verdict GO with changes:
   bucketing is not profiling, Art. 6(1)(f) for rollout, no bucket in
@@ -459,7 +459,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   skeleton (UODO M.P. 2019 poz. 666 + EDPB criteria) and an Art. 30 record
   skeleton
 - `docs/legal/prechecks/` - Per-track compliance pre-checks for the agentic
-  capabilities programme (engineer-drafted, not lawyer-reviewed, 2026-11-07):
+  capabilities program (engineer-drafted, not lawyer-reviewed, 2026-11-07):
   one file per track (`research.md` R-11, `google.md` G-11, `artifacts.md`
   A-12, `documents.md` D-10, `connectors.md` C-12, `skills.md` S-8), each with
   a verdict, a question table with sources, the shared gate from P0-14, the
@@ -633,7 +633,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   like MCP Apps `ui/*`): the isolation layers (iframe + header `sandbox`,
   the CSP, port-only trust, the self-navigation tripwire and its residual
   URL leak), why the HTML renderer replaces the root element instead of
-  `document.write()`, the vendored import allowlist (no esm.sh), the licence
+  `document.write()`, the vendored import allowlist (no esm.sh), the license
   scan and `THIRD_PARTY_NOTICES.txt` (ELK excluded, dagre layout), the
   consent error codes for A-5/A-6, the separate Playwright sandbox spec, and
   the CI jobs guarded by the `ARTIFACTS_RUNTIME_DEPLOY_ENABLED` variable with
@@ -691,7 +691,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   per-send fit check), R2 text and packs, the owner decisions, and, now that
   it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
   and XLSX ZIP-bomb limits, the send path, the spike results)
-- `docs/agentic-capabilities-roadmap.md` - The Agentic capabilities programme
+- `docs/agentic-capabilities-roadmap.md` - The Agentic capabilities program
   (Linear P-BES-3), the repo source of truth that the Linear roadmap document
   mirrors: phases 0 to 7 with a status table every merged ticket updates
   (0 foundation, 1 artifacts, 2 documents and code execution, 3 custom
@@ -713,7 +713,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/feature-flags.md` - Per-user feature access design (P0-2 to P0-10):
   the five tables (`user_roles`, `feature_flag_rules`, `feature_grants`,
   `feature_opt_ins`, `feature_audit_log`; no FK to `users`, explicit purge,
-  audit rows anonymised and kept 12 months), the registry entry shape
+  audit rows anonymized and kept 12 months), the registry entry shape
   (`spend` implies opt-in, variants only on non-spending flags), the
   evaluation precedence (unknown, `NUXT_FEATURES_DISABLED`, host mode, rule
   disabled, anonymous, deny, allow, role, sticky salted-hash rollout gated by
@@ -763,7 +763,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   or MCP; commands as skills with two user-set columns (`model_invocable`,
   `slash_command`) and the `data-skill-invocation` part; numbered versions (20
   kept) over content-addressed R2 blobs (`user-skills/`); pinning, archive rules,
-  findings, the licence classifier (Anthropic's 2026-11-06 Apache-2.0 relicence,
+  findings, the license classifier (Anthropic's 2026-11-06 Apache-2.0 relicense,
   content-based blocking, class `authored`), the narrow allowlisted GitHub
   fetcher (not C-3), the runtime (catalog budget, `activate_skill`,
   `read_skill_file`, re-injection past the text-only sanitizer, the interim tool
@@ -854,7 +854,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - **Canonical and `og:url` are derived per route in `app/app.vue`** from
   `useRoute()` — a single source of truth that every page inherits. Do NOT add a
   per-page `canonical` or `ogUrl`; the global one is already correct and a second
-  tag risks a duplicate. `new URL()` normalises `/` to a trailing slash so the
+  tag risks a duplicate. `new URL()` normalizes `/` to a trailing slash so the
   canonical matches the `<loc>` the sitemap emits.
 - Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
   `/cookie-policy`, `/guides/<slug>` (public key guides from
@@ -885,7 +885,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (deliberately a section and not an FAQ entry — see `docs/seo.md`).
 - Full audit, brand-entity strategy, the rejected options (`nuxt-og-image`,
   `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
-  checklist live in `docs/seo.md`. Read it before changing SEO behaviour.
+  checklist live in `docs/seo.md`. Read it before changing SEO behavior.
 - `/llms.txt` ships (`nuxt-llms`, `prerender: false`). Agent discovery lives in
   `docs/agent-readiness.md`: this app owns every `/.well-known/*` file and
   `/auth.md`. The production WAF rule "URL attackers" allows only an explicit
@@ -1131,6 +1131,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 
 ## Code Style
 
+- Use American English spelling in all UI copy, code, docs and commit messages (license, color, behavior, canceled). Never mix British and American spellings.
 - ESLint with `@stylistic` plugin enforces 2-space indentation, no semicolons, single quotes
 - Max line length: 80 characters (imports, URLs, strings exempt)
 - Textareas get the box radius globally from `main.css` (`:where(.textarea)`), because the theme's `--radius-field: 2rem` would make them pills; do not add `rounded-*` to a `.textarea` to undo the pill shape.
@@ -1542,7 +1543,7 @@ other.
 Show the on-screen keyboard (the simulator hides it while a hardware
 keyboard is connected) and focus fields by tapping, the way a user does:
 toggling the keyboard on an already focused field does not reproduce real
-behaviour. Report which build and mode each result came from.
+behavior. Report which build and mode each result came from.
 
 ## Commit Messages
 

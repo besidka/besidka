@@ -108,7 +108,7 @@ function hit(overrides: Partial<SearchChatsHit> = {}): SearchChatsHit {
 }
 
 describe('buildPastChatRecentTurns', () => {
-  it('keeps the last three text turns, labelled and redacted', () => {
+  it('keeps the last three text turns, labeled and redacted', () => {
     const turns = buildPastChatRecentTurns([
       textMessage('user', 'first'),
       textMessage('assistant', 'second'),

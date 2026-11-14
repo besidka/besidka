@@ -17,7 +17,7 @@ vi.mock('~~/server/utils/legal/consent', () => {
  * gateway cases were deleted from that suite when gateway support was
  * removed; this file restores them alongside it rather than reverting it, so
  * the direct-provider rewiring it gained in the meantime stays intact. It
- * also pins the two behaviours that did not exist before the restoration: the
+ * also pins the two behaviors that did not exist before the restoration: the
  * per-step OpenRouter cost sum reading the same `steps` the search accounting
  * reads, and the double-count guard that keeps a gateway-bundled search fee
  * out of `searchCost`.

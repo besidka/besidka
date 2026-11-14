@@ -768,7 +768,7 @@ describe('markAiGeneratedImage', () => {
       ['https URI', `Iptc4xmpExt:DigitalSourceType="${TRAINED.replace('http', 'https')}"`],
       ['composite URI', `Iptc4xmpExt:DigitalSourceType="${COMPOSITE}"`],
       ['single quotes', `Iptc4xmpExt:DigitalSourceType='${TRAINED}'`],
-    ])('recognises an attribute with a %s', (_label, attribute) => {
+    ])('recognizes an attribute with a %s', (_label, attribute) => {
       const text = `${RDF_OPEN}<rdf:Description rdf:about="" ${attribute}/>`
         + RDF_CLOSE
 
@@ -778,7 +778,7 @@ describe('markAiGeneratedImage', () => {
       }).marking).toBe('upstream-xmp')
     })
 
-    it('recognises the element and rdf:resource forms', () => {
+    it('recognizes the element and rdf:resource forms', () => {
       const elementForm = `${RDF_OPEN}<rdf:Description rdf:about="">`
         + `<Iptc4xmpExt:DigitalSourceType>${TRAINED}`
         + '</Iptc4xmpExt:DigitalSourceType></rdf:Description>'

@@ -377,7 +377,7 @@ describe('Projects/Knowledge/ItemEditSheet', () => {
     expect(wrapper.emitted('remove')).toEqual([[item]])
   })
 
-  it('closes from Cancel and the labelled close button', async () => {
+  it('closes from Cancel and the labeled close button', async () => {
     const wrapper = await mountSheet()
 
     expect(byTestId(wrapper, 'knowledge-item-sheet-close')

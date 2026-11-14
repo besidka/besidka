@@ -169,7 +169,7 @@ describe('applyMemoryExtractionOps', () => {
     expect(await listEntries()).toHaveLength(0)
   })
 
-  it('normalises evidence case, whitespace and typographic quotes', async () => {
+  it('normalizes evidence case, whitespace and typographic quotes', async () => {
     const result = await run([
       createOp({ evidence: '  I   WRITE rust\non weekends ' }),
     ], { groundingTexts: ['Hello, I write Rust on weekends'] })
@@ -1532,7 +1532,7 @@ describe('applyMemoryExtractionOps', () => {
       expect((await listEntries())[0]?.body).toBe(CAREER_BODY)
     })
 
-    it('still honours never-store on an append', async () => {
+    it('still honors never-store on an append', async () => {
       await seedCareer()
 
       const result = await run([

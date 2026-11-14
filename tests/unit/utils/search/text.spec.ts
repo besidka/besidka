@@ -148,7 +148,7 @@ describe('extractMessageSearchText', () => {
 })
 
 describe('normalizeSearchText', () => {
-  it('canonicalises every apostrophe variant to U+02BC', () => {
+  it('canonicalizes every apostrophe variant to U+02BC', () => {
     const variants = [
       'п\'ять',
       'п’ять',
@@ -161,7 +161,7 @@ describe('normalizeSearchText', () => {
     }
   })
 
-  it('applies NFC normalisation', () => {
+  it('applies NFC normalization', () => {
     const decomposed = 'é'
     const composed = 'é'
 

@@ -203,7 +203,7 @@ describe('useMarkdownTextarea paste', () => {
     })
   })
 
-  it('normalises Mail bullet glyphs in text/plain pastes', () => {
+  it('normalizes Mail bullet glyphs in text/plain pastes', () => {
     const { element, onPaste } = setup('')
     const { event, preventDefault } = createPasteEvent({
       plain: 'Intro\n\t•\tPrąd: 3442 kWh\n\t•\tWoda\nKoniec',

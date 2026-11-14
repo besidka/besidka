@@ -96,7 +96,7 @@ export const APP_ONLY_TOKENS = [
 /**
  * Artifact-only token values that replace the main.css ones. The app's
  * glass surfaces hide some pairs that fail on an artifact's plain base-100
- * page: dark primary and neutral equal the page colour (stone-800), light
+ * page: dark primary and neutral equal the page color (stone-800), light
  * secondary is white on white, dark neutral is one step off the page, and
  * light `success-content` is dark green on a dark green fill. Every
  * semantic pair must keep content at 4.5:1 and the fill at 3:1 against
@@ -286,18 +286,18 @@ function resolveColor(token, value, tailwindColors) {
   const resolved = tailwindColors.get(reference[1])
 
   if (!resolved) {
-    throw new Error(`Tailwind has no colour ${reference[1]}, referenced by ${token}`)
+    throw new Error(`Tailwind has no color ${reference[1]}, referenced by ${token}`)
   }
 
   return resolveColor(token, resolved, tailwindColors)
 }
 
 /**
- * The colours the block chrome and the shell need, resolved to the values
+ * The colors the block chrome and the shell need, resolved to the values
  * Tailwind gives the main.css theme tokens, so a Markdown, SVG or Mermaid
  * artifact (no Tailwind, no daisyUI) draws with the chat's stone palette
  * and an HTML artifact redeclares the values it already has. Dark also
- * carries the colours the chat's diagram series switch to.
+ * carries the colors the chat's diagram series switch to.
  */
 export function createPalette(mainCss, tailwindColors = readTailwindColors()) {
   const palette = {}

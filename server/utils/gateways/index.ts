@@ -46,7 +46,7 @@ export interface GatewayChatResult {
    * for budgeting only (the reserved output in the project knowledge fit
    * check). Unlike `maxOutputTokens` above it is never used to cap a
    * request, so OpenRouter can report it without changing its uncapped
-   * behaviour.
+   * behavior.
    */
   catalogMaxOutputTokens?: number
   /**

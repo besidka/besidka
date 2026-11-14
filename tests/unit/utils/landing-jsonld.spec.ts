@@ -38,7 +38,7 @@ function collectGraphIdReferences(node: Record<string, unknown>) {
 }
 
 describe('buildLandingLdIds', () => {
-  it('normalises a base URL without a trailing slash to siteUrl with one', () => {
+  it('normalizes a base URL without a trailing slash to siteUrl with one', () => {
     const ids = buildLandingLdIds('https://besidka.com')
 
     expect(ids.siteUrl).toBe('https://besidka.com/')
@@ -50,7 +50,7 @@ describe('buildLandingLdIds', () => {
     expect(ids.siteUrl).toBe('https://besidka.com/')
   })
 
-  it('derives @id values from the normalised siteUrl', () => {
+  it('derives @id values from the normalized siteUrl', () => {
     const ids = buildLandingLdIds(BASE_URL)
 
     expect(ids.organizationId).toBe('https://besidka.com/#organization')

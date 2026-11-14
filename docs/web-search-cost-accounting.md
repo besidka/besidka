@@ -29,7 +29,7 @@ more members: image generation (handled separately, see
 and whatever ships next. Four properties make this category structurally
 hard, and all four get worse as providers are added:
 
-1. **No standardised billing unit.** Google bills two different units
+1. **No standardized billing unit.** Google bills two different units
    depending on model generation. Anthropic and OpenAI each bill one flat
    unit, but a provider's SDK can expose more than one tool variant with
    different tiering for the same nominal capability (see "Billing-unit
@@ -42,7 +42,7 @@ hard, and all four get worse as providers are added:
    rate in this repo was read off a pricing page by a human.
 3. **No invoice visibility.** BYO-key means the provider's bill goes to the
    user. The app has no API, no scope, and no legitimate reason to read it.
-4. **The SDK does not normalise any of it.** Each provider's count, if it is
+4. **The SDK does not normalize any of it.** Each provider's count, if it is
    exposed at all, lives in a different corner of `providerMetadata` or in
    tool-call content, under a different name.
 
@@ -67,7 +67,7 @@ through a provider-dispatcher pattern:
   points call one function (`resolveSearchUsage`) instead of each growing a
   three-way provider branch.
 
-Google was kept in its own file rather than generalised into one
+Google was kept in its own file rather than generalized into one
 abstraction with the other two, on the judgment that the part which
 genuinely varies between providers — *how to extract a unit count from SDK
 output* — is irreducibly imperative, and forcing it through a shared
@@ -173,7 +173,7 @@ DeepSeek path. See also
 'grounded-prompt' | 'search'`:
 
 - **Google, Gemini 3.x** → `'query'`, $14/1,000 deduplicated queries,
-  rate invoice-verified (paid-one SKU); free allowance not modelled.
+  rate invoice-verified (paid-one SKU); free allowance not modeled.
 - **Google, Gemini ≤2.5** → `'grounded-prompt'`, $35/1,000 grounded
   requests, documentation-only. The generation split is a string match on
   `/^gemini-(\d+)/` against the model id — the AI SDK exposes no generation
@@ -243,7 +243,7 @@ secrets, keep them out of git": it isn't a credential, it's published on a
 web page, and having it in git with a dated source comment is strictly
 better for review than having it invisible in a Cloudflare dashboard. Only
 the Gemini 3.x rate is invoice-verified (paid-one SKU; its free allowance
-is not modelled); the other six are documentation-only, and the comment
+is not modeled); the other six are documentation-only, and the comment
 above each block says so.
 
 These seven keys live in `runtimeConfig.public` (not private
@@ -308,7 +308,7 @@ searchBillingUnit?: SearchBillingUnit // 'query' | 'grounded-prompt' | 'search'
 searchCost?: number
 ```
 
-`addSearchUsage()` (`server/utils/ai/message-usage.ts`, generalised from the
+`addSearchUsage()` (`server/utils/ai/message-usage.ts`, generalized from the
 Google-only `addGoogleSearchUsage`) sets `searchUnits` **unconditionally**
 whenever any provider's search tool was used, `searchBillingUnit` when the
 unit is known, and `searchCost` only when a rate resolved.
@@ -323,7 +323,7 @@ Contrast with image generation: `addImageGenerationCostToUsage()` *folds*
 the image cost into `outputCost`, because to a user a generated image is
 part of what the turn produced. Search is deliberately not folded — the
 whole reason the original bill was surprising is that a separate SKU was
-hiding inside a number labelled "cost."
+hiding inside a number labeled "cost."
 
 Precisely:
 
@@ -335,12 +335,12 @@ Precisely:
   as separate terms.
 - **Included in Axiom's `ai.cost`.**
 - **Rendered as its own "Web search" row** in
-  `app/components/Chat/ContextMenu.client.vue`, labelled through
+  `app/components/Chat/ContextMenu.client.vue`, labeled through
   `formatSearchGroundingUnits()` (`shared/utils/message-format.ts`) as
   `3 queries`, `1 grounded request`, or `2 searches` depending on
   `billingUnit`, with `~$` prefixed once a cost is known. A missing
   `billingUnit` still defaults to query-wording, preserved on purpose so a
-  Google turn with an unrecognised model id degrades gracefully rather than
+  Google turn with an unrecognized model id degrades gracefully rather than
   rendering nothing.
 
 `getPerMessageSearchCost()` hardcodes `isEstimated: true` — the "~" is
@@ -496,7 +496,7 @@ above; the first pass here priced the wrong OpenAI tool and shipped a
 a real product distinction). A fourth provider could bill per result, per
 "search depth," or per region, or could — like OpenAI — expose multiple
 tool variants with different rates for what looks like the same capability
-from the outside. Nothing here generalises any of that; it has to be
+from the outside. Nothing here generalizes any of that; it has to be
 checked per provider, against the specific SDK call this app actually
 makes, every time.
 
@@ -504,10 +504,10 @@ makes, every time.
 schema.** The part that varies between providers is *how to extract a unit
 count from SDK output*, and that's irreducibly imperative — three providers
 already need three unrelated readers. The part a rules engine would
-formalise, the rate table, is already config. A schema would add a layer
+formalize, the rate table, is already config. A schema would add a layer
 over the easy half while the hard half stays bespoke.
 
-The right shape is what's shipped: a thin dispatcher returning a normalised
+The right shape is what's shipped: a thin dispatcher returning a normalized
 `{ units, billingUnit, cost? }` record, with per-provider counters behind
 it. Revisit only if a provider introduces a unit that depends on *request
 parameters* (result count, depth) rather than a model-id tier, because
@@ -522,7 +522,7 @@ user enables the tool. Anthropic never does: it rejects a forced tool choice
 alongside extended thinking, and the Claude 5.5 generation rejects it
 outright (see the JSDoc in `server/utils/providers/anthropic.ts`), so
 Anthropic runs on `auto` and the model decides whether to search. For OpenAI
-the forced search is documented behaviour, and `@ai-sdk/openai` maps the
+the forced search is documented behavior, and `@ai-sdk/openai` maps the
 choice to `tool_choice: { type: 'web_search' }` and reports the resulting
 `web_search_call` as a `web_search_preview` tool call.
 
@@ -878,7 +878,7 @@ search call, so three guards sit next to it:
   turn that hits the cap records exactly 8 search units. The cap is needed
   because one step can fan out parallel calls and Anthropic keeps tools
   declared on the forced final step.
-- **Tag neutralisation.** The continuation wraps results in
+- **Tag neutralization.** The continuation wraps results in
   `<untrusted_web_search_results>` and replaces every `<` and `>` in the
   wrapped text with `‹`/`›`. Stripping the tag name instead is bypassable
   by nesting it inside itself.
@@ -918,7 +918,7 @@ the first implementation. Distinct tool key from `web_search_preview`, per
 the constraint above. Routing between it and native search decided per
 turn, per the capability-first rule.
 
-### Key storage — checked, and it doesn't generalise for free
+### Key storage — checked, and it doesn't generalize for free
 
 > **Reversed.** The separate-surface recommendation below was not followed.
 > The `keys.provider` enum in `server/db/schemas/keys.ts` was widened to
@@ -936,7 +936,7 @@ index; encryption goes through `crypto-shield`
 routes and Vue components are hand-cloned per provider (`server/api/v1/profiles/keys/{google,anthropic,openai}/`,
 `app/components/Profile/Keys/{Google,Anthropic,OpenAi}.vue`).
 
-The **encryption** layer generalises for free — it's just text in, text
+The **encryption** layer generalizes for free — it's just text in, text
 out. Nothing else does: the enum needs widening plus a Drizzle migration,
 and the routes/components are per-provider files, not a generic form.
 

@@ -411,7 +411,7 @@
               size="sm"
               normal-case
               text="Stop"
-              :disabled="isCancelling"
+              :disabled="isCanceling"
               data-testid="memory-backfill-cancel"
               @click="stopBuilding"
             />
@@ -490,7 +490,7 @@ const {
   reason,
   isRunning,
   isStarting,
-  isCancelling,
+  isCanceling,
   isPaused,
   error,
   load,
@@ -633,7 +633,11 @@ const lastRunText = computed<string>(() => {
   )
   const entries = finishedJob.createdEntries
 
-  return `Last run: ${finishedJob.status} ${age}, `
+  const statusLabel = finishedJob.status === 'cancelled'
+    ? 'canceled'
+    : finishedJob.status
+
+  return `Last run: ${statusLabel} ${age}, `
     + `${entries} ${entries === 1 ? 'entry' : 'entries'} created.`
 })
 

@@ -43,7 +43,7 @@ export const JEV_AUTO_WEB_SEARCH_SELF_CONTAINED = 'The message is '
  * criteria are copied verbatim from the 2026-10-26 synthetic eval; the
  * thresholds are that eval's starting points and are re-tuned on real
  * traffic. Every role except `pastChatRetrieval` fails toward Besidka's
- * behaviour without a key. Without a key that role does not pre-search past
+ * behavior without a key. Without a key that role does not pre-search past
  * chats, but when Jev errors or times out it searches anyway, because skipping
  * a needed search costs more than one cheap indexed query.
  */
@@ -230,7 +230,7 @@ export const JEV_SHARE_PII_CHECK = {
     criteria: {
       true: 'The chat includes information that identifies or describes a '
         + 'real private individual: a home or postal address, phone number, '
-        + 'personal or work email, government ID, bank account or licence '
+        + 'personal or work email, government ID, bank account or license '
         + 'plate, health information about an identifiable person, or the '
         + 'full name of a private person together with details about them.',
       false: 'The chat has no such data. Public figures, fictional '

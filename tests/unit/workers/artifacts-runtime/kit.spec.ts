@@ -85,7 +85,7 @@ describe('code block upgrade', () => {
       '```',
     ].join('\n')))
 
-    expect(upgradeCodeBlocks(root, { includeUnlabelled: true })).toBe(3)
+    expect(upgradeCodeBlocks(root, { includeUnlabeled: true })).toBe(3)
 
     const codeBlocks = root.querySelectorAll('besidka-code')
 
@@ -98,7 +98,7 @@ describe('code block upgrade', () => {
     expect(root.querySelector('pre')).toBeNull()
   })
 
-  it('upgrades only language-tagged blocks in html and honours the opt-out', () => {
+  it('upgrades only language-tagged blocks in html and honors the opt-out', () => {
     const root = createRoot([
       '<pre><code class="language-python">print(1)</code></pre>',
       '<pre><code>untagged</code></pre>',

@@ -239,15 +239,15 @@
             >
             <label class="label min-h-6 cursor-pointer items-start gap-2 py-1 text-sm whitespace-normal text-base-content">
               <input
-                v-model="copyrightUnauthorised"
+                v-model="copyrightUnauthorized"
                 type="checkbox"
-                class="js-artifact-report-copyright-unauthorised checkbox checkbox-sm mt-0.5 shrink-0"
+                class="js-artifact-report-copyright-unauthorized checkbox checkbox-sm mt-0.5 shrink-0"
                 :aria-invalid="errors.unauthorisedUse ? 'true' : undefined"
                 :aria-describedby="describedBy('unauthorisedUse')"
-                data-testid="artifact-report-copyright-unauthorised"
+                data-testid="artifact-report-copyright-unauthorized"
               >
               <span>
-                I believe in good faith that this use is not authorised by
+                I believe in good faith that this use is not authorized by
                 the rights owner, its agent or the law.
               </span>
             </label>
@@ -533,7 +533,7 @@ const FIELD_HOOK_CLASSES: Record<ReportField, string> = {
   reason: 'js-artifact-report-reason-illegal',
   details: 'js-artifact-report-details',
   work: 'js-artifact-report-copyright-work',
-  unauthorisedUse: 'js-artifact-report-copyright-unauthorised',
+  unauthorisedUse: 'js-artifact-report-copyright-unauthorized',
   authority: 'js-artifact-report-copyright-authority',
   signature: 'js-artifact-report-copyright-signature',
   name: 'js-artifact-report-name',
@@ -561,7 +561,7 @@ const goodFaith = shallowRef<boolean>(false)
 const copyrightWork = shallowRef<string>('')
 const copyrightOwner = shallowRef<string>('')
 const copyrightSignature = shallowRef<string>('')
-const copyrightUnauthorised = shallowRef<boolean>(false)
+const copyrightUnauthorized = shallowRef<boolean>(false)
 const copyrightAuthority = shallowRef<boolean>(false)
 const errors = shallowRef<Partial<Record<ReportField, string>>>({})
 const submitError = shallowRef<SubmitError | null>(null)
@@ -651,7 +651,7 @@ function resetForm() {
   copyrightWork.value = ''
   copyrightOwner.value = ''
   copyrightSignature.value = ''
-  copyrightUnauthorised.value = false
+  copyrightUnauthorized.value = false
   copyrightAuthority.value = false
   errors.value = {}
   submitError.value = null
@@ -697,7 +697,7 @@ function validate(): Partial<Record<ReportField, string>> {
       found.signature = 'Type your full name as the signature.'
     }
 
-    if (!copyrightUnauthorised.value) {
+    if (!copyrightUnauthorized.value) {
       found.unauthorisedUse = 'Confirm this statement.'
     }
 

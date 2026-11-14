@@ -59,7 +59,7 @@ describe('THIRD_PARTY_NOTICES', () => {
     expect(text).toContain('nanoid inlined in docx')
     expect(text).toContain('fflate inlined in docx')
     expect(text).toContain('Devon Govett')
-    expect(text).toContain('under the MIT licence')
+    expect(text).toContain('under the MIT license')
     expect(text).toContain('SIL OPEN FONT LICENSE')
     expect(text).toContain('Noto Project Authors')
   }, 60000)

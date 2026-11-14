@@ -293,7 +293,7 @@ describe('History/ArtifactRow', () => {
       expect(wrapper.emitted('pick')).toBeUndefined()
     })
 
-    it('keeps the library behaviour by default', async () => {
+    it('keeps the library behavior by default', async () => {
       const wrapper = await mountRow(createArtifact())
 
       expect(wrapper.find(testId('artifact-row-actions-trigger')).exists())

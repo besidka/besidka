@@ -924,7 +924,7 @@ Code and assets inlined in the packages above, or shipped beside them
 ------------------------------------------------------------------------
 @pdf-lib/fontkit (MIT)
 ------------------------------------------------------------------------
-Declares MIT in package.json and README but ships no LICENSE file; upstream foliojs/fontkit licence applies.
+Declares MIT in package.json and README but ships no LICENSE file; upstream foliojs/fontkit license applies.
 
 Copyright (c) 2014-present Devon Govett
 
@@ -1102,7 +1102,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 ------------------------------------------------------------------------
 JSZip (used by pptxgenjs) (MIT OR GPL-3.0-or-later)
 ------------------------------------------------------------------------
-JSZip is dual-licensed. Besidka uses and redistributes it under the MIT licence.
+JSZip is dual-licensed. Besidka uses and redistributes it under the MIT license.
 
 ------------------------------------------------------------------------
 Noto Sans Regular, Bold and Italic (subset to Latin and Cyrillic) (OFL-1.1)

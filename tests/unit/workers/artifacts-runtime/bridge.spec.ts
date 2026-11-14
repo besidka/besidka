@@ -82,7 +82,7 @@ describe('window.besidka bridge', () => {
     }), { storage: 'memory', complete: false })
 
     await expect(api.storage.set('fn', () => {})).rejects.toThrow(
-      'JSON-serialisable',
+      'JSON-serializable',
     )
     await expect(api.storage.set('', 1)).rejects.toThrow('Storage keys')
   })

@@ -10,7 +10,7 @@ export interface SendFeatures {
 
 /**
  * Evaluates the flags a chat send needs once, through the request's
- * memoised feature context, and returns a synchronous lookup for the tool
+ * memoized feature context, and returns a synchronous lookup for the tool
  * factories. It fails closed: when the evaluation throws, every flag is off
  * and the send goes on without the gated tools.
  */

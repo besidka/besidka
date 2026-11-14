@@ -71,7 +71,7 @@ covers these files (title, description and summary stay strings).
 | `video.caption` | string, optional | Visible caption under the player on `/guides/<slug>`, also the VideoObject name |
 | `video.alt` | string, optional | What the video shows. Accessible name of the poster and player on the keys page |
 | `video.captions` | `{ src, label, srclang, default? }[]` | WebVTT tracks for the public page player |
-| `video.markers` | `{ time, label }[]` | Chapter markers, same shape as `video.markers` in `content/index.md`. `time` is `m:ss`, `mm:ss` or `h:mm:ss`. Shown on the progress bar of both players, labelled in the hover preview, and emitted as `Clip` entries in `VideoObject.hasPart` (each ends at the next marker or the video duration, and its `url` is the guide URL plus `?t=<start seconds>`, which `/guides/<slug>` honors by starting the player there) |
+| `video.markers` | `{ time, label }[]` | Chapter markers, same shape as `video.markers` in `content/index.md`. `time` is `m:ss`, `mm:ss` or `h:mm:ss`. Shown on the progress bar of both players, labeled in the hover preview, and emitted as `Clip` entries in `VideoObject.hasPart` (each ends at the next marker or the video duration, and its `url` is the guide URL plus `?t=<start seconds>`, which `/guides/<slug>` honors by starting the player there) |
 
 Omit `video` entirely when there is no real video yet: VideoObject JSON-LD is
 only emitted when it is set, and the keys page then shows no video block.
@@ -146,7 +146,7 @@ restart.
   - GOP: `keyint=60:min-keyint=60:scenecut=0`, a fixed 2-second GOP at 30 fps,
     so every rendition has keyframes at the same timestamps and a quality
     switch can resume cleanly.
-  - Scaling: lanczos. Colour tags are set explicitly to bt709 limited range,
+  - Scaling: lanczos. Color tags are set explicitly to bt709 limited range,
     because the scale filter dropped them otherwise and players then guessed.
   - Container: faststart (moov before mdat), so playback and range requests
     start without reading the tail of the file.

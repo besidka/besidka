@@ -65,7 +65,7 @@ from `hasAnyFiles`):
   `h-10 max-w-40`, icon on the left, the caption (small) and value (bold)
   stacked to its right and truncated to one line each. A removable tile
   reserves `pr-6` and the 16 px remove button sits at the right, vertically
-  centred (`right-1 top-3`), so it never covers the text.
+  centered (`right-1 top-3`), so it never covers the text.
 - **Square** (any file or image attachment, completed or uploading): the file
   tile geometry (`size-16 rounded-box`, the 16 px remove button at
   `top-1 right-1`), so every item in the row shares one size.
@@ -114,7 +114,7 @@ rows that open a modal.
   a deep research model, clears the attached artifacts. The server is the
   real gate (`docs/artifacts/attach.md`); this only hides UI.
 - **Picker.** A `<dialog class="modal modal-bottom sm:modal-middle">` with
-  the History → Artifacts behaviour: search (300 ms debounce, 2 characters
+  the History → Artifacts behavior: search (300 ms debounce, 2 characters
   minimum), kind filter buttons (All, HTML, React, SVG, Mermaid, Markdown),
   rows from `HistoryArtifactRow` in `mode="picker"` (title, kind, version,
   updated date, origin chat or "Chat deleted", no actions menu, the whole row
@@ -146,7 +146,7 @@ legacy localStorage value)`, the same helper `chats/new.vue`,
 resolves to the product default, Off.
 
 - The Reasoning tile compares the level the model will actually use against
-  that effective default. A model that cannot honour the default (for
+  that effective default. A model that cannot honor the default (for
   example one that cannot stop reasoning while the default is Off) therefore
   shows the tile. That is intended: it is the case where the tile tells the
   user something.
@@ -161,7 +161,7 @@ resolves to the product default, Off.
   (`isSameReasoningCapability`). `reasoningCapability` is rebuilt as a new
   but equal object on every preference-storage write, because the model
   selection re-reads `localStorage` through the shared `storageVersion`,
-  and the settings sync writes favourites to preference storage in the same
+  and the settings sync writes favorites to preference storage in the same
   tick that delivers the saved default. A `defineModel` ref also reads its
   old value until the parent re-renders, so a clamp that re-ran in that
   flush clamped the stale Off and overwrote the default that had just been
@@ -305,7 +305,7 @@ an arrow key on a just-revealed row must work at once. `useRevealGuard` returns
 `shouldIgnoreActivation`, true only while guarded and when the activation is a
 pointer one: a `pointerdown` was seen on the control's label since the last
 `keydown`, or the click carries `detail > 0`. A guarded pointer click is
-cancelled with `preventDefault()` on the input, so a checkbox or radio does
+canceled with `preventDefault()` on the input, so a checkbox or radio does
 not flip and no `change` follows. A stray pointer `change` is also ignored and
 the DOM state is put back to the model value. `InlineButton` has no guard (it
 only ignores clicks while pending), so nothing changed there.
@@ -328,7 +328,7 @@ later open are not guarded either.
   Built-in, the provider logo (`ProviderIcon`, Brave and Exa) for the two
   external providers, none for Off. `SegmentedOption` takes `icon` (an Iconify
   name), `providerId` or `iconComponent` (a component name such as
-  `SvgoThinkLow`); the icon inherits the segment's text colour, so it follows
+  `SvgoThinkLow`); the icon inherits the segment's text color, so it follows
   the checked, hover and disabled states with no extra rules.
 - Every titled section header has an icon left of the title: Add
   `lucide:plus`, Web search `lucide:search`, Reasoning `SvgoThinkHigh` (the

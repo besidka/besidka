@@ -47,7 +47,7 @@ const QUIZ_HTML = `<!doctype html>
 
 const OVERRIDE_HTML = `<!doctype html>
 <html><head><style>.btn { background: rgb(1, 2, 3); }</style></head>
-<body><button id="own" class="btn btn-primary">Own colour</button></body></html>`
+<body><button id="own" class="btn btn-primary">Own color</button></body></html>`
 
 const REACT_SOURCE = `
 import { useState } from 'react'

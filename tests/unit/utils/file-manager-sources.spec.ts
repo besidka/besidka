@@ -132,7 +132,7 @@ describe('isConnectedAppFile', () => {
   })
 
   it.each([true, null, undefined])(
-    'leaves a file with an AI flag of %s labelled as AI',
+    'leaves a file with an AI flag of %s labeled as AI',
     (documentAiGenerated) => {
       const file = { ...base, documentId: 'doc-1', documentAiGenerated }
 

@@ -56,7 +56,7 @@ class DocRenderer extends WorkerEntrypoint {
   cell, slide, page and image bounds) is `bounds_exceeded`.
 - `rendererVersion` is `<worker package version>+<doc-renderer package
   version>`. Bump the version of `workers/doc-renderer/package.json` when the
-  Worker changes behaviour.
+  Worker changes behavior.
 - `fetch` returns 404 on every path. The Worker has no bindings, no vars, no
   routes and no triggers, and `workers_dev` and `preview_urls` are off; a spec
   asserts all of it. Notices are not served from here: they are a static file
@@ -196,7 +196,7 @@ library. Nothing is thrown: every problem is a status and a stable
 | Format | Output |
 | --- | --- |
 | DOCX | Headings as `#` to `######`, resolved through the style names in `styles.xml` (`heading 1`, `Title`), so localized style ids work, through `basedOn` chains (at most 8 deep) and through `outlineLvl` on the style or the paragraph. Paragraphs, bulleted and numbered lists with nesting (counters per abstract numbering; a `num` with `lvlOverride/startOverride` gets its own counter that starts at the override), tables as Markdown tables (merged cells become empty cells, nested tables are flattened into their cell), hyperlink text. |
-| XLSX | One `## Sheet: <name>` section per worksheet, in workbook order, holding CSV. Shared strings (an empty `<si/>` counts as an empty string, and a prefixed `<x:sst>` from Open XML SDK or ClosedXML writers is read), inline strings and the cached `<v>` of formulas are resolved. Numbers with a date number format (built-in ids 14-22, 27-36, 45-47, 50-58, or a custom code with date or time tokens) become ISO dates or times, with `date1904` honoured; a time-only format is a time, and an elapsed format (`[h]:mm:ss`, `[mm]:ss`, `[s]`, built-in 46) is a duration such as `36:00:00`, not a date. The gaps between `<row r=...>` numbers are kept as empty lines (at most 20 in a row). Booleans are `TRUE` or `FALSE`. Merged cells show their value once, in the top-left cell. CSV, not a Markdown table, because it costs fewer tokens, keeps empty cells as consecutive commas and needs no header row. |
+| XLSX | One `## Sheet: <name>` section per worksheet, in workbook order, holding CSV. Shared strings (an empty `<si/>` counts as an empty string, and a prefixed `<x:sst>` from Open XML SDK or ClosedXML writers is read), inline strings and the cached `<v>` of formulas are resolved. Numbers with a date number format (built-in ids 14-22, 27-36, 45-47, 50-58, or a custom code with date or time tokens) become ISO dates or times, with `date1904` honored; a time-only format is a time, and an elapsed format (`[h]:mm:ss`, `[mm]:ss`, `[s]`, built-in 46) is a duration such as `36:00:00`, not a date. The gaps between `<row r=...>` numbers are kept as empty lines (at most 20 in a row). Booleans are `TRUE` or `FALSE`. Merged cells show their value once, in the top-left cell. CSV, not a Markdown table, because it costs fewer tokens, keeps empty cells as consecutive commas and needs no header row. |
 | PPTX | `## Slide N` per slide in `sldIdLst` order, then the title as `###`, body text (bullets for body placeholders and explicit bullets), tables as Markdown tables, and `Speaker notes: ...` from the notes body placeholder. |
 
 Limits (`EXTRACT_LIMITS`, overridable per call): 30 MiB input, 1 MiB of text,
@@ -292,7 +292,7 @@ CPU and the 128 MiB memory limit are not measured: read `cpuTime` with
 Images, charts, drawings, text boxes and shapes in DOCX, SmartArt, comments,
 tracked deletions, headers, footers, footnotes, hidden-sheet flags, number
 formats other than dates (a currency cell is its raw number), formulas
-(only the cached value), cell colours and all formatting. PPTX text follows the
+(only the cached value), cell colors and all formatting. PPTX text follows the
 shape order in the file, which is the z-order, not always the reading order.
 Paragraph breaks inside a table cell become spaces.
 

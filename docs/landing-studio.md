@@ -507,7 +507,7 @@ never the raw headers, so garbage cannot reach R2. There is no preceding
   `Content-Range: bytes a-<size-1>/<size>`); a range is unsatisfiable only when
   its start is at or beyond the size or start > end. Unsatisfiable, malformed
   (`items=0-10`) and multi-range requests answer `416` with
-  `Content-Range: bytes */<size>`; the unread body is cancelled. Malformed and
+  `Content-Range: bytes */<size>`; the unread body is canceled. Malformed and
   multi-range requests are read *without* a range so they cost no `head()`.
 - **Conditionals.** R2 returns an object without a body when `onlyIf` fails.
   The route then picks the status itself: `412` if `If-Match` or
@@ -612,7 +612,7 @@ measurements.
   grows, serve the bucket through an R2 custom domain with a Cache Rule; that
   is the documented way to edge-cache R2 objects.
 
-#### Player behaviour
+#### Player behavior
 
 - **Markers** are authored in the `video.markers` frontmatter as `"m:ss"`
   timecodes (quote them — unquoted `0:12` is parsed by YAML as a number) and

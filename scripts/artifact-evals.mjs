@@ -19,7 +19,7 @@
  *   node scripts/artifact-evals.mjs rescore --dir=.evals/artifacts/<date>
  *
  * Results go to `.evals/artifacts/<date>/<model>/<case>.json` (gitignored).
- * The behavioural checks (`interactive`) run in the opt-in Playwright spec
+ * The behavioral checks (`interactive`) run in the opt-in Playwright spec
  * tests/e2e/artifacts/evals-render.spec.ts against the same results.
  * See docs/artifacts.md "Evals".
  */
@@ -49,8 +49,8 @@ export const STATIC_CHECKS = [
   'inline-code',
   'no-source-echo',
 ]
-export const BEHAVIOURAL_CHECKS = ['interactive']
-export const KNOWN_CHECKS = [...STATIC_CHECKS, ...BEHAVIOURAL_CHECKS]
+export const BEHAVIORAL_CHECKS = ['interactive']
+export const KNOWN_CHECKS = [...STATIC_CHECKS, ...BEHAVIORAL_CHECKS]
 
 const SEND_TIMEOUT_MS = 240_000
 const NETWORK_PATTERNS = [
@@ -172,7 +172,7 @@ export function matchesAny(patterns, content) {
 /**
  * Scores the checks that need no browser. `observation` holds the artifact
  * writes seen in the stream (`writes`: `{ toolName, input, error }`) and the
- * final contents (`artifacts`: `{ kind, content }`). Behavioural checks are
+ * final contents (`artifacts`: `{ kind, content }`). Behavioral checks are
  * left as `pending` for the render spec.
  */
 export function scoreStaticChecks(evalCase, observation) {
@@ -184,7 +184,7 @@ export function scoreStaticChecks(evalCase, observation) {
   const results = {}
 
   for (const check of evalCase.checks) {
-    if (BEHAVIOURAL_CHECKS.includes(check)) {
+    if (BEHAVIORAL_CHECKS.includes(check)) {
       results[check] = { status: 'pending' }
 
       continue
@@ -399,7 +399,7 @@ function scoreStaticCheck(check, context) {
 
 /**
  * Recomputes the static checks of a stored result (after a check changed)
- * and keeps a behavioural result the render spec already wrote.
+ * and keeps a behavioral result the render spec already wrote.
  */
 export function rescoreResult(evalCase, result) {
   const checks = scoreStaticChecks(evalCase, {
@@ -408,16 +408,16 @@ export function rescoreResult(evalCase, result) {
     replyText: result.replyText,
   })
 
-  for (const check of BEHAVIOURAL_CHECKS) {
+  for (const check of BEHAVIORAL_CHECKS) {
     if (checks[check] && result.checks?.[check]) {
       checks[check] = result.checks[check]
     }
   }
 
-  return { ...result, checks, status: summariseCheckStatus(checks) }
+  return { ...result, checks, status: summarizeCheckStatus(checks) }
 }
 
-export function summariseCheckStatus(checks) {
+export function summarizeCheckStatus(checks) {
   const statuses = Object.values(checks).map(check => check.status)
 
   if (statuses.includes('fail')) {
@@ -585,7 +585,7 @@ function median(values) {
  * One Markdown table row per model: passed cases, median output tokens and
  * total cost, plus one row per case with the per-model status.
  */
-export function summariseResults(results) {
+export function summarizeResults(results) {
   const models = [...new Set(results.map(result => result.model))].sort()
   const caseIds = [...new Set(results.map(result => result.caseId))]
   const byKey = new Map(results.map((result) => {
@@ -978,7 +978,7 @@ async function runCreatedCase(client, evalCase, model, created, progress) {
     artifacts,
     replyText,
     checks,
-    status: summariseCheckStatus(checks),
+    status: summarizeCheckStatus(checks),
     usage,
   }
 }
@@ -1086,13 +1086,13 @@ async function main() {
       writeEvalResult(rootDir, rescoreResult(evalCase, result))
     }
 
-    console.log(summariseResults(readEvalResults(rootDir)))
+    console.log(summarizeResults(readEvalResults(rootDir)))
 
     return
   }
 
   if (command === 'summary') {
-    console.log(summariseResults(readEvalResults(resolve(options.dir))))
+    console.log(summarizeResults(readEvalResults(resolve(options.dir))))
 
     return
   }

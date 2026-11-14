@@ -109,7 +109,7 @@ owner.
 
 `createArtifactStorageSession()` loads the snapshot once per frame session
 (after any write still in flight from an earlier frame of the same
-artifact) and serves `get` and `list` from it. Writes are serialised per
+artifact) and serves `get` and `list` from it. Writes are serialized per
 artifact (a superset of the ticket's per-key queue), so a slow response can
 never overwrite a newer value, and the snapshot changes only after the
 server accepted the write. Errors map to the runtime's codes, which show

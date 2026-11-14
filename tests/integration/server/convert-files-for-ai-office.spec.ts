@@ -76,7 +76,7 @@ function userMessage(
     id: 'm1',
     role: 'user',
     parts: [
-      { type: 'text', text: 'Summarise' },
+      { type: 'text', text: 'Summarize' },
       ...parts.map((part) => {
         return {
           type: 'file' as const,

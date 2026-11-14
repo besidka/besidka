@@ -1,4 +1,4 @@
-# Monetisation readiness: what must happen before Besidka earns anything
+# Monetization readiness: what must happen before Besidka earns anything
 
 > **Engineer-drafted. Not reviewed by a lawyer or an accountant. Research date
 > 2026-10-28.** Every point below was checked against a primary source on that
@@ -8,7 +8,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-10-28 |
-| Status | Planning only. Owner decision 2026-10-28: no monetisation, donations or earning intentions are published |
+| Status | Planning only. Owner decision 2026-10-28: no monetization, donations or earning intentions are published |
 | Scope | Donations and sponsorship (GitHub Sponsors, Ko-fi, Buy Me a Coffee, Patronite), ads, affiliate links, a paid tier or subscription, credits or resale of model usage, paid self-hosting support. Selling user data is **excluded** and never planned |
 | Sibling documents | `docs/legal.md` ("Why no postal address is published", "2026-10-28 compliance review: decisions"), `docs/legal/compliance-review-2026-10.md`, `docs/legal/dpia.md`, `docs/legal/art30-record.md` |
 
@@ -22,7 +22,7 @@ is not a `przedsiębiorca` facing consumers. **Any** earning channel, even an
 unused "Buy me a coffee" link, removes the premise for all three at once,
 because the test is gain *orientation*, not money received.
 
-So monetising is a project with a fixed order: business form and address,
+So monetizing is a project with a fixed order: business form and address,
 then tax and consumer-law plumbing, then legal text, then the button. The
 cheapest compliant path (section 5) is a JDG with a virtual office address and
 a merchant of record (MoR) that sells to the consumer: roughly 40 to 240 zł a
@@ -38,7 +38,7 @@ under UŚUDE art. 2 pkt 6 by itself:
 |---|---|
 | A donation, tip or sponsorship link anywhere under the Besidka name (site, README, `.github/FUNDING.yml`, social profile) | `FUNDING.yml` was removed for this reason (`docs/legal.md`) |
 | Ads, sponsored placements, paid listings | Ad-funded services are remunerated: CJEU C-291/13 *Papasavvas*, para 30 |
-| Affiliate or referral links that pay the operator (for example provider sign-up links) | Same; plus advertising-labelling rules (section 4.9) |
+| Affiliate or referral links that pay the operator (for example provider sign-up links) | Same; plus advertising-labeling rules (section 4.9) |
 | A paid tier, subscription, credits, or reselling model usage | Reselling makes Besidka a party to the billing chain the Terms say it stays out of |
 | Paid support, consulting or hosting for self-hosters under the Besidka name | Also reopens the "no paid self-employed activity" condition in `docs/legal.md` |
 | Selling or licensing user data | **Excluded.** Never do this; it would also break the Art. 9 consent design |
@@ -64,7 +64,7 @@ under UŚUDE art. 2 pkt 6 by itself:
 7. **Register the DMCA designated agent** with the business address (4.7) and
    add the agent block to the Terms "Copyright complaints" section.
 8. **Build the consumer flows** (4.6): pre-contract information, an order
-   button labelled as an obligation to pay, express request plus acknowledgement
+   button labeled as an obligation to pay, express request plus acknowledgment
    before service starts in the withdrawal period, confirmation on a durable
    medium, online cancellation, renewal notices.
 9. **Update the DPIA and the Art. 30 record**, then bump
@@ -209,7 +209,7 @@ the MoR. A pure payment processor (Stripe alone) does **not** shift anything
   exempt) **(ask the accountant)**.
 - Paddle describes itself as merchant of record and controller for payment
   data; Stripe acts as processor for some purposes and controller for others
-  (fraud, compliance). Both quotes came through a summarising tool **(re-read
+  (fraud, compliance). Both quotes came through a summarizing tool **(re-read
   before relying on them)**.
 
 Sources: [Reg. 282/2011](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:02011R0282-20250414);
@@ -222,14 +222,14 @@ From the consolidated *ustawa o prawach konsumenta* (Dz.U. 2026 poz. 1244):
 
 - **Pre-contract information** (art. 12): total price, price per billing period
   for subscriptions, duration, renewal and termination, functionality and
-  interoperability, withdrawal right, personalised pricing if used.
+  interoperability, withdrawal right, personalized pricing if used.
 - **Order button** (art. 17): must say "zamówienie z obowiązkiem zapłaty" or
   equivalent ("Order with obligation to pay"); otherwise no contract.
 - **Withdrawal, 14 days** (art. 27). An AI chat subscription is a *digital
   service*, not *digital content*, so the content exception (art. 38 ust. 1
   pkt 13) does not apply and the right survives while the subscription runs.
   To start the service during the 14 days, get an **express request plus
-  acknowledgement** (art. 21 ust. 2); the consumer who withdraws then pays
+  acknowledgment** (art. 21 ust. 2); the consumer who withdraws then pays
   proportionally (art. 35). Without the request, they pay nothing (art. 36).
 - **EU withdrawal button.** Directive 2023/2673 added CRD art. 11a: a
   "withdraw from contract here" function for all distance contracts concluded
@@ -304,7 +304,7 @@ Sources: [§17602](https://leginfo.legislature.ca.gov/faces/codes_displaySection
 - **Poland:** commercial information by email needs **prior consent** (PKE
   art. 398; UŚUDE art. 10 was **repealed** on 10.11.2024). Use double opt-in
   and keep the consent record.
-- **CAN-SPAM** (15 U.S.C. 7704): identify as an ad, working opt-out honoured
+- **CAN-SPAM** (15 U.S.C. 7704): identify as an ad, working opt-out honored
   within 10 business days, and a **valid physical postal address**: a street
   address, a USPS-registered P.O. box, or a CMRA private mailbox (16 CFR
   316.2(p)). The business address works.
@@ -318,9 +318,9 @@ Sources: [§17602](https://leginfo.legislature.ca.gov/faces/codes_displaySection
   third-party script category and break the Cookie Policy's "two third-party
   scripts, both from Cloudflare" statement; they also reopen the CIPA risk in
   the compliance review.
-- **Ad labelling and affiliate links:** UOKiK's 2022 influencer
+- **Ad labeling and affiliate links:** UOKiK's 2022 influencer
   recommendations treat affiliate-link earnings as advertising that must be
-  labelled, even without advertiser influence; legal hook UPNPR art. 6 ust. 3
+  labeled, even without advertiser influence; legal hook UPNPR art. 6 ust. 3
   pkt 2. FTC Endorsement Guides 16 CFR 255.5: disclose clearly next to the
   link ("Paid link", "I earn a commission"); 16 CFR 465 bans fake reviews.
 
@@ -342,7 +342,7 @@ Sources: [PKE](https://api.sejm.gov.pl/eli/acts/DU/2024/1221/text.html);
   from **2.8.2026**. The Digital Omnibus on AI (**Regulation (EU) 2026/1744,
   adopted**) gives systems placed on the market before that date until
   **2.12.2026**. The provider definition covers free services too, so this is
-  **not** a monetisation-only issue; monetising only removes any remaining
+  **not** a monetization-only issue; monetizing only removes any remaining
   "non-commercial" argument. Whether a BYOK app that relays third-party model
   output is the art. 50(2) provider is **unsettled**. The visible AI-generated
   badge is not the art. 50(2) marking; Besidka serves generated images without
@@ -357,12 +357,12 @@ Sources: [PKE](https://api.sejm.gov.pl/eli/acts/DU/2024/1221/text.html);
   agree to, so bump `CURRENT_CONSENT_VERSION` per `docs/legal.md`, and
   everyone is re-prompted.
 - **Notice:** the Terms promise advance notice of material changes and say a
-  postal address will be published before monetisation starts.
+  postal address will be published before monetization starts.
 
 Sources: [AI Act](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32024R1689);
 [Reg. 2026/1744](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32026R1744).
 
-## 5. Minimum viable compliant monetisation
+## 5. Minimum viable compliant monetization
 
 The smallest setup that does not break anything above, for a subscription or a
 tip jar:
@@ -399,7 +399,7 @@ is gainful anyway.
    handles a withdrawal?
 9. Is the EAA micro exemption measured on the operator alone?
 
-## 7. Files in this repo to change when monetising
+## 7. Files in this repo to change when monetizing
 
 | File | Change |
 |---|---|

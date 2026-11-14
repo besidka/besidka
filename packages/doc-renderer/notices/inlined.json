@@ -1,7 +1,7 @@
 [
   {
     "name": "@pdf-lib/fontkit",
-    "note": "Declares MIT in package.json and README but ships no LICENSE file; upstream foliojs/fontkit licence applies.",
+    "note": "Declares MIT in package.json and README but ships no LICENSE file; upstream foliojs/fontkit license applies.",
     "license": "MIT",
     "copyright": "Copyright (c) 2014-present Devon Govett"
   },
@@ -34,7 +34,7 @@
   {
     "name": "JSZip (used by pptxgenjs)",
     "license": "MIT OR GPL-3.0-or-later",
-    "statement": "JSZip is dual-licensed. Besidka uses and redistributes it under the MIT licence."
+    "statement": "JSZip is dual-licensed. Besidka uses and redistributes it under the MIT license."
   },
   {
     "name": "Noto Sans Regular, Bold and Italic (subset to Latin and Cyrillic)",

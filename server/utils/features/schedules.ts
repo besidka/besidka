@@ -241,7 +241,7 @@ export async function cancelFeatureSchedule(
 ) {
   requireKnownFlag(flag)
 
-  const [cancelled] = await context.db
+  const [canceled] = await context.db
     .update(schema.featureRuleSchedules)
     .set({ status: 'cancelled', error: null })
     .where(and(
@@ -254,12 +254,12 @@ export async function cancelFeatureSchedule(
     ))
     .returning()
 
-  if (!cancelled) {
+  if (!canceled) {
     throwAdminError(
       409,
-      'This step can no longer be cancelled',
+      'This step can no longer be canceled',
       'schedule_not_open',
-      'Only steps that have not started can be cancelled',
+      'Only steps that have not started can be canceled',
     )
   }
 
@@ -269,8 +269,8 @@ export async function cancelFeatureSchedule(
       flag,
       targetUserId: null,
       before: {
-        runAt: Math.floor(cancelled.runAt.getTime() / 1000),
-        ...cancelled.change,
+        runAt: Math.floor(canceled.runAt.getTime() / 1000),
+        ...canceled.change,
       },
       after: null,
     }),
@@ -281,7 +281,7 @@ export async function cancelFeatureSchedule(
     targetUserId: null,
     effect: null,
     expiresAt: null,
-    scheduleRunAt: [cancelled.runAt.toISOString()],
+    scheduleRunAt: [canceled.runAt.toISOString()],
   })
 
   return { id: scheduleId, flag }

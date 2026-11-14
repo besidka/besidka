@@ -237,7 +237,7 @@ async function submitAdd() {
     if (error) {
       const errorCode = 'code' in error ? error.code : undefined
 
-      if (isPasskeyCeremonyCancelled(errorCode)) {
+      if (isPasskeyCeremonyCanceled(errorCode)) {
         return
       }
 

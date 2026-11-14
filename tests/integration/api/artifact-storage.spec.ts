@@ -426,7 +426,7 @@ describe('artifact viewer storage API', () => {
       await expect(readRows(ownerId)).resolves.toHaveLength(0)
     })
 
-    it('accepts one value of exactly 32 KB serialised', async () => {
+    it('accepts one value of exactly 32 KB serialized', async () => {
       const { result } = await put('big', byteString(MAX_VALUE_STRING_BYTES))
 
       expect(result.bytes).toBe(ARTIFACT_STORAGE_MAX_VALUE_BYTES)

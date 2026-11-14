@@ -122,12 +122,12 @@ function getAnthropicNote(config: PublicConfig): string {
   const freeText = freeHours === undefined
     ? ''
     : ` after ${formatCount(freeHours)} free hours a month for your `
-      + 'organisation'
+      + 'organization'
 
   return 'Runs in Anthropic\'s sandbox on your API key. Anthropic bills '
     + `container time ${rateText}${freeText}, with a 5-minute minimum, and `
     + 'bills attached files even if no code runs. Free hours depend on '
-    + 'your organisation.'
+    + 'your organization.'
 }
 
 function getOpenAiNote(config: PublicConfig): string {
