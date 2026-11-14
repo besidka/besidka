@@ -1,12 +1,11 @@
 export type SkillDetailTab = 'instructions' | 'files' | 'versions' | 'settings'
 
-export type SkillCreateKind = 'blank' | 'command' | 'template'
+export type SkillCreateKind = 'skill' | 'template'
 
 export type SkillImportTab = 'upload' | 'paste' | 'github'
 
 export type SkillNewAction
-  = | 'blank'
-    | 'command'
+  = | 'skill'
     | 'template'
     | 'upload'
     | 'paste'

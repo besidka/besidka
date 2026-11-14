@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   detailRefresh: vi.fn(),
 }))
 
+const commandsActive = ref<boolean>(false)
 const detail = ref<unknown>(null)
 const detailStatus = ref<string>('success')
 const detailError = ref<unknown>(null)
@@ -31,6 +32,7 @@ mockNuxtImport('useSuccessMessage', () => mocks.successMessage)
 mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
     const active = key === 'skills.import-url'
+      || (key === 'skills.commands' && commandsActive.value)
 
     return { enabled: active, active, variant: null }
   })
@@ -86,6 +88,7 @@ describe('Profile/Skills/DetailPanel', () => {
     mocks.errorMessage.mockReset()
     mocks.successMessage.mockReset()
     mocks.detailRefresh.mockReset()
+    commandsActive.value = false
     detail.value = createSkillDetail({
       id: 'SkillPublicId01',
       allowedTools: ['Read'],
@@ -295,22 +298,155 @@ describe('Profile/Skills/DetailPanel', () => {
     })
   })
 
-  it('shows the argument hint field only for a command and saves it trimmed', async () => {
+  it('shows no command form while the commands feature is off', async () => {
     useState('skills:detail-tab').value = 'settings'
-    detail.value = createSkillDetail({ slashCommand: true, argumentHint: null })
+    detail.value = createSkillDetail({
+      command: 'run-it',
+      slashCommand: true,
+    })
+
+    const wrapper = await mountPanel()
+
+    expect(wrapper.find(testId('skill-setting-command-form')).exists())
+      .toBe(false)
+    expect(wrapper.find(testId('skill-setting-command')).exists()).toBe(false)
+    expect(wrapper.find(testId('skill-setting-argument-hint')).exists())
+      .toBe(false)
+    expect(wrapper.find(testId('skill-detail-command')).exists()).toBe(false)
+  })
+
+  it('shows the command badge in the header when the feature is on', async () => {
+    commandsActive.value = true
+    detail.value = createSkillDetail({
+      command: 'run-it',
+      slashCommand: true,
+    })
+
+    const wrapper = await mountPanel()
+    const badge = wrapper.get(testId('skill-detail-command'))
+
+    expect(badge.text()).toBe('/run-it')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-soft']),
+    )
+    expect(wrapper.find(testId('skill-detail-kind')).exists()).toBe(false)
+  })
+
+  it('shows no command badge for a skill without a command', async () => {
+    commandsActive.value = true
+
+    const wrapper = await mountPanel()
+
+    expect(wrapper.find(testId('skill-detail-command')).exists()).toBe(false)
+  })
+
+  it('shows the command input but no hint field for a skill without a command', async () => {
+    commandsActive.value = true
+    useState('skills:detail-tab').value = 'settings'
+
+    const wrapper = await mountPanel()
+
+    expect((wrapper.get(testId('skill-setting-command')).element as HTMLInputElement).value)
+      .toBe('')
+    expect(wrapper.find(testId('skill-setting-argument-hint')).exists())
+      .toBe(false)
+    expect(wrapper.get(testId('skill-setting-command-save'))
+      .attributes('disabled')).toBeDefined()
+  })
+
+  it('shows the argument hint field once a command is typed and saves both trimmed', async () => {
+    commandsActive.value = true
+    useState('skills:detail-tab').value = 'settings'
     mocks.fetch.mockResolvedValue({})
 
     const wrapper = await mountPanel()
+
+    await wrapper.get(testId('skill-setting-command')).setValue(' /summarise ')
+
     const input = wrapper.get(testId('skill-setting-argument-hint'))
 
     await input.setValue('  What to summarise  ')
-    await wrapper.get('form').trigger('submit')
+    await wrapper.get(testId('skill-setting-command-form'))
+      .trigger('submit')
     await flushPromises()
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/SkillPublicId01', {
       method: 'PATCH',
-      body: { argumentHint: 'What to summarise' },
+      body: { command: 'summarise', argumentHint: 'What to summarise' },
     })
+  })
+
+  it('prefills the saved command and clears it with null', async () => {
+    commandsActive.value = true
+    useState('skills:detail-tab').value = 'settings'
+    detail.value = createSkillDetail({
+      command: 'run-it',
+      slashCommand: true,
+      argumentHint: 'A link',
+    })
+    mocks.fetch.mockResolvedValue({})
+
+    const wrapper = await mountPanel()
+    const input = wrapper.get(testId('skill-setting-command'))
+      .element as HTMLInputElement
+
+    expect(input.value).toBe('run-it')
+    expect((wrapper.get(testId('skill-setting-argument-hint')).element as HTMLInputElement).value)
+      .toBe('A link')
+
+    await wrapper.get(testId('skill-setting-command')).setValue('')
+
+    expect(wrapper.find(testId('skill-setting-argument-hint')).exists())
+      .toBe(false)
+
+    await wrapper.get(testId('skill-setting-command-form'))
+      .trigger('submit')
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/SkillPublicId01', {
+      method: 'PATCH',
+      body: { command: null, argumentHint: null },
+    })
+  })
+
+  it('shows a reserved command as a problem and disables Save', async () => {
+    commandsActive.value = true
+    useState('skills:detail-tab').value = 'settings'
+
+    const wrapper = await mountPanel()
+
+    await wrapper.get(testId('skill-setting-command')).setValue('/memory')
+
+    expect(wrapper.get(testId('skill-setting-command-help')).text())
+      .toContain('/memory is reserved by Besidka')
+    expect(wrapper.get(testId('skill-setting-command-save'))
+      .attributes('disabled')).toBeDefined()
+  })
+
+  it('shows the server reason next to the command field when the save fails', async () => {
+    commandsActive.value = true
+    useState('skills:detail-tab').value = 'settings'
+    mocks.fetch.mockRejectedValue({
+      data: { message: '/run-it is already a command' },
+    })
+
+    const wrapper = await mountPanel()
+
+    await wrapper.get(testId('skill-setting-command')).setValue('run-it')
+    await wrapper.get(testId('skill-setting-command-form'))
+      .trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get(testId('skill-setting-command-help')).text())
+      .toContain('/run-it is already a command')
+    expect(wrapper.get(testId('skill-setting-command-help')).attributes('role'))
+      .toBe('alert')
+    expect(mocks.errorMessage).not.toHaveBeenCalled()
+
+    await wrapper.get(testId('skill-setting-command')).setValue('run-it-2')
+
+    expect(wrapper.get(testId('skill-setting-command-help')).text())
+      .not.toContain('already a command')
   })
 
   it('has no separate invocation toggles, only the mode control', async () => {
@@ -328,18 +464,18 @@ describe('Profile/Skills/DetailPanel', () => {
       .toContain('The model uses it when the description matches')
   })
 
-  it('says to rename a skill whose reserved name blocks /name', async () => {
+  it('never says to rename a skill with a reserved name', async () => {
     useState('skills:detail-tab').value = 'settings'
     detail.value = createSkillDetail({
       name: 'memory',
       enabled: true,
-      slashCommand: false,
     })
 
     const wrapper = await mountPanel()
 
-    expect(wrapper.get(testId('skill-setting-slash-blocked')).text())
-      .toContain('Rename to use /name')
+    expect(wrapper.find(testId('skill-setting-slash-blocked')).exists())
+      .toBe(false)
+    expect(wrapper.text()).not.toContain('Rename to use')
   })
 
   it('shows licence, source and requested tools as not granted', async () => {

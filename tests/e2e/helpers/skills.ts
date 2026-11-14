@@ -9,6 +9,7 @@ import {
 export const E2E_ADMIN_EMAIL = 'e2e-admin@example.com'
 const CONSENT_COOKIE_NAME = 'cookies_consent'
 const ONE_DAY_IN_SECONDS = 60 * 60 * 24
+const GRANTED_FLAGS = ['skills', 'skills.commands'] as const
 
 export function markEmailVerified(email: string) {
   execFileSync('pnpm', [
@@ -72,18 +73,22 @@ export async function openGrantedMember(
 
   markEmailVerified(E2E_ADMIN_EMAIL)
 
-  const grant = await adminPage.request.post(
-    '/api/v1/admin/features/skills/grants',
-    {
-      data: {
-        userId: await readUserId(page),
-        effect: 'allow',
-        expiresInDays: 1,
-      },
-    },
-  )
+  const userId = await readUserId(page)
 
-  expect(grant.status()).toBe(200)
+  for (const flag of GRANTED_FLAGS) {
+    const grant = await adminPage.request.post(
+      `/api/v1/admin/features/${flag}/grants`,
+      {
+        data: {
+          userId,
+          effect: 'allow',
+          expiresInDays: 1,
+        },
+      },
+    )
+
+    expect(grant.status()).toBe(200)
+  }
 
   return page
 }
@@ -92,10 +97,13 @@ export async function createSkillByApi(
   page: Page,
   name: string,
   description: string,
-  kind: 'blank' | 'command' = 'blank',
+  options: {
+    command?: string
+    mode?: 'off' | 'auto' | 'ask'
+  } = {},
 ): Promise<string> {
   const response = await page.request.post('/api/v1/skills', {
-    data: { kind, name, description },
+    data: { kind: 'blank', name, description, ...options },
   })
 
   expect(response.status()).toBe(201)

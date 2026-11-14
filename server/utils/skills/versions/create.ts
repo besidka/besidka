@@ -10,9 +10,10 @@ import { SKILL_LICENCE_CLASSIFIER_VERSION } from '#shared/utils/skills/licence'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import { getSkillTemplate } from '#shared/utils/skills/templates'
 import {
-  isReservedSkillSlashName,
   isSkillNameValid,
+  normalizeSkillCommand,
 } from '#shared/utils/skills-policy'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
@@ -24,12 +25,19 @@ import {
   reclaimAbandonedPlaceholder,
 } from '~~/server/utils/skills/import/commit'
 import { putSkillBlobs } from '~~/server/utils/skills/storage'
-import { isUniqueViolation } from '~~/server/utils/skills/unique-violation'
+import {
+  findUniqueViolation,
+  isUniqueViolation,
+} from '~~/server/utils/skills/unique-violation'
 import {
   countUserSkills,
   getUserSkillsUsageBytes,
 } from '~~/server/utils/skills/usage'
-import { createSkillEditError } from '~~/server/utils/skills/versions/errors'
+import {
+  createSkillCommandTakenError,
+  createSkillEditError,
+} from '~~/server/utils/skills/versions/errors'
+import { resolveSkillCommand } from '~~/server/utils/skills/versions/settings'
 import {
   asBatch,
   buildVersionStatements,
@@ -41,14 +49,21 @@ type DbClient = ReturnType<typeof useDb>
 const textEncoder = new TextEncoder()
 
 export type CreateSkillRequest
-  = | { kind: 'blank', name: string, description?: string }
-    | {
-      kind: 'command'
-      name: string
-      description?: string
-      argumentHint?: string | null
-    }
-    | { kind: 'template', template: string, name?: string }
+  = | {
+    kind: 'blank'
+    name: string
+    description?: string
+    mode?: SkillMode
+    command?: string | null
+    argumentHint?: string | null
+  }
+  | {
+    kind: 'template'
+    template: string
+    name?: string
+    mode?: SkillMode
+    command?: string | null
+  }
 
 export interface CreateAuthoredSkillInput {
   db: DbClient
@@ -62,12 +77,12 @@ export interface CreatedSkill {
   id: string
   name: string
   version: 1
-  enabled: true
+  enabled: boolean
   status: 'ready'
   licenseClass: 'authored'
   filesCount: number
   modelInvocable: boolean
-  slashCommand: boolean
+  command: string | null
   argumentHint: string | null
 }
 
@@ -75,8 +90,8 @@ interface ResolvedNewSkill {
   kind: 'editor' | 'template'
   name: string
   files: Array<{ path: string, content: string }>
-  modelInvocable: boolean
-  slashCommand: boolean
+  mode: SkillMode
+  command: string | null | undefined
   argumentHint: string | null
 }
 
@@ -114,13 +129,13 @@ function resolveNewSkill(request: CreateSkillRequest): ResolvedNewSkill {
           content: renameSkillMarkdown(file.content, name) ?? file.content,
         }
       }),
-      modelInvocable: template.modelInvocable,
-      slashCommand: template.slashCommand && !isReservedSkillSlashName(name),
+      mode: request.mode ?? (template.modelInvocable ? 'auto' : 'ask'),
+      command: request.command,
       argumentHint: template.argumentHint,
     }
   }
 
-  const isCommand = request.kind === 'command'
+  const hasCommand = normalizeSkillCommand(request.command) !== null
 
   return {
     kind: 'editor',
@@ -128,11 +143,11 @@ function resolveNewSkill(request: CreateSkillRequest): ResolvedNewSkill {
     files: buildBlankSkillFiles({
       name: request.name,
       description: request.description?.trim() || BLANK_SKILL_DESCRIPTION,
-      kind: isCommand ? 'command' : 'skill',
+      kind: hasCommand ? 'command' : 'skill',
     }),
-    modelInvocable: !isCommand,
-    slashCommand: isCommand || !isReservedSkillSlashName(request.name),
-    argumentHint: isCommand
+    mode: request.mode ?? 'auto',
+    command: request.command,
+    argumentHint: hasCommand
       ? (request.argumentHint?.trim() || BLANK_COMMAND_ARGUMENT_HINT)
       : null,
   }
@@ -141,7 +156,7 @@ function resolveNewSkill(request: CreateSkillRequest): ResolvedNewSkill {
 function createNameTakenError(name: string) {
   return createSkillEditError('name-taken', {
     message: `A skill named ${name} exists`,
-    why: 'Skill names are unique, because they are the names of /commands too',
+    why: 'Skill names are unique per account',
     fix: 'Pick another name',
   })
 }
@@ -167,13 +182,13 @@ export async function createAuthoredSkill(
     )
   }
 
-  if (resolved.slashCommand && isReservedSkillSlashName(resolved.name)) {
-    throw createSkillEditError('reserved-name', {
-      message: `/${resolved.name} is reserved by Besidka`,
-      why: 'This name belongs to a built-in command',
-      fix: 'Pick another name',
-    })
-  }
+  const command = await resolveSkillCommand({
+    db,
+    userId,
+    command: resolved.command,
+  })
+  const modelInvocable = resolved.mode === 'auto'
+  const isEnabled = resolved.mode !== 'off'
 
   const files = resolved.files.map((file) => {
     const bytes = textEncoder.encode(file.content)
@@ -244,9 +259,10 @@ export async function createAuthoredSkill(
       filesCount: analysis.files.length,
       bytes: analysis.totalBytes,
       enabled: false,
-      modelInvocable: resolved.modelInvocable,
-      slashCommand: resolved.slashCommand,
-      argumentHint: resolved.argumentHint,
+      modelInvocable,
+      slashCommand: false,
+      slashName: null,
+      argumentHint: command === null ? null : resolved.argumentHint,
       allowScripts: false,
       status: 'broken',
       createdVia: 'app',
@@ -282,7 +298,7 @@ export async function createAuthoredSkill(
 
     await db.batch(asBatch([
       db.update(schema.skills)
-        .set({ status: 'ready', enabled: true })
+        .set({ status: 'ready', enabled: isEnabled, slashName: command })
         .where(and(
           eq(schema.skills.id, createdSkillId),
           eq(schema.skills.userId, userId),
@@ -316,6 +332,10 @@ export async function createAuthoredSkill(
       skillId: createdSkillId,
     })
 
+    if (findUniqueViolation(exception)?.includes('slash_name')) {
+      throw createSkillCommandTakenError(command ?? '')
+    }
+
     throw exception
   }
 
@@ -336,12 +356,12 @@ export async function createAuthoredSkill(
     id: createdSkillId,
     name: resolved.name,
     version: 1,
-    enabled: true,
+    enabled: isEnabled,
     status: 'ready',
     licenseClass: 'authored',
     filesCount: analysis.files.length,
-    modelInvocable: resolved.modelInvocable,
-    slashCommand: resolved.slashCommand,
-    argumentHint: resolved.argumentHint,
+    modelInvocable,
+    command,
+    argumentHint: command === null ? null : resolved.argumentHint,
   }
 }

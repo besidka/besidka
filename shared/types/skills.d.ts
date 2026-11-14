@@ -18,6 +18,7 @@ export interface SkillSummary {
   description: string
   enabled: boolean
   modelInvocable: boolean
+  command: string | null
   slashCommand: boolean
   argumentHint: string | null
   status: SkillStatus
@@ -43,7 +44,6 @@ export interface SkillsListResponse {
   skills: SkillSummary[]
   counts: {
     sources: { all: number, created: number, imported: number, apps: number }
-    kinds: { all: number, skills: number, commands: number }
   }
 }
 
@@ -135,7 +135,6 @@ export interface SkillImportPreview {
     metadata: Record<string, string> | null
     allowedTools: string[] | null
     modelInvocable: boolean
-    slashCommand: boolean
     argumentHint: string | null
   }
   files: Array<{ path: string, bytes: number, kind: SkillFileKind }>

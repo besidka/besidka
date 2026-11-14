@@ -27,46 +27,51 @@
           {{ tokens }} tokens.
         </template>
       </p>
-      <p
-        v-if="isSlashBlocked"
-        class="text-xs text-warning"
-        data-testid="skill-setting-slash-blocked"
-      >
-        /{{ skill.name }} is reserved by Besidka. Rename to use /name.
-      </p>
       <form
-        v-if="skill.slashCommand"
-        class="grid gap-1"
-        @submit.prevent="onSaveHint"
+        v-if="commandsFeature.active"
+        class="grid gap-3"
+        novalidate
+        data-testid="skill-setting-command-form"
+        @submit.prevent="onSaveCommand"
       >
-        <label
-          for="skill-argument-hint"
-          class="text-sm font-medium"
+        <ProfileSkillsCommandField
+          v-model="commandInput"
+          :server-error="commandError"
+          test-id="skill-setting-command"
+        />
+        <div
+          v-if="hasCommandInput"
+          class="grid gap-1"
         >
-          Argument hint
-        </label>
-        <div class="join w-full">
+          <label
+            for="skill-argument-hint"
+            class="text-sm font-medium"
+          >
+            Argument hint
+          </label>
           <input
             id="skill-argument-hint"
             v-model="hint"
             type="text"
-            class="input input-sm join-item w-full"
+            class="input input-sm w-full"
             :maxlength="SKILL_ARGUMENT_HINT_MAX"
             placeholder="What to apply this to"
             data-testid="skill-setting-argument-hint"
           >
+          <p class="text-xs text-base-content/70">
+            Shown in the message box while the command is chosen.
+          </p>
+        </div>
+        <div>
           <button
             type="submit"
-            class="btn btn-sm join-item"
-            :disabled="isBusy || !isHintChanged"
-            data-testid="skill-setting-argument-hint-save"
+            class="btn btn-sm"
+            :disabled="isBusy || !isCommandChanged || !!commandProblem"
+            data-testid="skill-setting-command-save"
           >
-            Save
+            Save command
           </button>
         </div>
-        <p class="text-xs text-base-content/70">
-          Shown in the message box while the command is chosen.
-        </p>
       </form>
     </section>
 
@@ -180,12 +185,15 @@
 </template>
 
 <script setup lang="ts">
-import { SKILL_ARGUMENT_HINT_MAX } from '#shared/utils/skills-policy'
+import {
+  SKILL_ARGUMENT_HINT_MAX,
+  getSkillCommandProblem,
+  normalizeSkillCommand,
+} from '#shared/utils/skills-policy'
 import type { SkillDetail } from '#shared/types/skills.d'
 import {
   SKILL_MODE_DESCRIPTIONS,
   getSkillMode,
-  isSkillSlashBlocked,
 } from '#shared/utils/skills/mode'
 import type { SkillMode } from '#shared/utils/skills/mode'
 
@@ -202,7 +210,11 @@ const importFromUrl = useFeature('skills.import-url')
 const actions = useSkillActions()
 const { onDownloadClick } = useFileDownload()
 
+const commandsFeature = useFeature('skills.commands')
+
+const commandInput = shallowRef<string>(props.skill.command ?? '')
 const hint = shallowRef<string>(props.skill.argumentHint ?? '')
+const commandError = shallowRef<string>('')
 
 const isBusy = computed<boolean>(() => {
   return actions.isBusy(props.skill.id)
@@ -216,12 +228,20 @@ const mode = computed<SkillMode>(() => {
   return getSkillMode(props.skill)
 })
 
-const isSlashBlocked = computed<boolean>(() => {
-  return isSkillSlashBlocked(props.skill)
+const hasCommandInput = computed<boolean>(() => {
+  return normalizeSkillCommand(commandInput.value) !== null
 })
 
-const isHintChanged = computed<boolean>(() => {
-  return hint.value.trim() !== (props.skill.argumentHint ?? '')
+const commandProblem = computed<string>(() => {
+  return getSkillCommandProblem(commandInput.value)
+})
+
+const isCommandChanged = computed<boolean>(() => {
+  const command = normalizeSkillCommand(commandInput.value)
+
+  return command !== props.skill.command
+    || (command !== null
+      && hint.value.trim() !== (props.skill.argumentHint ?? ''))
 })
 
 const canCheckForUpdates = computed<boolean>(() => {
@@ -240,14 +260,25 @@ watch(() => props.skill.argumentHint, (value) => {
   hint.value = value ?? ''
 })
 
+watch(() => props.skill.command, (value) => {
+  commandInput.value = value ?? ''
+})
+
+watch(commandInput, () => {
+  commandError.value = ''
+})
+
 async function onSelectMode(selected: SkillMode) {
   await actions.setMode(props.skill, selected)
 }
 
-async function onSaveHint() {
-  await actions.saveSettings(props.skill.id, {
-    argumentHint: hint.value.trim() || null,
-  })
+async function onSaveCommand() {
+  const command = normalizeSkillCommand(commandInput.value)
+
+  commandError.value = await actions.saveCommand(props.skill.id, {
+    command,
+    argumentHint: command === null ? null : hint.value.trim() || null,
+  }) ?? ''
 }
 
 async function onDownload(event: MouseEvent) {

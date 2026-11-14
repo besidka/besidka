@@ -178,7 +178,6 @@ export async function createSkillImportPreview(input: {
       metadata: analysis.skill.metadata,
       allowedTools: analysis.skill.allowedTools,
       modelInvocable: analysis.skill.defaults.modelInvocable,
-      slashCommand: analysis.skill.defaults.slashCommand,
       argumentHint: analysis.skill.defaults.argumentHint,
     },
     files: manifest.files.map((file) => {

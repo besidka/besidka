@@ -40,7 +40,7 @@ import type { SkillSummary } from '#shared/types/skills.d'
 const props = withDefaults(defineProps<{
   skill: Pick<
     SkillSummary,
-    'name' | 'enabled' | 'modelInvocable' | 'slashCommand' | 'status'
+    'name' | 'enabled' | 'modelInvocable' | 'status'
   >
   isDisabled?: boolean
   hasLabel?: boolean

@@ -65,7 +65,6 @@ export interface SkillStageManifest {
     metadata: Record<string, string> | null
     allowedTools: string[] | null
     modelInvocable: boolean
-    slashCommand: boolean
     argumentHint: string | null
   }
   licence: {
@@ -145,7 +144,6 @@ function buildManifest(input: {
       metadata: analysis.skill.metadata,
       allowedTools: analysis.skill.allowedTools,
       modelInvocable: analysis.skill.defaults.modelInvocable,
-      slashCommand: analysis.skill.defaults.slashCommand,
       argumentHint: analysis.skill.defaults.argumentHint,
     },
     licence: {

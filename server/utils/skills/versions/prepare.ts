@@ -6,7 +6,6 @@ import { classifySkillLicence } from '#shared/utils/skills/licence'
 import type { SkillLicenceResult } from '#shared/utils/skills/licence'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import { isSkillLicenceRootFile } from '#shared/utils/skills/edit'
-import { isReservedSkillSlashName } from '#shared/utils/skills-policy'
 import type { SkillLicenseClass } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
 import { createSkillEditError } from '~~/server/utils/skills/versions/errors'
@@ -26,35 +25,7 @@ export interface PreparedSkillVersion {
   sha256: string
   totalBytes: number
   renamed: boolean
-  slashCommand?: boolean
   warnings: string[]
-}
-
-/**
- * A rename keeps `slashCommand` in step with the name instead of failing:
- * a reserved new name turns it off, and leaving a reserved name turns it on
- * again for a skill that is enabled.
- */
-function resolveRenamedSlashCommand(
-  skill: Pick<SkillRow, 'name' | 'enabled' | 'slashCommand'>,
-  newName: string,
-): boolean | undefined {
-  const isNewNameReserved = isReservedSkillSlashName(newName)
-
-  if (skill.slashCommand && isNewNameReserved) {
-    return false
-  }
-
-  if (
-    skill.enabled
-    && !skill.slashCommand
-    && !isNewNameReserved
-    && isReservedSkillSlashName(skill.name)
-  ) {
-    return true
-  }
-
-  return undefined
 }
 
 async function readEntryText(input: {
@@ -74,8 +45,7 @@ async function readEntryText(input: {
 
 /**
  * Everything the next version of an existing skill has to satisfy, read from
- * the new file set: `SKILL.md` must parse, a changed name must be free (a
- * reserved slash name only switches `slashCommand` off), and the
+ * the new file set: `SKILL.md` must parse, a changed name must be free, and the
  * licence classifier runs again over the licence files, so a restricted
  * licence file blocks the version. Only `SKILL.md` and the root licence
  * files are read; contents the caller already holds are not read again.
@@ -127,7 +97,7 @@ export async function prepareSkillVersion(input: {
     if (taken) {
       throw createSkillEditError('name-taken', {
         message: `A skill named ${frontmatter.name} exists`,
-        why: 'Skill names are unique, because they are the names of /commands too',
+        why: 'Skill names are unique per account',
         fix: 'Pick another name',
       })
     }
@@ -179,9 +149,6 @@ export async function prepareSkillVersion(input: {
       return total + file.bytes
     }, 0),
     renamed,
-    ...(renamed
-      ? { slashCommand: resolveRenamedSlashCommand(skill, frontmatter.name) }
-      : {}),
     warnings: [...parsed.warnings, ...licence.warnings],
   }
 }

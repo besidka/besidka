@@ -136,7 +136,8 @@ test('a member uploads a skill, reviews it, installs it and turns it on', async 
     name: skillName,
     enabled: true,
     modelInvocable: false,
-    slashCommand: true,
+    command: null,
+    slashCommand: false,
   })
 })
 
@@ -149,7 +150,7 @@ test('a member creates a skill, edits it in the editor and saves version 2', asy
   await expect(page.getByTestId('skills-empty')).toBeVisible()
 
   await page.getByTestId('skills-new-trigger').click()
-  await page.getByTestId('skills-new-blank').click()
+  await page.getByTestId('skills-new-skill').click()
 
   const createDialog = page.locator('dialog.js-skill-create-modal')
 

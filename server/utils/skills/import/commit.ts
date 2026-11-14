@@ -8,7 +8,6 @@ import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import {
   SKILLS_MAX_USER_BYTES,
   SKILLS_PER_USER,
-  isReservedSkillSlashName,
   isSkillNameValid,
 } from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
@@ -90,7 +89,7 @@ function createNameTakenError(
     message: `A skill named ${name} exists`,
     status: 409,
     code: 'name-taken',
-    why: 'Skill names are unique, because they are the names of /commands too',
+    why: 'Skill names are unique per account',
     fix: 'Replace the existing skill with this one as an update, or rename '
       + 'the incoming skill',
     data: { stageId, asUpdateOf: existingSkillId, name },
@@ -417,8 +416,8 @@ async function createSkillFromStage(input: {
       bytes: manifest.totalBytes,
       enabled: false,
       modelInvocable: manifest.skill.modelInvocable,
-      slashCommand: manifest.skill.slashCommand
-        && !isReservedSkillSlashName(name),
+      slashCommand: false,
+      slashName: null,
       argumentHint: manifest.skill.argumentHint,
       allowScripts: false,
       status: 'broken',

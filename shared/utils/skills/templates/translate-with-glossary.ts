@@ -3,12 +3,12 @@ import type { SkillTemplate } from '#shared/utils/skills/templates/types'
 export const translateWithGlossaryTemplate: SkillTemplate = {
   id: 'translate-with-glossary',
   title: 'Translate with a glossary',
-  summary: 'A command that translates text and keeps your preferred terms.',
+  summary: 'Runs as /translate: translates text and keeps your preferred terms.',
   name: 'translate-with-glossary',
   description:
     'Translate text and keep my preferred terms from the glossary. Use when I give a target language and some text.',
   modelInvocable: false,
-  slashCommand: true,
+  command: 'translate',
   argumentHint: 'Target language, then the text',
   files: [
     {

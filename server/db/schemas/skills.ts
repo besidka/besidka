@@ -48,6 +48,7 @@ export const skills = snakeCase.table(
     slashCommand: integer({ mode: 'boolean' })
       .notNull()
       .$defaultFn(() => false),
+    slashName: text(),
     argumentHint: text(),
     allowScripts: integer({ mode: 'boolean' })
       .notNull()
@@ -62,6 +63,8 @@ export const skills = snakeCase.table(
   },
   table => [
     uniqueIndex('uq_skills_user_name').on(table.userId, table.name),
+    uniqueIndex('uq_skills_user_slash_name')
+      .on(table.userId, table.slashName),
     index('idx_skills_user_updated').on(table.userId, table.updatedAt),
   ],
 )

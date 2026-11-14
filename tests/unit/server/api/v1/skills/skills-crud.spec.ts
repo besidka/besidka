@@ -12,6 +12,7 @@ import type {
 import {
   createFakeSkillBucket,
   createFakeSkillKv,
+  seedSkill,
   seedSkillWithFiles,
 } from '../../../../../setup/helpers/skills-db'
 import type {
@@ -254,10 +255,12 @@ describe('skills create, save, restore and read routes', () => {
       ['a missing name', { kind: 'blank' }],
       ['an unknown key', { kind: 'blank', name: 'a', enabled: false }],
       ['a hint with a control character', {
-        kind: 'command',
+        kind: 'blank',
         name: 'a',
         argumentHint: 'bad\u0007',
       }],
+      ['the removed command kind', { kind: 'command', name: 'a' }],
+      ['an unknown mode', { kind: 'blank', name: 'a', mode: 'manual' }],
       ['a template that does not exist', { kind: 'template', template: 'x' }],
     ])('answers 400 for %s', async (_label, body) => {
       expect((await failureOf(call('create', { body }))).status).toBe(400)
@@ -267,6 +270,54 @@ describe('skills create, save, restore and read routes', () => {
       expect((await failureOf(call('create', {
         body: { kind: 'blank', name: 'review-pr' },
       }))).status).toBe(409)
+    })
+
+    it('creates a skill with a mode and a command', async () => {
+      const { result, event } = await call('create', {
+        body: {
+          kind: 'blank',
+          name: 'new-one',
+          mode: 'ask',
+          command: '/new-one',
+        },
+      })
+
+      expect(event.status).toBe(201)
+      expect(result).toMatchObject({
+        name: 'new-one',
+        enabled: true,
+        modelInvocable: false,
+        command: 'new-one',
+      })
+    })
+
+    it('answers 400 reserved-name for a reserved command', async () => {
+      const failure = await failureOf(call('create', {
+        body: { kind: 'blank', name: 'new-one', command: 'memory' },
+      }))
+
+      expect(failure).toMatchObject({ status: 400, code: 'reserved-name' })
+    })
+
+    it('allows a reserved skill name', async () => {
+      const { result, event } = await call('create', {
+        body: { kind: 'blank', name: 'memory' },
+      })
+
+      expect(event.status).toBe(201)
+      expect(result).toMatchObject({ name: 'memory', command: null })
+    })
+
+    it('answers 409 command-taken for a command in use', async () => {
+      await testDb.db.update(schema.skills)
+        .set({ slashName: 'taken-cmd' })
+        .where(eq(schema.skills.id, skillId))
+
+      const failure = await failureOf(call('create', {
+        body: { kind: 'blank', name: 'new-one', command: 'taken-cmd' },
+      }))
+
+      expect(failure).toMatchObject({ status: 409, code: 'command-taken' })
     })
 
     it('refuses a body without a length and one over the cap', async () => {
@@ -307,14 +358,61 @@ describe('skills create, save, restore and read routes', () => {
       expect(result).toMatchObject({
         enabled: true,
         modelInvocable: false,
-        slashCommand: true,
+        slashCommand: false,
+        command: null,
         argumentHint: 'Pull request link',
         currentVersion: 1,
       })
     })
 
+    it('sets and clears the command without touching the mode', async () => {
+      await testDb.db.update(schema.skills)
+        .set({ modelInvocable: true })
+        .where(eq(schema.skills.id, skillId))
+
+      const { result: withCommand } = await call('patch', {
+        body: { command: '/review-pr' },
+      })
+
+      expect(withCommand).toMatchObject({
+        command: 'review-pr',
+        slashCommand: true,
+        enabled: true,
+        modelInvocable: true,
+      })
+
+      const { result: cleared } = await call('patch', {
+        body: { command: null },
+      })
+
+      expect(cleared).toMatchObject({
+        command: null,
+        slashCommand: false,
+        enabled: true,
+        modelInvocable: true,
+      })
+    })
+
+    it('answers 400 reserved-name for a reserved command', async () => {
+      expect(await failureOf(call('patch', { body: { command: 'help' } })))
+        .toMatchObject({ status: 400, code: 'reserved-name' })
+    })
+
+    it('answers 409 command-taken for another skill\'s command', async () => {
+      await seedSkill(testDb.db, userId, {
+        name: 'other-skill',
+        slashName: 'shared-cmd',
+      })
+
+      expect(await failureOf(call('patch', {
+        body: { command: 'shared-cmd' },
+      }))).toMatchObject({ status: 409, code: 'command-taken' })
+    })
+
     it('refuses content fields, an empty body and the old separate flags', async () => {
-      const [before] = await testDb.db.select().from(schema.skills)
+      const [before] = await testDb.db.select()
+        .from(schema.skills)
+        .where(eq(schema.skills.id, skillId))
 
       expect((await failureOf(call('patch', {
         body: { name: 'other-name' },
@@ -326,18 +424,21 @@ describe('skills create, save, restore and read routes', () => {
         { modelInvocable: true },
         { slashCommand: true },
         { mode: 'auto', slashCommand: false },
+        { command: 5 },
       ]) {
         expect((await failureOf(call('patch', { body }))).status).toBe(400)
       }
 
-      const [after] = await testDb.db.select().from(schema.skills)
+      const [after] = await testDb.db.select()
+        .from(schema.skills)
+        .where(eq(schema.skills.id, skillId))
 
       expect(after).toEqual(before)
     })
 
-    it('leaves a reserved name as a skill and /name off', async () => {
+    it('leaves a reserved skill name alone when the mode changes', async () => {
       await testDb.db.update(schema.skills)
-        .set({ name: 'memory', slashCommand: false })
+        .set({ name: 'memory' })
         .where(eq(schema.skills.id, skillId))
 
       const { result } = await call('patch', { body: { mode: 'auto' } })
@@ -346,6 +447,7 @@ describe('skills create, save, restore and read routes', () => {
         name: 'memory',
         enabled: true,
         modelInvocable: true,
+        command: null,
         slashCommand: false,
       })
     })

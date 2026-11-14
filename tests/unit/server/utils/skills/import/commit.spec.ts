@@ -171,7 +171,8 @@ describe('commitSkillImport', () => {
         createdVia: 'app',
         allowScripts: false,
         modelInvocable: true,
-        slashCommand: true,
+        slashCommand: false,
+        slashName: null,
       })
 
       const [version] = await testDb.db.select().from(schema.skillVersions)
@@ -225,7 +226,8 @@ describe('commitSkillImport', () => {
 
       expect(skill).toMatchObject({
         modelInvocable: false,
-        slashCommand: true,
+        slashCommand: false,
+        slashName: null,
         argumentHint: '[issue]',
         enabled: false,
       })
@@ -773,24 +775,49 @@ describe('commitSkillImport', () => {
     })
   })
 
-  describe('a reserved slash name', () => {
-    it('forces slashCommand off when the skill is renamed to a reserved name', async () => {
+  describe('commands and reserved names', () => {
+    it('stages a skill without a command', async () => {
       const manifest = await stage([
         archiveFile('SKILL.md', skillMarkdown({
           extra: 'user-invocable: true',
         })),
       ])
 
-      expect(manifest.skill.slashCommand).toBe(true)
+      expect(manifest.skill).not.toHaveProperty('slashCommand')
+    })
+
+    it('imports a skill renamed to a reserved name without a command', async () => {
+      const manifest = await stage([
+        archiveFile('SKILL.md', skillMarkdown({
+          extra: 'user-invocable: true',
+        })),
+      ])
 
       await commit(manifest.stageId, { name: 'search' })
 
       const [skill] = await allSkills()
 
-      expect(skill).toMatchObject({ name: 'search', slashCommand: false })
+      expect(skill).toMatchObject({
+        name: 'search',
+        slashCommand: false,
+        slashName: null,
+      })
     })
 
-    it('keeps slashCommand for an ordinary name', async () => {
+    it('imports a skill with a reserved frontmatter name', async () => {
+      const manifest = await stage([
+        archiveFile('SKILL.md', skillMarkdown({ name: 'memory' })),
+      ])
+
+      await commit(manifest.stageId)
+
+      expect((await allSkills())[0]).toMatchObject({
+        name: 'memory',
+        slashName: null,
+      })
+    })
+
+    it('imports with no command for an ordinary name', async () => {
       const manifest = await stage([
         archiveFile('SKILL.md', skillMarkdown({
           extra: 'user-invocable: true',
@@ -799,7 +826,21 @@ describe('commitSkillImport', () => {
 
       await commit(manifest.stageId, { name: 'summarise' })
 
-      expect((await allSkills())[0]).toMatchObject({ slashCommand: true })
+      expect((await allSkills())[0]).toMatchObject({
+        name: 'summarise',
+        slashName: null,
+      })
+    })
+
+    it('explains that skill names are unique per account', async () => {
+      await seedSkill(testDb.db, userId, { name: 'review-pr' })
+
+      const manifest = await stage(openSkillFiles())
+      const failure = await rejection(commit(manifest.stageId))
+
+      expect(failure).toMatchObject({ status: 409, code: 'name-taken' })
+      expect((failure as { why?: string }).why)
+        .toBe('Skill names are unique per account')
     })
   })
 

@@ -10,7 +10,7 @@ export interface SkillTemplate {
   name: string
   description: string
   modelInvocable: boolean
-  slashCommand: boolean
+  command: string | null
   argumentHint: string | null
   files: SkillTemplateFile[]
 }
