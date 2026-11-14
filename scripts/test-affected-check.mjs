@@ -1509,6 +1509,28 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/artifact-storage.spec.ts',
   ]
 
+  const skillsManagerTests = [
+    'tests/unit/pages/profile/skills.spec.ts',
+    'tests/unit/composables/skills-library.spec.ts',
+    'tests/unit/utils/skill-ui-utils.spec.ts',
+    'tests/unit/components/Profile/Skills/CreateDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/DetailHeader.spec.ts',
+    'tests/unit/components/Profile/Skills/DetailPanel.spec.ts',
+    'tests/unit/components/Profile/Skills/DiffView.spec.ts',
+    'tests/unit/components/Profile/Skills/FileViewer.spec.ts',
+    'tests/unit/components/Profile/Skills/Filters.spec.ts',
+    'tests/unit/components/Profile/Skills/ImportDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/List.spec.ts',
+    'tests/unit/components/Profile/Skills/NewMenu.spec.ts',
+    'tests/unit/components/Profile/Skills/Review.spec.ts',
+    'tests/unit/components/Profile/Skills/Row.spec.ts',
+    'tests/unit/components/Profile/Skills/UpdateReview.client.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/e2e/profile/skills.spec.ts',
+  ]
+
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
   ]
@@ -2906,6 +2928,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/skills\/(edit|blank|templates\/.*|archive|analyse|licence|frontmatter|diff|path|findings)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
       tests: skillsVersionsTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/profile\/skills\.vue|app\/components\/Profile\/Skills\/.*|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-labels)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts)$/,
+      tests: skillsManagerTests,
     },
     {
       pattern:

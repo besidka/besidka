@@ -1,11 +1,21 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProfileLayout from '../../../app/layouts/profile.vue'
 
 const mocks = vi.hoisted(() => ({
   routePath: '/profile/security',
 }))
+
+const skillsActive = ref<boolean>(false)
+
+mockNuxtImport('useFeature', () => {
+  return (key: string) => computed(() => {
+    const active = key === 'skills' && skillsActive.value
+
+    return { enabled: active, active, variant: null }
+  })
+})
 
 mockNuxtImport('useAuth', () => {
   return () => ({
@@ -34,6 +44,10 @@ async function mountLayout() {
 }
 
 describe('profile layout', () => {
+  beforeEach(() => {
+    skillsActive.value = false
+  })
+
   it('lists Security, API Keys, Memory, Preferences, Connected apps and Labs tabs in that order', async () => {
     mocks.routePath = '/profile/security'
 
@@ -56,6 +70,38 @@ describe('profile layout', () => {
       '/profile/connected-apps',
       '/profile/labs',
     ])
+  })
+
+  it('adds the Skills tab after Labs only with the skills flag', async () => {
+    skillsActive.value = true
+    mocks.routePath = '/profile/skills'
+
+    const wrapper = await mountLayout()
+    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+    expect(tabs.map(tab => tab.text())).toEqual([
+      'Security',
+      'API Keys',
+      'Memory',
+      'Preferences',
+      'Connected apps',
+      'Labs',
+      'Skills',
+    ])
+    expect(tabs[6]?.attributes('to')).toBe('/profile/skills')
+    expect(tabs[6]?.classes()).toContain('tab-active')
+    expect(tabs[6]?.find('.iconify').classes())
+      .toContain('i-lucide:sparkles')
+  })
+
+  it('has no Skills tab without the skills flag', async () => {
+    mocks.routePath = '/profile/security'
+
+    const wrapper = await mountLayout()
+    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+    expect(tabs.map(tab => tab.attributes('to')))
+      .not.toContain('/profile/skills')
   })
 
   it('highlights the Security tab when visiting /profile/security', async () => {
