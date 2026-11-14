@@ -741,7 +741,19 @@ Choices that differ from or add to section 6, 10 and 14:
 - **Baseline by first listing.** The C-7 tool review does not exist yet, so a
   connector with no `connector_tool_settings` rows gets its baseline from its
   first listing (every tool `enabled`, `approval='ask'`): trust on first use,
-  after the user turned the connector on in a chat. From then on a tool that
+  after the user turned the connector on in a chat. The baseline write always
+  includes a marker row with the reserved `tool_name` `''` (empty string), so
+  a first listing with no usable tools (the server returns `[]`, or
+  normalization drops every tool) still counts as taken: a tool that appears
+  later is `added`, hidden, and flips the connector to `drifted`, instead of
+  being baselined as enabled. `normalizeToolDefinitions` skips tools without a
+  name, so no real tool can collide with the marker, and no schema change or
+  migration is involved. `listConnectorToolSettings` never returns the marker
+  (it is not a tool, so it is in no count, picker or summary);
+  `readConnectorToolBaseline` returns `isBaselined` (any row, marker or tool)
+  next to the real settings; the connector delete and the account purge remove
+  it with the other rows. Rows written before the marker existed are a
+  baseline by their tool rows alone. From then on a tool that
   is new or whose hash changed is hidden and flips the connector to
   `drifted`; a connector whose listing matches the baseline again returns to
   `ready`. Until C-7 adds "Accept changes", a drifted tool stays hidden.
@@ -1082,7 +1094,9 @@ Unique (`connector_id`, `issuer`).
 ### 8.3 `connector_tool_settings`
 
 One row per reviewed tool. The rows are the drift baseline (there is no
-connector-level fingerprint column).
+connector-level fingerprint column). A reserved row with `tool_name` `''`
+(empty string, never a real tool) marks "a baseline was taken" for a
+connector whose first listing was empty; readers skip it (section 6.1).
 
 | Column | Type | Notes |
 | --- | --- | --- |

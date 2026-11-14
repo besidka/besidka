@@ -159,6 +159,22 @@ export interface ConnectorToolSettingInput {
   approvedDefinitionHash?: string | null
 }
 
+/**
+ * Reserved `connector_tool_settings.tool_name` of the row that records "a
+ * baseline was taken", so a first listing with no usable tools still counts
+ * as the trust-on-first-use baseline. The empty string can never be a real
+ * tool: `normalizeToolDefinitions` skips tools without a name.
+ */
+export const CONNECTOR_BASELINE_MARKER_TOOL_NAME = ''
+
+export const CONNECTOR_BASELINE_MARKER_SETTING: ConnectorToolSettingInput = {
+  toolName: CONNECTOR_BASELINE_MARKER_TOOL_NAME,
+  definitionHash: '',
+  serverReadOnly: false,
+  enabled: false,
+  approval: 'ask',
+}
+
 export interface ConnectorChatSettingInput {
   userId: number
   chatPublicId: string
@@ -769,7 +785,7 @@ export async function upsertConnectorToolSettings(
   await db.batch([first!, ...rest])
 }
 
-export async function listConnectorToolSettings(
+async function selectConnectorToolSettingRows(
   db: DbClient,
   userId: number,
   connectorId: string,
@@ -781,6 +797,33 @@ export async function listConnectorToolSettings(
       eq(schema.connectorToolSettings.connectorId, connectorId),
     ))
     .orderBy(asc(schema.connectorToolSettings.toolName))
+}
+
+export async function listConnectorToolSettings(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+) {
+  const rows = await selectConnectorToolSettingRows(db, userId, connectorId)
+
+  return rows.filter((row) => {
+    return row.toolName !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
+  })
+}
+
+export async function readConnectorToolBaseline(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+) {
+  const rows = await selectConnectorToolSettingRows(db, userId, connectorId)
+
+  return {
+    isBaselined: rows.length > 0,
+    settings: rows.filter((row) => {
+      return row.toolName !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
+    }),
+  }
 }
 
 export async function upsertConnectorChatSettings(

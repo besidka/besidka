@@ -52,6 +52,7 @@ const { getConnectorTools } = await import(
   '~~/server/utils/connectors/send-tools'
 )
 const {
+  CONNECTOR_BASELINE_MARKER_TOOL_NAME,
   createConnector,
   listConnectorToolSettings,
   listConnectors,
@@ -916,6 +917,74 @@ describe('getConnectorTools', () => {
         expect(settings.find(setting => setting.toolName === 'list_issues')
           ?.serverReadOnly).toBe(true)
       })
+
+    it('keeps a baseline when the first listing is empty and hides a tool '
+      + 'that appears later', async () => {
+      const alpha = server('mcp.alpha.example.com', { tools: [] })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+      const connectorId = await addConnector(seeds[0]!)
+      const db = testDb.db as unknown as DbClient
+
+      const first = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(Object.keys(first.tools)).toEqual([])
+      expect(await listConnectorToolSettings(db, userId, connectorId))
+        .toEqual([])
+
+      const markerRows = await testDb.db.select()
+        .from(schema.connectorToolSettings)
+
+      expect(markerRows).toHaveLength(1)
+      expect(markerRows[0]?.toolName).toBe(CONNECTOR_BASELINE_MARKER_TOOL_NAME)
+      expect((await listConnectors(testDb.db, userId))[0]?.status)
+        .not.toBe('drifted')
+
+      kv.values.clear()
+      alpha.tools.splice(0, alpha.tools.length, READ_TOOL, WRITE_TOOL)
+
+      const second = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(Object.keys(second.tools)).toEqual([])
+      expect(second.notices.join(' ')).toContain('2 tools of alpha changed '
+        + 'and are hidden until you review them.')
+
+      const connector = (await listConnectors(testDb.db, userId))
+        .find(candidate => candidate.id === connectorId)
+
+      expect(connector?.status).toBe('drifted')
+      expect(connector?.lastError?.code).toBe('CONNECTOR_TOOLS_DRIFTED')
+      expect(await listConnectorToolSettings(db, userId, connectorId))
+        .toEqual([])
+    })
+
+    it('keeps a baseline when every listed tool is dropped by '
+      + 'normalization', async () => {
+      const alpha = server('mcp.alpha.example.com', {
+        tools: [{ name: 'x'.repeat(200) }],
+      })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+      const connectorId = await addConnector(seeds[0]!)
+
+      await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      kv.values.clear()
+      alpha.tools.splice(0, alpha.tools.length, READ_TOOL)
+
+      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(Object.keys(tools)).toEqual([])
+      expect((await listConnectors(testDb.db, userId))
+        .find(candidate => candidate.id === connectorId)?.status)
+        .toBe('drifted')
+    })
 
     it('hides a changed tool, flips the connector to drifted and does not '
       + 'use the new definition', async () => {

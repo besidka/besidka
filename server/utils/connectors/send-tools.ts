@@ -49,8 +49,9 @@ import type {
   ConnectorClientHandle,
 } from '~~/server/utils/connectors/mcp-client'
 import {
-  listConnectorToolSettings,
+  CONNECTOR_BASELINE_MARKER_SETTING,
   readConnectorCredentials,
+  readConnectorToolBaseline,
   readConnectorUrl,
   updateConnector,
   upsertConnectorToolSettings,
@@ -349,7 +350,7 @@ async function saveBaseline(
   definitions: readonly ConnectorToolDefinition[],
   hashes: ReadonlyMap<string, string>,
 ): Promise<void> {
-  const rows = definitions.map((definition) => {
+  const toolRows = definitions.map((definition) => {
     return {
       toolName: definition.name,
       definitionHash: hashes.get(definition.name)!,
@@ -358,6 +359,7 @@ async function saveBaseline(
       approval: 'ask' as const,
     }
   })
+  const rows = [CONNECTOR_BASELINE_MARKER_SETTING, ...toolRows]
 
   for (let start = 0; start < rows.length; start += SETTINGS_UPSERT_CHUNK) {
     await upsertConnectorToolSettings(
@@ -635,7 +637,7 @@ export async function getConnectorTools(
         summary.cacheHits += 1
       }
 
-      const settings = await listConnectorToolSettings(
+      const { isBaselined, settings } = await readConnectorToolBaseline(
         db,
         userId,
         connector.id,
@@ -643,7 +645,7 @@ export async function getConnectorTools(
       let enabledNames: Set<string>
       let hiddenCount = 0
 
-      if (settings.length === 0) {
+      if (!isBaselined) {
         await saveBaseline(db, userId, connector.id, definitions, hashes)
         enabledNames = new Set(definitions.map(definition => definition.name))
       } else {

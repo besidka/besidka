@@ -128,7 +128,20 @@ vi.mock('~~/server/utils/connectors/store', () => {
     listConnectors: async () => store.connectors,
     readConnectorCredentials: async () => store.credentials,
     readConnectorUrl: async () => CONNECTOR_URL,
-    listConnectorToolSettings: async () => store.toolSettings,
+    CONNECTOR_BASELINE_MARKER_SETTING: {
+      toolName: '',
+      definitionHash: '',
+      serverReadOnly: false,
+      enabled: false,
+      approval: 'ask',
+    },
+    listConnectorToolSettings: async () => {
+      return store.toolSettings.filter(setting => setting.toolName !== '')
+    },
+    readConnectorToolBaseline: async () => ({
+      isBaselined: store.toolSettings.length > 0,
+      settings: store.toolSettings.filter(setting => setting.toolName !== ''),
+    }),
     upsertConnectorToolSettings: async (
       _db: unknown,
       _userId: number,
@@ -669,7 +682,8 @@ describe('connector tools in the chat send', () => {
       steps: [textChunks('First.')],
     })
 
-    expect(toolSettings).toHaveLength(2)
+    expect(toolSettings.filter(setting => setting.toolName !== ''))
+      .toHaveLength(2)
 
     mocks.store.audit = []
     mocks.writers = []
