@@ -69,7 +69,6 @@ export interface GithubUpdateCheckInput {
   userId: number
   skillId: string
   kv?: GithubKv
-  githubToken?: string
   beforeNetwork?: () => Promise<void>
   logger: LoggerLike
   fetchImpl?: typeof fetch
@@ -360,7 +359,6 @@ export async function checkGithubSkillUpdate(
     fetchImpl: input.fetchImpl,
     logger: input.logger,
     kv: input.kv,
-    token: input.githubToken,
   })
 
   await input.beforeNetwork?.()

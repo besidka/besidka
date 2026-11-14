@@ -294,44 +294,20 @@ API (`GET /repos/{owner}/{repo}/commits/{ref}` with
 `Accept: application/vnd.github.sha`) does count, and it runs once per import
 and on every update check. An import of a SHA from the URL makes two more
 calls, the repository lookup and the compare. Because the quota is shared by
-the whole app, every API call draws from one global budget in KV:
-`SKILL_GITHUB_API_BUDGET_PER_HOUR` (50) an hour anonymous,
-`SKILL_GITHUB_API_BUDGET_PER_HOUR_WITH_TOKEN` (1000) with a server token. It
-fails closed. A verified ref-to-SHA answer is cached for
-`SKILL_GITHUB_REF_CACHE_SECONDS` (60) and a default branch for
-`SKILL_GITHUB_BRANCH_CACHE_SECONDS` (600). Three causes are told apart:
-
-| `code` | Status | Cause |
-| --- | --- | --- |
-| `github-budget-spent` | 429 | Besidka's own hourly cap is spent; GitHub was not asked. The text says how many minutes remain. |
-| `github-rate-limited` | 429 | GitHub answered 429, or 403 with `x-ratelimit-remaining: 0`: its quota for this address or token is spent. `x-ratelimit-reset` becomes "Try again in about N minutes". |
-| `github-budget-unavailable` | 503 | KV could not be read or written, so no request was sent. |
-
-Any other 403 gives "GitHub refused the request". Logs carry the code, status
-and host only, never the token.
-
-**Server token.** Workers share egress IPs, so the anonymous 60 requests an
-hour are effectively always spent, and production and previews need
-`NUXT_SKILLS_GITHUB_TOKEN` (runtime config `skillsGithubToken`; empty keeps
-the anonymous behaviour). Use a fine-grained personal access token with public
-repository read-only access and no repository permissions or scopes beyond
-that. It is sent as `Authorization: Bearer` to `api.github.com` only, never to
-`codeload.github.com` (the archive download is anonymous and never counted),
-and is never logged or put into an error text. Set it for production with
-`pnpm exec wrangler secret put NUXT_SKILLS_GITHUB_TOKEN --env production`, and
-for previews by adding `NUXT_SKILLS_GITHUB_TOKEN=...` to the local
-`.dev.vars.preview` and running `pnpm exec wrangler preview base-config secret
-bulk .dev.vars.preview --env production` (see `docs/cloudflare-previews.md`,
-secrets runbook; existing Previews need `preview secret bulk`). Locally, put it
-in `.dev.vars`. A per-user GitHub token (`keys.provider = 'github'`, public
-read-only, encrypted) is still **not** built. `keys.provider` is a
-TypeScript-only enum, so adding `github` should generate no SQL; whoever adds
-it runs `pnpm run db:generate` and greps any generated `.sql` for `DROP TABLE`
-before applying (a rebuild of `keys` is the cascade disaster `CLAUDE.md`
-describes). The server token authenticates Besidka, not a user, and reads
-public data only; the earlier "never a Besidka-wide token" note (GitHub Terms
-section H) is superseded by this optional token, which is a decision to
-re-check. A connector's GitHub PAT is never reused for imports
+the whole app, every API call draws from one global budget of
+`SKILL_GITHUB_API_BUDGET_PER_HOUR` (50) a hour in KV, which fails closed with
+the rate limit message when spent or when KV cannot be read; a verified
+ref-to-SHA answer is cached for `SKILL_GITHUB_REF_CACHE_SECONDS` (60) and a
+default branch for `SKILL_GITHUB_BRANCH_CACHE_SECONDS` (600). A 429, or a 403
+with `x-ratelimit-remaining: 0`, gives "GitHub rate limit reached" with the fix
+"Try again in an hour or upload a zip"; any other 403 gives "GitHub refused
+the request". A per-user GitHub token (`keys.provider = 'github'`, public
+read-only, encrypted) is **not** in the first layer: S-2G measures on the
+preview first (pre-check owner item 3). `keys.provider` is a TypeScript-only
+enum, so adding `github` should generate no SQL; whoever adds it runs
+`pnpm run db:generate` and greps any generated `.sql` for `DROP TABLE` before
+applying (a rebuild of `keys` is the cascade disaster `CLAUDE.md` describes). Never a Besidka-wide token (GitHub
+Terms section H). A connector's GitHub PAT is never reused for imports
 (different purpose and consent).
 
 An import from a Claude Code skill folder reads three frontmatter keys only as
@@ -1210,8 +1186,7 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_GITHUB_API_MAX_BYTES` | 2 MiB per `api.github.com` answer | S-2G |
 | `SKILL_GITHUB_TIMEOUT_MS` | 30 s per GitHub request, body read included | S-2G |
 | `SKILL_GITHUB_REQUEST_DEADLINE_MS` | 60 s for all GitHub calls of one request | S-2G |
-| `SKILL_GITHUB_API_BUDGET_PER_HOUR` | 50 `api.github.com` calls an hour for the whole app, anonymous (KV, fails closed) | S-2G |
-| `SKILL_GITHUB_API_BUDGET_PER_HOUR_WITH_TOKEN` | 1000 calls an hour with `NUXT_SKILLS_GITHUB_TOKEN` | S-2G |
+| `SKILL_GITHUB_API_BUDGET_PER_HOUR` | 50 `api.github.com` calls an hour for the whole app (KV, fails closed) | S-2G |
 | `SKILL_GITHUB_REF_CACHE_SECONDS` | 60 (verified ref to SHA, KV) | S-2G |
 | `SKILL_GITHUB_BRANCH_CACHE_SECONDS` | 600 (default branch, KV) | S-2G |
 | `SKILL_DIFF_TOTAL_CELL_BUDGET` | 8,000,000 diff cells for one review; past it files are counted, not diffed | S-2G |

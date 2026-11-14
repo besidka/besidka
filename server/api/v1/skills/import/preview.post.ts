@@ -89,7 +89,6 @@ export default defineEventHandler(async (event) => {
       userId,
       body: body.data,
       logger,
-      githubToken: useRuntimeConfig().skillsGithubToken,
     })
   }
 

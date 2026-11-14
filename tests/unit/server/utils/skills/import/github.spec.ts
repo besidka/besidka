@@ -101,40 +101,6 @@ describe('githubFetch', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('sends the server token to api.github.com only, never to codeload', async () => {
-    const fetchImpl = fetchOf(() => json({}))
-    const logger = { set: vi.fn() }
-
-    await githubFetch(`${API}/commits/main`, {
-      ...OPTIONS,
-      token: 'secret-token',
-      fetchImpl,
-      logger,
-    })
-    await githubFetch(`https://codeload.github.com/o/r/zip/${SHA}`, {
-      ...OPTIONS,
-      token: 'secret-token',
-      fetchImpl,
-      logger,
-    })
-
-    const apiHeaders = new Headers(fetchImpl.mock.calls[0]![1].headers)
-    const codeloadHeaders = new Headers(fetchImpl.mock.calls[1]![1].headers)
-
-    expect(apiHeaders.get('authorization')).toBe('Bearer secret-token')
-    expect(codeloadHeaders.has('authorization')).toBe(false)
-    expect(JSON.stringify(logger.set.mock.calls)).not.toContain('secret-token')
-  })
-
-  it('sends no Authorization header without a token', async () => {
-    const fetchImpl = fetchOf(() => json({}))
-
-    await githubFetch(`${API}/commits/main`, { ...OPTIONS, fetchImpl })
-
-    expect(new Headers(fetchImpl.mock.calls[0]![1].headers).has('authorization'))
-      .toBe(false)
-  })
-
   it('sends a User-Agent, manual redirects and no credential', async () => {
     const fetchImpl = fetchOf(() => text('ok'))
 
@@ -200,31 +166,6 @@ describe('githubFetch', () => {
         fix: 'Try again in an hour or upload a zip',
       })
     }
-  })
-
-  it('says when GitHub quota comes back and whether the server is signed in', async () => {
-    const reset = String(Math.floor(Date.now() / 1000) + 25 * 60)
-    const spent = { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset }
-    const anonymous = await failureOf(githubFetch(
-      `${API}/commits/main`,
-      { ...OPTIONS, fetchImpl: fetchOf(() => text('', 403, spent)) },
-    ))
-    const signedIn = await failureOf(githubFetch(
-      `${API}/commits/main`,
-      {
-        ...OPTIONS,
-        token: 'tok',
-        fetchImpl: fetchOf(() => text('', 403, spent)),
-      },
-    ))
-
-    expect(anonymous).toMatchObject({
-      code: 'github-rate-limited',
-      why: expect.stringContaining('60 anonymous requests'),
-      fix: expect.stringMatching(/about 2[56] minutes/),
-    })
-    expect(signedIn.why).toContain('hourly request quota')
-    expect(JSON.stringify([anonymous, signedIn])).not.toContain('tok"')
   })
 
   it('does not call a plain 403 a rate limit', async () => {
