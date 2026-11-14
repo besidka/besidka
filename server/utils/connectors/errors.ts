@@ -120,6 +120,19 @@ export const CONNECTOR_ERRORS = {
     fix: 'Some tools may fail. Reconnect and approve all permissions if '
       + 'you need them',
   },
+  CONNECTOR_TOOLS_DRIFTED: {
+    message: 'Some tools of this connector changed',
+    status: 409,
+    why: 'A tool is new or its definition differs from the reviewed one, '
+      + 'so it is hidden from the model',
+    fix: 'Review the changed tools on the Connectors page',
+  },
+  CONNECTOR_UNREACHABLE: {
+    message: 'The connector could not be reached',
+    status: 502,
+    why: 'The server did not answer in time or refused the connection',
+    fix: 'Try again later, or check the connector on the Connectors page',
+  },
   CONNECTOR_NOT_READY: {
     message: 'The connector is not connected yet',
     status: 409,

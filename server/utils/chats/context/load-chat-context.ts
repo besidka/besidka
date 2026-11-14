@@ -12,6 +12,7 @@ import { buildActiveShareFilter } from '~~/server/utils/chats/share-management'
 import type { ChatContextItems } from '~~/server/utils/chats/context/build-chat-context'
 import { buildChatContext } from '~~/server/utils/chats/context/build-chat-context'
 import { loadChatContextArtifacts } from '~~/server/utils/chats/context/artifacts'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
 import { loadChatContextConnectors } from '~~/server/utils/chats/context/connectors'
 import type { ChatContextMessage } from '~~/server/utils/chats/context/sections'
 
@@ -183,7 +184,11 @@ export async function loadOwnedChatContext(
       visibility: 'private',
     })
     : undefined
-  const connectors = options.includeConnectors
+  const usesConnectors = options.includeConnectors === true
+    && messages.some((message) => {
+      return message.parts.some(part => getConnectorToolCall(part) !== null)
+    })
+  const connectors = usesConnectors
     ? await loadChatContextConnectors(db, userId)
     : undefined
   const context = buildChatContext(messages, {

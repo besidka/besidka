@@ -1518,6 +1518,40 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/connectors-oauth-flow.spec.ts',
   ]
 
+  const connectorsChatToolsTests = [
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/connectors/tool-definitions.spec.ts',
+    'tests/unit/server/utils/connectors/mcp-client.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+    'tests/unit/server/utils/connectors/call-limits.spec.ts',
+    'tests/unit/server/utils/connectors/chat-selection.spec.ts',
+    'tests/unit/server/utils/connectors/persist.spec.ts',
+    'tests/unit/server/utils/connectors/context-isolation.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
+    'tests/unit/utils/connectors-parts.spec.ts',
+    'tests/unit/utils/connector-step.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/integration/api/chats-connector-send.spec.ts',
+    'tests/integration/api/connectors-chat-selection.spec.ts',
+  ]
+
+  const connectorsChatToolsUiTests = [
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
+    'tests/unit/components/Chat/ConnectorsNotice.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/utils/connectors-parts.spec.ts',
+    'tests/unit/utils/connector-step.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+  ]
+
   const skillsStorageTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
@@ -3074,6 +3108,16 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/connectors-policy\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/.*\.ts|server\/routes\/connectors\/.*\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/utils\/request-public-origin\.ts|server\/utils\/auth-hosts\.ts|server\/utils\/legal\/consent\.ts|server\/utils\/account\/purge-user-data\.ts|server\/plugins\/evlog-request-observability\.ts|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock)\.ts)$/,
       tests: connectorsOAuthTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/index\.get\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
+      tests: connectorsChatToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat)\.ts|app\/utils\/(connector-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
+      tests: connectorsChatToolsUiTests,
     },
     {
       pattern:

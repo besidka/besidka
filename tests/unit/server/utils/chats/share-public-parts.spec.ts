@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
+import { stripToolPartsFromBranchedMessage } from '~~/server/utils/chats/branch'
 import {
   dropEmptyUserMessages,
   filterPublicParts,
@@ -135,5 +136,40 @@ describe('dropEmptyUserMessages', () => {
     const messages = [{ id: 'a1', role: 'assistant', parts: [] }]
 
     expect(dropEmptyUserMessages(messages)).toHaveLength(1)
+  })
+})
+
+describe('connector parts in shares and branches', () => {
+  const connectorParts = [
+    { type: 'text', text: 'Here are your issues' },
+    {
+      type: 'dynamic-tool',
+      toolName: 'mcp__linear__list_issues',
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { query: 'private' },
+      output: '<untrusted_tool_result connector="linear" tool="list_issues">'
+        + '\nIssue about a customer\n</untrusted_tool_result>',
+    },
+    {
+      type: 'data-connectors-notice',
+      data: { lines: ['Linear needs to sign in again.'] },
+    },
+  ] as unknown as UIMessage['parts']
+
+  it('never exposes a connector call or notice in a public share', () => {
+    const [message] = filterPublicParts([{ id: 'm1', parts: connectorParts }])
+
+    expect(message!.parts).toEqual([
+      { type: 'text', text: 'Here are your issues' },
+    ])
+    expect(JSON.stringify(message)).not.toContain('customer')
+    expect(JSON.stringify(message)).not.toContain('Linear')
+  })
+
+  it('never copies a connector call or notice into a branch', () => {
+    expect(stripToolPartsFromBranchedMessage(connectorParts)).toEqual([
+      { type: 'text', text: 'Here are your issues' },
+    ])
   })
 })

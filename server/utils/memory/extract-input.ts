@@ -1,3 +1,4 @@
+import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import type { UIMessage } from 'ai'
 import type {
   ComplianceBlockedCounts,
@@ -135,6 +136,11 @@ function memoryExtractionPartToolName(part: unknown): string | null {
   return null
 }
 
+/**
+ * An assistant turn that read memory, other chats or a connector. Its text
+ * quotes data the user did not write in this chat (stored memory, another
+ * chat, a third party's records), so extraction skips it.
+ */
 export function isMemoryExtractionRecallMessage(row: {
   role: string
   parts: unknown
@@ -159,7 +165,11 @@ export function isMemoryExtractionRecallMessage(row: {
   return row.parts.some((part) => {
     const toolName = memoryExtractionPartToolName(part)
 
-    return toolName !== null && RECALL_TOOL_NAMES.includes(toolName)
+    return toolName !== null
+      && (
+        RECALL_TOOL_NAMES.includes(toolName)
+        || toolName.startsWith(CONNECTOR_TOOL_NAME_PREFIX)
+      )
   })
 }
 

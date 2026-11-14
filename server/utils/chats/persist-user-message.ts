@@ -1,5 +1,6 @@
 import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
 import {
   DOCUMENT_DATA_PART_TYPE,
   isDocumentToolPartType,
@@ -82,6 +83,13 @@ export function hasMeaningfulAssistantParts(
         && (
           part.state === 'output-available'
           || part.state === 'output-error'
+        )
+      )
+      || (
+        getConnectorToolCall(part) !== null
+        && (
+          (part as { state?: string }).state === 'output-available'
+          || (part as { state?: string }).state === 'output-error'
         )
       )
   })
