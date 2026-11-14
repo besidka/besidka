@@ -114,6 +114,20 @@ describe('Profile/Skills/FrontmatterFields', () => {
       .toContain('line 2')
   })
 
+  it('centres the Advanced summary row with its marker and label', async () => {
+    const wrapper = await mountFields()
+    const summary = wrapper.get(testId('skill-edit-advanced-summary'))
+
+    expect(summary.classes()).toEqual(expect.arrayContaining([
+      'flex',
+      'items-center',
+      'min-h-11',
+    ]))
+    expect(summary.find('svg, span.iconify, [class*="lucide"]').exists())
+      .toBe(true)
+    expect(summary.text()).toContain('Advanced (YAML)')
+  })
+
   it('shows the advanced YAML as text in a textarea, never as HTML', async () => {
     const wrapper = await mountFields({
       advanced: 'license: <b>MIT</b>',

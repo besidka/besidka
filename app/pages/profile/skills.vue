@@ -86,6 +86,7 @@
   <LazyProfileSkillsEditDialog
     v-if="editSkillId"
     :skill-id="editSkillId"
+    :is-just-created="isEditJustCreated"
     @saved="onEdited"
     @close="editSession.close()"
   />
@@ -174,6 +175,7 @@ const createKind = shallowRef<SkillCreateKind | null>(null)
 const importTab = shallowRef<SkillImportTab | null>(null)
 const reviewSkillId = updateReview.skillId
 const editSkillId = editSession.skillId
+const isEditJustCreated = editSession.isJustCreated
 
 const isLibraryEmpty = computed<boolean>(() => {
   return hasLoaded.value && !skills.value.length
@@ -304,7 +306,7 @@ function onEdited(saved: { id: string, isRenamed: boolean }) {
 
 async function onCreated(created: { id: string, name: string }) {
   await refreshSkillData()
-  editSession.open(created.id)
+  editSession.open(created.id, { isJustCreated: true })
 }
 
 async function onInstalled(installed: {

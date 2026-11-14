@@ -150,7 +150,55 @@ describe('Profile/Skills/EditDialog', () => {
       .toBe('Review a pull request')
     expect((get('skill-editor-textarea') as HTMLTextAreaElement).value)
       .toBe('# Review\n')
-    expect((get('skill-edit-save') as HTMLButtonElement).disabled).toBe(true)
+    expect(find('skill-edit-save')).toBeNull()
+    expect((get('skill-edit-done') as HTMLButtonElement).disabled).toBe(false)
+    expect(find('skill-edit-created-note')).toBeNull()
+  })
+
+  it('offers Done while nothing changed and closes without a question', async () => {
+    const wrapper = await mountDialog()
+
+    expect(get('skill-edit-done').textContent).toContain('Done')
+
+    await click('skill-edit-done')
+
+    expect(mocks.confirm).not.toHaveBeenCalled()
+    expect(postCall()).toBeUndefined()
+    expect(wrapper.emitted('close')).toBeTruthy()
+  })
+
+  it('switches Done to Save as soon as there are changes', async () => {
+    await mountDialog()
+    await setValue('skill-editor-textarea', '# Review\n\nMore.\n')
+
+    expect(find('skill-edit-done')).toBeNull()
+    expect((get('skill-edit-save') as HTMLButtonElement).disabled).toBe(false)
+
+    await setValue('skill-editor-textarea', '# Review\n')
+
+    expect(find('skill-edit-save')).toBeNull()
+    expect(find('skill-edit-done')).not.toBeNull()
+  })
+
+  it('shows the success note right after creation until the draft changes', async () => {
+    const wrapper = await mountSuspended(EditDialog, {
+      props: { skillId: 'S1', isJustCreated: true },
+      attachTo: document.body,
+      global: { stubs: { teleport: false } },
+    })
+
+    await flushPromises()
+
+    expect(get('skill-edit-created-note').textContent)
+      .toContain('Skill created. Edit it now or close.')
+    expect(find('skill-edit-done')).not.toBeNull()
+
+    await setValue('skill-editor-textarea', 'changed')
+
+    expect(find('skill-edit-created-note')).toBeNull()
+    expect(find('skill-edit-save')).not.toBeNull()
+
+    wrapper.unmount()
   })
 
   it('shows a skeleton while loading', async () => {

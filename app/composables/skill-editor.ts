@@ -44,16 +44,22 @@ const READ_ONLY_REASON_LARGE = `Files over ${
  */
 export function useSkillEditSession() {
   const skillId = useState<string | null>('skills:edit-session', () => null)
+  const isJustCreated = useState<boolean>(
+    'skills:edit-session-created',
+    () => false,
+  )
 
-  function open(id: string) {
+  function open(id: string, options: { isJustCreated?: boolean } = {}) {
     skillId.value = id
+    isJustCreated.value = options.isJustCreated ?? false
   }
 
   function close() {
     skillId.value = null
+    isJustCreated.value = false
   }
 
-  return { skillId, open, close }
+  return { skillId, isJustCreated, open, close }
 }
 
 function createEditorFile(

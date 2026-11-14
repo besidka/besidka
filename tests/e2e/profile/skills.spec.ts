@@ -229,7 +229,9 @@ test('a member creates a skill, edits it in the editor and saves version 2', asy
   await expect(editor).toBeVisible()
   await expect(editor.getByTestId('skills-dialog-title'))
     .toContainText(`Edit ${skillName} · v1`)
-  await expect(editor.getByTestId('skill-edit-save')).toBeDisabled()
+  await expect(editor.getByTestId('skill-edit-created-note')).toBeVisible()
+  await expect(editor.getByTestId('skill-edit-done')).toBeEnabled()
+  await expect(editor.getByTestId('skill-edit-save')).toHaveCount(0)
 
   await editor.getByTestId('skill-edit-description')
     .fill('Summarise a meeting into decisions and owners')

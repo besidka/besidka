@@ -47,6 +47,20 @@
     </div>
     <template v-else>
       <div
+        v-if="isJustCreated && !isDirty"
+        class="alert alert-success alert-soft shrink-0 rounded-none"
+        role="status"
+        data-testid="skill-edit-created-note"
+      >
+        <Icon
+          name="lucide:circle-check"
+          size="16"
+          class="shrink-0"
+          aria-hidden="true"
+        />
+        <span>Skill created. Edit it now or close.</span>
+      </div>
+      <div
         v-if="isConflict"
         class="grid shrink-0 gap-2 border-b border-base-300 px-4 py-3 max-sm:max-h-[45dvh] max-sm:overflow-y-auto"
         data-testid="skill-edit-conflict"
@@ -282,6 +296,7 @@
           Cancel
         </button>
         <button
+          v-if="isDirty || isSaving"
           type="button"
           class="btn btn-sm btn-accent max-sm:min-h-11"
           :disabled="!canSave"
@@ -294,6 +309,16 @@
           />
           Save
         </button>
+        <button
+          v-else
+          type="button"
+          class="btn btn-sm btn-accent max-sm:min-h-11"
+          :disabled="loadState !== 'ready'"
+          data-testid="skill-edit-done"
+          @click="dialogRef?.requestClose()"
+        >
+          Done
+        </button>
       </div>
     </template>
   </ProfileSkillsWorkspaceDialog>
@@ -305,6 +330,7 @@ import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 
 const props = defineProps<{
   skillId: string
+  isJustCreated?: boolean
 }>()
 
 const emit = defineEmits<{

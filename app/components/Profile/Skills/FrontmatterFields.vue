@@ -129,16 +129,22 @@
     </div>
 
     <details
-      class="rounded-box border border-base-300"
+      class="group rounded-box border border-base-300"
       :open="isAdvancedOpen"
       data-testid="skill-edit-advanced"
       @toggle="onAdvancedToggle"
     >
       <summary
-        class="min-h-11 cursor-pointer select-none px-3 py-2 text-sm font-medium sm:min-h-9"
+        class="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-medium select-none sm:min-h-9 [&::-webkit-details-marker]:hidden"
         data-testid="skill-edit-advanced-summary"
       >
-        Advanced (YAML)
+        <Icon
+          name="lucide:chevron-right"
+          size="16"
+          class="shrink-0 transition-transform group-open:rotate-90"
+          aria-hidden="true"
+        />
+        <span>Advanced (YAML)</span>
       </summary>
       <div class="grid gap-1 px-3 pb-3">
         <label
