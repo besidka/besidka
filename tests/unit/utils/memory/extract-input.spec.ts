@@ -318,7 +318,7 @@ describe('memory extraction input', () => {
         expect(window.userTexts).toEqual(['first message'])
       })
 
-    it('still honours the last extraction stamp', async () => {
+    it('still honors the last extraction stamp', async () => {
       const { loadMemoryExtractionWindow } = await loadInput()
       const branchId = await seedBranchChat(true)
 
@@ -538,7 +538,7 @@ describe('memory extraction input', () => {
     expect(rendered).toContain('<entry ref="topics/imported" access="editable">')
   })
 
-  describe('evidence normaliser', () => {
+  describe('evidence normalizer', () => {
     it('unifies typographic apostrophes, quotes, dashes and ellipsis',
       async () => {
         const { memoryExtractionNormalizeText } = await loadInput()
@@ -821,8 +821,8 @@ describe('memory extraction input', () => {
     })
   })
 
-  describe('tag neutralisation', () => {
-    it('neutralises fullwidth and look-alike angle brackets', async () => {
+  describe('tag neutralization', () => {
+    it('neutralizes fullwidth and look-alike angle brackets', async () => {
       const { buildMemoryExtractionPromptContent } = await loadInput()
       const content = buildMemoryExtractionPromptContent({
         scope: 'profile',
@@ -838,7 +838,7 @@ describe('memory extraction input', () => {
       expect(content).not.toContain('<entry ')
     })
 
-    it('neutralises a tag split by zero-width characters', async () => {
+    it('neutralizes a tag split by zero-width characters', async () => {
       const { buildMemoryExtractionPromptContent } = await loadInput()
       const content = buildMemoryExtractionPromptContent({
         scope: 'profile',
@@ -895,7 +895,7 @@ describe('memory extraction input', () => {
   })
 
   describe('import prompt', () => {
-    it('wraps the pasted text and neutralises forged tags', async () => {
+    it('wraps the pasted text and neutralizes forged tags', async () => {
       const { buildMemoryExtractionPromptContent } = await loadInput()
       const content = buildMemoryExtractionPromptContent({
         scope: 'profile',

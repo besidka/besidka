@@ -116,7 +116,7 @@ the limits.
 asked for: `readAvailableKeys`, `resolveCheapestDirectModel` and the
 direct-provider switch `instantiateDirectModel` moved out of
 `server/utils/memory/resolve-model.ts`, which now calls them; memory
-behaviour is unchanged (its specs pass untouched).
+behavior is unchanged (its specs pass untouched).
 
 ## Error codes seen by artifact code
 

@@ -67,14 +67,14 @@ describe('project knowledge relative path', () => {
       'docs/\u0456\u0308\u0436\u0430\u043A.md',
       'docs/\u0457\u0436\u0430\u043A.md',
     ],
-  ])('normalises %s from NFD to NFC', (_label, decomposed, composed) => {
+  ])('normalizes %s from NFD to NFC', (_label, decomposed, composed) => {
     expect(decomposed).not.toBe(composed)
     expect(normalizeKnowledgeRelativePath(decomposed)).toBe(composed)
     expect(parseKnowledgeRelativePath(decomposed)).toBe(composed)
     expect(isValidKnowledgeRelativePath(decomposed)).toBe(true)
   })
 
-  it('measures the length limit after normalisation', () => {
+  it('measures the length limit after normalization', () => {
     const decomposedPath = 'e\u0301'.repeat(
       KNOWLEDGE_LIMITS.maxRelativePathChars,
     )

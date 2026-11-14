@@ -333,7 +333,7 @@ describe('sweepMemoryExtraction backfill servicing', () => {
     ])
   })
 
-  it('ignores finished and cancelled jobs', async () => {
+  it('ignores finished and canceled jobs', async () => {
     const { userId } = await userWithJob({ chats: 1 })
 
     await testDb.db.update(schema.memoryBackfillJobs)

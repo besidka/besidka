@@ -41,7 +41,7 @@ These are needed to run the service you asked for. They are not consent-gated un
 
 | Name | Type | Set by | Purpose | Duration |
 | --- | --- | --- | --- | --- |
-| `cookies_consent` | Cookie | Besidka | Remembers the cookie choice you made, so I do not ask again and can honour it | 180 days |
+| `cookies_consent` | Cookie | Besidka | Remembers the cookie choice you made, so I do not ask again and can honor it | 180 days |
 | `better-auth.session_token` | Cookie | Besidka (Better Auth) | Keeps you signed in. `HttpOnly` | 7 days |
 | `better-auth.session_data` | Cookie | Besidka (Better Auth) | Short-lived cache of your session so every page load does not have to hit the database | 5 minutes |
 | `better-auth.dont_remember` | Cookie | Besidka (Better Auth) | Set only if you untick "Remember me" when signing in. Records that you did not ask to be remembered, so the session ends when you close the browser | Until you close the browser |
@@ -76,7 +76,7 @@ These only remember how you like the app set up. They are kept **only if you agr
 | Name | Type | Set by | Purpose | Duration |
 | --- | --- | --- | --- | --- |
 | `better-auth.last_used_login_method` | Cookie | Besidka (Better Auth) | Remembers whether you last signed in with a password, Google, GitHub or a passkey, so that option is offered first. Readable by the page, so the sign-in screen can highlight it | 30 days |
-| `nuxt-color-mode` | localStorage | Besidka | Your colour theme (light, dark or system), so the app opens in the theme you chose | Until removed |
+| `nuxt-color-mode` | localStorage | Besidka | Your color theme (light, dark or system), so the app opens in the theme you chose | Until removed |
 | `nuxt-color-mode` | Cookie | Besidka | A cookie of the same name for the same purpose. In the current setup the theme is kept in localStorage and this cookie is not written; I list it because it is part of the theme setting, and I clear it if you deny preferences | Not set in the current setup |
 | `file-manager-view-mode` | localStorage | Besidka | Whether the file manager shows a grid or a list | Until removed |
 | `settings_reasoning_expanded` | localStorage | Besidka | Whether a model's reasoning block starts expanded | Until removed |
@@ -161,7 +161,7 @@ When you make a choice in the banner I keep a record of it, so I can show the ch
 
 Withdrawing is as easy as giving consent, and it is always available.
 
-- Open the cookie settings from wherever you are: the **Cookie settings** button in the site footer, the **floating cookie icon** on pages without the chat sidebar, or **Cookie settings** in the sidebar menu on chat pages. The settings dialog opens with your current selection, and no option is pre-ticked in your favour.
+- Open the cookie settings from wherever you are: the **Cookie settings** button in the site footer, the **floating cookie icon** on pages without the chat sidebar, or **Cookie settings** in the sidebar menu on chat pages. The settings dialog opens with your current selection, and no option is pre-ticked in your favor.
 - Once you have chosen, the settings popup offers **Withdraw consent** and **Change preferences** as two equal buttons, so withdrawing is exactly as easy as agreeing was.
 - **Reject all** or **Withdraw consent** removes the optional storage immediately, with no reload needed. If the analytics script was already running on that page, the page reloads once so the script stops; on a chat page I wait until you next move to another page, so I never interrupt a reply that is being written.
 - If you turn the **preferences** category off, I delete the localStorage keys and cookies listed in that table from your browser and stop writing them. You keep using Besidka exactly as before; the app simply stops remembering those preferences between visits.

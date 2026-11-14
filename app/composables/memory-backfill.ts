@@ -42,7 +42,7 @@ export function useMemoryBackfill() {
   )
 
   const isStarting = shallowRef<boolean>(false)
-  const isCancelling = shallowRef<boolean>(false)
+  const isCanceling = shallowRef<boolean>(false)
   const isPolling = shallowRef<boolean>(false)
   const isPaused = shallowRef<boolean>(false)
   const pendingLoads = shallowRef<number>(0)
@@ -206,14 +206,14 @@ export function useMemoryBackfill() {
   }
 
   async function cancel(): Promise<boolean> {
-    if (isCancelling.value) {
+    if (isCanceling.value) {
       return false
     }
 
     const wasPolling = isPolling.value
 
     stopPolling()
-    isCancelling.value = true
+    isCanceling.value = true
     error.value = null
 
     const sequence = claimSequence()
@@ -241,7 +241,7 @@ export function useMemoryBackfill() {
 
       return false
     } finally {
-      isCancelling.value = false
+      isCanceling.value = false
     }
   }
 
@@ -379,7 +379,7 @@ export function useMemoryBackfill() {
     isRunning,
     isLoading,
     isStarting,
-    isCancelling,
+    isCanceling,
     isPolling,
     isPaused,
     pollError,

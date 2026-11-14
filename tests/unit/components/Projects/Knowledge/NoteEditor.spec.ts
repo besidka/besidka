@@ -285,7 +285,7 @@ describe('Projects/Knowledge/NoteEditor', () => {
       expect(isSaveDisabled(wrapper)).toBe(false)
     })
 
-    it('sends a normalised title and never an extractor for new notes', async () => {
+    it('sends a normalized title and never an extractor for new notes', async () => {
       const wrapper = await mountEditor()
 
       await fill(wrapper, 'Cafe\u0301\t  plan', 'Body')

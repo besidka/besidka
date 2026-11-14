@@ -32,7 +32,7 @@ describe('Projects/InstructionsCard', () => {
     expect(wrapper.emitted('save')).toEqual([[]])
   })
 
-  it('normalises pasted Mail bullets and continues lists with Shift+Enter', async () => {
+  it('normalizes pasted Mail bullets and continues lists with Shift+Enter', async () => {
     const wrapper = await mountSuspended(InstructionsCard, {
       props: {
         modelValue: '',

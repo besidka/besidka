@@ -26,7 +26,7 @@ const BRAVE_QUERY = 'besidka release'
 /**
  * Route-level wiring of the cross-chat `search_chats`/`read_chat` tools.
  * `getChatSearchTools` is replaced by a stub that keeps the real budget
- * (`createChatSearchBudget`/`consumeChatSearchCall`) so the 429 behaviour and
+ * (`createChatSearchBudget`/`consumeChatSearchCall`) so the 429 behavior and
  * the per-request budget wiring are genuine, while the D1/FTS access is not
  * needed here — the real tools are unit-tested with their own database
  * fixtures. Brave runs un-mocked apart from `fetch`, to prove the two tool

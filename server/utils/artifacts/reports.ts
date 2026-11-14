@@ -153,10 +153,10 @@ export function composeArtifactReportDetails(body: ArtifactReportBody): string {
       `Work: ${body.copyright.work}`,
       `Rights owner: ${body.copyright.ownerName || 'the reporter'}`,
       'Location: the reported link, filled in by Besidka',
-      'Good-faith statement: the use is not authorised by the owner, its '
+      'Good-faith statement: the use is not authorized by the owner, its '
       + 'agent or the law',
       'Accuracy statement: the notice is accurate and the reporter owns the '
-      + 'right or is authorised to act for the owner',
+      + 'right or is authorized to act for the owner',
     ]
     : [body.details]
 

@@ -92,7 +92,7 @@ rename them without updating the links.
 - **Origins.** User save in the UI, the assistant's explicit `memory_write`
   tool, extraction from chats (opt-in), import reviewed by the user.
 - **Purposes.** (1) Keep what the user asks to be remembered. (2) Inject it
-  into future prompts to personalise answers. (3) Optional extraction of
+  into future prompts to personalize answers. (3) Optional extraction of
   durable preferences from chats. (4) Detect and drop never-store and
   sensitive content (classifier). (5) Prove consent (receipts).
 - **Legal basis per purpose.** See the table below.
@@ -127,7 +127,7 @@ Anchor `#sensitive-topics-in-memory`.
 - Categories in plain words (health, religion or belief, political opinions,
   sexual orientation or sex life, racial or ethnic origin, trade-union
   membership, genetic data, biometric data) plus "other sensitive topics"
-  (`legal-dispute`, `drugs`) labelled honestly as not all being GDPR special
+  (`legal-dispute`, `drugs`) labeled honestly as not all being GDPR special
   categories.
 - **Opt-in.** Off by default, separate consent, withdrawable.
 - **Per-entry notice** each time a sensitive item is saved.
@@ -162,7 +162,7 @@ Anchor `#sensitive-topics-in-memory`.
 ### Replace the profiling sentence ("Automated decision-making and profiling")
 
 - Memory is profiling under Art. 4(4), opt-in for extraction.
-- Used only to personalise answers for the user.
+- Used only to personalize answers for the user.
 - No decisions with legal or similarly significant effect are made; Art. 22
   does not apply.
 
@@ -221,7 +221,7 @@ Skeleton sections:
    data categories, data subjects (users; third parties mentioned in chats),
    recipients, retention, systems (Workers, D1, KV, CONSENT_DB).
 3. **Necessity and proportionality.** Purposes, bases (table above),
-   minimisation (caps, never-store, "store the preference, not the reason"),
+   minimization (caps, never-store, "store the preference, not the reason"),
    accuracy, retention, transparency, rights handling.
 4. **Risks to data subjects.** At least: unlawful special-category processing
    in chats; inference of Art. 9 data by the extractor; third-party special

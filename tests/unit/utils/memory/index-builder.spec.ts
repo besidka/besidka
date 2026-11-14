@@ -484,8 +484,8 @@ describe('buildMemoryIndex', () => {
     })
   })
 
-  describe('tag neutralisation', () => {
-    it('neutralises memory tags in titles, descriptions and bodies', () => {
+  describe('tag neutralization', () => {
+    it('neutralizes memory tags in titles, descriptions and bodies', () => {
       const text = build({
         accountEntries: [
           makeEntry({
@@ -519,7 +519,7 @@ describe('buildMemoryIndex', () => {
       ['U+FF1C and U+FF1E', '\uFF1Cmemory\uFF1E', '‹memory›'],
       ['U+3008 and U+3009', '\u3008memory\u3009', '‹memory›'],
       ['U+27E8 and U+27E9', '\u27E8memory\u27E9', '‹memory›'],
-    ])('neutralises the lookalike pair %s everywhere', (_label, raw, expected) => {
+    ])('neutralizes the lookalike pair %s everywhere', (_label, raw, expected) => {
       const text = build({
         accountEntries: [
           makeEntry({
@@ -905,7 +905,7 @@ describe('buildMemoryIndex', () => {
       }
     })
 
-    it('honours a custom budget', () => {
+    it('honors a custom budget', () => {
       const input = buildFullAccount('en', { project: false })
       const result = build({ ...input, budgetTokens: 900 })
 

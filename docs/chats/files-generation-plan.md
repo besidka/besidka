@@ -214,7 +214,7 @@ omits the provider web tool and exposes only `generate_image`.
 The selected tool is mandatory on step zero. The MVP stops after the first
 executed tool result and treats the ready tool result as the assistant's
 response. It does not spend another language-model step on a prose
-acknowledgement. If a future UX adds prose, `prepareStep` must set the second
+acknowledgment. If a future UX adds prose, `prepareStep` must set the second
 step tool choice to `none` so a static forced choice cannot generate twice.
 
 The application tool also owns a synchronous one-shot flag. A repeated or
@@ -832,7 +832,7 @@ places, under the app's exact compatibility flags and under plain
 
 ### Decision
 
-| Format | Library | Version | Licence | Key numbers (reference document) |
+| Format | Library | Version | License | Key numbers (reference document) |
 | --- | --- | --- | --- | --- |
 | DOCX | `docx` | 9.15.3 | MIT | 76 KB gzip client chunk; 13 ms in the local Worker; 45 ms Node CPU |
 | PPTX | `pptxgenjs` | 4.0.1 | MIT; JSZip is MIT OR GPL-3.0, used under MIT | 134 KB gzip client chunk; 17 ms in the local Worker with two stub aliases; 48 ms Node CPU |
@@ -1129,7 +1129,7 @@ layout engine close to the JSON spec. It stays rejected because:
 - it can fetch URLs, which the ticket disqualifies, even if a policy blocks
   it. This is the deciding reason;
 - its output is not deterministic (`/CreationDate` and the trailer `/ID`
-  change per render, checked), which costs D-2 a normaliser;
+  change per render, checked), which costs D-2 a normalizer;
 - XMP marking was not tried: pdfkit writes XMP only for PDF versions above
   1.3 and custom XMP needs its internal `appendXML()`.
 
@@ -1137,7 +1137,7 @@ Revisit when `pdf-lib` CPU or chunk size becomes the bottleneck in D-4, or
 when `pdf-lib` breaks on a runtime upgrade: it has had no release since 1.17.1
 in 2021, which is the main risk of this choice.
 
-### Licences and notices (pre-check D-10)
+### Licenses and notices (pre-check D-10)
 
 - Import every library from its package entry, never from
   `dist/pptxgen.bundle.js`; the spike imported `pptxgenjs` from
@@ -1153,7 +1153,7 @@ in 2021, which is the main risk of this choice.
   `THIRD_PARTY_NOTICES` step must
   also read `/*!` banners and these packages' own dependency lists, or list
   them by hand.
-- New for the pre-check licence table: the Brotli decoder inlined in
+- New for the pre-check license table: the Brotli decoder inlined in
   `@pdf-lib/fontkit` 1.1.1 (`dist/fontkit.umd.js`, 6 file headers) carries
   "Copyright 2013 Google Inc. All Rights Reserved. Licensed under the Apache
   License, Version 2.0". The pre-check lists `@pdf-lib/fontkit` as MIT only.

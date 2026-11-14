@@ -57,7 +57,7 @@ describe('getCodeExecutionCost', () => {
       .toBeNull()
   })
 
-  it('never guesses an Anthropic cost: the free hours belong to the organisation', () => {
+  it('never guesses an Anthropic cost: the free hours belong to the organization', () => {
     expect(getCodeExecutionCost(usage('anthropic'), rates)).toBeNull()
   })
 

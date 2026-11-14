@@ -2,7 +2,7 @@ import type { BatchItem } from 'drizzle-orm/batch'
 import { and, desc, eq, getTableColumns, lte, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { sha256Hex } from '#shared/utils/knowledge-hash'
-import { hashSkillFileSet } from '#shared/utils/skills/analyse'
+import { hashSkillFileSet } from '#shared/utils/skills/analyze'
 import { renameSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import {
@@ -96,7 +96,7 @@ function createNameTakenError(
   })
 }
 
-function assertAcknowledgements(
+function assertAcknowledgments(
   manifest: SkillStageManifest,
   licenseAcknowledged: boolean | undefined,
 ): void {
@@ -920,7 +920,7 @@ export async function commitSkillImport(
     throw createStageNotFoundError()
   }
 
-  assertAcknowledgements(manifest, input.licenseAcknowledged)
+  assertAcknowledgments(manifest, input.licenseAcknowledged)
 
   if (input.asUpdateOf && input.name !== undefined) {
     throw createError({

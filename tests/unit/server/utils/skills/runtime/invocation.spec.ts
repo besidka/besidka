@@ -280,7 +280,7 @@ describe('skill invocation', () => {
       expect((await build('x'))!.keepsActive).toBe(true)
     })
 
-    it('neutralises a body that tries to close its own wrapper', async () => {
+    it('neutralizes a body that tries to close its own wrapper', async () => {
       const sneaky = (await seedSkillWithFiles(testDb.db, bucket, {
         userId,
         files: {

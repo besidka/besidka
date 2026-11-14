@@ -7,7 +7,7 @@ describe('normalizeKnowledgeTitle', () => {
     expect(normalizeKnowledgeTitle('Project plan')).toBe('Project plan')
   })
 
-  it('normalises to NFC', () => {
+  it('normalizes to NFC', () => {
     expect(normalizeKnowledgeTitle('café')).toBe('café')
   })
 

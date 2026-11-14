@@ -229,7 +229,7 @@ function getToolPartModel(
  * One view model for every artifact part a message can hold: the streaming
  * and finished tool parts (`tool-create_artifact`, `tool-update_artifact`)
  * and the persisted `data-artifact` reference. Parts are untrusted, so each
- * field is read defensively; anything unrecognised yields `null`.
+ * field is read defensively; anything unrecognized yields `null`.
  */
 export function getArtifactPartModel(part: unknown): ArtifactPartModel | null {
   const record = readRecord(part)

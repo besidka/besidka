@@ -1,6 +1,6 @@
 import { isMap, isScalar, parseDocument, stringify } from 'yaml'
 import {
-  normaliseSkillText,
+  normalizeSkillText,
   splitSkillFrontmatter,
 } from '#shared/utils/skills/frontmatter'
 
@@ -44,11 +44,11 @@ function textParts(text: string): SkillMarkdownParts {
  * so a skill that no longer parses stays fixable.
  */
 export function splitSkillMarkdownParts(text: string): SkillMarkdownParts {
-  const normalised = normaliseSkillText(text)
-  const split = splitSkillFrontmatter(normalised)
+  const normalized = normalizeSkillText(text)
+  const split = splitSkillFrontmatter(normalized)
 
   if (!split.ok) {
-    return textParts(normalised)
+    return textParts(normalized)
   }
 
   const document = parseDocument(split.raw, {
@@ -62,7 +62,7 @@ export function splitSkillMarkdownParts(text: string): SkillMarkdownParts {
     || document.warnings.length > 0
     || !isMap(document.contents)
   ) {
-    return textParts(normalised)
+    return textParts(normalized)
   }
 
   const name = readScalarText(document.get('name'))
@@ -76,7 +76,7 @@ export function splitSkillMarkdownParts(text: string): SkillMarkdownParts {
     || (hasNameValue && !isScalar(document.get('name', true)))
     || (hasDescriptionValue && !isScalar(document.get('description', true)))
   ) {
-    return textParts(normalised)
+    return textParts(normalized)
   }
 
   for (const key of ADVANCED_KEYS_EXCLUDED) {
@@ -86,7 +86,7 @@ export function splitSkillMarkdownParts(text: string): SkillMarkdownParts {
   const advanced = document.contents.items.length > 0
     ? document.toString({ lineWidth: 0 }).trimEnd()
     : ''
-  const lines = normalised.split('\n')
+  const lines = normalized.split('\n')
   const closingIndex = lines.findIndex((line, index) => {
     return index > 0 && /^---[ \t]*$/.test(line)
   })

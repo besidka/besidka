@@ -44,7 +44,7 @@ owner cannot be reached for any other reason. In those cases a TCO removal
 order can run past the hour. If that happens, tell the authority as described
 in section 3 (Art. 3(7), 3(8)). Revisit this when a second operator exists,
 when Besidka starts to earn money or the owner registers a business
-(`docs/legal/monetisation-readiness.md`), or when the user base grows enough
+(`docs/legal/monetization-readiness.md`), or when the user base grows enough
 to make orders or reports likely.
 
 ## 2. Triage, in this order
@@ -57,7 +57,7 @@ to make orders or reports likely.
    (which route fits best is **[U]**, counsel question). Never forward, copy or
    download the material. Do not set a hold of your own: keep the disabled
    artifact as it is and preserve it only if an authority asks (possession of
-   such material is itself an offence, kk art. 202).
+   such material is itself an offense, kk art. 202).
 4. **`terrorism` report without an order**: take down if it is plainly
    terrorist content, then decide on Art. 18 (section 4). Set a hold only if an
    authority asks for one or issues an order.
@@ -99,7 +99,7 @@ be acted on **within one hour of receipt** (Art. 3(3)).
    that nothing may be disclosed (Art. 11(3)), say nothing until that period
    ends, then send T4.
 7. If the order shows an **imminent threat to life**, also inform the
-   authorities competent for criminal offences in the Member States concerned
+   authorities competent for criminal offenses in the Member States concerned
    (TCO Art. 14(5)); if they cannot be identified, the ABW contact point and
    Europol.
 8. Record the order privately (section 8).
@@ -112,7 +112,7 @@ nothing is due.
 ## 4. Threat to life or safety (DSA Art. 18)
 
 Applies when anything (a report, an artifact the controller opens, an email)
-gives rise to a suspicion that a criminal offence threatening someone's life or
+gives rise to a suspicion that a criminal offense threatening someone's life or
 safety has happened, is happening or is likely. It does not depend on a report.
 The Terms promise it.
 

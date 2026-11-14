@@ -387,7 +387,7 @@ still shows the image-generation badge — the picker checks the model's
 already existed for general-purpose models also appears here. That capability
 automatically enables the existing image-generation tool and prevents it from
 being disabled while the model is selected; the "Create image" toggle renders
-in its normal active state rather than the browser's disabled/greyed style, so
+in its normal active state rather than the browser's disabled/grayed style, so
 a required-on model still visually reads as on.
 
 The server never sends an image-only model to `streamText`. It uses a small

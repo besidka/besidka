@@ -13,7 +13,7 @@ export function normalizeKnowledgeRelativePath(relativePath: string): string {
 }
 
 /**
- * Returns the first rule the already NFC-normalised path breaks, or null when
+ * Returns the first rule the already NFC-normalized path breaks, or null when
  * the path is valid. Client schemas and server handlers share this function.
  */
 export function getKnowledgeRelativePathIssue(

@@ -147,7 +147,7 @@ describe('utils/file-share', () => {
       expect(share).toHaveBeenCalledWith({ files: [file] })
     })
 
-    it('reports a closed share sheet as cancelled', async () => {
+    it('reports a closed share sheet as canceled', async () => {
       stubShare({
         canShare: () => true,
         share: async () => {
@@ -155,7 +155,7 @@ describe('utils/file-share', () => {
         },
       })
 
-      await expect(shareFile(file)).resolves.toBe('cancelled')
+      await expect(shareFile(file)).resolves.toBe('canceled')
     })
 
     it('reports an expired user gesture as needing a new one', async () => {

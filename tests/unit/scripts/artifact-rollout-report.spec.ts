@@ -3,7 +3,7 @@ import {
   DEFAULT_DATASET,
   buildExposureQuery,
   parseReportArguments,
-  summariseExposures,
+  summarizeExposures,
 } from '../../../scripts/artifact-rollout-report.mjs'
 
 describe('artifact rollout report', () => {
@@ -39,7 +39,7 @@ describe('artifact rollout report', () => {
   })
 
   it('totals exposures per flag, variant and reason', () => {
-    expect(summariseExposures([
+    expect(summarizeExposures([
       { flag: 'artifacts', variant: '', reason: 'ROLLOUT', exposures: '10' },
       { flag: 'artifacts', variant: '', reason: 'ROLLOUT', exposures: '5.4' },
       { flag: 'artifacts.react', variant: 'b', reason: 'ROLLOUT', exposures: 2 },

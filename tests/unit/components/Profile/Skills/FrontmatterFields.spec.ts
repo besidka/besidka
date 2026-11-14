@@ -114,7 +114,7 @@ describe('Profile/Skills/FrontmatterFields', () => {
       .toContain('line 2')
   })
 
-  it('centres the Advanced summary row with its marker and label', async () => {
+  it('centers the Advanced summary row with its marker and label', async () => {
     const wrapper = await mountFields()
     const summary = wrapper.get(testId('skill-edit-advanced-summary'))
 

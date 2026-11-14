@@ -316,7 +316,7 @@ describe('pages/artifacts/[token]', () => {
     expect(layout).toMatch(/class="relative /)
   })
 
-  it('shows the AI banner as a labelled region with a Report button',
+  it('shows the AI banner as a labeled region with a Report button',
     async () => {
       const wrapper = await mountPage()
       const banner = wrapper.get(byTestId('artifact-share-banner'))

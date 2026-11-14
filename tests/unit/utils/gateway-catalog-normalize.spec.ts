@@ -1120,7 +1120,7 @@ describe('fetchCloudflareGatewayCatalog default-format enrichment', () => {
       expect(models[0]?.supportsTools).toBe(false)
     })
 
-  it('ignores a price entry whose unit it does not recognise', async () => {
+  it('ignores a price entry whose unit it does not recognize', async () => {
     mockCloudflareCatalogFetch({
       marketplace: marketplaceCatalog,
       properties: {

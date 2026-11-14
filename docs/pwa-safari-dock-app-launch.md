@@ -177,7 +177,7 @@ instead of restoring instantly. `/privacy-policy`, `/terms-of-use`,
 `/cookie-policy` and `/shared/<publicId>` are not the app shell and carry no
 per-user state, so the stale-restore concern above doesn't apply to them —
 `server/plugins/ssr-html-no-store.ts` gives them `no-cache` instead (stored,
-revalidated on normal navigation, same effective network behaviour since
+revalidated on normal navigation, same effective network behavior since
 they carry no validators, but bfcache-eligible). The build-freshness plugin
 (Bug 2 fix, above) still runs unconditionally on every route including
 these, so a stale bfcache restore still gets caught and reloaded. `/` is
@@ -187,7 +187,7 @@ unaffected either way — it is handled by
 its 1h TTL (relies on h3 v1 `event.node.res.setHeader`, guarded by a drift
 test), so this plugin's early-return skips it entirely. Under `no-cache`, a revoked share on
 `/shared/**` may still be restored once from that device's bfcache until
-the next reload — identical to pre-#372 behaviour and to bfcache anywhere,
+the next reload — identical to pre-#372 behavior and to bfcache anywhere,
 and accepted deliberately.
 
 ## Bug 3: refresh prompt reappears / re-triggers on relaunch
@@ -383,4 +383,4 @@ was overlooked.
   worker-caching proposal carries that unknown and must go through the
   preview-Dock-app protocol (Web Inspector checklist, above) before merge.
 - **What would change this.** Offline reading of past chats as a product
-  goal, or richer push/background behaviour that needs the worker anyway.
+  goal, or richer push/background behavior that needs the worker anyway.

@@ -147,7 +147,7 @@ function getToolPartView(
  * `tool-create_document` part (partial input while streaming, then the
  * output) and the persisted `data-document` reference, including the
  * shared-view variant whose `documentId` is `null`. Parts are untrusted, so
- * each field is read defensively; anything unrecognised yields `null`.
+ * each field is read defensively; anything unrecognized yields `null`.
  */
 export function getDocumentPartView(part: unknown): DocumentPartView | null {
   const record = readRecord(part)

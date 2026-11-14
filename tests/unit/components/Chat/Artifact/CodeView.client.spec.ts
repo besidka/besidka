@@ -95,7 +95,7 @@ async function readExpectedTokens(code: string): Promise<string[]> {
 }
 
 describe('Chat/Artifact/CodeView.client', () => {
-  it('shows the plain source at once, then colours it block by block', async () => {
+  it('shows the plain source at once, then colors it block by block', async () => {
     const code = createReactSource(260)
     const wrapper = await mountSuspended(CodeView, {
       props: { code, language: 'jsx' },
@@ -117,7 +117,7 @@ describe('Chat/Artifact/CodeView.client', () => {
     })).toBe(true)
   })
 
-  it('reuses the colours when the same version opens again', async () => {
+  it('reuses the colors when the same version opens again', async () => {
     const code = createReactSource(120)
     const first = await mountSuspended(CodeView, {
       props: { code, language: 'jsx', cacheKey: 'artifact:1' },
@@ -134,7 +134,7 @@ describe('Chat/Artifact/CodeView.client', () => {
     expect(getView(second).element.textContent).toBe(code)
   })
 
-  it('replays cached colours over several frames for a long version',
+  it('replays cached colors over several frames for a long version',
     async () => {
       const code = createReactSource(CODE_BLOCK_LINE_COUNT * 8)
       const first = await mountSuspended(CodeView, {
@@ -160,7 +160,7 @@ describe('Chat/Artifact/CodeView.client', () => {
       expect(getView(second).element.textContent).toBe(code)
     })
 
-  it('does not reuse colours cached for other code under the same key',
+  it('does not reuse colors cached for other code under the same key',
     async () => {
       const code = createReactSource(120)
       const first = await mountSuspended(CodeView, {

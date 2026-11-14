@@ -456,7 +456,7 @@ describe('pruneSkillVersions', () => {
     expect(hasBlob('skill1')).toBe(false)
   })
 
-  it('honours a custom number of kept versions', async () => {
+  it('honors a custom number of kept versions', async () => {
     await seedVersions(6)
     await testDb.db.update(schema.skills).set({ currentVersion: 6 })
 

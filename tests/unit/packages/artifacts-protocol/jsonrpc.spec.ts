@@ -30,7 +30,7 @@ import {
 } from '@besidka/artifacts-protocol'
 
 describe('artifacts protocol envelopes', () => {
-  it('recognises requests, notifications and responses', () => {
+  it('recognizes requests, notifications and responses', () => {
     expect(isJsonRpcRequest({ jsonrpc: '2.0', id: 1, method: 'ui/initialize' }))
       .toBe(true)
     expect(isJsonRpcRequest({ jsonrpc: '2.0', method: 'ui/initialize' }))

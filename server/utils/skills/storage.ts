@@ -267,7 +267,7 @@ export async function deleteSkillPrefix(
  * only the blobs that no remaining row of the skill references, so a blob
  * shared with a kept version survives. A failed R2 delete leaves orphan
  * blobs that the hourly sweep removes. A save must call it right after its
- * own commit, with saves serialised per skill by the `baseVersion` guard:
+ * own commit, with saves serialized per skill by the `baseVersion` guard:
  * a concurrent save could otherwise reuse a blob that this prune has just
  * judged unreferenced.
  */

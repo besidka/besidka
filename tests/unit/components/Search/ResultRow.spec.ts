@@ -263,7 +263,7 @@ describe('Search/ResultRow', () => {
   })
 
   describe('pin toggle button', () => {
-    it('is labelled "Pin" for an unpinned chat', async () => {
+    it('is labeled "Pin" for an unpinned chat', async () => {
       const wrapper = await mountSuspended(SearchResultRow, {
         props: {
           chat: createHistoryChat({ pinnedAt: null, shared: false }),
@@ -277,7 +277,7 @@ describe('Search/ResultRow', () => {
       expect(button.attributes('aria-label')).toBe('Pin')
     })
 
-    it('is labelled "Unpin" for a pinned chat', async () => {
+    it('is labeled "Unpin" for a pinned chat', async () => {
       const wrapper = await mountSuspended(SearchResultRow, {
         props: {
           chat: createHistoryChat({

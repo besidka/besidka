@@ -69,7 +69,7 @@ describe('shared-artifacts helpers', () => {
     expect(parseSharedHistoryTab(undefined)).toBe('chats')
   })
 
-  it('pluralises the active link count', () => {
+  it('pluralizes the active link count', () => {
     expect(formatActiveLinkCount(1)).toBe('1 active link')
     expect(formatActiveLinkCount(3)).toBe('3 active links')
   })
@@ -194,7 +194,7 @@ describe('useSharedArtifacts', () => {
     expect(state.items.value.map(item => item.id)).toEqual(['a2'])
     expect(state.total.value).toBe(1)
     expect(state.busyIds.value.size).toBe(0)
-    expect(mocks.successMessage).toHaveBeenCalledWith('Sharing cancelled')
+    expect(mocks.successMessage).toHaveBeenCalledWith('Sharing canceled')
   })
 
   it('keeps the row and refreshes when a revoke fails', async () => {

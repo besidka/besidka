@@ -98,7 +98,7 @@ describe('extractSkillArchive: accepted archives', () => {
     })
   })
 
-  it('NFC-normalises paths', () => {
+  it('NFC-normalizes paths', () => {
     const result = extractSkillArchive(buildArchive({
       'skill/SKILL.md': skillMarkdown(),
       'skill/references/cafe\u0301.md': 'x',

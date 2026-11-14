@@ -24,7 +24,7 @@ import { hasHiddenCharacter } from '#shared/utils/skills/hidden-characters'
 import {
   SKILL_MD_FILE_NAME,
   checkSkillRelativePath,
-  normaliseSkillEntryName,
+  normalizeSkillEntryName,
 } from '#shared/utils/skills/path'
 
 const UNIX_FILE_TYPE_MASK = 0xF000
@@ -301,21 +301,21 @@ export function extractGithubSkillArchive(
       )
     }
 
-    const normalised = normaliseSkillEntryName(item.repoName)
+    const normalized = normalizeSkillEntryName(item.repoName)
 
-    if (normalised.status === 'reject') {
+    if (normalized.status === 'reject') {
       return archiveFailure(
         'archive-path-rejected',
-        SKILL_PATH_REJECTION_MESSAGES[normalised.reason],
+        SKILL_PATH_REJECTION_MESSAGES[normalized.reason],
         displayPath(item.repoName),
       )
     }
 
-    if (normalised.status === 'skip') {
+    if (normalized.status === 'skip') {
       continue
     }
 
-    if (!normalised.path.startsWith(skillPrefix)) {
+    if (!normalized.path.startsWith(skillPrefix)) {
       return archiveFailure(
         'archive-path-rejected',
         SKILL_PATH_REJECTION_MESSAGES.traversal,
@@ -323,7 +323,7 @@ export function extractGithubSkillArchive(
       )
     }
 
-    const relativePath = normalised.path.slice(skillPrefix.length)
+    const relativePath = normalized.path.slice(skillPrefix.length)
     const rejection = checkSkillRelativePath(relativePath)
 
     if (rejection) {
@@ -371,10 +371,10 @@ export function extractGithubSkillArchive(
           && isRegularOrUntyped(item.fileType)
       })
       .filter((item) => {
-        const normalised = normaliseSkillEntryName(item.repoName)
+        const normalized = normalizeSkillEntryName(item.repoName)
 
-        return normalised.status === 'ok'
-          && normalised.path === item.repoName
+        return normalized.status === 'ok'
+          && normalized.path === item.repoName
           && checkSkillRelativePath(item.repoName) === null
       })
       .slice(0, ROOT_LICENSE_FILES_MAX)

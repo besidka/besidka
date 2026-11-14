@@ -1,5 +1,5 @@
 import { and, eq, ne } from 'drizzle-orm'
-import { hashSkillFileSet } from '#shared/utils/skills/analyse'
+import { hashSkillFileSet } from '#shared/utils/skills/analyze'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import type { SkillFrontmatter } from '#shared/utils/skills/frontmatter'
 import { classifySkillLicense } from '#shared/utils/skills/license'

@@ -311,7 +311,7 @@ describe('files utils', () => {
   })
 
   describe('text file helpers', () => {
-    it('recognises text media types', () => {
+    it('recognizes text media types', () => {
       expect(isTextFileType('text/plain')).toBe(true)
       expect(isTextFileType('text/markdown')).toBe(true)
       expect(isTextFileType('text/plain; charset=utf-8')).toBe(true)
@@ -356,7 +356,7 @@ describe('files utils', () => {
       )).toBe('application/pdf')
     })
 
-    it('normalises an untyped markdown file and keeps typed files as is',
+    it('normalizes an untyped markdown file and keeps typed files as is',
       async () => {
         const untyped = new File(['# Title'], 'notes.md', {
           lastModified: 42,

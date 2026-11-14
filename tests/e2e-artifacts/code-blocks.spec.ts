@@ -125,7 +125,7 @@ test.describe('artifact code and Mermaid blocks', () => {
     await expect(frame.locator('.besidka-markdown > pre')).toHaveCount(0)
   })
 
-  test('upgrades language-tagged blocks in html and honours the opt-out', async ({ page }) => {
+  test('upgrades language-tagged blocks in html and honors the opt-out', async ({ page }) => {
     await mount(page)
     await render(page, {
       kind: 'html',

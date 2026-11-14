@@ -744,8 +744,8 @@ describe('buildArtifactDesignInstructions', () => {
       .toBeLessThanOrEqual(DESIGN_SHEET_MAX_CHARS)
   })
 
-  it('names the theme colours and forbids remote styling', () => {
-    for (const colour of [
+  it('names the theme colors and forbids remote styling', () => {
+    for (const color of [
       'primary',
       'secondary',
       'accent',
@@ -756,7 +756,7 @@ describe('buildArtifactDesignInstructions', () => {
       'success',
       'error',
     ]) {
-      expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain(colour)
+      expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain(color)
     }
 
     expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain('no CDN')

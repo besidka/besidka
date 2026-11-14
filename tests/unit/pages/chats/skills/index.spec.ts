@@ -221,7 +221,7 @@ describe('chats skills page', () => {
   })
 
   it('creates a skill from the New menu and opens it in the editor', async () => {
-    mocks.fetch.mockResolvedValue({ id: 'n1', name: 'summarise' })
+    mocks.fetch.mockResolvedValue({ id: 'n1', name: 'summarize' })
 
     const wrapper = await mountPage()
 
@@ -232,7 +232,7 @@ describe('chats skills page', () => {
 
     const input = findInBody('skill-create-name') as HTMLInputElement
 
-    input.value = 'summarise'
+    input.value = 'summarize'
     input.dispatchEvent(new Event('input'))
     await flushPromises()
     findInBody('skill-create-submit')!.click()
@@ -240,7 +240,7 @@ describe('chats skills page', () => {
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills', {
       method: 'POST',
-      body: { kind: 'blank', name: 'summarise', mode: 'auto' },
+      body: { kind: 'blank', name: 'summarize', mode: 'auto' },
     })
     expect(mocks.refreshNuxtData).toHaveBeenCalled()
     expect(useSkillEditSession().skillId.value).toBe('n1')

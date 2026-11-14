@@ -58,7 +58,7 @@
 		// 2026-09-25, see docs/web-search-cost-accounting.md). Public,
 		// provider-published rates — not a secret. Gemini 3.x rate is
 		// invoice-verified (paid-one SKU E662-8171-51CB, PR #385); its free
-		// allowance (5,000 queries/month) is NOT modelled — cost is always
+		// allowance (5,000 queries/month) is NOT modeled — cost is always
 		// list price x units. Gemini <=2.5 rate is documentation-only.
 		"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
 		"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
@@ -270,7 +270,7 @@
 				// Public, provider-published rates — not a secret. Gemini 3.x
 				// rate is invoice-verified (paid-one SKU E662-8171-51CB, PR
 				// #385); its free allowance (5,000 queries/month) is NOT
-				// modelled — cost is always list price x units. Gemini <=2.5
+				// modeled — cost is always list price x units. Gemini <=2.5
 				// rate is documentation-only.
 				"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
 				"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",

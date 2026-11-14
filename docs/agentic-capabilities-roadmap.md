@@ -1,7 +1,7 @@
 # Agentic capabilities roadmap
 
 Status: **approved plan, Phase 0 in progress** (written 2026-11-08). This
-file is the source of truth for the programme. The Linear project
+file is the source of truth for the program. The Linear project
 "Agentic capabilities" (P-BES-3) holds the tickets, and the Linear document of
 the same name points here once the docs sync has mirrored this file. Every
 ticket that merges updates the status table in section 2. **Order amended on
@@ -19,7 +19,7 @@ research, connectors, skills, Google Drive) while keeping three properties:
 - **Host-portable.** Cloudflare today; a VPS, Vercel or AWS later. Platform
   specifics stay behind small interfaces (`JobRunner`, `BlobStore`, P0-5).
 
-Rule for every phase: **maximise MCP coverage except chatting and spending
+Rule for every phase: **maximize MCP coverage except chatting and spending
 the user's keys.** Listing, sharing, access lists, artifacts, documents from a
 supplied spec, and connector and skill management go into MCP. Starting a
 research run or anything else that spends a key does not
@@ -131,7 +131,7 @@ in `docs/legal/prechecks/skills.md`.
    does not register a scope that has no tools. The scope joins MCP 4.0.0 if
    S-13 is ready before S-6 merges, and otherwise ships with S-13 as its own
    major bump (coordinator decision).
-3. **Skills authored in the app** are saved enabled with no licence tick
+3. **Skills authored in the app** are saved enabled with no license tick
    (class `authored`). Imports, updates, MCP writes and share copies stay
    disabled until the user enables them in the app.
 4. **Runtime before C-6:** S-3 and S-12 ship before C-6, under an interim rule.
@@ -321,7 +321,7 @@ break. Account: the one `wrangler whoami` lists for this repo.
 
 Besidka's design is minimal. There is no left history sidebar. A floating
 vertical nav pill sits on the right (`app/components/Sidebar.client.vue`;
-bottom bar below `sm`), with a centred chat column (`max-w-4xl`), the "+"
+bottom bar below `sm`), with a centered chat column (`max-w-4xl`), the "+"
 tools menu (`docs/chats/chat-input-tools-menu.md`) and bubbles. New features
 must fit this without bloating it.
 
@@ -341,7 +341,7 @@ must fit this without bloating it.
     streaming generation may open it once per chat. The chat never jumps
     scroll position.
 - **The nav pill keeps 5 symmetric slots:** Home, User menu, New chat
-  (centre), Search, and slot 5. Seven is the hard maximum.
+  (center), Search, and slot 5. Seven is the hard maximum.
   - Slot 5 is contextual. On owned chat pages it is the **Chat** button with
     a count badge, which opens the Context panel; branch, share and memory
     exclusion move into that panel's header. On shared chat pages it opens a

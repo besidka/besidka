@@ -15,7 +15,7 @@ describe('Chat/SkillInvocation', () => {
       props: {
         message: {
           parts: [
-            { type: 'text', text: 'summarise this' },
+            { type: 'text', text: 'summarize this' },
             {
               type: 'data-skill-invocation',
               data: { skillId: 'skl1', name: 'writing-style', version: 2 },

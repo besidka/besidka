@@ -147,7 +147,7 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
   })
 
   describe('layout', () => {
-    it('opens a labelled bottom-sheet dialog with fixed header and footer',
+    it('opens a labeled bottom-sheet dialog with fixed header and footer',
       async () => {
         const wrapper = await mountSheet()
         const dialog = wrapper.get('dialog')
@@ -326,7 +326,7 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
       expect(has(wrapper, 'memory-import-summary')).toBe(true)
     })
 
-    it('summarises counts, dropped reasons, blocked kinds and the model',
+    it('summarizes counts, dropped reasons, blocked kinds and the model',
       async () => {
         mocks.fetch.mockResolvedValue(createResponse({
           created: 3,

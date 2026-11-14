@@ -374,7 +374,7 @@ entries learned only from that chat, `revoke_chat_shares` removes share links,
 `update_project` with `memoryEnabled: false` resets the project memory state,
 and edits replace old text (`update_project_knowledge_item`,
 `update_project_instructions` with `null`, `update_memory`, `rename_file`,
-`update_settings` favourites). Extending an existing scope must therefore
+`update_settings` favorites). Extending an existing scope must therefore
 involve no deletion or spend, though overwrites are possible. Under this
 rule `projects:write` gained `update_project` and
 `update_project_knowledge_item`, and `chats:read` gained `list_shared_chats`
@@ -868,7 +868,7 @@ text only and capped.
 | `update_memory` | `memory:write` | yes | Change category, title, description or body | `updateMemoryEntry`. `MEMORY_LIMITS` |
 | `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
 | `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
-| `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
+| `get_settings` | `settings:read` | no | Reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
 | `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
 | `list_feature_flags` | `admin:features` | no | Admins only. Every registry flag with stage, roles, rule (enabled, rollout percentage, variants), kill switch and grant counts. Read-only | `listAdminFeatures` (the `/admin` query) |
 | `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email` (an unknown user is a 404 either way); with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`), `truncated: true` when there are more |
@@ -900,7 +900,7 @@ Notes:
   and the optional TypeSafe AI memory check run unchanged. The memory and
   knowledge write rate limits of those routes apply too.
 - Memory entries written through MCP are stored with `origin: 'user'` (the
-  user authorised the client to write for them) and
+  user authorized the client to write for them) and
   `complianceOrigin: 'mcp'`; the client id is in the wide event. A separate
   `'mcp'` origin would need `app/utils/memory-entry-labels.ts` and the
   extraction code to learn it.
@@ -1234,7 +1234,7 @@ only, and S-6 does not register it.
    user asked for it). `update_project_knowledge_item` cannot touch the
    flag. **Revisit when** the screen has a signal that a human, not the
    reading agent, decided.
-4. **Settings that authorise spend or change the data recipient:**
+4. **Settings that authorize spend or change the data recipient:**
    `memoryExtractionEnabled`, the memory models and gateways, the TypeSafe AI
    roles (and the about-me text and consents). Why: each lets background work
    run on the user's key or sends the user's text to another provider, which
@@ -1260,7 +1260,7 @@ only, and S-6 does not register it.
    switch for everyone) affects every account at once, so a prompt-injected
    admin agent could switch a feature on or off for everyone with one call,
    and no per-call approval reaches the human. Those settings stay in the
-   `/admin` UI, behind a confirmation. An opt-in (Labs) authorises spending
+   `/admin` UI, behind a confirmation. An opt-in (Labs) authorizes spending
    the user's keys (item 1); the objection is a GDPR Art. 21 act of the user;
    roles widen who is an admin or tester. No tool imports `setFeatureRule` or
    writes `feature_flag_rules` (the tool-scopes spec checks the sources).

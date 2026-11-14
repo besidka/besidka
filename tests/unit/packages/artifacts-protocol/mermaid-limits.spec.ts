@@ -103,7 +103,7 @@ describe('buildDiagramLimitFixPrompt', () => {
 })
 
 describe('diagram limit codes in log messages', () => {
-  it('recognises only the known codes', () => {
+  it('recognizes only the known codes', () => {
     expect(isDiagramLimitCode('mermaid-edge-limit')).toBe(true)
     expect(isDiagramLimitCode('mermaid-text-limit')).toBe(true)
     expect(isDiagramLimitCode('other')).toBe(false)

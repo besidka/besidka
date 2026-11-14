@@ -294,7 +294,7 @@ decision list are in BES-370.
   rest is not flagged: text extraction runs for every Office file that is
   stored (uploads, generated documents, code-execution outputs) and on the
   first send of an older one, and the resolver, the send guard and the sidecar
-  cleanup apply to all of them. That fixes today's behaviour: a generated DOCX
+  cleanup apply to all of them. That fixes today's behavior: a generated DOCX
   attached to an Anthropic model used to reach the provider as a raw file part
   and throw.
 - **Allowlist.** `nuxt.config.ts` keeps the base `allowedFileFormats`. The
@@ -340,7 +340,7 @@ decision list are in BES-370.
   with the same `OFFICE_UPLOAD_ZIP_LIMITS` as the upload check. Entries are
   matched under `word/`, `ppt/` and `xl/` only: `media/*` and `embeddings/*`
   count as `text_omitted_media`; `charts/chart*.xml` and `diagrams/data*.xml`
-  count as `text_omitted_charts` (relationship, style, colour and layout parts
+  count as `text_omitted_charts` (relationship, style, color and layout parts
   are ignored). Each count is capped at 99 and the UI shows "99+". An archive
   that cannot be read stores 0 and 0, so NULL only ever means "not counted
   yet" and nothing is retried forever. Embedded spreadsheets (`.xlsx`,

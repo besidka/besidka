@@ -106,7 +106,7 @@ async function expectSingleAssistantMessageThroughImageTurn(
   await page.locator('[data-testid="current-model-trigger"]').click()
   await page.getByRole('button', { name: 'Choose Nano Banana 2', exact: true })
     .click()
-  await page.locator('textarea').fill('Fill this room with my favourite things')
+  await page.locator('textarea').fill('Fill this room with my favorite things')
 
   await startAssistantContainerSampler(page)
   await page.getByRole('button', { name: 'Send Message' }).click()

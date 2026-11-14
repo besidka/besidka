@@ -25,7 +25,7 @@ export class DownloadAlreadyReportedError extends Error {}
 
 type ShareDownloadOutcome
   = | 'saved'
-    | 'cancelled'
+    | 'canceled'
     | 'awaiting-tap'
     | 'unsupported'
     | 'failed'
@@ -291,7 +291,7 @@ export function useFileDownload() {
 
     if (
       outcome === 'saved'
-      || outcome === 'cancelled'
+      || outcome === 'canceled'
       || outcome === 'awaiting-tap'
     ) {
       return 'ok'

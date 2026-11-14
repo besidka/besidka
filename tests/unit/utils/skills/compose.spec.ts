@@ -87,7 +87,7 @@ describe('splitSkillMarkdownParts', () => {
     expect(parts.mode).toBe('text')
   })
 
-  it('normalises line endings and drops the byte order mark', () => {
+  it('normalizes line endings and drops the byte order mark', () => {
     const parts = splitSkillMarkdownParts(
       '﻿---\r\nname: a\r\ndescription: b\r\n---\r\nBody\r\n',
     )

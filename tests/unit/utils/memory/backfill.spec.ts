@@ -309,7 +309,7 @@ describe('memory backfill', () => {
       expect((await start(otherUser)).status).toBe('completed')
     })
 
-    it('allows a new start after the previous job was cancelled', async () => {
+    it('allows a new start after the previous job was canceled', async () => {
       const { cancelBackfill } = await import('~~/server/utils/memory/backfill')
 
       await chat(10)
@@ -789,7 +789,7 @@ describe('memory backfill', () => {
       expect(mocks.extractChatMemory).not.toHaveBeenCalled()
     })
 
-    it('stops between chats when the job is cancelled mid-step', async () => {
+    it('stops between chats when the job is canceled mid-step', async () => {
       const { cancelBackfill } = await import('~~/server/utils/memory/backfill')
 
       await chat(10)
@@ -1614,7 +1614,7 @@ describe('memory backfill', () => {
         })).toHaveLength(1)
       })
 
-    it('resumes a cancelled run after its cursor instead of starting over',
+    it('resumes a canceled run after its cursor instead of starting over',
       async () => {
         const chatIds = await seedHistory(5)
         const first = await start()
@@ -1779,7 +1779,7 @@ describe('memory backfill', () => {
       expect(second).toEqual(first)
     })
 
-    it('does not process remaining chats once cancelled', async () => {
+    it('does not process remaining chats once canceled', async () => {
       const { cancelBackfill } = await import('~~/server/utils/memory/backfill')
 
       await chat(10)
@@ -1795,7 +1795,7 @@ describe('memory backfill', () => {
       expect(mocks.extractChatMemory).not.toHaveBeenCalled()
     })
 
-    it('answers null when cancelling with nothing started', async () => {
+    it('answers null when canceling with nothing started', async () => {
       const { cancelBackfill } = await import('~~/server/utils/memory/backfill')
 
       expect(await cancelBackfill({ userId, db: testDb.db })).toBeNull()

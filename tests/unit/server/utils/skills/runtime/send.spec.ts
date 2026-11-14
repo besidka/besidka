@@ -204,21 +204,21 @@ describe('prepareSkillsForSend', () => {
     const result = await prepare({
       isToolCallingAllowed: false,
       newMessageParts: [invocation(askId, 'ask-skill')],
-      userMessageText: 'summarise this',
+      userMessageText: 'summarize this',
     })
 
     expect(result.toolsRegistered).toBe(false)
-    expect(result.invocationBlock).toContain('ASK BODY summarise this')
+    expect(result.invocationBlock).toContain('ASK BODY summarize this')
     expect(result.instructionBlock).toBeNull()
     expect(result.holdsSkillText).toBe(true)
 
     const turns = appendTextToLastUserTurn([
-      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'summarise this' }] },
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'summarize this' }] },
     ], result.invocationBlock!)
 
     expect(turns[0]!.parts.at(-1)).toMatchObject({
       type: 'text',
-      text: expect.stringContaining('ASK BODY summarise this'),
+      text: expect.stringContaining('ASK BODY summarize this'),
     })
   })
 

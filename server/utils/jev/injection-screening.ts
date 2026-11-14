@@ -169,7 +169,7 @@ function countVerdicts(
  * `maxConcurrentCalls`. The first failed call (401, 429, timeout, network,
  * refusal) stops screening, and so does reaching `maxCalls` (a per-request
  * budget): every text not yet decided is `unscreened`, which callers treat
- * as today's behaviour or queue for a later pass. It never throws and logs
+ * as today's behavior or queue for a later pass. It never throws and logs
  * counts and scores only, under `attributes.injectionScreeningJev`.
  */
 export async function screenTextsForInjection(

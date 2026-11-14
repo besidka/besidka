@@ -178,7 +178,7 @@ describe('Profile/Security/Passkeys', () => {
     expect(nameInput(wrapper).exists()).toBe(false)
   })
 
-  it('treats a cancelled registration ceremony as a quiet no-op, not '
+  it('treats a canceled registration ceremony as a quiet no-op, not '
     + 'an error toast', async () => {
     stubWebAuthnSupport()
     mocks.addPasskey.mockResolvedValue({

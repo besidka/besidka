@@ -183,7 +183,7 @@ describe('ChatInput/ModelsTrigger below md', () => {
     vi.restoreAllMocks()
   })
 
-  it('opens a labelled bottom sheet with the tools sheet chrome', async () => {
+  it('opens a labeled bottom sheet with the tools sheet chrome', async () => {
     const wrapper = await mountPicker()
     const trigger = wrapper.get('[data-testid="current-model-trigger"]')
 

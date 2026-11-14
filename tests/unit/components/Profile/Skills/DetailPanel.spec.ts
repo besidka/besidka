@@ -390,18 +390,18 @@ describe('Profile/Skills/DetailPanel', () => {
 
     const wrapper = await mountPanel()
 
-    await wrapper.get(testId('skill-setting-command')).setValue(' /summarise ')
+    await wrapper.get(testId('skill-setting-command')).setValue(' /summarize ')
 
     const input = wrapper.get(testId('skill-setting-argument-hint'))
 
-    await input.setValue('  What to summarise  ')
+    await input.setValue('  What to summarize  ')
     await wrapper.get(testId('skill-setting-command-form'))
       .trigger('submit')
     await flushPromises()
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/SkillPublicId01', {
       method: 'PATCH',
-      body: { command: 'summarise', argumentHint: 'What to summarise' },
+      body: { command: 'summarize', argumentHint: 'What to summarize' },
     })
   })
 

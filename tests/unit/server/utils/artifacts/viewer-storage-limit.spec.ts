@@ -103,7 +103,7 @@ describe('enforceArtifactStorageWriteLimit', () => {
 })
 
 describe('serializeArtifactStorageValue', () => {
-  it('serialises a plain value', () => {
+  it('serializes a plain value', () => {
     expect(serializeArtifactStorageValue({ a: [1, 'b', null] }))
       .toBe('{"a":[1,"b",null]}')
   })

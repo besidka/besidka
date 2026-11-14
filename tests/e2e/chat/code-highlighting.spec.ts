@@ -24,9 +24,9 @@ function getCodeStream(page: Page, index: number): Locator {
     .nth(index)
 }
 
-async function getDistinctColours(stream: Locator): Promise<number> {
+async function getDistinctColors(stream: Locator): Promise<number> {
   return stream.evaluate((element) => {
-    const colours = new Set(
+    const colors = new Set(
       [...element.querySelectorAll<HTMLElement>('span[style]')]
         .map((span) => {
           return span.style.color
@@ -34,12 +34,12 @@ async function getDistinctColours(stream: Locator): Promise<number> {
         .filter(Boolean),
     )
 
-    return colours.size
+    return colors.size
   })
 }
 
 test.describe('Code highlighting', () => {
-  test('colours persisted blocks per language and leaves unknown ones '
+  test('colors persisted blocks per language and leaves unknown ones '
     + 'plain', async ({ page }) => {
     await page.goto('/chats/test?scenario=code&messages=2')
     await waitForHydration(page)
@@ -56,15 +56,15 @@ test.describe('Code highlighting', () => {
       BLOCK_INDEX.diff,
       BLOCK_INDEX.longTypeScript,
     ]) {
-      expect(await getDistinctColours(getCodeStream(page, index)))
+      expect(await getDistinctColors(getCodeStream(page, index)))
         .toBeGreaterThan(2)
     }
 
-    expect(await getDistinctColours(getCodeStream(page, BLOCK_INDEX.unknown)))
+    expect(await getDistinctColors(getCodeStream(page, BLOCK_INDEX.unknown)))
       .toBe(0)
   })
 
-  test('colours a long block while it streams', async ({ page }) => {
+  test('colors a long block while it streams', async ({ page }) => {
     await page.goto('/chats/test?scenario=code&messages=1&regenerate')
     await waitForHydration(page)
 
@@ -78,7 +78,7 @@ test.describe('Code highlighting', () => {
       ?.split('\n').length ?? 0
 
     expect(linesWhileStreaming).toBeLessThan(TEST_CODE_STREAM_LINES)
-    expect(await getDistinctColours(stream)).toBeGreaterThan(2)
+    expect(await getDistinctColors(stream)).toBeGreaterThan(2)
 
     await expect(
       page.locator('button[data-testid="stop-generation"]').first(),
@@ -89,6 +89,6 @@ test.describe('Code highlighting', () => {
       return text?.split('\n').length
     }, { timeout: 15_000 }).toBe(TEST_CODE_STREAM_LINES)
 
-    expect(await getDistinctColours(stream)).toBeGreaterThan(2)
+    expect(await getDistinctColors(stream)).toBeGreaterThan(2)
   })
 })

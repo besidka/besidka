@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import type { SkillAnalysis } from '#shared/utils/skills/analyse'
+import type { SkillAnalysis } from '#shared/utils/skills/analyze'
 import {
   SKILL_STAGE_TTL,
 } from '#shared/utils/skills-policy'

@@ -27,7 +27,7 @@ function buildSkillArchiveFixture(name: string) {
   const bytes = buildArchive({
     [`${name}/SKILL.md`]: skillMarkdown({
       name,
-      description: 'Summarise a meeting into decisions and owners',
+      description: 'Summarize a meeting into decisions and owners',
       extra: 'license: MIT',
       body: '# Meeting recap\n\nList the decisions and who owns each one.\n',
     }),
@@ -112,7 +112,7 @@ test('a member uploads a skill, reviews it, installs it and turns it on', async 
   await expect(row.getByTestId('skill-row-status')).toHaveText('Off')
   await expect(page.getByTestId('side-panel')).toBeVisible()
   await expect(page.getByTestId('skill-detail-description'))
-    .toContainText('Summarise a meeting')
+    .toContainText('Summarize a meeting')
 
   const mode = row.getByTestId('skill-row-mode-select')
 
@@ -156,7 +156,7 @@ test('a member creates a skill, edits it in the editor and saves version 2', asy
 
   await createDialog.getByTestId('skill-create-name').fill(skillName)
   await createDialog.getByTestId('skill-create-description')
-    .fill('Summarise a meeting')
+    .fill('Summarize a meeting')
   await createDialog.getByTestId('skill-create-submit').click()
 
   const editor = page.locator('dialog.js-skill-edit-modal')
@@ -169,7 +169,7 @@ test('a member creates a skill, edits it in the editor and saves version 2', asy
   await expect(editor.getByTestId('skill-edit-save')).toHaveCount(0)
 
   await editor.getByTestId('skill-edit-description')
-    .fill('Summarise a meeting into decisions and owners')
+    .fill('Summarize a meeting into decisions and owners')
   await editor.getByTestId('skill-editor-textarea')
     .fill('# Recap\n\nList the decisions and who owns each one.\n')
   await editor.getByTestId('skill-file-add').click()
@@ -201,7 +201,7 @@ test('a member creates a skill, edits it in the editor and saves version 2', asy
 
   expect(skill).toMatchObject({
     currentVersion: 2,
-    description: 'Summarise a meeting into decisions and owners',
+    description: 'Summarize a meeting into decisions and owners',
     filesCount: 2,
   })
 

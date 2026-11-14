@@ -694,7 +694,7 @@ describe('profile settings API', () => {
     expect(dbMock.spies.update).not.toHaveBeenCalled()
   })
 
-  it('returns null for an unrecognised stored defaultReasoningLevel',
+  it('returns null for an unrecognized stored defaultReasoningLevel',
     async () => {
       const getHandler = await getSettingsHandler()
       const dbMock = createDbMock()

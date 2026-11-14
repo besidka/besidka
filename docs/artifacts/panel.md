@@ -85,12 +85,12 @@ The detail view:
   (Safari 18+; older browsers just render everything) while keeping their
   real height and width, and the horizontal scrollbar does not change as
   you scroll. The plain text paints in the click's
-  frame, one text node per block. Colours follow from the chat's lazy Shiki
+  frame, one text node per block. Colors follow from the chat's lazy Shiki
   highlighter (`loadCodeHighlighter`, docs/code-highlighting.md): each
   animation frame tokenizes blocks for up to 8 ms with the grammar state
-  carried over and swaps at most 6 coloured blocks in; `v-memo` keeps a
+  carried over and swaps at most 6 colored blocks in; `v-memo` keeps a
   finished block's DOM untouched; a tokenize error resets the view to plain
-  text. Finished colours are cached (16 entries and at most 40,000 lines in
+  text. Finished colors are cached (16 entries and at most 40,000 lines in
   total) per artifact version (`<artifactId>:<version>`, or the code itself),
   language and theme, and reused only when the cached code equals the
   current code; reopening a version replays them 6 blocks per frame without
@@ -101,7 +101,7 @@ The detail view:
   The panel stays mounted (`v-show`) after the first open and the Preview
   iframe is never unmounted, so switching tabs only toggles `display`.
   Measured on a production build (headless Chromium, 3,000-line HTML): text
-  in the click's frame, all colours in about 0.5 s instead of 2.8 s, no long
+  in the click's frame, all colors in about 0.5 s instead of 2.8 s, no long
   task over 115 ms (the first one is the grammar compiling), Preview to Code
   about 32 ms instead of 168 ms, reopening a version with no long task.
   Numbers and the method are in PR #778.
@@ -189,7 +189,7 @@ The detail view:
   `referrerpolicy="no-referrer"`, empty `allow`) pointing at
   `<artifactsOrigin>/v1/index.html`, after `ensureArtifactFramePolicy()`.
 - `createHostConnection()` answers the handshake with `HostContext`: theme
-  from the colour mode, `displayMode` `fullscreen` in the sheet or docked
+  from the color mode, `displayMode` `fullscreen` in the sheet or docked
   full width and `panel` otherwise, the browser locale, and
   `capabilities`. `storage` is `persistent` for a signed-in owner with the
   `artifacts.storage` flag and a saved artifact, else `memory`, in which case
@@ -343,7 +343,7 @@ frame-src 'self' <artifactsOrigin> https://challenges.cloudflare.com
 `'self'` is in both (Nuxt DevTools and any same-origin frame), and Turnstile
 is allowed because the policy stays with the document across client-side
 navigation (shared chat → Sign in). Any other third-party iframe on that
-document is blocked until the next full load. The origin is normalised with
+document is blocked until the next full load. The origin is normalized with
 `new URL().origin` and must be http or https; otherwise neither is sent.
 
 Verified on 2026-11-08 with Playwright Chromium and WebKit on a route-mocked
@@ -379,7 +379,7 @@ host. File names drop `\p{Cf}` format characters (bidi overrides such as
 U+202E, zero-width characters) as well as control characters and the
 characters that are unsafe on common file systems.
 
-## Diagram SVG sanitising
+## Diagram SVG sanitizing
 
 Mermaid diagrams render through `MermaidDiagram.vue` and
 `MermaidViewer.client.vue` with `v-html`. Their source can come from a model,

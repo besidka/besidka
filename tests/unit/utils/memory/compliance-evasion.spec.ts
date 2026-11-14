@@ -383,7 +383,7 @@ const smokeSnippets: SmokeSnippet[] = [
   },
   {
     id: 'en-criminal-minds',
-    text: 'My favourite show is Criminal Minds, I rewatch the whole thing every winter.',
+    text: 'My favorite show is Criminal Minds, I rewatch the whole thing every winter.',
     category: null,
     neverStore: null,
   },
@@ -449,7 +449,7 @@ const smokeSnippets: SmokeSnippet[] = [
   },
   {
     id: 'en-faceid',
-    text: 'I enrolled my face scan so the office door recognises me automatically.',
+    text: 'I enrolled my face scan so the office door recognizes me automatically.',
     category: 'biometric',
     neverStore: null,
   },
@@ -666,7 +666,7 @@ const smokeSnippets: SmokeSnippet[] = [
 ]
 
 describe('smoke-test snippets with their expected labels (2026-10-26)', () => {
-  it('covers all 48 labelled snippets', () => {
+  it('covers all 48 labeled snippets', () => {
     expect(smokeSnippets).toHaveLength(48)
   })
 
@@ -791,7 +791,7 @@ describe('smoke-test gate gaps (2026-10-26)', () => {
     'Polska jest krajem katolickim',
     'Пишу эссе об истории католической церкви',
     'I vote green for the logo and blue for the rest',
-    'Which colour? I vote green.',
+    'Which color? I vote green.',
     'Głosowałam na najlepszy film w konkursie',
     'Я голосувала за другий варіант в опитуванні',
     'I\'m half asleep after the night shift',
@@ -911,7 +911,7 @@ describe('first-person medication framing in every entry field (QA 2026-10-26)',
     'Sertraline is an SSRI',
     'sertraline is an SSRI studied in many clinical trials',
     'Pfizer manufactures sertraline',
-    'Metformin was first synthesised in 1922',
+    'Metformin was first synthesized in 1922',
     'The history of Prozac in American culture',
     'I am writing an essay on sertraline',
     'An article on the price of Ozempic',

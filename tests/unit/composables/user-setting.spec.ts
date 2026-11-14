@@ -1300,7 +1300,7 @@ describe('useUserSetting just-in-time consent request', () => {
       expect(patchCalls()).toHaveLength(0)
     })
 
-    it('treats an unrecognised server value as not set', async () => {
+    it('treats an unrecognized server value as not set', async () => {
       fetchMock.mockResolvedValue({
         ...baseResponse,
         defaultReasoningLevel: 'extreme',

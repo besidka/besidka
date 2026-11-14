@@ -360,7 +360,7 @@ describe('escapeCsvCell', () => {
     '＋1',
     '－1',
     '＠SUM(A1)',
-  ])('neutralises %j with a tab inside a quoted field', (value) => {
+  ])('neutralizes %j with a tab inside a quoted field', (value) => {
     expect(escapeCsvCell(value)).toBe(`"\t${value}"`)
   })
 

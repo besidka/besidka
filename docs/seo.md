@@ -34,7 +34,7 @@ and the README follow from it.
 - **Target queries**: `chatgpt byok`, `byok ai chat`, `byok chat app`,
   `chatgpt alternative without subscription`, `free gemini api key`, `how to
   get gemini api key`, `openrouter api key`. Volumes are unknown; write for the
-  person searching and do not over-optimise.
+  person searching and do not over-optimize.
 - **Baseline for comparison.** Search Console, 3-month window
   2026-07-18 to 2026-10-17:
 
@@ -103,16 +103,16 @@ a duplicate.
 
 Two properties this deliberately buys:
 
-- **Every route self-canonicalises.** Previously `app.vue` set a fixed
+- **Every route self-canonicalizes.** Previously `app.vue` set a fixed
   `ogUrl: baseUrl`, so all 15 routes advertised the home page as their `og:url`,
   and `/privacy` + `/terms` shipped no canonical at all.
-- **Trailing-slash agreement.** `new URL('/', base).href` normalises to
+- **Trailing-slash agreement.** `new URL('/', base).href` normalizes to
   `https://besidka.com/` — byte-identical to the `<loc>` that
   `@nuxtjs/sitemap` emits. The two used to disagree (canonical had no slash),
-  which is exactly the signal split canonicalisation exists to prevent.
+  which is exactly the signal split canonicalization exists to prevent.
 
 Schema URLs go through `buildLandingLdIds()` in `app/utils/landing-jsonld.ts`,
-which applies the same normalisation, so JSON-LD `url`/`@id` values match the
+which applies the same normalization, so JSON-LD `url`/`@id` values match the
 canonical too.
 
 ## Indexable surface
@@ -169,14 +169,14 @@ and every admin page sets `noindex, nofollow`.
 ## The brand-entity problem
 
 This is the actual constraint the content and schema are shaped around, and it
-is worth understanding before "optimising" anything.
+is worth understanding before "optimizing" anything.
 
 `besidka` is not an available brand token. It collides with:
 
 - **`besidka.cz`** — a hotel/restaurant in Slavonice, Czechia, holding the
   exact-match ccTLD with ~15 years of TripAdvisor/Booking/Kayak corroboration.
 - **`besídka`** — a Czech common noun (a children's recital; also a gazebo), plus
-  a well-known Divadlo Sklep theatre revue. Also a real surname.
+  a well-known Divadlo Sklep theater revue. Also a real surname.
 - **`бесідка`** — the generic Ukrainian noun for a garden gazebo. That SERP is
   Wikipedia, dictionaries, gazebo manufacturers and a village in Kyiv Oblast.
 
@@ -427,7 +427,7 @@ public key guides (see [Public key guides](#public-key-guides)).
 The `comparison` block in `content/index.md` names six third-party plans
 (ChatGPT Go, ChatGPT Plus, Google AI Plus, Google AI Pro, Claude Pro, T3 Chat)
 and states their prices and features. Every cell was re-checked against the
-vendors' own pricing pages and help-centre articles on 2026-10-20 and
+vendors' own pricing pages and help-center articles on 2026-10-20 and
 `priceDate` is the ISO date `2026-10-20`, rendered as "Prices checked 20
 October 2026". Changes in that pass:
 
@@ -905,7 +905,7 @@ The key is public by design: IndexNow verifies ownership by fetching it from
 the site. It is stored as a secret only so it is not committed before the
 owner chooses one.
 
-Known gap: `production.yml` queues instead of cancelling, but a pending run
+Known gap: `production.yml` queues instead of canceling, but a pending run
 that a newer push replaces never starts, so it never submits; the next run
 diffs from its own `before` SHA and can miss the replaced push's page changes.
 Re-run with `workflow_dispatch` if that matters.
@@ -992,7 +992,7 @@ long-lived `preview-besidka.chernenko.workers.dev`; see
 `docs/cloudflare-previews.md`) serves
 `robots: index, follow` in the page **and** `x-robots-tag: noindex` as an HTTP
 header (added by Cloudflare on `workers.dev` Preview URLs). The header is the more restrictive signal and wins, so previews are not
-indexable — this is not a bug to fix. Previews also self-canonicalise to the
+indexable — this is not a bug to fix. Previews also self-canonicalize to the
 preview host rather than to production, which is harmless precisely because the
 header keeps them out of the index.
 

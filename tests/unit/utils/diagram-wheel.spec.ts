@@ -149,7 +149,7 @@ describe('getDiagramWheelAction', () => {
           .toEqual({ kind: 'pan', x: -32, y: -0 })
       })
 
-    it('recognises a notch without the legacy wheelDeltaY', () => {
+    it('recognizes a notch without the legacy wheelDeltaY', () => {
       const action = getDiagramWheelAction(wheel({ deltaY: -100 }))
 
       expect(zoomFactor(action)).toBeCloseTo(Math.exp(0.1), 6)

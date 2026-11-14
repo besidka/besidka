@@ -802,7 +802,7 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       })
     })
 
-    it('recognises a copy that was renamed on the account, and updates it under its own name', async () => {
+    it('recognizes a copy that was renamed on the account, and updates it under its own name', async () => {
       await signIn()
 
       const created = await install()

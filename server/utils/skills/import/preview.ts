@@ -1,7 +1,7 @@
 import type { RequestEvent } from 'nuxt/server'
 import { createError } from 'evlog'
 import { getRequestHeader } from 'nuxt/server'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import type { SkillArchiveFile } from '#shared/utils/skills/archive'
 import { SKILL_MAX_UPLOAD_BYTES } from '#shared/utils/skills-policy'
 import type { SkillImportRelease } from '#shared/types/skills.d'
@@ -98,7 +98,7 @@ export async function readSkillUpload(
 }
 
 /**
- * Analyses an extracted skill, applies the license gate, stages it for one
+ * Analyzes an extracted skill, applies the license gate, stages it for one
  * hour and returns what the review screen needs. A restricted license stops
  * here, so it is never staged.
  */
@@ -118,7 +118,7 @@ export async function createSkillImportPreview(input: {
   archiveWarnings: string[]
   logger: LoggerLike
 }) {
-  const analysis = await analyseSkillFiles({
+  const analysis = await analyzeSkillFiles({
     files: input.files,
     folderName: input.folderName,
   })

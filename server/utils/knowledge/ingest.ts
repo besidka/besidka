@@ -252,7 +252,7 @@ function recordKnowledgeError(
 }
 
 /**
- * NFC-normalises a client string so visually identical titles, paths and
+ * NFC-normalizes a client string so visually identical titles, paths and
  * descriptions compare and store identically.
  */
 export function normalizeKnowledgeString(value: string): string {
@@ -1016,7 +1016,7 @@ async function markInsertedItemsPending(
  * Settles a commit that changed nothing (no item added, none removed). A
  * pack that already matches the version is returned as is. A stale pack of a
  * project that has been committed before is rebuilt through the lazy path,
- * which never bumps `knowledge_version` and honours the build backoff, so
+ * which never bumps `knowledge_version` and honors the build backoff, so
  * repeating an empty commit cannot churn builds. It is an explicit commit, so
  * it skips the 30 second wait the panel and send paths observe. Only a
  * project that has never been committed (version 0) takes the full commit
@@ -1149,7 +1149,7 @@ export async function commitKnowledgeProject(
 }
 
 /**
- * Creates the items of one upload batch. Order: sanitise, duplicate
+ * Creates the items of one upload batch. Order: sanitize, duplicate
  * `contentHash` skipping (a skipped item is never looked at again, so its
  * `fileId` is neither validated nor linked), file checks for the accepted
  * items (404 foreign or missing, 400 not a PDF or image, 409 already linked

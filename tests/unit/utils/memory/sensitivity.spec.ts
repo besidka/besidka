@@ -212,7 +212,7 @@ const negatives: Record<string, string[]> = {
     'I am a liberal arts student',
     'The Great Depression ended in 1939',
     'straight line from A to B',
-    'Jewel is my favourite singer',
+    'Jewel is my favorite singer',
     'I vote for tabs over spaces',
     'I voted for option B in the team poll',
     'I am a conservative developer when it comes to dependencies',
@@ -550,7 +550,7 @@ describe('classifySensitiveCategories', () => {
     }
   })
 
-  it('normalises compatibility forms and case', () => {
+  it('normalizes compatibility forms and case', () => {
     expect(classifySensitiveCategories('I HAVE ＤＩＡＢＥＴＥＳ'))
       .toEqual(['health'])
     expect(classifySensitiveCategories('ВАГІТНА')).toEqual(['health'])

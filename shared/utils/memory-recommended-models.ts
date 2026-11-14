@@ -65,8 +65,8 @@ export function getGatewayModelProviderId(
 
 /**
  * A gateway model is recommended when it is the same vendor and the same
- * normalised model slug as a direct model flagged for memory work. The match
- * is exact on the normalised slug, never a prefix or fuzzy comparison, so a
+ * normalized model slug as a direct model flagged for memory work. The match
+ * is exact on the normalized slug, never a prefix or fuzzy comparison, so a
  * sibling such as `gpt-6-luna-mini` is not recommended because `gpt-6-luna`
  * is.
  */

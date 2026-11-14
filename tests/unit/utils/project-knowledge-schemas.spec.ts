@@ -556,7 +556,7 @@ describe('knowledgeItemCreateSchema', () => {
       ['Latin', 'docs/cafe\u0301.pdf', 'docs/caf\u00E9.pdf'],
       ['Cyrillic short i', '\u0438\u0306.md', '\u0439.md'],
       ['Ukrainian yi', 'docs/\u0456\u0308жак.md', 'docs/\u0457жак.md'],
-    ])('normalises %s NFD input to NFC', (_label, input, expected) => {
+    ])('normalizes %s NFD input to NFC', (_label, input, expected) => {
       const result = knowledgeItemCreateSchema.safeParse({
         ...validPdfItem,
         relativePath: input,

@@ -7,7 +7,7 @@ import {
   ANTHROPIC_RESTRICTED_MESSAGE,
   GENERAL_RESTRICTED_MESSAGE,
   classifySkillLicense,
-  normaliseLicenseText,
+  normalizeLicenseText,
 } from '#shared/utils/skills/license'
 
 const FIXTURES = join(process.cwd(), 'tests/fixtures/skills/licenses')
@@ -40,7 +40,7 @@ function classify(
 describe('classifySkillLicense: restricted', () => {
   it('blocks the old Anthropic text by hash with the Anthropic message', async () => {
     const hash = createHash('sha256')
-      .update(normaliseLicenseText(anthropicOld))
+      .update(normalizeLicenseText(anthropicOld))
       .digest('hex')
 
     expect(hash).toBe(ANTHROPIC_PROPRIETARY_LICENSE_SHA256)
@@ -132,7 +132,7 @@ describe('classifySkillLicense: restricted', () => {
   it('releases a false positive through the exception list', async () => {
     const text = 'All rights reserved.\n\nYou may not copy this without credit.'
     const hash = createHash('sha256')
-      .update(normaliseLicenseText(text))
+      .update(normalizeLicenseText(text))
       .digest('hex')
     const blocked = await classify([['LICENSE', text]])
     const released = await classify([['LICENSE', text]], null, {
@@ -175,7 +175,7 @@ describe('classifySkillLicense: restricted', () => {
 })
 
 describe('classifySkillLicense: open', () => {
-  it('recognises Apache-2.0 with the appendix unfilled', async () => {
+  it('recognizes Apache-2.0 with the appendix unfilled', async () => {
     const result = await classify([['LICENSE.txt', apache]])
 
     expect(Buffer.byteLength(apache)).toBe(11357)
@@ -187,7 +187,7 @@ describe('classifySkillLicense: open', () => {
     })
   })
 
-  it('recognises Apache-2.0 with one filled copyright line', async () => {
+  it('recognizes Apache-2.0 with one filled copyright line', async () => {
     const filled = apache.replace(
       '[yyyy] [name of copyright owner]',
       '2026 Anthropic, PBC.',
@@ -197,7 +197,7 @@ describe('classifySkillLicense: open', () => {
     expect((await classify([['LICENSE.txt', filled]])).class).toBe('open')
   })
 
-  it('recognises Apache-2.0 without an appendix', async () => {
+  it('recognizes Apache-2.0 without an appendix', async () => {
     const marker = 'END OF TERMS AND CONDITIONS'
     const headOnly = `${apache.slice(0, apache.indexOf(marker) + marker.length)}\n`
 
@@ -221,7 +221,7 @@ describe('classifySkillLicense: open', () => {
     ['bsd-2-clause.txt', 'BSD-2-Clause'],
     ['bsd-3-clause.txt', 'BSD-3-Clause'],
     ['isc.txt', 'ISC'],
-  ])('recognises %s whatever its copyright line and wrapping', async (name, spdx) => {
+  ])('recognizes %s whatever its copyright line and wrapping', async (name, spdx) => {
     const text = fixture(name)
       .replace(/<year> <(?:copyright holders|owner)>/, '2024 Jane Doe')
       .replace(/<year> <owner>/, '2024 Jane Doe')
@@ -286,7 +286,7 @@ describe('classifySkillLicense: custom and none', () => {
     expect((await classify([['NOTICE', 'Notice text']])).class).toBe('custom')
   })
 
-  it('classes an unrecognised field with no file as custom', async () => {
+  it('classes an unrecognized field with no file as custom', async () => {
     expect((await classify([], 'See the website')).class).toBe('custom')
   })
 

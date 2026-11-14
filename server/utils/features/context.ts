@@ -70,7 +70,7 @@ async function createFeatureRequestContext(
 
 /**
  * Loads the rules (KV, D1 on a miss) and the signed-in user's feature state
- * (one D1 batch) once per request and memoises them on
+ * (one D1 batch) once per request and memoizes them on
  * `event.context.features`, so every guard and the features endpoint in the
  * same request share them.
  */

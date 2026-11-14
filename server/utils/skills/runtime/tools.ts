@@ -13,7 +13,7 @@ import {
   SKILL_MAX_PATH_LENGTH,
   SKILL_READ_FILE_MAX_BYTES,
 } from '#shared/utils/skills-policy'
-import { normaliseSkillEntryName } from '#shared/utils/skills/path'
+import { normalizeSkillEntryName } from '#shared/utils/skills/path'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -210,9 +210,9 @@ export function getSkillTools(input: {
           readFileCalls += 1
 
           const skill = findSkill(skillName)
-          const normalised = normaliseSkillEntryName(path)
+          const normalized = normalizeSkillEntryName(path)
 
-          if (normalised.status !== 'ok') {
+          if (normalized.status !== 'ok') {
             throw createSkillToolError(
               'That file is not part of the skill',
               'The path is not a valid skill file path.',
@@ -225,7 +225,7 @@ export function getSkillTools(input: {
             bucket: input.bucket,
             userId: input.userId,
             skill,
-            path: normalised.path,
+            path: normalized.path,
           })
 
           if (!file) {
@@ -245,7 +245,7 @@ export function getSkillTools(input: {
             skillId: skill.id,
             name: skill.name,
             version: skill.currentVersion,
-            path: normalised.path,
+            path: normalized.path,
             truncated: cut.isTruncated,
             content: neutralizeSkillDelimiters(cut.text),
           }

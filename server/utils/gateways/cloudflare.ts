@@ -199,7 +199,7 @@ function estimateCloudflarePromptTokens(
  * `max_tokens` is only ever lowered. When the remaining budget drops below
  * `CLOUDFLARE_MIN_OUTPUT_TOKENS`, `max_tokens` is omitted rather than
  * floored: Workers AI then applies its own 256-token default, which is the
- * behaviour a request had before `max_tokens` was sent at all, so a prompt
+ * behavior a request had before `max_tokens` was sent at all, so a prompt
  * that fit the context then is never rejected now. The body is returned
  * untouched when it carries no numeric `max_tokens` (non-chat bodies) or the
  * model's context length is unknown.

@@ -740,7 +740,7 @@ export async function readArtifactVersionForShare(
 
 /**
  * Reads one version of an artifact row the caller already resolved and
- * authorised (a public share link, an admin review). Skips the ownership and
+ * authorized (a public share link, an admin review). Skips the ownership and
  * takedown checks, so callers must apply their own; 404 for an unknown
  * version, 410 (`artifact_content_missing`) when the R2 object is gone.
  */

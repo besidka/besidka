@@ -843,7 +843,7 @@ describe('knowledge ingestion', () => {
         .toBe(FILE_EXPIRY_SECONDS)
     })
 
-    it('normalises titles and paths to NFC and keeps them out of R2 keys', async () => {
+    it('normalizes titles and paths to NFC and keeps them out of R2 keys', async () => {
       const combiningAcute = String.fromCharCode(0x301)
       const decomposed = `cafe${combiningAcute}.md`
       const composed = 'café.md'
@@ -885,7 +885,7 @@ describe('knowledge ingestion', () => {
   })
 
   describe('assertKnowledgeRelativePath', () => {
-    it('accepts a plain nested path and normalises to NFC', () => {
+    it('accepts a plain nested path and normalizes to NFC', () => {
       expect(assertKnowledgeRelativePath('docs/api/guide.md'))
         .toBe('docs/api/guide.md')
       expect(assertKnowledgeRelativePath(

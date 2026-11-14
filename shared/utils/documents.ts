@@ -270,7 +270,7 @@ export const DOCUMENT_SOURCE_LIBRARY_LABELS: Record<
 }
 
 /**
- * Whether a document is labelled as AI-generated. A stored flag wins. Rows
+ * Whether a document is labeled as AI-generated. A stored flag wins. Rows
  * written before the column existed carry null: a chat document was written
  * by a model, an MCP document only by a connected app unless the caller said
  * otherwise, so null reads as AI only for non-MCP documents.

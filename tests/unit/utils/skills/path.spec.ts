@@ -3,17 +3,17 @@ import {
   checkSkillRelativePath,
   detectSkillRoot,
   getSkillFileKind,
-  normaliseSkillEntryName,
+  normalizeSkillEntryName,
   normalizeSkillFileKind,
 } from '#shared/utils/skills/path'
 
-describe('normaliseSkillEntryName', () => {
-  it('accepts a plain relative path and NFC-normalises it', () => {
-    expect(normaliseSkillEntryName('skill/references/a.md')).toEqual({
+describe('normalizeSkillEntryName', () => {
+  it('accepts a plain relative path and NFC-normalizes it', () => {
+    expect(normalizeSkillEntryName('skill/references/a.md')).toEqual({
       status: 'ok',
       path: 'skill/references/a.md',
     })
-    expect(normaliseSkillEntryName('skill/cafe\u0301.md')).toEqual({
+    expect(normalizeSkillEntryName('skill/cafe\u0301.md')).toEqual({
       status: 'ok',
       path: 'skill/caf\u00E9.md',
     })
@@ -46,23 +46,23 @@ describe('normaliseSkillEntryName', () => {
     ['skill/.../file.md', 'unsafe-segment'],
     ['', 'empty'],
   ])('rejects %j as %s', (name, reason) => {
-    expect(normaliseSkillEntryName(name)).toEqual({ status: 'reject', reason })
+    expect(normalizeSkillEntryName(name)).toEqual({ status: 'reject', reason })
   })
 
   it('skips directories, macOS metadata and .DS_Store', () => {
-    expect(normaliseSkillEntryName('skill/')).toEqual({
+    expect(normalizeSkillEntryName('skill/')).toEqual({
       status: 'skip',
       reason: 'directory',
     })
-    expect(normaliseSkillEntryName('__MACOSX/skill/._SKILL.md')).toEqual({
+    expect(normalizeSkillEntryName('__MACOSX/skill/._SKILL.md')).toEqual({
       status: 'skip',
       reason: 'macos-metadata',
     })
-    expect(normaliseSkillEntryName('skill/.DS_Store')).toEqual({
+    expect(normalizeSkillEntryName('skill/.DS_Store')).toEqual({
       status: 'skip',
       reason: 'ds-store',
     })
-    expect(normaliseSkillEntryName('skill/references/._checklist.md'))
+    expect(normalizeSkillEntryName('skill/references/._checklist.md'))
       .toEqual({ status: 'skip', reason: 'macos-metadata' })
   })
 })
@@ -153,7 +153,7 @@ describe('normalizeSkillFileKind', () => {
     expect(normalizeSkillFileKind('Licence')).toBe('other')
   })
 
-  it('still recognises both spellings of the license file name', () => {
+  it('still recognizes both spellings of the license file name', () => {
     for (const name of ['LICENSE', 'LICENCE', 'License.md', 'licence.txt']) {
       expect(getSkillFileKind(name)).toBe('license')
     }

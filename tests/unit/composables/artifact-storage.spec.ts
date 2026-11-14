@@ -793,7 +793,7 @@ describe('createArtifactStorageSession', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
-    it('sends a value of exactly 32 KB serialised', async () => {
+    it('sends a value of exactly 32 KB serialized', async () => {
       fetchMock.mockResolvedValueOnce(snapshotOf())
       fetchMock.mockResolvedValueOnce({
         keys: 1,

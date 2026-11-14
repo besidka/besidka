@@ -76,7 +76,7 @@ Everything gateway-related was added on `feat/add-more-providers` (merge-base
 with `main`: `26f5875b`). Nothing gateway-related exists on `main`, so the
 removal is confined to this branch's own additions.
 
-The same branch also genericised things that must **survive**: the per-provider
+The same branch also genericized things that must **survive**: the per-provider
 keys page was rewritten from three hardcoded components
 (`Profile/Keys/{Anthropic,Google,OpenAi}.vue`, all deleted on this branch) into
 the generic `Profile/Keys/Card.vue` + `Profile/Keys/ProviderKeyCard.vue`, and
@@ -205,7 +205,7 @@ npx wrangler d1 time-travel restore besidka-preview --bookmark=<bookmark>
 ```
 
 **Step 2 — Record the "before" row counts** so the drop can be proven
-non-destructive to neighbouring data:
+non-destructive to neighboring data:
 
 ```bash
 npx wrangler d1 execute besidka-preview --remote --command="SELECT
@@ -713,7 +713,7 @@ untouched** — they simply stop receiving gateway ids.
 The provider/gateway display is already fully generic (`info.providerKind`,
 `info.providerLabel`, `info.providerId`), resolved upstream in
 `shared/utils/message-metadata.ts` / `shared/utils/provider-meta.ts`. Grep for
-"gateway" in this file returns zero hits. See § 5 for the behavioural
+"gateway" in this file returns zero hits. See § 5 for the behavioral
 consequence on historical messages.
 
 ## 4. Legacy persisted data: read-side tolerance
@@ -725,7 +725,7 @@ visibly broken UI for an existing preview user on the first load after deploy.
 
 ### 4.1 Stored model selection (highest risk)
 
-`shared/utils/model-selection.ts` serialises a gateway selection as JSON
+`shared/utils/model-selection.ts` serializes a gateway selection as JSON
 (`{"source":"gateway","gatewayId":"openrouter","modelId":"..."}`) and a
 provider selection as a bare model-id string. `parseModelSelection()` today
 falls back to `{ source: 'provider', modelId: raw }` whenever the JSON is
@@ -825,7 +825,7 @@ persisted with `MessageUsage.provider = 'openrouter' | 'vercel-gateway' |
 
 Nothing throws — this is a safe degradation — but it is a **user-visible
 history change**, not a no-op. Confirm the read path tolerates the legacy value
-without asserting on a narrowed union (§ 4.2), and report the behaviour to the
+without asserting on a narrowed union (§ 4.2), and report the behavior to the
 owner rather than letting it be discovered later.
 
 ### R5. Stale `{"source":"gateway",...}` in localStorage
@@ -931,7 +931,7 @@ inside them.
 | `docs/investigations/reasoning-gap-wp8.md` | 217 | 2 | A UI paint-flake investigation, essentially unrelated to gateways | **Keep, surgical** — strip the 2 gateway references only |
 
 These are working documents rather than durable feature documentation, which
-is why they are a judgement call rather than a mechanical delete.
+is why they are a judgment call rather than a mechanical delete.
 
 ### 6.3 `docs/gateways.md` — RECOMMEND SPLIT, NOT DELETE
 
@@ -945,7 +945,7 @@ This 1459-line file is **not** a gateway-only document. It splits cleanly:
   is wired through `@ai-sdk/openai-compatible` and how Moonshot/Qwen web search
   works — all kept features.
 - **Lines 398-1459 — gateways (REMOVE)**, except two sections that document
-  **kept** behaviour and must be relocated into the surviving doc:
+  **kept** behavior and must be relocated into the surviving doc:
   - `### Multi-step tool loop` (line 1084) documents
     `server/utils/ai/tool-loop.ts`, `withFollowUpTurn()` and
     `resolveToolLoopOptions()` — a direct-provider feature.
@@ -1026,7 +1026,7 @@ removing `favoriteGatewayModels` from the schema left the drizzle snapshot
 chain self-consistent. If it emits a migration, something is out of sync —
 stop and reconcile rather than committing the generated file.
 
-**Gate 5 — acceptance grep.** This operationalises the owner's "everything is
+**Gate 5 — acceptance grep.** This operationalizes the owner's "everything is
 gone":
 
 ```bash
@@ -1082,7 +1082,7 @@ is expected; the gateway modules still exist.
 | 1f | `app/composables/{chat-input,chat,chat-title,selected-model-info,user-setting,image-input-support}.ts` |
 | 1g | `app/pages/profile/keys.vue` |
 
-**Model tiering:** 1a and 1d on Opus (large, judgement-heavy, high blast
+**Model tiering:** 1a and 1d on Opus (large, judgment-heavy, high blast
 radius). 1b, 1c, 1e, 1f, 1g on Sonnet — each has a precise spec in § 3 and
 needs no discovery.
 
@@ -1093,7 +1093,7 @@ Depends on wave 1. Collapse `shared/utils/model-selection.ts` +
 `shared/utils/provider-meta.ts`, `shared/utils/message-metadata.ts`,
 `shared/types/message-usage.d.ts`, `shared/types/chat-errors.d.ts`.
 
-Single agent, Sonnet. These files interlock — parallelising them causes
+Single agent, Sonnet. These files interlock — parallelizing them causes
 conflicting edits to the same union types.
 
 ### Wave 3 — wholesale deletes (parallel)
@@ -1101,7 +1101,7 @@ conflicting edits to the same union types.
 Only now are all importers gone. Delete everything in § 3.A and § 3.B, plus
 `.drizzle/migrations/20260809021640_vengeful_lifeguard/`.
 
-Two agents, Haiku or Sonnet — this is mechanical `rm`, no judgement.
+Two agents, Haiku or Sonnet — this is mechanical `rm`, no judgment.
 
 ### Wave 4 — tests and tooling (parallel)
 

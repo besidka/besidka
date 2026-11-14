@@ -208,7 +208,7 @@ function createBody(
       id: 'user-public-1',
       role: 'user',
       parts: [
-        { type: 'text', text: 'Summarise the attachment' },
+        { type: 'text', text: 'Summarize the attachment' },
         ...fileParts.map((part) => {
           return { type: 'file', ...part }
         }),

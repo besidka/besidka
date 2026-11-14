@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import type { SkillArchiveFile } from '#shared/utils/skills/archive'
 import {
   createMemoryExtractionTestDb,
@@ -84,7 +84,7 @@ describe('pending skill versions', () => {
       })),
       archiveFile('references/checklist.md', '- Check tests\n'),
     ]
-    const analysis = await analyseSkillFiles({ files, folderName: null })
+    const analysis = await analyzeSkillFiles({ files, folderName: null })
 
     if (!analysis.ok) {
       throw new Error('Invalid sample')

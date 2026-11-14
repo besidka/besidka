@@ -704,7 +704,7 @@ describe('useKnowledgeUpload', () => {
         .success).toBe(true)
     })
 
-    it('normalises fields that the schema would reject', async () => {
+    it('normalizes fields that the schema would reject', async () => {
       const { upload } = createUpload()
       const longName = `${'n'.repeat(250)}.md`
 
@@ -733,7 +733,7 @@ describe('useKnowledgeUpload', () => {
         .success).toBe(true)
     })
 
-    it('normalises titles and sends only valid paths and folder ids', async () => {
+    it('normalizes titles and sends only valid paths and folder ids', async () => {
       const { upload } = createUpload()
 
       await prepareAndStart(
@@ -1202,7 +1202,7 @@ describe('useKnowledgeUpload', () => {
 
       expect(signals[1]?.aborted).toBe(true)
       expect(upload.phase.value).toBe('done')
-      expect(upload.wasCancelled.value).toBe(true)
+      expect(upload.wasCanceled.value).toBe(true)
       expect(upload.error.value).toBeNull()
       expect(upload.entries.value.map(entry => entry.status)).toEqual([
         'ready',
@@ -1223,7 +1223,7 @@ describe('useKnowledgeUpload', () => {
       ) => {
         return new Promise((_resolve, reject) => {
           options.signal?.addEventListener('abort', () => {
-            reject(createStatusError(0, 'Upload was cancelled'))
+            reject(createStatusError(0, 'Upload was canceled'))
           })
         })
       })
@@ -1240,7 +1240,7 @@ describe('useKnowledgeUpload', () => {
       await running
 
       expect(upload.entries.value[0]?.status).toBe('queued')
-      expect(upload.wasCancelled.value).toBe(true)
+      expect(upload.wasCanceled.value).toBe(true)
       expect(itemCalls()).toHaveLength(0)
     })
 
@@ -1249,7 +1249,7 @@ describe('useKnowledgeUpload', () => {
 
       upload.cancel()
 
-      expect(upload.wasCancelled.value).toBe(false)
+      expect(upload.wasCanceled.value).toBe(false)
       expect(upload.phase.value).toBe('idle')
     })
 
@@ -1285,7 +1285,7 @@ describe('useKnowledgeUpload', () => {
 
       await upload.start()
 
-      expect(upload.wasCancelled.value).toBe(false)
+      expect(upload.wasCanceled.value).toBe(false)
       expect(upload.entries.value.map(entry => entry.status)).toEqual([
         'ready',
         'ready',

@@ -16,7 +16,7 @@ function isRealCalendarDate(
 }
 
 /**
- * Normalise a date value for structured data that Google requires to carry a
+ * Normalize a date value for structured data that Google requires to carry a
  * timezone. A date-only `YYYY-MM-DD` becomes `YYYY-MM-DDT00:00:00+00:00`; a
  * full datetime that already has a `Z` or `±hh:mm` offset passes through
  * unchanged. Anything else, including a datetime without an offset or an

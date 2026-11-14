@@ -263,7 +263,7 @@ describe('public shared chat avatar proxy API', () => {
     expect(mocks.fetchMock).not.toHaveBeenCalled()
   })
 
-  it('normalises an uppercase host and fetches the lowercase avatar host',
+  it('normalizes an uppercase host and fetches the lowercase avatar host',
     async () => {
       const handler = await getHandler()
 

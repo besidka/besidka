@@ -63,9 +63,9 @@ open({
 `useSidePanelLayout()` picks the layout from two media queries. Crossing a
 breakpoint keeps the panel open in the new layout.
 
-| Width | Layout | Behaviour |
+| Width | Layout | Behavior |
 | --- | --- | --- |
-| ≥ 1128px | `docked` | Fixed `aside` on the right, full height. The chat column narrows, the composer re-centres, the nav pill docks on the seam. Not modal |
+| ≥ 1128px | `docked` | Fixed `aside` on the right, full height. The chat column narrows, the composer re-centers, the nav pill docks on the seam. Not modal |
 | 48rem to 1128px | `overlay` | Over the chat with a `bg-black/40` scrim; scrim click or Esc closes; focus trapped; above the pill (`z-[60]`). Width `70vw` below lg (64rem); from lg up the saved panel width, at most `70vw`. `--side-panel-width` stays `0px`, so the chat is not narrowed under the scrim |
 | < 48rem | `sheet` | `<dialog class="modal modal-bottom">`, full screen (`100dvh`, safe areas), tools-sheet chrome (grab handle, title, close) |
 
@@ -94,7 +94,7 @@ it, so with the panel closed every value resolves to what it was before:
   `calc(100vw - var(--side-panel-width, 0px))`. Chat rows use
   `w-screen sm:w-4xl sm:max-w-chat-column`; `sm:max-w-screen` would overflow
   the narrowed column.
-- The composer (`ChatInput.client.vue`) centres at
+- The composer (`ChatInput.client.vue`) centers at
   `left: calc((100vw - var(--side-panel-width, 0px)) / 2)` with
   `max-w-chat-column`. Its inline transition list adds `left` and
   `max-width` only while the panel is open (and 600ms after it closes),

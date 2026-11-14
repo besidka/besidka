@@ -23,7 +23,7 @@ reporting or commentary, not from the primary text. Items marked
 original. Re-check both kinds before relying on them for a legal decision.
 
 Use this section when you change the consent UI. It records what the law
-requires, what it forbids, and where the room to manoeuvre is.
+requires, what it forbids, and where the room to maneuver is.
 
 ### Legal frame
 
@@ -54,7 +54,7 @@ report, Jan 2023, ¶33; EDPB Guidelines 05/2020 fn 27).
   processing falls under the GDPR (Taskforce ¶¶1-2).
 - The GDPR one-stop-shop does not apply to ePrivacy (Taskforce ¶4). Each
   national authority applies its own rules. The Taskforce positions are a
-  minimum, not a safe harbour.
+  minimum, not a safe harbor.
 
 **Poland.** The Prawo komunikacji elektronicznej (PKE, Dz.U. 2024 poz. 1221)
 has been in force since 10 Nov 2024 [secondary for the date].
@@ -64,7 +64,7 @@ has been in force since 10 Nov 2024 [secondary for the date].
   user requested. The Polish text omits "strictly"; read it in line with the
   Directive.
 - **Art. 399 ust. 2** allows consent through software or browser settings. This
-  is a Polish carry-over that is in tension with Planet49's active-behaviour
+  is a Polish carry-over that is in tension with Planet49's active-behavior
   requirement. CNIL ld ¶¶43-45 says browser settings did not meet the standard
   in France.
 - **Art. 400**: consent follows the data-protection rules "odpowiednio".
@@ -95,12 +95,12 @@ Lifespan must be tied to purpose (WP194 §2.3).
 
 | Item | EU / WP29 view | National view | Verdict for Besidka |
 |------|----------------|---------------|---------------------|
-| Auth session | Exempt for the session (WP194 §3.2). Persistent "remember me" cookies are not exempt without an explicit user choice. | CNIL ld ¶49: exempt, with no session/persistent split. Do not reuse for other purposes (¶48). | Exempt (Better Auth session, 7 days). A long default lifetime is a grey zone under the stricter WP29 reading. |
+| Auth session | Exempt for the session (WP194 §3.2). Persistent "remember me" cookies are not exempt without an explicit user choice. | CNIL ld ¶49: exempt, with no session/persistent split. Do not reuse for other purposes (¶48). | Exempt (Better Auth session, 7 days). A long default lifetime is a gray zone under the stricter WP29 reading. |
 | CSRF | Not named in any source. Fits "security of the requested service" (WP194 §3.3). | Fits CNIL ld ¶49. | Exempt by inference, single purpose. |
 | Consent-record cookie | No EU text. | CNIL ld ¶49 expressly exempts it. | Exempt (`cookies_consent`). Store no identifier beyond the choice (EDPB 05/2020 ¶106). |
 | Load balancing | Exempt (WP194 §3.5). | Exempt (CNIL ld ¶49). | Exempt. |
-| Security / bot protection | Exempt only for the security of the requested service (WP194 §3.3). | CNIL FAQ Q17: a CAPTCHA is consent-free only if solely for security or authentication. Provider reuse of the data needs consent. | Turnstile on sign-in, sign-up and reset-password is defensible as exempt. A site-wide `__cf_bm` is a grey zone: it serves the provider's bot management. No DPA decision was found on `__cf_bm` or Turnstile. Cloudflare's own "strictly necessary" label is vendor opinion. |
-| UI customisation (theme, language, layout) | Exempt only if set by an explicit user act AND session or short-lived (WP194 §3.6, §5 item 6). Longer lifespans need a prominent notice. | CNIL ld ¶49: exempt when intrinsic and expected, with no lifetime cap. | Besidka keeps these consent-gated under `preferences` (conservative choice). This is the WP29-versus-CNIL split. |
+| Security / bot protection | Exempt only for the security of the requested service (WP194 §3.3). | CNIL FAQ Q17: a CAPTCHA is consent-free only if solely for security or authentication. Provider reuse of the data needs consent. | Turnstile on sign-in, sign-up and reset-password is defensible as exempt. A site-wide `__cf_bm` is a gray zone: it serves the provider's bot management. No DPA decision was found on `__cf_bm` or Turnstile. Cloudflare's own "strictly necessary" label is vendor opinion. |
+| UI customization (theme, language, layout) | Exempt only if set by an explicit user act AND session or short-lived (WP194 §3.6, §5 item 6). Longer lifespans need a prominent notice. | CNIL ld ¶49: exempt when intrinsic and expected, with no lifetime cap. | Besidka keeps these consent-gated under `preferences` (conservative choice). This is the WP29-versus-CNIL split. |
 | First-party audience analytics | WP194 §4.3: not exempt, but low-risk. | CNIL ld ¶¶49-51 exempts strictly limited measurement. | This is an EU split. Besidka's server-side landing counter is cookieless and identifier-free and runs without consent. The client-side Cloudflare Web Analytics beacon is gated behind the optional `analytics` category, the conservative reading. |
 
 ### MUST
@@ -129,7 +129,7 @@ Lifespan must be tied to purpose (WP194 §2.3).
 - **Treat scrolling, silence, continued browsing or X as consent.** EDPB 05/2020
   ¶86; CNIL ld ¶27. X may count as refusal only if the banner says so (CNIL reco
   ¶33). The Italian Garante uses X as "continue without consent" [secondary].
-- **Make Reject a faint link or low-contrast.** Taskforce ¶¶11-14, ¶18. Colour
+- **Make Reject a faint link or low-contrast.** Taskforce ¶¶11-14, ¶18. Color
   asymmetry in general is judged case by case (Taskforce ¶¶17-19). Equal
   styling is the safe default.
 - **Rely on legitimate interest to place cookies.** Taskforce ¶24.
@@ -247,7 +247,7 @@ withdraw, so the label always describes what the button does. Both call the same
 `app/components/Cookies/Choices.vue` renders the Reject and Accept pair, and
 both buttons take the **same single class string** (`buttonClasses`: `btn btn-sm
 btn-accent btn-block hitslop`) in a two-column grid. Do not give one of them its
-own class, colour, size or order. This is the "same format as Accept" MUST and the
+own class, color, size or order. This is the "same format as Accept" MUST and the
 "no faint Reject" MUST NOT. The component takes labels and test ids as props so
 the popup and the modal share it, and `Choices.spec.ts` asserts the classes are
 identical. Customize is deliberately a quieter `btn-ghost`: it is a third
@@ -828,7 +828,7 @@ receipt POST, then:
   in-flight generation (see
   [chats/stuck-generation-guard.md](chats/stuck-generation-guard.md)). It
   registers a one-shot `router.beforeEach` guard instead. The next client
-  navigation is cancelled and replaced by `window.location.assign(to.fullPath)`,
+  navigation is canceled and replaced by `window.location.assign(to.fullPath)`,
   a full page load, and the guard removes itself. The guard re-checks consent
   when it fires, and it is removed as soon as `analytics` is granted again.
 
@@ -957,7 +957,7 @@ suffixes and are mode: 'client'). The styled banner is also `.client.vue`.
 `LazyCookiesBanner` is wrapped in `<ClientOnly>` in `app.vue`, so it never
 renders on the server.
 
-For personalisation that depends on consent (e.g. showing/hiding a
+For personalization that depends on consent (e.g. showing/hiding a
 preference-driven widget), gate it in client-side Vue
 (`v-if="isAllowed('preferences')"`) not in server-rendered layouts.
 
@@ -1305,7 +1305,7 @@ never linked to a Better Auth user record.
   decision satisfies this burden.
 - **Art. 6(1)(c) GDPR (legal obligation)**: Where applicable national law
   requires evidence of consent (e.g. ePrivacy, TTDSG §25), this logging
-  fulfils that legal obligation.
+  fulfills that legal obligation.
 - The data is pseudonymous (no IP, no account link) and therefore presents
   minimal risk to data subjects. The consent `id` stored in the cookie is
   already disclosed to the user via the banner's details section.
@@ -1368,7 +1368,7 @@ acceptance rates and consistency spikes.
 2. **Privacy policy**: When the legal pages land, add a paragraph noting that
    consent decisions are logged pseudonymously for accountability purposes,
    are retained for up to 5 years in D1 (and 30 days in Axiom), and are
-   accessible only to authorised engineering and legal staff.
+   accessible only to authorized engineering and legal staff.
 
 ### Example Axiom APL queries
 
@@ -1534,7 +1534,7 @@ accountability) but need to reduce the data footprint. Choose Option A
 when no accountability interest survives.
 
 Note: Art. 17(3)(b) allows continued processing for the establishment,
-exercise, or defence of legal claims. A 3–5 year retention window is
+exercise, or defense of legal claims. A 3–5 year retention window is
 appropriate for most EU supervisory authority inquiry windows.
 
 ### Retention cleanup

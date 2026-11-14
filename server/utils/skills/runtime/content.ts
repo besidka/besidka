@@ -60,7 +60,7 @@ export function buildSkillResourceList(
 /**
  * The text of one skill as the model reads it: the body without its
  * frontmatter, cut at 40 KiB and at `SKILL_ACTIVATE_MAX_TOKENS` for the model
- * family (whichever comes first), with its delimiters neutralised, inside
+ * family (whichever comes first), with its delimiters neutralized, inside
  * `<skill_content name source version>` and followed by the resource list.
  * `invokedBy` marks a skill the user attached, and `argumentsText` fills
  * `$ARGUMENTS`.

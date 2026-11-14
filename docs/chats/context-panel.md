@@ -96,7 +96,7 @@ Built from persisted message parts and chat columns. No new tables.
   lazily on the client with one async-data key shared by the badge and the
   panel. Its `data` stays null until the response belongs to the chat on the
   route (Nuxt seeds a new key with the previous key's data, so chat A would
-  otherwise show while chat B loads). It refreshes, cancelling any in-flight
+  otherwise show while chat B loads). It refreshes, canceling any in-flight
   request, when the panel opens, after every finished send
   (`chat:generation-finished`), after a stopped send, a deleted message or a
   finished deep research report (`chat:context-changed`), and after the share
@@ -109,7 +109,7 @@ Built from persisted message parts and chat columns. No new tables.
   (no tool parts at all, so no memory, knowledge, chat search or web-search
   tool counts), then `rewriteShareFileParts` when the share shows files, or
   `hideFileParts` when it does not. Raw `/files/<key>` URLs never leak. The
-  builder also drops tool parts itself in public mode, as defence in depth.
+  builder also drops tool parts itself in public mode, as defense in depth.
 - `usage` is not even selected unless the share shows metadata.
 - Cost and models only when the share shows metadata.
 

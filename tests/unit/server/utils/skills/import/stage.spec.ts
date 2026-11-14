@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import {
   SKILL_STAGE_ID_PATTERN,
   deleteSkillStage,
@@ -34,7 +34,7 @@ async function stageSample(
     file('references/a.md', 'same'),
     file('references/b.md', 'same'),
   ]
-  const analysis = await analyseSkillFiles({ files, folderName: null })
+  const analysis = await analyzeSkillFiles({ files, folderName: null })
 
   if (!analysis.ok) {
     throw new Error('Expected a valid sample')
@@ -90,7 +90,7 @@ describe('stageSkillImport', () => {
 
   it('refuses to stage a restricted skill', async () => {
     const files = [file('SKILL.md', skillMarkdown())]
-    const analysis = await analyseSkillFiles({ files, folderName: null })
+    const analysis = await analyzeSkillFiles({ files, folderName: null })
 
     if (!analysis.ok) {
       throw new Error('Expected a valid sample')

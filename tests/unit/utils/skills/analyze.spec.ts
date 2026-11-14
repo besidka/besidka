@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { analyseSkillFiles } from '#shared/utils/skills/analyse'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import { skillMarkdown } from '../../../setup/helpers/skill-archives'
 
 const encoder = new TextEncoder()
@@ -17,9 +17,9 @@ function license(name: string): string {
   )
 }
 
-describe('analyseSkillFiles', () => {
+describe('analyzeSkillFiles', () => {
   it('keeps a pasted SKILL.md at class none and returns the frontmatter', async () => {
-    const result = await analyseSkillFiles({
+    const result = await analyzeSkillFiles({
       files: [file('SKILL.md', skillMarkdown())],
       folderName: null,
     })
@@ -33,7 +33,7 @@ describe('analyseSkillFiles', () => {
   })
 
   it('blocks a restricted license on every source', async () => {
-    const result = await analyseSkillFiles({
+    const result = await analyzeSkillFiles({
       files: [
         file('SKILL.md', skillMarkdown({ extra: 'license: Proprietary' })),
         file('LICENSE.txt', license('anthropic-proprietary.txt')),
@@ -49,7 +49,7 @@ describe('analyseSkillFiles', () => {
   })
 
   it('never assigns authored', async () => {
-    const result = await analyseSkillFiles({
+    const result = await analyzeSkillFiles({
       files: [
         file('SKILL.md', skillMarkdown()),
         file('LICENSE', license('mit.txt')),
@@ -61,7 +61,7 @@ describe('analyseSkillFiles', () => {
   })
 
   it('warns when the folder name differs from the skill name', async () => {
-    const result = await analyseSkillFiles({
+    const result = await analyzeSkillFiles({
       files: [file('SKILL.md', skillMarkdown({ name: 'review-pr' }))],
       folderName: 'other-folder',
     })
@@ -72,7 +72,7 @@ describe('analyseSkillFiles', () => {
   })
 
   it('collects findings and counts across files', async () => {
-    const result = await analyseSkillFiles({
+    const result = await analyzeSkillFiles({
       files: [
         file('SKILL.md', skillMarkdown({ body: 'Run curl https://x.example' })),
         file('scripts/run.sh', 'sudo rm -rf /tmp/x\n'),
@@ -89,8 +89,8 @@ describe('analyseSkillFiles', () => {
       file('references/a.md', 'a'),
       file('references/b.md', 'b'),
     ]
-    const forward = await analyseSkillFiles({ files, folderName: null })
-    const reversed = await analyseSkillFiles({
+    const forward = await analyzeSkillFiles({ files, folderName: null })
+    const reversed = await analyzeSkillFiles({
       files: [...files].reverse(),
       folderName: null,
     })
@@ -103,7 +103,7 @@ describe('analyseSkillFiles', () => {
     [file('SKILL.md', 'no frontmatter'), 'frontmatter-missing'],
     [file('SKILL.md', skillMarkdown({ name: 'Bad_Name' })), 'name-invalid'],
   ])('reports a frontmatter error as %#', async (skillMd, code) => {
-    const result = await analyseSkillFiles({
+    const result = await analyzeSkillFiles({
       files: [skillMd],
       folderName: null,
     })
@@ -112,7 +112,7 @@ describe('analyseSkillFiles', () => {
   })
 
   it('reports a missing SKILL.md', async () => {
-    const result = await analyseSkillFiles({
+    const result = await analyzeSkillFiles({
       files: [file('notes.md', 'x')],
       folderName: null,
     })

@@ -34,7 +34,7 @@ describe('shiki token parity with the eager web bundle', () => {
       expect(await compareAfterContamination()).toBe(true)
     }, PARITY_TIMEOUT_MS)
 
-  it('colours fences of languages the web bundle did not ship', async () => {
+  it('colors fences of languages the web bundle did not ship', async () => {
     const { eagerTokens, lazyTokens } = await compareImprovement()
 
     expect(eagerTokens).toBe(1)

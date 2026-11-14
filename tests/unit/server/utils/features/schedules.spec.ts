@@ -183,7 +183,7 @@ describe('feature schedules', () => {
     expect(auditRows()).toEqual([])
   })
 
-  it('applies a staged plan in order and never a cancelled step', async () => {
+  it('applies a staged plan in order and never a canceled step', async () => {
     seedStep('2026-12-20T08:00:00Z', { allowRoles: ['admin', 'tester'] })
     seedStep('2026-12-20T08:30:00Z', { rolloutBps: 2500 })
     seedStep('2026-12-20T08:45:00Z', { rolloutBps: 10000 }, {

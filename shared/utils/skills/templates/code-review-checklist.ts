@@ -44,7 +44,7 @@ Do not rewrite the whole change. Point at the lines that need work.
 
 ## Tests
 
-- Is there a test for the new behaviour and for the failure case?
+- Is there a test for the new behavior and for the failure case?
 - Would the test fail without the change?
 
 ## Readability

@@ -271,7 +271,7 @@ describe('events ingest API', () => {
     )
   })
 
-  it('normalises a trailing slash on the keys page path', async () => {
+  it('normalizes a trailing slash on the keys page path', async () => {
     const handler = await getEventsHandler()
     const event = makeEvent(
       {

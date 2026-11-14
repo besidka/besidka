@@ -303,7 +303,7 @@ describe('search_project_knowledge re-ranking', () => {
 })
 
 describe('buildKnowledgeExcerpts with re-ranked hits', () => {
-  it('quotes the supplied hits in their order and honours the caps',
+  it('quotes the supplied hits in their order and honors the caps',
     async () => {
       const searcher = createSearcher(12, 11)
 

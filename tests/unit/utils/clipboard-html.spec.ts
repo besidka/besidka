@@ -294,7 +294,7 @@ describe('domToPlainText', () => {
       .toBe('- a\n- b')
   })
 
-  it('renders ordered lists with numbering and honours start', () => {
+  it('renders ordered lists with numbering and honors start', () => {
     expect(domToPlainText(parse('<ol start="3"><li>a</li><li>b</li></ol>')))
       .toBe('3. a\n4. b')
     expect(domToPlainText(parse('<ol><li>a</li><li>b</li></ol>')))

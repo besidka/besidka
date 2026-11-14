@@ -216,7 +216,7 @@ describe('useMarkdownTextarea paste', () => {
     })
   })
 
-  it('normalises Mail bullet glyphs in text/plain pastes', () => {
+  it('normalizes Mail bullet glyphs in text/plain pastes', () => {
     const { element, onPaste } = setup('')
     const { event, preventDefault } = createPasteEvent({
       plain: 'Intro\n\t•\tPrąd: 3442 kWh\n\t•\tWoda\nKoniec',
@@ -1021,7 +1021,7 @@ describe('markdown textarea helpers', () => {
     expect(shouldConvertHtml(VS_CODE_HTML)).toBe(false)
   })
 
-  it('recognises a copy of the app\'s own page and nothing else', () => {
+  it('recognizes a copy of the app\'s own page and nothing else', () => {
     const origin = 'https://pr-888-besidka.example.workers.dev'
 
     expect(isOwnAppHtml(APP_PAGE_HTML)).toBe(true)

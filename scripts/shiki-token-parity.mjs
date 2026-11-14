@@ -340,7 +340,7 @@ export const WEB_LANGUAGE_IDS = webLanguagesInfo.map((info) => {
 
 /**
  * Markdown that fences a language outside the old web bundle. The eager
- * highlighter left the Go fence plain; the lazy one loads Go and colours it.
+ * highlighter left the Go fence plain; the lazy one loads Go and colors it.
  */
 export const IMPROVEMENT_SAMPLE = `Run it:
 

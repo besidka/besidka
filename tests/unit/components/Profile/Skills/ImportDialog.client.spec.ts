@@ -85,7 +85,7 @@ describe('Profile/Skills/ImportDialog', () => {
     vi.restoreAllMocks()
   })
 
-  it('opens as a bottom sheet that centres from sm, with the import hook class', async () => {
+  it('opens as a bottom sheet that centers from sm, with the import hook class', async () => {
     await mountDialog()
 
     const dialog = document.body.querySelector('dialog.js-skill-import-modal')
@@ -218,7 +218,7 @@ describe('Profile/Skills/ImportDialog', () => {
     expect(install.disabled).toBe(false)
   })
 
-  it('commits with the license acknowledgement and reports what was installed', async () => {
+  it('commits with the license acknowledgment and reports what was installed', async () => {
     const wrapper = await mountDialog()
 
     await reachReview(createImportPreview({

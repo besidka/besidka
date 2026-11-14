@@ -15,7 +15,7 @@ The old setup used a separate Worker (`besidka-preview`, the top level of
 - On merge, `production.yml` found the PR's version (`versions list` + `jq`)
   and `versions deploy`-ed it to `besidka-preview`, with a fallback job that
   rebuilt and deployed when no alias existed (direct pushes, stacked merges
-  where only the last commit's PR is consulted, cancelled uploads).
+  where only the last commit's PR is consulted, canceled uploads).
 - Two Workers meant two sets of secrets and two configs to keep in sync.
 
 Workers Previews removes the promotion machinery entirely: every PR gets its
@@ -129,7 +129,7 @@ widget for the same reason (`app/composables/captcha.ts` and
 `app/composables/turnstile.ts` treat an empty sitekey as "captcha off" and send
 an empty token). `NUXT_TURNSTILE_ENFORCED: false` keeps the misconfiguration
 log in `getCaptchaOptions()` (enforced=true with missing keys, a status-500
-wide event) from firing. Empty strings are honoured: Nitro's runtime-config
+wide event) from firing. Empty strings are honored: Nitro's runtime-config
 env override only skips `undefined`, and the Web Analytics token below already
 relies on the same empty-string override. Previews do not inherit
 `env.production.vars` (see "No inheritance" above), so the enforced flag falls
@@ -299,7 +299,7 @@ closed during the deploy, it runs the same
 `wrangler preview delete` (missing Preview counts as success) and skips the PR
 comment and success status.
 
-Remaining window: a preview-deploy run cancelled (`cancel-in-progress` by a
+Remaining window: a preview-deploy run canceled (`cancel-in-progress` by a
 newer build) after `wrangler preview` finished but before its post-deploy PR
 state check ran, while the PR closed and cleanup already ran in between, can
 leave an orphaned Preview. Delete it by hand with
@@ -313,7 +313,7 @@ ignorable paths, but it never skips without a build to point at.
 
 The original check diffed only `HEAD^..HEAD`. That has a trap: the workflow's
 concurrency group cancels a superseded run (`cancel-in-progress: true`), and a
-build can also fail. If code commit A was cancelled or failed and a docs-only
+build can also fail. If code commit A was canceled or failed and a docs-only
 commit B arrived next, `A..B` looked docs-only, the build was skipped, and the
 PR never received artifacts or a preview for A's code. The skipping run also
 had no artifacts for `preview-deploy.yml` to download.
@@ -335,7 +335,7 @@ Current behavior, implemented in `scripts/ci/resolve-preview-build-source.mjs`
    is ignorable, or nothing changed (a re-run of the same SHA), the run skips
    and records the source. Otherwise it builds.
 
-Only successful runs are candidates; cancelled and failed runs never become the
+Only successful runs are candidates; canceled and failed runs never become the
 baseline even when they uploaded artifacts. A successful run that built nothing
 (for example a skipped non-top stack layer) has no artifacts and is passed over,
 and a PR with no earlier built commit falls through to a full build
@@ -350,7 +350,7 @@ When skipping, `reuse-build` downloads both artifacts from `source-run-id` and
 re-uploads them under the same names and `retention-days: 1`, so the skipping
 run looks like a build run to its consumers: `preview-deploy.yml`
 re-deploys the last built code. This also heals a preview whose deploy was
-cancelled by a newer `workflow_run`. Each relay refreshes the one-day artifact
+canceled by a newer `workflow_run`. Each relay refreshes the one-day artifact
 clock; once the source artifacts have expired the next run builds.
 
 Why it lives in `preview-build.yml`: `preview-deploy.yml` runs on
