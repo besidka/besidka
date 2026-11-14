@@ -4,6 +4,7 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   deleteSkillPrefix,
+  skillPrefix,
   skillStagingUserPrefix,
   skillUserPrefix,
 } from '~~/server/utils/skills/storage'
@@ -20,6 +21,15 @@ export interface PurgeUserSkillsResult {
   skillChatSettingsDeleted: number
   skillObjectsDeleted: number
   skillStagingObjectsDeleted: number
+}
+
+export interface DeleteUserSkillResult {
+  skillDeleted: boolean
+  skillVersionsDeleted: number
+  skillFilesDeleted: number
+  skillChatSettingsDeleted: number
+  skillObjectsDeleted: number
+  objectCleanupFailed: boolean
 }
 
 export interface SkillChatCleanupResult {
@@ -132,6 +142,87 @@ export async function purgeUserSkills(
   }
 
   logger.set({ attributes: { skills: { cleanup: { purge: result } } } })
+
+  return result
+}
+
+/**
+ * Deletes one skill of a user: its per-chat choices, files, versions and row
+ * in one batch, then every object under its R2 prefix. The rows go first, so
+ * a skill never survives without its files. A failed prefix delete is not
+ * fatal: the objects belong to no row any more and the hourly sweep removes
+ * them. The skill id is logged, because the D1 restore runbook replays
+ * deletes from the logs (docs/d1-restore-reconciliation.md).
+ */
+export async function deleteUserSkill(
+  db: DbClient,
+  input: { userId: number, skillId: string, logger: LoggerLike },
+  bucket: SkillBlobBucket = useFileStorage(),
+): Promise<DeleteUserSkillResult> {
+  const { userId, skillId, logger } = input
+  const [chatSettings, files, versions, skills] = await db.batch([
+    db.delete(schema.skillChatSettings)
+      .where(and(
+        eq(schema.skillChatSettings.userId, userId),
+        eq(schema.skillChatSettings.skillId, skillId),
+      ))
+      .returning({ id: schema.skillChatSettings.id }),
+    db.delete(schema.skillFiles)
+      .where(and(
+        eq(schema.skillFiles.userId, userId),
+        eq(schema.skillFiles.skillId, skillId),
+      ))
+      .returning({ id: schema.skillFiles.id }),
+    db.delete(schema.skillVersions)
+      .where(and(
+        eq(schema.skillVersions.userId, userId),
+        eq(schema.skillVersions.skillId, skillId),
+      ))
+      .returning({ id: schema.skillVersions.id }),
+    db.delete(schema.skills)
+      .where(and(
+        eq(schema.skills.userId, userId),
+        eq(schema.skills.id, skillId),
+      ))
+      .returning({ id: schema.skills.id }),
+  ])
+  const result: DeleteUserSkillResult = {
+    skillDeleted: skills.length > 0,
+    skillVersionsDeleted: versions.length,
+    skillFilesDeleted: files.length,
+    skillChatSettingsDeleted: chatSettings.length,
+    skillObjectsDeleted: 0,
+    objectCleanupFailed: false,
+  }
+
+  if (!result.skillDeleted) {
+    return result
+  }
+
+  try {
+    result.skillObjectsDeleted = await deleteSkillPrefix(
+      skillPrefix(userId, skillId),
+      bucket,
+    )
+  } catch (exception) {
+    result.objectCleanupFailed = true
+
+    logger.set({
+      attributes: {
+        skills: {
+          cleanup: {
+            skillDeleteObjectsError: exceptionMessage(exception),
+          },
+        },
+      },
+    })
+  }
+
+  logger.set({
+    attributes: {
+      skills: { cleanup: { skillDelete: { skillId, ...result } } },
+    },
+  })
 
   return result
 }

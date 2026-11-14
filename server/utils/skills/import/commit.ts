@@ -28,11 +28,13 @@ import type {
   SkillStageKv,
   SkillStageManifest,
 } from '~~/server/utils/skills/import/stage'
+import { buildVersionStatements } from '~~/server/utils/skills/versions/statements'
 import {
   deleteSkillPrefix,
   putSkillBlob,
   skillPrefix,
 } from '~~/server/utils/skills/storage'
+import { isUniqueViolation } from '~~/server/utils/skills/unique-violation'
 import {
   countUserSkills,
   getUserSkillsUsageBytes,
@@ -40,7 +42,6 @@ import {
 
 type DbClient = ReturnType<typeof useDb>
 
-const MAX_ERROR_CAUSE_DEPTH = 5
 const ABANDONED_PLACEHOLDER_GRACE_MS = 10 * 60 * 1000
 const textEncoder = new TextEncoder()
 const bomPreservingDecoder = new TextDecoder('utf-8', { ignoreBOM: true })
@@ -79,24 +80,6 @@ export type CommitSkillImportResult
     licenceClass: SkillStageManifest['licence']['class']
     filesCount: number
   }
-
-function isUniqueViolation(exception: unknown): boolean {
-  let current: unknown = exception
-
-  for (let depth = 0; depth < MAX_ERROR_CAUSE_DEPTH; depth++) {
-    if (!(current instanceof Error)) {
-      return false
-    }
-
-    if (current.message.includes('UNIQUE constraint failed')) {
-      return true
-    }
-
-    current = current.cause
-  }
-
-  return false
-}
 
 function createNameTakenError(
   name: string,
@@ -141,6 +124,16 @@ function assertAcknowledgements(
   }
 }
 
+export function createStorageLimitError() {
+  return createError({
+    message: 'Skill storage is full',
+    status: 413,
+    code: 'skills-storage-limit',
+    why: 'Your skills would use more than 50 MiB of storage',
+    fix: 'Delete a skill or an older version you no longer use',
+  })
+}
+
 export function assertLimits(input: {
   skillsCount: number
   usageBytes: number
@@ -158,13 +151,7 @@ export function assertLimits(input: {
   }
 
   if (input.usageBytes + input.incomingBytes > SKILLS_MAX_USER_BYTES) {
-    throw createError({
-      message: 'Skill storage is full',
-      status: 413,
-      code: 'skills-storage-limit',
-      why: 'Your skills would use more than 50 MiB of storage',
-      fix: 'Delete a skill or an older version you no longer use',
-    })
+    throw createStorageLimitError()
   }
 }
 
@@ -306,7 +293,7 @@ async function copyStagedBlobs(input: {
   }
 }
 
-function buildVersionStatements(input: {
+function buildImportVersionStatements(input: {
   db: DbClient
   manifest: PendingVersionPayload
   skillId: string
@@ -315,39 +302,33 @@ function buildVersionStatements(input: {
 }) {
   const { db, manifest, skillId, version } = input
 
-  return [
-    db.insert(schema.skillVersions).values({
-      skillId,
-      userId: manifest.userId,
-      version,
-      origin: input.origin,
-      sourceKind: manifest.source,
-      sourceUrl: manifest.sourceUrl ?? null,
-      sourceRef: manifest.sourceRef ?? null,
-      sourcePath: manifest.sourcePath ?? null,
-      sourceVersion: manifest.sourceVersion,
-      sha256: manifest.contentSha256,
-      filesCount: manifest.files.length,
-      bytes: manifest.totalBytes,
-      licenseClass: manifest.licence.class,
-      licenseFileSha256: manifest.licence.sha256,
-      findings: manifest.findingCounts,
-    }),
-    ...manifest.files.map((file) => {
-      return db.insert(schema.skillFiles).values({
-        skillId,
-        userId: manifest.userId,
-        version,
-        path: file.path,
-        blobSha256: file.sha256,
-        bytes: file.bytes,
-        kind: file.kind,
-      })
-    }),
-  ]
+  return buildVersionStatements(db, {
+    skillId,
+    userId: manifest.userId,
+    version,
+    origin: input.origin,
+    sourceKind: manifest.source,
+    sourceUrl: manifest.sourceUrl ?? null,
+    sourceRef: manifest.sourceRef ?? null,
+    sourcePath: manifest.sourcePath ?? null,
+    sourceVersion: manifest.sourceVersion,
+    sha256: manifest.contentSha256,
+    filesCount: manifest.files.length,
+    bytes: manifest.totalBytes,
+    licenseClass: manifest.licence.class,
+    licenseFileSha256: manifest.licence.sha256,
+    findings: manifest.findingCounts,
+  }, manifest.files.map((file) => {
+    return {
+      path: file.path,
+      blobSha256: file.sha256,
+      bytes: file.bytes,
+      kind: file.kind,
+    }
+  }))
 }
 
-type SkillRow = Omit<typeof schema.skills.$inferInsert, 'id'>
+export type SkillInsertRow = Omit<typeof schema.skills.$inferInsert, 'id'>
 
 const SKILL_INSERT_COLUMNS = Object.entries(getTableColumns(schema.skills))
   .filter(([key]) => {
@@ -361,9 +342,9 @@ const SKILL_INSERT_COLUMNS = Object.entries(getTableColumns(schema.skills))
  * Column names and value encoding come from the Drizzle table, so a new
  * column cannot be forgotten here without the type of `SkillRow` failing.
  */
-async function insertSkillWithinLimits(
+export async function insertSkillWithinLimits(
   db: DbClient,
-  row: SkillRow,
+  row: SkillInsertRow,
 ): Promise<string | null> {
   const values = row as Record<string, unknown>
   const columnList = sql.join(
@@ -474,7 +455,7 @@ async function createSkillFromStage(input: {
           eq(schema.skills.id, skillId),
           eq(schema.skills.userId, manifest.userId),
         )),
-      ...buildVersionStatements({
+      ...buildImportVersionStatements({
         db,
         manifest,
         skillId,
@@ -505,7 +486,7 @@ async function createSkillFromStage(input: {
   }
 }
 
-async function createLimitError(db: DbClient, userId: number) {
+export async function createLimitError(db: DbClient, userId: number) {
   const skillsCount = await countUserSkills(db, userId)
 
   return skillsCount >= SKILLS_PER_USER
@@ -516,13 +497,7 @@ async function createLimitError(db: DbClient, userId: number) {
       why: `An account can hold ${SKILLS_PER_USER} skills`,
       fix: 'Delete a skill you no longer use',
     })
-    : createError({
-      message: 'Skill storage is full',
-      status: 413,
-      code: 'skills-storage-limit',
-      why: 'Your skills would use more than 50 MiB of storage',
-      fix: 'Delete a skill or an older version you no longer use',
-    })
+    : createStorageLimitError()
 }
 
 /**
@@ -573,7 +548,11 @@ export async function discardUnfinishedSkill(input: {
   }
 }
 
-async function findSkillByName(db: DbClient, userId: number, name: string) {
+export async function findSkillByName(
+  db: DbClient,
+  userId: number,
+  name: string,
+) {
   const rows = await db.select({
     id: schema.skills.id,
     status: schema.skills.status,
@@ -596,7 +575,7 @@ async function findSkillByName(db: DbClient, userId: number, name: string) {
  * good. After a grace period no live commit can still own it, so a later
  * import of that name takes it over.
  */
-async function reclaimAbandonedPlaceholder(input: {
+export async function reclaimAbandonedPlaceholder(input: {
   db: DbClient
   bucket: SkillStageBucket
   userId: number
@@ -723,7 +702,7 @@ export async function persistPendingVersion(input: {
   try {
     await db.batch([
       ...replacingStatements,
-      ...buildVersionStatements({
+      ...buildImportVersionStatements({
         db,
         manifest,
         skillId,
