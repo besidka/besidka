@@ -1504,6 +1504,20 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
 
+  const connectorsOAuthTests = [
+    'tests/unit/server/utils/connectors/credentials.spec.ts',
+    'tests/unit/server/utils/connectors/oauth-client.spec.ts',
+    'tests/unit/server/utils/connectors/oauth-metadata.spec.ts',
+    'tests/unit/server/utils/connectors/oauth-state.spec.ts',
+    'tests/unit/server/utils/connectors/revoke.spec.ts',
+    'tests/unit/server/utils/connectors/scopes.spec.ts',
+    'tests/unit/server/utils/connectors/store-tokens.spec.ts',
+    'tests/unit/server/routes/connectors/client-metadata.spec.ts',
+    'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/integration/api/connectors-oauth-flow.spec.ts',
+  ]
+
   const skillsStorageTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
@@ -3055,6 +3069,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(connectors-policy|connectors-slug)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_known_rogue\/.*)$/,
       tests: connectorsStorageTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/connectors-policy\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/.*\.ts|server\/routes\/connectors\/.*\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/utils\/request-public-origin\.ts|server\/utils\/auth-hosts\.ts|server\/utils\/legal\/consent\.ts|server\/utils\/account\/purge-user-data\.ts|server\/plugins\/evlog-request-observability\.ts|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock)\.ts)$/,
+      tests: connectorsOAuthTests,
     },
     {
       pattern:

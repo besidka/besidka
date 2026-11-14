@@ -151,7 +151,9 @@ Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 `research.export`, `research.mcp`), `connectors` (and `.oauth`, `.registry`,
 `.native`), `google.drive` (and `google.calendar`, `google.byo`,
 `google.gmail`), `skills` (and `.import-url`, `.commands`, `.scripts`), and
-`ui.side-panel-demo`.
+`ui.side-panel-demo`. Of the `connectors` flags only `connectors` and
+`connectors.oauth` are `available: true` (C-4, still `internal`, so admin- and
+grant-only); `.registry` and `.native` stay unavailable.
 
 As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,
 `FEATURE_KEYS`, `isFeatureKey(key)` (own keys only, so `constructor` is

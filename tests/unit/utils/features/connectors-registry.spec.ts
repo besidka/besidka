@@ -25,8 +25,20 @@ describe('connectors feature flags', () => {
         stage: 'internal',
         default: false,
         allowRoles: ['admin'],
-        available: false,
       }))
+    }
+  })
+
+  it('marks only connectors and connectors.oauth available', () => {
+    for (const key of ['connectors', 'connectors.oauth'] as const) {
+      expect(FEATURE_REGISTRY[key].available).toBe(true)
+    }
+
+    for (const key of [
+      'connectors.registry',
+      'connectors.native',
+    ] as const) {
+      expect(FEATURE_REGISTRY[key].available).toBe(false)
     }
   })
 

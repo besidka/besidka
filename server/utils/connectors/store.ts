@@ -81,10 +81,26 @@ export interface CreateConnectorInput {
   transport?: ConnectorTransport
 }
 
+export type ConnectorTokenEndpointAuthMethod
+  = | 'none'
+    | 'client_secret_post'
+    | 'client_secret_basic'
+
+/**
+ * What a connector needs to talk to its authorization server again after
+ * the flow: the client identity, and the endpoints and resource pinned at
+ * connect time, so a refresh or a revocation never rediscovers them from a
+ * server that may have changed its metadata since.
+ */
 export interface ConnectorClientRegistration {
   clientId: string
   registrationKind: ConnectorRegistrationKind
   clientSecret?: string
+  tokenEndpointAuthMethod?: ConnectorTokenEndpointAuthMethod
+  redirectUri?: string
+  tokenEndpoint?: string
+  revocationEndpoint?: string | null
+  resource?: string
 }
 
 export interface SaveConnectorCredentialsInput {
@@ -111,6 +127,27 @@ export interface ConnectorCredentials {
   scope: string | null
   expiresAt: Date | null
   updatedAt: Date
+  generation: string
+}
+
+export interface ConnectorTokenUpdate {
+  userId: number
+  connectorId: string
+  expectedGeneration: string
+  accessToken: string
+  refreshToken: string | null
+  scope: string | null
+  expiresAt: Date | null
+}
+
+export interface ConnectorCredentialsGenerationInput {
+  userId: number
+  connectorId: string
+  expectedGeneration: string
+}
+
+export interface UserConnectorCredentials extends ConnectorCredentials {
+  connectorHost: string
 }
 
 export interface ConnectorToolSettingInput {
@@ -500,6 +537,40 @@ export async function saveConnectorCredentials(
     })
 }
 
+type CredentialsRow = typeof schema.connectorCredentials.$inferSelect
+
+function credentialsGeneration(row: CredentialsRow): string {
+  return row.accessToken ?? `static:${row.updatedAt.getTime()}`
+}
+
+async function toConnectorCredentials(
+  row: CredentialsRow,
+): Promise<ConnectorCredentials> {
+  const registrationJson = await decryptOptional(row.clientRegistration)
+
+  return {
+    connectorId: row.connectorId,
+    issuer: row.issuer,
+    clientRegistration: registrationJson
+      ? JSON.parse(registrationJson) as ConnectorClientRegistration
+      : null,
+    accessToken: await decryptOptional(row.accessToken),
+    refreshToken: await decryptOptional(row.refreshToken),
+    headerName: row.headerName,
+    headerValue: await decryptOptional(row.headerValue),
+    scope: row.scope,
+    expiresAt: row.expiresAt,
+    updatedAt: row.updatedAt,
+    generation: credentialsGeneration(row),
+  }
+}
+
+/**
+ * The credentials of a connector. `generation` is the stored access-token
+ * ciphertext (a fresh random IV on every write), the compare-and-set token
+ * for refreshes: `updated_at` has one-second resolution, so two writes in
+ * the same second would look the same by timestamp alone.
+ */
 export async function readConnectorCredentials(
   db: DbClient,
   userId: number,
@@ -518,22 +589,123 @@ export async function readConnectorCredentials(
     return null
   }
 
-  const registrationJson = await decryptOptional(row.clientRegistration)
+  return await toConnectorCredentials(row)
+}
 
-  return {
-    connectorId: row.connectorId,
-    issuer: row.issuer,
-    clientRegistration: registrationJson
-      ? JSON.parse(registrationJson) as ConnectorClientRegistration
-      : null,
-    accessToken: await decryptOptional(row.accessToken),
-    refreshToken: await decryptOptional(row.refreshToken),
-    headerName: row.headerName,
-    headerValue: await decryptOptional(row.headerValue),
-    scope: row.scope,
-    expiresAt: row.expiresAt,
-    updatedAt: row.updatedAt,
+/**
+ * Every credentials row of a user with the connector host, for best-effort
+ * revocation before an account purge.
+ */
+export async function listUserConnectorCredentials(
+  db: DbClient,
+  userId: number,
+): Promise<UserConnectorCredentials[]> {
+  const rows = await db.select()
+    .from(schema.connectorCredentials)
+    .where(eq(schema.connectorCredentials.userId, userId))
+  const connectorRows = await db.select({
+    id: schema.connectors.id,
+    origin: schema.connectors.origin,
+  })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.userId, userId))
+  const hostByConnectorId = new Map(connectorRows.map((connector) => {
+    return [encodePublicId(connector.id), new URL(connector.origin).host]
+  }))
+  const credentials: UserConnectorCredentials[] = []
+
+  for (const row of rows) {
+    credentials.push({
+      ...await toConnectorCredentials(row),
+      connectorHost: hostByConnectorId.get(row.connectorId) ?? '',
+    })
   }
+
+  return credentials
+}
+
+/**
+ * Replaces every credentials row of a connector with one row: a new sign-in
+ * (or a new header) supersedes what was stored for any issuer, so a
+ * connector never holds tokens from two authorization servers.
+ */
+export async function replaceConnectorCredentials(
+  db: DbClient,
+  input: SaveConnectorCredentialsInput,
+): Promise<void> {
+  await assertConnectorOwned(db, input.userId, input.connectorId)
+
+  const clientRegistration = input.clientRegistration
+    ? await useEncryptText(JSON.stringify(input.clientRegistration))
+    : null
+
+  await db.batch([
+    db.delete(schema.connectorCredentials)
+      .where(and(
+        eq(schema.connectorCredentials.userId, input.userId),
+        eq(schema.connectorCredentials.connectorId, input.connectorId),
+      )),
+    db.insert(schema.connectorCredentials).values({
+      userId: input.userId,
+      connectorId: input.connectorId,
+      issuer: input.issuer,
+      clientRegistration,
+      accessToken: await encryptOptional(input.accessToken),
+      refreshToken: await encryptOptional(input.refreshToken),
+      headerName: input.headerName ?? null,
+      headerValue: await encryptOptional(input.headerValue),
+      scope: input.scope ?? null,
+      expiresAt: input.expiresAt ?? null,
+    }),
+  ])
+}
+
+/**
+ * Writes refreshed tokens only while the row still holds the generation the
+ * caller refreshed from. Returns false when another writer got there first;
+ * the caller then re-reads instead of overwriting a newer (possibly rotated)
+ * refresh token with a stale one.
+ */
+export async function compareAndSetConnectorTokens(
+  db: DbClient,
+  input: ConnectorTokenUpdate,
+): Promise<boolean> {
+  const rows = await db.update(schema.connectorCredentials)
+    .set({
+      accessToken: await useEncryptText(input.accessToken),
+      refreshToken: await encryptOptional(input.refreshToken),
+      scope: input.scope,
+      expiresAt: input.expiresAt,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(schema.connectorCredentials.userId, input.userId),
+      eq(schema.connectorCredentials.connectorId, input.connectorId),
+      eq(schema.connectorCredentials.accessToken, input.expectedGeneration),
+    ))
+    .returning({ id: schema.connectorCredentials.id })
+
+  return rows.length > 0
+}
+
+/**
+ * Deletes the credentials only while they are still the generation the
+ * caller saw fail, so a terminal refresh error after another writer already
+ * stored fresh tokens does not wipe them.
+ */
+export async function compareAndDeleteConnectorCredentials(
+  db: DbClient,
+  input: ConnectorCredentialsGenerationInput,
+): Promise<boolean> {
+  const rows = await db.delete(schema.connectorCredentials)
+    .where(and(
+      eq(schema.connectorCredentials.userId, input.userId),
+      eq(schema.connectorCredentials.connectorId, input.connectorId),
+      eq(schema.connectorCredentials.accessToken, input.expectedGeneration),
+    ))
+    .returning({ id: schema.connectorCredentials.id })
+
+  return rows.length > 0
 }
 
 export async function deleteConnectorCredentials(

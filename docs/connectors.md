@@ -70,6 +70,12 @@ Feature flags (registered by C-2 in the P0-3 registry at stage `internal`,
 | `connectors.registry` | Registry search tab and `GET /api/v1/connectors/registry` | `none` |
 | `connectors.native` | OpenAI-run MCP calls (section 12), Labs opt-in | `foreground`, so `optIn: 'required'` |
 
+`connectors` and `connectors.oauth` are `available: true` since C-4, still at
+stage `internal`: an unavailable flag evaluates to off with `NOT_AVAILABLE`
+whatever the role or grant, so testers and previews could not reach the C-4
+routes. Stage `internal` keeps both admin- and grant-only. `connectors.registry`
+and `connectors.native` stay unavailable until their tickets ship.
+
 ## 2. Decisions
 
 Every decision below is binding for C-2 to C-11. A decision marked **(pre-check)**
@@ -526,6 +532,110 @@ refreshes when `expiresAt - now < 60 s` or after a 401. Refresh lock: KV
 overwritten by a stale one. `invalid_grant` on refresh is terminal: delete the
 credentials, `status='needs-auth'`. Routes are rate-limited like
 `enforceKeysRateLimit` (10 per minute per user).
+
+### 5.5 As built (C-4, 2026-11-14)
+
+Choices that differ from or add to sections 5.1 to 5.4 and 14:
+
+- **No `@ai-sdk/mcp` and no `OAuthClientProvider` in C-4.** The OAuth client
+  is Besidka's own code over `safeFetch` (`server/utils/connectors/oauth-*.ts`),
+  so every outbound URL passes the section 4 rules and no SDK path can pick
+  its own `redirect` or skip CIMD. The contract C-5 uses is
+  `getValidAccessToken({ userId, connectorId, rejectedToken? })` in
+  `credentials.ts`. C-5 adds `@ai-sdk/mcp`, sends
+  `Authorization: Bearer <token>` (or wraps the function in a small provider
+  whose `tokens()` calls it and whose `invalidateCredentials` passes the
+  rejected token), uses `createSafeFetch('mcp')` as the transport `fetch`, and
+  settles the section 14 "Unverified" items.
+- **Routes:** `POST /api/v1/connectors`, `POST [id]/connect/discover`,
+  `POST [id]/consent`, `POST [id]/consent/withdraw`, `POST [id]/oauth/start`,
+  `GET oauth/callback`, `POST [id]/credentials`, `POST [id]/disconnect`,
+  `PATCH [id]`, `POST delete/bulk`. No list route: C-7 adds the one its page
+  needs. Every write route first runs a CSRF guard, before any KV or D1
+  work: `Sec-Fetch-Site`, when sent, must be `same-origin` (a sibling
+  subdomain's `same-site` is refused), and `Origin` must be present and equal
+  the app's public origin for the request. The write routes then share one
+  rate-limit bucket (10 per minute per user) and cap bodies at 8 KiB. That
+  limiter is a KV read-then-write, not atomic, so concurrent requests can
+  slip a few over the limit; it fails closed (429 with `Retry-After: 60`)
+  when KV cannot count.
+- **The callback never spends that bucket** and never answers 429. A
+  malformed `state` is refused before any KV read; failed callbacks count
+  against a separate budget of 20 per 10 minutes per client IP (stored as a
+  SHA-256, failures only, failing open when KV errors). Over the budget, or on
+  any error, it redirects to `/profile/connectors?error=<code>`.
+- **Consent gate (server side only).** `CONNECTOR_CONSENT_VERSION` is
+  `2026-11-a` in `shared/utils/connectors-policy.ts`. The consent route
+  stores the origin, the issuer host the dialog showed, the version and the
+  time, and needs a current sign-up consent. `oauth/start`, `credentials` and
+  enabling refuse with `CONNECTOR_CONSENT_REQUIRED` when the consent is
+  missing, withdrawn, for an older version, for another origin, or (OAuth)
+  for another issuer host than a fresh discovery finds. The wording and its
+  text-hash spec (like `CURRENT_CONSENT_TEXT_SHA256`) belong to the C-7
+  dialog; bump the version when the wording changes what users agree to.
+- **Discovery probe** is a JSON-RPC `initialize` (the stateless
+  `server/discover` probe is the SDK's, added in C-5). A 2xx sets
+  `auth_type='none'` and `status='ready'`. The PRM `resource` is required
+  (RFC 9728) and must cover the connector URL by the SDK rule (same origin,
+  path prefix on a segment boundary); it is the RFC 8707 resource sent.
+- **CIMD only with `iss`.** The public CIMD `client_id` is used only with an
+  issuer that advertises both `client_id_metadata_document_supported` and
+  `authorization_response_iss_parameter_supported`, and a CIMD callback
+  without `iss` is refused. Anyone can start a flow with a public client id,
+  so without `iss` an authorization-server mix-up would go unnoticed; an
+  issuer without RFC 9207 support gets DCR, whose client id is private to
+  that issuer.
+- **Pinned endpoints.** The encrypted `client_registration` JSON also holds
+  the token and revocation endpoints, the resource, the redirect URI and the
+  token-endpoint auth method of the sign-in, so a refresh or revocation never
+  rediscovers metadata. A DCR registration is reused only for the same issuer
+  and redirect URI, so each preview host registers its own client. Saving a
+  sign-in or a header replaces every credentials row of the connector.
+- **Refresh.** The compare-and-set token is the stored access-token
+  ciphertext (`generation`), not `updated_at`, whose one-second resolution
+  cannot tell two writes apart. The KV lock entry lives 60 s (the KV minimum)
+  and carries its own 30 s expiry. Calls that share a request-scoped
+  `inFlight` map share one refresh; nothing is cached module-wide. A caller
+  that loses the lock and still sees the lock held after its three waits
+  answers `CONNECTOR_REFRESH_FAILED` (retryable) instead of sending the same
+  refresh token again, which a rotating issuer treats as reuse; when KV itself
+  fails, the refresh runs at once without a lock. `invalid_grant` re-reads
+  first and deletes only if no other writer stored newer tokens.
+- **Discovery never downgrades a connected connector:** it writes `auth_type`
+  only while no credentials are stored. The callback re-checks the consent
+  for the issuer. When the new sign-in comes from another issuer or client,
+  the stored tokens are revoked before the code exchange; a re-authorization
+  with the same issuer and client revokes nothing, because an authorization
+  server that revokes per grant would kill the tokens it just issued.
+- **Status after sign-in.** The callback sets `status='ready'` (the ticket's
+  rule). C-5 may set `drifted` or `error` after its first `tools/list`.
+- **The OAuth state** in KV is encrypted (it holds the PKCE verifier and, for
+  a confidential DCR client, its secret) and refused after 600 s even when KV
+  still returns it. KV has no atomic read-and-delete, so the authorization
+  server's single-use code is the backstop against a cross-location replay.
+- **Logs.** evlog logs the callback path without its query
+  (`server/plugins/evlog-request-observability.ts`), and its wide events carry
+  connector id, host, step and fixed codes only. That claim covers evlog
+  only: Cloudflare Workers observability records the full request URL of the
+  callback, code and state included. The exposure is bounded (the code is
+  single use, short-lived and bound to the PKCE verifier, which never leaves
+  the Worker; the state is single use), but treat Workers logs as holding
+  them.
+- **Revocation** also runs before a bulk delete and before an account purge,
+  never throwing. The credentials are read first; then at most four
+  connectors are revoked at a time (each sends its refresh-token and
+  access-token revocations one after the other, so at most four connections,
+  under the Workers limit of six), with no binding resolved inside the
+  fan-out. One 10 s deadline covers the batch: when it fires, in-flight
+  requests are canceled, no new one starts, and the rows are deleted
+  unrevoked.
+- **CIMD rejected on a preview host.** The client cannot see that rejection
+  (it happens in the browser at the authorization server), so there is no
+  automatic switch to DCR. If Notion or Linear refuse a preview CIMD, record
+  it in the section 5.3 table and decide then.
+- **Production check.** `NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS` is set only in the
+  `previews` block of `wrangler.jsonc`; production has none, so the CIMD
+  there always uses `NUXT_PUBLIC_BASE_URL`.
 
 ## 6. Per-send lifecycle
 
