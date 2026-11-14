@@ -8,6 +8,11 @@ const HTML_STRUCTURE_PATTERN
   = /<(ul|ol|li|strong|b|em|h[1-6]|pre|code|blockquote|table)\b/i
 const HTML_BLOCK_PATTERN = /<(p|div)\b/gi
 const PRESERVED_WHITESPACE_PATTERN = /white-space:\s*pre/i
+const OWN_UI_MARKER_PATTERN
+  = /\sdata-v-[0-9a-f]{6,}\b|\sdata-testid=|\sdata-theme=|\sid="__nuxt"/i
+const EMPTY_LINK_PATTERN = /<a\b[^>]*>(?:\s|<(?!\/a)[^>]*>)*<\/a>/gi
+const OWN_ORIGIN_LINKS_MIN = 2
+const EMPTY_LINKS_MIN = 3
 const BULLET_LINE_PATTERN = /^([ \t]*)([•◦▪‣])[ \t]+(.*)$/
 const BULLET_GLYPH_LEVELS: Record<string, number> = {
   '•': 0,
@@ -25,6 +30,18 @@ export interface TextSnapshot {
   start: number
   end: number
   value: string
+}
+
+/**
+ * A dialog that does not hold the textarea is open (the file manager, the
+ * search popup, the artifact or skill picker, the skill import): the paste is
+ * meant for that dialog, not for the composer behind it, so it is swallowed
+ * instead of appended. A textarea inside a dialog of its own is not blocked.
+ */
+export function isBlockedByOpenDialog(element: HTMLElement): boolean {
+  return [...document.querySelectorAll('dialog[open]')].some((dialog) => {
+    return !dialog.contains(element)
+  })
 }
 
 export interface MarkdownTextareaOptions {
@@ -126,8 +143,32 @@ export function isInsideOpenCodeFence(
   return openFence !== null
 }
 
-export function shouldConvertHtml(html: string): boolean {
-  if (!html.trim()) {
+/**
+ * True when the clipboard HTML is a copy of this app's own page (Select all,
+ * Copy, then Paste in the composer): Vue scoped-style attributes, test or
+ * theme attributes, the `__nuxt` root, two or more links to this origin, or
+ * three or more links with no text (icon-only buttons). Converting that to
+ * Markdown pastes the whole interface as links and labels, so the paste falls
+ * back to `text/plain` instead.
+ */
+export function isOwnAppHtml(html: string, origin?: string): boolean {
+  if (OWN_UI_MARKER_PATTERN.test(html)) {
+    return true
+  }
+
+  if (origin) {
+    const ownLinks = html.split(`href="${origin}`).length - 1
+
+    if (ownLinks >= OWN_ORIGIN_LINKS_MIN) {
+      return true
+    }
+  }
+
+  return (html.match(EMPTY_LINK_PATTERN)?.length ?? 0) >= EMPTY_LINKS_MIN
+}
+
+export function shouldConvertHtml(html: string, origin?: string): boolean {
+  if (!html.trim() || isOwnAppHtml(html, origin)) {
     return false
   }
 
@@ -412,16 +453,27 @@ export function useMarkdownTextarea(
     const element = textarea.value
     const clipboardData = event.clipboardData
 
-    if (!element || !clipboardData || hasImageFile(clipboardData)) {
+    if (!element || !clipboardData) {
+      return
+    }
+
+    if (isBlockedByOpenDialog(element)) {
+      event.preventDefault()
+
+      return
+    }
+
+    if (hasImageFile(clipboardData)) {
       return
     }
 
     const html = clipboardData.getData('text/html')
+    const origin = window.location.origin
     const plainText = clipboardData.getData('text/plain')
     const snapshot = takeSnapshot(element)
     const isInsideFence = isCaretInOpenCodeFence()
 
-    if (!isInsideFence && shouldConvertHtml(html)) {
+    if (!isInsideFence && shouldConvertHtml(html, origin)) {
       event.preventDefault()
       pasteConvertedHtml(element, html, plainText, snapshot)
 

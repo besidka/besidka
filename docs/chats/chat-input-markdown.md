@@ -20,17 +20,35 @@ message half-written.
 
 The handler reads `text/html` and `text/plain` from the clipboard.
 
-1. Image files on the clipboard: do nothing. The document-level image paste
+1. A dialog that does not hold the textarea is open (`dialog[open]`: the file
+   manager, the search popup, the artifact picker, the skill picker, the skill
+   import): the paste is swallowed with `preventDefault()` and nothing is
+   inserted (`isBlockedByOpenDialog`). The owner once found the app's own page
+   text appended to the composer after pasting while such a dialog had focus.
+   A textarea inside a dialog of its own (project instructions) is not
+   blocked. The document-level image listener in `ChatInput.client.vue` uses
+   the same check, so it also stays quiet behind the artifact and skill
+   dialogs, not only behind the file and search ones.
+2. Image files on the clipboard: do nothing. The document-level image paste
    listener in `ChatInput.client.vue` handles them (desktop only).
-2. The caret is inside an unclosed code fence: paste verbatim, no conversion.
-3. The HTML gate (`shouldConvertHtml`) decides whether the HTML is converted:
+3. The caret is inside an unclosed code fence: paste verbatim, no conversion.
+4. The HTML gate (`shouldConvertHtml`) decides whether the HTML is converted.
+   It first refuses a copy of this app's own page (`isOwnAppHtml`): select-all
+   plus copy on a Besidka page puts Vue scoped-style attributes (`data-v-…`),
+   `data-testid`/`data-theme` attributes or the `__nuxt` root in the HTML, two
+   or more links to the page's own origin, or three or more links with no text
+   (icon-only buttons). Converting that pastes the whole interface as Markdown
+   (`[](https://…/profile/security)`, "Steps(7s)", "Web searchBuilt-in"), so
+   it falls back to `text/plain` (a long one still becomes a chip). Apple Mail,
+   Gmail and ordinary web pages carry none of these markers and convert as
+   before. Otherwise:
    - converted when it has `ul|ol|li|strong|b|em|h1-h6|pre|code|blockquote|table`;
    - or when it has more than one `<p>` or `<div>` block, unless it carries
      `white-space: pre`;
    - otherwise `text/plain` is used unchanged. VS Code and terminals put span
      soup in `text/html` (one `<div>` per line, `white-space: pre`), and the
      plain text is the right input for them.
-4. Conversion is `htmlToChatMarkdown` in
+5. Conversion is `htmlToChatMarkdown` in
    `app/utils/knowledge-html-to-markdown.ts`. It reuses the Turndown setup of
    the project knowledge importer (GFM tables, strikethrough, task lists, link
    scheme hardening, image alt hardening) and adds: removal of `head`, `meta`,
@@ -40,11 +58,11 @@ The handler reads `text/html` and `text/plain` from the clipboard.
    `- x` / `1. x` (outside code fences); trailing whitespace removed; three or
    more newlines collapsed to two. `htmlToKnowledgeMarkdown` is unchanged
    (its existing spec still expects the wide markers).
-5. The module is imported dynamically on the first HTML paste, so Turndown is
+6. The module is imported dynamically on the first HTML paste, so Turndown is
    not in the chat page chunk. `preventDefault()` is called synchronously
    before the import; if the import or conversion fails or yields an empty
    string, the `text/plain` text is inserted instead.
-6. Plain text pastes also get bullet normalisation: a line that starts with
+7. Plain text pastes also get bullet normalisation: a line that starts with
    optional whitespace, one of `•◦▪‣` and whitespace becomes `- Item`
    (`·` is not a bullet: it is a common middle dot in prose). Nesting is
    kept: the level is the larger of the glyph level (`•`/`‣` 0, `◦` 1, `▪` 2)

@@ -1829,9 +1829,9 @@ onStartTyping(() => {
 })
 
 function onPaste(event: ClipboardEvent) {
-  const isBlockingModalOpen = !!document.querySelector(
-    'dialog.js-files-modal[open], dialog.js-search-modal[open]',
-  )
+  const isBlockingModalOpen = textarea.value
+    ? isBlockedByOpenDialog(textarea.value)
+    : !!document.querySelector('dialog[open]')
 
   if (isBlockingModalOpen) {
     return
