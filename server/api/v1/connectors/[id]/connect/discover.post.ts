@@ -15,7 +15,6 @@ import {
   readConnectorUrl,
   updateConnector,
 } from '~~/server/utils/connectors/store'
-import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 /**
@@ -26,8 +25,6 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * differs, the auth kind and the preset notice.
  */
 export default defineEventHandler(async (event) => {
-  assertNotCrossSiteRequest(event)
-
   const userId = await requireConnectorAccess(event)
   const connector = await requireOwnedConnector(event, userId)
   const logger = useRequestLogger(event)

@@ -89,6 +89,12 @@ export const CONNECTOR_ERRORS = {
     why: 'The authorization server returned an error instead of a code',
     fix: 'Start the sign-in again and approve the access',
   },
+  CONNECTOR_OAUTH_RATE_LIMITED: {
+    message: 'Too many failed sign-ins',
+    status: 429,
+    why: 'Too many sign-in callbacks from this network failed recently',
+    fix: 'Wait a few minutes and start the sign-in again',
+  },
   CONNECTOR_OAUTH_TOKEN_FAILED: {
     message: 'The sign-in server did not issue a token',
     status: 502,

@@ -25,7 +25,8 @@ import {
   consumeConnectorOAuthState,
   saveConnectorOAuthState,
 } from '~~/server/utils/connectors/oauth-state'
-import { revokeStoredConnectorCredentials } from '~~/server/utils/connectors/revoke'
+import type { ConnectorOAuthState } from '~~/server/utils/connectors/oauth-state'
+import { revokeConnectorCredentials } from '~~/server/utils/connectors/revoke'
 import {
   compareGrantedScope,
   degradedScopeNote,
@@ -96,7 +97,10 @@ async function resolveClientRegistration(
     resource: oauth.resource,
   }
 
-  if (oauth.metadata.clientIdMetadataDocumentSupported) {
+  if (
+    oauth.metadata.clientIdMetadataDocumentSupported
+    && oauth.metadata.issParameterSupported
+  ) {
     return {
       clientId: connectorClientId(input.origin),
       registrationKind: 'cimd',
@@ -135,7 +139,8 @@ async function resolveClientRegistration(
 /**
  * The OAuth start of the connect flow: discovery, the consent check for
  * the discovered issuer, client registration (CIMD when the issuer accepts
- * it, else DCR, reused while issuer and redirect URI stay the same), PKCE
+ * it and sends RFC 9207 `iss`, else DCR, reused while issuer and redirect
+ * URI stay the same), PKCE
  * S256 and a single-use state. Returns the authorization URL instead of
  * redirecting; the browser navigates there itself.
  */
@@ -161,7 +166,8 @@ export async function startConnectorOAuth(
     connectorId: input.connector.id,
     codeVerifier: pkce.verifier,
     issuer: oauth.issuer,
-    issParameterRequired: oauth.metadata.issParameterSupported,
+    issParameterRequired: oauth.metadata.issParameterSupported
+      || registration.registrationKind === 'cimd',
     resource: oauth.resource,
     requestedScope: oauth.requestedScope,
     redirectUri: connectorRedirectUri(input.origin),
@@ -198,14 +204,44 @@ function isSameResource(resource: string, serverUrl: string | null): boolean {
 }
 
 /**
+ * Revokes the stored sign-in before a new code exchange, but only when the
+ * new one comes from another issuer or another client. A re-authorization
+ * with the same issuer and client keeps the old tokens untouched: an
+ * authorization server that revokes per grant could otherwise kill the
+ * tokens it is about to issue.
+ */
+async function revokeSupersededCredentials(
+  input: CompleteConnectorOAuthInput,
+  state: ConnectorOAuthState,
+): Promise<void> {
+  const stored = await readConnectorCredentials(
+    input.db,
+    input.userId,
+    state.connectorId,
+  )
+
+  if (
+    !stored
+    || (stored.issuer === state.issuer
+      && stored.clientRegistration?.clientId === state.registration.clientId)
+  ) {
+    return
+  }
+
+  await revokeConnectorCredentials(stored, { logger: input.logger })
+}
+
+/**
  * The OAuth callback: consumes the state (single use), then checks, in this
  * order, that it belongs to the signed-in user, that the callback arrived at
  * the exact redirect URI the flow started with, that the authorization
  * server returned a code, and that `iss` names the expected issuer (RFC
  * 9207: required when the issuer advertises it, compared whenever present).
  * Only then, and while the consent still covers this issuer, is the code
- * exchanged, with the verifier and the resource. Tokens of an earlier
- * sign-in are revoked before they are replaced. The granted scope is
+ * exchanged, with the verifier and the resource. A sign-in from another
+ * issuer or client is revoked before the exchange. A CIMD flow always
+ * requires `iss`: the public client id is used only with issuers that send
+ * it, so an authorization-server mix-up is detectable. The granted scope is
  * compared with the requested one; a narrower grant keeps the connector
  * usable with a `degraded` note.
  */
@@ -256,6 +292,8 @@ export async function completeConnectorOAuth(
 
   assertConnectorConsent(connector, issuerHostOf(state.issuer))
 
+  await revokeSupersededCredentials(input, state)
+
   const result = await exchangeAuthorizationCode({
     registration: state.registration,
     code: input.query.code,
@@ -274,12 +312,6 @@ export async function completeConnectorOAuth(
     result.tokens.scope,
   )
 
-  await revokeStoredConnectorCredentials(
-    input.db,
-    input.userId,
-    state.connectorId,
-    { logger: input.logger },
-  )
   await replaceConnectorCredentials(input.db, {
     userId: input.userId,
     connectorId: state.connectorId,

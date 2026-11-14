@@ -1,6 +1,6 @@
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
-import { getRouterParam } from 'nuxt/server'
+import { getRequestHeader, getRouterParam } from 'nuxt/server'
 import { CONNECTOR_ROUTES_PER_MINUTE } from '#shared/utils/connectors-policy'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
@@ -8,11 +8,44 @@ import { getConnector } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
 import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origin'
 
 const RATE_LIMIT_KEY_PREFIX = 'connectors-rate-limit'
 const RATE_LIMIT_WINDOW_SECONDS = 60
 const RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 const CONNECTOR_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/
+
+const ALLOWED_FETCH_SITES: ReadonlySet<string> = new Set(['same-origin', 'none'])
+
+function forbiddenWrite(why: string) {
+  return createError({
+    message: 'Forbidden',
+    status: 403,
+    why,
+    fix: 'Make the change from the Besidka app',
+  })
+}
+
+/**
+ * The CSRF guard of the state-changing connector routes, run before any
+ * KV or D1 work: `Sec-Fetch-Site`, when sent, must be `same-origin` (a
+ * sibling subdomain's `same-site` is refused too), and `Origin` must be
+ * present and equal the app's public origin for this request (the
+ * configured base URL, or an allow-listed preview host).
+ */
+export function assertConnectorWriteRequest(event: RequestEvent): void {
+  const fetchSite = getRequestHeader(event, 'sec-fetch-site')
+
+  if (fetchSite && !ALLOWED_FETCH_SITES.has(fetchSite)) {
+    throw forbiddenWrite('The request did not come from the same origin')
+  }
+
+  const origin = getRequestHeader(event, 'origin')
+
+  if (!origin || origin !== resolveRequestPublicOrigin(event)) {
+    throw forbiddenWrite('The request has no Origin of this app')
+  }
+}
 
 function tooManyRequests(event: RequestEvent, retryAfterSeconds: number) {
   event.res.headers.set('Retry-After', String(retryAfterSeconds))
@@ -28,8 +61,10 @@ function tooManyRequests(event: RequestEvent, retryAfterSeconds: number) {
 
 /**
  * Ten connector actions a minute per user, shared by every mutating route
- * and the OAuth callback. Fails closed: when KV cannot count, the request is
- * refused with `Retry-After: 60`.
+ * (the OAuth callback has its own failure budget). The KV counter is a
+ * read-then-write, not atomic, so concurrent requests can slip a few over
+ * the limit; it is a flood guard, not exact accounting. Fails closed: when
+ * KV cannot count, the request is refused with `Retry-After: 60`.
  */
 export async function enforceConnectorRateLimit(
   event: RequestEvent,
@@ -61,13 +96,19 @@ export async function enforceConnectorRateLimit(
 }
 
 /**
- * The common gate of the connector routes: a session, the `connectors` flag
- * (and `connectors.oauth` for sign-in routes), then the per-user limit.
+ * The common gate of the connector routes, in this order: the write guard
+ * (unless `write: false`, only the GET callback), a session, the
+ * `connectors` flag (and `connectors.oauth` for sign-in routes), then the
+ * per-user limit. Ownership lookups come after it in the route.
  */
 export async function requireConnectorAccess(
   event: RequestEvent,
-  options: { oauth?: boolean, rateLimit?: boolean } = {},
+  options: { oauth?: boolean, rateLimit?: boolean, write?: boolean } = {},
 ): Promise<number> {
+  if (options.write !== false) {
+    assertConnectorWriteRequest(event)
+  }
+
   const session = await useUserSession()
 
   if (!session) {

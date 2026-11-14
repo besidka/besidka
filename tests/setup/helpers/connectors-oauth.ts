@@ -69,6 +69,7 @@ export function createMockAuthServer(options: MockAuthServerOptions = {}) {
   const state = {
     refreshBehavior: 'ok' as RefreshBehavior,
     refreshCount: 0,
+    registrations: 0,
     issuedCodes: new Set<string>(),
     metadata: options.metadata ?? defaultMetadata(),
   }
@@ -107,7 +108,13 @@ export function createMockAuthServer(options: MockAuthServerOptions = {}) {
     }
 
     if (url === REGISTER_URL && method === 'POST') {
-      return json({ client_id: DCR_CLIENT_ID }, 201)
+      state.registrations += 1
+
+      return json({
+        client_id: state.registrations === 1
+          ? DCR_CLIENT_ID
+          : `dcr-client-${state.registrations}`,
+      }, 201)
     }
 
     if (url === REVOKE_URL && method === 'POST') {

@@ -8,7 +8,6 @@ import {
   deleteConnectorCredentials,
   updateConnector,
 } from '~~/server/utils/connectors/store'
-import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 /**
@@ -17,8 +16,6 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * and in `needs-auth`. The consent stays.
  */
 export default defineEventHandler(async (event) => {
-  assertNotCrossSiteRequest(event)
-
   const userId = await requireConnectorAccess(event)
   const connector = await requireOwnedConnector(event, userId)
   const db = useDb()

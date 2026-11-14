@@ -116,7 +116,14 @@ describe('connector OAuth flow', () => {
     path: string,
     partial: Partial<SkillsRouteEvent> = {},
   ) {
-    const event = createSkillsRouteEvent(partial)
+    const event = createSkillsRouteEvent({
+      ...partial,
+      headers: {
+        'origin': mocks.origin,
+        'sec-fetch-site': 'same-origin',
+        ...partial.headers,
+      },
+    })
 
     try {
       const result = await (await handler(path))(event)
@@ -321,6 +328,130 @@ describe('connector OAuth flow', () => {
       })
   })
 
+  describe('RFC 9207 and CIMD', () => {
+    it('uses DCR with an issuer that accepts CIMD but does not send iss',
+      async () => {
+        useServer({
+          metadata: {
+            ...defaultMetadata(),
+            authorization_response_iss_parameter_supported: false,
+          },
+        })
+
+        const { authorizationUrl, location } = await connectedConnector()
+
+        expect(new URL(authorizationUrl).searchParams.get('client_id'))
+          .toBe(DCR_CLIENT_ID)
+        expect(server.requestsTo(REGISTER_URL)).toHaveLength(1)
+        expect(location).toContain('connected=')
+      })
+  })
+
+  describe('callback budget', () => {
+    it('refuses a malformed state without reading KV', async () => {
+      kv.get.mockClear()
+
+      expect(await callback({ code: 'x', state: 'short' }))
+        .toBe('/profile/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+      expect(kv.get).not.toHaveBeenCalled()
+    })
+
+    it('never spends the shared connector limit', async () => {
+      const connector = await createConnector()
+
+      await consent(connector.id, 'auth.example.com')
+
+      const approval = server.authorize(await start(connector.id))
+      let limited = false
+
+      for (let attempt = 0; attempt < 12 && !limited; attempt++) {
+        try {
+          await call('~~/server/api/v1/connectors/[id]/index.patch', {
+            params: { id: connector.id },
+            body: { title: `Example ${attempt}` },
+          })
+        } catch (exception) {
+          limited = (exception as { status: number }).status === 429
+        }
+      }
+
+      expect(limited).toBe(true)
+      expect(await callback({
+        code: approval.code,
+        state: approval.state,
+        iss: approval.iss,
+      })).toBe(`/profile/connectors?connected=${connector.id}`)
+    })
+
+    it('redirects instead of answering 429 after 20 failures', async () => {
+      const connector = await createConnector()
+
+      await consent(connector.id, 'auth.example.com')
+
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await callback({ code: 'x', state: `${'b'.repeat(40)}${attempt}` })
+      }
+
+      const approval = server.authorize(await start(connector.id))
+
+      expect(await callback({
+        code: approval.code,
+        state: approval.state,
+        iss: approval.iss,
+      })).toBe('/profile/connectors?error=CONNECTOR_OAUTH_RATE_LIMITED')
+    })
+
+    it('does not count successful sign-ins', async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        expect((await connectedConnector()).location).toContain('connected=')
+      }
+
+      expect([...kv.values.keys()].some((key) => {
+        return key.startsWith('connectors:callback-failures:')
+      })).toBe(false)
+    })
+  })
+
+  describe('write guard', () => {
+    it.each([
+      ['a missing Origin', { origin: '' }],
+      ['another origin', { origin: 'https://evil.example.org' }],
+      ['a sibling subdomain', {
+        'origin': 'https://besidka.com',
+        'sec-fetch-site': 'same-site',
+      }],
+      ['a cross-site request', {
+        'origin': 'https://besidka.com',
+        'sec-fetch-site': 'cross-site',
+      }],
+    ])('refuses %s', async (_label, headers) => {
+      const failure = await failureOf(call(
+        '~~/server/api/v1/connectors/index.post',
+        { body: { url: MCP_SERVER_URL }, headers },
+      ))
+
+      expect(failure.status).toBe(403)
+    })
+
+    it('runs before the rate limit and the ownership lookup', async () => {
+      const connector = await createConnector()
+
+      sessionUserId = await seedUser(testDb.db)
+      kv.get.mockClear()
+
+      const failure = await failureOf(call(
+        '~~/server/api/v1/connectors/[id]/disconnect.post',
+        {
+          params: { id: connector.id },
+          headers: { origin: 'https://evil.example.org' },
+        },
+      ))
+
+      expect(failure.status).toBe(403)
+      expect(kv.get).not.toHaveBeenCalled()
+    })
+  })
+
   describe('DCR fallback', () => {
     it('registers when the issuer does not accept CIMD, and reuses the '
       + 'registration for the same redirect URI', async () => {
@@ -458,7 +589,7 @@ describe('connector OAuth flow', () => {
       expect(await credentialRows()).toHaveLength(0)
     })
 
-    it('refuses a missing iss when the issuer advertises it', async () => {
+    it('refuses a CIMD callback without iss', async () => {
       const connector = await createConnector()
 
       await consent(connector.id, 'auth.example.com')
@@ -549,19 +680,57 @@ describe('connector OAuth flow', () => {
   })
 
   describe('reconnect', () => {
-    it('revokes the tokens of the earlier sign-in', async () => {
-      const { connector } = await connectedConnector()
-      const approval = server.authorize(await start(connector.id), 'code-two')
+    it('keeps the old tokens when the same issuer and client sign in again',
+      async () => {
+        const { connector } = await connectedConnector()
+        const approval = server.authorize(
+          await start(connector.id),
+          'code-two',
+        )
 
-      await callback({
-        code: approval.code,
-        state: approval.state,
-        iss: approval.iss,
+        await callback({
+          code: approval.code,
+          state: approval.state,
+          iss: approval.iss,
+        })
+
+        expect(server.requestsTo(REVOKE_URL)).toHaveLength(0)
+        expect(await credentialRows()).toHaveLength(1)
       })
 
-      expect(server.requestsTo(REVOKE_URL)).toHaveLength(2)
-      expect(await credentialRows()).toHaveLength(1)
-    })
+    it('revokes the earlier client\'s tokens before the new exchange',
+      async () => {
+        useServer({
+          metadata: {
+            ...defaultMetadata(),
+            client_id_metadata_document_supported: false,
+          },
+        })
+
+        const { connector } = await connectedConnector()
+
+        mocks.origin = PREVIEW_ORIGIN
+
+        const approval = server.authorize(
+          await start(connector.id),
+          'code-two',
+        )
+
+        expect(await callback({
+          code: approval.code,
+          state: approval.state,
+          iss: approval.iss,
+        })).toContain('connected=')
+
+        const urls = server.requests.map((request) => {
+          return request.url
+        })
+        const firstRevoke = urls.indexOf(REVOKE_URL)
+
+        expect(firstRevoke).toBeGreaterThan(-1)
+        expect(urls.lastIndexOf(TOKEN_URL)).toBeGreaterThan(firstRevoke)
+        expect(server.requestsTo(REVOKE_URL)).toHaveLength(2)
+      })
 
     it('refuses the callback when the consent was withdrawn after the start',
       async () => {

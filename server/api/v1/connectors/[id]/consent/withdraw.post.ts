@@ -4,7 +4,6 @@ import {
   requireOwnedConnector,
 } from '~~/server/utils/connectors/route'
 import { updateConnector } from '~~/server/utils/connectors/store'
-import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 /**
@@ -12,8 +11,6 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * nothing more is sent to the server until the user consents again.
  */
 export default defineEventHandler(async (event) => {
-  assertNotCrossSiteRequest(event)
-
   const userId = await requireConnectorAccess(event)
   const connector = await requireOwnedConnector(event, userId)
   const updated = await updateConnector(useDb(), userId, connector.id, {

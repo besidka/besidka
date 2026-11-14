@@ -7,7 +7,6 @@ import {
   defaultMetadata,
 } from '../../../../setup/helpers/connectors-oauth'
 import {
-  canonicalResourceUrl,
   discoverConnectorAuth,
   parseAuthorizationServerMetadata,
   parseBearerChallenge,
@@ -75,11 +74,6 @@ describe('connector OAuth metadata', () => {
     ])('%s covers the connector URL: %s', (resource, covers) => {
       expect(resourceCoversUrl(resource, MCP_SERVER_URL)).toBe(covers)
     })
-  })
-
-  it('drops the query from the fallback resource', () => {
-    expect(canonicalResourceUrl('https://mcp.example.com/mcp?key=secret'))
-      .toBe('https://mcp.example.com/mcp')
   })
 
   describe('parseAuthorizationServerMetadata', () => {
@@ -192,6 +186,15 @@ describe('connector OAuth metadata', () => {
           resource: 'https://other.example.com/mcp',
           authorization_servers: [ISSUER],
         },
+      }).fetch)
+
+      expect((await failureOf(discoverConnectorAuth(MCP_SERVER_URL))).code)
+        .toBe('CONNECTOR_OAUTH_METADATA_INVALID')
+    })
+
+    it('refuses metadata without a resource', async () => {
+      vi.stubGlobal('fetch', createMockAuthServer({
+        protectedResource: { authorization_servers: [ISSUER] },
       }).fetch)
 
       expect((await failureOf(discoverConnectorAuth(MCP_SERVER_URL))).code)

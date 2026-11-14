@@ -9,7 +9,6 @@ import {
   requireOwnedConnector,
 } from '~~/server/utils/connectors/route'
 import { readConnectorUrl } from '~~/server/utils/connectors/store'
-import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origin'
@@ -21,8 +20,6 @@ import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origi
  * host ends there.
  */
 export default defineEventHandler(async (event) => {
-  assertNotCrossSiteRequest(event)
-
   const userId = await requireConnectorAccess(event, { oauth: true })
   const connector = await requireOwnedConnector(event, userId)
   const logger = useRequestLogger(event)

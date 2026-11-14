@@ -159,17 +159,6 @@ export function resourceCoversUrl(
     || connectorPath.startsWith(`${resourcePath}/`)
 }
 
-/**
- * The canonical MCP server URI used as the RFC 8707 resource when the
- * metadata names none: origin and path only, because a query on a user's
- * connector URL can carry a secret that must not reach the sign-in server.
- */
-export function canonicalResourceUrl(serverUrl: string): string {
-  const url = new URL(serverUrl)
-
-  return `${url.origin}${url.pathname}`
-}
-
 async function fetchMetadataDocument(
   url: string,
   logger?: LoggerLike,
@@ -376,7 +365,8 @@ export async function fetchAuthorizationServerMetadata(
 
 /**
  * From a protected-resource metadata document to everything the sign-in
- * needs: the resource indicator (RFC 8707), the first authorization server
+ * needs: the resource indicator (RFC 8707; `resource` is required by RFC
+ * 9728 and must cover the connector URL), the first authorization server
  * that passes the outbound URL rules, its validated metadata, and the scope
  * to ask for (the challenge's `scope`, else `scopes_supported`).
  */
@@ -388,7 +378,7 @@ export async function resolveOAuthDiscovery(
 ): Promise<ConnectorOAuthDiscovery> {
   const resource = readString(protectedResource, 'resource')
 
-  if (resource && !resourceCoversUrl(resource, serverUrl)) {
+  if (!resource || !resourceCoversUrl(resource, serverUrl)) {
     throw createConnectorError('CONNECTOR_OAUTH_METADATA_INVALID')
   }
 
@@ -405,7 +395,7 @@ export async function resolveOAuthDiscovery(
   const scopesSupported = readStringArray(protectedResource, 'scopes_supported')
 
   return {
-    resource: resource ?? canonicalResourceUrl(serverUrl),
+    resource,
     issuer: metadata.issuer,
     requestedScope: normalizeScope(
       challenge?.scope ?? scopesSupported?.join(' ') ?? null,
