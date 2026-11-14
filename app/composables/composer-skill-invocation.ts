@@ -15,9 +15,11 @@ export interface ComposerSkillInvocation extends SkillInvocationPartData {
  * The one skill the user attached to the message they are writing. A message
  * carries at most one invocation, so choosing another replaces it. `source`
  * says how it got there: `menu` from the "+" menu, `text` from a typed
- * `/name` (added by the command layer on top of this same state). It is
- * shared by the composer, the new-chat page and the send path, and cleared
- * when the composer goes away or the message is sent.
+ * `/name`. It is shared by the composer, the new-chat page and the send
+ * path, and cleared when the composer goes away or the message is sent. A
+ * restored invocation is always `menu`: the typed token is stripped from the
+ * text at send, so after a failed send nothing in the text would keep a
+ * `text` invocation alive.
  */
 export function useComposerSkillInvocation() {
   const invocation = useState<ComposerSkillInvocation | null>(
@@ -46,7 +48,9 @@ export function useComposerSkillInvocation() {
   }
 
   function restore(previous: ComposerSkillInvocation | null) {
-    invocation.value = previous ? { ...previous } : null
+    invocation.value = previous
+      ? { ...previous, source: 'menu' }
+      : null
   }
 
   return { invocation, part, set, clear, restore }

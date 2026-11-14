@@ -31,6 +31,14 @@
       @files-dropped="uploadFiles"
     />
     <LazyChatScroll v-show="isChatScrollButtonVisible" />
+    <ChatInputCommandPicker
+      ref="commandPicker"
+      :is-open="commands.isOpen.value"
+      :matches="commands.matches.value"
+      :active-index="commands.activeIndex.value"
+      :has-no-commands="commands.hasNoCommands.value"
+      @pick="commands.pick"
+    />
     <div class="flex justify-center w-full px-2">
       <UiBubble
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
@@ -65,19 +73,48 @@
             @retry="retryUpload"
             @cancel-all="cancelAllUploads"
           />
-          <textarea
-            ref="textarea"
-            v-model="input"
-            data-testid="chat-input-textarea"
-            class="textarea p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
-            :placeholder="textareaPlaceholder"
-            :disabled="displayStop"
-            @keydown="onTextareaKeydown"
-            @beforeinput="onMarkdownBeforeInput"
-            @paste="onMarkdownPaste"
-            @focus="onKeyboardFocus"
-            @blur="onKeyboardBlur"
-          />
+          <div class="relative">
+            <LazyChatInputCommandMirror
+              v-if="commands.activeToken.value"
+              :textarea="textarea"
+              :text="input"
+              :start="commands.activeToken.value.start"
+              :end="commands.activeToken.value.end"
+            />
+            <textarea
+              ref="textarea"
+              v-model="input"
+              data-testid="chat-input-textarea"
+              class="textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
+              :placeholder="textareaPlaceholder"
+              :disabled="displayStop"
+              :role="commands.isEnabled.value ? 'combobox' : undefined"
+              :aria-expanded="commands.isEnabled.value
+                ? commands.isOpen.value
+                : undefined
+              "
+              :aria-controls="commands.isOpen.value
+                ? commandPicker?.listId
+                : undefined
+              "
+              :aria-activedescendant="commands.isOpen.value
+                ? commandPicker?.activeOptionId
+                : undefined
+              "
+              :aria-autocomplete="commands.isEnabled.value ? 'list' : undefined"
+              @keydown="onTextareaKeydown"
+              @keyup="commands.refresh"
+              @click="commands.refresh"
+              @select="commands.refresh"
+              @input="commands.refresh"
+              @compositionstart="commands.onCompositionStart"
+              @compositionend="commands.onCompositionEnd"
+              @beforeinput="onTextareaBeforeInput"
+              @paste="onMarkdownPaste"
+              @focus="onTextareaFocus"
+              @blur="onTextareaBlur"
+            />
+          </div>
           <div class="flex items-center justify-between gap-2 p-2 pb-0">
             <div class="flex items-center gap-1 min-w-0">
               <div class="min-w-0">
@@ -884,6 +921,10 @@ const artifactsFeature = useFeature('artifacts')
 const composerSkills = useComposerSkills()
 const skillInvocation = useComposerSkillInvocation()
 const skillPreview = useSkillPreview()
+const commandPicker = useTemplateRef<{
+  listId: string
+  activeOptionId: string | undefined
+}>('commandPicker')
 
 const isArtifactAttachEnabled = computed<boolean>(() => {
   return artifactsFeature.value.active && !isDeepResearchModel.value
@@ -891,6 +932,14 @@ const isArtifactAttachEnabled = computed<boolean>(() => {
 
 const isSkillAttachEnabled = computed<boolean>(() => {
   return composerSkills.isVisible.value && !isDeepResearchModel.value
+})
+
+const commands = useComposerCommands({
+  textarea,
+  text: input,
+  items: () => composerSkills.items.value,
+  isAvailable: () => isSkillAttachEnabled.value,
+  insertText: insertTextAtSelection,
 })
 
 const toolsState = computed<ChatInputToolsState>(() => {
@@ -1000,7 +1049,11 @@ function removeTile(id: ChatInputTileId) {
       return artifact.artifactId !== artifactId
     })
   } else if (id === 'skill') {
-    skillInvocation.clear()
+    if (skillInvocation.invocation.value?.source === 'text') {
+      commands.removeToken()
+    } else {
+      skillInvocation.clear()
+    }
   } else if (id === 'project') {
     emit('clear-project-context')
   } else if (id === 'memory') {
@@ -1461,8 +1514,26 @@ async function insertPastedText(content: string) {
   insertTextAtSelection(content)
 }
 
+function onTextareaBeforeInput(event: InputEvent) {
+  if (commands.onBeforeInput(event)) {
+    return
+  }
+
+  onMarkdownBeforeInput(event)
+}
+
+function onTextareaFocus() {
+  onKeyboardFocus()
+  commands.refresh()
+}
+
+function onTextareaBlur() {
+  onKeyboardBlur()
+  commands.reset()
+}
+
 function onTextareaKeydown(event: KeyboardEvent) {
-  if (onMarkdownKeydown(event)) {
+  if (commands.onKeydown(event) || onMarkdownKeydown(event)) {
     return
   }
 
@@ -1544,7 +1615,10 @@ async function sendMessage() {
     return
   }
 
-  const text = joinMessageWithPastedTexts(message.value, pastedTexts.value)
+  const text = joinMessageWithPastedTexts(
+    commands.stripFromText(message.value),
+    pastedTexts.value,
+  )
 
   message.value = text
   emit('submit')

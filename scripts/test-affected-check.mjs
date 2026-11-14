@@ -1571,6 +1571,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/reasoning.spec.ts',
     'tests/unit/composables/composer-skill-invocation.spec.ts',
     'tests/unit/composables/composer-skills.spec.ts',
+    'tests/unit/composables/composer-commands.spec.ts',
+    'tests/unit/utils/composer-command.spec.ts',
+    'tests/unit/components/ChatInput/CommandPicker.spec.ts',
+    'tests/unit/components/ChatInput/CommandMirror.spec.ts',
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/components/Chat/Reasoning.spec.ts',
     'tests/integration/api/shared-chat-view.spec.ts',
@@ -2999,7 +3003,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Chat\/(Reasoning|Reasoning\/SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/utils\/reasoning\.ts|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills)\.ts|app\/utils\/(skill-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+        /^(app\/components\/Chat\/(Reasoning|Reasoning\/SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/utils\/reasoning\.ts|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills|composer-commands|markdown-textarea)\.ts|app\/utils\/(skill-step|chat-input-tiles|composer-command)\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(CommandPicker|CommandMirror)\.vue|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
       tests: skillsComposerTests,
     },
     {

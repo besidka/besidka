@@ -32,7 +32,7 @@ export interface MarkdownTextareaOptions {
   continueListsOnEnter?: () => boolean
 }
 
-interface OpenFence {
+export interface OpenFence {
   character: string
   length: number
 }
@@ -147,7 +147,7 @@ export function isLongPaste(text: string): boolean {
     || text.split('\n').length > LONG_PASTE_MIN_LINES
 }
 
-function advanceFence(
+export function advanceFence(
   openFence: OpenFence | null,
   line: string,
 ): OpenFence | null {
