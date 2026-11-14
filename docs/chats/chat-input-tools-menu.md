@@ -417,6 +417,21 @@ invocation. A "Skill" tile (sparkles icon) shows it; tapping the tile opens the
 read-only skill preview instead of the menu. The earlier inline Skills section
 was dropped. See `docs/skills.md` section 5.7 and 10.5.
 
+### The `/` picker and the Skill tile (skills layer S-12)
+
+The tile and the "+" menu row are the same invocation state as a typed
+`/command` (`source: 'menu'` or `'text'`, `docs/skills.md` section 10.5). A
+typed command that matches an enabled command puts the "Skill" tile in the
+attachments row at once; its remove button deletes the token from the text when
+the tile came from the text and only clears the invocation when it came from the
+menu. One skill per message: a typed command replaces a menu pick, and a menu
+pick replaces the tile of a typed one (that token then stays plain text). The
+`/` picker itself is not part of this menu: it is `ChatInput/CommandPicker.vue`,
+anchored above the composer, never a dialog or a bottom sheet (focus and the iOS
+keyboard), gated on `skills.commands`, and it does not use
+`chat-input:open-popover`. The "+" menu keeps listing every enabled skill, with
+or without a command.
+
 ## Add key links in Web search
 
 When Brave or Exa has no key, the Web search section lists one "Add a Brave
