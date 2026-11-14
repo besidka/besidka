@@ -1,6 +1,10 @@
 import { desc, eq } from 'drizzle-orm'
 import { SKILL_EDIT_MAX_FILE_BYTES } from '#shared/utils/skills-policy'
 import { getSkillSourceGroup, isSkillLicenceRootFile } from '#shared/utils/skills/edit'
+import {
+  isSkillCommandKind,
+  isSkillSkillKind,
+} from '#shared/utils/skills/mode'
 import * as schema from '~~/server/db/schema'
 import {
   loadOwnedSkill,
@@ -87,7 +91,7 @@ export function toFileSummary(file: SkillFileRow, locksLicenceFiles: boolean) {
 /**
  * The user's skills, newest edit first, with the counts the manager's filter
  * rows show: by source group (created, imported, from apps) and by kind. A
- * skill that is both a skill and a command counts in both kinds.
+ * command is a skill that runs only when asked; an Auto skill is a skill.
  */
 export async function listUserSkills(db: DbClient, userId: number) {
   const rows = await db.select()
@@ -100,11 +104,11 @@ export async function listUserSkills(db: DbClient, userId: number) {
   for (const row of rows) {
     sources[getSkillSourceGroup(row.sourceKind)] += 1
 
-    if (row.slashCommand) {
+    if (isSkillCommandKind(row)) {
       kinds.commands += 1
     }
 
-    if (row.modelInvocable || !row.slashCommand) {
+    if (isSkillSkillKind(row)) {
       kinds.skills += 1
     }
   }

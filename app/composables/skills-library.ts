@@ -3,6 +3,11 @@ import { parseError } from 'evlog'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { formatSkillCatalogLine } from '#shared/utils/skills/compose'
 import { getSkillSourceGroup } from '#shared/utils/skills/edit'
+import {
+  isSkillCommandKind,
+  isSkillSkillKind,
+} from '#shared/utils/skills/mode'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillSourceGroup } from '#shared/utils/skills/edit'
 import type {
   SkillSummary,
@@ -48,11 +53,9 @@ export function isSkillKind(
   skill: Pick<SkillSummary, 'modelInvocable' | 'slashCommand'>,
   kind: Exclude<SkillKindFilter, 'all'>,
 ): boolean {
-  if (kind === 'commands') {
-    return skill.slashCommand
-  }
-
-  return skill.modelInvocable || !skill.slashCommand
+  return kind === 'commands'
+    ? isSkillCommandKind(skill)
+    : isSkillSkillKind(skill)
 }
 
 /**
@@ -170,9 +173,9 @@ export function getSkillKindLabels(
 }
 
 export function getSkillDisplayName(
-  skill: Pick<SkillSummary, 'name' | 'slashCommand'>,
+  skill: Pick<SkillSummary, 'name' | 'slashCommand' | 'modelInvocable'>,
 ): string {
-  return skill.slashCommand ? `/${skill.name}` : skill.name
+  return isSkillCommandKind(skill) ? `/${skill.name}` : skill.name
 }
 
 export function formatSkillSource(
@@ -544,9 +547,7 @@ export function useSkillActions() {
   async function saveSettings(
     skillId: string,
     changes: {
-      enabled?: boolean
-      modelInvocable?: boolean
-      slashCommand?: boolean
+      mode?: SkillMode
       argumentHint?: string | null
     },
   ): Promise<boolean> {
@@ -573,11 +574,15 @@ export function useSkillActions() {
     })
   }
 
-  async function setEnabled(
+  async function setMode(
     skill: Pick<SkillSummary, 'id' | 'name' | 'sourceKind' | 'enabled'>,
-    enabled: boolean,
+    mode: SkillMode,
   ): Promise<boolean> {
-    if (enabled && requiresEnableConfirmation(skill)) {
+    if (
+      mode !== 'off'
+      && !skill.enabled
+      && requiresEnableConfirmation(skill)
+    ) {
       const confirmation = await useConfirm({
         text: `Turn on "${skill.name}"?`,
         subtitle: 'This skill was not written by you. Once it is on, the '
@@ -594,7 +599,7 @@ export function useSkillActions() {
       }
     }
 
-    return await saveSettings(skill.id, { enabled })
+    return await saveSettings(skill.id, { mode })
   }
 
   async function deleteSkill(
@@ -672,7 +677,7 @@ export function useSkillActions() {
     busyIds,
     isBusy,
     saveSettings,
-    setEnabled,
+    setMode,
     deleteSkill,
     checkForUpdates,
   }

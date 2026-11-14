@@ -806,4 +806,58 @@ describe('untrusted tool results', () => {
     await expect(runGuard('create_document')).resolves.toBe(false)
     await expect(runGuard('create_documents')).resolves.toBe(true)
   })
+
+  describe('separate skill step budget', () => {
+    function createSkillTools() {
+      return {
+        activate_skill: createFixtureFollowUpTool(),
+        read_skill_file: createFixtureFollowUpTool(),
+      }
+    }
+
+    it('grants only the skill steps when skill tools are the only follow-up tools', () => {
+      expect(getToolLoopMaxSteps(createSkillTools(), { skillSteps: 4 }))
+        .toBe(5)
+    })
+
+    it('never counts a skill tool as a web tool', () => {
+      expect(getToolLoopMaxSteps(createSkillTools(), {
+        skillSteps: 2,
+      })).toBe(3)
+    })
+
+    it('adds the skill steps on top of web search, without eating its rounds', () => {
+      expect(getToolLoopMaxSteps({
+        web_search_brave: createFixtureFollowUpTool(),
+        ...createSkillTools(),
+      }, { skillSteps: 4 })).toBe(8)
+    })
+
+    it('falls back to the default tool steps without a skill allowance', () => {
+      expect(getToolLoopMaxSteps(createSkillTools()))
+        .toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('flags a skill tool result as untrusted for the memory write guard', async () => {
+      const guard = { untrustedResultSeen: false }
+      const options = resolveToolLoopOptions(createSkillTools(), {
+        skillSteps: 4,
+        guard,
+      })
+
+      await options?.prepareStep({
+        stepNumber: 1,
+        steps: [{
+          content: [{
+            type: 'tool-result',
+            toolName: 'activate_skill',
+          }],
+        }],
+        model: { provider: 'anthropic', modelId: 'claude' },
+        instructions: undefined,
+      } as any)
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+  })
 })

@@ -118,10 +118,6 @@ export function useSkillEditor(skillId: MaybeRefOrGetter<string>) {
     return skill.value?.licence.filesLocked ?? false
   })
 
-  const slashCommand = computed<boolean>(() => {
-    return skill.value?.slashCommand ?? false
-  })
-
   const skillMdText = computed<string>(() => {
     const current = parts.value
     const initial = initialParts.value
@@ -324,9 +320,7 @@ export function useSkillEditor(skillId: MaybeRefOrGetter<string>) {
       return ''
     }
 
-    const syntaxError = getSkillEditorNameError(parts.value.name, {
-      slashCommand: slashCommand.value,
-    })
+    const syntaxError = getSkillEditorNameError(parts.value.name)
 
     if (syntaxError) {
       return syntaxError
@@ -572,7 +566,7 @@ export function useSkillEditor(skillId: MaybeRefOrGetter<string>) {
 
     const name = parts.value.name
 
-    if (getSkillEditorNameError(name, { slashCommand: slashCommand.value })) {
+    if (getSkillEditorNameError(name)) {
       return
     }
 

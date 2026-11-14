@@ -110,7 +110,7 @@ function buildProjectTile(
 
   return {
     id: 'project',
-    section: 'project',
+    section: 'add',
     icon: { kind: 'icon', name: 'lucide:folder' },
     caption: 'Project',
     value: project.name,
@@ -301,6 +301,32 @@ function buildReasoningTile(
   }
 }
 
+function buildSkillTile(
+  state: ChatInputToolsState,
+): ChatInputTile | null {
+  const selected = state.skills?.selected
+
+  if (!state.skills?.visible || !selected) {
+    return null
+  }
+
+  return {
+    id: 'skill',
+    section: 'skills',
+    icon: { kind: 'icon', name: 'lucide:sparkles' },
+    caption: 'Skill',
+    value: selected.name,
+    chipLabel: `Skill: ${selected.name}`,
+    ariaLabel: `Skill ${selected.name} is attached to the next message. `
+      + 'Open to read it.',
+    removeLabel: `Remove skill ${selected.name}`,
+    isNeutral: false,
+    isAuto: false,
+    isLocked: false,
+    isDisabled: false,
+  }
+}
+
 export const ARTIFACT_TILE_ID_PREFIX = 'artifact-'
 
 function buildArtifactTiles(state: ChatInputToolsState): ChatInputTile[] {
@@ -337,8 +363,11 @@ function buildArtifactTiles(state: ChatInputToolsState): ChatInputTile[] {
 export function buildChatInputTiles(
   state: ChatInputToolsState,
 ): ChatInputTile[] {
+  const skillTiles = [buildSkillTile(state)]
+    .filter((tile): tile is ChatInputTile => tile !== null)
+
   if (!state.isCapabilityResolved) {
-    return buildArtifactTiles(state)
+    return [...skillTiles, ...buildArtifactTiles(state)]
   }
 
   const builders = state.isDeepResearchModel
@@ -356,5 +385,5 @@ export function buildChatInputTiles(
     .map(builder => builder(state))
     .filter((tile): tile is ChatInputTile => tile !== null)
 
-  return [...settingTiles, ...buildArtifactTiles(state)]
+  return [...settingTiles, ...skillTiles, ...buildArtifactTiles(state)]
 }

@@ -134,7 +134,7 @@ describe('buildChatInputTiles', () => {
 
       expect(tile).toMatchObject({
         id: 'project',
-        section: 'project',
+        section: 'add',
         caption: 'Project',
         value: 'Q4 launch roadmap',
         ariaLabel: 'Project: Q4 launch roadmap',
@@ -543,4 +543,70 @@ describe('buildChatInputTiles artifact tiles', () => {
 
       expect(tileIds(state)).toEqual(['artifact-a1', 'artifact-a2'])
     })
+})
+
+describe('buildChatInputTiles skill tile', () => {
+  const selected = {
+    skillId: 'skl1',
+    name: 'writing-style',
+    version: 3,
+    source: 'menu' as const,
+  }
+
+  it('adds one removable tile with the sparkles icon, the caption Skill and the name', () => {
+    const state = createState({
+      skills: { visible: true, items: [], selected },
+    } as Partial<ChatInputToolsState>)
+    const [tile] = buildChatInputTiles(state).filter((candidate) => {
+      return candidate.id === 'skill'
+    })
+
+    expect(tile).toMatchObject({
+      section: 'skills',
+      icon: { kind: 'icon', name: 'lucide:sparkles' },
+      caption: 'Skill',
+      value: 'writing-style',
+      chipLabel: 'Skill: writing-style',
+      removeLabel: 'Remove skill writing-style',
+      isNeutral: false,
+    })
+  })
+
+  it('comes after the settings and before the attached artifacts', () => {
+    const state = createState({
+      memory: { excluded: true },
+      skills: { visible: true, items: [], selected },
+      artifacts: {
+        visible: true,
+        attached: [{
+          artifactId: 'a1',
+          version: 1,
+          kind: 'html' as const,
+          title: 'Quiz',
+        }],
+      },
+    } as Partial<ChatInputToolsState>)
+
+    expect(tileIds(state)).toEqual(['memory', 'skill', 'artifact-a1'])
+  })
+
+  it('shows before the model capabilities resolve, like artifacts', () => {
+    const state = createState({
+      isCapabilityResolved: false,
+      memory: { excluded: true },
+      skills: { visible: true, items: [], selected },
+    } as Partial<ChatInputToolsState>)
+
+    expect(tileIds(state)).toEqual(['skill'])
+  })
+
+  it('adds nothing without a skill, or when the section is not visible', () => {
+    expect(tileIds(createState({
+      skills: { visible: true, items: [], selected: null },
+    } as Partial<ChatInputToolsState>))).toEqual([])
+    expect(tileIds(createState({
+      skills: { visible: false, items: [], selected },
+    } as Partial<ChatInputToolsState>))).toEqual([])
+    expect(tileIds(createState())).toEqual([])
+  })
 })

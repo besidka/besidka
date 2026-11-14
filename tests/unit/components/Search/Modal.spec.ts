@@ -330,8 +330,9 @@ describe('Search/Modal.client', () => {
     expect(wrapper.find('#search-option-documents').exists()).toBe(false)
   })
 
-  it('adds the Skills row after Labs only with the skills feature', async () => {
+  it('adds the Skills row to the Chat group after Documents only with the skills feature', async () => {
     skillsActive.value = true
+    documentsActive.value = true
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -341,14 +342,14 @@ describe('Search/Modal.client', () => {
       .map(option => option.attributes('id'))
 
     expect(ids.indexOf('search-option-skills'))
-      .toBe(ids.indexOf('search-option-labs') + 1)
+      .toBe(ids.indexOf('search-option-documents') + 1)
     expect(wrapper.get('#search-option-skills').text()).toBe('Skills')
     expect(wrapper.get('#search-option-skills .iconify').classes())
       .toContain('i-lucide:sparkles')
 
     await wrapper.find('#search-option-skills').trigger('click')
 
-    expect(mocks.navigateToMock).toHaveBeenCalledWith('/profile/skills')
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/skills')
     expect(closeSpy).toHaveBeenCalled()
   })
 

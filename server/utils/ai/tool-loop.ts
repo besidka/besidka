@@ -7,6 +7,7 @@ import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
 import { isProjectKnowledgeToolName } from '~~/server/utils/ai/knowledge-tools'
 import { isArtifactToolName } from '~~/server/utils/artifacts/message-parts'
 import { isDocumentToolName } from '~~/server/utils/documents/message-parts'
+import { isSkillToolName } from '#shared/utils/skills/runtime'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -39,6 +40,7 @@ export interface UntrustedContentGuard {
 export interface ToolLoopBudget {
   chatSearchSteps?: number
   knowledgeSteps?: number
+  skillSteps?: number
   guard?: UntrustedContentGuard
 }
 
@@ -87,6 +89,7 @@ function isBudgetedLookupToolName(toolName: string): boolean {
 function isWebFollowUpToolName(toolName: string): boolean {
   return !isBudgetedLookupToolName(toolName)
     && !isProjectKnowledgeToolName(toolName)
+    && !isSkillToolName(toolName)
 }
 
 function isUntrustedToolResultPart(part: unknown): boolean {
@@ -215,10 +218,11 @@ function createToolLoopPrepareStep(
  * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are granted when at least one
  * registered follow-up tool is neither a chat-search, a memory nor a
  * project-knowledge tool (web search), `chatSearchSteps` more when a
- * chat-search or memory tool is registered, and `knowledgeSteps` more when a
- * project-knowledge tool is registered, so no lookup family ever eats another
- * family's rounds. When the follow-up tools grant no steps at all (lookup
- * tools with a non-positive allowance), the cap falls back to
+ * chat-search or memory tool is registered, `knowledgeSteps` more when a
+ * project-knowledge tool is registered, and `skillSteps` more when a skill
+ * tool is registered, so no lookup family ever eats another family's rounds.
+ * When the follow-up tools grant no steps at all (lookup tools with a
+ * non-positive allowance), the cap falls back to
  * `TOOL_LOOP_MAX_TOOL_STEPS` so the loop never degenerates to a single step.
  * Each step is a full provider round-trip, and the KV generation-in-progress
  * guard this route sets is a short heartbeat-renewed lease (see
@@ -248,11 +252,14 @@ export function resolveToolLoop(
   const hasWebFollowUpTool = followUpToolNames.some(isWebFollowUpToolName)
   const hasChatSearchTool = followUpToolNames.some(isBudgetedLookupToolName)
   const hasKnowledgeTool = followUpToolNames.some(isProjectKnowledgeToolName)
+  const hasSkillTool = followUpToolNames.some(isSkillToolName)
   const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
   const knowledgeSteps = Math.max(0, budget?.knowledgeSteps ?? 0)
+  const skillSteps = Math.max(0, budget?.skillSteps ?? 0)
   const toolSteps = (hasWebFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
     + (hasChatSearchTool ? chatSearchSteps : 0)
     + (hasKnowledgeTool ? knowledgeSteps : 0)
+    + (hasSkillTool ? skillSteps : 0)
   const maxSteps = (toolSteps || TOOL_LOOP_MAX_TOOL_STEPS) + 1
 
   return {

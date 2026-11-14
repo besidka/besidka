@@ -71,8 +71,8 @@ describe('skills-library helpers', () => {
     })).toEqual([])
   })
 
-  it('mirrors the server rule for kinds', () => {
-    const both = createSkillSummary({
+  it('mirrors the server rule for kinds: Auto is a skill, Only when I ask a command', () => {
+    const auto = createSkillSummary({
       modelInvocable: true,
       slashCommand: true,
     })
@@ -85,13 +85,15 @@ describe('skills-library helpers', () => {
       slashCommand: false,
     })
 
-    expect(isSkillKind(both, 'skills')).toBe(true)
-    expect(isSkillKind(both, 'commands')).toBe(true)
+    expect(isSkillKind(auto, 'skills')).toBe(true)
+    expect(isSkillKind(auto, 'commands')).toBe(false)
     expect(isSkillKind(commandOnly, 'skills')).toBe(false)
     expect(isSkillKind(commandOnly, 'commands')).toBe(true)
     expect(isSkillKind(plain, 'skills')).toBe(true)
-    expect(getSkillKindLabels(both)).toEqual(['Skill', 'Command'])
+    expect(getSkillKindLabels(auto)).toEqual(['Skill'])
     expect(getSkillKindLabels(commandOnly)).toEqual(['Command'])
+    expect(getSkillDisplayName(auto)).toBe('review-pr')
+    expect(getSkillDisplayName(commandOnly)).toBe('/review-pr')
   })
 
   it('filters by source, kind and search text', () => {
@@ -182,12 +184,12 @@ describe('useSkillActions', () => {
   it('turns on a skill the user wrote without asking', async () => {
     const skill = createSkillSummary({ enabled: false })
 
-    await expect(useSkillActions().setEnabled(skill, true)).resolves.toBe(true)
+    await expect(useSkillActions().setMode(skill, 'auto')).resolves.toBe(true)
 
     expect(mocks.confirm).not.toHaveBeenCalled()
     expect(mocks.fetch).toHaveBeenCalledWith(`/api/v1/skills/${skill.id}`, {
       method: 'PATCH',
-      body: { enabled: true },
+      body: { mode: 'auto' },
     })
   })
 
@@ -196,7 +198,7 @@ describe('useSkillActions', () => {
 
     const skill = createSkillSummary({ sourceKind: 'zip', enabled: false })
 
-    await expect(useSkillActions().setEnabled(skill, true)).resolves.toBe(false)
+    await expect(useSkillActions().setMode(skill, 'ask')).resolves.toBe(false)
 
     expect(mocks.confirm).toHaveBeenCalledTimes(1)
     expect(mocks.fetch).not.toHaveBeenCalled()
@@ -207,20 +209,32 @@ describe('useSkillActions', () => {
 
     const skill = createSkillSummary({ sourceKind: 'github', enabled: false })
 
-    await expect(useSkillActions().setEnabled(skill, true)).resolves.toBe(true)
+    await expect(useSkillActions().setMode(skill, 'auto')).resolves.toBe(true)
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks again for a skill that is already on only when it comes from Off', async () => {
+    const skill = createSkillSummary({ sourceKind: 'zip', enabled: true })
+
+    await useSkillActions().setMode(skill, 'ask')
+
+    expect(mocks.confirm).not.toHaveBeenCalled()
+    expect(mocks.fetch).toHaveBeenCalledWith(`/api/v1/skills/${skill.id}`, {
+      method: 'PATCH',
+      body: { mode: 'ask' },
+    })
   })
 
   it('never asks when turning a skill off', async () => {
     const skill = createSkillSummary({ sourceKind: 'mcp' })
 
-    await useSkillActions().setEnabled(skill, false)
+    await useSkillActions().setMode(skill, 'off')
 
     expect(mocks.confirm).not.toHaveBeenCalled()
     expect(mocks.fetch).toHaveBeenCalledWith(`/api/v1/skills/${skill.id}`, {
       method: 'PATCH',
-      body: { enabled: false },
+      body: { mode: 'off' },
     })
   })
 
@@ -229,7 +243,7 @@ describe('useSkillActions', () => {
       data: { message: 'This skill cannot be enabled', why: 'Broken' },
     })
 
-    const result = await useSkillActions().saveSettings('id', { enabled: true })
+    const result = await useSkillActions().saveSettings('id', { mode: 'auto' })
 
     expect(result).toBe(false)
     expect(mocks.errorMessage).toHaveBeenCalled()

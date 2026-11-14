@@ -1,16 +1,35 @@
 <template>
-  <div class="mb-8 text-center">
-    <h1 class="text-4xl font-bold">Skills</h1>
-    <h2 class="mt-2">
+  <HistoryPageShell
+    v-if="skillsFeature.active"
+    active-tab="skills"
+  >
+    <template #title>
+      Skills
+    </template>
+    <template #subtitle>
       Skills teach the model how to do a task your way. Commands are skills
       you run with /name.
-    </h2>
-  </div>
-  <div
-    v-if="skillsFeature.active"
-    class="grid gap-4"
-    data-testid="skills-page"
-  >
+    </template>
+
+    <template #toolbar>
+      <ProfileSkillsFilters
+        v-model:search="search"
+        :source-options="sourceOptions"
+        :kind-options="kindOptions"
+        :source="appliedSource"
+        :kind="appliedKind"
+        :is-search-visible="isSearchVisible"
+        @select-source="setSource"
+        @select-kind="setKind"
+      >
+        <ProfileSkillsNewMenu
+          v-if="!isLibraryEmpty"
+          :can-import-from-url="importFromUrl.active"
+          @select="onNew"
+        />
+      </ProfileSkillsFilters>
+    </template>
+
     <div
       v-if="needsReviewSkills.length"
       class="alert alert-warning alert-soft"
@@ -38,23 +57,6 @@
       </button>
     </div>
 
-    <ProfileSkillsFilters
-      v-model:search="search"
-      :source-options="sourceOptions"
-      :kind-options="kindOptions"
-      :source="appliedSource"
-      :kind="appliedKind"
-      :is-search-visible="isSearchVisible"
-      @select-source="setSource"
-      @select-kind="setKind"
-    >
-      <ProfileSkillsNewMenu
-        v-if="!isLibraryEmpty"
-        :can-import-from-url="importFromUrl.active"
-        @select="onNew"
-      />
-    </ProfileSkillsFilters>
-
     <ProfileSkillsList
       :skills="visibleSkills"
       :has-loaded="hasLoaded"
@@ -67,7 +69,7 @@
       :can-import-from-url="importFromUrl.active"
       @open="openDetail"
       @edit="skill => editSession.open(skill.id)"
-      @toggle="onToggle"
+      @set-mode="onSetMode"
       @review-update="onReviewUpdate"
       @check-updates="onCheckUpdates"
       @delete="onDelete"
@@ -75,7 +77,7 @@
       @clear="clearFilters"
       @new="onNew"
     />
-  </div>
+  </HistoryPageShell>
 
   <LazyProfileSkillsCreateDialog
     v-if="createKind"
@@ -110,6 +112,7 @@ import {
   LazyProfileSkillsDetailPanel,
 } from '#components'
 import type { SkillSummary } from '#shared/types/skills.d'
+import type { SkillMode } from '#shared/utils/skills/mode'
 import type {
   SkillCreateKind,
   SkillDetailTab,
@@ -118,7 +121,6 @@ import type {
 } from '~/types/skills-ui.d'
 
 definePageMeta({
-  layout: 'profile',
   auth: {
     only: 'user',
   },
@@ -132,7 +134,7 @@ const skillsFeature = useFeature('skills')
 const importFromUrl = useFeature('skills.import-url')
 
 if (!skillsFeature.value.active) {
-  await navigateTo('/profile/security', { replace: true })
+  await navigateTo('/chats/history', { replace: true })
 }
 
 const sidePanel = useSidePanel()
@@ -195,6 +197,46 @@ const selectedId = computed<string | null>(() => {
     : null
 })
 
+const route = useRoute()
+const router = useRouter()
+
+watch(
+  [hasLoaded, () => route.query.skill],
+  async ([isLoaded, requestedId]) => {
+    if (!isLoaded || typeof requestedId !== 'string') {
+      return
+    }
+
+    const shouldEdit = route.query.edit === '1'
+    const requested = skills.value.find((candidate) => {
+      return candidate.id === requestedId
+    })
+
+    if (requested) {
+      openDetail(requested)
+
+      if (shouldEdit) {
+        editSession.open(requested.id)
+      }
+    } else {
+      useWarningMessage(
+        'That skill is not available',
+        'It may have been deleted. Pick one from the list.',
+      )
+    }
+
+    await router.replace({
+      path: route.path,
+      query: Object.fromEntries(
+        Object.entries(route.query).filter(([key]) => {
+          return key !== 'skill' && key !== 'edit'
+        }),
+      ),
+    })
+  },
+  { immediate: true },
+)
+
 watch(sourceOptions, async (options) => {
   if (
     options.length
@@ -250,8 +292,8 @@ function onNew(action: SkillNewAction) {
   importTab.value = action
 }
 
-async function onToggle(skill: SkillSummary, enabled: boolean) {
-  await actions.setEnabled(skill, enabled)
+async function onSetMode(skill: SkillSummary, mode: SkillMode) {
+  await actions.setMode(skill, mode)
 }
 
 function onReviewUpdate(skill: SkillSummary) {

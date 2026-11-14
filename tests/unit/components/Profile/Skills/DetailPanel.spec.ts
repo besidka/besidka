@@ -162,7 +162,7 @@ describe('Profile/Skills/DetailPanel', () => {
 
     await wrapper.get(testId('skill-tab-settings')).trigger('click')
 
-    expect(wrapper.find(testId('skill-setting-model-invocable')).exists())
+    expect(wrapper.find(testId('skill-setting-mode-select')).exists())
       .toBe(true)
 
     await wrapper.get(testId('skill-tab-files')).trigger('click')
@@ -277,18 +277,21 @@ describe('Profile/Skills/DetailPanel', () => {
     )
   })
 
-  it('saves the invocation settings through PATCH', async () => {
+  it('saves the mode through PATCH as one request', async () => {
     useState('skills:detail-tab').value = 'settings'
     mocks.fetch.mockResolvedValue({})
 
     const wrapper = await mountPanel()
+    const select = wrapper.get(testId('skill-setting-mode-select'))
+      .element as HTMLSelectElement
 
-    await wrapper.get(testId('skill-setting-slash-command')).trigger('click')
+    select.value = 'ask'
+    select.dispatchEvent(new Event('change'))
     await flushPromises()
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/SkillPublicId01', {
       method: 'PATCH',
-      body: { slashCommand: true },
+      body: { mode: 'ask' },
     })
   })
 
@@ -310,15 +313,33 @@ describe('Profile/Skills/DetailPanel', () => {
     })
   })
 
-  it('keeps both invocation toggles usable for a skill', async () => {
+  it('has no separate invocation toggles, only the mode control', async () => {
     useState('skills:detail-tab').value = 'settings'
 
     const wrapper = await mountPanel()
 
-    expect(wrapper.get(testId('skill-setting-model-invocable'))
+    expect(wrapper.find(testId('skill-setting-model-invocable')).exists())
+      .toBe(false)
+    expect(wrapper.find(testId('skill-setting-slash-command')).exists())
+      .toBe(false)
+    expect(wrapper.get(testId('skill-setting-mode-select'))
       .attributes('disabled')).toBeUndefined()
-    expect(wrapper.get(testId('skill-setting-slash-command'))
-      .attributes('disabled')).toBeUndefined()
+    expect(wrapper.get(testId('skill-setting-mode-description')).text())
+      .toContain('The model uses it when the description matches')
+  })
+
+  it('says to rename a skill whose reserved name blocks /name', async () => {
+    useState('skills:detail-tab').value = 'settings'
+    detail.value = createSkillDetail({
+      name: 'memory',
+      enabled: true,
+      slashCommand: false,
+    })
+
+    const wrapper = await mountPanel()
+
+    expect(wrapper.get(testId('skill-setting-slash-blocked')).text())
+      .toContain('Rename to use /name')
   })
 
   it('shows licence, source and requested tools as not granted', async () => {

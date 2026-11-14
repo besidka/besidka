@@ -209,6 +209,9 @@ export async function writeSkillVersion(
       allowedTools: prepared.frontmatter.allowedTools,
       filesCount: input.files.length,
       bytes: prepared.totalBytes,
+      ...(prepared.slashCommand === undefined
+        ? {}
+        : { slashCommand: prepared.slashCommand }),
       ...(markReady ? { status: 'ready' as const } : {}),
     },
   })

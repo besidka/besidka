@@ -312,7 +312,7 @@ describe('skill reads, settings and delete', () => {
       await seed('from-github', { sourceKind: 'github' })
       await seed('from-agent', { sourceKind: 'mcp' })
       await seed('only-command', { slashCommand: true, modelInvocable: false })
-      await seed('both', { slashCommand: true, modelInvocable: true })
+      await seed('auto', { slashCommand: true, modelInvocable: true })
 
       const otherUserId = await seedUser(testDb.db)
 
@@ -327,7 +327,7 @@ describe('skill reads, settings and delete', () => {
       expect(result.skills).toHaveLength(6)
       expect(result.counts).toEqual({
         sources: { all: 6, created: 3, imported: 2, apps: 1 },
-        kinds: { all: 6, skills: 5, commands: 2 },
+        kinds: { all: 6, skills: 5, commands: 1 },
       })
       expect(result.skills.every((skill) => {
         return !('userId' in skill)
@@ -377,15 +377,13 @@ describe('skill reads, settings and delete', () => {
   })
 
   describe('settings', () => {
-    it('changes the toggles without creating a version', async () => {
+    it('changes the mode and the hint without creating a version', async () => {
       const result = await updateSkillSettings({
         db: testDb.db,
         userId,
         skillId,
         changes: {
-          enabled: false,
-          modelInvocable: true,
-          slashCommand: true,
+          mode: 'off',
           argumentHint: 'What to review',
         },
         logger,
@@ -396,40 +394,83 @@ describe('skill reads, settings and delete', () => {
 
       expect(result).toMatchObject({
         enabled: false,
-        modelInvocable: true,
-        slashCommand: true,
         argumentHint: 'What to review',
         currentVersion: 1,
       })
       expect(versions).toHaveLength(1)
     })
 
-    it('refuses to switch a reserved name on as a command', async () => {
+    it('sets the three columns from one mode in a single update', async () => {
       await testDb.db.update(schema.skills)
-        .set({ name: 'memory' })
+        .set({ enabled: false, modelInvocable: false, slashCommand: false })
         .where(eq(schema.skills.id, skillId))
-
-      const failure = await failureOf(updateSkillSettings({
-        db: testDb.db,
-        userId,
-        skillId,
-        changes: { slashCommand: true },
-        logger,
-      }))
-
-      expect(failure).toMatchObject({
-        status: 400,
-        code: 'reserved-name',
-        message: '/memory is reserved by Besidka',
-      })
 
       await expect(updateSkillSettings({
         db: testDb.db,
         userId,
         skillId,
-        changes: { modelInvocable: false },
+        changes: { mode: 'auto' },
         logger,
-      })).resolves.toMatchObject({ slashCommand: false })
+      })).resolves.toMatchObject({
+        enabled: true,
+        modelInvocable: true,
+        slashCommand: true,
+      })
+      await expect(updateSkillSettings({
+        db: testDb.db,
+        userId,
+        skillId,
+        changes: { mode: 'ask' },
+        logger,
+      })).resolves.toMatchObject({
+        enabled: true,
+        modelInvocable: false,
+        slashCommand: true,
+      })
+      await expect(updateSkillSettings({
+        db: testDb.db,
+        userId,
+        skillId,
+        changes: { mode: 'off' },
+        logger,
+      })).resolves.toMatchObject({
+        enabled: false,
+        modelInvocable: false,
+        slashCommand: true,
+      })
+    })
+
+    it('succeeds for a reserved name and leaves /name off', async () => {
+      await testDb.db.update(schema.skills)
+        .set({ name: 'memory', enabled: false, slashCommand: false })
+        .where(eq(schema.skills.id, skillId))
+
+      await expect(updateSkillSettings({
+        db: testDb.db,
+        userId,
+        skillId,
+        changes: { mode: 'auto' },
+        logger,
+      })).resolves.toMatchObject({
+        name: 'memory',
+        enabled: true,
+        modelInvocable: true,
+        slashCommand: false,
+      })
+    })
+
+    it('refuses a broken skill for Auto and Only when I ask', async () => {
+      await testDb.db.update(schema.skills)
+        .set({ status: 'broken', enabled: false })
+        .where(eq(schema.skills.id, skillId))
+
+      expect(await failureOf(updateSkillSettings({
+        db: testDb.db,
+        userId,
+        skillId,
+        changes: { mode: 'ask' },
+        logger,
+      }))).toMatchObject({ status: 409, code: 'skill-broken' })
     })
 
     it('refuses to enable a broken skill but allows needs-review', async () => {
@@ -441,7 +482,7 @@ describe('skill reads, settings and delete', () => {
         db: testDb.db,
         userId,
         skillId,
-        changes: { enabled: true },
+        changes: { mode: 'auto' },
         logger,
       }))).toMatchObject({ status: 409, code: 'skill-broken' })
 
@@ -453,7 +494,7 @@ describe('skill reads, settings and delete', () => {
         db: testDb.db,
         userId,
         skillId,
-        changes: { enabled: true },
+        changes: { mode: 'auto' },
         logger,
       })).resolves.toMatchObject({ enabled: true })
     })
@@ -465,7 +506,7 @@ describe('skill reads, settings and delete', () => {
         db: testDb.db,
         userId: otherUserId,
         skillId,
-        changes: { enabled: false },
+        changes: { mode: 'off' },
         logger,
       }))).toMatchObject({ status: 404 })
     })

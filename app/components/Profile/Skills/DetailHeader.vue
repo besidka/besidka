@@ -13,25 +13,18 @@
       <Icon name="lucide:pencil" size="14" aria-hidden="true" />
       Edit
     </button>
-    <label
-      class="flex min-h-8 cursor-pointer items-center gap-2 text-sm"
-      data-testid="skill-detail-enable"
-    >
-      <span>{{ data.enabled ? 'On' : 'Off' }}</span>
-      <input
-        type="checkbox"
-        class="toggle toggle-sm"
-        :checked="data.enabled"
-        :disabled="actions.isBusy(data.id) || data.status === 'broken'"
-        :aria-label="`${data.enabled ? 'Turn off' : 'Turn on'} ${data.name}`"
-        data-testid="skill-detail-toggle"
-        @click.prevent="onToggle"
-      >
-    </label>
+    <ProfileSkillsModeControl
+      :skill="data"
+      :is-disabled="actions.isBusy(data.id)"
+      test-id="skill-detail-mode"
+      @select="onSelectMode"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { SkillMode } from '#shared/utils/skills/mode'
+
 const props = defineProps<{
   skillId: string
 }>()
@@ -42,11 +35,11 @@ const { data } = useSkillDetail(() => props.skillId)
 const actions = useSkillActions()
 const editSession = useSkillEditSession()
 
-async function onToggle() {
+async function onSelectMode(mode: SkillMode) {
   if (!data.value) {
     return
   }
 
-  await actions.setEnabled(data.value, !data.value.enabled)
+  await actions.setMode(data.value, mode)
 }
 </script>

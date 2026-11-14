@@ -8,7 +8,7 @@ export const writingStyleTemplate: SkillTemplate = {
   description:
     'Draft or rewrite text so it sounds like me. Use when I ask for an email, post or document in my own voice.',
   modelInvocable: true,
-  slashCommand: false,
+  slashCommand: true,
   argumentHint: null,
   files: [
     {

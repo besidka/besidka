@@ -19,6 +19,10 @@ function createState(
     search?: boolean
     reasoning?: boolean
     lower?: boolean
+    skills?: boolean
+    skillAttached?: boolean
+    project?: boolean
+    projectName?: string
   } = {},
 ): ChatInputToolsState {
   const {
@@ -26,6 +30,10 @@ function createState(
     search = true,
     reasoning = true,
     lower = true,
+    skills = false,
+    skillAttached = false,
+    project = false,
+    projectName,
   } = overrides
 
   return {
@@ -59,7 +67,28 @@ function createState(
     image: { supported: lower, enabled: false, required: false },
     files: { visible: files, count: 0, isImageInputSupported: true },
     artifacts: { visible: false, attached: [] },
-    project: { visible: false, context: null },
+    skills: {
+      visible: skills,
+      selected: skillAttached
+        ? {
+          skillId: 'skl1',
+          name: 'writing-style',
+          version: 1,
+          source: 'menu',
+        }
+        : null,
+      items: [{
+        id: 'skl1',
+        name: 'writing-style',
+        description: 'Write in my voice',
+        version: 1,
+        mode: 'auto',
+      }],
+    },
+    project: {
+      visible: project,
+      context: projectName ? { id: 'p1', name: projectName } : null,
+    },
     memory: { excluded: null },
     research: null,
     isDeepResearchModel: false,
@@ -82,6 +111,103 @@ function layout(wrapper: ContentWrapper): string[] {
         : '?')
   })
 }
+
+describe('ChatInput/ToolsMenu/Content skills', () => {
+  it('adds one Add skill row to the Add section only when the user has an enabled skill', async () => {
+    const hidden = await mountContent(createState())
+    const shown = await mountContent(createState({ skills: true }))
+
+    expect(hidden.find('[data-testid="tools-action-skills"]').exists())
+      .toBe(false)
+    expect(layout(shown)).toEqual(layout(hidden))
+    expect(shown.get('[data-testid="tools-action-skills"]').text())
+      .toContain('Add skill')
+    expect(shown.get('[data-testid="tools-action-skills"]').text())
+      .toContain('Skills you made or imported')
+  })
+
+  it('still renders the Add section when only the skill row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      skills: true,
+    }))
+
+    expect(layout(wrapper)[0]).toBe('add')
+    expect(wrapper.find('[data-testid="tools-action-attach"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="tools-action-skills"]').exists())
+      .toBe(true)
+  })
+
+  it('shows a badge for an attached skill and opens the picker', async () => {
+    const wrapper = await mountContent(createState({ skills: true }))
+
+    expect(wrapper.get('[data-testid="tools-action-skills"]')
+      .find('.badge').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="tools-action-skills"]').trigger('click')
+
+    expect(wrapper.emitted('open-skills-picker')).toHaveLength(1)
+
+    await wrapper.setProps({
+      state: createState({ skills: true, skillAttached: true }),
+    })
+
+    expect(wrapper.get('[data-testid="tools-action-skills"] .badge').text())
+      .toBe('1')
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content project row', () => {
+  it('ends the Add section with the Project row after Add skill', async () => {
+    const wrapper = await mountContent(createState({
+      skills: true,
+      project: true,
+      projectName: 'Q4 launch',
+    }))
+    const rows = wrapper.findAll(
+      '[data-section="add"] button[data-testid^="tools-"]',
+    )
+
+    expect(rows.at(-1)?.attributes('data-testid')).toBe('tools-project')
+    expect(rows.at(-2)?.attributes('data-testid')).toBe('tools-action-skills')
+    expect(rows.at(-1)?.text()).toContain('Q4 launch')
+    expect(wrapper.find('[data-section="project"]').exists()).toBe(false)
+  })
+
+  it('renders the Add section when only the Project row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      search: false,
+      reasoning: false,
+      lower: false,
+      project: true,
+    }))
+
+    expect(layout(wrapper)).toEqual(['add'])
+    expect(wrapper.get('[data-testid="tools-project"]').text())
+      .toContain('None')
+  })
+
+  it('draws a divider between the Add section and the lower rows', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      search: false,
+      reasoning: false,
+      project: true,
+    }))
+
+    expect(layout(wrapper)).toEqual(['add', '---', 'image'])
+  })
+
+  it('emits open-project-picker when the row is clicked', async () => {
+    const wrapper = await mountContent(createState({ project: true }))
+
+    await wrapper.get('[data-testid="tools-project"]').trigger('click')
+
+    expect(wrapper.emitted('open-project-picker')).toHaveLength(1)
+  })
+})
 
 describe('ChatInput/ToolsMenu/Content dividers', () => {
   it('separates every group with one divider when all are present',

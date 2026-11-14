@@ -20,6 +20,7 @@ default shows as a tile at the start of the attachments row.
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
 | "Add artifact" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/ArtifactPicker.client.vue` (below, `docs/artifacts/attach.md`) |
+| "Add skill" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/SkillPicker.client.vue` (below, `docs/skills.md` section 10.5) |
 | Types | `app/types/chat-input-tools.d.ts` |
 | Reasoning icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `REASONING_EXPANDED_ICON`, `REASONING_AUTO_HIDE_ICON`) |
 
@@ -82,7 +83,7 @@ button already marks that edge. Order and rules:
 
 | Tile | Shown when | Remove (x) |
 |---|---|---|
-| Project | a project is attached | clears the project |
+| Project | a project is attached, tapping opens the Add section | clears the project |
 | Memory off (neutral gray, `lucide:book-x`) | a new chat excludes memory | turns memory back on |
 | Deep research | the model is a deep research model | none |
 | Image (caption "Mode", value "Image generation", like Deep research) | image generation is on or required | turns it off, none when required; a required tile (image-only models) shows a small lock badge (`isLocked`, `chat-input-tile-lock-badge`) on the icon and the title "Image generation is always on for this model", never the word "Required" |
@@ -401,3 +402,37 @@ the `<label>` carries `cursor-pointer` (`cursor-not-allowed` when disabled).
 
 - Keyboard shortcuts (`/` to open the menu from an empty textarea, Cmd/Ctrl+U
   to attach) are a follow-up.
+
+## Add skill row (skills layer S-3)
+
+The Add section ends with one row, "Add skill" (`tools-action-skills`, after
+"Add artifact"), shown only when the `skills` flag is on, the user has an
+enabled skill and the model is not a deep-research model. The Add section
+renders for this row alone when files are not visible, so the row order is:
+Attach files, Add from library, Generated images, Add artifact, Add skill,
+Project. The row (badge 1 while a skill is attached) emits `open-skills-picker`, which opens
+`ChatInput/SkillPicker.client.vue` (a searchable dialog from eight skills,
+with a "Manage skills" link) and attaches the chosen skill as the one composer
+invocation. A "Skill" tile (sparkles icon) shows it; tapping the tile opens the
+read-only skill preview instead of the menu. The earlier inline Skills section
+was dropped. See `docs/skills.md` section 5.7 and 10.5.
+
+## Add key links in Web search
+
+When Brave or Exa has no key, the Web search section lists one "Add a Brave
+key" / "Add an Exa key" link per missing key under the provider control
+(`web-search-add-key-list`, only rendered when at least one link exists, so
+the section spacing is unchanged otherwise). The list starts `mt-2` below the
+control, and each link is a full-row tap target with the same minimum height
+as an action row (`min-h-9`, `max-md:min-h-11`), the same text size, icon and
+arrow, and a hover background.
+
+## Project row
+
+The Project row ("Project" in a new chat, "Move to project" in an existing
+one, the project name or "None" as the value, a chevron, `tools-project`) is
+the last row of the Add section, after "Add skill". It no longer has a section
+of its own, so there is no `project` entry in `ToolsSection`. The Add section
+renders for this row alone (`state.project.visible`), the same way it does for
+the skill row, and the Project tile opens the menu at the Add section. The row
+emits `open-project-picker` and closes the menu first.

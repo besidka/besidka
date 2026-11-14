@@ -6,8 +6,8 @@ import {
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
-import SkillsPage from '../../../../app/pages/profile/skills.vue'
-import { createSkillSummary } from '../../../setup/helpers/skills-ui'
+import SkillsPage from '../../../../../app/pages/chats/skills/index.vue'
+import { createSkillSummary } from '../../../../setup/helpers/skills-ui'
 
 const mocks = vi.hoisted(() => ({
   navigateTo: vi.fn(),
@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   refresh: vi.fn(),
   refreshNuxtData: vi.fn(),
+  warning: vi.fn(),
 }))
 
 const skillsActive = ref<boolean>(true)
@@ -27,6 +28,7 @@ mockNuxtImport('navigateTo', () => mocks.navigateTo)
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('refreshNuxtData', () => mocks.refreshNuxtData)
+mockNuxtImport('useWarningMessage', () => mocks.warning)
 mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
     const active = key === 'skills'
@@ -96,8 +98,9 @@ function testId(id: string) {
   return `[data-testid="${id}"]`
 }
 
-function mountPage() {
+function mountPage(route?: string) {
   return mountSuspended(SkillsPage, {
+    ...(route ? { route } : {}),
     global: {
       stubs: {
         teleport: false,
@@ -107,7 +110,7 @@ function mountPage() {
   })
 }
 
-describe('profile skills page', () => {
+describe('chats skills page', () => {
   beforeEach(() => {
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
       .mockImplementation(function (this: HTMLDialogElement) {
@@ -129,6 +132,7 @@ describe('profile skills page', () => {
     mocks.confirm.mockReset()
     mocks.refresh.mockReset()
     mocks.refreshNuxtData.mockReset()
+    mocks.warning.mockReset()
     setList()
     useSidePanel().close()
     useSkillUpdateReview().close()
@@ -139,6 +143,8 @@ describe('profile skills page', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.get('h1').text()).toBe('Skills')
+    expect(wrapper.find(testId('tab-skills')).attributes('aria-current'))
+      .toBe('page')
     expect(wrapper.text()).toContain(
       'Skills teach the model how to do a task your way. Commands are skills you run with /name.',
     )
@@ -152,11 +158,11 @@ describe('profile skills page', () => {
 
     const wrapper = await mountPage()
 
-    expect(wrapper.find(testId('skills-page')).exists()).toBe(false)
+    expect(wrapper.find(testId('tab-skills')).exists()).toBe(false)
     expect(wrapper.find(testId('skill-row')).exists()).toBe(false)
     expect(wrapper.find(testId('skills-new-trigger')).exists()).toBe(false)
     expect(mocks.navigateTo).toHaveBeenCalledWith(
-      '/profile/security',
+      '/chats/history',
       { replace: true },
     )
   })
@@ -323,6 +329,18 @@ describe('profile skills page', () => {
     expect(wrapper.find(testId('skills-empty')).exists()).toBe(true)
   })
 
+  async function pickRowMode(
+    wrapper: Awaited<ReturnType<typeof mountPage>>,
+    mode: string,
+  ) {
+    const select = wrapper.get(testId('skill-row-mode-select'))
+      .element as HTMLSelectElement
+
+    select.value = mode
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+  }
+
   it('asks before turning on a skill the user did not write', async () => {
     mocks.confirm.mockResolvedValue(null)
     setList([createSkillSummary({
@@ -334,8 +352,7 @@ describe('profile skills page', () => {
 
     const wrapper = await mountPage()
 
-    await wrapper.get(testId('skill-row-toggle')).trigger('click')
-    await flushPromises()
+    await pickRowMode(wrapper, 'ask')
 
     expect(mocks.confirm).toHaveBeenCalledTimes(1)
     expect(mocks.fetch).not.toHaveBeenCalled()
@@ -347,13 +364,63 @@ describe('profile skills page', () => {
 
     const wrapper = await mountPage()
 
-    await wrapper.get(testId('skill-row-toggle')).trigger('click')
-    await flushPromises()
+    await pickRowMode(wrapper, 'auto')
 
     expect(mocks.confirm).not.toHaveBeenCalled()
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/a', {
       method: 'PATCH',
-      body: { enabled: true },
+      body: { mode: 'auto' },
+    })
+  })
+
+  describe('opening a skill from a link', () => {
+    it('opens the details and the editor for ?skill=<id>&edit=1, then clears the query', async () => {
+      await mountPage('/chats/skills?skill=a&edit=1')
+
+      await vi.waitFor(() => {
+        expect(useRoute().query.skill).toBeUndefined()
+      })
+
+      expect(useSidePanel().viewKey.value).toBe('skill:a')
+      expect(useSkillEditSession().skillId.value).toBe('a')
+      expect(useRoute().query.edit).toBeUndefined()
+    })
+
+    it('opens only the details without edit=1', async () => {
+      await mountPage('/chats/skills?skill=b')
+
+      await vi.waitFor(() => {
+        expect(useRoute().query.skill).toBeUndefined()
+      })
+
+      expect(useSidePanel().viewKey.value).toBe('skill:b')
+      expect(useSkillEditSession().skillId.value).toBeNull()
+    })
+
+    it('keeps the other query parameters it did not use', async () => {
+      await mountPage('/chats/skills?skill=a&source=created')
+
+      await vi.waitFor(() => {
+        expect(useRoute().query.skill).toBeUndefined()
+      })
+
+      expect(useRoute().query).toEqual({ source: 'created' })
+    })
+
+    it('warns about a skill that is gone and opens nothing', async () => {
+      await mountPage('/chats/skills?skill=gone&edit=1')
+
+      await vi.waitFor(() => {
+        expect(useRoute().query.skill).toBeUndefined()
+      })
+
+      expect(mocks.warning).toHaveBeenCalledWith(
+        'That skill is not available',
+        expect.any(String),
+      )
+      expect(useSidePanel().viewKey.value).toBeNull()
+      expect(useSkillEditSession().skillId.value).toBeNull()
+      expect(useRoute().query.skill).toBeUndefined()
     })
   })
 })

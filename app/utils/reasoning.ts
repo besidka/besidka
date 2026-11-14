@@ -16,6 +16,7 @@ const EXCLUDED_TOOL_STEP_NAMES = new Set<string>([
   'create_artifact',
   'update_artifact',
   'code_execution',
+  'activate_skill',
 ])
 const PENDING_TOOL_STATES = new Set<string>([
   'input-streaming',
@@ -79,6 +80,11 @@ const TOOL_STEP_TITLES = new Map<string, {
     pending: 'Removing from memory',
     done: 'Removed from memory',
     failed: 'Removing from memory failed',
+  }],
+  ['read_skill_file', {
+    pending: 'Reading a skill file',
+    done: 'Read a skill file',
+    failed: 'Reading the skill file failed',
   }],
   ['search_project_knowledge', {
     pending: 'Searching project knowledge',

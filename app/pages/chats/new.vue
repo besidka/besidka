@@ -115,6 +115,7 @@ const message = customRef<string>((track, trigger) => ({
 }))
 const files = ref<FileMetadata[]>([])
 const attachedArtifacts = ref<AttachedArtifact[]>([])
+const skillInvocation = useComposerSkillInvocation()
 const savedWebSearchTool = prefStorage.getItem('settings_web_search_tool')
 const tools = shallowRef<Tools>(
   isWebSearchTool(savedWebSearchTool) ? [savedWebSearchTool] : [],
@@ -595,6 +596,10 @@ async function onSubmit() {
   const draft = message.value
   const draftFiles = [...files.value]
   const draftArtifacts = [...attachedArtifacts.value]
+  const draftSkillInvocation = skillInvocation.invocation.value
+    ? { ...skillInvocation.invocation.value }
+    : null
+  const draftSkillPart = skillInvocation.part.value
   const draftBackup = useChatDraftBackup()
   const { model } = getModel(userModel.value)
 
@@ -615,10 +620,13 @@ async function onSubmit() {
       method: 'put',
       body: {
         parts: [
-          {
-            type: 'text',
-            text: draft,
-          } as TextUIPart,
+          ...(draft.trim() || !draftSkillPart
+            ? [{
+              type: 'text',
+              text: draft,
+            } as TextUIPart]
+            : []
+          ),
           ...(draftFiles.length
             ? draftFiles.map((file): FileUIPart => ({
               type: 'file',
@@ -629,6 +637,7 @@ async function onSubmit() {
             : []
           ),
           ...draftArtifacts.map(toArtifactAttachmentPart),
+          ...(draftSkillPart ? [draftSkillPart] : []),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         webSearchMode: resolveWebSearchMode(tools.value),
@@ -655,6 +664,7 @@ async function onSubmit() {
     message.value = draft
     files.value = draftFiles
     attachedArtifacts.value = draftArtifacts
+    skillInvocation.restore(draftSkillInvocation)
 
     if (await handleConsentError(exception)) {
       return

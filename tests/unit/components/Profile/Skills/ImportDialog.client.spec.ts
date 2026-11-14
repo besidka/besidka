@@ -360,6 +360,29 @@ describe('Profile/Skills/ImportDialog', () => {
       .toContain('Pick another skill')
   })
 
+  it('shows the reason first and the fix second for a rejected skill', async () => {
+    await mountDialog()
+    mocks.fetch.mockRejectedValueOnce({
+      data: {
+        code: 'name-invalid',
+        message: 'The skill name is not valid',
+        why: 'The name "Bad Name" has capital letters and a space',
+        fix: 'Use lowercase letters, digits and single hyphens',
+      },
+    })
+    await setValue('skill-import-text', 'text')
+    await click('skill-import-submit')
+
+    const hints = Array.from(document.body.querySelectorAll(
+      '[data-testid="skill-import-error-hint"]',
+    )).map(hint => hint.textContent)
+
+    expect(hints).toEqual([
+      'The name "Bad Name" has capital letters and a space',
+      'Use lowercase letters, digits and single hyphens',
+    ])
+  })
+
   it('shows a checklist for a repository with several skills and reviews them one by one', async () => {
     await mountDialog({ canImportFromUrl: true, initialTab: 'github' })
     mocks.fetch.mockResolvedValueOnce({

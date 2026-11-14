@@ -171,7 +171,7 @@ describe('commitSkillImport', () => {
         createdVia: 'app',
         allowScripts: false,
         modelInvocable: true,
-        slashCommand: false,
+        slashCommand: true,
       })
 
       const [version] = await testDb.db.select().from(schema.skillVersions)

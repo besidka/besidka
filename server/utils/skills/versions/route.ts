@@ -10,6 +10,7 @@ import {
   SKILL_SAVE_MAX_CHANGES,
   SKILL_EDIT_MAX_FILE_BYTES,
 } from '#shared/utils/skills-policy'
+import { SKILL_MODES } from '#shared/utils/skills/mode'
 import { hasHiddenCharacter } from '#shared/utils/skills/hidden-characters'
 import { SKILL_DESCRIPTION_MAX } from '#shared/utils/skills/frontmatter'
 import { SKILL_TEMPLATE_IDS } from '#shared/utils/skills/templates'
@@ -80,9 +81,7 @@ export const createBodySchema = z.discriminatedUnion('kind', [
 ])
 
 export const settingsBodySchema = z.object({
-  enabled: z.boolean().optional(),
-  modelInvocable: z.boolean().optional(),
-  slashCommand: z.boolean().optional(),
+  mode: z.enum(SKILL_MODES).optional(),
   argumentHint: argumentHintSchema.nullable().optional(),
 }).strict().refine((body) => {
   return Object.values(body).some((value) => {

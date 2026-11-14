@@ -5,18 +5,27 @@ import HistoryPageShell from '../../../../app/components/History/PageShell.vue'
 
 const artifactsActive = ref<boolean>(false)
 const documentsActive = ref<boolean>(false)
+const skillsActive = ref<boolean>(false)
 
 mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
     const active = key === 'documents'
       ? documentsActive.value
-      : artifactsActive.value
+      : key === 'skills'
+        ? skillsActive.value
+        : artifactsActive.value
 
     return { enabled: active, active, variant: null }
   })
 })
 
-type ShellTab = 'chats' | 'projects' | 'shared' | 'artifacts' | 'documents'
+type ShellTab
+  = | 'chats'
+    | 'projects'
+    | 'shared'
+    | 'artifacts'
+    | 'documents'
+    | 'skills'
 
 function mountShell(activeTab: ShellTab) {
   return mountSuspended(HistoryPageShell, {
@@ -49,6 +58,7 @@ describe('HistoryPageShell', () => {
   beforeEach(() => {
     artifactsActive.value = false
     documentsActive.value = false
+    skillsActive.value = false
   })
 
   it('renders history navigation as page links styled like tabs', async () => {
@@ -158,4 +168,41 @@ describe('HistoryPageShell', () => {
         'Shared',
       ])
     })
+
+  it('puts the Skills tab after Documents and before Shared, six tabs with every feature on',
+    async () => {
+      artifactsActive.value = true
+      documentsActive.value = true
+      skillsActive.value = true
+
+      const wrapper = await mountShell('skills')
+      const links = wrapper.get('nav[aria-label="History sections"]')
+        .findAll('a')
+      const collapsed = wrapper.findAll('nav a span:not(.iconify)')
+        .filter(label => label.classes().includes('@max-md:sr-only'))
+
+      expect(links.map(link => link.attributes('href'))).toEqual([
+        '/chats/history',
+        '/chats/projects',
+        '/chats/artifacts',
+        '/chats/documents',
+        '/chats/skills',
+        '/chats/shared',
+      ])
+      expect(wrapper.get('[data-testid="tab-skills"]').attributes('aria-current'))
+        .toBe('page')
+      expect(collapsed.map(label => label.text())).toEqual([
+        'Chats',
+        'Projects',
+        'Artifacts',
+        'Documents',
+        'Shared',
+      ])
+    })
+
+  it('has no Skills tab without the skills feature', async () => {
+    const wrapper = await mountShell('chats')
+
+    expect(wrapper.find('[data-testid="tab-skills"]').exists()).toBe(false)
+  })
 })

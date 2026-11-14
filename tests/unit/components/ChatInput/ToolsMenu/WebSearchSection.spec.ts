@@ -638,6 +638,35 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
         .toBe(false)
     })
 
+  it('spaces the add-key links from the control and gives each a tap target',
+    async () => {
+      const { wrapper } = await mountSection({
+        selected: 'off',
+        options: [nativeOption(), braveOption(false), exaOption(false)],
+      })
+      const list = wrapper.get('[data-testid="web-search-add-key-list"]')
+      const links = list.findAll('[data-testid^="web-search-add-key-"]')
+
+      expect(list.classes()).toContain('mt-2')
+      expect(links).toHaveLength(2)
+
+      for (const link of links) {
+        expect(link.classes()).toEqual(
+          expect.arrayContaining(['min-h-9', 'max-md:min-h-11']),
+        )
+      }
+    })
+
+  it('renders no add-key list when every key is present', async () => {
+    const { wrapper } = await mountSection({
+      selected: 'off',
+      options: [nativeOption(), braveOption(), exaOption()],
+    })
+
+    expect(wrapper.find('[data-testid="web-search-add-key-list"]').exists())
+      .toBe(false)
+  })
+
   it('removes Brave and Exa with one explanatory line when the model '
     + 'cannot call tools', async () => {
     const { wrapper } = await mountSection({

@@ -136,6 +136,46 @@ describe('chat title API', () => {
     })
   })
 
+  it('never titles a first message that is only an attached skill from the skill', async () => {
+    const handler = await getTitleHandler()
+    const set = vi.fn(() => ({
+      where: vi.fn(() => ({
+        returning: vi.fn(() => ({
+          get: vi.fn(() => ({ title: 'Untitled Chat' })),
+        })),
+      })),
+    }))
+    const db = {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            title: null,
+            projectId: null,
+            messages: [{
+              parts: [{
+                type: 'data-skill-invocation',
+                data: { skillId: 'skl1', name: 'secret-skill-name', version: 1 },
+              }],
+            }],
+          })),
+        },
+      },
+      update: vi.fn(() => ({ set })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({
+      body: { model: 'openai:gpt-4.1-mini' },
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(mocks.generateChatTitle).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith({ title: 'Untitled Chat' })
+    expect(JSON.stringify(set.mock.calls)).not.toContain('secret-skill-name')
+  })
+
   it('substitutes the research assist model so titling never triggers a real research run', async () => {
     vi.stubGlobal('useChatProvider', () => ({
       provider: { id: 'openai' },

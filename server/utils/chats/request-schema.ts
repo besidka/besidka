@@ -7,6 +7,11 @@ import {
   ARTIFACT_KINDS,
   ARTIFACT_TITLE_MAX,
 } from '#shared/utils/artifacts'
+import {
+  SKILL_INVOCATIONS_PER_MESSAGE,
+  SKILL_NAME_MAX,
+} from '#shared/utils/skills-policy'
+import { SKILL_INVOCATION_PART_TYPE } from '#shared/utils/skills/runtime'
 
 export const chatToolSchema = z.enum([
   'web_search',
@@ -35,6 +40,7 @@ export const MAX_USER_MESSAGE_MEDIA_TYPE_LENGTH = 255
 export const MAX_USER_MESSAGE_ID_LENGTH = 128
 export const MAX_USER_MESSAGE_FILE_URL_LENGTH = 2048
 export const MAX_USER_MESSAGE_ARTIFACT_ID_LENGTH = 64
+export const MAX_USER_MESSAGE_SKILL_ID_LENGTH = 64
 
 export const userMessagePartSchema = z.union([
   z.object({
@@ -56,6 +62,14 @@ export const userMessagePartSchema = z.union([
       title: z.string().max(ARTIFACT_TITLE_MAX),
     }).strict(),
   }).strict(),
+  z.object({
+    type: z.literal(SKILL_INVOCATION_PART_TYPE),
+    data: z.object({
+      skillId: z.string().min(1).max(MAX_USER_MESSAGE_SKILL_ID_LENGTH),
+      name: z.string().max(SKILL_NAME_MAX),
+      version: z.number().int().min(1),
+    }).strict(),
+  }).strict(),
 ])
 
 export const userMessagePartsSchema = z
@@ -63,7 +77,18 @@ export const userMessagePartsSchema = z
   .nonempty()
   .max(MAX_USER_MESSAGE_PARTS)
   .refine((parts) => {
-    return parts.some(part => part.type === 'text')
+    return parts.some((part) => {
+      return part.type === 'text' || part.type === SKILL_INVOCATION_PART_TYPE
+    })
+  }, {
+    message: 'A message needs text or an attached skill.',
+  })
+  .refine((parts) => {
+    return parts.filter((part) => {
+      return part.type === SKILL_INVOCATION_PART_TYPE
+    }).length <= SKILL_INVOCATIONS_PER_MESSAGE
+  }, {
+    message: 'A message can attach one skill.',
   })
   .refine((parts) => {
     const artifactIds = parts.flatMap((part) => {
