@@ -130,8 +130,12 @@
             <p class="font-medium">
               {{ errorMessage }}
             </p>
-            <p v-if="errorHint">
-              {{ errorHint }}
+            <p
+              v-for="hint in errorHints"
+              :key="hint"
+              data-testid="skill-import-error-hint"
+            >
+              {{ hint }}
             </p>
           </div>
         </div>
@@ -452,7 +456,7 @@ const tab = shallowRef<SkillImportTab>(
 )
 const step = shallowRef<ImportStep>('input')
 const errorMessage = shallowRef<string>('')
-const errorHint = shallowRef<string>('')
+const errorHints = shallowRef<string[]>([])
 const file = shallowRef<File | null>(null)
 const pastedText = shallowRef<string>('')
 const githubUrl = shallowRef<string>('')
@@ -520,14 +524,16 @@ const licenceTickLabel = computed<string>(() => {
 
 function clearError() {
   errorMessage.value = ''
-  errorHint.value = ''
+  errorHints.value = []
 }
 
 function showError(exception: unknown, fallback: string) {
   const parsedException = parseError(exception)
 
   errorMessage.value = parsedException.message || fallback
-  errorHint.value = parsedException.fix || parsedException.why || ''
+  errorHints.value = [parsedException.why, parsedException.fix].filter(
+    (hint): hint is string => !!hint,
+  )
 }
 
 function onSelectTab(next: SkillImportTab) {
@@ -593,7 +599,7 @@ async function previewUpload() {
 
   if (inspected && !inspected.ok) {
     errorMessage.value = inspected.message
-    errorHint.value = inspected.path ?? ''
+    errorHints.value = inspected.path ? [inspected.path] : []
     step.value = 'input'
 
     return
@@ -736,7 +742,7 @@ async function onCommit(
       resetReview()
       step.value = 'input'
       errorMessage.value = 'This import has expired.'
-      errorHint.value = 'Upload the skill again.'
+      errorHints.value = ['Upload the skill again.']
     } else {
       showError(exception, 'The skill could not be installed.')
     }
