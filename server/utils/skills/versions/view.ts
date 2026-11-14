@@ -15,6 +15,16 @@ import type {
 
 type DbClient = ReturnType<typeof useDb>
 
+function readMetadataVersion(
+  metadata: SkillRow['metadata'],
+): string | null {
+  const version = metadata?.version
+
+  return typeof version === 'string' && version.trim() !== ''
+    ? version.trim().slice(0, 64)
+    : null
+}
+
 export function toSkillSummary(row: SkillRow) {
   return {
     id: row.id,
@@ -33,6 +43,7 @@ export function toSkillSummary(row: SkillRow) {
     sourceRef: row.sourceRef,
     sourcePath: row.sourcePath,
     sourceVersion: row.sourceVersion,
+    metadataVersion: readMetadataVersion(row.metadata),
     currentVersion: row.currentVersion,
     pendingVersion: row.pendingVersion,
     filesCount: row.filesCount,

@@ -29,6 +29,7 @@ export interface SkillSummary {
   sourceRef: string | null
   sourcePath: string | null
   sourceVersion: string | null
+  metadataVersion: string | null
   currentVersion: number
   pendingVersion: number | null
   filesCount: number
@@ -119,6 +120,15 @@ export interface SkillVersionDiffResponse {
   }
 }
 
+export interface SkillImportRelease {
+  tag: string | null
+  isLatestRelease: boolean
+  latestTag: string | null
+  defaultBranch: string | null
+  channel: 'release' | 'branch'
+  switchable: boolean
+}
+
 export interface SkillImportPreview {
   stageId: string
   source: string
@@ -126,6 +136,7 @@ export interface SkillImportPreview {
   sourceUrl: string | null
   sourceRef: string | null
   sourcePath: string | null
+  release: SkillImportRelease | null
   expiresAt: number
   skill: {
     name: string

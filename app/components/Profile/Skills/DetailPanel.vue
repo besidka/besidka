@@ -48,7 +48,8 @@
           {{ getSkillLicenceLabel(skill.licence.class) }}
         </span>
         <span class="text-base-content/70">
-          v{{ skill.currentVersion }} · {{ formatSkillSource(skill) }}
+          {{ formatSkillVersions(skill).join(' · ') }} ·
+          {{ formatSkillSource(skill) }}
         </span>
       </div>
     </div>

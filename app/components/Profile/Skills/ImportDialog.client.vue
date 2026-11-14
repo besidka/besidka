@@ -110,8 +110,9 @@
             class="text-xs text-base-content/70"
           >
             Link to a repository, a skill folder, or its SKILL.md. The
-            repository must be public. The skill is pinned to the version
-            it is read from.
+            repository must be public. A link without a version is pinned
+            to the latest release, or to the latest commit when there is
+            none.
           </p>
         </template>
 
@@ -300,6 +301,7 @@
         :preview="preview"
         :read-file="readArchiveFile"
         :file-name="file?.name ?? null"
+        @switch-channel="onSwitchChannel"
       />
     </div>
 
@@ -461,6 +463,7 @@ const errorHints = shallowRef<string[]>([])
 const file = shallowRef<File | null>(null)
 const pastedText = shallowRef<string>('')
 const githubUrl = shallowRef<string>('')
+const githubChannel = shallowRef<'release' | 'branch'>('release')
 const workerSummary = shallowRef<SkillImportWorkerSummary | null>(null)
 const preview = shallowRef<SkillImportPreview | null>(null)
 const pick = shallowRef<SkillGithubPick['pick'] | null>(null)
@@ -635,6 +638,7 @@ async function onSubmit() {
         body: { text: pastedText.value },
       }))
     } else {
+      githubChannel.value = 'release'
       applyPreview(await $fetch('/api/v1/skills/import/preview', {
         method: 'POST',
         body: { url: githubUrl.value.trim() },
@@ -646,14 +650,18 @@ async function onSubmit() {
   }
 }
 
-async function loadQueued(path: string) {
+async function loadGithub(path?: string) {
   clearError()
   step.value = 'working'
 
   try {
     const response = await $fetch('/api/v1/skills/import/preview', {
       method: 'POST',
-      body: { url: githubUrl.value.trim(), path },
+      body: {
+        url: githubUrl.value.trim(),
+        ...(path ? { path } : {}),
+        ...(githubChannel.value === 'branch' ? { channel: 'branch' } : {}),
+      },
     })
 
     applyPreview(response)
@@ -661,6 +669,18 @@ async function loadQueued(path: string) {
     showError(exception, 'The skill could not be checked.')
     step.value = queue.value.length ? 'pick' : 'input'
   }
+}
+
+async function loadQueued(path: string) {
+  await loadGithub(path)
+}
+
+async function onSwitchChannel(channel: 'release' | 'branch') {
+  githubChannel.value = channel
+
+  await loadGithub(
+    queueTotal.value ? queue.value[queueIndex.value] : undefined,
+  )
 }
 
 async function onReviewPicked() {

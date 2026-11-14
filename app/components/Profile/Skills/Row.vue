@@ -219,7 +219,7 @@ const statusBadge = computed<{ label: string, class: string } | null>(() => {
 const metaLine = computed<string>(() => {
   const parts = [
     formatSkillSource(props.skill),
-    `v${props.skill.currentVersion}`,
+    ...formatSkillVersions(props.skill),
   ]
 
   if (isMounted.value) {

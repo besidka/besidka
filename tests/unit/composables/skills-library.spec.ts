@@ -5,6 +5,7 @@ import {
   estimateSkillCatalogTokens,
   filterSkills,
   formatSkillSource,
+  formatSkillVersions,
   parseSkillSourceFilter,
   requiresEnableConfirmation,
   useSkillActions,
@@ -111,6 +112,38 @@ describe('skills-library helpers', () => {
     }))).toBe('github.com/o/r/skills/x @ abcdef1')
     expect(formatSkillSource(createSkillSummary({ sourceKind: 'mcp' })))
       .toBe('Added by a connected app')
+  })
+
+  it('shows the release tag instead of the commit for a tag-pinned skill', () => {
+    expect(formatSkillSource(createSkillSummary({
+      sourceKind: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourcePath: 'skills/x',
+      sourceRef: '2.1.2',
+      sourceVersion: 'abcdef1234567890',
+    }))).toBe('github.com/o/r/skills/x @ 2.1.2')
+  })
+
+  it('labels the edit version only where the author version also appears', () => {
+    expect(formatSkillVersions(createSkillSummary({ currentVersion: 3 })))
+      .toEqual(['v3'])
+    expect(formatSkillVersions(createSkillSummary({
+      sourceKind: 'github',
+      sourceRef: '2.1.2',
+      currentVersion: 3,
+    }))).toEqual(['edit v3'])
+    expect(formatSkillVersions(createSkillSummary({
+      sourceKind: 'github',
+      sourceRef: 'main',
+      metadataVersion: '1.4.0',
+      currentVersion: 3,
+    }))).toEqual(['version 1.4.0', 'edit v3'])
+    expect(formatSkillVersions(createSkillSummary({
+      sourceKind: 'github',
+      sourceRef: '2.1.2',
+      metadataVersion: '1.4.0',
+      currentVersion: 3,
+    }))).toEqual(['edit v3'])
   })
 
   it('estimates the catalog line in tokens', () => {

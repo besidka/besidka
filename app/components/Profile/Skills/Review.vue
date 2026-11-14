@@ -23,10 +23,26 @@
         Source
       </dt>
       <dd
-        class="min-w-0 break-words"
+        class="grid min-w-0 gap-1 break-words"
         data-testid="skill-review-source"
       >
-        {{ sourceLabel }}
+        <span data-testid="skill-review-source-label">{{ sourceLabel }}</span>
+        <span
+          v-if="releaseNote"
+          class="text-xs text-base-content/70"
+          data-testid="skill-review-release"
+        >
+          {{ releaseNote }}
+        </span>
+        <button
+          v-if="switchLabel"
+          type="button"
+          class="link w-fit text-left text-xs"
+          data-testid="skill-review-switch-source"
+          @click="emit('switchChannel', switchTarget)"
+        >
+          {{ switchLabel }}
+        </button>
       </dd>
       <dt class="text-base-content/70">
         Licence
@@ -224,6 +240,10 @@ const props = withDefaults(defineProps<{
   fileName: null,
 })
 
+const emit = defineEmits<{
+  switchChannel: [channel: 'release' | 'branch']
+}>()
+
 const selectedPath = shallowRef<string>(SKILL_MD_FILE_NAME)
 const focusLine = shallowRef<number | null>(null)
 
@@ -233,15 +253,23 @@ const totalBytes = computed<number>(() => {
   }, 0)
 })
 
+const authorVersion = computed<string | null>(() => {
+  const version = props.preview.skill.metadata?.version
+
+  return !props.preview.release?.tag && version ? version : null
+})
+
 const sourceLabel = computed<string>(() => {
-  const { source, sourceUrl, sourcePath, sourceVersion } = props.preview
+  const { source, sourceUrl, sourcePath, sourceVersion, release }
+    = props.preview
 
   if (source === 'github' && sourceUrl) {
     const location = sourcePath
       ? `${sourceUrl.replace(/^https?:\/\//, '')}/${sourcePath}`
       : sourceUrl.replace(/^https?:\/\//, '')
+    const version = release?.tag ?? sourceVersion.slice(0, 7)
 
-    return `${location} @ ${sourceVersion.slice(0, 7)}`
+    return `${location} @ ${version}`
   }
 
   if (source === 'text') {
@@ -249,6 +277,48 @@ const sourceLabel = computed<string>(() => {
   }
 
   return props.fileName ? `Uploaded file ${props.fileName}` : 'Uploaded file'
+})
+
+const releaseNote = computed<string>(() => {
+  const { release } = props.preview
+
+  if (props.preview.source !== 'github') {
+    return ''
+  }
+
+  if (release?.tag) {
+    return release.isLatestRelease
+      ? 'Latest release'
+      : 'A release, not the latest'
+  }
+
+  if (authorVersion.value) {
+    return `Version ${authorVersion.value} (from SKILL.md)`
+  }
+
+  return release?.channel === 'branch' && release.defaultBranch
+    ? `Latest commit on ${release.defaultBranch}`
+    : ''
+})
+
+const switchTarget = computed<'release' | 'branch'>(() => {
+  return props.preview.release?.channel === 'release' ? 'branch' : 'release'
+})
+
+const switchLabel = computed<string>(() => {
+  const { release } = props.preview
+
+  if (!release?.switchable) {
+    return ''
+  }
+
+  if (release.channel === 'release') {
+    return `Use the latest commit on ${release.defaultBranch ?? 'the default branch'} instead`
+  }
+
+  return release.latestTag
+    ? `Use the latest release ${release.latestTag} instead`
+    : ''
 })
 
 const licenceLabel = computed<string>(() => {

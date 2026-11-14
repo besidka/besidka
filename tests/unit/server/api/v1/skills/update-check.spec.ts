@@ -220,6 +220,7 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
       contentUnchanged: false,
       sourceVersion: GITHUB_SHA_ONE,
       latestVersion: GITHUB_SHA_ONE,
+      latestTag: null,
     })
     expect(github.urls()).toEqual([
       'https://github.com/o/r.git/info/refs?service=git-upload-pack',
@@ -651,5 +652,93 @@ describe('POST /api/v1/skills/[id]/update/check', () => {
     expect((await versionRows()).find((row) => {
       return row.version === 3
     })).toMatchObject({ origin: 'update', sourceVersion: GITHUB_SHA_TWO })
+  })
+
+  describe('a skill pinned to a release tag', () => {
+    const TAG_SHA = '4'.repeat(40)
+    const NEWER_SHA = '5'.repeat(40)
+
+    async function pinToTag() {
+      github.tags.set('2.1.2', { sha: TAG_SHA })
+      github.archives.set(TAG_SHA, archiveAt(TAG_SHA))
+      await testDb.db.update(schema.skills)
+        .set({ sourceRef: '2.1.2', sourceVersion: TAG_SHA })
+        .where(eq(schema.skills.id, skillId))
+      forgetCachedRefs()
+      github.fetch.mockClear()
+    }
+
+    it('is up to date while no higher release tag exists, whatever the branch does', async () => {
+      await pinToTag()
+      github.setBranch('main', GITHUB_SHA_TWO)
+
+      expect(await check()).toEqual({
+        upToDate: true,
+        pinned: false,
+        contentUnchanged: false,
+        sourceVersion: TAG_SHA,
+        latestVersion: TAG_SHA,
+        latestTag: '2.1.2',
+      })
+      expect(github.urls()).toEqual([
+        'https://github.com/o/r.git/info/refs?service=git-upload-pack',
+      ])
+    })
+
+    it('ignores pre-release and non-version tags', async () => {
+      await pinToTag()
+      github.tags.set('2.2.0-rc.1', { sha: NEWER_SHA })
+      github.tags.set('latest', { sha: NEWER_SHA })
+      forgetCachedRefs()
+
+      expect(await check()).toMatchObject({ upToDate: true, latestTag: '2.1.2' })
+    })
+
+    it('stores a higher release tag as the pending version and accepts it onto the skill', async () => {
+      await pinToTag()
+      github.tags.set('2.1.10', { sha: NEWER_SHA })
+      github.archives.set(NEWER_SHA, archiveAt(NEWER_SHA, {}, skillMarkdown({
+        description: 'Released as 2.1.10',
+      })))
+      forgetCachedRefs()
+
+      const result = await check()
+
+      expect(result).toMatchObject({
+        upToDate: false,
+        sourceRef: '2.1.10',
+        sourceVersion: NEWER_SHA,
+        previousSourceRef: '2.1.2',
+        previousSourceVersion: TAG_SHA,
+      })
+      expect(github.urls().at(-1)).toBe(
+        `https://codeload.github.com/o/r/zip/${NEWER_SHA}`,
+      )
+
+      const accept = await importHandler(
+        '~~/server/api/v1/skills/[id]/update/accept.post',
+      )
+
+      await accept(createSkillsRouteEvent({
+        params: { id: skillId },
+        body: { version: result.version, sha256: result.sha256 },
+      }))
+
+      expect(await skillRow()).toMatchObject({
+        sourceRef: '2.1.10',
+        sourceVersion: NEWER_SHA,
+      })
+    })
+
+    it('says 404 when the tag is gone and no release replaces it', async () => {
+      await pinToTag()
+      github.tags.delete('2.1.2')
+      forgetCachedRefs()
+
+      expect(await failureOf(check())).toMatchObject({
+        status: 404,
+        code: 'github-ref-not-found',
+      })
+    })
   })
 })

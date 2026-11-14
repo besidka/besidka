@@ -25,6 +25,7 @@ export function createSkillSummary(
     sourceRef: null,
     sourcePath: null,
     sourceVersion: null,
+    metadataVersion: null,
     currentVersion: 7,
     pendingVersion: null,
     filesCount: 1,
@@ -100,6 +101,7 @@ export function createImportPreview(
     sourceUrl: null,
     sourceRef: null,
     sourcePath: null,
+    release: null,
     expiresAt: 1_800_000_000,
     skill: {
       name: 'review-pr',

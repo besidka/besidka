@@ -509,4 +509,185 @@ describe('POST /api/v1/skills/import/preview with { url }', () => {
       eq(schema.skillFiles.path, 'LICENSE'),
     ))).toHaveLength(1)
   })
+
+  describe('release tags', () => {
+    const LATEST_SHA = '4'.repeat(40)
+    const OLDER_SHA = '5'.repeat(40)
+    const FOLDER_URL = 'https://github.com/o/r/tree/main/skills/review-pr'
+
+    function addReleases() {
+      github.tags.set('2.9.0', { sha: OLDER_SHA })
+      github.tags.set('2.10.0', { sha: 'a'.repeat(40), peeled: LATEST_SHA })
+      github.tags.set('2.10.0-rc.1', { sha: '6'.repeat(40) })
+      github.tags.set('latest', { sha: '7'.repeat(40) })
+      github.archives.set(LATEST_SHA, archiveAt(LATEST_SHA))
+      github.archives.set(OLDER_SHA, archiveAt(OLDER_SHA))
+    }
+
+    it('pins a default-branch link to the highest release tag', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceVersion: LATEST_SHA,
+        sourceRef: '2.10.0',
+        sourcePath: 'skills/review-pr',
+        release: {
+          tag: '2.10.0',
+          isLatestRelease: true,
+          latestTag: '2.10.0',
+          defaultBranch: 'main',
+          channel: 'release',
+          switchable: true,
+        },
+      })
+      expect(github.urls().at(-1)).toBe(
+        `https://codeload.github.com/o/r/zip/${LATEST_SHA}`,
+      )
+    })
+
+    it('pins a bare repository link to the highest release tag', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({ url: 'https://github.com/o/r' })
+
+      expect(result).toMatchObject({
+        sourceRef: '2.10.0',
+        release: { tag: '2.10.0', channel: 'release' },
+      })
+    })
+
+    it('keeps the default branch when the user asks for the latest commit', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({ url: FOLDER_URL, channel: 'branch' })
+
+      expect(result).toMatchObject({
+        sourceVersion: GITHUB_SHA_ONE,
+        sourceRef: 'main',
+        release: {
+          tag: null,
+          isLatestRelease: false,
+          latestTag: '2.10.0',
+          channel: 'branch',
+          switchable: true,
+        },
+      })
+    })
+
+    it('keeps a link that names another branch and offers no switch', async () => {
+      await signIn()
+      addReleases()
+      github.setBranch('next', GITHUB_SHA_TWO)
+      github.archives.set(GITHUB_SHA_TWO, archiveAt(GITHUB_SHA_TWO))
+
+      const result = await preview({
+        url: 'https://github.com/o/r/tree/next/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceVersion: GITHUB_SHA_TWO,
+        sourceRef: 'next',
+        release: { tag: null, channel: 'branch', switchable: false },
+      })
+    })
+
+    it('keeps a link that names a tag', async () => {
+      await signIn()
+      addReleases()
+
+      const result = await preview({
+        url: 'https://github.com/o/r/tree/2.9.0/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceVersion: OLDER_SHA,
+        sourceRef: '2.9.0',
+        release: { tag: '2.9.0', isLatestRelease: false, switchable: false },
+      })
+    })
+
+    it('shows the tag of a branch commit that is the tip of a release', async () => {
+      await signIn()
+      addReleases()
+      github.setBranch('next', OLDER_SHA)
+
+      const result = await preview({
+        url: 'https://github.com/o/r/tree/next/skills/review-pr',
+      })
+
+      expect(result).toMatchObject({
+        sourceRef: 'next',
+        sourceVersion: OLDER_SHA,
+        release: { tag: '2.9.0', isLatestRelease: false },
+      })
+    })
+
+    it('moves to the next release when the folder is missing from the newest', async () => {
+      await signIn()
+      addReleases()
+      github.archives.set(LATEST_SHA, githubRepoArchive(LATEST_SHA, {
+        'README.md': '# Repo\n',
+      }))
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceRef: '2.9.0',
+        sourceVersion: OLDER_SHA,
+        release: { tag: '2.9.0', isLatestRelease: false },
+      })
+    })
+
+    it('falls back to the default branch when no release holds the folder', async () => {
+      await signIn()
+      addReleases()
+
+      for (const sha of [LATEST_SHA, OLDER_SHA]) {
+        github.archives.set(sha, githubRepoArchive(sha, {
+          'README.md': '# Repo\n',
+        }))
+      }
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceRef: 'main',
+        sourceVersion: GITHUB_SHA_ONE,
+        release: { channel: 'branch', switchable: true },
+      })
+      expect(result.warnings.join(' ')).toContain('None of the latest releases')
+    })
+
+    it('stores the tag as the source ref and the commit as the version', async () => {
+      await signIn()
+      addReleases()
+
+      const staged = await preview({ url: FOLDER_URL })
+
+      await commit({ stageId: staged.stageId, acknowledged: true })
+
+      const [skill] = await testDb.db.select().from(schema.skills)
+
+      expect(skill).toMatchObject({
+        sourceRef: '2.10.0',
+        sourceVersion: LATEST_SHA,
+      })
+    })
+
+    it('imports a skill when the repository has no release', async () => {
+      await signIn()
+
+      const result = await preview({ url: FOLDER_URL })
+
+      expect(result).toMatchObject({
+        sourceRef: 'main',
+        release: { tag: null, switchable: false, channel: 'branch' },
+      })
+    })
+  })
 })

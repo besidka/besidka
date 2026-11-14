@@ -454,4 +454,63 @@ describe('Profile/Skills/ImportDialog', () => {
     expect(get('skill-import-error').textContent)
       .toContain('The archive contains a symbolic link')
   })
+
+  it('shows the release and switches to the latest commit with the channel in the request', async () => {
+    await mountDialog({ canImportFromUrl: true, initialTab: 'github' })
+    mocks.fetch.mockResolvedValueOnce(createImportPreview({
+      source: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourcePath: 'skills/a',
+      sourceRef: '2.1.2',
+      sourceVersion: 'c'.repeat(40),
+      release: {
+        tag: '2.1.2',
+        isLatestRelease: true,
+        latestTag: '2.1.2',
+        defaultBranch: 'main',
+        channel: 'release',
+        switchable: true,
+      },
+    }))
+    await setValue('skill-import-url', 'https://github.com/o/r/tree/main/skills/a')
+    await click('skill-import-submit')
+
+    expect(get('skill-review-source-label').textContent)
+      .toBe('github.com/o/r/skills/a @ 2.1.2')
+    expect(get('skill-review-release').textContent).toContain('Latest release')
+    expect(get('skill-review-switch-source').textContent)
+      .toContain('Use the latest commit on main instead')
+
+    mocks.fetch.mockResolvedValueOnce(createImportPreview({
+      source: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourcePath: 'skills/a',
+      sourceRef: 'main',
+      sourceVersion: '300432a'.padEnd(40, '0'),
+      release: {
+        tag: null,
+        isLatestRelease: false,
+        latestTag: '2.1.2',
+        defaultBranch: 'main',
+        channel: 'branch',
+        switchable: true,
+      },
+    }))
+    await click('skill-review-switch-source')
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/skills/import/preview',
+      {
+        method: 'POST',
+        body: {
+          url: 'https://github.com/o/r/tree/main/skills/a',
+          channel: 'branch',
+        },
+      },
+    )
+    expect(get('skill-review-source-label').textContent)
+      .toBe('github.com/o/r/skills/a @ 300432a')
+    expect(get('skill-review-switch-source').textContent)
+      .toContain('Use the latest release 2.1.2 instead')
+  })
 })

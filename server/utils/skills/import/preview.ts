@@ -4,6 +4,7 @@ import { getRequestHeader } from 'nuxt/server'
 import { analyseSkillFiles } from '#shared/utils/skills/analyse'
 import type { SkillArchiveFile } from '#shared/utils/skills/archive'
 import { SKILL_MAX_UPLOAD_BYTES } from '#shared/utils/skills-policy'
+import type { SkillImportRelease } from '#shared/types/skills.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import { stageSkillImport } from '~~/server/utils/skills/import/stage'
@@ -107,6 +108,7 @@ export async function createSkillImportPreview(input: {
   source: SkillImportSourceKind
   sourceVersion: string
   provenance?: SkillImportProvenance
+  release?: SkillImportRelease | null
   fileName: string | null
   files: SkillArchiveFile[]
   folderName: string | null
@@ -169,6 +171,7 @@ export async function createSkillImportPreview(input: {
     sourceUrl: manifest.sourceUrl ?? null,
     sourceRef: manifest.sourceRef ?? null,
     sourcePath: manifest.sourcePath ?? null,
+    release: input.release ?? null,
     expiresAt: manifest.expiresAt,
     skill: {
       name: analysis.skill.name,

@@ -134,6 +134,19 @@ describe('Profile/Skills/Row', () => {
       .toContain('github.com/o/r/skills/x @ abcdef1 · v7')
   })
 
+  it('calls Besidka\'s own version "edit" when a release tag is on the line', async () => {
+    const wrapper = await mountRow(createSkillSummary({
+      sourceKind: 'github',
+      sourceUrl: 'https://github.com/o/r',
+      sourcePath: 'skills/x',
+      sourceRef: '2.1.2',
+      sourceVersion: 'abcdef1234567890',
+    }))
+
+    expect(wrapper.get(testId('skill-row-meta')).text())
+      .toContain('github.com/o/r/skills/x @ 2.1.2 · edit v7')
+  })
+
   it('shows the token estimate only for model-invocable skills', async () => {
     const invocable = await mountRow(createSkillSummary())
     const commandOnly = await mountRow(createSkillSummary({

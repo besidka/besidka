@@ -9,10 +9,21 @@ import {
   isValidGithubSegment,
   parseGithubSkillUrl,
 } from '#shared/utils/skills/github-url'
+import {
+  findReleaseTagForSha,
+  sortReleaseTagsDescending,
+} from '#shared/utils/skills/release'
+import type { SkillImportRelease } from '#shared/types/skills.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   createGithubClient,
+  fetchGithubRefs,
   resolveGithubSource,
+} from '~~/server/utils/skills/import/github'
+import type {
+  GithubClient,
+  GithubRepository,
+  GithubResolvedSource,
 } from '~~/server/utils/skills/import/github'
 import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
 import { createSkillImportPreview } from '~~/server/utils/skills/import/preview'
@@ -24,6 +35,7 @@ import type {
 export const githubImportBodySchema = z.object({
   url: z.string().min(1).max(GITHUB_URL_MAX_LENGTH),
   path: z.string().max(GITHUB_PATH_MAX_LENGTH + 2).optional(),
+  channel: z.enum(['release', 'branch']).optional(),
 })
 
 export type GithubImportBody = z.infer<typeof githubImportBodySchema>
@@ -72,6 +84,94 @@ function readPickedPath(path: string | undefined): string | null | undefined {
   return segments.join('/')
 }
 
+interface SourceAttempt {
+  ref: string
+  sha: string
+  isRelease: boolean
+}
+
+function listSourceAttempts(
+  source: GithubResolvedSource,
+  channel: 'release' | 'branch',
+): SourceAttempt[] {
+  const branchAttempt = { ref: source.ref, sha: source.sha, isRelease: false }
+
+  if (!source.release || channel === 'branch') {
+    return [branchAttempt]
+  }
+
+  return [
+    ...source.release.tags.map((release) => {
+      return { ref: release.tag, sha: release.sha, isRelease: true }
+    }),
+    branchAttempt,
+  ]
+}
+
+/**
+ * Loads the skill from the first source that holds it: the latest releases
+ * one after the other (a folder added after the newest release is missing
+ * from it), then the default branch. Only a missing folder moves on to the
+ * next source; every other failure stops the import.
+ */
+async function loadFirstAvailableSource(
+  client: GithubClient,
+  repository: GithubRepository,
+  path: string | null,
+  attempts: SourceAttempt[],
+) {
+  for (const [index, attempt] of attempts.entries()) {
+    try {
+      const loaded = await loadGithubSkill(client, {
+        ...repository,
+        sha: attempt.sha,
+        path,
+      })
+
+      return { loaded, attempt, skippedReleases: index > 0 }
+    } catch (exception) {
+      const isLast = index === attempts.length - 1
+      const code = (exception as { code?: string }).code
+
+      if (isLast || code !== 'archive-missing-skill-md') {
+        throw exception
+      }
+    }
+  }
+
+  throw new Error('No source to load')
+}
+
+async function describeRelease(
+  client: GithubClient,
+  repository: GithubRepository,
+  source: GithubResolvedSource,
+  attempt: SourceAttempt,
+): Promise<SkillImportRelease> {
+  let tag: string | null = attempt.isRelease ? attempt.ref : null
+  let latestTag = source.release?.latestTag ?? null
+
+  try {
+    const advertisement = await fetchGithubRefs(client, repository)
+
+    latestTag = sortReleaseTagsDescending(advertisement.tags)[0]?.tag ?? null
+    tag ??= findReleaseTagForSha(advertisement.tags, attempt.sha)
+  } catch (_exception) {
+    client.logger?.set({
+      attributes: { skills: { github: { releaseLookupFailed: true } } },
+    })
+  }
+
+  return {
+    tag,
+    isLatestRelease: tag !== null && tag === latestTag,
+    latestTag,
+    defaultBranch: source.release?.defaultBranch ?? null,
+    channel: attempt.isRelease ? 'release' : 'branch',
+    switchable: source.release !== null,
+  }
+}
+
 /**
  * A GitHub link in, a staged preview out (or a pick list when the link holds
  * several skills; the caller sends the same link again with the chosen
@@ -102,11 +202,12 @@ export async function previewGithubImport(input: {
     path: pickedPath,
   })
   const repository = { owner: parsed.value.owner, repo: parsed.value.repo }
-  const loaded = await loadGithubSkill(client, {
-    ...repository,
-    sha: source.sha,
-    path: source.path,
-  })
+  const { loaded, attempt, skippedReleases } = await loadFirstAvailableSource(
+    client,
+    repository,
+    source.path,
+    listSourceAttempts(source, input.body.channel ?? 'release'),
+  )
 
   if (loaded.kind === 'pick') {
     input.logger.set({
@@ -124,8 +225,8 @@ export async function previewGithubImport(input: {
     return {
       pick: {
         ...repository,
-        ref: source.ref,
-        sha: source.sha,
+        ref: attempt.ref,
+        sha: attempt.sha,
         total: loaded.total,
         truncated: loaded.total > loaded.candidates.length,
         max: SKILL_GITHUB_PICK_MAX,
@@ -136,21 +237,33 @@ export async function previewGithubImport(input: {
     } satisfies GithubPickList
   }
 
+  const fallbackWarnings = skippedReleases
+    ? [
+      'None of the latest releases contain this skill, so the latest commit '
+      + 'of the default branch was used',
+    ]
+    : []
+
   return await createSkillImportPreview({
     kv: input.kv,
     bucket: input.bucket,
     userId: input.userId,
     source: 'github',
-    sourceVersion: source.sha,
+    sourceVersion: attempt.sha,
     provenance: {
       url: githubRepoUrl(repository.owner, repository.repo),
-      ref: source.ref,
+      ref: attempt.ref,
       path: loaded.skillPath,
     },
+    release: await describeRelease(client, repository, source, attempt),
     fileName: null,
     files: loaded.files,
     folderName: loaded.folderName,
-    archiveWarnings: [...source.warnings, ...loaded.warnings],
+    archiveWarnings: [
+      ...source.warnings,
+      ...fallbackWarnings,
+      ...loaded.warnings,
+    ],
     logger: input.logger,
   })
 }

@@ -94,7 +94,8 @@ the old wording is in the git history.
    optional and built later (S-13, section 12.1); nothing in the first release
    shares a skill.
 2. **Imports are pinned. Edits make versions.** A GitHub import is pinned to a
-   40-character commit SHA; other sources to `sha256-<first 16 hex>` of the
+   40-character commit SHA (shown as the release tag when it was imported from
+   one, see "Releases" in section 3.1); other sources to `sha256-<first 16 hex>` of the
    content. An import is never auto-updated. An update is an explicit check, a
    diff, a review and an accept. Every skill, imported or written, keeps
    numbered versions (1, 2, 3, and so on). A version is never rewritten: an
@@ -240,6 +241,46 @@ also carries the total and a `truncated` flag). The list is `{ pick }` with no
 update checks keep working. Each follow-up is a new import: it costs an hourly
 import slot, a ref list request and a download. Only public repositories work; a 404
 says "Private or missing repository".
+
+**Releases (2026-11-14).** A link with no version of its own is pinned to
+the latest release, not to a branch head. "No version of its own" means a
+repository link, or a link whose ref is the repository's default branch (the
+`HEAD` symref of the ref list): GitHub writes the branch name into every link
+people copy, so a rule that applied only to bare repository links would almost
+never fire. A link that names any other branch, a tag or a commit keeps exactly
+that ref. A release tag is a ref-list tag that is strictly
+`MAJOR.MINOR.PATCH` with an optional leading `v` (`2.1.2`, `v2.1.2`), compared
+numerically (`2.10.0` is above `2.9.0`); pre-releases (`2.1.2-rc.1`) and names
+like `latest` are never releases. The tag's peeled commit is the pin, so the
+download is still by SHA, and `info/refs` is the only source of tags (no
+`api.github.com`). "Contains the folder" costs an archive download per
+candidate: the preview tries the three highest releases in turn, moving on only
+when the folder or its `SKILL.md` is missing, and then falls back to the
+default branch head with the warning "None of the latest releases contain this
+skill". The user can switch the review to "Latest commit on main" (body field
+`channel: 'branch'`, sent again with the same `path`) and back to "Latest
+release X".
+
+Storage reuses the existing columns, with no migration: `source_ref` holds the
+tag name (`2.1.2`) and `source_version` the commit SHA, as for a branch. A
+`source_ref` that is a release tag is what marks a skill as release-pinned.
+Display everywhere (list meta, detail, settings, review, versions list) is
+`github.com/o/r/path @ 2.1.2` for a tag and `@ 300432a` otherwise; the
+review also shows "Latest release" and, when a branch commit is the tip of a
+release (the preview reads the ref list anyway), shows that tag. That last case
+is preview-only: the list cannot know it without a ref list request, so a
+branch-pinned skill keeps showing its commit there. A `metadata.version` from
+the `SKILL.md` frontmatter is shown (`version 1.4.0`) when no tag applies, and
+Besidka's own numbering then reads "edit v3" instead of "v3", only on lines
+where an author version also appears.
+
+An update check follows the pin: a skill whose `source_ref` is a release tag
+looks for a higher release tag (the pending version stores the new tag as its
+`source_ref`, and accepting copies it onto the skill), a skill on a branch
+looks at the branch head as before, and a skill pinned to a SHA has nothing to
+check. A link that named a release tag explicitly is release-pinned too, since
+the stored ref cannot tell the two apart; the check offers newer releases, and
+nothing is installed until the user accepts.
 
 **A SHA cannot be proven to belong to the named repository.** A commit SHA can
 belong to a fork and still resolve under another repository's URL. Until
@@ -1844,7 +1885,7 @@ The owner took the plan's defaults:
 | 7 | **Sharing (S-13):** built later as the last optional stack. Authored and open skills only, signed-in viewers, 7 days by default and 30 at most, with its own legal notice. The name `skills:share` is reserved in the docs only. S-6 does not register a scope that has no tools. If S-13 is ready before S-6 merges, the scope joins 4.0.0; otherwise it ships with S-13 as its own major bump. |
 | 8 | **Skills authored in the app** are saved enabled with no licence tick (class `authored`). Imports, updates, MCP writes and share copies stay disabled until the user enables them in the app. |
 | 9 | **Runtime** (S-3 and S-12) ships before C-6, under the interim rule in section 2, item 8. The approval card comes with C-6, and connectors cannot exist before C-6 anyway. |
-| 10 | **GitHub update versus local edits** (coordinator, 2026-11-13): the update check compares the skill's `source_version` with the latest upstream commit, and a newer commit creates a persisted pending version, not used until accepted (accepting disables the skill). If any version newer than the last import has origin `editor`, `template`, `mcp`, `rename` or `restore`, the review screen warns "Accepting replaces your local edits since the import" and shows the diff against the current version. There is no merge in the first release. Accepting makes the upstream version current, and the local versions stay in history (within the 20 kept) so the user can restore one (section 3.4). |
+| 10 | **GitHub update versus local edits** (coordinator, 2026-11-13): the update check compares the skill's `source_version` with the latest upstream commit (or, for a release-pinned skill, the highest release tag), and a newer commit creates a persisted pending version, not used until accepted (accepting disables the skill). If any version newer than the last import has origin `editor`, `template`, `mcp`, `rename` or `restore`, the review screen warns "Accepting replaces your local edits since the import" and shows the diff against the current version. There is no merge in the first release. Accepting makes the upstream version current, and the local versions stay in history (within the 20 kept) so the user can restore one (section 3.4). |
 
 ### Decided on 2026-11-14
 

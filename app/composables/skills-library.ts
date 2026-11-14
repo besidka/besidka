@@ -3,6 +3,10 @@ import { parseError } from 'evlog'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { formatSkillCatalogLine } from '#shared/utils/skills/compose'
 import { getSkillSourceGroup } from '#shared/utils/skills/edit'
+import {
+  formatGithubSourceVersion,
+  isSemverTag,
+} from '#shared/utils/skills/release'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillSourceGroup } from '#shared/utils/skills/edit'
 import type {
@@ -36,7 +40,6 @@ const SOURCE_FILTER_LABELS: Record<SkillSourceGroup, string> = {
   imported: 'Imported',
   apps: 'From apps',
 }
-const SHORT_SHA_LENGTH = 7
 const GITHUB_HOST_PREFIX = /^https?:\/\//
 
 /**
@@ -105,7 +108,7 @@ export function filterSkills(
 export function formatSkillSource(
   skill: Pick<
     SkillSummary,
-    'sourceKind' | 'sourceUrl' | 'sourcePath' | 'sourceVersion'
+    'sourceKind' | 'sourceUrl' | 'sourceRef' | 'sourcePath' | 'sourceVersion'
   >,
 ): string {
   if (skill.sourceKind === 'github' && skill.sourceUrl) {
@@ -113,9 +116,9 @@ export function formatSkillSource(
     const location = skill.sourcePath
       ? `${repository}/${skill.sourcePath}`
       : repository
-    const commit = skill.sourceVersion?.slice(0, SHORT_SHA_LENGTH)
+    const version = formatGithubSourceVersion(skill)
 
-    return commit ? `${location} @ ${commit}` : location
+    return version ? `${location} @ ${version}` : location
   }
 
   if (skill.sourceKind === 'zip') {
@@ -139,6 +142,38 @@ export function formatSkillSource(
   }
 
   return 'Created by you'
+}
+
+/**
+ * The version words of a skill's meta line. A release tag already sits in the
+ * source (`github.com/o/r @ 2.1.2`); a `metadata.version` from the SKILL.md
+ * is added when no tag applies. Besidka's own numbering then reads "edit v3",
+ * so it is not mistaken for the author's version, and plain "v3" when there
+ * is no other version on the line.
+ */
+export function formatSkillVersions(
+  skill: Pick<
+    SkillSummary,
+    'sourceKind' | 'sourceRef' | 'metadataVersion' | 'currentVersion'
+  >,
+): string[] {
+  const isTagged = skill.sourceKind === 'github'
+    && !!skill.sourceRef
+    && isSemverTag(skill.sourceRef)
+  const authorVersion = isTagged ? null : skill.metadataVersion
+  const parts: string[] = []
+
+  if (authorVersion) {
+    parts.push(`version ${authorVersion}`)
+  }
+
+  const hasAuthorVersion = isTagged || !!authorVersion
+
+  parts.push(hasAuthorVersion
+    ? `edit v${skill.currentVersion}`
+    : `v${skill.currentVersion}`)
+
+  return parts
 }
 
 /**
