@@ -1780,11 +1780,11 @@ unticked by default). The name `skills:share` is reserved (section 12.1).
 Labels: "See your
 skills and their full text" and "Add or replace skills (saved switched off for
 your review)". Deletes stay on `data:delete`. The scopes make the server a
-**major version bump**: `config/mcp-server.ts` is at `3.1.0` on `main`, so the
-release is `4.0.0`. Coordinator decision, 2026-11-13: `skills:share` is a name reserved in the docs only: S-6 does not
+**major version bump**: S-6 shipped as MCP `5.0.0`, because `4.0.0` went to
+connectors (C-9) before it merged. Coordinator decision, 2026-11-13: `skills:share` is a name reserved in the docs only: S-6 does not
 register a scope that has no tools, because a consent line that grants nothing
-confuses users. If S-13 is ready before S-6 merges, the scope joins 4.0.0;
-otherwise it ships with S-13 as its own major version bump.
+confuses users. If S-13 is ready before S-6 merges, the scope joins 5.0.0;
+otherwise it ships with S-13 as its own major version bump (`6.0.0` or later).
 The sharing tools behind it arrive with S-13.
 
 Commands are skills, so there are no separate command tools. Outputs include
@@ -1794,7 +1794,7 @@ Commands are skills, so there are no separate command tools. Outputs include
 | --- | --- | --- | --- | --- |
 | `list_skills` | `skills:read` | `readOnlyHint` | `{ cursor?, limit? ≤ 50, kind? 'skill' or 'command' }` | Metadata only: `[{ id, name, description, enabled, status, licenseClass, sourceKind, sourceUrl?, sourceRef?, version, filesCount, bytes, createdVia, modelInvocable, slashCommand, argumentHint?, updatedAt }]` |
 | `get_skill` | `skills:read` | `readOnlyHint` | `{ id, version?, path? }` | Metadata and file list; with `path`, the file text (at most 200,000 characters) plus a `truncated` flag |
-| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; slashCommand?, modelInvocable?, argumentHint? }` | Saved disabled with `needs-review`. The license gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
+| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; slashCommand? (a command name, since S-12), modelInvocable?, argumentHint? }` | Saved disabled with `needs-review`. The license gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
 | `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Writes a persisted pending version (section 3.4), disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, its `sha256`, `findings`, `reviewUrl` and `diffSummary`. The app's accept and reject are bound to `{ version, sha256 }`, so a change after the user opened the review is refused with 409 |
 | `rename_skill` | `skills:write` | `idempotentHint`, not destructive | `{ id, name }` (regex, 1 to 64 characters, unique per user, reserved slash names refused) | Rewrites only the frontmatter `name`, as a new version (origin `rename`, note "Renamed from x"). Disables the skill and sets `needs-review` |
 | `delete_skills` | `data:delete` | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`, plus provider-copy deletion with S-5 |
@@ -1830,9 +1830,18 @@ Commands are skills, so there are no separate command tools. Outputs include
   `delete_skills`; scope lists (`shared/utils/mcp-oauth-scopes.ts`,
   `server/utils/mcp/tool-scopes.ts`), `app/components/OAuth/ScopeLabel.vue`,
   the scope picker and the connected-apps page; `pnpm run mcp:surface`; the
-  `4.0.0` bump in `config/mcp-server.ts`, `server.json` and both plugin
+  `5.0.0` bump in `config/mcp-server.ts`, `server.json` and both plugin
   manifests; `docs/mcp-server.md` (tables and "What MCP does not do"); and the
   Privacy Policy scope list.
+
+**As built (S-6, 2026-11-15).** The tools, the checks and the deviations are in
+`docs/mcp-server.md` ("The skills scopes"). In short: `update_skill` stages a
+pending version with `sourceKind` `mcp` (so an accepted update is third-party
+text and the memory write lock applies), `rename_skill` and `update_skill`
+switch the skill off in the same batch that writes the version, a skill the
+user switches on while `needs-review` with nothing pending becomes `ready`,
+`LICENSE` and `NOTICE` are protected whatever the license class, and the
+`delete_skills` provider-copy deletion waits for S-5.
 
 **Sharing tools (S-13, later).** Behind the reserved name: `share_skill
 { id, expiresInDays ≤ 30 }` and `revoke_skill_shares` under `skills:share`, and
@@ -1931,7 +1940,7 @@ ship early with `gh stack merge --squash` up to a given PR; for example, merge
 S-1 to S-11 (the manager) while S-3, S-12 and S-6 are still in review. The
 context-panel section needs P0-13. The MCP version number and order against
 C-9, P0-8, P0-13 and A-8 are set at merge time; S-6 and C-9 ideally ship in one
-major release (MCP `4.0.0` for the skills scopes).
+major release (MCP `5.0.0` for the skills scopes).
 
 Breach-runbook rows that S-7 adds (pre-check question 12): R2
 `user-skills/` exposure (like the existing R2 row: random ids lower but do not
@@ -1958,7 +1967,7 @@ Ticket keys without a BES id are new on 2026-11-13.
 | S-3 BES-276 | Re-scoped: catalog from model-invocable skills only, with Cyrillic-aware caps and `SKILL_ACTIVATE_MAX_TOKENS`; the **interim rule** of section 2 item 8 instead of the approval card (a spec for each point; C-6 later adds the card as an acceptance criterion on BES-244, not a blocker); side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB and 6,000 tokens points to `read_skill_file`; memory write lock spec |
 | S-12 (new) | `feat(skills): slash commands in the composer`: section 5.5 and the picker of section 10.5; `data-skill-invocation` part and `resolveSkillInvocationPart`; `$ARGUMENTS` substitution; one-shot versus persistent invocation; `filterPublicParts` drops the part; replay drops a part that no longer resolves; Enter never sends while the picker is open; iOS Simulator check that the keyboard stays open; the manager's "Use in new chat" action (the `useChatInputPrefill().queue()` chip). Flag `skills.commands` |
 | S-5 BES-285 | Anthropic only; provider id in D1 columns, KV cache removed; substring rename rule; disclosure text of section 7; pinned version; deletion triggers; re-upload lazily when `current_version` differs from the uploaded version, not on every save; its own stack, needs C-6 and D-7 |
-| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); license classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` (a persisted pending version, which the app's accept (S-2, bound to `{ version, sha256 }`) turns into a new numbered version over the same blobs) and `rename_skill` set `needs-review` and disable the skill; `skills:share` not registered (reserved in the docs only); MCP `4.0.0`; the top layer, so it is the preview PR |
+| S-6 BES-292 | Re-scoped: tools `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill` and `delete_skills` (section 11); license classifier in the shared validation; outputs gain `licenseClass`, `modelInvocable`, `slashCommand` and `argumentHint`; `update_skill` (a persisted pending version, which the app's accept (S-2, bound to `{ version, sha256 }`) turns into a new numbered version over the same blobs) and `rename_skill` set `needs-review` and disable the skill; `skills:share` not registered (reserved in the docs only); MCP `5.0.0`; the top layer, so it is the preview PR |
 | S-7 BES-294 | Re-scoped to `docs(legal): skills and commands`; a plain PR in parallel with the stack that must merge, and its `LEGAL_NOTICES` entry be published, at least 30 days before `skills` leaves `internal`. Uses this document's license and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material). Also: Art. 30 row 10b reads "created or imported"; retention of up to 20 versions; an invocation equals a send to the same provider; DPIA rows for authored text and for commands; the Terms right-to-use promise for "create, paste or import" |
 | S-8 pre-check (PR #739) | Its S-1 row and question 8 ask to add the skills tables to the `CLAUDE.md` cascade list; with no FK to `users` there is nothing to add (section 8). Staging prefix kept as `skills-staging/`, committed files moved to `user-skills/` as it recommends. A dated 2026-11-13 addendum records authoring, `authored`, enabled-on-save, 20 kept versions and commands. Coordinator to confirm |
 | S-9 BES-316 | Plain PR after the testers. Never says "safe". Names the license block. Claims no affiliation with the Agent Skills project or Anthropic |
@@ -2044,7 +2053,7 @@ The owner took the plan's defaults:
 
 | # | Decision |
 | --- | --- |
-| 7 | **Sharing (S-13):** built later as the last optional stack. Authored and open skills only, signed-in viewers, 7 days by default and 30 at most, with its own legal notice. The name `skills:share` is reserved in the docs only. S-6 does not register a scope that has no tools. If S-13 is ready before S-6 merges, the scope joins 4.0.0; otherwise it ships with S-13 as its own major bump. |
+| 7 | **Sharing (S-13):** built later as the last optional stack. Authored and open skills only, signed-in viewers, 7 days by default and 30 at most, with its own legal notice. The name `skills:share` is reserved in the docs only. S-6 does not register a scope that has no tools. If S-13 is ready before S-6 merges, the scope joins 5.0.0; otherwise it ships with S-13 as its own major bump. |
 | 8 | **Skills authored in the app** are saved enabled with no license tick (class `authored`). Imports, updates, MCP writes and share copies stay disabled until the user enables them in the app. |
 | 9 | **Runtime** (S-3 and S-12) ships before C-6, under the interim rule in section 2, item 8. The approval card comes with C-6, and connectors cannot exist before C-6 anyway. |
 | 10 | **GitHub update versus local edits** (coordinator, 2026-11-13): the update check compares the skill's `source_version` with the latest upstream commit (or, for a release-pinned skill, the highest release tag), and a newer commit creates a persisted pending version, not used until accepted (accepting disables the skill). If any version newer than the last import has origin `editor`, `template`, `mcp`, `rename` or `restore`, the review screen warns "Accepting replaces your local edits since the import" and shows the diff against the current version. There is no merge in the first release. Accepting makes the upstream version current, and the local versions stay in history (within the 20 kept) so the user can restore one (section 3.4). |

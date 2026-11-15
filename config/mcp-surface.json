@@ -433,6 +433,70 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Add a skill (an Agent Skills folder as text files) to your Besidka account. The files go through the same checks as an import: paths, text only, license and content scan. A skill with a restricted license is refused. The skill is saved disabled with status needs-review and cannot be switched on, set to Auto or given permissions by this tool. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result, which also lists the findings of the scan. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "argumentHint": {
+            "description": "A short hint shown after the /command, such as [file]",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "files": {
+            "description": "1 to 50 text files, at most 400 KiB in all. Must include SKILL.md with a name and a description in its frontmatter",
+            "items": {
+              "properties": {
+                "content": {
+                  "description": "The file as text",
+                  "maxLength": 200000,
+                  "type": "string"
+                },
+                "path": {
+                  "description": "A relative path such as SKILL.md or references/guide.md",
+                  "maxLength": 400,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "modelInvocable": {
+            "description": "Whether the model may pick the skill by itself (Auto). It applies only once the user switches the skill on",
+            "type": "boolean"
+          },
+          "slashCommand": {
+            "description": "A /command for the skill, without the slash. It works only once the user switches the skill on",
+            "maxLength": 65,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "type": "object"
+      },
+      "name": "create_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Add a skill"
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -722,6 +786,45 @@
     },
     {
       "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Permanently delete skills from your Besidka account with all their versions and files, and the per-chat choices that refer to them. This cannot be undone: ask the user to confirm first and send confirm: true. Reports the ids that were deleted and the ones that were not found among your skills. Requires signing in (data:delete).",
+      "inputSchema": {
+        "properties": {
+          "confirm": {
+            "const": true,
+            "description": "Must be true, confirmed by the user",
+            "type": "boolean"
+          },
+          "ids": {
+            "description": "Skill ids from list_skills, 1 to 20",
+            "items": {
+              "pattern": "^[A-Za-z0-9]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "name": "delete_skills",
+      "public": false,
+      "requiredScopes": [
+        "data:delete"
+      ],
+      "title": "Delete skills"
+    },
+    {
+      "annotations": {
         "destructiveHint": null,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -924,6 +1027,46 @@
         "settings:read"
       ],
       "title": "Get my settings"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read one of your skills: its details and file list, or with path the text of one file (at most 200000 characters, with truncated set when it was cut). Pass version to inspect an older version or a pending update. Only your own skills. Requires signing in (skills:read).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Skill id from list_skills",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "A file path from the file list, such as SKILL.md. Returns that file as text instead of only the list",
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "description": "A version number to inspect, such as the pendingVersion of a skill; default the current version",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "get_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:read"
+      ],
+      "title": "Read a skill"
     },
     {
       "annotations": {
@@ -1383,6 +1526,45 @@
     },
     {
       "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List the skills and commands saved in your Besidka account, most recently changed first, without their text: id, name, description, whether it is switched on, status (ready, needs-review or broken), license class, source, version, pending update, file count, size, who created it, whether the model may pick it by itself and its /command. Only your own skills. Use nextCursor to get the next page. Requires signing in (skills:read).",
+      "inputSchema": {
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "kind": {
+            "description": "command lists skills that have a /command, skill lists the others; omit for both",
+            "enum": [
+              "skill",
+              "command"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "description": "Page size, 1 to 50, default 20",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_skills",
+      "public": false,
+      "requiredScopes": [
+        "skills:read"
+      ],
+      "title": "List my skills"
+    },
+    {
+      "annotations": {
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -1557,6 +1739,42 @@
         "files:write"
       ],
       "title": "Rename a file"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Rename one of your skills. Only the name line in the frontmatter of SKILL.md changes, as a new version; its command is a separate setting and stays. The skill is switched off and gets status needs-review, so it does not run under its new name until the user checks it. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Skill id from list_skills",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "The new name: lowercase letters, digits and single hyphens, 1 to 64 characters, not used by another of your skills and not a name Besidka reserves",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "rename_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Rename a skill"
     },
     {
       "annotations": {
@@ -2286,6 +2504,117 @@
         "settings:write"
       ],
       "title": "Change my settings"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Change the files of one of your skills. The changes are saved as a pending version, the current version stays as it is, and the skill is switched off with status needs-review until the user accepts the update in Besidka. A pending update that was already waiting is replaced. SKILL.md cannot be deleted or renamed, LICENSE and NOTICE files are protected, and changing the name is refused: use rename_skill. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result, which also lists the findings of the scan and a summary of the changed files. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "baseVersion": {
+            "description": "The current version number you read; a skill that changed since is refused",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "changes": {
+            "description": "Put (add or replace a file), delete or rename a file, in order, at most 50, at most 400 KiB of file content in all",
+            "items": {
+              "oneOf": [
+                {
+                  "properties": {
+                    "content": {
+                      "maxLength": 200000,
+                      "type": "string"
+                    },
+                    "op": {
+                      "const": "put",
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "path",
+                    "content"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "op": {
+                      "const": "delete",
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "from": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "op": {
+                      "const": "rename",
+                      "type": "string"
+                    },
+                    "to": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "from",
+                    "to"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "id": {
+            "description": "Skill id from list_skills",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "baseVersion",
+          "changes"
+        ],
+        "type": "object"
+      },
+      "name": "update_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Update a skill"
     }
   ]
 }

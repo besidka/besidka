@@ -546,6 +546,23 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profiles-connected-apps-consent.spec.ts',
     'tests/integration/api/connectors-oauth-flow.spec.ts',
   ]
+  const mcpSkillTests = [
+    'tests/unit/server/mcp/tools/list-skills.spec.ts',
+    'tests/unit/server/mcp/tools/get-skill.spec.ts',
+    'tests/unit/server/mcp/tools/create-skill.spec.ts',
+    'tests/unit/server/mcp/tools/update-skill.spec.ts',
+    'tests/unit/server/mcp/tools/rename-skill.spec.ts',
+    'tests/unit/server/mcp/tools/delete-skills.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+  ]
   const besidkaToolsTests = [
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
     'tests/unit/server/utils/besidka-tools/summary.spec.ts',
@@ -1758,6 +1775,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/versions/restore.spec.ts',
     'tests/unit/server/utils/skills/versions/create.spec.ts',
     'tests/unit/server/utils/skills/versions/read-write-paths.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
     'tests/unit/server/api/v1/skills/skills-crud.spec.ts',
     'tests/unit/server/api/v1/skills/update-check.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
@@ -4274,11 +4293,16 @@ export function getAffectedTests(changedFiles) {
         ...mcpUiParityTests,
         ...mcpArtifactTests,
         ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
     },
     {
       pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
       tests: mcpConnectorTests,
+    },
+    {
+      pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write)))\.ts$/,
+      tests: mcpSkillTests,
     },
     {
       pattern: /^server\/utils\/settings\/apply-user-settings\.ts$/,
@@ -4313,6 +4337,7 @@ export function getAffectedTests(changedFiles) {
         ...mcpUiParityTests,
         ...mcpArtifactTests,
         ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
     },
     {

@@ -50,6 +50,8 @@ const DESTRUCTIVE_TOOLS = [
   'revoke_artifact_shares',
   'delete_artifacts',
   'delete_connectors',
+  'update_skill',
+  'delete_skills',
 ]
 
 function readToolSources() {
@@ -114,6 +116,7 @@ describe('mcp tool scopes', () => {
       'delete_memory',
       'reset_memory',
       'delete_artifacts',
+      'delete_skills',
     ] as const
 
     for (const name of deleteTools) {
@@ -211,6 +214,35 @@ describe('mcp tool scopes', () => {
     expect(isMcpWriteScope('connectors:write')).toBe(true)
     expect(isMcpWriteScope('connectors:read')).toBe(false)
     expect(isMcpDeleteScope('connectors:write')).toBe(false)
+  })
+
+  it('puts the skill tools behind their own scopes', () => {
+    for (const name of ['list_skills', 'get_skill'] as const) {
+      expect(getMcpToolRequiredScopes(name), name).toEqual(['skills:read'])
+      expect(isMcpWriteTool(name), name).toBe(false)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    for (const name of [
+      'create_skill',
+      'update_skill',
+      'rename_skill',
+    ] as const) {
+      expect(getMcpToolRequiredScopes(name), name).toEqual(['skills:write'])
+      expect(isMcpWriteTool(name), name).toBe(true)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    expect(getMcpToolRequiredScopes('delete_skills')).toEqual(['data:delete'])
+    expect(isMcpWriteScope('skills:write')).toBe(true)
+    expect(isMcpWriteScope('skills:read')).toBe(false)
+    expect(isMcpDeleteScope('skills:write')).toBe(false)
+  })
+
+  it('has no skills:share scope, which is reserved in the docs only', () => {
+    expect(MCP_OAUTH_SCOPES as readonly string[]).not.toContain(
+      'skills:share',
+    )
   })
 
   it('never lets a tool write feature rules', () => {

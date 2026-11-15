@@ -74,7 +74,8 @@ export async function resolveSkillCommand(input: {
  * `modelInvocable` together in one statement and `command` is independent of
  * it: a reserved or invalid command is refused with a 400, a command another
  * skill already uses with a 409. A skill with missing files cannot be
- * enabled.
+ * enabled. Switching on a `needs-review` skill with no pending update is the
+ * user's review, so it becomes `ready`.
  */
 export async function updateSkillSettings(input: {
   db: DbClient
@@ -106,6 +107,14 @@ export async function updateSkillSettings(input: {
       why: 'Its files are missing, or its license is not allowed',
       fix: 'Restore an earlier version, or delete the skill',
     })
+  }
+
+  if (
+    changes.enabled === true
+    && skill.status === 'needs-review'
+    && skill.pendingVersion === null
+  ) {
+    changes.status = 'ready'
   }
 
   let updated: typeof schema.skills.$inferSelect | undefined
