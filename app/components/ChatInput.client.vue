@@ -223,6 +223,7 @@
       :is-loaded="composerConnectors.isLoaded.value"
       :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
+      @set-all="composerConnectors.setAll"
       @toggle-besidka="composerBesidkaTools.toggle"
     />
     <LazyChatInputSkillPicker

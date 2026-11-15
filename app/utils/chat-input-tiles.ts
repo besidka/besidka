@@ -337,12 +337,16 @@ function buildConnectorsTile(
   }
 
   const itemIds = new Set(connectors.items.map(item => item.id))
+  const selectedItems = connectors.items.filter((item) => {
+    return connectors.selectedIds.includes(item.id)
+  })
   const count = connectors.selectedIds.filter(id => itemIds.has(id)).length
 
   if (count === 0) {
     return null
   }
 
+  const singleTitle = count === 1 ? selectedItems[0]?.title.trim() : ''
   const label = count === 1 ? '1 connector' : `${count} connectors`
 
   return {
@@ -350,9 +354,11 @@ function buildConnectorsTile(
     section: 'connectors',
     icon: { kind: 'icon', name: 'lucide:cable' },
     caption: 'Connectors',
-    value: String(count),
-    chipLabel: label,
-    ariaLabel: `${label} on for this chat. Open to change.`,
+    value: singleTitle || String(count),
+    chipLabel: singleTitle || label,
+    ariaLabel: singleTitle
+      ? `Connector ${singleTitle} is on for this chat. Open to change.`
+      : `${label} on for this chat. Open to change.`,
     removeLabel: 'Turn off connectors',
     isNeutral: false,
     isAuto: false,

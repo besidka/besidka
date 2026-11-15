@@ -132,6 +132,12 @@
               data-testid="connector-add-url-error"
             >
               {{ urlError }}
+              <NuxtLink
+                v-if="urlErrorLink"
+                :to="urlErrorLink"
+                class="link"
+                data-testid="connector-add-url-error-link"
+              >Open Labs</NuxtLink>
             </p>
             <p
               v-else
@@ -237,6 +243,7 @@ const tab = shallowRef<AddTab>(
 const url = shallowRef<string>('')
 const title = shallowRef<string>('')
 const urlError = shallowRef<string>('')
+const urlErrorLink = shallowRef<string>('')
 const presetError = shallowRef<string>('')
 const directoryError = shallowRef<string>('')
 const isSubmitting = shallowRef<boolean>(false)
@@ -266,6 +273,7 @@ function authHint(auth: ConnectorPreset['auth']): string {
 function selectTab(next: AddTab) {
   tab.value = next
   urlError.value = ''
+  urlErrorLink.value = ''
   presetError.value = ''
   directoryError.value = ''
 }
@@ -291,6 +299,12 @@ function describeError(exception: unknown, fallback: string): string {
   const message = parsedException.message || fallback
 
   return parsedException.fix ? `${message}. ${parsedException.fix}.` : message
+}
+
+function readInternalLink(exception: unknown): string {
+  const link = parseError(exception).link
+
+  return typeof link === 'string' && /^\/(?![/\\])/.test(link) ? link : ''
 }
 
 async function create(body: Record<string, string>) {
@@ -338,6 +352,7 @@ async function addByUrl() {
   const address = url.value.trim()
 
   urlError.value = ''
+  urlErrorLink.value = ''
 
   if (!address.toLowerCase().startsWith('https://')) {
     urlError.value = 'Use the server\'s public https address.'
@@ -354,6 +369,7 @@ async function addByUrl() {
     })
   } catch (exception) {
     urlError.value = describeError(exception, 'Could not add the connector')
+    urlErrorLink.value = readInternalLink(exception)
   } finally {
     isSubmitting.value = false
   }

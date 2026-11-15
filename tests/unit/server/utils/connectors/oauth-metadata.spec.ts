@@ -173,6 +173,30 @@ describe('connector OAuth metadata', () => {
         .toEqual({ authType: 'header' })
     })
 
+    it('reports header auth without metadata requests when OAuth is not allowed', async () => {
+      const server = createMockAuthServer()
+
+      vi.stubGlobal('fetch', server.fetch)
+
+      expect(await discoverConnectorAuth(
+        MCP_SERVER_URL,
+        undefined,
+        { allowOAuth: false },
+      )).toEqual({ authType: 'header' })
+      expect(server.requestsTo(PRM_URL)).toHaveLength(0)
+      expect(server.requestsTo(MCP_SERVER_URL)).toHaveLength(1)
+    })
+
+    it('still reports no auth when OAuth is not allowed and the probe is 2xx', async () => {
+      vi.stubGlobal('fetch', createMockAuthServer({ probeStatus: 200 }).fetch)
+
+      expect(await discoverConnectorAuth(
+        MCP_SERVER_URL,
+        undefined,
+        { allowOAuth: false },
+      )).toEqual({ authType: 'none' })
+    })
+
     it('fails on any other status', async () => {
       vi.stubGlobal('fetch', createMockAuthServer({ probeStatus: 500 }).fetch)
 

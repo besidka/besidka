@@ -408,10 +408,13 @@ export async function resolveOAuthDiscovery(
  * The discovery step of the connect flow (docs/connectors.md section 5.2):
  * 2xx means no auth; 401 or 403 with protected-resource metadata means
  * OAuth; 401 or 403 without it means a header; anything else is an error.
+ * With `allowOAuth: false` (a preset that takes a token only) a 401 or 403
+ * means a header without any metadata request.
  */
 export async function discoverConnectorAuth(
   serverUrl: string,
   logger?: LoggerLike,
+  options: { allowOAuth?: boolean } = {},
 ): Promise<ConnectorAuthDiscovery> {
   const probe = await probeConnectorServer(serverUrl, logger)
 
@@ -421,6 +424,10 @@ export async function discoverConnectorAuth(
 
   if (probe.status !== 401 && probe.status !== 403) {
     throw createConnectorError('CONNECTOR_DISCOVERY_FAILED')
+  }
+
+  if (options.allowOAuth === false) {
+    return { authType: 'header' }
   }
 
   const protectedResource = await fetchProtectedResourceMetadata(

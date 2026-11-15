@@ -300,4 +300,134 @@ describe('ChatInput/ConnectorPicker', () => {
 
     expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
   })
+
+  describe('turn all on and off', () => {
+    const sevenItems: ComposerConnectorItem[] = Array.from(
+      { length: 7 },
+      (_, index) => {
+        return {
+          id: `c${index}`,
+          slug: `slug${index}`,
+          title: `Connector ${index}`,
+          host: `mcp${index}.example.com`,
+          status: 'ready' as const,
+        }
+      },
+    )
+
+    it('hides the bulk actions with fewer than two connectors', async () => {
+      await mountPicker({ items: [items[0]!] })
+
+      expect(find('connector-picker-bulk')).toBeNull()
+
+      document.body.innerHTML = ''
+
+      await mountPicker({ items: [] })
+
+      expect(find('connector-picker-bulk')).toBeNull()
+    })
+
+    it('turns every connector on when they fit under the cap', async () => {
+      const wrapper = await mountPicker()
+
+      get('connector-picker-turn-all-on').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('set-all')).toEqual([[['c1', 'c2', 'c3']]])
+      expect(find('connector-picker-bulk-notice')).toBeNull()
+    })
+
+    it('turns on at most five in list order and says some stayed off',
+      async () => {
+        const wrapper = await mountPicker({ items: sevenItems })
+
+        get('connector-picker-turn-all-on').click()
+        await flushPromises()
+
+        expect(wrapper.emitted('set-all')).toEqual([
+          [['c0', 'c1', 'c2', 'c3', 'c4']],
+        ])
+        expect(get('connector-picker-bulk-notice').textContent)
+          .toContain('5 of 7 are on. At most 5 can be on at once.')
+      })
+
+    it('keeps the connectors already on when turning all on', async () => {
+      const wrapper = await mountPicker({
+        items: sevenItems,
+        selectedIds: ['c6'],
+      })
+
+      get('connector-picker-turn-all-on').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('set-all')).toEqual([
+        [['c6', 'c0', 'c1', 'c2', 'c3']],
+      ])
+    })
+
+    it('turns everything off with an empty selection', async () => {
+      const wrapper = await mountPicker({ selectedIds: ['c1', 'c3'] })
+
+      get('connector-picker-turn-all-off').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('set-all')).toEqual([[[]]])
+    })
+
+    it('clears the notice after turning all off or toggling one', async () => {
+      const wrapper = await mountPicker({
+        items: sevenItems,
+        selectedIds: ['c1'],
+      })
+
+      get('connector-picker-turn-all-on').click()
+      await flushPromises()
+
+      expect(find('connector-picker-bulk-notice')).not.toBeNull()
+
+      get('connector-picker-toggle-slug6').click()
+      await flushPromises()
+
+      expect(find('connector-picker-bulk-notice')).toBeNull()
+      expect(wrapper.emitted('toggle')).toEqual([['c6']])
+    })
+
+    it('disables the actions that cannot do anything', async () => {
+      await mountPicker()
+
+      expect((get('connector-picker-turn-all-off') as HTMLButtonElement)
+        .disabled).toBe(true)
+      expect((get('connector-picker-turn-all-on') as HTMLButtonElement)
+        .disabled).toBe(false)
+
+      document.body.innerHTML = ''
+
+      await mountPicker({ selectedIds: ['c1', 'c2', 'c3'] })
+
+      expect((get('connector-picker-turn-all-on') as HTMLButtonElement)
+        .disabled).toBe(true)
+      expect((get('connector-picker-turn-all-off') as HTMLButtonElement)
+        .disabled).toBe(false)
+
+      document.body.innerHTML = ''
+
+      await mountPicker({
+        items: sevenItems,
+        selectedIds: ['c0', 'c1', 'c2', 'c3', 'c4'],
+        isAtLimit: true,
+      })
+
+      expect((get('connector-picker-turn-all-on') as HTMLButtonElement)
+        .disabled).toBe(true)
+    })
+
+    it('disables both actions while a change is being saved', async () => {
+      await mountPicker({ selectedIds: ['c1'], isSaving: true })
+
+      expect((get('connector-picker-turn-all-on') as HTMLButtonElement)
+        .disabled).toBe(true)
+      expect((get('connector-picker-turn-all-off') as HTMLButtonElement)
+        .disabled).toBe(true)
+    })
+  })
 })

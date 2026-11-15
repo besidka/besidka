@@ -8,6 +8,7 @@ import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import { deriveConnectorSlugBase } from '#shared/utils/connectors-slug'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
 import * as schema from '~~/server/db/schema'
+import { createConnectorError } from '~~/server/utils/connectors/errors'
 import { createConnector } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
 import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
@@ -42,6 +43,18 @@ function invalidAddress() {
     why: 'The connector address is not a public https URL with a host name',
     fix: 'Use the https address of the MCP server',
   })
+}
+
+const OWN_MCP_PATH = '/mcp'
+
+function isOwnMcpPath(rawUrl: string): boolean {
+  try {
+    const pathname = new URL(rawUrl).pathname.replace(/\/+$/, '')
+
+    return pathname.toLowerCase() === OWN_MCP_PATH
+  } catch {
+    return false
+  }
 }
 
 function resolveCreatedVia(
@@ -116,6 +129,10 @@ export async function addConnector(
   const parsed = parseSafeOutboundUrl(rawUrl)
 
   if (!parsed.ok) {
+    if (parsed.reason === 'own-host' && isOwnMcpPath(rawUrl)) {
+      throw createConnectorError('CONNECTOR_OWN_SERVER')
+    }
+
     throw invalidAddress()
   }
 

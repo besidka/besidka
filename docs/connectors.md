@@ -349,6 +349,13 @@ Other C-3 choices that differ from or add to the text above:
   `server/utils/auth-hosts.ts`), the artifacts origin, `besidka.com` with
   `www` and one-label subdomains, and `*.chernenko.workers.dev`, so a
   connector cannot make the Worker call itself or a sibling Worker.
+  `addConnector` gives the own-host rejection of an address whose path is
+  `/mcp` (any case, trailing slash allowed) its own error,
+  `CONNECTOR_OWN_SERVER`: "This is Besidka's own MCP server. To let the model
+  use your Besidka data in chats, turn on Besidka tools in Labs.", carrying
+  `link: '/profile/labs'` that the add dialog renders as an "Open Labs" link
+  (internal paths only). Every other own-host address keeps the generic
+  "This address is not allowed", and the validator itself is unchanged.
 - `safeFetch` itself strips every name in `CONNECTOR_REJECTED_HEADER_NAMES`
   (`Host`, `Cookie`, `Content-Length`, `Transfer-Encoding`, `Connection`,
   `Mcp-Session-Id`, `Mcp-Protocol-Version`) on every hop, not only the routes
@@ -517,6 +524,17 @@ Registration order at OAuth start:
    support that; use an API key if the server offers one."
 
 An AS that rejects a preview host's CIMD falls back to DCR on that host.
+
+A preset whose `auth` has no `oauth` (GitHub) never starts OAuth: the
+discover route passes `allowOAuth: false` to `discoverConnectorAuth`, so a 401
+or 403 means header auth without any metadata request, and the Connect dialog
+goes from the consent straight to the token form. Presets with both kinds
+(Linear, Atlassian) and servers added by URL keep OAuth. When the OAuth start
+fails with "This server needs a pre-registered client", the Connect dialog
+offers "Use a token instead" (only when the connector has no preset or its
+preset allows `header`) and opens the same header form for the same
+connector. A pre-registered GitHub OAuth client is not built: it needs an
+owner-created GitHub OAuth App (follow-up).
 
 Which path each preset accepts (C-4 fills the "Verified" column on the PR
 preview):

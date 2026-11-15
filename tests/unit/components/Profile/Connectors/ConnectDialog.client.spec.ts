@@ -244,6 +244,120 @@ describe('Profile/Connectors/ConnectDialog', () => {
         .toContain('drive.evil.example')
     })
 
+  describe('when the sign-in server needs a pre-registered client', () => {
+    function noRegistrationError() {
+      return Object.assign(new Error('x'), {
+        data: {
+          message: 'This server needs a pre-registered client',
+          code: 'CONNECTOR_OAUTH_NO_REGISTRATION',
+          why: 'No client registration',
+          fix: 'Use an API key if the server offers one',
+        },
+      })
+    }
+
+    async function failSignIn() {
+      respond({
+        '/connect/discover': OAUTH_DISCOVERY,
+        '/consent': { connector: {} },
+        '/oauth/start': noRegistrationError(),
+        '/credentials': { connector: {} },
+      })
+
+      const wrapper = await mountDialog()
+
+      await checkTestId('connector-consent-checkbox')
+      await clickTestId('connector-consent-continue')
+      await clickTestId('connector-connect-sign-in')
+
+      return wrapper
+    }
+
+    it('offers a token for a server without a preset and opens the header '
+      + 'form for the same connector', async () => {
+      connector.value = createConnectorItem({
+        presetId: null,
+        status: 'needs-auth',
+        consent: { state: 'missing', issuerHost: null, givenAt: null },
+      })
+
+      const wrapper = await failSignIn()
+
+      expect(getByTestId('connector-connect-error').textContent)
+        .toContain('This server needs a pre-registered client')
+
+      await clickTestId('connector-connect-use-token')
+
+      expect(findByTestId('connector-connect-error')).toBeNull()
+      expect((getByTestId('connector-header-name') as HTMLInputElement).value)
+        .toBe('Authorization')
+
+      await setTestIdValue('connector-header-value', 'Bearer secret')
+      getByTestId('connector-connect-header-form')
+        .dispatchEvent(new Event('submit'))
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/connectors/conn1/credentials',
+        {
+          method: 'POST',
+          body: { headerName: 'Authorization', headerValue: 'Bearer secret' },
+        },
+      )
+      expect(wrapper.emitted('connected')?.[0]).toEqual(['conn1'])
+    })
+
+    it('offers a token for a preset that allows header auth', async () => {
+      connector.value = createConnectorItem({
+        presetId: 'linear',
+        status: 'needs-auth',
+        consent: { state: 'missing', issuerHost: null, givenAt: null },
+      })
+
+      await failSignIn()
+
+      expect(findByTestId('connector-connect-use-token')).not.toBeNull()
+    })
+
+    it('does not offer a token for an OAuth-only preset', async () => {
+      connector.value = createConnectorItem({
+        title: 'Notion',
+        presetId: 'notion',
+        status: 'needs-auth',
+        consent: { state: 'missing', issuerHost: null, givenAt: null },
+      })
+
+      await failSignIn()
+
+      expect(findByTestId('connector-connect-error')).not.toBeNull()
+      expect(findByTestId('connector-connect-use-token')).toBeNull()
+    })
+
+    it('does not offer a token for other failures', async () => {
+      connector.value = createConnectorItem({
+        presetId: null,
+        status: 'needs-auth',
+        consent: { state: 'missing', issuerHost: null, givenAt: null },
+      })
+      respond({
+        '/connect/discover': OAUTH_DISCOVERY,
+        '/consent': { connector: {} },
+        '/oauth/start': Object.assign(new Error('x'), {
+          data: {
+            message: 'The sign-in server refused to register Besidka',
+            code: 'CONNECTOR_OAUTH_REGISTRATION_FAILED',
+          },
+        }),
+      })
+      await mountDialog()
+      await checkTestId('connector-consent-checkbox')
+      await clickTestId('connector-consent-continue')
+      await clickTestId('connector-connect-sign-in')
+
+      expect(findByTestId('connector-connect-use-token')).toBeNull()
+    })
+  })
+
   it('shows a fixed error when the server cannot be reached', async () => {
     respond({
       '/connect/discover': Object.assign(new Error('x'), {

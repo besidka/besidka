@@ -313,6 +313,37 @@ describe('connector OAuth flow', () => {
       })
     })
 
+    it('reports a token-only preset as header auth without OAuth requests',
+      async () => {
+        const githubUrl = 'https://api.githubcopilot.com/mcp/'
+        const requested: string[] = []
+
+        vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => {
+          requested.push(String(input))
+
+          return new Response('{}', {
+            status: 401,
+            headers: {
+              'www-authenticate':
+                'Bearer resource_metadata="https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/"',
+            },
+          })
+        }))
+
+        const connector = await createConnector({ presetId: 'github' })
+        const result = await discover(connector.id)
+        const stored = await connectorRow(connector.id)
+
+        expect(result).toMatchObject({
+          authType: 'header',
+          host: 'api.githubcopilot.com',
+          issuerHost: null,
+          issuerDiffers: false,
+        })
+        expect(stored.authType).toBe('header')
+        expect(requested).toEqual([githubUrl])
+      })
+
     it('uses the allow-listed preview origin for client id and redirect',
       async () => {
         mocks.origin = PREVIEW_ORIGIN

@@ -37,10 +37,16 @@ export default defineEventHandler(async (event) => {
 
   event.res.headers.set('cache-control', 'no-store')
 
+  const preset = connector.presetId
+    ? findConnectorPreset(connector.presetId)
+    : undefined
+
   let discovery: Awaited<ReturnType<typeof discoverConnectorAuth>>
 
   try {
-    discovery = await discoverConnectorAuth(serverUrl, logger)
+    discovery = await discoverConnectorAuth(serverUrl, logger, {
+      allowOAuth: !preset || preset.auth.includes('oauth'),
+    })
   } catch (exception) {
     logger.set({
       attributes: {
@@ -78,8 +84,6 @@ export default defineEventHandler(async (event) => {
     host,
     issuerHost,
     issuerDiffers: issuerHost !== null && issuerHost !== host,
-    notice: connector.presetId
-      ? findConnectorPreset(connector.presetId)?.notice ?? null
-      : null,
+    notice: preset?.notice ?? null,
   }
 })

@@ -6,6 +6,7 @@ interface ConnectorErrorText {
   status: number
   why: string
   fix: string
+  link?: string
 }
 
 /**
@@ -21,6 +22,14 @@ export const CONNECTOR_ERRORS = {
     status: 404,
     why: 'No connector with this id belongs to the account',
     fix: 'Check the connector id',
+  },
+  CONNECTOR_OWN_SERVER: {
+    message: 'This is Besidka\'s own MCP server',
+    status: 400,
+    why: 'Besidka does not call itself as a connector',
+    fix: 'To let the model use your Besidka data in chats, turn on Besidka '
+      + 'tools in Labs',
+    link: '/profile/labs',
   },
   CONNECTOR_DISCOVERY_FAILED: {
     message: 'The server did not answer as an MCP server',
@@ -200,6 +209,7 @@ export function createConnectorError(
     code,
     why: text.why,
     fix: text.fix,
+    ...('link' in text ? { link: text.link } : {}),
     ...(data ? { data } : {}),
   })
 }

@@ -645,7 +645,7 @@ describe('buildChatInputTiles connectors tile', () => {
     expect(tileIds(createState())).toEqual([])
   })
 
-  it('adds one removable tile for a single connector', () => {
+  it('adds one removable tile named after a single connector', () => {
     const [tile] = buildChatInputTiles(withConnectors(['c1']))
 
     expect(tile).toMatchObject({
@@ -653,8 +653,8 @@ describe('buildChatInputTiles connectors tile', () => {
       section: 'connectors',
       icon: { kind: 'icon', name: 'lucide:cable' },
       caption: 'Connectors',
-      value: '1',
-      chipLabel: '1 connector',
+      value: 'Notion',
+      chipLabel: 'Notion',
       removeLabel: 'Turn off connectors',
       isNeutral: false,
       isLocked: false,
@@ -664,14 +664,24 @@ describe('buildChatInputTiles connectors tile', () => {
   it('counts the connectors that are on', () => {
     const [tile] = buildChatInputTiles(withConnectors(['c1', 'c2']))
 
+    expect(tile?.value).toBe('2')
     expect(tile?.chipLabel).toBe('2 connectors')
     expect(tile?.ariaLabel).toContain('2 connectors')
   })
 
+  it('names the single connector in the accessible label', () => {
+    const [tile] = buildChatInputTiles(withConnectors(['c2']))
+
+    expect(tile?.value).toBe('Linear')
+    expect(tile?.ariaLabel).toBe(
+      'Connector Linear is on for this chat. Open to change.',
+    )
+  })
+
   it('ignores selected ids that are no longer selectable', () => {
     expect(tileIds(withConnectors(['gone']))).toEqual([])
-    expect(buildChatInputTiles(withConnectors(['c1', 'gone']))[0]?.chipLabel)
-      .toBe('1 connector')
+    expect(buildChatInputTiles(withConnectors(['c1', 'gone']))[0]?.value)
+      .toBe('Notion')
   })
 
   it('adds nothing while the row is hidden', () => {

@@ -12,6 +12,7 @@ export const CONNECTOR_CALLBACK_FALLBACK_MESSAGE
  */
 export const CONNECTOR_CODE_MESSAGES: Readonly<Record<string, string>> = {
   CONNECTOR_NOT_FOUND: 'Connector not found',
+  CONNECTOR_OWN_SERVER: 'This is Besidka\'s own MCP server',
   CONNECTOR_DISCOVERY_FAILED: 'The server did not answer as an MCP server',
   CONNECTOR_OAUTH_UNSUPPORTED: 'This server does not offer OAuth sign-in',
   CONNECTOR_OAUTH_METADATA_INVALID:

@@ -19,6 +19,37 @@ export interface ChatConnectorSelectionState {
   isKnown: boolean
 }
 
+export interface TurnAllOnPlan {
+  ids: string[]
+  skippedCount: number
+}
+
+/**
+ * The selection after "Turn all on": the connectors already on stay on, the
+ * rest follow in list order until the per-send cap is reached. `skippedCount`
+ * is how many stayed off because of the cap.
+ */
+export function planTurnAllOn(
+  itemIds: readonly string[],
+  selectedIds: readonly string[],
+  cap: number = CONNECTORS_PER_SEND,
+): TurnAllOnPlan {
+  const known = new Set(itemIds)
+  const ids = selectedIds.filter(id => known.has(id))
+
+  for (const itemId of itemIds) {
+    if (ids.length >= cap) {
+      break
+    }
+
+    if (!ids.includes(itemId)) {
+      ids.push(itemId)
+    }
+  }
+
+  return { ids, skippedCount: itemIds.length - ids.length }
+}
+
 function isSelectableConnector(connector: {
   enabled: boolean
   status: string
@@ -266,6 +297,18 @@ export function useComposerConnectors(
     )
   }
 
+  async function setAll(nextIds: string[]) {
+    if (isSaving.value) {
+      return
+    }
+
+    const knownIds = new Set(items.value.map(item => item.id))
+
+    await setSelectedIds(
+      nextIds.filter(id => knownIds.has(id)).slice(0, CONNECTORS_PER_SEND),
+    )
+  }
+
   async function clear() {
     if (isSaving.value || selectedIds.value.length === 0) {
       return
@@ -283,6 +326,7 @@ export function useComposerConnectors(
     isAtLimit,
     isSaving,
     toggle,
+    setAll,
     clear,
     refresh: library.refresh,
   }

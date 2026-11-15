@@ -69,6 +69,15 @@
         >
           {{ errorDetail }}
         </p>
+        <button
+          v-if="canOfferToken"
+          type="button"
+          class="btn btn-sm btn-soft justify-self-start min-h-11 sm:min-h-8"
+          data-testid="connector-connect-use-token"
+          @click="useTokenInstead"
+        >
+          Use a token instead
+        </button>
       </div>
     </div>
 
@@ -285,6 +294,7 @@ const isConsentAccepted = shallowRef<boolean>(false)
 const isBusy = shallowRef<boolean>(false)
 const errorTitle = shallowRef<string>('')
 const errorDetail = shallowRef<string>('')
+const errorCode = shallowRef<string>('')
 const liveMessage = shallowRef<string>('')
 const headerName = shallowRef<string>('Authorization')
 const headerValue = shallowRef<string>('')
@@ -298,6 +308,13 @@ const preset = computed(() => {
 
 const canUseHeader = computed<boolean>(() => {
   return !preset.value || preset.value.auth.includes('header')
+})
+
+const canOfferToken = computed<boolean>(() => {
+  return step.value === 'failed'
+    && errorCode.value === 'CONNECTOR_OAUTH_NO_REGISTRATION'
+    && discovery.value !== null
+    && canUseHeader.value
 })
 
 const dialogTitle = computed<string>(() => {
@@ -325,6 +342,7 @@ function fail(exception: unknown, fallback: string) {
   const parsedException = parseError(exception)
 
   errorTitle.value = parsedException.message || fallback
+  errorCode.value = parsedException.code ?? ''
   errorDetail.value = [parsedException.why, parsedException.fix]
     .filter(Boolean)
     .join('. ')
@@ -341,6 +359,14 @@ function isConsentCurrentFor(found: Discovery): boolean {
 
   return found.authType !== 'oauth'
     || current.consent.issuerHost === found.issuerHost
+}
+
+function useTokenInstead() {
+  authKind.value = 'header'
+  headerName.value = preset.value?.headerName ?? 'Authorization'
+  errorCode.value = ''
+  step.value = 'auth'
+  liveMessage.value = 'Enter the key to finish connecting'
 }
 
 async function finish() {

@@ -74,6 +74,46 @@
         </div>
 
         <div
+          v-if="items.length >= 2"
+          class="mb-3 flex shrink-0 flex-wrap items-center gap-2"
+          data-testid="connector-picker-bulk"
+        >
+          <button
+            type="button"
+            class="btn btn-sm min-h-11 sm:min-h-8"
+            :disabled="isSaving || !canTurnAllOn"
+            data-testid="connector-picker-turn-all-on"
+            @click="turnAllOn"
+          >
+            Turn all on
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm min-h-11 sm:min-h-8"
+            :disabled="isSaving || !canTurnAllOff"
+            data-testid="connector-picker-turn-all-off"
+            @click="turnAllOff"
+          >
+            Turn all off
+          </button>
+          <p
+            class="sr-only"
+            role="status"
+            aria-live="polite"
+          >
+            {{ bulkNotice }}
+          </p>
+          <p
+            v-if="bulkNotice"
+            class="w-full text-xs text-warning"
+            aria-hidden="true"
+            data-testid="connector-picker-bulk-notice"
+          >
+            {{ bulkNotice }}
+          </p>
+        </div>
+
+        <div
           class="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-box border border-base-200 p-1"
           data-testid="connector-picker-list-scroll"
         >
@@ -156,7 +196,7 @@
                   :disabled="isRowDisabled(item.id)"
                   :aria-label="`Use ${item.title} in this chat`"
                   :data-testid="`connector-picker-toggle-${item.slug}`"
-                  @change="emit('toggle', item.id)"
+                  @change="onToggle(item.id)"
                 >
               </label>
             </li>
@@ -218,6 +258,7 @@
 
 <script setup lang="ts">
 import { CONNECTORS_PER_SEND } from '#shared/utils/connectors-policy'
+import { planTurnAllOn } from '~/composables/composer-connectors'
 import type { ComposerConnectorItem } from '~/composables/composer-connectors'
 
 const props = withDefaults(defineProps<{
@@ -236,6 +277,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'toggle': [connectorId: string]
+  'set-all': [connectorIds: string[]]
   'toggle-besidka': []
 }>()
 
@@ -247,6 +289,25 @@ const headingId = useId()
 const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const boxRef = useTemplateRef<HTMLDivElement>('boxRef')
 
+const bulkNotice = shallowRef<string>('')
+
+const itemIds = computed<string[]>(() => {
+  return props.items.map(item => item.id)
+})
+
+const selectedItemCount = computed<number>(() => {
+  return itemIds.value.filter(id => props.selectedIds.includes(id)).length
+})
+
+const canTurnAllOn = computed<boolean>(() => {
+  return planTurnAllOn(itemIds.value, props.selectedIds).ids.length
+    > selectedItemCount.value
+})
+
+const canTurnAllOff = computed<boolean>(() => {
+  return selectedItemCount.value > 0
+})
+
 const limitHint = computed<string>(() => {
   if (props.isAtLimit) {
     return `${CONNECTORS_PER_SEND} connectors are on. Turn one off to use `
@@ -255,6 +316,26 @@ const limitHint = computed<string>(() => {
 
   return `Up to ${CONNECTORS_PER_SEND} at once`
 })
+
+function turnAllOn() {
+  const plan = planTurnAllOn(itemIds.value, props.selectedIds)
+
+  bulkNotice.value = plan.skippedCount > 0
+    ? `${plan.ids.length} of ${props.items.length} are on. At most `
+    + `${CONNECTORS_PER_SEND} can be on at once.`
+    : ''
+  emit('set-all', plan.ids)
+}
+
+function turnAllOff() {
+  bulkNotice.value = ''
+  emit('set-all', [])
+}
+
+function onToggle(connectorId: string) {
+  bulkNotice.value = ''
+  emit('toggle', connectorId)
+}
 
 function isSelected(connectorId: string): boolean {
   return props.selectedIds.includes(connectorId)
@@ -284,6 +365,8 @@ async function showDialog() {
 
 watch(isOpen, async (open) => {
   if (!open) {
+    bulkNotice.value = ''
+
     if (dialogRef.value?.open) {
       dialogRef.value.close()
     }

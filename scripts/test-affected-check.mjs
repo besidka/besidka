@@ -1576,6 +1576,7 @@ export function getAffectedTests(changedFiles) {
 
   const connectorsSafeFetchTests = [
     'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/server/utils/connectors/add.spec.ts',
     'tests/unit/server/utils/net/safe-url.spec.ts',
     'tests/unit/server/utils/net/safe-fetch.spec.ts',
     'tests/unit/server/utils/skills/import/github-safe-url-gate.spec.ts',
@@ -1608,6 +1609,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const connectorsOAuthTests = [
+    'tests/unit/server/utils/connectors/add.spec.ts',
     'tests/unit/server/utils/connectors/credentials.spec.ts',
     'tests/unit/server/utils/connectors/oauth-client.spec.ts',
     'tests/unit/server/utils/connectors/oauth-metadata.spec.ts',

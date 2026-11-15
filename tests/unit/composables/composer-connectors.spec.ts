@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, ref } from 'vue'
 import {
   NEW_CHAT_CONNECTORS_KEY,
+  planTurnAllOn,
   useChatConnectorSelection,
   useComposerConnectors,
   useConnectorTitles,
@@ -388,6 +389,47 @@ describe('useComposerConnectors', () => {
     expect(composable.selectedIds.value).toEqual([])
   })
 
+  it('turns the given connectors on in one call, capped at five', async () => {
+    data.value = {
+      connectors: Array.from({ length: 7 }, (_, index) => {
+        return createConnector({
+          id: `c${index}`,
+          slug: `slug${index}`,
+          title: `Connector ${index}`,
+        })
+      }),
+    }
+    mocks.fetch
+      .mockResolvedValueOnce({ connectorIds: [] })
+      .mockImplementationOnce(async (_url: string, options: {
+        body: { connectorIds: string[] }
+      }) => ({ connectorIds: options.body.connectorIds }))
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+    await composable.setAll([
+      'c0',
+      'c1',
+      'c2',
+      'c3',
+      'c4',
+      'c5',
+      'c6',
+      'unknown',
+    ])
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/chats/chat-slug/connectors',
+      {
+        method: 'PUT',
+        body: { connectorIds: ['c0', 'c1', 'c2', 'c3', 'c4'] },
+      },
+    )
+    expect(composable.selectedIds.value)
+      .toEqual(['c0', 'c1', 'c2', 'c3', 'c4'])
+  })
+
   it('starts from nothing when the chat changes', async () => {
     data.value = { connectors: [createConnector()] }
     mocks.fetch.mockResolvedValue({ connectorIds: ['c1'] })
@@ -458,5 +500,37 @@ describe('useConnectorTitles', () => {
       title: 'Notion',
     })
     expect(connectorsBySlug!.get('gone')).toBeUndefined()
+  })
+})
+
+describe('planTurnAllOn', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+
+  it('turns every connector on when they fit', () => {
+    expect(planTurnAllOn(['a', 'b', 'c'], [])).toEqual({
+      ids: ['a', 'b', 'c'],
+      skippedCount: 0,
+    })
+  })
+
+  it('turns on the first five in list order and counts the rest', () => {
+    expect(planTurnAllOn(ids, [])).toEqual({
+      ids: ['a', 'b', 'c', 'd', 'e'],
+      skippedCount: 2,
+    })
+  })
+
+  it('keeps the connectors already on and fills up to the cap', () => {
+    expect(planTurnAllOn(ids, ['f', 'b'])).toEqual({
+      ids: ['f', 'b', 'a', 'c', 'd'],
+      skippedCount: 2,
+    })
+  })
+
+  it('drops selected ids that are not in the list', () => {
+    expect(planTurnAllOn(['a', 'b'], ['gone', 'b'])).toEqual({
+      ids: ['b', 'a'],
+      skippedCount: 0,
+    })
   })
 })

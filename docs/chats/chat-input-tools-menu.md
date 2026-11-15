@@ -490,8 +490,16 @@ The choice is per chat. On an existing chat each toggle saves at once through
 `/chats/new` it is held in client state and handed to the new chat's slug
 before navigation. The send body carries `connectorIds` (only while the flag
 is on and the choice is known), which the server stores as the chat's choice.
-The tile "N connectors" shows while any is on, and its remove button turns
-them all off. Hiding the row (image mode, a model without tool calling) does
+The tile "Connectors" shows while any is on: with exactly one on its value is
+that connector's title (cut by the tile's own truncation), with two or more it
+is the count; Besidka tools never count toward it. Its remove button turns
+them all off. With two or more selectable connectors the picker also has
+"Turn all on" and "Turn all off" (`planTurnAllOn` in
+`app/composables/composer-connectors.ts`): all on keeps what is already on,
+then adds the rest in list order up to the five-per-send cap, and a notice
+("5 of 7 are on. At most 5 can be on at once.") says so when some stayed off;
+each button is disabled when it cannot change anything or while a save is
+running. Hiding the row (image mode, a model without tool calling) does
 not clear the choice. See `docs/connectors.md` section 6.1.
 
 ## Add key links in Web search

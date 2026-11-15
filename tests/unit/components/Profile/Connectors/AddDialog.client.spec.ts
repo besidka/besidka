@@ -38,9 +38,14 @@ function mountDialog(props: Record<string, unknown> = {}) {
   })
 }
 
-function serverError(message: string, why: string, fix: string) {
+function serverError(
+  message: string,
+  why: string,
+  fix: string,
+  link?: string,
+) {
   return Object.assign(new Error(message), {
-    data: { message, why, fix },
+    data: { message, why, fix, ...(link ? { link } : {}) },
     statusCode: 400,
   })
 }
@@ -199,5 +204,46 @@ describe('Profile/Connectors/AddDialog', () => {
       expect(getByTestId('connector-add-url').getAttribute('aria-invalid'))
         .toBe('true')
       expect(wrapper.emitted('added')).toBeUndefined()
+    })
+
+  it('says Besidka\'s own MCP server cannot be added and links to Labs',
+    async () => {
+      mocks.fetch.mockRejectedValue(serverError(
+        'This is Besidka\'s own MCP server',
+        'Besidka does not call itself as a connector',
+        'To let the model use your Besidka data in chats, turn on Besidka '
+        + 'tools in Labs',
+        '/profile/labs',
+      ))
+
+      await mountDialog({ initialTab: 'url' })
+      await setTestIdValue('connector-add-url', 'https://besidka.com/mcp')
+      await clickTestId('connector-add-url-submit')
+
+      const error = getByTestId('connector-add-url-error')
+
+      expect(error.textContent).toContain(
+        'This is Besidka\'s own MCP server. To let the model use your '
+        + 'Besidka data in chats, turn on Besidka tools in Labs.',
+      )
+      expect(getByTestId('connector-add-url-error-link').outerHTML)
+        .toContain('/profile/labs')
+    })
+
+  it('shows no link for an ordinary refusal, or one that leaves the site',
+    async () => {
+      mocks.fetch.mockRejectedValue(serverError(
+        'This address is not allowed',
+        'Not public',
+        'Use the https address of the MCP server',
+        'https://evil.example/labs',
+      ))
+
+      await mountDialog({ initialTab: 'url' })
+      await setTestIdValue('connector-add-url', 'https://10.0.0.1/mcp')
+      await clickTestId('connector-add-url-submit')
+
+      expect(findByTestId('connector-add-url-error')).not.toBeNull()
+      expect(findByTestId('connector-add-url-error-link')).toBeNull()
     })
 })
