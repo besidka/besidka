@@ -1822,6 +1822,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/skills/path.spec.ts',
     'tests/unit/utils/skills/frontmatter.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
+    'tests/unit/utils/skills/corpus-benign.spec.ts',
+    'tests/unit/utils/skills/corpus-attack-patterns.spec.ts',
     'tests/unit/utils/skills/findings-severity.spec.ts',
     'tests/unit/utils/skills/findings-execution.spec.ts',
     'tests/unit/utils/skills/findings-intent.spec.ts',
@@ -3420,7 +3422,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/plugins\/skills-update-sweep\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock|github-mock)\.ts|tests\/fixtures\/skills\/.*)$/,
+        /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/plugins\/skills-update-sweep\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock|github-mock)\.ts|tests\/utils\/skills-corpus\.ts|tests\/fixtures\/skills\/.*)$/,
       tests: skillsImportTests,
     },
     {
