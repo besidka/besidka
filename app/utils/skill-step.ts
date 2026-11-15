@@ -1,7 +1,9 @@
 import {
   SKILL_ACTIVATE_TOOL_NAME,
   SKILL_ACTIVATION_PART_TYPE,
+  SKILL_ACTIVATION_SOURCE_PROJECT,
 } from '#shared/utils/skills/runtime'
+import type { SkillActivationSource } from '#shared/utils/skills/runtime'
 
 export type SkillStepState = 'working' | 'ready' | 'failed'
 
@@ -9,6 +11,7 @@ export interface SkillStepModel {
   state: SkillStepState
   skillId: string | null
   name: string
+  source?: SkillActivationSource
 }
 
 export const SKILL_STEP_PART_TYPE = `tool-${SKILL_ACTIVATE_TOOL_NAME}`
@@ -94,7 +97,13 @@ export function getSkillActivationStepModel(
     return model !== null && model.state === 'ready' && model.skillId === skillId
   })
 
-  return hasMatchingCall ? null : { state: 'ready', skillId, name }
+  if (hasMatchingCall) {
+    return null
+  }
+
+  return part.data.source === SKILL_ACTIVATION_SOURCE_PROJECT
+    ? { state: 'ready', skillId, name, source: SKILL_ACTIVATION_SOURCE_PROJECT }
+    : { state: 'ready', skillId, name }
 }
 
 export function getReasoningSkillStep(
@@ -110,6 +119,10 @@ export function getSkillStepTitle(model: SkillStepModel): string {
 
   if (model.state === 'working') {
     return `Reading skill${suffix}`
+  }
+
+  if (model.state === 'ready' && model.source === SKILL_ACTIVATION_SOURCE_PROJECT) {
+    return `Project skill${suffix}`
   }
 
   return model.state === 'ready'

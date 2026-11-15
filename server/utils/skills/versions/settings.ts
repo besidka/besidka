@@ -4,6 +4,7 @@ import {
   normalizeSkillCommand,
   validateSkillSlashName,
 } from '#shared/utils/skills-policy'
+import { countStoredHighlights } from '#shared/utils/skills/findings'
 import { getSkillModeColumns } from '#shared/utils/skills/mode'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import * as schema from '~~/server/db/schema'
@@ -13,7 +14,10 @@ import {
   createSkillCommandTakenError,
   createSkillEditError,
 } from '~~/server/utils/skills/versions/errors'
-import { loadOwnedSkill } from '~~/server/utils/skills/versions/read'
+import {
+  loadOwnedSkill,
+  loadVersionRow,
+} from '~~/server/utils/skills/versions/read'
 import { toSkillSummary } from '~~/server/utils/skills/versions/view'
 
 type DbClient = ReturnType<typeof useDb>
@@ -188,5 +192,16 @@ export async function updateSkillSettings(input: {
     },
   })
 
-  return toSkillSummary(updated)
+  const currentVersion = await loadVersionRow(
+    db,
+    userId,
+    updated.id,
+    updated.currentVersion,
+  )
+
+  return toSkillSummary(
+    updated,
+    null,
+    countStoredHighlights(currentVersion?.findings),
+  )
 }

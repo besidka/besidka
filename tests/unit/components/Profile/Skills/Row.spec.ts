@@ -48,6 +48,23 @@ describe('Profile/Skills/Row', () => {
     expect(wrapper.find(testId('skill-row-kind')).exists()).toBe(false)
   })
 
+  it('shows a soft badge with the number of highlights to look at', async () => {
+    const wrapper = await mountRow(createSkillSummary({ highlightCount: 3 }))
+    const badge = wrapper.get(testId('skill-row-highlights'))
+
+    expect(badge.text()).toBe('3 to look at')
+    expect(badge.classes()).toEqual(
+      expect.arrayContaining(['badge', 'badge-soft']),
+    )
+  })
+
+  it('shows no highlights badge, not even a zero, without highlights', async () => {
+    const wrapper = await mountRow(createSkillSummary({ highlightCount: 0 }))
+
+    expect(wrapper.find(testId('skill-row-highlights')).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('to look at')
+  })
+
   it('shows the plain skill name whatever the mode and the command', async () => {
     for (const modelInvocable of [true, false]) {
       commandsActive.value = true

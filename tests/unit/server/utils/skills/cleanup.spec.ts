@@ -5,6 +5,7 @@ import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
   seedChat,
+  seedProject,
   seedUser,
 } from '../../../../setup/helpers/memory-extraction-db'
 import type {
@@ -92,6 +93,13 @@ describe('skills tables', () => {
   })
 })
 
+describe('project_skills table', () => {
+  it('carries user_id and no foreign key', () => {
+    expect(getTableColumns(schema.projectSkills)).toHaveProperty('userId')
+    expect(getTableConfig(schema.projectSkills).foreignKeys).toHaveLength(0)
+  })
+})
+
 describe('skills deletion hooks', () => {
   let testDb: MemoryExtractionTestDb
   let bucket: FakeSkillBucket
@@ -152,6 +160,33 @@ describe('skills deletion hooks', () => {
         .toHaveBeenCalledWith(userId, mocks.logger)
     })
 
+    it('deletes the project pins of the skill and no other pin', async () => {
+      const skillId = await seedFullSkill(userId)
+      const otherSkillId = await seedFullSkill(userId)
+      const projectId = await seedProject(testDb.db, userId)
+
+      await testDb.db.insert(schema.projectSkills).values([
+        { projectId, skillId, userId, level: 'always', position: 0 },
+        {
+          projectId,
+          skillId: otherSkillId,
+          userId,
+          level: 'prefer',
+          position: 1,
+        },
+      ])
+
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+      const pins = await testDb.db.select().from(schema.projectSkills)
+
+      expect(result.projectSkillsDeleted).toBe(1)
+      expect(pins.map(pin => pin.skillId)).toEqual([otherSkillId])
+    })
+
     it('keeps the cache when the skill is not the caller\'s', async () => {
       const skillId = await seedFullSkill(otherUserId)
 
@@ -176,6 +211,13 @@ describe('skills deletion hooks', () => {
         skillId,
         enabled: true,
       })
+      await testDb.db.insert(schema.projectSkills).values({
+        projectId: await seedProject(testDb.db, owner),
+        skillId,
+        userId: owner,
+        level: 'always',
+        position: 0,
+      })
       bucket.objects.set(`skills-staging/u${owner}/stage1/SKILL.md`, {
         bytes: new Uint8Array([1]),
         uploaded: new Date(),
@@ -198,11 +240,12 @@ describe('skills deletion hooks', () => {
         skillVersionsDeleted: 1,
         skillFilesDeleted: 2,
         skillChatSettingsDeleted: 1,
+        projectSkillsDeleted: 1,
         skillObjectsDeleted: 2,
         skillStagingObjectsDeleted: 1,
       })
 
-      for (const table of SKILLS_TABLES) {
+      for (const table of [...SKILLS_TABLES, schema.projectSkills]) {
         const rows = await testDb.db.select().from(table)
 
         expect(rows.every((row) => {

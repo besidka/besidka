@@ -77,6 +77,7 @@ const EXPECTED_EXPOSURE = {
     'rename_skill',
     'reset_memory',
     'set_feature_access',
+    'set_project_skills',
     'update_artifact',
     'update_connector_tools',
     'update_memory',

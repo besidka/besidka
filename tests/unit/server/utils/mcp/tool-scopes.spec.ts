@@ -52,6 +52,7 @@ const DESTRUCTIVE_TOOLS = [
   'delete_connectors',
   'update_skill',
   'delete_skills',
+  'set_project_skills',
 ]
 
 function readToolSources() {
@@ -227,6 +228,7 @@ describe('mcp tool scopes', () => {
       'update_skill',
       'rename_skill',
       'delete_skills',
+      'set_project_skills',
     ] as const) {
       expect(getMcpToolRequiredScopes(name), name).toEqual(['skills:write'])
       expect(isMcpWriteTool(name), name).toBe(true)

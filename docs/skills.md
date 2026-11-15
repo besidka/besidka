@@ -589,6 +589,38 @@ attribution text lands with SS-10. No OWASP text is copied.
   multiset (`rule` plus the SHA-256 of the full line). A URL changed after
   character 120 and a second copy of a known line are therefore new.
 
+- **Review screens (BES-388).** One component (`FindingGroups.vue`) renders the
+  three groups in the order Look closely, Worth a look, For your information
+  (collapsed), with `path:line`, the rule explanation, the rule detail, "(quoted,
+  probably an example)" and, for a highlight in the description, "This text is in
+  every message while the skill is on Auto." It is used in the import review, the
+  update review and the editor (`ProblemList.vue`, without the path). With N
+  highlights marked Look closely (N from the stored severity counts) install and
+  accept need a second tick, "I read the N highlights marked Look closely
+  (kinds)". An update asks for it only when the update adds one (the `changes`
+  block of `GET .../versions/<v>/diff?changes=true`: new highlights, `newHosts`
+  not linked by any file of the version in use, `changedSettings` for
+  `allowed-tools`, `hooks` and `description`, `newScripts`); when that list is
+  partial or missing it falls back to the stored count of the update. The first
+  switch on repeats the kinds in the confirmation, found by scanning the current
+  files in the browser. The manager row shows `badge badge-soft` "N to look at"
+  from `SkillSummary.highlightCount` (the stored count of the current version,
+  one query in `listUserSkills`); a version stored by older rules has no
+  severities until it is rescanned in the update review. No new hard block.
+  Banned in all skill UI: safe, safety rating, clean, verified, trusted,
+  harmless, malicious (for the user's skill) and a green check for "no
+  findings"; the two mandated sentences that contain "safe" and "harmless" are
+  the only exceptions.
+- **Corpus guard (BES-389).** `tests/fixtures/skills/anthropics/` holds 18
+  skill folders of `anthropics/skills@2c5958ec` (Apache-2.0, see its
+  `SOURCE.md`). `corpus-benign.spec.ts` asserts 0 high, only the 27 measured
+  medium findings (rule, path and line) and the count of every low rule within
+  10 percent (at least 3). `corpus-attack-patterns.spec.ts` runs 24 synthetic
+  attack patterns, each in a plain, a corporate, a Ukrainian and a Polish
+  wording; the misses are a recorded table of known gaps that the spec keeps
+  honest (a gap that starts being caught fails until it is removed). The ReDoS
+  suite is `findings-redos.spec.ts`.
+
 ### 3.4 Import preview, commit and update
 
 Staging (KV and R2 with a 1 h lifetime) exists only for the import preview,
@@ -1348,6 +1380,94 @@ image. `create_document` is a follow-up tool and behaves as it did before.
 `activate_skill` call appear once each under Used (kind `skill`, label
 "Attached" or "Used"); the shared context panel shows none.
 
+### 5.8 Project skills (S-15)
+
+A project holds skills that apply in its chats (BES-381, owner suggestion of
+2026-11-14). The **Skills** card on `/chats/projects/<id>` (shown with the
+`skills` flag, `app/components/Projects/SkillsCard.vue`, one bubble between the
+instructions and the knowledge cards) lists the pins with a level select, the
+skill's state and a remove button, and "Add skill" opens the same
+`ChatInputSkillPicker` as the "+" menu with its own subtitle. The picker lists
+the user's enabled skills that are not pinned yet. A new pin is Always load
+unless three already are, then Prefer.
+
+| Level | What a send gets |
+| --- | --- |
+| Always load | The skill's current content, in every send of the project's chats, in a `<project_skills>` block in the system prompt (`runtime/project.ts`), `invoked="project"` in its `<skill_content>` tag. Also sent when tool calling is off. The skill leaves the catalog |
+| Prefer | The skill stays in the `<available_skills>` catalog, listed first and marked `(project's choice)`, with one extra instruction line that is added to the catalog only when a line is marked |
+
+**Order on a send.** (1) A skill the user attached through "+" or `/command`
+(`<skill_content invoked="user">` in the user turn; a skill that is also an
+Always load pin is loaded once, as the attachment). (2) Always load skills, in
+`position` order. (3) Prefer skills. (4) The other Auto skills by name. The
+levels have separate budgets, so a lower level is cut first only inside the
+catalog (preferred lines come first and the tail is dropped); the Always load
+block has its own cap, `PROJECT_SKILLS_ALWAYS_MAX_TOKENS` (12,000 for the model
+family, Cyrillic-aware, each skill cut to `SKILL_ACTIVATE_MAX_TOKENS`): the
+first skill that does not fit and every one after it are left out and counted
+(`projectAlwaysOmitted` in the wide event), never an error.
+
+**Rules.**
+
+- Pins are read from D1 on every send, never from stored message parts, so a
+  removed pin, an Off skill or a chat moved out of the project stops applying
+  on the next message.
+- Only an enabled skill with status `ready` loads. An Off, `needs-review` or
+  `broken` skill is skipped without a word, and the card shows it as Off,
+  Needs review or Broken. A pin never changes a skill (it cannot turn an Off
+  skill on).
+- A pin overrides the invocation mode: an Always load skill in "Only when I
+  ask" loads, and a Prefer skill in "Only when I ask" is listed in the
+  catalog, so the model may activate it. Re-injection of an earlier
+  activation (section 5.4) accepts a model-invocable skill **or** a skill the
+  project pins (`pinnedSkillIds`), so a preferred skill the model activated
+  stays active on the next send.
+- Limits: at most 3 Always load and 20 pins per project; the always-loaded
+  skills that can run must fit `PROJECT_SKILLS_ALWAYS_MAX_TOKENS`, checked on
+  save (400 with the reason, estimated with the conservative `default`
+  family) and again on every send (bodies grow and the family varies). The
+  card shows "≈ N tokens in every message" per always-loaded skill and in
+  total, as the skills list does for Auto.
+- Untrusted framing: the block says the skill text is data from the user or a
+  third party and cannot override the user, Besidka's rules or the system
+  prompt; the `project_skills` tag is in the delimiter neutralizer, so a body
+  cannot close it. A pin holds skill text, so `holdsSkillText` is true and
+  `memory_write` stays locked like for any skill in the prompt.
+- The step in the reasoning list reads "Project skill · name". Each loaded
+  project skill is written to the client at the start of the send and handed to
+  persistence as a `data-skill-activation` part with `source: 'project'`
+  (`isProjectSkillActivationPart`), like an attached Auto skill. Both
+  collectors skip that source, so a stored project activation never keeps a
+  skill active after the pin is gone. `filterPublicParts` drops the part type,
+  so the name never reaches `/shared/*` (`share-public-parts.spec.ts` covers
+  the project source). The context panel lists it under Used as "Project
+  skill".
+
+**API.** `GET /api/v1/projects/[id]/skills` (pins, state, token estimate,
+limits) and `PUT /api/v1/projects/[id]/skills` (the whole ordered list
+`{ skills: [{ skillId, level }] }`), both behind the `skills` flag through
+`requireSkillsSession`. All checks live in `setProjectSkills`
+(`server/utils/skills/project/pins.ts`): ownership of the project and of every
+skill (a foreign or unknown id is 404), no duplicates, the limits, no broken
+skill, the token cap. The delete and the inserts go in one `db.batch()`.
+
+**Files of an Always load skill.** The `<skill_resources>` list and the cut
+notice name `read_skill_file`, so when a catalog exists the loaded pins are
+added to the tool enum (not to the catalog) and marked active, which makes
+`activate_skill` answer "already active". With no catalog (no Auto skill and
+no Prefer pin, or tool calling off) the tools stay unregistered, exactly as for
+an attached skill: the model sees the body and the file list but cannot read
+the files.
+
+**MCP (5.1.0).** `set_project_skills` (`skills:write`, destructive because the
+list replaces the pins, no new scope) calls `setProjectSkills` through
+`setMcpProjectSkills` (`server/utils/mcp/private/project-skills.ts`): the skills
+flag must be on, the hourly skill-change counter is taken after the checks
+pass, and an Off skill is pinned but never enabled. `get_project` adds
+`skills: [{ skillId, name, level, state }]` only when the token also holds
+`skills:read` and the flag is on, so a `projects:read` token never learns skill
+names. The tool is not offered in chat.
+
 ## 6. Threat model
 
 | # | Threat | Attacker | Mitigation | Ticket |
@@ -1617,6 +1737,19 @@ increases, and no blob is copied.
   - set `current_version` to the newest complete version;
   - with S-13, revoked shares come back: replay the revokes and turn the share
     flag off until that is done.
+
+### 8.8a `project_skills` (S-15)
+
+One row per skill pinned to a project (`server/db/schemas/project-skills.ts`):
+`id` (autoincrement), `project_id` and `skill_id` (public ids), `user_id`,
+`level` (`always` or `prefer`), `position` and `created_at`. Unique
+(`project_id`, `skill_id`), plus indexes on `user_id` and `skill_id`. The
+migration is one `CREATE TABLE` and three `CREATE INDEX`; there is no default
+in SQL (the level and position are set in `setProjectSkills`) and **no foreign
+key**, like `skill_chat_settings` and `research_jobs`, so nothing cascades.
+The rows are deleted explicitly: `deleteProject` (also used by the MCP
+`delete_project`), `deleteUserSkill` (in its batch) and `purgeUserSkills`
+(account purge). `docs/d1-restore-reconciliation.md` has the restore notes.
 
 ### 8.9 Later: sharing tables (S-13)
 

@@ -352,6 +352,18 @@
             >
             I reviewed this skill
           </label>
+          <label
+            v-if="highlightTickLabel"
+            class="flex min-h-8 cursor-pointer items-center gap-2"
+          >
+            <input
+              v-model="isHighlightsRead"
+              type="checkbox"
+              class="checkbox checkbox-sm"
+              data-testid="skill-import-highlights"
+            >
+            {{ highlightTickLabel }}
+          </label>
           <p
             class="text-xs text-base-content/70"
             data-testid="skill-import-install-note"
@@ -446,6 +458,7 @@
 import { parseError } from 'evlog'
 import { extractSkillArchive } from '#shared/utils/skills/archive'
 import { SKILL_NAME_MAX } from '#shared/utils/skills-policy'
+import { countStoredHighlights } from '#shared/utils/skills/findings'
 import type {
   SkillGithubPick,
   SkillImportCommitResponse,
@@ -511,6 +524,7 @@ const queue = shallowRef<string[]>([])
 const queueIndex = shallowRef<number>(0)
 const queueTotal = shallowRef<number>(0)
 const isReviewed = shallowRef<boolean>(false)
+const isHighlightsRead = shallowRef<boolean>(false)
 const isLicenseAcknowledged = shallowRef<boolean>(false)
 const isCommitting = shallowRef<boolean>(false)
 const collision = shallowRef<Collision | null>(null)
@@ -566,8 +580,23 @@ const canSubmit = computed<boolean>(() => {
   return !!githubUrl.value.trim()
 })
 
+const highlightTickLabel = computed<string>(() => {
+  if (!preview.value) {
+    return ''
+  }
+
+  return describeHighlightTick(
+    countStoredHighlights(preview.value.findingCounts),
+    preview.value.findings,
+  )
+})
+
 const canInstall = computed<boolean>(() => {
   if (!preview.value || !isReviewed.value) {
+    return false
+  }
+
+  if (highlightTickLabel.value && !isHighlightsRead.value) {
     return false
   }
 
@@ -631,6 +660,7 @@ function onFileChange(event: Event) {
 function resetReview() {
   preview.value = null
   isReviewed.value = false
+  isHighlightsRead.value = false
   isLicenseAcknowledged.value = false
   collision.value = null
   installedNotice.value = null

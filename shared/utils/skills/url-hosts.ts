@@ -118,6 +118,9 @@ function hostMatches(hostname: string, host: string): boolean {
   return hostname === host || hostname.endsWith(`.${host}`)
 }
 
+const HOST_LINK_PATTERN = /\bhttps?:\/\/[^\s<>"'`)\]]{1,500}/gi
+const MAX_HOSTS_PER_TEXT = 500
+
 function parseUrl(rawUrl: string): URL | null {
   try {
     return new URL(rawUrl)
@@ -238,4 +241,26 @@ export function classifySkillUrl(
   return candidates.sort((left, right) => {
     return SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity]
   })[0] ?? null
+}
+
+/**
+ * The lowercase host names of the `http` and `https` links in a text, each
+ * once. A link that does not parse is skipped.
+ */
+export function extractSkillHosts(text: string): string[] {
+  const hosts = new Set<string>()
+
+  for (const match of text.matchAll(HOST_LINK_PATTERN)) {
+    const hostname = parseUrl(match[0])?.hostname.toLowerCase()
+
+    if (hostname) {
+      hosts.add(hostname)
+    }
+
+    if (hosts.size >= MAX_HOSTS_PER_TEXT) {
+      break
+    }
+  }
+
+  return [...hosts]
 }

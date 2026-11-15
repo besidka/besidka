@@ -51,6 +51,7 @@ import { resetMemoryBesidkaTool } from '~~/server/utils/besidka-tools/tools/rese
 import { revokeArtifactSharesBesidkaTool } from '~~/server/utils/besidka-tools/tools/revoke-artifact-shares'
 import { revokeChatSharesBesidkaTool } from '~~/server/utils/besidka-tools/tools/revoke-chat-shares'
 import { setFeatureAccessBesidkaTool } from '~~/server/utils/besidka-tools/tools/set-feature-access'
+import { setProjectSkillsBesidkaTool } from '~~/server/utils/besidka-tools/tools/set-project-skills'
 import { shareArtifactBesidkaTool } from '~~/server/utils/besidka-tools/tools/share-artifact'
 import { updateArtifactBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-artifact'
 import { updateChatBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-chat'
@@ -109,6 +110,7 @@ export const BESIDKA_TOOLS = {
   revoke_artifact_shares: revokeArtifactSharesBesidkaTool,
   revoke_chat_shares: revokeChatSharesBesidkaTool,
   set_feature_access: setFeatureAccessBesidkaTool,
+  set_project_skills: setProjectSkillsBesidkaTool,
   share_artifact: shareArtifactBesidkaTool,
   update_artifact: updateArtifactBesidkaTool,
   update_chat: updateChatBesidkaTool,

@@ -10,6 +10,7 @@ import {
 import type {
   MemoryExtractionTestDb,
 } from '../../../setup/helpers/memory-extraction-db'
+import { seedSkill } from '../../../setup/helpers/skills-db'
 
 const mocks = vi.hoisted(() => {
   return {
@@ -154,6 +155,33 @@ describe('project lifecycle helpers', () => {
       ).rejects.toMatchObject({ status: 404 })
       expect((await readProject(foreignProject))!.pinnedAt).toBeNull()
     })
+
+  it('deletes the skills pinned to the project and no other pin', async () => {
+    const { deleteProject } = await import(
+      '~~/server/utils/projects/lifecycle'
+    )
+    const projectId = await seedProject(testDb.db, userId)
+    const otherProjectId = await seedProject(testDb.db, userId)
+    const skillId = await seedSkill(testDb.db, userId)
+
+    await testDb.db.insert(schema.projectSkills).values([
+      { projectId, skillId, userId, level: 'always', position: 0 },
+      {
+        projectId: otherProjectId,
+        skillId,
+        userId,
+        level: 'prefer',
+        position: 0,
+      },
+    ])
+
+    await deleteProject(testDb.db, userId, projectId, mocks.logger)
+
+    const pins = await testDb.db.select().from(schema.projectSkills)
+
+    expect(pins.map(pin => pin.projectId)).toEqual([otherProjectId])
+    expect(await readProject(projectId)).toBeUndefined()
+  })
 
   it('deletes the project, keeps and detaches its chats, and purges',
     async () => {

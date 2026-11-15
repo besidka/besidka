@@ -169,6 +169,10 @@
           Besidka highlights links and commands so you can review them. It
           cannot tell whether a skill is safe.
         </p>
+        <p data-testid="skill-review-no-highlight-note">
+          No highlight does not mean the text is harmless. Read the files
+          that matter to you.
+        </p>
       </div>
     </div>
 
@@ -228,51 +232,10 @@
       </div>
     </div>
 
-    <div
-      v-if="preview.findings.length"
-      class="grid gap-2"
-      data-testid="skill-review-findings"
-    >
-      <details
-        v-for="group in findingGroups"
-        :key="group.severity"
-        class="rounded-box border border-base-300"
-        :open="group.isOpenByDefault"
-        :data-testid="`skill-review-findings-${group.severity}`"
-      >
-        <summary class="cursor-pointer px-3 py-2 text-sm font-medium">
-          {{ group.title }} ({{ group.findings.length }})
-        </summary>
-        <ul class="grid max-h-64 gap-1 overflow-auto border-t border-base-300 p-2 text-xs">
-          <li
-            v-for="(finding, index) in group.findings"
-            :key="index"
-          >
-            <button
-              type="button"
-              class="flex w-full min-w-0 items-start gap-2 rounded-field px-1 py-1 text-left hover:bg-base-200"
-              data-testid="skill-review-finding"
-              @click="onSelectFinding(finding.path, finding.line)"
-            >
-              <span class="badge badge-warning badge-xs shrink-0">
-                {{ getFindingMarker(finding.type) }}
-              </span>
-              <span class="shrink-0 font-mono">
-                {{ finding.path }}:{{ finding.line }}
-              </span>
-              <code class="min-w-0 break-all">{{ finding.snippet || finding.detail }}</code>
-              <span
-                v-if="describeQuotedMention(finding)"
-                class="shrink-0 text-base-content/70"
-                data-testid="skill-review-finding-quoted"
-              >
-                {{ describeQuotedMention(finding) }}
-              </span>
-            </button>
-          </li>
-        </ul>
-      </details>
-    </div>
+    <ProfileSkillsFindingGroups
+      :findings="preview.findings"
+      @select="onSelectFinding"
+    />
   </div>
 </template>
 
@@ -409,10 +372,6 @@ const licenseExcerpt = computed<string>(() => {
 
 const findingSummary = computed<string>(() => {
   return describeFindingSummary(props.preview.findingCounts)
-})
-
-const findingGroups = computed(() => {
-  return groupFindingsBySeverity(props.preview.findings)
 })
 
 const flaggedByPath = computed<Record<string, number>>(() => {
