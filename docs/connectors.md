@@ -2051,7 +2051,7 @@ class) and `connectors:write` (write class, unticked by default, shown apart).
 Consent labels in `app/components/OAuth/ScopeLabel.vue`:
 
 - `connectors:read`: "See your connectors: names and addresses, never their keys"
-- `connectors:write`: "Add, change and remove connectors. New ones start switched off; you switch them on in Besidka"
+- `connectors:write`: "Add, change and delete connectors. New ones start switched off; you switch them on in Besidka"
 
 | Tool | Scope | Annotations | Input | Output |
 | --- | --- | --- | --- | --- |

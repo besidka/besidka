@@ -12,6 +12,44 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
+      "description": "Add a remote MCP server to your Besidka connectors by address. The connector is created switched off and not signed in: this tool takes no keys or headers, makes no request to the address and cannot switch it on. The user must connect, give consent and enable it in Besidka, at the manageUrl in the result. At most five connectors added this way can wait switched off. Requires signing in (connectors:write).",
+      "inputSchema": {
+        "properties": {
+          "presetId": {
+            "description": "The id of one of the curated connectors in Besidka, instead of url",
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "description": "A display name, up to 80 characters. Defaults to the preset name or the host",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "description": "The https address of the remote MCP server. Not needed when presetId is set",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "add_connector",
+      "public": false,
+      "requiredScopes": [
+        "connectors:write"
+      ],
+      "title": "Add a connector"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
       "description": "Save a memory entry Besidka uses in future chats. Besidka refuses sensitive topics (health, religion, politics and similar) and never stores ids, card numbers, passwords or keys. Requires signing in (memory:write).",
       "inputSchema": {
         "properties": {
@@ -506,6 +544,45 @@
     {
       "annotations": {
         "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Permanently delete connectors from your Besidka account: their sign-in is revoked at the server when it supports that, and their stored credentials, tool settings and per-chat settings are removed. Chats and the record of past tool calls stay. This cannot be undone: ask the user to confirm first and send confirm: true. Reports the ids that were deleted and the ones that are not yours. Requires signing in (connectors:write).",
+      "inputSchema": {
+        "properties": {
+          "confirm": {
+            "const": true,
+            "description": "Must be true, confirmed by the user",
+            "type": "boolean"
+          },
+          "ids": {
+            "description": "Connector ids from list_connectors, 1 to 20",
+            "items": {
+              "pattern": "^[A-Za-z0-9]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "name": "delete_connectors",
+      "public": false,
+      "requiredScopes": [
+        "connectors:write"
+      ],
+      "title": "Delete connectors"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -712,6 +789,34 @@
         "chats:read"
       ],
       "title": "Read a chat"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read one of your Besidka connectors: the summary of list_connectors plus its tools (name, whether it is on, its approval mode and whether the server marks it read-only) and how many times its tools were called in the last 30 days. Tool descriptions are not included. Never returns the full address, keys, tokens or call contents. Requires signing in (connectors:read).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Connector id from list_connectors",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "get_connector",
+      "public": false,
+      "requiredScopes": [
+        "connectors:read"
+      ],
+      "title": "Get a connector"
     },
     {
       "annotations": {
@@ -950,6 +1055,37 @@
         "chats:read"
       ],
       "title": "List my chats"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List the connectors you added to Besidka (remote MCP servers its chats can use), most recently changed first, with id, title, host, status, whether it is switched on, how many of its tools are on and whether its tools changed since you reviewed them. Never returns addresses beyond the host, keys or tokens. Use nextCursor to get the next page. Requires signing in (connectors:read).",
+      "inputSchema": {
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Page size, 1 to 50, default 20",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_connectors",
+      "public": false,
+      "requiredScopes": [
+        "connectors:read"
+      ],
+      "title": "List my connectors"
     },
     {
       "annotations": {
@@ -1770,6 +1906,65 @@
         "chats:write"
       ],
       "title": "Update a chat"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Reduce what a connector's tools may do: turn tools off, or end their Always allow setting by setting them back to ask. Allow in this chat grants of single chats are not changed. It can never turn a tool on, grant Always allow, or switch the connector itself on; those stay in the Besidka app. Every tool name must belong to the connector, or nothing changes. Returns the updated tool list. Requires signing in (connectors:write).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Connector id from list_connectors",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          },
+          "tools": {
+            "description": "Up to 100 tools to change, each with enabled: false, approval: \"ask\" or both",
+            "items": {
+              "properties": {
+                "approval": {
+                  "const": "ask",
+                  "description": "ask ends the Always allow setting of the tool, so it asks again. Granting Always allow is only possible in the Besidka app",
+                  "type": "string"
+                },
+                "enabled": {
+                  "const": false,
+                  "description": "false turns the tool off. Turning a tool on is only possible in the Besidka app",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The tool name from get_connector",
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "tools"
+        ],
+        "type": "object"
+      },
+      "name": "update_connector_tools",
+      "public": false,
+      "requiredScopes": [
+        "connectors:write"
+      ],
+      "title": "Restrict connector tools"
     },
     {
       "annotations": {
