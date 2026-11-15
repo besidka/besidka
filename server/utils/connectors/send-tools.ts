@@ -441,12 +441,13 @@ function chatGrantHashOf(
 /**
  * The "Allow in this chat" grants of this chat per connector id: the
  * exposed tool name mapped to the hash the continuation stored. A failed
- * read means no grants, so every call asks.
+ * read is logged and means no grants, so every call asks.
  */
 async function readChatGrants(
   db: DbClient,
   userId: number,
   chatPublicId: string,
+  logger: LoggerLike,
 ): Promise<Map<string, Record<string, string>>> {
   try {
     const rows = await listConnectorChatSettings(db, userId, chatPublicId)
@@ -454,7 +455,18 @@ async function readChatGrants(
     return new Map(rows.map((row) => {
       return [row.connectorId, row.alwaysAllowTools ?? {}]
     }))
-  } catch {
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        connectors: {
+          chatGrantsRead: 'failed',
+          error: exception instanceof Error
+            ? exception.message
+            : String(exception),
+        },
+      },
+    })
+
     return new Map()
   }
 }
@@ -732,7 +744,7 @@ export async function getConnectorTools(
     const plans = await prepareAll()
     const candidates: Candidate[] = []
     const chatGrantsByConnector = input.consumeClearedCall
-      ? await readChatGrants(db, userId, input.chatPublicId)
+      ? await readChatGrants(db, userId, input.chatPublicId, logger)
       : new Map<string, Record<string, string>>()
 
     for (const plan of plans) {
