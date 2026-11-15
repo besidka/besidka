@@ -2179,8 +2179,8 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   to the page itself when it used several. Each parameter is removed from
   the address after use.
 - **History tab row.** Connectors is the sixth of seven history tabs. With
-  all of them on, inactive labels collapse to their icon below a 44rem row
-  (`@max-[44rem]:sr-only` in `History/PageShell.vue`). The profile row is back
+  all of them on, inactive labels collapse to their icon below a 50rem row, which is every width because the card is at most about 680px wide
+  (`@max-[50rem]:sr-only` in `History/PageShell.vue`). The profile row is back
   to seven tabs, labels from `lg`. The first C-7 version put Connectors in the
   profile row as an eighth tab, which could not show its labels at any width;
   the owner moved it next to Skills (BES-249).

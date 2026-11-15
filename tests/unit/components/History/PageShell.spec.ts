@@ -222,7 +222,7 @@ describe('HistoryPageShell', () => {
       const links = wrapper.get('nav[aria-label="History sections"]')
         .findAll('a')
       const collapsed = wrapper.findAll('nav a span:not(.iconify)')
-        .filter(label => label.classes().includes('@max-[44rem]:sr-only'))
+        .filter(label => label.classes().includes('@max-[50rem]:sr-only'))
 
       expect(links.map(link => link.attributes('href'))).toEqual([
         '/chats/history',
@@ -267,5 +267,22 @@ describe('HistoryPageShell', () => {
 
     expect(wrapper.find('[data-testid="tab-connectors"]').exists())
       .toBe(false)
+  })
+
+  it('tightens the tab padding below sm only with seven tabs', async () => {
+    const withSix = await mountShell('chats')
+
+    expect(withSix.find('[data-testid="tab-chats"]').classes())
+      .not.toContain('max-sm:[--tab-p:0.5rem]')
+
+    artifactsActive.value = true
+    documentsActive.value = true
+    skillsActive.value = true
+    connectorsActive.value = true
+
+    const withSeven = await mountShell('chats')
+
+    expect(withSeven.get('[data-testid="tab-chats"]').classes())
+      .toContain('max-sm:[--tab-p:0.5rem]')
   })
 })
