@@ -1903,7 +1903,7 @@ export default defineEventHandler(async (event) => {
 
   const skillScriptsRun = await prepareSkillScriptsForSend({
     db,
-    bucket: useFileStorage(),
+    getBucket: () => useFileStorage(),
     userId,
     chatPublicId: chat.id,
     candidateSkillIds: skillsSend.scriptCandidateSkillIds,
@@ -2728,7 +2728,7 @@ export default defineEventHandler(async (event) => {
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
               documentsContextLine,
-              skillsInstructionBlock: skillsSend.instructionBlock,
+              skillsInstructionBlock,
               connectorsInstructionBlock,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,

@@ -1946,6 +1946,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/tool-approval/policy.spec.ts',
     'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/unit/utils/code-execution/send.spec.ts',
+    'tests/integration/api/chats-code-execution.spec.ts',
   ]
 
   const skillsComposerTests = [

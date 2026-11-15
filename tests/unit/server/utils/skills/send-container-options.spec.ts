@@ -76,7 +76,7 @@ describe('prepareSkillScriptsForSend', () => {
   ) {
     return prepareSkillScriptsForSend({
       db: testDb.db,
-      bucket,
+      getBucket: () => bucket,
       userId,
       chatPublicId,
       candidateSkillIds: [],

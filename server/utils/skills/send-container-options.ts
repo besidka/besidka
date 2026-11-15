@@ -190,7 +190,7 @@ function buildGateTool(input: {
  */
 export async function prepareSkillScriptsForSend(input: {
   db: DbClient
-  bucket: SkillReadBucket
+  getBucket: () => SkillReadBucket
   userId: number
   chatPublicId: string
   candidateSkillIds: readonly string[]
@@ -262,7 +262,7 @@ export async function prepareSkillScriptsForSend(input: {
       for (const skill of eligibleSkills) {
         references.push(await ensureProviderSkill({
           db: input.db,
-          bucket: input.bucket,
+          bucket: input.getBucket(),
           userId: input.userId,
           skill,
           apiKey,
