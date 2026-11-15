@@ -58,6 +58,7 @@ export interface DeclaredConnectorIcon {
 export interface ConnectorIconTarget {
   id: string
   origin: string
+  originKey?: string
   readRemoteSources?: () => Promise<DeclaredConnectorIcon[]>
 }
 
@@ -817,6 +818,60 @@ async function releaseIconLock(
   }
 }
 
+/**
+ * The favicon and page-link steps for one origin. With an `originKey`, the
+ * result (a hit, or a miss for a day) and an in-flight lock live under that
+ * key, so many directory entries that point at one host fetch it once; a
+ * request that finds the origin locked answers busy and stores nothing for
+ * its own entry.
+ */
+async function resolveOriginIcon(
+  kv: KVNamespace,
+  connector: ConnectorIconTarget,
+  dependencies: {
+    fetchImage: NonNullable<ConnectorIconDependencies['fetchImage']>
+    fetchHtml: NonNullable<ConnectorIconDependencies['fetchHtml']>
+  },
+  isExpired: () => boolean,
+  logger?: LoggerLike,
+): Promise<ConnectorIconImage | null | typeof CONNECTOR_ICON_BUSY> {
+  const { originKey } = connector
+
+  if (!originKey) {
+    return await fetchOriginIcon(
+      connector.origin,
+      dependencies,
+      isExpired,
+      logger,
+    )
+  }
+
+  const stored = await readStoredIcon(kv, originKey)
+
+  if (stored.isStored) {
+    return stored.image
+  }
+
+  if (!await acquireIconLock(kv, originKey)) {
+    return CONNECTOR_ICON_BUSY
+  }
+
+  try {
+    const image = await fetchOriginIcon(
+      connector.origin,
+      dependencies,
+      isExpired,
+      logger,
+    )
+
+    await storeIcon(kv, originKey, image, image ? 'favicon' : null)
+
+    return image
+  } finally {
+    await releaseIconLock(kv, originKey)
+  }
+}
+
 async function fetchAndStoreIcon(
   kv: KVNamespace,
   connector: ConnectorIconTarget,
@@ -824,7 +879,7 @@ async function fetchAndStoreIcon(
     logger?: LoggerLike
     dependencies?: ConnectorIconDependencies
   },
-): Promise<ConnectorIconImage | null> {
+): Promise<ConnectorIconImage | null | typeof CONNECTOR_ICON_BUSY> {
   const fetchImage = options.dependencies?.fetchImage ?? fetchConnectorIconImage
   const fetchHtml = options.dependencies?.fetchHtml ?? fetchConnectorIconHtml
   const expiresAt = Date.now() + CONNECTOR_ICON_RESOLVE_BUDGET_MS
@@ -861,12 +916,17 @@ async function fetchAndStoreIcon(
 
   const originImage = isExpired()
     ? null
-    : await fetchOriginIcon(
-      connector.origin,
+    : await resolveOriginIcon(
+      kv,
+      connector,
       { fetchImage, fetchHtml },
       isExpired,
       options.logger,
     )
+
+  if (originImage === CONNECTOR_ICON_BUSY) {
+    return CONNECTOR_ICON_BUSY
+  }
 
   if (originImage) {
     await storeIcon(kv, connector.id, originImage, 'favicon')
@@ -883,7 +943,8 @@ async function fetchAndStoreIcon(
  * The icon of one connector, in this order: the copy kept in KV (a miss is
  * kept too, for a day, so a server without an icon is not asked on every
  * render), an icon the server declared (a `data:` image, or a URL on the
- * server's own origin), then the favicon of the server's host. Every fetched
+ * server's own origin), then the favicon of the server's host (kept once per
+ * origin when the target has an `originKey`). Every fetched
  * image is re-validated by its magic bytes and its declared size, so what is
  * kept and served is never trusted from a header. A page's own icon links
  * are tried after the favicon, within a 15 s budget. Null means no icon: the

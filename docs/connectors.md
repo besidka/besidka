@@ -1900,6 +1900,7 @@ HTML (C-7 consumes them).
 | `connectors:icon:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10) |
 | `connectors:icon-lock:<connectorId>` | 60 s | in-flight marker of a cold icon fetch |
 | `connectors:icon:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |
+| `connectors:icon:registry-origin:<sha256(origin)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the favicon or page-link result for one host, shared by every directory entry on it; its lock is `connectors:icon-lock:registry-origin:<hash>` |
 | `connectors:registry:sync-now-lock` | 150 s | BES-398: best-effort marker that an admin's Sync now is running |
 | `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
@@ -2271,8 +2272,9 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   `title` first (the registry has no popularity data, no stars and no download
   counts, so a curated title is the only quality proxy) and then sorts by
   title. Search ranking is unchanged. The first page also returns `total`.
-  Items gain `publisher` (the registry name namespace: `app.linear` is Linear,
-  `io.github.acme` is Acme; a label, not a trust mark, `null` when absent) and
+  Items gain `publisher` (the registry name namespace as a full domain: `app.linear` is
+  `linear.app`, `xyz.linear` is `linear.xyz`, `io.github.acme` is
+  `github.com/acme`; a label, not a trust mark, `null` when absent) and
   `isAdded`: true when one of the user's own connectors has the exact same
   URL (the encrypted URLs are decrypted in memory for the connectors whose
   plain `origin` matches, and only the boolean leaves). The 30 requests a
@@ -2290,7 +2292,8 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   fetched through `safeFetch` (an icon on `static.<vendor>.com` is the normal
   case), (2) `/favicon.ico` of the entry's host, (3) the
   `<link rel="apple-touch-icon">` and `<link rel="icon">` tags of its home
-  page (same origin only, three links). There is no parent-domain step.
+  page (same origin only, three links), kept and locked once per origin so
+  many entries on one host fetch it once. There is no parent-domain step.
   The whole cold resolution is bounded by 15 s: the budget is checked between
   steps, and every request has its own 5 s timeout. The result is kept in KV under
   a hash of the registry name (versions and users share it; it is public data)

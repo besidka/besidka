@@ -811,6 +811,79 @@ describe('resolveConnectorIcon beyond the favicon', () => {
   })
 })
 
+describe('resolveConnectorIcon with an origin key', () => {
+  const first = {
+    id: 'registry:one',
+    origin: 'https://gateway.example.com',
+    originKey: 'registry-origin:abc',
+  }
+  const second = { ...first, id: 'registry:two' }
+
+  it('fetches a shared host once for many entries', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async () => image('image/png'))
+
+    await resolveConnectorIcon(asKv(kv), first, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+
+    const result = await resolveConnectorIcon(asKv(kv), second, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+
+    expect(result?.contentType).toBe('image/png')
+    expect(fetchImage).toHaveBeenCalledTimes(1)
+    expect(kv.entries.has(connectorIconKey(first.originKey))).toBe(true)
+    expect(kv.entries.has(connectorIconKey(second.id))).toBe(true)
+  })
+
+  it('remembers a miss for the origin and asks it once', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async () => null)
+
+    await resolveConnectorIcon(asKv(kv), first, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+    await resolveConnectorIcon(asKv(kv), second, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+
+    expect(fetchImage).toHaveBeenCalledTimes(1)
+    expect(fetchHtml).toHaveBeenCalledTimes(1)
+    expect(kv.entries.get(connectorIconKey(first.originKey))?.ttl)
+      .toBe(CONNECTOR_ICON_MISS_TTL_SECONDS)
+  })
+
+  it('answers busy while another request fetches the origin, and keeps '
+    + 'nothing for its own entry', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async () => image('image/png'))
+
+    await kv.put(connectorIconLockKey(first.originKey), '1', {
+      expirationTtl: 60,
+    })
+
+    expect(await resolveConnectorIcon(asKv(kv), second, {
+      dependencies: { fetchImage, fetchHtml },
+    })).toBe(CONNECTOR_ICON_BUSY)
+    expect(fetchImage).not.toHaveBeenCalled()
+    expect(kv.entries.has(connectorIconKey(second.id))).toBe(false)
+  })
+
+  it('releases the origin lock after the fetch', async () => {
+    const kv = createFakeIconKv()
+
+    await resolveConnectorIcon(asKv(kv), first, {
+      dependencies: {
+        fetchImage: vi.fn(async () => image('image/png')),
+        fetchHtml,
+      },
+    })
+
+    expect(kv.entries.has(connectorIconLockKey(first.originKey))).toBe(false)
+  })
+})
+
 describe('fetchConnectorIconHtml', () => {
   afterEach(() => {
     vi.unstubAllGlobals()

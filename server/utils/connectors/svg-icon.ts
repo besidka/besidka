@@ -24,7 +24,6 @@ const ALLOWED_NAMESPACES: Readonly<Record<string, string>> = {
 const BYTE_ORDER_MARK = String.fromCharCode(0xFEFF)
 const MAX_ELEMENTS = 2000
 const XML_DECLARATION = /^\s*<\?xml\s[^>]*\?>/i
-const COMMENT = /<!--[\s\S]*?-->/g
 const TAG = /<(\/?)([A-Za-z][\w:.-]*)((?:\s+[^\s=/>"']+(?:\s*=\s*(?:"[^"]*"|'[^']*'))?)*)\s*(\/?)>/g
 const ATTRIBUTE = /([^\s=/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/g
 const ATTRIBUTE_NAME = /^[A-Za-z_:][\w:.-]*$/
@@ -93,27 +92,28 @@ function areAttributesSafe(raw: string): boolean {
  * allowlist check that rejects on the first hit and never rewrites: only
  * plain shape, gradient, clip and mask elements pass; any `script`, `style`,
  * `use`, `image`, `foreignObject`, animation or text element, event
- * attribute, external or `data:` reference, entity, DOCTYPE, CDATA or
- * processing instruction fails the whole file. The route also serves it with
+ * attribute, external or `data:` reference, entity, comment, DOCTYPE, CDATA or
+ * processing instruction fails the whole file. Comments are refused rather
+ * than skipped: stripping them first lets `<!--` inside a quoted attribute
+ * hide a handler from the checks. The route also serves it with
  * `default-src 'none'; sandbox`, and the client loads it only through
  * `<img>`, where script never runs.
  */
 export function isSafeSvgIcon(source: string): boolean {
   const withoutBom = stripByteOrderMark(source)
   const withoutDeclaration = withoutBom.replace(XML_DECLARATION, '')
-  const withoutComments = withoutDeclaration.replace(COMMENT, '')
 
-  if (!/^\s*<svg[\s>]/.test(withoutComments)) {
+  if (!/^\s*<svg[\s>]/.test(withoutDeclaration)) {
     return false
   }
 
-  if (/<[!?]/.test(withoutComments)) {
+  if (/<[!?]/.test(withoutDeclaration)) {
     return false
   }
 
   let elementCount = 0
 
-  for (const match of withoutComments.matchAll(TAG)) {
+  for (const match of withoutDeclaration.matchAll(TAG)) {
     const [, closing = '', name = '', attributes = ''] = match
 
     elementCount += 1
@@ -127,5 +127,5 @@ export function isSafeSvgIcon(source: string): boolean {
     }
   }
 
-  return !withoutComments.replace(TAG, '').includes('<')
+  return !withoutDeclaration.replace(TAG, '').includes('<')
 }

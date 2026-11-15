@@ -25,7 +25,7 @@ function item(index: number, patch: Record<string, unknown> = {}) {
     transport: 'streamable-http',
     authHint: 'unknown',
     presetId: null,
-    publisher: 'Example',
+    publisher: 'example.com',
     isAdded: false,
     ...patch,
   }
@@ -88,7 +88,7 @@ describe('Profile/Connectors/RegistrySearch', () => {
 
       expect(cards).toHaveLength(2)
       expect(cards[0]?.textContent).toContain('Tool 1')
-      expect(cards[0]?.textContent).toContain('by Example')
+      expect(cards[0]?.textContent).toContain('by example.com')
       expect(cards[0]?.textContent).toContain('mcp.tool1.example')
       expect(cards[0]?.textContent).toContain('Sign in or token')
       expect(cards[0]?.querySelector('img')?.getAttribute('src'))

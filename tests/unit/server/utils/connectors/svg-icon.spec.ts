@@ -16,9 +16,9 @@ describe('isSafeSvgIcon', () => {
     expect(isSafeSvgIcon(SAFE_SVG)).toBe(true)
   })
 
-  it('accepts an XML declaration and comments before the root', () => {
+  it('accepts an XML declaration before the root', () => {
     expect(isSafeSvgIcon(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<!-- logo -->${SAFE_SVG}`,
+      `<?xml version="1.0" encoding="UTF-8"?>\n${SAFE_SVG}`,
     )).toBe(true)
   })
 
@@ -48,6 +48,17 @@ describe('isSafeSvgIcon', () => {
     ['an external url in style', svgWith('<path d="M0 0" style="fill:url(https://evil.example/a)"/>')],
     ['an @import in style', svgWith('<path d="M0 0" style="@import x"/>')],
     ['an entity in an attribute', svgWith('<path d="M0 0" fill="&#106;avascript:x"/>')],
+    ['a comment before the root', `<!-- logo -->${SAFE_SVG}`],
+    ['a comment inside the document', svgWith('<!-- x --><path d="M0 0"/>')],
+    ['a comment opener in one attribute and its closer in another', svgWith(
+      '<path d="M0 0" a="<!--" onload="alert(1)" b="-->"/>',
+    )],
+    ['the same trick on the root element',
+      '<svg xmlns="http://www.w3.org/2000/svg" a="<!--" onload="alert(1)" b="-->">'
+      + '</svg>'],
+    ['an external url hidden between comment markers', svgWith(
+      '<path d="M0 0" a="<!--" style="fill:url(https://evil.example/x)" b="-->"/>',
+    )],
     ['a DOCTYPE', `<!DOCTYPE svg [<!ENTITY x "y">]>${SAFE_SVG}`],
     ['an ENTITY', `<!ENTITY x "y">${SAFE_SVG}`],
     ['CDATA', svgWith('<![CDATA[<script>x</script>]]>')],

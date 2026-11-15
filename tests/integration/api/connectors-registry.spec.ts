@@ -195,7 +195,7 @@ describe('GET /api/v1/connectors/registry', () => {
         transport: 'streamable-http',
         authHint: 'header',
         presetId: null,
-        publisher: 'Example',
+        publisher: 'example.io',
         isAdded: false,
       },
       expect.objectContaining({

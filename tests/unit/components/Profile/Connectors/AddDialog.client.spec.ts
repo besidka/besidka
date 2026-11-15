@@ -155,7 +155,7 @@ describe('Profile/Connectors/AddDialog', () => {
             transport: 'streamable-http',
             authHint: 'header',
             presetId: null,
-            publisher: 'Example',
+            publisher: 'example.com',
             isAdded: false,
           }],
           nextCursor: null,
@@ -186,7 +186,7 @@ describe('Profile/Connectors/AddDialog', () => {
 
     expect(results.textContent).toContain('tracker')
     expect(results.textContent).toContain('mcp.tracker.example')
-    expect(results.textContent).toContain('by Example')
+    expect(results.textContent).toContain('by example.com')
     expect(results.textContent).toContain('<script>alert(1)</script>')
     expect(results.querySelector('script')).toBeNull()
     expect(results.querySelector('a')).toBeNull()

@@ -237,6 +237,37 @@ describe('GET /api/v1/connectors/registry/icon', () => {
     expect(fetchMock).toHaveBeenCalledTimes(callsAfterFirst)
   })
 
+  it('fetches the host of many entries once', async () => {
+    await addServer()
+    await addServer({
+      id: 'app.linear/other@1.0.0',
+      name: 'app.linear/other',
+      remoteUrl: 'https://mcp.linear.app/other',
+    })
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = String(input)
+
+      if (url.startsWith('https://registry.modelcontextprotocol.io/')) {
+        return jsonBody({ server: {} })
+      }
+
+      return url === 'https://mcp.linear.app/favicon.ico'
+        ? new Response(PNG_BYTES)
+        : new Response('no', { status: 404 })
+    })
+
+    expect((await request()).status).toBe(200)
+
+    const hostCalls = () => requestedUrls().filter((url) => {
+      return url.startsWith('https://mcp.linear.app/')
+    }).length
+    const callsAfterFirst = hostCalls()
+
+    expect((await request({ id: 'app.linear/other@1.0.0' })).status)
+      .toBe(200)
+    expect(hostCalls()).toBe(callsAfterFirst)
+  })
+
   it('answers a cacheable 404 and keeps a miss when nothing resolves',
     async () => {
       await addServer()

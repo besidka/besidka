@@ -22,10 +22,10 @@ export const REGISTRY_ICON_NOT_FOUND = 'not-found'
 
 type RegistryDatabase = ReturnType<typeof useDb>
 
-async function hashRegistryIconName(name: string): Promise<string> {
+async function hashIconKeyPart(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(name.toLowerCase()),
+    new TextEncoder().encode(value.toLowerCase()),
   )
 
   return Array.from(new Uint8Array(digest).slice(0, 16))
@@ -74,7 +74,9 @@ export async function fetchRegistryEntryIconSources(
  * name come from the row, never from the request. Resolution order and the
  * KV copy (keyed by a hash of the registry name, so versions share it) are
  * those of `resolveConnectorIcon`, with the entry's own registry `icons`
- * tried first. Returns `not-found` for an unknown or inactive id.
+ * tried first. The host steps are cached and locked once per origin (a hash
+ * of the origin), so many entries on one host fetch it once. Returns
+ * `not-found` for an unknown or inactive id.
  */
 export async function resolveRegistryEntryIcon(
   db: RegistryDatabase,
@@ -118,8 +120,9 @@ export async function resolveRegistryEntryIcon(
   return await resolveConnectorIcon(
     kv,
     {
-      id: `registry:${await hashRegistryIconName(entry.name)}`,
+      id: `registry:${await hashIconKeyPart(entry.name)}`,
       origin,
+      originKey: `registry-origin:${await hashIconKeyPart(origin)}`,
       readRemoteSources: () => readRemoteSources(entry.name),
     },
     { logger: options.logger, dependencies: options.dependencies },
