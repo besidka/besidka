@@ -185,16 +185,20 @@ read tier is `read`, write tier is `write`, and the ask-every-time tier keeps
 its `delete` or `instructions` access (`write` otherwise) and is marked
 destructive. The entry carries the user's mode, so:
 
-| Mode | Untainted send | After any untrusted content |
-| --- | --- | --- |
-| Blocked | not offered; denied if called or replayed | same |
-| Needs approval | asks `default` (Allow once, in this chat, always, Deny) | asks `untrusted-output` (Allow once, Deny) |
-| Always allow | runs, marked "Ran without asking (Always allowed)" | asks `untrusted-output` |
+| Mode | Untainted send | After earlier Besidka results only | After web, knowledge, file, skill, connector or shared-branch content |
+| --- | --- | --- | --- |
+| Blocked | not offered; denied if called or replayed | same | same |
+| Needs approval | asks `default` (Allow once, in this chat, always, Deny) | read: asks `default`; write: asks `untrusted-output` (Allow once, Deny) | asks `untrusted-output` |
+| Always allow | runs, marked "Ran without asking (Always allowed)" | read: runs; write: asks `untrusted-output` | asks `untrusted-output` |
 
 The ask-every-time tier always asks `always-ask` with Allow once and Deny
 only, whatever the mode. Every Besidka result taints the send with `besidka`
-and records the `besidka` read source, so the next Besidka call asks
-(rule 4), a later connector call asks `cross-source`, and the provider's web
+and records the `besidka` read source. A Besidka read does not count that
+taint (`isTaintedForBesidka` in `server/utils/tool-approval/policy.ts`, rule
+4): the user's own data feeding another read of it carries nothing out, so
+an Always allow or "in this chat" read keeps running. A Besidka write, and
+every Besidka call after any other taint kind, asks. A later connector call
+asks `cross-source`, and the provider's web
 search, grounding and URL context are withheld from later steps (the L5
 egress guard; it is not applied on Anthropic routes, as for connectors). A
 Besidka call past 12 per user turn is denied `over-cap`, on the first request
@@ -211,12 +215,15 @@ denies a call whose hash drifted.
 
 ### Budget
 
-Native tools first, then up to 16 Besidka tools (Always allow first, then
-read, write and ask every time, then by name), then connectors, within the
-existing 40 tools and 32 KiB of definitions (Besidka definitions count
-against the connector bytes). Tools that did not fit are named in the
-connector notice: "N Besidka tools were left out to stay within the tool
-limits of a message".
+Native tools first, then up to 24 Besidka tools (`BESIDKA_CHAT_TOOLS_MAX` in
+`shared/utils/besidka-tool-permissions.ts`; Always allow first, then read,
+write and ask every time, then by name), then connectors in what is left of
+the existing 40 tools and 32 KiB of definitions (Besidka definitions count
+against the connector bytes). With the default modes the 24 reach the
+ask-every-time tier. A Besidka tool that did not fit is only logged, never
+named in the chat; the Labs "Tool permissions" panel shows "Only 24 Besidka
+tools are offered per message; block the ones you don't need" while more
+than 24 tools are not Blocked. Connector notices are unchanged.
 
 ### Per-chat row
 
@@ -237,3 +244,12 @@ server-written summary ("Delete 1 chat: ..."); the reason after a Besidka
 read names "your Besidka data", and "Always allow" confirms with "Always
 allow Besidka to list projects? ...". A finished Besidka call is a reasoning
 step titled "Besidka: list projects".
+
+### Remembered approvals in the chat panel
+
+The chat panel's Approvals section (`listChatToolApprovalGrants`) lists the
+Besidka grants too: "Allow in this chat" grants whose registry hash still
+matches, and, while the chat's Besidka row is on, every tool set to Always
+allow. A Besidka Always allow row links to the Labs permissions panel
+("Manage") instead of a Remove button; "Reset approvals in this chat" clears
+the Besidka chat grants with the connector ones.

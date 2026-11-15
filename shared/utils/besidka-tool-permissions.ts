@@ -12,6 +12,8 @@ export const BESIDKA_TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]{0,63}$/
 
 export const BESIDKA_TOOL_NAME_PREFIX = 'besidka__'
 
+export const BESIDKA_CHAT_TOOLS_MAX = 24
+
 export function isBesidkaChatToolName(toolName: string): boolean {
   return toolName.startsWith(BESIDKA_TOOL_NAME_PREFIX)
 }

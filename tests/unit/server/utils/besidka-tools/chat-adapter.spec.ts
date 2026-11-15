@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
+import { BESIDKA_CHAT_TOOLS_MAX } from '#shared/utils/besidka-tool-permissions'
 import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 
 const mocks = vi.hoisted(() => ({
@@ -15,14 +16,12 @@ vi.mock('~~/server/utils/mcp/private/projects', async (importOriginal) => {
 })
 
 const {
-  BESIDKA_CHAT_TOOLS_MAX,
   BESIDKA_CURRENT_CHAT_REFUSAL_TEXT,
   BESIDKA_TOOL_FAILURE_TEXT,
   BESIDKA_TOOL_RATE_LIMIT_TEXT,
   besidkaToolAccess,
   buildBesidkaChatTools,
   createBesidkaCallLimiter,
-  formatBesidkaLeftOutNotice,
   hashBesidkaChatTool,
   selectBesidkaChatTools,
   targetsCurrentChat,
@@ -115,7 +114,7 @@ async function failureOf(promise: Promise<unknown>) {
 }
 
 describe('selectBesidkaChatTools', () => {
-  it('offers at most 16 tools, never a Blocked one, read before write '
+  it('offers at most 24 tools, never a Blocked one, read before write '
     + 'before ask every time', () => {
     const selection = selectBesidkaChatTools({
       modes: modesWith({ list_files: 'blocked' }),
@@ -226,9 +225,18 @@ describe('Besidka tool descriptors', () => {
     }, CURRENT_SLUG)).toBe(false)
   })
 
-  it('names the tools left out', () => {
-    expect(formatBesidkaLeftOutNotice(1)).toMatch(/^1 Besidka tool was left/)
-    expect(formatBesidkaLeftOutNotice(16)).toMatch(/^16 Besidka tools were/)
+  it('reaches the ask-every-time tier with the default modes', () => {
+    const selection = selectBesidkaChatTools({
+      modes: modesWith(),
+      maxTools: 40,
+      maxBytes: 32 * 1024,
+    })
+    const names = selection.selected.map(candidate => candidate.tool.name)
+
+    expect(BESIDKA_CHAT_TOOLS_MAX).toBe(24)
+    expect(names).toHaveLength(24)
+    expect(names).toContain('delete_chats')
+    expect(selection.definitionBytes).toBeLessThan(32 * 1024)
   })
 })
 
@@ -424,23 +432,67 @@ describe('Besidka tools in the send policy', () => {
       .toBe('List my projects')
   })
 
-  it('runs Always allow without asking only while the send is untainted',
-    async () => {
+  it('runs an Always allow read after an earlier Besidka read', async () => {
+    const approval = await createApproval(modesWith({
+      list_projects: 'allow',
+      list_files: 'allow',
+    }))
+
+    expect(decide(approval, 'c1', 'besidka__list_projects'))
+      .toBe('not-applicable')
+    expect(approval.getGrantScope('c1')).toBe('always')
+    expect([...approval.state.taint]).toEqual(['besidka'])
+    expect(decide(approval, 'c2', 'besidka__list_files'))
+      .toBe('not-applicable')
+    expect(approval.state.counters.builtInCalls).toBe(2)
+  })
+
+  it('asks before an Always allow write after a Besidka read', async () => {
+    const approval = await createApproval(modesWith({
+      list_projects: 'allow',
+      rename_file: 'allow',
+    }))
+
+    expect(decide(approval, 'c1', 'besidka__list_projects'))
+      .toBe('not-applicable')
+    expect(decide(approval, 'c2', 'besidka__rename_file', {
+      fileId: 'f1',
+      name: 'x.txt',
+    })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.getPendingDecision('c2')?.decision.rememberOptions)
+      .toEqual(['once'])
+  })
+
+  it.each(['web', 'knowledge', 'file', 'skill', 'connector'] as const)(
+    'asks before an Always allow read after %s taint',
+    async (kind) => {
       const approval = await createApproval(modesWith({
         list_projects: 'allow',
-        list_files: 'allow',
       }))
 
+      approval.state.taint.add(kind)
+
       expect(decide(approval, 'c1', 'besidka__list_projects'))
-        .toBe('not-applicable')
-      expect(approval.getGrantScope('c1')).toBe('always')
-      expect([...approval.state.taint]).toEqual(['besidka'])
-      expect(approval.state.counters.builtInCalls).toBe(1)
-      expect(decide(approval, 'c2', 'besidka__list_files'))
         .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
-      expect(approval.getPendingDecision('c2')?.decision.rememberOptions)
-        .toEqual(['once'])
+    },
+  )
+
+  it('runs a read granted in this chat after a Besidka read', async () => {
+    const hash = await hashBesidkaChatTool(exposedTool('list_files'))
+    const { run } = await build({
+      modes: modesWith({ list_projects: 'allow' }),
+      chatGrants: { besidka__list_files: hash },
     })
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools(run.tools, run.approvalEntries)
+
+    expect(decide(approval, 'c1', 'besidka__list_projects'))
+      .toBe('not-applicable')
+    expect(decide(approval, 'c2', 'besidka__list_files'))
+      .toBe('not-applicable')
+    expect(approval.getGrantScope('c2')).toBe('chat')
+  })
 
   it('asks Allow once or Deny only for a delete, even with Always allow '
     + 'stored', async () => {

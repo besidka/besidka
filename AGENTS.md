@@ -817,9 +817,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   denies a tool blocked after approval, the Labs "Tool permissions" panel and
   the Search row, why MCP has no tool for it, and the chat exposure (L9): the
   four-part gate, `besidka__` tools from the registry, the current-chat
-  guard, no scopes for handlers, the mode-by-taint table, the 16-tool budget
-  and its notice, the per-chat Besidka row in the connector picker and the
-  approval step
+  guard, no scopes for handlers, the mode-by-taint table (Besidka reads
+  ignore Besidka taint), the 24-tool budget with the Labs line instead of a
+  chat notice, the per-chat Besidka row in the connector picker, the
+  approval step and Besidka grants in the chat panel
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the

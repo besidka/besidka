@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 import { TOOL_APPROVAL_DATA_PART_TYPE } from '#shared/utils/tool-approval-parts'
@@ -471,6 +471,11 @@ function findPart(parts: Array<Record<string, any>>, type: string) {
 }
 
 describe('Besidka tools in the chat send', () => {
+  beforeAll(async () => {
+    await import('../../../server/api/v1/chats/[slug]/index.post')
+    await import('~~/server/utils/besidka-tools/chat-adapter')
+  }, 60_000)
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
@@ -711,14 +716,22 @@ describe('Besidka tools in the chat send', () => {
         })
     })
 
-  it('runs Always allow in an untainted send and asks after the read',
+  it('runs Always allow reads one after another and asks before a write',
     async () => {
-      setModes({ list_projects: 'allow', list_files: 'allow' })
+      setModes({
+        list_projects: 'allow',
+        list_files: 'allow',
+        rename_file: 'allow',
+      })
 
       const { assistantInsert } = await runSend({
         steps: [
           toolCallChunks('call-1', 'besidka__list_projects', {}),
           toolCallChunks('call-2', 'besidka__list_files', {}),
+          toolCallChunks('call-3', 'besidka__rename_file', {
+            fileId: 'f1',
+            name: 'notes.txt',
+          }),
           textChunks('Never reached.'),
         ],
       })
@@ -731,12 +744,15 @@ describe('Besidka tools in the chat send', () => {
           '<untrusted_tool_result connector="besidka"',
         ),
       })
+      expect(findPart(parts, 'tool-besidka__list_files')).toMatchObject({
+        state: expect.stringMatching(/^output-/),
+      })
       expect(findPart(parts, 'data-tool-grant')).toMatchObject({
         data: { toolCallId: 'call-1', scope: 'always' },
       })
       expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
         data: {
-          toolCallId: 'call-2',
+          toolCallId: 'call-3',
           reason: 'untrusted-output',
           rememberOptions: ['once'],
         },
@@ -807,19 +823,17 @@ describe('Besidka tools in the chat send', () => {
     })
   })
 
-  it('offers 16 tools at most, read first, and names the rest in a notice',
+  it('offers 24 tools at most, read first, with no notice in the chat',
     async () => {
       setModes({ rename_file: 'allow' }, 'ask')
 
       const { doStream } = await runSend({ steps: finalAnswer })
       const names = firstCallToolNames(doStream)
 
-      expect(names).toHaveLength(16)
+      expect(names).toHaveLength(24)
       expect(names).toContain('besidka__rename_file')
       expect(names).toContain('besidka__list_projects')
-      expect(names).not.toContain('besidka__delete_chats')
-      expect(noticeLines()).toEqual([
-        expect.stringMatching(/^16 Besidka tools were left out/),
-      ])
+      expect(names).toContain('besidka__delete_chats')
+      expect(noticeLines()).toEqual([])
     })
 })

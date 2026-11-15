@@ -3,6 +3,7 @@ import type { ToolSet } from 'ai'
 import { createError } from 'evlog'
 import { z } from 'zod'
 import {
+  BESIDKA_CHAT_TOOLS_MAX,
   BESIDKA_TOOL_NAME_PREFIX,
   BESIDKA_TOOL_TIERS,
 } from '#shared/utils/besidka-tool-permissions'
@@ -38,7 +39,6 @@ import type {
 
 type DbClient = ReturnType<typeof useDb>
 
-export const BESIDKA_CHAT_TOOLS_MAX = 16
 export const BESIDKA_CHAT_CALLS_PER_MINUTE = 30
 export const BESIDKA_CHAT_RESULT_SOURCE = 'besidka'
 export const BESIDKA_CHAT_CLIENT_ID = 'besidka-chat'
@@ -90,14 +90,6 @@ export interface BesidkaChatToolsRun {
 }
 
 export type BesidkaCallLimiter = (userId: number) => Promise<boolean>
-
-export function formatBesidkaLeftOutNotice(count: number): string {
-  const subject = count === 1 ? '1 Besidka tool was' : `${count} Besidka tools were`
-
-  return `${subject} left out to stay within the tool limits of a message `
-    + `(${BESIDKA_CHAT_TOOLS_MAX} Besidka tools, 40 tools, 32 KiB of `
-    + 'definitions).'
-}
 
 export function toBesidkaChatToolName(registryName: string): string {
   return `${BESIDKA_TOOL_NAME_PREFIX}${registryName}`
@@ -176,8 +168,8 @@ function rankOf(candidate: BesidkaChatToolCandidate): number {
  * Which Besidka tools a send offers the model, from the user's modes. Blocked
  * tools are never offered. The rest are ordered Always allow first, then by
  * tier (read, write, ask every time), then by name, and taken while they fit
- * in `maxTools` (at most 16) and `maxBytes` of descriptions plus input
- * schemas. The ones that do not fit are `leftOut`.
+ * in `maxTools` (at most `BESIDKA_CHAT_TOOLS_MAX`, 24) and `maxBytes` of
+ * descriptions plus input schemas. The ones that do not fit are `leftOut`.
  */
 export function selectBesidkaChatTools(input: {
   modes: ReadonlyMap<string, ToolPermissionMode>

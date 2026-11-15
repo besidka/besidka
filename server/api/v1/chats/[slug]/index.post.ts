@@ -2053,10 +2053,6 @@ export default defineEventHandler(async (event) => {
         logger: aiLogger,
       })
 
-      if (besidkaToolsRun.notice) {
-        connectorNotices.push(besidkaToolsRun.notice)
-      }
-
       if (Object.keys(besidkaToolsRun.tools).length > 0) {
         parsedTools = {
           ...parsedTools,
@@ -3277,7 +3273,6 @@ interface ContinuationChatRow {
 }
 
 interface PreparedBesidkaChatTools extends BesidkaChatToolsRun {
-  notice: string | null
   instructions: string
 }
 
@@ -3288,8 +3283,9 @@ interface PreparedBesidkaChatTools extends BesidkaChatToolsRun {
  * new chat's first send may carry the choice made before it had a slug,
  * which is stored here), then the user's mode for every tool is resolved in
  * one read before a tool is offered, and the tools are built within the
- * room the native tools left (at most 16, 40 tools and 32 KiB in all). A
- * tool that did not fit is named in a notice.
+ * room the native tools left (at most 24, 40 tools and 32 KiB in all). A
+ * tool that did not fit is only logged: the Labs permissions panel tells the
+ * user when more tools are allowed than a message offers.
  */
 async function prepareBesidkaChatTools(input: {
   db: ReturnType<typeof useDb>
@@ -3343,7 +3339,6 @@ async function prepareBesidkaChatTools(input: {
       approvalEntries: new Map(),
       definitionBytes: 0,
       leftOutCount: 0,
-      notice: null,
       instructions: adapter.BESIDKA_TOOLS_INSTRUCTIONS,
     }
   }
@@ -3375,9 +3370,6 @@ async function prepareBesidkaChatTools(input: {
 
   return {
     ...run,
-    notice: run.leftOutCount > 0
-      ? adapter.formatBesidkaLeftOutNotice(run.leftOutCount)
-      : null,
     instructions: adapter.BESIDKA_TOOLS_INSTRUCTIONS,
   }
 }

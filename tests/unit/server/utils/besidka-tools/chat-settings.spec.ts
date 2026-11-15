@@ -23,8 +23,18 @@ const {
 const { applyRememberGrants } = await import(
   '~~/server/utils/tool-approval/continuation'
 )
-const { resolveBesidkaPermissionMode } = await import(
-  '~~/server/utils/besidka-tools/permissions'
+const {
+  resolveBesidkaPermissionMode,
+  setBesidkaToolPermissions,
+} = await import('~~/server/utils/besidka-tools/permissions')
+const { listChatToolApprovalGrants } = await import(
+  '~~/server/utils/tool-approval/grants'
+)
+const { hashBesidkaChatTool } = await import(
+  '~~/server/utils/besidka-tools/chat-adapter'
+)
+const { getBesidkaTool } = await import(
+  '~~/server/utils/besidka-tools/registry'
 )
 
 const CHAT = 'skl11'
@@ -130,5 +140,48 @@ describe('Besidka chat settings', () => {
         db: testDb.db,
       })).toBe('ask')
       expect(logger.set).not.toHaveBeenCalled()
+    })
+
+  it('lists the Besidka grants that still apply in the chat panel',
+    async () => {
+      const listFiles = getBesidkaTool('list_files')
+
+      await addBesidkaChatGrant(testDb.db, userId, CHAT, {
+        toolName: 'besidka__list_files',
+        definitionHash: await hashBesidkaChatTool(listFiles as never),
+      })
+      await addBesidkaChatGrant(testDb.db, userId, CHAT, {
+        toolName: 'besidka__get_project',
+        definitionHash: 'stale-hash',
+      })
+      await setBesidkaToolPermissions(
+        userId,
+        { tool: 'list_projects' },
+        'allow',
+        testDb.db,
+      )
+
+      expect(await listChatToolApprovalGrants(testDb.db, userId, CHAT))
+        .toEqual([
+          {
+            scope: 'chat',
+            connectorId: '',
+            connectorTitle: 'Besidka',
+            toolName: 'list_files',
+            source: 'besidka',
+          },
+          {
+            scope: 'always',
+            connectorId: '',
+            connectorTitle: 'Besidka',
+            toolName: 'list_projects',
+            source: 'besidka',
+          },
+        ])
+
+      await setBesidkaChatEnabled(testDb.db, userId, CHAT, false)
+
+      expect((await listChatToolApprovalGrants(testDb.db, userId, CHAT))
+        .map(grant => grant.scope)).toEqual(['chat'])
     })
 })

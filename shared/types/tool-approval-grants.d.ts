@@ -5,6 +5,7 @@ export interface ToolApprovalGrantItem {
   connectorId: string
   connectorTitle: string
   toolName: string
+  source?: 'besidka'
 }
 
 export interface ChatToolApprovalGrants {

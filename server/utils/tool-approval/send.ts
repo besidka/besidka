@@ -53,6 +53,7 @@ import type { ToolApprovalPendingSnapshot } from '~~/server/utils/tool-approval/
 import {
   connectorDestructiveHint,
   hasAlwaysAskToolName,
+  isTaintedForBesidka,
   resolveToolApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type {
@@ -573,6 +574,10 @@ export function createSendToolApproval(input: {
 
     const isGrantUsable = state.taint.size === 0
       || entry.alwaysGrantWhenTainted
+      || (
+        entry.descriptor.family === 'besidka'
+        && !isTaintedForBesidka(entry.descriptor, state)
+      )
     const areUserGrantsUsable = entry.descriptor.access !== 'read'
       || isGrantUsable
     const userGrants = areUserGrantsUsable ? entry.userGrants : undefined
