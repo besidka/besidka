@@ -395,6 +395,133 @@ describe('ChatInput/ToolsMenu', () => {
       expect(document.activeElement).toBe(trigger.element)
     })
 
+  describe('toggling with the "+" button', () => {
+    function getTrigger(wrapper: MenuWrapper) {
+      return wrapper.get('[data-testid="chat-input-tools-trigger"]')
+    }
+
+    it('closes on a second click and keeps focus on the button',
+      async () => {
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+
+        expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('true')
+
+        await getTrigger(wrapper).trigger('click')
+        await flushPromises()
+
+        expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+        expect(document.activeElement).toBe(getTrigger(wrapper).element)
+        expect(useState('chat-input:open-popover').value).toBeNull()
+      })
+
+    it('stays closed when the browser moves focus away on pointer down',
+      async () => {
+        const outside = document.createElement('div')
+
+        outside.tabIndex = -1
+        document.body.append(outside)
+
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+
+        const trigger = getTrigger(wrapper)
+        const panel = wrapper.get('[data-testid="chat-input-tools-panel"]')
+
+        trigger.element.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+        }))
+        panel.element.dispatchEvent(new FocusEvent('focusout', {
+          bubbles: true,
+          relatedTarget: outside,
+        }))
+        await flushPromises()
+
+        expect(trigger.attributes('aria-expanded')).toBe('true')
+
+        await trigger.trigger('click')
+        await flushPromises()
+
+        expect(trigger.attributes('aria-expanded')).toBe('false')
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+        outside.remove()
+      })
+
+    it('closes when focus leaves to an outside element by keyboard',
+      async () => {
+        const outside = document.createElement('button')
+
+        document.body.append(outside)
+
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+        wrapper.get('[data-testid="chat-input-tools-panel"]').element
+          .dispatchEvent(new FocusEvent('focusout', {
+            bubbles: true,
+            relatedTarget: outside,
+          }))
+        await flushPromises()
+
+        expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+
+        outside.remove()
+      })
+
+    it('closes on a click outside', async () => {
+      const outside = document.createElement('div')
+
+      document.body.append(outside)
+
+      const wrapper = await mountMenu()
+
+      await open(wrapper)
+
+      outside.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      outside.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await flushPromises()
+
+      expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+
+      outside.remove()
+    })
+
+    it('stays open on a click inside the panel', async () => {
+      const wrapper = await mountMenu()
+
+      await open(wrapper)
+
+      const panel = wrapper.get('[data-testid="chat-input-tools-panel"]')
+
+      panel.element.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      panel.element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await flushPromises()
+
+      expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('true')
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    })
+
+    it('closes on Escape and returns focus to the button', async () => {
+      const wrapper = await mountMenu()
+
+      await open(wrapper)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await flushPromises()
+
+      expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+      expect(document.activeElement).toBe(getTrigger(wrapper).element)
+    })
+  })
+
   it('focuses the panel itself, not the first item, when opened by pointer',
     async () => {
       const wrapper = await mountMenu()
@@ -492,6 +619,34 @@ describe('ChatInput/ToolsMenu', () => {
         expect(wrapper.emitted('remove-tile')).toEqual([['memory']])
 
         showModal.mockRestore()
+      })
+
+    it('closes the sheet when the "+" button is clicked while it is open',
+      async () => {
+        vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+          .mockImplementation(function (this: HTMLDialogElement) {
+            this.setAttribute('open', '')
+          })
+        vi.spyOn(HTMLDialogElement.prototype, 'close')
+          .mockImplementation(function (this: HTMLDialogElement) {
+            this.removeAttribute('open')
+          })
+
+        const wrapper = await mountMenu()
+        const trigger = wrapper.get('[data-testid="chat-input-tools-trigger"]')
+
+        await open(wrapper)
+
+        expect(trigger.attributes('aria-expanded')).toBe('true')
+
+        await trigger.trigger('click')
+        await flushPromises()
+
+        expect(trigger.attributes('aria-expanded')).toBe('false')
+        expect(wrapper.get('[data-testid="chat-input-tools-panel"]')
+          .attributes('open')).toBeUndefined()
+
+        vi.restoreAllMocks()
       })
 
     it('renders no chip row when no tile is active', async () => {
