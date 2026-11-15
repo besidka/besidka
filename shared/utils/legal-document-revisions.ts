@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '1fbfad7dfb8f5b7e5760da33d025a939e703bce1acec0d8a8aadb9b4f6da9d42',
+    hash: 'abeea1bcbe8c269536ffe3ed072edaec6b74021859c26783e790cebe6fb6f422',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -36,8 +36,14 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'judged MATERIAL (new purpose, new recipient category, new '
       + 'transfer, new retention) and are NOT described by the notice id on '
       + 'this record, which predates them. No notice exists for connectors: '
-      + 'announcing them is the owner\'s decision in /admin/legal. An '
-      + 'earlier edit changed British spellings to American '
+      + 'announcing them is the owner\'s decision in /admin/legal. '
+      + 'Also the two connected-app permissions for connectors '
+      + '(see and add, switch off, restrict and delete; BES-256): they '
+      + 'describe what MCP tools can do and cannot do (never switch a '
+      + 'connector on, sign in or allow a tool without asking), and the '
+      + 'wording about connectors as recipients stays with C-10; whether '
+      + 'the existing notice needs to say more is the owner\'s decision. '
+      + 'An earlier edit changed British spellings to American '
       + 'English, with no change of meaning, so it adds no new '
       + 'classification.',
   },

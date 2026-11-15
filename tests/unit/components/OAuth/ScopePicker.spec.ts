@@ -14,6 +14,7 @@ const ALL_SCOPES = [
   'files:read',
   'settings:read',
   'artifacts:read',
+  'connectors:read',
   'projects:write',
   'memory:write',
   'chats:write',
@@ -21,6 +22,7 @@ const ALL_SCOPES = [
   'settings:write',
   'artifacts:write',
   'artifacts:share',
+  'connectors:write',
   'data:delete',
 ]
 
@@ -89,6 +91,7 @@ describe('OAuth scope picker', () => {
       'files:read',
       'settings:read',
       'artifacts:read',
+      'connectors:read',
     ])
   })
 
@@ -121,6 +124,36 @@ describe('OAuth scope picker', () => {
       expect(wrapper.get('[data-testid="oauth-write-warning"]').text())
         .toContain('public link')
     })
+
+  it('ticks connectors:read and leaves connectors:write off with the '
+    + 'warning style', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: ALL_SCOPES, modelValue: [] },
+    })
+
+    await wrapper.setProps({ modelValue: lastSelection(wrapper) })
+
+    const readCheckbox = wrapper.get(
+      '[data-testid="oauth-scope-connectors:read"]',
+    )
+    const writeCheckbox = wrapper.get(
+      '[data-testid="oauth-scope-connectors:write"]',
+    )
+
+    expect((readCheckbox.element as HTMLInputElement).checked).toBe(true)
+    expect((writeCheckbox.element as HTMLInputElement).checked).toBe(false)
+    expect(writeCheckbox.classes()).toContain('checkbox-warning')
+    expect(lastSelection(wrapper)).not.toContain('connectors:write')
+    expect(wrapper.text()).toContain(
+      'See your connectors: names and addresses, never their keys',
+    )
+    expect(wrapper.text()).toContain(
+      'Add, change and delete connectors. New ones start switched off; '
+      + 'you switch them on in Besidka',
+    )
+    expect(wrapper.get('[data-testid="oauth-write-warning"]').text())
+      .toContain('cannot switch one on')
+  })
 
   it('adds artifacts:share only when the user ticks it', async () => {
     const wrapper = await mountSuspended(ScopePicker, {

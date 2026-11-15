@@ -528,6 +528,24 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
   ]
+  const mcpConnectorTests = [
+    'tests/unit/server/mcp/tools/list-connectors.spec.ts',
+    'tests/unit/server/mcp/tools/get-connector.spec.ts',
+    'tests/unit/server/mcp/tools/add-connector.spec.ts',
+    'tests/unit/server/mcp/tools/update-connector-tools.spec.ts',
+    'tests/unit/server/mcp/tools/delete-connectors.spec.ts',
+    'tests/unit/server/utils/mcp/private/connectors.spec.ts',
+    'tests/unit/server/utils/connectors/store.spec.ts',
+    'tests/unit/utils/connectors-text.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+    'tests/integration/api/connectors-oauth-flow.spec.ts',
+  ]
   const besidkaToolsTests = [
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
     'tests/unit/server/utils/besidka-tools/summary.spec.ts',
@@ -1742,6 +1760,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/versions/read-write-paths.spec.ts',
     'tests/unit/server/api/v1/skills/skills-crud.spec.ts',
     'tests/unit/server/api/v1/skills/update-check.spec.ts',
+    'tests/unit/utils/skills/findings.spec.ts',
+    'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/server/utils/skills/import/update-findings.spec.ts',
   ]
 
   const skillsImportTests = [
@@ -1749,6 +1770,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/skills/path.spec.ts',
     'tests/unit/utils/skills/frontmatter.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
+    'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/server/utils/skills/import/update-findings.spec.ts',
     'tests/unit/utils/skills/license.spec.ts',
     'tests/unit/utils/skills/archive.spec.ts',
     'tests/unit/utils/skills/analyze.spec.ts',
@@ -1786,6 +1809,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/skills-library.spec.ts',
     'tests/unit/composables/skill-editor.spec.ts',
     'tests/unit/utils/skill-ui-utils.spec.ts',
+    'tests/unit/utils/skill-findings-rescan.spec.ts',
     'tests/unit/utils/skill-editor.spec.ts',
     'tests/unit/utils/skills/compose.spec.ts',
     'tests/unit/utils/skills/mode.spec.ts',
@@ -3350,7 +3374,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
       tests: skillsManagerTests,
     },
     {
@@ -4249,7 +4273,12 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
       ],
+    },
+    {
+      pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
+      tests: mcpConnectorTests,
     },
     {
       pattern: /^server\/utils\/settings\/apply-user-settings\.ts$/,
@@ -4283,6 +4312,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/mcp/tools/create-project.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
       ],
     },
     {

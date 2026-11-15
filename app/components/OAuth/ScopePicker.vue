@@ -43,8 +43,9 @@
       <span>
         Write access lets this app change your chats, projects, files, memory,
         settings and artifacts, publishing an artifact lets it create a public
-        link anyone can open, and Delete your data lets it permanently delete
-        them. Each one is off unless you turn it on.
+        link anyone can open, connectors access lets it add and remove
+        connectors (it cannot switch one on), and Delete your data lets it
+        permanently delete them. Each one is off unless you turn it on.
       </span>
     </p>
     <div

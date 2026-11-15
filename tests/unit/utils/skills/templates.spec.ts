@@ -4,6 +4,7 @@ import {
   BLANK_SKILL_DESCRIPTION,
   buildBlankSkillFiles,
 } from '#shared/utils/skills/blank'
+import { SKILL_FINDING_RULES_VERSION } from '#shared/utils/skills/findings'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import {
   SKILL_TEMPLATES,
@@ -65,7 +66,9 @@ describe('skill templates', () => {
     }
 
     expect(analysis.findings).toEqual([])
-    expect(analysis.findingCounts).toEqual({})
+    expect(analysis.findingCounts).toEqual({
+      rulesVersion: SKILL_FINDING_RULES_VERSION,
+    })
     expect(analysis.warnings).toEqual([])
     expect(analysis.skill.name).toBe(template.name)
     expect(analysis.skill.description).toBe(template.description)
