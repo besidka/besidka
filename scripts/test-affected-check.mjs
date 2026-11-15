@@ -1610,6 +1610,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/hkdf.spec.ts',
     'tests/unit/server/utils/connectors/audit.spec.ts',
     'tests/integration/server/tool-approval-claim-sweep-plugin.spec.ts',
+    'tests/integration/server/connector-audit-prune-plugin.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
     'tests/unit/server/utils/chats/lifecycle.spec.ts',
     'tests/integration/api/chats-history.spec.ts',
@@ -3314,7 +3315,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/tool-approval-policy\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/hkdf\.ts|server\/utils\/connectors\/audit\.ts|server\/db\/schemas\/tool-approvals\.ts|server\/plugins\/tool-approval-claim-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/(memory-extraction-db|skills-public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_chunky_gabe_jones\/.*)$/,
+        /^(shared\/utils\/tool-approval-policy\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/hkdf\.ts|server\/utils\/connectors\/audit\.ts|server\/db\/schemas\/tool-approvals\.ts|server\/plugins\/(tool-approval-claim-sweep|connector-audit-prune)\.ts|shared\/utils\/connectors-policy\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/(memory-extraction-db|skills-public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_chunky_gabe_jones\/.*)$/,
       tests: toolApprovalPolicyTests,
     },
     {
