@@ -153,6 +153,7 @@
                 :progress="step.approval.progress"
                 :outcome="step.approval.outcome"
                 :message-id="message.id"
+                :connector-name="step.approval.connectorName"
               />
               <ChatReasoningSearchStep
                 v-else-if="step.search"
@@ -299,6 +300,7 @@ const approvalController = useToolApprovalController()
 interface ReasoningApprovalStep {
   model: ApprovalStepModel
   state: ApprovalStepState
+  connectorName: string
   reasonText: string
   summaryLine: string
   progress: string
@@ -454,9 +456,14 @@ function buildApprovalStep(
     titlesBySlug.value,
   )
 
+  const connectorSlug = entry.model.connectorSlug
+
   return {
     model: entry.model,
     state: entry.state,
+    connectorName: connectorSlug
+      ? titlesBySlug.value.get(connectorSlug) || connectorSlug
+      : '',
     reasonText: getApprovalReasonText(entry.model.reason, sourceLabel),
     summaryLine: getApprovalSummaryLine(entry.model.summary),
     progress: isLastAwaiting && entry.state !== 'sending'

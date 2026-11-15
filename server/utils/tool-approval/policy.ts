@@ -51,16 +51,18 @@ export interface DestructiveHintAnnotations {
 }
 
 /**
- * The `destructiveHint` for a connector tool descriptor: true unless the
- * server declares `readOnlyHint: true`. A server's `destructiveHint: false`
- * is never trusted for a tool that is not read-only (docs/connectors.md
- * section 7.1), so a missing or false hint on a tool that may write still
- * counts as destructive.
+ * The `destructiveHint` for a connector tool descriptor: true only when the
+ * server declares `destructiveHint: true`, which puts the tool in the
+ * always-ask tier (Allow once, Deny). A tool that is not marked read-only
+ * and not marked destructive is a plain write: it still asks (reason
+ * `default`) and may be remembered in the chat or always. A server's
+ * `destructiveHint: false` never skips the prompt; it is treated exactly
+ * like a missing hint (docs/connectors.md section 7.1).
  */
 export function connectorDestructiveHint(
   annotations: DestructiveHintAnnotations | null | undefined,
 ): boolean {
-  return annotations?.readOnlyHint !== true
+  return annotations?.destructiveHint === true
 }
 
 /**

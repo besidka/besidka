@@ -53,6 +53,19 @@ mockNuxtImport('useChatContext', () => {
   return () => ({ data, error, refresh })
 })
 
+mockNuxtImport('useChatToolApprovalGrants', () => {
+  return () => ({
+    grants: computed(() => []),
+    hasChatGrants: computed(() => false),
+    isEnabled: computed(() => false),
+    busyKey: ref(''),
+    error: ref(null),
+    refresh: async () => {},
+    resetChatGrants: async () => {},
+    revokeAlwaysGrant: async () => {},
+  })
+})
+
 mockNuxtImport('useSidePanelLayout', () => {
   return () => layout
 })

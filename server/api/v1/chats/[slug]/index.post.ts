@@ -1772,7 +1772,10 @@ export default defineEventHandler(async (event) => {
       userMessageText,
       budget: chatSearchBudget,
       ...(toolApprovalsActive
-        ? { isApprovedByUser: toolApprovalSend.isApprovedByUser }
+        ? {
+          isApprovedByUser: toolApprovalSend.isApprovedByUser,
+          asksForApproval: true,
+        }
         : {}),
       logger: aiLogger,
     })

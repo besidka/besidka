@@ -54,6 +54,7 @@ async function mountStep(options: {
   progress?: string
   outcome?: string
   summaryLine?: string
+  connectorName?: string
   controller?: ToolApprovalController | null
 } = {}) {
   const controller = options.controller === undefined
@@ -70,6 +71,7 @@ async function mountStep(options: {
       progress: options.progress ?? '',
       outcome: options.outcome ?? '',
       messageId: 'assistant-1',
+      connectorName: options.connectorName ?? 'Linear',
     },
     global: controller
       ? { provide: { [TOOL_APPROVAL_CONTROLLER_KEY as symbol]: controller } }
@@ -153,6 +155,69 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       remember: 'chat',
     })
   })
+
+  it('offers all four answers for a plain write', async () => {
+    const { wrapper } = await mountStep({
+      model: createModel({
+        reason: 'default',
+        rememberOptions: ['once', 'chat', 'always'],
+      }),
+    })
+
+    expect(wrapper.get(testId('actions')).findAll('button')
+      .map(button => button.text()))
+      .toEqual(['Allow once', 'Allow in this chat', 'Always allow', 'Deny'])
+  })
+
+  it('confirms Always allow inline, naming the connector and tool',
+    async () => {
+      const { wrapper, controller } = await mountStep({
+        model: createModel({
+          reason: 'default',
+          rememberOptions: ['once', 'chat', 'always'],
+        }),
+      })
+
+      await wrapper.get(testId('allow-always')).trigger('click')
+
+      expect(controller!.answer).not.toHaveBeenCalled()
+      expect(wrapper.find(testId('actions')).exists()).toBe(false)
+      expect(wrapper.get(testId('always-confirm')).text()).toContain(
+        'Always allow create_issue from Linear? Besidka will run it without '
+        + 'asking in every chat until the tool changes.',
+      )
+
+      await wrapper.get(testId('always-confirm-allow')).trigger('click')
+
+      expect(controller!.answer).toHaveBeenCalledWith({
+        approvalId: 'approval-1',
+        approved: true,
+        remember: 'always',
+      })
+    })
+
+  it('cancels the Always allow confirmation with Cancel or Escape',
+    async () => {
+      const { wrapper, controller } = await mountStep({
+        model: createModel({
+          reason: 'default',
+          rememberOptions: ['once', 'chat', 'always'],
+        }),
+      })
+
+      await wrapper.get(testId('allow-always')).trigger('click')
+      await wrapper.get(testId('always-confirm-cancel')).trigger('click')
+
+      expect(wrapper.find(testId('always-confirm')).exists()).toBe(false)
+      expect(wrapper.find(testId('actions')).exists()).toBe(true)
+
+      await wrapper.get(testId('allow-always')).trigger('click')
+      await wrapper.get('[data-testid="reasoning-approval-step"]')
+        .trigger('keydown', { key: 'Escape' })
+
+      expect(wrapper.find(testId('always-confirm')).exists()).toBe(false)
+      expect(controller!.answer).not.toHaveBeenCalled()
+    })
 
   it('sends a denial', async () => {
     const { wrapper, controller } = await mountStep()

@@ -763,8 +763,9 @@ export async function settleClaimedContinuation(input: {
  * "in this chat" maps the exposed tool name to its definition hash in the
  * connector's chat settings, "always" sets the connector tool setting to
  * `always` with the approved hash (only when that setting row exists). The
- * choice was already clamped, and every connector write is in the
- * always-ask tier today, so for now this only ever sees `once`.
+ * choice was already clamped to what the request offered: only a plain
+ * connector write (reason `default`) offers more than `once`. The send and
+ * the replay read back exactly these two values (`getConnectorTools`).
  */
 export async function applyRememberGrants(input: {
   db: DbClient

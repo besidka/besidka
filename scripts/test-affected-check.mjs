@@ -1631,6 +1631,18 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/tool-approval.spec.ts',
   ]
 
+  const toolApprovalGrantsTests = [
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/composables/tool-approval-grants.spec.ts',
+    'tests/unit/components/Chat/ContextPanelApprovals.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+  ]
+
   const skillsStorageTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
@@ -3212,6 +3224,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/utils\/(tool-approval-step|connector-step)\.ts|app\/composables\/(chat|tool-approvals|side-panel)\.ts|app\/components\/Chat\/Reasoning\.vue|app\/components\/Chat\/Reasoning\/Approval(Step|Details)\.vue|app\/components\/ChatInput\/ToolApprovalChip\.vue|app\/components\/ChatInput\.client\.vue|shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|chat-test-errors)\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
       tests: toolApprovalUiTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/chats\/\[slug\]\/tool-approvals\/.*\.ts|server\/utils\/tool-approval\/(grants|send|policy|continuation)\.ts|server\/utils\/connectors\/(send-tools|store|route|body)\.ts|shared\/types\/tool-approval-grants\.d\.ts|app\/composables\/tool-approval-grants\.ts|app\/components\/Chat\/(ContextPanel|ContextPanelApprovals)\.vue|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue)$/,
+      tests: toolApprovalGrantsTests,
     },
     {
       pattern:

@@ -52,6 +52,20 @@ const { createConnectorArgsHasher } = await import(
 const { getConnectorTools } = await import(
   '~~/server/utils/connectors/send-tools'
 )
+const { applyRememberGrants } = await import(
+  '~~/server/utils/tool-approval/continuation'
+)
+const {
+  listChatToolApprovalGrants,
+  resetChatToolApprovalGrants,
+  revokeAlwaysToolApprovalGrant,
+} = await import('~~/server/utils/tool-approval/grants')
+const { createSendToolApproval } = await import(
+  '~~/server/utils/tool-approval/send'
+)
+const { createApprovalState } = await import(
+  '~~/server/utils/tool-approval/state'
+)
 const {
   CONNECTOR_BASELINE_MARKER_TOOL_NAME,
   createConnector,
@@ -433,7 +447,7 @@ describe('getConnectorTools', () => {
       })
       expect(write.descriptor).toMatchObject({
         access: 'write',
-        destructiveHint: true,
+        destructiveHint: false,
       })
       expect(write.alwaysGrant).toBeNull()
       expect(purge.descriptor).toMatchObject({
@@ -1733,6 +1747,247 @@ describe('getConnectorTools', () => {
       expect(tools).toEqual({})
       expect(handles).toHaveLength(0)
       expect(alpha.requests).toHaveLength(0)
+    })
+  })
+
+  describe('user grants', () => {
+    const UPDATE_TOOL: MockMcpTool = {
+      name: 'update_issue',
+      description: 'Update an issue.',
+    }
+    const STALE_HASH = 'f'.repeat(64)
+
+    function grantServer() {
+      return server('mcp.alpha.example.com', {
+        tools: [READ_TOOL, WRITE_TOOL, UPDATE_TOOL],
+      })
+    }
+
+    async function runForChat(
+      seeds: ConnectorSeed[],
+      alpha: MockMcpServer,
+      chatPublicId: string,
+      legacy = false,
+    ) {
+      const previousChatId = chatId
+
+      chatId = chatPublicId
+
+      try {
+        return await run({ connectorSeeds: seeds, servers: [alpha], legacy })
+      } finally {
+        chatId = previousChatId
+      }
+    }
+
+    function decide(
+      entries: Awaited<ReturnType<typeof run>>['approvalEntries'],
+      toolName: string,
+    ) {
+      const approval = createSendToolApproval({
+        state: createApprovalState(),
+      })
+
+      approval.registerTools(undefined, entries)
+
+      return approval.toolApproval({
+        toolCall: { toolCallId: 'call-1', toolName, input: {} },
+      })
+    }
+
+    async function grant(
+      entries: Awaited<ReturnType<typeof run>>['approvalEntries'],
+      toolName: string,
+      remember: 'chat' | 'always',
+      chatPublicId: string = chatId,
+    ) {
+      await applyRememberGrants({
+        db: testDb.db as unknown as DbClient,
+        userId,
+        chatPublicId,
+        decisions: [{
+          approvalId: `approval-${toolName}`,
+          toolCallId: 'call-1',
+          toolName,
+          approved: true,
+          remember,
+          reason: undefined,
+          denialReason: null,
+          record: {} as never,
+        }],
+        entries,
+        logger: { set: (values: unknown) => logged.push(values) },
+      })
+    }
+
+    async function seedGrants() {
+      const alpha = grantServer()
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+      const connectorId = await addConnector(seeds[0]!)
+      const first = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(decide(first.approvalEntries, 'mcp__alpha__create_issue'))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+
+      await testDb.db.insert(schema.connectorChatSettings).values({
+        userId,
+        chatPublicId: chatId,
+        connectorId,
+        enabled: true,
+        alwaysAllowTools: {},
+      })
+      await grant(first.approvalEntries, 'mcp__alpha__create_issue', 'always')
+      await grant(first.approvalEntries, 'mcp__alpha__update_issue', 'chat')
+
+      return { alpha, seeds, connectorId }
+    }
+
+    it('reads back exactly the grants the continuation wrote', async () => {
+      const { alpha, seeds, connectorId } = await seedGrants()
+      const { approvalEntries } = await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+      })
+      const create = approvalEntries.get('mcp__alpha__create_issue')!
+      const update = approvalEntries.get('mcp__alpha__update_issue')!
+
+      expect(create.userGrants).toEqual({
+        always: {
+          definitionHash: create.descriptor.definitionHash,
+          connectorId,
+          toolName: 'mcp__alpha__create_issue',
+        },
+        chat: null,
+      })
+      expect(update.userGrants).toEqual({
+        always: null,
+        chat: {
+          definitionHash: update.descriptor.definitionHash,
+          connectorId,
+          toolName: 'mcp__alpha__update_issue',
+        },
+      })
+      expect(decide(approvalEntries, 'mcp__alpha__create_issue'))
+        .toBe('not-applicable')
+      expect(decide(approvalEntries, 'mcp__alpha__update_issue'))
+        .toBe('not-applicable')
+    })
+
+    it('applies a chat grant only in its chat and an always grant in every '
+      + 'chat', async () => {
+      const { alpha, seeds } = await seedGrants()
+      const otherChat = await seedChat(testDb.db, userId)
+      const { approvalEntries } = await runForChat(seeds, alpha, otherChat.id)
+
+      expect(decide(approvalEntries, 'mcp__alpha__create_issue'))
+        .toBe('not-applicable')
+      expect(decide(approvalEntries, 'mcp__alpha__update_issue'))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+    })
+
+    it('asks again once a grant was given for another definition hash',
+      async () => {
+        const { alpha, seeds, connectorId } = await seedGrants()
+
+        await testDb.db.update(schema.connectorToolSettings)
+          .set({ approvedDefinitionHash: STALE_HASH })
+          .where(eq(schema.connectorToolSettings.toolName, 'create_issue'))
+        await testDb.db.update(schema.connectorChatSettings)
+          .set({
+            alwaysAllowTools: { mcp__alpha__update_issue: STALE_HASH },
+          })
+          .where(eq(schema.connectorChatSettings.connectorId, connectorId))
+
+        const { approvalEntries } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha],
+        })
+
+        expect(decide(approvalEntries, 'mcp__alpha__create_issue'))
+          .toEqual({ type: 'user-approval', reason: 'default' })
+        expect(decide(approvalEntries, 'mcp__alpha__update_issue'))
+          .toEqual({ type: 'user-approval', reason: 'default' })
+        expect(await listChatToolApprovalGrants(
+          testDb.db as unknown as DbClient,
+          userId,
+          chatId,
+        )).toEqual([])
+      })
+
+    it('lists, resets and revokes the grants of the chat', async () => {
+      const { alpha, seeds, connectorId } = await seedGrants()
+      const db = testDb.db as unknown as DbClient
+
+      expect(await listChatToolApprovalGrants(db, userId, chatId)).toEqual([
+        {
+          scope: 'chat',
+          connectorId,
+          connectorTitle: 'alpha',
+          toolName: 'update_issue',
+        },
+        {
+          scope: 'always',
+          connectorId,
+          connectorTitle: 'alpha',
+          toolName: 'create_issue',
+        },
+      ])
+
+      await resetChatToolApprovalGrants(db, userId, chatId)
+
+      const [chatSetting] = await testDb.db
+        .select()
+        .from(schema.connectorChatSettings)
+
+      expect(chatSetting).toMatchObject({ enabled: true, alwaysAllowTools: {} })
+      expect((await listChatToolApprovalGrants(db, userId, chatId))
+        .map(item => item.scope)).toEqual(['always'])
+
+      const afterReset = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(decide(afterReset.approvalEntries, 'mcp__alpha__update_issue'))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+      expect(decide(afterReset.approvalEntries, 'mcp__alpha__create_issue'))
+        .toBe('not-applicable')
+
+      expect(await revokeAlwaysToolApprovalGrant(db, userId + 1, {
+        connectorId,
+        toolName: 'create_issue',
+      })).toBe(false)
+      expect(await revokeAlwaysToolApprovalGrant(db, userId, {
+        connectorId,
+        toolName: 'create_issue',
+      })).toBe(true)
+
+      const [setting] = (await listConnectorToolSettings(
+        testDb.db as unknown as DbClient,
+        userId,
+        connectorId,
+      )).filter(row => row.toolName === 'create_issue')
+
+      expect(setting).toMatchObject({
+        approval: 'ask',
+        approvedDefinitionHash: null,
+      })
+      expect(setting?.definitionHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(await listChatToolApprovalGrants(db, userId, chatId)).toEqual([])
+
+      const afterRevoke = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(decide(afterRevoke.approvalEntries, 'mcp__alpha__create_issue'))
+        .toEqual({ type: 'user-approval', reason: 'default' })
+    })
+
+    it('reads no grants with the tool-approvals flag off', async () => {
+      const { alpha, seeds } = await seedGrants()
+      const { approvalEntries } = await runForChat(seeds, alpha, chatId, true)
+
+      expect(approvalEntries.get('mcp__alpha__create_issue')?.userGrants)
+        .toEqual({ always: null, chat: null })
     })
   })
 })

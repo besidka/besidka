@@ -14,6 +14,7 @@ import {
 import {
   assertUserRequestQuote,
   buildMemoryHandle,
+  buildMemoryWriteDescriptions,
   getMemoryTools,
   normalizeUserRequestText,
 } from '~~/server/utils/memory/tools/memory-tools'
@@ -2061,5 +2062,34 @@ describe('memory tools', () => {
         slug: 'launch-plan',
       })).toBe('project/topics/launch-plan')
     })
+  })
+})
+
+describe('buildMemoryWriteDescriptions', () => {
+  const REFUSED = 'The call is refused in any message that uses web search or '
+    + 'reads files, project documents or other chats; when it is refused, do '
+    + 'not retry it in the same message.'
+
+  it('keeps the refusal sentence with tool approvals off', () => {
+    const { write, forget } = buildMemoryWriteDescriptions(false)
+
+    expect(write).toContain(`${REFUSED} After saving, confirm it`)
+    expect(forget).toContain(`${REFUSED} After removing it, confirm it`)
+    expect(write).not.toContain('approval')
+  })
+
+  it('says the call needs approval instead of being refused with tool '
+    + 'approvals on', () => {
+    const { write, forget } = buildMemoryWriteDescriptions(true)
+
+    for (const description of [write, forget]) {
+      expect(description).toContain(
+        'the call needs the user\'s approval in this turn',
+      )
+      expect(description).toContain('so still call it when the user asked')
+      expect(description).not.toContain('is refused in any message')
+    }
+
+    expect(write).toMatch(/do not retry it in the same message\. After saving/)
   })
 })

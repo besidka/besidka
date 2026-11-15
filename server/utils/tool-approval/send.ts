@@ -86,6 +86,10 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * adds to the send's approval state. `alwaysGrant` is a grant the send
  * applies without the user setting one (see `buildConnectorApprovalEntry`);
  * it holds after untrusted content only when `alwaysGrantWhenTainted` is set.
+ * `userGrants` are the grants the user gave ("Always allow", "Allow in this
+ * chat"), each carrying the definition hash it was given for, so a changed
+ * tool no longer matches; the policy never lets them lift a prompt caused
+ * by untrusted output, a source switch or the always-ask tier.
  */
 export interface SendToolEntry {
   descriptor: ToolApprovalDescriptor
@@ -94,11 +98,28 @@ export interface SendToolEntry {
   readSource: string | null
   alwaysGrant: ToolApprovalGrant | null
   alwaysGrantWhenTainted: boolean
+  userGrants?: SendToolUserGrants
   connector: {
     id: string
     host: string
     remoteToolName: string
   } | null
+}
+
+export interface SendToolUserGrants {
+  always: ToolApprovalGrant | null
+  chat: ToolApprovalGrant | null
+}
+
+/**
+ * The stored definition hashes of the user's grants for one connector tool:
+ * `always` from `connector_tool_settings.approvedDefinitionHash` when that
+ * row is set to `always`, `chat` from this chat's
+ * `connector_chat_settings.alwaysAllowTools[exposedName]`.
+ */
+export interface ConnectorGrantHashes {
+  always: string | null
+  chat: string | null
 }
 
 export interface PendingToolApprovalDecision {
@@ -277,7 +298,9 @@ export function buildNativeApprovalEntry(toolName: string): SendToolEntry {
  * also marks the tool `openWorldHint: false`; otherwise the call asks
  * `untrusted-output`, because an open-world read can carry data out. This
  * stands in for the per-tool review of C-7. A tool marked both read-only and
- * destructive counts as destructive.
+ * destructive counts as destructive. `grantHashes` are the hashes the user's
+ * own grants were given for; each becomes a grant bound to this connector
+ * and exposed name, so it matches only while the tool is unchanged.
  */
 export function buildConnectorApprovalEntry(input: {
   exposedName: string
@@ -287,8 +310,18 @@ export function buildConnectorApprovalEntry(input: {
   remoteToolName: string
   definitionHash: string
   annotations: DestructiveHintAnnotations & { openWorldHint?: boolean | null }
+  grantHashes?: ConnectorGrantHashes
 }): SendToolEntry {
   const { annotations } = input
+  const toGrant = (definitionHash: string | null | undefined) => {
+    return definitionHash
+      ? {
+        definitionHash,
+        connectorId: input.connectorId,
+        toolName: input.exposedName,
+      }
+      : null
+  }
   const isAutoRunnable = annotations.readOnlyHint === true
     && annotations.destructiveHint !== true
 
@@ -299,8 +332,7 @@ export function buildConnectorApprovalEntry(input: {
       toolName: input.exposedName,
       connectorId: input.connectorId,
       definitionHash: input.definitionHash,
-      destructiveHint: connectorDestructiveHint(annotations)
-        || annotations.destructiveHint === true,
+      destructiveHint: connectorDestructiveHint(annotations),
     },
     summary: clampSummary(
       `${input.connectorTitle} wants to run ${input.exposedName}`,
@@ -315,6 +347,10 @@ export function buildConnectorApprovalEntry(input: {
       }
       : null,
     alwaysGrantWhenTainted: annotations.openWorldHint === false,
+    userGrants: {
+      always: toGrant(input.grantHashes?.always),
+      chat: toGrant(input.grantHashes?.chat),
+    },
     connector: {
       id: input.connectorId,
       host: input.connectorHost,
@@ -441,11 +477,17 @@ export function createSendToolApproval(input: {
 
     const isGrantUsable = state.taint.size === 0
       || entry.alwaysGrantWhenTainted
+    const areUserGrantsUsable = entry.descriptor.access !== 'read'
+      || isGrantUsable
+    const userGrants = areUserGrantsUsable ? entry.userGrants : undefined
     const resolved = resolveToolApproval({
       descriptor: entry.descriptor,
       state,
       permissionMode: 'ask',
-      alwaysGrant: isGrantUsable ? entry.alwaysGrant : null,
+      alwaysGrant: (isGrantUsable ? entry.alwaysGrant : null)
+        ?? userGrants?.always
+        ?? null,
+      chatGrant: userGrants?.chat ?? null,
     })
     const decision = entry.alwaysGrant
       && !isGrantUsable
