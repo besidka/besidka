@@ -332,6 +332,12 @@ import {
   redactSkillToolPartsForPersistence,
 } from '~~/server/utils/skills/runtime/persist'
 import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
+import { SKILL_SCRIPTS_GATE_TOOL_NAME } from '#shared/utils/skills/scripts'
+import {
+  buildSkillScriptsInstruction,
+  prepareSkillScriptsForSend,
+} from '~~/server/utils/skills/send-container-options'
+import type { SkillScriptsAttachment } from '~~/server/utils/skills/send-container-options'
 import {
   CONNECTORS_PER_USER,
   CONNECTOR_STEPS_PER_TURN,
@@ -1701,6 +1707,7 @@ export default defineEventHandler(async (event) => {
       'artifacts.llm-bridge',
       'documents',
       'skills',
+      'skills.scripts',
       'connectors',
       'tool-approvals',
       'besidka-tools',
@@ -1894,6 +1901,35 @@ export default defineEventHandler(async (event) => {
     logger: aiLogger,
   })
 
+  const skillScriptsRun = await prepareSkillScriptsForSend({
+    db,
+    bucket: useFileStorage(),
+    userId,
+    chatPublicId: chat.id,
+    candidateSkillIds: skillsSend.scriptCandidateSkillIds,
+    isFeatureActive: sendFeatures.isFeatureActive('skills.scripts'),
+    isApprovalsActive: toolApprovalsActive,
+    isToolCallingAllowed: toolCallingAllowed,
+    isDirectAnthropic: !gatewayId && provider?.id === 'anthropic',
+    isCodeExecutionActive: codeExecutionGate.active,
+    apiKey: codeExecutionSession?.apiKey ?? null,
+    logger: aiLogger,
+  })
+  let skillScriptsAttachment: SkillScriptsAttachment | null
+    = skillScriptsRun.gate.isGrantMatched
+      ? await skillScriptsRun.attach({ isApproved: false })
+      : null
+  const skillsInstructionBlock = [
+    skillsSend.instructionBlock,
+    skillScriptsRun.gate.isActive
+      ? buildSkillScriptsInstruction({
+        skillNames: skillScriptsRun.gate.skillNames,
+        isAttached: skillScriptsAttachment?.container != null,
+        hasFailed: skillScriptsAttachment?.failed === true,
+      })
+      : null,
+  ].filter(Boolean).join('\n\n') || null
+
   const knowledgeSendModel: KnowledgeSendModel = gatewayId
     ? {
       providerId: telemetryProviderId,
@@ -1936,7 +1972,7 @@ export default defineEventHandler(async (event) => {
         memoryInstructions,
         artifactInstructions,
         documentsContextLine,
-        skillsInstructionBlock: skillsSend.instructionBlock,
+        skillsInstructionBlock,
         codeExecutionInputNames: codeExecutionSession?.uploadedFileNames,
       }),
       artifactContextBlock,
@@ -2022,6 +2058,13 @@ export default defineEventHandler(async (event) => {
     parsedTools = {
       ...parsedTools,
       tools: { ...parsedTools.tools, ...skillsSend.tools },
+    }
+  }
+
+  if (Object.keys(skillScriptsRun.gate.tools).length > 0) {
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...skillScriptsRun.gate.tools },
     }
   }
 
@@ -2154,6 +2197,7 @@ export default defineEventHandler(async (event) => {
         new Map([
           ...besidkaToolsRun?.approvalEntries ?? [],
           ...connectorsRun?.approvalEntries ?? [],
+          ...skillScriptsRun.gate.approvalEntries,
         ]),
       )
       parsedTools = {
@@ -2210,6 +2254,19 @@ export default defineEventHandler(async (event) => {
       assertOnlyDeliverableFileParts(resumeHistory, {
         inlineContainerFiles: isInlineContainerSend,
       })
+      if (
+        skillScriptsRun.gate.isActive
+        && !skillScriptsRun.gate.isGrantMatched
+        && resumeDecisions.some((decision) => {
+          return decision.approved
+            && decision.toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
+        })
+      ) {
+        skillScriptsAttachment = await skillScriptsRun.attach({
+          isApproved: true,
+        })
+      }
+
       resumedStoredMessage = resumedMessages.storedMessage
       resumeModelMessages = await convertToModelMessages([
         ...resumeHistory,
@@ -2222,6 +2279,13 @@ export default defineEventHandler(async (event) => {
     await codeExecutionSession?.tracker.cleanup()
 
     throw exception
+  }
+
+  if (skillScriptsAttachment?.container) {
+    providerOptions.anthropic = {
+      ...providerOptions.anthropic,
+      container: skillScriptsAttachment.container,
+    }
   }
 
   const closeConnectorClients = async () => {
@@ -2280,7 +2344,9 @@ export default defineEventHandler(async (event) => {
       .filter(toolName => !isArtifactToolName(toolName)),
   )
   const isApprovalGatedToolName = (toolName: string) => {
-    return isConnectorToolName(toolName) || isBesidkaChatToolName(toolName)
+    return isConnectorToolName(toolName)
+      || isBesidkaChatToolName(toolName)
+      || toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
   }
   const answerGuaranteeToolNames = new Set(
     [...followUpToolNames].filter((toolName) => {
@@ -2988,6 +3054,7 @@ export default defineEventHandler(async (event) => {
             userId,
             apiKey: codeExecutionSession.apiKey,
             filesEnabled: codeExecutionSession.filesActive,
+            skillsAttached: skillScriptsAttachment?.attachedCount ?? 0,
             tracker: codeExecutionSession.tracker,
             rates: resolveCodeExecutionRatesFromConfig(),
             logger: aiLogger,

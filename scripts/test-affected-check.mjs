@@ -1935,6 +1935,17 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-skills.spec.ts',
   ]
 
+  const skillsScriptsTests = [
+    'tests/unit/utils/skills/scripts.spec.ts',
+    'tests/unit/server/utils/skills/provider-upload.spec.ts',
+    'tests/unit/server/utils/skills/send-container-options.spec.ts',
+    'tests/unit/server/utils/skills/scripts-toggle.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+  ]
+
   const skillsComposerTests = [
     'tests/unit/utils/skill-step.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
@@ -3442,6 +3453,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending|lookalike-context)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
       tests: skillsVersionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/scripts\.ts|server\/utils\/skills\/(provider-upload|send-container-options|scripts-toggle|cleanup)\.ts|server\/api\/v1\/skills\/\[id\]\/scripts\/.*\.ts|server\/api\/v1\/profiles\/keys\/anthropic\/uploads\/.*\.ts|server\/utils\/tool-approval\/(policy|continuation)\.ts|server\/utils\/besidka-tools\/chat-settings\.ts|shared\/utils\/features\/registry\.ts)$/,
+      tests: skillsScriptsTests,
     },
     {
       pattern:

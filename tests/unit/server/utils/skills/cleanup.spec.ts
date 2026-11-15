@@ -1,4 +1,4 @@
-import { getTableColumns, getTableName, is } from 'drizzle-orm'
+import { eq, getTableColumns, getTableName, is } from 'drizzle-orm'
 import { SQLiteTable, getTableConfig } from 'drizzle-orm/sqlite-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '~~/server/db/schema'
@@ -236,6 +236,8 @@ describe('skills deletion hooks', () => {
       )
 
       expect(result).toEqual({
+        providerCopiesDeleted: 0,
+        providerCopiesFailed: 0,
         skillsDeleted: 1,
         skillVersionsDeleted: 1,
         skillFilesDeleted: 2,
@@ -322,6 +324,135 @@ describe('skills deletion hooks', () => {
             },
           },
         },
+      })
+    })
+  })
+
+  describe('provider copies', () => {
+    function stubProvider(status = 204) {
+      const calls: string[] = []
+      const fetcher = vi.fn(async (url: unknown, init?: RequestInit) => {
+        calls.push(`${init?.method} ${String(url)}`)
+
+        return init?.method === 'GET'
+          ? new Response(JSON.stringify({ data: [] }), { status: 200 })
+          : new Response(null, { status })
+      })
+
+      vi.stubGlobal('fetch', fetcher)
+      vi.stubGlobal('useDecryptText', async (value: string) => value)
+
+      return calls
+    }
+
+    async function seedAnthropicKey(owner: number) {
+      await testDb.db.insert(schema.keys).values({
+        userId: owner,
+        provider: 'anthropic',
+        apiKey: 'sk-ant-test',
+      })
+    }
+
+    async function seedUploadedSkill(owner: number) {
+      const skillId = await seedFullSkill(owner)
+
+      await testDb.db.update(schema.skills)
+        .set({
+          allowScripts: true,
+          providerSkillId: 'skill_01',
+          providerSkillVersion: '1:1759178010',
+          providerUploadedName: 'a-skill',
+        })
+        .where(eq(schema.skills.id, skillId))
+
+      return skillId
+    }
+
+    it('deletes the Anthropic copy when the skill is deleted', async () => {
+      await seedAnthropicKey(userId)
+
+      const calls = stubProvider()
+      const skillId = await seedUploadedSkill(userId)
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(result.providerCopy).toBe('deleted')
+      expect(calls).toContain(
+        'DELETE https://api.anthropic.com/v1/skills/skill_01',
+      )
+      expect(await countRows(schema.skills)).toBe(0)
+    })
+
+    it('still deletes the skill and reports a failed provider delete', async () => {
+      await seedAnthropicKey(userId)
+      stubProvider(500)
+
+      const skillId = await seedUploadedSkill(userId)
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(result.skillDeleted).toBe(true)
+      expect(result.providerCopy).toBe('failed')
+    })
+
+    it('makes no provider request for a skill that was never uploaded', async () => {
+      const calls = stubProvider()
+      const skillId = await seedFullSkill(userId)
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(result.providerCopy).toBe('none')
+      expect(calls).toEqual([])
+    })
+
+    it('deletes the copies of the account before its rows go', async () => {
+      await seedAnthropicKey(userId)
+
+      const calls = stubProvider()
+
+      await seedUploadedSkill(userId)
+
+      const result = await purgeUserSkills(
+        testDb.db,
+        userId,
+        mocks.logger,
+        bucket,
+      )
+
+      expect(result).toMatchObject({
+        providerCopiesDeleted: 1,
+        providerCopiesFailed: 0,
+        skillsDeleted: 1,
+      })
+      expect(calls).toContain(
+        'DELETE https://api.anthropic.com/v1/skills/skill_01',
+      )
+      expect(await countRows(schema.skills)).toBe(0)
+    })
+
+    it('does not stop the purge when a copy cannot be deleted', async () => {
+      stubProvider()
+      await seedUploadedSkill(userId)
+
+      const result = await purgeUserSkills(
+        testDb.db,
+        userId,
+        mocks.logger,
+        bucket,
+      )
+
+      expect(result).toMatchObject({
+        providerCopiesFailed: 1,
+        skillsDeleted: 1,
       })
     })
   })

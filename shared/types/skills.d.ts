@@ -38,6 +38,9 @@ export interface SkillSummary {
   filesCount: number
   bytes: number
   allowScripts: boolean
+  hasScripts: boolean
+  scriptsProviderName: string | null
+  scriptsUploaded: boolean
   createdVia: SkillCreatedVia
   createdByClientId: string | null
   createdAt: string

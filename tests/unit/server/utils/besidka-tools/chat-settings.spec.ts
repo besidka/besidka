@@ -1,3 +1,4 @@
+import * as schema from '~~/server/db/schema'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryExtractionTestDb,
@@ -140,6 +141,74 @@ describe('Besidka chat settings', () => {
         db: testDb.db,
       })).toBe('ask')
       expect(logger.set).not.toHaveBeenCalled()
+    })
+
+  it('stores the skill scripts consent for the chat on "in this chat"',
+    async () => {
+      const entry = {
+        ...besidkaEntry('run_skill_scripts'),
+        descriptor: {
+          family: 'native' as const,
+          access: 'write' as const,
+          toolName: 'run_skill_scripts',
+          definitionHash: HASH,
+          destructiveHint: false,
+          consentGate: true,
+        },
+        taint: null,
+        readSource: null,
+      }
+
+      await applyRememberGrants({
+        db: testDb.db,
+        userId,
+        chatPublicId: CHAT,
+        decisions: [decision('run_skill_scripts', 'chat')],
+        entries: new Map([['run_skill_scripts', entry]]),
+        logger: { set: vi.fn() },
+      })
+
+      expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .toEqual({
+          enabled: true,
+          alwaysAllowTools: { run_skill_scripts: HASH },
+        })
+      expect(await readBesidkaChatSettings(testDb.db, userId, OTHER_CHAT))
+        .toEqual({ enabled: true, alwaysAllowTools: {} })
+    })
+
+  it('stores nothing for a once or always answer to the scripts consent',
+    async () => {
+      const entry = {
+        ...besidkaEntry('run_skill_scripts'),
+        descriptor: {
+          family: 'native' as const,
+          access: 'write' as const,
+          toolName: 'run_skill_scripts',
+          definitionHash: HASH,
+          destructiveHint: false,
+          consentGate: true,
+        },
+        taint: null,
+        readSource: null,
+      }
+
+      await applyRememberGrants({
+        db: testDb.db,
+        userId,
+        chatPublicId: CHAT,
+        decisions: [
+          decision('run_skill_scripts', 'once'),
+          decision('run_skill_scripts', 'always'),
+        ],
+        entries: new Map([['run_skill_scripts', entry]]),
+        logger: { set: vi.fn() },
+      })
+
+      expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .toEqual({ enabled: true, alwaysAllowTools: {} })
+      expect(await testDb.db.select().from(schema.besidkaToolPermissions))
+        .toEqual([])
     })
 
   it('lists the Besidka grants that still apply in the chat panel',

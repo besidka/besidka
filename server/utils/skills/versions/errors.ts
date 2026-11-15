@@ -26,6 +26,11 @@ export type SkillEditErrorCode
     | 'needs-review'
     | 'version-is-current'
     | 'skill-broken'
+    | 'scripts-missing'
+    | 'scripts-disclosure-required'
+    | 'scripts-rename-confirmation-required'
+    | 'scripts-key-missing'
+    | 'scripts-name-invalid'
 
 const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'skill-not-found': 404,
@@ -53,6 +58,11 @@ const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'needs-review': 409,
   'version-is-current': 409,
   'skill-broken': 409,
+  'scripts-missing': 400,
+  'scripts-disclosure-required': 400,
+  'scripts-rename-confirmation-required': 409,
+  'scripts-key-missing': 409,
+  'scripts-name-invalid': 400,
 }
 
 interface SkillEditErrorDetails {
