@@ -36,7 +36,6 @@ export const SKILL_JEV_RULES: Readonly<Record<
   k2_conceal: { rule: 'jev-conceal', type: 'concealment' },
   k3_secrets: { rule: 'jev-secrets', type: 'credential' },
   k4_run_remote: { rule: 'jev-run-remote', type: 'execution' },
-  k5_off_purpose: { rule: 'jev-off-purpose', type: 'injection' },
 }
 
 export function createSkillJevMark(input: SkillJevRange & {

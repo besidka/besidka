@@ -574,7 +574,7 @@ describe('skill screen services', () => {
       expect(JSON.parse(kv.values.get(key)!).marks).toEqual([])
     })
 
-    it('reads the description from the SKILL.md of that version', async () => {
+    it('screens the description from the SKILL.md of that version', async () => {
       const { skillId } = await seedSkillWithFiles(testDb.db, bucket, {
         userId,
         files: {
@@ -593,15 +593,12 @@ describe('skill screen services', () => {
         rest: false,
       })
 
-      const states = mocks.decide.mock.calls.map((call) => {
-        return (call[0] as { state: { description: string } }).state
+      const texts = mocks.decide.mock.calls.map((call) => {
+        return (call[0] as { state: { text: string } }).state.text
       })
 
-      expect(states.length).toBeGreaterThan(0)
-
-      for (const state of states) {
-        expect(state.description).toBe('Version description')
-      }
+      expect(texts[0]).toBe('Version description')
+      expect(texts.join('\n')).not.toContain('Stale row description')
     })
   })
 })

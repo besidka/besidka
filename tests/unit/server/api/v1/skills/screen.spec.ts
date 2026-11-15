@@ -179,7 +179,6 @@ describe('skill screen routes', () => {
           'k2_conceal',
           'k3_secrets',
           'k4_run_remote',
-          'k5_off_purpose',
         ].map((id) => {
           return [id, { type: 'boolean', probability: 0.01 }]
         })),

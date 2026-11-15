@@ -205,23 +205,27 @@ export const JEV_SKILL_QUESTION_IDS = [
   'k2_conceal',
   'k3_secrets',
   'k4_run_remote',
-  'k5_off_purpose',
 ] as const
 
 export type JevSkillQuestionId = typeof JEV_SKILL_QUESTION_IDS[number]
 
 /**
- * Optional second check on the text of a skill under review (state keys
- * `text` and `description`, never part of a question). The wordings are
- * constants without exemption clauses an attacker could claim, and no skill
- * text, name or path is ever interpolated into them. `flagAtOrAbove` are
- * placeholders until the SS-7 eval re-tunes them; `questionSetVersion` goes
- * up whenever a wording or a threshold changes, which also retires the chunk
+ * Optional second check on the text of a skill under review (state key
+ * `text`, never part of a question). The wordings are constants without
+ * exemption clauses an attacker could claim, and no skill text, name or path
+ * is ever interpolated into them. `flagAtOrAbove` are the thresholds decided
+ * by the SS-7 eval (BES-384, besidka/besidka#931, `docs/memory-architecture.md`
+ * section 3.19). The eval dropped `k5_off_purpose` (50% recall on 6 positives,
+ * every false positive on a helper script), so no question reads the
+ * description as state any more; the description is still screened as the
+ * first chunk. Packed calls (several chunks in one call) stay off: the eval
+ * measured recall falling from 88.9% to 77.8%. `questionSetVersion` goes up
+ * whenever a wording or a threshold changes, which also retires the chunk
  * cache. `maxCallsPerScreen` caps the calls of one request,
  * `maxCallsPerStage` the calls of one review across "check the rest".
  */
 export const JEV_SKILL_SCREENING = {
-  questionSetVersion: 1,
+  questionSetVersion: 2,
   maxChunkTokens: 2000,
   maxCallsPerScreen: 12,
   maxCallsPerStage: 48,
@@ -229,12 +233,11 @@ export const JEV_SKILL_SCREENING = {
   timeoutMs: JEV_BACKGROUND_TIMEOUT_MS,
   cacheTtlSeconds: 30 * 24 * 60 * 60,
   flagAtOrAbove: {
-    i2_attack: 0.3,
+    i2_attack: 0.4,
     k1_send_out: 0.5,
-    k2_conceal: 0.5,
-    k3_secrets: 0.5,
-    k4_run_remote: 0.5,
-    k5_off_purpose: 0.7,
+    k2_conceal: 0.7,
+    k3_secrets: 0.2,
+    k4_run_remote: 0.4,
   },
   severity: {
     i2_attack: 'medium',
@@ -242,7 +245,6 @@ export const JEV_SKILL_SCREENING = {
     k2_conceal: 'high',
     k3_secrets: 'high',
     k4_run_remote: 'medium',
-    k5_off_purpose: 'low',
   },
   questions: {
     i2_attack: JEV_INJECTION_SCREENING.question,
@@ -267,11 +269,6 @@ export const JEV_SKILL_SCREENING = {
       type: 'boolean',
       instructions: 'Does `text` tell the reader to download and run code, '
         + 'or to change where software packages are installed from?',
-    },
-    k5_off_purpose: {
-      type: 'boolean',
-      instructions: 'Does `text` ask for actions that do not serve the '
-        + 'purpose stated in `description`?',
     },
   },
 } as const satisfies {

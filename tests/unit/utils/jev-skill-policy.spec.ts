@@ -12,33 +12,31 @@ import {
 import { getSkillFindingExplanation } from '#shared/utils/skills/findings'
 
 describe('JEV_SKILL_SCREENING', () => {
-  it('holds the placeholder constants of the proposal', () => {
+  it('holds the constants decided by the SS-7 eval', () => {
     expect(JEV_SKILL_SCREENING).toMatchObject({
-      questionSetVersion: 1,
+      questionSetVersion: 2,
       maxChunkTokens: 2000,
       maxCallsPerScreen: 12,
       maxCallsPerStage: 48,
       maxConcurrentCalls: 3,
       timeoutMs: JEV_BACKGROUND_TIMEOUT_MS,
       flagAtOrAbove: {
-        i2_attack: 0.3,
+        i2_attack: 0.4,
         k1_send_out: 0.5,
-        k2_conceal: 0.5,
-        k3_secrets: 0.5,
-        k4_run_remote: 0.5,
-        k5_off_purpose: 0.7,
+        k2_conceal: 0.7,
+        k3_secrets: 0.2,
+        k4_run_remote: 0.4,
       },
     })
   })
 
-  it('asks the six questions, reusing the injection question for i2', () => {
+  it('asks the five questions, reusing the injection question for i2', () => {
     expect(JEV_SKILL_QUESTION_IDS).toEqual([
       'i2_attack',
       'k1_send_out',
       'k2_conceal',
       'k3_secrets',
       'k4_run_remote',
-      'k5_off_purpose',
     ])
     expect(Object.keys(JEV_SKILL_SCREENING.questions))
       .toEqual([...JEV_SKILL_QUESTION_IDS])
@@ -46,28 +44,33 @@ describe('JEV_SKILL_SCREENING', () => {
       .toBe(JEV_INJECTION_SCREENING.question)
   })
 
-  it('names only the state keys text and description in a question', () => {
+  it('names only the state key text in a question', () => {
     for (const question of Object.values(JEV_SKILL_SCREENING.questions)) {
       const quoted = [...question.instructions.matchAll(/`([^`]+)`/g)]
         .map(match => match[1])
 
       expect(quoted.length).toBeGreaterThan(0)
-      expect(quoted.every(name => ['text', 'description'].includes(name!)))
+      expect(quoted.every(name => name === 'text'))
         .toBe(true)
       expect('criteria' in question).toBe(false)
       expect(question.instructions).not.toMatch(/\$\{|\{\{|\{[a-z_]+\}/)
     }
   })
 
-  it('gives k1, k2 and k3 high, k4 and i2 medium, k5 low', () => {
+  it('gives k1, k2 and k3 high, k4 and i2 medium', () => {
     expect(JEV_SKILL_SCREENING.severity).toEqual({
       i2_attack: 'medium',
       k1_send_out: 'high',
       k2_conceal: 'high',
       k3_secrets: 'high',
       k4_run_remote: 'medium',
-      k5_off_purpose: 'low',
     })
+  })
+
+  it('dropped the off-purpose question, so nothing reads the description', () => {
+    expect(JEV_SKILL_QUESTION_IDS).not.toContain('k5_off_purpose')
+    expect(JSON.stringify(JEV_SKILL_SCREENING)).not.toContain('description')
+    expect(getSkillFindingExplanation('jev-off-purpose')).toBeNull()
   })
 
   it('has a plain explanation for every Jev rule', () => {
