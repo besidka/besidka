@@ -17,6 +17,18 @@
         {{ reasonText }}
       </p>
     </section>
+    <section
+      v-if="preview"
+      class="flex flex-col gap-1"
+    >
+      <h4 class="text-xs font-medium text-base-content/70">
+        Text to save
+      </h4>
+      <p
+        class="overflow-auto whitespace-pre-wrap break-words rounded-field bg-base-200 p-3 text-xs"
+        data-testid="tool-approval-details-preview"
+      >{{ preview }}</p>
+    </section>
     <section class="flex flex-col gap-1">
       <h4 class="text-xs font-medium text-base-content/70">
         Tool
@@ -59,6 +71,7 @@ const props = defineProps<{
   reasonText: string
   input: unknown
   isShortened: boolean
+  preview?: string
 }>()
 
 const argumentsText = computed<string>(() => {

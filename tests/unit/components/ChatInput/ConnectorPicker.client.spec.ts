@@ -50,6 +50,8 @@ async function mountPicker(
     selectedIds: string[]
     isAtLimit: boolean
     isSaving: boolean
+    besidka: { enabled: boolean, isSaving: boolean } | null
+    areConnectorsAvailable: boolean
   }> = {},
 ) {
   const wrapper = await mountSuspended(ConnectorPicker, {
@@ -190,6 +192,54 @@ describe('ChatInput/ConnectorPicker', () => {
 
     expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
   })
+
+  it('shows no Besidka row unless one is passed', async () => {
+    await mountPicker()
+
+    expect(find('connector-picker-besidka')).toBeNull()
+  })
+
+  it('shows the Besidka row with its state and emits a toggle', async () => {
+    const wrapper = await mountPicker({
+      besidka: { enabled: true, isSaving: false },
+    })
+    const toggle = get('connector-picker-toggle-besidka') as HTMLInputElement
+
+    expect(get('connector-picker-besidka').textContent).toContain('Besidka')
+    expect(toggle.checked).toBe(true)
+    expect(toggle.getAttribute('aria-label'))
+      .toBe('Use Besidka tools in this chat')
+
+    toggle.click()
+    await flushPromises()
+
+    expect(wrapper.emitted('toggle-besidka')).toHaveLength(1)
+    expect(wrapper.emitted('toggle')).toBeUndefined()
+  })
+
+  it('keeps the Besidka row out of the connector limit', async () => {
+    await mountPicker({
+      isAtLimit: true,
+      selectedIds: ['c1'],
+      besidka: { enabled: false, isSaving: false },
+    })
+
+    expect((get('connector-picker-toggle-besidka') as HTMLInputElement)
+      .disabled).toBe(false)
+  })
+
+  it('shows only the Besidka row when connectors are not available',
+    async () => {
+      await mountPicker({
+        items: [],
+        besidka: { enabled: true, isSaving: false },
+        areConnectorsAvailable: false,
+      })
+
+      expect(find('connector-picker-besidka')).not.toBeNull()
+      expect(find('connector-picker-empty')).toBeNull()
+      expect(find('connector-picker-manage')).toBeNull()
+    })
 
   it('closes from the close button', async () => {
     const wrapper = await mountPicker()

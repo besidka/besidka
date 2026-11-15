@@ -5,13 +5,12 @@ import {
 } from '#shared/utils/documents'
 import type { DocumentFormat } from '#shared/utils/documents'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
+import { BESIDKA_TOOL_NAME_PREFIX } from '#shared/utils/besidka-tool-permissions'
 import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
 import type { SearchProvider } from '#shared/types/message-usage.d'
 import { CHAT_MEMORY_ICON } from '~/utils/chat-memory-exclusion'
 import { CODE_EXECUTION_TOOL_ICON } from '~/utils/code-execution-ui'
 import { DOCUMENT_FORMAT_ICONS } from '~/utils/document-ui'
-
-export const BESIDKA_TOOL_NAME_PREFIX = 'besidka__'
 
 export const REASONING_STEP_ICON_COLLECTIONS = [
   'lucide',

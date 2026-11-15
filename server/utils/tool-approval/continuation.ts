@@ -55,6 +55,7 @@ import {
   resolveReplayApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
+import { addBesidkaChatGrant } from '~~/server/utils/besidka-tools/chat-settings'
 import {
   createApprovalState,
   deserializeApprovalState,
@@ -566,6 +567,10 @@ export function decideContinuation(input: {
       incrementCounter(replayState, 'connectorCalls')
     }
 
+    if (entry?.descriptor.family === 'besidka') {
+      incrementCounter(replayState, 'builtInCalls')
+    }
+
     return {
       ...base,
       approved: true,
@@ -777,14 +782,45 @@ export async function settleClaimedContinuation(input: {
   }
 }
 
+async function applyBesidkaRememberGrant(input: {
+  db: DbClient
+  userId: number
+  chatPublicId: string
+  decision: ContinuationDecision
+  definitionHash: string
+}): Promise<void> {
+  if (input.decision.remember === 'chat') {
+    await addBesidkaChatGrant(input.db, input.userId, input.chatPublicId, {
+      toolName: input.decision.toolName,
+      definitionHash: input.definitionHash,
+    })
+
+    return
+  }
+
+  const { setBesidkaToolPermissions, toBesidkaRegistryName } = await import(
+    '~~/server/utils/besidka-tools/permissions'
+  )
+
+  await setBesidkaToolPermissions(
+    input.userId,
+    { tool: toBesidkaRegistryName(input.decision.toolName) },
+    'allow',
+    input.db,
+  )
+}
+
 /**
  * Writes the grant a remember choice asks for, when the request offered it:
  * "in this chat" maps the exposed tool name to its definition hash in the
  * connector's chat settings, "always" sets the connector tool setting to
  * `always` with the approved hash (only when that setting row exists). The
  * choice was already clamped to what the request offered: only a plain
- * connector write (reason `default`) offers more than `once`. The send and
- * the replay read back exactly these two values (`getConnectorTools`).
+ * write (reason `default`) offers more than `once`. The send and the replay
+ * read back exactly these two values (`getConnectorTools`). For a Besidka
+ * tool, "in this chat" stores the registry hash in the chat's
+ * `besidka_chat_settings.alwaysAllowTools`, and "always" sets the tool's
+ * permission to Always allow.
  */
 export async function applyRememberGrants(input: {
   db: DbClient
@@ -799,12 +835,34 @@ export async function applyRememberGrants(input: {
     const hash = entry?.descriptor.definitionHash
     const connector = entry?.connector
 
-    if (
-      !decision.approved
-      || decision.remember === 'once'
-      || !connector
-      || !hash
-    ) {
+    if (!decision.approved || decision.remember === 'once' || !hash) {
+      continue
+    }
+
+    if (entry?.descriptor.family === 'besidka') {
+      try {
+        await applyBesidkaRememberGrant({
+          db: input.db,
+          userId: input.userId,
+          chatPublicId: input.chatPublicId,
+          decision,
+          definitionHash: hash,
+        })
+      } catch (exception) {
+        input.logger.set({
+          attributes: {
+            toolApproval: {
+              grant: 'failed',
+              error: exceptionMessage(exception),
+            },
+          },
+        })
+      }
+
+      continue
+    }
+
+    if (!connector) {
       continue
     }
 

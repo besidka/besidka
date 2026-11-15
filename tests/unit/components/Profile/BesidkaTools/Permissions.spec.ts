@@ -98,6 +98,37 @@ describe('Profile/BesidkaTools/Permissions', () => {
         .toContain('list files')
     })
 
+  it('says when more tools are allowed than a message offers', async () => {
+    const wrapper = await mountSuspended(Permissions)
+
+    expect(wrapper.find(
+      '[data-testid="besidka-tool-permissions-over-limit"]',
+    ).exists()).toBe(false)
+
+    tools.value = {
+      tools: Array.from({ length: 25 }, (_, index) => {
+        return row(`tool_${index}`, 'read')
+      }),
+    }
+    await flushPromises()
+
+    expect(wrapper.get(
+      '[data-testid="besidka-tool-permissions-over-limit"]',
+    ).text()).toBe('Only 24 Besidka tools are offered per message; block the '
+      + 'ones you don\'t need.')
+
+    tools.value = {
+      tools: Array.from({ length: 25 }, (_, index) => {
+        return row(`tool_${index}`, 'read', index === 0 ? 'blocked' : 'ask')
+      }),
+    }
+    await flushPromises()
+
+    expect(wrapper.find(
+      '[data-testid="besidka-tool-permissions-over-limit"]',
+    ).exists()).toBe(false)
+  })
+
   it('offers Always allow in Read-only and Write but not Ask every time',
     async () => {
       const wrapper = await mountSuspended(Permissions)

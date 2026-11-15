@@ -1,4 +1,8 @@
 import type { UIMessage } from 'ai'
+import {
+  BESIDKA_TOOL_NAME_PREFIX,
+  isBesidkaChatToolName,
+} from '#shared/utils/besidka-tool-permissions'
 
 export interface ParsedReasoningSection {
   title: string
@@ -290,11 +294,31 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
+function getBesidkaToolStepTitle(
+  toolName: string,
+  isPending: boolean,
+  isFailed: boolean,
+): string {
+  const action = humanizeToolName(
+    toolName.slice(BESIDKA_TOOL_NAME_PREFIX.length),
+  )
+
+  if (isFailed) {
+    return `Besidka could not ${action}`
+  }
+
+  return isPending ? `Besidka: ${action}…` : `Besidka: ${action}`
+}
+
 export function getToolStepTitle(
   toolName: string,
   isPending: boolean,
   isFailed: boolean,
 ): string {
+  if (isBesidkaChatToolName(toolName)) {
+    return getBesidkaToolStepTitle(toolName, isPending, isFailed)
+  }
+
   const knownTitles = TOOL_STEP_TITLES.get(toolName)
 
   if (knownTitles) {

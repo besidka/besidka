@@ -937,6 +937,16 @@ after the L3 audit (2026-11-15):
 - **Replay compares more.** The pending record stores `access`, and a
   replay is denied (`definition-drifted`) when the tool name or access
   differs from the live descriptor, besides the family, connector and hash.
+- **Besidka reads ignore Besidka taint (BES-394 L9).** Rule 4 asks before a
+  Besidka tool after untrusted content, but a Besidka read does not count
+  the taint of earlier Besidka results (`isTaintedForBesidka`), so an Always
+  allow or chat-granted read runs after another Besidka read. Web,
+  knowledge, file, skill, connector and shared-branch taint still make it
+  ask, and a Besidka write asks after any taint. Egress stays covered: the
+  provider's web search, and the Brave and Exa searches Besidka runs itself
+  (withheld from later steps and refused at execute time, also on Anthropic
+  routes), stop after a connector or Besidka read, and a connector call
+  after it asks `cross-source`.
 - **Memory writes count every taint.** Native memory writes (`memory_write`,
   `memory_forget`) ask after any taint kind, web included; native artifact
   and document writes still count only connector and skill taint.
