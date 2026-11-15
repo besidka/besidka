@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   BESIDKA_TOOL_DEFAULT_MODE,
+  BESIDKA_TOOL_NAME_PREFIX,
   BESIDKA_TOOL_TIERS,
   getAllowedBesidkaToolModes,
   isBesidkaToolModeAllowed,
@@ -19,8 +20,6 @@ import {
 import type { ChatExposedBesidkaTool } from '~~/server/utils/besidka-tools/registry'
 
 type DbClient = ReturnType<typeof useDb>
-
-export const BESIDKA_TOOL_NAME_PREFIX = 'besidka__'
 
 export type BesidkaToolPermissionModes = ReadonlyMap<string, ToolPermissionMode>
 
@@ -86,6 +85,11 @@ function effectiveMode(
   return isBesidkaToolModeAllowed(tier, mode) ? mode : BESIDKA_TOOL_DEFAULT_MODE
 }
 
+/**
+ * The stored mode of each tool that has a row. A row whose mode is not one
+ * of the known values reads as Blocked, never as the default: an unreadable
+ * setting must not let a tool run or even be offered.
+ */
 export async function loadBesidkaToolPermissionModes(
   userId: number,
   db: DbClient = useDb(),
@@ -99,9 +103,10 @@ export async function loadBesidkaToolPermissionModes(
   const modes = new Map<string, ToolPermissionMode>()
 
   for (const row of rows) {
-    if (isPermissionMode(row.mode)) {
-      modes.set(row.toolName, row.mode)
-    }
+    modes.set(
+      row.toolName,
+      isPermissionMode(row.mode) ? row.mode : 'blocked',
+    )
   }
 
   return modes

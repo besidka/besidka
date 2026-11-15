@@ -219,7 +219,10 @@
       :selected-ids="composerConnectors.selectedIds.value"
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
+      :besidka="besidkaPickerRow"
+      :are-connectors-available="composerConnectors.isFeatureActive.value"
       @toggle="composerConnectors.toggle"
+      @toggle-besidka="composerBesidkaTools.toggle"
     />
     <LazyChatInputSkillPicker
       v-if="isSkillPickerMounted && composerSkills.isVisible.value"
@@ -933,6 +936,9 @@ const composerSkills = useComposerSkills()
 const composerConnectors = useComposerConnectors(() => {
   return route.name === 'chats-slug' ? String(route.params.slug) : null
 })
+const composerBesidkaTools = useComposerBesidkaTools(() => {
+  return route.name === 'chats-slug' ? String(route.params.slug) : null
+})
 const skillInvocation = useComposerSkillInvocation()
 const skillPreview = useSkillPreview()
 const commandPicker = useTemplateRef<{
@@ -948,12 +954,26 @@ const isSkillAttachEnabled = computed<boolean>(() => {
   return composerSkills.isVisible.value && !isDeepResearchModel.value
 })
 
+const besidkaPickerRow = computed(() => {
+  if (!composerBesidkaTools.isAvailable.value) {
+    return null
+  }
+
+  return {
+    enabled: composerBesidkaTools.isEnabled.value,
+    isSaving: composerBesidkaTools.isSaving.value,
+  }
+})
+
 const isConnectorsEnabled = computed<boolean>(() => {
-  return composerConnectors.isVisible.value
-    && isToolCallingSupported.value
-    && !isDeepResearchModel.value
-    && !isImageGenerationEnabled.value
-    && !isImageGenerationRequired.value
+  return (
+    composerConnectors.isVisible.value
+    || composerBesidkaTools.isAvailable.value
+  )
+  && isToolCallingSupported.value
+  && !isDeepResearchModel.value
+  && !isImageGenerationEnabled.value
+  && !isImageGenerationRequired.value
 })
 
 const commands = useComposerCommands({

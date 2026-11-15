@@ -62,6 +62,82 @@ function memoryCallParts(): UIMessage['parts'] {
   ] as unknown as UIMessage['parts']
 }
 
+export const TEST_BESIDKA_TOOL_APPROVAL_PROMPT
+  = 'Clean up: delete my old draft chats.'
+
+const BESIDKA_READ_CALL_ID = 'test-besidka-call-1'
+const BESIDKA_DELETE_CALL_ID = 'test-besidka-call-2'
+const BESIDKA_DRAFT_SLUGS = [
+  '01HZXAAAAAAAAAAAAAAAAAAAAA',
+  '01HZXBBBBBBBBBBBBBBBBBBBBB',
+]
+
+function besidkaCallParts(): UIMessage['parts'] {
+  return [
+    { type: 'step-start' },
+    {
+      type: 'tool-besidka__list_projects',
+      toolCallId: BESIDKA_READ_CALL_ID,
+      state: 'output-available',
+      input: {},
+      output: '<untrusted_tool_result connector="besidka" '
+        + 'tool="list_projects">\n{"projects":[]}\n</untrusted_tool_result>',
+    },
+    {
+      type: 'data-tool-grant',
+      id: `grant-${BESIDKA_READ_CALL_ID}`,
+      data: {
+        toolCallId: BESIDKA_READ_CALL_ID,
+        toolName: 'besidka__list_projects',
+        scope: 'always',
+      },
+    },
+    { type: 'step-start' },
+    {
+      type: 'tool-besidka__delete_chats',
+      toolCallId: BESIDKA_DELETE_CALL_ID,
+      state: 'approval-requested',
+      input: { slugs: BESIDKA_DRAFT_SLUGS },
+      approval: { id: 'test-besidka-approval-0001' },
+    },
+    {
+      type: TOOL_APPROVAL_DATA_PART_TYPE,
+      id: BESIDKA_DELETE_CALL_ID,
+      data: {
+        approvalId: 'test-besidka-approval-0001',
+        toolCallId: BESIDKA_DELETE_CALL_ID,
+        toolName: 'besidka__delete_chats',
+        reason: 'always-ask',
+        summary: `Delete 2 chats: ${BESIDKA_DRAFT_SLUGS.join(', ')}`,
+        rememberOptions: ['once'],
+      },
+    },
+  ] as unknown as UIMessage['parts']
+}
+
+/**
+ * The `besidka-tool-approval` test chat: a Besidka read that ran under
+ * Always allow, then a Besidka delete waiting for Allow once or Deny.
+ */
+export function buildTestBesidkaToolApprovalMessages(scenarioKey: string) {
+  return [
+    {
+      id: `test-chat-${scenarioKey}-message-1`,
+      role: 'user' as const,
+      parts: [{ type: 'text', text: TEST_BESIDKA_TOOL_APPROVAL_PROMPT }],
+      tools: [],
+      reasoning: 'off' as ReasoningLevel,
+    },
+    {
+      id: `test-chat-${scenarioKey}-message-2`,
+      role: 'assistant' as const,
+      parts: besidkaCallParts(),
+      tools: [],
+      reasoning: 'off' as ReasoningLevel,
+    },
+  ]
+}
+
 /**
  * The messages of the `tool-approval` (one waiting connector call) and
  * `tool-approvals` (a connector call and a memory write after a web
