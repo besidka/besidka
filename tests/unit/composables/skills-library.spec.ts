@@ -238,6 +238,114 @@ describe('useSkillActions', () => {
     expect(subtitle).toContain('code that runs in Claude Code')
   })
 
+  it('keeps the kinds of the other files when one file cannot be read', async () => {
+    mocks.confirm.mockResolvedValue({ label: 'Turn on', index: 0 })
+    mocks.fetch.mockImplementation(async (url: string, options?: {
+      query?: { path?: string }
+    }) => {
+      if (options?.query?.path === 'SKILL.md') {
+        throw new Error('gone')
+      }
+
+      if (options?.query?.path === 'scripts/a.sh') {
+        return { text: '!`gh pr diff`\n' }
+      }
+
+      return url.endsWith('/files')
+        ? { files: [{ path: 'SKILL.md' }, { path: 'scripts/a.sh' }] }
+        : {}
+    })
+
+    const skill = createSkillSummary({
+      sourceKind: 'github',
+      enabled: false,
+      highlightCount: 2,
+    })
+
+    await useSkillActions().setMode(skill, 'auto')
+
+    const subtitle = mocks.confirm.mock.calls[0]![0].subtitle
+
+    expect(subtitle).toContain('2 highlights are marked Look closely')
+    expect(subtitle).toContain('code that runs in Claude Code')
+  })
+
+  it('reads SKILL.md first and at most 20 files, skipping assets', async () => {
+    mocks.confirm.mockResolvedValue({ label: 'Turn on', index: 0 })
+
+    const readPaths: string[] = []
+    const files = [
+      { path: 'assets/logo.png', kind: 'asset' },
+      ...Array.from({ length: 30 }, (_, index) => {
+        return { path: `references/file-${index}.md`, kind: 'reference' }
+      }),
+      { path: 'SKILL.md', kind: 'skill-md' },
+    ]
+
+    mocks.fetch.mockImplementation(async (url: string, options?: {
+      query?: { path?: string }
+    }) => {
+      if (options?.query?.path) {
+        readPaths.push(options.query.path)
+
+        return { text: 'Plain text.\n' }
+      }
+
+      return url.endsWith('/files') ? { files } : {}
+    })
+
+    const skill = createSkillSummary({
+      sourceKind: 'github',
+      enabled: false,
+      highlightCount: 1,
+    })
+
+    await useSkillActions().setMode(skill, 'auto')
+
+    expect(readPaths).toHaveLength(20)
+    expect(readPaths[0]).toBe('SKILL.md')
+    expect(readPaths).not.toContain('assets/logo.png')
+  })
+
+  it('marks the skill busy while the highlights are read, not during '
+    + 'the confirmation', async () => {
+    let releaseListing: (value: unknown) => void = () => undefined
+    const listing = new Promise((resolve) => {
+      releaseListing = resolve
+    })
+    let busyDuringConfirmation: boolean | null = null
+
+    mocks.fetch.mockImplementation(async (url: string) => {
+      return url.endsWith('/files') ? await listing : {}
+    })
+
+    const skill = createSkillSummary({
+      sourceKind: 'github',
+      enabled: false,
+      highlightCount: 1,
+    })
+    const actions = useSkillActions()
+
+    mocks.confirm.mockImplementation(async () => {
+      busyDuringConfirmation = actions.isBusy(skill.id)
+
+      return { label: 'Turn on', index: 0 }
+    })
+
+    const turningOn = actions.setMode(skill, 'auto')
+
+    await vi.waitFor(() => {
+      expect(actions.isBusy(skill.id)).toBe(true)
+    })
+    expect(mocks.confirm).not.toHaveBeenCalled()
+
+    releaseListing({ files: [] })
+    await turningOn
+
+    expect(busyDuringConfirmation).toBe(false)
+    expect(actions.isBusy(skill.id)).toBe(false)
+  })
+
   it('still confirms with the count when the files cannot be read', async () => {
     mocks.confirm.mockResolvedValue({ label: 'Turn on', index: 0 })
     mocks.fetch.mockRejectedValueOnce(new Error('offline'))

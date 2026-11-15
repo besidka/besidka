@@ -43,8 +43,6 @@ import { findNewFindings } from '~~/server/utils/skills/versions/new-findings'
 import { readSkillLookalikeContext } from '~~/server/utils/skills/lookalike-context'
 import { countUserSkills } from '~~/server/utils/skills/usage'
 
-export { findNewFindings }
-
 type DbClient = ReturnType<typeof useDb>
 type SkillRow = typeof schema.skills.$inferSelect
 type VersionRow = typeof schema.skillVersions.$inferSelect

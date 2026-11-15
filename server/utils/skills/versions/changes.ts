@@ -1,8 +1,7 @@
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import { diffSkillSettings } from '#shared/utils/skills/update-changes'
-import type { SkillChangedSetting } from '#shared/utils/skills/update-changes'
 import { extractSkillHosts } from '#shared/utils/skills/url-hosts'
-import type { SkillFinding } from '#shared/utils/skills/findings'
+import type { SkillVersionChanges } from '#shared/types/skills.d'
 import { findNewFindings } from '~~/server/utils/skills/versions/new-findings'
 import { readBlobText } from '~~/server/utils/skills/versions/read'
 import type {
@@ -10,14 +9,6 @@ import type {
   SkillFileRow,
   SkillReadBucket,
 } from '~~/server/utils/skills/versions/read'
-
-export interface SkillVersionChanges {
-  newFindings: SkillFinding[]
-  newHosts: string[]
-  changedSettings: SkillChangedSetting[]
-  newScripts: string[]
-  isPartial: boolean
-}
 
 type FileRef = Pick<SkillFileRow, 'path' | 'blobSha256' | 'kind'>
 

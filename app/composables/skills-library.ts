@@ -10,7 +10,7 @@ import {
 } from '#shared/utils/skills/release'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillSourceGroup } from '#shared/utils/skills/edit'
-import type { SkillFinding } from '#shared/utils/skills/findings'
+import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type {
   SkillSummary,
   SkillsListResponse,
@@ -31,6 +31,7 @@ export const SKILLS_FILTER_MIN_OPTIONS = 2
 export const SKILLS_SEARCH_MIN_ITEMS = 8
 export const SKILLS_SEARCH_DEBOUNCE_MS = 300
 export const SKILL_VIEW_KEY_PREFIX = 'skill:'
+export const SKILL_HIGHLIGHT_SCAN_MAX_FILES = 20
 
 const SOURCE_FILTERS: readonly SkillSourceGroup[] = [
   'created',
@@ -453,6 +454,32 @@ export function useSkillUpdateReview() {
   return { skillId, open, close }
 }
 
+async function readSkillFileListing(skillId: string) {
+  const listing = await $fetch(`/api/v1/skills/${skillId}/files`)
+
+  return 'files' in listing && listing.files ? listing.files : []
+}
+
+function pickHighlightScanPaths(
+  files: Array<{ path: string, kind?: string }>,
+): string[] {
+  const textFiles = files.filter((file) => {
+    return file.kind !== 'asset'
+  })
+  const skillFile = textFiles.filter((file) => {
+    return file.path === SKILL_MD_FILE_NAME
+  })
+  const otherFiles = textFiles.filter((file) => {
+    return file.path !== SKILL_MD_FILE_NAME
+  })
+
+  return [...skillFile, ...otherFiles]
+    .slice(0, SKILL_HIGHLIGHT_SCAN_MAX_FILES)
+    .map((file) => {
+      return file.path
+    })
+}
+
 /**
  * Changes that go through `PATCH /api/v1/skills/[id]` and the actions that
  * touch the skill as a whole. Every action reports its own failure, so a
@@ -541,31 +568,33 @@ export function useSkillActions() {
 
   /**
    * The "Look closely" kinds of the current version, read by scanning its
-   * files here in the browser, or an empty string when they cannot be read.
+   * files here in the browser: SKILL.md first, then up to the next
+   * `SKILL_HIGHLIGHT_SCAN_MAX_FILES - 1` text files. A file that cannot be
+   * read is skipped; an empty string comes back when none can be read.
    */
   async function readHighlightCategories(skillId: string): Promise<string> {
-    try {
-      const listing = await $fetch(`/api/v1/skills/${skillId}/files`)
-      const findings: SkillFinding[] = []
+    const [listing] = await Promise.allSettled([
+      readSkillFileListing(skillId),
+    ])
 
-      if (!('files' in listing) || !listing.files) {
-        return ''
-      }
-
-      for (const entry of listing.files) {
-        const file = await $fetch(`/api/v1/skills/${skillId}/files`, {
-          query: { path: entry.path },
-        })
-
-        if ('text' in file) {
-          findings.push(...scanSkillText(entry.path, file.text))
-        }
-      }
-
-      return describeHighlightCategories(findings)
-    } catch {
+    if (listing.status === 'rejected') {
       return ''
     }
+
+    const scans = await Promise.allSettled(
+      pickHighlightScanPaths(listing.value).map(async (path) => {
+        const file = await $fetch(`/api/v1/skills/${skillId}/files`, {
+          query: { path },
+        })
+
+        return 'text' in file ? scanSkillText(path, file.text) : []
+      }),
+    )
+    const findings = scans.flatMap((scan) => {
+      return scan.status === 'fulfilled' ? scan.value : []
+    })
+
+    return describeHighlightCategories(findings)
   }
 
   async function describeHighlightsForConfirmation(
@@ -575,7 +604,9 @@ export function useSkillActions() {
       return ''
     }
 
-    const categories = await readHighlightCategories(skill.id)
+    const categories = await runExclusive(skill.id, async () => {
+      return await readHighlightCategories(skill.id)
+    })
     const count = skill.highlightCount === 1
       ? '1 highlight is marked Look closely'
       : `${skill.highlightCount} highlights are marked Look closely`

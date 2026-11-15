@@ -13,7 +13,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 })
 
 const { findNewFindings } = await import(
-  '~~/server/utils/skills/import/update-check'
+  '~~/server/utils/skills/versions/new-findings'
 )
 
 const LONG_PREFIX = `${'Reference text. '.repeat(10)}See `

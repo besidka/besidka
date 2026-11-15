@@ -272,19 +272,20 @@ test('a skill with a dynamic-context line and a webhook image needs both ticks',
 
   const lookClosely = dialog.getByTestId('skill-review-findings-high')
 
-  await expect(lookClosely).toContainText('Look closely (2)')
-  await expect(lookClosely).toContainText('SKILL.md:6')
-  await expect(lookClosely).toContainText('SKILL.md:7')
+  await expect(lookClosely).toContainText('Look closely (3)')
+  await expect(lookClosely).toContainText('SKILL.md:8')
+  await expect(lookClosely).toContainText('SKILL.md:9')
   await expect(lookClosely).toContainText('Besidka never runs')
   await expect(lookClosely).toContainText('webhook.site')
+  await expect(lookClosely).toContainText('Sends data out')
 
   const install = dialog.getByTestId('skill-import-install')
 
   await expect(install).toBeDisabled()
   await dialog.getByTestId('skill-import-reviewed').check()
   await expect(install).toBeDisabled()
-  await expect(dialog.getByTestId('skill-import-highlights'))
-    .toContainText('I read the 2 highlights marked Look closely')
+  await expect(dialog.getByText('I read the 3 highlights marked Look closely'))
+    .toBeVisible()
   await dialog.getByTestId('skill-import-highlights').check()
   await expect(install).toBeEnabled()
   await install.click()
@@ -293,5 +294,5 @@ test('a skill with a dynamic-context line and a webhook image needs both ticks',
   const row = page.getByTestId('skill-row').filter({ hasText: skillName })
 
   await expect(row.getByTestId('skill-row-highlights'))
-    .toHaveText('2 to look at')
+    .toHaveText('3 to look at')
 })
