@@ -339,6 +339,10 @@ import {
 } from '~~/server/utils/skills/send-container-options'
 import type { SkillScriptsAttachment } from '~~/server/utils/skills/send-container-options'
 import {
+  prepareSkillSelection,
+  resolveSkillSelection,
+} from '~~/server/utils/skills/jev/selection'
+import {
   CONNECTORS_PER_USER,
   CONNECTOR_STEPS_PER_TURN,
   CONNECTOR_TOOLS_PER_REQUEST,
@@ -815,6 +819,17 @@ export default defineEventHandler(async (event) => {
     encryptedExaApiKey = exaKey.apiKey
   }
 
+  const skillSelectionPlan = await prepareSkillSelection({
+    event,
+    db,
+    userId,
+    projectId: chat.projectId,
+    isResume,
+    messageText: readUserMessageText(newMessage.parts),
+    newMessageParts: newMessage.parts,
+    storedMessages: chat.messages,
+    logger,
+  })
   const autoWebSearch = await resolveAutoWebSearch({
     db,
     userId,
@@ -829,6 +844,7 @@ export default defineEventHandler(async (event) => {
       }),
       JEV_AUTO_WEB_SEARCH.recentTurns,
     ),
+    extraJev: skillSelectionPlan?.extraJev ?? undefined,
     logger,
   })
   const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
@@ -995,6 +1011,11 @@ export default defineEventHandler(async (event) => {
       })
     }
   }
+
+  const skillSelectionRun = resolveSkillSelection(
+    skillSelectionPlan,
+    autoWebSearch.jevResult,
+  )
 
   const resumedAssistantId = resume?.owner.messagePublicId ?? null
   const allMessages = [
@@ -1897,6 +1918,8 @@ export default defineEventHandler(async (event) => {
     userMessageText,
     isStoredUserMessage,
     preloadedInvocation: preloadedSkillInvocation,
+    jevSelection: await skillSelectionRun,
+    preloadedCatalogSkills: skillSelectionPlan?.catalogSkills,
     guard: chatSearchBudget,
     logger: aiLogger,
   })

@@ -1,9 +1,11 @@
+import type { FeatureKey } from '#shared/utils/features/registry'
 import type { JevRoleId } from '#shared/utils/jev-policy'
 
 export interface TypesafeRoleCopy {
   id: JevRoleId
   title: string
   description: string
+  feature?: FeatureKey
 }
 
 export const typesafeRoleCopies: TypesafeRoleCopy[] = [
@@ -60,5 +62,15 @@ export const typesafeRoleCopies: TypesafeRoleCopy[] = [
       + 'when you refer to them. Sends your message and recent turns. If '
       + 'TypeSafe AI doesn\'t answer, Besidka searches your past chats '
       + 'anyway.',
+  },
+  {
+    id: 'skillSelection',
+    feature: 'skills',
+    title: 'Skill selection',
+    description: 'Picks one of your Auto skills for a message when a local '
+      + 'match suggests it. Sends your message and up to three skill '
+      + 'names and descriptions, only when one matches, and costs a small '
+      + 'amount on your TypeSafe AI key. Off by default. If TypeSafe AI '
+      + 'doesn\'t answer, the model picks from your skills as usual.',
   },
 ]

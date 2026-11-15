@@ -27,7 +27,10 @@ import {
   buildSendPathJevState,
   decideSendPathJev,
 } from '~~/server/utils/jev/send-path'
-import type { SendPathTurn } from '~~/server/utils/jev/send-path'
+import type {
+  SendPathJevExtra,
+  SendPathTurn,
+} from '~~/server/utils/jev/send-path'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -44,6 +47,7 @@ const AUTO_WEB_SEARCH_POLICIES = [
 export interface AutoWebSearchResolution {
   tools: Tools
   outcome: AutoWebSearchOutcome | null
+  jevResult?: JevDecideResult
 }
 
 export interface AutoWebSearchAnswer {
@@ -61,6 +65,7 @@ export interface ResolveAutoWebSearchInput {
   persistedTools: Tools | null
   messageText: string
   recentTurns: readonly SendPathTurn[]
+  extraJev?: SendPathJevExtra
   logger?: JevLogger
 }
 
@@ -154,7 +159,9 @@ function reusedOutcome(persistedTools: Tools): AutoWebSearchOutcome {
  * A new message needs a chosen web-search provider. Otherwise a URL, a
  * domain or a recency phrase forces a search, then one Jev call decides,
  * and any Jev failure searches. Only a `skipped` outcome removes the
- * web-search tools.
+ * web-search tools. `extraJev` rides in that one call (the skill selector's
+ * questions), and the raw result comes back as `jevResult` only when the
+ * call was made, so the other role reads its answers without a second call.
  */
 export async function resolveAutoWebSearch(
   input: ResolveAutoWebSearchInput,
@@ -220,6 +227,7 @@ export async function resolveAutoWebSearch(
       recentTurns: input.recentTurns.slice(-JEV_AUTO_WEB_SEARCH.recentTurns),
     }),
     questions: autoWebSearchJevQuestions(),
+    extra: input.extraJev,
   })
   const answer = readAutoWebSearchAnswer(result)
 
@@ -236,6 +244,7 @@ export async function resolveAutoWebSearch(
   return {
     tools: applyAutoWebSearchOutcome(input.defaultTools, answer.outcome),
     outcome: answer.outcome,
+    jevResult: result,
   }
 }
 

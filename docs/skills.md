@@ -1085,7 +1085,8 @@ an Apache header with restrictions appended.
 S-3 wires skills into `server/api/v1/chats/[slug]/index.post.ts` after the
 knowledge tools, only when the `skills` flag is on and the chat has at least
 one enabled, model-invocable skill. S-12 adds slash commands (section 5.5).
-Both ship before C-6, under the interim rule in section 2, item 8.
+Both ship before C-6, under the interim rule in section 2, item 8. Section
+5.9 adds the optional TypeSafe AI selector (S-14).
 
 ### 5.1 Selection
 
@@ -1575,6 +1576,64 @@ pass, and an Off skill is pinned but never enabled. `get_project` adds
 `skills: [{ skillId, name, level, state }]` only when the token also holds
 `skills:read` and the flag is on, so a `projects:read` token never learns skill
 names. The tool is not offered in chat.
+
+### 5.9 Skill selection with TypeSafe AI (S-14, BES-380)
+
+With a TypeSafe AI key and the **Skill selection** check switched on, Besidka
+picks one Auto skill for a message by itself, in addition to the model's own
+choice from the catalog (section 5.2). It is the only way an Auto skill can run
+on a model without tool calling. The role is `skillSelection`
+(`docs/memory-architecture.md` section 3.19, J7, and its SS-14 eval); this
+section is the skills side.
+
+**Opt-in.** The check is off until the user switches it on in Smart checks
+(`/profile/keys?tab=memory-checks`), because it spends the user's key: the one
+role that `null` settings do not turn on (`JEV_OPT_IN_ROLE_IDS`). No
+migration; MCP cannot change it.
+
+**Nothing runs** when the `skills` flag is off, the user attached or typed a
+skill (`findSkillInvocation`), the send is a resume, or the message is empty.
+It never runs while typing.
+
+**Candidates.** The user's Auto skills (the catalog set: enabled,
+model-invocable, not broken), minus skills already active in the chat (an
+earlier activation S-3 re-injects anyway) and skills the chat's project pins to
+always load. Prefer pins stay candidates. A local BM25 prefilter over the
+names and descriptions (`server/utils/skills/jev/prefilter.ts`) keeps at most
+three, with a floor of 1 and one matched term. The gates run cheapest first:
+the flag, then the key and the role switch, and only then the catalog (read
+once and handed on to `prepareSkillsForSend`) and the prefilter. No candidate:
+no Jev call, so a message that names no skill topic costs nothing.
+
+**One call, no per-skill call.** Each candidate is one boolean question; the
+name and description (cut to 300 characters, never-store removed) go into a
+state key `skill_<i>`, never into a question. When Auto web search makes its
+send-path call, the questions ride in it and cost no extra request; otherwise
+the check makes one call of its own. At most one skill wins, at or above 0.6.
+
+**Applying it.** The winner is injected exactly like a skill attached with "+"
+(section 5.5): the current version in a block at the end of the latest user
+turn, so the prompt cache is untouched and a model without tools gets it
+too, worded as Besidka's match and tagged `invoked="jev"`. It is not stored on
+the user message. The answer carries a `data-skill-activation` part with
+`source: 'jev'`, shown in the reasoning list as **Applied skill · name** (no
+card in the reply). **A pick applies to that send only**: like a project pin,
+that activation is never read back as a skill the chat keeps active
+(`isTransientSkillActivationPart`; sections 5.4 and 5.8), so it is not
+re-injected as `<active_skills>` later and a wrong pick never persists. Jev may
+pick the skill again on the next send if it still fits. Order on a send: a skill the user attached, else the skill
+TypeSafe AI picked, then the project's Always load skills, Prefer skills and
+the other Auto skills by name.
+
+**Failure.** An error, the 800 ms timeout, a missing answer or a score below
+the threshold change nothing: the model decides from the catalog, as without a
+key. A picked skill that cannot be read is skipped without an error.
+
+**Where.** `server/utils/skills/jev/` (`prefilter.ts`, `questions.ts`,
+`selection.ts`), `jevSelection` on `prepareSkillsForSend`, and two calls in
+`server/api/v1/chats/[slug]/index.post.ts` (`prepareSkillSelection` before the
+Auto web search step, `resolveSkillSelection` started after the replay
+guards and awaited before `prepareSkillsForSend`).
 
 ## 6. Threat model
 
@@ -2583,7 +2642,7 @@ Ticket keys without a BES id are new on 2026-11-13.
 | S-9 BES-316 | Plain PR after the testers. Never says "safe". Names the license block. Claims no affiliation with the Agent Skills project or Anthropic |
 | S-13 (new, optional) | `feat(skills): share a skill or command by link`: its own stack (S-8b legal addendum as a plain PR, D1 layer, routes and UI, MCP layer); section 12.1. Flag `skills.share` |
 | S-2U (later) | `feat(skills): import a raw SKILL.md from any link`: needs `safeFetch` purpose `skills-url`, so it waits for C-3 |
-| S-14 (optional) | `feat(composer): built-in slash commands`: client only; flag `composer.builtin-commands` (section 5.6) |
+| S-14 (optional) | `feat(composer): built-in slash commands`: client only; flag `composer.builtin-commands` (section 5.6). In Linear, S-14 (BES-380) became the TypeSafe AI skill selector instead (section 5.9); built-in commands stay later and optional |
 
 ## 14. SDK verification
 

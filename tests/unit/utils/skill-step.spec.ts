@@ -93,6 +93,21 @@ describe('skill step in the reasoning list', () => {
     })
   })
 
+  it('titles a skill picked by TypeSafe AI as an applied skill', () => {
+    const jevActivation = {
+      type: 'data-skill-activation',
+      data: { skillId: 'skl1', name: 'writing-style', source: 'jev' },
+    }
+    const model = getSkillActivationStepModel([jevActivation], 0)
+
+    expect(model).toEqual({
+      state: 'ready',
+      skillId: 'skl1',
+      name: 'writing-style',
+    })
+    expect(getSkillStepTitle(model!)).toBe('Applied skill · writing-style')
+  })
+
   it('titles a project pin as a project skill, from the part source', () => {
     const projectActivation = {
       type: 'data-skill-activation',

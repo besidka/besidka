@@ -33,7 +33,7 @@
     </div>
     <ul class="grid gap-4">
       <li
-        v-for="role in typesafeRoleCopies"
+        v-for="role in visibleRoleCopies"
         :key="role.id"
       >
         <label
@@ -75,10 +75,18 @@
 
 <script setup lang="ts">
 import type { JevRoleId } from '#shared/utils/jev-policy'
+import type { TypesafeRoleCopy } from '~/utils/typesafe-roles'
 
 const privacyPolicyPath = '/privacy-policy#typesafe-ai-checks'
 
 const { isLoaded, isRoleOn, setRole } = useTypesafeRoles()
+const skillsFeature = useFeature('skills')
+
+const visibleRoleCopies = computed<TypesafeRoleCopy[]>(() => {
+  return typesafeRoleCopies.filter((role) => {
+    return role.feature !== 'skills' || skillsFeature.value.active
+  })
+})
 
 async function onToggle(role: JevRoleId, event: Event) {
   const input = event.target as HTMLInputElement
