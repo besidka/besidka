@@ -577,9 +577,13 @@ function isModelContextPart(part: unknown): boolean {
  *
  * - `modelMessage` is what the model and the SDK see: each answered call
  *   takes its exact input from the pending record (the stored copy is
- *   redacted) and, when approved, the signature the SDK checks; finished
- *   tool calls, text, reasoning and step boundaries stay, and parts the
- *   model never needs (data, sources, files, unfinished calls) are dropped.
+ *   redacted), the provider metadata of the call (Gemini thought
+ *   signatures; the stored artifact and document copies drop it) and, when
+ *   approved, the signature the SDK checks; finished tool calls, text and
+ *   reasoning keep their stored provider metadata (Anthropic thinking
+ *   signatures, Gemini thought signatures) in their original order, step
+ *   boundaries stay, and parts the model never needs (data, sources, files,
+ *   unfinished calls) are dropped.
  * - `storedMessage` keeps the stored parts as they are, with the answered
  *   calls moved to `approval-responded` and no input or signature added, so
  *   it can seed `readUIMessageStream` and be written back to D1.
@@ -611,9 +615,13 @@ export function buildResumedAssistantMessages(input: {
 
     const approval = respondedApproval(part, decision)
 
+    const callProviderMetadata = decision.record.callProviderMetadata
+      ?? part.callProviderMetadata
+
     storedParts.push({ ...part, state: 'approval-responded', approval })
     modelParts.push({
       ...part,
+      ...(callProviderMetadata ? { callProviderMetadata } : {}),
       input: decision.record.input,
       state: 'approval-responded',
       approval: decision.approved

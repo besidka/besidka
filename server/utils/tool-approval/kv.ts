@@ -52,6 +52,10 @@ const pendingApprovalSchema = z.object({
   connectorId: subjectIdSchema.nullable(),
   definitionHash: z.string().min(1).max(HASH_MAX_LENGTH).nullable(),
   input: z.unknown(),
+  callProviderMetadata: z.record(
+    z.string(),
+    z.record(z.string(), z.unknown()),
+  ).nullable().optional(),
   signature: z.string().min(1).max(SIGNATURE_MAX_LENGTH),
   reason: z.enum(TOOL_APPROVAL_REASONS),
   rememberOptions: z.array(z.enum(TOOL_APPROVAL_REMEMBER_OPTIONS))

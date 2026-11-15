@@ -1234,10 +1234,12 @@ Where this differs from sections 7.2 and 7.6:
   by the C-5 drift check, so today it reads as missing ("This tool is no
   longer available"). A user denial carries the user's note with control
   and bidirectional characters removed.
-- **Rounds cap as built.** L4 writes `rounds: 1` at the first pause and the
-  L3 replay check denies at `rounds >= 5`, so the answer to the fifth pause
-  of a user turn is denied (`over-cap`): four rounds can be answered. Kept
-  as L3 defined it; revisit with the owner.
+- **Rounds cap.** The turn's `rounds` counter holds the pauses recorded so
+  far (1 after the first pause). Exactly five rounds can be answered: the
+  replay check denies only when `rounds > 5`, and the send denies a call
+  that would open a sixth pause (`over-cap`) instead of asking a question
+  nobody could answer. `TOOL_APPROVAL_ROUNDS_PER_TURN` is the single limit
+  both checks read.
 - **Connector calls per turn.** The send's `toolApproval` now denies a
   connector call once the turn spent 12 connector calls, and
   `getConnectorTools` starts its per-send counter from the turn's count
@@ -1253,7 +1255,13 @@ Where this differs from sections 7.2 and 7.6:
   message is rebuilt twice: for the model, each answered call takes its
   exact input from KV and, when approved, its signature (the stored input is
   redacted), and only finished tool calls, text, reasoning and step
-  boundaries stay; for D1 and `readUIMessageStream`, the stored parts with
+  boundaries stay; text and reasoning keep their stored provider metadata
+  (Anthropic thinking signatures, Gemini thought signatures) in their
+  original order, and each answered call gets the provider metadata of its
+  call (`callProviderMetadata`, for example a Gemini thought signature)
+  back from the pending record, which stores it since L5 because the stored
+  artifact and document copies drop it; for D1 and `readUIMessageStream`,
+  the stored parts with
   the answered calls in `approval-responded` and nothing added. Resume mode
   skips the user-turn add-ons (knowledge excerpts, past-chat excerpts, skill
   invocation, auto web search, Anthropic container uploads, image
@@ -1300,19 +1308,26 @@ Where this differs from sections 7.2 and 7.6:
   ids it already sent and sends each answer once: a pending signal or a
   replay that leaves the answers in place does not loop. L6 decides what the
   user sees then.
-- **Known gaps for L6 and later.** The duplicate replay omits reasoning
-  parts and anything the stored copy no longer holds as a tool part (an
-  artifact call rewritten to its reference); a reload shows them.
-  `toStoredAwaitingApprovalToolPart` drops `callProviderMetadata` of
-  artifact and document calls, so a provider that needs a thought or
-  thinking signature on the resumed turn (Gemini, Anthropic with thinking)
-  may reject it; mock models cannot catch this. A killed continuation loses
-  its usage (section 14.1 bullet 6), and one that fails after the update
-  can leave `approval-responded` parts in D1 (a resend then reads as
-  interrupted). With the flag on and code execution withheld, the code
-  execution session, its instruction line and its stream wrapper still run.
-  The Besidka permission modes (Blocked, Allow) are not read yet, so replay
-  uses `ask` and Blocked is not reachable from the route.
+- **Known gaps for L6 and later.**
+  - The duplicate replay omits reasoning parts and anything the stored copy
+    no longer holds as a tool part (an artifact call rewritten to its
+    reference); a reload shows them.
+  - On Anthropic routes a provider-executed tool keeps its declaration
+    mid-loop after taint, so Anthropic code execution can still run after
+    untrusted content. Its sandbox has no network access, so the exposure is
+    what the code prints back into the conversation.
+  - A continuation that fails after its update can leave
+    `approval-responded` parts in D1; a resend of the same answers then
+    reads as interrupted ("Interrupted. Ask again").
+  - A killed continuation loses its usage: `onEnd` never fires (section
+    14.1 bullet 6), and the tool may already have run.
+  - With the flag on and code execution withheld, the code execution
+    session, its instruction line and its stream wrapper are still set up.
+  - Provider metadata is restored from D1 and KV but only checked against
+    mock models; a real Anthropic-with-thinking or Gemini resume is not
+    verified yet.
+  - The Besidka permission modes (Blocked, Allow) are not read yet, so
+    replay uses `ask` and Blocked is not reachable from the route.
 
 ## 8. Data model
 

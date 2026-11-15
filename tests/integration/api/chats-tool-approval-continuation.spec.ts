@@ -857,6 +857,37 @@ describe('tool approval continuation', () => {
     ])
   })
 
+  it('stores the call provider metadata and replays it to the model',
+    async () => {
+      const [toolCall, finish] = toolCallChunks('call-1', CREATE_ISSUE, {
+        title: 'x',
+      })
+      const paused = await pauseTurn({
+        servers: [linear],
+        steps: [[{
+          ...toolCall!,
+          providerMetadata: { google: { thoughtSignature: 'thought-sig' } },
+        }, finish!]],
+      })
+      const [approvalId] = paused.approvalIds
+
+      expect(readKvJson(`tool-approval:${approvalId}`)?.callProviderMetadata)
+        .toEqual({ google: { thoughtSignature: 'thought-sig' } })
+
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: true },
+      ])
+      const prompt = (doStream.mock.calls[0]?.[0] as any).prompt
+      const replayedCall = prompt
+        .flatMap((message: any) => {
+          return Array.isArray(message.content) ? message.content : []
+        })
+        .find((part: any) => part.type === 'tool-call')
+
+      expect(replayedCall.providerOptions)
+        .toEqual({ google: { thoughtSignature: 'thought-sig' } })
+    })
+
   it('lets the model see a denial and never runs the call', async () => {
     const paused = await pauseCreateIssue()
     const [approvalId] = paused.approvalIds
@@ -1157,18 +1188,31 @@ describe('tool approval continuation', () => {
       expect(linear.callCount('tools/call')).toBe(0)
     })
 
-  it('denies the answer to the fifth round of the turn', async () => {
+  it('runs the answer to the fifth round and denies a later one', async () => {
+    const fifth = await pauseCreateIssue()
+    const fifthTurnKey = `tool-approval:turn:${fifth.messagePublicId}`
+    const fifthTurn = readKvJson(fifthTurnKey)!
+
+    fifthTurn.state.counters.rounds = 5
+    mocks.kv.set(fifthTurnKey, JSON.stringify(fifthTurn))
+
+    await answer(fifth, [{ approvalId: fifth.approvalIds[0], approved: true }])
+
+    expect(linear.callCount('tools/call')).toBe(1)
+
+    mocks.chatMessages = []
+
     const paused = await pauseCreateIssue()
     const [approvalId] = paused.approvalIds
     const turnKey = `tool-approval:turn:${paused.messagePublicId}`
     const turn = readKvJson(turnKey)!
 
-    turn.state.counters.rounds = 5
+    turn.state.counters.rounds = 6
     mocks.kv.set(turnKey, JSON.stringify(turn))
 
     const { doStream } = await answer(paused, [{ approvalId, approved: true }])
 
-    expect(linear.callCount('tools/call')).toBe(0)
+    expect(linear.callCount('tools/call')).toBe(1)
     expect(lastToolMessage(doStream).content[0].output).toEqual({
       type: 'execution-denied',
       reason: 'This turn reached its limit of approved actions, so the action '

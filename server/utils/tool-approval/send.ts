@@ -19,6 +19,7 @@ import {
   TOOL_APPROVAL_PAYLOAD_MAX_BYTES,
   TOOL_APPROVAL_PENDING_PER_MESSAGE,
   TOOL_APPROVAL_RECORD_VERSION,
+  TOOL_APPROVAL_ROUNDS_PER_TURN,
   TOOL_APPROVAL_SUMMARY_MAX_LENGTH,
 } from '#shared/utils/tool-approval-policy'
 import type {
@@ -450,6 +451,7 @@ export function createSendToolApproval(input: {
     if (
       pendingDecisions.size >= TOOL_APPROVAL_PENDING_PER_MESSAGE
       || payloadBytes(toolCall.input) > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
+      || state.counters.rounds >= TOOL_APPROVAL_ROUNDS_PER_TURN
     ) {
       return denied('over-cap')
     }
@@ -701,11 +703,14 @@ export function presetApprovalTaint(
   }
 }
 
+type ToolCallProviderMetadata = Record<string, Record<string, unknown>>
+
 export interface CollectedToolApproval {
   approvalId: string
   toolCallId: string
   toolName: string
   input: unknown
+  callProviderMetadata: ToolCallProviderMetadata | null
   signature: string
   pending: PendingToolApprovalDecision
 }
@@ -732,7 +737,11 @@ export interface ToolApprovalStreamCollector {
 export function createToolApprovalStreamCollector(
   approval: SendToolApproval,
 ): ToolApprovalStreamCollector {
-  const inputs = new Map<string, { toolName: string, input: unknown }>()
+  const inputs = new Map<string, {
+    toolName: string
+    input: unknown
+    providerMetadata?: ToolCallProviderMetadata
+  }>()
   const collected: CollectedToolApproval[] = []
   let stepCount = 0
   let isPaused = false
@@ -749,6 +758,7 @@ export function createToolApprovalStreamCollector(
           inputs.set(chunk.toolCallId, {
             toolName: chunk.toolName,
             input: chunk.input,
+            providerMetadata: chunk.providerMetadata,
           })
         }
 
@@ -784,6 +794,7 @@ export function createToolApprovalStreamCollector(
           toolCallId: chunk.toolCallId,
           toolName: call.toolName,
           input: call.input,
+          callProviderMetadata: call.providerMetadata ?? null,
           signature,
           pending,
         })
@@ -868,6 +879,7 @@ export async function recordToolApprovalPause(
         connectorId: entry.descriptor.connectorId ?? null,
         definitionHash: entry.descriptor.definitionHash ?? null,
         input: collected.input,
+        callProviderMetadata: collected.callProviderMetadata,
         signature: collected.signature,
         reason: decision.reason ?? 'default',
         rememberOptions: [...decision.rememberOptions],

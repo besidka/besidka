@@ -328,3 +328,53 @@ describe('buildResumedAssistantMessages', () => {
     ])).toThrow(expect.objectContaining({ status: 409 }))
   })
 })
+
+describe('buildResumedAssistantMessages provider metadata', () => {
+  it('keeps thinking and thought signatures on the resumed turn', async () => {
+    const [decision] = decideContinuation({
+      answers: [{
+        response: { approvalId: 'approval-1', approved: true, remember: 'once' },
+        record: pendingRecord({
+          callProviderMetadata: { google: { thoughtSignature: 'thought-sig' } },
+        }),
+      }],
+      entries: connectorEntries(),
+      state: createApprovalState(),
+    })
+    const { modelMessage } = buildResumedAssistantMessages({
+      messageId: 'assistant-1',
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'reasoning',
+          text: 'Filing the issue.',
+          state: 'done',
+          providerMetadata: { anthropic: { signature: 'thinking-sig' } },
+        },
+        {
+          type: 'tool-create_artifact',
+          toolCallId: 'call-1',
+          state: 'approval-requested',
+          input: { kind: 'html', title: 'Plan' },
+          approval: { id: 'approval-1' },
+        },
+      ],
+      decisions: [{ ...decision!, toolName: 'create_artifact' }],
+    })
+    const [, assistant] = await convertToModelMessages([
+      { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Go' }] },
+      modelMessage,
+    ] as UIMessage[])
+    const content = assistant!.content as Array<Record<string, any>>
+
+    expect(content.map(part => part.type))
+      .toEqual(['reasoning', 'tool-call', 'tool-approval-request'])
+    expect(content[0]!.providerOptions)
+      .toEqual({ anthropic: { signature: 'thinking-sig' } })
+    expect(content[1]).toMatchObject({
+      toolCallId: 'call-1',
+      input: { title: 'exact' },
+      providerOptions: { google: { thoughtSignature: 'thought-sig' } },
+    })
+  })
+})

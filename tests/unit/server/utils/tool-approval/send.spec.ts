@@ -431,6 +431,27 @@ describe('createSendToolApproval', () => {
     })).toBe(true)
   })
 
+  it('opens no sixth approval round in one user turn', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'create_issue',
+        readOnly: false,
+      }),
+    ])
+
+    approval.state.counters.rounds = 4
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__create_issue')))
+      .toEqual({ type: 'user-approval', reason: 'always-ask' })
+
+    approval.state.counters.rounds = 5
+
+    expect(approval.toolApproval(call('call-2', 'mcp__linear__create_issue')))
+      .toEqual({ type: 'denied', reason: 'over-cap' })
+  })
+
   it('denies a connector call once the turn spent its connector calls', () => {
     const approval = createApproval([], [
       connectorEntry({
