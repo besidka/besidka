@@ -1557,6 +1557,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/chat-input-tiles.spec.ts',
   ]
 
+  const toolApprovalSpikeTests = [
+    'tests/integration/api/tool-approval-spike.spec.ts',
+  ]
+
   const skillsStorageTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
@@ -3118,6 +3122,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/index\.get\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
       tests: connectorsChatToolsTests,
+    },
+    {
+      pattern:
+        /^(server\/mcp\/tools\/.*\.ts|package\.json)$/,
+      tests: toolApprovalSpikeTests,
     },
     {
       pattern:
