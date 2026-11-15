@@ -65,9 +65,20 @@ describe('profile layout', () => {
     expect(tabs.at(-1)?.find('.iconify').classes())
       .toContain('i-lucide:cable')
 
+    const inactiveLabels = tabs.slice(0, -1).map((tab) => {
+      return tab.find('span:not(.iconify)').classes()
+    })
+
+    expect(inactiveLabels.every(classes => classes.includes('sr-only')))
+      .toBe(true)
+    expect(tabs[0]?.attributes('title')).toBe('Security')
+
     connectorsActive.value = false
 
     const withoutFlag = await mountLayout()
+
+    expect(withoutFlag.find('nav[aria-label="Account sections"] a span:not(.iconify)')
+      .classes()).not.toContain('sr-only')
 
     expect(withoutFlag.findAll('nav[aria-label="Account sections"] a')
       .map(tab => tab.text())).not.toContain('Connectors')

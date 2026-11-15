@@ -175,14 +175,21 @@
           </button>
         </form>
 
-        <div
-          v-else
-          data-testid="connector-add-directory"
-        >
-          <p class="text-sm text-base-content/70">
-            From the Official MCP Registry. Not reviewed by Besidka.
+        <template v-else>
+          <ProfileConnectorsRegistrySearch
+            :added-preset-ids="addedPresetIds"
+            :is-adding="isSubmitting"
+            @add="addFromDirectory"
+          />
+          <p
+            v-if="directoryError"
+            class="text-sm text-error"
+            role="alert"
+            data-testid="connector-registry-add-error"
+          >
+            {{ directoryError }}
           </p>
-        </div>
+        </template>
       </div>
 
       <p class="text-xs text-base-content/70">
@@ -191,9 +198,7 @@
         <NuxtLink
           to="/privacy-policy"
           class="link"
-        >
-          Privacy Policy
-        </NuxtLink>
+        >Privacy Policy</NuxtLink>
         before you connect one.
       </p>
     </div>
@@ -207,6 +212,7 @@ import {
   CONNECTOR_PRESETS,
 } from '~~/config/connectors-catalog'
 import type { ConnectorPreset } from '~~/config/connectors-catalog'
+import type { ConnectorDirectoryItem } from '#shared/types/connectors.d'
 
 type AddTab = 'presets' | 'url' | 'directory'
 
@@ -228,6 +234,7 @@ const url = shallowRef<string>('')
 const title = shallowRef<string>('')
 const urlError = shallowRef<string>('')
 const presetError = shallowRef<string>('')
+const directoryError = shallowRef<string>('')
 const isSubmitting = shallowRef<boolean>(false)
 
 const tabOptions = computed<Array<{ id: AddTab, label: string }>>(() => {
@@ -256,6 +263,7 @@ function selectTab(next: AddTab) {
   tab.value = next
   urlError.value = ''
   presetError.value = ''
+  directoryError.value = ''
 }
 
 async function onTabKeydown(event: KeyboardEvent) {
@@ -299,6 +307,24 @@ async function addPreset(presetId: string) {
     await create({ presetId })
   } catch (exception) {
     presetError.value = describeError(exception, 'Could not add the connector')
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+async function addFromDirectory(item: ConnectorDirectoryItem) {
+  isSubmitting.value = true
+  directoryError.value = ''
+
+  try {
+    await create(item.presetId
+      ? { presetId: item.presetId }
+      : { registryId: item.id })
+  } catch (exception) {
+    directoryError.value = describeError(
+      exception,
+      'Could not add the connector',
+    )
   } finally {
     isSubmitting.value = false
   }

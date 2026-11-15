@@ -73,7 +73,7 @@
           <span class="sr-only">Use {{ tool.title || tool.name }}</span>
           <input
             type="checkbox"
-            class="toggle toggle-sm toggle-primary"
+            class="toggle toggle-sm"
             :checked="tool.enabled"
             :disabled="isBusy"
             data-testid="connector-tool-toggle"

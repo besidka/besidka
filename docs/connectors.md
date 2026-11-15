@@ -2040,6 +2040,123 @@ only guarantees that a sixth tab fits at 768 to 1024 px. C-7 checks the row at
 768, 1024 and 1440 px; if it does not fit, the fallback is one "Integrations"
 tab with Connectors and Skills as sub-tabs (open question 3).
 
+### 10.1 As built (C-7, 2026-11-15)
+
+Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
+
+- **Layout.** `app/pages/profile/connectors.vue` follows the owner rule for
+  list pages: a title and one explainer line with a link to Connected apps,
+  then the whole list in one `UiBubble` (count "N of 20 connectors", Add
+  connector, rows). There are no connector cards and no drift dialog: a row
+  opens the connector in the shared right side panel (`UiSidePanel`,
+  `Profile/Connectors/DetailPanel.vue`) with its status, Use in chats switch,
+  consent and Withdraw, tools, the tool review, Reconnect, Disconnect and
+  Delete. The add dialog (`AddDialog.client.vue`, `js-connector-add-modal`)
+  has the tabs Presets, Add by URL and Directory, and the Connect dialog
+  (`ConnectDialog.client.vue`, `js-connector-connect-modal`) runs discovery,
+  the consent and the sign-in or key step. Rename and the bulk "Allow
+  read-only tools without asking" are not built: read-only tools already
+  run without asking (section 7.9), so the bulk action would change nothing.
+- **Icons.** Rows and the panel use `GET /api/v1/connectors/[id]/icon`
+  (section 7.10) only for a connector with current consent that is `ready`
+  or `drifted`, the same rule the route applies, and fall back to the
+  letter avatar on a 404. Presets and directory rows always show the
+  letter (decision 15).
+- **List route.** `GET /api/v1/connectors` now answers page items
+  (`server/utils/connectors/page.ts`, `shared/types/connectors.d.ts`): the
+  picker fields plus `presetId`, `addedByApp` (the OAuth client name of an
+  MCP-added connector, else "an app connected over MCP"), the consent state
+  (`missing`, `current`, `outdated`, `withdrawn`; the issuer check stays in
+  the gates), the fixed-text `note` from `last_error`, and the reviewed tool
+  counts. Never the URL, credentials or a hash.
+- **Tool listing is a POST.** `POST /api/v1/connectors/[id]/tools/list`
+  reads the KV tool cache the send uses, else connects once (8 s deadline,
+  the handle is closed again) with the stored token, so it runs the
+  same-origin guard, the sign-up consent and the per-connector consent for
+  the stored issuer first. It shares the 60-a-minute bucket of the picker
+  toggles. A connector that is not connected, has no current consent or
+  cannot be reached answers `{ state: 'unavailable', code, message }` with a
+  fixed message.
+- **First review.** A connector with no baseline lists every tool as `new`
+  with the server's description and labels, and the panel asks the user to
+  "Turn on these tools" or "Keep disabled" before its first use. The
+  trust-on-first-use baseline of section 6.1 stays for a connector that is
+  used in a chat before anyone opens the panel.
+- **Drift review.** `POST /api/v1/connectors/[id]/tools/review`
+  `{ decision: 'accept' | 'keep-disabled', reviewToken }`. The list response
+  carries `reviewToken`, a SHA-256 over the pending names with their
+  definition hashes and the removed names, so the hashes never reach the
+  browser; the route lists the tools again and answers 409
+  `CONNECTOR_TOOLS_REVIEW_STALE` when the token no longer matches, so an
+  accept is always bound to what the user saw. Accept turns new and added
+  tools on and keeps a changed tool's previous switch; Keep disabled stores
+  them off (they stay out of chats until the user turns one on, which then
+  needs no second review). Either way a new or changed tool starts at "Ask
+  every time" with no approved hash, rows of removed tools are deleted, a
+  first review writes the baseline marker, and a `drifted` connector is
+  `ready` again. **The old text is not shown**: the baseline keeps hashes
+  only, so the review shows the current description and annotations of
+  changed tools, not a line diff; `CONNECTOR_DRIFT_DIFF_LINES` stays unused.
+  Storing old definitions would need a migration.
+- **Per-tool settings.** `POST /api/v1/connectors/[id]/tools/settings`
+  `{ tools: [{ name, enabled?, approval?: 'ask' }] }` (at most 40) changes
+  only `enabled`, or sets "Always allow" back to ask, through
+  `updateConnectorToolSwitches`, which never touches the reviewed hash (the
+  upsert used by the baseline would). The page never grants "Always allow":
+  that choice is made on a real call in the chat with its confirmation
+  (section 7.9). The panel shows "Always allowed" only where the grant is
+  still live (`approved_definition_hash` equals the reviewed hash and the
+  name is not always-ask), with Remove. Unknown names answer 404
+  `CONNECTOR_TOOL_NOT_FOUND`; the marker row cannot be addressed.
+- **Directory.** The Directory tab exists only with `connectors.registry`.
+  It searches `GET /api/v1/connectors/registry` (C-8) and shows the title or
+  the last name segment, the remote host as text (never a link), the
+  description as plain text and "Needs an API key or token" for `header`
+  entries, under "From the Official MCP Registry. Not reviewed by Besidka."
+  Add sends `{ registryId }` to `POST /api/v1/connectors`, which reads the
+  entry's own URL and title from the local copy (an unknown or inactive id
+  is 400) and stores `created_via='registry'`; an entry that matches a preset
+  adds the preset instead.
+- **Consent screen.** `Profile/Connectors/ConsentText.vue` holds the wording
+  of section 5.2 and pre-check questions 2 and 3 in
+  `data-connector-consent-text` spans, with one checkbox for the transfer
+  and the sensitive-data parts. `CONNECTOR_CONSENT_TEXT_SHA256` in
+  `shared/utils/connectors-policy.ts` pins it, and
+  `tests/unit/utils/connectors-consent-text.spec.ts` fails when the wording
+  changes, like `CURRENT_CONSENT_TEXT_SHA256`. `CONNECTOR_CONSENT_VERSION`
+  stays `2026-11-a` (this is its first wording). The dialog skips the
+  consent when it is current for the same origin and issuer host, sends the
+  issuer host discovery returned, and announces each step in an `aria-live`
+  region. Focus moves into the dialog and back (`showModal`, the close
+  button first so iOS does not open the keyboard).
+- **OAuth callback.** `?connected=<id>` shows a success toast, announces it
+  and opens that connector's panel (its tool review). `?error=<code>` is only
+  a lookup key into `CONNECTOR_CODE_MESSAGES`
+  (`shared/utils/connectors-messages.ts`, kept equal to the server's
+  `CONNECTOR_ERRORS` by a spec); an unknown value shows a fixed fallback and
+  is never rendered. Both parameters, and the `?connector=<id>` deep link
+  from the chat context panel, are removed from the address after use.
+- **Profile tab row.** With Connectors the row has eight tabs, and every
+  label does not fit the 704 px row at any width (the layout caps it at
+  `max-w-4xl`), so from the eighth tab on inactive tabs show only their
+  icon at every width, with the label for screen readers and as a tooltip.
+  Seven tabs keep the old rule (labels from `lg`). Measured on 2026-11-15:
+  one row of 46 px at 375, 768, 1024 and 1440 px. Open question 3 (one
+  "Integrations" tab) stays the owner's call.
+- **Untrusted text.** Tool names, titles, descriptions, registry titles and
+  descriptions and OAuth client names are rendered as text only (no
+  `v-html`, no Markdown, no links), as the coordinator asked for C-8 data.
+- **Specs.** `tests/integration/api/connectors-page.spec.ts` (list fields,
+  tools list, review, settings, directory create),
+  `tests/unit/pages/profile/connectors.spec.ts`,
+  `tests/unit/components/Profile/Connectors/*`,
+  `tests/unit/composables/connectors.spec.ts`,
+  `tests/unit/utils/connectors-messages.spec.ts`,
+  `tests/unit/utils/connectors-consent-text.spec.ts`, plus the Search popup
+  and profile layout specs. No e2e spec: the flow needs a reachable MCP
+  server, and the SSRF rules refuse a local mock by design.
+- **MCP.** Nothing new (C-9).
+
 ## 11. MCP exposure
 
 New scopes in `shared/utils/mcp-oauth-scopes.ts`: `connectors:read` (read
@@ -2447,7 +2564,7 @@ term forbids third-party MCP clients or the preset text.
 | --- | --- | --- | --- |
 | 1 | Accept the consent residual (country unknown, ongoing transfers under Art. 49(1)(a)) | Owner | Accept and disclose (pre-check owner item 1) |
 | 2 | Audit retention 90 days, kept after connector delete | Owner | 90 days, kept |
-| 3 | Eight profile tabs at 768 to 1024 px, or one "Integrations" tab | Owner, after C-7 measures | Separate tabs if they fit |
+| 3 | Eight profile tabs at 768 to 1024 px, or one "Integrations" tab | Owner, after C-7 measures | Separate tabs, icon-only when inactive (C-7 measured: labels do not fit at any width, icons do; section 10.1) |
 | 4 | Keep Atlassian as a text-only preset with the notice | Owner | Keep |
 | 5 | When to publish the connectors legal notice (not before 2026-12-18 while `2026-11-legal-notices` is shown) | Owner, C-10 | After 2026-12-18 |
 | 6 | Whether OpenAI native requests should send `store: false` | C-11 spike, then owner | Path stays off |

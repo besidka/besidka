@@ -92,6 +92,58 @@ describe('Profile/Connectors/AddDialog', () => {
     expect(wrapper.emitted('added')?.[0]).toEqual(['new1'])
   })
 
+  it('searches the directory, shows its text as plain text and adds an '
+    + 'entry by its id', async () => {
+    registryActive.value = true
+    mocks.fetch.mockImplementation(async (url: string) => {
+      if (url === '/api/v1/connectors/registry') {
+        return {
+          items: [{
+            id: 'io.example/tracker@1.0.0',
+            name: 'io.example/tracker',
+            title: null,
+            description: '<script>alert(1)</script> Tracks issues',
+            remoteUrl: 'https://mcp.tracker.example/mcp',
+            transport: 'streamable-http',
+            authHint: 'header',
+            presetId: null,
+          }],
+          nextCursor: null,
+        }
+      }
+
+      return { connector: { id: 'new2' } }
+    })
+
+    const wrapper = await mountDialog()
+
+    await clickTestId('connector-add-tab-directory')
+    await setTestIdValue('connector-registry-query', 'tracker')
+    await clickTestId('connector-registry-submit')
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/registry', {
+      query: { q: 'tracker' },
+    })
+
+    const results = getByTestId('connector-registry-results')
+
+    expect(results.textContent).toContain('tracker')
+    expect(results.textContent).toContain('mcp.tracker.example')
+    expect(results.textContent).toContain('<script>alert(1)</script>')
+    expect(results.querySelector('script')).toBeNull()
+    expect(results.querySelector('a')).toBeNull()
+    expect(getByTestId('connector-registry').textContent)
+      .toContain('Not reviewed by Besidka')
+
+    await clickTestId('connector-registry-add')
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/connectors', {
+      method: 'POST',
+      body: { registryId: 'io.example/tracker@1.0.0' },
+    })
+    expect(wrapper.emitted('added')?.[0]).toEqual(['new2'])
+  })
+
   it('refuses a non-https address before asking the server', async () => {
     await mountDialog({ initialTab: 'url' })
     await setTestIdValue('connector-add-url', 'http://mcp.example.com')

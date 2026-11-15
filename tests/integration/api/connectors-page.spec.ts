@@ -273,6 +273,54 @@ describe('Connectors page routes', () => {
     })
   })
 
+  describe('POST /api/v1/connectors with a directory entry', () => {
+    const createPath = '~~/server/api/v1/connectors/index.post'
+
+    async function addEntry(id: string, status: string) {
+      await testDb.db.insert(schema.mcpRegistryServers).values({
+        id,
+        name: id.split('@')[0]!,
+        title: 'Tracker',
+        description: 'Tracks issues',
+        remoteUrl: 'https://mcp.tracker.example/mcp',
+        remoteType: 'streamable-http',
+        headerNames: [],
+        status,
+        registryUpdatedAt: new Date(),
+        syncedAt: new Date(),
+      })
+    }
+
+    it('adds the entry\'s own address as a registry connector', async () => {
+      await addEntry('io.example/tracker@1.0.0', 'active')
+
+      const result = await call(createPath, {
+        body: {
+          registryId: 'io.example/tracker@1.0.0',
+          url: 'https://evil.example/mcp',
+        },
+      })
+
+      expect(result.connector).toMatchObject({
+        title: 'Tracker',
+        origin: 'https://mcp.tracker.example',
+        createdVia: 'registry',
+        status: 'needs-auth',
+        enabled: false,
+      })
+    })
+
+    it('refuses an unknown or inactive entry', async () => {
+      await addEntry('io.example/old@1.0.0', 'deprecated')
+
+      for (const registryId of ['io.example/old@1.0.0', 'missing@1']) {
+        expect((await failureOf(call(createPath, {
+          body: { registryId },
+        }))).status).toBe(400)
+      }
+    })
+  })
+
   describe('POST /api/v1/connectors/[id]/tools/list', () => {
     it('answers unavailable without a request for a connector that is not '
       + 'connected, and when the consent is missing', async () => {

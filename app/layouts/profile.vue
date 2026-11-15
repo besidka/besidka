@@ -85,9 +85,10 @@
                 :to="tab.to"
                 class="tab grow gap-1"
                 :class="{ 'tab-active': isTabActive(tab) }"
+                :title="isTabActive(tab) ? undefined : tab.label"
               >
                 <Icon :name="tab.icon" size="16" />
-                <span :class="{ 'max-lg:sr-only': !isTabActive(tab) }">
+                <span :class="tabLabelClass(tab)">
                   {{ tab.label }}
                 </span>
               </NuxtLink>
@@ -174,6 +175,21 @@ const tabs = computed<ProfileTab[]>(() => {
     ? [...baseTabs, connectorsTab]
     : baseTabs
 })
+
+const WIDE_LABELS_MAX_TABS = 7
+
+/**
+ * Every label shows from `lg` while seven tabs fit the 704 px row. With an
+ * eighth tab (Connectors) they do not fit at any width, so inactive tabs
+ * show only their icon, with the label for screen readers and as a tooltip.
+ */
+function tabLabelClass(tab: ProfileTab): string {
+  if (isTabActive(tab)) {
+    return ''
+  }
+
+  return tabs.value.length > WIDE_LABELS_MAX_TABS ? 'sr-only' : 'max-lg:sr-only'
+}
 
 function isTabActive(tab: ProfileTab) {
   if (currentRoute.path === tab.to) {

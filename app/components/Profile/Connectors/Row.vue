@@ -5,7 +5,11 @@
     data-testid="connector-row"
     :data-connector-id="connector.id"
   >
-    <ProfileConnectorsAvatar :title="connector.title" />
+    <ProfileConnectorsAvatar
+      :title="connector.title"
+      :connector-id="connector.id"
+      :is-icon-available="hasConnectorIcon(connector)"
+    />
     <div class="list-col-grow min-w-0">
       <button
         type="button"
@@ -71,7 +75,7 @@
       <span class="sr-only">Use {{ connector.title }} in chats</span>
       <input
         type="checkbox"
-        class="toggle toggle-sm toggle-primary"
+        class="toggle toggle-sm"
         :checked="connector.enabled"
         :disabled="isBusy || !canEnable"
         data-testid="connector-row-toggle"

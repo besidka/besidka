@@ -15,6 +15,8 @@
     <div class="flex items-start gap-3">
       <ProfileConnectorsAvatar
         :title="connector.title"
+        :connector-id="connector.id"
+        :is-icon-available="hasConnectorIcon(connector)"
         size="lg"
       />
       <div class="grid min-w-0 gap-1">
@@ -73,7 +75,7 @@
         </span>
         <input
           type="checkbox"
-          class="toggle toggle-primary"
+          class="toggle"
           :checked="connector.enabled"
           :disabled="isBusy || !canToggle"
           data-testid="connector-detail-toggle"

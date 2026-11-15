@@ -118,7 +118,7 @@ describe('Profile/Connectors/DetailPanel', () => {
     expect(tools).toHaveLength(2)
     expect(tools[0]!.text()).toContain('Read-only')
     expect(tools[0]!.text()).toContain('<img src=x onerror=alert(1)>')
-    expect(wrapper.find('img').exists()).toBe(false)
+    expect(tools[0]!.find('img').exists()).toBe(false)
     expect(tools[1]!.text()).toContain('Changes data')
     expect(tools[1]!.find('[data-testid="connector-tool-always"]').exists())
       .toBe(true)

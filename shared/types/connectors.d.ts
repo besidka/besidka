@@ -83,3 +83,13 @@ export interface ConnectorToolsUnavailable {
 export type ConnectorToolsListing
   = | ConnectorToolsReview
     | ConnectorToolsUnavailable
+
+export interface ConnectorDirectoryItem {
+  id: string
+  name: string
+  title: string | null
+  description: string
+  remoteUrl: string
+  authHint: 'header' | 'unknown'
+  presetId: string | null
+}

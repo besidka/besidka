@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { defineEventHandler, setResponseStatus } from 'nuxt/server'
 import { z } from 'zod'
@@ -7,16 +8,20 @@ import {
 } from '#shared/utils/connectors-policy'
 import { deriveConnectorSlugBase } from '#shared/utils/connectors-slug'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
+import * as schema from '~~/server/db/schema'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import { requireConnectorAccess } from '~~/server/utils/connectors/route'
 import { createConnector } from '~~/server/utils/connectors/store'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
 
+const REGISTRY_ENTRY_ID_MAX_LENGTH = 300
+
 const bodySchema = z.object({
   url: z.string().min(1).max(CONNECTOR_URL_MAX_LENGTH).optional(),
   title: z.string().max(CONNECTOR_TITLE_MAX_LENGTH).optional(),
   presetId: z.string().min(1).max(32).optional(),
+  registryId: z.string().min(1).max(REGISTRY_ENTRY_ID_MAX_LENGTH).optional(),
 })
 
 function invalidAddress() {
@@ -28,10 +33,24 @@ function invalidAddress() {
   })
 }
 
+async function findRegistryEntry(registryId: string) {
+  const [entry] = await useDb().select({
+    remoteUrl: schema.mcpRegistryServers.remoteUrl,
+    title: schema.mcpRegistryServers.title,
+    status: schema.mcpRegistryServers.status,
+  })
+    .from(schema.mcpRegistryServers)
+    .where(eq(schema.mcpRegistryServers.id, registryId))
+    .limit(1)
+
+  return entry?.status === 'active' ? entry : null
+}
+
 /**
  * Adds a connector without any network request (docs/connectors.md section
- * 5.1): the URL is checked syntactically, a preset's own URL replaces the
- * input, and the row starts disabled in `needs-auth`.
+ * 5.1): the URL is checked syntactically, a preset's own URL (or a
+ * directory entry's, from the local MCP Registry copy) replaces the input,
+ * and the row starts disabled in `needs-auth`.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireConnectorAccess(event)
@@ -47,7 +66,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const rawUrl = preset?.url ?? body.url
+  const registryEntry = !preset && body.registryId
+    ? await findRegistryEntry(body.registryId)
+    : null
+
+  if (body.registryId && !preset && !registryEntry) {
+    throw createError({
+      message: 'Unknown directory entry',
+      status: 400,
+      why: 'No active entry of the MCP Registry copy has this id',
+      fix: 'Search the directory again',
+    })
+  }
+
+  const rawUrl = preset?.url ?? registryEntry?.remoteUrl ?? body.url
 
   if (!rawUrl) {
     throw invalidAddress()
@@ -59,13 +91,16 @@ export default defineEventHandler(async (event) => {
     throw invalidAddress()
   }
 
-  const title = body.title?.trim() || preset?.title || parsed.url.hostname
+  const title = body.title?.trim()
+    || preset?.title
+    || registryEntry?.title
+    || parsed.url.hostname
   const connector = await createConnector(useDb(), {
     userId,
     title,
     url: parsed.url.toString(),
     slugBase: preset?.id ?? deriveConnectorSlugBase(parsed.url.hostname),
-    createdVia: preset ? 'preset' : 'app',
+    createdVia: preset ? 'preset' : registryEntry ? 'registry' : 'app',
     presetId: preset?.id ?? null,
   })
 

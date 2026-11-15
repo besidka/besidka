@@ -38,6 +38,18 @@ export function getConnectorStatusLabel(
   return { label: 'Ready', tone: 'success' }
 }
 
+/**
+ * Whether the icon route can answer for this connector (it 404s otherwise):
+ * the same rule as `GET /api/v1/connectors/[id]/icon`, so the page never
+ * asks for an icon of a connector the user has not connected.
+ */
+export function hasConnectorIcon(
+  connector: Pick<ConnectorPageItem, 'status' | 'consent'>,
+): boolean {
+  return connector.consent.state === 'current'
+    && (connector.status === 'ready' || connector.status === 'drifted')
+}
+
 export function getConnectorInitial(title: string): string {
   const letter = Array.from(title.trim())[0] ?? '?'
 
