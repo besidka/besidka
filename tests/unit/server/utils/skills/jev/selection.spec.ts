@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { JEV_SKILL_SELECTION } from '#shared/utils/jev-policy'
+import { JEV_SEND_PATH_TIMEOUT_MS } from '#shared/utils/jev-policy'
 
 const mocks = vi.hoisted(() => ({
   jevDecide: vi.fn(),
@@ -112,8 +112,9 @@ describe('prepareSkillSelection', () => {
 
     expect(plan).not.toBeNull()
     expect(plan!.candidates.map(skill => skill.id)).toEqual(['s-notes'])
-    expect(Object.keys(plan!.extraJev.questions)).toEqual(['sel_0'])
-    expect(plan!.extraJev.state.skill_0).toContain('meeting-notes: Turns')
+    expect(plan!.catalogSkills).toEqual(ROWS)
+    expect(Object.keys(plan!.extraJev!.questions)).toEqual(['sel_0'])
+    expect(plan!.extraJev!.state.skill_0).toContain('meeting-notes: Turns')
     expect(plan!.model).toBe(MODEL)
     expect(mocks.resolveJevRoleModel).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 7, role: 'skillSelection' }),
@@ -121,13 +122,16 @@ describe('prepareSkillSelection', () => {
     expect(mocks.jevDecide).not.toHaveBeenCalled()
   })
 
-  it('reads no key and calls nothing when no skill matches', async () => {
+  it('keeps no candidate and no questions when no skill matches, and calls '
+    + 'nothing', async () => {
     const plan = await prepareSkillSelection(baseInput({
       messageText: 'What is the capital of Australia?',
     }))
 
-    expect(plan).toBeNull()
-    expect(mocks.resolveJevRoleModel).not.toHaveBeenCalled()
+    expect(plan!.candidates).toEqual([])
+    expect(plan!.extraJev).toBeNull()
+    expect(plan!.catalogSkills).toEqual(ROWS)
+    expect(await resolveSkillSelection(plan)).toBeNull()
     expect(mocks.jevDecide).not.toHaveBeenCalled()
   })
 
@@ -157,10 +161,13 @@ describe('prepareSkillSelection', () => {
     expect(mocks.resolveJevRoleModel).not.toHaveBeenCalled()
   })
 
-  it('returns null when the role is off or there is no key', async () => {
+  it('returns null before reading the catalog when the role is off or '
+    + 'there is no key', async () => {
     mocks.resolveJevRoleModel.mockResolvedValue(null)
 
     expect(await prepareSkillSelection(baseInput())).toBeNull()
+    expect(mocks.listCatalogSkills).not.toHaveBeenCalled()
+    expect(mocks.listProjectRuntimeSkills).not.toHaveBeenCalled()
   })
 
   it('skips skills already active in the chat', async () => {
@@ -174,8 +181,8 @@ describe('prepareSkillSelection', () => {
       }],
     }))
 
-    expect(plan).toBeNull()
-    expect(mocks.resolveJevRoleModel).not.toHaveBeenCalled()
+    expect(plan!.candidates).toEqual([])
+    expect(plan!.extraJev).toBeNull()
   })
 
   it('still offers a skill whose activation came from a project pin',
@@ -213,9 +220,28 @@ describe('prepareSkillSelection', () => {
         messageText: 'Review this SQL query for indexes',
       }))
 
-      expect(none).toBeNull()
+      expect(none!.candidates).toEqual([])
       expect(sql!.candidates.map(skill => skill.id)).toEqual(['s-sql'])
     })
+
+  it('offers a skill TypeSafe AI picked on an earlier send again', async () => {
+    const plan = await prepareSkillSelection(baseInput({
+      storedMessages: [{
+        role: 'assistant',
+        parts: [{
+          type: 'data-skill-activation',
+          data: {
+            skillId: 's-notes',
+            name: 'meeting-notes',
+            version: 2,
+            source: 'jev',
+          },
+        }],
+      }],
+    }))
+
+    expect(plan!.candidates.map(skill => skill.id)).toEqual(['s-notes'])
+  })
 
   it('does not read project pins outside a project', async () => {
     await prepareSkillSelection(baseInput())
@@ -254,7 +280,7 @@ describe('resolveSkillSelection', () => {
     const call = mocks.jevDecide.mock.calls[0]![0]
 
     expect(call.model).toBe(MODEL)
-    expect(call.timeoutMs).toBe(JEV_SKILL_SELECTION.timeoutMs)
+    expect(call.timeoutMs).toBe(JEV_SEND_PATH_TIMEOUT_MS)
     expect(Object.keys(call.questions)).toEqual(['sel_0'])
     expect(call.state.skill_0).toContain('meeting-notes')
     expect(call.state.message).toContain('meeting transcript')

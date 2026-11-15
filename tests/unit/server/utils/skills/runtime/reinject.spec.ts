@@ -60,6 +60,23 @@ describe('collectActivatedSkillIds', () => {
     ]).size).toBe(0)
   })
 
+  it('never keeps a skill picked by TypeSafe AI active: a pick is for one send', () => {
+    const jevActivation = {
+      type: 'data-skill-activation',
+      data: { skillId: 'skl5', name: 'picked', version: 1, source: 'jev' },
+    }
+
+    expect(collectActivatedSkillIds([
+      { role: 'assistant', parts: [jevActivation, activation('skl1')] },
+    ])).toEqual(['skl1'])
+    expect(collectActivatedSkillIds([
+      { role: 'assistant', parts: [jevActivation] },
+    ])).toEqual([])
+    expect(collectActivatedSkillNames([
+      { role: 'assistant', parts: [jevActivation] },
+    ]).size).toBe(0)
+  })
+
   it('reads only assistant activations, never a user part', () => {
     expect(collectActivatedSkillIds([
       { role: 'user', parts: [activation('skl1')] },

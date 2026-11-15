@@ -368,7 +368,7 @@ describe('prepareSkillsForSend', () => {
       })
     })
 
-    it('shows as a skill step and keeps the skill active for later sends', async () => {
+    it('shows as a skill step but applies to this send only, not later ones', async () => {
       const result = await prepare({
         jevSelection: selection(autoId, 'auto-skill'),
       })
@@ -385,7 +385,22 @@ describe('prepareSkillsForSend', () => {
         ],
       })
 
-      expect(later.activeSkillsBlock).toContain('AUTO BODY')
+      expect(later.activeSkillsBlock).toBeNull()
+      expect(later.invocationBlock).toBeNull()
+      expect(later.instructionBlock).not.toContain('AUTO BODY')
+      expect(later.instructionBlock).not.toContain('<active_skills>')
+    })
+
+    it('reads the preloaded catalog instead of the database', async () => {
+      const skills = await import('~~/server/utils/skills/runtime/load')
+      const listed = await skills.listCatalogSkills(testDb.db, userId)
+      const result = await prepare({
+        preloadedCatalogSkills: [],
+      })
+
+      expect(listed.length).toBeGreaterThan(0)
+      expect(result.toolsRegistered).toBe(false)
+      expect(result.instructionBlock).toBeNull()
     })
 
     it('marks the skill active for the tools, so activate_skill answers already active', async () => {

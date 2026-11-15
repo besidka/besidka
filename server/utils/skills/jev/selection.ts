@@ -31,9 +31,10 @@ const SKILL_SELECTION_ROLE = 'skillSelection'
 
 export interface SkillSelectionPlan {
   candidates: RuntimeSkillRow[]
+  catalogSkills: RuntimeSkillRow[]
   messageText: string
   model: Experimental_DecisionModel
-  extraJev: SendPathJevExtra
+  extraJev: SendPathJevExtra | null
   logger: JevLogger
 }
 
@@ -41,11 +42,10 @@ async function listSelectableSkills(input: {
   db: DbClient
   userId: number
   projectId: string | null
+  catalogSkills: readonly RuntimeSkillRow[]
   storedMessages: ReadonlyArray<{ role: string, parts: unknown[] }>
 }): Promise<RuntimeSkillRow[]> {
-  const skills = await listCatalogSkills(input.db, input.userId)
-
-  if (skills.length === 0) {
+  if (input.catalogSkills.length === 0) {
     return []
   }
 
@@ -65,17 +65,21 @@ async function listSelectableSkills(input: {
     }
   }
 
-  return skills.filter(skill => !excludedIds.has(skill.id))
+  return input.catalogSkills.filter(skill => !excludedIds.has(skill.id))
 }
 
 /**
  * The free half of skill selection, run before the send-path Jev call so the
- * questions can ride in it. It returns `null`, with no Jev call and no key
- * read, when the send is a resume or has no text, the user attached or typed
- * a skill, the `skills` flag is off, no Auto skill is left (already active
- * in the chat, pinned to always load, or none saved) or the local BM25
- * prefilter keeps none. Only with candidates does it read the key and the
- * `skillSelection` role, which is off until the user switches it on.
+ * questions can ride in it. Cheapest gates first: it returns `null`, with no
+ * read at all, for a resume, an empty message or a message that already
+ * carries a skill the user attached or typed; then the `skills` flag; then
+ * the key and the `skillSelection` role (off until the user switches it on),
+ * so a user without them costs one key read and never reads the catalog
+ * here. Only then it reads the user's Auto skills (handed on as
+ * `catalogSkills`, so `prepareSkillsForSend` does not read them again),
+ * drops the ones already active in the chat or pinned to always load, and
+ * runs the local BM25 prefilter. No candidate means `extraJev: null` and no
+ * Jev call.
  */
 export async function prepareSkillSelection(input: {
   event: Pick<RequestEvent, 'context'>
@@ -109,13 +113,6 @@ export async function prepareSkillSelection(input: {
       return null
     }
 
-    const selectable = await listSelectableSkills(input)
-    const matches = prefilterSkills(selectable, messageText)
-
-    if (matches.length === 0) {
-      return null
-    }
-
     const model = await resolveJevRoleModel({
       db: input.db,
       userId: input.userId,
@@ -127,11 +124,22 @@ export async function prepareSkillSelection(input: {
       return null
     }
 
+    const catalogSkills = await listCatalogSkills(input.db, input.userId)
+    const selectable = await listSelectableSkills({
+      ...input,
+      catalogSkills,
+    })
+    const matches = prefilterSkills(selectable, messageText)
+    const candidates = matches.map(match => match.skill)
+
     return {
-      candidates: matches.map(match => match.skill),
+      candidates,
+      catalogSkills,
       messageText,
       model,
-      extraJev: buildSkillSelectionJev(matches.map(match => match.skill)),
+      extraJev: candidates.length > 0
+        ? buildSkillSelectionJev(candidates)
+        : null,
       logger: input.logger,
     }
   } catch (exception) {
@@ -147,6 +155,7 @@ export async function prepareSkillSelection(input: {
 
 async function readSkillSelectionResult(
   plan: SkillSelectionPlan,
+  extraJev: SendPathJevExtra,
   sharedResult: JevDecideResult | null | undefined,
 ): Promise<JevDecideResult> {
   if (sharedResult) {
@@ -160,7 +169,7 @@ async function readSkillSelectionResult(
       recentTurns: [],
     }),
     questions: {},
-    extra: plan.extraJev,
+    extra: extraJev,
   })
 }
 
@@ -176,14 +185,18 @@ export async function resolveSkillSelection(
   plan: SkillSelectionPlan | null,
   sharedResult?: JevDecideResult | null,
 ): Promise<SkillInvocationPartData | null> {
-  if (!plan) {
+  if (!plan || !plan.extraJev) {
     return null
   }
 
   const callsMade = sharedResult ? 0 : 1
 
   try {
-    const result = await readSkillSelectionResult(plan, sharedResult)
+    const result = await readSkillSelectionResult(
+      plan,
+      plan.extraJev,
+      sharedResult,
+    )
     const questions = plan.candidates.length
 
     if (!result.ok) {

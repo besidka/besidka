@@ -2102,7 +2102,7 @@ Constants are from `shared/utils/jev-policy.ts` unless a file is named;
 | `rerank` | J4 | Past-chat and project-knowledge search: the query and passages, never-store removed, each cut to about 300 tokens, up to 30 per search | Up to 30 candidates (`maxCandidates`); passages 300 tokens (`maxPassageTokens`); drop below 0.5 (`dropBelow`), and only while at least `limit` candidates remain | 800 ms | Original BM25 order |
 | `sharePiiCheck` | J5 | When the share window opens, before a public link is published: the chat text being shared, with never-store values, emails and phone numbers removed. Warning only, never blocks | `p1_personal`: warn at or above 0.3 (`warnAtOrAbove`); chunks of 25,000 tokens; request debounce 400 ms (`JEV_SHARE_CHECK_DEBOUNCE_MS`) | 1,500 ms | Detector warnings plus a generic "check before sharing" reminder; Generate untouched |
 | `pastChatRetrieval` | J6 | Sends where `search_chats` and `read_chat` are not registered (a model or gateway without tool calling, a forced `toolChoice`, or image generation), only while **Search and reference chats** is on, each message: the message and the last three turns, never-store removed. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts. A listed phrase searches with no Jev call | `s1_previous`: search at or above 0.25 (`preSearchAtOrAbove`); 3 hits; excerpts capped at 1,500 tokens; message 2,000 characters, each turn 600 | 800 ms | **Searches anyway** (the one role that fails toward acting). Without a key or with the role off: no pre-search |
-| `skillSelection` | J7 | **Opt-in, off until switched on.** Each message, only when the `skills` flag is on, the user attached or typed no skill, and a local BM25 prefilter over the names and descriptions of the user's Auto skills keeps at least one: the message (never-store removed) and, for each of at most three candidates, its name and description cut to 300 characters, in state keys `skill_<i>`. Skills already active in the chat or pinned to always load are not candidates. No candidate means no Jev call and no key read | Prefilter: floor `minScore` 1 (capped for few skills), at least 1 matched term, top 3 (`maxCandidates`). One question per candidate, `sel_<i>`: apply the best one at or above 0.6 (`applyAtOrAbove`); at most one skill per message. Rides in the Auto web search call when that call is made (`decideSendPathJev` `extra`), else one call of its own | 800 ms | No change: the model picks from the catalog as without a key |
+| `skillSelection` | J7 | **Opt-in, off until switched on.** Each message, only when the `skills` flag is on, the user attached or typed no skill, and a local BM25 prefilter over the names and descriptions of the user's Auto skills keeps at least one: the message (never-store removed) and, for each of at most three candidates, its name and description cut to 300 characters, in state keys `skill_<i>`. Skills already active in the chat or pinned to always load are not candidates. No candidate means no Jev call. A pick applies to that send only | Prefilter: floor `minScore` 1 (capped for few skills), at least 1 matched term, top 3 (`maxCandidates`). One question per candidate, `sel_<i>`: apply the best one at or above 0.6 (`applyAtOrAbove`); at most one skill per message. Rides in the Auto web search call when that call is made (`decideSendPathJev` `extra`), else one call of its own | 800 ms | No change: the model picks from the catalog as without a key. When the shared web search call fails or times out, Auto web search falls back to searching as before |
 
 **Logging.** Each role writes one wide-event field, `attributes.<role>Jev`
 (for example `attributes.rerankJev`), with counts, scores, statuses and
@@ -3111,15 +3111,21 @@ the role copy), so nobody sees a setting for something they cannot use yet.
    a skill the user attached or typed (`findSkillInvocation`). It never runs
    while typing: only a send reaches it.
 2. The `skills` flag (memoized per request: no extra read).
-3. The user's Auto skills (`listCatalogSkills`, enabled, model-invocable, not
-   broken; the same query the catalog makes), minus skills already active in
-   this chat (`collectActivatedSkillIds`: an activation of a skill the model
-   or the user applied, S-3 re-injects it anyway; a stored project-pin
+3. `resolveJevRoleModel({ role: 'skillSelection' })`: the key and the role
+   switch. Without a key or with the role off: nothing else is read, so the
+   skills catalog is never read for the selector (one key read at most).
+4. The user's Auto skills (`listCatalogSkills`, enabled, model-invocable, not
+   broken), handed on to `prepareSkillsForSend` as `preloadedCatalogSkills` so
+   the catalog is not read twice, minus skills already active in this chat
+   (`collectActivatedSkillIds`: an activation of a skill the model or the user
+   applied, S-3 re-injects it anyway; a stored project-pin or TypeSafe AI
    activation does not count) and skills pinned to the chat's project at the
    always level (they load every send). Prefer pins stay candidates.
-4. The local prefilter. No candidate: no key read, no Jev call, nothing logged.
-5. Only then `resolveJevRoleModel({ role: 'skillSelection' })` (the key and the
-   role switch). Without a key or with the role off: nothing happens.
+5. The local prefilter. No candidate: no Jev call and nothing logged.
+
+The key read is not shared with the `autoWebSearch` role: each role reads its
+key and settings itself (two small D1 reads each), which keeps the roles
+independent.
 
 **Prefilter** (`server/utils/skills/jev/prefilter.ts`). MiniSearch BM25 over
 the stemmed name and description of each skill (the same stemmer and
@@ -3178,8 +3184,12 @@ the user message (no `data-skill-invocation` part, so no chip on the user's
 text). The send streams and persists a `data-skill-activation` part with
 `source: 'jev'` on the answer, which shows in the reasoning list as
 **"Applied skill · name"** (the step an attached Auto skill already has; no
-card in the reply) and keeps the skill active for the next sends like any
-other activation. A skill that cannot be read is skipped with no error.
+card in the reply). A pick applies to that send only: like a project pin, a
+`source: 'jev'` activation is skipped by `collectActivatedSkillIds` and
+`collectActivatedSkillNames` (`isTransientSkillActivationPart`), so it is not
+re-injected as `<active_skills>` on later sends and a false positive never
+persists; the next send may pick it again if it still fits. A skill that
+cannot be read is skipped with no error.
 
 **Logging.** `attributes.skillSelectionJev`: `status`, `calls`, `questions`,
 `inputTokens`, `latencyMs`, `counts` (`candidates`, `shared`, `applied`) and the

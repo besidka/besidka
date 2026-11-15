@@ -113,6 +113,25 @@ export function isProjectSkillActivationPart(part: unknown): boolean {
     && part.data.source === SKILL_ACTIVATION_SOURCE_PROJECT
 }
 
+/**
+ * An activation of a skill TypeSafe AI picked for one message. Like a project
+ * pin it only drives the step in the reasoning list: a pick applies to that
+ * send only, so a wrong one never stays active for the rest of the chat, and
+ * the next send may pick it again if it still fits.
+ */
+export function isJevSkillActivationPart(part: unknown): boolean {
+  return isDataSkillActivationPart(part)
+    && part.data.source === SKILL_ACTIVATION_SOURCE_JEV
+}
+
+/**
+ * An activation that is shown as a step but never read back as a skill the
+ * chat keeps active: a project pin or a TypeSafe AI pick.
+ */
+export function isTransientSkillActivationPart(part: unknown): boolean {
+  return isProjectSkillActivationPart(part) || isJevSkillActivationPart(part)
+}
+
 export function findSkillInvocation(
   parts: readonly unknown[] | undefined,
 ): SkillInvocationPartData | null {

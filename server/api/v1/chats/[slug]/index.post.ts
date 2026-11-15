@@ -844,7 +844,7 @@ export default defineEventHandler(async (event) => {
       }),
       JEV_AUTO_WEB_SEARCH.recentTurns,
     ),
-    extraJev: skillSelectionPlan?.extraJev,
+    extraJev: skillSelectionPlan?.extraJev ?? undefined,
     logger,
   })
   const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
@@ -1919,6 +1919,7 @@ export default defineEventHandler(async (event) => {
     isStoredUserMessage,
     preloadedInvocation: preloadedSkillInvocation,
     jevSelection: await skillSelectionRun,
+    preloadedCatalogSkills: skillSelectionPlan?.catalogSkills,
     guard: chatSearchBudget,
     logger: aiLogger,
   })

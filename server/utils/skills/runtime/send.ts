@@ -106,7 +106,10 @@ const EMPTY_SKILLS_SEND: SkillsSend = {
  *   the user attached none), injected like an attachment but worded as
  *   Besidka's match, and never stored on the user message; a skill that
  *   cannot be read is skipped without an error, since the model still has
- *   the catalog.
+ *   the catalog. The pick applies to this send only: its activation part
+ *   (`source: 'jev'`) shows the step but is never read back as active;
+ * - `preloadedCatalogSkills`, the Auto skills the send path already read for
+ *   the skill selector, so the catalog is not read twice.
  *
  * It never adds a tool other than the two skill tools, whatever a skill
  * says. A user who attached a skill that cannot be read gets the generic
@@ -126,6 +129,7 @@ export async function prepareSkillsForSend(input: {
   isStoredUserMessage: boolean
   preloadedInvocation?: LoadedSkillInvocation | null
   jevSelection?: SkillInvocationPartData | null
+  preloadedCatalogSkills?: readonly RuntimeSkillRow[] | null
   guard?: UntrustedContentGuard
   logger: LoggerLike
 }): Promise<SkillsSend> {
@@ -199,7 +203,8 @@ export async function prepareSkillsForSend(input: {
   })
   const catalogSkills: RuntimeSkillRow[] = input.isToolCallingAllowed
     ? mergeCatalogSkills(
-      await listCatalogSkills(db, userId),
+      input.preloadedCatalogSkills
+      ?? await listCatalogSkills(db, userId),
       projectSkills,
     )
     : []

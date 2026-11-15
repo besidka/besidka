@@ -1600,8 +1600,10 @@ model-invocable, not broken), minus skills already active in the chat (an
 earlier activation S-3 re-injects anyway) and skills the chat's project pins to
 always load. Prefer pins stay candidates. A local BM25 prefilter over the
 names and descriptions (`server/utils/skills/jev/prefilter.ts`) keeps at most
-three, with a floor of 1 and one matched term. No candidate: no key read and no
-Jev call, so a message that names no skill topic costs nothing.
+three, with a floor of 1 and one matched term. The gates run cheapest first:
+the flag, then the key and the role switch, and only then the catalog (read
+once and handed on to `prepareSkillsForSend`) and the prefilter. No candidate:
+no Jev call, so a message that names no skill topic costs nothing.
 
 **One call, no per-skill call.** Each candidate is one boolean question; the
 name and description (cut to 300 characters, never-store removed) go into a
@@ -1615,8 +1617,11 @@ turn, so the prompt cache is untouched and a model without tools gets it
 too, worded as Besidka's match and tagged `invoked="jev"`. It is not stored on
 the user message. The answer carries a `data-skill-activation` part with
 `source: 'jev'`, shown in the reasoning list as **Applied skill · name** (no
-card in the reply), and the skill stays active for the following sends like
-any activation. Order on a send: a skill the user attached, else the skill
+card in the reply). **A pick applies to that send only**: like a project pin,
+that activation is never read back as a skill the chat keeps active
+(`isTransientSkillActivationPart`; sections 5.4 and 5.8), so it is not
+re-injected as `<active_skills>` later and a wrong pick never persists. Jev may
+pick the skill again on the next send if it still fits. Order on a send: a skill the user attached, else the skill
 TypeSafe AI picked, then the project's Always load skills, Prefer skills and
 the other Auto skills by name.
 

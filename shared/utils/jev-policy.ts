@@ -382,7 +382,6 @@ export const JEV_SKILL_SELECTION = {
     minTermLength: 3,
   },
   applyAtOrAbove: 0.6,
-  timeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
   task: 'Does `message` ask for the kind of work that `{skill}` describes?',
   criteria: {
     true: 'The message asks for the task, output or workflow that the skill '

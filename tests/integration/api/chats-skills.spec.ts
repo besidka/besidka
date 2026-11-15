@@ -709,6 +709,45 @@ describe('skills on the chat send path', () => {
     })
   })
 
+  it('does not re-inject a skill TypeSafe AI picked on an earlier send', async () => {
+    mocks.historyMessages = [
+      {
+        id: 'm-1',
+        publicId: 'p-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'write it' }],
+        tools: [],
+        reasoning: 'off',
+      },
+      {
+        id: 'm-2',
+        publicId: 'p-2',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'data-skill-activation',
+            data: {
+              skillId: 'skl1',
+              name: 'writing-style',
+              version: 1,
+              source: 'jev',
+            },
+          },
+          { type: 'text', text: 'Done.' },
+        ],
+        tools: [],
+        reasoning: 'off',
+      },
+    ]
+
+    const { doStream } = await runSend({ steps: [text('More.')] })
+    const call = doStream.mock.calls[0]?.[0] as any
+
+    expect(readSystemPrompt(call)).not.toContain('<active_skills>')
+    expect(readSystemPrompt(call)).not.toContain('SKILL BODY')
+    expect(readLastUserText(call)).not.toContain('SKILL BODY')
+  })
+
   it('re-injects an earlier activation into the system prompt on a later send', async () => {
     mocks.historyMessages = [
       {
