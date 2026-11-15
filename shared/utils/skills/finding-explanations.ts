@@ -34,4 +34,10 @@ export const EXTRA_FINDING_EXPLANATIONS: Readonly<Record<string, string>> = {
   'missing-reference': 'SKILL.md refers to a file that is not in the skill.',
   'shebang-in-text': 'A text file that starts like a script.',
   'dotfile-path': 'A file or folder whose name starts with a dot, which most tools hide.',
+  'jev-attack': 'TypeSafe AI, your own key, read this part as an attempt to steer an assistant that reads it. The marked lines are what it looked at, not a verdict.',
+  'jev-send-out': 'TypeSafe AI, your own key, read this part as telling an assistant to send conversation content, files, memory or keys to an outside address. The marked lines are what it looked at, not a verdict.',
+  'jev-conceal': 'TypeSafe AI, your own key, read this part as telling an assistant to hide what it does or to keep something from you. The marked lines are what it looked at, not a verdict.',
+  'jev-secrets': 'TypeSafe AI, your own key, read this part as asking an assistant to reveal or pass on keys, passwords, tokens or environment variables. The marked lines are what it looked at, not a verdict.',
+  'jev-run-remote': 'TypeSafe AI, your own key, read this part as telling the reader to download and run code or to change where packages come from. The marked lines are what it looked at, not a verdict.',
+  'jev-off-purpose': 'TypeSafe AI, your own key, read this part as asking for actions that do not fit what the description says the skill is for. The marked lines are what it looked at, not a verdict.',
 }

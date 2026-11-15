@@ -1772,7 +1772,20 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/tools/memory-tools.spec.ts',
   ]
 
+  const skillJevScreeningTests = [
+    'tests/unit/server/utils/jev/skill-screening.spec.ts',
+    'tests/unit/server/utils/skills/jev/screen.spec.ts',
+    'tests/unit/server/utils/skills/jev/lifecycle.spec.ts',
+    'tests/unit/server/utils/skills/import/screen-rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/preview-jev.spec.ts',
+    'tests/unit/server/api/v1/skills/screen.spec.ts',
+    'tests/unit/utils/jev-skill-policy.spec.ts',
+    'tests/unit/utils/jev/injection-screening.spec.ts',
+    'tests/unit/utils/jev/logging.spec.ts',
+  ]
+
   const skillsStorageTests = [
+    ...skillJevScreeningTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
     'tests/unit/server/utils/skills/storage.spec.ts',
@@ -1786,6 +1799,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const skillsVersionsTests = [
+    ...skillJevScreeningTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/skills/edit.spec.ts',
     'tests/unit/utils/skills/templates.spec.ts',
@@ -1818,6 +1832,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const skillsImportTests = [
+    ...skillJevScreeningTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/skills/path.spec.ts',
     'tests/unit/utils/skills/frontmatter.spec.ts',
@@ -2927,6 +2942,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^(server\/utils\/jev\/.*|shared\/utils\/jev-(policy|schemas))\.ts$/,
       tests: [
         ...jevFoundationTests,
+        ...skillJevScreeningTests,
         ...pastChatRetrievalTests,
         ...profileSettingsTests,
         ...typesafeRolesUiTests,

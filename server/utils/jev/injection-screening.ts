@@ -81,34 +81,56 @@ function sliceLongLine(line: string, maxChars: number): string[] {
   return slices
 }
 
+export interface TextChunkWithLines {
+  text: string
+  startLine: number
+  endLine: number
+}
+
+interface LinePiece {
+  text: string
+  line: number
+}
+
 /**
  * Splits text into chunks of at most `maxTokens` estimated tokens (the
- * Cyrillic-aware knowledge estimate), cutting at line breaks. A line longer
- * than a chunk is cut into slices that fit even when every character costs
- * the most tokens. Whitespace-only chunks are dropped.
+ * Cyrillic-aware knowledge estimate), cutting at line breaks, and says which
+ * lines (1-based, inclusive) each chunk covers. A line longer than a chunk is
+ * cut into slices that fit even when every character costs the most tokens;
+ * the slices keep their line number. Whitespace-only chunks are dropped, so
+ * the ranges of the returned chunks may skip lines.
  */
-export function splitTextForInjectionScreening(
+export function splitTextWithLineRanges(
   text: string,
   maxTokens: number = JEV_INJECTION_SCREENING.maxChunkTokens,
-): string[] {
+): TextChunkWithLines[] {
   const maxChars = hardSliceChars(maxTokens)
-  const pieces = text.split(LINE_BREAK_PATTERN).flatMap((line) => {
-    return sliceLongLine(line, maxChars)
-  })
-  const chunks: string[] = []
-  let current = ''
+  const pieces: LinePiece[] = text
+    .split(LINE_BREAK_PATTERN)
+    .flatMap((line, lineIndex) => {
+      return sliceLongLine(line, maxChars).map((slice) => {
+        return { text: slice, line: lineIndex + 1 }
+      })
+    })
+  const chunks: TextChunkWithLines[] = []
+  let current: TextChunkWithLines | null = null
   let currentTokens = 0
 
   for (const piece of pieces) {
-    const pieceTokens = estimateTokens(piece)
+    const pieceTokens = estimateTokens(piece.text)
 
     if (current && currentTokens + pieceTokens > maxTokens) {
       chunks.push(current)
-      current = ''
+      current = null
       currentTokens = 0
     }
 
-    current += piece
+    if (!current) {
+      current = { text: '', startLine: piece.line, endLine: piece.line }
+    }
+
+    current.text += piece.text
+    current.endLine = piece.line
     currentTokens += pieceTokens
   }
 
@@ -116,7 +138,18 @@ export function splitTextForInjectionScreening(
     chunks.push(current)
   }
 
-  return chunks.filter(chunk => chunk.trim().length > 0)
+  return chunks.filter(chunk => chunk.text.trim().length > 0)
+}
+
+/**
+ * Splits text into chunks of at most `maxTokens` estimated tokens, cutting at
+ * line breaks (see `splitTextWithLineRanges`).
+ */
+export function splitTextForInjectionScreening(
+  text: string,
+  maxTokens: number = JEV_INJECTION_SCREENING.maxChunkTokens,
+): string[] {
+  return splitTextWithLineRanges(text, maxTokens).map(chunk => chunk.text)
 }
 
 function buildTasks(texts: string[]): {

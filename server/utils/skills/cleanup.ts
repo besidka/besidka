@@ -10,6 +10,10 @@ import {
   skillUserPrefix,
 } from '~~/server/utils/skills/storage'
 import type { SkillBlobBucket } from '~~/server/utils/skills/storage'
+import {
+  deleteSkillJevMarks,
+  purgeUserSkillJevMarks,
+} from '~~/server/utils/skills/jev/store'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -133,6 +137,8 @@ export async function purgeUserSkills(
     skillStagingUserPrefix(userId),
     bucket,
   )
+  await purgeUserSkillJevMarks({ userId })
+
   const result: PurgeUserSkillsResult = {
     skillsDeleted: skills.length,
     skillVersionsDeleted: skillVersions.length,
@@ -179,7 +185,10 @@ export async function deleteUserSkill(
         eq(schema.skillVersions.userId, userId),
         eq(schema.skillVersions.skillId, skillId),
       ))
-      .returning({ id: schema.skillVersions.id }),
+      .returning({
+        id: schema.skillVersions.id,
+        version: schema.skillVersions.version,
+      }),
     db.delete(schema.skills)
       .where(and(
         eq(schema.skills.userId, userId),
@@ -201,6 +210,12 @@ export async function deleteUserSkill(
   }
 
   await invalidateStorageCache(userId, logger)
+
+  await deleteSkillJevMarks({
+    userId,
+    skillId,
+    versions: versions.map(row => row.version),
+  })
 
   try {
     result.skillObjectsDeleted = await deleteSkillPrefix(

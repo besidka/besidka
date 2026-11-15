@@ -169,10 +169,14 @@ the old wording is in the git history.
     **command** (`slash_name`) lets it run as `/command` (section 5.5). The two
     are independent (owner decision, 2026-11-14, S-12: the S-3 rule that every
     enabled skill is also a `/name` is gone).
-15. **Nothing spends without Send.** Opening the picker, "Use in new chat", the
-    manager and every MCP tool make no model call. Only the user's Send
-    spends. There is no prefetch, no background work and no MCP run or
-    activate tool.
+15. **Nothing spends without Send, with one exception.** Opening the picker,
+    "Use in new chat", the manager and every MCP tool make no model call. Only
+    the user's Send spends, with one exception (owner decision, 2026-11-14,
+    SS-8): when the user saved a TypeSafe AI key and left "Prompt-injection
+    screening" on, opening an import, update or needs-review screen runs that
+    check on the skill text, on the user's TypeSafe AI key (section 3.6). No
+    chat model is called. MCP tools and the editor never run it. There is no
+    other prefetch, no background work and no MCP run or activate tool.
 
 Feature flags (stage `internal`, `default: false`, `allowRoles: ['admin']`).
 `skills`, `skills.import-url` and `skills.scripts` are already registered in
@@ -415,7 +419,7 @@ the explanations say what Claude Code would do with it.
 
 Every finding carries a `rule` id (kebab-case, never renamed), a `severity`
 (`high` "Look closely", `medium` "Worth a look", `low` "For your
-information") and a `source` (`rules`, or `jev` for a later optional check).
+information") and a `source` (`rules`, or `jev` for the optional TypeSafe AI check of section 3.6).
 Each rule has a plain explanation, read with `getSkillFindingExplanation(rule)`
 and written in the rule table rows (`finding-rules-*.ts`) or in
 `finding-explanations.ts`. The finding types are `url`, `shell`,
@@ -573,8 +577,10 @@ attribution text lands with SS-10. No OWASP text is copied.
   and `jev:` entries and does a full rescan instead of a delta, and the update
   review rescans the version in the browser (read file by file, never written
   back) and says "Rescanned with newer checks". Nothing runs in the
-  background. Version 3 added the execution, intent, frontmatter and file-set
-  rules. The file-set and lookalike findings are counted when a skill is
+  background. The optional TypeSafe AI check adds `jev:marked`,
+  `jev:unchecked` and `jev:questionSet` at commit or accept (section 3.6);
+  `readStoredFindingCounts` skips them. Version 3 added the execution,
+  intent, frontmatter and file-set rules. The file-set and lookalike findings are counted when a skill is
   imported, updated or created over MCP, and carried along by an in-app save;
   a rescan after a rules version bump (browser or save) does not recount them,
   so their low tally can drop until the next import or update.
@@ -791,6 +797,108 @@ matches `knowledge/u<userId>/`, so the account purge reuses the same
 list-by-prefix and batch-delete code (`storage.delete(keys)`, at most 1,000
 keys per call). Reads go through `readSkillFile`, which checks ownership in D1
 first; there is no public or signed-URL route to these objects.
+
+### 3.6 Optional TypeSafe AI check (SS-8)
+
+When the user saved a TypeSafe AI key and left "Prompt-injection screening"
+(the `injectionScreening` role, no new role and no new toggle) on, opening a
+review screen can add a second check on the skill text. The owner decided on
+2026-11-14 that the check is automatic: it runs when an import, update or
+needs-review screen opens, never on the GitHub pick list, never from MCP
+writes, the editor, an in-app save or a restore. This is the server side
+(BES-390); the review UI is SS-9 (BES-391).
+
+**The thresholds are placeholders.** `flagAtOrAbove` in `JEV_SKILL_SCREENING`
+(`shared/utils/jev-policy.ts`) holds the starting values of the proposal
+(`i2_attack` 0.3, `k1` to `k4` 0.5, `k5_off_purpose` 0.7). The SS-7 eval has
+not run yet and re-tunes them; `questionSetVersion` goes up with every
+wording or threshold change, which also retires the chunk cache and the
+stored results.
+
+What Jev can and cannot do:
+
+- It is add-only. A Jev mark is a finding with `source: 'jev'` and an empty
+  snippet (a mark stores no text). `mergeSkillJevFindings` appends them after
+  the rule findings and never changes, reorders or removes one, and a
+  property test covers that. There is no "clean" state: the answer lists
+  marks and the line ranges that were not checked, nothing more.
+- Every failure leaves the review as it is without the check: 401, 403, 429,
+  529, timeout, network, refusal, a missing probability and the call budget.
+  Chunks that were not checked come back as `unchecked` line ranges, and
+  `status` names the first failure.
+- Without a key, with the role off, or without the `skills` flag, nothing is
+  read or sent: the route answers `{ state: 'unavailable' }`.
+
+Questions. Six boolean questions per chunk in one call, all constants in
+`JEV_SKILL_SCREENING.questions`; `i2_attack` is `JEV_INJECTION_SCREENING.question`.
+Skill text only ever goes into the state keys `text` (one chunk) and
+`description`; the `instructions` never interpolate skill text, names or
+paths, and there are no `criteria`. `redactNeverStore` runs on every chunk and
+on the description before it is hashed, cached or sent.
+
+| Question | Asks whether the text | Mark rule | Finding type | Severity |
+| --- | --- | --- | --- | --- |
+| `i2_attack` | attacks an AI system that reads it | `jev-attack` | `injection` | medium |
+| `k1_send_out` | sends data to an outside destination | `jev-send-out` | `exfiltration` | high |
+| `k2_conceal` | hides actions from the user | `jev-conceal` | `concealment` | high |
+| `k3_secrets` | collects or reveals keys and tokens | `jev-secrets` | `credential` | high |
+| `k4_run_remote` | downloads and runs code or moves package sources | `jev-run-remote` | `execution` | medium |
+| `k5_off_purpose` | asks for actions the `description` does not serve | `jev-off-purpose` | `injection` | low |
+
+Send order and budget. The description, then `SKILL.md`, then references and
+other `.md` and `.txt` files, other text, scripts, and license files last. Text
+is cut into chunks of at most 2,000 tokens at line breaks
+(`splitTextWithLineRanges` keeps each chunk's line range, including when
+whitespace-only chunks are dropped). One request makes at most 12 calls
+(`maxCallsPerScreen`), 3 at a time; one review spends at most 48
+(`maxCallsPerStage`) across "Check the rest" (`{ rest: true }`), counted in the
+stored result. Only the first 48 chunks of the send order are ever considered;
+a skill with more shows `tooLarge: true`. A reopened review gets the stored
+result with no call; only `rest` goes further.
+
+Cache. `skills:jev:u<userId>:<questionSetVersion>:<sha256(chunk)>:<sha256(description)>`
+holds the six scores (no text), 30 days, per user. The description hash is part
+of the key because `k5_off_purpose` reads both. A chunk costs nothing the second
+time, and an update pays only for the chunks that changed. Only a complete
+answer is cached; a KV failure just means a miss.
+
+Routes (both: signed in, `skills` flag, `assertNotCrossSiteRequest`,
+`requireLegalConsent`, then `enforceSkillScreenRateLimit`, 60 an hour per user
+with its own counter, then ownership):
+
+- `POST /api/v1/skills/import/[stageId]/screen` (404 for another account's
+  stage, 410 for an expired one).
+- `POST /api/v1/skills/[id]/versions/[v]/screen` (the directory is `[v]`, the
+  same name `diff` and `restore` use; the URL is the ticket's).
+
+Body `{}` or `{ rest: true }`. The answer is `state` (`unavailable` or
+`screened`), `status`, `findings` (Jev findings), `marks`, `unchecked`,
+`tooLarge`, `calls`, `callsSpent`, `callsLeft` and `questionSetVersion`. The
+import preview carries `jev: 'available'` when the role resolves a model, and
+leaves the key out otherwise.
+
+Storage. The stage result lives in its own KV key `skills:jev-stage:<stageId>`
+with the stage's remaining lifetime, not inside the manifest: a commit claims
+the stage by deleting the manifest, so a late screen write must not bring it
+back. A stored version's result lives in `skills:marks:u<userId>:<skillId>:<version>`
+(line ranges, scores and counts, no text) together with the content hash of
+that version: version numbers are reused after a reject, a prune or a D1
+restore, so an entry whose hash differs from the version's is ignored and
+screened again (the chunk cache keeps that free). At commit the stage result's counts
+go into `skill_versions.findings` as `jev:marked`, `jev:unchecked` and
+`jev:questionSet`, and the marks go to the new version's key (a new skill's
+version 1, or the pending version of an update); at accept they move to the
+new version number the accept creates. They are deleted with the version
+(prune, reject, replaced pending version, skill delete) and by prefix on
+account deletion. Per-version deletes are best effort; the account purge is
+not (marks name file paths), so a failure there makes `purgeUserSkills`
+rethrow and the account deletion stays retryable. The chunk cache holds scores
+under hashes only and is left to expire in 30 days. `computeFindingCounts` and a restore drop
+`jev:` entries; no migration is needed because `findings` is a JSON column.
+
+Logging. `attributes.injectionScreeningJev` with `source: 'skill'`, status,
+calls, input tokens, latency and counts `skillChunks`, `skillCached`,
+`skillMarked`, `skillUnchecked`, `skillRedacted`. Never text.
 
 ## 4. License gate
 
@@ -1226,7 +1334,7 @@ image. `create_document` is a follow-up tool and behaves as it did before.
 | # | Threat | Attacker | Mitigation | Ticket |
 | --- | --- | --- | --- | --- |
 | K1 | Malicious instructions that steer the model to exfiltrate data or act (Snyk ToxicSkills, 2026-02: 36.82% of 3,984 public skills flawed, 13.4% critical) | Skill author | Full-content review before install with a required tick; skill text wrapped and framed as untrusted (an invocation is labeled user-selected but stays subordinate to the user's message); the interim tool rule until C-6 (section 2, item 8), then F1 forced approvals for every tool not marked read-only while a skill is active; memory write lock, preset on invocation; disabled by default for everything but text the user wrote in the app; per-skill and per-chat toggles | S-3, S-4, S-12, C-6 |
-| K2 | Scanner bypass (Trail of Bits, 2026-06: newline padding, `.pyc`, prompts aimed at LLM analyzers) | Skill author | Scanners are not a boundary: findings are highlights; padding and long lines are findings themselves; `.pyc` and binaries rejected; no LLM judges a skill | S-2, S-4 |
+| K2 | Scanner bypass (Trail of Bits, 2026-06: newline padding, `.pyc`, prompts aimed at LLM analyzers) | Skill author | Scanners are not a boundary: findings are highlights; padding and long lines are findings themselves; `.pyc` and binaries rejected; no model decides whether a skill can be installed. An optional TypeSafe AI Jev check, on the user's own key, can add highlights. It can never remove, lower or hide a rule-based highlight, never shows a skill as clean, and its failures leave the review exactly as it is without the check (section 3.6) | S-2, S-4 |
 | K3 | Hidden text: bidi overrides, zero-width characters, padding below the fold | Skill author | Hidden characters shown as `⟨U+…⟩`; plain monospace viewer, no Markdown rendering; line and blank-run findings | S-2, S-4 |
 | K4 | Silent update that turns a reviewed skill malicious | Repository owner | Pinned SHA, never auto-updated; update = diff + new findings + license change + review + accept, and the skill is disabled again | S-2, S-4 |
 | K5 | Archive attacks: zip slip, symlinks, zip bombs, zip64, huge entries | Skill author | Section 3.2 rules on client and server, streaming inflate with abort | S-2 |
@@ -1415,6 +1523,9 @@ Unchanged by the 2026-11-13 amendments.
 | Key | TTL | Content |
 | --- | --- | --- |
 | `skills:stage:<stageId>` | 1 h | staged manifest of an import preview, before `import/commit`; never used by update checks or MCP |
+| `skills:jev-stage:<stageId>` | the stage's remaining lifetime | result of the optional TypeSafe AI check of an import preview (marks, unchecked ranges, calls spent; no text), read by `import/commit`, deleted with the stage (section 3.6) |
+| `skills:marks:u<userId>:<skillId>:<version>` | none; deleted with the version | result of the optional TypeSafe AI check of one stored version (line ranges and scores, no text; section 3.6) |
+| `skills:jev:u<userId>:<questionSetVersion>:<sha256(chunk)>:<sha256(description)>` | 30 days | the six TypeSafe AI scores of one chunk, no text (section 3.6) |
 | `skills:update-state:<userId>` | 45 days, refreshed on write | per account: when each GitHub skill was last looked at by the daily check, the newest upstream version found and the version the review saw hold no change (section 3.4); not a source of truth |
 
 ### 8.6 Status transitions
@@ -1517,6 +1628,8 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_VERSIONS_KEPT` | 20 (was 2) | S-1, S-2, S-10 |
 | `SKILL_IMPORTS_PER_HOUR` | 10 per user | S-2, S-2G |
 | `SKILL_SAVES_PER_HOUR` | 120 per user | S-10 |
+| `SKILL_SCREENS_PER_HOUR` | 60 per user, its own counter (section 3.6) | SS-8 |
+| `JEV_SKILL_SCREENING` | 2,000-token chunks, 12 calls per request, 48 per review, 3 concurrent, 2.5 s per call, 30-day cache; thresholds are placeholders until SS-7 (`shared/utils/jev-policy.ts`, section 3.6) | SS-8 |
 | `SKILL_SAVE_MAX_CHANGES` | 50 per save | S-10 |
 | `SKILL_SAVE_MAX_BYTES` | 2 MiB per save | S-10 |
 | `SKILL_EDIT_MAX_FILE_BYTES` | 256 KiB; larger files open read-only | S-10, S-11 |

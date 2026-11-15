@@ -11,6 +11,7 @@ import {
   skillStagingUserPrefix,
 } from '~~/server/utils/skills/storage'
 import type { SkillBlobBucket } from '~~/server/utils/skills/storage'
+import { deleteSkillJevStage } from '~~/server/utils/skills/jev/store'
 
 export const SKILL_STAGE_KEY_PREFIX = 'skills:stage:'
 export const SKILL_STAGE_ID_PATTERN = /^[a-f0-9]{32}$/
@@ -355,6 +356,7 @@ export async function deleteSkillStage(input: {
   const { manifest } = input
 
   await input.kv.delete(skillStageKey(manifest.stageId))
+  await deleteSkillJevStage({ stageId: manifest.stageId, kv: input.kv })
 
   const keys = [...new Set(manifest.files.map((file) => {
     return file.sha256

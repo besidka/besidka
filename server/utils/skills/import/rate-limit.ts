@@ -5,6 +5,7 @@ import { env } from 'cloudflare:workers'
 import {
   SKILL_IMPORTS_PER_HOUR,
   SKILL_SAVES_PER_HOUR,
+  SKILL_SCREENS_PER_HOUR,
 } from '#shared/utils/skills-policy'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -15,6 +16,7 @@ export const SKILL_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 
 const RATE_LIMIT_KEY_PREFIX = 'skills-import-rate-limit'
 const SAVE_RATE_LIMIT_KEY_PREFIX = 'skills-save-rate-limit'
+const SCREEN_RATE_LIMIT_KEY_PREFIX = 'skills-screen-rate-limit'
 const RATE_LIMIT_WINDOW_SECONDS = 60 * 60
 
 interface RateLimitBinding {
@@ -177,5 +179,24 @@ export async function enforceSkillSaveRateLimit(
     message: 'Too many skill saves',
     unavailableWhy: 'The save limit could not be checked',
     exceededWhy: `At most ${SKILL_SAVES_PER_HOUR} skill saves are allowed per hour`,
+  })
+}
+
+/**
+ * 60 skill screens an hour per user, for the optional TypeSafe AI check that
+ * runs when a review screen opens. It has its own counter, so opening a
+ * review never spends the import limit or the burst limiter that the preview
+ * and commit just used.
+ */
+export async function enforceSkillScreenRateLimit(
+  event: RequestEvent,
+  userId: number,
+): Promise<void> {
+  await consumeHourlyLimit(event, userId, {
+    keyPrefix: SCREEN_RATE_LIMIT_KEY_PREFIX,
+    max: SKILL_SCREENS_PER_HOUR,
+    message: 'Too many skill checks',
+    unavailableWhy: 'The check limit could not be checked',
+    exceededWhy: `At most ${SKILL_SCREENS_PER_HOUR} skill checks are allowed per hour`,
   })
 }
