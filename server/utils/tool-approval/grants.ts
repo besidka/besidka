@@ -268,7 +268,7 @@ export async function revokeAlwaysToolApprovalGrant(
   }
 
   const rows = await db.update(schema.connectorToolSettings)
-    .set({ approval: 'ask', approvedDefinitionHash: null })
+    .set({ approval: 'needs-approval', approvedDefinitionHash: null })
     .where(and(
       eq(schema.connectorToolSettings.userId, userId),
       eq(schema.connectorToolSettings.connectorId, input.connectorId),

@@ -219,8 +219,9 @@ and records the `besidka` read source. A Besidka read set to Always allow
 out by itself, and every write after outside content still asks. A Besidka
 write does not count `besidka` taint as outside content
 (`hasForeignTaint` in `server/utils/tool-approval/policy.ts`), but asks after
-any other taint kind or a connector read. A later connector write asks
-`cross-source`, and the provider's web
+any other taint kind or a connector read. A later connector call, read or
+write, asks (`untrusted-output`), since its arguments would carry the data
+to the connector's server; a read offers every answer. The provider's web
 search, grounding and URL context are withheld from later steps (the L5
 egress guard; it is not applied on Anthropic routes, as for connectors). The
 web searches Besidka runs itself (Brave, Exa, any function tool the send

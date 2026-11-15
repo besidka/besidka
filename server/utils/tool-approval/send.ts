@@ -133,9 +133,16 @@ export interface SendToolEntry {
   } | null
 }
 
+/**
+ * `isAlwaysDefault` marks an `always` grant that is only the tool's default
+ * (a plain connector read the user never set a mode for): it runs the call
+ * like Always allow but writes no "Ran without asking" marker, as the C-5
+ * read-only grant did.
+ */
 export interface SendToolUserGrants {
   always: ToolApprovalGrant | null
   chat: ToolApprovalGrant | null
+  isAlwaysDefault?: boolean
 }
 
 /**
@@ -425,6 +432,7 @@ export function buildConnectorApprovalEntry(input: {
   definitionHash: string
   annotations: DestructiveHintAnnotations
   grantHashes?: ConnectorGrantHashes
+  isAlwaysDefault?: boolean
 }): SendToolEntry {
   const { annotations } = input
   const hasAlwaysAskName = hasAlwaysAskToolName(
@@ -462,6 +470,7 @@ export function buildConnectorApprovalEntry(input: {
     userGrants: {
       always: toGrant(input.grantHashes?.always),
       chat: toGrant(input.grantHashes?.chat),
+      ...(input.isAlwaysDefault ? { isAlwaysDefault: true } : {}),
     },
     connector: {
       id: input.connectorId,
@@ -666,7 +675,10 @@ export function createSendToolApproval(input: {
       alwaysGrant: entry.userGrants?.always ?? null,
       chatGrant: entry.userGrants?.chat ?? null,
     })
-    const grantScope = userGrantScopeOf(decision)
+    const grantScope = decision.rule === 6
+      && entry.userGrants?.isAlwaysDefault
+      ? null
+      : userGrantScopeOf(decision)
 
     if (decision.status.type === 'denied') {
       return denied(decision.status.reason)

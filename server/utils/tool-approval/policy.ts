@@ -202,11 +202,13 @@ function denied(
 function ask(
   rule: ToolApprovalRule,
   reason: ToolApprovalReason,
+  rememberOptions: readonly ToolApprovalRemember[]
+    = REMEMBER_OPTIONS_BY_REASON[reason],
 ): ToolApprovalDecision {
   return {
     status: { type: 'user-approval', reason },
     reason,
-    rememberOptions: [...REMEMBER_OPTIONS_BY_REASON[reason]],
+    rememberOptions: [...rememberOptions],
     rule,
   }
 }
@@ -395,13 +397,17 @@ function resolveNativeApproval(
  *    unclassified tools included, counts every taint kind.
  * 8. Otherwise a native write runs.
  *
- * Connector and Besidka reads (not in the always-ask tier):
+ * Connector and Besidka reads (not in the always-ask tier), owner decisions
+ * of 2026-11-15:
  *
+ * 2, 3. A connector read after content from outside its own connector asks
+ *    `untrusted-output` (foreign taint) or `cross-source` (another source
+ *    read), whatever its mode, because its arguments go to the connector's
+ *    server; it offers every answer, so the user can still set a mode.
+ *    A Besidka read skips both: its arguments stay inside Besidka.
  * 6. Always allow (a Besidka tool set to Allow, or a connector "always"
- *    grant whose connector id, tool name and definition hash match): no
- *    approval, whatever the send already read (owner decision,
- *    2026-11-15: a read cannot carry data out by itself, and every write
- *    after outside content still asks).
+ *    grant whose connector id, tool name and definition hash match, the
+ *    default of a plain connector read included): no approval.
  * 7. Chat grant that matches the same way: no approval.
  * 9. Otherwise ask `default`, with every answer offered.
  *
@@ -447,6 +453,16 @@ export function resolveToolApproval(
     && grantMatches(input.chatGrant, descriptor)
 
   if (descriptor.access === 'read' && !isAlwaysAsk) {
+    if (descriptor.family === 'connector') {
+      if (hasForeignTaint(descriptor, state)) {
+        return ask(2, 'untrusted-output', REMEMBER_OPTIONS_BY_REASON.default)
+      }
+
+      if (hasCrossSourceRead(descriptor, state)) {
+        return ask(3, 'cross-source', REMEMBER_OPTIONS_BY_REASON.default)
+      }
+    }
+
     if (isAlwaysAllowed) {
       return allowed(6)
     }

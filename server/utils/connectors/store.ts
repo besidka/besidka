@@ -908,7 +908,10 @@ export async function reduceConnectorToolSettings(
       .set({
         ...(reduction.disable ? { enabled: false } : {}),
         ...(reduction.askEveryTime
-          ? { approval: 'ask' as const, approvedDefinitionHash: null }
+          ? {
+            approval: 'needs-approval' as const,
+            approvedDefinitionHash: null,
+          }
           : {}),
         updatedAt: new Date(),
       })
@@ -1027,18 +1030,37 @@ export interface ConnectorToolSwitch {
   toolName: string
   enabled?: boolean
   resetApproval?: boolean
+  needsApproval?: boolean
   alwaysAllowHash?: string
 }
 
 /**
- * Turns reviewed tools on or off, sets "Always allow" back to "Needs
- * approval" (`resetApproval`), or sets it (`alwaysAllowHash`, the reviewed
+ * Turns reviewed tools on or off, sets the approval back to the default
+ * (`resetApproval`, stored `ask`), to an explicit Needs approval
+ * (`needsApproval`), or to Always allow (`alwaysAllowHash`, the reviewed
  * definition hash the caller checked), without touching the reviewed
  * definition hash, so a page change can never accept a changed definition.
  * An "Always allow" applies only while the stored hash equals the one it was
  * given for. Rows of other users, unknown tools and the baseline marker are
  * left alone. Returns the names that changed.
  */
+function approvalOfSwitch(entry: ConnectorToolSwitch): {
+  approval: ConnectorToolApproval
+  approvedDefinitionHash: string | null
+} | null {
+  if (entry.alwaysAllowHash) {
+    return { approval: 'always', approvedDefinitionHash: entry.alwaysAllowHash }
+  }
+
+  if (entry.needsApproval) {
+    return { approval: 'needs-approval', approvedDefinitionHash: null }
+  }
+
+  return entry.resetApproval
+    ? { approval: 'ask', approvedDefinitionHash: null }
+    : null
+}
+
 export async function updateConnectorToolSwitches(
   db: DbClient,
   userId: number,
@@ -1051,21 +1073,17 @@ export async function updateConnectorToolSwitches(
         && (
           entry.enabled !== undefined
           || entry.resetApproval
+          || entry.needsApproval
           || entry.alwaysAllowHash
         )
     })
     .map((entry) => {
-      const approval = entry.alwaysAllowHash
-        ? {
-          approval: 'always' as const,
-          approvedDefinitionHash: entry.alwaysAllowHash,
-        }
-        : { approval: 'ask' as const, approvedDefinitionHash: null }
+      const approval = approvalOfSwitch(entry)
 
       return db.update(schema.connectorToolSettings)
         .set({
           ...(entry.enabled !== undefined ? { enabled: entry.enabled } : {}),
-          ...(entry.resetApproval || entry.alwaysAllowHash ? approval : {}),
+          ...(approval ?? {}),
           updatedAt: new Date(),
         })
         .where(and(

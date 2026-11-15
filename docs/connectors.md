@@ -906,9 +906,8 @@ Choices that differ from or add to section 6, 10 and 14:
 
 ### 7.1 Decision order
 
-> **Superseded in part by section 7.11 (owner decision, 2026-11-15).** F1
-> no longer applies to reads, a write's own source no longer counts as
-> untrusted, Always allow can be set on the Connectors page, and every
+> **Superseded in part by section 7.11 (owner decision, 2026-11-15).** A
+> tool's own source no longer counts as untrusted, Besidka reads skip F1, Always allow can be set on the Connectors page, and every
 > call of one model step is judged against the state at the start of that
 > step. Read section 7.11 for the rules as built.
 
@@ -1708,36 +1707,62 @@ changes sections 7.1 to 7.9:
   tests) is judged against the live state.
 - **Modes for connector tools, no migration.** A reviewed tool has one of
   three modes, read from `connector_tool_settings`: **Blocked** is
-  `enabled = 0` (the tool is not offered), **Always allow** is
+  `enabled = 0` (the tool is not offered); **Always allow** is
   `approval = 'always'` with `approved_definition_hash` equal to the
-  reviewed `definition_hash`, and **Needs approval** is everything else
-  (the default `ask`). A changed definition is hidden until it is reviewed,
-  and the review stores the new hash with `approval = 'ask'`, so drift
-  always lands on Needs approval and needs a new Always allow.
-- **Reads (owner decision, 2026-11-15).** A read is a Besidka read tool or a
-  connector tool the server marks `readOnlyHint: true`, not
+  reviewed `definition_hash`; **Needs approval** is the explicit
+  `approval = 'needs-approval'` (a new value of the TypeScript enum; the
+  column is plain text and `drizzle-kit generate` reports no change). The
+  stored default `approval = 'ask'` means "the user never chose": a plain
+  read defaults to Always allow and every other tool to Needs approval
+  (owner decision, 2026-11-15, second round).
+- **Defaults keep what ran before.** A plain read is a tool the server
+  marks `readOnlyHint: true`, not `destructiveHint: true` and not
+  `openWorldHint: true`, whose remote name and title name no delete or
+  share action (`isConnectorToolDefaultAllowed` in
+  `server/utils/connectors/tool-definitions.ts`). With no choice stored, or
+  before the first baseline of a send, it gets a grant bound to the
+  reviewed hash (`alwaysGrantOf` in `send-tools.ts`), so it runs without
+  asking as the C-5 read-only grant did. That default grant writes no "Ran
+  without asking" marker (`SendToolUserGrants.isAlwaysDefault`). Writes and
+  the always-ask tier default to Needs approval. The C-5 grant itself
+  (`alwaysGrant`, `alwaysGrantWhenTainted`) is gone.
+  **What was kept of `openWorldHint`:** the old grant held after taint only
+  for `openWorldHint: false`. Content from another source is now covered by
+  F2 for every connector read (below), and same-connector taint never makes
+  a read ask, so that after-taint condition has no job left. What is kept
+  is the signal itself: a read the server marks `openWorldHint: true` (it
+  reaches outside the service, for example a fetch of any address) defaults
+  to Needs approval; a missing or `false` hint defaults to Always allow.
+  Untainted `openWorldHint: true` reads ran without asking before; they now
+  ask until the user sets them to Always allow.
+- **Changes reset explicit choices.** A changed definition is hidden until
+  it is reviewed. The review stores the new hash and keeps the default
+  (`ask`) only when the user never chose a mode for the tool; an explicit
+  Always allow or Needs approval becomes `needs-approval`, so drift needs a
+  new Always allow. "Remove" in the chat panel and MCP's `approval: 'ask'`
+  now store `needs-approval`, so they make a plain read ask; MCP's
+  `get_connector` still reports that value as `ask`.
+- **Reads (owner decisions, 2026-11-15).** A read is a Besidka read tool or
+  a connector tool the server marks `readOnlyHint: true`, not
   `destructiveHint: true`, and whose remote name and title name no delete
-  or share action (`hasAlwaysAskToolName`). A read set to Always allow
-  (or granted in this chat) runs without asking **after any taint kind and
-  any other source**, F2 included. A read set to Needs approval asks before
-  each use with reason `default` and every answer (Allow once, Allow in
-  this chat, Always allow, Deny), never the reduced `untrusted-output` set.
-  The reason line says "Asks before each use. Change it in the connector's
-  tool settings." (Besidka: "... in Tool permissions in Labs."). The send's
-  own read-only grant of section 7.6 (C-5 stopgap, `alwaysGrant`,
-  `alwaysGrantWhenTainted`) is gone: a read-only connector tool runs without
-  asking only once the user sets it to Always allow. Every existing
-  connector read therefore asks until the user sets its group to Always
-  allow. Why reads may run after anything: a read cannot carry data out by
-  itself, and every write after outside content still asks.
-  **Residual, raised for the owner (2026-11-15):** a connector read still
-  sends its arguments to its server, so an Always allow read after another
-  source (F2 no longer applies to reads) could put that content in a query,
-  and an open-world fetch-like tool could send it to any address. The old
-  `openWorldHint: false` condition on the read-only grant is gone with the
-  grant. This follows the owner's rule as written ("read-only tools set to
-  Always allow run without asking after any taint kind"); whether F2 should
-  still apply to connector reads is an open owner question.
+  or share action (`hasAlwaysAskToolName`).
+  - **Besidka reads** set to Always allow (or granted in this chat) run
+    after any taint kind: their arguments stay inside Besidka.
+  - **Connector reads** send their arguments to the connector's server, so
+    F2 applies to them: after content from another source (web, another
+    connector, files, knowledge, skills, the user's Besidka data, a shared
+    branch, or the `overflow` marker) they ask `untrusted-output` or
+    `cross-source` **whatever their mode**, Always allow and chat grants
+    included, with every answer offered (Allow once, Allow in this chat,
+    Always allow, Deny), because the user can still pick a mode for later.
+    Taint from the same connector never makes them ask.
+  - A read set to Needs approval asks before each use with reason `default`
+    and every answer. The reason line says "Asks before each use. Change it
+    in the connector's tool settings." (Besidka: "... in Tool permissions in
+    Labs.").
+  - A message with web search requested starts with `web` taint, so
+    connector reads in it ask (with every answer). The old grant stopped
+    holding there too, except for `openWorldHint: false` tools.
 - **Writes, the F1 invariant as it now stands (owner decision,
   2026-11-15).** A connector or Besidka write asks `untrusted-output`
   (Allow once, Deny) when the send holds content from **outside the tool's
@@ -1765,9 +1790,10 @@ changes sections 7.1 to 7.9:
   such a tool is ignored by the policy; `applyRememberGrants` never writes
   a grant for it, even when a forged answer slipped past the clamp.
 - **Policy order.** Native tools keep rules 1, 2 and 8. For connector and
-  Besidka calls: Blocked denies (rule 0); a read outside the always-ask
-  tier runs on Always allow (6) or a chat grant (7), else asks `default`
-  (9); a write or always-ask tool asks `untrusted-output` on foreign taint
+  Besidka calls: Blocked denies (rule 0); a connector read outside the
+  always-ask tier asks on foreign taint (2) or another source (3) with every
+  answer; a read then runs on Always allow (6) or a chat grant (7), else
+  asks `default` (9); a write or always-ask tool asks `untrusted-output` on foreign taint
   (2), `cross-source` on another source for a connector (3), `always-ask`
   for the tier (5), runs on Always allow (6) or a chat grant (7), else asks
   `default` (9). Rule 4 is gone.

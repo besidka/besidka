@@ -378,12 +378,13 @@ describe('resolveToolApproval rules', () => {
       expect(decision.reason).toBe('untrusted-output')
     })
 
-    it('does not apply to a connector read', () => {
+    it('asks for a connector read with every answer offered', () => {
       const decision = decide(connectorTool({ access: 'read' }), {
         state: stateWith(['web']),
       })
 
-      expect(decision.rule).toBe(9)
+      expect(decision.rule).toBe(2)
+      expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
     })
   })
 
@@ -459,6 +460,7 @@ describe('resolveToolApproval rules', () => {
       'besidka',
       'overflow',
     ]
+    const ownSource = [connectorReadSource(CONNECTOR_ID)]
 
     it('runs a Besidka read set to Always allow after every taint kind', () => {
       const decision = decide(besidkaTool({ access: 'read' }), {
@@ -470,41 +472,76 @@ describe('resolveToolApproval rules', () => {
       expect(decision.status).toEqual({ type: 'not-applicable' })
     })
 
-    it('runs a connector read with an always grant after every taint and source', () => {
-      const decision = decide(connectorTool({ access: 'read' }), {
-        state: stateWith(everyTaint, otherSources),
-        alwaysGrant: grant(),
-      })
+    it('runs a connector read with an always or chat grant after its own '
+      + 'connector\'s result', () => {
+      const state = stateWith(['connector'], ownSource)
 
-      expect(decision.rule).toBe(6)
+      expect(decide(connectorTool({ access: 'read' }), {
+        state,
+        alwaysGrant: grant(),
+      }).rule).toBe(6)
+      expect(decide(connectorTool({ access: 'read' }), {
+        state,
+        chatGrant: grant(),
+      }).rule).toBe(7)
     })
 
-    it('runs a read with a chat grant after every taint kind', () => {
-      const decision = decide(connectorTool({ access: 'read' }), {
-        state: stateWith(everyTaint, otherSources),
-        chatGrant: grant(),
+    it.each<ToolApprovalTaintKind>([
+      'web',
+      'skill',
+      'knowledge',
+      'file',
+      'besidka',
+      'shared-branch',
+    ])('asks an Always allow connector read after %s taint with every answer',
+      (kind) => {
+        const decision = decide(connectorTool({ access: 'read' }), {
+          state: stateWith([kind]),
+          alwaysGrant: grant(),
+          chatGrant: grant(),
+        })
+
+        expect(decision.rule).toBe(2)
+        expect(decision.reason).toBe('untrusted-output')
+        expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
       })
 
-      expect(decision.rule).toBe(7)
+    it('asks an Always allow connector read after another source (F2)', () => {
+      for (const otherSource of otherSources) {
+        const decision = decide(connectorTool({ access: 'read' }), {
+          state: stateWith([], [...ownSource, otherSource]),
+          alwaysGrant: grant(),
+        })
+
+        expect(decision.rule, otherSource).toBe(3)
+        expect(decision.reason, otherSource).toBe('cross-source')
+        expect(decision.rememberOptions, otherSource)
+          .toEqual(['once', 'chat', 'always'])
+      }
     })
 
     it.each<ToolApprovalTaintKind>(TOOL_APPROVAL_TAINT_KINDS)(
-      'asks default with every answer for a read set to Needs approval after %s taint',
+      'asks a Besidka read set to Needs approval after %s taint with every '
+      + 'answer',
       (kind) => {
-        for (const descriptor of [
-          connectorTool({ access: 'read' }),
-          besidkaTool({ access: 'read' }),
-        ]) {
-          const decision = decide(descriptor, {
-            state: stateWith([kind], otherSources),
-          })
+        const decision = decide(besidkaTool({ access: 'read' }), {
+          state: stateWith([kind], otherSources),
+        })
 
-          expect(decision.rule).toBe(9)
-          expect(decision.reason).toBe('default')
-          expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
-        }
+        expect(decision.rule).toBe(9)
+        expect(decision.reason).toBe('default')
+        expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
       },
     )
+
+    it('asks a connector read set to Needs approval with every answer', () => {
+      const decision = decide(connectorTool({ access: 'read' }), {
+        state: stateWith(['connector'], ownSource),
+      })
+
+      expect(decision.rule).toBe(9)
+      expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
+    })
 
     it('asks a read again after its definition changed', () => {
       const decision = decide(connectorTool({ access: 'read' }), {

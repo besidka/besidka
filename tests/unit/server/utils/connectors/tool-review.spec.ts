@@ -86,6 +86,41 @@ describe('resolveAlwaysAllowHashes', () => {
   })
 })
 
+describe('buildConnectorToolsReview defaults', () => {
+  it('defaults a plain read to Always allow and everything else to Needs '
+    + 'approval, and keeps an explicit Needs approval', async () => {
+    const definitions = [
+      definition('search', { readOnlyHint: true }),
+      definition('fetch_url', { readOnlyHint: true, openWorldHint: true }),
+      definition('share_link', { readOnlyHint: true }),
+      definition('pinned', { readOnlyHint: true }),
+      definition('create_page'),
+    ]
+    const review = await buildConnectorToolsReview({
+      definitions,
+      hashes: new Map(definitions.map(item => [item.name, HASH])),
+      isBaselined: true,
+      settings: [
+        setting('search'),
+        setting('fetch_url'),
+        setting('share_link'),
+        setting('pinned', { approval: 'needs-approval' }),
+        setting('create_page'),
+      ],
+    })
+
+    expect(Object.fromEntries(review.tools.map((tool) => {
+      return [tool.name, tool.mode]
+    }))).toEqual({
+      search: 'allow',
+      fetch_url: 'ask',
+      share_link: 'ask',
+      pinned: 'ask',
+      create_page: 'ask',
+    })
+  })
+})
+
 describe('buildConnectorToolsReview modes', () => {
   it('reports each reviewed tool mode and whether it can be Always allow',
     async () => {

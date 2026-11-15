@@ -55,7 +55,7 @@ function toSwitch(
 ): ConnectorToolSwitch {
   const modeSwitches: Record<ToolPermissionMode, ConnectorToolSwitch> = {
     blocked: { toolName: tool.name, enabled: false },
-    ask: { toolName: tool.name, enabled: true, resetApproval: true },
+    ask: { toolName: tool.name, enabled: true, needsApproval: true },
     allow: {
       toolName: tool.name,
       enabled: true,

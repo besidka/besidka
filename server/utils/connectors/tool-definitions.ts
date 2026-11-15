@@ -11,6 +11,7 @@ import {
   CONNECTOR_TOOL_SCHEMA_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
 import { truncateToByteBudget } from '~~/server/utils/skills/runtime/text'
+import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
 
 const HASH_HEX_LENGTH = 6
 const NAME_SEPARATOR = '__'
@@ -196,6 +197,22 @@ export function isDefinitionAutoRunnable(
 ): boolean {
   return definition.annotations.readOnlyHint === true
     && definition.annotations.destructiveHint !== true
+}
+
+/**
+ * Whether a reviewed connector tool with no explicit choice (stored
+ * approval `ask`) is Always allow by default: the server marks it read-only,
+ * not destructive and not open-world (`openWorldHint: true` reaches outside
+ * the service, for example a fetch of any address), and its remote name or
+ * title names no delete or share action. Every other tool defaults to Needs
+ * approval. This keeps what the C-5 read-only grant ran without asking.
+ */
+export function isConnectorToolDefaultAllowed(
+  definition: Pick<ConnectorToolDefinition, 'annotations' | 'name' | 'title'>,
+): boolean {
+  return isDefinitionAutoRunnable(definition)
+    && definition.annotations.openWorldHint !== true
+    && !hasAlwaysAskToolName(definition.name, definition.title)
 }
 
 /**

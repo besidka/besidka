@@ -735,8 +735,42 @@ describe('tool approval requests in the chat send', () => {
     }))
   })
 
+  it('runs a plain read-only connector tool by default, as before',
+    async () => {
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [
+          toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+          textChunks('One open issue.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(linear.callCount('tools/call')).toBe(1)
+      expect(findPart(parts, 'dynamic-tool'))
+        .toMatchObject({ state: 'output-available' })
+      expect(findPart(parts, 'data-tool-grant')).toBeUndefined()
+    })
+
   it('asks before a read-only connector tool set to Needs approval',
     async () => {
+      await runSend({
+        servers: [linear],
+        connectorIds: ['conn-linear'],
+        steps: [textChunks('Ready.')],
+        messageId: 'user-baseline',
+      })
+
+      for (const setting of mocks.store.toolSettings) {
+        if (setting.toolName === 'list_issues') {
+          setting.approval = 'needs-approval'
+        }
+      }
+
+      mocks.mergedStreams = []
+      mocks.writers = []
+
       const { assistantInsert } = await runSend({
         servers: [linear],
         connectorIds: ['conn-linear'],

@@ -90,8 +90,8 @@ const GROUPS: ReadonlyArray<{
   {
     id: 'read',
     label: 'Read-only',
-    description: 'Look things up. Always allow lets them run after other '
-      + 'content in the message, too.',
+    description: 'Look things up. A plain read is Always allow by default; '
+      + 'it still asks after content from another source.',
   },
   {
     id: 'write',

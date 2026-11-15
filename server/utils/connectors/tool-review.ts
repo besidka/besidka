@@ -51,6 +51,7 @@ import {
   canonicalJson,
   connectorSha256Hex,
   hashToolDefinitions,
+  isConnectorToolDefaultAllowed,
   isDefinitionReadOnly,
 } from '~~/server/utils/connectors/tool-definitions'
 import type {
@@ -199,6 +200,7 @@ export function isConnectorToolAlwaysAsk(
 }
 
 function toolModeOf(
+  definition: ConnectorToolDefinition,
   change: ConnectorToolChange,
   enabled: boolean,
   setting: BaselineSetting | undefined,
@@ -207,7 +209,16 @@ function toolModeOf(
     return 'blocked'
   }
 
-  return change === 'none' && !!setting && isAlwaysGrantActive(setting)
+  if (change !== 'none' || !setting) {
+    return 'ask'
+  }
+
+  if (isAlwaysGrantActive(setting)) {
+    return 'allow'
+  }
+
+  return setting.approval === 'ask'
+    && isConnectorToolDefaultAllowed(definition)
     ? 'allow'
     : 'ask'
 }
@@ -280,7 +291,7 @@ function toReviewTool(
     enabled,
     alwaysAllowed: change === 'none' && !!setting
       && isAlwaysGrantActive(setting),
-    mode: toolModeOf(change, enabled, setting),
+    mode: toolModeOf(definition, change, enabled, setting),
     canAlwaysAllow: change === 'none' && !alwaysAsk,
   }
 }
@@ -396,13 +407,16 @@ function settingFor(
   definition: ConnectorToolDefinition,
   hash: string,
   enabled: boolean,
+  previous: BaselineSetting | undefined,
 ): ConnectorToolSettingInput {
   return {
     toolName: definition.name,
     definitionHash: hash,
     serverReadOnly: isDefinitionReadOnly(definition),
     enabled,
-    approval: 'ask',
+    approval: previous && previous.approval !== 'ask'
+      ? 'needs-approval'
+      : 'ask',
     approvedDefinitionHash: null,
   }
 }
@@ -411,8 +425,11 @@ function settingFor(
  * Stores the reviewed tool list as the new baseline. `accept` turns new and
  * added tools on and keeps a changed tool's previous switch; `keep-disabled`
  * stores them off, so they stay out of chats until the user turns one on.
- * Either way a new or changed tool starts at "Needs approval" (an "Always
- * allow" was given for the old definition and never carries over), removed
+ * Either way a new tool starts at its default (stored `ask`: Always allow
+ * for a plain read, Needs approval otherwise), and a changed tool keeps the
+ * default only when the user never chose a mode for it; an explicit choice,
+ * Always allow included, becomes Needs approval (it was given for the old
+ * definition and never carries over), removed
  * tools lose their rows, and a first review also writes the baseline
  * marker. A connector that was `drifted` is `ready` again.
  */
@@ -428,6 +445,9 @@ export async function applyConnectorToolsReview(input: {
   const definitionsByName = new Map(plan.definitions.map((definition) => {
     return [definition.name, definition]
   }))
+  const settingsByName = new Map(plan.settings.map((setting) => {
+    return [setting.toolName, setting]
+  }))
   const rows: ConnectorToolSettingInput[] = plan.review.isBaselined
     ? []
     : [CONNECTOR_BASELINE_MARKER_SETTING]
@@ -442,7 +462,12 @@ export async function applyConnectorToolsReview(input: {
       ? isAccepted && tool.enabled
       : isAccepted
 
-    rows.push(settingFor(definition, plan.hashes.get(tool.name)!, enabled))
+    rows.push(settingFor(
+      definition,
+      plan.hashes.get(tool.name)!,
+      enabled,
+      tool.change === 'changed' ? settingsByName.get(tool.name) : undefined,
+    ))
   }
 
   for (let start = 0; start < rows.length; start += SETTINGS_WRITE_CHUNK) {

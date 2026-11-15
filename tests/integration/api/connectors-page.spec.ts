@@ -474,7 +474,7 @@ describe('Connectors page routes', () => {
       expect(rows.new_tool).toMatchObject({ enabled: true, approval: 'ask' })
       expect(rows.update_issue).toMatchObject({
         enabled: false,
-        approval: 'ask',
+        approval: 'needs-approval',
         approvedDefinitionHash: null,
       })
       expect(rows.search).toMatchObject({ approval: 'always' })
@@ -695,9 +695,58 @@ describe('Connectors page routes', () => {
         .find(row => row.toolName === 'search'))
         .toMatchObject({
           enabled: true,
-          approval: 'ask',
+          approval: 'needs-approval',
           approvedDefinitionHash: null,
         })
+      expect((await listTools(connectorId)).tools
+        .find(tool => tool.name === 'search')?.mode).toBe('ask')
+    })
+
+    it('defaults a plain read to Always allow and resets an explicit choice '
+      + 'to Needs approval when the tool changes', async () => {
+      const connectorId = await addConnector('linear')
+
+      await serveTools(connectorId, [
+        { name: 'search', annotations: { readOnlyHint: true } },
+        { name: 'list', annotations: { readOnlyHint: true } },
+        { name: 'post' },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      expect(Object.fromEntries((await listTools(connectorId)).tools
+        .map(tool => [tool.name, tool.mode])))
+        .toEqual({ search: 'allow', list: 'allow', post: 'ask' })
+
+      await call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'list', mode: 'allow' }] },
+      })
+      await serveTools(connectorId, [
+        {
+          name: 'search',
+          description: 'changed',
+          annotations: { readOnlyHint: true },
+        },
+        {
+          name: 'list',
+          description: 'changed',
+          annotations: { readOnlyHint: true },
+        },
+        { name: 'post' },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      const rows = Object.fromEntries((await settingsOf(connectorId)).settings
+        .map(row => [row.toolName, row]))
+
+      expect(rows.search).toMatchObject({ approval: 'ask' })
+      expect(rows.list).toMatchObject({
+        approval: 'needs-approval',
+        approvedDefinitionHash: null,
+      })
+      expect(Object.fromEntries((await listTools(connectorId)).tools
+        .map(tool => [tool.name, tool.mode])))
+        .toEqual({ search: 'allow', list: 'ask', post: 'ask' })
     })
 
     it('refuses Always allow for the always-ask tier and a drifted tool, '
