@@ -1,8 +1,10 @@
 import { and, eq, ne } from 'drizzle-orm'
+import { createError } from 'evlog'
 import {
   normalizeSkillCommand,
   validateSkillSlashName,
 } from '#shared/utils/skills-policy'
+import { countStoredHighlights } from '#shared/utils/skills/findings'
 import { getSkillModeColumns } from '#shared/utils/skills/mode'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import * as schema from '~~/server/db/schema'
@@ -12,7 +14,10 @@ import {
   createSkillCommandTakenError,
   createSkillEditError,
 } from '~~/server/utils/skills/versions/errors'
-import { loadOwnedSkill } from '~~/server/utils/skills/versions/read'
+import {
+  loadOwnedSkill,
+  loadVersionRow,
+} from '~~/server/utils/skills/versions/read'
 import { toSkillSummary } from '~~/server/utils/skills/versions/view'
 
 type DbClient = ReturnType<typeof useDb>
@@ -70,17 +75,45 @@ export async function resolveSkillCommand(input: {
 }
 
 /**
+ * A skill a connected app saved is switched on by the user's review. When it
+ * states no license, or a custom one, that review needs the same tick an
+ * import asks for, so the user has seen the terms before it can run.
+ */
+function assertEnableLicenseAcknowledged(
+  licenseClass: string,
+  licenseAcknowledged: boolean | undefined,
+): void {
+  const needsTick = licenseClass === 'none' || licenseClass === 'custom'
+
+  if (!needsTick || licenseAcknowledged === true) {
+    return
+  }
+
+  throw createError({
+    message: 'Confirm that you may use this skill',
+    status: 400,
+    code: 'license-acknowledgement-required',
+    why: licenseClass === 'none'
+      ? 'The skill states no license, so the author keeps all rights'
+      : 'The skill carries a custom license',
+    fix: 'Tick the license box when you turn the skill on',
+  })
+}
+
+/**
  * Settings are not content: no version is created. `mode` sets `enabled` and
  * `modelInvocable` together in one statement and `command` is independent of
  * it: a reserved or invalid command is refused with a 400, a command another
  * skill already uses with a 409. A skill with missing files cannot be
- * enabled.
+ * enabled. Switching on a `needs-review` skill with no pending update is the
+ * user's review, so it becomes `ready`.
  */
 export async function updateSkillSettings(input: {
   db: DbClient
   userId: number
   skillId: string
   changes: SkillSettingsChanges
+  licenseAcknowledged?: boolean
   logger: LoggerLike
 }) {
   const { db, userId } = input
@@ -106,6 +139,17 @@ export async function updateSkillSettings(input: {
       why: 'Its files are missing, or its license is not allowed',
       fix: 'Restore an earlier version, or delete the skill',
     })
+  }
+
+  if (changes.enabled === true && skill.status === 'needs-review') {
+    assertEnableLicenseAcknowledged(
+      skill.licenseClass,
+      input.licenseAcknowledged,
+    )
+
+    if (skill.pendingVersion === null) {
+      changes.status = 'ready'
+    }
   }
 
   let updated: typeof schema.skills.$inferSelect | undefined
@@ -148,5 +192,16 @@ export async function updateSkillSettings(input: {
     },
   })
 
-  return toSkillSummary(updated)
+  const currentVersion = await loadVersionRow(
+    db,
+    userId,
+    updated.id,
+    updated.currentVersion,
+  )
+
+  return toSkillSummary(
+    updated,
+    null,
+    countStoredHighlights(currentVersion?.findings),
+  )
 }

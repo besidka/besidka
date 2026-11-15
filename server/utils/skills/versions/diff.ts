@@ -1,5 +1,6 @@
 import { SKILL_DIFF_MAX_FILES } from '#shared/utils/skills-policy'
 import { diffSkillFiles } from '#shared/utils/skills/diff'
+import { buildVersionChanges } from '~~/server/utils/skills/versions/changes'
 import { createSkillEditError } from '~~/server/utils/skills/versions/errors'
 import {
   loadOwnedSkill,
@@ -35,6 +36,7 @@ export async function diffSkillVersions(input: {
   skillId: string
   version: number
   against?: number
+  includeChanges?: boolean
 }) {
   const { db, bucket, userId } = input
   const skill = await loadOwnedSkill(db, userId, input.skillId)
@@ -69,6 +71,16 @@ export async function diffSkillVersions(input: {
       unchanged: texts.unchanged,
     },
     skipped: texts.skipped,
+    changes: input.includeChanges
+      ? await buildVersionChanges({
+        bucket,
+        userId,
+        skillId: skill.id,
+        beforeFiles,
+        afterFiles,
+        texts,
+      })
+      : null,
     license: {
       changed: beforeRow.licenseClass !== afterRow.licenseClass
         || beforeRow.licenseFileSha256 !== afterRow.licenseFileSha256,

@@ -93,6 +93,22 @@ describe('skill step in the reasoning list', () => {
     })
   })
 
+  it('titles a project pin as a project skill, from the part source', () => {
+    const projectActivation = {
+      type: 'data-skill-activation',
+      data: { skillId: 'skl1', name: 'writing-style', source: 'project' },
+    }
+    const model = getSkillActivationStepModel([projectActivation], 0)
+
+    expect(model).toEqual({
+      state: 'ready',
+      skillId: 'skl1',
+      name: 'writing-style',
+      source: 'project',
+    })
+    expect(getSkillStepTitle(model!)).toBe('Project skill · writing-style')
+  })
+
   it('makes no second step when the call for that skill is in the message', () => {
     const call = part({
       state: 'output-available',

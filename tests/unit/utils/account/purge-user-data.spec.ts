@@ -31,6 +31,7 @@ const skillPurgeCounts = {
   skillVersionsDeleted: 7,
   skillFilesDeleted: 21,
   skillChatSettingsDeleted: 2,
+  projectSkillsDeleted: 4,
   skillObjectsDeleted: 9,
   skillStagingObjectsDeleted: 1,
 }

@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   aiLoggerSet: vi.fn(),
   activeFlags: new Set<string>(),
   skills: new Map<string, FakeSkill>(),
+  projectPins: [] as Array<{ skillId: string, level: 'always' | 'prefer' }>,
+  chatProjectId: null as string | null,
   skillsFlagActive: true,
   historyMessages: [] as Array<Record<string, unknown>>,
   lastInsertValues: null as ReturnType<typeof vi.fn> | null,
@@ -159,8 +161,22 @@ vi.mock('~~/server/utils/skills/runtime/load', () => {
         return skill?.enabled && skill.modelInvocable ? [toRow(skill)] : []
       })
     }),
+    listProjectRuntimeSkills: vi.fn(async () => {
+      return mocks.projectPins.flatMap((pin, position) => {
+        const skill = mocks.skills.get(pin.skillId)
+
+        return skill?.enabled
+          ? [{ ...toRow(skill), level: pin.level, position }]
+          : []
+      })
+    }),
     loadSkillContent: vi.fn(async (input: { skill: FakeSkill }) => {
-      return { ...input.skill, body: SKILL_BODY, files: [] }
+      return {
+        ...input.skill,
+        body: SKILL_BODY,
+        skillMdText: SKILL_BODY,
+        files: [],
+      }
     }),
     readSkillFileText: vi.fn(async () => null),
   }
@@ -254,7 +270,7 @@ function createDb() {
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
-            projectId: null,
+            projectId: mocks.chatProjectId,
             project: null,
             messages: mocks.historyMessages,
           })),
@@ -398,6 +414,8 @@ describe('skills on the chat send path', () => {
     vi.clearAllMocks()
     mocks.mergedStreams = []
     mocks.skills.clear()
+    mocks.projectPins = []
+    mocks.chatProjectId = null
     mocks.historyMessages = []
     mocks.skillsFlagActive = true
     mocks.activeFlags = new Set(['skills'])
@@ -560,6 +578,54 @@ describe('skills on the chat send path', () => {
 
     expect(readSystemPrompt(call)).toContain('<active_skills>')
     expect(readSystemPrompt(call)).toContain('SKILL BODY')
+  })
+
+  it('loads a project\'s always skill, stores the project activation, and stops when the pin is removed', async () => {
+    mocks.chatProjectId = 'project-1'
+    mocks.projectPins = [{ skillId: 'skl2', level: 'always' }]
+
+    const first = await runSend({ steps: [text('Hello.')] })
+    const firstCall = first.doStream.mock.calls[0]?.[0] as any
+    const storedParts = first.assistantInsert?.parts ?? []
+
+    expect(readSystemPrompt(firstCall)).toContain('<project_skills>')
+    expect(readSystemPrompt(firstCall)).toContain('SKILL BODY')
+    expect(readSystemPrompt(firstCall)).toContain('invoked="project"')
+    expect(storedParts).toContainEqual({
+      type: 'data-skill-activation',
+      data: expect.objectContaining({
+        skillId: 'skl2',
+        name: 'meeting-notes',
+        source: 'project',
+      }),
+    })
+
+    mocks.projectPins = []
+    mocks.historyMessages = [
+      {
+        id: 'm-1',
+        publicId: 'p-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'hi' }],
+        tools: [],
+        reasoning: 'off',
+      },
+      {
+        id: 'm-2',
+        publicId: 'p-2',
+        role: 'assistant',
+        parts: [...storedParts, { type: 'text', text: 'Hello.' }],
+        tools: [],
+        reasoning: 'off',
+      },
+    ]
+
+    const second = await runSend({ steps: [text('Again.')] })
+    const secondPrompt = readSystemPrompt(second.doStream.mock.calls[0]?.[0])
+
+    expect(secondPrompt).not.toContain('<project_skills>')
+    expect(secondPrompt).not.toContain('<active_skills>')
+    expect(secondPrompt).not.toContain('SKILL BODY')
   })
 
   it('stores an activate_skill call without its text and adds the activation part', async () => {

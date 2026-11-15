@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '415b3b28633a41578f48a3d6e537a742bb0af87fbd086870b9894153c8c419e1',
+    hash: 'd5ee0da3a5fce6a70636022b701238395d1edcfe292981900d3d54d297447f19',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -35,6 +35,14 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'connector on, sign in or allow a tool without asking), and the '
       + 'wording about connectors as recipients stays with C-10; whether '
       + 'the existing notice needs to say more is the owner\'s decision. '
+      + 'Also the two connected-app permissions for skills (see skills and '
+      + 'their full text; add, change and delete skills, saved switched off '
+      + 'for review; BES-292), with skill deletes under that permission and '
+      + 'not under Delete your data: '
+      + 'they describe what MCP tools can do and cannot do (never switch a '
+      + 'skill on or set it to Auto), with no new purpose, recipient, '
+      + 'transfer or retention; whether the existing notice needs to say '
+      + 'more is the owner\'s decision. '
       + 'An earlier edit changed British spellings to American '
       + 'English, with no change of meaning, so it adds no new '
       + 'classification.',

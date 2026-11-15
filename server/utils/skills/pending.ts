@@ -12,6 +12,15 @@ import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { isDecodableSkillPublicId } from '~~/server/utils/skills/ids'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
 import {
+  deleteSkillJevMarks,
+  moveSkillJevMarks,
+  readVersionSkillJevResult,
+  resolveSkillJevKv,
+  skillJevMarksKey,
+  toStoredJevFindingCounts,
+} from '~~/server/utils/skills/jev/store'
+import type { SkillJevKv } from '~~/server/utils/skills/jev/store'
+import {
   pruneSkillVersions,
   skillBlobKey,
 } from '~~/server/utils/skills/storage'
@@ -30,6 +39,7 @@ export interface AcceptPendingInput extends PendingVersionReference {
   userId: number
   skillId: string
   licenseAcknowledged?: boolean
+  kv?: SkillJevKv | null
 }
 
 export type RejectPendingInput = Omit<
@@ -259,6 +269,14 @@ export async function acceptPendingSkillVersion(
     .orderBy(desc(schema.skillVersions.version))
     .limit(1)
   const version = (latest?.version ?? 0) + 1
+  const jevKv = input.kv === undefined ? resolveSkillJevKv() : input.kv
+  const jevCounts = toStoredJevFindingCounts(jevKv
+    ? await readVersionSkillJevResult({
+      kv: jevKv,
+      key: skillJevMarksKey(userId, skillId, pending.version),
+      versionSha256: pending.sha256,
+    })
+    : null)
   const hasProvenance = pending.sourceKind !== null
   const frontmatter = parsed?.ok ? parsed.frontmatter : null
 
@@ -282,7 +300,9 @@ export async function acceptPendingSkillVersion(
         bytes: pending.bytes,
         licenseClass: pending.licenseClass,
         licenseFileSha256: pending.licenseFileSha256,
-        findings: pending.findings,
+        findings: Object.keys(jevCounts).length === 0
+          ? pending.findings
+          : { ...pending.findings, ...jevCounts },
         note: pending.note,
       }),
       ...pendingFiles.map((file) => {
@@ -338,6 +358,15 @@ export async function acceptPendingSkillVersion(
     throw exception
   }
 
+  await moveSkillJevMarks({
+    userId,
+    skillId,
+    fromVersion: pending.version,
+    toVersion: version,
+    versionSha256: pending.sha256,
+    kv: jevKv,
+  })
+
   try {
     await pruneSkillVersions({ db, bucket, userId, skillId })
   } catch {
@@ -370,6 +399,12 @@ export async function rejectPendingSkillVersion(
   ) as unknown as [BatchItem<'sqlite'>]
 
   await db.batch(deletions)
+  await deleteSkillJevMarks({
+    userId,
+    skillId,
+    versions: [pending.version],
+    kv: input.kv,
+  })
   await invalidateStorageCache(userId)
 
   return { id: skillId, rejected: true }

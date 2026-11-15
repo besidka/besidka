@@ -116,7 +116,7 @@ Other parent tables with cascade children: `chats` → `messages`, `chat_share_f
 
 `documents` (`server/db/schemas/documents.ts`) has no FK and no cascade: `purgeUserData` deletes its rows and the spec objects under `documents/<userId>/`, and the deletion hooks in `server/utils/documents/cleanup.ts` remove the rest (see `docs/d1-restore-reconciliation.md`).
 
-The skills tables (`skills`, `skill_versions`, `skill_files`, `skill_chat_settings`, `server/db/schemas/skills.ts`) have no FK and no cascade: `purgeUserSkills` deletes their rows and the objects under `user-skills/u<userId>/` and `skills-staging/u<userId>/`, and `cleanupSkillsForDeletedChats` removes the per-chat rows (see `docs/d1-restore-reconciliation.md`).
+The skills tables (`skills`, `skill_versions`, `skill_files`, `skill_chat_settings`, `server/db/schemas/skills.ts`) have no FK and no cascade: `purgeUserSkills` deletes their rows and the objects under `user-skills/u<userId>/` and `skills-staging/u<userId>/`, and `cleanupSkillsForDeletedChats` removes the per-chat rows (see `docs/d1-restore-reconciliation.md`). `project_skills` (`server/db/schemas/project-skills.ts`) is the same: no FK, deleted by `deleteProject`, `deleteUserSkill` and `purgeUserSkills`.
 
 The tool approval tables (`besidka_tool_permissions`, `besidka_chat_settings`, `tool_approval_claims`, `server/db/schemas/tool-approvals.ts`) have no FK and no cascade: `purgeUserToolApprovals` deletes their rows, `cleanupToolApprovalsForDeletedChats` removes the per-chat rows and claims, and the hourly `tool-approval-claim-sweep` plugin deletes claims older than 48 hours; the `tool-approval:` KV records expire after 24 hours, and the chat deletion and account purge hooks also delete the ones the per-chat index `tool-approval:chat:<chatPublicId>` lists (see `docs/d1-restore-reconciliation.md`, which also resets restored "allow" permissions and "always" grants to ask).
 
@@ -760,7 +760,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  44 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  57 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -803,9 +803,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   fetcher (not C-3), the runtime (catalog budget, `activate_skill`,
   `read_skill_file`, re-injection past the text-only sanitizer, the interim tool
   rule until C-6), the threat model, Anthropic-only provider-container scripts,
-  the data model, limits, the manager, editor and `/` picker, MCP tools
+  the data model, limits, the manager, editor and `/` picker, project
+  skills that always load or are preferred in a project's chats (S-15,
+  section 5.8), MCP tools
   (`list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`,
-  `delete_skills`; MCP 4.0.0; the name `skills:share` reserved in the docs only), the never-public
+  `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools

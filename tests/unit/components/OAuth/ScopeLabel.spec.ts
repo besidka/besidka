@@ -38,6 +38,24 @@ describe('OAuth scope label', () => {
     expect(write.text()).toContain('You do that in Besidka')
   })
 
+  it('names the skill scopes and says what they cannot do', async () => {
+    const read = await mountSuspended(ScopeLabel, {
+      props: { scope: 'skills:read', withDescription: true },
+    })
+    const write = await mountSuspended(ScopeLabel, {
+      props: { scope: 'skills:write', withDescription: true },
+    })
+
+    expect(read.text()).toContain('See your skills and their full text')
+    expect(write.text()).toContain(
+      'Add, change and delete skills. Changes are saved switched off for '
+      + 'your review',
+    )
+    expect(write.text()).toContain('permanently delete skills')
+    expect(write.text()).toContain('It cannot switch a skill on')
+    expect(write.text()).toContain('set it to Auto or share it')
+  })
+
   it('describes what publishing exposes', async () => {
     const wrapper = await mountSuspended(ScopeLabel, {
       props: { scope: 'artifacts:share', withDescription: true },

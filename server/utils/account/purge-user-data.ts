@@ -53,6 +53,7 @@ export interface PurgeUserDataResult {
   skillVersionsDeleted: number
   skillFilesDeleted: number
   skillChatSettingsDeleted: number
+  projectSkillsDeleted: number
   skillObjectsDeleted: number
   skillStagingObjectsDeleted: number
   connectorsDeleted: number
@@ -92,9 +93,10 @@ export interface PurgeUserDataResult {
  *     row stay until their retention ends,
  *   - documents: the `documents` rows (no FK to `users`) and every spec
  *     object under `documents/<userId>/`,
- *   - skills: the `skills`, `skill_versions`, `skill_files` and
- *     `skill_chat_settings` rows (no FK to `users`) and every object under
- *     `user-skills/u<userId>/` and `skills-staging/u<userId>/`,
+ *   - skills: the `skills`, `skill_versions`, `skill_files`,
+ *     `skill_chat_settings` and `project_skills` rows (no FK to `users`) and
+ *     every object under `user-skills/u<userId>/` and
+ *     `skills-staging/u<userId>/`,
  *   - connectors: the `connectors`, `connector_credentials`,
  *     `connector_tool_settings`, `connector_chat_settings` and
  *     `connector_tool_calls` rows (no FK to `users`; the audit rows go with
@@ -474,6 +476,7 @@ export async function purgeUserData(
     skillVersionsDeleted,
     skillFilesDeleted,
     skillChatSettingsDeleted,
+    projectSkillsDeleted,
     skillObjectsDeleted,
     skillStagingObjectsDeleted,
     connectorsDeleted,
@@ -513,6 +516,7 @@ export async function purgeUserData(
         skillVersionsDeleted,
         skillFilesDeleted,
         skillChatSettingsDeleted,
+        projectSkillsDeleted,
         skillObjectsDeleted,
         skillStagingObjectsDeleted,
         connectorsDeleted,

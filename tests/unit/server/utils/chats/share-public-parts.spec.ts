@@ -100,6 +100,26 @@ describe('filterPublicParts', () => {
     expect(JSON.stringify(message)).not.toContain('private-skill-name')
   })
 
+  it('drops a project skill activation too, so a pinned skill name never reaches a share', () => {
+    const parts = [
+      { type: 'text', text: 'Answer' },
+      {
+        type: 'data-skill-activation',
+        data: {
+          skillId: 'skl1',
+          name: 'pinned-skill-name',
+          version: 1,
+          source: 'project',
+        },
+      },
+    ] as unknown as UIMessage['parts']
+
+    const [message] = filterPublicParts([{ id: 'm1', parts }])
+
+    expect(message?.parts.map(part => part.type)).toEqual(['text'])
+    expect(JSON.stringify(message)).not.toContain('pinned-skill-name')
+  })
+
   it('leaves a message that only attached a skill with no visible parts', () => {
     const parts = [{
       type: 'data-skill-invocation',

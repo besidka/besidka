@@ -102,7 +102,7 @@ fails closed as Blocked. The chat send resolves the modes with
 `resolveBesidkaPermissionModes` (one read of the user's rows) only when a
 pending answer is a Besidka call, and passes them to `decideContinuation`. The
 route imports the registry dynamically for that, because the registry pulls in
-all 50 tool entries (about 0.5 s of cold import in the chat route specs) and
+all 56 tool entries (about 0.5 s of cold import in the chat route specs) and
 no send uses it before L9. Connector tools keep `ask`: their Blocked state is
 the C-5 tool setting, which hides the tool from the live tool set, so the
 replay reads it as missing.

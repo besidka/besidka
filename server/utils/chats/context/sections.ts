@@ -26,6 +26,7 @@ import {
   SKILL_ACTIVATE_TOOL_NAME,
   isDataSkillActivationPart,
   isDataSkillInvocationPart,
+  isProjectSkillActivationPart,
 } from '#shared/utils/skills/runtime'
 
 export type ChatContextVisibility = 'private' | 'public'
@@ -639,7 +640,12 @@ const skillsSection: ChatContextSection = {
           kind: 'skill',
           title: toTitle(part.data.name),
           messageId: message.id,
-          meta: { action: 'Used', version: part.data.version },
+          meta: {
+            action: isProjectSkillActivationPart(part)
+              ? 'Project skill'
+              : 'Used',
+            version: part.data.version,
+          },
         })
 
         continue

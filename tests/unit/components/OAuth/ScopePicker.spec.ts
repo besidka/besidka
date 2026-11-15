@@ -15,6 +15,7 @@ const ALL_SCOPES = [
   'settings:read',
   'artifacts:read',
   'connectors:read',
+  'skills:read',
   'projects:write',
   'memory:write',
   'chats:write',
@@ -23,6 +24,7 @@ const ALL_SCOPES = [
   'artifacts:write',
   'artifacts:share',
   'connectors:write',
+  'skills:write',
   'data:delete',
 ]
 
@@ -92,6 +94,7 @@ describe('OAuth scope picker', () => {
       'settings:read',
       'artifacts:read',
       'connectors:read',
+      'skills:read',
     ])
   })
 
@@ -154,6 +157,34 @@ describe('OAuth scope picker', () => {
     expect(wrapper.get('[data-testid="oauth-write-warning"]').text())
       .toContain('cannot switch one on')
   })
+
+  it('ticks skills:read and leaves skills:write off with the warning style',
+    async () => {
+      const wrapper = await mountSuspended(ScopePicker, {
+        props: { scopes: ALL_SCOPES, modelValue: [] },
+      })
+
+      await wrapper.setProps({ modelValue: lastSelection(wrapper) })
+
+      const readCheckbox = wrapper.get(
+        '[data-testid="oauth-scope-skills:read"]',
+      )
+      const writeCheckbox = wrapper.get(
+        '[data-testid="oauth-scope-skills:write"]',
+      )
+
+      expect((readCheckbox.element as HTMLInputElement).checked).toBe(true)
+      expect((writeCheckbox.element as HTMLInputElement).checked).toBe(false)
+      expect(writeCheckbox.classes()).toContain('checkbox-warning')
+      expect(lastSelection(wrapper)).not.toContain('skills:write')
+      expect(wrapper.text()).toContain('See your skills and their full text')
+      expect(wrapper.text()).toContain(
+        'Add, change and delete skills. Changes are saved switched off for '
+        + 'your review',
+      )
+      expect(wrapper.get('[data-testid="oauth-write-warning"]').text())
+        .toContain('stays switched off until you review it')
+    })
 
   it('adds artifacts:share only when the user ticks it', async () => {
     const wrapper = await mountSuspended(ScopePicker, {

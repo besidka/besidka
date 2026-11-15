@@ -3,6 +3,7 @@ import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { SKILL_VERSIONS_KEPT } from '#shared/utils/skills-policy'
+import { deleteSkillJevMarks } from '~~/server/utils/skills/jev/store'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -357,6 +358,8 @@ export async function pruneSkillVersions(input: {
       )),
     ])
   }
+
+  await deleteSkillJevMarks({ userId, skillId, versions: prunedVersions })
 
   const stillReferenced = new Set<string>()
 
