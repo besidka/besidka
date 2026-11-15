@@ -60,7 +60,7 @@ describe('global auth middleware', () => {
         expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
       })
 
-    it('honours a safe next value', async () => {
+    it('honors a safe next value', async () => {
       await authMiddleware(
         buildRoute('/signup', { next: '/profile/keys?provider=google' }),
         {} as any,
@@ -70,7 +70,7 @@ describe('global auth middleware', () => {
         .toHaveBeenCalledWith('/profile/keys?provider=google')
     })
 
-    it('honours a safe next value on /signin as well', async () => {
+    it('honors a safe next value on /signin as well', async () => {
       await authMiddleware(
         buildRoute('/signin', { next: '/profile/keys' }),
         {} as any,

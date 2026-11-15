@@ -13,10 +13,37 @@ export type FileManagerFile = Pick<
   | 'createdAt'
   | 'originModel'
   | 'generationCost'
->
+> & {
+  documentId?: string | null
+  documentAiGenerated?: boolean | null
+  textStatus?: FileMetadata['textStatus']
+  textBytes?: FileMetadata['textBytes']
+  textTruncated?: boolean
+  textOmittedMedia?: FileMetadata['textOmittedMedia']
+  textOmittedCharts?: FileMetadata['textOmittedCharts']
+}
+
+export type AttachedFile = Pick<
+  FileMetadata,
+  'id' | 'storageKey' | 'name' | 'size' | 'type'
+> & {
+  textStatus?: FileMetadata['textStatus']
+  textBytes?: FileMetadata['textBytes']
+  textTruncated?: boolean
+  textOmittedMedia?: FileMetadata['textOmittedMedia']
+  textOmittedCharts?: FileMetadata['textOmittedCharts']
+}
 
 export type ViewMode = 'grid' | 'list'
 export type FileSourceFilter = FileMetadata['source'] | 'project'
+export type FileKind = 'image' | 'document'
+export type FileKindFilter = 'all' | FileKind
+
+export interface FileKindFilterOption {
+  id: FileKindFilter
+  label: string
+  testId: string
+}
 
 interface FileSourceTabBase {
   label: string
@@ -26,7 +53,6 @@ interface FileSourceTabBase {
 export interface BuiltInFileSourceTab extends FileSourceTabBase {
   kind: 'built-in'
   id: FileSourceFilter
-  requiresImageInput?: boolean
 }
 
 export interface ExtraFileSourceTab extends FileSourceTabBase {

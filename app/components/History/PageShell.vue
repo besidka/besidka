@@ -31,9 +31,9 @@
           :name="tab.icon"
         />
         <span
-          :class="{
-            '@max-md:sr-only': hasArtifactsTab && activeTab !== tab.id,
-          }"
+          :class="tabs.length > BASE_TAB_COUNT && activeTab !== tab.id
+            ? collapseClass
+            : ''"
         >
           {{ tab.label }}
         </span>
@@ -51,57 +51,100 @@
 </template>
 
 <script setup lang="ts">
-type HistoryTab = 'chats' | 'projects' | 'shared' | 'artifacts'
+type HistoryTab
+  = | 'chats'
+    | 'projects'
+    | 'artifacts'
+    | 'documents'
+    | 'skills'
+    | 'shared'
+
+interface HistoryTabLink {
+  id: HistoryTab
+  to: string
+  label: string
+  icon: string
+}
+
+const BASE_TAB_COUNT = 3
+const FIVE_TAB_COUNT = 5
+const SIX_TAB_COUNT = 6
 
 defineProps<{
   activeTab: HistoryTab
 }>()
 
 const artifactsFeature = useFeature('artifacts')
+const documentsFeature = useFeature('documents')
+const skillsFeature = useFeature('skills')
 
-const hasArtifactsTab = computed<boolean>(() => {
-  return artifactsFeature.value.active
+/**
+ * Inactive tabs keep only their icon when the row cannot hold every label.
+ * Six labeled tabs need about 570px (measured with Nunito: 82, 96, 100, 118,
+ * 80 and 91px), five need about 480px, so the container width that triggers
+ * the collapse grows with the tab count. The class strings are written out in
+ * full so Tailwind can see them.
+ */
+const collapseClass = computed<string>(() => {
+  if (tabs.value.length >= SIX_TAB_COUNT) {
+    return '@max-[40rem]:sr-only'
+  }
+
+  return tabs.value.length === FIVE_TAB_COUNT
+    ? '@max-[34rem]:sr-only'
+    : '@max-md:sr-only'
 })
 
-const tabs = computed<Array<{
-  id: HistoryTab
-  to: string
-  label: string
-  icon: string
-}>>(() => {
-  const baseTabs = [
+const tabs = computed<HistoryTabLink[]>(() => {
+  const tabLinks: HistoryTabLink[] = [
     {
-      id: 'chats' as const,
+      id: 'chats',
       to: '/chats/history',
       label: 'Chats',
       icon: 'lucide:message-circle',
     },
     {
-      id: 'projects' as const,
+      id: 'projects',
       to: '/chats/projects',
       label: 'Projects',
       icon: 'lucide:folder',
     },
-    {
-      id: 'shared' as const,
-      to: '/chats/shared',
-      label: 'Shared',
-      icon: 'lucide:share-2',
-    },
   ]
 
-  if (!hasArtifactsTab.value) {
-    return baseTabs
-  }
-
-  return [
-    ...baseTabs,
-    {
-      id: 'artifacts' as const,
+  if (artifactsFeature.value.active) {
+    tabLinks.push({
+      id: 'artifacts',
       to: '/chats/artifacts',
       label: 'Artifacts',
       icon: 'lucide:app-window',
-    },
-  ]
+    })
+  }
+
+  if (documentsFeature.value.active) {
+    tabLinks.push({
+      id: 'documents',
+      to: '/chats/documents',
+      label: 'Documents',
+      icon: 'lucide:file-text',
+    })
+  }
+
+  if (skillsFeature.value.active) {
+    tabLinks.push({
+      id: 'skills',
+      to: '/chats/skills',
+      label: 'Skills',
+      icon: 'lucide:sparkles',
+    })
+  }
+
+  tabLinks.push({
+    id: 'shared',
+    to: '/chats/shared',
+    label: 'Shared',
+    icon: 'lucide:share-2',
+  })
+
+  return tabLinks
 })
 </script>

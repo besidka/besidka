@@ -218,7 +218,7 @@ snyk code test
   <tbody>
     <tr>
       <td>
-        <img src="public/carousel/any-model.webp" width="100%" alt="Besidka on desktop and on a phone, labelled desktop and mobile, installable PWA and push notifications, with a push notification saying the response is ready." />
+        <img src="public/carousel/any-model.webp" width="100%" alt="Besidka on desktop and on a phone, labeled desktop and mobile, installable PWA and push notifications, with a push notification saying the response is ready." />
       </td>
       <td>
         <img src="public/carousel/projects.webp" width="100%" alt="A project page with a Project knowledge panel listing two notes, a text file and a PDF under a capacity meter, next to the Project memory card with entries grouped as Essentials, Areas and Topics." />

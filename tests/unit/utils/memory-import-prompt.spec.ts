@@ -4,7 +4,7 @@ import { MEMORY_IMPORT_PROMPT } from '#shared/utils/memory-import-prompt'
 
 describe('MEMORY_IMPORT_PROMPT', () => {
   it('asks for topics with bullet details of concrete facts', () => {
-    expect(MEMORY_IMPORT_PROMPT).toContain('organised by topic')
+    expect(MEMORY_IMPORT_PROMPT).toContain('organized by topic')
     expect(MEMORY_IMPORT_PROMPT).toContain('bullet list')
     expect(MEMORY_IMPORT_PROMPT).toContain('names, dates, numbers')
   })

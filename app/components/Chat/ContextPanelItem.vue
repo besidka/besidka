@@ -29,11 +29,16 @@
 import { toSafeLocalUrl } from '~/utils/chat-context'
 import { ARTIFACT_KIND_LABELS } from '~/utils/artifact-parts'
 import type {
+  ChatContextConnectorOutcome,
   ChatContextItem,
   ChatContextItemKind,
   ChatContextItemMeta,
 } from '#shared/types/chat-context.d'
 import { isArtifactKind } from '#shared/utils/artifacts'
+import {
+  DOCUMENT_FORMAT_LABELS,
+  isDocumentFormat,
+} from '#shared/utils/documents'
 
 const props = defineProps<{
   item: ChatContextItem
@@ -49,6 +54,10 @@ const ICONS: Record<ChatContextItemKind, string> = {
   'web-source': 'lucide:globe',
   'web-search': 'lucide:search',
   'artifact': 'lucide:app-window',
+  'code-execution': 'lucide:square-terminal',
+  'document': 'lucide:file-text',
+  'skill': 'lucide:sparkles',
+  'connector': 'lucide:cable',
 }
 
 const DETAILS: Record<ChatContextItemKind, string> = {
@@ -61,6 +70,17 @@ const DETAILS: Record<ChatContextItemKind, string> = {
   'web-source': 'Source',
   'web-search': 'Web search',
   'artifact': 'Artifact',
+  'code-execution': 'Code execution',
+  'document': 'Document',
+  'skill': 'Skill',
+  'connector': 'Connector',
+}
+
+const CONNECTOR_OUTCOME_LABELS: Record<ChatContextConnectorOutcome, string> = {
+  ok: 'Done',
+  error: 'Failed',
+  denied: 'Needs approval',
+  limited: 'Limit reached',
 }
 
 const thumbnailUrl = computed<string | null>(() => {
@@ -83,6 +103,30 @@ function getArtifactDetail(meta: ChatContextItemMeta | undefined): string {
   return parts.join(' · ')
 }
 
+function getDocumentDetail(meta: ChatContextItemMeta | undefined): string {
+  return isDocumentFormat(meta?.documentFormat)
+    ? `${DETAILS.document} · ${DOCUMENT_FORMAT_LABELS[meta.documentFormat]}`
+    : DETAILS.document
+}
+
+function getConnectorDetail(meta: ChatContextItemMeta | undefined): string {
+  const parts: string[] = []
+
+  if (meta?.tool) {
+    parts.push(meta.tool)
+  }
+
+  if (meta?.count) {
+    parts.push(meta.count === 1 ? '1 call' : `${meta.count} calls`)
+  }
+
+  if (meta?.outcome) {
+    parts.push(CONNECTOR_OUTCOME_LABELS[meta.outcome])
+  }
+
+  return parts.length > 0 ? parts.join(' · ') : DETAILS.connector
+}
+
 const iconName = computed<string>(() => {
   return ICONS[props.item.kind]
 })
@@ -94,6 +138,14 @@ const detail = computed<string>(() => {
     return meta.count === 1 ? 'Used in 1 answer' : `Used in ${meta.count} answers`
   }
 
+  if (kind === 'code-execution' && meta?.count) {
+    return meta.count === 1 ? '1 run' : `${meta.count} runs`
+  }
+
+  if (kind === 'connector') {
+    return getConnectorDetail(meta)
+  }
+
   if (kind === 'web-source' && meta?.domain) {
     return meta.domain
   }
@@ -102,7 +154,14 @@ const detail = computed<string>(() => {
     return getArtifactDetail(meta)
   }
 
-  if ((kind === 'memory' || kind === 'chat-search') && meta?.action) {
+  if (kind === 'document') {
+    return getDocumentDetail(meta)
+  }
+
+  if (
+    (kind === 'memory' || kind === 'chat-search' || kind === 'skill')
+    && meta?.action
+  ) {
     return meta.action
   }
 

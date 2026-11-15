@@ -151,7 +151,11 @@
             size="18"
           />
         </summary>
-        <div class="dropdown-content z-50 w-56 pt-2">
+        <div
+          class="dropdown-content z-50 w-56 pt-2"
+          data-testid="artifact-actions-menu"
+          @mousedown.prevent
+        >
           <ul class="menu menu-sm w-full rounded-box bg-base-100 p-1 shadow-lg">
             <li>
               <button
@@ -1163,12 +1167,19 @@ async function onAskToFix() {
 
 async function onStartNewChat() {
   const text = buildFixPrompt()
+  const current = state.value
 
-  if (!text || !isOwner.value) {
+  if (!text || !current || !isOwner.value) {
     return
   }
 
-  await startNewChat(text)
+  await startNewChat(text, {
+    artifactId: current.artifactId,
+    version: selectedVersion.value ?? current.version,
+    kind: current.kind,
+    title: current.title,
+    source: 'owner',
+  })
 }
 
 async function onDeleteArtifact() {

@@ -7,7 +7,11 @@ const ARTIFACTS_RUNTIME_PORT = process.env.ARTIFACTS_RUNTIME_PORT || '8788'
 const ARTIFACTS_RUNTIME_ORIGIN = `http://127.0.0.1:${ARTIFACTS_RUNTIME_PORT}`
 const ARTIFACTS_RUNTIME_INSPECTOR_PORT
   = process.env.ARTIFACTS_RUNTIME_INSPECTOR_PORT || '9330'
-const WEBKIT_SPECS = [/new-chat-navigation\.spec\.ts/]
+const WEBKIT_SPECS = [
+  /new-chat-navigation\.spec\.ts/,
+  /artifact-panel-share\.spec\.ts/,
+  /tools-menu\.spec\.ts/,
+]
 const WEBKIT_PROJECTS = process.env.E2E_WEBKIT
   ? [
     {
@@ -141,6 +145,15 @@ export default defineConfig({
       env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
       url: `${ARTIFACTS_RUNTIME_ORIGIN}/v1/index.html`,
       timeout: 180_000,
+      reuseExistingServer: !process.env.CI,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
+    {
+      command: 'pnpm run doc-renderer:dev',
+      env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
+      port: 8789,
+      timeout: 120_000,
       reuseExistingServer: !process.env.CI,
       stdout: 'ignore',
       stderr: 'pipe',

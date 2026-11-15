@@ -131,7 +131,7 @@ describe('prose/CodeStream.vue', () => {
     expect(getLineElements(wrapper)).toHaveLength(6)
   })
 
-  it('colours a finished block exactly like codeToTokens', async () => {
+  it('colors a finished block exactly like codeToTokens', async () => {
     const wrapper = await mountStream(SHORT_BLOCK, 'typescript')
 
     await waitForHighlight(wrapper, SHORT_BLOCK)
@@ -141,7 +141,7 @@ describe('prose/CodeStream.vue', () => {
     )
   })
 
-  it('recolours every line for the other theme', async () => {
+  it('recolors every line for the other theme', async () => {
     const wrapper = await mountStream(SHORT_BLOCK, 'ts')
 
     await waitForHighlight(wrapper, SHORT_BLOCK)

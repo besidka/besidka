@@ -13,6 +13,7 @@ type BindingKey
     | 'r2_buckets'
     | 'analytics_engine_datasets'
     | 'ratelimits'
+    | 'services'
 
 type BindingBlock = Record<BindingKey, Array<Record<string, unknown>>>
 
@@ -90,6 +91,20 @@ describe('wrangler.jsonc previews block', () => {
         .toEqual(pickFields(config.ratelimits, fields))
     })
 
+  it('binds the document renderer in every environment', () => {
+    const binding = { binding: 'DOC_RENDERER', entrypoint: 'DocRenderer' }
+
+    expect(config.services).toEqual([
+      { ...binding, service: 'besidka-doc-renderer' },
+    ])
+    expect(production.services).toEqual([
+      { ...binding, service: 'besidka-doc-renderer' },
+    ])
+    expect(previews.services).toEqual([
+      { ...binding, service: 'besidka-doc-renderer-preview' },
+    ])
+  })
+
   it('keeps previews vars in parity with top-level vars except overrides',
     () => {
       const previewOnlyKeys = ['NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS']
@@ -155,6 +170,7 @@ describe('wrangler.jsonc previews block', () => {
       ...production.r2_buckets.map(bucket => bucket.bucket_name),
       ...production.analytics_engine_datasets.map(dataset => dataset.dataset),
       ...production.ratelimits.map(limiter => limiter.namespace_id),
+      ...production.services.map(service => service.service),
     ]
 
     expect(productionIdentifiers.length).toBeGreaterThan(0)

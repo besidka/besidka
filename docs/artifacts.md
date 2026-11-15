@@ -12,8 +12,9 @@ flags, the eval suite, the results, the rollout plan and the stop rules
 | Cards, side panel, versions, download | `docs/artifacts/panel.md` |
 | Saved progress (`window.besidka.storage`) | `docs/artifacts/viewer-storage.md` |
 | Model calls from an artifact (`window.besidka.complete`) | `docs/artifacts/llm-bridge.md` |
-| Public links (`/a#<token>`), reports, takedown | `docs/artifacts/shares.md` |
+| Public links (`/artifacts/<token>`), reports, takedown | `docs/artifacts/shares.md` |
 | Artifacts library tab | `docs/artifacts/library.md` |
+| Attaching an existing artifact to a chat (BES-350) | `docs/artifacts/attach.md` |
 | Chat tools and instructions | `server/utils/ai/artifact-tools.ts` |
 | Flags, grants, rollouts, scheduled steps | `docs/feature-flags.md` |
 | Legal basis, DPIA, notice `2026-12-artifacts` | `docs/legal/prechecks/artifacts.md`, `docs/legal/dpia.md` |
@@ -28,7 +29,7 @@ All six flags are registry stage `internal` and `available: true`.
 | `artifacts.react` | The `react` kind | Follows `artifacts` at 100% of its cohort |
 | `artifacts.storage` | Saved progress | Owner only until the consent text names it and `CURRENT_CONSENT_VERSION` is bumped (A-9, Art. 9(2)(a)) |
 | `artifacts.llm-bridge` | `window.besidka.complete` on the viewer's key | Same as `artifacts.storage` |
-| `artifacts.share` | Public `/a#<token>` links | Grants only until the owner's Cloudflare separation decision (pre-check A-12 item 1) |
+| `artifacts.share` | Public `/artifacts/<token>` links | Grants only until the owner's Cloudflare separation decision (pre-check A-12 item 1) |
 | `artifacts.mcp` | The artifact tools on `/mcp` | One step behind `artifacts` |
 
 A child flag is off whenever its parent is off and uses its own rollout hash
@@ -69,7 +70,7 @@ ARTIFACT_EVALS_EMAIL=... ARTIFACT_EVALS_PASSWORD=... \
     --models=claude-haiku-5-5,gpt-6-luna,gemini-3.8-flash \
     [--cases=quiz-photosynthesis,edit-flow] [--budget-usd=4]
 
-# 2. Behavioural checks in a real browser (opt-in, never in CI).
+# 2. Behavioral checks in a real browser (opt-in, never in CI).
 ARTIFACT_EVALS=1 \
 ARTIFACT_EVALS_BASE_URL=https://pr-<n>-besidka.chernenko.workers.dev \
 ARTIFACT_EVALS_DIR=.evals/artifacts/<date> \
@@ -135,7 +136,7 @@ Static checks (`scripts/artifact-evals.mjs`, no browser):
   artifact the reply wrote repeated in the reply. Results stored before
   BES-333 have no reply text, so these checks stay `pending` there.
 
-Behavioural check (`tests/e2e/artifacts/evals-render.spec.ts`, opt-in with
+Behavioral check (`tests/e2e/artifacts/evals-render.spec.ts`, opt-in with
 `ARTIFACT_EVALS=1`, skipped otherwise): opens each chat, opens the artifact
 in the side panel, requires the runtime to render within 5 s, clicks up to
 four buttons, radios or labels and requires the frame text to change, and
@@ -296,7 +297,7 @@ ships it once from its own origin (one lazy chunk, 105 KiB brotli, cached
 `ARTIFACT_DESIGN_INSTRUCTIONS` in `server/utils/ai/artifact-tools.ts` is a
 compact rule and component sheet condensed from the daisyUI 5 component
 reference (llms.txt): no CDN or fonts, class names over CSS, the theme
-colour names and what each is for, no fixed colours or `dark:` variants
+color names and what each is for, no fixed colors or `dark:` variants
 (the host theme switches the frame), the common components with their parts
 and modifiers, one example, padding, a short `<style>` only for what classes
 cannot do, and accessibility. It is appended to the artifact instructions
@@ -387,7 +388,7 @@ $0.18 re-run).
 | no-artifact-snippet | pass $0.0007 | pass $0.0004 | pass $0.0027 |
 | **Passed, total** | **13/13**, $0.036 | **12/13**, $0.018 | **12/13**, $0.403 |
 
-"Classes" counts distinct daisyUI-specific classes and theme colour
+"Classes" counts distinct daisyUI-specific classes and theme color
 utilities in the artifact (`btn-*`, `card-body`, `badge-*`, `bg-base-200`,
 `text-base-content/70` and so on), a rough proxy that the screenshots in
 #784 confirm. Run 1 artifacts had none: Claude and GPT wrote their own CSS
@@ -417,7 +418,7 @@ the A-10 tuning, so `network-temptation` also differs for that reason.
 17 to 26 KB) vary run to run and the design system does not touch them.
 
 Rendering (`interactive`, 15 html and react cases with a check): 13 pass,
-2 fail on the harness limit above; every artifact initialised in 197 to
+2 fail on the harness limit above; every artifact initialized in 197 to
 2,218 ms. On iOS: the deployed preview renders the Git cheat sheets and
 the React quiz in Safari on the iOS 27 simulator in light and dark (opened
 through artifact share links, no sign-in needed); the home-screen PWA mode

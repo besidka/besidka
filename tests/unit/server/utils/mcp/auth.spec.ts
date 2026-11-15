@@ -866,7 +866,7 @@ describe('isMcpPrincipalActive', () => {
 })
 
 describe('mcp auth helpers', () => {
-  it('recognises the Bearer scheme only', () => {
+  it('recognizes the Bearer scheme only', () => {
     expect(hasBearerScheme('Bearer abc')).toBe(true)
     expect(hasBearerScheme('bearer\tabc')).toBe(true)
     expect(hasBearerScheme('Bearer')).toBe(true)

@@ -1,3 +1,4 @@
+import { withDerivedKeys } from '#shared/utils/office-files'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -11,6 +12,12 @@ import { buildOAuthGrantDeletes } from '~~/server/utils/account/revoke-user-oaut
 import { purgeUserFeatureAccess } from '~~/server/utils/account/purge-feature-access'
 import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
 import { purgeUserArtifacts } from '~~/server/utils/artifacts/store'
+import { purgeUserDocuments } from '~~/server/utils/documents/cleanup'
+import { purgeUserSkills } from '~~/server/utils/skills/cleanup'
+import { purgeUserConnectors } from '~~/server/utils/connectors/cleanup'
+import { revokeAllUserConnectorTokens } from '~~/server/utils/connectors/revoke'
+import { purgeUserToolApprovals } from '~~/server/utils/tool-approval/cleanup'
+import { purgeUserLegalNoticeData } from '~~/server/utils/legal/purge'
 
 const r2BatchDeleteLimit = 1000
 
@@ -40,6 +47,23 @@ export interface PurgeUserDataResult {
   artifactsHeld: number
   artifactObjectsDeleted: number
   artifactViewerStorageDeleted: number
+  documentsDeleted: number
+  documentObjectsDeleted: number
+  skillsDeleted: number
+  skillVersionsDeleted: number
+  skillFilesDeleted: number
+  skillChatSettingsDeleted: number
+  projectSkillsDeleted: number
+  skillObjectsDeleted: number
+  skillStagingObjectsDeleted: number
+  connectorsDeleted: number
+  connectorCredentialsDeleted: number
+  connectorToolSettingsDeleted: number
+  connectorChatSettingsDeleted: number
+  connectorToolCallsDeleted: number
+  besidkaToolPermissionsDeleted: number
+  besidkaChatSettingsDeleted: number
+  toolApprovalClaimsDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -47,6 +71,7 @@ export interface PurgeUserDataResult {
   featureOptInsDeleted: number
   userRolesDeleted: number
   featureAuditRowsAnonymised: number
+  legalNoticeOptOutsDeleted: number
   sessionKeysDeleted: number
 }
 
@@ -66,14 +91,33 @@ export interface PurgeUserDataResult {
  *     `artifacts/<userId>/`, plus the user's own viewer storage on other
  *     artifacts; artifacts under a legal hold and every `artifact_reports`
  *     row stay until their retention ends,
+ *   - documents: the `documents` rows (no FK to `users`) and every spec
+ *     object under `documents/<userId>/`,
+ *   - skills: the `skills`, `skill_versions`, `skill_files`,
+ *     `skill_chat_settings` and `project_skills` rows (no FK to `users`) and
+ *     every object under `user-skills/u<userId>/` and
+ *     `skills-staging/u<userId>/`,
+ *   - connectors: the `connectors`, `connector_credentials`,
+ *     `connector_tool_settings`, `connector_chat_settings` and
+ *     `connector_tool_calls` rows (no FK to `users`; the audit rows go with
+ *     the account, not with the connector), after a best-effort RFC 7009
+ *     revocation of every connector token under a short deadline,
+ *   - tool approvals: the `besidka_tool_permissions`, `besidka_chat_settings`
+ *     and `tool_approval_claims` rows (no FK to `users`), and the approval
+ *     records in KV that the per-chat indexes of the user's 200 most
+ *     recently updated chats list; any other approval key expires within
+ *     24 hours,
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
  *     authenticated until its TTL expires,
  *   - rows carrying a `userId` with no foreign key to `users`
  *     (`image_generation_locks`, `verifications` whose `value` is the id,
- *     and the feature access tables `feature_grants`, `feature_opt_ins`,
- *     `user_roles`; `feature_audit_log` rows are anonymised instead),
+ *     `legal_notice_email_optouts`, and the feature access tables
+ *     `feature_grants`, `feature_opt_ins`, `user_roles`;
+ *     `feature_audit_log` rows are anonymized instead, and the user's id as
+ *     the approving admin on legal notice and consent version approvals is
+ *     nulled),
  *   - `message_search` FTS5 rows: a standalone virtual table with no FK to
  *     `messages`, scoped only by an `owner` tag column, so a deleted user's
  *     indexed message text would otherwise sit until the hourly GC sweep
@@ -118,18 +162,19 @@ export async function purgeUserData(
   const storageKeys = files.map((file) => {
     return file.storageKey
   })
+  const objectKeys = withDerivedKeys(storageKeys)
 
   let storageBatches = 0
 
-  if (storageKeys.length > 0) {
+  if (objectKeys.length > 0) {
     const storage = useFileStorage()
 
     for (
       let index = 0;
-      index < storageKeys.length;
+      index < objectKeys.length;
       index += r2BatchDeleteLimit
     ) {
-      const batch = storageKeys.slice(index, index + r2BatchDeleteLimit)
+      const batch = objectKeys.slice(index, index + r2BatchDeleteLimit)
 
       try {
         await storage.delete(batch)
@@ -188,6 +233,88 @@ export async function purgeUserData(
     logger.set({
       accountPurge: {
         phase: 'artifacts-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
+  let documentPurge: Awaited<ReturnType<typeof purgeUserDocuments>>
+
+  try {
+    documentPurge = await purgeUserDocuments(db, userId, logger)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'documents-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
+  let skillPurge: Awaited<ReturnType<typeof purgeUserSkills>>
+
+  try {
+    skillPurge = await purgeUserSkills(db, userId, logger)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'skills-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
+  await revokeAllUserConnectorTokens(db, userId, logger)
+
+  let connectorPurge: Awaited<ReturnType<typeof purgeUserConnectors>>
+
+  try {
+    connectorPurge = await purgeUserConnectors(db, userId, logger)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'connectors-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
+  let toolApprovalPurge: Awaited<ReturnType<typeof purgeUserToolApprovals>>
+
+  try {
+    toolApprovalPurge = await purgeUserToolApprovals(db, userId, logger)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'tool-approvals-delete',
         userId,
       },
       attributes: {
@@ -275,6 +402,26 @@ export async function purgeUserData(
     }
   }
 
+  let legalNoticeData: Awaited<ReturnType<typeof purgeUserLegalNoticeData>>
+
+  try {
+    legalNoticeData = await purgeUserLegalNoticeData(userId, db)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'legal-notice-purge',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   let featureAccess: Awaited<ReturnType<typeof purgeUserFeatureAccess>>
 
   try {
@@ -303,10 +450,15 @@ export async function purgeUserData(
     storageBatches,
     knowledgeObjectsDeleted: knowledgePurge.objectsDeleted,
     ...artifactPurge,
+    ...documentPurge,
+    ...skillPurge,
+    ...connectorPurge,
+    ...toolApprovalPurge,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
     ...featureAccess,
+    ...legalNoticeData,
     sessionKeysDeleted: sessionStorageKeys.length,
   }
 
@@ -318,10 +470,28 @@ export async function purgeUserData(
     artifactsHeld,
     artifactObjectsDeleted,
     artifactViewerStorageDeleted,
+    documentsDeleted,
+    documentObjectsDeleted,
+    skillsDeleted,
+    skillVersionsDeleted,
+    skillFilesDeleted,
+    skillChatSettingsDeleted,
+    projectSkillsDeleted,
+    skillObjectsDeleted,
+    skillStagingObjectsDeleted,
+    connectorsDeleted,
+    connectorCredentialsDeleted,
+    connectorToolSettingsDeleted,
+    connectorChatSettingsDeleted,
+    connectorToolCallsDeleted,
+    besidkaToolPermissionsDeleted,
+    besidkaChatSettingsDeleted,
+    toolApprovalClaimsDeleted,
     featureGrantsDeleted,
     featureOptInsDeleted,
     userRolesDeleted,
     featureAuditRowsAnonymised,
+    legalNoticeOptOutsDeleted,
     ...existingResult
   } = result
 
@@ -340,10 +510,28 @@ export async function purgeUserData(
         artifactsHeld,
         artifactObjectsDeleted,
         artifactViewerStorageDeleted,
+        documentsDeleted,
+        documentObjectsDeleted,
+        skillsDeleted,
+        skillVersionsDeleted,
+        skillFilesDeleted,
+        skillChatSettingsDeleted,
+        projectSkillsDeleted,
+        skillObjectsDeleted,
+        skillStagingObjectsDeleted,
+        connectorsDeleted,
+        connectorCredentialsDeleted,
+        connectorToolSettingsDeleted,
+        connectorChatSettingsDeleted,
+        connectorToolCallsDeleted,
+        besidkaToolPermissionsDeleted,
+        besidkaChatSettingsDeleted,
+        toolApprovalClaimsDeleted,
         featureGrantsDeleted,
         featureOptInsDeleted,
         userRolesDeleted,
         featureAuditRowsAnonymised,
+        legalNoticeOptOutsDeleted,
       },
     },
   })

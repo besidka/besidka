@@ -31,6 +31,15 @@
       @files-dropped="uploadFiles"
     />
     <LazyChatScroll v-show="isChatScrollButtonVisible" />
+    <ChatInputCommandPicker
+      ref="commandPicker"
+      :is-open="commands.isOpen.value"
+      :matches="commands.matches.value"
+      :active-index="commands.activeIndex.value"
+      :has-no-commands="commands.hasNoCommands.value"
+      @pick="commands.pick"
+    />
+    <ChatInputToolApprovalChip />
     <div class="flex justify-center w-full px-2">
       <UiBubble
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
@@ -47,7 +56,10 @@
           <!-- Attached Files Preview with Upload Progress -->
           <LazyChatInputFilesAttachedPreview
             :files="files"
+            :resolve-delivery="resolveDelivery"
+            :resolve-delivery-with-run-code="resolveDeliveryWithRunCode"
             :uploading-files="uploadingFiles"
+            :converted-from-xls-keys="convertedFromXlsKeys"
             :uploading-count="uploadingCount"
             :tiles="tiles"
             :pasted-texts="pastedTexts"
@@ -62,19 +74,48 @@
             @retry="retryUpload"
             @cancel-all="cancelAllUploads"
           />
-          <textarea
-            ref="textarea"
-            v-model="input"
-            data-testid="chat-input-textarea"
-            class="textarea p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
-            :placeholder="textareaPlaceholder"
-            :disabled="displayStop"
-            @keydown="onTextareaKeydown"
-            @beforeinput="onMarkdownBeforeInput"
-            @paste="onMarkdownPaste"
-            @focus="onKeyboardFocus"
-            @blur="onKeyboardBlur"
-          />
+          <div class="relative">
+            <LazyChatInputCommandMirror
+              v-if="commands.activeToken.value"
+              :textarea="textarea"
+              :text="input"
+              :start="commands.activeToken.value.start"
+              :end="commands.activeToken.value.end"
+            />
+            <textarea
+              ref="textarea"
+              v-model="input"
+              data-testid="chat-input-textarea"
+              class="textarea relative p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
+              :placeholder="textareaPlaceholder"
+              :disabled="displayStop"
+              :role="commands.isEnabled.value ? 'combobox' : undefined"
+              :aria-expanded="commands.isEnabled.value
+                ? commands.isOpen.value
+                : undefined
+              "
+              :aria-controls="commands.isOpen.value
+                ? commandPicker?.listId
+                : undefined
+              "
+              :aria-activedescendant="commands.isOpen.value
+                ? commandPicker?.activeOptionId
+                : undefined
+              "
+              :aria-autocomplete="commands.isEnabled.value ? 'list' : undefined"
+              @keydown="onTextareaKeydown"
+              @keyup="commands.refresh"
+              @click="commands.refresh"
+              @select="commands.refresh"
+              @input="commands.refresh"
+              @compositionstart="commands.onCompositionStart"
+              @compositionend="commands.onCompositionEnd"
+              @beforeinput="onTextareaBeforeInput"
+              @paste="onMarkdownPaste"
+              @focus="onTextareaFocus"
+              @blur="onTextareaBlur"
+            />
+          </div>
           <div class="flex items-center justify-between gap-2 p-2 pb-0">
             <div class="flex items-center gap-1 min-w-0">
               <div class="min-w-0">
@@ -88,12 +129,16 @@
                 @select-exa-search-level="selectExaSearchLevel"
                 @toggle-auto-web-search="setAutoWebSearchPreferred"
                 @toggle-image-generation="toggleImageGeneration"
+                @toggle-code-execution="toggleCodeExecution"
                 @select-reasoning-level="selectReasoningLevel"
                 @save-default-reasoning-level="saveDefaultReasoningLevel"
                 @open-project-picker="emit('open-project-picker')"
                 @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
                 @open-files-generated="openFilesModal('select', 'assistant')"
+                @open-artifact-picker="openArtifactPicker"
+                @open-skills-picker="openSkillPicker"
+                @open-connectors-picker="openConnectorPicker"
                 @update:use-memory="setMemoryUsage"
                 @remove-tile="removeTile"
               />
@@ -156,11 +201,36 @@
     <LazyChatInputFilesModal
       ref="filesModalRef"
       :attached-ids="attachedIds"
-      :is-image-input-supported="isImageInputSupported"
       :can-attach-media-type="canAttachMediaType"
+      :resolve-delivery="resolveDelivery"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
       @upload="uploadFiles"
+    />
+    <LazyChatInputArtifactPicker
+      v-if="isArtifactPickerMounted && isArtifactAttachEnabled"
+      v-model:open="isArtifactPickerOpen"
+      @pick="onArtifactPicked"
+    />
+    <LazyChatInputConnectorPicker
+      v-if="isConnectorPickerMounted && isConnectorsEnabled"
+      v-model:open="isConnectorPickerOpen"
+      :items="composerConnectors.items.value"
+      :selected-ids="composerConnectors.selectedIds.value"
+      :is-at-limit="composerConnectors.isAtLimit.value"
+      :is-saving="composerConnectors.isSaving.value"
+      :besidka="besidkaPickerRow"
+      :are-connectors-available="composerConnectors.isFeatureActive.value"
+      @toggle="composerConnectors.toggle"
+      @toggle-besidka="composerBesidkaTools.toggle"
+    />
+    <LazyChatInputSkillPicker
+      v-if="isSkillPickerMounted && composerSkills.isVisible.value"
+      v-model:open="isSkillPickerOpen"
+      :items="composerSkills.items.value"
+      :selected-id="skillInvocation.invocation.value?.skillId ?? null"
+      :can-run-scripts="canRunSkillScripts"
+      @pick="onSkillSelected"
     />
     <LazyChatTextFileModal
       v-if="openedPastedText"
@@ -188,21 +258,29 @@
 import type { StyleValue } from 'vue'
 import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
+import type { ComposerSkillItem } from '~/composables/composer-skills'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
-import type { FileSourceFilter } from '~/types/file-manager'
+import type { AttachedFile, FileSourceFilter } from '~/types/file-manager'
+import type {
+  FileDeliveryResolver,
+  FileRejection,
+} from '~/utils/file-delivery-hints'
 import type { TextSnapshot } from '~/composables/markdown-textarea'
 import type { PastedText } from '~/utils/pasted-text'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import type {
+  AttachedArtifact,
   ChatInputTile,
   ChatInputTileId,
   ChatInputToolsState,
   ReasoningMode,
   ToolsSection,
 } from '~/types/chat-input-tools'
+import type { ArtifactSummary } from '#shared/utils/artifacts'
+import { ARTIFACT_ATTACHMENTS_MAX } from '#shared/utils/artifacts'
 import { LazyChatInputFilesModal } from '#components'
 import {
   SIDE_PANEL_TRANSITION_DURATION,
@@ -244,6 +322,7 @@ const {
   isImageGenerationRequired,
   isImageInputSupported,
   canAttachMediaType,
+  fileDeliveryContext,
   isReasoningSupported,
   isReasoningAlwaysOn,
   reasoningCapability,
@@ -258,7 +337,12 @@ const {
   isSelectedModelUnavailable,
   selectedModelId,
   selectedModelBillingProviderId,
+  isCodeExecutionSupported,
 } = useChatInput()
+const codeExecutionFeature = useFeature('code-execution')
+const codeExecutionFilesFeature = useFeature('code-execution.files')
+const skillScriptsFeature = useFeature('skills.scripts')
+const { features: loadedFeatures } = useFeatures()
 const { ensureSendConsent } = useLegalConsent()
 const {
   isAvailable: isAutoWebSearchAvailable,
@@ -284,6 +368,10 @@ const files = defineModel<FileMetadata[]>('files', {
 
 const memoryExcluded = defineModel<boolean | null>('memoryExcluded', {
   default: null,
+})
+
+const attachedArtifacts = defineModel<AttachedArtifact[]>('attachedArtifacts', {
+  default: () => [],
 })
 
 function setMemoryUsage(isUsed: boolean) {
@@ -507,33 +595,73 @@ nuxtApp.hook('chat:attach-file', async (file) => {
   nuxtApp.callHook('chat:scroll-to-bottom')
 })
 
+const isCodeExecutionFilesAvailable = computed<boolean>(() => {
+  return isCodeExecutionSupported.value
+    && !isDeepResearchModel.value
+    && codeExecutionFeature.value.active
+    && codeExecutionFilesFeature.value.active
+})
+
+const isCodeExecutionFilesActive = computed<boolean>(() => {
+  return tools.value.includes('code_execution')
+    && isCodeExecutionFilesAvailable.value
+})
+
+const resolveDelivery = computed<FileDeliveryResolver>(() => {
+  return createFileDeliveryResolver({
+    ...fileDeliveryContext.value,
+    codeExecutionFiles: isCodeExecutionFilesActive.value,
+  })
+})
+
+const resolveDeliveryWithRunCode = computed<
+  FileDeliveryResolver | undefined
+>(() => {
+  if (!isCodeExecutionFilesAvailable.value) {
+    return undefined
+  }
+
+  return createFileDeliveryResolver({
+    ...fileDeliveryContext.value,
+    codeExecutionFiles: true,
+  })
+})
+
 const {
   uploadFiles,
   uploadingFiles,
+  convertedFromXlsKeys,
   uploadingCount,
   cancelUpload,
   retryUpload,
   cancelAllUploads,
   removeAttachedFile,
   removeAllFiles,
-} = useChatFiles(files, canAttachMediaType)
+} = useChatFiles(files, canAttachMediaType, resolveDelivery)
 
-watch(canAttachMediaType, (canAttach) => {
-  const rejectedFiles = files.value.filter((file) => {
-    return isMediaTypeRejectedByModel(file.type, canAttach)
+watch(resolveDelivery, (resolve) => {
+  const rejections = files.value.flatMap((file) => {
+    const rejection = getFileRejection(file, resolve)
+
+    return rejection && isModelCapabilityRejection(rejection)
+      ? [{ file, rejection }]
+      : []
   })
 
-  if (rejectedFiles.length === 0) {
+  if (rejections.length === 0) {
     return
   }
 
+  const rejectedFiles = rejections.map(({ file }) => file)
+
   files.value = files.value.filter(file => !rejectedFiles.includes(file))
-  useWarningMessage(
-    getUnsupportedInputMessage(
-      rejectedFiles.map(file => file.type),
-      canAttach,
-    ),
-  )
+
+  for (const message of getRejectionMessages(
+    rejections.map(({ rejection }) => rejection),
+    canAttachMediaType.value,
+  )) {
+    useWarningMessage(message)
+  }
 }, { flush: 'post' })
 
 /**
@@ -679,12 +807,20 @@ nuxtApp.hook('chat-input:prefill', prefillMessage)
 
 const chatInputPrefill = useChatInputPrefill()
 
+const pendingArtifact = shallowRef<AttachedArtifact | null>(
+  chatInputPrefill.takeArtifact(),
+)
+
 onMounted(async () => {
   const pendingText = chatInputPrefill.take()
 
   if (pendingText) {
     await prefillMessage(pendingText)
   }
+})
+
+nuxtApp.hook('chat-input:attach-artifact', (artifact) => {
+  pendingArtifact.value = artifact
 })
 
 const {
@@ -700,6 +836,7 @@ const {
 const hasMessage = computed<boolean>(() => {
   return !!input.value?.trim().length
     || hasPastedTextContent(pastedTexts.value)
+    || skillInvocation.invocation.value !== null
 })
 
 const canShowRegenerate = computed<boolean>(() => {
@@ -750,6 +887,26 @@ const isImageGenerationActive = computed<boolean>(() => {
   return isImageGenerationEnabled.value || isImageGenerationRequired.value
 })
 
+const isCodeExecutionEnabled = computed<boolean>(() => {
+  return tools.value.includes('code_execution')
+})
+
+const isCodeExecutionAvailable = computed<boolean>(() => {
+  return isCodeExecutionSupported.value
+    && codeExecutionFeature.value.active
+    && !isDeepResearchModel.value
+})
+
+const isCodeExecutionRowVisible = computed<boolean>(() => {
+  return isCodeExecutionAvailable.value && !isImageGenerationActive.value
+})
+
+const canRunSkillScripts = computed<boolean>(() => {
+  return skillScriptsFeature.value.active
+    && isCodeExecutionRowVisible.value
+    && selectedModelBillingProviderId.value === 'anthropic'
+})
+
 const isReasoningSectionVisible = computed<boolean>(() => {
   return (isReasoningSupported.value || isReasoningAlwaysOn.value)
     && !isDeepResearchModel.value
@@ -782,6 +939,59 @@ const shouldDisplayProjectPicker = computed<boolean>(() => {
   return !!(props.displayProjectPicker || props.projectContext)
 })
 
+const artifactsFeature = useFeature('artifacts')
+const composerSkills = useComposerSkills()
+const composerConnectors = useComposerConnectors(() => {
+  return route.name === 'chats-slug' ? String(route.params.slug) : null
+})
+const composerBesidkaTools = useComposerBesidkaTools(() => {
+  return route.name === 'chats-slug' ? String(route.params.slug) : null
+})
+const skillInvocation = useComposerSkillInvocation()
+const skillPreview = useSkillPreview()
+const commandPicker = useTemplateRef<{
+  listId: string
+  activeOptionId: string | undefined
+}>('commandPicker')
+
+const isArtifactAttachEnabled = computed<boolean>(() => {
+  return artifactsFeature.value.active && !isDeepResearchModel.value
+})
+
+const isSkillAttachEnabled = computed<boolean>(() => {
+  return composerSkills.isVisible.value && !isDeepResearchModel.value
+})
+
+const besidkaPickerRow = computed(() => {
+  if (!composerBesidkaTools.isAvailable.value) {
+    return null
+  }
+
+  return {
+    enabled: composerBesidkaTools.isEnabled.value,
+    isSaving: composerBesidkaTools.isSaving.value,
+  }
+})
+
+const isConnectorsEnabled = computed<boolean>(() => {
+  return (
+    composerConnectors.isVisible.value
+    || composerBesidkaTools.isAvailable.value
+  )
+  && isToolCallingSupported.value
+  && !isDeepResearchModel.value
+  && !isImageGenerationEnabled.value
+  && !isImageGenerationRequired.value
+})
+
+const commands = useComposerCommands({
+  textarea,
+  text: input,
+  items: () => composerSkills.items.value,
+  isAvailable: () => isSkillAttachEnabled.value,
+  insertText: insertTextAtSelection,
+})
+
 const toolsState = computed<ChatInputToolsState>(() => {
   return {
     isNewChat: route.path === '/chats/new',
@@ -810,10 +1020,31 @@ const toolsState = computed<ChatInputToolsState>(() => {
       enabled: isImageGenerationEnabled.value,
       required: isImageGenerationRequired.value,
     },
+    codeExecution: {
+      visible: isCodeExecutionRowVisible.value,
+      enabled: isCodeExecutionEnabled.value,
+      providerId: selectedModelBillingProviderId.value,
+    },
     files: {
       visible: !isDeepResearchModel.value,
       count: files.value.length,
       isImageInputSupported: isImageInputSupported.value,
+    },
+    artifacts: {
+      visible: isArtifactAttachEnabled.value,
+      attached: isArtifactAttachEnabled.value ? attachedArtifacts.value : [],
+    },
+    skills: {
+      visible: isSkillAttachEnabled.value,
+      items: composerSkills.items.value,
+      selected: isSkillAttachEnabled.value
+        ? skillInvocation.invocation.value
+        : null,
+    },
+    connectors: {
+      visible: isConnectorsEnabled.value,
+      items: composerConnectors.items.value,
+      selectedIds: composerConnectors.selectedIds.value,
     },
     project: {
       visible: shouldDisplayProjectPicker.value,
@@ -844,6 +1075,20 @@ function openToolsMenu(
   section: ToolsSection | null,
   origin: HTMLElement,
 ) {
+  const attachedSkill = skillInvocation.invocation.value
+
+  if (section === 'skills' && attachedSkill) {
+    skillPreview.open(attachedSkill.skillId)
+
+    return
+  }
+
+  if (section === 'connectors') {
+    openConnectorPicker()
+
+    return
+  }
+
   toolsMenu.value?.open(section, origin)
 }
 
@@ -858,7 +1103,21 @@ async function focusAfterTileRemoval() {
 }
 
 function removeTile(id: ChatInputTileId) {
-  if (id === 'project') {
+  if (id.startsWith(ARTIFACT_TILE_ID_PREFIX)) {
+    const artifactId = id.slice(ARTIFACT_TILE_ID_PREFIX.length)
+
+    attachedArtifacts.value = attachedArtifacts.value.filter((artifact) => {
+      return artifact.artifactId !== artifactId
+    })
+  } else if (id === 'skill') {
+    if (skillInvocation.invocation.value?.source === 'text') {
+      commands.removeToken()
+    } else {
+      skillInvocation.clear()
+    }
+  } else if (id === 'connectors') {
+    composerConnectors.clear()
+  } else if (id === 'project') {
     emit('clear-project-context')
   } else if (id === 'memory') {
     memoryExcluded.value = false
@@ -868,6 +1127,8 @@ function removeTile(id: ChatInputTileId) {
     }
   } else if (id === 'search') {
     selectWebSearchProvider('off')
+  } else if (id === 'code') {
+    toggleCodeExecution(false)
   }
 
   focusAfterTileRemoval()
@@ -1088,7 +1349,7 @@ function toggleImageGeneration() {
   if (!isImageGenerationEnabled.value) {
     tools.value = [
       ...tools.value.filter((tool) => {
-        return !isWebSearchTool(tool)
+        return !isWebSearchTool(tool) && tool !== 'code_execution'
       }),
       'image_generation',
     ]
@@ -1100,6 +1361,45 @@ function toggleImageGeneration() {
     return tool !== 'image_generation'
   })
 }
+
+function toggleCodeExecution(isOn: boolean) {
+  const withoutCodeExecution = stripCodeExecutionTool(tools.value)
+
+  if (!isOn) {
+    tools.value = withoutCodeExecution
+
+    return
+  }
+
+  tools.value = [
+    ...withoutCodeExecution.filter((tool) => {
+      return tool !== 'image_generation'
+    }),
+    'code_execution',
+  ]
+}
+
+const isCodeExecutionBlocked = computed<boolean>(() => {
+  const isFeatureKnownInactive = loadedFeatures.value !== null
+    && !codeExecutionFeature.value.active
+
+  return !isCodeExecutionSupported.value
+    || isDeepResearchModel.value
+    || isFeatureKnownInactive
+    || isImageGenerationActive.value
+})
+
+watch(
+  [isCodeExecutionBlocked, isModelCapabilityResolved],
+  ([isBlocked, isResolved]) => {
+    if (!isResolved || !isBlocked || !isCodeExecutionEnabled.value) {
+      return
+    }
+
+    tools.value = stripCodeExecutionTool(tools.value)
+  },
+  { immediate: true, flush: 'post' },
+)
 
 onMounted(async () => {
   await nextTick()
@@ -1125,27 +1425,27 @@ watch(input, (newValue) => {
   }
 })
 
-function onFilesAttached(
-  attachedFiles: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
-) {
+function onFilesAttached(attachedFiles: AttachedFile[]) {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
   const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
   )
-  const rejectedFiles = incomingFiles.filter((file) => {
-    return isMediaTypeRejectedByModel(file.type, canAttachMediaType.value)
-  })
+  const rejections: FileRejection[] = []
   const newFiles = incomingFiles.filter((file) => {
-    return !rejectedFiles.includes(file)
+    const rejection = getFileRejection(file, resolveDelivery.value)
+
+    if (rejection) {
+      rejections.push(rejection)
+    }
+
+    return !rejection
   })
 
-  if (rejectedFiles.length > 0) {
-    useWarningMessage(
-      getUnsupportedInputMessage(
-        rejectedFiles.map(file => file.type),
-        canAttachMediaType.value,
-      ),
-    )
+  for (const message of getRejectionMessages(
+    rejections,
+    canAttachMediaType.value,
+  )) {
+    useWarningMessage(message)
   }
 
   if (newFiles.length === 0) {
@@ -1277,8 +1577,26 @@ async function insertPastedText(content: string) {
   insertTextAtSelection(content)
 }
 
+function onTextareaBeforeInput(event: InputEvent) {
+  if (commands.onBeforeInput(event)) {
+    return
+  }
+
+  onMarkdownBeforeInput(event)
+}
+
+function onTextareaFocus() {
+  onKeyboardFocus()
+  commands.refresh()
+}
+
+function onTextareaBlur() {
+  onKeyboardBlur()
+  commands.reset()
+}
+
 function onTextareaKeydown(event: KeyboardEvent) {
-  if (onMarkdownKeydown(event)) {
+  if (commands.onKeydown(event) || onMarkdownKeydown(event)) {
     return
   }
 
@@ -1318,6 +1636,21 @@ async function sendMessage() {
     return warnAboutMissingKey()
   }
 
+  const blockedFileMessages = getBlockedFileMessages(
+    files.value,
+    resolveDelivery.value,
+    resolveDeliveryWithRunCode.value,
+    canAttachMediaType.value,
+  )
+
+  if (blockedFileMessages.length > 0) {
+    for (const blockedFileMessage of blockedFileMessages) {
+      useWarningMessage(blockedFileMessage)
+    }
+
+    return
+  }
+
   if (props.isClarifying) {
     return useWarningMessage(
       'Please wait for the research questions to finish loading.',
@@ -1345,15 +1678,153 @@ async function sendMessage() {
     return
   }
 
-  const text = joinMessageWithPastedTexts(message.value, pastedTexts.value)
+  const text = joinMessageWithPastedTexts(
+    commands.stripFromText(message.value),
+    pastedTexts.value,
+  )
 
   message.value = text
   emit('submit')
   message.value = ''
   files.value = []
+  attachedArtifacts.value = []
+  skillInvocation.clear()
   pastedTexts.value = []
   nuxtApp.callHook('chat:submit', { text })
 }
+
+const isSkillPickerMounted = shallowRef<boolean>(false)
+const isSkillPickerOpen = shallowRef<boolean>(false)
+
+function openSkillPicker() {
+  if (!isSkillAttachEnabled.value) {
+    return
+  }
+
+  isSkillPickerMounted.value = true
+  isSkillPickerOpen.value = true
+}
+
+function onSkillSelected(item: ComposerSkillItem) {
+  if (!isSkillAttachEnabled.value) {
+    return
+  }
+
+  skillInvocation.set({
+    skillId: item.id,
+    name: item.name,
+    version: item.version,
+  }, 'menu')
+}
+
+watch(isSkillAttachEnabled, (isEnabled) => {
+  if (isEnabled) {
+    return
+  }
+
+  isSkillPickerOpen.value = false
+  skillInvocation.clear()
+})
+
+onUnmounted(() => {
+  skillInvocation.clear()
+})
+
+const isConnectorPickerMounted = shallowRef<boolean>(false)
+const isConnectorPickerOpen = shallowRef<boolean>(false)
+
+function openConnectorPicker() {
+  if (!isConnectorsEnabled.value) {
+    return
+  }
+
+  isConnectorPickerMounted.value = true
+  isConnectorPickerOpen.value = true
+}
+
+watch(isConnectorsEnabled, (isEnabled) => {
+  if (!isEnabled) {
+    isConnectorPickerOpen.value = false
+  }
+})
+
+const isArtifactPickerMounted = shallowRef<boolean>(false)
+const isArtifactPickerOpen = shallowRef<boolean>(false)
+
+function openArtifactPicker() {
+  if (!isArtifactAttachEnabled.value) {
+    return
+  }
+
+  isArtifactPickerMounted.value = true
+  isArtifactPickerOpen.value = true
+}
+
+function attachArtifact(artifact: AttachedArtifact): boolean {
+  if (!isArtifactAttachEnabled.value) {
+    return false
+  }
+
+  const isAlreadyAttached = attachedArtifacts.value.some((attached) => {
+    return attached.artifactId === artifact.artifactId
+  })
+
+  if (isAlreadyAttached) {
+    return true
+  }
+
+  if (attachedArtifacts.value.length >= ARTIFACT_ATTACHMENTS_MAX) {
+    useWarningMessage(
+      `You can attach up to ${ARTIFACT_ATTACHMENTS_MAX} artifacts.`,
+      'Remove one to attach another.',
+    )
+
+    return false
+  }
+
+  attachedArtifacts.value = [...attachedArtifacts.value, {
+    artifactId: artifact.artifactId,
+    version: artifact.version,
+    kind: artifact.kind,
+    title: artifact.title,
+  }]
+
+  return true
+}
+
+function onArtifactPicked(artifact: ArtifactSummary) {
+  attachArtifact({
+    artifactId: artifact.id,
+    version: artifact.currentVersion,
+    kind: artifact.kind,
+    title: artifact.title,
+  })
+}
+
+watch(isArtifactAttachEnabled, (isEnabled) => {
+  if (isEnabled) {
+    return
+  }
+
+  isArtifactPickerOpen.value = false
+
+  if (attachedArtifacts.value.length > 0) {
+    attachedArtifacts.value = []
+  }
+})
+
+watch(
+  [pendingArtifact, isArtifactAttachEnabled],
+  ([artifact, isEnabled]) => {
+    if (!artifact || !isEnabled) {
+      return
+    }
+
+    pendingArtifact.value = null
+    attachArtifact(artifact)
+  },
+  { immediate: true },
+)
 
 const filesModalRef = useTemplateRef<
   InstanceType<typeof LazyChatInputFilesModal>
@@ -1439,9 +1910,9 @@ onStartTyping(() => {
 })
 
 function onPaste(event: ClipboardEvent) {
-  const isBlockingModalOpen = !!document.querySelector(
-    'dialog.js-files-modal[open], dialog.js-search-modal[open]',
-  )
+  const isBlockingModalOpen = textarea.value
+    ? isBlockedByOpenDialog(textarea.value)
+    : !!document.querySelector('dialog[open]')
 
   if (isBlockingModalOpen) {
     return

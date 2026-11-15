@@ -150,7 +150,7 @@ describe('research cancel API', () => {
     useRuntimeConfig().researchMockEnabled = false
   })
 
-  it('cancels the provider job and marks it cancelled', async () => {
+  it('cancels the provider job and marks it canceled', async () => {
     const cancel = vi.fn(async () => undefined)
 
     mocks.getResearchAdapter.mockReturnValue({ cancel })
@@ -191,7 +191,7 @@ describe('research cancel API', () => {
     expect(response.job.status).toBe('completed')
   })
 
-  it('still marks the job cancelled if the provider cancel call fails', async () => {
+  it('still marks the job canceled if the provider cancel call fails', async () => {
     mocks.getResearchAdapter.mockReturnValue({
       cancel: vi.fn(async () => {
         throw new Error('provider unavailable')

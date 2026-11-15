@@ -144,15 +144,16 @@ export function resolveArtifactShareBaseUrl(baseUrl?: string): string {
 }
 
 /**
- * The public link keeps the token in the URL fragment (`/a#<token>`), which
- * browsers never send in a request, so no request path, log or unfurler
- * sees it.
+ * The public link carries the token as the last path segment
+ * (`/artifacts/<token>`). The page answers `Referrer-Policy: no-referrer`
+ * and `Cache-Control: private, no-store`, and the evlog redaction replaces
+ * the token in every log field.
  */
 export function buildArtifactShareUrl(token: string, baseUrl?: string): string {
   return `${resolveArtifactShareBaseUrl(baseUrl)}${ARTIFACT_SHARE_LINK_PREFIX}${token}`
 }
 
-const ARTIFACT_SHARE_RELATIVE_LINK = /^\/?a\/?#([^#?/]+)$/i
+const ARTIFACT_SHARE_RELATIVE_LINK = /^\/?artifacts\/([^#?/]+)\/?$/
 
 function readTokenFromAbsoluteLink(candidate: string): string | null {
   let url: URL
@@ -163,19 +164,21 @@ function readTokenFromAbsoluteLink(candidate: string): string | null {
     return null
   }
 
-  const pathname = url.pathname.replace(/\/$/, '').toLowerCase()
+  const [, firstSegment, token, ...rest] = url.pathname
+    .replace(/\/$/, '')
+    .split('/')
 
-  if (pathname !== ARTIFACT_SHARE_PATH) {
+  if (`/${firstSegment}` !== ARTIFACT_SHARE_PATH || !token || rest.length) {
     return null
   }
 
-  return url.hash.slice(1) || null
+  return token
 }
 
 /**
  * Pulls the token out of a public link in any of the forms an admin may
- * paste: `https://<host>/a#<token>`, `/a#<token>`, `a#<token>`, or a bare
- * token. Returns null for anything else.
+ * paste: `https://<host>/artifacts/<token>`, `/artifacts/<token>`,
+ * `artifacts/<token>`, or a bare token. Returns null for anything else.
  */
 export function extractArtifactShareToken(value: string): string | null {
   const candidate = value.trim()

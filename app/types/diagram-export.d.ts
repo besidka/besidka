@@ -2,6 +2,8 @@ import type { DiagramExportAction } from '@besidka/artifacts-protocol'
 
 export type { DiagramExportAction }
 
+export type DiagramExportOutcome = boolean | 'reported'
+
 export interface DiagramExportInput {
   source: string
   svg: string

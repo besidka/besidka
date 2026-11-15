@@ -670,7 +670,7 @@ describe('chats new page', () => {
     expect(sentBody.tools).toEqual(['web_search_brave'])
   })
 
-  it('does not restore an unrecognised saved web-search value', async () => {
+  it('does not restore an unrecognized saved web-search value', async () => {
     const storage = createStorageShim()
 
     vi.stubGlobal('localStorage', storage)

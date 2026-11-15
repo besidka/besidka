@@ -101,8 +101,12 @@ describe('Profile/Security/BackupCodes', () => {
       props: { open: true, codes },
     })
 
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+
     await wrapper.get('[data-testid="backup-codes-download"]')
       .trigger('click')
+    vi.advanceTimersByTime(4000)
+    vi.useRealTimers()
 
     expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
 

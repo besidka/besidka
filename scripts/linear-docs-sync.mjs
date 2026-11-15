@@ -14,7 +14,7 @@
  *
  * The last fully synced commit is recorded in the Docs index document. Each
  * run syncs every docs change between that commit and HEAD, so runs that
- * were skipped or cancelled are caught up; with no recorded commit (or one
+ * were skipped or canceled are caught up; with no recorded commit (or one
  * that is not an ancestor of HEAD) it syncs everything.
  *
  * Runs from .github/workflows/linear-docs-sync.yml on pushes to main that

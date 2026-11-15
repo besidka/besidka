@@ -1,10 +1,14 @@
 import type { Ref } from 'vue'
 import { parseError } from 'evlog'
-import type { ArtifactKind, ArtifactSummary } from '#shared/utils/artifacts'
+import type {
+  ArtifactDetail,
+  ArtifactKind,
+  ArtifactKindCounts,
+  ArtifactSummary,
+} from '#shared/utils/artifacts'
 import {
   ARTIFACT_BULK_DELETE_MAX,
   ARTIFACT_KINDS,
-  ARTIFACT_USER_QUOTA_BYTES,
 } from '#shared/utils/artifacts'
 import { formatFileSize } from '#shared/utils/files'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
@@ -34,6 +38,57 @@ export const ARTIFACT_LIBRARY_KIND_FILTERS: Array<{
   { value: 'markdown', label: 'Markdown' },
 ]
 
+export interface ArtifactKindOption {
+  value: ArtifactKindFilter
+  label: string
+  count: number
+}
+
+export const ARTIFACT_KIND_FILTER_MIN_KINDS = 2
+
+/**
+ * The filter chips for a library: only kinds the user has, each with its
+ * count, preceded by All. Empty when fewer than two kinds exist, because All
+ * and the single kind would show the same list.
+ */
+export function buildArtifactKindOptions(
+  counts: ArtifactKindCounts | null,
+): ArtifactKindOption[] {
+  if (!counts) {
+    return []
+  }
+
+  const available = ARTIFACT_LIBRARY_KIND_FILTERS.filter((option) => {
+    return option.value !== 'all' && counts[option.value as ArtifactKind] > 0
+  })
+
+  if (available.length < ARTIFACT_KIND_FILTER_MIN_KINDS) {
+    return []
+  }
+
+  const total = available.reduce((sum, option) => {
+    return sum + counts[option.value as ArtifactKind]
+  }, 0)
+
+  return [
+    { value: 'all', label: 'All', count: total },
+    ...available.map((option) => {
+      return { ...option, count: counts[option.value as ArtifactKind] }
+    }),
+  ]
+}
+
+export function resolveArtifactKindFilter(
+  kind: ArtifactKindFilter,
+  counts: ArtifactKindCounts | null,
+): ArtifactKindFilter {
+  if (kind === 'all' || !counts) {
+    return kind
+  }
+
+  return counts[kind] > 0 ? kind : 'all'
+}
+
 export function parseArtifactKindFilter(value: unknown): ArtifactKindFilter {
   return typeof value === 'string'
     && (ARTIFACT_KINDS as readonly string[]).includes(value)
@@ -54,8 +109,7 @@ export function toArtifactSearchTerm(value: string): string {
 }
 
 export function formatArtifactUsage(usedBytes: number): string {
-  return `Using ${formatFileSize(usedBytes)} of `
-    + formatFileSize(ARTIFACT_USER_QUOTA_BYTES)
+  return `Using ${formatFileSize(usedBytes)} of your storage`
 }
 
 function chunkIds(ids: string[]): string[][] {
@@ -88,7 +142,10 @@ export function useArtifactLibraryFilters() {
 
   let isCommitting = false
 
-  async function commitQuery(changes: Record<string, string | undefined>) {
+  async function commitQuery(
+    changes: Record<string, string | undefined>,
+    options: { replace?: boolean } = {},
+  ) {
     const query = Object.fromEntries(
       Object.entries({ ...route.query, ...changes }).filter(([, value]) => {
         return value !== undefined
@@ -98,7 +155,11 @@ export function useArtifactLibraryFilters() {
     isCommitting = true
 
     try {
-      await router.push({ path: route.path, query })
+      if (options.replace) {
+        await router.replace({ path: route.path, query })
+      } else {
+        await router.push({ path: route.path, query })
+      }
     } finally {
       isCommitting = false
     }
@@ -114,12 +175,15 @@ export function useArtifactLibraryFilters() {
     await commitQuery({ query: term || undefined })
   }, ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
 
-  async function setKind(kind: ArtifactKindFilter) {
+  async function setKind(
+    kind: ArtifactKindFilter,
+    options: { replace?: boolean } = {},
+  ) {
     if (kind === appliedKind.value) {
       return
     }
 
-    await commitQuery({ kind: kind === 'all' ? undefined : kind })
+    await commitQuery({ kind: kind === 'all' ? undefined : kind }, options)
   }
 
   async function clearFilters() {
@@ -154,6 +218,36 @@ export function useArtifactLibraryFilters() {
 }
 
 /**
+ * Search text and kind filter of the artifact picker. Unlike the library
+ * these live in memory only: the picker is a dialog, so no URL changes.
+ */
+export function useArtifactPickerFilters() {
+  const search = shallowRef<string>('')
+  const appliedQuery = shallowRef<string>('')
+  const appliedKind = shallowRef<ArtifactKindFilter>('all')
+
+  const commitSearch = useDebounceFn(() => {
+    appliedQuery.value = toArtifactSearchTerm(search.value)
+  }, ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+  watch(search, () => {
+    commitSearch()
+  })
+
+  function setKind(kind: ArtifactKindFilter) {
+    appliedKind.value = kind
+  }
+
+  function reset() {
+    search.value = ''
+    appliedQuery.value = ''
+    appliedKind.value = 'all'
+  }
+
+  return { search, appliedQuery, appliedKind, setKind, reset }
+}
+
+/**
  * The owner's artifact list: first page through `useLazyFetch`, further
  * pages appended with `$fetch`, local removal after a delete (so the list
  * keeps its depth), selection for the bulk toolbar and the quota figure.
@@ -161,7 +255,7 @@ export function useArtifactLibraryFilters() {
 export function useArtifactLibrary(filters: {
   query: Ref<string>
   kind: Ref<ArtifactKindFilter>
-}) {
+}, options: { key?: string } = {}) {
   const nuxtApp = useNuxtApp()
   const panel = useArtifactPanel()
 
@@ -175,6 +269,7 @@ export function useArtifactLibrary(filters: {
 
   const { data, status, error, refresh } = useLazyFetch('/api/v1/artifacts', {
     query: requestQuery,
+    ...(options.key ? { key: options.key } : {}),
   })
 
   const extraItems = shallowRef<ArtifactSummary[]>([])
@@ -183,6 +278,7 @@ export function useArtifactLibrary(filters: {
   const loadedTotal = shallowRef<number | null>(null)
   const removedAtLoadedTotal = shallowRef<number>(0)
   const loadedUsedBytes = shallowRef<number | null>(null)
+  const loadedKindCounts = shallowRef<ArtifactKindCounts | null>(null)
   const isLoadingMore = shallowRef<boolean>(false)
   const isDeleting = shallowRef<boolean>(false)
   const isSkeletonDelayElapsed = shallowRef<boolean>(false)
@@ -239,6 +335,10 @@ export function useArtifactLibrary(filters: {
     return loadedUsedBytes.value ?? data.value?.usedBytes ?? 0
   })
 
+  const kindCounts = computed<ArtifactKindCounts | null>(() => {
+    return loadedKindCounts.value ?? data.value?.kindCounts ?? null
+  })
+
   const hasMore = computed<boolean>(() => {
     return items.value.length < total.value
   })
@@ -288,6 +388,7 @@ export function useArtifactLibrary(filters: {
     loadedTotal.value = null
     removedAtLoadedTotal.value = 0
     loadedUsedBytes.value = null
+    loadedKindCounts.value = null
   })
 
   watch(
@@ -341,10 +442,15 @@ export function useArtifactLibrary(filters: {
     }
   }
 
-  function applyServerTotals(response: { total: number, usedBytes: number }) {
+  function applyServerTotals(response: {
+    total: number
+    usedBytes: number
+    kindCounts: ArtifactKindCounts
+  }) {
     loadedTotal.value = response.total
     removedAtLoadedTotal.value = removedIds.value.size
     loadedUsedBytes.value = response.usedBytes
+    loadedKindCounts.value = response.kindCounts
   }
 
   async function refreshTotals() {
@@ -367,7 +473,7 @@ export function useArtifactLibrary(filters: {
 
   async function refreshItem(artifactId: string) {
     try {
-      const detail = await $fetch(
+      const detail = await $fetch<ArtifactDetail>(
         `/api/v1/artifacts/${encodeURIComponent(artifactId)}`,
       )
 
@@ -516,6 +622,7 @@ export function useArtifactLibrary(filters: {
     items,
     total,
     usedBytes,
+    kindCounts,
     hasMore,
     hasError,
     hasLoaded,

@@ -62,8 +62,9 @@ export const ARTIFACT_REPORT_DECISIONS = [
 ] as const
 
 export const ARTIFACT_SHARE_HEADER = 'x-besidka-artifact-share'
-export const ARTIFACT_SHARE_PATH = '/a'
-export const ARTIFACT_SHARE_LINK_PREFIX = '/a#'
+export const ARTIFACT_SHARE_PATH = '/artifacts'
+export const ARTIFACT_SHARE_LINK_PREFIX = '/artifacts/'
+export const ARTIFACT_SHARE_RETURN_SEGMENT = 'return'
 export const ARTIFACT_SHARE_TOKEN_PATTERN = /^[\w-]{43}$/
 export const ARTIFACT_SHARE_RETURN_STORAGE_KEY = 'artifacts:share-return'
 export const ARTIFACT_SHARE_DURATIONS = [
@@ -92,7 +93,6 @@ export const ARTIFACT_LEGAL_HOLD_MONTHS = 6
 
 export const ARTIFACT_VERSION_MAX_BYTES = 512 * 1024
 export const ARTIFACT_MAX_VERSIONS = 50
-export const ARTIFACT_USER_QUOTA_BYTES = 25 * 1024 * 1024
 export const ARTIFACT_TITLE_MAX = 120
 export const ARTIFACT_STORAGE_MAX_BYTES = 100 * 1024
 export const ARTIFACT_STORAGE_MAX_KEYS = 64
@@ -123,8 +123,11 @@ export const ARTIFACT_BRIDGE_SYSTEM_PREFIX = [
 export const ARTIFACT_BULK_DELETE_MAX = 50
 
 export const ARTIFACT_DATA_PART_TYPE = 'data-artifact'
+export const ARTIFACT_ATTACHMENT_PART_TYPE = 'data-artifact-attachment'
+export const ARTIFACT_ATTACHMENTS_MAX = 3
 
 export type ArtifactKind = typeof ARTIFACT_KINDS[number]
+export type ArtifactKindCounts = Record<ArtifactKind, number>
 export type ArtifactReportReason = typeof ARTIFACT_REPORT_REASONS[number]
 export type ArtifactReportStatus = typeof ARTIFACT_REPORT_STATUSES[number]
 export type ArtifactReportPriority = typeof ARTIFACT_REPORT_PRIORITIES[number]
@@ -152,6 +155,17 @@ export interface ArtifactSummary {
   createdVia: ArtifactCreatedVia
   activeShareCount: number
   takenDown: boolean
+}
+
+export interface SharedArtifactSummary {
+  id: string
+  title: string
+  kind: ArtifactKind
+  currentVersion: number
+  updatedAt: string
+  activeShareCount: number
+  nearestExpiresAt: string | null
+  hasPermanentLink: boolean
 }
 
 export interface ArtifactVersionSummary {
@@ -279,6 +293,11 @@ export interface DataArtifactPart {
   data: DataArtifactPartData
 }
 
+export interface DataArtifactAttachmentPart {
+  type: typeof ARTIFACT_ATTACHMENT_PART_TYPE
+  data: DataArtifactPartData
+}
+
 export type ArtifactToolOutput = DataArtifactPartData
 
 export interface CreateArtifactToolInput {
@@ -321,22 +340,22 @@ export function isArtifactShareToken(value: unknown): boolean {
   return typeof value === 'string' && ARTIFACT_SHARE_TOKEN_PATTERN.test(value)
 }
 
+export function createEmptyArtifactKindCounts(): ArtifactKindCounts {
+  return {
+    html: 0,
+    react: 0,
+    svg: 0,
+    mermaid: 0,
+    markdown: 0,
+  }
+}
+
 export function isArtifactKind(value: unknown): value is ArtifactKind {
   return typeof value === 'string'
     && (ARTIFACT_KINDS as readonly string[]).includes(value)
 }
 
-export function isDataArtifactPart(part: unknown): part is DataArtifactPart {
-  if (typeof part !== 'object' || part === null) {
-    return false
-  }
-
-  const { type, data } = part as { type?: unknown, data?: unknown }
-
-  if (type !== ARTIFACT_DATA_PART_TYPE) {
-    return false
-  }
-
+function isArtifactPartData(data: unknown): data is DataArtifactPartData {
   if (typeof data !== 'object' || data === null) {
     return false
   }
@@ -347,6 +366,69 @@ export function isDataArtifactPart(part: unknown): part is DataArtifactPart {
     && Number.isSafeInteger(candidate.version)
     && isArtifactKind(candidate.kind)
     && typeof candidate.title === 'string'
+}
+
+export function isDataArtifactPart(part: unknown): part is DataArtifactPart {
+  if (typeof part !== 'object' || part === null) {
+    return false
+  }
+
+  const { type, data } = part as { type?: unknown, data?: unknown }
+
+  return type === ARTIFACT_DATA_PART_TYPE && isArtifactPartData(data)
+}
+
+export function isDataArtifactAttachmentPart(
+  part: unknown,
+): part is DataArtifactAttachmentPart {
+  if (typeof part !== 'object' || part === null) {
+    return false
+  }
+
+  const { type, data } = part as { type?: unknown, data?: unknown }
+
+  return type === ARTIFACT_ATTACHMENT_PART_TYPE && isArtifactPartData(data)
+}
+
+export function toArtifactAttachmentPart(
+  data: DataArtifactPartData,
+): DataArtifactAttachmentPart {
+  return {
+    type: ARTIFACT_ATTACHMENT_PART_TYPE,
+    data: {
+      artifactId: data.artifactId,
+      version: data.version,
+      kind: data.kind,
+      title: data.title,
+    },
+  }
+}
+
+export function collectArtifactAttachments(
+  messages: ReadonlyArray<{ role?: string, parts?: unknown }>,
+): DataArtifactPartData[] {
+  const attachments: DataArtifactPartData[] = []
+
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+
+    if (message?.role !== 'user' || !Array.isArray(message.parts)) {
+      continue
+    }
+
+    for (const part of message.parts) {
+      if (
+        isDataArtifactAttachmentPart(part)
+        && !attachments.some((attachment) => {
+          return attachment.artifactId === part.data.artifactId
+        })
+      ) {
+        attachments.push(part.data)
+      }
+    }
+  }
+
+  return attachments
 }
 
 export interface ArtifactStorageItem {

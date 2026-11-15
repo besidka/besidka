@@ -1,3 +1,4 @@
+import { withDerivedKeys } from '#shared/utils/office-files'
 import { and, eq, inArray, like, or } from 'drizzle-orm'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -6,6 +7,7 @@ import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { findKnowledgeLinkedFileIds } from '~~/server/utils/knowledge/linked-files'
+import { cleanupDocumentsForDeletedFiles } from '~~/server/utils/documents/cleanup'
 
 const MAX_BATCH_QUERY_PARAMS = 90
 
@@ -194,7 +196,7 @@ export async function cleanupFilesOrphanedByChatDeletion(
     const storageKeys = chunk.map(file => file.storageKey)
 
     try {
-      await storage.delete(storageKeys)
+      await storage.delete(withDerivedKeys(storageKeys))
     } catch (exception) {
       failedCount += chunk.length
       batchDeleteErrors.push(exceptionMessage(exception))
@@ -211,6 +213,12 @@ export async function cleanupFilesOrphanedByChatDeletion(
         eq(schema.files.userId, userId),
         inArray(schema.files.id, chunk.map(file => file.id)),
       ))
+
+    await cleanupDocumentsForDeletedFiles(db, {
+      userId,
+      fileIds: chunk.map(file => file.id),
+      logger,
+    })
   }
 
   const deletedCount = filesToDelete.length - failedCount

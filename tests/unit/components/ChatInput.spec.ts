@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
+import type { ComposerSkillItem } from '../../../app/composables/composer-skills'
+import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { usePastedTexts } from '../../../app/composables/pasted-texts'
@@ -40,6 +42,26 @@ mockNuxtImport('useMediaQuery', () => {
   return () => isPopoverLayout
 })
 
+const codeExecutionFeature = reactive({
+  enabled: true,
+  active: false,
+  variant: null,
+})
+
+mockNuxtImport('useFeature', () => {
+  return (key: string) => {
+    return computed(() => {
+      if (key === 'code-execution' || key === 'code-execution.files') {
+        return codeExecutionFeature
+      }
+
+      return key === 'artifacts'
+        ? artifactsFeature.value
+        : { enabled: false, active: false, variant: null }
+    })
+  }
+})
+
 mockNuxtImport('useUserSetting', () => {
   return () => ({
     reasoningExpanded: computed(() => false),
@@ -52,6 +74,11 @@ mockNuxtImport('useUserSetting', () => {
 })
 
 const isPopoverLayout = shallowRef<boolean>(true)
+const artifactsFeature = shallowRef<{
+  enabled: boolean
+  active: boolean
+  variant: string | null
+}>({ enabled: false, active: false, variant: null })
 const defaultReasoningLevel = shallowRef<string | null>(null)
 const keyboardInset = shallowRef<number>(0)
 const safeAreaBottom = shallowRef<number>(0)
@@ -80,6 +107,16 @@ mockNuxtImport('useRoute', () => {
   return () => mockRoute
 })
 
+const composerSkillItems = shallowRef<ComposerSkillItem[]>([])
+
+mockNuxtImport('useComposerSkills', () => {
+  return () => ({
+    items: computed(() => composerSkillItems.value),
+    isVisible: computed(() => composerSkillItems.value.length > 0),
+    refresh: vi.fn(),
+  })
+})
+
 const filesModalOpenMock = vi.fn()
 
 const filesModalStub = defineComponent({
@@ -103,6 +140,28 @@ const textFileModalStub = defineComponent({
   },
   emits: ['save', 'insert', 'update:open'],
   template: '<div data-testid="text-file-modal-stub" />',
+})
+
+const artifactPickerStub = defineComponent({
+  name: 'ChatInputArtifactPickerStub',
+  props: {
+    open: { type: Boolean, default: false },
+  },
+  emits: ['update:open', 'pick'],
+  template: '<div data-testid="artifact-picker-stub" '
+    + ':data-open="String(open)" />',
+})
+
+const skillPickerStub = defineComponent({
+  name: 'ChatInputSkillPickerStub',
+  props: {
+    open: { type: Boolean, default: false },
+    items: { type: Array, default: () => [] },
+    selectedId: { type: String, default: null },
+  },
+  emits: ['update:open', 'pick'],
+  template: '<div data-testid="skill-picker-stub" '
+    + ':data-open="String(open)" />',
 })
 
 const uiButtonStub = defineComponent({
@@ -145,6 +204,10 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
         LazyChatInputFilesAttachedPreview: true,
         LazyChatTextFileModal: textFileModalStub,
         ChatTextFileModal: textFileModalStub,
+        LazyChatInputArtifactPicker: artifactPickerStub,
+        ChatInputArtifactPicker: artifactPickerStub,
+        LazyChatInputSkillPicker: skillPickerStub,
+        ChatInputSkillPicker: skillPickerStub,
         LazyChatInputModelsTrigger: true,
         LazyChatInputFilesTrigger: true,
         LazyChatInputReasoningTrigger: true,
@@ -304,15 +367,20 @@ describe('ChatInput.client', () => {
     defaultReasoningLevel.value = null
     keyboardInset.value = 0
     safeAreaBottom.value = 0
+    artifactsFeature.value = { enabled: false, active: false, variant: null }
+    composerSkillItems.value = []
+    useComposerSkillInvocation().clear()
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
       isToolCallingSupported: shallowRef(false),
       webSearchProviderOptions: shallowRef([]),
       isImageGenerationSupported: shallowRef(false),
+      isCodeExecutionSupported: shallowRef(false),
       isImageGenerationRequired: shallowRef(false),
       isImageInputSupported: shallowRef(true),
       canAttachMediaType: shallowRef(() => true),
+      fileDeliveryContext: shallowRef({ route: 'direct' as const }),
       isReasoningSupported: shallowRef(false),
       isReasoningAlwaysOn: shallowRef(false),
       canDisableReasoningLevel: shallowRef(true),
@@ -368,7 +436,10 @@ describe('ChatInput.client', () => {
   afterEach(() => {
     vi.useRealTimers()
     document
-      .querySelectorAll('dialog.js-files-modal, dialog.js-search-modal')
+      .querySelectorAll(
+        'dialog.js-files-modal, dialog.js-search-modal, '
+        + 'dialog.js-artifact-picker, dialog.js-skill-import-modal',
+      )
       .forEach((dialog) => {
         dialog.remove()
       })
@@ -446,6 +517,21 @@ describe('ChatInput.client', () => {
 
       expect(mocks.uploadFiles).not.toHaveBeenCalled()
     })
+
+    it.each(['js-artifact-picker', 'js-skill-import-modal'])(
+      'ignores a pasted image while the %s dialog is open',
+      async (hookClass) => {
+        await mountChatInput()
+
+        appendBlockingDialog(hookClass)
+
+        const file = new File(['data'], 'clip.png', { type: 'image/png' })
+
+        document.dispatchEvent(createPasteEvent([file]))
+
+        expect(mocks.uploadFiles).not.toHaveBeenCalled()
+      },
+    )
 
     it('ignores a pasted image while the search modal dialog is open', async () => {
       await mountChatInput()
@@ -995,9 +1081,11 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -1216,9 +1304,20 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(predicate('image/png')),
         canAttachMediaType,
+        fileDeliveryContext: computed(() => {
+          return {
+            route: 'direct' as const,
+            modalities: ['image', 'pdf'].filter((kind) => {
+              return canAttachMediaType.value(
+                kind === 'image' ? 'image/png' : 'application/pdf',
+              )
+            }),
+          }
+        }),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -1322,6 +1421,146 @@ describe('ChatInput.client', () => {
     })
   })
 
+  describe('Run code files', () => {
+    const jsonFile = {
+      id: '4',
+      storageKey: 'json-key',
+      name: 'data.json',
+      size: 10,
+      type: 'application/json',
+    }
+    const needsRunCodeWarning = 'data.json: Turn on Run code to send '
+      + 'this file, or remove it.'
+
+    afterEach(() => {
+      codeExecutionFeature.active = false
+    })
+
+    function attachedFileNames(wrapper: Awaited<ReturnType<
+      typeof mountChatInput
+    >>): string[] {
+      return wrapper.findAll('[data-testid="carousel-item"]').map((item) => {
+        return item.attributes('data-file-name')
+      }) as string[]
+    }
+
+    async function pressEnter(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+    ) {
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('Analyze the data')
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+    }
+
+    function useRunCodeSelection(
+      options: { providerId?: string, codeExecution?: boolean } = {},
+    ) {
+      const allowAll = createInputMediaTypePredicate(['image', 'pdf'])
+
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
+        isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(options.codeExecution ?? true),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(allowAll),
+        fileDeliveryContext: shallowRef({
+          route: 'direct' as const,
+          providerId: options.providerId ?? 'anthropic',
+          modalities: ['image', 'pdf'],
+        }),
+        isReasoningSupported: shallowRef(false),
+        isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
+        reasoningCapability: shallowRef(null),
+        reasoningMode: shallowRef('none'),
+        reasoningMenuLevels: shallowRef([]),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
+        selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('claude-haiku-5-5'),
+        selectedModelBillingProviderId: shallowRef<string | null>('anthropic'),
+      })
+    }
+
+    it('keeps an attached JSON file when Run code is turned off, marks it and '
+      + 'blocks the send', async () => {
+      codeExecutionFeature.active = true
+      useRunCodeSelection()
+
+      const wrapper = await mountChatInput({ tools: ['code_execution'] })
+
+      wrapper.findComponent(filesModalStub).vm.$emit('attach', [jsonFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual(['data.json'])
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+
+      await wrapper.setProps({ tools: [] })
+      await flushPromises()
+
+      expect(attachedFileNames(wrapper)).toEqual(['data.json'])
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+      expect(wrapper.get('[data-testid="files-delivery-hint"]').text())
+        .toBe('Needs Run code')
+
+      await pressEnter(wrapper)
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(needsRunCodeWarning)
+      expect(attachedFileNames(wrapper)).toEqual(['data.json'])
+
+      await wrapper.setProps({ tools: ['code_execution'] })
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="files-delivery-hint"]').exists())
+        .toBe(false)
+
+      await pressEnter(wrapper)
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('lets the user remove the file instead of turning Run code back on',
+      async () => {
+        codeExecutionFeature.active = true
+        useRunCodeSelection()
+
+        const wrapper = await mountChatInput({ tools: ['code_execution'] })
+
+        wrapper.findComponent(filesModalStub).vm.$emit('attach', [jsonFile])
+        await wrapper.setProps({ tools: [] })
+        await flushPromises()
+        await wrapper.get('[data-testid="files-preview-detach"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(wrapper.emitted('submit')).toBeUndefined()
+      })
+
+    it('says the plain reason when Run code is not available', async () => {
+      useRunCodeSelection({ providerId: 'xai', codeExecution: false })
+
+      const wrapper = await mountChatInput()
+
+      wrapper.findComponent(filesModalStub).vm.$emit('attach', [jsonFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual([])
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('This file type cannot be sent to a model'),
+      )
+    })
+  })
+
   describe('toggle-mode reasoning', () => {
     function useToggleModeSelection() {
       mocks.useChatInput.mockReturnValue({
@@ -1329,9 +1568,11 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -1364,9 +1605,11 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -1393,9 +1636,11 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -1744,9 +1989,11 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: isToolCallingSupportedRef,
         webSearchProviderOptions: webSearchProviderOptionsRef,
         isImageGenerationSupported: shallowRef(true),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -2231,9 +2478,11 @@ describe('ChatInput.client', () => {
           },
         ]),
         isImageGenerationSupported: shallowRef(true),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -2530,9 +2779,11 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions,
         isImageGenerationSupported,
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported,
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -2741,9 +2992,11 @@ describe('ChatInput.client', () => {
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
@@ -2813,11 +3066,13 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(
           !!input.isImageGenerationRequired,
         ),
+        isCodeExecutionSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(
           !!input.isImageGenerationRequired,
         ),
         isImageInputSupported: shallowRef(true),
         canAttachMediaType: shallowRef(() => true),
+        fileDeliveryContext: shallowRef({ route: 'direct' as const }),
         isReasoningSupported: shallowRef(isConfigurable),
         isReasoningAlwaysOn: shallowRef(input.state === 'always-on'),
         canDisableReasoningLevel: shallowRef(true),
@@ -3091,6 +3346,166 @@ describe('ChatInput.client', () => {
     })
   })
 
+  describe('code execution', () => {
+    const isCodeExecutionSupported = shallowRef<boolean>(true)
+
+    function bindTools(initial: string[]) {
+      const wrapperRef: { current: ChatInputWrapper | null } = {
+        current: null,
+      }
+
+      return {
+        wrapperRef,
+        props: {
+          'tools': initial,
+          'onUpdate:tools': (value: string[]) => {
+            wrapperRef.current?.setProps({ tools: value })
+          },
+        },
+      }
+    }
+
+    beforeEach(() => {
+      isCodeExecutionSupported.value = true
+      codeExecutionFeature.active = true
+      useFeatures().features.value = null
+      window.localStorage.setItem(
+        'besidka:code-execution-confirmed:google',
+        'true',
+      )
+
+      const chatInput = mocks.useChatInput() as Record<string, unknown>
+
+      chatInput.isCodeExecutionSupported = isCodeExecutionSupported
+    })
+
+    afterEach(() => {
+      useFeatures().features.value = null
+      window.localStorage.removeItem(
+        'besidka:code-execution-confirmed:google',
+      )
+    })
+
+    it('offers the Run code row only when the model and the feature '
+      + 'allow it', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'tools-code-execution-toggle')).toBe(true)
+
+      codeExecutionFeature.active = false
+
+      const hidden = await mountChatInput()
+
+      await openToolsPanel(hidden)
+
+      expect(hasTestId(hidden, 'tools-code-execution-toggle')).toBe(false)
+    })
+
+    it('adds code_execution when the row is switched on and shows its '
+      + 'tile', async () => {
+      const { wrapperRef, props } = bindTools([])
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-code-execution-toggle"]')
+        .setValue(true)
+      await flushPromises()
+
+      expect(wrapper.props('tools')).toEqual(['code_execution'])
+      expect(tileTitle(wrapper, 'code'))
+        .toBe('Run code is on for the next message')
+    })
+
+    it('removes code_execution from the tile and never saves it as a '
+      + 'default', async () => {
+      const { wrapperRef, props } = bindTools(['code_execution'])
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await flushPromises()
+      await wrapper.get('[data-testid="chat-input-tile-code-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(wrapper.props('tools')).toEqual([])
+      expect(usePreferenceStorage().getItem('settings_web_search_tool'))
+        .toBeNull()
+    })
+
+    it('swaps code_execution for image generation, never combining them',
+      async () => {
+        mocks.useChatInput.mockReturnValue({
+          ...(mocks.useChatInput() as Record<string, unknown>),
+          isImageGenerationSupported: shallowRef(true),
+          isCodeExecutionSupported,
+        })
+
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await openToolsPanel(wrapper)
+        await wrapper.get('[data-testid="tools-image-toggle"]').setValue(true)
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual(['image_generation'])
+        expect(hasTestId(wrapper, 'tools-code-execution-toggle')).toBe(false)
+      })
+
+    it('clears code_execution when the model stops supporting it',
+      async () => {
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual(['code_execution'])
+
+        isCodeExecutionSupported.value = false
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual([])
+      })
+
+    it('clears code_execution once the feature is known to be off',
+      async () => {
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await flushPromises()
+
+        codeExecutionFeature.active = false
+        useFeatures().features.value = { features: {}, isAdmin: false }
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual([])
+      })
+
+    it('keeps code_execution while the feature state is still unknown',
+      async () => {
+        codeExecutionFeature.active = false
+
+        const { wrapperRef, props } = bindTools(['code_execution'])
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        await flushPromises()
+
+        expect(wrapper.props('tools')).toEqual(['code_execution'])
+      })
+  })
+
   describe('memory exclusion for a new chat', () => {
     it('is not offered when the page does not bind it', async () => {
       const wrapper = await mountChatInput()
@@ -3155,10 +3570,12 @@ describe('ChatInput.client', () => {
     }
 
     function getPaddingBox(wrapper: ChatInputWrapper): HTMLElement {
-      const parent = wrapper.get('textarea').element.parentElement
+      const parent = wrapper.get('textarea').element.closest<HTMLElement>(
+        '.p-1.pb-0',
+      )
 
       if (!parent) {
-        throw new Error('textarea has no parent')
+        throw new Error('padding box not found')
       }
 
       return parent
@@ -3399,5 +3816,397 @@ describe('ChatInput.client', () => {
         expect((textarea.element as HTMLTextAreaElement).value)
           .toBe('My unsent draft\n\nFix the error')
       })
+  })
+
+  describe('artifact attachments', () => {
+    const quiz = {
+      id: 'art-1',
+      title: 'Quiz',
+      kind: 'html',
+      currentVersion: 3,
+    }
+    const attachedQuiz = {
+      artifactId: 'art-1',
+      version: 3,
+      kind: 'html',
+      title: 'Quiz',
+    }
+
+    function grantArtifacts() {
+      artifactsFeature.value = { enabled: true, active: true, variant: null }
+    }
+
+    function getPicker(wrapper: ChatInputWrapper) {
+      return wrapper.findComponent({ name: 'ChatInputArtifactPickerStub' })
+    }
+
+    async function openPicker(wrapper: ChatInputWrapper) {
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-action-artifacts"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(getPicker(wrapper).exists()).toBe(true)
+      })
+    }
+
+    function lastAttached(wrapper: ChatInputWrapper) {
+      return wrapper.emitted('update:attachedArtifacts')?.at(-1)?.[0]
+    }
+
+    it('shows nothing new without access: no row, no picker', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'tools-action-library')).toBe(true)
+      expect(hasTestId(wrapper, 'tools-action-artifacts')).toBe(false)
+      expect(getPicker(wrapper).exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Add artifact')
+    })
+
+    it('mounts the picker only after the row is used, with access',
+      async () => {
+        grantArtifacts()
+
+        const wrapper = await mountChatInput()
+
+        expect(getPicker(wrapper).exists()).toBe(false)
+
+        await openPicker(wrapper)
+
+        expect(getPicker(wrapper).attributes('data-open')).toBe('true')
+      })
+
+    it('attaches a picked artifact once and reports it through the model',
+      async () => {
+        grantArtifacts()
+
+        const wrapper = await mountChatInput()
+
+        await openPicker(wrapper)
+        getPicker(wrapper).vm.$emit('pick', quiz)
+        await flushPromises()
+
+        expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+
+        getPicker(wrapper).vm.$emit('pick', quiz)
+        await flushPromises()
+
+        expect(wrapper.emitted('update:attachedArtifacts')).toHaveLength(1)
+      })
+
+    it('refuses a fourth attached artifact with a warning', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput({
+        attachedArtifacts: ['a', 'b', 'c'].map((artifactId) => {
+          return { ...attachedQuiz, artifactId }
+        }),
+      })
+
+      await openPicker(wrapper)
+      getPicker(wrapper).vm.$emit('pick', quiz)
+      await flushPromises()
+
+      expect(wrapper.emitted('update:attachedArtifacts')).toBeUndefined()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'You can attach up to 3 artifacts.',
+        'Remove one to attach another.',
+      )
+    })
+
+    it('attaches through the runtime hook only once there is access',
+      async () => {
+        const wrapper = await mountChatInput()
+
+        await useNuxtApp().callHook('chat-input:attach-artifact', attachedQuiz)
+        await flushPromises()
+
+        expect(wrapper.emitted('update:attachedArtifacts')).toBeUndefined()
+
+        grantArtifacts()
+        await flushPromises()
+
+        expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+      })
+
+    it('takes the artifact queued before it mounted, once', async () => {
+      grantArtifacts()
+      useChatInputPrefill().queue('Fix "Quiz"', attachedQuiz as never)
+
+      const wrapper = await mountChatInput()
+
+      await flushPromises()
+
+      expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+      expect((wrapper.get('textarea').element as HTMLTextAreaElement).value)
+        .toBe('Fix "Quiz"')
+      expect(useChatInputPrefill().takeArtifact()).toBeNull()
+    })
+
+    it('holds a queued artifact until access arrives, never for another '
+      + 'composer', async () => {
+      useChatInputPrefill().queue('Fix "Quiz"', attachedQuiz as never)
+
+      const wrapper = await mountChatInput()
+
+      await flushPromises()
+
+      expect(wrapper.emitted('update:attachedArtifacts')).toBeUndefined()
+      expect(useChatInputPrefill().takeArtifact()).toBeNull()
+
+      grantArtifacts()
+      await flushPromises()
+
+      expect(lastAttached(wrapper)).toEqual([attachedQuiz])
+    })
+
+    it('closes the picker when access disappears', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput()
+
+      await openPicker(wrapper)
+
+      expect(getPicker(wrapper).attributes('data-open')).toBe('true')
+
+      artifactsFeature.value = { enabled: false, active: false, variant: null }
+      await flushPromises()
+      grantArtifacts()
+      await flushPromises()
+
+      expect(getPicker(wrapper).exists()).toBe(true)
+      expect(getPicker(wrapper).attributes('data-open')).toBe('false')
+    })
+
+    it('clears the attached artifacts when the message is sent', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput({
+        attachedArtifacts: [attachedQuiz],
+      })
+
+      await wrapper.get('textarea').setValue('Use the quiz')
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(lastAttached(wrapper)).toEqual([])
+    })
+
+    it('clears the attached artifacts when a deep research model is picked',
+      async () => {
+        grantArtifacts()
+
+        const wrapper = await mountChatInput({
+          attachedArtifacts: [attachedQuiz],
+        })
+
+        ;(mocks.useChatInput() as { isDeepResearchModel: { value: boolean } })
+          .isDeepResearchModel.value = true
+        await flushPromises()
+
+        expect(lastAttached(wrapper)).toEqual([])
+      })
+
+    it('clears the attached artifacts when access disappears', async () => {
+      grantArtifacts()
+
+      const wrapper = await mountChatInput({
+        attachedArtifacts: [attachedQuiz],
+      })
+
+      artifactsFeature.value = { enabled: false, active: false, variant: null }
+      await flushPromises()
+
+      expect(lastAttached(wrapper)).toEqual([])
+    })
+  })
+
+  describe('skills', () => {
+    const writingStyle: ComposerSkillItem = {
+      id: 'skl1',
+      name: 'writing-style',
+      description: 'Write in my voice',
+      version: 3,
+      mode: 'auto',
+    }
+
+    function grantSkills(count = 1) {
+      composerSkillItems.value = Array.from({ length: count }, (_, index) => {
+        return index === 0
+          ? writingStyle
+          : {
+            ...writingStyle,
+            id: `skl${index + 1}`,
+            name: `skill-${index + 1}`,
+          }
+      })
+    }
+
+    function getSkillPicker(wrapper: ChatInputWrapper) {
+      return wrapper.findComponent({ name: 'ChatInputSkillPickerStub' })
+    }
+
+    async function openSkillPicker(wrapper: ChatInputWrapper) {
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-action-skills"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(getSkillPicker(wrapper).exists()).toBe(true)
+      })
+    }
+
+    it('shows no Add skill row and no picker without an enabled skill', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'tools-action-skills')).toBe(false)
+      expect(getSkillPicker(wrapper).exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Add skill')
+    })
+
+    it('opens the skill picker from Add skill, closing the menu', async () => {
+      grantSkills(2)
+
+      const wrapper = await mountChatInput()
+
+      await openSkillPicker(wrapper)
+
+      expect(getSkillPicker(wrapper).props('open')).toBe(true)
+      expect(getSkillPicker(wrapper).props('items')).toHaveLength(2)
+      expect(wrapper.get('[data-testid="chat-input-tools-trigger"]')
+        .attributes('aria-expanded')).toBe('false')
+    })
+
+    it('attaches the picked skill as a menu invocation', async () => {
+      grantSkills(2)
+
+      const wrapper = await mountChatInput()
+
+      await openSkillPicker(wrapper)
+      getSkillPicker(wrapper).vm.$emit('pick', writingStyle)
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value).toEqual({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+        source: 'menu',
+      })
+    })
+
+    it('replaces the attached skill when another one is picked', async () => {
+      grantSkills(2)
+
+      const wrapper = await mountChatInput()
+
+      await openSkillPicker(wrapper)
+      getSkillPicker(wrapper).vm.$emit('pick', writingStyle)
+      await openSkillPicker(wrapper)
+      getSkillPicker(wrapper).vm.$emit('pick', {
+        ...writingStyle,
+        id: 'skl2',
+        name: 'skill-2',
+      })
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value)
+        .toMatchObject({ skillId: 'skl2', name: 'skill-2' })
+    })
+
+    it('enables Send for a message that is only an attached skill', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeDefined()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeUndefined()
+    })
+
+    it('clears the attached skill when the message is sent', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      await wrapper.get('textarea').setValue('Draft it')
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
+    })
+
+    it('drops the attached skill when a deep research model is picked', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      mocks.useChatInput.mock.results[0]!.value
+        .isDeepResearchModel.value = true
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
+      expect(wrapper.exists()).toBe(true)
+    })
+
+    it('drops the attached skill when the composer goes away', async () => {
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      wrapper.unmount()
+
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
+    })
+
+    it('removes the skill from the tiles in the bottom sheet', async () => {
+      isPopoverLayout.value = false
+      grantSkills()
+
+      const wrapper = await mountChatInput()
+
+      useComposerSkillInvocation().set({
+        skillId: 'skl1',
+        name: 'writing-style',
+        version: 3,
+      })
+      await flushPromises()
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'chat-input-tools-chip-skill')).toBe(true)
+
+      await wrapper.get('[data-testid="chat-input-tools-chip-skill-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(useComposerSkillInvocation().invocation.value).toBeNull()
+    })
   })
 })

@@ -1067,7 +1067,7 @@ describe('profile keys page', () => {
     expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
   })
 
-  it('still honours the tab query without a provider', async () => {
+  it('still honors the tab query without a provider', async () => {
     mockRoute.query = { tab: 'search' }
 
     const wrapper = await mountPage()

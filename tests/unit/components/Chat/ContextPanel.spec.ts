@@ -53,6 +53,19 @@ mockNuxtImport('useChatContext', () => {
   return () => ({ data, error, refresh })
 })
 
+mockNuxtImport('useChatToolApprovalGrants', () => {
+  return () => ({
+    grants: computed(() => []),
+    hasChatGrants: computed(() => false),
+    isEnabled: computed(() => false),
+    busyKey: ref(''),
+    error: ref(null),
+    refresh: async () => {},
+    resetChatGrants: async () => {},
+    revokeAlwaysGrant: async () => {},
+  })
+})
+
 mockNuxtImport('useSidePanelLayout', () => {
   return () => layout
 })
@@ -1265,5 +1278,76 @@ describe('Chat/ContextPanel', () => {
         shareSlug: 'share-slug',
       })
     })
+  })
+
+  describe('documents', () => {
+    function documentItem(meta: ChatContextItem['meta'] = {}) {
+      return item({
+        id: 'document:doc_1',
+        sectionId: 'documents',
+        kind: 'document',
+        title: 'Quarterly plan',
+        meta: { documentId: 'doc_1', documentFormat: 'docx', ...meta },
+      })
+    }
+
+    it('lists a document under Outputs with its format', async () => {
+      data.value = ownedData({ outputs: [documentItem()] })
+
+      const wrapper = await mountPanel()
+      const row = wrapper.get(testId('chat-context-item-document'))
+
+      expect(row.text()).toContain('Quarterly plan')
+      expect(row.text()).toContain('Document · DOCX')
+    })
+
+    it('pushes the preview on top so Back returns to the context',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({ outputs: [documentItem()] })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-document'))
+          .trigger('click')
+
+        const view = useSidePanel().currentView.value
+
+        expect(useSidePanel().stack.value.map(entry => entry.viewKey))
+          .toEqual(['chat-context', 'document:doc_1'])
+        expect(view?.title).toBe('Quarterly plan')
+        expect(view?.props).toEqual({
+          documentId: 'doc_1',
+          format: 'docx',
+          title: 'Quarterly plan',
+        })
+
+        useSidePanel().back()
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
+
+    it('does not open the preview when the document id is missing',
+      async () => {
+        useSidePanel().open({
+          viewKey: 'chat-context',
+          title: 'Chat',
+          mode: 'context',
+        })
+        data.value = ownedData({
+          outputs: [documentItem({ documentId: undefined })],
+        })
+
+        const wrapper = await mountPanel()
+
+        await wrapper.get(testId('chat-context-item-document'))
+          .trigger('click')
+
+        expect(useSidePanel().viewKey.value).toBe('chat-context')
+      })
   })
 })

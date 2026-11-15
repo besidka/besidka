@@ -694,7 +694,7 @@ describe('overlap merging', () => {
     ])
   })
 
-  it('does not double count a token that is also a labelled value', () => {
+  it('does not double count a token that is also a labeled value', () => {
     const redacted = redactNeverStore(`token: ghp_${fakeBody}`)
 
     expect(redacted.blockedTotal).toBe(1)
@@ -908,7 +908,7 @@ describe('evaluateMemoryEntry', () => {
     })
   })
 
-  it('blocks when the extractor labelled a never-store kind', () => {
+  it('blocks when the extractor labeled a never-store kind', () => {
     expect(
       evaluateMemoryEntry({
         ...cleanEntry,

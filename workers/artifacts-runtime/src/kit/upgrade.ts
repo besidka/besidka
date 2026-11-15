@@ -5,7 +5,7 @@ export const RAW_ATTRIBUTE = 'data-besidka-raw'
 const LANGUAGE_CLASS_PATTERN = /(?:^|\s)lang(?:uage)?-([\w#+.-]+)/i
 
 export interface UpgradeOptions {
-  includeUnlabelled?: boolean
+  includeUnlabeled?: boolean
 }
 
 function readLanguage(code: Element): string | null {
@@ -47,7 +47,7 @@ function createReplacement(
 /**
  * Replaces `<pre><code class="language-*">` blocks under `root` with
  * `<besidka-code>` (or `<besidka-mermaid>` for `language-mermaid`). Markdown
- * passes `includeUnlabelled`, because every fenced block is code there; in
+ * passes `includeUnlabeled`, because every fenced block is code there; in
  * HTML a plain `<pre><code>` is left alone. `data-besidka-raw` on the
  * `<pre>`, the `<code>` or an ancestor keeps a block as written. This runs
  * once per render; blocks added later by artifact scripts stay as they are.
@@ -67,7 +67,7 @@ export function upgradeCodeBlocks(
 
     const language = readLanguage(code)
 
-    if (!language && !options.includeUnlabelled) {
+    if (!language && !options.includeUnlabeled) {
       continue
     }
 

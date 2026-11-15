@@ -5,7 +5,7 @@ interface StandaloneNavigator extends Navigator {
   standalone?: boolean
 }
 
-function isIosDevice(userAgent: string): boolean {
+export function isIosDevice(userAgent: string): boolean {
   if (iosDevicePattern.test(userAgent)) {
     return true
   }
@@ -13,7 +13,7 @@ function isIosDevice(userAgent: string): boolean {
   return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
 }
 
-function isStandaloneDisplay(): boolean {
+export function isStandaloneDisplay(): boolean {
   const isDisplayModeStandalone = window
     .matchMedia('(display-mode: standalone)')
     .matches

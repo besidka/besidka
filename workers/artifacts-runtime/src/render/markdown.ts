@@ -14,7 +14,7 @@ export const renderMarkdown: Renderer = (payload, context) => {
   setMarkup(article, markdownToHtml(payload.content))
 
   if (!context.partial) {
-    upgradeCodeBlocks(article, { includeUnlabelled: true })
+    upgradeCodeBlocks(article, { includeUnlabeled: true })
   }
 
   context.root.replaceChildren(article)

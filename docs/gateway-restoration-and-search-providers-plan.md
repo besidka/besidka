@@ -219,7 +219,7 @@ migration you did not expect.
 
 **Test registration is mandatory.** Every new or renamed spec file must be
 registered in `scripts/test-affected-check.mjs` in the **same commit**, or it
-never runs on a PR. That file is organised as named `const <topic>Tests = [
+never runs on a PR. That file is organized as named `const <topic>Tests = [
 ...]` arrays near the top, consumed by a `testMappings` array of
 `{ pattern: RegExp, tests: string[] }` entries. Each package below names the
 exact group(s) to extend.
@@ -375,7 +375,7 @@ dynamic `enumValues` iteration.
 `Object.keys(providerMeta)`. Adding `brave`/`exa` without icons fails it
 immediately. Either supply both icons, or narrow the test's iteration to
 `kind === 'provider'` entries and add a separate assertion for the
-search/gateway entries' intended fallback behaviour — but do not silently
+search/gateway entries' intended fallback behavior — but do not silently
 weaken it.
 
 **Audit, do not assume:** run
@@ -449,7 +449,7 @@ nine deleted *gateway* routes each **were** rate-limited, with their own
 `enforceKeysRateLimit()` with prefixes `keys-rate-limit:brave:{get,post,delete}`
 and `keys-rate-limit:exa:{get,post,delete}`, window 60 / max 10. Reasons:
 the generic limiter already exists and costs three lines per route; these are
-brand-new routes so there is no behaviour to regress; and it means WP 2.4's
+brand-new routes so there is no behavior to regress; and it means WP 2.4's
 restored gateway routes and these are consistent with each other rather than
 splitting the codebase three ways. **Therefore this is NOT a verbatim qwen
 clone** — it is a qwen clone plus the limiter call, and the executor must not
@@ -610,7 +610,7 @@ carry `tool_call` for every one of its ~8,048 models today — `false` for
   throws a descriptive error when `name`/`description`/`contextLength`/
   `maxOutputTokens`/`modalities` are undefined. **Add `toolCall` to that same
   undefined-check and to the thrown message**, preserving the existing
-  hard-fail behaviour: an exempt model must carry every fetched-side field
+  hard-fail behavior: an exempt model must carry every fetched-side field
   explicitly or the build fails loudly rather than defaulting to `false`.
 
 **`shared/types/providers.d.ts`:** `Model` gains `toolCall: boolean`
@@ -641,7 +641,7 @@ silently withhold Brave/Exa from that model in Epic 1.
 > It belongs to this work package's executor.
 
 **Payload note:** the merged catalog is injected into
-`runtimeConfig.public.providers` and serialised into every page's payload.
+`runtimeConfig.public.providers` and serialized into every page's payload.
 One boolean across ~110 models is a negligible (~1–2 KB) growth, well under
 the ~25–30 KB the last catalog expansion added — but it is worth a sentence
 in the PR description because `docs/models-data-fetching.md` tracks this.
@@ -878,7 +878,7 @@ not a guarantee. Do not rely on it.
 **`ContextMenu.client.vue:255-259`** — `TOOL_LABELS` is a total
 `Record<ModelTool | 'deep_research', string>`, so TypeScript *forces* the two
 new labels. Use `'Web search (Brave)'` and `'Web search (Exa)'` — the
-parenthesised provider name is the attribution mechanism for the **Tools**
+parenthesized provider name is the attribution mechanism for the **Tools**
 row. (The separate **Web search** cost row gets its provider name from the
 `searchProvider` field in WP 1.7. Both rows naming the provider is
 intentional: they answer different questions — "what did the model do" vs
@@ -995,7 +995,7 @@ loop" and `docs/web-search-cost-accounting.md`:**
 - `inputSchema`: a Zod object with one field, `query: z.string().min(1).max(400)`
   (Brave's documented `q` bound), plus a clear `description` telling the
   model to issue one focused query.
-- Normalise `web.results[]` to `{ title, url, snippet }` —
+- Normalize `web.results[]` to `{ title, url, snippet }` —
   `.title` → title, `.url` → url, `.description` → snippet — and return
   `{ results, provider: 'brave' }`. Cap the returned array at 10.
 - Brave returns **no cost field**; its cost comes from config (below).
@@ -1009,7 +1009,7 @@ loop" and `docs/web-search-cost-accounting.md`:**
   mandatory, not optional — a bare Exa query returns **no body text at all**,
   only title/url/date/author, so there would be nothing renderable as a
   snippet. Fixing `numResults` at 10 is a cost decision (see below).
-- Normalise `results[]` to `{ title, url, snippet, publishedDate?, author? }`
+- Normalize `results[]` to `{ title, url, snippet, publishedDate?, author? }`
   where snippet is the joined `highlights[]`. Exa's `title` is nullable more
   often than Brave's — fall back to the hostname.
 - **Return Exa's own `costDollars` in the tool output object**, e.g.
@@ -1074,7 +1074,7 @@ comment discipline for the four Google/Anthropic/OpenAI rates.
 
 - **New:** `tests/unit/utils/search/brave.spec.ts` — request URL, header name
   (`X-Subscription-Token`, asserted literally), fixed params, response
-  normalisation, hostname fallback, abort-signal threading, and
+  normalization, hostname fallback, abort-signal threading, and
   `createError` shape on non-2xx.
 - **New:** `tests/unit/utils/search/exa.spec.ts` — same, plus: the request
   body always carries `contents.highlights: true` and `numResults: 10`, and
@@ -1211,7 +1211,7 @@ Exa alongside the native four, and to state the blended exception explicitly:
 > `perplexitySearch()`) — that would double-count the same charge.
 
 Write that sentence **now**, in Epic 1, even though gateways do not exist
-yet. It is the contract Epic 2 must honour, and a comment that arrives with
+yet. It is the contract Epic 2 must honor, and a comment that arrives with
 the code it constrains is worth more than one retrofitted afterwards.
 
 **`server/utils/ai/message-usage.ts` — `addSearchUsage()`** gains one
@@ -1275,7 +1275,7 @@ construction.
 
 - `tests/unit/utils/search-usage.spec.ts` — the new branch wins over the
   provider branches; absent `externalSearchProvider` leaves existing
-  behaviour byte-identical (assert this explicitly — it is the regression
+  behavior byte-identical (assert this explicitly — it is the regression
   that would silently break Google's invoice-verified path).
 - `tests/unit/utils/message-usage.spec.ts` — `searchProvider` is set when
   present and omitted when absent.
@@ -1304,7 +1304,7 @@ pnpm vitest run tests/unit/utils/search-usage.spec.ts \
 ```
 
 The last two are regression guards: they cover the direct-provider tool loop
-and the single-step characterisation, and a mistake in tool injection breaks
+and the single-step characterization, and a mistake in tool injection breaks
 them first.
 
 - [x] WP 1.3 complete (commit `da88f71`)
@@ -1331,7 +1331,7 @@ pre-`.tee()` stream transforms. It currently exports two:
 `stream.pipeThrough(new TransformStream({ transform … }))` shape and the same
 `typeof stream?.pipeThrough !== 'function'` guard.
 
-Behaviour: when a `tool-output-available` chunk carries an external-search
+Behavior: when a `tool-output-available` chunk carries an external-search
 result payload, enqueue one `source-url` chunk per result
 (`{ type: 'source-url', sourceId, url, title }`), deduplicated by URL within
 the message.
@@ -1367,7 +1367,7 @@ guess fails silently rather than loudly.
 chunk would satisfy the source-rendering goal while silently breaking the
 reasoning-step surfacing, because `isThinkingToolPart()` in
 `app/utils/reasoning.ts` keys on the presence of a `tool-*` part. Both
-behaviours are required; they are not alternatives.
+behaviors are required; they are not alternatives.
 
 Wire it at `index.post.ts:1069-1072`, **before** the `.tee()`:
 
@@ -1391,13 +1391,13 @@ no new client component. `docs/web-search-cost-accounting.md:537-543` flagged
 this exact gap ("external searches wouldn't light up the existing Web search
 tool badge without an added detection branch") — this transform is the answer
 to it, and WP 1.1's suppression guard is what stops the inference
-double-labelling the turn.
+double-labeling the turn.
 
 **Ordering caution:** `insertParagraphBreakAfterNonTextGap` treats any chunk
 whose `type` starts with `tool-` or `reasoning-` as a "gap" marker and does
 not touch other types. Injecting `source-url` chunks **after** it, as shown
 above, keeps that logic seeing exactly the stream it sees today. Injecting
-before it would introduce unrecognised chunk types into its state machine —
+before it would introduce unrecognized chunk types into its state machine —
 harmless by inspection, but unnecessary risk. Keep the order above.
 
 ### Tests
@@ -1465,7 +1465,7 @@ mobile with no error.** Build all three pieces:
    `select-provider`. Copy `ReasoningMenuItems.vue`'s active-state styling
    verbatim: `:class="{ 'bg-accent text-accent-content pointer-events-none': selected === option }"`.
 2. `WebSearchTrigger.vue` — the desktop `<details class="dropdown dropdown-top">`
-   wrapping `WebSearchMenuItems`. Copy `ReasoningTrigger.vue`'s behaviours
+   wrapping `WebSearchMenuItems`. Copy `ReasoningTrigger.vue`'s behaviors
    exactly: `useElementHover(dropdown)` plus a
    `watch(isDropdownHovered, …, { flush: 'post' })` that opens on hover
    **only on desktop** (`if (!dropdown.value || isIos || isAndroid) return`),
@@ -1511,7 +1511,7 @@ readable without opening the dropdown.
 ```
 
 The prop exists **only** to control alignment: when the web-search button is
-expanded into its labelled state it takes horizontal room, pushing the
+expanded into its labeled state it takes horizontal room, pushing the
 reasoning dropdown's anchor, so the menu flips its alignment to avoid
 clipping at the viewport edge. Turning web search into a second adjacent
 dropdown breaks that premise — there are now two `dropdown-top` menus side by
@@ -1570,7 +1570,7 @@ new ref:
   native support; disabled reasons render; `select-provider` emits the right
   value.
 - **New:** `tests/unit/components/ChatInput/WebSearchTrigger.spec.ts` —
-  modelled on any existing `ReasoningTrigger` spec if one exists: hover opens
+  modeled on any existing `ReasoningTrigger` spec if one exists: hover opens
   on desktop only, click-outside closes, the trigger label reflects the
   selection.
 - `tests/unit/components/ChatInput.spec.ts` — `selectWebSearchProvider`
@@ -1659,12 +1659,12 @@ away as part of this package — that is a separate change with its own
 review, and bundling it would obscure a UI regression.
 
 **Row chip — `ModelItem.vue:79-133`.** Add one more
-`<span class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-{colour}">`
+`<span class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-{color}">`
 + `<Icon>` following the five that exist (reasoning `lucide:brain`
 `text-warning`; web search `lucide:globe` `text-info`; image generation
 `lucide:image-plus` violet; vision `lucide:eye` `text-accent`; deep research
 `lucide:telescope` `text-success`). Use `lucide:wrench` (or
-`lucide:square-function`) and a colour not already taken by the five —
+`lucide:square-function`) and a color not already taken by the five —
 `text-neutral` reads as "structural capability" rather than "feature", which
 matches what tool calling is. Gate it on `model.toolCall` and on the existing
 `hasTooltip = isDesktop && !isLegacy`. Tooltip copy: "Supports tool calling —
@@ -1762,7 +1762,7 @@ and the e2e suite key on it.
 
 Note the four native providers are also valid `searchProvider` values, so
 this change retroactively improves attribution for them too ("Web search
-(Anthropic)"). That is a behaviour change on existing messages — but only
+(Anthropic)"). That is a behavior change on existing messages — but only
 forward-looking ones, since `searchProvider` is never backfilled onto
 already-persisted rows (consistent with
 `docs/web-search-cost-accounting.md`'s non-goal: "any accounting change is
@@ -1784,7 +1784,7 @@ add two explicit `TOOL_STEP_TITLES` entries so the step reads
 "Searching with Brave" / "Searched with Brave" (and the Exa equivalents)
 instead of the generic wording, matching the attribution the Tools and cost
 rows now carry. **Write this in the PR description as "a polish change on top
-of already-correct generic behaviour", not as a bug fix** — file 00's blind
+of already-correct generic behavior", not as a bug fix** — file 00's blind
 spot #5 raised this as a possible gap, and the finding is that it is not one.
 
 ### Tests
@@ -1904,7 +1904,7 @@ all ──> 2.10 (tests + docs)
 
 ## WP 2.1 — Dependencies and mechanical restore
 
-**Tier: Sonnet.** Mechanical, near-zero judgement — but read the two "do not
+**Tier: Sonnet.** Mechanical, near-zero judgment — but read the two "do not
 restore" notes.
 
 ### Files touched
@@ -1955,7 +1955,7 @@ app/components/Profile/Keys/CloudflareGateway.vue
 ```
 
 Zero-churn surgical files (restore the whole file, then re-read it against
-current neighbours):
+current neighbors):
 
 ```
 shared/utils/model-selection.ts
@@ -2134,7 +2134,7 @@ The second `db:generate` producing nothing is the proof that schema and
 snapshot chain agree.
 
 No browser verification, but after the preview deploy lands, confirm
-`/profile` loads and a favourite can be starred — the restored
+`/profile` loads and a favorite can be starred — the restored
 `user_settings` read path is the first thing a stale column would break.
 
 - [x] WP 2.2 complete (commit `d6e2b47`)
@@ -2233,7 +2233,7 @@ deleted** — it also guards the `cost` read path (`expect(info?.cost).toBe(0.05
 Rewrite it as two tests: (a) an `openrouter`-provider message now resolves to
 a real provider row with `providerKind === 'gateway'` and still reports its
 cost; (b) a genuinely unknown provider string still degrades to no provider
-row without throwing (keep an unrecognisable value so the degradation path
+row without throwing (keep an unrecognizable value so the degradation path
 retains coverage).
 
 - `tests/unit/utils/provider-meta.spec.ts` — the three gateway entries exist,
@@ -2338,7 +2338,7 @@ else `<LazyProfileKeysProviderKeyCard v-else :provider-id="gatewayId" open />`.
 Note `open` — gateway panels render their single card expanded, unlike the
 provider list's accordion.
 
-This yields a five-tab bar. Check the narrow-viewport behaviour explicitly
+This yields a five-tab bar. Check the narrow-viewport behavior explicitly
 (step 6 below): the original design only ever had four.
 
 ### Tests
@@ -2430,7 +2430,7 @@ reviewer must confirm them rather than assume the restore was faithful:
 Cloudflare's cache key deliberately includes the key hash, not just the
 account id: "a guessed account ID paired with an unrelated key must never
 produce a cache hit against another user's real catalog." **That is a
-security property, not an optimisation** — flag any change to it.
+security property, not an optimization** — flag any change to it.
 
 **2. Cloudflare's two-format join is inverted, and that is the trap.**
 Neither response shape suffices alone, so both are fetched in parallel inside
@@ -2480,7 +2480,7 @@ silently unavailable on every gateway model:
 | Cloudflare | `function_calling` — the **string** `"true"`, from the default-format `properties[]` |
 
 Add `toolCall: boolean` to `GatewayModel` and populate it in all three
-normalisers. **This is genuinely new code inside a restored file** — call it
+normalizers. **This is genuinely new code inside a restored file** — call it
 out in the PR description so a reviewer does not diff it against `24df3b5^`
 and flag it as an unfaithful restore.
 
@@ -2492,7 +2492,7 @@ and flag it as an unfaithful restore.
 - Restore and re-verify: `tests/unit/utils/gateways/{vercel,openrouter,cloudflare,index}.spec.ts`,
   `tests/unit/utils/gateway-catalog-normalize.spec.ts`,
   `tests/integration/api/gateways-models.spec.ts`.
-- **New cases** in the per-gateway specs for the `toolCall` normalisation,
+- **New cases** in the per-gateway specs for the `toolCall` normalization,
   including Cloudflare's string-`"true"` coercion and the
   `marketplace.id === default.name` join (a fixture where `id === id` would
   wrongly match must assert zero matches on the wrong key).
@@ -2514,7 +2514,7 @@ pnpm vitest run tests/unit/utils/gateways/ \
 
 **Live catalog verification — REQUIRED, all three gateways.** Real
 credentials exist, so every catalog claim in this package is testable now.
-These normalisers were written in mid-2026 and **Cloudflare's was never
+These normalizers were written in mid-2026 and **Cloudflare's was never
 validated against a real response at all**; a field rename or an envelope
 difference surfaces as an empty picker rail with no error.
 
@@ -2540,9 +2540,9 @@ Then confirm, against the real bytes, each of the four things the removal-era
 docs listed as never-verified:
 
 1. **The response envelope** — `{ result: [] }` vs `{ data: [] }`. The
-   normaliser assumes one; check which.
+   normalizer assumes one; check which.
 2. **`per_page=1000` pagination** — does it return everything, or is there a
-   `result_info` indicating more pages the normaliser silently drops?
+   `result_info` indicating more pages the normalizer silently drops?
 3. **The inverted join key.** In the marketplace shape `id` is the real
    `@cf/vendor/model` string; in the default shape `id` is a UUID and that
    string lives in `name`. Confirm `marketplace.id === default.name` matches
@@ -2628,7 +2628,7 @@ them, and restore the four gateway fields on the
   `providerMetadata` off each per-step `finish-step` chunk. **Per-step costs
   are summed, not last-wins** (`sumOpenRouterStepCosts()` folds over
   `finish-step` chunks live and `result.steps` when persisting). This is
-  **observed behaviour of `ai@7.0.56`, not a documented contract.** The
+  **observed behavior of `ai@7.0.56`, not a documented contract.** The
   installed version is still exactly `7.0.56`, so the ordering has not
   shifted — but **re-run the empirical check** and record the result.
 - **Vercel — asynchronous.** `providerMetadata.gateway.generationId` →
@@ -2704,7 +2704,7 @@ Explicitly shared and unmodified — the removal plan verified each:
   async-generation-id path, and Cloudflare's estimate.
 - **New:** a test asserting the double-count guard — a turn using
   OpenRouter's `web` plugin produces a `totalCost` and **no** `searchCost`.
-  This is the one behaviour with no prior art in either direction.
+  This is the one behavior with no prior art in either direction.
 - `tests/unit/utils/message-usage.spec.ts` — the 4-arg `buildMessageUsage`.
 - `scripts/test-affected-check.mjs`: add `chats-gateway.spec.ts` to both
   `gatewayCatalogTests`' sibling `gatewayChatTests` array (restore that
@@ -2732,7 +2732,7 @@ most likely place to silently perturb paths that already work.
 1. Send a normal **direct-provider** message. Confirm it is unchanged —
    same reasoning, same tools, same cost rows, same citations.
 2. Send a **Brave** search and an **Exa** search on a direct-provider model.
-   Confirm Epic 1's behaviour is unchanged.
+   Confirm Epic 1's behavior is unchanged.
 3. Select a gateway model **with no key saved** and send. Confirm a friendly
    "no key" 401, not a crash, a hang or a 500.
 4. Confirm Axiom receives `attributes.chat.gateway`,
@@ -3002,20 +3002,20 @@ header. Guard the whole legacy block on `pickerMode === 'provider'`.
 **`isVisionOnly` is also new since removal** (`7220abc`). Same question, same
 answer shape: gateway models carry modality data from their catalogs, so the
 vision filter *can* apply — but confirm `GatewayModelList` actually receives
-and honours it, or the toggle will silently no-op in gateway mode. If it
+and honors it, or the toggle will silently no-op in gateway mode. If it
 cannot be wired cheaply, hide the toggle in gateway mode rather than leaving
 a dead control.
 
 **Three rules keep the gateway rail honest — re-implement all three:**
 
 1. It renders only when the catalog has **more than one** distinct prefix, or
-   a favourite exists. Cloudflare ids are `@cf/vendor/model-slug`, and
+   a favorite exists. Cloudflare ids are `@cf/vendor/model-slug`, and
    `getGatewayModelProviderPrefix()` returns the real vendor segment, not the
    shared `@cf` namespace.
 2. It **hides while searching** — a hidden rail governs nothing, so search
    *suspends* the provider filter rather than compounding with it.
 3. `getGatewayProviderGroups()` **must be fed a search-independent list**
-   (`groupableModels` = favourites + free only), or a reset silently discards
+   (`groupableModels` = favorites + free only), or a reset silently discards
    a filter the user set before typing.
 
 **The count-badge pattern already survives** on the direct-provider
@@ -3077,7 +3077,7 @@ pnpm vitest run tests/unit/components/ChatInput/ModelsTrigger.spec.ts \
 check available without credentials, because the Vercel and OpenRouter
 catalogs are public:
 
-1. Open the model picker. Confirm the direct-provider rail, the favourites
+1. Open the model picker. Confirm the direct-provider rail, the favorites
    star, the count badges, the keyless accent dots and the collapsed legacy
    section are **all exactly as before this epic**. Regression first.
 2. Confirm a gateway mode switch is present, and switch to it.
@@ -3092,7 +3092,7 @@ catalogs are public:
    suspended, not compounded. Clear the search and confirm the previous
    vendor filter is restored, not lost.
 7. Confirm the legacy/deprecated section does **not** render in gateway mode.
-8. Star a gateway model. Confirm it appears in favourites and survives a
+8. Star a gateway model. Confirm it appears in favorites and survives a
    reload (this exercises WP 2.2's restored column end to end — it is the
    best available proof the migration applied).
 9. Repeat 3–8 for **Vercel** (also public).
@@ -3157,7 +3157,7 @@ else-branch: `isWebSearchSupported`, `isImageGenerationSupported`,
 > which fails open). A persisted gateway selection shows no web-search toggle
 > until the picker has fetched that gateway's catalog once per session. That
 > is intentional — a gateway model's capabilities are not knowable without
-> its catalog, and offering a control the model cannot honour produces a
+> its catalog, and offering a control the model cannot honor produces a
 > live-key 400, not a cosmetic glitch. Preserve it.
 
 **This file also carries Epic 1's `isToolCallingSupported` and
@@ -3321,7 +3321,7 @@ minimum:
   Cloudflare estimated from catalog pricing) **and the blended-vs-`searchCost`
   double-count rule**, which is new in this restoration;
 - the reasoning mechanism divergence: OpenRouter needs a **settings-level
-  chat field**, not the standardised top-level `streamText({ reasoning })`
+  chat field**, not the standardized top-level `streamText({ reasoning })`
   option — verified against `@openrouter/ai-sdk-provider@3.0.0`'s `getArgs()`,
   and "the opposite of what the round-4 plan document assumed";
 - web search resolution (`'native'` when the routed provider supports it —
@@ -3407,7 +3407,7 @@ Expect **no output**. Any line printed is a spec that will never run on a PR.
       (Brave)" Tools row, separate ~$0.015 search line). Exa was not
       re-sent this pass
 - [ ] The Vercel and OpenRouter live catalog shapes were diffed against the
-      restored normalisers (WP 2.5) — **post-merge follow-up** (both
+      restored normalizers (WP 2.5) — **post-merge follow-up** (both
       catalogs load live with pricing, so this is a drift check, not a
       blocker)
 - [x] WP 2.5's live catalog checks passed for **all three** gateways —
@@ -3685,7 +3685,7 @@ whenever substance changes.
 
 ### What changes, concretely — `privacy-policy.md` (290 lines)
 
-**The recipients table (lines ~114-125) is the centrepiece.** It currently
+**The recipients table (lines ~114-125) is the centerpiece.** It currently
 lists Cloudflare (processor, EU–US DPF), Axiom (processor, SCCs),
 "Anthropic, OpenAI or Google AI Studio" (independent controller), push
 services, OAuth providers, and search engines. Add a row per **new external
@@ -3742,9 +3742,9 @@ Other sections in the same file that must change:
   gateways and search providers.
 - **lines 38, 62, 64-65, 92, 107, 182, 225** — you pay the provider directly;
   you must comply with your provider's terms; you are responsible for usage
-  costs; content is forwarded to a third-party provider; the licence to
+  costs; content is forwarded to a third-party provider; the license to
   transmit your content; the service depends on third parties; no liability
-  for what your provider does. **Each of these now has three flavours of
+  for what your provider does. **Each of these now has three flavors of
   third party, not one.** Lines 64-65 matter most commercially: a Brave or
   Exa bill is a **new, separate cost** the user incurs, on a separate
   account, and the terms should say so plainly.
@@ -3754,7 +3754,7 @@ Other sections in the same file that must change:
 Line 87 — "**Your AI provider** receives your prompts through a
 server-to-server API call. No provider cookie is set in your browser by
 that." The same sentence covers a search vendor and a gateway with a small
-generalisation. This is the only change needed here, plus the `updatedAt`
+generalization. This is the only change needed here, plus the `updatedAt`
 bump.
 
 ### Tests
@@ -3891,7 +3891,7 @@ Specific unknowns worth watching: Exa's `costDollars` shape (is it a scalar
 or an object with a `total`?), and whether Brave's `result_filter=web`
 genuinely suppresses every non-web vertical.
 
-## R3 — The Exa rate is a modelling decision, not a looked-up number
+## R3 — The Exa rate is a modeling decision, not a looked-up number
 
 > **RESOLVED, corrected by real evidence during WP 1.2.** This originally
 > proposed `$17/1,000` (`$7` base + `$1 × 10` highlight pages, read
@@ -3962,7 +3962,7 @@ Reading the specs surfaced **two more that fail earlier, in Epic 0**:
 | `tests/unit/utils/message-metadata.spec.ts:609-632` | Epic 2 | pins "legacy gateway provider degrades to no provider row" |
 | `tests/unit/components/Chat/ContextMenu.client.spec.ts` | Epic 2 | `not.toContain('(direct)')` |
 
-All four must be **rewritten, not deleted** — each guards a real behaviour
+All four must be **rewritten, not deleted** — each guards a real behavior
 beyond the assertion that flips. A full audit (`rg -ln "'qwen'" tests/`) is
 mandated in WP 0.1 because there may be more.
 
@@ -3980,10 +3980,10 @@ higher than 17, stop and re-decide rather than mass-editing.
 `isVisionOnly` filter after the gateway code was deleted. Neither existed
 when the `pickerMode` switcher did, so the original code has **no** guidance
 on how they interact. WP 2.8 decides: legacy is provider-mode only; vision
-applies in gateway mode **if** `GatewayModelList` honours it, else the toggle
+applies in gateway mode **if** `GatewayModelList` honors it, else the toggle
 hides. Both are new product decisions made inside a restoration package —
 call them out for review rather than letting them read as restored
-behaviour.
+behavior.
 
 ## R10 — `ReasoningTrigger`'s alignment prop is a real refactor inside a UI package
 
@@ -3995,7 +3995,7 @@ the only guard. Do not skip it.
 ## R11 — `ai@7.0.56`'s chunk ordering is observed, not contracted
 
 OpenRouter's live cost capture depends on `finish-step` chunks arriving
-before `finish`, which the original work recorded as **"observed behaviour of
+before `finish`, which the original work recorded as **"observed behavior of
 `ai@7.0.56`, not a documented contract"**. The installed version is still
 exactly `7.0.56`, so it has not shifted — but WP 2.6 must **re-run the
 empirical check** and record the result, and any future `ai` bump must repeat

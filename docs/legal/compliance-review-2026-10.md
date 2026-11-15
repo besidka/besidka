@@ -21,8 +21,8 @@
 | 3 | Session replay and CIPA | Not applicable today | Nothing | Do not add session replay or ad trackers without revisiting |
 | 4 | Marketing email and CAN-SPAM | Not applicable. All mail is transactional | Privacy Policy email list corrected | None |
 | 5 | Subscriptions and California ARL | Not applicable. Nothing is sold | Nothing | Revisit before any paid tier |
-| 6 | Uploads and the DMCA | Decided 2026-10-28: no agent; no safe harbour claimed; revisit only if a JDG is opened. Notice process published | New Terms section "Copyright complaints", Privacy Policy "Reports and notices about content", share defaults off, retention 12 and 24 months | None |
-| 7 | DSA | Untested argument that it does not apply. Followed voluntarily | Stopped self-labelling as an "online platform" | Counsel check |
+| 6 | Uploads and the DMCA | Decided 2026-10-28: no agent; no safe harbor claimed; revisit only if a JDG is opened. Notice process published | New Terms section "Copyright complaints", Privacy Policy "Reports and notices about content", share defaults off, retention 12 and 24 months | None |
+| 7 | DSA | Untested argument that it does not apply. Followed voluntarily | Stopped self-labeling as an "online platform" | Counsel check |
 | 8 | AI Act Art. 50 | Partly done 2026-11-04: provider C2PA kept byte-identical, an IPTC XMP tag (model id only) added otherwise, visible badge stays; no own signature or watermark, so xAI, Qwen and unverified gateway images likely fall short (see 3.2) | Image marking module `server/utils/ai/image-provenance.ts`, called before both image paths save to R2; Terms sentences on the machine-readable mark | Decide before 2.12.2026 what to do for providers and gateway models with no C2PA or watermark (see 3.2) |
 | 9 | TCO Regulation 2021/784 | Watch | Nothing | Keep the contact address monitored |
 | 10 | GDPR Art. 33 breach procedure | Done 2026-11-04: runbook written (`docs/legal/breach-runbook.md`) | Runbook: 72-hour clock, first-hour containment, risk table, UODO and user notices, processor notices, private breach record | Get a Profil Zaufany if not already held. Keep the breach record privately, not in this repository |
@@ -139,12 +139,12 @@
   not apply. The Terms already say there is no payment and describe what would
   change if that ever did.
 - **Owner.** Revisit before any paid tier, together with `docs/legal.md` "Why no
-  postal address is published". Monetisation changes several conclusions at once.
+  postal address is published". Monetization changes several conclusions at once.
 
 ### 2.6 User uploads, share pages and the DMCA
 
 - **Risk.** Users upload files and publish chats that can contain others'
-  copyrighted material. The US safe harbour for hosting (17 U.S.C. 512(c))
+  copyrighted material. The US safe harbor for hosting (17 U.S.C. 512(c))
   protects a service provider that has a designated agent registered with the
   Copyright Office, a notice-and-takedown procedure and a repeat-infringer
   policy.
@@ -157,7 +157,7 @@
     repeat-infringement rule (material repeatedly removed on copyright notices:
     sharing restricted, account suspended or terminated, a statement of reasons
     each time) and a false-notice warning. It names no agent, claims no
-    registration and no US safe harbour, and does not offer a 512(g)
+    registration and no US safe harbor, and does not offer a 512(g)
     counter-notice procedure.
   - **Privacy Policy.** A new section "Reports and notices about content", a
     legal-basis row (Art. 6(1)(c) where the law requires action, otherwise
@@ -170,8 +170,8 @@
     them rebuilds `chat_shares` on D1 and cascades `chat_share_files`
     (`docs/d1-restore-reconciliation.md`).
 - **The designated-agent decision (decided 2026-10-28: no agent; no safe
-  harbour claimed; revisit only if a JDG is opened).** Without a registered
-  agent the 512(c) safe harbour is not available, so the procedure above is good
+  harbor claimed; revisit only if a JDG is opened).** Without a registered
+  agent the 512(c) safe harbor is not available, so the procedure above is good
   practice and a commitment, not a shield. Registering is done at dmca.copyright.gov
   through Login.gov, costs $6 per designation and is renewed every 3 years. The
   catch: 37 CFR 201.38(b)(1)(i) requires the **service provider's own physical
@@ -254,15 +254,19 @@
   **2.12.2026** (source:
   https://ai-act-service-desk.ec.europa.eu/en/ai-act/article-111). Besidka
   generated images before 2.8.2026, so the later date is the working deadline.
-- **Who is the provider.** The Commission guidelines on Art. 50 (20 July 2026)
-  point strongly to Besidka being a provider, and this review treats it as one.
+- **Who is the provider.** The Commission guidelines on Art. 50 (Communication C(2026) 7702 of
+  5 November 2026; the Commission page was published on 20 July 2026 and
+  updated on 5 November 2026) point strongly to Besidka being a provider, and this review treats it as one.
   The text of para 11 gives the example: a company that offers a generative app
   under its own name is a provider, free or paid. A BYOK relay with Besidka's
   name on it fits that example. Art. 3(3) covers supply free of charge. Not
   every step is settled: "placing on the market" (Art. 3(9) with 3(10)) needs a
   commercial activity, but "putting into service" (Art. 3(11)) does not, and a
   personal project can be a provider by putting the system into service. The
-  Art. 2(12) open-source exemption was **not verified**. Para 74 lets a system
+  Art. 2(12) open-source exemption is settled for Art. 50: Art. 2(12) says
+  the Regulation does not apply to open-source systems "unless" they fall
+  under Art. 5 or 50 (read in the EUR-Lex text for pre-check D-10, 2026-11-08),
+  and guidelines para 23 says the same. Para 74 lets a system
   provider rely on an upstream model provider's marking, without prejudice to
   its duty to demonstrate compliance. Deployer duties in Art. 50(4) (deep fakes)
   are unchanged: they attach to professional use, which a personal project is
@@ -289,7 +293,7 @@
     to `trainedAlgorithmicMedia` (`compositeWithTrainedAlgorithmicMedia` when
     the model edited a user's image) and `Iptc4xmpExt:AISystemUsed` set to the
     model id. Nothing else: no `xmp:CreatorTool`, no prompt, no user data
-    (owner decision, data minimisation).
+    (owner decision, data minimization).
   - The result is logged as `attributes.imageGeneration.provenance` or
     `attributes.assistantFiles.provenance` with one of `upstream-c2pa`,
     `upstream-xmp`, `existing-xmp-unmarked`, `added-xmp`, `merged-xmp`,
@@ -306,7 +310,7 @@
   - Guidelines para 81 says technical feasibility is objective and does not
     depend on a provider's resources. Cost counts (paras 80 and 85), but para 86
     accepts metadata-only marking only in narrow closed-environment cases. The
-    Code of Practice on marking and labelling AI-generated content (final 10
+    Code of Practice on marking and labeling AI-generated content (final 10
     June 2026) asks for at least two layers (digitally signed metadata plus an
     imperceptible watermark) and retention of existing markings (Measures 1.1
     and 1.2). It is voluntary and Besidka is not a signatory. Besidka keeps
@@ -343,13 +347,66 @@
   `.md` and `.svg` downloads get a one-line comment; `.jsx` and `.mmd`
   downloads stay unmarked as source code (A-4). **Decision on downloads:**
   mark them as above; this closes the gap the ticket named. Content written
-  through MCP may be human-written; over-labelling is harmless. **Open:**
+  through MCP may be human-written; over-labeling is harmless. **Open:**
   whether a bare meta tag is "effective, interoperable, robust" (treat it as a
   best-effort layer); where SVG sits between code and image; whether a feature
   added after 2.8.2026 keeps the Art. 111(4) grace (plan to mark at launch).
   Text artifacts are not deep fakes, so Art. 50(4) does not apply to Besidka;
   a user who publishes one professionally to inform the public is the
   deployer.
+- **Documents (2026-11-11, D-9; pre-check `docs/legal/prechecks/documents.md`,
+  Q2 and Q10).** Besidka stays the provider. The guidelines list text as a
+  modality (para 60). This review reads that as covering the rendered PDF,
+  DOCX, PPTX and XLSX file, which is the final output people read; **the
+  guidelines do not name those formats, so that reading is this review's
+  own.** The JSON spec is a machine-readable specification and out of scope
+  (para 68). Rendering is format conversion (para 92; Art. 50(2) also exempts
+  systems that "do not substantially alter the input data"), but the content
+  is the model's output, so the file stays in scope.
+  - *What is marked.* D-2 (built on `feat/documents-spec-package`, PR #833,
+    not merged) writes the mark into every rendered file, mirroring the image
+    tag: OOXML `docProps/custom.xml` with `Iptc4xmpExt:DigitalSourceType`
+    (`trainedAlgorithmicMedia`, or the composite value) and
+    `Iptc4xmpExt:AISystemUsed` (the model id only), and for PDF an
+    uncompressed XMP stream with the same fields, plus the document title and
+    language. No prompt, user id or chat id is written. `validate()` returns
+    `ai`, `channel-only` or `missing`. `stampDocument` adds the mark to an
+    existing OOXML or PDF file without re-rendering. The chat card keeps a
+    visible AI label.
+  - *Detection.* Paras 69, 70, 75 and 76 ask for marking and detection. The
+    minimum is a published line saying that the mark can be read with
+    `exiftool`, the Acrobat document properties and the Word, PowerPoint or
+    Excel custom properties. That is a minimum, not a proven detection
+    solution, and no human-readable detection tool exists yet.
+  - *MCP exception.* A connected client supplies the content and Besidka
+    renders it without altering it (paras 64, 65 and 92). Besidka does not
+    assert AI origin unless the client declares `aiGenerated`; the file says
+    "Created by a connected app" and carries a `createdVia` property. The
+    client's own provider carries any Art. 50(2) duty for what the client
+    wrote. This is this review's analysis, not a Commission statement about
+    MCP.
+  - *Provider-made files (D-7, D-8).* Code and skill output files may carry no
+    mark. Images go through `markAiGeneratedImage` (PNG, JPEG and WebP only;
+    `gif` is removed from the allowlist or stored unmarked and logged). Office
+    and PDF files pass `validate()` and, where the mark is missing, either
+    `stampDocument` or a recorded `missing` state with a visible AI label. A
+    flag for this path does not leave `internal` without one of the two.
+    Model-written code and stdout are source code, out of scope (para 68);
+    CSV, TSV, JSON, TXT and Markdown cannot carry a mark.
+  - *Residual gaps.* One unsigned metadata layer, probably below what Art.
+    50(2) expects (paras 79 to 87, the Code of Practice's two layers); no text
+    watermark (that needs the model, so only the upstream provider can add
+    one); stripped by re-saving, printing or copy-paste; the OOXML property
+    name is not a standard one, so interoperability is weak; an orphan XMP
+    stream in a PDF reads as marked; MCP files are channel-only.
+  - *Art. 111(4).* Not relied on for documents: the grace plausibly covers a
+    system that generated text before 2 August 2026, but no source says it
+    reaches a new output type, so marking ships with the feature.
+  - *Open owner decision before 2 December 2026.* Extended to documents and
+    to chat text: assistant messages have a visible UI label but no
+    machine-readable mark, and this section covered images only. Put text and
+    documents on the same decision as the images (recommended). A visible
+    "created with AI" line in documents (para 71) is not planned.
 - **Revisit when.**
   - a provider starts or stops embedding C2PA (re-run the R2 check above);
   - the Commission publishes further guidance, or a standard under Art. 50(7)
@@ -358,7 +415,7 @@
   - a cheap Workers-compatible watermark library appears.
 - **What changed.** The marking module and its two call sites, the log
   attribute, the Terms sentences (recorded as `minor` in
-  `shared/utils/legal-document-revisions.ts`: they describe service behaviour
+  `shared/utils/legal-document-revisions.ts`: they describe service behavior
   and add no purpose, recipient or obligation), and the unit tests
   (`tests/unit/utils/ai/image-provenance.spec.ts`).
 - **Sources.** Commission guidelines on Art. 50:
@@ -441,7 +498,7 @@ publish. Watch the appeal.
 
 ## 4. Owner follow-ups, in one list
 
-1. DMCA designated agent (2.6). Decided 2026-10-28: no agent; no safe harbour
+1. DMCA designated agent (2.6). Decided 2026-10-28: no agent; no safe harbor
    claimed; revisit only if a JDG is opened.
 2. Retention for reports and notices (2.6). Decided: 12 months, 24 months for
    the copyright-removal note.
@@ -464,6 +521,17 @@ publish. Watch the appeal.
 8. Extend the Cloudflare "API flood limit" rule with
    `or starts_with(http.request.uri.path, "/api/v1/shared/")` (2.2). Done
    2026-10-28 via the `cf` CLI (ruleset `http_ratelimit`, rule version 3).
+9. Documents and code execution (2026-11-11, D-9). Open: (a) Art. 50(2) for
+   documents and chat text, on the same decision as item 3 before 2.12.2026
+   (3.2); (b) decided 2026-11-11 ("Yes, add to Terms"): the Terms mirror
+   the providers' malware, denial-of-service and critical-infrastructure
+   rules, with three more sentences (documents and code results are not
+   reviewed by Besidka, the AI-mark paragraph extended to documents, Anthropic's
+   skills run under the user's own agreement); material, notice
+   `2026-12-code-and-documents`, effective 2026-12-19 (`docs/legal/dpia.md`,
+   section 6, item 26); (c) the Privacy Policy change for
+   documents and code execution is recorded as material on the cautious
+   reading and covered by the same notice (item 25).
 
 ## 5. Deploying the legal text
 

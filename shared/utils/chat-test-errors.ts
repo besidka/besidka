@@ -10,6 +10,12 @@ export const chatTestScenarios = [
   'mermaid',
   'markdown',
   'code',
+  'document',
+  'skill',
+  'tool-approval',
+  'tool-approvals',
+  'besidka-tool-approval',
+  'reasoning-icons',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]

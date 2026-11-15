@@ -66,6 +66,12 @@ slot 5.
   source opens the page in a new tab (`noopener noreferrer`); anything else
   scrolls the chat to its message (`[data-message-id]`). On mobile the sheet closes first;
   on desktop the panel stays open.
+- **Approvals** (owned chats, `tool-approvals` flag): below the groups,
+  `Chat/ContextPanelApprovals.vue` lists the remembered tool approvals that
+  apply in this chat, with "Reset approvals in this chat" and a per-tool
+  Remove for "Always allow". It reads its own route
+  (`GET /api/v1/chats/[slug]/tool-approvals`), not the context aggregate;
+  see `docs/connectors.md` section 7.9.
 - **States**: `UiSidePanelSkeleton` while loading; an `alert-error` with Retry
   on failure; one sentence when the chat has nothing yet.
 - "Not used for memory" shows only as the header badge and in the history
@@ -96,7 +102,7 @@ Built from persisted message parts and chat columns. No new tables.
   lazily on the client with one async-data key shared by the badge and the
   panel. Its `data` stays null until the response belongs to the chat on the
   route (Nuxt seeds a new key with the previous key's data, so chat A would
-  otherwise show while chat B loads). It refreshes, cancelling any in-flight
+  otherwise show while chat B loads). It refreshes, canceling any in-flight
   request, when the panel opens, after every finished send
   (`chat:generation-finished`), after a stopped send, a deleted message or a
   finished deep research report (`chat:context-changed`), and after the share
@@ -109,7 +115,7 @@ Built from persisted message parts and chat columns. No new tables.
   (no tool parts at all, so no memory, knowledge, chat search or web-search
   tool counts), then `rewriteShareFileParts` when the share shows files, or
   `hideFileParts` when it does not. Raw `/files/<key>` URLs never leak. The
-  builder also drops tool parts itself in public mode, as defence in depth.
+  builder also drops tool parts itself in public mode, as defense in depth.
 - `usage` is not even selected unless the share shows metadata.
 - Cost and models only when the share shows metadata.
 
@@ -193,6 +199,20 @@ someone else's artifact).
 - Shared route: only when the global `artifacts` rule is on; the title is the
   one on the shared part and `latestVersion` equals `version`, so a shared
   chat never reveals a newer version or a later rename.
+
+### Attached artifacts (BES-350)
+
+The `attached-artifacts` section (Inputs, `private`) lists each artifact a
+**user** message attached from the library (`data-artifact-attachment`
+part, `docs/artifacts/attach.md`), once per artifact, with the artifact's
+current title and the version that was attached (`version`) next to
+`latestVersion`. Clicking a row opens the artifact in the side panel like an
+Outputs row. The `artifacts` section (Outputs) reads only `data-artifact`
+parts, so an attached artifact never shows as an output of the chat.
+`collectArtifactReferences` loads both part types in one query. The section is
+`private`, so the shared route never runs it, and the shared view drops
+attachment parts before the builder sees them. Deleted, taken-down and
+foreign artifacts are left out, like Outputs.
 
 Phase 0 sections: `generated-images` and `research-reports` (Outputs);
 `uploaded-files` and `project-knowledge` (Inputs; knowledge as item ids and

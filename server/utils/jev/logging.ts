@@ -9,6 +9,7 @@ export interface JevLogger {
 
 export interface JevRoleLogFields {
   status: JevStatus
+  source?: string
   calls?: number
   questions?: number
   inputTokens?: number
@@ -98,10 +99,11 @@ function withoutUndefined(
 
 /**
  * Logs one role's Jev outcome under `attributes.<role>Jev` (the memory check
- * keeps `attributes.memoryJev`). The fields are numbers and a status only, so
- * no state, question or answer text can reach the logs. Repeated calls in
- * one request add up through `logger.getContext()`; `status` is the last
- * call's and at most `JEV_MAX_LOGGED_SCORES` rounded scores are kept.
+ * keeps `attributes.memoryJev`). The fields are numbers, a status and a
+ * constant caller name, so no state, question or answer text can reach the
+ * logs. Repeated calls in one request add up through `logger.getContext()`;
+ * `status` is the last call's, `source` names the caller (`skill`) and at
+ * most `JEV_MAX_LOGGED_SCORES` rounded scores are kept.
  */
 export function recordJevRoleLog(
   role: JevRoleId,
@@ -117,6 +119,7 @@ export function recordJevRoleLog(
   const record: JevRoleLogRecord = {
     model: JEV_MODEL_ID,
     status: fields.status,
+    source: fields.source ?? previous?.source,
     calls: sumOptional(previous?.calls, fields.calls),
     questions: sumOptional(previous?.questions, fields.questions),
     inputTokens: sumOptional(previous?.inputTokens, fields.inputTokens),

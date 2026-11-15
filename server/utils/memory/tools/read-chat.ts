@@ -326,7 +326,7 @@ async function findNextMessageId(input: {
  * whitespace is kept intact (code blocks matter), and the window is bounded
  * by `READ_CHAT_MAX_CHARS`.
  *
- * A plain `aroundMessageId` centres the window on that message. The
+ * A plain `aroundMessageId` centers the window on that message. The
  * `nextAroundMessageId` returned for further reading is prefixed with
  * `READ_CHAT_CONTINUATION_PREFIX` and points at the first message after the
  * window; a call anchored on such a cursor starts the window at that

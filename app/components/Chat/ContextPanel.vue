@@ -274,8 +274,32 @@
               />
             </NuxtLink>
           </div>
+          <div
+            v-if="group.id === 'used' && hasManageConnectorsLink"
+            class="mt-2 border-t border-base-300 pt-2"
+          >
+            <NuxtLink
+              to="/profile/connectors"
+              class="chat-context-row min-h-11 text-sm"
+              data-testid="chat-context-manage-connectors"
+              @click="close"
+            >
+              <Icon
+                name="lucide:cable"
+                size="14"
+                class="shrink-0"
+              />
+              <span class="grow">Manage connectors</span>
+              <Icon
+                name="lucide:arrow-right"
+                size="12"
+                class="shrink-0 text-base-content/50"
+              />
+            </NuxtLink>
+          </div>
         </div>
       </section>
+      <ChatContextPanelApprovals v-if="data.kind === 'owned'" />
     </template>
     <LazyChatImagePreview
       v-if="previewImage && previewSourceUrl"
@@ -291,12 +315,14 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { LazyChatDocumentPreview } from '#components'
 import type {
   ChatContextChat,
   ChatContextItem,
 } from '#shared/types/chat-context.d'
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
 import { isArtifactKind } from '#shared/utils/artifacts'
+import { isDocumentFormat } from '#shared/utils/documents'
 import { formatMessageCost } from '#shared/utils/message-format'
 import {
   CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
@@ -314,9 +340,10 @@ const idPrefix = useId()
 const { routeSlug } = useChatRoute()
 const { data, error, refresh } = useChatContext()
 const layout = useSidePanelLayout()
-const { close } = useSidePanel()
+const { close, push: pushSidePanelView } = useSidePanel()
 const { open: openArtifact } = useArtifactPanel()
 const artifactsFeature = useFeature('artifacts')
+const connectorsFeature = useFeature('connectors')
 const {
   openShareModal,
   branchOwnedChat,
@@ -429,6 +456,14 @@ const hasAllArtifactsLink = computed<boolean>(() => {
     })
 })
 
+const hasManageConnectorsLink = computed<boolean>(() => {
+  return data.value?.kind === 'owned'
+    && connectorsFeature.value.active
+    && data.value.used.some((item) => {
+      return item.kind === 'connector'
+    })
+})
+
 const visibleGroups = computed<ContextGroup[]>(() => {
   if (!data.value) {
     return []
@@ -537,7 +572,33 @@ function openArtifactItem(item: ChatContextItem): boolean {
   return true
 }
 
+function openDocumentItem(item: ChatContextItem): boolean {
+  const { documentId, documentFormat } = item.meta ?? {}
+
+  if (!documentId || !isDocumentFormat(documentFormat)) {
+    return false
+  }
+
+  pushSidePanelView({
+    viewKey: `document:${documentId}`,
+    title: item.title,
+    mode: 'detail',
+    component: LazyChatDocumentPreview,
+    props: {
+      documentId,
+      format: documentFormat,
+      title: item.title,
+    },
+  })
+
+  return true
+}
+
 async function onItemClick(item: ChatContextItem) {
+  if (item.kind === 'document' && openDocumentItem(item)) {
+    return
+  }
+
   if (item.kind === 'artifact' && openArtifactItem(item)) {
     return
   }

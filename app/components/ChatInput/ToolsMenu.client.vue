@@ -190,12 +190,16 @@ const emit = defineEmits<{
   'select-exa-search-level': [level: ExaSearchLevel]
   'toggle-auto-web-search': [isOn: boolean]
   'toggle-image-generation': []
+  'toggle-code-execution': [isOn: boolean]
   'select-reasoning-level': [level: ReasoningLevel]
   'save-default-reasoning-level': [level: ReasoningLevel]
   'open-project-picker': []
   'open-files-select': []
   'open-files-upload': []
   'open-files-generated': []
+  'open-artifact-picker': []
+  'open-skills-picker': []
+  'open-connectors-picker': []
   'update:use-memory': [value: boolean]
   'remove-tile': [id: ChatInputTileId]
 }>()
@@ -204,7 +208,7 @@ const HIGHLIGHT_DURATION_MS = 1200
 const CHECKED_RADIO_SELECTOR = 'input[type="radio"]:checked:not(:disabled)'
 const FOCUSABLE_SELECTOR = [
   'input:not(:disabled)',
-  'button:not(:disabled)',
+  'button:not(:disabled):not([aria-controls])',
   'a[href]',
 ].join(', ')
 
@@ -236,6 +240,7 @@ const highlightedSection = shallowRef<ToolsSection | null>(null)
 const opener = shallowRef<HTMLElement | null>(null)
 const popoverMaxHeight = shallowRef<number>(POPOVER_FALLBACK_HEIGHT_PX)
 const lastInteraction = shallowRef<'keyboard' | 'pointer'>('keyboard')
+const isPointerPressInsideRoot = shallowRef<boolean>(false)
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
 
 const {
@@ -248,11 +253,14 @@ const {
 } = useScrollEdgeFade(sheetScroll)
 const { fadeStyle: chipRowFadeStyle } = useScrollEdgeFade(chipRow, 'x')
 
-useEventListener(document, 'pointerdown', () => {
+useEventListener(document, 'pointerdown', (event: PointerEvent) => {
   lastInteraction.value = 'pointer'
+  isPointerPressInsideRoot.value = event.target instanceof Node
+    && !!root.value?.contains(event.target)
 }, { capture: true, passive: true })
 useEventListener(document, 'keydown', () => {
   lastInteraction.value = 'keyboard'
+  isPointerPressInsideRoot.value = false
 }, { capture: true, passive: true })
 
 function updatePopoverMaxHeight() {
@@ -298,6 +306,9 @@ const contentListeners = {
   'onToggleImageGeneration': () => {
     emit('toggle-image-generation')
   },
+  'onToggleCodeExecution': (isOn: boolean) => {
+    emit('toggle-code-execution', isOn)
+  },
   'onSelectReasoningLevel': (level: ReasoningLevel) => {
     emit('select-reasoning-level', level)
   },
@@ -318,6 +329,15 @@ const contentListeners = {
   }),
   'onOpenFilesGenerated': closeAfter(() => {
     emit('open-files-generated')
+  }),
+  'onOpenArtifactPicker': closeAfter(() => {
+    emit('open-artifact-picker')
+  }),
+  'onOpenSkillsPicker': closeAfter(() => {
+    emit('open-skills-picker')
+  }),
+  'onOpenConnectorsPicker': closeAfter(() => {
+    emit('open-connectors-picker')
   }),
 }
 
@@ -416,6 +436,7 @@ function close(restoreFocus: boolean) {
 function toggle() {
   if (isOpen.value) {
     close(false)
+    trigger.value?.focus()
 
     return
   }
@@ -435,6 +456,10 @@ function onPopoverFocusOut(event: FocusEvent) {
   const nextTarget = event.relatedTarget
 
   if (!(nextTarget instanceof Node) || root.value?.contains(nextTarget)) {
+    return
+  }
+
+  if (isPointerPressInsideRoot.value) {
     return
   }
 

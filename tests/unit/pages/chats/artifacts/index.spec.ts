@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   loadArtifactDetail: vi.fn(),
   loadArtifactVersion: vi.fn(),
   downloadArtifactFile: vi.fn(),
+  downloadArtifactVersion: vi.fn(),
   routerReplace: vi.fn(),
   errorMessage: vi.fn(),
   successMessage: vi.fn(),
@@ -42,6 +43,10 @@ mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('loadArtifactDetail', () => mocks.loadArtifactDetail)
 mockNuxtImport('loadArtifactVersion', () => mocks.loadArtifactVersion)
 mockNuxtImport('downloadArtifactFile', () => mocks.downloadArtifactFile)
+mockNuxtImport(
+  'downloadArtifactVersion',
+  () => mocks.downloadArtifactVersion,
+)
 mockNuxtImport('useErrorMessage', () => mocks.errorMessage)
 mockNuxtImport('useSuccessMessage', () => mocks.successMessage)
 mockNuxtImport('useWarningMessage', () => mocks.warningMessage)
@@ -107,6 +112,7 @@ function createLibraryState() {
     items: ref<ArtifactSummary[]>([]),
     total: ref<number>(0),
     usedBytes: ref<number>(0),
+    kindCounts: ref<Record<string, number> | null>(null),
     hasMore: ref<boolean>(false),
     hasError: ref<boolean>(false),
     hasLoaded: ref<boolean>(true),
@@ -186,6 +192,14 @@ describe('pages/chats/artifacts/index', () => {
     mocks.loadArtifactDetail.mockReset()
     mocks.loadArtifactVersion.mockReset()
     mocks.downloadArtifactFile.mockReset()
+    mocks.downloadArtifactVersion.mockReset()
+    mocks.downloadArtifactVersion.mockImplementation(async (options) => {
+      try {
+        return { file: await options.load() }
+      } catch {
+        return { file: null }
+      }
+    })
     mocks.routerReplace.mockReset().mockResolvedValue(undefined)
     mocks.errorMessage.mockReset()
     mocks.successMessage.mockReset()
@@ -341,25 +355,105 @@ describe('pages/chats/artifacts/index', () => {
 
     expect(wrapper.findAll(testId('artifact-row'))).toHaveLength(2)
     expect(wrapper.get(testId('artifact-library-usage')).text())
-      .toBe('Using 3.0 MB of 25.0 MB')
+      .toBe('Using 3.0 MB of your storage')
 
     await wrapper.get(testId('artifact-library-load-more')).trigger('click')
 
     expect(library.loadMore).toHaveBeenCalledTimes(1)
   })
 
-  it('applies a kind filter from the radio group', async () => {
-    const wrapper = await mountPage()
+  describe('kind filter', () => {
+    function setCounts(overrides: Record<string, number>) {
+      library.kindCounts.value = {
+        html: 0,
+        react: 0,
+        svg: 0,
+        mermaid: 0,
+        markdown: 0,
+        ...overrides,
+      }
+    }
 
-    const react = wrapper.get(testId('artifact-library-kind-react'))
+    it('shows no chips before the counts are known', async () => {
+      const wrapper = await mountPage()
 
-    expect(react.attributes('aria-pressed')).toBe('false')
-    expect(wrapper.get(testId('artifact-library-kind-all'))
-      .attributes('aria-pressed')).toBe('true')
+      expect(wrapper.find(testId('artifact-library-kind-filter')).exists())
+        .toBe(false)
+    })
 
-    await react.trigger('click')
+    it('shows no chips for an empty library', async () => {
+      setCounts({})
 
-    expect(filters.setKind).toHaveBeenCalledWith('react')
+      const wrapper = await mountPage()
+
+      expect(wrapper.find(testId('artifact-library-kind-filter')).exists())
+        .toBe(false)
+    })
+
+    it('hides the whole row when the user has a single kind', async () => {
+      setCounts({ mermaid: 1 })
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.find(testId('artifact-library-kind-filter')).exists())
+        .toBe(false)
+      expect(wrapper.find(testId('artifact-library-kind-all')).exists())
+        .toBe(false)
+    })
+
+    it('shows All and the kinds the user has with their counts', async () => {
+      setCounts({ html: 3, mermaid: 1 })
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.findAll(
+        `${testId('artifact-library-kind-filter')} button`,
+      ).map(button => button.attributes('data-testid'))).toEqual([
+        'artifact-library-kind-all',
+        'artifact-library-kind-html',
+        'artifact-library-kind-mermaid',
+      ])
+      expect(wrapper.get(testId('artifact-library-kind-all-count')).text())
+        .toBe('4')
+      expect(wrapper.get(testId('artifact-library-kind-html-count')).text())
+        .toBe('3')
+      expect(wrapper.get(testId('artifact-library-kind-mermaid-count')).text())
+        .toBe('1')
+    })
+
+    it('applies a kind filter from the chips', async () => {
+      setCounts({ html: 3, react: 2 })
+
+      const wrapper = await mountPage()
+
+      const react = wrapper.get(testId('artifact-library-kind-react'))
+
+      expect(react.attributes('aria-pressed')).toBe('false')
+      expect(wrapper.get(testId('artifact-library-kind-all'))
+        .attributes('aria-pressed')).toBe('true')
+
+      await react.trigger('click')
+
+      expect(filters.setKind).toHaveBeenCalledWith('react')
+    })
+
+    it('falls back to All when the active kind is gone', async () => {
+      setCounts({ html: 3, react: 2 })
+      filters.appliedKind.value = 'mermaid'
+
+      await mountPage()
+
+      expect(filters.setKind).toHaveBeenCalledWith('all', { replace: true })
+    })
+
+    it('keeps an active kind that still has artifacts', async () => {
+      setCounts({ html: 3, mermaid: 2 })
+      filters.appliedKind.value = 'mermaid'
+
+      await mountPage()
+
+      expect(filters.setKind).not.toHaveBeenCalled()
+    })
   })
 
   it('opens an artifact in the side panel as the owner', async () => {
@@ -402,7 +496,7 @@ describe('pages/chats/artifacts/index', () => {
     expect(wrapper.find(testId('artifact-action-share')).exists()).toBe(false)
   })
 
-  it('downloads the current version through the source file helper',
+  it('downloads the current version through the lazy version helper',
     async () => {
       library.items.value = [createArtifact()]
       mocks.loadArtifactVersion.mockResolvedValue({
@@ -428,10 +522,16 @@ describe('pages/chats/artifacts/index', () => {
         version: 2,
         source: 'owner',
       })
-      expect(mocks.downloadArtifactFile).toHaveBeenCalledTimes(1)
-      expect(mocks.downloadArtifactFile.mock.calls[0]?.[0]).toMatchObject({
-        fileName: 'Diagram.svg',
+      expect(mocks.downloadArtifactVersion).toHaveBeenCalledTimes(1)
+      expect(mocks.downloadArtifactVersion.mock.calls[0]?.[0]).toMatchObject({
+        artifactId: ARTIFACT_ID,
+        version: 2,
+        kind: 'html',
+        title: 'Photosynthesis quiz',
       })
+      await expect(
+        mocks.downloadArtifactVersion.mock.results[0]?.value,
+      ).resolves.toMatchObject({ file: { fileName: 'Diagram.svg' } })
     })
 
   it('does not download when the version cannot be loaded', async () => {
@@ -447,7 +547,9 @@ describe('pages/chats/artifacts/index', () => {
     await wrapper.get(testId('artifact-action-download')).trigger('click')
     await nextTick()
 
-    expect(mocks.downloadArtifactFile).not.toHaveBeenCalled()
+    await expect(
+      mocks.downloadArtifactVersion.mock.results[0]?.value,
+    ).resolves.toEqual({ file: null })
     expect(mocks.errorMessage).toHaveBeenCalledWith(
       'This artifact is not available',
     )

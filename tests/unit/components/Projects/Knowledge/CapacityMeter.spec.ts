@@ -66,7 +66,7 @@ describe('Projects/Knowledge/CapacityMeter', () => {
       )
     })
 
-    it('exposes the bar as a labelled progress with its value', async () => {
+    it('exposes the bar as a labeled progress with its value', async () => {
       const wrapper = await mountMeter()
       const bar = wrapper.get('[data-testid="knowledge-meter-bar"]')
 

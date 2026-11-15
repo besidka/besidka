@@ -103,7 +103,7 @@ export function uploadWithProgress<T = any>(
     })
 
     xhr.addEventListener('abort', () => {
-      reject(new UploadError('Upload was cancelled'))
+      reject(new UploadError('Upload was canceled'))
     })
 
     if (options.signal) {

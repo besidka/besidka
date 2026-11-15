@@ -383,7 +383,7 @@ describe('canUndoMemoryStep', () => {
 })
 
 describe('formatMemoryEntryCount', () => {
-  it('pluralises the entry count', () => {
+  it('pluralizes the entry count', () => {
     expect(formatMemoryEntryCount(0)).toBe('No entries')
     expect(formatMemoryEntryCount(1)).toBe('1 entry')
     expect(formatMemoryEntryCount(3)).toBe('3 entries')

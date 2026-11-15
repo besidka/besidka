@@ -18,6 +18,15 @@ import {
 import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import {
+  BASELINE_APPROVED_CONSENT_VERSION,
+  compareConsentVersions,
+  getCachedApprovedConsentVersion,
+  isApprovedConsentVersionUnavailable,
+  isConsentVersion,
+  loadApprovedConsentVersion,
+  resolveEffectiveConsentVersion,
+} from '~~/server/utils/legal/consent-version'
 
 export const CURRENT_CONSENT_VERSION = '2026-11-a'
 
@@ -27,10 +36,48 @@ export const CURRENT_CONSENT_VERSION = '2026-11-a'
  * spans, tags stripped, whitespace collapsed). The spec
  * `tests/unit/server/utils/legal/consent-text-version.spec.ts` fails when the
  * wording changes, so a wording change cannot ship without a deliberate
- * decision on `CURRENT_CONSENT_VERSION`, whose bump asks every user again.
+ * decision on `CURRENT_CONSENT_VERSION`, whose bump asks every user again
+ * once the owner approves it in the admin area.
  */
 export const CURRENT_CONSENT_TEXT_SHA256
   = '5d5e5bb79d6ddeb80074fabebd6fb21c2046ed1ae8849e4f499337feefeb7ad5'
+
+/**
+ * The consent version users are asked for and recorded under:
+ * `CURRENT_CONSENT_VERSION` capped at the last version the owner approved in
+ * the admin area, so a bump in code re-prompts nobody until it is approved.
+ */
+export function getEffectiveConsentVersion(): string {
+  return resolveEffectiveConsentVersion(
+    CURRENT_CONSENT_VERSION,
+    getCachedApprovedConsentVersion(),
+  )
+}
+
+/**
+ * Whether a stored consent version is the one users are asked for. While the
+ * approved version cannot be read, any version from the baseline up to the
+ * code version counts, so a storage outage never re-prompts anyone.
+ */
+export function isEffectiveConsentVersion(
+  version: string | null | undefined,
+): boolean {
+  if (!isApprovedConsentVersionUnavailable()) {
+    return version === getEffectiveConsentVersion()
+  }
+
+  if (!isConsentVersion(version)) {
+    return false
+  }
+
+  const lowestPossible = resolveEffectiveConsentVersion(
+    CURRENT_CONSENT_VERSION,
+    BASELINE_APPROVED_CONSENT_VERSION,
+  )
+
+  return compareConsentVersions(version, lowestPossible) >= 0
+    && compareConsentVersions(version, CURRENT_CONSENT_VERSION) <= 0
+}
 
 const PRIVACY_POLICY_CONSENT_LINK
   = '/privacy-policy#sensitive-information-in-your-chats'
@@ -97,8 +144,8 @@ export function getLegalConsentStatus(
   }
 
   const isCurrentVersion
-    = record.sensitiveContentConsentVersion === CURRENT_CONSENT_VERSION
-      && record.termsVersion === CURRENT_CONSENT_VERSION
+    = isEffectiveConsentVersion(record.sensitiveContentConsentVersion)
+      && isEffectiveConsentVersion(record.termsVersion)
       && Boolean(record.termsAcceptedAt)
       && Boolean(record.ageConfirmedAt)
 
@@ -158,13 +205,15 @@ export function withoutUnconsentedTransferProviders(
  * condition over `user_settings`, for queries that pick background work.
  */
 export function currentLegalConsentCondition(): SQL {
+  const effectiveVersion = getEffectiveConsentVersion()
+
   return and(
     isNotNull(schema.userSettings.sensitiveContentConsentAt),
     eq(
       schema.userSettings.sensitiveContentConsentVersion,
-      CURRENT_CONSENT_VERSION,
+      effectiveVersion,
     ),
-    eq(schema.userSettings.termsVersion, CURRENT_CONSENT_VERSION),
+    eq(schema.userSettings.termsVersion, effectiveVersion),
     isNotNull(schema.userSettings.termsAcceptedAt),
     isNotNull(schema.userSettings.ageConfirmedAt),
     or(
@@ -181,6 +230,8 @@ export async function readLegalConsent(
   userId: number,
   db: DbClient = useDb(),
 ): Promise<LegalConsentRecord> {
+  await loadApprovedConsentVersion({ db })
+
   const settings = await db.query.userSettings.findFirst({
     where: { userId },
     columns: legalConsentColumns,
@@ -292,7 +343,7 @@ export function toLegalConsentState(
   record: LegalConsentRecord,
 ): LegalConsentState {
   return {
-    currentVersion: CURRENT_CONSENT_VERSION,
+    currentVersion: getEffectiveConsentVersion(),
     status: getLegalConsentStatus(record),
     termsAcceptedAt: toIsoString(record.termsAcceptedAt),
     termsVersion: record.termsVersion,
@@ -346,13 +397,35 @@ async function upsertUserSettings(
     })
 }
 
+export function throwConsentVersionUnavailable(): never {
+  throw createError({
+    message: 'Consent cannot be recorded right now',
+    status: 503,
+    why: 'The approved consent version could not be read.',
+    fix: 'Try again in a minute.',
+  })
+}
+
+/**
+ * Records the Terms, age and Art. 9 consent under `version`, the effective
+ * version the caller showed and checked; without it, the effective version
+ * read here. Refuses with 503 while the approved version cannot be read, so
+ * a consent is never recorded under a guessed version.
+ */
 export async function recordLegalConsent(
   userId: number,
   db: DbClient = useDb(),
   now: Date = new Date(),
+  version?: string,
 ): Promise<LegalConsentRecord> {
   const grantedAt = toWholeSecond(now)
   const existing = await readLegalConsent(userId, db)
+
+  if (isApprovedConsentVersionUnavailable()) {
+    throwConsentVersionUnavailable()
+  }
+
+  const effectiveVersion = version ?? getEffectiveConsentVersion()
   const hasSameSecondWithdrawal = isWithdrawnAfterGrant(
     grantedAt,
     existing.sensitiveContentConsentWithdrawnAt,
@@ -360,10 +433,10 @@ export async function recordLegalConsent(
 
   await upsertUserSettings(userId, {
     termsAcceptedAt: grantedAt,
-    termsVersion: CURRENT_CONSENT_VERSION,
+    termsVersion: effectiveVersion,
     ageConfirmedAt: grantedAt,
     sensitiveContentConsentAt: grantedAt,
-    sensitiveContentConsentVersion: CURRENT_CONSENT_VERSION,
+    sensitiveContentConsentVersion: effectiveVersion,
     ...(hasSameSecondWithdrawal
       ? { sensitiveContentConsentWithdrawnAt: null }
       : {}),

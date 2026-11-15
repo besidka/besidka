@@ -36,7 +36,7 @@ sender ──SMTP──> Cloudflare Email Routing (rule: privacy@ → Worker)
 | `workers/mail-alerts/src/main.ts` | `email()` handler: forward, then the signed alert call |
 | `workers/mail-alerts/src/classify.ts` | RFC 2047 subject decoding, urgency rules, mailbox mapping |
 | `workers/mail-alerts/wrangler.jsonc` | Worker `besidka-mail-alerts`, service binding `APP` → `besidka`, no `workers.dev`, no previews, observability off |
-| `shared/utils/mail-alert-protocol.ts` | The contract both sides import: mailboxes, route, header names, HMAC sign and verify, subject sanitiser |
+| `shared/utils/mail-alert-protocol.ts` | The contract both sides import: mailboxes, route, header names, HMAC sign and verify, subject sanitizer |
 | `server/api/v1/internal/mail-alert/index.post.ts` | The internal route: secret check, bounded body, HMAC, schema, push |
 | `server/utils/mail-alerts/notify.ts` | Admin push: title, collapse window, urgency |
 | `server/utils/features/admin-recipients.ts` | Who is an admin (shared with scheduled feature changes) |

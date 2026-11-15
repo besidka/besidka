@@ -32,6 +32,28 @@ function toolPart(state: string, extra: Record<string, unknown> = {}) {
 }
 
 describe('rewriteArtifactToolParts', () => {
+  it('keeps a call that waits for approval with kind, title and approval '
+    + 'id only', () => {
+    const parts = rewriteArtifactToolParts([
+      toolPart('approval-requested', {
+        approval: {
+          id: 'approval-0001',
+          requestReason: 'untrusted-output',
+          signature: 'signed',
+        },
+      }),
+    ] as Parts)
+
+    expect(parts).toEqual([{
+      type: 'tool-update_artifact',
+      toolCallId: 'call-1',
+      state: 'approval-requested',
+      input: { kind: 'html', title: 'Quiz' },
+      approval: { id: 'approval-0001', requestReason: 'untrusted-output' },
+    }])
+    expect(JSON.stringify(parts)).not.toContain('secret content')
+  })
+
   it('turns a finished call into a data-artifact reference', () => {
     const parts = rewriteArtifactToolParts([
       { type: 'text', text: 'Here it is.' },

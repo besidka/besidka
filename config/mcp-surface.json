@@ -12,6 +12,44 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
+      "description": "Add a remote MCP server to your Besidka connectors by address. The connector is created switched off and not signed in: this tool takes no keys or headers, makes no request to the address and cannot switch it on. The user must connect, give consent and enable it in Besidka, at the manageUrl in the result. At most five connectors added this way can wait switched off. Requires signing in (connectors:write).",
+      "inputSchema": {
+        "properties": {
+          "presetId": {
+            "description": "The id of one of the curated connectors in Besidka, instead of url",
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "description": "A display name, up to 80 characters. Defaults to the preset name or the host",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "description": "The https address of the remote MCP server. Not needed when presetId is set",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "add_connector",
+      "public": false,
+      "requiredScopes": [
+        "connectors:write"
+      ],
+      "title": "Add a connector"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
       "description": "Save a memory entry Besidka uses in future chats. Besidka refuses sensitive topics (health, religion, politics and similar) and never stores ids, card numbers, passwords or keys. Requires signing in (memory:write).",
       "inputSchema": {
         "properties": {
@@ -224,7 +262,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Save content you wrote as a new Besidka artifact (version 1) in your library and return its id and a link to open it in Besidka. Use it when the user asks for an artifact, asks to save content in Besidka, or wants an app, interactive page, quiz, game or document to keep there; otherwise answer diagrams and code in your reply. Artifacts run in a sandbox without network access, so the content must be self-contained. html and react artifacts already load Tailwind CSS 4 and daisyUI 5 with the Besidka theme: style with their class names and theme colours, never link a CDN or external fonts. It counts against your artifact storage and uses none of your API keys. React artifacts need the React artifacts feature. Requires signing in (artifacts:write).",
+      "description": "Save content you wrote as a new Besidka artifact (version 1) in your library and return its id and a link to open it in Besidka. Use it when the user asks for an artifact, asks to save content in Besidka, or wants an app, interactive page, quiz, game or document to keep there; otherwise answer diagrams and code in your reply. Artifacts run in a sandbox without network access, so the content must be self-contained. html and react artifacts already load Tailwind CSS 4 and daisyUI 5 with the Besidka theme: style with their class names and theme colors, never link a CDN or external fonts. It counts against your artifact storage and uses none of your API keys. React artifacts need the React artifacts feature. Requires signing in (artifacts:write).",
       "inputSchema": {
         "properties": {
           "content": {
@@ -264,6 +302,69 @@
         "artifacts:write"
       ],
       "title": "Create an artifact"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Create a PDF, DOCX, PPTX, XLSX document from a structured spec and save it as a private file in your Besidka library. Besidka renders the file itself: no API key of yours is used and nothing is sent to an AI provider. The file counts against your storage quota and expires like an upload. Find it later with list_files (source assistant). Limits: the serialized spec is at most 200000 characters, a pdf or docx at most 200 pages, a pptx at most 60 slides, an xlsx at most 100000 cells and the file at most 20 MB, at most 10 documents a minute and 100 a day. Images only by the `fileId` of a PNG or JPEG file already in your library (find ids with list_files), at most 20, never URLs or data URIs. If you wrote the content with an AI model, set `aiGenerated` to true so the file is marked as AI-generated; otherwise it is marked only as created by a connected app. Pass `spec` as a JSON object, not a string: the `format` and `title` fields are filled from the top-level arguments, and `specVersion` defaults to 1. A request is at most 512 KiB, so Cyrillic text fits the whole character limit while CJK text above about 170000 characters does not. Text is plain: no HTML or Markdown inside it, no control characters; use runs for bold, italic, underline, code and links (https: or mailto: only). Write in the language of the content and set `language` as a BCP 47 tag such as \"en\" or \"uk\". Optional `theme`: {\"font\"?:\"sans\"|\"serif\",\"accent\"?: \"neutral\"|\"blue\"|\"green\"|\"orange\"|\"violet\"}; both fields are optional and a missing one falls back to \"sans\" or \"neutral\". Blocks for pdf and docx: {\"type\":\"heading\",\"level\":1-4,\"text\"}, {\"type\":\"paragraph\",\"runs\":[...],\"align?\"}, {\"type\":\"list\",\"ordered\":bool,\"items\":[{\"runs\":[...],\"children?\":[...]}]} (three levels at most), {\"type\":\"table\",\"header\":bool,\"columns\":[{\"text\",\"align?\"}],\"rows\":[[runs,...]]} (every row has one runs array per column), {\"type\":\"image\",\"fileId\",\"alt\",\"widthPercent\":10-100}, {\"type\":\"quote\",\"runs\"}, {\"type\":\"code\",\"text\",\"language?\"}, {\"type\":\"pageBreak\"}. A run is {\"text\",\"bold?\",\"italic?\",\"underline?\",\"code?\",\"link?\":{\"href\"}}. pdf needs pageSize \"A4\" or \"Letter\" and blocks. docx needs blocks. pptx needs aspect \"16:9\" or \"4:3\" and slides. Slide layouts: title, title-content, section, two-column (needs columns: two block arrays) and image (needs image {fileId, alt}); at most 12 bullets (each a runs array) per slide, 60 slides, optional notes. xlsx needs sheets {name, columns:[{header, type}], rows}. Column types: string, number, integer, currency, percent, date, boolean. A cell is a string, number, boolean, null, {\"date\":\"2026-11-08\"} or {\"formula\":\"SUM(B2:B9)\"}: A1 references to the sheet itself (row 1 is the header), plain functions such as SUM, AVERAGE, MIN, MAX, COUNT, ROUND, IF, VLOOKUP, no external references. A row may be shorter than the columns. Sheet names: at most 31 characters, unique, none of [ ] : * ? / \\, not \"History\". Examples of the full document (spec is the object without format and title): pdf: {\"specVersion\":1,\"format\":\"pdf\",\"title\":\"Trip plan\",\"language\":\"en\",\"pageSize\":\"A4\",\"blocks\":[{\"type\":\"heading\",\"level\":1,\"text\":\"Trip plan\"},{\"type\":\"paragraph\",\"runs\":[{\"text\":\"Leave on \"},{\"text\":\"Friday\",\"bold\":true}]}]} docx: {\"specVersion\":1,\"format\":\"docx\",\"title\":\"Cover letter\",\"blocks\":[{\"type\":\"paragraph\",\"runs\":[{\"text\":\"Dear team,\"}]},{\"type\":\"list\",\"ordered\":false,\"items\":[{\"runs\":[{\"text\":\"Experience\"}]}]}]} pptx: {\"specVersion\":1,\"format\":\"pptx\",\"title\":\"Q3 review\",\"aspect\":\"16:9\",\"slides\":[{\"layout\":\"title\",\"title\":\"Q3 review\",\"subtitle\":\"Sales\"},{\"layout\":\"title-content\",\"title\":\"Highlights\",\"bullets\":[[{\"text\":\"Revenue up 12%\"}]],\"notes\":\"Thank the team\"}]} xlsx: {\"specVersion\":1,\"format\":\"xlsx\",\"title\":\"Budget\",\"sheets\":[{\"name\":\"Budget\",\"freezeHeader\":true,\"columns\":[{\"header\":\"Item\",\"type\":\"string\"},{\"header\":\"Cost\",\"type\":\"currency\"}],\"rows\":[[\"Rent\",1200],[\"Food\",400],[\"Total\",{\"formula\":\"SUM(B2:B3)\"}]]}]} On an invalid spec the error lists up to 10 `path: message` lines; fix them and call again. Requires signing in (files:write).",
+      "inputSchema": {
+        "properties": {
+          "aiGenerated": {
+            "description": "Set true when an AI model wrote the content, so the file is marked as AI-generated",
+            "type": "boolean"
+          },
+          "fileName": {
+            "description": "File name, for example report.pdf. Defaults to the title",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "format": {
+            "description": "pdf and docx take blocks, pptx takes slides, xlsx takes sheets",
+            "enum": [
+              "pdf",
+              "docx",
+              "pptx",
+              "xlsx"
+            ],
+            "type": "string"
+          },
+          "spec": {
+            "additionalProperties": {},
+            "description": "Besidka document spec v1 as a JSON object without format and title: blocks (pdf, docx), slides (pptx) or sheets (xlsx), see the tool description for the shapes",
+            "properties": {
+              "specVersion": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "title": {
+            "description": "The document title, up to 200 characters",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "title",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "name": "create_document",
+      "public": false,
+      "requiredScopes": [
+        "files:write"
+      ],
+      "title": "Create a document"
     },
     {
       "annotations": {
@@ -329,6 +430,60 @@
         "projects:write"
       ],
       "title": "Create a project"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Add a skill (an Agent Skills folder as text files) to your Besidka account. The files go through the same checks as an import: paths, text only, license and content scan. A skill with a restricted license is refused. The skill is saved disabled with status needs-review and has no command and no mode: this tool cannot switch it on, set it to Auto, give it a command or give it permissions, the user does that in Besidka. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result, which also lists the findings of the scan. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "argumentHint": {
+            "description": "A short hint for the arguments, such as [file]",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "files": {
+            "description": "1 to 50 text files, at most 400 KiB in all. Must include SKILL.md with a name and a description in its frontmatter",
+            "items": {
+              "properties": {
+                "content": {
+                  "description": "The file as text",
+                  "maxLength": 200000,
+                  "type": "string"
+                },
+                "path": {
+                  "description": "A relative path such as SKILL.md or references/guide.md",
+                  "maxLength": 400,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "type": "object"
+      },
+      "name": "create_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Add a skill"
     },
     {
       "annotations": {
@@ -439,6 +594,45 @@
         "data:delete"
       ],
       "title": "Delete chats"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Permanently delete connectors from your Besidka account: their sign-in is revoked at the server when it supports that, and their stored credentials, tool settings and per-chat settings are removed. Chats and the record of past tool calls stay. This cannot be undone: ask the user to confirm first and send confirm: true. Reports the ids that were deleted and the ones that are not yours. Requires signing in (connectors:write).",
+      "inputSchema": {
+        "properties": {
+          "confirm": {
+            "const": true,
+            "description": "Must be true, confirmed by the user",
+            "type": "boolean"
+          },
+          "ids": {
+            "description": "Connector ids from list_connectors, 1 to 20",
+            "items": {
+              "pattern": "^[A-Za-z0-9]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "name": "delete_connectors",
+      "public": false,
+      "requiredScopes": [
+        "connectors:write"
+      ],
+      "title": "Delete connectors"
     },
     {
       "annotations": {
@@ -582,6 +776,45 @@
     },
     {
       "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Permanently delete skills from your Besidka account with all their versions and files, and the per-chat choices that refer to them. This cannot be undone: ask the user to confirm first and send confirm: true. Reports the ids that were deleted and the ones that were not found among your skills. At most 20 deletes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "confirm": {
+            "const": true,
+            "description": "Must be true, confirmed by the user",
+            "type": "boolean"
+          },
+          "ids": {
+            "description": "Skill ids from list_skills, 1 to 20",
+            "items": {
+              "pattern": "^[A-Za-z0-9]{1,64}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "name": "delete_skills",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Delete skills"
+    },
+    {
+      "annotations": {
         "destructiveHint": null,
         "idempotentHint": true,
         "openWorldHint": false,
@@ -657,6 +890,34 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
+      "description": "Read one of your Besidka connectors: the summary of list_connectors plus its tools (name, whether it is on, its approval mode and whether the server marks it read-only) and how many times its tools were called in the last 30 days. Tool descriptions are not included. Never returns the full address, keys, tokens or call contents. Requires signing in (connectors:read).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Connector id from list_connectors",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "get_connector",
+      "public": false,
+      "requiredScopes": [
+        "connectors:read"
+      ],
+      "title": "Get a connector"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Get the step-by-step guide for creating an API key at a provider and adding it to Besidka: requirements (card, minimum top-up, free tier), numbered steps as markdown, FAQ and source links. Pass a provider id from list_providers (for example openai) or a guide slug (for example openai-api-key).",
       "inputSchema": {
         "properties": {
@@ -716,7 +977,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read one of your Besidka projects: name, instructions, pinned and archived state, knowledge mode, project memory state (enabled, status, account memory, entry count), knowledge totals against the limits and the knowledge items (id, kind, title, size, status, flagged, pinned). Use read_project_knowledge_item to read an item. Requires signing in (projects:read).",
+      "description": "Read one of your Besidka projects: name, instructions, pinned and archived state, knowledge mode, project memory state (enabled, status, account memory, entry count), knowledge totals against the limits and the knowledge items (id, kind, title, size, status, flagged, pinned). With the skills:read scope it also lists the skills pinned to the project (id, name, level, state). Use read_project_knowledge_item to read an item. Requires signing in (projects:read).",
       "inputSchema": {
         "properties": {
           "projectId": {
@@ -745,7 +1006,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read your Besidka preferences: reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The memory extraction switch and the memory models are included for reference but cannot be changed through MCP. Requires signing in (settings:read).",
+      "description": "Read your Besidka preferences: reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The memory extraction switch and the memory models are included for reference but cannot be changed through MCP. Also returns your storage: bytes used, the allowance and a breakdown by AI images, uploads, generated files, artifacts, project knowledge and skills. Requires signing in (settings:read).",
       "inputSchema": {
         "properties": {},
         "type": "object"
@@ -756,6 +1017,46 @@
         "settings:read"
       ],
       "title": "Get my settings"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read one of your skills: its details and file list, or with path the text of one file (at most 200000 characters, with truncated set when it was cut). Pass version to inspect an older version or a pending update. Only your own skills. Requires signing in (skills:read).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Skill id from list_skills",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          },
+          "path": {
+            "description": "A file path from the file list, such as SKILL.md. Returns that file as text instead of only the list",
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "description": "A version number to inspect, such as the pendingVersion of a skill; default the current version",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "get_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:read"
+      ],
+      "title": "Read a skill"
     },
     {
       "annotations": {
@@ -887,6 +1188,37 @@
         "chats:read"
       ],
       "title": "List my chats"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List the connectors you added to Besidka (remote MCP servers its chats can use), most recently changed first, with id, title, host, status, whether it is switched on, how many of its tools are on and whether its tools changed since you reviewed them. Never returns addresses beyond the host, keys or tokens. Use nextCursor to get the next page. Requires signing in (connectors:read).",
+      "inputSchema": {
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Page size, 1 to 50, default 20",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_connectors",
+      "public": false,
+      "requiredScopes": [
+        "connectors:read"
+      ],
+      "title": "List my connectors"
     },
     {
       "annotations": {
@@ -1070,7 +1402,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "List the experimental Besidka features your account has access to, with whether you are opted in, whether the feature is active and any A/B variant. Opting in authorises spending your API keys, so it is only possible on the Labs page, never through MCP. Requires signing in (settings:read).",
+      "description": "List the experimental Besidka features your account has access to, with whether you are opted in, whether the feature is active and any A/B variant. Opting in authorizes spending your API keys, so it is only possible on the Labs page, never through MCP. Requires signing in (settings:read).",
       "inputSchema": {
         "properties": {},
         "type": "object"
@@ -1181,6 +1513,45 @@
         "chats:read"
       ],
       "title": "List my shared chats"
+    },
+    {
+      "annotations": {
+        "destructiveHint": null,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List the skills and commands saved in your Besidka account, most recently changed first, without their text: id, name, description, whether it is switched on, status (ready, needs-review or broken), license class, source, version, pending update, file count, size, who created it, whether the model may pick it by itself and its /command. Only your own skills. Use nextCursor to get the next page. Requires signing in (skills:read).",
+      "inputSchema": {
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "kind": {
+            "description": "command lists skills that have a /command, skill lists the others; omit for both",
+            "enum": [
+              "skill",
+              "command"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "description": "Page size, 1 to 50, default 20",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_skills",
+      "public": false,
+      "requiredScopes": [
+        "skills:read"
+      ],
+      "title": "List my skills"
     },
     {
       "annotations": {
@@ -1358,6 +1729,42 @@
         "files:write"
       ],
       "title": "Rename a file"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Rename one of your skills. Only the name line in the frontmatter of SKILL.md changes, as a new version; its command is a separate setting and stays. The skill is switched off and gets status needs-review, so it does not run under its new name until the user checks it. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Skill id from list_skills",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          },
+          "name": {
+            "description": "The new name: lowercase letters, digits and single hyphens, 1 to 64 characters, not used by another of your skills and not a name Besidka reserves",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "rename_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Rename a skill"
     },
     {
       "annotations": {
@@ -1547,6 +1954,63 @@
     },
     {
       "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Replace the skills pinned to one of your projects. A skill at the always level goes into every message of the project's chats; a skill at the prefer level stays in the skills list and is listed first for the model. Only your own existing skills can be pinned, at most 3 at the always level, and the always-level skills must fit a token limit. The tool never changes a skill: a skill that is Off, waiting for review or broken can be pinned but does not load until the user turns it on in Besidka. The result lists the pins, their state and the tokens the always-level skills add to each message. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "projectId": {
+            "description": "Project id from list_projects",
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "skills": {
+            "description": "The whole list, in order. It replaces the skills pinned to the project now; an empty list removes them all. At most 20 skills and 3 at the always level",
+            "items": {
+              "properties": {
+                "level": {
+                  "description": "always: the skill goes into every message of the project's chats. prefer: the skill stays in the catalog, listed first for the model",
+                  "enum": [
+                    "always",
+                    "prefer"
+                  ],
+                  "type": "string"
+                },
+                "skillId": {
+                  "description": "Skill id from list_skills",
+                  "pattern": "^[A-Za-z0-9]{1,64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "skillId",
+                "level"
+              ],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "type": "array"
+          }
+        },
+        "required": [
+          "projectId",
+          "skills"
+        ],
+        "type": "object"
+      },
+      "name": "set_project_skills",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Set the skills of a project"
+    },
+    {
+      "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
@@ -1707,6 +2171,65 @@
         "chats:write"
       ],
       "title": "Update a chat"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Reduce what a connector's tools may do: turn tools off, or end their Always allow setting by setting them back to ask. Allow in this chat grants of single chats are not changed. It can never turn a tool on, grant Always allow, or switch the connector itself on; those stay in the Besidka app. Every tool name must belong to the connector, or nothing changes. Returns the updated tool list. Requires signing in (connectors:write).",
+      "inputSchema": {
+        "properties": {
+          "id": {
+            "description": "Connector id from list_connectors",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          },
+          "tools": {
+            "description": "Up to 100 tools to change, each with enabled: false, approval: \"ask\" or both",
+            "items": {
+              "properties": {
+                "approval": {
+                  "const": "ask",
+                  "description": "ask ends the Always allow setting of the tool, so it asks again. Granting Always allow is only possible in the Besidka app",
+                  "type": "string"
+                },
+                "enabled": {
+                  "const": false,
+                  "description": "false turns the tool off. Turning a tool on is only possible in the Besidka app",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The tool name from get_connector",
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "tools"
+        ],
+        "type": "object"
+      },
+      "name": "update_connector_tools",
+      "public": false,
+      "requiredScopes": [
+        "connectors:write"
+      ],
+      "title": "Restrict connector tools"
     },
     {
       "annotations": {
@@ -2028,6 +2551,117 @@
         "settings:write"
       ],
       "title": "Change my settings"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Change the files of one of your skills. The changes are saved as a pending version, the current version stays as it is, and the skill is switched off with status needs-review until the user accepts the update in Besidka. A pending update that was already waiting is replaced. SKILL.md cannot be deleted or renamed, LICENSE and NOTICE files are protected, and changing the name is refused: use rename_skill. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result, which also lists the findings of the scan and a summary of the changed files. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "baseVersion": {
+            "description": "The current version number you read; a skill that changed since is refused",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "changes": {
+            "description": "Put (add or replace a file), delete or rename a file, in order, at most 50, at most 400 KiB of file content in all",
+            "items": {
+              "oneOf": [
+                {
+                  "properties": {
+                    "content": {
+                      "maxLength": 200000,
+                      "type": "string"
+                    },
+                    "op": {
+                      "const": "put",
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "path",
+                    "content"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "op": {
+                      "const": "delete",
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "from": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "op": {
+                      "const": "rename",
+                      "type": "string"
+                    },
+                    "to": {
+                      "maxLength": 400,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "from",
+                    "to"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "id": {
+            "description": "Skill id from list_skills",
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "baseVersion",
+          "changes"
+        ],
+        "type": "object"
+      },
+      "name": "update_skill",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Update a skill"
     }
   ]
 }

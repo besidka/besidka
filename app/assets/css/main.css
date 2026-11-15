@@ -1028,7 +1028,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * daisyUI ships its own unlayered `.prose` rule
  * (`:root .prose { & :where(code):not(pre > code) { ... } }`) that turns
  * every inline `code` into a rounded pill (background + padding +
- * border-radius) in a fixed grey, instead of the soft accent chip
+ * border-radius) in a fixed gray, instead of the soft accent chip
  * `.chat-markdown` uses for `p > code`/`li > code`. The two rules below
  * give `.prose` the same accent look in the same two contexts, sharing one
  * declaration with `.chat-markdown` instead of drifting copies.
@@ -1076,7 +1076,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
 
 /*
  * `@tailwindcss/typography` adds its own thead/tbody-row bottom border
- * inside `.prose` — a rule `.chat-markdown` never has to neutralise,
+ * inside `.prose` — a rule `.chat-markdown` never has to neutralize,
  * since it never carries the `.prose` class. This is a different border
  * from daisyUI's own per-cell one (see `:is(th, td)` below, which is left
  * alone so both contexts keep it).
@@ -1159,11 +1159,11 @@ html body[data-studio-active][data-expand-sidebar]::before {
  *
  * Deliberately in `@layer base` and deliberately unscoped, so it is a default
  * every future focusable element inherits, while daisyUI's own component rings
- * (`.btn`, `.link`, inputs — all in later layers) still win over it. Colour is
+ * (`.btn`, `.link`, inputs — all in later layers) still win over it. Color is
  * a safe base-layer default because it's harmless to inherit unscoped; radius
  * is not — every daisyUI component ring (`.btn-circle` included) would inherit
  * whatever shape landed here. The two rules below give text-like and
- * container elements their own colour and radius without touching this one.
+ * container elements their own color and radius without touching this one.
  */
 @layer base {
   :focus-visible {
@@ -1176,7 +1176,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
 
 /*
  * Text-like focus targets (prose headings via hash navigation, prose links)
- * ring in the text's own colour instead of the base accent default, and take
+ * ring in the text's own color instead of the base accent default, and take
  * daisyUI's field radius so the ring is rounded like every other daisyUI
  * component ring instead of a sharp rectangle. `a:not(.btn)` matters here — a
  * `.btn` styled as an `<a>` already owns its own ring and radius below.
@@ -1223,5 +1223,74 @@ div:focus-visible:not([role="region"]) {
 
   @variant dark {
     --custom-outline-color: var(--color-primary-content);
+  }
+}
+
+/*
+ * Customizable selects (daisyUI turns on `appearance: base-select`) reserve a
+ * column for the check mark at the start of every option, so each hover row
+ * shows an empty gap on its left. `.select-check-end` hides the mark on
+ * unselected options and moves it to the right edge of the selected one, which
+ * leaves the left padding uniform and the hover full width.
+ */
+.select-check-end option:not(:checked)::checkmark {
+  display: none;
+}
+
+.select-check-end option::checkmark {
+  order: 1;
+  margin-inline-start: auto;
+  padding-inline-start: 0.75rem;
+}
+
+/*
+ * The highlighted `/command` of the composer: a soft pink badge drawn by the
+ * mirror overlay (ChatInput/CommandMirror.vue) over the textarea. It reuses
+ * the accent tile tones (`ACCENT_TILE_TONE` in utils/chat-input-tiles.ts) but
+ * as one opaque color, because the textarea's own glyphs sit under it and must
+ * not show through. The side padding is two zero-spread box-shadows offset
+ * sideways in the badge color, which paint outside the box and never touch
+ * layout: unlike `padding-inline`, they move no glyph, add no space where a
+ * token wraps at a hyphen, and (with `box-decoration-break: clone`) round every
+ * wrapped piece. The caret of the textarea sits under this overlay, so while it
+ * rests at the token's start or end that side's shadow is dropped
+ * (`data-caret`) and the caret stays visible.
+ */
+.composer-command-token {
+  --composer-command-token-bg: color-mix(
+    in oklab,
+    var(--color-accent) 10%,
+    var(--color-base-100)
+  );
+  --composer-command-token-pad-start: 0.25em;
+  --composer-command-token-pad-end: 0.25em;
+
+  color: var(--color-accent-text);
+  background-color: var(--composer-command-token-bg);
+  border-radius: var(--radius-selector);
+  box-shadow:
+    var(--composer-command-token-pad-end) 0 0 0
+      var(--composer-command-token-bg),
+    calc(var(--composer-command-token-pad-start) * -1) 0 0 0
+      var(--composer-command-token-bg);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+
+  @variant dark {
+    --composer-command-token-bg: color-mix(
+      in oklab,
+      var(--color-accent-bg) 60%,
+      var(--color-base-100)
+    );
+
+    color: var(--color-accent);
+  }
+
+  &[data-caret='start'] {
+    --composer-command-token-pad-start: 0em;
+  }
+
+  &[data-caret='end'] {
+    --composer-command-token-pad-end: 0em;
   }
 }

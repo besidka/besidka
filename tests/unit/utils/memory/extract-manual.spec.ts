@@ -842,7 +842,7 @@ describe('manual memory extraction', () => {
       ).toBeNull()
     })
 
-    it('honours an expected project for the sweep as well', async () => {
+    it('honors an expected project for the sweep as well', async () => {
       const { chat } = await seedProjectChat()
       const otherProjectId = await seedProject(testDb.db, userId)
       const { extractChatMemory } = await import(

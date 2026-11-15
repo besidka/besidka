@@ -68,8 +68,8 @@ export function normalizeSensitiveText(text: string): string {
 /**
  * The case-preserving part of `normalizeSensitiveText`: NFKC, hidden
  * characters removed, accents stripped from Latin letters (Polish diacritics
- * kept) and stray combining marks dropped. Rules that need capitalisation,
- * such as a capitalised street name, match against it.
+ * kept) and stray combining marks dropped. Rules that need capitalization,
+ * such as a capitalized street name, match against it.
  */
 export function normalizeSensitiveTextCase(text: string): string {
   return stripLatinDiacritics(

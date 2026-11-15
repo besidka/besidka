@@ -113,7 +113,7 @@ function isSafeId(value: number): boolean {
 }
 
 /**
- * Recognises only the key shapes `storage-keys.ts` produces. Anything else
+ * Recognizes only the key shapes `storage-keys.ts` produces. Anything else
  * under `knowledge/` is none of the sweeper's business and returns null.
  */
 function parseKnowledgeKey(key: string): ParsedKnowledgeKey | null {

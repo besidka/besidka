@@ -1,13 +1,19 @@
 import type { ImageOutputOptions } from '@cloudflare/workers-types'
 import * as schema from '~~/server/db/schema'
 
-// Only file formats supported across ALL AI providers
-// such as Gemini, Claude, OpenAI
+// Formats every provider can receive: images and PDFs natively, text and
+// Office files (docx, xlsx, pptx) as text that is extracted when the file is
+// stored. The Office types are accepted only while `files.office` is active.
 export type AllowedFileFormat
   = | Exclude<ImageOutputOptions['format'], 'avif'>
     | 'application/pdf'
     | 'text/plain'
     | 'text/markdown'
+    | 'text/csv'
+    | 'text/tab-separated-values'
+    | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    | 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
 export type AllowedFileFormats = readonly AllowedFileFormat[]
 
@@ -31,9 +37,29 @@ export interface FilePolicyResponse {
   globalTransformRemainingMonth: number
 }
 
+export type StorageCategoryId
+  = | 'aiImages'
+    | 'uploads'
+    | 'generatedFiles'
+    | 'artifacts'
+    | 'knowledge'
+    | 'skills'
+
+export interface StorageCategoryUsage {
+  id: StorageCategoryId
+  bytes: number
+  count: number
+}
+
+export interface StorageBreakdown {
+  categories: StorageCategoryUsage[]
+  totalBytes: number
+}
+
 export interface StorageStats extends FilePolicy {
   used: number
   total: number
   percentage: number
   globalTransformRemainingMonth: number
+  breakdown: StorageBreakdown
 }

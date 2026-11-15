@@ -2,7 +2,10 @@ import { createRequestLogger } from 'evlog'
 import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { sweepLegalNotices } from '~~/server/utils/legal/notice-sweep'
+import {
+  isLegalNoticeSweepEnabled,
+  sweepLegalNotices,
+} from '~~/server/utils/legal/notice-sweep'
 
 const LEGAL_NOTICE_SWEEP_CRON = '*/5 * * * *'
 
@@ -18,7 +21,7 @@ interface ScheduledControllerLike {
 }
 
 interface LegalNoticeSweepConfig {
-  legalNoticeSweepEnabled: boolean
+  legalNoticeSweepEnabled: unknown
   legalNoticeSweepBatchSize: number
   legalNoticeSweepMaxRuntimeMs: number
   legalNoticeDailyCap: number
@@ -64,7 +67,10 @@ export async function runLegalNoticeSweepJob(
 ): Promise<void> {
   const isDevelopment = input.isDevelopment ?? import.meta.dev
 
-  if (!input.config.legalNoticeSweepEnabled || isDevelopment) {
+  if (
+    !isLegalNoticeSweepEnabled(input.config.legalNoticeSweepEnabled)
+    || isDevelopment
+  ) {
     return
   }
 
@@ -112,6 +118,10 @@ export async function runLegalNoticeSweepJob(
           userDeletedCount: result.userDeletedCount,
           errorCodes: result.errorCodes,
           notices: result.notices,
+          unapprovedNoticeIds: result.unapprovedNoticeIds,
+          changedNoticeIds: result.changedNoticeIds,
+          exhaustedNoticeIds: result.exhaustedNoticeIds,
+          withheldCount: result.withheldCount,
           stopReason: result.stopReason,
           runtimeMs: result.runtimeMs,
         },

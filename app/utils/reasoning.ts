@@ -1,4 +1,8 @@
 import type { UIMessage } from 'ai'
+import {
+  BESIDKA_TOOL_NAME_PREFIX,
+  isBesidkaChatToolName,
+} from '#shared/utils/besidka-tool-permissions'
 
 export interface ParsedReasoningSection {
   title: string
@@ -15,6 +19,7 @@ const EXCLUDED_TOOL_STEP_NAMES = new Set<string>([
   'generate_image',
   'create_artifact',
   'update_artifact',
+  'code_execution',
 ])
 const PENDING_TOOL_STATES = new Set<string>([
   'input-streaming',
@@ -29,6 +34,11 @@ const TOOL_STEP_TITLES = new Map<string, {
   done: string
   failed: string
 }>([
+  ['create_document', {
+    pending: 'Creating a document',
+    done: 'Created a document',
+    failed: 'Document call failed',
+  }],
   ['web_search_preview', {
     pending: 'Searching the web',
     done: 'Searched the web',
@@ -73,6 +83,11 @@ const TOOL_STEP_TITLES = new Map<string, {
     pending: 'Removing from memory',
     done: 'Removed from memory',
     failed: 'Removing from memory failed',
+  }],
+  ['read_skill_file', {
+    pending: 'Reading a skill file',
+    done: 'Read a skill file',
+    failed: 'Reading the skill file failed',
   }],
   ['search_project_knowledge', {
     pending: 'Searching project knowledge',
@@ -279,11 +294,31 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
+function getBesidkaToolStepTitle(
+  toolName: string,
+  isPending: boolean,
+  isFailed: boolean,
+): string {
+  const action = humanizeToolName(
+    toolName.slice(BESIDKA_TOOL_NAME_PREFIX.length),
+  )
+
+  if (isFailed) {
+    return `Besidka could not ${action}`
+  }
+
+  return isPending ? `Besidka: ${action}…` : `Besidka: ${action}`
+}
+
 export function getToolStepTitle(
   toolName: string,
   isPending: boolean,
   isFailed: boolean,
 ): string {
+  if (isBesidkaChatToolName(toolName)) {
+    return getBesidkaToolStepTitle(toolName, isPending, isFailed)
+  }
+
   const knownTitles = TOOL_STEP_TITLES.get(toolName)
 
   if (knownTitles) {

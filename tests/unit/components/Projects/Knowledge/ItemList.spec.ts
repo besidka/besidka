@@ -61,7 +61,7 @@ describe('Projects/Knowledge/ItemList', () => {
       .toContain('Loose.md')
   })
 
-  it('toggles a group with a labelled disclosure button', async () => {
+  it('toggles a group with a labeled disclosure button', async () => {
     const wrapper = await mountList()
     const toggle = wrapper.get('[data-testid="knowledge-group-toggle"]')
 

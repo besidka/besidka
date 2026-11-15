@@ -1,0 +1,579 @@
+import { and, eq } from 'drizzle-orm'
+import { createError } from 'evlog'
+import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
+import type { SkillArchiveFile } from '#shared/utils/skills/archive'
+import { diffSkillFiles } from '#shared/utils/skills/diff'
+import type { SkillFinding } from '#shared/utils/skills/findings'
+import {
+  parseSkillMarkdown,
+  renameSkillMarkdown,
+} from '#shared/utils/skills/frontmatter'
+import {
+  isGithubFullSha,
+  parseGithubSkillUrl,
+} from '#shared/utils/skills/github-url'
+import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
+import * as schema from '~~/server/db/schema'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+import type { LoggerLike } from '~~/server/utils/files/logger'
+import {
+  assertLimits,
+  persistPendingVersion,
+} from '~~/server/utils/skills/import/commit'
+import type { PendingVersionPayload } from '~~/server/utils/skills/import/commit'
+import { createSkillImportError } from '~~/server/utils/skills/import/errors'
+import {
+  createGithubClient,
+  createGithubRefNotFoundError,
+} from '~~/server/utils/skills/import/github'
+import { resolveGithubUpstream } from '~~/server/utils/skills/import/upstream'
+import {
+  clearSkillUpdate,
+  markSkillUpdateSeen,
+} from '~~/server/utils/skills/import/update-state'
+import { loadGithubSkill } from '~~/server/utils/skills/import/github-skill'
+import type { GithubKv } from '~~/server/utils/skills/import/github'
+import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
+import {
+  loadOwnedSkill,
+  loadVersionFiles,
+  readChangedFileTexts,
+} from '~~/server/utils/skills/versions/read'
+import { findNewFindings } from '~~/server/utils/skills/versions/new-findings'
+import { readSkillLookalikeContext } from '~~/server/utils/skills/lookalike-context'
+import { countUserSkills } from '~~/server/utils/skills/usage'
+
+type DbClient = ReturnType<typeof useDb>
+type SkillRow = typeof schema.skills.$inferSelect
+type VersionRow = typeof schema.skillVersions.$inferSelect
+
+const UPSTREAM_ORIGINS: ReadonlySet<string> = new Set(['import', 'update'])
+const LOCAL_EDIT_ORIGINS: ReadonlySet<string> = new Set([
+  'editor',
+  'template',
+  'mcp',
+  'rename',
+  'restore',
+])
+const textEncoder = new TextEncoder()
+const bomPreservingDecoder = new TextDecoder('utf-8', { ignoreBOM: true })
+
+export interface GithubUpdateCheckInput {
+  db: DbClient
+  bucket: SkillStageBucket
+  userId: number
+  skillId: string
+  kv?: GithubKv
+  beforeNetwork?: () => Promise<void>
+  logger: LoggerLike
+  fetchImpl?: typeof fetch
+}
+
+export type GithubUpdateCheckResult
+  = | {
+    upToDate: true
+    pinned: boolean
+    contentUnchanged: boolean
+    sourceVersion: string
+    latestVersion: string | null
+    latestTag: string | null
+  }
+  | ({ upToDate: false } & GithubUpdateReview)
+
+export interface GithubUpdateReview {
+  version: number
+  sha256: string
+  sourceVersion: string
+  sourceRef: string | null
+  previousSourceVersion: string | null
+  previousSourceRef: string | null
+  compareUrl: string | null
+  reusedPending: boolean
+  filesCount: number
+  warnings: string[]
+  diff: ReturnType<typeof diffSkillFiles>
+  newFindings: SkillFinding[]
+  findingCounts: {
+    current: Record<string, number> | null
+    pending: Record<string, number> | null
+  }
+  license: {
+    changed: boolean
+    before: { class: string, fileSha256: string | null }
+    after: { class: string, fileSha256: string | null }
+  }
+  localEdits: {
+    warn: boolean
+    versions: Array<{ version: number, origin: string }>
+  }
+}
+
+function createNotGithubSkillError() {
+  return createError({
+    message: 'This skill was not imported from GitHub',
+    status: 400,
+    code: 'not-a-github-skill',
+    why: 'Only a skill imported from a GitHub link has an upstream to check',
+    fix: 'Import the skill from its GitHub link again to follow updates',
+  })
+}
+
+function createUpstreamMovedError(why: string) {
+  return createError({
+    message: 'The skill is no longer where it was imported from',
+    status: 409,
+    code: 'github-skill-missing',
+    why,
+    fix: 'Import the skill from its new location as a new skill',
+  })
+}
+
+function readLocalEdits(
+  versions: Array<Pick<VersionRow, 'version' | 'origin'>>,
+  pendingVersion: number | null,
+) {
+  const settled = versions.filter((row) => {
+    return row.version !== pendingVersion
+  })
+  const lastUpstream = Math.max(0, ...settled
+    .filter((row) => {
+      return UPSTREAM_ORIGINS.has(row.origin)
+    })
+    .map((row) => {
+      return row.version
+    }))
+  const local = settled
+    .filter((row) => {
+      return row.version > lastUpstream && LOCAL_EDIT_ORIGINS.has(row.origin)
+    })
+    .sort((left, right) => {
+      return left.version - right.version
+    })
+    .map((row) => {
+      return { version: row.version, origin: row.origin }
+    })
+
+  return { warn: local.length > 0, versions: local, lastUpstream }
+}
+
+/**
+ * Everything the review screen needs about a persisted pending version:
+ * the per-file diff against the CURRENT version (not against the last
+ * import, so local edits show up as what accepting would replace), findings
+ * that are new in the changed files, any license change, and the local-edit
+ * warning. Read from D1 and R2 so a reused pending version gets the same
+ * answer as a fresh one.
+ */
+async function buildReview(input: {
+  context: GithubUpdateCheckInput
+  skill: SkillRow
+  pending: VersionRow
+  versions: VersionRow[]
+  warnings: string[]
+  reusedPending: boolean
+  knownTexts: Map<string, string>
+}): Promise<GithubUpdateReview> {
+  const { context, skill, pending } = input
+  const currentRow = input.versions.find((row) => {
+    return row.version === skill.currentVersion
+  })
+  const [currentFiles, pendingFiles] = await Promise.all([
+    loadVersionFiles(
+      context.db,
+      context.userId,
+      context.skillId,
+      skill.currentVersion,
+    ),
+    loadVersionFiles(
+      context.db,
+      context.userId,
+      context.skillId,
+      pending.version,
+    ),
+  ])
+  const { before, after, unchanged } = await readChangedFileTexts({
+    bucket: context.bucket,
+    userId: context.userId,
+    skillId: context.skillId,
+    beforeFiles: currentFiles,
+    afterFiles: pendingFiles,
+    knownTexts: input.knownTexts,
+  })
+  const localEdits = readLocalEdits(input.versions, pending.version)
+  const hasCompareInputs = skill.sourceUrl
+    && skill.sourceVersion
+    && pending.sourceVersion
+  const compareUrl = hasCompareInputs
+    ? `${skill.sourceUrl}/compare/${skill.sourceVersion}...${
+      pending.sourceVersion
+    }`
+    : null
+
+  return {
+    version: pending.version,
+    sha256: pending.sha256,
+    sourceVersion: pending.sourceVersion ?? '',
+    sourceRef: pending.sourceRef,
+    previousSourceVersion: skill.sourceVersion,
+    previousSourceRef: skill.sourceRef,
+    compareUrl,
+    reusedPending: input.reusedPending,
+    filesCount: pending.filesCount,
+    warnings: input.warnings,
+    diff: {
+      ...diffSkillFiles(before, after),
+      unchanged,
+    },
+    newFindings: await findNewFindings(before, after),
+    findingCounts: {
+      current: currentRow?.findings ?? null,
+      pending: pending.findings,
+    },
+    license: {
+      changed: skill.licenseClass !== pending.licenseClass
+        || skill.licenseFileSha256 !== pending.licenseFileSha256,
+      before: {
+        class: skill.licenseClass,
+        fileSha256: skill.licenseFileSha256,
+      },
+      after: {
+        class: pending.licenseClass,
+        fileSha256: pending.licenseFileSha256,
+      },
+    },
+    localEdits: { warn: localEdits.warn, versions: localEdits.versions },
+  }
+}
+
+async function loadVersions(input: GithubUpdateCheckInput) {
+  return await input.db.select()
+    .from(schema.skillVersions)
+    .where(and(
+      eq(schema.skillVersions.skillId, input.skillId),
+      eq(schema.skillVersions.userId, input.userId),
+    ))
+}
+
+async function keepLocalName(
+  file: { path: string, bytes: Uint8Array, text: string },
+  localName: string,
+): Promise<{ file: typeof file, warning: string | null }> {
+  const parsed = parseSkillMarkdown(file.text)
+
+  if (!parsed.ok || parsed.frontmatter.name === localName) {
+    return { file, warning: null }
+  }
+
+  const renamed = renameSkillMarkdown(
+    bomPreservingDecoder.decode(file.bytes),
+    localName,
+  )
+
+  if (renamed === null) {
+    throw createUpstreamMovedError(
+      `The upstream skill is now named ${parsed.frontmatter.name}`,
+    )
+  }
+
+  return {
+    file: { ...file, bytes: textEncoder.encode(renamed), text: renamed },
+    warning: `Upstream renamed this skill to ${
+      parsed.frontmatter.name
+    }; the local name ${localName} was kept`,
+  }
+}
+
+/**
+ * Checks a GitHub skill for a newer version and, when there is one, stores it
+ * as a persisted pending version (origin `update`) for the user to review.
+ * A skill pinned to a release tag looks for a higher release tag; a skill on
+ * a branch looks at the branch head. The skill keeps running on its current
+ * version and stays as enabled as it was; only accepting the pending version
+ * changes that. One ref list read resolves the target, one archive download
+ * follows only when it moved, and a pinned commit has nothing to check.
+ */
+export async function checkGithubSkillUpdate(
+  input: GithubUpdateCheckInput,
+): Promise<GithubUpdateCheckResult> {
+  const skill = await loadOwnedSkill(input.db, input.userId, input.skillId)
+  const parsedUrl = skill.sourceUrl
+    ? parseGithubSkillUrl(skill.sourceUrl)
+    : null
+
+  if (
+    skill.sourceKind !== 'github'
+    || !parsedUrl?.ok
+    || !skill.sourceRef
+    || !skill.sourceVersion
+  ) {
+    throw createNotGithubSkillError()
+  }
+
+  const repository = {
+    owner: parsedUrl.value.owner,
+    repo: parsedUrl.value.repo,
+  }
+  const client = createGithubClient({
+    fetchImpl: input.fetchImpl,
+    logger: input.logger,
+    kv: input.kv,
+  })
+
+  if (isGithubFullSha(skill.sourceRef)) {
+    return {
+      upToDate: true,
+      pinned: true,
+      contentUnchanged: false,
+      sourceVersion: skill.sourceVersion,
+      latestVersion: null,
+      latestTag: null,
+    }
+  }
+
+  await input.beforeNetwork?.()
+
+  const target = await resolveGithubUpstream(
+    client,
+    repository,
+    skill.sourceRef,
+  )
+
+  if (target.kind !== 'found') {
+    throw createGithubRefNotFoundError()
+  }
+
+  if (target.sha === skill.sourceVersion && target.ref === skill.sourceRef) {
+    await clearSkillUpdate(input.kv, {
+      userId: input.userId,
+      skillId: input.skillId,
+    })
+
+    return {
+      upToDate: true,
+      pinned: false,
+      contentUnchanged: false,
+      sourceVersion: skill.sourceVersion,
+      latestVersion: target.sha,
+      latestTag: target.tag,
+    }
+  }
+
+  const versions = await loadVersions(input)
+  const existingPending = skill.pendingVersion === null
+    ? null
+    : versions.find((row) => {
+      return row.version === skill.pendingVersion
+    }) ?? null
+
+  if (existingPending && existingPending.origin !== 'update') {
+    throw createError({
+      message: 'Review or reject the pending version first',
+      status: 409,
+      code: 'pending-exists',
+      why: 'The skill already has a pending version that did not come from an '
+        + 'update check, and a check would replace it',
+      fix: 'Review or reject the pending version, then check for updates again',
+    })
+  }
+
+  if (
+    existingPending
+    && existingPending.sourceVersion === target.sha
+    && existingPending.sourceRef === target.ref
+  ) {
+    return {
+      upToDate: false,
+      ...await buildReview({
+        context: input,
+        skill,
+        pending: existingPending,
+        versions,
+        warnings: [],
+        reusedPending: true,
+        knownTexts: new Map(),
+      }),
+    }
+  }
+
+  let loaded: Awaited<ReturnType<typeof loadGithubSkill>>
+
+  try {
+    loaded = await loadGithubSkill(client, {
+      ...repository,
+      sha: target.sha,
+      path: skill.sourcePath,
+    })
+  } catch (exception) {
+    if ((exception as { code?: string }).code === 'archive-missing-skill-md') {
+      throw createUpstreamMovedError(
+        'The folder the skill was imported from no longer holds a SKILL.md',
+      )
+    }
+
+    throw exception
+  }
+
+  if (loaded.kind === 'pick' || loaded.skillPath !== skill.sourcePath) {
+    throw createUpstreamMovedError(
+      'The folder the skill was imported from no longer holds it at that path',
+    )
+  }
+
+  const warnings: string[] = []
+  const files: SkillArchiveFile[] = []
+
+  for (const file of loaded.files) {
+    if (file.path !== SKILL_MD_FILE_NAME) {
+      files.push(file)
+
+      continue
+    }
+
+    const kept = await keepLocalName(file, skill.name)
+
+    files.push(kept.file)
+
+    if (kept.warning) {
+      warnings.push(kept.warning)
+    }
+  }
+
+  const lookalike = await readSkillLookalikeContext({
+    db: input.db,
+    userId: input.userId,
+    sourceUrl: skill.sourceUrl,
+    excludeSkillId: input.skillId,
+  })
+  const analysis = await analyzeSkillFiles({
+    files,
+    folderName: loaded.folderName,
+    source: lookalike.source,
+    otherSkillNames: lookalike.otherSkillNames,
+  })
+
+  if (!analysis.ok) {
+    throw createSkillImportError(analysis.code, analysis.message)
+  }
+
+  warnings.push(...analysis.warnings)
+
+  const knownContent = versions
+    .filter((row) => {
+      return row.version === skill.currentVersion
+        || (
+          row.version !== skill.pendingVersion
+          && UPSTREAM_ORIGINS.has(row.origin)
+        )
+    })
+    .map((row) => {
+      return row.sha256
+    })
+
+  if (knownContent.includes(analysis.contentSha256)) {
+    await markSkillUpdateSeen(input.kv, {
+      userId: input.userId,
+      skillId: input.skillId,
+      target: { ref: target.ref, sha: target.sha, tag: target.tag },
+    })
+
+    return {
+      upToDate: true,
+      pinned: false,
+      contentUnchanged: true,
+      sourceVersion: skill.sourceVersion,
+      latestVersion: target.sha,
+      latestTag: target.tag,
+    }
+  }
+
+  await assertLimits({
+    db: input.db,
+    userId: input.userId,
+    skillsCount: await countUserSkills(input.db, input.userId),
+    incomingBytes: analysis.totalBytes,
+    isNewSkill: false,
+  })
+
+  const contentOverrides = new Map<string, Uint8Array>()
+  const knownTexts = new Map<string, string>()
+
+  for (const analyzed of analysis.files) {
+    const file = files.find((candidate) => {
+      return candidate.path === analyzed.path
+    })!
+
+    contentOverrides.set(analyzed.sha256, file.bytes)
+    knownTexts.set(analyzed.sha256, file.text)
+  }
+
+  const payload: PendingVersionPayload = {
+    userId: input.userId,
+    source: 'github',
+    sourceVersion: target.sha,
+    sourceUrl: skill.sourceUrl,
+    sourceRef: target.ref,
+    sourcePath: skill.sourcePath,
+    license: {
+      class: analysis.license.class,
+      file: analysis.license.licenseFile,
+      sha256: analysis.license.licenseFileSha256,
+      classifierVersion: analysis.license.classifierVersion,
+    },
+    files: analysis.files,
+    totalBytes: analysis.totalBytes,
+    contentSha256: analysis.contentSha256,
+    findingCounts: analysis.findingCounts,
+  }
+  const { version } = await persistPendingVersion({
+    db: input.db,
+    bucket: input.bucket,
+    manifest: payload,
+    contentOverrides,
+    skillId: input.skillId,
+    pendingVersion: skill.pendingVersion,
+    origin: 'update',
+  })
+
+  await invalidateStorageCache(input.userId, input.logger)
+
+  const refreshed = await loadVersions(input)
+  const pending = refreshed.find((row) => {
+    return row.version === version
+  })
+
+  if (!pending) {
+    throw createError({
+      message: 'This skill changed while you were checking',
+      status: 409,
+      code: 'pending-changed',
+      why: 'The pending version could not be read back',
+      fix: 'Check for updates again',
+    })
+  }
+
+  input.logger.set({
+    attributes: {
+      skills: {
+        update: {
+          operation: 'check',
+          source: 'github',
+          version,
+          files: analysis.files.length,
+        },
+      },
+    },
+  })
+
+  return {
+    upToDate: false,
+    ...await buildReview({
+      context: input,
+      skill,
+      pending,
+      versions: refreshed,
+      warnings,
+      reusedPending: false,
+      knownTexts,
+    }),
+  }
+}

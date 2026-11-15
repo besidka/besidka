@@ -13,7 +13,7 @@ const mountOptions = {
 
 describe('MessageBubble.vue', () => {
   // ARIA in HTML forbids naming a `generic` element, which a bare div maps to,
-  // so a labelled bubble needs a role that permits a name. `group` does and is
+  // so a labeled bubble needs a role that permits a name. `group` does and is
   // not a landmark -- `region` would be, and ~10 of those is the overuse MDN
   // and the ARIA APG warn against.
   it('takes a group role only when sr-label gives it a name', async () => {

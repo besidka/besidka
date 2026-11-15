@@ -296,7 +296,7 @@ async function main() {
 
   if (disallowed.length > 0) {
     for (const entry of disallowed) {
-      console.error(`Licence not allowed: ${entry.name}@${entry.version} (${entry.declaredLicense})`)
+      console.error(`License not allowed: ${entry.name}@${entry.version} (${entry.declaredLicense})`)
     }
 
     process.exit(1)
@@ -309,7 +309,7 @@ async function main() {
   })
 
   for (const entry of withoutLicenseText) {
-    console.warn(`No licence file shipped: ${entry.name}@${entry.version} (${entry.chosenLicense}); the notice names the licence only`)
+    console.warn(`No license file shipped: ${entry.name}@${entry.version} (${entry.chosenLicense}); the notice names the license only`)
   }
 
   await writeFile(
@@ -328,7 +328,7 @@ async function main() {
   const noticesSize = (await stat(path.join(versionDirectory, 'THIRD_PARTY_NOTICES.txt'))).size
 
   console.log(`Built artifacts runtime (${isDevelopment ? 'development' : 'production'} headers)`)
-  console.log(`Third-party packages: ${entries.length}, notices ${(noticesSize / 1024).toFixed(1)} KiB, licences: ${[...new Set(entries.map((entry) => {
+  console.log(`Third-party packages: ${entries.length}, notices ${(noticesSize / 1024).toFixed(1)} KiB, licenses: ${[...new Set(entries.map((entry) => {
     return entry.chosenLicense
   }))].sort().join(', ')}`)
 

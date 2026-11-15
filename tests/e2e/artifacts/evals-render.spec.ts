@@ -4,13 +4,13 @@ import { expect, test } from '@playwright/test'
 import {
   readEvalResults,
   resultPath,
-  summariseCheckStatus,
+  summarizeCheckStatus,
 } from '../../../scripts/artifact-evals.mjs'
 
 const EVALS_ENABLED = process.env.ARTIFACT_EVALS === '1'
 const BASE_URL = process.env.ARTIFACT_EVALS_BASE_URL ?? ''
 const RESULTS_DIR = process.env.ARTIFACT_EVALS_DIR ?? ''
-const INITIALISE_LIMIT_MS = 5_000
+const INITIALIZE_LIMIT_MS = 5_000
 const CLICK_SETTLE_MS = 400
 const CLICKABLE_WAIT_MS = 10_000
 const MAX_CLICKS = 4
@@ -120,7 +120,7 @@ function writeBack(result: EvalResult) {
   const stored = JSON.parse(readFileSync(path, 'utf8'))
 
   stored.checks = result.checks
-  stored.status = summariseCheckStatus(result.checks)
+  stored.status = summarizeCheckStatus(result.checks)
   writeFileSync(path, `${JSON.stringify(stored, null, 2)}\n`)
 }
 
@@ -165,7 +165,7 @@ test.describe('artifact eval renders', () => {
         }
       })
 
-      let initialiseMs = Number.POSITIVE_INFINITY
+      let initializeMs = Number.POSITIVE_INFINITY
       let changed = false
       let failure = ''
 
@@ -174,7 +174,7 @@ test.describe('artifact eval renders', () => {
           waitUntil: 'domcontentloaded',
           timeout: 30_000,
         })
-        initialiseMs = await openArtifact(page)
+        initializeMs = await openArtifact(page)
         changed = await clickThrough(
           page.frameLocator('[data-testid="artifact-frame-iframe"]'),
         )
@@ -185,8 +185,8 @@ test.describe('artifact eval renders', () => {
       }
       const notes = [
         failure,
-        Number.isFinite(initialiseMs)
-          ? `initialised in ${initialiseMs} ms`
+        Number.isFinite(initializeMs)
+          ? `initialized in ${initializeMs} ms`
           : '',
         storageWrites.length ? `${storageWrites.length} storage write(s)` : '',
         securityMessages.length
@@ -195,7 +195,7 @@ test.describe('artifact eval renders', () => {
       ].filter(Boolean)
 
       result.checks.interactive = {
-        status: changed && initialiseMs <= INITIALISE_LIMIT_MS
+        status: changed && initializeMs <= INITIALIZE_LIMIT_MS
           ? 'pass'
           : 'fail',
         note: changed ? notes.join('; ') : `no DOM change; ${notes.join('; ')}`,

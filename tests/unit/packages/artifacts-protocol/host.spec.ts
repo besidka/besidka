@@ -239,7 +239,7 @@ describe('createHostConnection', () => {
     vi.useRealTimers()
   })
 
-  it('passes a normalised link to the host', async () => {
+  it('passes a normalized link to the host', async () => {
     const frame = createFakeFrame()
     const onOpenLink = vi.fn()
     const host = createHostConnection(frame, createHandlers({ onOpenLink }))

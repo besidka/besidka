@@ -4,7 +4,11 @@ import type {
   ReasoningLevel,
 } from '#shared/types/reasoning.d'
 import type { ModelResearchConfig } from '#shared/types/research.d'
+import type { DataArtifactPartData } from '#shared/utils/artifacts'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
+import type { ComposerConnectorItem } from '~/composables/composer-connectors'
+import type { ComposerSkillInvocation } from '~/composables/composer-skill-invocation'
+import type { ComposerSkillItem } from '~/composables/composer-skills'
 import type {
   WebSearchOption,
   WebSearchSelection,
@@ -12,11 +16,15 @@ import type {
 
 export type ToolsSection
   = | 'add'
+    | 'skills'
+    | 'connectors'
     | 'search'
     | 'reasoning'
+    | 'code'
     | 'image'
-    | 'project'
     | 'memory'
+
+export type ChatInputArtifactTileId = `artifact-${string}`
 
 export type ChatInputTileId
   = | 'project'
@@ -24,7 +32,13 @@ export type ChatInputTileId
     | 'deep-research'
     | 'image'
     | 'search'
+    | 'code'
     | 'reasoning'
+    | 'skill'
+    | 'connectors'
+    | ChatInputArtifactTileId
+
+export type AttachedArtifact = DataArtifactPartData
 
 export type ChatInputTileIcon
   = | { kind: 'icon', name: string }
@@ -88,10 +102,29 @@ export interface ChatInputToolsState {
     enabled: boolean
     required: boolean
   }
+  codeExecution?: {
+    visible: boolean
+    enabled: boolean
+    providerId: string | null
+  }
   files: {
     visible: boolean
     count: number
     isImageInputSupported: boolean
+  }
+  artifacts: {
+    visible: boolean
+    attached: AttachedArtifact[]
+  }
+  skills?: {
+    visible: boolean
+    items: ComposerSkillItem[]
+    selected: ComposerSkillInvocation | null
+  }
+  connectors?: {
+    visible: boolean
+    items: ComposerConnectorItem[]
+    selectedIds: string[]
   }
   project: {
     visible: boolean

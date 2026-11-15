@@ -26,6 +26,7 @@ export const artifactsCapability = defineCapability({
       db: context.db,
       userId: context.userId,
       chatId: context.chatId,
+      attachedArtifactIds: context.attachedArtifactIds,
     })
 
     return createArtifactTools({

@@ -50,7 +50,7 @@
               data-testid="memory-generation-project-note"
             >
               Covers your profile and project memory. Off by default. When on,
-              chats you have from now on are summarised in the background on
+              chats you have from now on are summarized in the background on
               your key. Use "Build memory from past chats" to include older
               chats. Projects set to On keep updating until you change them
               on the project page.

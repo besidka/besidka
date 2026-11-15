@@ -273,7 +273,7 @@ describe('prose/MermaidViewer.client.vue', () => {
     expect(mocks.instance.reset).toHaveBeenCalledWith({ animate: false })
   })
 
-  it('renders three labelled zoom buttons with left tooltips', async () => {
+  it('renders three labeled zoom buttons with left tooltips', async () => {
     const wrapper = await mountViewer()
 
     await vi.waitFor(() => {
@@ -469,7 +469,7 @@ describe('prose/MermaidViewer.client.vue', () => {
         ]))
       })
 
-    it('centres the fitted diagram with the start pan', async () => {
+    it('centers the fitted diagram with the start pan', async () => {
       await mountReadyViewer()
 
       expect(mocks.instance.setOptions).toHaveBeenCalledWith(
@@ -702,7 +702,7 @@ describe('prose/MermaidViewer.client.vue', () => {
         )
       })
 
-    it('keeps the view offset from the centre when the viewport shrinks',
+    it('keeps the view offset from the center when the viewport shrinks',
       async () => {
         const { observer } = await mountReadyViewer()
 

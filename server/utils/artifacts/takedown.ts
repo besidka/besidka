@@ -246,10 +246,10 @@ async function resolveChatShareUrl(
 
 /**
  * One report with everything the admin drawer needs: the full details, the
- * decision statement, the exact reported URL (the decrypted `/a#` link, or
- * the shared chat URL) and the version to preview: the version the reporter
- * saw, else the link's pinned one, else the current one. The URL goes to
- * the admin only and is never logged.
+ * decision statement, the exact reported URL (the decrypted
+ * `/artifacts/<token>` link, or the shared chat URL) and the version to
+ * preview: the version the reporter saw, else the link's pinned one, else the
+ * current one. The URL goes to the admin only and is never logged.
  */
 export async function getArtifactReportForAdmin(input: {
   db: DbClient
@@ -502,18 +502,17 @@ async function findOwnerEmail(
 
 /**
  * Decides an open report. `takedown` with scope `share` disables only the
- * reported `/a#` link (the share row's takedown fields); with `all-shares`
- * it disables the artifact itself, so every link, the shared-chat route and
- * the owner view stop on the next request. `reject` closes the report with
- * no action. The report is closed first (only if it is still open, so two
- * admins deciding at once cannot both act: the second gets 409); the
- * takedown and the audit row then go in one D1 batch, and if that batch
- * (or the reject audit row) fails the report is reopened and the error
- * rethrown, so it never stays closed with nothing done. The owner gets the
- * statement of reasons when
- * content was newly taken down (a second report on content already down
- * sends none), the reporter gets the decision when they left an email.
- * Email failures are logged, never thrown.
+ * reported `/artifacts/<token>` link (the share row's takedown fields); with
+ * `all-shares` it disables the artifact itself, so every link, the
+ * shared-chat route and the owner view stop on the next request. `reject`
+ * closes the report with no action. The report is closed first (only if it
+ * is still open, so two admins deciding at once cannot both act: the second
+ * gets 409); the takedown and the audit row then go in one D1 batch, and if
+ * that batch (or the reject audit row) fails the report is reopened and the
+ * error rethrown, so it never stays closed with nothing done. The owner gets
+ * the statement of reasons when content was newly taken down (a second
+ * report on content already down sends none), the reporter gets the decision
+ * when they left an email. Email failures are logged, never thrown.
  */
 export async function decideArtifactReport(
   context: FeatureAdminContext,
@@ -741,14 +740,14 @@ function throwTargetNotFound(): never {
     404,
     'Nothing matches this target',
     'unknown_takedown_target',
-    'Paste the full /a# link, the token, an artifact id, or for scope user '
-    + 'a user id or email',
+    'Paste the full /artifacts/ link, the token, an artifact id, or for '
+    + 'scope user a user id or email',
   )
 }
 
 /**
- * Resolves what a direct takedown targets. A full `/a#<token>` link or a
- * bare token is hashed and looked up first; then, for scope `user`, a user
+ * Resolves what a direct takedown targets. A full `/artifacts/<token>` link
+ * or a bare token is hashed and looked up first; then, for scope `user`, a user
  * id or email; then an artifact id. The raw target is never logged.
  */
 async function resolveTakedownTarget(
@@ -767,7 +766,7 @@ async function resolveTakedownTarget(
         404,
         'No share link matches this target',
         'unknown_share_target',
-        'Paste the full /a# link or its token',
+        'Paste the full /artifacts/ link or its token',
       )
     }
 

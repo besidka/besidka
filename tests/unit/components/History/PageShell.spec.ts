@@ -4,18 +4,30 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import HistoryPageShell from '../../../../app/components/History/PageShell.vue'
 
 const artifactsActive = ref<boolean>(false)
+const documentsActive = ref<boolean>(false)
+const skillsActive = ref<boolean>(false)
 
 mockNuxtImport('useFeature', () => {
-  return () => computed(() => {
-    return {
-      enabled: artifactsActive.value,
-      active: artifactsActive.value,
-      variant: null,
-    }
+  return (key: string) => computed(() => {
+    const active = key === 'documents'
+      ? documentsActive.value
+      : key === 'skills'
+        ? skillsActive.value
+        : artifactsActive.value
+
+    return { enabled: active, active, variant: null }
   })
 })
 
-function mountShell(activeTab: 'chats' | 'projects' | 'shared' | 'artifacts') {
+type ShellTab
+  = | 'chats'
+    | 'projects'
+    | 'shared'
+    | 'artifacts'
+    | 'documents'
+    | 'skills'
+
+function mountShell(activeTab: ShellTab) {
   return mountSuspended(HistoryPageShell, {
     props: {
       activeTab,
@@ -45,6 +57,8 @@ function mountShell(activeTab: 'chats' | 'projects' | 'shared' | 'artifacts') {
 describe('HistoryPageShell', () => {
   beforeEach(() => {
     artifactsActive.value = false
+    documentsActive.value = false
+    skillsActive.value = false
   })
 
   it('renders history navigation as page links styled like tabs', async () => {
@@ -71,7 +85,7 @@ describe('HistoryPageShell', () => {
     expect(wrapper.findAll('nav a span.\\@max-md\\:sr-only')).toHaveLength(0)
   })
 
-  it('adds the Artifacts tab as the fourth link with the feature on',
+  it('adds the Artifacts tab before Shared with the feature on',
     async () => {
       artifactsActive.value = true
 
@@ -81,7 +95,10 @@ describe('HistoryPageShell', () => {
       const artifactsTab = wrapper.get('[data-testid="tab-artifacts"]')
 
       expect(links).toHaveLength(4)
-      expect(links[3]?.attributes('href')).toBe('/chats/artifacts')
+      expect(wrapper.find('[data-testid="tab-documents"]').exists())
+        .toBe(false)
+      expect(links[2]?.attributes('href')).toBe('/chats/artifacts')
+      expect(links[3]?.attributes('href')).toBe('/chats/shared')
       expect(artifactsTab.attributes('aria-current')).toBe('page')
       expect(artifactsTab.attributes('aria-label')).toBe('Artifacts')
       expect(artifactsTab.text()).toContain('Artifacts')
@@ -104,5 +121,88 @@ describe('HistoryPageShell', () => {
     ])
     expect(wrapper.get('[data-testid="tab-shared"]').attributes('aria-label'))
       .toBe('Shared')
+  })
+
+  it('adds only the Documents tab when only the documents feature is on',
+    async () => {
+      documentsActive.value = true
+
+      const wrapper = await mountShell('documents')
+      const links = wrapper.get('nav[aria-label="History sections"]')
+        .findAll('a')
+      const documentsTab = wrapper.get('[data-testid="tab-documents"]')
+
+      expect(links).toHaveLength(4)
+      expect(wrapper.find('[data-testid="tab-artifacts"]').exists())
+        .toBe(false)
+      expect(links[2]?.attributes('href')).toBe('/chats/documents')
+      expect(links[3]?.attributes('href')).toBe('/chats/shared')
+      expect(documentsTab.attributes('aria-current')).toBe('page')
+      expect(documentsTab.attributes('aria-label')).toBe('Documents')
+    })
+
+  it('orders tabs Chats, Projects, Artifacts, Documents, Shared and collapses inactive labels',
+    async () => {
+      artifactsActive.value = true
+      documentsActive.value = true
+
+      const wrapper = await mountShell('documents')
+      const links = wrapper.get('nav[aria-label="History sections"]')
+        .findAll('a')
+      const labels = wrapper.findAll('nav a span:not(.iconify)')
+      const collapsed = labels.filter((label) => {
+        return label.classes().includes('@max-[34rem]:sr-only')
+      })
+
+      expect(links.map(link => link.attributes('href'))).toEqual([
+        '/chats/history',
+        '/chats/projects',
+        '/chats/artifacts',
+        '/chats/documents',
+        '/chats/shared',
+      ])
+      expect(collapsed.map(label => label.text())).toEqual([
+        'Chats',
+        'Projects',
+        'Artifacts',
+        'Shared',
+      ])
+    })
+
+  it('puts the Skills tab after Documents and before Shared, six tabs with every feature on',
+    async () => {
+      artifactsActive.value = true
+      documentsActive.value = true
+      skillsActive.value = true
+
+      const wrapper = await mountShell('skills')
+      const links = wrapper.get('nav[aria-label="History sections"]')
+        .findAll('a')
+      const collapsed = wrapper.findAll('nav a span:not(.iconify)')
+        .filter(label => label.classes().includes('@max-[40rem]:sr-only'))
+
+      expect(links.map(link => link.attributes('href'))).toEqual([
+        '/chats/history',
+        '/chats/projects',
+        '/chats/artifacts',
+        '/chats/documents',
+        '/chats/skills',
+        '/chats/shared',
+      ])
+      expect(wrapper.get('[data-testid="tab-skills"]').attributes('aria-current'))
+        .toBe('page')
+      expect(collapsed.map(label => label.text())).toEqual([
+        'Chats',
+        'Projects',
+        'Artifacts',
+        'Documents',
+        'Shared',
+      ])
+    })
+
+  it('has no Skills tab without the skills feature', async () => {
+    const wrapper = await mountShell('chats')
+
+    expect(wrapper.find('[data-testid="tab-skills"]').exists()).toBe(false)
   })
 })

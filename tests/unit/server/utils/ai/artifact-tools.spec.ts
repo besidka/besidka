@@ -624,7 +624,9 @@ describe('artifact tools', () => {
       content: 'a',
     })).rejects.toMatchObject({
       code: 'artifact-quota',
-      message: expect.stringContaining('25.00 MB'),
+      message: expect.stringContaining(
+        'Storage is full. 25.0 MB of 20.0 MB used. Free space on the Storage page.',
+      ),
     })
   })
 
@@ -744,8 +746,8 @@ describe('buildArtifactDesignInstructions', () => {
       .toBeLessThanOrEqual(DESIGN_SHEET_MAX_CHARS)
   })
 
-  it('names the theme colours and forbids remote styling', () => {
-    for (const colour of [
+  it('names the theme colors and forbids remote styling', () => {
+    for (const color of [
       'primary',
       'secondary',
       'accent',
@@ -756,7 +758,7 @@ describe('buildArtifactDesignInstructions', () => {
       'success',
       'error',
     ]) {
-      expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain(colour)
+      expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain(color)
     }
 
     expect(ARTIFACT_DESIGN_INSTRUCTIONS).toContain('no CDN')

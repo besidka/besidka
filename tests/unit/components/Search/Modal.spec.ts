@@ -25,6 +25,9 @@ const sidebarPinned = ref<boolean>(false)
 const loggedIn = ref<boolean>(true)
 const isAdmin = ref<boolean>(false)
 const artifactsActive = ref<boolean>(false)
+const documentsActive = ref<boolean>(false)
+const skillsActive = ref<boolean>(false)
+const besidkaToolsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -44,12 +47,16 @@ mockNuxtImport('useAuth', () => {
 })
 
 mockNuxtImport('useFeature', () => {
-  return () => computed(() => {
-    return {
-      enabled: artifactsActive.value,
-      active: artifactsActive.value,
-      variant: null,
-    }
+  return (key: string) => computed(() => {
+    const active = key === 'documents'
+      ? documentsActive.value
+      : key === 'skills'
+        ? skillsActive.value
+        : key === 'besidka-tools'
+          ? besidkaToolsActive.value
+          : artifactsActive.value
+
+    return { enabled: active, active, variant: null }
   })
 })
 
@@ -126,6 +133,9 @@ describe('Search/Modal.client', () => {
     loggedIn.value = true
     isAdmin.value = false
     artifactsActive.value = false
+    documentsActive.value = false
+    skillsActive.value = false
+    besidkaToolsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -224,7 +234,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the eleven documented command rows in order for an empty query', async () => {
+  it('renders the twelve documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -237,13 +247,14 @@ describe('Search/Modal.client', () => {
       'search-option-history',
       'search-option-attachments',
       'search-option-projects',
-      'search-option-theme',
       'search-option-security',
       'search-option-keys',
       'search-option-memory',
       'search-option-preferences',
+      'search-option-storage',
       'search-option-connected-apps',
       'search-option-labs',
+      'search-option-theme',
       'search-option-cookies',
     ])
   })
@@ -284,7 +295,115 @@ describe('Search/Modal.client', () => {
     expect(wrapper.find('#search-option-artifacts').exists()).toBe(false)
   })
 
-  it('shows the Admin rows last in Settings only to admins', async () => {
+  it('adds the Documents row after Artifacts only with the documents feature',
+    async () => {
+      artifactsActive.value = true
+      documentsActive.value = true
+      useSearchModal().isModalOpen.value = true
+
+      const wrapper = await mountModal()
+      await nextTick()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(ids.slice(0, 5)).toEqual([
+        'search-option-history',
+        'search-option-attachments',
+        'search-option-projects',
+        'search-option-artifacts',
+        'search-option-documents',
+      ])
+      expect(wrapper.get('#search-option-documents').text()).toBe('Documents')
+      expect(wrapper.get('#search-option-documents .iconify').classes())
+        .toContain('i-lucide:file-text')
+
+      await wrapper.find('#search-option-documents').trigger('click')
+
+      expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/documents')
+      expect(closeSpy).toHaveBeenCalled()
+    })
+
+  it('omits the Documents row without the documents feature', async () => {
+    artifactsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-artifacts').exists()).toBe(true)
+    expect(wrapper.find('#search-option-documents').exists()).toBe(false)
+  })
+
+  it('adds the Skills row to the Chat group after Documents only with the skills feature', async () => {
+    skillsActive.value = true
+    documentsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.indexOf('search-option-skills'))
+      .toBe(ids.indexOf('search-option-documents') + 1)
+    expect(wrapper.get('#search-option-skills').text()).toBe('Skills')
+    expect(wrapper.get('#search-option-skills .iconify').classes())
+      .toContain('i-lucide:sparkles')
+
+    await wrapper.find('#search-option-skills').trigger('click')
+
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/skills')
+    expect(closeSpy).toHaveBeenCalled()
+  })
+
+  it('omits the Skills row without the skills feature', async () => {
+    artifactsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-skills').exists()).toBe(false)
+  })
+
+  it('adds the Besidka tool permissions row to Settings after Labs only with the besidka-tools feature', async () => {
+    besidkaToolsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.indexOf('search-option-besidka-tool-permissions'))
+      .toBe(ids.indexOf('search-option-labs') + 1)
+    expect(wrapper.get('#search-option-besidka-tool-permissions').text())
+      .toBe('Besidka tool permissions')
+    expect(wrapper.get('#search-option-besidka-tool-permissions .iconify')
+      .classes()).toContain('i-lucide:wrench')
+
+    await wrapper.find('#search-option-besidka-tool-permissions')
+      .trigger('click')
+
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/profile/labs?panel=besidka-tool-permissions')
+  })
+
+  it('omits the Besidka tool permissions row without the besidka-tools feature', async () => {
+    artifactsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-besidka-tool-permissions').exists())
+      .toBe(false)
+  })
+
+  it('shows the Admin rows in their own group, before Interface, only to admins', async () => {
     isAdmin.value = true
     useSearchModal().isModalOpen.value = true
 
@@ -302,9 +421,11 @@ describe('Search/Modal.client', () => {
     const ids = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
 
-    expect(ids.slice(-2)).toEqual([
+    expect(ids.slice(-4)).toEqual([
       'search-option-admin',
       'search-option-admin-reports',
+      'search-option-theme',
+      'search-option-cookies',
     ])
     expect(wrapper.get('#search-option-admin').text()).toBe('Admin')
     expect(wrapper.get('#search-option-admin .iconify').classes())
@@ -358,7 +479,7 @@ describe('Search/Modal.client', () => {
       return wrapper.get(`#${id} .iconify`).classes()
     }
 
-    expect(rows).toHaveLength(11)
+    expect(rows).toHaveLength(12)
     expect(labelOf('search-option-projects')).toBe('Projects')
     expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
     expect(labelOf('search-option-memory')).toBe('Memory')
@@ -366,6 +487,8 @@ describe('Search/Modal.client', () => {
     expect(labelOf('search-option-preferences')).toBe('Preferences')
     expect(iconOf('search-option-preferences'))
       .toContain('i-lucide:sliders-horizontal')
+    expect(labelOf('search-option-storage')).toBe('Storage')
+    expect(iconOf('search-option-storage')).toContain('i-lucide:hard-drive')
     expect(labelOf('search-option-connected-apps')).toBe('Connected apps')
     expect(iconOf('search-option-connected-apps'))
       .toContain('i-lucide:plug')
@@ -375,15 +498,17 @@ describe('Search/Modal.client', () => {
     const orderedIds = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
     const chatEnd = orderedIds.indexOf('search-option-projects')
-    const settingsStart = orderedIds.indexOf('search-option-theme')
+    const settingsStart = orderedIds.indexOf('search-option-security')
 
     expect(chatEnd).toBeLessThan(settingsStart)
     expect(orderedIds.indexOf('search-option-memory'))
       .toBeGreaterThan(settingsStart)
     expect(orderedIds.indexOf('search-option-preferences'))
       .toBeGreaterThan(orderedIds.indexOf('search-option-memory'))
+    expect(orderedIds.indexOf('search-option-storage'))
+      .toBe(orderedIds.indexOf('search-option-preferences') + 1)
     expect(orderedIds.indexOf('search-option-connected-apps'))
-      .toBeGreaterThan(orderedIds.indexOf('search-option-preferences'))
+      .toBe(orderedIds.indexOf('search-option-storage') + 1)
     expect(orderedIds.indexOf('search-option-labs'))
       .toBe(orderedIds.indexOf('search-option-connected-apps') + 1)
   })
@@ -392,6 +517,7 @@ describe('Search/Modal.client', () => {
     ['search-option-projects', '/chats/projects'],
     ['search-option-memory', '/profile/memory'],
     ['search-option-preferences', '/profile/preferences'],
+    ['search-option-storage', '/profile/storage'],
     ['search-option-connected-apps', '/profile/connected-apps'],
     ['search-option-labs', '/profile/labs'],
   ])('closes the modal and navigates from %s to %s', async (id, path) => {
@@ -498,10 +624,109 @@ describe('Search/Modal.client', () => {
 
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
+    await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await wrapper.find('input').trigger('keydown', { key: 'Enter' })
 
     expect(mocks.navigateToMock)
       .toHaveBeenCalledWith('/profile/labs')
+  })
+
+  it('keeps Settings for exactly the profile pages and moves the look and consent rows to a last Interface group', async () => {
+    showPinToggle.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const rowsByHeading: Record<string, string[]> = {}
+    let current = ''
+
+    for (const child of wrapper.get('[role="listbox"]').element.children) {
+      if (child.getAttribute('aria-hidden') === 'true') {
+        current = child.textContent?.trim() ?? ''
+        rowsByHeading[current] = []
+      } else if (child.getAttribute('role') === 'option') {
+        rowsByHeading[current]!.push(child.id)
+      }
+    }
+
+    const headings = Object.keys(rowsByHeading)
+    const groupRows = (heading: string) => rowsByHeading[heading]
+
+    expect(headings).toEqual(['Chat', 'Settings', 'Interface'])
+    expect(groupRows('Settings')).toEqual([
+      'search-option-security',
+      'search-option-keys',
+      'search-option-memory',
+      'search-option-preferences',
+      'search-option-storage',
+      'search-option-connected-apps',
+      'search-option-labs',
+    ])
+    expect(groupRows('Interface')).toEqual([
+      'search-option-theme',
+      'search-option-pin-sidebar',
+      'search-option-cookies',
+    ])
+  })
+
+  it('walks the arrow keys through the groups in order, and wraps from the first row to Cookie settings', async () => {
+    showPinToggle.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const input = wrapper.find('input')
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+    const visited: Array<string | undefined> = []
+
+    for (let step = 0; step < ids.length; step += 1) {
+      visited.push(wrapper.get('[role="option"][aria-selected="true"]')
+        .attributes('id'))
+      await input.trigger('keydown', { key: 'ArrowDown' })
+    }
+
+    expect(visited).toEqual(ids)
+    expect(ids.at(-1)).toBe('search-option-cookies')
+    expect(ids.indexOf('search-option-pin-sidebar'))
+      .toBe(ids.indexOf('search-option-theme') + 1)
+
+    await input.trigger('keydown', { key: 'ArrowUp' })
+
+    expect(wrapper.get('[role="option"][aria-selected="true"]')
+      .attributes('id')).toBe('search-option-cookies')
+  })
+
+  it('still shows the Interface group, with Cookie settings, when signed out and the Settings rows are hidden', async () => {
+    loggedIn.value = false
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const headings = wrapper.findAll('[aria-hidden="true"]')
+      .map(heading => heading.text())
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(headings).toContain('Interface')
+    expect(headings).not.toContain('Settings')
+    expect(ids).not.toContain('search-option-security')
+    expect(ids).toContain('search-option-theme')
+    expect(ids).toContain('search-option-cookies')
+  })
+
+  it('hides the Admin group from a signed-out user even if the flag is set', async () => {
+    loggedIn.value = false
+    isAdmin.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-admin').exists()).toBe(false)
   })
 
   it('marks section headings as aria-hidden', async () => {
@@ -513,7 +738,9 @@ describe('Search/Modal.client', () => {
     const headingTexts = wrapper.findAll('[aria-hidden="true"]')
       .map(heading => heading.text())
 
-    expect(headingTexts).toEqual(expect.arrayContaining(['Chat', 'Settings']))
+    expect(headingTexts).toEqual(
+      expect.arrayContaining(['Chat', 'Settings', 'Interface']),
+    )
   })
 
   it('closes the modal before navigating to Manage Chat History (B6)', async () => {

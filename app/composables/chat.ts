@@ -9,13 +9,19 @@ import type { Ref, ComputedRef } from 'vue'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Message, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { AttachedArtifact } from '~/types/chat-input-tools'
+import type {
+  ToolApprovalAnswer,
+  ToolApprovalController,
+  ToolApprovalFailure,
+} from '~/composables/tool-approvals'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
 } from '#shared/types/research.d'
 import { parseError } from 'evlog'
-import { DefaultChatTransport } from 'ai'
+import { DefaultChatTransport, isToolUIPart } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
 import {
@@ -27,7 +33,20 @@ import {
   isWebSearchTool,
 } from '#shared/utils/message-metadata'
 import { isPastChatPreRetrievalPart } from '#shared/utils/past-chat-retrieval'
-import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import {
+  ARTIFACT_DATA_PART_TYPE,
+  toArtifactAttachmentPart,
+} from '#shared/utils/artifacts'
+import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
+import {
+  CONNECTORS_NOTICE_PART_TYPE,
+  getConnectorToolCall,
+} from '#shared/utils/connectors-parts'
+import {
+  DOCUMENT_DATA_PART_TYPE,
+  isDocumentToolPartType,
+} from '#shared/utils/documents'
+import { isToolApprovalPart } from '#shared/utils/tool-approval-parts'
 import { isArtifactToolPartType } from '~/utils/artifact-parts'
 import {
   isPersistedEmptyAnswerFailureText,
@@ -263,7 +282,21 @@ function hasMeaningfulPersistedAssistantParts(
 
     return part.type === 'file'
       || part.type === 'source-url'
+      || isToolApprovalPart(part)
       || part.type === ARTIFACT_DATA_PART_TYPE
+      || part.type === DOCUMENT_DATA_PART_TYPE
+      || (
+        isDocumentToolPartType(part.type)
+        && 'state' in part
+        && part.state === 'output-error'
+      )
+      || (
+        part.type === CODE_EXECUTION_PART_TYPE
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+      )
       || (
         (part.type === 'tool-create_artifact'
           || part.type === 'tool-update_artifact')
@@ -274,6 +307,13 @@ function hasMeaningfulPersistedAssistantParts(
         && (
           part.state === 'output-available'
           || part.state === 'output-error'
+        )
+      )
+      || (
+        getConnectorToolCall(part) !== null
+        && (
+          (part as { state?: string }).state === 'output-available'
+          || (part as { state?: string }).state === 'output-error'
         )
       )
   })
@@ -371,7 +411,7 @@ export function shouldDisplayRegenerate(
 // streaming endpoint 400s for DR models. `userModel` is a global preference
 // (see useUserModel), decoupled from the chat it currently renders, so it can
 // drift after a mid-session model switch — the model check alone is not
-// robust. A present research job of ANY status (including a cancelled one
+// robust. A present research job of ANY status (including a canceled one
 // still held in memory this session) is a model-independent second signal,
 // so a present job or a DR model selected either one marks this a research
 // context that must not auto-regenerate through the normal chat endpoint.
@@ -456,6 +496,9 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
       part.type === 'file'
       || part.type === ARTIFACT_DATA_PART_TYPE
       || isArtifactToolPartType(part.type)
+      || part.type === DOCUMENT_DATA_PART_TYPE
+      || isDocumentToolPartType(part.type)
+      || part.type === CODE_EXECUTION_PART_TYPE
       || isVisibleGenerateImageToolPart(part)
     ) {
       return true
@@ -579,6 +622,7 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
     }
 
     return part.type !== 'data-omitted-context-files'
+      && part.type !== CONNECTORS_NOTICE_PART_TYPE
       && !isPastChatPreRetrievalPart(part)
   })
 }
@@ -875,7 +919,10 @@ export function resolveInitialChatTools(
   messages: Message[],
   preferences: InitialChatToolsPreferences,
 ): Tools {
-  const tools = findLastUserMessageTools(messages)
+  const lastUserTools = findLastUserMessageTools(messages)
+  const tools = messages.at(-1)?.role === 'user'
+    ? lastUserTools
+    : stripCodeExecutionTool(lastUserTools)
   const savedTool = preferences.savedWebSearchTool
 
   if (
@@ -913,6 +960,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isPreferred: isAutoWebSearchPreferred,
     resolveWebSearchMode,
   } = useAutoWebSearch()
+  const connectorsFeature = useFeature('connectors')
+  const { selection: connectorSelection } = useChatConnectorSelection()
+  const isBesidkaToolsAvailable = useBesidkaToolsAvailability()
+  const { selection: besidkaToolsSelection } = useBesidkaToolsSelection()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   // App-wide signal for whether any chat turn is actively streaming, read by
@@ -933,11 +984,15 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   }))
   const files = ref<FileMetadata[]>([])
+  const attachedArtifacts = ref<AttachedArtifact[]>([])
+  const composerSkillInvocation = useComposerSkillInvocation()
   const pendingError = shallowRef<ChatErrorPayload | null>(null)
   const transportRequestId = shallowRef<string>()
   const reportedClientErrorIds = new Set<string>()
 
   chat = toValue(chat)
+
+  const chatSlug = chat.slug
 
   const tools = shallowRef<Tools>(resolveInitialChatTools(chat.messages, {
     isAutoWebSearchPreferred: isAutoWebSearchPreferred.value,
@@ -982,7 +1037,46 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
 
+  function getConnectorIdsField(): { connectorIds?: string[] } {
+    const { chatKey, ids, isKnown } = connectorSelection.value
+
+    if (
+      !connectorsFeature.value.active
+      || !isKnown
+      || chatKey !== chatSlug
+    ) {
+      return {}
+    }
+
+    return { connectorIds: ids }
+  }
+
+  function getBesidkaToolsField(): { besidkaToolsEnabled?: boolean } {
+    const { chatKey, enabled, isKnown } = besidkaToolsSelection.value
+
+    if (!isBesidkaToolsAvailable.value || !isKnown || chatKey !== chatSlug) {
+      return {}
+    }
+
+    return { besidkaToolsEnabled: enabled }
+  }
+
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
+  const toolApprovalRemember = createToolApprovalRememberStore()
+  const toolApprovalsFeature = useFeature('tool-approvals')
+  const sendingApprovalIds = shallowRef<readonly string[]>([])
+  const answeredApprovalIds = shallowRef<readonly string[]>([])
+  const toolApprovalFailures = shallowRef<
+    Record<string, ToolApprovalFailure>
+  >({})
+  const toolApprovalAnsweredAt = shallowRef<Record<string, number>>({})
+  const toolApprovalFocusRequest = shallowRef<
+    { approvalId: string, nonce: number } | null
+  >(null)
+  let toolApprovalRequestError: unknown = null
+  let isToolApprovalResendHeld = false
+  let toolApprovalResendAttempts = 0
+  let toolApprovalResendTimeoutId: ReturnType<typeof setTimeout> | undefined
 
   const {
     messages: sdkMessages,
@@ -991,6 +1085,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     regenerate: sdkRegenerate,
     stop: sdkStop,
     clearError: sdkClearError,
+    addToolApprovalResponse: sdkAddToolApprovalResponse,
+    sendMessage: sdkSendMessage,
   } = useChatSdk<UIMessage>({
     id: chat.id,
     messages: hydratedMessages as unknown as UIMessage[],
@@ -1008,6 +1104,21 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return response
       },
       prepareSendMessagesRequest({ messages }) {
+        const approvalBody = buildToolApprovalRequestBody(
+          messages,
+          toolApprovalRemember,
+        )
+
+        if (approvalBody) {
+          const { responses } = approvalBody.approval
+          const answeredIds = responses.map(response => response.approvalId)
+
+          toolApprovalRemember.markInFlight(answeredIds)
+          sendingApprovalIds.value = answeredIds
+
+          return { body: approvalBody }
+        }
+
         const lastMessage = messages[messages.length - 1]
 
         const canSendCapabilityGatedFields = isModelCapabilityResolved.value
@@ -1026,11 +1137,38 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             exaSearchLevel: normalizeExaSearchLevel(
               prefStorage.getItem('settings_exa_search_level'),
             ),
+            ...getConnectorIdsField(),
+            ...getBesidkaToolsField(),
           },
         }
       },
     }),
+    sendAutomaticallyWhen: ({ messages }) => {
+      if (isToolApprovalResendHeld) {
+        return false
+      }
+
+      return shouldSendToolApprovalResponses(messages, toolApprovalRemember)
+    },
     onFinish({ isAbort, isDisconnect, isError, messages }) {
+      const approvalRequestIds = toolApprovalRemember.getInFlight()
+
+      if (
+        approvalRequestIds.length > 0
+        && finishToolApprovalRequest({
+          approvalRequestIds,
+          isAbort,
+          isDisconnect,
+          isError,
+        })
+      ) {
+        return
+      }
+
+      const isSuccessfulResponse = !isAbort && !isDisconnect && !isError
+
+      toolApprovalRemember.settleInFlight(isSuccessfulResponse)
+
       const requestId = transportRequestId.value
       const wasPendingGenerationRetry = isPendingGenerationRetry
       let parsedError = pendingError.value
@@ -1095,6 +1233,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         isAwaitingGeneration.value = false
         hadInterruptionThisTurn = false
         isStopped.value = true
+        tools.value = stripCodeExecutionTool(tools.value)
         nuxtApp.callHook('chat:context-changed')
         return
       }
@@ -1107,6 +1246,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       wakeLock.release()
       isAwaitingGeneration.value = false
+      tools.value = stripCodeExecutionTool(tools.value)
       nuxtApp.callHook('chat:generation-finished')
 
       if (isError) {
@@ -1123,6 +1263,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       hadInterruptionThisTurn = false
     },
     onError(error: any) {
+      if (toolApprovalRemember.getInFlight().length > 0) {
+        toolApprovalRequestError = error
+      }
+
       const parsedError = normalizeChatClientError(error, {
         requestId: transportRequestId.value,
       })
@@ -1250,9 +1394,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   // Union gate (see shouldBlockGenerationRecovery above): blocks recovery
   // whenever the globally-selected model is a DR model, OR this chat still
-  // holds a research job of any status (running, failed, or a cancelled job
+  // holds a research job of any status (running, failed, or a canceled job
   // kept in memory for the rest of the session — see dismissResearchJob's
-  // callers, which intentionally never clear a cancelled job).
+  // callers, which intentionally never clear a canceled job).
   const shouldBlockGenerationRecovery = computed<boolean>(() => {
     return isResearchModelSelected.value || researchJob.value !== null
   })
@@ -1408,6 +1552,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', recoverIfInterrupted)
     clearScheduledGenerationRetry()
+    clearToolApprovalResend()
     reasoningSegmentTracker.reset()
     disposeChatResearch()
     wakeLock.release()
@@ -1422,6 +1567,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     text: string,
   ): Promise<UIMessage['parts']> {
     const parts: any[] = []
+    const artifactParts = attachedArtifacts.value.map(toArtifactAttachmentPart)
+    const skillInvocationPart = composerSkillInvocation.part.value
 
     if (text.trim()) {
       parts.push({
@@ -1434,6 +1581,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       const fileParts = await convertFilesToUIParts(files.value)
 
       parts.push(...fileParts)
+    }
+
+    parts.push(...artifactParts)
+
+    if (skillInvocationPart) {
+      parts.push(skillInvocationPart)
     }
 
     return parts
@@ -1587,6 +1740,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   function stop() {
     clearScheduledGenerationRetry()
+    clearToolApprovalResend()
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     currentTurnStartedAt.value = 0
@@ -1687,10 +1841,269 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return 'off'
   }
 
+  /**
+   * Answers one waiting tool call. Once every waiting call of the reply is
+   * answered, the SDK sends the answers on its own
+   * (`sendAutomaticallyWhen`) and the reply continues in the same message.
+   */
+  async function answerToolApproval(answer: ToolApprovalAnswer) {
+    toolApprovalRemember.set(answer.approvalId, answer.remember ?? 'once')
+    toolApprovalResendAttempts = 0
+    answeredApprovalIds.value = [
+      ...answeredApprovalIds.value.filter((approvalId) => {
+        return approvalId !== answer.approvalId
+      }),
+      answer.approvalId,
+    ]
+    toolApprovalAnsweredAt.value = {
+      ...toolApprovalAnsweredAt.value,
+      [answer.approvalId]: Date.now(),
+    }
+
+    await sdkAddToolApprovalResponse({
+      id: answer.approvalId,
+      approved: answer.approved,
+      ...(answer.reason ? { reason: answer.reason } : {}),
+    })
+  }
+
+  function forgetAnsweredApprovals(approvalIds: readonly string[]) {
+    const ids = new Set(approvalIds)
+
+    answeredApprovalIds.value = answeredApprovalIds.value.filter(
+      (approvalId) => {
+        return !ids.has(approvalId)
+      },
+    )
+    toolApprovalRemember.forget(approvalIds)
+  }
+
+  /**
+   * Takes back a local answer while other calls of the same reply still
+   * wait, so nothing was sent yet.
+   */
+  function changeToolApprovalAnswer(approvalId: string) {
+    if (
+      sendingApprovalIds.value.includes(approvalId)
+      || ['submitted', 'streaming'].includes(sdkStatus.value)
+    ) {
+      return
+    }
+
+    forgetAnsweredApprovals([approvalId])
+    sdkMessages.value = revertToolApprovalResponses(
+      sdkMessages.value,
+      [approvalId],
+    ) as typeof sdkMessages.value
+  }
+
+  async function askAgainAfterApproval(messageId: string) {
+    const prompt = getPromptBeforeMessage(sdkMessages.value, messageId)
+
+    if (!prompt || input.value.trimEnd().endsWith(prompt)) {
+      return
+    }
+
+    await nuxtApp.callHook('chat-input:prefill', prompt)
+  }
+
+  function markToolApprovalFailures(
+    approvalIds: readonly string[],
+    failure: ToolApprovalFailure,
+  ) {
+    const failures = { ...toolApprovalFailures.value }
+
+    for (const approvalId of approvalIds) {
+      failures[approvalId] = failure
+    }
+
+    toolApprovalFailures.value = failures
+  }
+
+  function clearToolApprovalResend() {
+    isToolApprovalResendHeld = false
+
+    if (toolApprovalResendTimeoutId === undefined) {
+      return
+    }
+
+    clearTimeout(toolApprovalResendTimeoutId)
+    toolApprovalResendTimeoutId = undefined
+  }
+
+  /**
+   * Sends the same answers again after a "still working" signal or a
+   * dropped connection. The server keeps one claim per answer, so a resend
+   * either waits again, replays the stored reply into the same message or
+   * reports the run as interrupted; it never runs the tool twice.
+   */
+  function scheduleToolApprovalResend(approvalIds: readonly string[]) {
+    clearToolApprovalResend()
+
+    if (toolApprovalResendAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
+      toolApprovalRemember.markSent(approvalIds)
+      markToolApprovalFailures(approvalIds, 'interrupted')
+
+      return
+    }
+
+    toolApprovalResendAttempts += 1
+    isToolApprovalResendHeld = true
+    toolApprovalResendTimeoutId = setTimeout(() => {
+      toolApprovalResendTimeoutId = undefined
+      isToolApprovalResendHeld = false
+
+      if (['submitted', 'streaming'].includes(sdkStatus.value)) {
+        return
+      }
+
+      if (!shouldSendToolApprovalResponses(
+        sdkMessages.value,
+        toolApprovalRemember,
+      )) {
+        return
+      }
+
+      sdkSendMessage()
+    }, GENERATION_RETRY_DELAY_MS)
+  }
+
+  function hasRespondedApprovalParts(approvalIds: readonly string[]) {
+    const ids = new Set(approvalIds)
+
+    return sdkMessages.value.at(-1)?.parts.some((part) => {
+      return isToolUIPart(part)
+        && part.state === 'approval-responded'
+        && ids.has(part.approval.id)
+    }) ?? false
+  }
+
+  /**
+   * Settles a request that answered approvals. Returns true when it handled
+   * the outcome itself (the generic error card and Regenerate would point at
+   * a reply the server cannot regenerate): a pending signal or a dropped
+   * connection resends the answers, a 409 marks the calls expired or
+   * interrupted, and any other error brings the buttons back with a toast.
+   */
+  function finishToolApprovalRequest(input: {
+    approvalRequestIds: readonly string[]
+    isAbort: boolean
+    isDisconnect: boolean
+    isError: boolean
+  }): boolean {
+    const { approvalRequestIds } = input
+    const requestError = toolApprovalRequestError ?? sdkError.value
+    const wasPendingGenerationRetry = isPendingGenerationRetry
+
+    toolApprovalRequestError = null
+    sendingApprovalIds.value = []
+
+    if (input.isAbort) {
+      toolApprovalRemember.settleInFlight(true)
+      markToolApprovalFailures(approvalRequestIds, 'interrupted')
+
+      return false
+    }
+
+    const isInterruption = isAutoRecoverableTransportInterruption(
+      pendingError.value,
+      {
+        isAbort: false,
+        isDisconnect: input.isDisconnect,
+        isTestChat: isTestChat.value,
+      },
+    )
+
+    if (wasPendingGenerationRetry || isInterruption) {
+      isPendingGenerationRetry = false
+      pendingError.value = null
+      toolApprovalRemember.settleInFlight(false)
+      sdkClearError()
+      scheduleToolApprovalResend(approvalRequestIds)
+
+      return true
+    }
+
+    if (!input.isError) {
+      toolApprovalResendAttempts = 0
+
+      return false
+    }
+
+    if (!hasRespondedApprovalParts(approvalRequestIds)) {
+      toolApprovalRemember.settleInFlight(true)
+
+      return false
+    }
+
+    const classified = classifyToolApprovalError(requestError)
+
+    pendingError.value = null
+    sdkClearError()
+    isStopped.value = false
+
+    if (classified.kind === 'retry') {
+      toolApprovalRemember.settleInFlight(false)
+      forgetAnsweredApprovals(approvalRequestIds)
+      sdkMessages.value = revertToolApprovalResponses(
+        sdkMessages.value,
+        approvalRequestIds,
+      ) as typeof sdkMessages.value
+      useErrorMessage(classified.message, classified.why || classified.fix)
+
+      return true
+    }
+
+    toolApprovalRemember.settleInFlight(true)
+    markToolApprovalFailures(approvalRequestIds, classified.kind)
+
+    return true
+  }
+
+  const toolApprovalController: ToolApprovalController = {
+    isActive: computed<boolean>(() => {
+      return toolApprovalsFeature.value.active
+    }),
+    messages: renderableMessages,
+    isRequestActive: computed<boolean>(() => {
+      return ['submitted', 'streaming'].includes(sdkStatus.value)
+    }),
+    pendingApprovalIds: computed<string[]>(() => {
+      if (!toolApprovalsFeature.value.active) {
+        return []
+      }
+
+      return getPendingToolApprovalIds(
+        renderableMessages.value,
+        toolApprovalFailures.value,
+      )
+    }),
+    sendingApprovalIds,
+    answeredApprovalIds,
+    failures: toolApprovalFailures,
+    answeredAt: toolApprovalAnsweredAt,
+    focusRequest: toolApprovalFocusRequest,
+    answer: answerToolApproval,
+    change: changeToolApprovalAnswer,
+    askAgain: askAgainAfterApproval,
+    focusFirstPending: () => {
+      const approvalId = toolApprovalController.pendingApprovalIds.value[0]
+
+      if (!approvalId) {
+        return
+      }
+
+      toolApprovalFocusRequest.value = { approvalId, nonce: Date.now() }
+    },
+  }
+
+  provide(TOOL_APPROVAL_CONTROLLER_KEY, toolApprovalController)
+
   return {
     chatSdk,
     input,
     submit,
+    answerToolApproval,
     stop,
     isStopped,
     regenerate,
@@ -1704,6 +2117,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isLastAssistantMessage,
     shouldDisplayMessage,
     files,
+    attachedArtifacts,
     currentTurnStartedAt,
     currentTurnReasoningAccumulatedMs,
     currentReasoningSegmentStartedAt,

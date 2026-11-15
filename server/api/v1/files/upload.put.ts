@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import { normalizeMediaType } from '#shared/utils/files'
+import { OFFICE_UPLOAD_MAX_BYTES } from '#shared/utils/office-files'
 import {
   getEffectiveUserFilePolicy,
   getUserStorageUsageBytes,
@@ -7,11 +7,21 @@ import {
   reserveImageTransformSlots,
 } from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
+import { createStorageFullError } from '~~/server/utils/storage/errors'
 import {
   assertUploadContentLength,
   decodeUploadFileName,
   readUploadBody,
 } from '~~/server/utils/files/upload-request'
+import {
+  looksLikeOfficeUpload,
+  resolveUploadFileType,
+} from '~~/server/utils/files/upload-file-type'
+import {
+  assertOfficeContentLength,
+  assertOfficeUploadBytes,
+  createOfficeFileTooLargeError,
+} from '~~/server/utils/files/office-upload-check'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { defineEventHandler, getRequestHeader } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -46,18 +56,13 @@ export default defineEventHandler(async (event) => {
     getRequestHeader(event, 'x-filename'),
   )
 
-  if (!fileType || !fileName) {
+  const isOfficeWithoutType = !fileType
+    && !!fileName
+    && looksLikeOfficeUpload(fileName, fileType)
+
+  if (!fileName || (!fileType && !isOfficeWithoutType)) {
     throw createError({
       message: 'Missing required headers',
-      status: 400,
-    })
-  }
-
-  const normalizedFileType = normalizeMediaType(fileType)
-
-  if (!normalizedFileType) {
-    throw createError({
-      message: 'Invalid file media type',
       status: 400,
     })
   }
@@ -66,17 +71,15 @@ export default defineEventHandler(async (event) => {
 
   await requireLegalConsent(userId)
 
-  const config = useRuntimeConfig().public
-  const allowedFileFormats = config.allowedFileFormats as AllowedFileFormats
-
-  if (
-    !allowedFileFormats.includes(normalizedFileType as AllowedFileFormat)
-  ) {
-    throw createError({
-      message: `File type must be one of: ${allowedFileFormats.join(', ')}`,
-      status: 400,
-    })
-  }
+  const {
+    mediaType: normalizedFileType,
+    officeFormat,
+  } = await resolveUploadFileType({
+    event,
+    fileName,
+    declaredType: fileType,
+    logger,
+  })
 
   const [policy, totalFilesSize] = await Promise.all([
     getEffectiveUserFilePolicy(userId),
@@ -85,14 +88,27 @@ export default defineEventHandler(async (event) => {
 
   const remainingStorageBytes = policy.maxStorageBytes - totalFilesSize
 
-  assertUploadContentLength(
+  const quota = {
+    usedBytes: totalFilesSize,
+    totalBytes: policy.maxStorageBytes,
+  }
+
+  const contentLength = assertUploadContentLength(
     getRequestHeader(event, 'content-length'),
-    remainingStorageBytes,
+    quota,
   )
+
+  if (officeFormat) {
+    assertOfficeContentLength(contentLength)
+  }
 
   const fileBuffer = await readUploadBody(
     event.req.body,
-    remainingStorageBytes,
+    officeFormat
+      ? Math.min(remainingStorageBytes, OFFICE_UPLOAD_MAX_BYTES)
+      : remainingStorageBytes,
+    quota,
+    officeFormat ? createOfficeFileTooLargeError : undefined,
   )
 
   if (!fileBuffer.length) {
@@ -100,6 +116,10 @@ export default defineEventHandler(async (event) => {
       message: 'No file data provided',
       status: 400,
     })
+  }
+
+  if (officeFormat) {
+    assertOfficeUploadBytes(fileName, officeFormat, fileBuffer)
   }
 
   const headerFileSize = Number(getRequestHeader(event, 'x-filesize') || 0)
@@ -124,10 +144,7 @@ export default defineEventHandler(async (event) => {
   const wouldExceed = totalFilesSize + parsedFileSize > policy.maxStorageBytes
 
   if (wouldExceed) {
-    throw createError({
-      message: 'Not enough storage space. Please delete some files.',
-      status: 400,
-    })
+    throw createStorageFullError(quota)
   }
 
   const arrayBuffer = new ArrayBuffer(fileBuffer.length)

@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.8, 2026-11-08 (artifacts: new section 3.13, data-flow steps 10 to 14, section 4 rows, risk rows 49 to 60, section 6 items 20 to 23; 1.7, 2026-11-08: feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.10, 2026-11-12 (Office attachments, BES-370: data-flow row 16); 1.9, 2026-11-11 (documents and provider code execution: new section 3.14, data-flow steps 15 to 19, `create_document` in section 3.11 and risk row 37, risk rows 61 to 72, section 6 items 24 to 27, DPF re-check in item 5; 1.8, 2026-11-08: artifacts: new section 3.13, data-flow steps 10 to 14, section 4 rows, risk rows 49 to 60, section 6 items 20 to 23; 1.7, 2026-11-08: feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -61,7 +61,7 @@ the project is disabled and set to `on`, so nothing in section 3.11 gains a way
 to spend the user's key.
 
 **Added 2026-11-08 (feature access, rollouts and experiments).** Phase 0 of
-the agentic capabilities programme adds per-account feature access: roles and
+the agentic capabilities program adds per-account feature access: roles and
 grants set by the controller, gradual rollouts and non-spending variants
 assigned from a hash of the user id, opt-ins for features that spend the
 user's keys, an objection switch, an audit log and exposure telemetry
@@ -85,6 +85,34 @@ effective 2026-12-19. No new processor and no new third-country recipient
 (esm.sh dropped). `CURRENT_CONSENT_VERSION` unchanged; the consent text does
 not name viewer storage or the bridge, so both stay off beyond the controller
 until the owner decides the wording (section 6, item 20).
+
+**Added 2026-11-11 (documents and provider code execution).** Phase 2 adds
+two things (section 3.14, risk rows 61 to 72, section 6 items 24 to 27).
+First, documents: the chat model, or a connected client over MCP, makes a
+PDF, Word, PowerPoint or Excel file from a JSON spec; the browser renders it,
+the server renders it as a fallback in a second Worker, and every file is
+validated and marked before it is stored. Second, provider code execution:
+when the user turns it on for a message, the attachments and the model's code
+go to the sandbox of the user's own Anthropic, OpenAI or Google account, and
+Besidka deletes what it uploaded and downloaded after the turn. Both sit
+inside existing purposes (files, "answer the user's message"), existing
+recipients and the existing legal basis, so no new processor, no new transfer
+and no consent change. Provider code execution is offered for those three
+providers only; xAI, DeepSeek, Moonshot AI, Qwen and every gateway model are
+excluded, so the Art. 49(1)(a) consents do not change. The shared package D-2
+is built on `feat/documents-spec-package` (PR #833, not merged); everything
+else is planned. The flags `documents`, `documents.*`, `code-execution`,
+`code-execution.files` and `code-execution.skills` stay at stage `internal`,
+and must not reach `beta`, until this section is merged, the code that builds
+each planned control has shipped, and the Privacy Policy and Terms have been
+re-checked against that code (they describe the intended behavior in the
+present tense) with the provider pages re-read on the day. The Terms of Use change is material by owner decision of 2026-11-11: a new
+prohibited use for code and a mirror of the providers' usage rules. The
+Privacy Policy change is recorded as material on the cautious reading (the
+provider-side retention is a fact users did not have), so one notice,
+`2026-12-code-and-documents`, covers both, effective 2026-12-19 (section 6,
+items 25 and 26). `CURRENT_CONSENT_VERSION` is
+unchanged.
 
 ## 1. Why a DPIA is required
 
@@ -168,7 +196,7 @@ removed.
 - **Data.** Messages (text, reasoning, tool calls and results, sources), file
   attachments, chat titles, project assignment. Free text, so it can hold any
   category of data, including special categories (Art. 9) and, by accident,
-  criminal-offence data (Art. 10).
+  criminal-offense data (Art. 10).
 - **Where.** D1 (`DB`) for rows. R2 (`DATA_BUCKET`) for files. Cloudflare does
   not pin either to the EU. The Privacy Policy says "EU and US".
 - **Recipients.** The provider or gateway the user chose for each message.
@@ -375,7 +403,7 @@ removed.
   2026-10-26). Not on the EU-US Data Privacy Framework. The DPA marks
   sensitive-data safeguards "N/A", keeps data "as long as necessary" and has
   no SLA. Its privacy policy says it does not train on input.
-- **Failure.** Every role is assistive and fails safe to the behaviour
+- **Failure.** Every role is assistive and fails safe to the behavior
   without the key on a missing key, 401, 403, 429, 529, a network error or a
   timeout. The direction differs by role and is in the last column of the
   table: `memoryChecks` falls back to the gate alone, `autoWebSearch` and
@@ -544,6 +572,11 @@ removed.
 | 12 | Besidka page | Runtime frame (`postMessage` channel) | Artifact source, theme, viewer storage values, bridge answers | Opaque origin; the frame's code is the author's, so anything given to it can leave by self-navigation (risk rows 51, 52) |
 | 13 | Worker | Viewer's direct provider (planned, A-6) | The artifact's prompt, after the viewer confirms it | Viewer's own key, consent gate and transfer consent, caps, nothing stored |
 | 14 | Visitor or reporter | Worker, privacy mailbox (A-7) | Report form: name, email, reason, details; Turnstile for signed-out reporters; receipts and statements of reasons by email | Rate limit, no IP stored, a person decides |
+| 15 | Browser, then Worker | R2 `documents/`, D1 `documents`, then the rendered file in R2 and `files` | The document spec the model wrote (text, tables, slide text, sheet cells, references to the user's own images), the title, then the rendered file (planned, D-4, section 3.14) | The user's own send and key, ownership in SQL, spec bounds and strict keys, `validate()` before anything is stored, the file counts in the 20 MB quota |
+| 16 | Worker | `besidka-doc-renderer` (same Cloudflare account, service binding, no public route; planned, D-3) | The spec and the owner's image bytes, only when the browser cannot render; the rendered bytes come back. **Office extraction (for every stored Office file, generated documents included; uploads are accepted behind the flag `files.office`):** the bytes of an uploaded or generated DOCX, XLSX or PPTX, when the file is stored or first sent, so the renderer can read its text; the Markdown comes back and is stored as the file's text derivative (activity row 3). The renderer keeps nothing and logs sizes and codes only, never the text | No bindings to user data, no public route, no spec text, title or asset bytes in its logs (test), nothing kept after the call |
+| 17 | AI client (pulls) | Worker (MCP `create_document` under `files:write`; built, D-5) | Content the client supplies, rendered into a private file | Same scope and approval screen as row 10a, no provider key, no AI assertion unless the client declares `aiGenerated`, per-user rate limits and quota |
+| 18 | Worker | Anthropic, OpenAI or Google (planned, D-7) | With "Run code" on: the message's attachments (uploaded to the provider's sandbox for the turn, up to 10 files and 20 MB), the model's code and the files the code creates; Google inline | The user's own key, off per message, one-time confirmation, direct providers only, no sandbox network, deletion after the turn, price note |
+| 19 | Provider sandbox | Worker, then R2 and `files` (planned, D-7) | Output files the container made, downloaded with the user's key and stored as the user's files | Type allowlist, size caps, magic bytes, `validate()` for Office and PDF, image marking, visible AI label |
 
 ### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- built
 
@@ -566,7 +599,7 @@ removed.
   from memory, stop a share), `projects:write` (create, update and archive
   projects, edit instructions, add and edit knowledge items), `memory:write`
   (add and edit memory entries), `files:write` (create text files, rename
-  files), `settings:write` (display preferences, favourite models, sidebar
+  files), `settings:write` (display preferences, favorite models, sidebar
   pinning, the memory and chat search switches), and `data:delete` (all
   permanent deletion: chats, messages, projects, knowledge items, files, memory
   entries, memory reset). 11 resource scopes, each write scope its own tick and
@@ -575,12 +608,12 @@ removed.
   expiry and what it shows. 32 private tools in all (`docs/mcp-server.md`).
   `create_file` text is stored as a file without the prompt-injection screening
   that project notes get; an agent can read it back with `read_file`, so treat
-  it like any text an agent reads (risk row 31).
+  it like any text an agent reads (risk row 31). `create_document` (built, D-5) also sits under `files:write`: it renders a PDF, Word, PowerPoint or Excel file from content the client supplies and stores it as a private file (section 3.14). It spends no key and publishes nothing, so it fits the recorded rule that an extension of an existing scope involves no deletion or spend (risk row 37).
 - **Left out on purpose.** Anything that spends the user's keys (sending,
   memory import and extraction, backfill, project memory refresh, title
   generation, the share personal-data check, deep research), creating or
   updating a public chat share, "Allow anyway" on a flagged knowledge item,
-  settings that authorise spend or change the data recipient (automatic
+  settings that authorize spend or change the data recipient (automatic
   memory extraction, memory models, TypeSafe AI roles), setting a project's
   automatic memory updates to On (a connected app may only set `inherit` or
   `off`, which can only reduce what the background sweep reads), and API keys,
@@ -735,7 +768,7 @@ removed.
   `NUXT_ADMIN_EMAILS` secret, always with a verified email (C13), and in
   production also with TOTP enrolled (C13b). The UI and API assign and revoke
   only `tester` (C7), so the env secret, which holds only the controller, is
-  the only source of the admin role. Known limits: TOTP enrolment is not
+  the only source of the admin role. Known limits: TOTP enrollment is not
   proof that the session passed a TOTP challenge (passkey and OAuth sign-ins
   skip it), and a `CI=true` variable on a deployed Worker would drop the email
   and TOTP checks (`docs/feature-flags.md`, section 6).
@@ -770,7 +803,7 @@ removed.
 - **Retention.** Roles and grants until revoked or the account is deleted (an
   expired grant stops applying, its row stays). Opt-ins and objections for the
   account's lifetime. Audit rows 365 days, deleted by the hourly
-  `feature-audit-sweep` job (C6), and anonymised on account deletion (C5).
+  `feature-audit-sweep` job (C6), and anonymized on account deletion (C5).
   Axiom lines 30 days. Analytics Engine about three months. Account deletion
   runs `purgeUserFeatureAccess` as the last step before the `users` row is
   deleted.
@@ -801,7 +834,7 @@ removed.
 
 ### 3.13 Artifacts -- runtime built, everything else planned
 
-Phase 1 of the agentic capabilities programme (parent BES-225, tickets A-1
+Phase 1 of the agentic capabilities program (parent BES-225, tickets A-1
 to A-8, A-11, A-14). Compliance pre-check: `docs/legal/prechecks/artifacts.md`
 (A-12); its track rows are cited here as P1 to P15. Only the runtime Worker
 (A-2, #751) is built and deployed; the rest is planned. Read every measure
@@ -812,7 +845,8 @@ below as `planned` unless it says `built`.
   (A-3; at most 3 writes a turn), or a connected client writes it with
   `artifacts:write` (A-8). Kinds: HTML, React, SVG, Mermaid, Markdown.
   Content is stored in R2 under `artifacts/<userId>/<artifactId>/v<n>`, at most
-  512 KB a version, 50 versions an artifact, 25 MB a user; metadata in D1
+  512 KB a version, 50 versions an artifact, and artifact bytes count against
+  the user's one storage limit (`docs/storage.md`); metadata in D1
   (`artifacts`, `artifact_versions`: title, kind, origin chat and message,
   `createdVia`, sizes, SHA-256, optional `modelId`), with no foreign key to
   `users` or `chats` (A-1). Messages store only a reference part
@@ -839,8 +873,8 @@ below as `planned` unless it says `built`.
   vendored on that origin (React, ReactDOM, Recharts, lucide-react, Sucrase,
   Pele for Mermaid text, marked, DOMPurify); an unknown import fails in the
   frame and makes no request. **esm.sh is not used** (P5): no third party
-  receives the viewer's IP address. A licence scan fails the build on a
-  licence outside the allowlist, and `THIRD_PARTY_NOTICES.txt` is served from
+  receives the viewer's IP address. A license scan fails the build on a
+  license outside the allowlist, and `THIRD_PARTY_NOTICES.txt` is served from
   the runtime origin (P6). **Limit (P10):** a sandboxed frame can still
   try to navigate itself (`location.href`) to any address, with data in the
   URL; the page that replaces the runtime is not under its CSP. Two layers
@@ -875,18 +909,30 @@ below as `planned` unless it says `built`.
   Retention: reset, artifact deletion, account deletion; for non-owner
   viewers also 30 days after the last active link ends and at once on
   takedown (default; owner item 4 of the pre-check may change it).
-- **(d) Public links (A-7, A-8).** `besidka.com/a#<token>`; the token is 32
-  random bytes, stored as a SHA-256 hash for lookup and encrypted
+- **(d) Public links (A-7, A-8).** `besidka.com/artifacts/<token>`; the token
+  is 32 random bytes, stored as a SHA-256 hash for lookup and encrypted
   (`useEncryptText`) so the owner can copy the link again. The token is the
-  URL fragment, which browsers never send in an HTTP request (owner decision
-  of 2026-11-09), so request logs, Workers Logs, traces, the `Referer` and
-  link unfurlers see only `/a`; the page sends the token only in the
+  last path segment of the link (owner decision of 2026-11-11, replacing the
+  fragment form `/a#<token>` of 2026-11-09, which hid the token from every
+  request URL). The page request therefore carries the token in its URL and
+  Cloudflare Workers Logs record it on Cloudflare's side; this is accepted on
+  the same basis as `/shared/<publicId>` chat links (Cloudflare is the
+  processor, access is account-only, retention is short, `observability`
+  unchanged). The page answers `Referrer-Policy: no-referrer` and
+  `Cache-Control: private, no-store`, so the `Referer` and shared caches do
+  not carry it; link unfurlers that fetch the URL do see it, as for any
+  secret-in-the-path link. The page sends the token to the API only in the
   `x-besidka-artifact-share` header, and sign-in returns to the link through
-  a `sessionStorage` key, never a `next` query. The pre-check's ban on the
-  raw token in logs is kept as defence in depth: wide events, browser-ingested
-  events and report details redact every link form (`/a#<token>`,
-  `/a/<token>`, percent-encoded) to `[token]`, and `/a/<anything>` answers a
-  plain 404.
+  a `sessionStorage` key and `next=/artifacts/return`, never a token in a
+  `next` query. The pre-check's ban on the raw token in Besidka's logs is
+  kept: wide events, browser-ingested events and report details redact every
+  `/artifacts/<token>` form (plain, in a URL, in a query value,
+  percent-encoded once or more) to `[token]`, and every other path under
+  `/artifacts` answers a plain 404. **Residual risk, changed:** a token now
+  exists in Cloudflare's request logs and in browser history for the
+  lifetime of those records, where the fragment form kept it out of both
+  the request and the logs; revoking or expiring a link makes a logged URL
+  useless at once.
   At most 10 active links an artifact; expiry from 1 hour to never; latest or
   pinned version; `storageAllowed` and `bridgeAllowed` start off.
   `X-Robots-Tag: noindex, nofollow`, robots meta, not in the sitemap and not
@@ -904,7 +950,7 @@ below as `planned` unless it says `built`.
   stored and shown to the owner as "created by connected app <name>", a daily
   cap (suggested 10, not fixed yet), PII warnings returned to the client.
   Artifacts inside a shared chat are readable by the chat's audience through
-  a separate read-only route that honours takedown (A-4).
+  a separate read-only route that honors takedown (A-4).
 - **(e) Reports and takedowns (A-7, A-1).** Report form with name and email
   required except for `csam`; reasons `csam`, `terrorism`, `threat-to-life`,
   `phishing`, `copyright` (with the six notice elements), `privacy`,
@@ -917,7 +963,7 @@ below as `planned` unless it says `built`.
   most 3 per address per 24 hours, and name the content by reference id,
   never its title, so the form cannot be used to mail chosen text to a
   third party. Names refuse line breaks; share links pasted into the details
-  are reduced to `/a#[token]`. A user-scope takedown also writes a deny
+  are reduced to `/artifacts/[token]`. A user-scope takedown also writes a deny
   grant for `artifacts.share`. `threat-to-life`
   and `terrorism` set a priority and a subject prefix on the mailbox email.
   Emails: receipt to the reporter (DSA Art. 16(4)), decision with redress
@@ -977,6 +1023,176 @@ below as `planned` unless it says `built`.
   until the Cloudflare separation decision; no percentage rollout of any
   `artifacts.*` flag before 2026-12-19.
 
+### 3.14 Documents and provider code execution -- planned, D-2 built on a branch
+
+Phase 2 of the agentic capabilities program (parent BES-226, tickets D-2 to
+D-8). Compliance pre-check: `docs/legal/prechecks/documents.md` (D-10,
+BES-307); its questions are cited here as Q1 to Q14. The shared package D-2
+(`packages/doc-renderer`, `docs/chats/documents-spec-package.md`) is built on
+`feat/documents-spec-package` (PR #833) and is **not merged**. Everything else
+is planned. Read every measure below as `planned` unless it says `built`. The
+flags `documents`, `documents.pdf`, `documents.docx`, `documents.xlsx`,
+`documents.pptx`, `code-execution`, `code-execution.files` and
+`code-execution.skills` stay at stage `internal`, and must not reach `beta`,
+until this section is merged, the code that builds each planned control has
+shipped, and the Privacy Policy and Terms have been re-checked against that
+code, with the provider pages re-read on the day and the date recorded here.
+
+- **(a) Documents: four paths, one store.**
+  1. *Client render (default).* The chat model calls `create_document` on the
+     user's own send and key (D-4; at most 3 calls a turn). The server checks
+     the spec against its bounds, writes it to R2 under
+     `documents/<userId>/<documentPublicId>/spec.v<n>.json` and inserts a
+     `documents` row. The browser fetches the spec (`private, no-store`),
+     renders the file in a Web Worker on the user's device, validates it
+     there, and uploads the bytes. The server validates them again and stores
+     them as a private file.
+  2. *Server render (fallback).* If the browser cannot render, the Worker calls
+     `besidka-doc-renderer` through a service binding (D-3), which has no
+     public route, no bindings to user data and logs no spec text, title or
+     asset bytes (a test). Image bytes are read from R2 one at a time.
+  3. *MCP.* A client with `files:write` supplies the content and Besidka
+     renders it (D-5). No provider key is used. The content is the client's,
+     so the file is marked as created by a connected app and not as AI output
+     unless the client declares `aiGenerated`.
+  4. *Provider container.* Files that a provider's code execution or skill
+     made enter through `validate()` (part (b)).
+- **(a1) What is stored.** The spec (any personal data the user discusses;
+  strict keys, at most 200,000 characters, and 2,000,000 for a spreadsheet,
+  100,000 cells, 60 slides, 20 images, about 200 pages), the `documents` row
+  (owner, origin chat and message ids, format, **title**, status, render
+  lease, spec key, size, file id, who rendered it, `createdVia`), and the file
+  in R2 and `files`. No foreign key to `users` or `chats`, as for artifacts.
+  The message keeps only a `data-document` reference part, never the spec. The
+  chat's provider receives a short list of the chat's documents (title,
+  format, id, up to 10) as part of the chat. Shared chats show the title only
+  unless the share shows files.
+- **(a2) Retention.** The spec and the file share one lifetime: the file's
+  retention, 30 days by default or what the user set. Deleting the file
+  deletes the spec object. **Deleting a chat deletes the files made in it and
+  their specs**, unless the file is still referenced elsewhere (a file part in
+  another chat, project knowledge); a branch copy holds only the document id
+  and is not a reference. The ticket text said a deleted chat keeps its
+  documents until the file expires; that is wrong for documents made in a chat
+  and is corrected here and in the D-4 acceptance criteria. Where the file
+  survives, the title and the origin chat id are cleared. A sweep removes rows
+  with no file and no chat. A document made over MCP has no chat and lives
+  until the file expires. Account deletion deletes the spec objects by prefix
+  `documents/<userId>/` (batched R2 delete) and the rows. D1 Time Travel keeps the database row (title and ids) for up to 30 days;
+  the spec and the file are in R2, which those backups do not cover.
+  Spec objects are deleted by the paths `cleanupFilesOrphanedByChatDeletion`
+  (single chat, single message and bulk chat delete), retention cleanup, bulk
+  file delete and `purgeUserData`, with a test per path (D-4, planned).
+- **(a3) Basis.** Contract, Art. 6(1)(b), as for files. For special
+  categories the user includes: explicit consent, Art. 9(2)(a), the chat
+  consent `2026-11-a`, which names chats, projects and files; files made in a
+  chat are read as covered, the same judgment call as for artifacts (section
+  6, item 20). A document a client supplies over MCP rests on the approval
+  screen consent (section 3.11).
+- **(b) Provider code execution (D-7) and Anthropic's document skills (D-8).**
+  - *What goes where.* With "Run code" on for a message, the message's
+    attachments are uploaded to the sandbox of the user's own provider for the
+    turn (up to 10 files, 20 MB), and the provider receives the code the model
+    writes and the files the code creates. Gemini takes the input inline.
+    Besidka downloads the output files with the user's key, checks them (type
+    allowlist, size caps, magic bytes), and stores them as the user's files.
+    The message keeps a compact record of the code and its output (each cut
+    to 32 KB), without provider file ids or encrypted payloads.
+    Office and PDF outputs are stored only after `validate()` with a
+    structural parse. Images are marked. `gif` is not marked by
+    `markAiGeneratedImage`, so D-7 either removes it from the allowlist or
+    stores it unmarked and logs that (Q10).
+  - *Role and basis.* The provider is an independent controller on the user's
+    own account, as in section 3.1 and row 4 of the Art. 30 record. Code
+    execution is a processing operation inside the existing purpose "answer
+    the user's message". The attachments already go to the provider under the
+    chat consent. The Privacy Policy now says what the provider keeps.
+  - *Providers.* Direct Anthropic, OpenAI and Google only. The server refuses
+    the tool for xAI, DeepSeek, Moonshot AI, Qwen and every gateway model, so
+    no Art. 49(1)(a) consent changes and no transfer is added. Adding another
+    provider or a gateway needs a new review of this section, the Art. 30
+    record (section 6.1) and the transfer consent first.
+  - *Provider retention (read on 2026-11-07 for the pre-check, not re-read on
+    2026-11-11).* Anthropic: code execution, the Files API and Skills are not
+    zero-data-retention eligible; container data is retained up to 30 days;
+    an uploaded file persists until it is deleted or expires and is visible
+    to every key in the user's workspace; a deleted file "may persist in
+    active Messages API calls"; expiry is not a guaranteed-deletion control;
+    the pages do not say that a Files API delete reaches the container copy.
+    OpenAI: a container is discarded after 20 minutes idle; the delete
+    endpoint is verified; Files API objects stay until deleted; abuse logs up
+    to 30 days; zero data retention for containers is unverified. Google:
+    Files API files are deleted after 48 hours; on an unpaid key outside the
+    EEA, Switzerland and the UK, content may be used and read by reviewers;
+    sandbox retention and network access are not stated.
+  - *What Besidka does.* When the stream ends Besidka deletes the files it
+    uploaded, the output files the sandbox made that it downloaded and, at
+    OpenAI, the container. If a send is cut off (a closed tab kills the Worker), uploads
+    expire after one hour at Anthropic and OpenAI, and the OpenAI container
+    after 20 minutes, so the object stays bounded. Files the Anthropic sandbox
+    makes stay in the user's own Anthropic workspace until the user deletes
+    them, and Anthropic container data (up to 30 days) has no delete API. It prefers inline input. It never enables sandbox
+    network access and never sets an OpenAI `network_policy` (a test).
+  - *Money.* The row shows the provider's price from config (rates live in
+    `wrangler.jsonc`, like web search) and says that Anthropic bills attached
+    files even when no code runs and that free hours depend on the user's
+    organization. It is off for each message, with a one-time confirmation per
+    provider. MCP has no route to it, because it spends the user's key.
+  - *Skills (D-8).* Besidka references a fixed list of four Anthropic skill
+    ids (`docx`, `pdf`, `pptx`, `xlsx`) on the user's own Anthropic key and
+    bundles, vendors and redistributes none (an owner choice, not a legal
+    need). The terms of the hosted skills are not stated in anything read, so
+    the records and the UI say neither "proprietary" nor "open source" for
+    them. Skills are not zero-data-retention eligible.
+- **(c) Marking of AI output (Art. 50(2)); detail in
+  `docs/legal/compliance-review-2026-10.md`, section 3.2.** Besidka is treated
+  as the provider of the AI system (Commission Communication C(2026) 7702 of
+  5.11.2026, para 11). Rendered documents are read as "text" (para 60); the
+  JSON spec is out of scope as a machine-readable specification (para 68). The
+  Commission guidelines do not name office or PDF formats, so this reading is
+  the draft's own. D-2 (built on the branch) writes the mark into every file
+  it renders: OOXML `docProps/custom.xml` with `Iptc4xmpExt:DigitalSourceType`
+  and `Iptc4xmpExt:AISystemUsed` (the model id only), and for PDF an
+  uncompressed XMP stream with the same IPTC fields. No prompt, user id or chat
+  id is ever written. `validate()` reports three states: `ai`, `channel-only`
+  (MCP content the caller wrote) and `missing`. The server rejects or
+  relabels `missing` files on the chat path. `stampDocument` adds the mark to
+  a provider-made OOXML or PDF file without re-rendering (the PDF is rewritten
+  with pdf-lib).
+- **(d) Residuals the D-2 package records itself.**
+  1. *PDF cross-reference table not modeled.* The PDF scan is structural and
+     linear (names decoded, object streams inflated, `/URI` schemes checked)
+     but ignores the cross-reference table, so a polyglot that hides an object
+     where only a viewer's table points is not modeled. Files Besidka renders
+     itself are not at risk; provider-made PDFs should go through
+     `stampDocument`, which rewrites the file.
+  2. *An orphan XMP stream reads as marked.* A PDF whose catalog does not
+     point to the metadata stream, but which holds one, still reads as marked.
+     This is a false positive for the mark, not for the security checks.
+  3. *Cached formula values are not written.* The spec accepts `cached`
+     values but the renderer does not write them, so a viewer that does not
+     recalculate shows empty formula cells. This is an accuracy limit, not a
+     security one (risk row 71).
+- **(d1) Access and export (Arts. 15 and 20).** Documents are files, so they
+  are in the user's file list and can be downloaded. The specs and the
+  `documents` rows are included in an access or export request by email, like
+  the other data in row 14 of the Art. 30 record.
+- **(e) Third-party code.** Five renderer libraries and one font, all under
+  permissive licenses, no veto (Q1). `THIRD_PARTY_NOTICES` is generated from
+  the real client and Worker bundle graphs and compared by a test; legal
+  banners survive the build; versions are pinned by a boundary test. No
+  Node, DOM, network, `eval` or `new Function` code is allowed in the package
+  source (a test). The font and every asset are same-origin, with no CDN
+  (as risk row 26).
+- **(f) Status.** Built on `feat/documents-spec-package` (PR #833, not
+  merged): the spec, validator, renderers, provenance stamp, CSV escape helper
+  (`escapeCsvCell`), notices collector and browser smoke. Planned: D-3 (the
+  renderer Worker), D-4 (tool, routes, cards, deletion hooks, labels), D-5
+  (MCP tool and label), D-6 (docs), D-7 (code execution), D-8 (skills).
+  Whether CSV export ships in v1, and its Excel round-trip residual (OWASP:
+  a leading apostrophe is not reliable after Excel re-saves the file), are
+  open for D-2 and D-4 **[U]**.
+
 ## 4. Necessity and proportionality
 
 **Purposes and bases.**
@@ -1017,7 +1233,7 @@ to send messages. It is a judgment call (section 6, item 1).
 
 **Why this is proportionate.**
 
-- **Minimisation.** Caps on entries and sizes. A never-store list that applies
+- **Minimization.** Caps on entries and sizes. A never-store list that applies
   even on request. "Store the preference, not the reason." Bounded extraction
   input. No files, tool results or web results in extraction.
 - **Opt-in where it profiles or spends money.** Extraction is off by default.
@@ -1028,7 +1244,7 @@ to send messages. It is a judgment call (section 6, item 1).
 - **No secondary use.** No training, no advertising, no sale, no scoring.
 - **TypeSafe AI checks.** Optional, tied to the user's own key, each with its own
   toggle. Each sends only the text that check needs and fails safe to the
-  behaviour without it. The pre-filter and the share check send the most text;
+  behavior without it. The pre-filter and the share check send the most text;
   both can be switched off alone.
 - **Accuracy.** Memory can be wrong. The user can see, edit and delete every
   entry. The Terms say so.
@@ -1099,7 +1315,7 @@ later feature track ships behind it.
   21(4) sentence), C4, C5, C6, C7, C8, C11, C12, C13, C13b, C14, C15.
 
 **Result.** The interests are not overridden. For rollouts and variants, an
-objection is honoured without a balancing test: the evaluator skips those
+objection is honored without a balancing test: the evaluator skips those
 steps for the user. A user who does not want a role or a grant set by hand
 has it removed on request. For the audit log and the log lines, an objection
 is assessed case by case under Art. 21(1): the controller keeps the record
@@ -1126,7 +1342,7 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 2 | The extractor infers special-category data and stores it as memory | Medium | High | Deterministic Art. 9 classifier on every write path; extraction input contains user messages only; extraction is opt-in; entries carry the source chat for deletion | built | Medium (classifier can miss) |
 | 3 | Credentials, card or ID numbers, home address, immigration or criminal history reach memory or the extraction model | Medium | High | Never-store detectors with checksums on every write path; the same redaction applied to extraction input and import chunks; logs hold counts only | built | Low |
 | 4 | Third parties' special-category data (for example a relative's illness) | Medium | High | Classifier rejects detectable cases in memory; Terms duty on other people's data; delete on request; advice text | built | Medium (chats cannot be filtered) |
-| 5 | Criminal-offence data (Art. 10) in chats | Low | High | Never-store rule keeps it out of memory; advice to keep it out; delete on request | built | Medium (no lawful route exists, see section 6) |
+| 5 | Criminal-offense data (Art. 10) in chats | Low | High | Never-store rule keeps it out of memory; advice to keep it out; delete on request | built | Medium (no lawful route exists, see section 6) |
 | 6 | Text read from the web, a file or another chat steers the model into writing or deleting memory (prompt injection) | Medium | Medium | Web-search write lock set before the first step on any requested web search; lock after any non-memory tool result; `userRequestQuote` must match the user's current message; external markdown images blocked at render; knowledge wrapped as data, never instructions | built | Low |
 | 7 | One user reads another user's memory, chats or knowledge | Low | High | Ownership enforced inside the SQL statement, not after it; R2 keys derived on the server from the session user and a verified project; model-supplied ids resolve only inside the already scoped set; shared chats strip tool calls and use signed, expiring file tokens | built | Low |
 | 8 | Chat content sent to DeepSeek (PRC) or Moonshot AI and Qwen (Singapore) with no adequacy decision and no contract | Medium | High | Provider choice is the user's; transfer notice in the Privacy Policy naming the country; explicit transfer consent (Art. 49(1)(a)) when a key is added and at the next send for existing keys; withdrawal per provider; refusal blocks sending to that provider and memory use | built | High, accepted and disclosed (section 6) |
@@ -1145,43 +1361,55 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 21 | The memory pre-filter sends whole chat transcripts, which can hold special-category data the user wrote, to a US vendor before memory is generated | Medium | High | Only with a key the user saves and a toggle left on; never-store values removed first; chunks of up to about 8,000 tokens; runs only when memory generation already runs behind the consent gate; unsure or unavailable means normal extraction; counts only in logs; the user can switch the check off alone; disclosed in the Privacy Policy | built | Medium (the transcript leaves Besidka to a vendor with weak contract terms, same as row 20) |
 | 22 | Auto web search and the share check send chat text (message and recent turns; the chat being shared) to the vendor | Medium | Medium | Auto web search sends only in the Auto mode; the share check only when the user starts a share; both only with a key and a toggle; a failure means a normal search or a generic reminder; the share check warns and never blocks; counts only in logs; disclosed in the Privacy Policy | built | Low to medium |
 | 23 | Injection screening sends project knowledge and third-party web text (Brave and Exa results) to the vendor | Medium | Medium | Only with a key and a toggle; project files are the user's own content already covered by the consent; web text is public; never-store values are removed before sending; results from a model's built-in search are never sent; Besidka stores no screened text for this check (the re-screening queue holds item ids only, 14 days); counts only in logs; whether this third-party text fits the consent wording is an open owner and counsel question (`docs/legal.md`) | built | Medium |
-| 24 | Attacker-crafted content makes screening withhold legitimate results or files (false positive), or evades it (false negative). This includes text written against Jev itself, to make it flag a legitimate document or result | Medium | Low | Screening is an add-only signal, never the only defence: the memory write lock (set for every Brave or Exa search whatever the verdict), the data-not-instructions wrapping and the memory gate in row 6 stay, and a clean verdict never relaxes any of them; a flag never deletes anything, so the worst a manipulated flag can do is ask the user to review a file (one "Allow anyway" click puts it back, and it is not screened again until its text changes) or leave one web result out of the model's context, with a note saying how many were withheld; a Jev failure keeps the file usable and the results in context; thresholds come from an eval and are re-tuned on real traffic; the toggle turns it off; results from a model's built-in search cannot be screened and rely on the other defences alone | built | Low |
+| 24 | Attacker-crafted content makes screening withhold legitimate results or files (false positive), or evades it (false negative). This includes text written against Jev itself, to make it flag a legitimate document or result | Medium | Low | Screening is an add-only signal, never the only defense: the memory write lock (set for every Brave or Exa search whatever the verdict), the data-not-instructions wrapping and the memory gate in row 6 stay, and a clean verdict never relaxes any of them; a flag never deletes anything, so the worst a manipulated flag can do is ask the user to review a file (one "Allow anyway" click puts it back, and it is not screened again until its text changes) or leave one web result out of the model's context, with a note saying how many were withheld; a Jev failure keeps the file usable and the results in context; thresholds come from an eval and are re-tuned on real traffic; the toggle turns it off; results from a model's built-in search cannot be screened and rely on the other defenses alone | built | Low |
 | 25 | A chat published by a share link exposes its content, third parties' data and the author's identity to anyone, and can be indexed or copied | Medium | High | Privacy by default (Art. 25(2); EDPB Guidelines 4/2019): every extra on a new share (search indexing, files and generated images, message metadata, author name and avatar, branching) starts **off**, the user switches on only what they want; indexing is its own opt-in; the link duration starts at "never" but the user can pick an expiry, and a share can be revoked; file access uses signed tokens that expire after 1 hour; tool calls are stripped; the optional TypeSafe AI share check and the built-in detector warn before publishing (row 22); the Terms and Privacy Policy say plainly that revoking cannot recall caches, archives or copies. The SQL column defaults stay `DEFAULT true` (changing them rebuilds `chat_shares` on D1 and cascades `chat_share_files`), which is harmless because the route writes every flag explicitly (`docs/d1-restore-reconciliation.md`). Shares created before 2026-10-28 keep their saved flags | built | Medium (a published link is public; copies cannot be recalled) |
 | 26 | A visitor's IP address and browser details reach Google or GitHub (avatar host) or font and icon services just by opening a share page, or by using the app | Medium | Low | Fonts (Nunito, Atkinson Hyperlegible Mono) and icons are served from besidka.com and the Iconify API fallback is disabled; the share author's avatar, when shown, is delivered through a same-origin proxy (`server/api/v1/shared/[slug]/avatar.get.ts`, allowlisted to real Google and GitHub avatar URLs, answers cached privately for 5 minutes), so visitors to a **share page** do not contact Google or GitHub and the raw avatar URL is never sent to them; third-party scripts stay at two, both Cloudflare (Turnstile on auth pages, Web Analytics only after consent). **Residual:** inside the app a signed-in user's own avatar (`Chat/Message.vue`) is still loaded by their own browser from Google or GitHub, which receive that user's IP address; it is their own account and their own data, and the host is the one they signed in with | built for share pages, fonts and icons | Low |
-| 27 | A user who disputes a copyright removal could have their name and contact details passed to the complainant; a false or abusive notice takes down a user's content | Low | Medium | The user's name and contact details are passed to the complainant only with the user's consent (Terms "Copyright complaints", Privacy Policy "Reports and notices about content"); no US DMCA agent is designated (owner decision 2026-10-28) and no US safe harbour is claimed, so nothing in the procedure requires forwarding; a notice needs its elements and an accuracy statement, a person decides, the user gets a statement of reasons and can challenge it, and the false-notice warning is stated; retention is until the matter is closed plus 12 months, and 24 months for the note on a copyright removal | built (text and procedure) | Low |
+| 27 | A user who disputes a copyright removal could have their name and contact details passed to the complainant; a false or abusive notice takes down a user's content | Low | Medium | The user's name and contact details are passed to the complainant only with the user's consent (Terms "Copyright complaints", Privacy Policy "Reports and notices about content"); no US DMCA agent is designated (owner decision 2026-10-28) and no US safe harbor is claimed, so nothing in the procedure requires forwarding; a notice needs its elements and an accuracy statement, a person decides, the user gets a statement of reasons and can challenge it, and the false-notice warning is stated; retention is until the matter is closed plus 12 months, and 24 months for the note on a copyright removal | built (text and procedure) | Low |
 | 28 | An access or refresh token is stolen (leaky client, log, shared machine) and used to read chats, projects and memory | Medium | High | Access tokens last 15 minutes. Refresh tokens rotate on use and a replayed one is rejected (the library keeps a replay window). PKCE is required. Tokens are bound to the client and the scopes granted and carry only the MCP resource audience. The user can revoke in Profile → Connected apps. Tokens are never logged. Whether token values are stored hashed in `oauth_access_tokens` and `oauth_refresh_tokens` **[U]** | built (the `[U]` items stay open) | Medium |
 | 29 | Over-broad consent: the user ticks every scope without understanding it, or a client later asks for more than the user expected | Medium | High | Eleven narrow scopes (five read, six write); write scopes unticked by default, each its own tick, and shown apart from read scopes, with the screen saying that write access can change or delete chats, projects, files, memory and settings; the screen names the client, shows the redirect host and says in plain words that chats, projects and memory can hold sensitive and third-party data and that approving is explicit consent to send it to that app; a client cannot widen scopes without a new approval; no `skip_consent` for dynamically registered clients **[U]**; the approval is recorded with scopes and time | built (the `[U]` items stay open) | Medium |
 | 30 | A malicious or impersonating client registers itself (dynamic registration is open, no account) under the name of a well-known app and phishes consent, or registers redirect URIs it should not | Medium | High | Registration is rate limited per IP and capped; redirect URIs validated (https or loopback only); the screen shows the name as unverified, the redirect host and the registration date, never a client-supplied logo or link as proof; the user must be signed in with Besidka's own session; PKCE; Besidka can disable a client (`oauth_clients.disabled`) and revoke its tokens; the Terms allow it. A registered client cannot set `skip_consent` or `enable_end_session` without owner action **[U]** | built (the `[U]` items stay open) | Medium (a convincing name still works on a careless user) |
 | 31 | An agent is steered by text it reads (a chat, a note, a web page in its own context) into writing bad instructions, notes or memory entries, or into deleting memory (rows 36 and 37 cover deletion and scope growth) | Medium | Medium | Write scopes are separate and off by default; writes are gated by the consent gate; memory writes pass the never-store and sensitive-topic gate (3.7); entry and size caps (30 account entries, 15 per project, 4 KB); entries created over MCP carry an origin that names the client so the user can find and remove them; the user can see, edit and delete everything; logs record client, tool and status for each write; the Privacy Policy warns the user | built | Medium |
 | 32 | Rate limiting by IP address breaks for connectors that call from shared egress ranges of the AI vendor: one noisy user locks out all others, or one abusive user hides in the crowd | Medium | Low | Limits keyed by the user id from the token (120 private calls and 30 write calls a minute), not by IP; a separate per-IP limit only for the unauthenticated registration and authorization endpoints; counters in KV with the existing rate-limit helper; per-request result caps | built | Low |
 | 33 | After the user revokes a client, its JWT access token keeps working until it expires | Medium | Medium | Closed by design: every `/mcp` call, reads and writes, checks in one D1 batch that the user exists, the client is enabled and a live `oauth_consents` row exists, so disconnecting (which deletes the consent and the tokens) stops the app on its next call. The 15-minute access lifetime only bounds a token whose consent row somehow survived, for example a failed delete; removing a single permission works the same way, because the scopes a call may use are the token's intersected with the live consent row; a lookup failure answers 503, not data. The Privacy Policy and Terms say the app stops at once | built | Low |
-| 34 | Sensitive and third-party data reaches an AI client run by a company outside the EEA with no adequacy decision and no safeguard Besidka can provide; the characterisation under Chapter V is unsettled | Medium | High | The user chooses the client and directs the disclosure; nothing reaches a client the user did not approve; the screen states that the app may be outside the EU and that Besidka has no contract with it, and the approval is meant to double as explicit Art. 49(1)(a) consent if the disclosure is a transfer; the Privacy Policy says the question is not settled; sending chat messages and API keys are out of scope for this release | built | Medium to high, accepted and disclosed (section 6, item 12) |
+| 34 | Sensitive and third-party data reaches an AI client run by a company outside the EEA with no adequacy decision and no safeguard Besidka can provide; the characterization under Chapter V is unsettled | Medium | High | The user chooses the client and directs the disclosure; nothing reaches a client the user did not approve; the screen states that the app may be outside the EU and that Besidka has no contract with it, and the approval is meant to double as explicit Art. 49(1)(a) consent if the disclosure is a transfer; the Privacy Policy says the question is not settled; sending chat messages and API keys are out of scope for this release | built | Medium to high, accepted and disclosed (section 6, item 12) |
 | 35 | OAuth records outlive the account: `oauth_consents`, `oauth_access_tokens` and `oauth_refresh_tokens` reference `users` with no `ON DELETE`, so they are not removed by the cascade | Medium | Medium | The account-deletion path must delete the user's OAuth rows explicitly before the user row, and the same for Time Travel restore reconciliation (`docs/d1-restore-reconciliation.md`). Must be verified before release **[U]** | planned | Low once verified |
-| 36 | A connected app, or an agent steered by text it reads, deletes or overwrites the user's data (chats, messages, projects with their knowledge and project memory, files, memory entries) or changes settings, and the user cannot get it back | Medium | High | Every write scope is off by default and a separate tick; all permanent deletion sits behind its own scope, `data:delete`, which no existing approval holds and which a "Change" scope does not include, so an app that only needs to read, add notes or rename never holds a delete power; the consent screen says in words that write access can change or delete; every destructive tool carries `destructiveHint: true` so a client asks the user first (a unit test fails when the annotations and the tool map disagree); `delete_project` needs the exact project name as `confirmName` and `reset_memory` needs `confirm: true`; batches are capped (25 chats per call, 100 files, 100 knowledge items, 90 share revocations); deleting or branching a chat that is generating a reply is skipped or refused, on a best-effort basis (a check of the generation lease, not a lock); deleting a project keeps its chats; deletes are limited to 20 calls an hour and writes to 30 a minute per user, which slows a runaway agent but does not stop it from deleting within those limits; settings that spend the user's keys or change the data recipient cannot be changed (`docs/mcp-server.md`, "What MCP does not do (and why)"); the user can disconnect an app in Profile → Connected apps and the next call fails at once, or remove just `data:delete` or any other permission there and the next call is refused for that tool (the effective scopes are the token's intersected with the current approval). **Residual:** deletion is permanent, as in the app, and narrowing helps only a user who opens that page: an app the user never reviews keeps what it was given, and a consent row whose scope list cannot be read grants the app no scope until the user approves it again (it fails closed, so it is a damaged row, not a way round narrowing). A "Change" scope cannot delete those records directly but has side effects: excluding a chat from memory removes extraction-only memory entries learned only from it, stopping a share removes its link, editing replaces the old text (instructions, knowledge items, memory entries, file names, favourites) and switching project memory off resets its state. D1 Time Travel is disaster recovery for the whole database, not a per-user undo, and restoring it for one user would roll back every other user (`docs/d1-restore-reconciliation.md`). A client that does not ask before a call can still delete what its scope allows, within the caps. The Privacy Policy and Terms say deletions through an app are permanent | built on `feat/mcp-ui-parity`, not yet deployed | Medium, accepted and disclosed |
-| 37 | Scope growth: a client registered before the write scopes existed may ask for them, and a stored approval could be read as covering them, so an app gains delete power the user never ticked | Low | High | Any client whose stored scope list is a strict subset of the current one may *ask for* the new scopes (the `hooks.before` upgrade on `/oauth2/authorize`, `server/utils/oauth/client-scope-upgrade.ts`: a stored list that is a strict subset of the current scopes is rewritten, anything else is left alone, a failure never blocks sign-in). The user's `oauth_consents` row is not widened: authorize sends the user to the consent page whenever a requested scope is not in their row, so the user ticks each new scope on the screen. A tool behind a scope the user did not grant answers `403 insufficient_scope`. An existing connection that never asks for the new scopes keeps working with what it had. **Residual:** consent is stored per scope name, so when a tool is added behind a scope the user already granted, the existing approval gets it with no new prompt. Deletion is closed off by `data:delete` (`delete_memory` moved there from `memory:write`, so existing connections lose it until the user ticks the new scope). What did reach existing approvals involves no deletion or spend, though overwrites are possible: under `projects:write`, `update_project` (rename, pin, archive, knowledge mode, project memory switch, and `memoryAutoUpdate` set to `inherit` or `off`, which is spend-free but can overwrite a project the user set to `on`) and `update_project_knowledge_item`; under `chats:read`, `list_shared_chats` and share status (the URL needs `chats:write`). The Privacy Policy says this and tells the user to check Profile → Connected apps after such a change. Future extensions of an existing scope must involve no deletion or spend, though overwrites are possible. The user can remove permissions from an approval and never add them there; adding one goes through the app's own OAuth flow, because a token keeps the scopes it was issued with, so narrowing cannot be used to widen. A removed scope is asked for again on the approval screen if the app requests it, and the hourly sweep deletes approvals with no live token that were unused for 30 days, so a long-stale approval cannot silently cover a later authorization | built on `feat/mcp-ui-parity`, not yet deployed | Low to medium, accepted and disclosed |
-| 38 | An admin account is taken over and the attacker reads every user's email and name through the admin search, the grant list and the audit view | Low | Medium | Admin only from the `NUXT_ADMIN_EMAILS` secret (or a hand-made `user_roles` row) with a verified email, and in production TOTP enrolled (C13, C13b); the UI cannot make a second admin (C7); reads logged with actor, resource and count (C15); Better Auth rate limits and Turnstile; owner action: enable TOTP before the first admin use | built on the Phase 0 stack | Low (TOTP enrolment is not a per-session challenge, passkey and OAuth sign-ins skip it) |
-| 39 | An unauthorised or mistaken admin action: a cross-site request, the wrong account, or a feature switched off for everyone by accident | Low | Medium | `requireAdmin` first in every handler (404 otherwise); same-origin check on writes; strict schemas; confirmation before turning a feature off; one audit row and one Axiom ledger line per write; `NUXT_FEATURES_DISABLED` as the instant switch; rollout and variant writes refused while the env flag is off | built on the Phase 0 stack | Low |
+| 36 | A connected app, or an agent steered by text it reads, deletes or overwrites the user's data (chats, messages, projects with their knowledge and project memory, files, memory entries) or changes settings, and the user cannot get it back | Medium | High | Every write scope is off by default and a separate tick; all permanent deletion sits behind its own scope, `data:delete`, which no existing approval holds and which a "Change" scope does not include, so an app that only needs to read, add notes or rename never holds a delete power; the consent screen says in words that write access can change or delete; every destructive tool carries `destructiveHint: true` so a client asks the user first (a unit test fails when the annotations and the tool map disagree); `delete_project` needs the exact project name as `confirmName` and `reset_memory` needs `confirm: true`; batches are capped (25 chats per call, 100 files, 100 knowledge items, 90 share revocations); deleting or branching a chat that is generating a reply is skipped or refused, on a best-effort basis (a check of the generation lease, not a lock); deleting a project keeps its chats; deletes are limited to 20 calls an hour and writes to 30 a minute per user, which slows a runaway agent but does not stop it from deleting within those limits; settings that spend the user's keys or change the data recipient cannot be changed (`docs/mcp-server.md`, "What MCP does not do (and why)"); the user can disconnect an app in Profile → Connected apps and the next call fails at once, or remove just `data:delete` or any other permission there and the next call is refused for that tool (the effective scopes are the token's intersected with the current approval). **Residual:** deletion is permanent, as in the app, and narrowing helps only a user who opens that page: an app the user never reviews keeps what it was given, and a consent row whose scope list cannot be read grants the app no scope until the user approves it again (it fails closed, so it is a damaged row, not a way round narrowing). A "Change" scope cannot delete those records directly but has side effects: excluding a chat from memory removes extraction-only memory entries learned only from it, stopping a share removes its link, editing replaces the old text (instructions, knowledge items, memory entries, file names, favorites) and switching project memory off resets its state. D1 Time Travel is disaster recovery for the whole database, not a per-user undo, and restoring it for one user would roll back every other user (`docs/d1-restore-reconciliation.md`). A client that does not ask before a call can still delete what its scope allows, within the caps. The Privacy Policy and Terms say deletions through an app are permanent | built on `feat/mcp-ui-parity`, not yet deployed | Medium, accepted and disclosed |
+| 37 | Scope growth: a client registered before the write scopes existed may ask for them, and a stored approval could be read as covering them, so an app gains delete power the user never ticked | Low | High | Any client whose stored scope list is a strict subset of the current one may *ask for* the new scopes (the `hooks.before` upgrade on `/oauth2/authorize`, `server/utils/oauth/client-scope-upgrade.ts`: a stored list that is a strict subset of the current scopes is rewritten, anything else is left alone, a failure never blocks sign-in). The user's `oauth_consents` row is not widened: authorize sends the user to the consent page whenever a requested scope is not in their row, so the user ticks each new scope on the screen. A tool behind a scope the user did not grant answers `403 insufficient_scope`. An existing connection that never asks for the new scopes keeps working with what it had. **Residual:** consent is stored per scope name, so when a tool is added behind a scope the user already granted, the existing approval gets it with no new prompt. Deletion is closed off by `data:delete` (`delete_memory` moved there from `memory:write`, so existing connections lose it until the user ticks the new scope). What did reach existing approvals involves no deletion or spend, though overwrites are possible: under `projects:write`, `update_project` (rename, pin, archive, knowledge mode, project memory switch, and `memoryAutoUpdate` set to `inherit` or `off`, which is spend-free but can overwrite a project the user set to `on`) `update_project_knowledge_item`; and, under `files:write`, `create_document` (planned, D-5: a private file from content the client supplies, inside the 20 MB quota, no deletion or spend; the consent label changes from "Create text files and rename files" to one that names documents, a clarification that changes future consent screens only); under `chats:read`, `list_shared_chats` and share status (the URL needs `chats:write`). The Privacy Policy says this and tells the user to check Profile → Connected apps after such a change. Future extensions of an existing scope must involve no deletion or spend, though overwrites are possible. The user can remove permissions from an approval and never add them there; adding one goes through the app's own OAuth flow, because a token keeps the scopes it was issued with, so narrowing cannot be used to widen. A removed scope is asked for again on the approval screen if the app requests it, and the hourly sweep deletes approvals with no live token that were unused for 30 days, so a long-stale approval cannot silently cover a later authorization | built on `feat/mcp-ui-parity`, not yet deployed | Low to medium, accepted and disclosed |
+| 38 | An admin account is taken over and the attacker reads every user's email and name through the admin search, the grant list and the audit view | Low | Medium | Admin only from the `NUXT_ADMIN_EMAILS` secret (or a hand-made `user_roles` row) with a verified email, and in production TOTP enrolled (C13, C13b); the UI cannot make a second admin (C7); reads logged with actor, resource and count (C15); Better Auth rate limits and Turnstile; owner action: enable TOTP before the first admin use | built on the Phase 0 stack | Low (TOTP enrollment is not a per-session challenge, passkey and OAuth sign-ins skip it) |
+| 39 | An unauthorized or mistaken admin action: a cross-site request, the wrong account, or a feature switched off for everyone by accident | Low | Medium | `requireAdmin` first in every handler (404 otherwise); same-origin check on writes; strict schemas; confirmation before turning a feature off; one audit row and one Axiom ledger line per write; `NUXT_FEATURES_DISABLED` as the instant switch; rollout and variant writes refused while the env flag is off | built on the Phase 0 stack | Low |
 | 40 | Text read by the controller's AI client steers it into granting or denying features (prompt injection) | Low | Medium | `admin:features` only for the admin account; per-account writes only, no rule, rollout or kill-switch change over MCP; write rate limit; `destructiveHint` so the client asks first; a spending feature still needs the user's own opt-in; audit rows with actor kind `mcp` and the client id | planned (P0-8) | Low once built |
 | 41 | A variant or rollout raises what is spent on a user's key | Low | Medium | Variants only for `spend: 'none'` (registry spec and writer check, C4); a spending feature is active only with the user's own opt-in, which the route guard requires by default; no MCP path to opt-ins | built on the Phase 0 stack | Low |
 | 42 | An exposure event in Analytics Engine is linked back to a person | Low | Low | No bucket, path or user id in the event (C1); exposure only for hash-based decisions; the Privacy Policy treats the events as pseudonymous personal data and does not call them unlinkable; Axiom lines with the user id are operational logs kept 30 days | built on the Phase 0 stack | Low (a cohort of one or two accounts stays identifiable to the controller, disclosed) |
 | 43 | A D1 restore brings back a withdrawn opt-in (a feature spends a user's key again without consent), a lifted objection or a revoked role | Low | High | Axiom ledger (`attributes.featureAccess`) as the replay source, not the restored audit table; replay order opt-outs and objections first (C8, `docs/d1-restore-reconciliation.md`); Axiom keeps 30 days, the Time Travel window, so export it before restoring to an old bookmark; P0-7 must ship the `opt_in.set` and `experiments.set` ledger lines together with the writers, so no opt-in or switch-based objection exists without a ledger line; email objections before P0-7 keep the email as the record. Rule changes beyond on and off cannot be rebuilt from the ledger today (follow-up for P0-6) | built for admin writes; the opt-in and objection ledger lines ship with P0-7 | Low |
 | 44 | A second person with the admin role sees every user's email, and the Privacy Policy's "only the controller" becomes false | Low | Medium | The UI and API assign only `tester` (C7); admin only from the env secret, which holds only the controller; the Privacy Policy says only the controller holds the admin role. Adding an admin needs Art. 29 instructions, a confidentiality commitment (Art. 32(4)), a Privacy Policy change and a new notice first | built on the Phase 0 stack | Low |
-| 45 | Rollouts or experiments drift into profiling or unequal treatment (targeting by country, email domain or usage; per-user analysis of outcomes by variant) | Low | Medium | The evaluator sees only the user id, roles, grants and opt-ins (C14); the hash is random; Analytics Engine exposure events carry no user id. The Axiom `attributes.features` lines do sit on wide events with the user id, so per-user analysis by variant is technically possible for their 30 days: operating rule, never analyse them per user by variant, only in aggregate; adding attribute targeting or per-user outcome analysis reopens the pre-check and this DPIA | built on the Phase 0 stack (design rule and operating rule) | Low |
+| 45 | Rollouts or experiments drift into profiling or unequal treatment (targeting by country, email domain or usage; per-user analysis of outcomes by variant) | Low | Medium | The evaluator sees only the user id, roles, grants and opt-ins (C14); the hash is random; Analytics Engine exposure events carry no user id. The Axiom `attributes.features` lines do sit on wide events with the user id, so per-user analysis by variant is technically possible for their 30 days: operating rule, never analyze them per user by variant, only in aggregate; adding attribute targeting or per-user outcome analysis reopens the pre-check and this DPIA | built on the Phase 0 stack (design rule and operating rule) | Low |
 | 46 | Users are put into rollouts or experiments before the Privacy Policy notice takes effect, or before they can object in the app as the policy promises | Medium | Low | `NUXT_FEATURES_ROLLOUT_ENABLED` defaults to false and the writer refuses rollout and variant writes while it is false (C2); production may switch it on only from 2026-12-19 and only once the Labs objection switch (P0-7) is in production; until then grants go only to the controller and to testers told individually | built (code); operating rule for the controller | Low |
 | 47 | Audit rows or log lines keep a deleted user's identity | Low | Low | Account deletion nulls the actor and target ids and removes user ids and the reason from `before` and `after` (C5, flat-JSON rule); the admin views read emails live, so they disappear with the account; Axiom lines stay 30 days, disclosed | built on the Phase 0 stack | Low |
 | 48 | The maker of the controller's AI client receives other users' ids, a recipient and possibly a transfer that the records and the Privacy Policy do not cover | Low | Low | Ids and grants only, never emails, names or reasons (C9); before the first production use the owner names the client, records its terms and safeguard (Art. 30 record, section 6.4) and adds it to the Privacy Policy under its own material notice | planned (P0-8) | Low once recorded and announced |
 | 49 | A user publishes personal data, someone else's content or special-category data in a public artifact (section 3.13 (d)) | Medium | High | Off by default, consent per link, `noindex` always, expiry and revoke, deterministic PII warning before publishing (A-7) and for MCP shares (A-8), Terms promise on third-party data and rights (A-9), Report button and form with a `privacy` category, takedown at artifact level (A-7) | built (A-7, A-8), not yet released; Terms built in A-9 | Medium (copies cannot be recalled) |
 | 50 | A malicious artifact tries to spend the viewer's key, or to send more than the viewer meant | Medium | Medium | Bridge off on every link until the owner switches it on; signed-in viewers only; direct key only; a modal before each call through a share link with the full prompt, provider, model, maximum cost and remaining calls, and "the author wrote these prompts"; 30 calls an hour per artifact, 200 a day; output at most 2,000 tokens; no tools, memory or history; consent and transfer-consent checks before the call; Terms ban (A-6, A-9) | planned (A-6) | Low |
-| 51 | An artifact navigates its own frame to an attacker's address, carrying data in the URL, or replaces itself with a fake sign-in or payment page (P10) | Medium | High | Opaque sandbox, CSP and no network (built, A-2); `frame-src <artifactsOrigin>` on every embedding page, which blocks the navigation before its request leaves in Chromium and WebKit (A-4 for chat and shared pages; A-7 must add it to `/a/**` and the admin drawer); second-`load` tripwire that destroys the frame as the fallback (built in the protocol package) and an id-only log line; banner and "never enter passwords or payment details" line outside the frame (A-7); A-3 tool instructions forbid navigation and credential forms; Terms ban and a `phishing` report category (A-9, A-7); e2e test of self-navigation in Chromium and WebKit (A-2) | built (A-2, A-4, A-7), not yet released | Low to medium (untested browsers such as Firefox, and any embedding page that lacks the `frame-src` header, fall back to the tripwire, which fires only after the first request has left and never for a 204 target) |
+| 51 | An artifact navigates its own frame to an attacker's address, carrying data in the URL, or replaces itself with a fake sign-in or payment page (P10) | Medium | High | Opaque sandbox, CSP and no network (built, A-2); `frame-src <artifactsOrigin>` on every embedding page, which blocks the navigation before its request leaves in Chromium and WebKit (A-4 for chat and shared pages; A-7 added it to `/artifacts/**` and the admin drawer); second-`load` tripwire that destroys the frame as the fallback (built in the protocol package) and an id-only log line; banner and "never enter passwords or payment details" line outside the frame (A-7); A-3 tool instructions forbid navigation and credential forms; Terms ban and a `phishing` report category (A-9, A-7); e2e test of self-navigation in Chromium and WebKit (A-2) | built (A-2, A-4, A-7), not yet released | Low to medium (untested browsers such as Firefox, and any embedding page that lacks the `frame-src` header, fall back to the tripwire, which fires only after the first request has left and never for a 204 target) |
 | 52 | Stored answers reveal a viewer's knowledge, health or beliefs, to the artifact's author or by inference (section 3.13 (c)) | Medium | Medium | Storage only for signed-in viewers on links that allow it, consent gate on every storage route, no owner, admin, model or MCP access, ids-only logs, reset button, purge 30 days after the last link ends and at once on takedown (A-5); Privacy Policy states the author's code receives the values (A-9) | planned (A-5) | Medium (the author's code can still send values out, risk 51) |
 | 53 | Children use quizzes and public links, or an artifact is aimed at children | Medium | Medium | 18+ service; storage and the bridge need sign-in and a current consent record, which includes the age confirmation (A-5, A-6); Terms ban artifacts aimed at children under 13 and collecting visitors' personal data (A-9); signed-out visitors get page memory only and no cookie beyond the necessary ones | planned (A-5, A-6); Terms built in A-9 | Medium (whether user-published child-aimed artifacts make Besidka "directed to children" under COPPA is **[U]**) |
 | 54 | Cloudflare suspends the account that also runs besidka.com after abuse reports against artifact links (P11) | Low to medium | High | `artifacts.share` grant-only (invited beta); kill switch (global `artifacts` rule off, UI only); no-report admin takedown; Cloudflare abuse-response steps in `docs/legal/content-incidents.md`; runtime origin configurable in one place. Owner decision 2026-11-08: same Cloudflare account for now (pre-check option C) | A-7 built, not yet released; A-10 planned | Medium to high, accepted for the invited beta; option A (separate registrable domain and account) before wider public sharing |
-| 55 | A takedown misses a path (shared chat, owner view, export), or a one-hour TCO order is missed | Low | High | Artifact-level `takedownAt` honoured by `/a/`, the shared-chat route and owner reads (A-1, A-4, A-7); no-report takedown by URL, token, artifact id or user at phone width, effective on the next request (A-7); phone alert on the privacy mailbox (owner item 3); runbook (A-9) | built (A-1, A-4, A-7), not yet released; owner item 3 open | Low once built and the alert is set |
+| 55 | A takedown misses a path (shared chat, owner view, export), or a one-hour TCO order is missed | Low | High | Artifact-level `takedownAt` honored by `/artifacts/<token>`, the shared-chat route and owner reads (A-1, A-4, A-7); no-report takedown by URL, token, artifact id or user at phone width, effective on the next request (A-7); phone alert on the privacy mailbox (owner item 3); runbook (A-9) | built (A-1, A-4, A-7), not yet released; owner item 3 open | Low once built and the alert is set |
 | 56 | A leaked `NUXT_ENCRYPTION_KEY` plus a D1 read exposes every live artifact link (`token_encrypted`) | Low | Medium | Breach runbook: re-encrypt `artifact_shares.token_encrypted` on key rotation and bulk-revoke all artifact links as containment (A-9, section 2.5 and 2.6); lookup uses the hash only | runbook built (A-9); re-encryption job planned | Low |
 | 57 | A connected client, possibly steered by text it read, publishes content it read through `artifacts:share` | Medium | Medium | Separate unticked scope; links expire within 30 days; storage and bridge forced off; PII warnings returned; the owner's list marks the link as created by that app; daily cap; revoke in the app (A-8) | built (A-8), not yet released | Medium (copies cannot be recalled) |
 | 58 | Report records are deleted with the artifact or account, defeating the repeat-infringement rule, the retention promise and a TCO preservation duty | Medium | Medium | `deleteArtifacts` and the account purge never delete `artifact_reports`; a sweep deletes them 12 months after closing (24 for copyright); `legalHoldUntil` keeps held content and rows six months (A-1) | planned (A-1) | Low |
 | 59 | Viewer storage or the bridge processes special-category data under a consent text that does not name them | High | Medium | Operating rule: neither flag is granted beyond the controller until owner item 2 ships (a wider text with a `CURRENT_CONSENT_VERSION` bump, or a separate first-use consent); the Privacy Policy says the current text does not name them and that they are not offered until it does; both routes still require a current consent record | operating rule (A-9); consent change open (owner item 2) | Low while the rule holds |
 | 60 | A D1 restore brings back revoked or taken-down artifact links, closed reports or deleted artifacts | Low | High | Takedowns and revocations logged with ids; replay steps in `docs/d1-restore-reconciliation.md` ("Artifacts"); R2 objects of deleted artifacts are gone, so reads return 410 | built (A-1, A-7 log lines), not yet released; runbook built (A-9) | Low |
+| 61 | A generated or provider-made document carries active content (macros, external relationships, formula or DDE injection, PDF JavaScript, launch or open actions, Word field instructions, PowerPoint program actions) and harms whoever opens it (section 3.14) | Medium | High | `validate()` on every document before it is stored, and `render()` re-validates its own output: ZIP bounds, no macro, ActiveX, embedded or OLE parts, external relationships only to `https:` and `mailto:` links, no XML DOCTYPE or entity, tokenized formula allowlist, Word field reassembly (DDE, INCLUDETEXT and similar), PowerPoint `ppaction` checks, structural PDF scan (JavaScript, launch, embedded files, rich media, `/OpenAction`, `/AA`, URI schemes). Strict spec keys, string cells inert. Only validated bytes are persisted, served with `nosniff`. Provider-made PDFs go through `stampDocument` | built on a branch (D-2, PR #833, not merged); wiring planned (D-3, D-4, D-7) | Low to medium: the PDF scan ignores the cross-reference table (section 3.14 (d)); the CSV and Excel round trip is open |
+| 62 | A spec or a title outlives the chat or the file that made it (Art. 5(1)(e), Art. 17) | Medium | Medium | Spec and file share one lifetime; spec deletion hooked into chat, message and bulk chat delete, retention cleanup, bulk file delete and `purgeUserData`, one test per path; a branch copy is not a reference; title and origin chat id cleared where a file survives; sweep for rows with no file and no chat. The ticket statement that a deleted chat keeps its documents is corrected | planned (D-4); open until built | Low once built; the D1 backups hold the row (title, ids) up to 30 days |
+| 63 | Files the user attaches linger at the provider after the turn, in a workspace others can see, or in a container (Anthropic container data up to 30 days, workspace-wide Files API visibility, OpenAI abuse logs up to 30 days) | Medium | Medium | Off for each message; one-time confirmation naming the provider; deletion of uploaded and downloaded files and the OpenAI container when the stream ends; one-hour expiry on Anthropic and OpenAI uploads and a 20-minute OpenAI container when a send is cut off; files the Anthropic sandbox makes stay in the user's own workspace until the user deletes them, and Anthropic container data has no delete API; inline input where the provider allows; Privacy Policy "Running code" paragraphs state what stays; a leaked provider key is in the breach runbook (Besidka's per-turn deletion limits what sits there) | planned (D-7); policy text built here | Medium, outside Besidka's control (a deleted Anthropic file may persist in active calls; no source says a delete reaches the container copy) |
+| 64 | Code steered by text the model read (a file, a page) sends the user's data out of the sandbox | Medium | Medium | The provider runs the code, never Besidka; no network in Anthropic containers; OpenAI hosted containers have none by default; Besidka never enables network access or sets a `network_policy` (a test); only on a message where the user turned it on; Gemini sandbox network not stated **[U]** | planned (D-7) | Medium until the Gemini sandbox network status is known |
+| 65 | AI output is misattributed or unmarked (Art. 50(2)): provider-made files without a mark, MCP content labeled as AI or not labeled, a mark that is stripped | Medium | Medium | IPTC mark and model id in every rendered file; three states (`ai`, `channel-only`, `missing`); server relabels or rejects `missing` on the chat path; MCP files say "Created by a connected app" unless `aiGenerated`; `stampDocument` for provider files; a published line on how to read the mark; no use of the Art. 111(4) grace for documents | marking built on a branch (D-2, PR #833, not merged); labels planned (D-4, D-5) | Medium: one unsigned metadata layer, probably below what Art. 50(2) expects; stripped by re-saving, printing or copy-paste; no text watermark; an orphan XMP stream reads as marked; decision due before 2 Dec 2026 (section 6, item 24) |
+| 66 | Anthropic's document skills are used outside what their terms allow, or an unreviewed skill id is used | Low | Medium | Fixed list of four ids on the user's own Anthropic key; nothing bundled, vendored or redistributed; neutral wording in the UI and the records (hosted terms unverified **[U]**); skills disclosed as not zero-data-retention eligible | planned (D-8) | Low |
+| 67 | The renderer is used as a free compute service, through MCP or repeated sends | Medium | Low | Spec bounds, the 20 MB quota, render and upload rate limits per user (D-4: 10 and 20 a minute), the MCP write limit, a render lease with an attempt count, no public route on the renderer Worker | bounds built (D-2); limits planned (D-4, D-5) | Low |
+| 68 | Unexpected provider spend from code execution | Medium | Low | Off for each message; one-time confirmation with the provider's price from config; the note that Anthropic bills attached files even when no code runs and that free hours depend on the user's organization; no MCP route to it | planned (D-7) | Low to medium: the user's own balance is unknowable |
+| 69 | Third-party code in the client chunk or the renderer Worker: unmet license duties, external fetches, supply-chain drift | Low | Medium | Licenses read, no veto; notices generated from the real bundle graphs and compared by a test; legal banners kept; pinned versions and a package-boundary test; no network code in the package; same-origin assets and font (as row 26) | built on a branch (D-2, PR #833, not merged); serving the notices file planned (D-3, D-4) | Low |
+| 70 | Document content appears in renderer logs or error messages | Low | Medium | No spec text, title or asset bytes in Workers Logs (a test, D-3); `attributes.documents` and `attributes.codeExecution` hold formats, counts, bytes, durations and error codes only, never a title, spec text, code, output or file name; validator codes are stable strings with JSON paths, no values | planned (D-3) | Low; Workers Logs retention not checked **[U]** |
+| 71 | A document with wrong content or empty formula cells is used without checking | High | Medium | Card and preview labels ("Preview from the document outline; download for exact layout"); the renderer does not write cached formula values, so non-recalculating viewers show empty cells; Terms wording that Besidka does not review generated documents or code results and that the user checks them (notice `2026-12-code-and-documents`, effective 2026-12-19, section 6, item 26) | behavior built (D-2); Terms wording in this change, effective 2026-12-19 | Medium |
+| 72 | A D1 restore brings back `documents` rows whose file or spec object was deleted, or documents whose chat was deleted | Low | Medium | D-4 adds the table to `docs/d1-restore-reconciliation.md`; deleted objects are gone from R2, so reads fail closed; a sweep removes rows with no file and no chat | planned (D-4) | Low |
 
 ## 6. Residual risks
 
@@ -1199,8 +1427,8 @@ the Privacy Policy or should be.
    The optional TypeSafe AI checks (section 3.7a) are a second, add-only
    signal. They can also miss things, and the injection screening can flag
    legitimate text or miss crafted text (risk 24). Decision: accept.
-3. **Criminal-offence data (Art. 10) in chats.** Art. 10 allows such processing
-   only under official authority or where the law authorises it. Consent does
+3. **Criminal-offense data (Art. 10) in chats.** Art. 10 allows such processing
+   only under official authority or where the law authorizes it. Consent does
    not cover it. Every free-text chat service carries this. Mitigation is
    after the fact: memory never stores it, and a chat that contains it is
    deleted on request. Decision: accept and disclose.
@@ -1232,7 +1460,9 @@ the Privacy Policy or should be.
    a counsel question. The list changes daily, a differently named parent or a
    later certification would be missed, and the xAI pages were tagged "previous
    version". Owner action: re-check periodically, and update the policy if a
-   status changes.
+   status changes. Searched again on 2026-11-11 through the same endpoint:
+   Google LLC (5780) and Cloudflare, Inc. (5666) are active, and there is
+   still no entry for Anthropic or OpenAI under the names searched.
 6. **Project knowledge is outside the gate.** Files the user uploads are not
    classified. Sensitive data in them is covered only by the chat consent.
 7. **Production's earlier project memory.** Summaries written before any
@@ -1301,14 +1531,14 @@ the Privacy Policy or should be.
     running the service rather than a new purpose. The project rule says to
     treat it as material when unsure, so rollouts wait for the 30-day notice.
     Decision: accept the delay.
-18. **TOTP enrolment, not a per-session challenge.** An admin who signs in
+18. **TOTP enrollment, not a per-session challenge.** An admin who signs in
     with a passkey or OAuth is not asked for the TOTP code (risk row 38).
     Stronger than the law requires, weaker than a step-up check. Decision:
     accept for v1; revisit if a second admin is ever added.
 19. **Expired grants are kept.** A grant past its end date stops applying
     but its row, with the free-text reason, stays until it is revoked or the
     account is deleted. It keeps the admin's view of who had what, and the
-    reason is short and written without names. Art. 5(1)(e) would favour
+    reason is short and written without names. Art. 5(1)(e) would favor
     deleting it; the change is already in the audit log for 12 months.
     Decision: accept for v1; a sweep that deletes expired grants is a
     follow-up candidate.
@@ -1373,6 +1603,60 @@ for the invited beta) and row 59 (consent text, low only while the operating
 rule holds). If storage or the bridge reaches users before the consent text
 names them, treat row 59 as high. If `artifacts.share` leaves the grant-only
 beta on the same account, treat row 54 as high and review this DPIA first.
+24. **Art. 50(2) for documents and for chat text.** Rendered documents are
+    read as text (guidelines para 60) and carry one unsigned metadata layer.
+    That is probably below what Art. 50(2) expects (the Code of Practice asks
+    for two layers; paras 86 and 87 accept metadata alone only in narrow closed
+    cases), the same position as for xAI and Qwen images
+    (`docs/legal/compliance-review-2026-10.md`, section 3.2). Provider-made
+    files may lack a mark, MCP files are channel-only, and the mark is stripped
+    by re-saving. This draft does not rely on the Art. 111(4) grace for a new
+    output type, because no source says it reaches one. Assistant text in the
+    chat has a visible label and no machine-readable mark at all. Decision
+    needed before 2 December 2026, together with the image decision: put
+    documents and chat text on the same decision (recommended), or leave chat
+    text out and accept the exposure. A visible "created with AI" line in
+    documents is optional (guidelines para 71) and is not planned.
+25. **Provider-side retention for code execution is outside Besidka's
+    control.** Besidka deletes what it uploads, downloads and creates, but
+    Anthropic container data is kept up to 30 days, a deleted Anthropic file
+    may persist in active calls, OpenAI abuse logs run up to 30 days, OpenAI
+    zero data retention for containers is unverified and Google's sandbox
+    retention and network access are not stated. The Privacy Policy says so
+    for each provider. **Materiality was a judgment call:** this is a
+    retention fact users did not have before, near the checklist item "a
+    longer retention period", but it is the provider's retention and Besidka
+    keeps nothing longer than file retention. The pre-check expected minor; the
+    checklist says to treat an unclear case as material and a Terms notice goes
+    out anyway, so the Privacy Policy is recorded as material and covered by
+    notice `2026-12-code-and-documents`. The provider pages were read on 2026-11-07 and not
+    re-read on 2026-11-11.
+26. **Terms of Use: the mirror of provider prohibitions (decided 2026-11-11).**
+    The owner decided on 2026-11-11 ("Yes, add to Terms") to mirror the
+    providers' usage rules for code (Anthropic's Usage Policy from 2026-11-12,
+    OpenAI's from 2026-11-20). This is option A of pre-check owner item 1, against the recommendation. The
+    Terms now forbid code run or written through Besidka, including with Run
+    code, from attacking systems: no malware, no denial of service or
+    botnets, no bypassing security controls without authorization, no attacks
+    on critical infrastructure. They say that the provider's usage policy
+    applies directly to code run on the user's key. In the same change the
+    Terms say that documents and code results are not checked by Besidka and
+    must be checked by the user, extend the AI-mark paragraph to documents
+    (what is written, the model id and no personal details, that it can be
+    missing or stripped, how to read it), and state that Anthropic's document
+    skills run under the user's own Anthropic agreement and are not licensed
+    or distributed by Besidka (no word "proprietary"). New user restrictions
+    are material under the WP260 checklist, so notice
+    `2026-12-code-and-documents` (Privacy Policy and Terms) is published 2026-11-15, sent
+    from 2026-11-15, and takes effect 2026-12-19. No sourced duty makes
+    Besidka a flow-down party, so this is a choice, not a requirement. The
+    earlier notice effective 2026-12-04 is unchanged.
+27. **Validator and renderer residuals.** The PDF scan ignores the
+    cross-reference table; an orphan XMP stream reads as marked; cached
+    formula values are not written; the Excel round trip of CSV export is open;
+    provider-made PDFs are only as safe as `stampDocument`'s rewrite. None of
+    these is solved by this record. Decision: accept for the `internal` stage
+    and re-assess before a flag reaches `beta`.
 
 ## 7. Consultation
 
@@ -1406,13 +1690,15 @@ beta on the same account, treat row 54 as high and review this DPIA first.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 23] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 27] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**
 
 - a new memory origin, provider or gateway is added, or a provider endpoint
   region changes;
+- code execution is offered for another provider or any gateway (section
+  3.14);
 - the consent text, version or flow changes;
 - the classifier categories or the never-store list change;
 - the retention rules, storage locations or processors change;
@@ -1504,6 +1790,10 @@ Repository documents:
 - `docs/memory-architecture.md`: sections 3.1 to 3.17 and the decision log.
 - `docs/project-knowledge-design.md`: sections 9 and 10.
 - `docs/legal-memory-sensitive-data.md`, `docs/legal/memory-legal-changes-draft.md`.
+- `docs/legal/prechecks/documents.md` (D-10), `docs/chats/documents-spec-package.md`
+  (on `feat/documents-spec-package`, PR #833, not merged), provider pages read
+  on 2026-11-07 (listed in the Art. 30 record, section 8), Commission
+  Communication C(2026) 7702 (5.11.2026), DPF list searched on 2026-11-11.
 - `docs/mcp-server.md`, `server/db/schemas/oauth.ts` and the Better Auth
   `@better-auth/mcp` and `@better-auth/oauth-provider` packages (flow, token
   lifetimes, the one cookie it sets), read 2026-10-29.

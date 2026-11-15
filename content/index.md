@@ -12,7 +12,7 @@ benefits:
     body: Claude Opus for hard reasoning, GPT-5.6 for creative work, Gemini Flash for quick drafts, DeepSeek or Qwen for high-volume tasks. Switch between providers in the same interface.
 carousel:
   - src: /carousel/any-model.webp
-    alt: Besidka on desktop and on a phone, labelled desktop and mobile, installable PWA and push notifications, with a push notification saying the response is ready.
+    alt: Besidka on desktop and on a phone, labeled desktop and mobile, installable PWA and push notifications, with a push notification saying the response is ready.
     caption: Desktop and mobile, installable PWA, push notifications
   - src: /carousel/cost-per-answer.webp
     alt: Message menu showing the model, provider, output tokens and the cost of the message, up to that message and for the whole chat.

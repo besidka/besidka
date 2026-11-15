@@ -2,22 +2,30 @@ import { effectScope, nextTick, reactive, ref } from 'vue'
 import type { EffectScope } from 'vue'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ArtifactSummary } from '../../../shared/utils/artifacts'
+import type {
+  ArtifactKindCounts,
+  ArtifactSummary,
+} from '../../../shared/utils/artifacts'
 import { useArtifactPanel } from '../../../app/composables/artifacts'
 import {
   ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS,
   ARTIFACT_LIBRARY_SKELETON_DELAY_MS,
+  buildArtifactKindOptions,
   formatArtifactUsage,
   parseArtifactKindFilter,
   parseArtifactSearch,
+  resolveArtifactKindFilter,
   toArtifactSearchTerm,
   useArtifactLibrary,
   useArtifactLibraryFilters,
+  useArtifactPickerFilters,
 } from '../../../app/composables/artifacts-library'
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  lazyFetch: vi.fn(),
   push: vi.fn(),
+  replace: vi.fn(),
   errorMessage: vi.fn(),
 }))
 
@@ -41,8 +49,12 @@ mockNuxtImport('useRouter', (original) => {
   return () => {
     return new Proxy(original(), {
       get(target, property) {
-        return property === 'push'
-          ? mocks.push
+        if (property === 'push') {
+          return mocks.push
+        }
+
+        return property === 'replace'
+          ? mocks.replace
           : Reflect.get(target, property)
       },
     })
@@ -50,12 +62,16 @@ mockNuxtImport('useRouter', (original) => {
 })
 
 mockNuxtImport('useLazyFetch', () => {
-  return () => ({
-    data: lazyData,
-    status: lazyStatus,
-    error: lazyError,
-    refresh: lazyRefresh,
-  })
+  return (url: string, options: unknown) => {
+    mocks.lazyFetch(url, options)
+
+    return {
+      data: lazyData,
+      status: lazyStatus,
+      error: lazyError,
+      refresh: lazyRefresh,
+    }
+  }
 })
 
 function createArtifact(
@@ -84,11 +100,30 @@ function createIds(count: number, prefix = 'a'): string[] {
   })
 }
 
-function createPage(ids: string[], total: number, usedBytes = 1024) {
+function createKindCounts(
+  overrides: Partial<ArtifactKindCounts> = {},
+): ArtifactKindCounts {
+  return {
+    html: 0,
+    react: 0,
+    svg: 0,
+    mermaid: 0,
+    markdown: 0,
+    ...overrides,
+  }
+}
+
+function createPage(
+  ids: string[],
+  total: number,
+  usedBytes = 1024,
+  kindCounts: ArtifactKindCounts = createKindCounts({ html: total }),
+) {
   return {
     items: ids.map(id => createArtifact(id)),
     total,
     usedBytes,
+    kindCounts,
   }
 }
 
@@ -111,10 +146,78 @@ describe('artifacts-library helpers', () => {
     expect(toArtifactSearchTerm(' ab ')).toBe('ab')
   })
 
+  describe('buildArtifactKindOptions', () => {
+    it('has no chips before the counts are known', () => {
+      expect(buildArtifactKindOptions(null)).toEqual([])
+    })
+
+    it('has no chips for an empty library', () => {
+      expect(buildArtifactKindOptions(createKindCounts())).toEqual([])
+    })
+
+    it('has no chips for a single kind', () => {
+      expect(buildArtifactKindOptions(createKindCounts({ mermaid: 4 })))
+        .toEqual([])
+    })
+
+    it('lists All and only the kinds the user has, with counts', () => {
+      expect(buildArtifactKindOptions(createKindCounts({
+        markdown: 1,
+        html: 3,
+        svg: 2,
+      }))).toEqual([
+        { value: 'all', label: 'All', count: 6 },
+        { value: 'html', label: 'HTML', count: 3 },
+        { value: 'svg', label: 'SVG', count: 2 },
+        { value: 'markdown', label: 'Markdown', count: 1 },
+      ])
+    })
+
+    it('lists every kind when the user has all of them', () => {
+      const options = buildArtifactKindOptions(createKindCounts({
+        html: 1,
+        react: 1,
+        svg: 1,
+        mermaid: 1,
+        markdown: 1,
+      }))
+
+      expect(options.map(option => option.value)).toEqual([
+        'all',
+        'html',
+        'react',
+        'svg',
+        'mermaid',
+        'markdown',
+      ])
+      expect(options[0]?.count).toBe(5)
+    })
+  })
+
+  describe('resolveArtifactKindFilter', () => {
+    it('keeps the filter while the counts are unknown', () => {
+      expect(resolveArtifactKindFilter('svg', null)).toBe('svg')
+    })
+
+    it('keeps All and a kind that still has artifacts', () => {
+      const counts = createKindCounts({ svg: 1, html: 2 })
+
+      expect(resolveArtifactKindFilter('all', counts)).toBe('all')
+      expect(resolveArtifactKindFilter('svg', counts)).toBe('svg')
+    })
+
+    it('falls back to All when the kind has no artifacts left', () => {
+      expect(resolveArtifactKindFilter(
+        'mermaid',
+        createKindCounts({ svg: 1, html: 2 }),
+      )).toBe('all')
+    })
+  })
+
   it('formats the quota line', () => {
-    expect(formatArtifactUsage(0)).toBe('Using 0 B of 25.0 MB')
+    expect(formatArtifactUsage(0)).toBe('Using 0 B of your storage')
     expect(formatArtifactUsage(3 * 1024 * 1024))
-      .toBe('Using 3.0 MB of 25.0 MB')
+      .toBe('Using 3.0 MB of your storage')
   })
 })
 
@@ -193,6 +296,22 @@ describe('useArtifactLibraryFilters', () => {
       path: '/chats/artifacts',
       query: { query: 'quiz' },
     })
+  })
+
+  it('replaces the history entry when asked to', async () => {
+    mockRoute.query = { kind: 'mermaid' }
+    mocks.push.mockClear()
+    mocks.replace.mockReset().mockResolvedValue(undefined)
+
+    const filters = setup()
+
+    await filters.setKind('all', { replace: true })
+
+    expect(mocks.replace).toHaveBeenCalledWith({
+      path: '/chats/artifacts',
+      query: {},
+    })
+    expect(mocks.push).not.toHaveBeenCalled()
   })
 
   it('does not push when the kind did not change', async () => {
@@ -524,6 +643,51 @@ describe('useArtifactLibrary', () => {
       expect(library.total.value).toBe(4)
     })
 
+  it('exposes the whole-library kind counts from the first page', async () => {
+    const counts = createKindCounts({ html: 3, mermaid: 1 })
+    const library = await setup(createPage(['a1'], 1, 1024, counts))
+
+    expect(library.kindCounts.value).toEqual(counts)
+  })
+
+  it('has no kind counts before the first response', () => {
+    const library = scope.run(() => useArtifactLibrary({ query, kind }))!
+
+    expect(library.kindCounts.value).toBeNull()
+  })
+
+  it('keeps the kind counts of the whole library under a search', async () => {
+    query.value = 'quiz'
+
+    const counts = createKindCounts({ html: 3, mermaid: 1 })
+    const library = await setup(createPage(['a1'], 1, 1024, counts))
+
+    expect(library.kindCounts.value).toEqual(counts)
+    expect(library.total.value).toBe(1)
+  })
+
+  it('updates the kind counts after a delete', async () => {
+    const library = await setup(createPage(
+      ['a1'],
+      1,
+      1024,
+      createKindCounts({ html: 2, mermaid: 1 }),
+    ))
+
+    mocks.fetch
+      .mockResolvedValueOnce({ deletedIds: ['a1'], heldIds: [] })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        usedBytes: 0,
+        kindCounts: createKindCounts({ html: 2 }),
+      })
+
+    await library.deleteArtifacts(['a1'])
+
+    expect(library.kindCounts.value).toEqual(createKindCounts({ html: 2 }))
+  })
+
   it('re-reads the totals with the active filters after a delete',
     async () => {
       kind.value = 'html'
@@ -776,4 +940,97 @@ describe('useArtifactLibrary', () => {
       expect(library.hasError.value).toBe(true)
     })
   })
+})
+
+describe('useArtifactPickerFilters', () => {
+  let scope: EffectScope
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    scope = effectScope()
+  })
+
+  afterEach(() => {
+    scope.stop()
+    vi.useRealTimers()
+  })
+
+  function setup() {
+    return scope.run(() => useArtifactPickerFilters())!
+  }
+
+  it('starts empty and never touches the URL', () => {
+    const filters = setup()
+
+    expect(filters.search.value).toBe('')
+    expect(filters.appliedQuery.value).toBe('')
+    expect(filters.appliedKind.value).toBe('all')
+    expect(mocks.push).not.toHaveBeenCalled()
+  })
+
+  it('applies the search after the debounce and ignores a short term',
+    async () => {
+      const filters = setup()
+
+      filters.search.value = 'q'
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+      expect(filters.appliedQuery.value).toBe('')
+
+      filters.search.value = ' quiz '
+      await nextTick()
+
+      expect(filters.appliedQuery.value).toBe('')
+
+      await vi.advanceTimersByTimeAsync(ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+      expect(filters.appliedQuery.value).toBe('quiz')
+    })
+
+  it('sets the kind at once and resets everything', async () => {
+    const filters = setup()
+
+    filters.setKind('svg')
+    filters.search.value = 'quiz'
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(ARTIFACT_LIBRARY_SEARCH_DEBOUNCE_MS)
+
+    expect(filters.appliedKind.value).toBe('svg')
+    expect(filters.appliedQuery.value).toBe('quiz')
+
+    filters.reset()
+
+    expect(filters.search.value).toBe('')
+    expect(filters.appliedQuery.value).toBe('')
+    expect(filters.appliedKind.value).toBe('all')
+  })
+})
+
+describe('useArtifactLibrary fetch key', () => {
+  let scope: EffectScope
+
+  beforeEach(() => {
+    mocks.lazyFetch.mockClear()
+    scope = effectScope()
+  })
+
+  afterEach(() => {
+    scope.stop()
+  })
+
+  it('uses an own key only when asked, so the picker never shares the page data',
+    () => {
+      const filters = {
+        query: ref(''),
+        kind: ref<'all'>('all'),
+      }
+
+      scope.run(() => useArtifactLibrary(filters))
+      scope.run(() => useArtifactLibrary(filters, { key: 'artifact-picker' }))
+
+      expect(mocks.lazyFetch.mock.calls[0]?.[1]).not.toHaveProperty('key')
+      expect(mocks.lazyFetch.mock.calls[1]?.[1])
+        .toMatchObject({ key: 'artifact-picker' })
+    })
 })

@@ -76,11 +76,15 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
+            :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             @file-click="(
               event: MouseEvent,
               file: FileManagerFile,
               index: number,
             ) => emit('file-click', event, file, index, group.id)"
+            @preview="emit('preview', $event)"
             @rename="emit('rename', $event)"
             @delete="emit('delete', $event)"
           />
@@ -90,6 +94,9 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
+            :unsupported-reasons="unsupportedReasons"
+            :unsupported-captions="unsupportedCaptions"
+            :text-notes="textNotes"
             :sticky-offset="true"
             :all-selected="isGroupAllSelected(group)"
             :has-selection="hasGroupSelection(group)"
@@ -98,6 +105,7 @@
               file: FileManagerFile,
               index: number,
             ) => emit('file-click', event, file, index, group.id)"
+            @preview="emit('preview', $event)"
             @rename="emit('rename', $event)"
             @delete="emit('delete', $event)"
             @toggle-select-all="emit('toggle-select-all', group.id)"
@@ -150,15 +158,23 @@ import type {
   ProjectFileGroup,
   ViewMode,
 } from '~/types/file-manager'
+import type { FileDeliveryHint } from '~/utils/file-delivery-hints'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   groups: ProjectFileGroup[]
   selectedIds: Set<string>
   viewMode: ViewMode
   isTouchSelecting: boolean
   touchedIndices: Set<number>
   touchGroupId: string | null
-}>()
+  unsupportedReasons?: Record<string, string>
+  unsupportedCaptions?: Record<string, string>
+  textNotes?: Record<string, FileDeliveryHint>
+}>(), {
+  unsupportedReasons: () => ({}),
+  unsupportedCaptions: () => ({}),
+  textNotes: () => ({}),
+})
 
 const emit = defineEmits<{
   'toggle': [groupId: string]
@@ -169,6 +185,7 @@ const emit = defineEmits<{
     index: number,
     groupId: string,
   ]
+  'preview': [file: FileManagerFile]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
   'toggle-select-all': [groupId: string]

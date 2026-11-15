@@ -54,7 +54,10 @@
               md:flex-row md:items-center md:justify-between
             "
           >
-            <div class="min-w-0">
+            <div class="flex min-w-0 items-center gap-2">
+              <div class="max-sm:hidden">
+                <SharedExitLink />
+              </div>
               <h1
                 data-testid="shared-chat-title"
                 class="text-sm sm:text-base font-semibold truncate"
@@ -178,12 +181,13 @@
             :reasoning-accumulated-ms="0"
             :reasoning-segment-started-at="0"
             :is-turn-thinking-held="false"
+            is-shared
           />
           <div
             v-for="(part, index) in getRenderedMessageParts(m)"
             :key="`message-${m.id}-${getRenderedPartKey(m, index)}`"
             :class="{
-              'mt-4': isTextPartAfterGeneratedImage(
+              'mt-4': hasGapBeforePart(
                 m,
                 getRenderedMessageParts(m),
                 index,
@@ -202,6 +206,11 @@
               :part="part"
               source="shared"
               :share-slug="shareSlug"
+            />
+            <ChatDocument
+              v-else-if="isDocumentPart(part)"
+              :part="part"
+              :is-streaming="false"
             />
             <div
               v-else-if="isChatErrorTextPart(part)"
@@ -272,15 +281,15 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
-  isTextPartAfterGeneratedImage,
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { hasGapBeforePart } from '~/utils/message-part-spacing'
 import {
   collectArtifactVersions,
   getRenderedPartKeys,
   isArtifactMessagePart,
-  orderArtifactPartsLast,
+  orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 
 interface SharedChatMessage {
@@ -421,7 +430,7 @@ const isSharedChatMessageSelected = useState<boolean>(
 function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
-  return orderArtifactPartsLast(getDisplayMessageParts(message))
+  return orderOutputCardPartsLast(getDisplayMessageParts(message))
 }
 
 function getRenderedPartKey(

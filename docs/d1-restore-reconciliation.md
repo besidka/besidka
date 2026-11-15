@@ -42,11 +42,28 @@ command below is for the operator, preview first.
 | Feature opt-outs and `experiments` objections (`feature_opt_ins`) | Withdrawn opt-ins come back, so a feature can spend a user's key again | High (consent) | No |
 | Revoked roles (`user_roles`), deny grants and grant revocations (`feature_grants`) | Revoked testers and grants work again; deny grants vanish | High | No |
 | Kill switch and rollout changes (`feature_flag_rules`) | Revert to B | Medium | No |
-| `feature_audit_log` | Rolled back with the rows it describes, so it cannot be the replay source; rows anonymised in the window lose their scrub | Medium (erasure) | No |
+| `feature_audit_log` | Rolled back with the rows it describes, so it cannot be the replay source; rows anonymized in the window lose their scrub | Medium (erasure) | No |
 | Artifact links revoked or taken down in the window (A-7 writes them) | Public again; a takedown is undone, also inside shared chats | High (privacy, notice-and-action) | No |
 | Artifacts deleted in the window | Rows return; R2 objects stay gone, so reads answer 410 | Medium (erasure) | No |
 | Artifact reports and decisions in the window | Rolled back or reopened; legal holds set in the window vanish | High (TCO preservation) | No |
 | Viewer storage reset or purged in the window | Old answers return | Medium (erasure) | No |
+| Documents deleted or detached in the window (`documents`) | Rows return; spec objects in R2 stay gone, so a restored row reads `spec_missing`; a deleted chat's rows return with their titles | Medium (erasure) | No |
+| `documents` rows pointing at deleted files | A restored row names a `file_id` whose file row or R2 object is gone | Medium | Partly (the sweep) |
+| Spec objects written in the window | No row, no owner | Medium (privacy) | No |
+| Skills disabled, deleted or pruned in the window (`skills`, `skill_versions`, `skill_files`) | Rows return as they were at B, often enabled; their blobs in R2 stay gone, so a restored skill reads `broken` | High (a disabled skill is live instruction text again) | No |
+| Skill blobs written in the window | No `skill_files` row references them | Low (privacy) | Yes (the hourly sweep, after one hour) |
+| Project skill pins added, changed or removed in the window (`project_skills`) | A removed pin returns; a pin of a deleted skill or project returns but loads nothing | Low (a pin only loads an enabled, ready skill, and skills are disabled after a restore) | No |
+| Connectors deleted, disconnected or disabled in the window (`connectors`, `connector_tool_settings`, `connector_chat_settings`) | Rows return as they were at B, often enabled, with their consent columns | High (a switched-off data channel to a third-party server is open again) | No |
+| Connector credentials revoked in the window (`connector_credentials`) | Encrypted access and refresh tokens and header values return, usable again; the provider may or may not have revoked them | **High (a revoked credential works again)** | No |
+| `connector_tool_calls` audit rows | Rolled back, so the window's calls vanish from the audit trail; rows older than the retention that the sweep deleted return | Medium | Yes (the 90-day sweep) |
+| `mcp_registry_servers` | Rolled back to B | None | Yes (the next sync) |
+| Tool permissions set to Blocked in the window, or "Allow" set in the window to a Besidka tool (`besidka_tool_permissions`) | Rolled back: a Blocked tool is callable again, and rows are gone or back as they were at B | High (a switched-off or ask-first tool runs without a prompt) | No |
+| "Always allow" grants (`connector_tool_settings.approval`, `approved_definition_hash`) and "Allow in this chat" grants (`connector_chat_settings.always_allow_tools`, `besidka_chat_settings.always_allow_tools`) revoked in the window | Return, with the hash they were given for | High (a revoked grant runs a tool without asking) | No |
+| `tool_approval_claims` and the `tool-approval:` KV records | Claims are rolled back while KV keeps its state, so a claim can be missing for a record that still exists, and an old approval can execute a second time | Medium | Yes (KV expires in 24 hours, claims are swept after 48) |
+| Legal notice approvals withdrawn in the window (`legal_notice_approvals`) | Active again, so the sweep can email a notice the owner stopped | **High (mass email to every user)** | No |
+| Legal notice approvals given in the window | Gone; the notice stops being emailed | Low | No (the owner approves again) |
+| Consent version approved in the window (`legal_consent_version_approvals`) | Reverts to the older version once the `legal:consent-version:approved` KV cache (1 hour) and the isolate memo (1 minute) expire, so users who agreed to the newer version are asked again for the older one | Medium | No |
+| Legal notice email opt-outs added or removed in the window (`legal_notice_email_optouts`) | Added ones vanish and removed ones return, so a user who asked not to be mailed can be mailed | Medium | No |
 | `d1_migrations` | Rolled back, so the next deploy re-applies migrations | **Blocking** | No |
 
 ## Sessions: why a restore revives revoked sessions
@@ -239,6 +256,43 @@ global `artifacts` rule off in `/admin` until the steps below are done.
 - **Report retention.** Report rows the hourly sweep removed in the window
   come back and are removed again on its next run.
 
+## Documents
+
+A restore rolls back the `documents` table (`server/db/schemas/documents.ts`,
+BES-293) to the bookmark B. Its `ai_generated` column (nullable, no default)
+rolls back with the row; `NULL` is read by channel, so a restore to a
+bookmark before the column existed changes no label. It has no foreign key to `users`, `chats` or
+`files`, so nothing cascades, and R2 keeps its current state. The spec object
+of a document sits under `documents/<userId>/<documentId>/spec.v<n>.json` and
+is derived from the row, so the row and the object can drift in both
+directions.
+
+- **Deletions come back as rows without objects.** A document whose chat, file
+  or account was deleted in the window returns as a row, with the title the
+  deletion removed. The spec object was deleted with it, so the row reads
+  `spec_missing` when opened. Replay the deletes from Axiom
+  (`attributes.documents.cleanup`, phases `file-delete`, `chat-delete`,
+  `message-delete`, `sweep`, `purge`; counts only, no ids) by chat, file and
+  account events: delete the restored rows of deleted chats and accounts, and
+  for a deleted file set `status = 'failed'`, `error_code = 'file_deleted'`,
+  `file_id = NULL` and `title = NULL`. A restored title of a deleted chat is
+  personal data that the user asked to erase.
+- **Rows pointing at deleted files.** A restored row can name a `file_id`
+  whose file was deleted after B. Find them with
+  `SELECT d.id FROM documents d LEFT JOIN files f ON f.id = d.file_id WHERE d.file_id IS NOT NULL AND f.id IS NULL`
+  and apply the same file-deleted update. The hourly retention cleanup then
+  removes the row once no chat references it (`sweepOrphanedDocuments`).
+- **Spec objects with no row.** Specs written in the window have no row after
+  the restore and no owner. Diff the `documents/` prefix against
+  `documents.spec_r2_key` and delete the strays, as for the `files` diff in
+  step 5.
+- **Render state.** Rows restored as `rendering` hold a lease that has long
+  expired, so the next request claims them again. Nothing to fix.
+- **Ids.** Public document ids are encoded from the integer row id, so a
+  document created in the window can share an id with one created after the
+  restore. Record the sequence before the restore (runbook step 0) and push it
+  past the old high-water mark (step 3).
+
 ### The visibility-flag migrations (closed)
 
 `20260704234926`, `20260705120249` and `20260705130243` add `indexable`,
@@ -263,6 +317,205 @@ before an additive migration re-runs it on the next deploy (see the next
 section). A `DEFAULT true` on a privacy flag would then reset rows that users
 had configured after the migration. Prefer restrictive defaults, or no SQL
 default at all, which `CLAUDE.md` already favors for rebuild reasons.
+
+## Skills
+
+A restore rolls back the four skills tables (`skills`, `skill_versions`,
+`skill_files` and `skill_chat_settings`, `server/db/schemas/skills.ts`) to the
+bookmark B. None has a foreign key to `users`, `chats` or each other, so
+nothing cascades, and R2 keeps its current state. File content sits in
+content-addressed blobs at `user-skills/u<userId>/<skillPublicId>/blobs/<sha256>`
+and is referenced only through `skill_files.blob_sha256`, so a row and its
+blob can drift in both directions. Skill text is third-party instruction text
+that the model reads, so a skill that comes back enabled is a regression, not
+just stale data.
+
+- **Disable everything first.** A skill the user disabled or deleted in the
+  window returns exactly as it was at B, often enabled. Right after the
+  restore, before users can send:
+
+  ```sql
+  UPDATE skills SET enabled = 0;
+  ```
+
+  The rows touched in the window cannot be told apart after the restore (the
+  update was rolled back with them), so disable all of them, and say so in
+  the user notice (step 7): users re-enable the skills they want. Slash and
+  model toggles (`slash_command`, `model_invocable`) are settings, stay as
+  they are and do nothing while `enabled` is 0.
+- **Provider copies.** With `skills.scripts`, a skill row can hold the id of
+  a copy in the user's Anthropic workspace (`provider_skill_id`). A restore
+  can bring back an id Besidka already deleted (the delete then answers 404,
+  which counts as gone) and can leave a copy uploaded in the window without
+  an id (the user removes it in the Anthropic Console, under Skills). Neither
+  is a Besidka-side exposure; say so in the user notice for users who allowed
+  scripts. The same holds for a failed account purge: the purge is best
+  effort for the provider copies (it logs only the counts), so a copy that
+  could not be deleted stays in the user's own Anthropic workspace, which the
+  user controls, until the user deletes it in the Anthropic Console. A single
+  skill delete, by contrast, is refused while its copy cannot be deleted.
+- **Deletions come back as rows without blobs.** A skill deleted in the
+  window (or with its account) returns with its rows while its blobs under
+  `user-skills/` are gone. Replay the deletes from Axiom
+  (`attributes.skills.cleanup` for chats and account purges; the skill
+  delete route's own wide event for single deletes) by user: delete the
+  restored rows of deleted accounts and skills. Blob existence cannot be
+  checked in SQL: list `user-skills/` (see "Files and R2" for the listing
+  options), encode `skill_files.skill_id` into the public id with the same
+  Hashids settings as the app (`encryptionHashids`, length 16), diff the
+  `(user_id, public id, blob_sha256)` triples against the keys, and set
+  `status = 'broken'` and `enabled = 0` on every skill that has a
+  `skill_files` row without a blob in its current version. Rows whose
+  `current_version` points at a version without complete `skill_files` rows
+  need `current_version` set to the newest version that has them.
+- **Blobs written in the window.** No row references them after the restore.
+  The hourly sweep (`server/plugins/skills-storage-sweep.ts`) deletes blobs
+  older than one hour with no `skill_files` row, and staged import files
+  under `skills-staging/` after one hour, so this heals itself within a few
+  runs (the pass resumes from a KV cursor and covers a bounded number of
+  objects per run). Do not delete them by hand before the diff above: the
+  same blob can belong to a restored row.
+- **Pruned versions.** Versions pruned in the window return as rows, and the
+  blobs only they referenced are gone, so those versions read as broken when
+  opened. Only the current and pending versions are used at runtime, and the
+  newest 20 versions are kept, so the diff above decides whether the skill
+  itself is affected.
+- **Project skills.** `project_skills` (`server/db/schemas/project-skills.ts`,
+  no foreign key, `AUTOINCREMENT`) rolls back with the rest. A pin the user
+  removed in the window comes back, and so does a pin of a skill or a project
+  deleted in the window, pointing at a row that no longer exists. The runtime
+  joins `project_skills` to `skills` for the same user, so a pin without its
+  skill or project loads nothing and needs no repair. A restored always-load
+  pin of a skill that comes back is held by the `UPDATE skills SET enabled = 0`
+  above: the pin is read on every send but only loads an enabled, `ready`
+  skill, so the user chooses again. Add the table to the `sqlite_sequence`
+  record of step 0, and replay project and skill deletes from Axiom
+  (`attributes.skills.projectPinsDeleted`, `attributes.skills.cleanup`) to
+  delete the restored pin rows too.
+- **Per-chat choices.** `skill_chat_settings` rows of chats deleted in the
+  window return with a chat id that no longer exists. They do nothing and
+  disappear with the account purge; no repair is needed.
+- **Ids.** `skills.id` is a public id encoded from an integer primary key
+  without `AUTOINCREMENT`, so the id of the newest skill can be reused after
+  a delete or a restore. R2 keys carry the user id and a content hash, so a
+  reused id can only meet a blob with identical content. The other three
+  tables use `AUTOINCREMENT`: record `sqlite_sequence` before the restore
+  (runbook step 0) and push it past the old high-water mark (step 3).
+- **Shares.** Skill sharing is not built yet. When it is (S-13), its share
+  rows are rolled back like artifact shares: revoked links become live again,
+  so replay the revocations from Axiom and keep the share flag off until that
+  is done.
+
+## Connectors
+
+A restore rolls back the six connector tables (`connectors`,
+`connector_credentials`, `connector_tool_settings`, `connector_chat_settings`,
+`connector_tool_calls` and `mcp_registry_servers`,
+`server/db/schemas/connectors.ts`) to the bookmark B. None has a foreign key,
+so nothing cascades, and KV keeps its current state. The tables hold tokens
+and consent for third-party servers, so a stale row is a security regression,
+not just stale data.
+
+- **Revoked credentials come back.** A user who disconnected a connector, or
+  an operator who revoked a stolen session's connector, in the window gets the
+  credential row back exactly as it was at B: the encrypted access token,
+  refresh token or header value works again unless the provider revoked it
+  too. Right after the restore, before users can send:
+
+  ```sql
+  DELETE FROM connector_credentials;
+  UPDATE connectors SET enabled = 0, status = 'needs-auth';
+  ```
+
+  Credentials created or updated in the window are lost with the restore and
+  need no repair. Rows touched in the window cannot be told apart after the
+  restore, so every connector goes back to `needs-auth` and users reconnect.
+  Say so in the user notice (step 7). Consent columns stay: the consent was
+  given before B and only the credentials are untrusted.
+- **Deletions come back.** A connector deleted in the window, or with its
+  account, returns with its rows. Replay the deletes from Axiom
+  (`attributes.connectors.cleanup.connectorDelete`, which carries the connector
+  id, for single deletes; `attributes.connectors.cleanup.chatDelete` for chats
+  and `attributes.accountPurge` for account purges): delete the restored rows
+  of deleted accounts and connectors, `connector_tool_calls` included.
+- **Withdrawn consent comes back.** A connector whose consent was withdrawn
+  in the window returns with `consent_withdrawn_at` unset. Replay the
+  `connector-withdrawn` rows from Axiom (`attributes.legalConsent`) and set
+  `consent_withdrawn_at` again; the credentials wipe above already stops any
+  call.
+- **Audit rows.** The audit table is rolled back with the rows it describes,
+  so it cannot be the replay source (Axiom is). Rows the 90-day sweep deleted
+  in the window return and are pruned again by the next sweep.
+- **Per-chat choices.** `connector_chat_settings` rows of chats deleted in the
+  window return with a chat id that no longer exists. They do nothing and
+  disappear with the account purge; no repair is needed.
+- **Ids.** `connectors.id` and `connector_tool_calls.id` use `AUTOINCREMENT`,
+  so an id is never reused after a delete. After a restore the sequence is
+  rolled back too, though: record `sqlite_sequence` before the restore
+  (runbook step 0) and push both sequences past the old high-water marks
+  (step 3), or a new connector can take an id that surviving audit rows and
+  Axiom lines already name.
+- **Encryption key.** The key is not part of D1. A restore never needs it
+  rotated, and rotating it makes every stored credential undecryptable (wipe
+  `connector_credentials`, as above).
+
+## Tool approvals
+
+A restore rolls back `besidka_tool_permissions`, `besidka_chat_settings` and
+`tool_approval_claims` (`server/db/schemas/tool-approvals.ts`) to the bookmark
+B. None has a foreign key, so nothing cascades. KV keeps its current state.
+
+- **Revoked "allow" permissions and "always" grants come back.** A user who
+  moved a tool back to "Needs approval" or "Blocked", or who revoked an
+  "Always allow" or "Allow in this chat" grant in the window, gets the
+  earlier row. A tool they had Blocked can be called again, and a tool they
+  had stopped trusting runs without a prompt. Rows created in the window are
+  lost, which fails safe (the user is asked again). Right after the restore,
+  before users can send, reset every grant to "ask" (runbook step 2b). The
+  grants carry no timestamp that separates the window from before it, so the
+  reset is for everyone.
+- **Blocked rows come back too, but only as they were at B.** A Blocked
+  setting made in the window is lost with the restore. The reset in step 2b
+  does not touch `blocked`, so a tool Blocked before B stays Blocked.
+- **`tool-approval:` keys older than the restore point.** The pending
+  records (`tool-approval:<approvalId>`), the turn records
+  (`tool-approval:turn:<messagePublicId>`) and the result records
+  (`tool-approval:result:<approvalId>`) live 24 hours, as does the per-chat
+  index `tool-approval:chat:<chatPublicId>` that lists the other three kinds
+  for one chat (see "Deleting a chat or an account" below). A record whose claim
+  row was rolled back away can be approved and run once more, because the
+  claim is what makes an approval single-use. Delete every key under the
+  prefix in step 2b. The cost is that users with an unanswered approval see
+  "This approval expired" and ask again.
+- **Claims.** Claim rows older than 48 hours are swept hourly, so a restore
+  never needs a claims repair once the KV prefix is empty. A claim's lease
+  runs from `updated_at`, so a restored row can look long expired; that only
+  ever answers "Interrupted. Ask again", never runs a call twice.
+- **Deleting a chat or an account.** Neither table has a foreign key, so the
+  deletion hooks delete the rows by `chat_public_id` or `user_id`
+  (`cleanupToolApprovalsForDeletedChats`, `purgeUserToolApprovals`). The KV
+  records are found through the per-chat index
+  `tool-approval:chat:<chatPublicId>` (24 hour TTL, refreshed on each write,
+  at most 200 approval ids and 100 message ids): the chat hook deletes every
+  pending, turn and result key the index lists, one key at a time. The
+  account purge does the same for the user's 200 most recently updated
+  chats, because the purge does not list chats itself. Residual: an id the
+  index dropped past its bound, an id lost to two writers racing on one
+  index (the read-modify-write is not atomic), the keys of a user's 201st
+  and older chats, and the keys of a chat deleted before this hook shipped
+  stay until their 24 hour TTL. A pending record holds the tool input the
+  user was asked to approve (capped at 64 KiB; a larger input is refused),
+  and a result record holds the tool output (capped at 64 KiB; a larger
+  output is replaced by a marker), and neither points back to an account
+  once its rows are gone.
+- **Ids.** `besidka_tool_permissions.id` and `besidka_chat_settings.id` use
+  `AUTOINCREMENT`; record `sqlite_sequence` before the restore (runbook step
+  0) and push both sequences past the old high-water marks (step 3), as for
+  the other tables. `tool_approval_claims` is keyed by the approval id.
+- **Deleted accounts and chats come back.** Account purges and chat deletes
+  in the window return their rows. Replay them from Axiom
+  (`attributes.accountPurge`, `attributes.toolApprovals.cleanup.chatDelete`);
+  a restored chat-settings row for a missing chat does nothing.
 
 ## Migrations re-apply on the next deploy (blocking)
 
@@ -294,6 +547,13 @@ database lacks.
   period, then delete objects whose key is in no `files` row. `DATA_BUCKET`
   holds only user files: landing and key-guide media live in `CMS_BUCKET`.
 
+- **Extracted-text sidecars** (`<storage_key>.text.md`, one per Office file,
+  see `docs/files.md`) have no `files` row of their own. In the object diff,
+  a `*.text.md` key is orphaned only when `<key without .text.md>` is in no
+  `files` row; deleting a file removes its sidecar with it. A restored row
+  whose sidecar was deleted has `text_status = 'ready'` and no object: the
+  next send re-extracts it (one re-read of the file), so nothing needs fixing.
+
 If your `wrangler` version has no command to list bucket objects, use the
 R2 S3-compatible API (for
 example `aws s3api list-objects-v2 --endpoint-url
@@ -313,7 +573,7 @@ have no foreign key to `users`, so nothing cascades to them. A restore:
 - brings back revoked `tester` roles and revoked allow grants, and removes
   deny grants set in the window,
 - reverts kill-switch, rollout and variant changes made after B, and the
-  scheduled steps created, cancelled or applied after B: a step that applied
+  scheduled steps created, canceled or applied after B: a step that applied
   in the window is `pending` again and would apply a second time on the next
   cron tick, so before the first tick re-create or cancel it from the
   `schedule.create`, `schedule.cancel` and `rule.set` (`actorKind: 'schedule'`,
@@ -361,6 +621,26 @@ by the hourly garbage collection.
   response already expired.
 - `user_settings`, `projects` and favorites revert to B.
 
+## Legal notice approvals and opt-outs
+
+`legal_notice_approvals`, `legal_consent_version_approvals` and
+`legal_notice_email_optouts` (`server/db/schemas/legal-approvals.ts`,
+`docs/legal.md`, "Owner approval in the admin area") have no foreign key to
+`users`. A notice is emailed only while it has an active approval and
+`NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on, so a restore that revives a
+withdrawn approval re-arms a mass email. The approved consent version is read
+from KV (`legal:consent-version:approved`, 1 hour) before D1, so after a
+restore the old value keeps answering until that key expires.
+
+The `feature_audit_log` rows of these actions (`legal-notice.approve`,
+`legal-notice.withdraw`, `legal-consent-version.approve`,
+`legal-notice-opt-out.add`, `legal-notice-opt-out.remove`) roll back with
+them. The ledger is Axiom `besidka-prod`, `attributes.legalAdmin` (action,
+notice id, version, target user id).
+
+Reconcile with runbook step 2c, before the first sweep tick after the
+restore.
+
 ## Runbook
 
 Run every step on `besidka-preview` first (`--remote`, no `--env`), check it,
@@ -370,6 +650,27 @@ previews use namespace `6ee10a2a05034ba092a9fb815f633e06`.
 
 ### 0. Before the restore
 
+0. Turn legal notice emails off on preview and production, before anything
+   else. A restore can revive approvals the owner withdrew and drop the
+   `skipped` and `sent` delivery rows written after B, which makes those
+   users recipients again. Every `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` line must
+   read `false` (it is a plain var, so a dashboard edit would be overwritten
+   by the next deploy):
+
+   ```bash
+   git grep -n '"NUXT_LEGAL_NOTICE_SWEEP_ENABLED"' wrangler.jsonc
+   ```
+
+   If any line reads `true`, set all of them to `false` and deploy both
+   Workers before the restore:
+
+   ```bash
+   pnpm run deploy:prod   # production (besidka.com)
+   pnpm run deploy        # the long-lived preview, shared by PR previews
+   ```
+
+   Keep it off until step 2c is done, every approval is withdrawn and the
+   opt-outs are checked against the Axiom ledger.
 1. Stop deploys. If the restore undoes a migration, merge its removal or
    rewrite into `main` first (see "Migrations re-apply" above).
 2. Write down **R** and keep the undo bookmark that `time-travel restore`
@@ -410,6 +711,67 @@ The `DELETE /api/v1/chats/<slug>` alternative in step 4 is anchored with
 `$` on purpose. Without the anchor it also matches the single-message delete
 (`DELETE /api/v1/chats/<slug>/messages/<id>`), which logs the same
 `chatSlug`, and step 4 would then delete whole chats.
+
+### 2a. Wipe connector credentials
+
+Right after the session wipe, run on `besidka-preview` and then `besidka`:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="DELETE FROM connector_credentials; UPDATE connectors SET enabled = 0, status = 'needs-auth';"
+```
+
+See "Connectors" above for why every connector is reset. Nothing in KV needs
+a wipe: the OAuth state and refresh locks expire within minutes, and the tool
+cache is keyed by the credential generation.
+
+### 2b. Reset tool approval grants and clear the approval KV records
+
+Right after the session wipe, run on `besidka-preview` and then `besidka`:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="UPDATE besidka_tool_permissions SET mode = 'ask' WHERE mode = 'allow'; UPDATE besidka_chat_settings SET always_allow_tools = '{}'; UPDATE connector_chat_settings SET always_allow_tools = '{}'; UPDATE connector_tool_settings SET approval = 'ask', approved_definition_hash = NULL WHERE approval = 'always';"
+npx wrangler kv key list --binding KV --env production --remote --prefix "tool-approval:" > tool-approval-keys.json
+jq '[.[].name]' tool-approval-keys.json > tool-approval-key-names.json
+npx wrangler kv bulk delete tool-approval-key-names.json --binding KV --env production --remote
+```
+
+See "Tool approvals" above for why every grant is reset. Tools set to
+`blocked` stay as they were at B. Tell users to re-grant "Always allow" in
+the notice (step 7).
+
+### 2c. Disarm legal notice emails and restore the owner's decisions
+
+Right after the session wipe, and before the next 5-minute sweep tick, run
+on `besidka-preview` and then `besidka`:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="UPDATE legal_notice_approvals SET withdrawn_at = CAST(strftime('%s','now') AS INTEGER), updated_at = CAST(strftime('%s','now') AS INTEGER) WHERE withdrawn_at IS NULL;"
+```
+
+Do **not** delete the KV key `legal:consent-version:approved` here. While it
+holds a version approved in the window, users who agreed to that version stay
+current; deleting it first would make every location read the older version
+from the restored D1 and ask those users again, and record them under the
+older version.
+
+Run the same `UPDATE` on `besidka-preview` (`--remote`, no `--env`).
+Every approval is withdrawn, whether or not the restore revived it, so no
+notice is emailed until the owner approves it again in `/admin/legal`. The
+sweep switch stays off from step 0: the restore may also have removed the
+`skipped` and `sent` rows written after B, so a re-approved notice would
+reach users who were already told or who were deliberately skipped. The
+admin page shows the new recipient count before any approval. Then query
+`attributes.legalAdmin` in `besidka-prod` for the window and:
+
+1. re-approve, in the admin area and within an hour of the restore (the KV
+   lifetime), a consent version approved in the window
+   (`legal-consent-version.approve`). The approval writes D1 and rewrites the
+   KV key, so users who agreed to it are not asked again for the older one,
+2. re-add opt-outs added in the window (`legal-notice-opt-out.add`) and
+   remove those removed in it (`legal-notice-opt-out.remove`), in the admin
+   area, for users with `created_at <= <B_s>` only (the `users.id` reuse
+   guard of step 4),
+3. ask the owner which notices to approve again.
 
 ### 3. Push id sequences past the pre-restore high-water marks
 
@@ -548,7 +910,10 @@ removes data that users already asked to delete.
 
 ### 5. Reconcile files and R2
 
-For artifacts, run the R2 diff of the Artifacts section as well.
+For artifacts, documents and skills, run the R2 diffs of the Artifacts,
+Documents and Skills sections as well. Run `UPDATE skills SET enabled = 0;`
+before the diffs, so no restored skill stays live while they run. Connectors
+have no R2 objects; step 2a covers them.
 
 1. `files` rows whose object is missing: delete those rows. This lowers the
    owners' quota usage.
@@ -569,7 +934,9 @@ npx wrangler d1 execute besidka --env production --remote --command="SELECT (SEL
 Send one notice to all users. It says that everything done after B was
 undone, that everyone was signed out, and that anyone who changed their
 password, 2FA, passkeys, email, linked accounts, BYOK keys or share settings
-after B must redo the change. No ledger can do that last part for them.
+after B must redo the change, and that they should re-check the tools they
+set to Blocked, because a Blocked setting made after B is gone and the tool
+can be called again. No ledger can do that last part for them.
 
 ## Known gaps and follow-ups
 

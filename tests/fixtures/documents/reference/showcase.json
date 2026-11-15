@@ -1,0 +1,91 @@
+{
+  "specVersion": 1,
+  "format": "docx",
+  "title": "Showcase / Огляд можливостей",
+  "language": "uk-UA",
+  "theme": { "font": "serif", "accent": "orange" },
+  "blocks": [
+    { "type": "heading", "level": 1, "text": "Showcase / Огляд можливостей" },
+    {
+      "type": "paragraph",
+      "align": "justify",
+      "runs": [
+        { "text": "Plain, " },
+        { "text": "bold", "bold": true },
+        { "text": ", " },
+        { "text": "italic", "italic": true },
+        { "text": ", " },
+        { "text": "underlined", "underline": true },
+        { "text": " and " },
+        { "text": "inline code", "code": true },
+        { "text": ". Посилання: " },
+        { "text": "Besidka", "link": { "href": "https://besidka.com" } },
+        { "text": " та " },
+        { "text": "пошта", "link": { "href": "mailto:hello@example.com" } },
+        { "text": ". Це довгий абзац, який вирівняний по ширині, щоб перевірити розтягування проміжків між словами на кількох рядках тексту поспіль без обривів." }
+      ]
+    },
+    { "type": "heading", "level": 2, "text": "Lists / Списки" },
+    {
+      "type": "list",
+      "ordered": false,
+      "items": [
+        {
+          "runs": [{ "text": "Bullet one" }],
+          "children": [
+            {
+              "runs": [{ "text": "Nested bullet" }],
+              "children": [{ "runs": [{ "text": "Third level" }] }]
+            }
+          ]
+        },
+        { "runs": [{ "text": "Пункт другий з дуже довгим текстом, який переноситься на наступний рядок, щоб перевірити відступи маркера та тексту." }] }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": true,
+      "items": [
+        { "runs": [{ "text": "First" }], "children": [{ "runs": [{ "text": "Sub one" }] }, { "runs": [{ "text": "Sub two" }] }] },
+        { "runs": [{ "text": "Second" }] },
+        { "runs": [{ "text": "Third" }] }
+      ]
+    },
+    { "type": "heading", "level": 2, "text": "Table / Таблиця" },
+    {
+      "type": "table",
+      "header": true,
+      "columns": [
+        { "text": "Region / Регіон", "align": "left" },
+        { "text": "Q1", "align": "right" },
+        { "text": "Q2", "align": "right" },
+        { "text": "Note / Примітка", "align": "left" }
+      ],
+      "rows": [
+        [[{ "text": "Київ" }], [{ "text": "1 178" }], [{ "text": "1 137" }], [{ "text": "Stable", "bold": true }]],
+        [[{ "text": "Львів" }], [{ "text": "5 640" }], [{ "text": "5 350" }], [{ "text": "Зростання по всіх каналах продажів, окрім роздрібної мережі" }]],
+        [[{ "text": "Харків" }], [{ "text": "3 858" }], [{ "text": "4 584" }], []],
+        [[{ "text": "Одеса" }], [{ "text": "2 899" }], [{ "text": "3 096" }], [{ "text": "docs", "link": { "href": "https://besidka.com/guides" } }]]
+      ]
+    },
+    { "type": "heading", "level": 3, "text": "Quote and code / Цитата і код" },
+    {
+      "type": "quote",
+      "runs": [{ "text": "Простота є найвищою мірою досконалості. Simplicity is the ultimate sophistication." }]
+    },
+    {
+      "type": "code",
+      "language": "ts",
+      "text": "export function sum(values: number[]): number {\n  return values.reduce((total, value) => total + value, 0)\n}\n\nconst veryLongIdentifierWithoutSpacesThatMustBeBrokenByTheRendererBecauseItDoesNotFitTheLine = 1"
+    },
+    { "type": "heading", "level": 4, "text": "Image / Зображення" },
+    { "type": "image", "fileId": "chart-revenue.png", "alt": "Bar chart of revenue", "widthPercent": 60 },
+    {
+      "type": "paragraph",
+      "runs": [{ "text": "Averyveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongunbrokenwordtotestbreaking" }]
+    },
+    { "type": "pageBreak" },
+    { "type": "heading", "level": 2, "text": "After the page break" },
+    { "type": "paragraph", "runs": [{ "text": "Final paragraph." }] }
+  ]
+}

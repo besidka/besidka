@@ -1,5 +1,6 @@
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ClientFeaturesPayload } from '#shared/types/features.d'
+import type { AttachedArtifact } from '~/types/chat-input-tools'
 import type { CookieConsentChangedPayload } from '@besidka/nuxt-cookie-consent'
 
 declare module '#app' {
@@ -24,6 +25,7 @@ declare module '#app' {
     'chat:init-captured-padding': () => void
     'chat-input:height': (height: number) => void
     'chat-input:prefill': (text: string) => void
+    'chat-input:attach-artifact': (artifact: AttachedArtifact) => void
     'chat-input:visibility-changed': (visible: boolean) => void
     'chat-spacer:changed': (height: number) => void
     'device-keyboard:state-changed': (isOpen: boolean) => void

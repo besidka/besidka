@@ -2,9 +2,15 @@ import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { isDocumentAiGenerated } from '#shared/utils/documents'
+import { OFFICE_TEXT_INLINE_MAX_BYTES } from '#shared/utils/office-files'
+import type { DocumentCreatedVia } from '#shared/utils/documents'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import {
+  filesKindFilters,
   filesSourceFilters,
+  getFilesKindCondition,
   getFilesSourceCondition,
 } from '~~/server/utils/files/source-filter'
 import {
@@ -18,6 +24,7 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   source: z.enum(filesSourceFilters).default('all'),
+  kind: z.enum(filesKindFilters).optional(),
   projectId: z.string().optional(),
 })
 
@@ -39,7 +46,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { offset, limit, search, source, projectId } = query.data
+  const { offset, limit, search, source, kind, projectId } = query.data
   const userId = parseInt(session.user.id)
   const db = useDb()
   const trimmedSearch = search?.trim() ?? ''
@@ -60,6 +67,7 @@ export default defineEventHandler(async (event) => {
   const whereConditions = and(
     eq(schema.files.userId, userId),
     getFilesSourceCondition(source),
+    getFilesKindCondition(kind),
     decodedProjectId === null
       ? undefined
       : isFileLinkedToProjectSql(schema.files.id, decodedProjectId, userId),
@@ -81,6 +89,31 @@ export default defineEventHandler(async (event) => {
         createdAt: schema.files.createdAt,
         originModel: schema.files.originModel,
         generationCost: schema.files.generationCost,
+        textStatus: schema.files.textStatus,
+        textBytes: schema.files.textBytes,
+        textOmittedMedia: schema.files.textOmittedMedia,
+        textOmittedCharts: schema.files.textOmittedCharts,
+        documentId: sql<number | null>`(
+          select ${schema.documents.id} from ${schema.documents}
+          where ${schema.documents.fileId} = ${schema.files.id}
+            and ${schema.documents.userId} = ${schema.files.userId}
+            and ${schema.documents.status} = 'ready'
+          limit 1
+        )`,
+        documentCreatedVia: sql<DocumentCreatedVia | null>`(
+          select ${schema.documents.createdVia} from ${schema.documents}
+          where ${schema.documents.fileId} = ${schema.files.id}
+            and ${schema.documents.userId} = ${schema.files.userId}
+            and ${schema.documents.status} = 'ready'
+          limit 1
+        )`,
+        documentAiGenerated: sql<number | null>`(
+          select ${schema.documents.aiGenerated} from ${schema.documents}
+          where ${schema.documents.fileId} = ${schema.files.id}
+            and ${schema.documents.userId} = ${schema.files.userId}
+            and ${schema.documents.status} = 'ready'
+          limit 1
+        )`,
       })
       .from(schema.files)
       .where(whereConditions)
@@ -95,7 +128,30 @@ export default defineEventHandler(async (event) => {
   ])
 
   return {
-    files,
+    files: files.map((file) => {
+      const { documentCreatedVia, documentAiGenerated, ...fileColumns } = file
+      const hasDocument = file.documentId !== null
+        && file.documentId !== undefined
+
+      return {
+        ...fileColumns,
+        textTruncated: file.textBytes !== null
+          && file.textBytes !== undefined
+          && file.textBytes > OFFICE_TEXT_INLINE_MAX_BYTES,
+        documentId: hasDocument
+          ? encodePublicId(Number(file.documentId))
+          : null,
+        documentAiGenerated: hasDocument && documentCreatedVia
+          ? isDocumentAiGenerated({
+            createdVia: documentCreatedVia,
+            aiGenerated: documentAiGenerated === null
+              || documentAiGenerated === undefined
+              ? null
+              : Boolean(documentAiGenerated),
+          })
+          : null,
+      }
+    }),
     total: countResult?.count ?? 0,
     offset,
     limit,

@@ -19,8 +19,10 @@ export interface JevRoleSettingsInput {
 }
 
 /**
- * A role runs only with a saved TypeSafe AI key and unless the user switched
- * it off: `null` settings and a missing role id both mean on.
+ * A role runs only with a saved TypeSafe AI key. Unless it is an opt-in role
+ * (`JEV_OPT_IN_ROLE_IDS`), it runs unless the user switched it off: `null`
+ * settings and a missing role id both mean on. An opt-in role runs only when
+ * the user switched it on.
  */
 export function isJevRoleEnabled(
   settings: JevRoleSettingsInput,
@@ -99,7 +101,7 @@ export async function resolveJevRoleModel(input: {
  * The `user_settings.typesafe_roles` value for a settings PATCH. A role
  * object is merged into the stored one inside SQLite (`json_patch`), so two
  * toggles saved at the same time cannot drop each other; `null` resets every
- * role to on.
+ * role to its default (on, except the opt-in roles, which go off).
  */
 export function jevRoleSettingsUpdateValue(
   patch: JevRoleSettings | null,

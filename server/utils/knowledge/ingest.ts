@@ -27,6 +27,8 @@ import type {
   knowledgeNoteUpdateSchema,
 } from '#shared/utils/project-knowledge-schemas'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+import { createStorageFullError } from '~~/server/utils/storage/errors'
+import { userStorageUsedBytesSql } from '~~/server/utils/storage/usage'
 import * as schema from '~~/server/db/schema'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
@@ -190,13 +192,8 @@ function createConflictError(conflict: ConflictDescription) {
   })
 }
 
-function createQuotaExceededError() {
-  return createError({
-    message: 'Not enough storage space. Please delete some files.',
-    status: 413,
-    why: 'The upload is larger than the remaining storage quota',
-    fix: 'Delete some files or upload a smaller file',
-  })
+function createQuotaExceededError(usedBytes: number, totalBytes: number) {
+  return createStorageFullError({ usedBytes, totalBytes })
 }
 
 function createUserItemLimitError(existingItems: number) {
@@ -252,7 +249,7 @@ function recordKnowledgeError(
 }
 
 /**
- * NFC-normalises a client string so visually identical titles, paths and
+ * NFC-normalizes a client string so visually identical titles, paths and
  * descriptions compare and store identically.
  */
 export function normalizeKnowledgeString(value: string): string {
@@ -494,7 +491,7 @@ async function assertKnowledgeCapacity(
   const remainingBytes = Math.max(policy.maxStorageBytes - usedBytes, 0)
 
   if (addedTextBytes > remainingBytes) {
-    throw createQuotaExceededError()
+    throw createQuotaExceededError(usedBytes, policy.maxStorageBytes)
   }
 
   return policy.maxStorageBytes
@@ -779,12 +776,8 @@ function buildGuardedInsert(
       select coalesce(sum(text_bytes), 0) from project_knowledge_items
       where project_id = ${projectId} and user_id = ${userId}
     ) + ${bytes} <= ${KNOWLEDGE_LIMITS.maxProjectTextBytes})
-    and (${bytes} = 0 or (
-      select coalesce(sum(size), 0) from files where user_id = ${userId}
-    ) + (
-      select coalesce(sum(text_bytes), 0) from project_knowledge_items
-      where user_id = ${userId}
-    ) + ${bytes} <= ${limits.maxStorageBytes})
+    and (${bytes} = 0 or ${userStorageUsedBytesSql(userId)} + ${bytes}
+      <= ${limits.maxStorageBytes})
     returning id
   `
 }
@@ -1016,7 +1009,7 @@ async function markInsertedItemsPending(
  * Settles a commit that changed nothing (no item added, none removed). A
  * pack that already matches the version is returned as is. A stale pack of a
  * project that has been committed before is rebuilt through the lazy path,
- * which never bumps `knowledge_version` and honours the build backoff, so
+ * which never bumps `knowledge_version` and honors the build backoff, so
  * repeating an empty commit cannot churn builds. It is an explicit commit, so
  * it skips the 30 second wait the panel and send paths observe. Only a
  * project that has never been committed (version 0) takes the full commit
@@ -1149,7 +1142,7 @@ export async function commitKnowledgeProject(
 }
 
 /**
- * Creates the items of one upload batch. Order: sanitise, duplicate
+ * Creates the items of one upload batch. Order: sanitize, duplicate
  * `contentHash` skipping (a skipped item is never looked at again, so its
  * `fileId` is neither validated nor linked), file checks for the accepted
  * items (404 foreign or missing, 400 not a PDF or image, 409 already linked
@@ -1549,12 +1542,8 @@ export async function updateKnowledgeNote(
             select coalesce(sum(text_bytes), 0) from project_knowledge_items
             where project_id = ${projectId} and user_id = ${userId}
           ) + ${growthBytes} <= ${KNOWLEDGE_LIMITS.maxProjectTextBytes}
-          and (
-            select coalesce(sum(size), 0) from files where user_id = ${userId}
-          ) + (
-            select coalesce(sum(text_bytes), 0) from project_knowledge_items
-            where user_id = ${userId}
-          ) + ${growthBytes} <= ${maxStorageBytes}
+          and ${userStorageUsedBytesSql(userId)} + ${growthBytes}
+            <= ${maxStorageBytes}
         ))
       returning id
     `)

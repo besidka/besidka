@@ -4,6 +4,7 @@ import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createAnthropic } from '@ai-sdk/anthropic'
+import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import {
   resolveReasoningLevelForModel,
   toReasoningEffort,
@@ -79,6 +80,13 @@ export async function useAnthropic(
       }
 
       result.tools['web_search_preview'] = anthropic.tools.webSearch_20250305({})
+    }
+
+    if (requestedTools.includes('code_execution')) {
+      result.tools = {
+        ...result.tools,
+        [CODE_EXECUTION_TOOL_NAME]: anthropic.tools.codeExecution_20260120(),
+      }
     }
 
     return result

@@ -11,6 +11,7 @@ import {
   estimateHistoryTokens,
   holdsUntrustedKnowledge,
   resolveProjectKnowledgeContext,
+  withMemoryApprovalNotice,
 } from '~~/server/utils/knowledge/context'
 import type {
   KnowledgeSendModel,
@@ -137,6 +138,22 @@ function makeInput(
 function makeTextItem(id: string, tokens: number) {
   return makeItem({ id, latinChars: tokensToLatinChars(tokens) })
 }
+
+describe('withMemoryApprovalNotice', () => {
+  it('replaces the unavailable sentence with the approval sentence', () => {
+    const block = '<project_knowledge>\nDocuments the user uploaded to this '
+      + 'project. Saving to memory is unavailable while project documents '
+      + 'are in context; the user can save it from the Memory page.\n'
+      + '</project_knowledge>'
+    const updated = withMemoryApprovalNotice(block)
+
+    expect(updated).toContain(
+      'Saving to memory needs the user\'s approval in this turn',
+    )
+    expect(updated).not.toContain('unavailable')
+    expect(withMemoryApprovalNotice('<project_files>')).toBe('<project_files>')
+  })
+})
 
 describe('estimateHistoryTokens', () => {
   it('sums the per-text estimates for the family', () => {

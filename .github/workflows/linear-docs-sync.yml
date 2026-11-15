@@ -33,7 +33,7 @@ jobs:
     steps:
       # Always sync the latest main, not the triggering commit: a queued run
       # then sees the document map the previous run committed, and the
-      # changes of any run cancelled in the concurrency queue.
+      # changes of any run canceled in the concurrency queue.
       - name: Checkout
         uses: actions/checkout@v7
         with:

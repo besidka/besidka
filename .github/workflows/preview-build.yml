@@ -413,7 +413,7 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         uses: ./.github/actions/setup
 
-      - name: Build the runtime with production headers and scan licences
+      - name: Build the runtime with production headers and scan licenses
         if: steps.changes.outputs.changed == 'true'
         run: pnpm run artifacts:build
 

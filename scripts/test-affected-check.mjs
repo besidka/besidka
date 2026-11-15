@@ -73,17 +73,30 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Grid/ActionsMenu.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/ProjectGroups.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
+    'tests/unit/composables/xls-convert.spec.ts',
+    'tests/unit/workers/xls-convert.spec.ts',
+    'tests/unit/utils/xls-convert.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/file-delivery-hints.spec.ts',
+    'tests/unit/utils/file-delivery.spec.ts',
+    'tests/unit/utils/office-files.spec.ts',
+    'tests/unit/server/utils/files/office-upload-check.spec.ts',
+    'tests/unit/server/utils/files/office-text.spec.ts',
+    'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
+    'tests/unit/server/utils/chats/file-delivery-check.spec.ts',
+    'tests/integration/api/chats-office-attachments.spec.ts',
     'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
+    'tests/integration/api/files-upload-office.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
     'tests/integration/api/files-index.spec.ts',
     'tests/integration/api/files-index-source.spec.ts',
@@ -95,6 +108,8 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/file-download.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
+    'tests/integration/server/convert-files-for-ai-office.spec.ts',
+    'tests/integration/server/assistant-files-office-carry.spec.ts',
     'tests/integration/server/chat-deletion-cleanup.spec.ts',
     'tests/integration/server/cache-invalidation.spec.ts',
     'tests/integration/server/file-retention.spec.ts',
@@ -103,7 +118,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/confirmation.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
+    'tests/e2e/chat/office-attachments.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
+  ]
+  const topModalDialogTests = [
+    'tests/unit/composables/top-modal-dialog.spec.ts',
+    'tests/unit/components/ui/Messages.spec.ts',
   ]
   const chatInputToolsTests = [
     'tests/unit/components/ChatInput.spec.ts',
@@ -117,6 +137,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu/Section.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InfoNote.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/InlineButton.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/CodeExecutionSection.spec.ts',
+    'tests/unit/utils/code-execution-ui.spec.ts',
     'tests/unit/composables/reveal-guard.spec.ts',
     'tests/unit/composables/tools-menu-focus-rescue.spec.ts',
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
@@ -136,6 +158,59 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/components/Chat/TextFileModal.client.spec.ts',
     'tests/e2e/chat/chat-input-markdown.spec.ts',
+  ]
+  const documentRendererTests = [
+    'tests/unit/packages/doc-renderer/spec.spec.ts',
+    'tests/unit/packages/doc-renderer/render.spec.ts',
+    'tests/unit/packages/doc-renderer/validate.spec.ts',
+    'tests/unit/packages/doc-renderer/formula.spec.ts',
+    'tests/unit/packages/doc-renderer/provenance.spec.ts',
+    'tests/unit/packages/doc-renderer/package-boundaries.spec.ts',
+    'tests/unit/packages/doc-renderer/notices.spec.ts',
+    'tests/unit/packages/doc-renderer/hardening.spec.ts',
+    'tests/unit/packages/doc-renderer/extract.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-docx.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-xlsx.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-pptx.spec.ts',
+    'tests/unit/packages/doc-renderer/extract-hostile.spec.ts',
+    'tests/unit/packages/doc-renderer/xml-truncation.spec.ts',
+    'tests/unit/utils/shared-files.spec.ts',
+    'tests/unit/utils/knowledge-zip.spec.ts',
+  ]
+  const storageQuotaTests = [
+    'tests/unit/server/utils/storage/usage.spec.ts',
+    'tests/unit/server/utils/storage/errors.spec.ts',
+    'tests/unit/server/utils/storage/guard.spec.ts',
+    'tests/integration/api/storage.spec.ts',
+    'tests/unit/server/utils/artifacts/store.spec.ts',
+    'tests/unit/server/utils/ai/artifact-tools.spec.ts',
+    'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
+    'tests/unit/server/utils/files/persist-file.spec.ts',
+    'tests/unit/utils/knowledge/quota.spec.ts',
+    'tests/unit/utils/knowledge/ingest.spec.ts',
+    'tests/integration/api/files-upload.spec.ts',
+    'tests/integration/api/projects-knowledge-items.spec.ts',
+    'tests/integration/api/documents.spec.ts',
+    'tests/integration/api/chats-documents.spec.ts',
+    'tests/unit/server/utils/documents/create-document-tool.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
+    'tests/unit/server/utils/mcp/private-files.spec.ts',
+    'tests/unit/server/utils/mcp/private-settings-storage.spec.ts',
+    'tests/unit/server/mcp/tools/get-settings.spec.ts',
+    'tests/unit/composables/artifacts-library.spec.ts',
+    'tests/unit/utils/ai/image-generation-errors.spec.ts',
+    'tests/unit/utils/code-execution/persist-container-files.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/versions/create.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/skills/versions/statements.spec.ts',
+    'tests/unit/server/api/v1/skills/update-check.spec.ts',
+  ]
+  const storagePageTests = [
+    'tests/unit/pages/profile/storage.spec.ts',
+    'tests/unit/utils/storage-categories.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
   ]
   const artifactsRuntimeTests = [
     'tests/unit/packages/artifacts-protocol/jsonrpc.spec.ts',
@@ -212,6 +287,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/artifacts-panel.spec.ts',
     'tests/e2e/chat/artifact-actions.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
+    'tests/e2e/shared/artifact-panel-share.spec.ts',
     'tests/unit/pages/chats/artifacts/index.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
@@ -220,6 +296,8 @@ export function getAffectedTests(changedFiles) {
   ]
   const artifactsLibraryTests = [
     'tests/unit/pages/chats/artifacts/index.spec.ts',
+    'tests/unit/components/Artifact/KindFilter.spec.ts',
+    'tests/unit/components/History/FilterButtons.spec.ts',
     'tests/unit/components/History/ArtifactRow.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/composables/artifacts-library.spec.ts',
@@ -230,8 +308,15 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/history/artifacts-library.spec.ts',
     'tests/e2e/chat/artifact-actions.spec.ts',
   ]
+  const sharedHistoryTests = [
+    'tests/unit/pages/chats/shared/index.spec.ts',
+    'tests/unit/composables/shared-artifacts.spec.ts',
+    'tests/unit/components/History/BoxTabs.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/integration/api/artifact-shared-list.spec.ts',
+  ]
   const artifactsShareUiTests = [
-    'tests/unit/pages/a/index.spec.ts',
+    'tests/unit/pages/artifacts/[token].spec.ts',
     'tests/unit/components/Artifact/ReportModal.client.spec.ts',
     'tests/unit/components/Chat/Artifact/ReportButton.client.spec.ts',
     'tests/unit/components/Chat/Artifact/ShareModal.client.spec.ts',
@@ -244,6 +329,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/scroll-within.spec.ts',
     'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
     'tests/e2e/shared/artifact-share.spec.ts',
+    'tests/e2e/shared/artifact-panel-share.spec.ts',
+    'tests/unit/components/Shared/ExitLink.spec.ts',
+    'tests/e2e/shared/shared-exit-link.spec.ts',
+  ]
+  const sharedExitLinkTests = [
+    'tests/unit/components/Shared/ExitLink.spec.ts',
+    'tests/e2e/shared/shared-exit-link.spec.ts',
   ]
   const artifactsAdminReportsTests = [
     'tests/unit/pages/admin/artifact-reports.spec.ts',
@@ -262,6 +354,107 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/composables/chat.spec.ts',
+  ]
+  const documentsChatTests = [
+    'tests/integration/api/chats-documents.spec.ts',
+    'tests/integration/api/documents.spec.ts',
+    'tests/integration/api/documents-library.spec.ts',
+    'tests/integration/api/files-kind-filter.spec.ts',
+    'tests/integration/api/shared-documents.spec.ts',
+    'tests/unit/components/Chat/Document.spec.ts',
+    'tests/unit/components/Chat/DocumentPreview.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/KindFilter.spec.ts',
+    'tests/unit/composables/document-flow.spec.ts',
+    'tests/unit/composables/document-render.spec.ts',
+    'tests/unit/server/capabilities/documents.spec.ts',
+    'tests/unit/server/utils/documents/claim.spec.ts',
+    'tests/unit/server/utils/documents/cleanup.spec.ts',
+    'tests/unit/server/utils/documents/create-document-tool.spec.ts',
+    'tests/unit/server/utils/documents/message-parts.spec.ts',
+    'tests/unit/server/utils/documents/share.spec.ts',
+    'tests/unit/server/utils/documents/store.spec.ts',
+    'tests/unit/server/mcp/tools/create-document.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
+    'tests/unit/utils/document-parts.spec.ts',
+    'tests/unit/utils/document-ui.spec.ts',
+    'tests/unit/workers/document-render.spec.ts',
+    'tests/unit/server/utils/documents/rate-limit.spec.ts',
+    'tests/unit/server/utils/documents/link-message.spec.ts',
+    'tests/unit/server/utils/documents/stored-spec.spec.ts',
+    'tests/unit/utils/documents/file-name.spec.ts',
+    'tests/unit/utils/documents/library-helpers.spec.ts',
+    'tests/unit/utils/documents/ai-generated.spec.ts',
+    'tests/unit/components/Chat/Document/Blocks.spec.ts',
+    'tests/unit/components/Chat/Document/Slide.spec.ts',
+    'tests/unit/utils/chats/share-pii-check.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/server/utils/chats/persist-user-message.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/integration/api/chats-shares-branch.spec.ts',
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/integration/server/chat-share.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+  const documentsFileManagerTests = [
+    'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/KindFilter.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/ProjectGroups.spec.ts',
+    'tests/unit/composables/file-manager.spec.ts',
+    'tests/unit/utils/file-manager-sources.spec.ts',
+    'tests/integration/api/files-kind-filter.spec.ts',
+    'tests/integration/api/files-index-source.spec.ts',
+    'tests/integration/api/files-index-document-id.spec.ts',
+  ]
+  const documentsLibraryTests = [
+    'tests/unit/pages/chats/documents/index.spec.ts',
+    'tests/unit/components/History/DocumentRow.spec.ts',
+    'tests/unit/components/History/BoxTabs.spec.ts',
+    'tests/unit/components/History/FilterButtons.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/Chat/DocumentPreview.spec.ts',
+    'tests/unit/composables/documents-library.spec.ts',
+    'tests/unit/utils/documents/library-helpers.spec.ts',
+    'tests/integration/api/documents-library.spec.ts',
+  ]
+  const documentRendererWorkerTests = [
+    'tests/unit/workers/doc-renderer/index.spec.ts',
+    'tests/unit/workers/doc-renderer/bundle.spec.ts',
+    'tests/unit/utils/documents/renderer.spec.ts',
+    'tests/unit/workflows/production-satellites.spec.ts',
+    'tests/unit/config/wrangler-previews.spec.ts',
+  ]
+  const artifactsAttachTests = [
+    'tests/unit/components/ChatInput/ArtifactPicker.client.spec.ts',
+    'tests/unit/components/Artifact/KindFilter.spec.ts',
+    'tests/unit/components/Chat/ArtifactAttachments.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/History/ArtifactRow.spec.ts',
+    'tests/unit/components/Chat/Artifact/Detail.client.spec.ts',
+    'tests/unit/composables/artifacts-library.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/artifact-attachments.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/server/utils/artifacts/attachments.spec.ts',
+    'tests/unit/server/utils/artifacts/chat-artifacts.spec.ts',
+    'tests/unit/server/utils/artifacts/context.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/integration/api/chats-new-artifacts.spec.ts',
+    'tests/integration/api/chats-new.spec.ts',
+    'tests/integration/api/chats-artifacts.spec.ts',
+    'tests/integration/api/chats-shares-branch.spec.ts',
+    'tests/e2e/chat/artifact-attach.spec.ts',
   ]
   const mailAlertsTests = [
     'tests/unit/utils/mail-alert-protocol.spec.ts',
@@ -335,6 +528,86 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
   ]
+  const mcpConnectorTests = [
+    'tests/unit/server/mcp/tools/list-connectors.spec.ts',
+    'tests/unit/server/mcp/tools/get-connector.spec.ts',
+    'tests/unit/server/mcp/tools/add-connector.spec.ts',
+    'tests/unit/server/mcp/tools/update-connector-tools.spec.ts',
+    'tests/unit/server/mcp/tools/delete-connectors.spec.ts',
+    'tests/unit/server/utils/mcp/private/connectors.spec.ts',
+    'tests/unit/server/utils/connectors/store.spec.ts',
+    'tests/unit/utils/connectors-text.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+    'tests/integration/api/connectors-oauth-flow.spec.ts',
+  ]
+  const mcpSkillTests = [
+    'tests/unit/server/mcp/tools/list-skills.spec.ts',
+    'tests/unit/server/mcp/tools/get-skill.spec.ts',
+    'tests/unit/server/mcp/tools/create-skill.spec.ts',
+    'tests/unit/server/mcp/tools/update-skill.spec.ts',
+    'tests/unit/server/mcp/tools/rename-skill.spec.ts',
+    'tests/unit/server/mcp/tools/delete-skills.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/composables/skills-library.spec.ts',
+    'tests/unit/utils/skills/frontmatter.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+  ]
+  const besidkaToolsTests = [
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/server/utils/besidka-tools/summary.spec.ts',
+    'tests/unit/server/utils/besidka-tools/summaries.spec.ts',
+    'tests/unit/server/utils/besidka-tools/mcp-adapter.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/capabilities/conformance.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+  ]
+  const besidkaToolPermissionsTests = [
+    'tests/unit/utils/besidka-tool-permissions.spec.ts',
+    'tests/unit/utils/features/besidka-tools-registry.spec.ts',
+    'tests/unit/server/utils/besidka-tools/permissions.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+  ]
+  const besidkaToolsChatTests = [
+    'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/composables/composer-besidka-tools.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/integration/api/chats-test-endpoint.spec.ts',
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/utils/reasoning-step-icons.spec.ts',
+    'tests/unit/components/Chat/ContextPanelApprovals.spec.ts',
+    'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
+  ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
     'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
@@ -344,6 +617,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/admin-scopes.spec.ts',
     'tests/unit/server/mcp/tools/branch-chat.spec.ts',
     'tests/unit/server/mcp/tools/create-file.spec.ts',
+    'tests/unit/server/mcp/tools/create-document.spec.ts',
     'tests/unit/server/mcp/tools/delete-chat-message.spec.ts',
     'tests/unit/server/mcp/tools/delete-chats.spec.ts',
     'tests/unit/server/mcp/tools/delete-files.spec.ts',
@@ -366,6 +640,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/mcp/tools/update-settings.spec.ts',
     'tests/unit/server/utils/mcp/private-chat-actions.spec.ts',
     'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/utils/mcp/private-documents.spec.ts',
     'tests/unit/server/utils/mcp/private-files.spec.ts',
     'tests/unit/server/utils/mcp/private-projects-manage.spec.ts',
     'tests/unit/server/utils/mcp/private-settings.spec.ts',
@@ -401,7 +676,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/rerank.spec.ts',
     'tests/integration/api/jev-rerank.spec.ts',
   ]
+  const skillSelectionTests = [
+    'tests/unit/server/utils/skills/jev/prefilter.spec.ts',
+    'tests/unit/server/utils/skills/jev/questions.spec.ts',
+    'tests/unit/server/utils/skills/jev/selection.spec.ts',
+    'tests/unit/server/utils/skills/runtime/send.spec.ts',
+  ]
   const jevFoundationTests = [
+    ...skillSelectionTests,
     'tests/unit/utils/jev/client.spec.ts',
     'tests/unit/utils/jev/logging.spec.ts',
     'tests/unit/utils/jev/roles.spec.ts',
@@ -934,7 +1216,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/features/evaluate-variants.spec.ts',
     'tests/unit/server/utils/features/exposure.spec.ts',
     'tests/unit/server/utils/features/guards.spec.ts',
+    'tests/unit/server/utils/features/background.spec.ts',
     'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
     'tests/unit/utils/features/rollout-gate.spec.ts',
     'tests/unit/utils/features/schedule-schemas.spec.ts',
     'tests/unit/server/utils/features/schedules.spec.ts',
@@ -1195,6 +1479,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/email-template.spec.ts',
   ]
 
+  const legalAdminTests = [
+    'tests/unit/server/utils/legal/admin.spec.ts',
+    'tests/unit/server/utils/legal/consent-version.spec.ts',
+    'tests/unit/server/utils/legal/purge.spec.ts',
+    'tests/unit/utils/legal/notice-sweep.spec.ts',
+    'tests/unit/db/legal-approvals-migration.spec.ts',
+    'tests/unit/pages/admin/legal.spec.ts',
+    'tests/integration/api/admin-legal.spec.ts',
+    'tests/integration/api/admin-features.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+  ]
+
   const legalNoticeEmailTests = [
     'tests/unit/utils/legal/notice-sweep.spec.ts',
     'tests/unit/utils/legal/notice-email.spec.ts',
@@ -1285,6 +1581,426 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/auth/signin.spec.ts',
   ]
 
+  const connectorsSafeFetchTests = [
+    'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/server/utils/net/safe-url.spec.ts',
+    'tests/unit/server/utils/net/safe-fetch.spec.ts',
+    'tests/unit/server/utils/skills/import/github-safe-url-gate.spec.ts',
+    'tests/unit/server/utils/skills/import/github.spec.ts',
+    'tests/unit/server/utils/skills/import/github-resolve.spec.ts',
+  ]
+
+  const connectorsStorageTests = [
+    'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/utils/connectors-slug.spec.ts',
+    'tests/unit/utils/features/connectors-registry.spec.ts',
+    'tests/unit/config/connectors-catalog.spec.ts',
+    'tests/unit/scripts/check-connector-presets.spec.ts',
+    'tests/unit/server/utils/connectors/store.spec.ts',
+    'tests/unit/server/utils/connectors/cleanup.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/server/utils/chats/lifecycle.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+
+  const connectorsRegistryTests = [
+    'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/utils/features/connectors-registry.spec.ts',
+    'tests/unit/server/utils/connectors/registry-entry.spec.ts',
+    'tests/unit/server/utils/connectors/registry-sync.spec.ts',
+    'tests/integration/server/mcp-registry-sync-plugin.spec.ts',
+    'tests/integration/api/connectors-registry.spec.ts',
+    'tests/unit/config/wrangler-registry-cron.spec.ts',
+    'tests/unit/server/utils/net/safe-fetch.spec.ts',
+  ]
+
+  const connectorsOAuthTests = [
+    'tests/unit/server/utils/connectors/credentials.spec.ts',
+    'tests/unit/server/utils/connectors/oauth-client.spec.ts',
+    'tests/unit/server/utils/connectors/oauth-metadata.spec.ts',
+    'tests/unit/server/utils/connectors/oauth-state.spec.ts',
+    'tests/unit/server/utils/connectors/revoke.spec.ts',
+    'tests/unit/server/utils/connectors/scopes.spec.ts',
+    'tests/unit/server/utils/connectors/store-tokens.spec.ts',
+    'tests/unit/server/routes/connectors/client-metadata.spec.ts',
+    'tests/unit/server/plugins/evlog-request-observability.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/integration/api/connectors-oauth-flow.spec.ts',
+  ]
+
+  const connectorsChatToolsTests = [
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/connectors/tool-definitions.spec.ts',
+    'tests/unit/server/utils/connectors/mcp-client.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+    'tests/unit/server/utils/connectors/call-limits.spec.ts',
+    'tests/unit/server/utils/connectors/chat-selection.spec.ts',
+    'tests/unit/server/utils/connectors/persist.spec.ts',
+    'tests/unit/server/utils/connectors/context-isolation.spec.ts',
+    'tests/unit/server/utils/connectors/persistence-pipeline.spec.ts',
+    'tests/unit/server/utils/chats/share-used-connector.spec.ts',
+    'tests/unit/utils/ai/search-answer-continuation.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
+    'tests/unit/utils/connectors-parts.spec.ts',
+    'tests/unit/utils/connector-step.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/integration/api/chats-connector-send.spec.ts',
+    'tests/integration/api/connectors-chat-selection.spec.ts',
+  ]
+
+  const connectorsChatToolsUiTests = [
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/composables/chat-share.spec.ts',
+    'tests/unit/components/Chat/ShareModal.client.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
+    'tests/unit/components/Chat/ConnectorsNotice.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/utils/connectors-parts.spec.ts',
+    'tests/unit/utils/connector-step.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+  ]
+
+  const toolApprovalPolicyTests = [
+    'tests/unit/utils/tool-approval-policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/state.spec.ts',
+    'tests/unit/server/utils/tool-approval/secret.spec.ts',
+    'tests/unit/server/utils/tool-approval/kv.spec.ts',
+    'tests/unit/server/utils/tool-approval/claims.spec.ts',
+    'tests/unit/server/utils/tool-approval/cleanup.spec.ts',
+    'tests/unit/server/utils/hkdf.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+    'tests/integration/server/tool-approval-claim-sweep-plugin.spec.ts',
+    'tests/integration/server/connector-audit-prune-plugin.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/server/utils/chats/lifecycle.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+
+  const toolApprovalRequestTests = [
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-connector-send.spec.ts',
+    'tests/integration/api/chats-memory.spec.ts',
+    'tests/integration/api/chats-project-knowledge.spec.ts',
+    'tests/integration/api/chats-artifacts.spec.ts',
+    'tests/integration/api/chats-documents.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+    'tests/unit/server/utils/tool-approval/kv.spec.ts',
+    'tests/unit/server/utils/tool-approval/cleanup.spec.ts',
+    'tests/unit/server/utils/artifacts/message-parts.spec.ts',
+    'tests/unit/server/utils/documents/message-parts.spec.ts',
+    'tests/unit/server/utils/chats/persist-user-message.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/ai/search-answer-continuation.spec.ts',
+    'tests/unit/utils/connectors-parts.spec.ts',
+    'tests/unit/utils/connector-step.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/utils/features/tool-approvals-registry.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/knowledge/context.spec.ts',
+  ]
+
+  const reasoningStepIconsTests = [
+    'tests/unit/utils/reasoning-step-icons.spec.ts',
+    'tests/unit/components/Chat/Reasoning/StepIcon.spec.ts',
+    'tests/unit/components/Chat/Reasoning.icons.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/MemoryStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/SearchStep.spec.ts',
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/unit/server/utils/chats/test/reasoning-icons-fixture.spec.ts',
+  ]
+
+  const connectorIconTests = [
+    'tests/unit/server/utils/connectors/icon.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/net/safe-fetch.spec.ts',
+    'tests/integration/api/connectors-icon.spec.ts',
+  ]
+
+  const toolApprovalSpikeTests = [
+    'tests/integration/api/tool-approval-spike.spec.ts',
+  ]
+
+  const toolApprovalContinuationTests = [
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/tool-approval-spike.spec.ts',
+    'tests/unit/composables/tool-approvals.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/utils/message-usage.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+  ]
+
+  const toolApprovalUiTests = [
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/composables/tool-approvals.spec.ts',
+    'tests/unit/composables/chat.tool-approvals.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/components/ChatInput/ToolApprovalChip.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/e2e/chat/tool-approval.spec.ts',
+  ]
+
+  const toolApprovalGrantsTests = [
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/composables/tool-approval-grants.spec.ts',
+    'tests/unit/components/Chat/ContextPanelApprovals.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/server/utils/tool-approval/grants.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+  ]
+
+  const skillJevScreeningTests = [
+    'tests/unit/server/utils/jev/skill-screening.spec.ts',
+    'tests/unit/server/utils/skills/jev/screen.spec.ts',
+    'tests/unit/server/utils/skills/jev/lifecycle.spec.ts',
+    'tests/unit/server/utils/skills/import/screen-rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/preview-jev.spec.ts',
+    'tests/unit/server/api/v1/skills/screen.spec.ts',
+    'tests/unit/utils/jev-skill-policy.spec.ts',
+    'tests/unit/utils/jev/injection-screening.spec.ts',
+    'tests/unit/utils/jev/logging.spec.ts',
+  ]
+
+  const skillsStorageTests = [
+    ...skillJevScreeningTests,
+    ...skillSelectionTests,
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/unit/server/utils/skills/storage.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/skills/sweep.spec.ts',
+    'tests/unit/utils/projects/lifecycle.spec.ts',
+    'tests/integration/server/skills-storage-sweep-plugin.spec.ts',
+    'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/server/utils/chats/lifecycle.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+
+  const skillsVersionsTests = [
+    ...skillJevScreeningTests,
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/edit.spec.ts',
+    'tests/unit/utils/skills/templates.spec.ts',
+    'tests/unit/utils/skills/mode.spec.ts',
+    'tests/unit/server/utils/skills/unique-violation.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/skills/pending.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/import/rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/save-rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/versions/statements.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/skills/versions/restore.spec.ts',
+    'tests/unit/server/utils/skills/versions/create.spec.ts',
+    'tests/unit/server/utils/skills/versions/read-write-paths.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
+    'tests/unit/server/api/v1/skills/skills-crud.spec.ts',
+    'tests/unit/server/api/v1/skills/update-check.spec.ts',
+    'tests/unit/utils/skills/findings.spec.ts',
+    'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/utils/skills/findings-execution.spec.ts',
+    'tests/unit/utils/skills/findings-intent.spec.ts',
+    'tests/unit/utils/skills/findings-frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings-redos.spec.ts',
+    'tests/unit/utils/skills/url-hosts.spec.ts',
+    'tests/unit/utils/skills/known-names.spec.ts',
+    'tests/unit/utils/skills/file-set-findings.spec.ts',
+    'tests/unit/utils/skills/update-changes.spec.ts',
+    'tests/unit/server/utils/skills/versions/changes.spec.ts',
+    'tests/unit/server/utils/skills/import/update-findings.spec.ts',
+  ]
+
+  const skillsImportTests = [
+    ...skillJevScreeningTests,
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/path.spec.ts',
+    'tests/unit/utils/skills/frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings.spec.ts',
+    'tests/unit/utils/skills/corpus-benign.spec.ts',
+    'tests/unit/utils/skills/corpus-attack-patterns.spec.ts',
+    'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/utils/skills/findings-execution.spec.ts',
+    'tests/unit/utils/skills/findings-intent.spec.ts',
+    'tests/unit/utils/skills/findings-frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings-redos.spec.ts',
+    'tests/unit/utils/skills/url-hosts.spec.ts',
+    'tests/unit/utils/skills/known-names.spec.ts',
+    'tests/unit/utils/skills/file-set-findings.spec.ts',
+    'tests/unit/server/utils/skills/import/update-findings.spec.ts',
+    'tests/unit/server/utils/skills/lookalike-context.spec.ts',
+    'tests/unit/server/utils/skills/import/preview-lookalike.spec.ts',
+    'tests/unit/utils/skills/license.spec.ts',
+    'tests/unit/utils/skills/archive.spec.ts',
+    'tests/unit/utils/skills/analyze.spec.ts',
+    'tests/unit/utils/skills/github-url.spec.ts',
+    'tests/unit/utils/skills/release.spec.ts',
+    'tests/unit/utils/skills/github-archive.spec.ts',
+    'tests/unit/utils/skills/diff.spec.ts',
+    'tests/unit/utils/skills/compose.spec.ts',
+    'tests/unit/server/utils/skills/import/zip.spec.ts',
+    'tests/unit/server/utils/skills/import/rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/stage.spec.ts',
+    'tests/unit/server/utils/skills/import/github.spec.ts',
+    'tests/unit/server/utils/skills/import/github-resolve.spec.ts',
+    'tests/unit/server/utils/skills/import/git-refs.spec.ts',
+    'tests/unit/server/utils/skills/import/commit.spec.ts',
+    'tests/unit/server/utils/skills/import/update-sweep.spec.ts',
+    'tests/integration/server/skills-update-sweep-plugin.spec.ts',
+    'tests/unit/server/utils/skills/pending.spec.ts',
+    'tests/unit/server/api/v1/skills/import-preview.spec.ts',
+    'tests/unit/server/api/v1/skills/import-text.spec.ts',
+    'tests/unit/server/api/v1/skills/import-commit.spec.ts',
+    'tests/unit/server/api/v1/skills/import-github.spec.ts',
+    'tests/unit/server/api/v1/skills/import-stage-files.spec.ts',
+    'tests/unit/server/api/v1/skills/update-pending.spec.ts',
+    'tests/unit/server/api/v1/skills/update-check.spec.ts',
+    'tests/unit/workers/skill-import.spec.ts',
+    'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
+    'tests/unit/server/utils/artifacts/viewer-storage-request.spec.ts',
+    'tests/integration/api/artifact-complete.spec.ts',
+    'tests/integration/api/artifact-storage.spec.ts',
+  ]
+
+  const skillsManagerTests = [
+    'tests/unit/pages/chats/skills/index.spec.ts',
+    'tests/unit/composables/skills-library.spec.ts',
+    'tests/unit/composables/skill-editor.spec.ts',
+    'tests/unit/utils/skill-ui-utils.spec.ts',
+    'tests/unit/utils/skill-findings-rescan.spec.ts',
+    'tests/unit/utils/skill-editor.spec.ts',
+    'tests/unit/utils/skills/update-changes.spec.ts',
+    'tests/unit/utils/skills/compose.spec.ts',
+    'tests/unit/utils/skills/mode.spec.ts',
+    'tests/unit/utils/skills/release.spec.ts',
+    'tests/unit/components/Profile/Skills/CreateDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/DetailHeader.spec.ts',
+    'tests/unit/components/Profile/Skills/DetailPanel.spec.ts',
+    'tests/unit/components/Profile/Skills/DiffView.spec.ts',
+    'tests/unit/components/Profile/Skills/EditDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/EditorPane.spec.ts',
+    'tests/unit/components/Profile/Skills/FileTree.spec.ts',
+    'tests/unit/components/Profile/Skills/FindingGroups.spec.ts',
+    'tests/unit/components/Profile/Skills/JevSection.spec.ts',
+    'tests/unit/components/Profile/Skills/ProblemList.spec.ts',
+    'tests/unit/components/Profile/Skills/FileViewer.spec.ts',
+    'tests/unit/components/Profile/Skills/Filters.spec.ts',
+    'tests/unit/components/Profile/Skills/ImportDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/FrontmatterFields.spec.ts',
+    'tests/unit/components/Profile/Skills/List.spec.ts',
+    'tests/unit/components/Profile/Skills/ModeControl.spec.ts',
+    'tests/unit/components/Profile/Skills/ModelView.spec.ts',
+    'tests/unit/components/Profile/Skills/NewMenu.spec.ts',
+    'tests/unit/components/Profile/Skills/ScriptsDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/Settings.spec.ts',
+    'tests/unit/components/Profile/Skills/RenameForm.spec.ts',
+    'tests/unit/components/Profile/Skills/Review.spec.ts',
+    'tests/unit/components/Profile/Skills/Row.spec.ts',
+    'tests/unit/components/Profile/Skills/UpdateReview.client.spec.ts',
+    'tests/unit/components/Profile/Skills/WorkspaceDialog.client.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/e2e/history/skills.spec.ts',
+  ]
+
+  const skillsRuntimeTests = [
+    ...skillSelectionTests,
+    'tests/unit/utils/skills-policy.spec.ts',
+    'tests/unit/utils/skills/mode.spec.ts',
+    'tests/unit/server/utils/skills/runtime/text.spec.ts',
+    'tests/unit/server/utils/skills/runtime/catalog.spec.ts',
+    'tests/unit/server/utils/skills/runtime/persist.spec.ts',
+    'tests/unit/server/utils/skills/runtime/invocation.spec.ts',
+    'tests/unit/server/utils/skills/runtime/tools.spec.ts',
+    'tests/unit/server/utils/skills/runtime/tools-notice.spec.ts',
+    'tests/unit/utils/skills/runtime-notice.spec.ts',
+    'tests/unit/server/utils/skills/runtime/reinject.spec.ts',
+    'tests/unit/server/utils/skills/runtime/send.spec.ts',
+    'tests/unit/server/utils/skills/runtime/project.spec.ts',
+    'tests/unit/server/utils/skills/project/pins.spec.ts',
+    'tests/unit/server/api/v1/projects/project-skills.spec.ts',
+    'tests/unit/server/mcp/tools/set-project-skills.spec.ts',
+    'tests/unit/server/utils/mcp/private/project-skills.spec.ts',
+    'tests/unit/utils/projects/lifecycle.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/unit/utils/chats/request-schema.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/integration/server/image-generation.spec.ts',
+    'tests/integration/server/model-turns.spec.ts',
+    'tests/integration/api/chats-skills.spec.ts',
+  ]
+
+  const skillsScriptsTests = [
+    'tests/unit/utils/skills/scripts.spec.ts',
+    'tests/unit/server/utils/skills/provider-upload.spec.ts',
+    'tests/unit/server/utils/skills/send-container-options.spec.ts',
+    'tests/unit/server/utils/skills/scripts-toggle.spec.ts',
+    'tests/unit/server/utils/skills/cleanup.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/unit/utils/features/skills-registry.spec.ts',
+    'tests/unit/utils/code-execution/send.spec.ts',
+    'tests/integration/api/chats-code-execution.spec.ts',
+  ]
+
+  const skillsComposerTests = [
+    'tests/unit/utils/skill-step.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/composer-skill-invocation.spec.ts',
+    'tests/unit/composables/composer-skills.spec.ts',
+    'tests/unit/composables/composer-commands.spec.ts',
+    'tests/unit/utils/composer-command.spec.ts',
+    'tests/unit/components/ChatInput/CommandPicker.spec.ts',
+    'tests/unit/components/ChatInput/CommandMirror.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/integration/api/shared-chat-view.spec.ts',
+    'tests/unit/components/Chat/SkillInvocation.spec.ts',
+    'tests/unit/components/Chat/SkillPreview.client.spec.ts',
+    'tests/unit/components/Projects/SkillsCard.spec.ts',
+    'tests/unit/components/ChatInput/SkillPicker.client.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/pages/chats/skills/index.spec.ts',
+    'tests/e2e/chat/skills.spec.ts',
+  ]
+
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
   ]
@@ -1322,6 +2038,36 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Sidebar.spec.ts',
     'tests/unit/assets/css/main.spec.ts',
     'tests/e2e/side-panel.spec.ts',
+  ]
+
+  const codeExecutionTests = [
+    'tests/unit/components/Chat/CodeExecution.spec.ts',
+    'tests/unit/components/Chat/CodeExecution/Detail.spec.ts',
+    'tests/unit/utils/code-execution-ui.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+  ]
+
+  const codeExecutionServerTests = [
+    'tests/unit/utils/code-execution/compact.spec.ts',
+    'tests/unit/utils/code-execution/container-files.spec.ts',
+    'tests/unit/utils/code-execution/document-validation.spec.ts',
+    'tests/unit/utils/code-execution/file-types.spec.ts',
+    'tests/unit/utils/code-execution/input-files.spec.ts',
+    'tests/unit/utils/code-execution/message-parts.spec.ts',
+    'tests/unit/utils/code-execution/persist-container-files.spec.ts',
+    'tests/unit/utils/code-execution/openai-citations.spec.ts',
+    'tests/unit/utils/code-execution/provider-cleanup.spec.ts',
+    'tests/unit/utils/code-execution/request-schema.spec.ts',
+    'tests/unit/utils/code-execution/sdk-request-shape.spec.ts',
+    'tests/unit/utils/code-execution/send.spec.ts',
+    'tests/unit/utils/code-execution/shared.spec.ts',
+    'tests/unit/utils/code-execution/stream.spec.ts',
+    'tests/unit/utils/ai/code-execution-cost.spec.ts',
+    'tests/unit/utils/providers/code-execution-models.spec.ts',
+    'tests/unit/utils/providers/code-execution-tools.spec.ts',
+    'tests/integration/api/chats-code-execution.spec.ts',
   ]
 
   const chatContextTests = [
@@ -1467,11 +2213,11 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/image-input-support\.ts$/,
+      pattern: /^app\/composables\/file-input-support\.ts$/,
       tests: [
         ...imageGenerationTests,
         ...filesModuleTests,
-        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/composables/file-input-support.spec.ts',
         'tests/unit/components/Chat/GeneratedImage.spec.ts',
       ],
     },
@@ -1480,12 +2226,32 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...filesModuleTests,
         'tests/unit/utils/input-media-types.spec.ts',
-        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/composables/file-input-support.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/utils/chats/input-file-support.spec.ts',
         'tests/integration/server/assistant-files.spec.ts',
         'tests/integration/api/chats-carried-files.spec.ts',
         'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/(file-delivery|office-files)\.ts$/,
+      tests: [
+        ...filesModuleTests,
+        'tests/unit/composables/file-input-support.spec.ts',
+        'tests/unit/utils/chats/input-file-support.spec.ts',
+        'tests/unit/utils/features/registry.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/chats\/file-delivery-check\.ts$/,
+      tests: [
+        'tests/unit/server/utils/chats/file-delivery-check.spec.ts',
+        'tests/integration/api/chats-office-attachments.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+        'tests/integration/api/chats-gateway.spec.ts',
       ],
     },
     {
@@ -1672,7 +2438,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/utils\/generated-images\.ts$/,
-      tests: ['tests/unit/utils/generated-images.spec.ts'],
+      tests: [
+        'tests/unit/utils/generated-images.spec.ts',
+        'tests/unit/utils/message-part-spacing.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/utils\/(message-part-spacing|artifact-parts|code-execution-ui)\.ts$/,
+      tests: [
+        'tests/unit/utils/message-part-spacing.spec.ts',
+        'tests/unit/utils/artifact-parts.spec.ts',
+      ],
     },
     {
       pattern: /^app\/utils\/chat-failure-notice\.ts$/,
@@ -1853,6 +2629,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/server/utils/legal/consent.spec.ts',
         'tests/unit/server/utils/legal/consent-text-version.spec.ts',
+        'tests/unit/server/utils/legal/consent-version.spec.ts',
         'tests/integration/api/legal-consent.spec.ts',
         'tests/unit/utils/memory/resolve-model.spec.ts',
         'tests/unit/utils/projects/memory-refresh.spec.ts',
@@ -1900,8 +2677,22 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/mcp-version-guard.spec.ts'],
     },
     {
-      pattern: /^(config\/(mcp-surface\.json|mcp-server\.ts)|server\/(mcp\/tools\/.*|utils\/mcp\/tool-scopes)\.ts)$/,
+      pattern: /^(config\/(mcp-surface\.json|mcp-server\.ts)|server\/(mcp\/tools\/.*|utils\/(mcp\/tool-scopes|besidka-tools\/.*))\.ts)$/,
       tests: ['tests/unit/config/mcp-surface.spec.ts'],
+    },
+    {
+      pattern: /^(config\/besidka-tools-surface\.json|server\/(mcp\/tools\/.*|utils\/(mcp\/tool-scopes|besidka-tools\/.*))\.ts)$/,
+      tests: besidkaToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/besidka-tools\/(permissions|route|registry|types)\.ts|server\/utils\/tool-approval\/continuation\.ts|server\/api\/v1\/besidka-tools\/.*\.ts|app\/(composables|utils)\/besidka-tool-permissions\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|app\/components\/Search\/Modal\.client\.vue|app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|tests\/setup\/helpers\/(memory-extraction-db|connectors-oauth|skills-route)\.ts)$/,
+      tests: besidkaToolPermissionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy|grants)\.ts|app\/components\/Chat\/ContextPanelApprovals\.vue|app\/components\/Profile\/BesidkaTools\/Permissions\.vue|app\/composables\/tool-approval-grants\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep|\/ApprovalDetails)?\.vue|server\/utils\/memory\/extract-input\.ts|shared\/utils\/tool-approval-parts\.ts|app\/utils\/(tool-approval-step|reasoning|reasoning-step-icons)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
+      tests: besidkaToolsChatTests,
     },
     {
       pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,
@@ -2056,6 +2847,33 @@ export function getAffectedTests(changedFiles) {
       tests: contextMenuTests,
     },
     {
+      pattern:
+        /^app\/(composables\/(file-download|ios-in-app-browser)|utils\/file-share)\.ts$/,
+      tests: [
+        'tests/unit/composables/file-download.spec.ts',
+        'tests/unit/utils/file-share.spec.ts',
+        'tests/unit/composables/ios-in-app-browser.spec.ts',
+        'tests/unit/utils/artifact-export.spec.ts',
+        'tests/unit/composables/diagram-export.spec.ts',
+        'tests/unit/components/prose/MermaidActionMenu.spec.ts',
+        'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
+        'tests/unit/components/History/DocumentRow.spec.ts',
+        'tests/unit/components/Chat/Files.spec.ts',
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+        'tests/unit/components/Chat/ImagePreview.client.spec.ts',
+        'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+        'tests/unit/components/Chat/DocumentPreview.spec.ts',
+        'tests/unit/components/Chat/Document.spec.ts',
+        'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+        'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^app\/(composables\/top-modal-dialog\.ts|components\/ui\/Messages\.vue)$/,
+      tests: topModalDialogTests,
+    },
+    {
       pattern: /^app\/composables\/message-copy\.ts$/,
       tests: [
         'tests/unit/composables/message-copy.spec.ts',
@@ -2166,6 +2984,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^(server\/utils\/jev\/.*|shared\/utils\/jev-(policy|schemas))\.ts$/,
       tests: [
         ...jevFoundationTests,
+        ...skillJevScreeningTests,
         ...pastChatRetrievalTests,
         ...profileSettingsTests,
         ...typesafeRolesUiTests,
@@ -2242,6 +3061,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^wrangler\.jsonc$/,
       tests: [
         'tests/unit/config/wrangler-search-rates.spec.ts',
+        'tests/unit/config/wrangler-skills-rate-limit.spec.ts',
         'tests/unit/config/wrangler-previews.spec.ts',
         'tests/unit/config/wrangler-legal-notice-sweep.spec.ts',
         'tests/unit/utils/consents-rate-limit.spec.ts',
@@ -2290,6 +3110,20 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/components\/Chat\/CodeExecution(\/.*)?\.vue|app\/utils\/code-execution-ui\.ts|shared\/utils\/code-execution\.ts)$/,
+      tests: [...codeExecutionTests, ...chatInputToolsTests],
+    },
+    {
+      pattern:
+        /^(server\/utils\/code-execution\/.*\.ts|server\/utils\/ai\/code-execution-cost\.ts|server\/utils\/providers\/(anthropic|openai|google)\.ts|server\/utils\/chats\/request-schema\.ts|providers\/(anthropic|openai|google)\.ts|shared\/utils\/code-execution\.ts|nuxt\.config\.ts|wrangler\.jsonc)$/,
+      tests: codeExecutionServerTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$/,
+      tests: ['tests/integration/api/chats-code-execution.spec.ts'],
+    },
+    {
+      pattern:
         /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-pin|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
       tests: chatContextTests,
     },
@@ -2306,6 +3140,36 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/pages/chats/history/index.spec.ts',
         'tests/unit/utils/search.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(packages\/doc-renderer\/|tests\/fixtures\/documents\/|tests\/setup\/helpers\/documents\.ts$|scripts\/(third-party-notices|doc-renderer-smoke)\.mjs$|shared\/utils\/files\.ts$|app\/utils\/knowledge-zip\.ts$)/,
+      tests: documentRendererTests,
+    },
+    {
+      pattern:
+        /^(app\/(components\/Chat\/(Document|DocumentPreview|Document\/.*)\.vue|composables\/(document-(flow|render)|chat)\.ts|workers\/document-render\.ts|utils\/document-(parts|ui)\.ts|types\/document-render\.d\.ts)|server\/(api\/v1\/documents\/.*|capabilities\/(documents|index)\.ts|db\/schemas\/documents\.ts|utils\/documents\/(?!renderer\.ts$).*|utils\/chats\/(persist-user-message|share|share-public-parts|branch|lifecycle)\.ts|utils\/files\/(chat-deletion-cleanup|cleanup-expired-files|delete-files)\.ts|utils\/ai\/tool-loop\.ts|utils\/account\/purge-user-data\.ts|api\/v1\/shared\/\[slug\]\/index\.get\.ts|api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|api\/v1\/chats\/history\/delete\/bulk\.post\.ts)|shared\/utils\/(documents|message-metadata)\.ts|tests\/setup\/helpers\/documents-db\.ts)$/,
+      tests: documentsChatTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/ChatInput\/Files\/Modal(\.client)?\.vue|app\/components\/ChatInput\/Files\/Modal\/Select(\/.*)?\.vue|app\/composables\/(file-manager|document-preview)\.ts|app\/utils\/file-manager-sources\.ts|app\/types\/file-manager\.d\.ts|server\/api\/v1\/files\/index\.get\.ts|server\/utils\/files\/source-filter\.ts|tests\/setup\/helpers\/knowledge-db\.ts)$/,
+      tests: documentsFileManagerTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/documents\/index\.vue|app\/components\/History\/(DocumentRow|BoxTabs|FilterButtons|PageShell)\.vue|app\/composables\/(documents-library|document-preview)\.ts|app\/components\/Search\/Modal\.client\.vue|server\/api\/v1\/documents\/index\.get\.ts|server\/utils\/documents\/library\.ts|shared\/utils\/documents\.ts)$/,
+      tests: documentsLibraryTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/chats\/test\/.*\.ts|server\/utils\/chats\/test\/document-.*\.ts|tests\/e2e\/chat\/create-document\.spec\.ts)$/,
+      tests: ['tests/e2e/chat/create-document.spec.ts'],
+    },
+    {
+      pattern:
+        /^(workers\/doc-renderer\/|packages\/doc-renderer\/|server\/utils\/documents\/renderer\.ts$|wrangler\.jsonc$|tests\/setup\/helpers\/documents\.ts$|\.github\/workflows\/production\.yml$)/,
+      tests: documentRendererWorkerTests,
     },
     {
       pattern: /^app\/assets\/css\/main\.css$/,
@@ -2380,7 +3244,7 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
-      pattern: /^app\/composables\/(chat-files|file-manager(-project-groups)?)\.ts$/,
+      pattern: /^app\/composables\/(chat-files|xls-convert|file-manager(-project-groups)?)\.ts$/,
       tests: filesModuleTests,
     },
     {
@@ -2400,12 +3264,13 @@ export function getAffectedTests(changedFiles) {
       tests: chatTestEndpointTests,
     },
     {
-      pattern: /^server\/utils\/chats\/errors\.ts$/,
+      pattern: /^server\/utils\/chats\/(errors|provider-error-summary)\.ts$/,
       tests: [
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
         'tests/unit/utils/research/errors.spec.ts',
         'tests/unit/utils/chats/errors.spec.ts',
+        'tests/unit/server/utils/chats/provider-error-summary.spec.ts',
       ],
     },
     {
@@ -2504,7 +3369,11 @@ export function getAffectedTests(changedFiles) {
       tests: historyProjectsTests,
     },
     {
-      pattern: /^app\/utils\/(files|upload-with-progress)\.ts$/,
+      pattern: /^app\/utils\/(files|file-delivery-hints|upload-with-progress|xls-convert)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^(app\/workers\/xls-convert\.ts|app\/types\/xls-convert\.d\.ts)$/,
       tests: filesModuleTests,
     },
     {
@@ -2541,6 +3410,101 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/connectors-policy\.ts|server\/utils\/net\/(safe-url|safe-fetch|own-hosts)\.ts|server\/utils\/auth-hosts\.ts|server\/utils\/skills\/import\/github\.ts)$/,
+      tests: connectorsSafeFetchTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-catalog\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/registry-(entry|sync|search)\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+      tests: connectorsRegistryTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(connectors-policy|connectors-slug)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_known_rogue\/.*)$/,
+      tests: connectorsStorageTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/connectors-policy\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/.*\.ts|server\/routes\/connectors\/.*\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/utils\/request-public-origin\.ts|server\/utils\/auth-hosts\.ts|server\/utils\/legal\/consent\.ts|server\/utils\/account\/purge-user-data\.ts|server\/plugins\/evlog-request-observability\.ts|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock)\.ts)$/,
+      tests: connectorsOAuthTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|server\/utils\/connectors\/.*\.ts|server\/api\/v1\/connectors\/index\.get\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|connectors\/.*)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(branch|share|share-public-parts|persist-user-message)\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|server\/api\/v1\/chats\/\[slug\]\/share\/index\.get\.ts|server\/utils\/chats\/context\/.*\.ts|server\/utils\/memory\/extract-input\.ts|tests\/setup\/helpers\/(mock-mcp-server|connectors-oauth|skills-route|skills-public-id-mock)\.ts|package\.json)$/,
+      tests: connectorsChatToolsTests,
+    },
+    {
+      pattern:
+        /^(server\/(mcp\/tools|utils\/besidka-tools)\/.*\.ts|package\.json)$/,
+      tests: toolApprovalSpikeTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|connectors-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/memory\/tools\/memory-tools\.ts|server\/utils\/knowledge\/context\.ts|app\/utils\/labs\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/connectors\/(send-tools|audit)\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/(artifacts|documents)\/message-parts\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/Reasoning\.vue|app\/utils\/connector-step\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts)$/,
+      tests: toolApprovalRequestTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/tool-approval-(policy|parts)\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/chats\/request-schema\.ts|server\/utils\/connectors\/(send-tools|audit|store)\.ts|server\/utils\/ai\/message-usage\.ts|app\/composables\/(chat|tool-approvals)\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts|package\.json)$/,
+      tests: toolApprovalContinuationTests,
+    },
+    {
+      pattern:
+        /^(app\/utils\/(tool-approval-step|connector-step)\.ts|app\/composables\/(chat|tool-approvals|side-panel)\.ts|app\/components\/Chat\/Reasoning\.vue|app\/components\/Chat\/Reasoning\/Approval(Step|Details)\.vue|app\/components\/ChatInput\/ToolApprovalChip\.vue|app\/components\/ChatInput\.client\.vue|shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|chat-test-errors)\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+      tests: toolApprovalUiTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/chats\/\[slug\]\/tool-approvals\/.*\.ts|server\/utils\/tool-approval\/(grants|send|policy|continuation)\.ts|server\/utils\/connectors\/(send-tools|store|route|body)\.ts|shared\/types\/tool-approval-grants\.d\.ts|app\/composables\/tool-approval-grants\.ts|app\/components\/Chat\/(ContextPanel|ContextPanelApprovals|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/utils\/tool-approval-step\.ts|shared\/utils\/tool-approval-parts\.ts|server\/utils\/chats\/(branch|share-public-parts)\.ts|server\/utils\/memory\/tools\/memory-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts)$/,
+      tests: toolApprovalGrantsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/tool-approval-policy\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/hkdf\.ts|server\/utils\/connectors\/audit\.ts|server\/db\/schemas\/tool-approvals\.ts|server\/plugins\/(tool-approval-claim-sweep|connector-audit-prune)\.ts|shared\/utils\/connectors-policy\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/(memory-extraction-db|skills-public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_chunky_gabe_jones\/.*)$/,
+      tests: toolApprovalPolicyTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
+      tests: connectorsChatToolsUiTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills-policy\.ts|server\/db\/schemas\/skills\.ts|server\/utils\/skills\/.*\.ts|server\/plugins\/skills-storage-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_normal_the_professor\/.*)$/,
+      tests: skillsStorageTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/.*\.ts|shared\/utils\/skills-policy\.ts|server\/plugins\/skills-update-sweep\.ts|server\/utils\/skills\/(import\/.*|pending|usage|ids|storage)\.ts|server\/api\/v1\/skills\/.*\.ts|app\/workers\/skill-import\.ts|app\/types\/skill-import\.d\.ts|tests\/setup\/helpers\/(skill-archives|skills-route|skills-db|skills-public-id-mock|github-mock)\.ts|tests\/utils\/skills-corpus\.ts|tests\/fixtures\/skills\/.*)$/,
+      tests: skillsImportTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending|lookalike-context)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
+      tests: skillsVersionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/scripts\.ts|server\/utils\/skills\/(provider-upload|send-container-options|scripts-toggle|cleanup)\.ts|server\/api\/v1\/skills\/\[id\]\/scripts\/.*\.ts|server\/api\/v1\/profiles\/keys\/anthropic\/uploads\/.*\.ts|server\/utils\/tool-approval\/(policy|continuation)\.ts|server\/utils\/besidka-tools\/chat-settings\.ts|shared\/utils\/features\/registry\.ts)$/,
+      tests: skillsScriptsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/skills\/(runtime|runtime-notice|jev-findings|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(runtime|project)\/.*\.ts|server\/db\/schemas\/project-skills\.ts|server\/api\/v1\/projects\/\[id\]\/skills\/.*\.ts|server\/utils\/projects\/lifecycle\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts|model-turns)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/shared\/\[slug\]\/index\.get\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
+      tests: skillsRuntimeTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Chat\/(Reasoning|Reasoning\/SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/utils\/reasoning\.ts|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills|composer-commands|markdown-textarea)\.ts|app\/utils\/(skill-step|chat-input-tiles|composer-command)\.ts|app\/components\/Projects\/SkillsCard\.vue|app\/pages\/chats\/projects\/\[id\]\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(CommandPicker|CommandMirror)\.vue|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+      tests: skillsComposerTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor|skill-jev-screen)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes|jev-findings|runtime-notice)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+      tests: skillsManagerTests,
     },
     {
       pattern:
@@ -2608,6 +3572,16 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/pages\/profile\/(preferences|settings)\.vue$/,
       tests: preferencesPageTests,
+    },
+    {
+      pattern:
+        /^(app\/utils\/reasoning-step-icons\.ts|app\/components\/Chat\/Reasoning(\/(StepIcon|ApprovalStep|ConnectorStep|MemoryStep|SearchStep|SkillStep))?\.vue|app\/composables\/composer-connectors\.ts|app\/pages\/shared\/\[slug\]\.vue|server\/utils\/chats\/test\/reasoning-icons-fixture\.ts|shared\/utils\/chat-test-errors\.ts)$/,
+      tests: reasoningStepIconsTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/connectors\/(icon|send-tools)\.ts|server\/api\/v1\/connectors\/\[id\]\/icon\.get\.ts|server\/api\/v1\/connectors\/delete\/bulk\.post\.ts|server\/utils\/net\/safe-fetch\.ts|shared\/utils\/connectors-policy\.ts|tests\/setup\/helpers\/(connector-icon-kv|mock-mcp-server)\.ts)$/,
+      tests: connectorIconTests,
     },
     {
       pattern: /^app\/(utils\/reasoning-icons\.ts|components\/Profile\/Security\/SectionCard\.vue)$/,
@@ -2701,7 +3675,33 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/api\/v1\/storage\/index\.get\.ts$/,
-      tests: filesModuleTests,
+      tests: [...filesModuleTests, ...storageQuotaTests, ...storagePageTests],
+    },
+    {
+      pattern: /^server\/utils\/storage\/.*\.ts$/,
+      tests: [...storageQuotaTests, ...storagePageTests],
+    },
+    {
+      pattern: /^(shared\/types\/files\.d\.ts|tests\/setup\/mocks\/api\.ts)$/,
+      tests: [...storageQuotaTests, ...storagePageTests],
+    },
+    {
+      pattern:
+        /^server\/utils\/(files\/(file-governance|persist-file|upload-request)|artifacts\/store|knowledge\/(ingest|quota)|documents\/(create-document-tool|finalize)|ai\/(artifact-tools|image-generation(-errors)?)|mcp\/private\/(settings|files|documents|artifacts))\.ts$/,
+      tests: storageQuotaTests,
+    },
+    {
+      pattern: /^server\/(mcp\/tools|utils\/besidka-tools\/tools)\/get-settings\.ts$/,
+      tests: storageQuotaTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/skills\/(usage|import\/commit|import\/update-check|pending|cleanup|versions\/(create|write|statements))\.ts$/,
+      tests: storageQuotaTests,
+    },
+    {
+      pattern: /^app\/(pages\/profile\/storage\.vue|utils\/storage-categories\.ts)$/,
+      tests: storagePageTests,
     },
     {
       pattern: /^server\/utils\/files\/.*\.ts$/,
@@ -2972,7 +3972,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)\.ts$/,
+      pattern: /^(server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)|shared\/utils\/secret-patterns)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,
@@ -3162,6 +4162,14 @@ export function getAffectedTests(changedFiles) {
       tests: mcpArtifactTests,
     },
     {
+      pattern: /^server\/(mcp\/tools\/create-document|utils\/besidka-tools\/tools\/create-document|utils\/mcp\/private\/documents)\.ts$/,
+      tests: [
+        'tests/unit/server/mcp/tools/create-document.spec.ts',
+        'tests/unit/server/utils/mcp/private-documents.spec.ts',
+        'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/(turnstile|auth-hosts)\.ts$/,
       tests: ['tests/unit/server/utils/turnstile.spec.ts'],
     },
@@ -3190,13 +4198,23 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/a\/index\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/(artifact-share-(page|location)|scroll-within)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/pages\/artifacts\/\[token\]\.vue|app\/layouts\/artifact-share\.vue|app\/components\/Artifact\/.*\.vue|app\/components\/Chat\/Artifact\/(ShareModal|ReportButton|Detail|Frame)\.client\.vue|app\/composables\/(artifacts|artifact-storage|artifact-bridge|has-sidebar)\.ts|app\/utils\/(artifact-share-(page|location)|scroll-within)\.ts|app\/plugins\/cloudflare-web-analytics\.client\.ts|app\/app\.vue|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsShareUiTests,
     },
     {
       pattern:
-        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+        /^(app\/components\/Shared\/ExitLink\.vue|app\/pages\/shared\/\[slug\]\.vue)$/,
+      tests: sharedExitLinkTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/artifacts\/index\.vue|app\/components\/Artifact\/KindFilter\.vue|app\/composables\/artifacts-library\.ts|app\/components\/History\/(ArtifactRow|FilterButtons|PageShell|ActionsToolbar)\.vue|app\/components\/Search\/Modal\.client\.vue|app\/components\/Chat\/ContextPanel\.vue|server\/api\/v1\/artifacts\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
       tests: artifactsLibraryTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/chats\/shared\/index\.vue|app\/components\/History\/(SharedArtifactRow|BoxTabs|PageShell)\.vue|app\/composables\/shared-artifacts\.ts|server\/api\/v1\/artifacts\/shared\/index\.get\.ts|server\/utils\/artifacts\/queries\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: sharedHistoryTests,
     },
     {
       pattern:
@@ -3207,6 +4225,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/ai\/artifact-tools\.ts$|server\/utils\/artifacts\/|server\/capabilities\/|server\/utils\/features\/send-features\.ts$|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts$|server\/utils\/chats\/persist-user-message\.ts$|server\/utils\/ai\/(tool-loop|search-answer-continuation)\.ts$|shared\/utils\/(artifacts|message-metadata)\.ts$)/,
       tests: artifactsChatTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/(Artifact\/KindFilter|ChatInput\/ArtifactPicker\.client|Chat\/ArtifactAttachments|History\/ArtifactRow|ChatInput\.client|ChatInput\/ToolsMenu(\.client|\/Content))\.vue|app\/composables\/(artifact-fix|artifacts-library|chat-input-prefill|chat)\.ts|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/pages\/chats\/(new|\[slug\])\.vue|server\/utils\/artifacts\/(attachments|chat-artifacts|context)\.ts|server\/utils\/chats\/(request-schema|share-public-parts)\.ts|server\/utils\/chats\/context\/(artifacts|sections)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post|shares\/\[slug\]\/branch\.post)\.ts|shared\/utils\/artifacts\.ts)$/,
+      tests: artifactsAttachTests,
     },
     {
       pattern:
@@ -3357,7 +4380,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/server/plugins/landing-cache-control.spec.ts'],
     },
     {
-      pattern: /^(server\/(mcp\/.*|utils\/mcp\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
+      pattern: /^(server\/(mcp\/.*|utils\/(mcp|besidka-tools)\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
       tests: [
         'tests/unit/server/utils/content/minimark.spec.ts',
         'tests/unit/server/utils/mcp/cached-content.spec.ts',
@@ -3379,7 +4402,17 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
+    },
+    {
+      pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
+      tests: mcpConnectorTests,
+    },
+    {
+      pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write|statements|route)))\.ts$/,
+      tests: mcpSkillTests,
     },
     {
       pattern: /^server\/utils\/settings\/apply-user-settings\.ts$/,
@@ -3413,6 +4446,8 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/mcp/tools/create-project.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
     },
     {
@@ -3485,6 +4520,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/utils\/account\/security-emails\.ts|server\/utils\/legal\/notice-sender\.ts|shared\/utils\/account-emails\.ts|content\/legal\/privacy-policy\.md)$/,
       tests: ['tests/unit/content/account-email-list.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/legal\/(admin|consent|consent-version|notice-approvals|notice-sweep|purge)\.ts|server\/api\/v1\/admin\/legal\/.*\.ts|server\/db\/schemas\/legal-approvals\.ts|shared\/utils\/legal-admin-schemas\.ts|server\/utils\/account\/purge-user-data\.ts|app\/pages\/admin\/legal\.vue|app\/layouts\/admin\.vue|\.drizzle\/migrations\/20261115103710_mute_vision\/migration\.sql)$/,
+      tests: legalAdminTests,
     },
     {
       pattern: /^(server\/utils\/legal\/(notice-sweep|notice-email|notice-sender)\.ts|server\/plugins\/legal-notice-sweep\.ts|server\/db\/schemas\/legal-notice-deliveries\.ts|server\/utils\/email(-template)?\.ts|app\/emails\/LegalNoticeEmail\.vue|shared\/utils\/legal-notices\.ts)$/,

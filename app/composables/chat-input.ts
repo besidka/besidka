@@ -22,7 +22,8 @@ export function useChatInput() {
   const {
     isImageInputSupported,
     canAttachMediaType,
-  } = useImageInputSupport()
+    fileDeliveryContext,
+  } = useFileInputSupport()
   const { gatewayModel } = useSelectedModelInfo()
   const gatewayCatalogCache = useGatewayCatalogCache()
 
@@ -235,6 +236,18 @@ export function useChatInput() {
   })
 
   /**
+   * Provider-native code execution is a direct-provider capability only: the
+   * curated model lists it in `tools`, and no gateway model ever does.
+   */
+  const isCodeExecutionSupported = computed<boolean>(() => {
+    if (selection.value.source === 'gateway') {
+      return false
+    }
+
+    return !!selectedModel.value?.tools.includes('code_execution')
+  })
+
+  /**
    * A dedicated image-generation gateway model has no curated
    * `Model.imageGeneration` entry to read (the curated catalog only covers
    * direct providers, and a gateway model id like
@@ -421,8 +434,10 @@ export function useChatInput() {
     webSearchProviderOptions,
     isImageGenerationSupported,
     isImageGenerationRequired,
+    isCodeExecutionSupported,
     isImageInputSupported,
     canAttachMediaType,
+    fileDeliveryContext,
     reasoningCapability,
     reasoningMode,
     reasoningMenuLevels,

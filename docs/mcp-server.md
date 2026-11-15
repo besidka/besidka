@@ -83,16 +83,21 @@ never data.
 | `memory:read` | `list_memory` |
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
-| `files:write` | `create_file`, `rename_file` |
+| `files:write` | `create_file`, `create_document`, `rename_file` |
 | `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
 | `artifacts:read` | `list_artifacts`, `get_artifact`, `list_artifact_shares` |
 | `artifacts:write` | `create_artifact`, `update_artifact`, `revoke_artifact_shares` |
 | `artifacts:share` | `share_artifact` (publishes, see exclusion 2) |
+| `connectors:read` | `list_connectors`, `get_connector` |
+| `connectors:write` | `add_connector` (created switched off), `update_connector_tools` (only reduces), `delete_connectors` (destructive; the one delete that is not under `data:delete`) |
+| `skills:read` | `list_skills`, `get_skill` |
+| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill), `delete_skills` (destructive; the second delete that is not under `data:delete`), `set_project_skills` (5.1.0, replaces the skills pinned to a project; destructive because omitted pins are removed; never changes a skill) |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
-The per-user surface has 32 tools: the original thirteen plus 19 added for
+The first per-user surface had 32 tools (the artifact tools and
+`create_document` came later, see below): the original thirteen plus 19 added for
 UI parity (six new scopes: `files:read`, `settings:read`, `chats:write`,
 `files:write`, `settings:write` and `data:delete`, and more tools behind
 `projects:write` and `memory:write`). Write scopes are off by
@@ -104,7 +109,9 @@ labels in `app/components/OAuth/ScopeLabel.vue`.
 
 `admin:features` shipped in 2.0.0 and the artifacts scopes in 3.0.0 (see
 [The artifacts scopes](#the-artifacts-scopes)); their rows below are kept for
-the design record. The other rows are not built yet.
+the design record, the connectors rows shipped in 4.0.0 (see
+[The connectors scopes](#the-connectors-scopes)) and the skills rows in 5.0.0
+(see [The skills scopes](#the-skills-scopes)).
 Each is a new scope, so each ships with a major version bump
 (consent is stored by scope name, and a new tool under an existing scope
 would reach existing clients silently). The design is in
@@ -116,10 +123,10 @@ would reach existing clients silently). The design is in
 | `artifacts:read` | read, built in 3.0.0 | `list_artifacts`, `get_artifact`, `list_artifact_shares` | A-8 |
 | `artifacts:write` | write, built in 3.0.0 | `create_artifact`, `update_artifact`, `revoke_artifact_shares` | A-8 |
 | `artifacts:share` | write, publishes, built in 3.0.0 | `share_artifact` (see exclusion 2) | A-8 |
-| `connectors:read` | read | `list_connectors`, `get_connector` | C-9 |
-| `connectors:write` | write | `add_connector` (created disabled), `update_connector_tools`, `delete_connectors` (destructive) | C-9 |
-| `skills:read` | read | `list_skills`, `get_skill` | S-6 |
-| `skills:write` | write | `create_skill`, `update_skill` (both leave the skill disabled) | S-6 |
+| `connectors:read` | read, built in 4.0.0 | `list_connectors`, `get_connector` | C-9 |
+| `connectors:write` | write, built in 4.0.0 | `add_connector` (created disabled), `update_connector_tools`, `delete_connectors` (destructive) | C-9 |
+| `skills:read` | read, built in 5.0.0 | `list_skills`, `get_skill` | S-6 |
+| `skills:write` | write, built in 5.0.0 | `create_skill`, `update_skill`, `rename_skill` (all leave the skill disabled), `delete_skills` (destructive), `set_project_skills` (5.1.0) | S-6, S-15 |
 
 `list_my_features` (P0-8) goes under the existing `settings:read`, because
 it only reads the caller's own state. Deletes of the new artifact and skill
@@ -141,8 +148,21 @@ history (the `DESTRUCTIVE_TOOLS` list in the spec): `delete_memory`,
 `update_project`, `delete_project`, `update_project_knowledge_item`,
 `delete_project_knowledge_items`, `rename_file`, `delete_files`,
 `reset_memory`, `update_settings`, `set_feature_access`,
-`revoke_artifact_shares` and `delete_artifacts`. `update_artifact` is not on
-the list because every earlier version is kept.
+`revoke_artifact_shares`, `delete_artifacts`, `delete_connectors`,
+`update_skill` and `delete_skills`.
+`update_artifact` is not on the list because every earlier version is kept.
+`update_connector_tools` is not either: it only reduces what a connector may
+do and removes no user content. `update_skill` is on the list because it
+switches the skill off and stages a replacement of its files; `rename_skill`
+is not, because it writes a new version and keeps the old ones.
+
+Since 5.1.0 the surface has 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
+`skills:read` and `skills:write` scopes were added to the
+50 of 4.0.0 (see [The skills scopes](#the-skills-scopes)).
+
+Since 4.0.0 the surface had 50 private tools: five connector tools under the
+new `connectors:read` and `connectors:write` scopes were added to the 45 of
+3.x (see [The connectors scopes](#the-connectors-scopes)).
 
 Since 3.0.0 the surface has 44 private tools (eight artifact tools under
 `artifacts:read`, `artifacts:write`, `artifacts:share` and `data:delete`).
@@ -154,6 +174,152 @@ The two admin list tools are reads under a write-class scope:
 `isMcpWriteTool` excludes them (`READ_TOOLS_UNDER_WRITE_SCOPES` in
 `tool-scopes.ts`), so they carry `readOnlyHint: true` and count against the
 read limit, while the scope itself stays unticked by default.
+
+#### The skills scopes
+
+`skills:read` and `skills:write` shipped in 5.0.0 (ticket S-6, BES-292, design
+in `docs/skills.md`, section 11). 4.0.0 went to connectors (C-9), so skills is
+the next major. They are new scopes because consent is stored by scope name:
+a skill tool under `files:write` or `projects:write` would have reached every
+client already approved for it. `skills:write` is a write scope, so it is
+unticked by default and shown with the warning style. The name `skills:share`
+stays reserved in the docs only: no tool uses it, so S-6 does not register it
+(a consent line that grants nothing confuses users).
+
+- **Where they are registered:** `shared/utils/mcp-oauth-scopes.ts`,
+  `MCP_PRIVATE_TOOL_SCOPES`, `app/components/OAuth/ScopeLabel.vue` (labels
+  "See your skills and their full text" and "Add, change and delete skills.
+  Changes are saved switched off for your review"), the write warning in
+  `ScopePicker.vue`, the scope phrases of the security emails, and `MCP_SERVER_VERSION` 5.0.0 (5.1.0 with `set_project_skills`) in the four version
+  files. The Privacy Policy lists both permissions and names the skills exception
+  to "Delete your data"; its revision hash was updated without a change of
+  classification or notice.
+- **Nothing here enables a skill.** `create_skill` saves the skill disabled
+  with status `needs-review` (`created_via` `mcp`, `source_kind` `mcp`, the
+  OAuth client id on the skill and its version, license class from the
+  classifier and never `authored`). `update_skill` writes a persisted pending
+  version (origin `mcp`) and, in the same batch as the pending pointer,
+  switches the skill off and sets `needs-review`; the current version stays
+  until the user accepts the update in the app. `rename_skill` writes a
+  `rename` version with the disable in the same guarded batch
+  (`writeSkillVersion` takes a `skillSetExtra`), so a renamed skill is never
+  briefly enabled. There is no tool that sets `enabled`, the mode or
+  `allowScripts`, and none imports from a URL.
+- **The same checks as the app.** Files are text only (`validateSkillEditPath`,
+  case-insensitive duplicates, NUL and other control characters refused), the
+  create path runs `analyzeSkillFiles` (frontmatter, the license classifier
+  with `restricted` refused, the content scanner), and the update path reuses
+  `applySkillChanges`, `prepareSkillVersion` and `computeFindingCounts` of the
+  in-app save. `LICENSE` and `NOTICE` at the root are protected whatever the
+  license class, `SKILL.md` cannot be deleted or renamed, and `update_skill`
+  refuses a changed `name` with "Use rename_skill". Storage goes through the
+  shared allowance (413 `Storage is full`) and the 50-skill cap.
+- **Caps:** at most 50 files per request, 200,000 characters per file, 400 KiB
+  of content in all (the authenticated body cap is 512 KiB), 50 changes per
+  update, 20 ids per `delete_skills`, 30 skill writes (create, update and
+  rename together) an hour per user, in `enforceMcpSkillWriteLimit` (a KV
+  counter that fails closed with 429). The budget is taken only when a call
+  has passed its checks and is about to write, so an invalid, stale or
+  refused call costs nothing. `delete_skills` has an hourly cap of 20 of its
+  own (`MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT`, like connectors), on top of
+  the write limit, and `list_skills` and `get_skill` share a loose cap of
+  600 reads an hour (`enforceMcpSkillReadLimit`) on top of the per-minute
+  limit of every tool.
+- **The feature gate is in the handler.** `assertMcpSkillsAvailable` checks
+  the `skills` flag and answers a generic 404 ("Skills are not available for
+  this account.") before any id is read, like connectors.
+- **Findings carry no text.** Outputs list `type`, `rule`, `severity`, `path`
+  and `line` of each finding (at most 100, with `findingsTotal`), never a
+  snippet. A write tool returns `reviewUrl` (`/chats/skills?skill=<id>`), and
+  its description says the skill is saved disabled and must be enabled in
+  Besidka.
+- **Review in the app.** A skill the user switches on while it is
+  `needs-review` and has no pending update becomes `ready`
+  (`updateSkillSettings`). When its license class is `none` or `custom` the
+  user must tick the license box first (`licenseAcknowledged` on
+  `PATCH /api/v1/skills/[id]`, enforced on the server, with the warning in
+  the confirmation dialog), the same as an import. `update_skill` is refused
+  for a skill that is `needs-review` with no pending update, because the user
+  has not reviewed it yet. Accepting a pending update makes it `ready` and
+  leaves it disabled; rejecting leaves `needs-review` until the user enables
+  it. After an accepted MCP update `source_kind` is `mcp`, so the memory write
+  lock applies to the text like any other third-party skill.
+- **Deviations from the section 11 table.** The command and the mode are
+  settings the user makes in the app (K10, K16), so `create_skill` has no
+  `slashCommand` and no `modelInvocable` input: a skill it saves has no
+  command and is not model-invocable, whatever its frontmatter says (only the
+  argument hint can come from frontmatter or the `argumentHint` input).
+  `rename_skill` leaves the command alone; its output warns that `/<old
+  name>` no longer works as the skill's name and, when a command is set, that
+  the command is unchanged. `list_skills` returns `command` next to
+  `slashCommand`. `delete_skills` sits under `skills:write` and not
+  `data:delete`, like `delete_connectors` (destructive, `confirm: true`, its
+  own hourly cap), and does not delete provider copies, because S-5 is not
+  built. `rename_skill` is refused while an update waits for review.
+- **Text from outside is cleaned.** A skill description loses control, bidi,
+  format and tag characters when `SKILL.md` is parsed
+  (`stripUnsafeSkillCharacters`), and `list_skills` and `get_skill` return
+  descriptions and hints through `sanitizeConnectorText` as well.
+- **No tool is in the chat.** All six registry entries are `chat: { excluded }`:
+  a skill is a persistent instruction source, so a chat must not read or write
+  the skills that steer it.
+- **Another user's skill is a 404.** Every read and write checks the owner in
+  D1 first (`loadOwnedSkill`), the same message for an unknown id and for
+  another user's, and `delete_skills` reports both as `notFound`.
+- **claude.ai does not step up scopes.** An app approved before 5.0.0 does
+  not gain them; the user must reconnect Besidka and tick them.
+
+#### The connectors scopes
+
+`connectors:read` and `connectors:write` shipped in 4.0.0 (ticket C-9, design
+in `docs/connectors.md`, section 11). They are new scopes because consent is
+stored by scope name: a connector tool under `settings:write` would have
+reached every client already approved for it. `connectors:write` is a write
+scope, so it is unticked by default and shown with the warning style.
+
+- **Where they are registered:** `shared/utils/mcp-oauth-scopes.ts`,
+  `MCP_PRIVATE_TOOL_SCOPES`, `app/components/OAuth/ScopeLabel.vue` (labels
+  "See your connectors: names and addresses, never their keys" and "Add,
+  change and delete connectors. New ones start switched off; you switch them
+  on in Besidka"), the write warning in `ScopePicker.vue`, the
+  scope phrases of the security emails, and `MCP_SERVER_VERSION` 4.0.0 in the
+  four version files. The Privacy Policy lists the permissions ("What a
+  connected app can reach"), so it gained two bullets and one sentence and its
+  revision hash was updated, without a change of classification or notice (the
+  wording about connectors as recipients is C-10's, and notices are the
+  owner's decision).
+- **`delete_connectors` is on `connectors:write`, not `data:delete`**
+  (pre-check C-12 question 11, `docs/connectors.md` decision 11, and the
+  coordinator decision on BES-256). Deleting a connector removes credentials
+  and settings, not user content, and it reduces exposure like
+  `revoke_chat_shares`. It carries `destructiveHint: true`, is in
+  `DESTRUCTIVE_TOOLS`, needs `confirm: true` and up to 20 ids, and counts
+  against the write limit (30 a minute) and a delete cap of its own, 20 an
+  hour (`MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT`), separate from the 20 an
+  hour bucket of the `data:delete` scope. Its registry `access` is `write`,
+  because the parity spec ties `delete` to the `data:delete` scope.
+- **The feature gate is in the handler.** `assertMcpConnectorsAvailable`
+  checks the `connectors` flag and the user's Labs toggle and answers a
+  generic 404 ("Connectors are not available for this account.") before any
+  id is read. The toolkit per-tool `enabled` guard is not used, because it
+  hides the tools from anonymous `tools/list`.
+- **No tool is in the chat.** All five registry entries are
+  `chat: { excluded }`. A chat that could list, add or restrict its own
+  connectors would give an injected prompt a path to a new data channel.
+- **Text from outside is cleaned.** Connector titles (from the app and from
+  remote servers' names) and remote tool names go through
+  `sanitizeConnectorText` (`shared/utils/connectors-text.ts`): control, bidi,
+  format and tag characters are removed, whitespace collapses and the text is
+  cut by code points. `list_connectors` and `get_connector` return the cleaned
+  tool name (at most 128 characters), and `update_connector_tools` accepts it.
+  `createdVia` is in both outputs so the app can mark "added by a connected
+  app".
+- **Output is built from an explicit field list**, never from a connector
+  row: no URL beyond the host, no credentials, no consent fields, no
+  `lastError`, no client registration, no call arguments. The private spec
+  checks that no secret string appears in any output.
+- **claude.ai does not step up scopes.** An app approved before 4.0.0 does
+  not gain them; the user must reconnect Besidka and tick them.
 
 #### The `admin:features` scope
 
@@ -247,7 +413,7 @@ Deleting sits on the existing `data:delete`.
 - **Writes** call the artifact store (`createArtifact`,
   `appendArtifactVersion`) with `createdVia: 'mcp'` and version
   `createdBy: 'mcp'`. Content is at most 200,000 characters and the store's
-  512 KiB and 25 MB checks still apply. `update_artifact` takes exactly one
+  512 KiB version limit and the shared storage allowance (`docs/storage.md`) still apply. `update_artifact` takes exactly one
   of `edits` (1 to 20 find-and-replace pairs, `applyArtifactEdits`, the same
   function and error wording as the in-chat `update_artifact` model tool:
   "Edit N failed: old_string does not occur..." and nothing is written) or
@@ -277,10 +443,10 @@ Deleting sits on the existing `data:delete`.
   refused for any of those reasons never spends the allowance. A KV write
   failure on the counter (Workers KV allows one write per second per key) is
   answered as a 429 with a retry-after of one second instead of a 500. MCP
-  shares are always `noindex`: the `/a` route rule applies to every artifact link and
-  there is no switch. The link and its token are never logged (`share_id`
-  only); the token is in the link's fragment (`/a#<token>`), so it never
-  reaches the server in a request URL. A version pinned at creation is the one that was checked; a link
+  shares are always `noindex`: the `/artifacts` route rule applies to every
+  artifact link and there is no switch. The link and its token are never
+  logged (`share_id` only); the token is the last path segment of the link
+  (`/artifacts/<token>`), and the log redaction rewrites it to `[token]`. A version pinned at creation is the one that was checked; a link
   that follows the latest version shows later versions that were not.
 - **`list_artifact_shares`** returns the active links with `shareId`,
   `status` (`active`, `expired`, `revoked` or `taken-down`), `createdVia`,
@@ -373,7 +539,7 @@ entries learned only from that chat, `revoke_chat_shares` removes share links,
 `update_project` with `memoryEnabled: false` resets the project memory state,
 and edits replace old text (`update_project_knowledge_item`,
 `update_project_instructions` with `null`, `update_memory`, `rename_file`,
-`update_settings` favourites). Extending an existing scope must therefore
+`update_settings` favorites). Extending an existing scope must therefore
 involve no deletion or spend, though overwrites are possible. Under this
 rule `projects:write` gained `update_project` and
 `update_project_knowledge_item`, and `chats:read` gained `list_shared_chats`
@@ -790,6 +956,83 @@ unit-tested in `server/utils/mcp/*.ts` (public tools) and
 `server/mcp/tools/`: a subdirectory sets a toolkit group, and a `.ts` file
 directly in `server/mcp/` is loaded as a named handler.
 
+### The Besidka tools registry (BES-394 L7)
+
+The 57 private tools are not defined in `server/mcp/tools/`. Each has one
+transport-neutral entry in `server/utils/besidka-tools/tools/<name>.ts`
+(`defineBesidkaTool`), and the file in `server/mcp/tools/` is a three-line
+shim:
+
+```ts
+export default defineMcpTool(
+  toMcpToolDefinition(deleteChatsBesidkaTool),
+)
+```
+
+`toMcpToolDefinition` (`server/utils/besidka-tools/mcp-adapter.ts`) passes the
+name, title, description, schema and annotations through untouched and wraps
+the handler in `withMcpPrivateTool`, so tokens, scopes, limits, consent,
+logging and error handling are unchanged and `config/mcp-surface.json` stays
+byte-identical (no `MCP_SERVER_VERSION` bump). The four public tools are not
+in the registry: they hold no user data.
+`server/utils/besidka-tools/registry.ts` aggregates the entries, keyed by
+`McpPrivateToolName` (a missing entry is a type error). It is the one place
+the chat send (BES-394 L9) will build its tools from, so the MCP server and
+the chat cannot drift.
+
+An entry carries, besides the MCP fields:
+
+| Field | Meaning |
+| --- | --- |
+| `mcpScope` | Filled from `MCP_PRIVATE_TOOL_SCOPES`, the only scope map |
+| `access` | The shared `ToolAccess` of `shared/utils/tool-approval-policy.ts`: `read`, `write`, `delete` (the `data:delete` scope) or `instructions` (text a model reads later: project instructions, notes and knowledge text) |
+| `chat` | `{ expose: true, tier }` or `{ excluded: reason }`, never neither |
+| `chatDescription` | At most 300 characters, written for a model, no scope or MCP wording; required when exposed |
+| `summarize(input)` | One server-written sentence for an approval prompt; every exposed `write` and `ask-every-time` tool has one |
+| `handler(input, context)` | The shared implementation; `context` has `userId`, `clientId`, `scopes`, `db`, `logger` and `log` |
+
+`access` follows the annotations and the scope: `read` if and only if
+`readOnlyHint` is true, `delete` if and only if the scope is `data:delete`
+(which implies `destructiveHint: true`). The chat `tier` is stored on its own,
+because the plan's tiers do not follow the hints: `update_chat`,
+`update_project`, `update_project_knowledge_item` and `rename_file` are
+`write` tier although they carry `destructiveHint: true`, while `share_artifact`,
+`add_project_note` and `add_project_text` are `ask-every-time` with
+`destructiveHint: false`. A policy that also keys on `destructiveHint` must
+decide which wins.
+
+| Chat exposure | Count | Tools |
+| --- | --- | --- |
+| `read` | 11 | `list_shared_chats`, `list_projects`, `get_project`, `read_project_knowledge_item`, `list_files`, `read_file`, `get_settings`, `list_my_features`, `list_artifacts`, `get_artifact`, `list_artifact_shares` |
+| `write` | 8 | `update_chat`, `move_chats_to_project`, `branch_chat`, `create_project`, `update_project`, `update_project_knowledge_item`, `create_file`, `rename_file` |
+| `ask-every-time` | 13 | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_artifacts`, `revoke_chat_shares`, `revoke_artifact_shares`, `share_artifact`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_settings` |
+| excluded, admin | 3 | `list_feature_flags`, `list_feature_access`, `set_feature_access` |
+| excluded, connector management | 5 | `list_connectors`, `get_connector`, `add_connector`, `update_connector_tools`, `delete_connectors` |
+| excluded, skill management | 7 | `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`, `delete_skills`, `set_project_skills` |
+| excluded, native twin | 10 | `create_artifact`, `update_artifact`, `create_document`, `list_memory`, `add_memory`, `update_memory`, `delete_memory`, `reset_memory`, `list_chats`, `get_chat` |
+
+`summarize` is synchronous and sees only the parsed input, so it names things
+only when the input already holds a name (`confirmName`, `name`, `title`) and
+otherwise gives counts and ids. `summarizeBesidkaToolCall` first parses the
+input with the tool's own schema, so a summarizer sees only declared,
+validated fields (an invented key or an out-of-schema value never reaches
+it). Free text and ids then go through
+`server/utils/besidka-tools/summary.ts`: control, format and separator
+characters collapse to one space, the length is capped and free text is
+quoted. Bodies and instructions are never echoed, only their length. A tool
+without a summarizer, one whose input does not parse, or one that throws
+falls back to its title. Looking up a chat title from its slug is
+not done yet; it needs an asynchronous, server-side lookup.
+
+`tests/unit/server/utils/besidka-tools/parity.spec.ts` keeps the registry and
+the MCP server in step and writes `config/besidka-tools-surface.json` (run
+`pnpm run besidka-tools:surface` after a change): every private tool has an
+entry and a shim, each entry is exposed or excluded with a reason, `access`
+agrees with the annotations, and every chat description fits. The registry
+exports are named `<tool>BesidkaTool`, never default exports: Nitro
+auto-imports `server/utils/**`, and a default export would take the file name
+(`createDocument`, `deleteArtifacts`) and shadow real helpers.
+
 ### Public tools
 
 | Tool | Source |
@@ -859,6 +1102,7 @@ text only and capped.
 | `list_files` | `files:read` | no | Library files, newest first, with `search` and a `source` filter (`all`, `upload`, `assistant`, `project`), plus the user's storage usage | `getFilesSourceCondition`, `containsLikeEscaped`. `limit` up to 50 |
 | `read_file` | `files:read` | no | Text of one file, paged with `offset` and `nextOffset`. Text types only (plain text, markdown, CSV); PDFs and images are refused | 50,000 characters by default, 100,000 at most; files above 2 MiB are refused (`MCP_FILE_READ_MAX_BYTES`) |
 | `create_file` | `files:write` | no | Save text as a new file in the library (stored as `text/plain`, keeps its name) and return its id | `persistFile`, `assertUploadContentLength`, quota checks like an upload. Name up to 255 characters, text up to 200,000 |
+| `create_document` | `files:write` | no | Render a PDF, Word, PowerPoint or Excel file from a spec the client supplies and save it as a private library file (`source: assistant`). Input: `format`, `title`, `spec` (a JSON object, not a string; `format` and `title` are filled from the arguments, `specVersion` defaults to 1), optional `fileName` and `aiGenerated`. Returns `documentId`, `file` (`id`, `name`, `size`, `type`, `expiresAt`), `format` and `stats`. Since 3.1.0 | `createMcpDocument` (`server/utils/mcp/private/documents.ts`): `checkDocumentSpecInput`, `renderDocument` through `DOC_RENDERER`, `createDocument`, `claimDocumentRender`, `finalizeRenderedDocument`. Serialized spec up to 200,000 characters; 10 renders a minute and 100 a day per user (`MCP_DOCUMENT_RENDER_MINUTE_LIMIT`, `MCP_DOCUMENT_RENDER_DAILY_LIMIT`) on top of the write limit |
 | `rename_file` | `files:write` | yes | Change a file's name; the old name is not kept | `assertFileNameCharacters`. 255 characters |
 | `delete_files` | `data:delete` | yes | Hard delete files; the extracted text of files that are project knowledge is removed with them. Skipped ids are reported with a reason (`not_found`, `storage_error`, `error`) | `deleteOwnedFiles` (per file, not a batched R2 delete: each file is removed and caught on its own, so a failure keeps what was already deleted), `isFileLinkedToKnowledgeSql`. Up to 100 ids |
 | `list_memory` | `memory:read` | no | Account memory, one project's with `projectId`, or both with `scope: all` | `listMemoryEntries`. The entry caps (30 account, 15 per project, 4 KiB body) |
@@ -866,7 +1110,19 @@ text only and capped.
 | `update_memory` | `memory:write` | yes | Change category, title, description or body | `updateMemoryEntry`. `MEMORY_LIMITS` |
 | `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
 | `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
-| `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
+| `list_connectors` | `connectors:read` | no | Connectors with id, title, host, status, `enabled`, `toolCount`, `enabledToolCount`, `drifted` (tools changed since review), `createdVia` and `updatedAt`, most recent first | `listConnectors`, `countConnectorToolSettings`. Never the address beyond the host, keys, tokens or the last error. `limit` up to 50 (`CONNECTOR_MCP_LIST_LIMIT`) |
+| `get_connector` | `connectors:read` | no | One connector: the list fields plus its tools (`name`, `enabled`, `approval`, `serverReadOnly`) and `usage.callsLast30d`; no tool descriptions, they are not stored in D1 | `listConnectorToolSettings`, `countConnectorToolCallsSince`. The same 404 for an unknown id and another user's |
+| `add_connector` | `connectors:write` | no | Add a connector by `url` or `presetId`, with an optional `title`. Created switched off, `needs-auth`, `createdVia: 'mcp'`, with the OAuth client id; returns `manageUrl` | `addConnector` (`server/utils/connectors/add.ts`, shared with `POST /api/v1/connectors`): `parseSafeOutboundUrl`, no network call, no credentials input. At most 5 MCP-added connectors may wait switched off (`CONNECTORS_MCP_DISABLED_MAX`), checked in the insert batch; 20 per user |
+| `update_connector_tools` | `connectors:write` | no | Turn tools off (`enabled: false`) or end their "Always allow" (`approval: 'ask'`; chat grants are not touched); returns the tool list | `reduceConnectorToolSettings`: an update of existing rows only, all names checked first, nothing changes when one is unknown. Up to 100 tools (`CONNECTOR_MCP_TOOLS_BATCH`) |
+| `delete_connectors` | `connectors:write` | yes | Delete connectors with their credentials, tool settings and per-chat settings; revokes the tokens best effort first. Needs `confirm: true`; reports `deleted` and `notFound` | `deleteConnectorsWithRevocation` (`server/utils/connectors/delete.ts`, shared with `POST /api/v1/connectors/delete/bulk`): 10 s revoke deadline, four at a time, the consent-withdrawn log, audit rows kept. Up to 20 ids (`CONNECTOR_MCP_DELETE_BATCH`), the 30 per minute write limit |
+| `list_skills` | `skills:read` | no | The caller's skills and commands, most recently changed first: `id`, `name`, `description`, `enabled`, `status`, `licenseClass`, `sourceKind`, `sourceUrl`, `sourceRef`, `version`, `pendingVersion`, `filesCount`, `bytes`, `createdVia`, `modelInvocable`, `slashCommand`, `command`, `argumentHint`, `updatedAt`; `kind` `skill` or `command` filters on the command; `nextCursor` | `listMcpSkills`. No text. `limit` up to 50 |
+| `get_skill` | `skills:read` | no | One skill: the list fields plus the file list of a version (`version`, default current); with `path`, that file's text up to 200,000 characters and `truncated` | `getMcpSkill`, `loadOwnedSkill`, `readBlobText`. The same 404 for an unknown id and another user's |
+| `create_skill` | `skills:write` | no | 1 to 50 text files, 400 KiB in all, with a `SKILL.md`; optional `argumentHint` (no command, no mode). Saved disabled with `needs-review`; returns `id`, `name`, `licenseClass`, `findings`, `reviewUrl` | `createSkillForMcpClient` (`server/utils/skills/versions/mcp.ts`): `validateSkillEditPath`, `analyzeSkillFiles` (license gate, scanner), `insertSkillWithinLimits`, `buildVersionStatements` |
+| `update_skill` | `skills:write` | yes | `id`, `baseVersion` and up to 50 `put`, `delete` or `rename` changes. A pending version, the skill off with `needs-review`; returns `pendingVersion`, `sha256`, `findings`, `diffSummary`, `reviewUrl`. A stale `baseVersion` is a 409; a changed `name` is refused | `stageSkillUpdateForMcpClient`: `applySkillChanges` with the license files locked, `prepareSkillVersion`, `computeFindingCounts` |
+| `rename_skill` | `skills:write` | no | `id` and `name` (lowercase letters, digits and single hyphens, up to 64, unique, not a reserved name). Rewrites the `name:` line of `SKILL.md` as a `rename` version; disables the skill and sets `needs-review`; returns `warnings` | `renameSkillForMcpClient` over `saveSkillChanges` with `skillSetExtra`. The command is not touched |
+| `set_project_skills` | `skills:write` | yes | `projectId` and `skills`, the whole ordered list of `{ skillId, level }` (`always` or `prefer`, at most 20 and 3 `always`). Replaces the pins; an empty list clears them; returns the pins with `state` (`active`, `off`, `needs-review`, `broken`), `alwaysTokens` and `limits`. Only the user's own skills (a foreign id is 404), no broken skill, `always` skills must fit 12,000 tokens; never changes a skill, so an Off skill is pinned but does not load. Counts against the hourly skill-change cap | `setProjectSkills`, the function the app route `PUT /api/v1/projects/[id]/skills` calls. `get_project` adds a `skills` list when the token also holds `skills:read` and the skills flag is on |
+| `delete_skills` | `skills:write` | yes | `ids` (1 to 20) and `confirm: true`; `{ deleted, notFound }` | `deleteUserSkill`, one skill at a time (rows, then the R2 prefix). Its own hourly cap of 20 |
+| `get_settings` | `settings:read` | no | Reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only. Since 3.2.0 also a `storage` block: `usedBytes`, `totalBytes` and `categories` (`id`, `bytes`, `count` for `aiImages`, `uploads`, `generatedFiles`, `artifacts`, `knowledge`, `skills`), the same numbers as the Storage page | `getMcpSettings`, `getMcpStorage` (`getUserStorageBreakdown`) |
 | `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
 | `list_feature_flags` | `admin:features` | no | Admins only. Every registry flag with stage, roles, rule (enabled, rollout percentage, variants), kill switch and grant counts. Read-only | `listAdminFeatures` (the `/admin` query) |
 | `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email` (an unknown user is a 404 either way); with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`), `truncated: true` when there are more |
@@ -875,7 +1131,7 @@ text only and capped.
 | `list_artifacts` | `artifacts:read` | no | Artifacts by recent change with `id`, `title`, `kind`, `version`, `updatedAt`, `originChatSlug` (null when the chat is gone), `activeShares` and `takenDown`; optional `query` (title), `kind`, `limit` and an opaque `cursor` | `listArtifacts` (the library query). `limit` up to 50; the cursor is a base64 offset, so a page can shift when artifacts change between calls |
 | `get_artifact` | `artifacts:read` | no | One version's full content (latest by default), `title`, `kind` and the list of version numbers | `readArtifactVersion`, `getArtifactDetail`. Content up to 512 KB; a taken-down artifact is refused (451) |
 | `list_artifact_shares` | `artifacts:read` | no | Active public links of one artifact: URL, `createdVia`, `createdByApp`, `pinnedVersion`, `expiresAt`, `storageAllowed`, `bridgeAllowed` | `listArtifactShares` (active only) |
-| `create_artifact` | `artifacts:write` | no | Create an artifact from a `kind`, a `title` (120 characters) and `content`; returns `id`, `version: 1` and `url_in_app` (`/chats/artifacts?artifact=<id>`) | `createArtifact` with `createdVia: 'mcp'`. Content up to 200,000 characters, then the store's 512 KiB and 25 MB checks. `react` needs `artifacts.react` |
+| `create_artifact` | `artifacts:write` | no | Create an artifact from a `kind`, a `title` (120 characters) and `content`; returns `id`, `version: 1` and `url_in_app` (`/chats/artifacts?artifact=<id>`) | `createArtifact` with `createdVia: 'mcp'`. Content up to 200,000 characters, then the store's 512 KiB version limit and the shared storage allowance (413 `Storage is full`, folded into the message). `react` needs `artifacts.react` |
 | `update_artifact` | `artifacts:write` | no | New version from exactly one of `edits` (1 to 20 pairs) or `content`; optional `title`. Older versions are kept | `applyArtifactEdits`, `appendArtifactVersion` with `expectedVersion`. At most 50 versions |
 | `revoke_artifact_shares` | `artifacts:write` | yes | Revoke links by `shareIds` or by `artifactIds` (exactly one, 1 to 50); `{ revoked, notFound }` | `revokeArtifactShares` (soft revoke; the artifacts stay) |
 | `share_artifact` | `artifacts:share` | no | Public link for one artifact: `expiresInDays` 1 to 30 (required), optional `pinnedVersion`; returns `shareId`, `url`, `expiresAt`, `warnings`. Storage and bridge forced off, never indexed | `createArtifactShare` with `createdVia: 'mcp'`, `detectSharePii`, 10 creations a day per user (`MCP_ARTIFACT_SHARE_DAILY_LIMIT`), `artifacts.share` flag |
@@ -898,7 +1154,7 @@ Notes:
   and the optional TypeSafe AI memory check run unchanged. The memory and
   knowledge write rate limits of those routes apply too.
 - Memory entries written through MCP are stored with `origin: 'user'` (the
-  user authorised the client to write for them) and
+  user authorized the client to write for them) and
   `complianceOrigin: 'mcp'`; the client id is in the wide event. A separate
   `'mcp'` origin would need `app/utils/memory-entry-labels.ts` and the
   extraction code to learn it.
@@ -910,6 +1166,10 @@ Notes:
   the other exclusions are deliberate, see
   [What MCP does not do (and why)](#what-mcp-does-not-do-and-why). Documents
   arrive as text, see [Files and documents](#files-and-documents-text-route).
+  The UI creates documents in a chat (the `create_document` chat tool, the
+  browser or the renderer Worker renders the file); MCP has no chat, so
+  `create_document` over MCP takes the client's spec and renders it on the
+  Worker, see [Rendered documents](#rendered-documents-create_document).
 - Every write goes through the same lifecycle functions as its HTTP route
   (`server/utils/chats/lifecycle.ts`, `projects/lifecycle.ts`,
   `files/delete-files.ts`, `settings/apply-user-settings.ts`), which the
@@ -952,9 +1212,21 @@ Notes:
   screened for prompt injection (the tool description says so); to make text project knowledge use
   `add_project_text`. `delete_files` also removes the knowledge text of a
   linked file, so a file cannot be deleted while its text stays searchable.
+- `create_document` is the one tool that renders a file (see
+  [Rendered documents](#rendered-documents-create_document)). It takes the
+  spec as a JSON object, because a spec passed as a string would be escaped
+  twice and could pass 512 KiB. The `inputSchema` is a flat object
+  (`z.looseObject` for `spec`, so `tools/list` stays small and the root is
+  `type: "object"`: Anthropic, OpenAI strict and Gemini clients reject a
+  root `oneOf` or `anyOf`); the per-format shapes live in the tool
+  description and `parseDocumentSpec` is the only validator.
 - `get_settings` returns `memoryExtractionEnabled`, the memory models and
   nothing about keys, so a client can explain why extraction is off, but
-  `update_settings` cannot change them (see the exclusions below).
+  `update_settings` cannot change them (see the exclusions below). Since
+  3.2.0 it also returns the `storage` block (used bytes, the allowance and the
+  breakdown by category). It is read-only and sits behind `settings:read`
+  because it holds counts and sizes, no names or content; space is freed with
+  `delete_files`, `delete_artifacts` and `delete_project_knowledge_items`.
 - `create_project` needs no extra gate: `withMcpPrivateTool` already applies
   the consent check and both MCP call limits (`MCP_PRIVATE_TOOL_RATE_LIMIT`,
   `MCP_PRIVATE_WRITE_RATE_LIMIT`). `PUT /projects` has no consent check of its
@@ -1021,6 +1293,79 @@ the CPU time and 128 MB memory limits and with the existing ZIP-bomb caps. A
 new upload route must read the body with h3 `readRawBody`: Workers pre-buffers
 request bodies, and a custom stream reader hangs (see Request limits).
 
+### Rendered documents (`create_document`)
+
+`create_document` (`files:write`, since 3.1.0) lets an external agent write a
+spec and get a real PDF, DOCX, PPTX or XLSX saved into the user's library.
+It renders on Besidka's own `DOC_RENDERER` Worker, so it spends no provider
+key and needs no consent beyond `files:write`: creating a file was already
+allowed by that scope, and a document format does not widen what the client
+can read.
+
+- **Gate.** Inside the handler (never the toolkit `enabled` guard, so the
+  tool stays in `tools/list`): `documents`, `documents.mcp` and the flag of
+  the requested format (`documents.pdf|docx|pptx|xlsx`) must be on for the
+  user, evaluated without a request (`evaluateFeature` with the user's
+  state), and the user's own Labs toggle must not be off. Any failure is the
+  same 404, "Document creation is not available for this account".
+- **Input checks, in order.** Flags, then `JSON.stringify(spec).length` up to
+  200,000 characters (before parsing), then `checkDocumentSpecInput` (the
+  chat tool's validator) with the top-level `format` and `title` overriding
+  the spec's own. A bad spec returns up to 10 `path: message` lines, never
+  the document text. Then image ids: only PNG or JPEG files of the caller
+  (`resolveOwnedImageFiles`); another user's file, a non-image and an unknown
+  id all give the same "Unknown image fileId" answer. Only then the render
+  budget is consumed.
+- **Body ceiling.** The 512 KiB authenticated request cap holds for 200,000
+  Cyrillic characters (2 bytes each, about 400 KB), asserted in
+  `create-document.spec.ts`. CJK text (3 bytes) above about 170,000
+  characters gets the guard's `413` before the tool runs; the tool
+  description says so.
+- **Render.** A `documents` row is created (`createdVia: 'mcp'`, no chat, no
+  provider, no model), its spec is written to R2 and the row is claimed
+  (`rendering` with a 120 s lease). Images are read from R2 one object at a
+  time. The renderer gets `provenance: { model: null, createdVia: 'mcp',
+  aiGenerated }`: the file metadata says it was rendered by Besidka from
+  caller-supplied content and asserts AI origin only when the client passes
+  `aiGenerated: true` (the tool description tells clients to do so for
+  AI-written content). The same flag is stored as `documents.ai_generated`
+  (nullable, no SQL default; `true` for chat documents). Display reads it
+  through `isDocumentAiGenerated`: a stored value wins, and `NULL` (rows from
+  before the column) means AI for chat and not AI for `mcp`. The Documents
+  library shows the "Connected app" source badge for every MCP document and
+  the AI badge only when the helper says so; the file manager hides its AI
+  badge on a non-AI MCP document and shows a neutral "App" marker instead (the
+  "Generated by AI" tab still lists those files, because the tab filters on
+  `files.source`). `finalizeRenderedDocument` stores the file
+  (`source: assistant`, quota and retention like an upload) and marks the
+  row `ready`. A caller's `fileName` renames the stored file afterwards and
+  gets the format's extension when it lacks it.
+- **Failures.** The row becomes `failed` with an `errorCode`
+  (`spec_invalid`, `bounds_exceeded`, `asset_invalid`,
+  `spec_version_unsupported`, `render_failed`, `output_invalid`,
+  `quota_exceeded`, `renderer_unavailable`), the spec object is deleted and
+  `spec_r2_key` is cleared; no row stays `rendering`. A caller can fix its
+  own mistakes, so spec, bounds, image, version and render failures are 422
+  with a readable message, a full library is 413 with the current usage (no
+  orphan file or object), and the budget is 429. A renderer outage (503)
+  stays the generic tool error because `withSafeToolErrors` masks every 5xx.
+- **Limiter.** `consumeDocumentAllowance`: 10 renders a minute and 100 a day
+  per user, in KV under `mcp:rate-limit:document-minute` and
+  `mcp:rate-limit:document-day` (`createAuthRateLimitStorage`, like the
+  artifact share limit). A refused KV write counts as "too close together"
+  (429), not as a pass. The chat route's own bucket (10 a minute,
+  `documents-render-rate-limit`) is separate.
+- **Not here.** `update_document` and `list_documents` (documents are files:
+  `list_files` and `read_file` cover them), binary upload, and any spec
+  written with the user's key.
+- **Abuse watch.** The renderer is free compute for a signed-in user:
+  watch `attributes.mcp` in the Axiom dashboard `besidka-mcp-tool-calls` and
+  the per-user caps.
+- **Open decision (BES-296).** A published JSON Schema of the spec (for
+  example `z.toJSONSchema` at a public URL) instead of the shapes in the
+  description is not built: decide after trying the tool with Claude and
+  ChatGPT clients.
+
 ### Sending messages (not built)
 
 There is no `send_message` tool, by decision (owner, 2026-10-30). Every tool
@@ -1065,13 +1410,12 @@ Some things are left out on purpose, and some are impossible, not omitted.
 Each exclusion has a reason and a point at which to look at it again. Do not
 add one of these tools without reading its entry first.
 
-Connectors and skills (planned, not built) follow the same boundary: MCP may
-add a connector or a skill switched off, list it, reduce what it may do and
-delete it, but never enable it, connect it, give consent, approve a call, set
-"Always allow", grant script permission or import from a URL. The reasons and
-the planned tool rows are in `docs/connectors.md` (section 11) and
-`docs/skills.md` (section 11); C-9 and S-6 add the full entries here when the
-tools ship.
+Connectors (built in 4.0.0, see item 9) and skills (built in 5.0.0, see
+item 10) follow the same boundary: MCP may add a connector or a skill switched
+off, list it, reduce what it may do and delete it, but never enable it,
+connect it, give consent, approve a call, set "Always allow", grant script
+permission or import from a URL. The tool rows are in the tool table below,
+and the design is in `docs/connectors.md` and `docs/skills.md` (section 11).
 
 ### Left out on purpose
 
@@ -1080,7 +1424,9 @@ tools ship.
    [Sending messages](#sending-messages-not-built)), and the same boundary
    covers memory import, "Update memory now" (extract now), the instruct
    preview, memory backfill, project memory refresh, chat title generation,
-   the share personal-data check and deep research. Why: a tool call cannot
+   the share personal-data check and deep research. `create_document` is not
+   an exception: Besidka never writes the spec with the user's key over MCP,
+   the client supplies it and the Worker only renders it. Why: a tool call cannot
    prove that a human approved it, an injected prompt could drain the user's
    key, and spending on a key needs the user's explicit consent in Besidka.
    For the same reason `update_project` and `update_settings` only restore
@@ -1109,8 +1455,8 @@ tools ship.
      page, so no existing grant reaches it (consent is stored by scope name,
      see [Scope upgrades for existing clients](#scope-upgrades-for-existing-clients));
    - a share created over MCP always expires within 30 days (`expiresInDays`
-     is required, 1 to 30), is always `noindex` (the `/a` route rule, no
-     switch), returns the link as `https://<host>/a#<token>`, and has the viewer storage and the LLM bridge switched off
+     is required, 1 to 30), is always `noindex` (the `/artifacts` route
+     rule, no switch), returns the link as `https://<host>/artifacts/<token>`, and has the viewer storage and the LLM bridge switched off
      (neither is an input);
    - at most 10 links a day per user can be created over MCP, on top of the
      10 active links per artifact;
@@ -1138,7 +1484,7 @@ tools ship.
    user asked for it). `update_project_knowledge_item` cannot touch the
    flag. **Revisit when** the screen has a signal that a human, not the
    reading agent, decided.
-4. **Settings that authorise spend or change the data recipient:**
+4. **Settings that authorize spend or change the data recipient:**
    `memoryExtractionEnabled`, the memory models and gateways, the TypeSafe AI
    roles (and the about-me text and consents). Why: each lets background work
    run on the user's key or sends the user's text to another provider, which
@@ -1151,6 +1497,12 @@ tools ship.
    cut-over of every `on` project to that moment, so the period memory was off
    is never read.) **Revisit when** an unattended
    change is made harmless, for example a spend cap the server enforces.
+
+   **Connectors** (4.0.0) are a data recipient too, which is why they are
+   bounded: `add_connector` creates the connector switched off and makes no
+   request to the address, so nothing is sent anywhere until the user
+   connects and enables it in the app, behind the per-connector consent
+   screen (see item 9).
 5. **Keys, sessions, connected apps, consents, push, email, password, 2FA,
    passkeys and account deletion.** Why: they are security and legal acts that
    must stay human. An app that could add a key or end a session could widen
@@ -1164,7 +1516,7 @@ tools ship.
    switch for everyone) affects every account at once, so a prompt-injected
    admin agent could switch a feature on or off for everyone with one call,
    and no per-call approval reaches the human. Those settings stay in the
-   `/admin` UI, behind a confirmation. An opt-in (Labs) authorises spending
+   `/admin` UI, behind a confirmation. An opt-in (Labs) authorizes spending
    the user's keys (item 1); the objection is a GDPR Art. 21 act of the user;
    roles widen who is an admin or tester. No tool imports `setFeatureRule` or
    writes `feature_flag_rules` (the tool-scopes spec checks the sources).
@@ -1173,10 +1525,93 @@ tools ship.
    change made over MCP stays pending until the admin confirms it in the app;
    not planned for opt-ins; for roles, when the owner asks for tester
    management from an agent.
+7. **Legal notice emails, consent versions and legal notice email
+   opt-outs** (BES-396). No tool reads or writes `legal_notice_approvals`,
+   `legal_consent_version_approvals` or `legal_notice_email_optouts`, and the
+   writers in `server/utils/legal/admin.ts` refuse any actor that is not the
+   admin UI (`actor.kind` other than `ui` answers 403), so an admin token with
+   `admin:features` cannot reach them either. Why: approving a notice emails
+   every user and approving a consent version asks every user to agree again;
+   on 2026-11-15 notices scheduled by agents mailed every user three times in
+   one morning. Only the owner decides this, in `/admin/legal`, behind a
+   confirmation that states the number of recipients (see `docs/legal.md`,
+   "Owner approval in the admin area"). **Revisit when:** not planned.
+
+8. **The Besidka tool permissions and the `besidka-tools` opt-in**
+   (BES-394 L8). No tool reads or writes `besidka_tool_permissions`, and no
+   tool changes the opt-in. Why: a permission decides which of the user's
+   tools a model may run in a chat and whether it must ask. "Always allow" and
+   "Blocked" are the user's answer to "may a model do this without me
+   looking", and an agent that could set them could widen its own reach
+   (the same reason as items 1 and 6, and as the connector "Always allow" in
+   `docs/connectors.md`, section 11). They are set in Labs, in the Tool
+   permissions panel (`docs/besidka-tools.md`). **Revisit when:** a tool can
+   only lower access (set Blocked or Needs approval, never Always allow) and
+   a user names a workflow that needs it.
+
+9. **Enabling a connector, starting its sign-in, entering secrets and
+   "Always allow" on tools** (C-9, 4.0.0). The connector tools can list,
+   add (switched off), turn tools off or back to ask, and delete. They
+   cannot:
+   - **switch a connector on.** Enabling opens a new data channel to a new
+     recipient and needs the per-connector consent screen
+     (`CONNECTOR_CONSENT_REQUIRED`); `add_connector` has no `enabled` input
+     and `update_connector_tools` has no connector-level field;
+   - **start OAuth or connect.** The Connect flow (discovery, consent, PKCE
+     sign-in) runs from the app only, and `add_connector` makes no request to
+     the address, so an injected agent cannot make the Worker probe a host
+     or begin a sign-in;
+   - **accept keys, headers or tokens.** `add_connector` takes a URL, a
+     title and a preset id; there is no credential field on any tool, and no
+     output carries one;
+   - **turn a tool on or grant "Always allow".** `update_connector_tools`
+     accepts only `enabled: false` and `approval: 'ask'` (validated by the
+     schema and again in the handler), so it can only reduce. Setting a tool
+     back to ask ends its "Always allow" grant; an "Allow in this chat"
+     grant of a chat is not touched;
+   - **call a connector's tools.** Besidka's MCP server is never a proxy
+     for another server: it would spend the user's access without a human
+     approval, and an external agent can already reach that server itself.
+
+   Why: an injected external agent must not be able to open a data channel
+   or widen what a chat may run without asking. Consent is per connector and
+   per origin, and the grants are bound to the tool definition hash, which an
+   agent cannot see approved. A connector added over MCP is recorded with the OAuth client that added it
+   (the connectors page of C-7 shows "Added by <client>, not by you in the
+   app"), and at most five can wait switched off. **Revisit when:** a connector can be enabled only through a
+   confirmation the agent cannot reach (for example a link the user opens in
+   the app), or an owner workflow needs unattended tool changes that only
+   reduce.
+
+10. **Enabling a skill, toggles on an existing skill, sharing, script
+   permission, URL or GitHub import, and activating or running a skill**
+   (S-6, 5.0.0). The skill tools can list, read, add, update, rename and
+   delete skills. They cannot:
+   - **enable a skill or set its mode.** `create_skill` saves the skill
+     disabled with `needs-review`, `update_skill` and `rename_skill` switch it
+     off, and no tool has an `enabled` or mode input;
+   - **set the mode, the command or `modelInvocable`, on a new skill or an
+     existing one.** No tool takes them: the user sets them in Besidka
+     (K10, K16);
+   - **share a skill.** `skills:share` is a reserved name only (S-13 is
+     optional and not built), and no tool publishes a skill;
+   - **grant script permission.** There is no `allowScripts` input (S-5 is not
+     built);
+   - **import from a URL or a GitHub repository,** or fetch anything: the
+     files come in the request, as text;
+   - **activate or run a skill.** No tool loads a skill into a chat or
+     calls a model.
+
+   Why: a skill is a persistent instruction source for the user's own model
+   calls. An injected external agent must not be able to switch one on, make
+   it run by itself or hand the user text that arrives already trusted. The
+   user reads the findings and the text in Besidka and enables it there.
+   **Revisit when** a confirm-in-app pending state exists that an agent cannot
+   complete.
 
 ### Not possible, not omitted
 
-7. **Chat archive and restore.** Besidka has no chat archive (only
+11. **Chat archive and restore.** Besidka has no chat archive (only
    project archive, which `update_project` has). **Knowledge folders** are a
    client-only idea: a `folderId` plus browser-local names, with no server
    entity to call. **Binary, PDF and image upload, and project file

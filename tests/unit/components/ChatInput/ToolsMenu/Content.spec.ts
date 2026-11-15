@@ -19,6 +19,12 @@ function createState(
     search?: boolean
     reasoning?: boolean
     lower?: boolean
+    skills?: boolean
+    skillAttached?: boolean
+    connectors?: boolean
+    connectorsOn?: number
+    project?: boolean
+    projectName?: string
   } = {},
 ): ChatInputToolsState {
   const {
@@ -26,6 +32,12 @@ function createState(
     search = true,
     reasoning = true,
     lower = true,
+    skills = false,
+    skillAttached = false,
+    connectors = false,
+    connectorsOn = 0,
+    project = false,
+    projectName,
   } = overrides
 
   return {
@@ -58,7 +70,49 @@ function createState(
     },
     image: { supported: lower, enabled: false, required: false },
     files: { visible: files, count: 0, isImageInputSupported: true },
-    project: { visible: false, context: null },
+    artifacts: { visible: false, attached: [] },
+    skills: {
+      visible: skills,
+      selected: skillAttached
+        ? {
+          skillId: 'skl1',
+          name: 'writing-style',
+          version: 1,
+          source: 'menu',
+        }
+        : null,
+      items: [{
+        id: 'skl1',
+        name: 'writing-style',
+        description: 'Write in my voice',
+        version: 1,
+        mode: 'auto',
+      }],
+    },
+    connectors: {
+      visible: connectors,
+      items: [
+        {
+          id: 'c1',
+          slug: 'notion',
+          title: 'Notion',
+          host: 'mcp.notion.com',
+          status: 'ready',
+        },
+        {
+          id: 'c2',
+          slug: 'linear',
+          title: 'Linear',
+          host: 'mcp.linear.app',
+          status: 'ready',
+        },
+      ],
+      selectedIds: ['c1', 'c2'].slice(0, connectorsOn),
+    },
+    project: {
+      visible: project,
+      context: projectName ? { id: 'p1', name: projectName } : null,
+    },
     memory: { excluded: null },
     research: null,
     isDeepResearchModel: false,
@@ -82,19 +136,187 @@ function layout(wrapper: ContentWrapper): string[] {
   })
 }
 
+describe('ChatInput/ToolsMenu/Content skills', () => {
+  it('adds one Add skill row to the Add section only when the user has an enabled skill', async () => {
+    const hidden = await mountContent(createState())
+    const shown = await mountContent(createState({ skills: true }))
+
+    expect(hidden.find('[data-testid="tools-action-skills"]').exists())
+      .toBe(false)
+    expect(layout(shown)).toEqual(layout(hidden))
+    expect(shown.get('[data-testid="tools-action-skills"]').text())
+      .toContain('Add skill')
+    expect(shown.get('[data-testid="tools-action-skills"]').text())
+      .toContain('Skills you made or imported')
+  })
+
+  it('still renders the Add section when only the skill row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      skills: true,
+    }))
+
+    expect(layout(wrapper).at(-1)).toBe('add')
+    expect(wrapper.find('[data-testid="tools-action-attach"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="tools-action-skills"]').exists())
+      .toBe(true)
+  })
+
+  it('shows a badge for an attached skill and opens the picker', async () => {
+    const wrapper = await mountContent(createState({ skills: true }))
+
+    expect(wrapper.get('[data-testid="tools-action-skills"]')
+      .find('.badge').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="tools-action-skills"]').trigger('click')
+
+    expect(wrapper.emitted('open-skills-picker')).toHaveLength(1)
+
+    await wrapper.setProps({
+      state: createState({ skills: true, skillAttached: true }),
+    })
+
+    expect(wrapper.get('[data-testid="tools-action-skills"] .badge').text())
+      .toBe('1')
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content connectors row', () => {
+  it('adds one Connectors row to the Add section and never lists connectors inline', async () => {
+    const hidden = await mountContent(createState())
+    const shown = await mountContent(createState({ connectors: true }))
+
+    expect(hidden.find('[data-testid="tools-action-connectors"]').exists())
+      .toBe(false)
+    expect(layout(shown)).toEqual(layout(hidden))
+
+    const row = shown.get('[data-testid="tools-action-connectors"]')
+
+    expect(row.text()).toContain('Connectors')
+    expect(shown.findAll('[data-testid="tools-action-connectors"]'))
+      .toHaveLength(1)
+    expect(shown.text()).not.toContain('Notion')
+    expect(shown.text()).not.toContain('mcp.notion.com')
+    expect(shown.element.querySelector('input[type="checkbox"][aria-label*="Notion"]'))
+      .toBeNull()
+  })
+
+  it('renders the Add section when only the Connectors row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      connectors: true,
+    }))
+
+    expect(layout(wrapper).at(-1)).toBe('add')
+    expect(wrapper.find('[data-testid="tools-action-attach"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="tools-action-connectors"]').exists())
+      .toBe(true)
+  })
+
+  it('shows how many connectors are on as a badge and opens the picker', async () => {
+    const wrapper = await mountContent(createState({ connectors: true }))
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"]')
+      .find('.badge').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="tools-action-connectors"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('open-connectors-picker')).toHaveLength(1)
+
+    await wrapper.setProps({
+      state: createState({ connectors: true, connectorsOn: 2 }),
+    })
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"] .badge').text())
+      .toBe('2')
+  })
+
+  it('sits after Add skill and before the Project row', async () => {
+    const wrapper = await mountContent(createState({
+      skills: true,
+      connectors: true,
+      project: true,
+    }))
+    const rows = wrapper.findAll(
+      '[data-section="add"] button[data-testid^="tools-"]',
+    )
+    const ids = rows.map(row => row.attributes('data-testid'))
+
+    expect(ids.slice(-3)).toEqual([
+      'tools-action-skills',
+      'tools-action-connectors',
+      'tools-project',
+    ])
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content project row', () => {
+  it('ends the Add section with the Project row after Add skill', async () => {
+    const wrapper = await mountContent(createState({
+      skills: true,
+      project: true,
+      projectName: 'Q4 launch',
+    }))
+    const rows = wrapper.findAll(
+      '[data-section="add"] button[data-testid^="tools-"]',
+    )
+
+    expect(rows.at(-1)?.attributes('data-testid')).toBe('tools-project')
+    expect(rows.at(-2)?.attributes('data-testid')).toBe('tools-action-skills')
+    expect(rows.at(-1)?.text()).toContain('Q4 launch')
+    expect(wrapper.find('[data-section="project"]').exists()).toBe(false)
+  })
+
+  it('renders the Add section when only the Project row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      search: false,
+      reasoning: false,
+      lower: false,
+      project: true,
+    }))
+
+    expect(layout(wrapper)).toEqual(['add'])
+    expect(wrapper.get('[data-testid="tools-project"]').text())
+      .toContain('None')
+  })
+
+  it('draws a divider between the Add section and the lower rows', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      search: false,
+      reasoning: false,
+      project: true,
+    }))
+
+    expect(layout(wrapper)).toEqual(['image', '---', 'add'])
+  })
+
+  it('emits open-project-picker when the row is clicked', async () => {
+    const wrapper = await mountContent(createState({ project: true }))
+
+    await wrapper.get('[data-testid="tools-project"]').trigger('click')
+
+    expect(wrapper.emitted('open-project-picker')).toHaveLength(1)
+  })
+})
+
 describe('ChatInput/ToolsMenu/Content dividers', () => {
   it('separates every group with one divider when all are present',
     async () => {
       const wrapper = await mountContent(createState())
 
       expect(layout(wrapper)).toEqual([
-        'add',
-        '---',
-        'search',
+        'image',
         '---',
         'reasoning',
         '---',
-        'image',
+        'search',
+        '---',
+        'add',
       ])
     })
 
@@ -116,11 +338,11 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     const wrapper = await mountContent(createState({ search: false }))
 
     expect(layout(wrapper)).toEqual([
-      'add',
+      'image',
       '---',
       'reasoning',
       '---',
-      'image',
+      'add',
     ])
   })
 
@@ -128,18 +350,18 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     async () => {
       const wrapper = await mountContent(createState({ reasoning: false }))
 
-      expect(layout(wrapper)).toEqual(['add', '---', 'search', '---', 'image'])
+      expect(layout(wrapper)).toEqual(['image', '---', 'search', '---', 'add'])
     })
 
   it('draws no leading divider when the Add group is absent', async () => {
     const wrapper = await mountContent(createState({ files: false }))
 
     expect(layout(wrapper)).toEqual([
-      'search',
+      'image',
       '---',
       'reasoning',
       '---',
-      'image',
+      'search',
     ])
   })
 
@@ -163,6 +385,84 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
     })
 })
 
+describe('ChatInput/ToolsMenu/Content Run code row', () => {
+  function withCodeExecution(
+    codeExecution: ChatInputToolsState['codeExecution'],
+  ): ChatInputToolsState {
+    return { ...createState(), codeExecution }
+  }
+
+  it('shows the Run code section before the image row when visible',
+    async () => {
+      const wrapper = await mountContent(withCodeExecution({
+        visible: true,
+        enabled: false,
+        providerId: 'anthropic',
+      }))
+
+      expect(layout(wrapper)).toEqual([
+        'code',
+        'image',
+        '---',
+        'reasoning',
+        '---',
+        'search',
+        '---',
+        'add',
+      ])
+      expect(wrapper.find('[data-testid="tools-code-execution-toggle"]')
+        .exists()).toBe(true)
+    })
+
+  it('hides the row when it is not visible', async () => {
+    const wrapper = await mountContent(withCodeExecution({
+      visible: false,
+      enabled: false,
+      providerId: 'anthropic',
+    }))
+
+    expect(layout(wrapper)).not.toContain('code')
+  })
+
+  it('draws the lower group on its own when only Run code is there',
+    async () => {
+      const state = createState({
+        lower: false,
+        files: false,
+        search: false,
+        reasoning: false,
+      })
+      const wrapper = await mountContent({
+        ...state,
+        codeExecution: {
+          visible: true,
+          enabled: true,
+          providerId: 'openai',
+        },
+      })
+
+      expect(layout(wrapper)).toEqual(['code'])
+    })
+
+  it('forwards the toggle once the provider was confirmed', async () => {
+    window.localStorage.setItem(
+      'besidka:code-execution-confirmed:openai',
+      'true',
+    )
+
+    const wrapper = await mountContent(withCodeExecution({
+      visible: true,
+      enabled: false,
+      providerId: 'openai',
+    }))
+
+    await wrapper.get('[data-testid="tools-code-execution-toggle"]')
+      .setValue(true)
+
+    expect(wrapper.emitted('toggle-code-execution')).toEqual([[true]])
+  })
+})
+
 describe('ChatInput/ToolsMenu/Content section titles', () => {
   it('puts an icon left of every titled section header', async () => {
     const wrapper = await mountContent(createState())
@@ -175,10 +475,159 @@ describe('ChatInput/ToolsMenu/Content section titles', () => {
     }
   })
 
-  it('titles the sections Add, Web search and Reasoning', async () => {
+  it('titles the sections Reasoning, Web search and Add, top to bottom', async () => {
     const wrapper = await mountContent(createState())
     const titles = wrapper.findAll('h3').map(heading => heading.text())
 
-    expect(titles).toEqual(['Add', 'Web search', 'Reasoning'])
+    expect(titles).toEqual(['Reasoning', 'Web search', 'Add'])
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content Add artifact row', () => {
+  const ARTIFACT_ROW = '[data-testid="tools-action-artifacts"]'
+
+  function withArtifacts(
+    artifacts: ChatInputToolsState['artifacts'],
+  ): ChatInputToolsState {
+    return { ...createState(), artifacts }
+  }
+
+  it('is absent without access and leaves the Add section as before',
+    async () => {
+      const without = await mountContent(createState())
+      const explicit = await mountContent(withArtifacts({
+        visible: false,
+        attached: [],
+      }))
+
+      expect(explicit.find(ARTIFACT_ROW).exists()).toBe(false)
+      expect(explicit.html()).toBe(without.html())
+      expect(layout(explicit)).toEqual([
+        'image',
+        '---',
+        'reasoning',
+        '---',
+        'search',
+        '---',
+        'add',
+      ])
+      expect(explicit.text()).not.toContain('Add artifact')
+    })
+
+  it('shows Add artifact after Generated images with access', async () => {
+    const wrapper = await mountContent(withArtifacts({
+      visible: true,
+      attached: [],
+    }))
+    const rows = wrapper.findAll(
+      '[data-section="add"] button[data-testid^="tools-action-"]',
+    ).map(row => row.attributes('data-testid'))
+
+    expect(rows).toEqual([
+      'tools-action-attach',
+      'tools-action-library',
+      'tools-action-generated',
+      'tools-action-artifacts',
+    ])
+    expect(wrapper.find(ARTIFACT_ROW).text()).toContain('Add artifact')
+    expect(wrapper.find(ARTIFACT_ROW).text())
+      .toContain('Artifacts from your chats')
+  })
+
+  it('shows the attached count as a badge', async () => {
+    const wrapper = await mountContent(withArtifacts({
+      visible: true,
+      attached: [
+        {
+          artifactId: 'a1',
+          version: 1,
+          kind: 'html',
+          title: 'Quiz',
+        },
+        {
+          artifactId: 'a2',
+          version: 2,
+          kind: 'svg',
+          title: 'Logo',
+        },
+      ],
+    }))
+
+    expect(wrapper.find(ARTIFACT_ROW).find('.badge').text()).toBe('2')
+  })
+
+  it('emits open-artifact-picker when the row is clicked', async () => {
+    const wrapper = await mountContent(withArtifacts({
+      visible: true,
+      attached: [],
+    }))
+
+    await wrapper.find(ARTIFACT_ROW).trigger('click')
+
+    expect(wrapper.emitted('open-artifact-picker')).toHaveLength(1)
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content memory row', () => {
+  function withMemory(excluded: boolean): ChatInputToolsState {
+    return { ...createState(), memory: { excluded } }
+  }
+
+  it('sits first, above Reasoning, Web search and Add, because the menu opens upward', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const sections = layout(wrapper).filter(section => section !== '---')
+
+    expect(sections).toEqual(['memory', 'image', 'reasoning', 'search', 'add'])
+  })
+
+  it('is one line: the label and the toggle, with no description under it', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const row = wrapper.get('[data-section="memory"] label')
+
+    expect(row.text()).toBe('Use memory')
+    expect((wrapper.get('[data-testid="new-chat-memory-note"]')
+      .element as HTMLElement).style.display).toBe('none')
+    expect(row.text()).not.toContain('Learns from this chat')
+  })
+
+  it('shows the description from an info button, like the Auto row', async () => {
+    const wrapper = await mountContent(withMemory(false))
+    const info = wrapper.get('[data-testid="new-chat-memory-info"]')
+
+    expect(info.attributes('aria-expanded')).toBe('false')
+
+    await info.trigger('click')
+
+    const note = wrapper.get('[data-testid="new-chat-memory-note"]')
+
+    expect(info.attributes('aria-expanded')).toBe('true')
+    expect(info.attributes('aria-controls')).toBe(note.attributes('id'))
+    expect((note.element as HTMLElement).style.display).not.toBe('none')
+    expect(note.text()).toBe('Learns from this chat and finds it in chat search.')
+  })
+
+  it('keeps the excluded-memory helper in the same note', async () => {
+    const wrapper = await mountContent(withMemory(true))
+
+    await wrapper.get('[data-testid="new-chat-memory-info"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="new-chat-memory-note"]').text())
+      .toContain('won\'t learn from this chat')
+  })
+
+  it('does not toggle memory when the info button is pressed', async () => {
+    const wrapper = await mountContent(withMemory(false))
+
+    await wrapper.get('[data-testid="new-chat-memory-info"]').trigger('click')
+
+    expect(wrapper.emitted('update:use-memory')).toBeUndefined()
+  })
+
+  it('still emits the new value from the toggle', async () => {
+    const wrapper = await mountContent(withMemory(false))
+
+    await wrapper.get('[data-testid="new-chat-memory-toggle"]').setValue(false)
+
+    expect(wrapper.emitted('update:use-memory')).toEqual([[false]])
   })
 })

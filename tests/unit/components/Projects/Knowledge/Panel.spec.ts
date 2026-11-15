@@ -205,7 +205,7 @@ function createState() {
       bytesTotal: 0,
     }),
     error: shallowRef<unknown>(null),
-    wasCancelled: shallowRef<boolean>(false),
+    wasCanceled: shallowRef<boolean>(false),
     isBusy: shallowRef<boolean>(false),
     canRetryCommit: shallowRef<boolean>(false),
     cleanupFailures: shallowRef<number>(0),
@@ -249,12 +249,12 @@ function uploadEntry(
 async function finishRun(
   phase: 'done' | 'error',
   statuses: Array<KnowledgeUploadEntry['status']> = [],
-  wasCancelled = false,
+  wasCanceled = false,
 ) {
   mocks.state.upload.phase.value = 'running'
   await flushPromises()
   mocks.state.upload.entries.value = statuses.map(uploadEntry)
-  mocks.state.upload.wasCancelled.value = wasCancelled
+  mocks.state.upload.wasCanceled.value = wasCanceled
   mocks.state.upload.phase.value = phase
   await flushPromises()
 }
@@ -776,7 +776,7 @@ describe('Projects/Knowledge/Panel', () => {
       expect(storedFolderMemory().names[options.folderId]).toBe('my-app')
     })
 
-    it('keeps the previous sync when the preview is cancelled', async () => {
+    it('keeps the previous sync when the preview is canceled', async () => {
       rememberSyncedFolder('folder-1', 'old-app')
       setItems([folderItem])
       pickerHandle('other-app')
@@ -802,7 +802,7 @@ describe('Projects/Knowledge/Panel', () => {
       })
     })
 
-    it('keeps the previous sync when the upload is cancelled', async () => {
+    it('keeps the previous sync when the upload is canceled', async () => {
       rememberSyncedFolder('folder-1', 'old-app')
       pickerHandle('other-app')
       mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead({
@@ -1164,7 +1164,7 @@ describe('Projects/Knowledge/Panel', () => {
         expect(mocks.state.knowledge.removeItem).toHaveBeenCalledWith('failed')
       })
 
-      it('keeps the old file when the preview is cancelled', async () => {
+      it('keeps the old file when the preview is canceled', async () => {
         const wrapper = await startReplacement()
 
         mocks.state.upload.phase.value = 'preview'
@@ -1217,7 +1217,7 @@ describe('Projects/Knowledge/Panel', () => {
         )
       })
 
-      it('keeps the old file when the upload was cancelled early', async () => {
+      it('keeps the old file when the upload was canceled early', async () => {
         await startReplacement()
         await finishRun('done', [], true)
 

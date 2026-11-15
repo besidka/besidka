@@ -215,7 +215,7 @@ curated with `reasoning: { mode: 'levels', levels: ['low', 'medium',
 'high'] }` (`qwen3.8-max` and `qwen3.8-flash` were toggles until
 2026-10-15, when the DashScope docs were re-verified).
 DashScope documents no `enable_thinking` for them; their control is the
-top-level `reasoning_effort`: `low` and `medium` are honoured, `minimal`
+top-level `reasoning_effort`: `low` and `medium` are honored, `minimal`
 maps to `low`, `high`/`max` map to `xhigh`, and `none` disables thinking
 (`enable_thinking: false`). Thinking is **on by default at `xhigh`**, so an
 unset field would silently bill every plain chat for maximum thinking.

@@ -1,0 +1,1119 @@
+import type { BatchItem } from 'drizzle-orm/batch'
+import { and, desc, eq, getTableColumns, lte, sql } from 'drizzle-orm'
+import { createError } from 'evlog'
+import { sha256Hex } from '#shared/utils/knowledge-hash'
+import { hashSkillFileSet } from '#shared/utils/skills/analyze'
+import { renameSkillMarkdown } from '#shared/utils/skills/frontmatter'
+import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
+import {
+  SKILLS_PER_USER,
+  isSkillNameValid,
+} from '#shared/utils/skills-policy'
+import * as schema from '~~/server/db/schema'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
+import type { LoggerLike } from '~~/server/utils/files/logger'
+import { isDecodableSkillPublicId } from '~~/server/utils/skills/ids'
+import { createSkillImportError } from '~~/server/utils/skills/import/errors'
+import {
+  createStageNotFoundError,
+  deleteSkillStage,
+  readSkillStage,
+  readStagedFile,
+  skillStageKey,
+} from '~~/server/utils/skills/import/stage'
+import type {
+  SkillStageBucket,
+  SkillStageKv,
+  SkillStageManifest,
+} from '~~/server/utils/skills/import/stage'
+import {
+  deleteSkillJevMarks,
+  readStoredSkillJevResult,
+  skillJevMarksKey,
+  skillJevStageKey,
+  toStoredJevFindingCounts,
+  writeStoredSkillJevResult,
+} from '~~/server/utils/skills/jev/store'
+import type { StoredSkillJevResult } from '~~/server/utils/skills/jev/store'
+import { buildVersionStatements } from '~~/server/utils/skills/versions/statements'
+import {
+  deleteSkillPrefix,
+  putSkillBlob,
+  skillPrefix,
+} from '~~/server/utils/skills/storage'
+import { isUniqueViolation } from '~~/server/utils/skills/unique-violation'
+import { countUserSkills } from '~~/server/utils/skills/usage'
+import { getEffectiveUserFilePolicy } from '~~/server/utils/files/file-governance'
+import {
+  assertStorageAvailable,
+  buildStorageFullError,
+} from '~~/server/utils/storage/guard'
+import { userStorageUsedBytesSql } from '~~/server/utils/storage/usage'
+import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+
+type DbClient = ReturnType<typeof useDb>
+
+const ABANDONED_PLACEHOLDER_GRACE_MS = 10 * 60 * 1000
+const textEncoder = new TextEncoder()
+const bomPreservingDecoder = new TextDecoder('utf-8', { ignoreBOM: true })
+
+export interface CommitSkillImportInput {
+  db: DbClient
+  bucket: SkillStageBucket
+  kv: SkillStageKv
+  userId: number
+  stageId: string
+  licenseAcknowledged?: boolean
+  name?: string
+  asUpdateOf?: string
+  logger: LoggerLike
+  now?: number
+}
+
+export type CommitSkillImportResult
+  = | {
+    kind: 'created'
+    id: string
+    name: string
+    version: number
+    enabled: false
+    status: 'ready'
+    licenseClass: SkillStageManifest['license']['class']
+    filesCount: number
+  }
+  | {
+    kind: 'pending'
+    id: string
+    name: string
+    version: number
+    pendingVersion: number
+    sha256: string
+    licenseClass: SkillStageManifest['license']['class']
+    filesCount: number
+  }
+
+function createNameTakenError(
+  name: string,
+  stageId: string,
+  existingSkillId: string,
+) {
+  return createError({
+    message: `A skill named ${name} exists`,
+    status: 409,
+    code: 'name-taken',
+    why: 'Skill names are unique per account',
+    fix: 'Replace the existing skill with this one as an update, or rename '
+      + 'the incoming skill',
+    data: { stageId, asUpdateOf: existingSkillId, name },
+  })
+}
+
+function assertAcknowledgments(
+  manifest: SkillStageManifest,
+  licenseAcknowledged: boolean | undefined,
+): void {
+  if (manifest.license.class === 'restricted') {
+    throw createSkillImportError(
+      'license-restricted',
+      'Its license limits use to a named service, or forbids copying',
+    )
+  }
+
+  const needsLicenseTick = manifest.license.class === 'none'
+    || manifest.license.class === 'custom'
+
+  if (needsLicenseTick && licenseAcknowledged !== true) {
+    throw createError({
+      message: 'Confirm that you may use this skill',
+      status: 400,
+      code: 'license-acknowledgement-required',
+      why: manifest.license.class === 'none'
+        ? 'The skill states no license, so the author keeps all rights'
+        : 'The skill carries a custom license',
+      fix: 'Tick the license box in the review step',
+    })
+  }
+}
+
+/**
+ * The per-account skill count cap, then the shared storage allowance. Skills
+ * have no byte cap of their own: the bytes of a skill draw on the same
+ * allowance as files, artifacts and project knowledge, and a refusal is the
+ * shared 413 `Storage is full`. A write that adds no bytes is never refused.
+ */
+export async function assertLimits(input: {
+  db: DbClient
+  userId: number
+  skillsCount: number
+  incomingBytes: number
+  isNewSkill: boolean
+}): Promise<void> {
+  if (input.isNewSkill && input.skillsCount >= SKILLS_PER_USER) {
+    throw createError({
+      message: 'Skill limit reached',
+      status: 403,
+      code: 'skills-limit',
+      why: `An account can hold ${SKILLS_PER_USER} skills`,
+      fix: 'Delete a skill you no longer use',
+    })
+  }
+
+  if (input.incomingBytes > 0) {
+    await assertStorageAvailable({
+      userId: input.userId,
+      additionalBytes: input.incomingBytes,
+      db: input.db,
+    })
+  }
+}
+
+export type PendingVersionPayload = Pick<
+  SkillStageManifest,
+  | 'userId'
+  | 'source'
+  | 'sourceVersion'
+  | 'sourceUrl'
+  | 'sourceRef'
+  | 'sourcePath'
+  | 'license'
+  | 'files'
+  | 'totalBytes'
+  | 'contentSha256'
+  | 'findingCounts'
+>
+
+function isStageManifest(
+  manifest: PendingVersionPayload,
+): manifest is SkillStageManifest {
+  return 'stageId' in manifest
+}
+
+interface PreparedImport {
+  manifest: SkillStageManifest
+  contentOverrides: Map<string, Uint8Array>
+}
+
+/**
+ * A skill renamed at import carries its new name in SKILL.md too, because
+ * the name is content (docs/skills.md section 8.7). Only the `name:` line
+ * changes; the rewritten file gets its own hash, and the staged original is
+ * left untouched so a retry with another name starts from it again.
+ */
+async function prepareRenamedImport(input: {
+  bucket: SkillStageBucket
+  manifest: SkillStageManifest
+  name: string
+}): Promise<PreparedImport> {
+  const { bucket, manifest, name } = input
+  const unchanged: PreparedImport = {
+    manifest,
+    contentOverrides: new Map(),
+  }
+
+  if (name === manifest.skill.name) {
+    return unchanged
+  }
+
+  const skillMdEntry = manifest.files.find((file) => {
+    return file.path === SKILL_MD_FILE_NAME
+  })
+  const original = skillMdEntry
+    ? await readStagedFile({ bucket, manifest, sha256: skillMdEntry.sha256 })
+    : null
+  const renamed = original
+    ? renameSkillMarkdown(bomPreservingDecoder.decode(original), name)
+    : null
+
+  if (!skillMdEntry || renamed === null) {
+    return {
+      manifest: { ...manifest, skill: { ...manifest.skill, name } },
+      contentOverrides: unchanged.contentOverrides,
+    }
+  }
+
+  const renamedBytes = textEncoder.encode(renamed)
+  const sha256 = await sha256Hex(renamedBytes)
+  const files = manifest.files.map((file) => {
+    return file === skillMdEntry
+      ? { ...file, bytes: renamedBytes.byteLength, sha256 }
+      : file
+  })
+
+  return {
+    manifest: {
+      ...manifest,
+      skill: { ...manifest.skill, name },
+      files,
+      totalBytes: files.reduce((total, file) => {
+        return total + file.bytes
+      }, 0),
+      contentSha256: await hashSkillFileSet(files),
+    },
+    contentOverrides: new Map([[sha256, renamedBytes]]),
+  }
+}
+
+/**
+ * An update keeps the local name. When the skill was renamed on this account
+ * after it was imported, and the staged import is the same repository and
+ * folder, the staged `SKILL.md` is written under the local name, the way an
+ * update check does, so "Update it to this version" works for a renamed copy.
+ * Any other name mismatch is left for `replaceAsUpdate` to refuse.
+ */
+async function prepareUpdateImport(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  manifest: SkillStageManifest
+  skillId: string
+}): Promise<PreparedImport> {
+  const { db, manifest } = input
+  const unchanged: PreparedImport = { manifest, contentOverrides: new Map() }
+
+  if (!isDecodableSkillPublicId(input.skillId)) {
+    return unchanged
+  }
+
+  const [skill] = await db.select({
+    name: schema.skills.name,
+    sourceKind: schema.skills.sourceKind,
+    sourceUrl: schema.skills.sourceUrl,
+    sourcePath: schema.skills.sourcePath,
+  })
+    .from(schema.skills)
+    .where(and(
+      eq(schema.skills.id, input.skillId),
+      eq(schema.skills.userId, manifest.userId),
+    ))
+    .limit(1)
+  const isSameSource = skill?.sourceKind === 'github'
+    && manifest.source === 'github'
+    && !!skill.sourceUrl
+    && skill.sourceUrl.toLowerCase() === (manifest.sourceUrl ?? '').toLowerCase()
+    && (skill.sourcePath ?? '') === (manifest.sourcePath ?? '')
+
+  if (!skill || skill.name === manifest.skill.name || !isSameSource) {
+    return unchanged
+  }
+
+  return await prepareRenamedImport({
+    bucket: input.bucket,
+    manifest,
+    name: skill.name,
+  })
+}
+
+async function copyStagedBlobs(input: {
+  bucket: SkillStageBucket
+  manifest: PendingVersionPayload
+  contentOverrides: Map<string, Uint8Array>
+  skillId: string
+}): Promise<void> {
+  const copied = new Set<string>()
+
+  for (const file of input.manifest.files) {
+    if (copied.has(file.sha256)) {
+      continue
+    }
+
+    copied.add(file.sha256)
+
+    const bytes = input.contentOverrides.get(file.sha256)
+      ?? (isStageManifest(input.manifest)
+        ? await readStagedFile({
+          bucket: input.bucket,
+          manifest: input.manifest,
+          sha256: file.sha256,
+        })
+        : null)
+
+    if (!bytes) {
+      throw createError({
+        message: 'This import has expired',
+        status: 404,
+        code: 'stage-not-found',
+        why: 'A staged file is missing',
+        fix: 'Upload the skill again',
+      })
+    }
+
+    const stored = await putSkillBlob({
+      bucket: input.bucket,
+      userId: input.manifest.userId,
+      skillId: input.skillId,
+      content: bytes,
+    })
+
+    if (stored.sha256 !== file.sha256) {
+      throw createError({
+        message: 'The staged file changed',
+        status: 500,
+        why: `Staged content hashes to ${stored.sha256}, expected ${file.sha256}`,
+        fix: 'Upload the skill again',
+      })
+    }
+  }
+}
+
+function buildImportVersionStatements(input: {
+  db: DbClient
+  manifest: PendingVersionPayload
+  skillId: string
+  version: number
+  origin: 'import' | 'update'
+}) {
+  const { db, manifest, skillId, version } = input
+
+  return buildVersionStatements(db, {
+    skillId,
+    userId: manifest.userId,
+    version,
+    origin: input.origin,
+    sourceKind: manifest.source,
+    sourceUrl: manifest.sourceUrl ?? null,
+    sourceRef: manifest.sourceRef ?? null,
+    sourcePath: manifest.sourcePath ?? null,
+    sourceVersion: manifest.sourceVersion,
+    sha256: manifest.contentSha256,
+    filesCount: manifest.files.length,
+    bytes: manifest.totalBytes,
+    licenseClass: manifest.license.class,
+    licenseFileSha256: manifest.license.sha256,
+    findings: manifest.findingCounts,
+  }, manifest.files.map((file) => {
+    return {
+      path: file.path,
+      blobSha256: file.sha256,
+      bytes: file.bytes,
+      kind: file.kind,
+    }
+  }))
+}
+
+export type SkillInsertRow = Omit<typeof schema.skills.$inferInsert, 'id'>
+
+const SKILL_INSERT_COLUMNS = Object.entries(getTableColumns(schema.skills))
+  .filter(([key]) => {
+    return key !== 'id'
+  })
+
+/**
+ * Inserts the skill row only while the user is under the skill count cap and
+ * the shared storage allowance, in one statement, so two concurrent commits
+ * cannot both pass a count that was read earlier. Returns the new public id,
+ * or null when a cap blocked it.
+ * Column names and value encoding come from the Drizzle table, so a new
+ * column cannot be forgotten here without the type of `SkillRow` failing.
+ */
+export async function insertSkillWithinLimits(
+  db: DbClient,
+  row: SkillInsertRow,
+): Promise<string | null> {
+  const values = row as Record<string, unknown>
+  const policy = await getEffectiveUserFilePolicy(row.userId, db)
+  const columnList = sql.join(
+    SKILL_INSERT_COLUMNS.map(([, column]) => {
+      return sql.identifier(column.name)
+    }),
+    sql`, `,
+  )
+  const valueList = sql.join(
+    SKILL_INSERT_COLUMNS.map(([key, column]) => {
+      const value = values[key]
+
+      return sql`${value === null || value === undefined
+        ? null
+        : column.mapToDriverValue(value)}`
+    }),
+    sql`, `,
+  )
+  const rows = await db.all<{ id: number }>(sql`
+    insert into ${schema.skills} (${columnList})
+    select ${valueList}
+    where (
+      select count(*) from ${schema.skills}
+      where ${schema.skills.userId} = ${row.userId}
+    ) < ${SKILLS_PER_USER}
+    and ${userStorageUsedBytesSql(row.userId)} + ${row.bytes}
+      <= ${policy.maxStorageBytes}
+    returning id
+  `)
+  const inserted = rows[0]
+
+  return inserted ? encodePublicId(Number(inserted.id)) : null
+}
+
+async function createSkillFromStage(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  prepared: PreparedImport
+  name: string
+}): Promise<CommitSkillImportResult> {
+  const { db, bucket, name } = input
+  const { manifest, contentOverrides } = input.prepared
+  let skillId: string
+
+  try {
+    const now = new Date()
+    const insertedId = await insertSkillWithinLimits(db, {
+      createdAt: now,
+      updatedAt: now,
+      userId: manifest.userId,
+      name,
+      description: manifest.skill.description,
+      licenseField: manifest.skill.license,
+      licenseClass: manifest.license.class,
+      licenseFileSha256: manifest.license.sha256,
+      licenseClassifierVersion: manifest.license.classifierVersion,
+      compatibility: manifest.skill.compatibility,
+      metadata: manifest.skill.metadata,
+      allowedTools: manifest.skill.allowedTools,
+      sourceKind: manifest.source,
+      sourceUrl: manifest.sourceUrl ?? null,
+      sourceRef: manifest.sourceRef ?? null,
+      sourcePath: manifest.sourcePath ?? null,
+      sourceVersion: manifest.sourceVersion,
+      currentVersion: 1,
+      pendingVersion: null,
+      filesCount: manifest.files.length,
+      bytes: manifest.totalBytes,
+      enabled: false,
+      modelInvocable: manifest.skill.modelInvocable,
+      slashCommand: false,
+      slashName: null,
+      argumentHint: manifest.skill.argumentHint,
+      allowScripts: false,
+      status: 'broken',
+      createdVia: 'app',
+      createdByClientId: null,
+      providerSkillId: null,
+      providerSkillVersion: null,
+      providerUploadedName: null,
+      providerDeletedAt: null,
+    })
+
+    if (insertedId === null) {
+      throw await createLimitError(db, manifest.userId)
+    }
+
+    skillId = insertedId
+  } catch (exception) {
+    if (isUniqueViolation(exception)) {
+      const existing = await findSkillByName(db, manifest.userId, name)
+
+      throw createNameTakenError(name, manifest.stageId, existing?.id ?? '')
+    }
+
+    throw exception
+  }
+
+  try {
+    await copyStagedBlobs({ bucket, manifest, contentOverrides, skillId })
+
+    await db.batch([
+      db.update(schema.skills)
+        .set({ status: 'ready' })
+        .where(and(
+          eq(schema.skills.id, skillId),
+          eq(schema.skills.userId, manifest.userId),
+        )),
+      ...buildImportVersionStatements({
+        db,
+        manifest,
+        skillId,
+        version: 1,
+        origin: 'import',
+      }),
+    ] as unknown as [BatchItem<'sqlite'>])
+  } catch (exception) {
+    await discardUnfinishedSkill({
+      db,
+      bucket,
+      userId: manifest.userId,
+      skillId,
+    })
+
+    throw exception
+  }
+
+  return {
+    kind: 'created',
+    id: skillId,
+    name,
+    version: 1,
+    enabled: false,
+    status: 'ready',
+    licenseClass: manifest.license.class,
+    filesCount: manifest.files.length,
+  }
+}
+
+export async function createLimitError(db: DbClient, userId: number) {
+  const skillsCount = await countUserSkills(db, userId)
+
+  return skillsCount >= SKILLS_PER_USER
+    ? createError({
+      message: 'Skill limit reached',
+      status: 403,
+      code: 'skills-limit',
+      why: `An account can hold ${SKILLS_PER_USER} skills`,
+      fix: 'Delete a skill you no longer use',
+    })
+    : await buildStorageFullError(userId, db)
+}
+
+/**
+ * The skill row exists before its blobs, because the blob key carries the
+ * skill id. A failed import removes the row, its rows and its blob prefix;
+ * a failed cleanup leaves a `broken` disabled row and swept orphans.
+ */
+export async function discardUnfinishedSkill(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  userId: number
+  skillId: string
+  notUpdatedAfter?: Date
+}): Promise<boolean> {
+  const { db, bucket, userId, skillId } = input
+
+  try {
+    const deleted = await db.delete(schema.skills)
+      .where(and(
+        eq(schema.skills.id, skillId),
+        eq(schema.skills.userId, userId),
+        eq(schema.skills.status, 'broken'),
+        input.notUpdatedAfter
+          ? lte(schema.skills.updatedAt, input.notUpdatedAfter)
+          : undefined,
+      ))
+      .returning({ id: schema.skills.id })
+
+    if (deleted.length === 0) {
+      return false
+    }
+
+    await db.batch([
+      db.delete(schema.skillFiles).where(and(
+        eq(schema.skillFiles.skillId, skillId),
+        eq(schema.skillFiles.userId, userId),
+      )),
+      db.delete(schema.skillVersions).where(and(
+        eq(schema.skillVersions.skillId, skillId),
+        eq(schema.skillVersions.userId, userId),
+      )),
+    ])
+    await deleteSkillPrefix(skillPrefix(userId, skillId), bucket)
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function findSkillByName(
+  db: DbClient,
+  userId: number,
+  name: string,
+) {
+  const rows = await db.select({
+    id: schema.skills.id,
+    status: schema.skills.status,
+    pendingVersion: schema.skills.pendingVersion,
+    updatedAt: schema.skills.updatedAt,
+  })
+    .from(schema.skills)
+    .where(and(
+      eq(schema.skills.userId, userId),
+      eq(schema.skills.name, name),
+    ))
+    .limit(1)
+
+  return rows[0] ?? null
+}
+
+/**
+ * The row of an import that died between the insert and the batch (a killed
+ * invocation) is `broken` with no version rows and would hold its name for
+ * good. After a grace period no live commit can still own it, so a later
+ * import of that name takes it over.
+ */
+export async function reclaimAbandonedPlaceholder(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  userId: number
+  existing: NonNullable<Awaited<ReturnType<typeof findSkillByName>>>
+  now: number
+}): Promise<boolean> {
+  const { db, existing } = input
+
+  if (
+    existing.status !== 'broken'
+    || existing.pendingVersion !== null
+    || input.now - existing.updatedAt.getTime() < ABANDONED_PLACEHOLDER_GRACE_MS
+  ) {
+    return false
+  }
+
+  const [version] = await db.select({ id: schema.skillVersions.id })
+    .from(schema.skillVersions)
+    .where(and(
+      eq(schema.skillVersions.skillId, existing.id),
+      eq(schema.skillVersions.userId, input.userId),
+    ))
+    .limit(1)
+
+  if (version) {
+    return false
+  }
+
+  return await discardUnfinishedSkill({
+    db,
+    bucket: input.bucket,
+    userId: input.userId,
+    skillId: existing.id,
+    notUpdatedAfter: existing.updatedAt,
+  })
+}
+
+/**
+ * The blobs were written before the version rows existed, so a prune that
+ * ran in between could have judged them unreferenced. Writing them again
+ * now that the rows exist closes that window. Skipped when another import
+ * has replaced this pending version meanwhile, and never fatal: the rows are
+ * committed either way.
+ */
+async function reassertPendingBlobs(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  manifest: PendingVersionPayload
+  contentOverrides: Map<string, Uint8Array>
+  skillId: string
+  version: number
+}): Promise<void> {
+  try {
+    const [current] = await input.db.select({
+      pendingVersion: schema.skills.pendingVersion,
+    })
+      .from(schema.skills)
+      .where(and(
+        eq(schema.skills.id, input.skillId),
+        eq(schema.skills.userId, input.manifest.userId),
+      ))
+      .limit(1)
+
+    if (current?.pendingVersion !== input.version) {
+      return
+    }
+
+    await copyStagedBlobs({
+      bucket: input.bucket,
+      manifest: input.manifest,
+      contentOverrides: input.contentOverrides,
+      skillId: input.skillId,
+    })
+  } catch {
+    return
+  }
+}
+
+/**
+ * Writes a persisted pending version over blobs and rows, replacing an older
+ * pending one. The caller has already checked ownership and the name. Used by
+ * "replace as an update" (origin `import`) and by the GitHub update check
+ * (origin `update`); `contentOverrides` holds every file the caller has in
+ * memory, and anything else is read from the staged copy.
+ */
+export async function persistPendingVersion(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  manifest: PendingVersionPayload
+  contentOverrides: Map<string, Uint8Array>
+  skillId: string
+  pendingVersion: number | null
+  origin: 'import' | 'update'
+}): Promise<{ version: number }> {
+  const { db, bucket, manifest, contentOverrides, skillId } = input
+
+  const [latest] = await db.select({ version: schema.skillVersions.version })
+    .from(schema.skillVersions)
+    .where(and(
+      eq(schema.skillVersions.skillId, skillId),
+      eq(schema.skillVersions.userId, manifest.userId),
+    ))
+    .orderBy(desc(schema.skillVersions.version))
+    .limit(1)
+  const version = (latest?.version ?? 0) + 1
+
+  await copyStagedBlobs({ bucket, manifest, contentOverrides, skillId })
+
+  const replacingStatements = input.pendingVersion === null
+    ? []
+    : [
+      db.delete(schema.skillFiles).where(and(
+        eq(schema.skillFiles.skillId, skillId),
+        eq(schema.skillFiles.userId, manifest.userId),
+        eq(schema.skillFiles.version, input.pendingVersion),
+      )),
+      db.delete(schema.skillVersions).where(and(
+        eq(schema.skillVersions.skillId, skillId),
+        eq(schema.skillVersions.userId, manifest.userId),
+        eq(schema.skillVersions.version, input.pendingVersion),
+      )),
+    ]
+
+  try {
+    await db.batch([
+      ...replacingStatements,
+      ...buildImportVersionStatements({
+        db,
+        manifest,
+        skillId,
+        version,
+        origin: input.origin,
+      }),
+      db.update(schema.skills)
+        .set({ pendingVersion: version })
+        .where(and(
+          eq(schema.skills.id, skillId),
+          eq(schema.skills.userId, manifest.userId),
+        )),
+    ] as unknown as [BatchItem<'sqlite'>])
+  } catch (exception) {
+    if (isUniqueViolation(exception)) {
+      throw createError({
+        message: 'This skill changed while you were importing',
+        status: 409,
+        code: 'pending-changed',
+        why: 'Another save created the same version number',
+        fix: 'Try the import again',
+      })
+    }
+
+    throw exception
+  }
+
+  await reassertPendingBlobs({
+    db,
+    bucket,
+    manifest,
+    contentOverrides,
+    skillId,
+    version,
+  })
+
+  if (input.pendingVersion !== null) {
+    await deleteSkillJevMarks({
+      userId: manifest.userId,
+      skillId,
+      versions: [input.pendingVersion],
+    })
+  }
+
+  return { version }
+}
+
+async function replaceAsUpdate(input: {
+  db: DbClient
+  bucket: SkillStageBucket
+  prepared: PreparedImport
+  skillId: string
+}): Promise<CommitSkillImportResult> {
+  const { db, bucket, skillId } = input
+  const { manifest, contentOverrides } = input.prepared
+  const [skill] = isDecodableSkillPublicId(skillId)
+    ? await db.select({
+      id: schema.skills.id,
+      name: schema.skills.name,
+      pendingVersion: schema.skills.pendingVersion,
+    })
+      .from(schema.skills)
+      .where(and(
+        eq(schema.skills.id, skillId),
+        eq(schema.skills.userId, manifest.userId),
+      ))
+      .limit(1)
+    : []
+
+  if (!skill) {
+    throw createError({
+      message: 'Skill not found',
+      status: 404,
+      code: 'skill-not-found',
+      why: 'The skill to update does not exist or is not yours',
+      fix: 'Reload the skills list',
+    })
+  }
+
+  if (skill.name !== manifest.skill.name) {
+    throw createError({
+      message: 'The skill to update has a different name',
+      status: 400,
+      code: 'invalid-request',
+      why: `The import is named ${manifest.skill.name}, the skill is named ${
+        skill.name
+      }`,
+      fix: 'Replace the skill with the same name, or import it as a new skill',
+    })
+  }
+
+  const { version } = await persistPendingVersion({
+    db,
+    bucket,
+    manifest,
+    contentOverrides,
+    skillId,
+    pendingVersion: skill.pendingVersion,
+    origin: 'import',
+  })
+
+  return {
+    kind: 'pending',
+    id: skillId,
+    name: skill.name,
+    version,
+    pendingVersion: version,
+    sha256: manifest.contentSha256,
+    licenseClass: manifest.license.class,
+    filesCount: manifest.files.length,
+  }
+}
+
+/**
+ * Takes the stage before any work starts: the manifest is read, then
+ * deleted, and the commit continues with its in-memory copy, so a second
+ * commit that reads it afterwards finds nothing. KV is eventually consistent
+ * and has no compare-and-delete, so two commits racing within the
+ * propagation window can still both read the manifest; the unique name index
+ * and the atomic limit insert keep that harmless (one skill, one of them
+ * answers 409), and a replace-as-update would at worst write the same
+ * pending version twice.
+ */
+async function claimSkillStage(
+  kv: SkillStageKv,
+  manifest: SkillStageManifest,
+): Promise<void> {
+  await kv.delete(skillStageKey(manifest.stageId))
+}
+
+/**
+ * A commit that fails after claiming puts the manifest back with its
+ * remaining lifetime, so the user can retry (a rename, another resolution)
+ * without uploading again. Best effort.
+ */
+async function restoreSkillStage(
+  kv: SkillStageKv,
+  manifest: SkillStageManifest,
+  now: number,
+): Promise<void> {
+  const remainingSeconds = Math.ceil((manifest.expiresAt - now) / 1000)
+
+  if (remainingSeconds <= 0) {
+    return
+  }
+
+  try {
+    await kv.put(skillStageKey(manifest.stageId), JSON.stringify(manifest), {
+      expirationTtl: Math.max(60, remainingSeconds),
+    })
+  } catch {
+    return
+  }
+}
+
+/**
+ * The marks of the staged check go to the version the commit created (version
+ * 1 of a new skill, or the pending version of an update), under the key that
+ * goes with that version. `jevResult` is null when no check ran for the
+ * current question set. The entry carries the content hash of that version,
+ * so it can never answer for other text if the number is reused. Best
+ * effort: the counts are already stored.
+ */
+async function keepStageJevMarks(input: {
+  db: DbClient
+  kv: SkillStageKv
+  userId: number
+  result: CommitSkillImportResult
+  jevResult: StoredSkillJevResult | null
+}): Promise<void> {
+  if (!input.jevResult) {
+    return
+  }
+
+  const version = input.result.kind === 'created'
+    ? input.result.version
+    : input.result.pendingVersion
+  const [row] = await input.db.select({ sha256: schema.skillVersions.sha256 })
+    .from(schema.skillVersions)
+    .where(and(
+      eq(schema.skillVersions.skillId, input.result.id),
+      eq(schema.skillVersions.userId, input.userId),
+      eq(schema.skillVersions.version, version),
+    ))
+    .limit(1)
+
+  if (!row) {
+    return
+  }
+
+  await writeStoredSkillJevResult({
+    kv: input.kv,
+    key: skillJevMarksKey(input.userId, input.result.id, version),
+    result: { ...input.jevResult, versionSha256: row.sha256 },
+  })
+}
+
+/**
+ * Turns a staged import preview into a skill. Without `asUpdateOf` it
+ * creates a new disabled skill with version 1; a name collision answers 409
+ * and keeps the stage, so the user can retry with `asUpdateOf` (a persisted
+ * pending version of the existing skill, replacing an older pending one) or
+ * with a new `name`.
+ */
+export async function commitSkillImport(
+  input: CommitSkillImportInput,
+): Promise<CommitSkillImportResult> {
+  const { db, bucket, kv, userId, logger } = input
+  const manifest = await readSkillStage({
+    kv,
+    userId,
+    stageId: input.stageId,
+    now: input.now,
+  })
+
+  if (!manifest) {
+    throw createStageNotFoundError()
+  }
+
+  assertAcknowledgments(manifest, input.licenseAcknowledged)
+
+  const jevResult = await readStoredSkillJevResult(
+    kv,
+    skillJevStageKey(manifest.stageId),
+  )
+  const jevCounts = toStoredJevFindingCounts(jevResult)
+  const committing: SkillStageManifest = Object.keys(jevCounts).length === 0
+    ? manifest
+    : {
+      ...manifest,
+      findingCounts: { ...manifest.findingCounts, ...jevCounts },
+    }
+
+  if (input.asUpdateOf && input.name !== undefined) {
+    throw createError({
+      message: 'Invalid request',
+      status: 400,
+      code: 'invalid-request',
+      why: 'An update keeps the name of the skill it replaces',
+      fix: 'Send either asUpdateOf or name, not both',
+    })
+  }
+
+  const name = input.name ?? manifest.skill.name
+
+  if (!isSkillNameValid(name)) {
+    throw createSkillImportError(
+      'name-invalid',
+      'The skill name must use lowercase letters, digits and single hyphens, up to 64 characters',
+    )
+  }
+
+  await assertLimits({
+    db,
+    userId,
+    skillsCount: await countUserSkills(db, userId),
+    incomingBytes: manifest.totalBytes,
+    isNewSkill: !input.asUpdateOf,
+  })
+
+  let result: CommitSkillImportResult
+
+  if (input.asUpdateOf) {
+    await claimSkillStage(kv, manifest)
+
+    try {
+      result = await replaceAsUpdate({
+        db,
+        bucket,
+        prepared: await prepareUpdateImport({
+          db,
+          bucket,
+          manifest: committing,
+          skillId: input.asUpdateOf,
+        }),
+        skillId: input.asUpdateOf,
+      })
+    } catch (exception) {
+      await restoreSkillStage(kv, manifest, input.now ?? Date.now())
+
+      throw exception
+    }
+  } else {
+    const existing = await findSkillByName(db, userId, name)
+
+    if (
+      existing
+      && !await reclaimAbandonedPlaceholder({
+        db,
+        bucket,
+        userId,
+        existing,
+        now: input.now ?? Date.now(),
+      })
+    ) {
+      throw createNameTakenError(name, manifest.stageId, existing.id)
+    }
+
+    await claimSkillStage(kv, manifest)
+
+    try {
+      result = await createSkillFromStage({
+        db,
+        bucket,
+        prepared: await prepareRenamedImport({
+          bucket,
+          manifest: committing,
+          name,
+        }),
+        name,
+      })
+    } catch (exception) {
+      await restoreSkillStage(kv, manifest, input.now ?? Date.now())
+
+      throw exception
+    }
+  }
+
+  await invalidateStorageCache(userId, logger)
+
+  await keepStageJevMarks({
+    db,
+    kv,
+    userId,
+    result,
+    jevResult: Object.keys(jevCounts).length === 0 ? null : jevResult,
+  })
+
+  try {
+    await deleteSkillStage({ kv, bucket, manifest })
+  } catch {
+    logger.set({
+      attributes: { skills: { import: { stageCleanupFailed: true } } },
+    })
+  }
+
+  logger.set({
+    attributes: {
+      skills: {
+        import: {
+          source: manifest.source,
+          files: manifest.files.length,
+          bytes: manifest.totalBytes,
+          findings: manifest.findingCounts,
+          licenseClass: manifest.license.class,
+          outcome: result.kind,
+        },
+      },
+    },
+  })
+
+  return result
+}

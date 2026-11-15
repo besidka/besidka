@@ -4,7 +4,7 @@
 > What to do when someone reports published content, when an authority sends a
 > removal order, when a report points to a threat to someone's life, and when
 > Cloudflare forwards an abuse complaint. Written for public artifact links
-> (`/a#<token>`) and the artifacts inside shared chats, and it applies to
+> (`/artifacts/<token>`) and the artifacts inside shared chats, and it applies to
 > shared chats as well. Most of the tooling it names is planned in A-1, A-4 and
 > A-7; until it ships, use the fallbacks marked **Fallback**.
 >
@@ -18,7 +18,7 @@
 
 | Channel | What arrives | Who sees it |
 |---|---|---|
-| Report form on `/a#<token>` and next to artifacts in shared chats (A-7) | Name, email (both required except for `csam`), reason, details, good-faith statement, the URL filled in by the form, the reporter's account if signed in | The admin reports list, and an email to the privacy mailbox. `threat-to-life` and `terrorism` reports carry a priority flag and a subject prefix |
+| Report form on `/artifacts/<token>` and next to artifacts in shared chats (A-7) | Name, email (both required except for `csam`), reason, details, good-faith statement, the URL filled in by the form, the reporter's account if signed in | The admin reports list, and an email to the privacy mailbox. `threat-to-life` and `terrorism` reports carry a priority flag and a subject prefix |
 | Privacy mailbox (the address the `:privacy-email-link{}` component renders on every legal page) | Email reports, copyright notices, disputes, TCO removal orders, authority requests, Cloudflare abuse forwards | The controller |
 | Cloudflare abuse email to the account address | Complaints Cloudflare received about a URL it hosts | The controller |
 
@@ -44,7 +44,7 @@ owner cannot be reached for any other reason. In those cases a TCO removal
 order can run past the hour. If that happens, tell the authority as described
 in section 3 (Art. 3(7), 3(8)). Revisit this when a second operator exists,
 when Besidka starts to earn money or the owner registers a business
-(`docs/legal/monetisation-readiness.md`), or when the user base grows enough
+(`docs/legal/monetization-readiness.md`), or when the user base grows enough
 to make orders or reports likely.
 
 ## 2. Triage, in this order
@@ -57,7 +57,7 @@ to make orders or reports likely.
    (which route fits best is **[U]**, counsel question). Never forward, copy or
    download the material. Do not set a hold of your own: keep the disabled
    artifact as it is and preserve it only if an authority asks (possession of
-   such material is itself an offence, kk art. 202).
+   such material is itself an offense, kk art. 202).
 4. **`terrorism` report without an order**: take down if it is plainly
    terrorist content, then decide on Art. 18 (section 4). Set a hold only if an
    authority asks for one or issues an order.
@@ -99,7 +99,7 @@ be acted on **within one hour of receipt** (Art. 3(3)).
    that nothing may be disclosed (Art. 11(3)), say nothing until that period
    ends, then send T4.
 7. If the order shows an **imminent threat to life**, also inform the
-   authorities competent for criminal offences in the Member States concerned
+   authorities competent for criminal offenses in the Member States concerned
    (TCO Art. 14(5)); if they cannot be identified, the ABW contact point and
    Europol.
 8. Record the order privately (section 8).
@@ -112,7 +112,7 @@ nothing is due.
 ## 4. Threat to life or safety (DSA Art. 18)
 
 Applies when anything (a report, an artifact the controller opens, an email)
-gives rise to a suspicion that a criminal offence threatening someone's life or
+gives rise to a suspicion that a criminal offense threatening someone's life or
 safety has happened, is happening or is likely. It does not depend on a report.
 The Terms promise it.
 
@@ -174,11 +174,12 @@ option C). Cloudflare's Self-Serve Subscription Agreement lets it suspend all or
 part of the services; its abuse policy says terminating all services is not
 normally the response, but repeated hosting of violating content with "no
 meaningful steps" can lead to suspension of hosting services (Workers, R2, D1).
-A complaint will usually name `besidka.com/a#<token>`. The token is the
-part after `#`; the admin takedown form accepts the full link,
-`/a#<token>`, `a#<token>` or the bare token. The token never reaches the
-server in a request, so it is not in any request log; ask the complainant
-for the full link if they quote only `besidka.com/a`.
+A complaint will usually name `besidka.com/artifacts/<token>`. The token is
+the last path segment; the admin takedown form accepts the full link,
+`/artifacts/<token>`, `artifacts/<token>` or the bare token. Besidka's own
+logs show the token as `[token]` (Cloudflare Workers Logs on Cloudflare's side
+record the URL); ask the complainant for the full link if they quote only
+`besidka.com/artifacts`.
 
 1. Read the complaint the same day. Open the URL in a private window.
 2. If it breaches the Terms or the law, take it down (section 5) and send the

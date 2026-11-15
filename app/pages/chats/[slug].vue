@@ -66,7 +66,19 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatSkillInvocation
+            v-if="m.role === 'user'"
+            :message="m"
+          />
+          <ChatArtifactAttachments
+            v-if="isArtifactsActive && m.role === 'user'"
+            :message="m"
+          />
           <ChatOmittedContextFiles
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
+          <ChatConnectorsNotice
             v-if="m.role === 'assistant'"
             :message="m"
           />
@@ -90,7 +102,7 @@
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
-              'mt-4': isTextPartAfterGeneratedImage(
+              'mt-4': hasGapBeforePart(
                 m,
                 getRenderedMessageParts(m),
                 index,
@@ -109,6 +121,25 @@
               :part="part"
               source="owner"
               :chat-id="artifactChatId"
+            />
+            <ChatCodeExecution
+              v-else-if="isCodeExecutionPart(part)"
+              :part="part"
+              :skipped-files="isLastCodeExecutionPart(
+                getRenderedMessageParts(m),
+                part,
+              )
+                ? getCodeExecutionSkippedFiles(m.parts)
+                : []"
+              :fallback-key="`${m.id}-${index}`"
+            />
+            <ChatDocument
+              v-else-if="isDocumentPart(part)"
+              :part="part"
+              :is-streaming="isLastAssistantMessage(messageIndex)
+                && ['submitted', 'streaming'].includes(chatSdk.status)
+              "
+              :model-id="getMessageModelId(m)"
             />
             <div
               v-else-if="isChatErrorTextPart(part)"
@@ -225,6 +256,7 @@
   <ChatInput
     v-model:message="input"
     v-model:files="files"
+    v-model:attached-artifacts="attachedArtifacts"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
     display-project-picker
@@ -283,13 +315,13 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
-  isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
+import { hasGapBeforePart } from '~/utils/message-part-spacing'
 import {
   getRenderedPartKeys,
   isArtifactMessagePart,
-  orderArtifactPartsLast,
+  orderOutputCardPartsLast,
 } from '~/utils/artifact-parts'
 
 definePageMeta({
@@ -430,6 +462,7 @@ const {
   isLastAssistantMessage,
   shouldDisplayMessage,
   files,
+  attachedArtifacts,
   currentTurnStartedAt,
   currentTurnReasoningAccumulatedMs,
   currentReasoningSegmentStartedAt,
@@ -782,7 +815,7 @@ const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
 function getRenderedMessageParts(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): UIMessage['parts'] {
-  return orderArtifactPartsLast(getDisplayMessageParts(message))
+  return orderOutputCardPartsLast(getDisplayMessageParts(message))
 }
 
 function getRenderedPartKey(

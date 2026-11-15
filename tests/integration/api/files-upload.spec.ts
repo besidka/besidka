@@ -122,14 +122,14 @@ function createChunkedStream(chunks: Uint8Array[]) {
 }
 
 function createEndlessStream(chunkSize: number) {
-  const state = { pulledChunks: 0, cancelled: false }
+  const state = { pulledChunks: 0, canceled: false }
   const stream = new ReadableStream<Uint8Array>({
     pull(controller) {
       state.pulledChunks += 1
       controller.enqueue(new Uint8Array(chunkSize))
     },
     cancel() {
-      state.cancelled = true
+      state.canceled = true
     },
   }, { highWaterMark: 0 })
 
@@ -290,6 +290,54 @@ describe('files upload API', () => {
       .toBe('text/plain')
     expect(spies.values.mock.calls[0]?.[0]?.expiresAt)
       .toBeInstanceOf(Date)
+  })
+
+  it('accepts CSV and TSV uploads, the main input of code execution', async () => {
+    const handler = await getHandler()
+
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      public: {
+        allowedFileFormats: [
+          'text/plain',
+          'text/csv',
+          'text/tab-separated-values',
+        ],
+        maxFilesPerMessage: 10,
+        maxMessageFilesBytes: 1000 * 1024 * 1024,
+      },
+      filesHardMaxStorageBytes: 5 * 1024 * 1024 * 1024,
+      filesGlobalTransformLimitMonthly: 1000,
+    }))
+
+    for (const [type, extension] of [
+      ['text/csv', 'csv'],
+      ['text/tab-separated-values', 'tsv'],
+    ] as const) {
+      const { db } = createDbMock({
+        insertResult: {
+          id: 'file-1',
+          storageKey: `stored.${extension}`,
+          name: `cities.${extension}`,
+          size: 4,
+          type,
+          source: 'upload',
+          expiresAt: new Date(),
+        },
+      })
+      const put = vi.fn().mockResolvedValue({ key: `stored.${extension}` })
+
+      vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useFileStorage', () => ({ put, delete: vi.fn() }))
+
+      const result = await handler(createEvent({
+        'content-type': type,
+        'x-filename': encodeURIComponent(`cities.${extension}`),
+        'x-filesize': '4',
+      }) as any)
+
+      expect(result.type).toBe(type)
+      expect(put.mock.calls[0]?.[0]).toMatch(new RegExp(`\\.${extension}$`))
+    }
   })
 
   it('stores vip uploads without expiry date', async () => {
@@ -505,11 +553,13 @@ describe('files upload API', () => {
 
       await expect(handler(event as any)).rejects.toMatchObject({
         status: 413,
-        message: 'Not enough storage space. Please delete some files.',
+        message: 'Storage is full',
+        why: '5 B of 15 B used',
+        link: '/profile/storage',
       })
 
       expect(arrayBuffer).not.toHaveBeenCalled()
-      expect(state.cancelled).toBe(true)
+      expect(state.canceled).toBe(true)
       expect(state.pulledChunks).toBe(3)
     })
 
@@ -530,7 +580,7 @@ describe('files upload API', () => {
         status: 413,
       })
 
-      expect(state.cancelled).toBe(true)
+      expect(state.canceled).toBe(true)
     })
 
     it('uploads a streamed body within quota when Content-Length is missing', async () => {

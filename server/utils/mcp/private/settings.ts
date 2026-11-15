@@ -7,6 +7,8 @@ import {
   favoriteGatewayModelsSchema,
   favoriteModelIdsSchema,
 } from '#shared/utils/user-settings-schemas'
+import { getEffectiveUserFilePolicy } from '~~/server/utils/files/file-governance'
+import { getUserStorageBreakdown } from '~~/server/utils/storage/usage'
 import {
   applyUserSettingsUpdate,
   dedupeFavoriteGatewayModels,
@@ -69,6 +71,23 @@ export async function getMcpSettings(db: DbClient, userId: number) {
       ?? MEMORY_SETTING_DEFAULTS.memoryExtractionEnabled,
     profileMemoryModel: settings?.profileMemoryModel ?? null,
     projectMemoryModel: settings?.projectMemoryModel ?? null,
+  }
+}
+
+/**
+ * The one storage allowance and what fills it, in the same categories as the
+ * Storage page. Read-only: space is freed with the existing delete tools.
+ */
+export async function getMcpStorage(db: DbClient, userId: number) {
+  const [policy, breakdown] = await Promise.all([
+    getEffectiveUserFilePolicy(userId, db),
+    getUserStorageBreakdown(userId, db),
+  ])
+
+  return {
+    usedBytes: breakdown.totalBytes,
+    totalBytes: policy.maxStorageBytes,
+    categories: breakdown.categories,
   }
 }
 
@@ -143,7 +162,7 @@ async function assertMemoryEnableDoesNotResumeExtraction(
 
 /**
  * Updates the display and chat preferences a connected app may change.
- * Settings that authorise spend or change who receives data (automatic
+ * Settings that authorize spend or change who receives data (automatic
  * memory extraction, the memory models and gateways, the TypeSafe AI roles,
  * the "about me" text, consents) are not in the schema, and a strict
  * schema refuses any key it does not list. Writes go through the same

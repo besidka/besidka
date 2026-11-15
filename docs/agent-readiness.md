@@ -57,7 +57,7 @@ ready, a manual step is open), **not done** (deliberate, reason given).
 | ARD catalog | `/.well-known/ai-catalog.json` from `server/routes/.well-known/ai-catalog.json.get.ts` | done | ARD `ai-catalog` |
 | Poppy | `/.well-known/poppy.json`, web-only declaration | done in production; fails on preview hosts by design, see [Preview scan](#preview-scan-2026-10-29) | Informational |
 | A2A Agent Card (`/.well-known/agent-card.json`) | Nothing | not applicable | Besidka is not an A2A agent: it exposes no agent that other agents delegate tasks to |
-| Commerce: x402, MPP, UCP, ACP | Nothing | not applicable | Besidka sells nothing; see `docs/legal/monetisation-readiness.md` |
+| Commerce: x402, MPP, UCP, ACP | Nothing | not applicable | Besidka sells nothing; see `docs/legal/monetization-readiness.md` |
 
 The module also serves its own `/.well-known/skills/index.json`. That is an
 older format than the v0.2.0 index. Both stay: the module's one is harmless
@@ -80,7 +80,7 @@ public tools never authenticates.
 | Protected resource metadata | `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | Better Auth through `server/routes/.well-known/oauth-protected-resource/` |
 | Dynamic client registration | `/api/auth/oauth2/register` | Better Auth, RFC 7591, no user session needed |
 | Consent page | `/oauth/consent` | The app |
-| Scopes | `shared/utils/mcp-oauth-scopes.ts` | Identity: `openid`, `profile`, `email`, `offline_access`. Read: `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `artifacts:read`. Write: `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `artifacts:write`, `artifacts:share`, `data:delete`, `admin:features` (admins only, stripped for everyone else) |
+| Scopes | `shared/utils/mcp-oauth-scopes.ts` | Identity: `openid`, `profile`, `email`, `offline_access`. Read: `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `artifacts:read`, `connectors:read`, `skills:read`. Write: `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `artifacts:write`, `artifacts:share`, `connectors:write`, `skills:write`, `data:delete`, `admin:features` (admins only, stripped for everyone else) |
 
 The root protected resource document describes the origin
 (`resource: "https://besidka.com"`, rewritten from Better Auth's output in

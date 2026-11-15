@@ -689,6 +689,89 @@ describe('buildChatContext used: web sources', () => {
   })
 })
 
+describe('buildChatContext used: code execution', () => {
+  function codeExecutionPart(
+    toolCallId: string,
+    state = 'output-available',
+  ) {
+    return {
+      type: 'tool-code_execution',
+      toolCallId,
+      state,
+      input: { language: 'python', code: 'print(1)' },
+      output: { stdout: '1', stderr: '', returnCode: 0 },
+    }
+  }
+
+  it('lists one Code execution item counting every run in Used', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        codeExecutionPart('call-1'),
+        codeExecutionPart('call-2', 'output-error'),
+      ]),
+      message('m2', 'assistant', [codeExecutionPart('call-3')]),
+    ])
+
+    expect(context.used).toEqual([
+      {
+        id: 'code-execution',
+        sectionId: 'code-execution',
+        kind: 'code-execution',
+        title: 'Code execution',
+        messageId: 'm1',
+        meta: { count: 3 },
+      },
+    ])
+    expect(context.counts).toEqual({ outputs: 0, inputs: 0, used: 1 })
+    expect(context.kindCounts['code-execution']).toBe(1)
+  })
+
+  it('keeps files a run produced in Outputs, not in Used', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        codeExecutionPart('call-1'),
+        {
+          type: 'file',
+          url: '/files/chart-key',
+          mediaType: 'image/png',
+          filename: 'chart.png',
+        },
+        {
+          type: 'data-code-execution-files',
+          data: {
+            savedCount: 1,
+            skipped: [{ filename: 'huge.bin', reason: 'too-large' }],
+          },
+        },
+      ]),
+    ])
+
+    expect(context.outputs).toHaveLength(1)
+    expect(context.outputs[0]).toMatchObject({
+      id: 'image:/files/chart-key',
+      kind: 'image',
+      title: 'chart.png',
+    })
+    expect(context.used.map(item => item.kind)).toEqual(['code-execution'])
+  })
+
+  it('ignores code execution parts on user messages', () => {
+    const context = privateContext([
+      message('m1', 'user', [codeExecutionPart('call-1')]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('never reaches a shared chat', () => {
+    const context = publicContext([
+      message('m1', 'assistant', [codeExecutionPart('call-1')]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+})
+
 describe('buildChatContext tool part shapes', () => {
   it('reads dynamic-tool parts like static tool parts', () => {
     const context = privateContext([
@@ -1241,5 +1324,378 @@ describe('artifacts section', () => {
     ])
 
     expect(context.outputs).toEqual([])
+  })
+})
+
+describe('documents section', () => {
+  function documentPart(documentId: string | null, title = 'Quarterly report') {
+    return {
+      type: 'data-document',
+      data: {
+        documentId,
+        format: 'docx',
+        title,
+        specVersion: 1,
+        status: 'spec_ready',
+      },
+    }
+  }
+
+  it('lists each document of an owner chat with its id and format', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [documentPart('doc-1', '  Q3\n report  ')]),
+      message('m2', 'assistant', [documentPart('doc-2')]),
+    ])
+
+    expect(context.outputs).toEqual([
+      {
+        id: 'document:doc-1',
+        sectionId: 'documents',
+        kind: 'document',
+        title: 'Q3 report',
+        messageId: 'm1',
+        meta: { documentId: 'doc-1', documentFormat: 'docx' },
+      },
+      {
+        id: 'document:doc-2',
+        sectionId: 'documents',
+        kind: 'document',
+        title: 'Quarterly report',
+        messageId: 'm2',
+        meta: { documentId: 'doc-2', documentFormat: 'docx' },
+      },
+    ])
+    expect(context.counts.outputs).toBe(2)
+    expect(context.kindCounts).toEqual({ document: 2 })
+  })
+
+  it('falls back to a default title for an empty one', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [documentPart('doc-1', '   ')]),
+    ])
+
+    expect(context.outputs[0]?.title).toBe('Document')
+  })
+
+  it('never lists documents for a public share', () => {
+    const context = publicContext([
+      message('m1', 'assistant', [documentPart('doc-1')]),
+    ])
+
+    expect(context.outputs).toEqual([])
+    expect(context.counts.outputs).toBe(0)
+  })
+
+  it('skips a share-shaped part without a document id and malformed parts', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        documentPart(null),
+        { type: 'data-document', data: { documentId: 'doc-1' } },
+        { type: 'tool-create_document', state: 'output-available' },
+      ]),
+    ])
+
+    expect(context.outputs).toEqual([])
+  })
+})
+
+describe('attached artifacts section', () => {
+  const artifacts = new Map([
+    ['art-1', {
+      title: ' Library\n quiz ',
+      kind: 'html' as const,
+      version: 4,
+      latestVersion: 4,
+    }],
+  ])
+
+  function attachmentPart(artifactId: string, version: number) {
+    return {
+      type: 'data-artifact-attachment',
+      data: { artifactId, version, kind: 'html', title: 'Part title' },
+    }
+  }
+
+  it('lists an attached artifact under Inputs with the attached version',
+    () => {
+      const context = buildChatContext([
+        message('m1', 'user', [
+          { type: 'text', text: 'Use this' },
+          attachmentPart('art-1', 2),
+          attachmentPart('art-unknown', 1),
+        ]),
+        message('m2', 'user', [attachmentPart('art-1', 3)]),
+      ], { visibility: 'private', artifacts })
+
+      expect(context.inputs).toEqual([
+        {
+          id: 'attached-artifact:art-1',
+          sectionId: 'attached-artifacts',
+          kind: 'artifact',
+          title: 'Library quiz',
+          messageId: 'm1',
+          meta: {
+            artifactId: 'art-1',
+            artifactKind: 'html',
+            version: 2,
+            latestVersion: 4,
+          },
+        },
+      ])
+      expect(context.outputs).toEqual([])
+      expect(context.counts.inputs).toBe(1)
+    })
+
+  it('ignores attachment parts of assistant messages', () => {
+    const context = buildChatContext([
+      message('m1', 'assistant', [attachmentPart('art-1', 1)]),
+    ], { visibility: 'private', artifacts })
+
+    expect(context.inputs).toEqual([])
+    expect(context.outputs).toEqual([])
+  })
+
+  it('never lists attachments on a public share', () => {
+    const context = buildChatContext([
+      message('m1', 'user', [attachmentPart('art-1', 1)]),
+    ], { visibility: 'public', artifacts })
+
+    expect(context.inputs).toEqual([])
+    expect(context.outputs).toEqual([])
+  })
+
+  it('keeps the chat outputs separate from the attached input', () => {
+    const context = buildChatContext([
+      message('m1', 'user', [attachmentPart('art-1', 1)]),
+      message('m2', 'assistant', [{
+        type: 'data-artifact',
+        data: {
+          artifactId: 'art-1',
+          version: 4,
+          kind: 'html',
+          title: 'Library quiz',
+        },
+      }]),
+    ], { visibility: 'private', artifacts })
+
+    expect(context.inputs.map(item => item.id))
+      .toEqual(['attached-artifact:art-1'])
+    expect(context.outputs.map(item => item.id))
+      .toEqual(['artifact:art-1'])
+  })
+})
+
+describe('skills in the used group', () => {
+  it('lists an attached skill, an activation and an activate_skill call once each', () => {
+    const context = privateContext([
+      message('m1', 'user', [
+        { type: 'text', text: 'hi' },
+        {
+          type: 'data-skill-invocation',
+          data: { skillId: 'skl1', name: 'translate', version: 2 },
+        },
+      ]),
+      message('m2', 'assistant', [
+        {
+          type: 'data-skill-activation',
+          data: { skillId: 'skl1', name: 'translate', version: 2 },
+        },
+        {
+          type: 'tool-activate_skill',
+          toolCallId: 't1',
+          state: 'output-available',
+          output: { skillId: 'skl2', name: 'writing-style', version: 1 },
+        },
+        {
+          type: 'tool-activate_skill',
+          toolCallId: 't2',
+          state: 'output-error',
+          errorText: 'no',
+        },
+      ]),
+    ])
+
+    expect(context.used.map((item) => {
+      return [item.kind, item.title, item.meta?.action]
+    })).toEqual([
+      ['skill', 'translate', 'Attached'],
+      ['skill', 'writing-style', 'Used'],
+    ])
+    expect(context.kindCounts.skill).toBe(2)
+  })
+
+  it('labels a project skill activation as a project skill', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [{
+        type: 'data-skill-activation',
+        data: {
+          skillId: 'skl1',
+          name: 'translate',
+          version: 2,
+          source: 'project',
+        },
+      }]),
+    ])
+
+    expect(context.used.map((item) => {
+      return [item.kind, item.title, item.meta?.action]
+    })).toEqual([['skill', 'translate', 'Project skill']])
+  })
+
+  it('never lists a skill on a shared chat', () => {
+    const context = publicContext([
+      message('m1', 'user', [{
+        type: 'data-skill-invocation',
+        data: { skillId: 'skl1', name: 'translate', version: 2 },
+      }]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+})
+
+describe('connector calls in the used group', () => {
+  const framed = '<untrusted_tool_result connector="notion" tool="search">'
+    + 'x</untrusted_tool_result>'
+  const denial = 'This tool needs your approval; approvals arrive in the next'
+    + ' update.'
+
+  function connectorPart(
+    toolName: string,
+    toolCallId: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      type: 'dynamic-tool',
+      toolName,
+      toolCallId,
+      state: 'output-available',
+      input: {},
+      output: framed,
+      ...overrides,
+    }
+  }
+
+  function connectorContext(messages: ChatContextMessage[]) {
+    return buildChatContext(messages, {
+      visibility: 'private',
+      connectors: new Map([['notion', 'Notion']]),
+    })
+  }
+
+  it('lists each connector tool once with the display title, call count and last outcome', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+        connectorPart('mcp__notion__search', 't2', {
+          output: undefined,
+          state: 'output-error',
+        }),
+        connectorPart('mcp__notion__fetch', 't3', { output: denial }),
+      ]),
+      message('m2', 'assistant', [
+        connectorPart('mcp__notion__search', 't4'),
+      ]),
+    ])
+
+    expect(context.used.map((item) => {
+      return [
+        item.kind,
+        item.title,
+        item.meta?.tool,
+        item.meta?.count,
+        item.meta?.outcome,
+      ]
+    })).toEqual([
+      ['connector', 'Notion', 'search', 3, 'ok'],
+      ['connector', 'Notion', 'fetch', 1, 'denied'],
+    ])
+    expect(context.kindCounts.connector).toBe(2)
+  })
+
+  it('reports a limit refusal as limited, not as done', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1', {
+          output: 'Connector call limit for this message reached. Answer '
+            + 'with what you already have.',
+        }),
+      ]),
+    ])
+
+    expect(context.used.map(item => item.meta?.outcome)).toEqual(['limited'])
+  })
+
+  it('reports an error as the last outcome when the final call failed', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+        connectorPart('mcp__notion__search', 't2', {
+          state: 'output-error',
+          output: undefined,
+        }),
+      ]),
+    ])
+
+    expect(context.used[0]?.meta).toMatchObject({
+      count: 2,
+      outcome: 'error',
+    })
+  })
+
+  it('falls back to the slug for a connector that was deleted', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__gone__lookup', 't1'),
+      ]),
+    ])
+
+    expect(context.used[0]?.title).toBe('gone')
+  })
+
+  it('skips calls that never finished', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1', {
+          state: 'input-available',
+          output: undefined,
+        }),
+      ]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('is empty while the connectors flag is off', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+      ]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('ignores dynamic tools that are not connector tools', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('some_other_tool', 't1'),
+      ]),
+    ])
+
+    expect(context.used).toEqual([])
+  })
+
+  it('never lists connector calls on a shared chat', () => {
+    const context = buildChatContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1'),
+      ]),
+    ], {
+      visibility: 'public',
+      connectors: new Map([['notion', 'Notion']]),
+    })
+
+    expect(context.used).toEqual([])
   })
 })

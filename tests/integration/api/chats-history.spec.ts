@@ -27,6 +27,14 @@ const mocks = vi.hoisted(() => ({
     deletedCount: 0,
     failedCount: 0,
   })),
+  cleanupDocumentsForDeletedChats: vi.fn(async (..._args: unknown[]) => ({})),
+  cleanupSkillsForDeletedChats: vi.fn(async (..._args: unknown[]) => ({})),
+  cleanupConnectorsForDeletedChats: vi.fn(
+    async (..._args: unknown[]) => ({}),
+  ),
+  cleanupToolApprovalsForDeletedChats: vi.fn(
+    async (..._args: unknown[]) => ({}),
+  ),
 }))
 
 vi.mock('evlog', () => ({
@@ -70,6 +78,23 @@ vi.mock('~~/server/utils/memory/chat-deletion', () => ({
 
 vi.mock('~~/server/utils/artifacts/store', () => ({
   detachArtifactsFromChats: mocks.detachArtifactsFromChats,
+}))
+
+vi.mock('~~/server/utils/documents/cleanup', () => ({
+  cleanupDocumentsForDeletedChats: mocks.cleanupDocumentsForDeletedChats,
+}))
+
+vi.mock('~~/server/utils/skills/cleanup', () => ({
+  cleanupSkillsForDeletedChats: mocks.cleanupSkillsForDeletedChats,
+}))
+
+vi.mock('~~/server/utils/connectors/cleanup', () => ({
+  cleanupConnectorsForDeletedChats: mocks.cleanupConnectorsForDeletedChats,
+}))
+
+vi.mock('~~/server/utils/tool-approval/cleanup', () => ({
+  cleanupToolApprovalsForDeletedChats:
+    mocks.cleanupToolApprovalsForDeletedChats,
 }))
 
 vi.mock('~~/server/utils/search/index-writer', () => ({
@@ -672,6 +697,34 @@ describe('chat history API', () => {
           }
         },
       )
+      mocks.cleanupDocumentsForDeletedChats.mockImplementationOnce(
+        async () => {
+          callOrder.push('document-cleanup')
+
+          return {}
+        },
+      )
+      mocks.cleanupSkillsForDeletedChats.mockImplementationOnce(
+        async () => {
+          callOrder.push('skill-cleanup')
+
+          return {}
+        },
+      )
+      mocks.cleanupConnectorsForDeletedChats.mockImplementationOnce(
+        async () => {
+          callOrder.push('connector-cleanup')
+
+          return {}
+        },
+      )
+      mocks.cleanupToolApprovalsForDeletedChats.mockImplementationOnce(
+        async () => {
+          callOrder.push('tool-approval-cleanup')
+
+          return {}
+        },
+      )
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
@@ -680,7 +733,42 @@ describe('chat history API', () => {
 
       expect(response).toEqual({ success: true })
       expect(db.select).toHaveBeenCalledTimes(1)
-      expect(callOrder).toEqual(['delete-chats', 'file-cleanup'])
+      expect(callOrder).toEqual([
+        'delete-chats',
+        'file-cleanup',
+        'document-cleanup',
+        'skill-cleanup',
+        'connector-cleanup',
+        'tool-approval-cleanup',
+      ])
+      expect(mocks.cleanupDocumentsForDeletedChats).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          userId: 1,
+          chatIds: ['chat-1', 'chat-3'],
+        }),
+      )
+      expect(mocks.cleanupSkillsForDeletedChats).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          userId: 1,
+          chatIds: ['chat-1', 'chat-3'],
+        }),
+      )
+      expect(mocks.cleanupConnectorsForDeletedChats).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          userId: 1,
+          chatIds: ['chat-1', 'chat-3'],
+        }),
+      )
+      expect(mocks.cleanupToolApprovalsForDeletedChats).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          userId: 1,
+          chatIds: ['chat-1', 'chat-3'],
+        }),
+      )
       expect(mocks.cleanupFilesOrphanedByChatDeletion).toHaveBeenCalledTimes(1)
       expect(mocks.cleanupFilesOrphanedByChatDeletion).toHaveBeenCalledWith(
         originFiles,

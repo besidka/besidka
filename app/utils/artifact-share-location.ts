@@ -23,11 +23,10 @@ function isArtifactSharePath(value: string): boolean {
 }
 
 /**
- * The public artifact link page (`/a`, which holds the share token in the
- * fragment) and pages that return to it in `next` (sign-in from a link)
- * must never be seen by analytics. The path is matched in any case,
- * because the router opens `/A` as the same page, and `/a/...` is matched
- * too so an old path-form link never reaches the beacon either.
+ * The public artifact link page (`/artifacts/<token>`) and pages that
+ * return to it in `next` (sign-in from a link) must never be seen by
+ * analytics. The path is matched in any case, because the router opens
+ * `/Artifacts/<token>` as the same page.
  */
 export function isArtifactShareLocation(location: AnalyticsLocation): boolean {
   return isArtifactSharePath(location.path)

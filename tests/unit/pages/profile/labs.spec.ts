@@ -1,5 +1,6 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 import LabsPage from '../../../../app/pages/profile/labs.vue'
 import ProfileLayout from '../../../../app/layouts/profile.vue'
@@ -11,11 +12,17 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   refreshFeatures: vi.fn(),
   keyStatus: vi.fn(),
+  openPanel: vi.fn(),
+  navigateTo: vi.fn(),
 }))
 
 mockNuxtImport('useFetch', () => mocks.fetchData)
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useErrorMessage', () => mocks.error)
+mockNuxtImport('navigateTo', () => mocks.navigateTo)
+mockNuxtImport('useSidePanel', () => {
+  return () => ({ open: mocks.openPanel })
+})
 mockNuxtImport('useFeatures', () => {
   return () => ({ refreshFeatures: mocks.refreshFeatures })
 })
@@ -52,6 +59,7 @@ const llmBridge = createFeature({
 })
 
 interface MountOptions {
+  route?: string
   features?: Array<Record<string, unknown>>
   objectedToExperiments?: boolean
   status?: string
@@ -74,7 +82,7 @@ async function mountPage(options: MountOptions = {}) {
     refresh: mocks.refresh,
   })
 
-  return mountSuspended(LabsPage)
+  return mountSuspended(LabsPage, { route: options.route ?? '/profile/labs' })
 }
 
 async function flushPromises() {
@@ -82,6 +90,8 @@ async function flushPromises() {
     await Promise.resolve()
   }
 }
+
+enableAutoUnmount(afterEach)
 
 describe('profile labs page', () => {
   beforeEach(() => {
@@ -93,6 +103,8 @@ describe('profile labs page', () => {
     mocks.error.mockReset()
     mocks.refreshFeatures.mockReset().mockResolvedValue(undefined)
     mocks.keyStatus.mockReset().mockReturnValue('saved')
+    mocks.openPanel.mockReset()
+    mocks.navigateTo.mockReset().mockResolvedValue(undefined)
   })
 
   it('renders accessible features grouped under their parent', async () => {
@@ -386,13 +398,93 @@ describe('profile labs page', () => {
     expect(text).toContain('may change or be removed')
   })
 
-  it('is the sixth tab of the profile layout', async () => {
+  it('is the last tab of the profile layout', async () => {
     const layout = await mountSuspended(ProfileLayout, {
       global: { stubs: { NuxtPage: true, SidebarThemeSwitcher: true } },
     })
     const tabs = layout.findAll('nav[aria-label="Account sections"] a')
 
-    expect(tabs).toHaveLength(6)
+    expect(tabs).toHaveLength(7)
     expect(tabs.at(-1)?.text()).toBe('Labs')
+  })
+
+  describe('Besidka tools', () => {
+    const besidkaTools = createFeature({
+      key: 'besidka-tools',
+      title: 'Besidka tools',
+      description: 'Let the model use your Besidka data and tools in chats, '
+        + 'with your permission for each tool.',
+      optIn: 'required',
+      optedIn: true,
+      active: true,
+    })
+    const openButton = '[data-testid="labs-besidka-tool-permissions-open"]'
+
+    it('shows Tool permissions under the opt-in once it is on', async () => {
+      const wrapper = await mountPage({ features: [besidkaTools] })
+      const row = wrapper.get('[data-testid="labs-row-besidka-tools"]')
+
+      expect(row.text()).toContain('Besidka tools')
+      expect(row.text()).toContain('with your permission for each tool')
+      expect(row.get(openButton).text()).toBe('Tool permissions')
+    })
+
+    it('hides Tool permissions while the opt-in is off and on other rows',
+      async () => {
+        const off = await mountPage({
+          features: [createFeature({
+            ...besidkaTools,
+            optedIn: false,
+            active: false,
+          })],
+        })
+
+        expect(off.find(openButton).exists()).toBe(false)
+
+        const other = await mountPage({ features: [createFeature()] })
+
+        expect(other.find(openButton).exists()).toBe(false)
+      })
+
+    it('opens the permissions panel from the button', async () => {
+      const wrapper = await mountPage({ features: [besidkaTools] })
+
+      await wrapper.get(openButton).trigger('click')
+
+      expect(mocks.openPanel).toHaveBeenCalledWith(expect.objectContaining({
+        viewKey: 'besidka-tool-permissions',
+        title: 'Tool permissions',
+      }))
+    })
+
+    it('opens the panel from the search link and clears the query',
+      async () => {
+        await mountPage({
+          features: [besidkaTools],
+          route: '/profile/labs?panel=besidka-tool-permissions',
+        })
+        await flushPromises()
+
+        expect(mocks.openPanel).toHaveBeenCalledTimes(1)
+        expect(mocks.navigateTo).toHaveBeenCalledWith(
+          { path: '/profile/labs', query: {} },
+          { replace: true },
+        )
+      })
+
+    it('does not open the panel from the link while the opt-in is off',
+      async () => {
+        await mountPage({
+          features: [createFeature({
+            ...besidkaTools,
+            optedIn: false,
+            active: false,
+          })],
+          route: '/profile/labs?panel=besidka-tool-permissions',
+        })
+        await flushPromises()
+
+        expect(mocks.openPanel).not.toHaveBeenCalled()
+      })
   })
 })

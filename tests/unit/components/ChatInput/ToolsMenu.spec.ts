@@ -67,6 +67,7 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     },
     image: { supported: true, enabled: false, required: false },
     files: { visible: true, count: 2, isImageInputSupported: true },
+    artifacts: { visible: false, attached: [] },
     project: { visible: true, context: null },
     memory: { excluded: false },
     research: null,
@@ -82,6 +83,7 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     reasoning: { ...base.reasoning, ...overrides.reasoning },
     image: { ...base.image, ...overrides.image },
     files: { ...base.files, ...overrides.files },
+    artifacts: { ...base.artifacts, ...overrides.artifacts },
     project: { ...base.project, ...overrides.project },
     memory: { ...base.memory, ...overrides.memory },
   } as ChatInputToolsState
@@ -140,7 +142,7 @@ describe('ChatInput/ToolsMenu', () => {
     useState('chat-input:open-popover').value = null
   })
 
-  it('renders a labelled "+" trigger and nothing else until opened',
+  it('renders a labeled "+" trigger and nothing else until opened',
     async () => {
       const wrapper = await mountMenu()
       const trigger = wrapper.get('[data-testid="chat-input-tools-trigger"]')
@@ -160,13 +162,15 @@ describe('ChatInput/ToolsMenu', () => {
     await open(wrapper)
 
     expect(sectionIds(wrapper)).toEqual([
-      'add',
-      'search',
-      'reasoning',
-      'image',
-      'project',
       'memory',
+      'image',
+      'reasoning',
+      'search',
+      'add',
     ])
+    expect(
+      wrapper.findAll('[data-section="add"] [data-testid="tools-project"]'),
+    ).toHaveLength(1)
     expect(wrapper.get('[data-testid="tools-action-library"]').text())
       .toContain('2')
   })
@@ -205,7 +209,7 @@ describe('ChatInput/ToolsMenu', () => {
     await open(wrapper)
 
     expect(has(wrapper, 'tools-deep-research-note')).toBe(true)
-    expect(sectionIds(wrapper)).toEqual(['project', 'memory'])
+    expect(sectionIds(wrapper)).toEqual(['memory', 'add'])
   })
 
   it('marks Create image required and checked for an image-only model',
@@ -274,6 +278,35 @@ describe('ChatInput/ToolsMenu', () => {
     ).toBe('true')
   })
 
+  it('forwards the Run code toggle as toggle-code-execution', async () => {
+    window.localStorage.setItem(
+      'besidka:code-execution-confirmed:anthropic',
+      'true',
+    )
+
+    const wrapper = await mountMenu({
+      codeExecution: {
+        visible: true,
+        enabled: false,
+        providerId: 'anthropic',
+      },
+    })
+
+    await open(wrapper)
+    await wrapper.get('[data-testid="tools-code-execution-toggle"]')
+      .setValue(true)
+
+    expect(wrapper.emitted('toggle-code-execution')).toEqual([[true]])
+  })
+
+  it('has no Run code row without support', async () => {
+    const wrapper = await mountMenu()
+
+    await open(wrapper)
+
+    expect(has(wrapper, 'tools-code-execution-toggle')).toBe(false)
+  })
+
   it('closes after an action that opens a modal', async () => {
     const wrapper = await mountMenu()
 
@@ -296,6 +329,54 @@ describe('ChatInput/ToolsMenu', () => {
     ).toBe('false')
   })
 
+  it('hides Add artifact for a user without access, in the popover and the sheet',
+    async () => {
+      const popover = await mountMenu()
+
+      await open(popover)
+
+      expect(has(popover, 'tools-action-artifacts')).toBe(false)
+      expect(has(popover, 'tools-action-library')).toBe(true)
+
+      isPopoverLayout.value = false
+
+      const sheet = await mountMenu()
+
+      await open(sheet)
+
+      expect(has(sheet, 'tools-action-artifacts')).toBe(false)
+      expect(has(sheet, 'tools-action-library')).toBe(true)
+    })
+
+  it('closes and asks for the artifact picker with access, in both layouts',
+    async () => {
+      const popover = await mountMenu({
+        artifacts: { visible: true, attached: [] },
+      })
+
+      await open(popover)
+      await popover.get('[data-testid="tools-action-artifacts"]')
+        .trigger('click')
+
+      expect(popover.emitted('open-artifact-picker')).toHaveLength(1)
+      expect(
+        popover.get('[data-testid="chat-input-tools-trigger"]')
+          .attributes('aria-expanded'),
+      ).toBe('false')
+
+      isPopoverLayout.value = false
+
+      const sheet = await mountMenu({
+        artifacts: { visible: true, attached: [] },
+      })
+
+      await open(sheet)
+      await sheet.get('[data-testid="tools-action-artifacts"]')
+        .trigger('click')
+
+      expect(sheet.emitted('open-artifact-picker')).toHaveLength(1)
+    })
+
   it('focuses the first control on open and returns focus on Escape',
     async () => {
       const wrapper = await mountMenu()
@@ -304,7 +385,7 @@ describe('ChatInput/ToolsMenu', () => {
       await open(wrapper)
 
       expect(document.activeElement).toBe(
-        wrapper.get('[data-testid="tools-action-attach"]').element,
+        wrapper.get('[data-testid="new-chat-memory-toggle"]').element,
       )
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
@@ -313,6 +394,133 @@ describe('ChatInput/ToolsMenu', () => {
       expect(trigger.attributes('aria-expanded')).toBe('false')
       expect(document.activeElement).toBe(trigger.element)
     })
+
+  describe('toggling with the "+" button', () => {
+    function getTrigger(wrapper: MenuWrapper) {
+      return wrapper.get('[data-testid="chat-input-tools-trigger"]')
+    }
+
+    it('closes on a second click and keeps focus on the button',
+      async () => {
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+
+        expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('true')
+
+        await getTrigger(wrapper).trigger('click')
+        await flushPromises()
+
+        expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+        expect(document.activeElement).toBe(getTrigger(wrapper).element)
+        expect(useState('chat-input:open-popover').value).toBeNull()
+      })
+
+    it('stays closed when the browser moves focus away on pointer down',
+      async () => {
+        const outside = document.createElement('div')
+
+        outside.tabIndex = -1
+        document.body.append(outside)
+
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+
+        const trigger = getTrigger(wrapper)
+        const panel = wrapper.get('[data-testid="chat-input-tools-panel"]')
+
+        trigger.element.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+        }))
+        panel.element.dispatchEvent(new FocusEvent('focusout', {
+          bubbles: true,
+          relatedTarget: outside,
+        }))
+        await flushPromises()
+
+        expect(trigger.attributes('aria-expanded')).toBe('true')
+
+        await trigger.trigger('click')
+        await flushPromises()
+
+        expect(trigger.attributes('aria-expanded')).toBe('false')
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+        outside.remove()
+      })
+
+    it('closes when focus leaves to an outside element by keyboard',
+      async () => {
+        const outside = document.createElement('button')
+
+        document.body.append(outside)
+
+        const wrapper = await mountMenu()
+
+        await open(wrapper)
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+        wrapper.get('[data-testid="chat-input-tools-panel"]').element
+          .dispatchEvent(new FocusEvent('focusout', {
+            bubbles: true,
+            relatedTarget: outside,
+          }))
+        await flushPromises()
+
+        expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+
+        outside.remove()
+      })
+
+    it('closes on a click outside', async () => {
+      const outside = document.createElement('div')
+
+      document.body.append(outside)
+
+      const wrapper = await mountMenu()
+
+      await open(wrapper)
+
+      outside.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      outside.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await flushPromises()
+
+      expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+
+      outside.remove()
+    })
+
+    it('stays open on a click inside the panel', async () => {
+      const wrapper = await mountMenu()
+
+      await open(wrapper)
+
+      const panel = wrapper.get('[data-testid="chat-input-tools-panel"]')
+
+      panel.element.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      panel.element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await flushPromises()
+
+      expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('true')
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    })
+
+    it('closes on Escape and returns focus to the button', async () => {
+      const wrapper = await mountMenu()
+
+      await open(wrapper)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await flushPromises()
+
+      expect(getTrigger(wrapper).attributes('aria-expanded')).toBe('false')
+      expect(document.activeElement).toBe(getTrigger(wrapper).element)
+    })
+  })
 
   it('focuses the panel itself, not the first item, when opened by pointer',
     async () => {
@@ -411,6 +619,34 @@ describe('ChatInput/ToolsMenu', () => {
         expect(wrapper.emitted('remove-tile')).toEqual([['memory']])
 
         showModal.mockRestore()
+      })
+
+    it('closes the sheet when the "+" button is clicked while it is open',
+      async () => {
+        vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+          .mockImplementation(function (this: HTMLDialogElement) {
+            this.setAttribute('open', '')
+          })
+        vi.spyOn(HTMLDialogElement.prototype, 'close')
+          .mockImplementation(function (this: HTMLDialogElement) {
+            this.removeAttribute('open')
+          })
+
+        const wrapper = await mountMenu()
+        const trigger = wrapper.get('[data-testid="chat-input-tools-trigger"]')
+
+        await open(wrapper)
+
+        expect(trigger.attributes('aria-expanded')).toBe('true')
+
+        await trigger.trigger('click')
+        await flushPromises()
+
+        expect(trigger.attributes('aria-expanded')).toBe('false')
+        expect(wrapper.get('[data-testid="chat-input-tools-panel"]')
+          .attributes('open')).toBeUndefined()
+
+        vi.restoreAllMocks()
       })
 
     it('renders no chip row when no tile is active', async () => {

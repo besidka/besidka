@@ -1,11 +1,17 @@
-import { nextTick } from 'vue'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { computed, nextTick } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectGroups from '../../../../../../../app/components/ChatInput/Files/Modal/Select/ProjectGroups.vue'
 import type {
   FileManagerFile,
   ProjectFileGroup,
 } from '../../../../../../../app/types/file-manager'
+
+mockNuxtImport('useFeature', () => {
+  return () => computed(() => {
+    return { enabled: true, active: true, variant: null }
+  })
+})
 
 function createFile(id: string, name = `${id}.pdf`): FileManagerFile {
   return {
@@ -453,6 +459,30 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
     expect(wrapper.emitted('file-click')?.[0]?.[3]).toBe('project-a')
   })
 
+  it.each(['grid', 'list'] as const)(
+    'passes a %s document preview up with the file',
+    async (viewMode) => {
+      const documentFile = {
+        ...createFile('file-1'),
+        documentId: 'doc-1',
+      }
+      const wrapper = await mountGroups([
+        createGroup({ files: [documentFile] }),
+      ], { viewMode })
+
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="files-action-preview"]').exists())
+          .toBe(true)
+      })
+
+      await wrapper.get('[data-testid="files-action-preview"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('preview')?.[0]).toEqual([documentFile])
+      expect(wrapper.emitted('file-click')).toBeUndefined()
+    },
+  )
+
   it('highlights touch-selected indices only in the touched group', async () => {
     const wrapper = await mountGroups([
       createGroup({
@@ -491,5 +521,17 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
     expect(wrapper.vm.containerRef).toBe(
       wrapper.get('[data-testid="files-project-groups"]').element,
     )
+  })
+
+  it('passes the unsupported reasons down to the file tiles', async () => {
+    const reason = 'This model does not support PDF input.'
+    const wrapper = await mountGroups(
+      [createGroup({ files: [createFile('file-1')] })],
+      { unsupportedReasons: { 'file-1': reason } },
+    )
+    const tile = wrapper.get('[data-file-index="0"]')
+
+    expect(tile.attributes('aria-disabled')).toBe('true')
+    expect(tile.attributes('title')).toBe(reason)
   })
 })

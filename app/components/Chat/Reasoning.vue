@@ -89,10 +89,17 @@
             <li
               v-for="(step, index) in reasoningSteps"
               :key="step.id"
-              class="relative flex min-w-0 gap-2"
+              class="relative min-w-0"
+              :class="step.approvalOutcome || step.grantMarker
+                ? 'grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2'
+                : 'flex gap-2'
+              "
             >
               <div
                 class="relative flex w-5 shrink-0 items-start justify-center"
+                :class="{
+                  'row-span-2': step.approvalOutcome || step.grantMarker,
+                }"
               >
                 <span
                   v-if="index > 0"
@@ -122,6 +129,11 @@
                     class="size-3.5 text-accent"
                   />
                   <span
+                    v-else-if="step.waiting"
+                    aria-hidden="true"
+                    class="reasoning-step-waiting"
+                  />
+                  <span
                     v-else-if="step.failed"
                     aria-hidden="true"
                     class="reasoning-step-failed"
@@ -133,8 +145,22 @@
                   />
                 </span>
               </div>
+              <ChatReasoningApprovalStep
+                v-if="step.approval"
+                :icon="step.icon"
+                :model="step.approval.model"
+                :state="step.approval.state"
+                :title="step.title"
+                :reason-text="step.approval.reasonText"
+                :summary-line="step.approval.summaryLine"
+                :progress="step.approval.progress"
+                :outcome="step.approval.outcome"
+                :message-id="message.id"
+                :connector-name="step.approval.connectorName"
+              />
               <ChatReasoningSearchStep
-                v-if="step.search"
+                v-else-if="step.search"
+                :icon="step.icon"
                 :data="step.search"
                 :title="step.title"
                 :pending="step.pending"
@@ -142,7 +168,22 @@
               />
               <ChatReasoningMemoryStep
                 v-else-if="step.memory"
+                :icon="step.icon"
                 :data="step.memory"
+                :title="step.title"
+                :pending="step.pending"
+              />
+              <ChatReasoningSkillStep
+                v-else-if="step.skill"
+                :icon="step.icon"
+                :data="step.skill"
+                :title="step.title"
+                :pending="step.pending"
+              />
+              <ChatReasoningConnectorStep
+                v-else-if="step.connector"
+                :icon="step.icon"
+                :data="step.connector"
                 :title="step.title"
                 :pending="step.pending"
               />
@@ -156,6 +197,10 @@
                   class="collapse-title flex min-w-0 items-center p-0 text-xs"
                   @click.prevent="toggleStep(step)"
                 >
+                  <ChatReasoningStepIcon
+                    :icon="step.icon ?? null"
+                    class="mr-1.5"
+                  />
                   <span
                     :title="step.title"
                     data-testid="reasoning-step-title"
@@ -199,6 +244,30 @@
                   />
                 </div>
               </details>
+              <p
+                v-if="step.approvalOutcome"
+                class="col-start-2 -mt-2 mb-2.5 text-xs text-base-content/60"
+                data-testid="reasoning-approval-outcome"
+              >
+                {{ step.approvalOutcome }}
+              </p>
+              <p
+                v-if="step.grantMarker"
+                class="col-start-2 -mt-2 mb-2.5 flex flex-wrap items-center gap-x-2 text-xs text-base-content/60"
+                data-testid="reasoning-grant-marker"
+              >
+                <span>{{ step.grantMarker }}</span>
+                <button
+                  v-if="approvalController"
+                  type="button"
+                  class="btn btn-link btn-xs min-h-6 px-0 text-base-content/70"
+                  aria-label="Manage remembered approvals in the chat panel"
+                  data-testid="reasoning-grant-manage"
+                  @click="openGrantsPanel"
+                >
+                  Manage
+                </button>
+              </p>
             </li>
           </ul>
         </div>
@@ -209,10 +278,47 @@
 
 <script setup lang="ts">
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
+import { LazyChatContextPanel } from '#components'
+import { CHAT_CONTEXT_VIEW_KEY } from '~/composables/chat-context'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MemoryStepData } from '~/types/memory-step.d'
 import type { SearchStepData } from '~/types/search-step.d'
+import type { SkillStepModel } from '~/utils/skill-step'
+import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
+import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
+import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
+import type {
+  ApprovalStepModel,
+  ApprovalStepState,
+} from '~/utils/tool-approval-step'
+import {
+  formatApprovalOutcome,
+  formatApprovalProgress,
+  getApprovalDataByToolCallId,
+  getApprovalReasonText,
+  getApprovalSourceLabel,
+  getApprovalStepModel,
+  getApprovalStepSummaryLine,
+  getApprovalStepTitle,
+  getGrantMarkerText,
+  resolveApprovalStepState,
+} from '~/utils/tool-approval-step'
+import {
+  getConnectorStepTitle,
+  isConnectorStepFailed,
+} from '~/utils/connector-step'
 import { formatTokenCount } from '#shared/utils/message-format'
+import {
+  getToolPartDocumentFormat,
+  resolveReasoningStepSource,
+} from '~/utils/reasoning-step-icons'
+import type {
+  ReasoningStepIcon,
+  ReasoningStepSource,
+  ReasoningStepSourceInput,
+} from '~/utils/reasoning-step-icons'
 import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
 const HIDDEN_REASONING_TITLE = 'This model reasoned before answering, but '
@@ -227,9 +333,32 @@ const props = defineProps<{
   reasoningAccumulatedMs: number
   reasoningSegmentStartedAt: number
   isTurnThinkingHeld: boolean
+  isShared?: boolean
 }>()
 
 const { imageComponents } = useChatFormat()
+const { titlesBySlug, connectorsBySlug } = useConnectorTitles()
+const approvalController = useToolApprovalController()
+const sidePanel = useSidePanel()
+
+function openGrantsPanel() {
+  sidePanel.open({
+    viewKey: CHAT_CONTEXT_VIEW_KEY,
+    title: 'Chat',
+    mode: 'context',
+    component: LazyChatContextPanel,
+  })
+}
+
+interface ReasoningApprovalStep {
+  model: ApprovalStepModel
+  state: ApprovalStepState
+  connectorName: string
+  reasonText: string
+  summaryLine: string
+  progress: string
+  outcome: string
+}
 
 interface ReasoningStep {
   id: string
@@ -238,9 +367,28 @@ interface ReasoningStep {
   kind: 'reasoning' | 'tool'
   pending: boolean
   failed: boolean
+  waiting?: boolean
   search: SearchStepData | null
   memory: MemoryStepData | null
+  skill: SkillStepModel | null
+  connector: ConnectorToolCallModel | null
+  icon?: ReasoningStepIcon | null
+  approval?: ReasoningApprovalStep | null
+  approvalOutcome?: string
+  grantMarker?: string
 }
+
+interface MessageApprovalEntry {
+  partIndex: number
+  model: ApprovalStepModel
+  state: ApprovalStepState
+}
+
+const AWAITING_APPROVAL_STEP_STATES = new Set<ApprovalStepState>([
+  'pending',
+  'answered',
+  'sending',
+])
 
 const reasoningIcon = computed<string>(() => {
   const level = props.reasoningLevel
@@ -260,6 +408,23 @@ const reasoningIcon = computed<string>(() => {
 const searchedAt = computed<string | number | Date | undefined>(() => {
   return getMessageMetadata(props.message).createdAt
 })
+
+const searchProvider = computed<string | undefined>(() => {
+  return getMessageMetadata(props.message).usage?.searchProvider
+})
+
+function resolveStepSource(
+  input: Omit<
+    ReasoningStepSourceInput,
+    'searchProvider' | 'allowConnectorIcon'
+  >,
+): ReasoningStepSource {
+  return resolveReasoningStepSource({
+    ...input,
+    searchProvider: searchProvider.value,
+    allowConnectorIcon: !props.isShared,
+  })
+}
 
 const reasoningParts = computed<ReasoningUIPart[]>(() => {
   return props.message.parts.filter((part) => {
@@ -285,6 +450,106 @@ const isThinkingStreaming = computed<boolean>(() => {
   return props.status === 'streaming' && props.isTurnThinkingHeld
 })
 
+const isAssistantMessage = computed<boolean>(() => {
+  return props.message.role === 'assistant'
+})
+
+const isApprovalUiActive = computed<boolean>(() => {
+  return isAssistantMessage.value
+    && (approvalController?.isActive.value ?? false)
+})
+
+const approvalEntries = computed<Map<number, MessageApprovalEntry>>(() => {
+  const entries = new Map<number, MessageApprovalEntry>()
+
+  if (!isApprovalUiActive.value || !approvalController) {
+    return entries
+  }
+
+  const dataByToolCallId = getApprovalDataByToolCallId(props.message.parts)
+  const models: Array<{ partIndex: number, model: ApprovalStepModel }> = []
+
+  for (const [partIndex, part] of props.message.parts.entries()) {
+    const model = getApprovalStepModel(part, dataByToolCallId)
+
+    if (model) {
+      models.push({ partIndex, model })
+    }
+  }
+
+  const awaitingModels = models.filter(({ model }) => {
+    return isAwaitingApprovalToolPart({
+      type: 'dynamic-tool',
+      state: model.partState,
+    })
+  })
+  const isEveryCallAnswered = awaitingModels.every(({ model }) => {
+    return model.partState === 'approval-responded'
+  })
+  const context = {
+    isLastMessage: approvalController.messages.value.at(-1)?.id
+      === props.message.id,
+    sendingApprovalIds: new Set(approvalController.sendingApprovalIds.value),
+    answeredApprovalIds: new Set(approvalController.answeredApprovalIds.value),
+    failures: approvalController.failures.value,
+    isEveryCallAnswered,
+  }
+
+  for (const { partIndex, model } of models) {
+    entries.set(partIndex, {
+      partIndex,
+      model,
+      state: resolveApprovalStepState(model, context),
+    })
+  }
+
+  return entries
+})
+
+const pendingApprovalIdsInMessage = computed<string[]>(() => {
+  return [...approvalEntries.value.values()].flatMap((entry) => {
+    return entry.state === 'pending' ? [entry.model.approvalId] : []
+  })
+})
+
+function buildApprovalStep(
+  entry: MessageApprovalEntry,
+): ReasoningApprovalStep {
+  const awaiting = [...approvalEntries.value.values()].filter((item) => {
+    return AWAITING_APPROVAL_STEP_STATES.has(item.state)
+  })
+  const answeredCount = awaiting.filter((item) => {
+    return item.state !== 'pending'
+  }).length
+  const isLastAwaiting = awaiting.at(-1)?.partIndex === entry.partIndex
+  const sourceLabel = getApprovalSourceLabel(
+    props.message.parts,
+    entry.partIndex,
+    titlesBySlug.value,
+  )
+
+  const connectorSlug = entry.model.connectorSlug
+
+  return {
+    model: entry.model,
+    state: entry.state,
+    connectorName: connectorSlug
+      ? titlesBySlug.value.get(connectorSlug) || connectorSlug
+      : '',
+    reasonText: getApprovalReasonText(entry.model.reason, sourceLabel),
+    summaryLine: getApprovalStepSummaryLine(entry.model),
+    progress: isLastAwaiting && entry.state !== 'sending'
+      ? formatApprovalProgress(answeredCount, awaiting.length)
+      : '',
+    outcome: entry.state === 'denied' || entry.state === 'approved'
+      ? formatApprovalOutcome(
+        entry.state,
+        approvalController?.answeredAt.value[entry.model.approvalId],
+      )
+      : '',
+  }
+}
+
 const reasoningSteps = computed<ReasoningStep[]>(() => {
   const steps: ReasoningStep[] = []
   let reasoningPartIndex = 0
@@ -309,6 +574,8 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           failed: false,
           search: null,
           memory: null,
+          skill: null,
+          connector: null,
         })
       }
 
@@ -317,7 +584,122 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       continue
     }
 
-    if (!isThinkingToolPart(part)) {
+    const skillStep = isAssistantMessage.value
+      ? getReasoningSkillStep(props.message.parts, partIndex)
+      : null
+
+    if (skillStep) {
+      const skillSource = resolveStepSource({
+        toolName: SKILL_ACTIVATE_TOOL_NAME,
+        title: getSkillStepTitle(skillStep),
+      })
+
+      steps.push({
+        id: `skill-${partIndex}`,
+        title: skillSource.label,
+        icon: skillSource.icon,
+        body: '',
+        kind: 'tool',
+        pending: props.status === 'streaming' && skillStep.state === 'working',
+        failed: skillStep.state === 'failed',
+        search: null,
+        memory: null,
+        skill: skillStep,
+        connector: null,
+      })
+
+      continue
+    }
+
+    const approvalEntry = approvalEntries.value.get(partIndex)
+
+    if (approvalEntry && approvalEntry.state !== 'approved') {
+      const approvalStep = buildApprovalStep(approvalEntry)
+      const approvalSource = resolveStepSource({
+        toolName: approvalEntry.model.connectorSlug
+          ? `${CONNECTOR_TOOL_NAME_PREFIX}${approvalEntry.model.connectorSlug}`
+          + `__${approvalEntry.model.tool}`
+          : approvalEntry.model.toolName,
+        title: getApprovalStepTitle(
+          approvalEntry.model,
+          approvalEntry.model.connectorSlug
+            ? titlesBySlug.value.get(approvalEntry.model.connectorSlug)
+            : undefined,
+        ),
+        connectorId: approvalEntry.model.connectorSlug
+          ? connectorsBySlug.value.get(approvalEntry.model.connectorSlug)?.id
+          : undefined,
+        connectorTitle: approvalStep.connectorName,
+      })
+
+      steps.push({
+        id: `tool-${approvalEntry.model.toolCallId || partIndex}`,
+        title: approvalSource.label,
+        icon: approvalSource.icon,
+        body: '',
+        kind: 'tool',
+        pending: approvalEntry.state === 'sending',
+        failed: approvalEntry.state === 'expired'
+          || approvalEntry.state === 'interrupted',
+        waiting: approvalEntry.state === 'pending'
+          || approvalEntry.state === 'answered',
+        search: null,
+        memory: null,
+        skill: null,
+        connector: null,
+        approval: approvalStep,
+      })
+
+      continue
+    }
+
+    const approvalOutcome = approvalEntry
+      ? buildApprovalStep(approvalEntry).outcome
+      : ''
+
+    const connectorCall = isAssistantMessage.value
+      ? getConnectorToolCall(part)
+      : null
+
+    if (connectorCall) {
+      const connectorSource = resolveStepSource({
+        toolName: `${CONNECTOR_TOOL_NAME_PREFIX}${connectorCall.slug}`
+          + `__${connectorCall.tool}`,
+        title: getConnectorStepTitle(
+          connectorCall,
+          titlesBySlug.value.get(connectorCall.slug),
+        ),
+        connectorId: connectorsBySlug.value.get(connectorCall.slug)?.id,
+        connectorTitle: titlesBySlug.value.get(connectorCall.slug)
+          || connectorCall.slug,
+      })
+
+      steps.push({
+        id: `tool-${(part as { toolCallId?: string }).toolCallId || partIndex}`,
+        title: connectorSource.label,
+        icon: connectorSource.icon,
+        body: '',
+        kind: 'tool',
+        pending: props.status === 'streaming' && connectorCall.isRunning,
+        failed: isConnectorStepFailed(connectorCall),
+        search: null,
+        memory: null,
+        skill: null,
+        connector: connectorCall,
+        approvalOutcome,
+        grantMarker: getGrantMarkerText(
+          props.message.parts,
+          (part as { toolCallId?: string }).toolCallId,
+        ),
+      })
+
+      continue
+    }
+
+    if (
+      !isThinkingToolPart(part)
+      || isSupersededInvalidDocumentPart(props.message.parts, partIndex)
+    ) {
       continue
     }
 
@@ -328,18 +710,35 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     const isPreRetrievedStep = searchData?.preRetrieval === true
       && !isPending
       && !isFailed
+    const toolStepTitle = isAwaitingApprovalToolPart(part)
+      ? `Waiting for approval: ${getToolPartName(part)}`
+      : getToolStepTitle(getToolPartName(part), isPending, isFailed)
+
+    const toolSource = resolveStepSource({
+      toolName: getToolPartName(part),
+      title: searchData && isPreRetrievedStep
+        ? formatPastChatPreRetrievalTitle(searchData.results.length)
+        : toolStepTitle,
+      isPending,
+      isFailed,
+      isAwaitingApproval: isAwaitingApprovalToolPart(part),
+      documentFormat: getToolPartDocumentFormat(part),
+    })
 
     steps.push({
       id: `tool-${toolCallId || partIndex}`,
-      title: searchData && isPreRetrievedStep
-        ? formatPastChatPreRetrievalTitle(searchData.results.length)
-        : getToolStepTitle(getToolPartName(part), isPending, isFailed),
+      title: toolSource.label,
+      icon: toolSource.icon,
       body: '',
       kind: 'tool',
       pending: isPending,
       failed: isFailed,
       search: searchData,
       memory: getMemoryStepData(part),
+      skill: null,
+      connector: null,
+      approvalOutcome,
+      grantMarker: getGrantMarkerText(props.message.parts, toolCallId),
     })
   }
 
@@ -433,6 +832,7 @@ const isMainExpanded = shallowRef<boolean>(false)
 const expandedStepId = shallowRef<string>('')
 const isStreamingExpandOverride = shallowRef<boolean>(false)
 const hasAutoHiddenThisMessage = shallowRef<boolean>(false)
+const isMainCollapsedByUser = shallowRef<boolean>(false)
 const reasoningInterval = shallowRef<
   ReturnType<typeof setInterval> | null
 >(null)
@@ -474,7 +874,7 @@ watch(
       return
     }
 
-    if (hasAutoHiddenThisMessage.value) {
+    if (hasAutoHiddenThisMessage.value || isMainCollapsedByUser.value) {
       return
     }
 
@@ -505,6 +905,52 @@ watch(hasTextPart, (textStarted, hadText) => {
   hasAutoHiddenThisMessage.value = true
 }, {
   flush: 'post',
+})
+
+const seenPendingApprovalIds = new Set<string>()
+
+watch(pendingApprovalIdsInMessage, (approvalIds) => {
+  const hasNewPendingApproval = approvalIds.some((approvalId) => {
+    return !seenPendingApprovalIds.has(approvalId)
+  })
+
+  for (const approvalId of approvalIds) {
+    seenPendingApprovalIds.add(approvalId)
+  }
+
+  if (!hasNewPendingApproval) {
+    return
+  }
+
+  isMainExpanded.value = true
+  isMainCollapsedByUser.value = false
+}, {
+  immediate: true,
+  flush: 'post',
+})
+
+watch(() => approvalController?.focusRequest.value, async (request) => {
+  if (!request || !pendingApprovalIdsInMessage.value.includes(
+    request.approvalId,
+  )) {
+    return
+  }
+
+  isMainExpanded.value = true
+  isMainCollapsedByUser.value = false
+
+  await nextTick()
+
+  const step = document.querySelector<HTMLElement>(
+    `.js-tool-approval-step[data-approval-id="${CSS.escape(request.approvalId)}"]`,
+  )
+
+  if (!step) {
+    return
+  }
+
+  step.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  step.focus({ preventScroll: true })
 })
 
 // immediate: true — a recovery-poll remount (see turnStartedAt prop above)
@@ -606,13 +1052,17 @@ function toggleMain() {
   const willExpand = !isMainExpanded.value
 
   isMainExpanded.value = willExpand
+  isMainCollapsedByUser.value = !willExpand
+
+  if (!willExpand) {
+    isStreamingExpandOverride.value = false
+  }
 
   if (!isThinkingStreaming.value) {
     return
   }
 
   if (!willExpand) {
-    isStreamingExpandOverride.value = false
     expandedStepId.value = ''
 
     return
@@ -749,6 +1199,18 @@ onBeforeUnmount(() => {
   background-color: color-mix(
     in oklab,
     var(--color-accent) 20%,
+    transparent
+  );
+}
+
+.reasoning-step-waiting {
+  display: inline-flex;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 9999px;
+  background-color: color-mix(
+    in oklab,
+    var(--color-warning) 70%,
     transparent
   );
 }

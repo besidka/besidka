@@ -149,6 +149,38 @@ This fixes cost display beyond Anthropic: OpenAI, Google, xAI and DeepSeek
 cache automatically and report `cacheReadTokens`, which used to be billed at
 the full input price. They now use their published `cache_read` rate.
 
+## Skills in containers
+
+Skills the user marked "Allow scripts" run in Anthropic's own code execution
+container, on the user's own key, never through a gateway and never with a
+Besidka key. Besidka uploads the skill to the user's Anthropic workspace
+(`uploadSkill` with `anthropic.skills()`), pins the returned version, and sends
+`providerOptions.anthropic.container.skills = [{ type: 'custom',
+providerReference: { anthropic: <id> }, version }]` next to the D-7 code
+execution tool. The SDK adds the `skills-2025-10-02`, `code-execution-2025-08-25`
+and `files-api-2025-04-14` betas itself. The full design, the disclosure, the
+reserved-word rule (`anthropic` and `claude` are replaced inside a name),
+the per-chat consent and the delete rules are in
+[`../skills.md`](../skills.md) section 7.
+
+- **Billing.** Container time is billed by Anthropic to the user's
+  organization after its free allowance (1,550 container-hours a month, then
+  $0.05 an hour with a 5-minute minimum). The response carries no billable
+  usage, so Besidka records how many skills were attached
+  (`attributes.codeExecution.skills`) and never a cost.
+- **Data.** Skills are workspace-scoped (visible to everything in the
+  workspace), not covered by zero data retention, kept until deleted and then
+  under Anthropic's retention policy. Container data is kept up to 30 days and
+  cannot be deleted. Besidka deletes the skill (every version, then the skill:
+  `DELETE /v1/skills/{id}/versions/{version}`, then `DELETE /v1/skills/{id}`)
+  when scripts are turned off, the skill is deleted or the account is purged,
+  and warns before the Anthropic key is removed while copies exist.
+- **Caching.** Attaching skills changes the request, so the first send after
+  an upload misses the prompt cache once. A new `current_version` replaces the
+  copy lazily, never on every save.
+- **Not verified live.** Everything is tested against mocks; the first run
+  with a real key is a manual check (see section 7 of `skills.md`).
+
 ## Message threads
 
 Not used. Evaluated on 2026-11-03 together with OpenAI's

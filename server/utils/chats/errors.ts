@@ -13,6 +13,7 @@ import {
   NoSuchToolError,
   ToolChoiceViolationError,
 } from 'ai'
+import { summarizeProviderError } from '~~/server/utils/chats/provider-error-summary'
 import { ResearchAdapterError } from '~~/server/utils/research/adapter-error'
 
 const chatErrorCodes: ChatErrorCode[] = [
@@ -99,7 +100,9 @@ export function normalizeChatError(
     message,
     why: dedupeChatErrorWhy(
       message,
-      input.why || getDefaultChatWhy(code, errorMessage),
+      input.why
+      || getProviderSummary(code, input.error, input.providerId)
+      || getDefaultChatWhy(code, errorMessage),
     ),
     fix: input.fix || getDefaultChatFix(code, errorMessage),
     status,
@@ -107,6 +110,28 @@ export function normalizeChatError(
     providerId: input.providerId,
     providerRequestId,
   }
+}
+
+const PROVIDER_SUMMARY_CODES: ReadonlySet<ChatErrorCode> = new Set([
+  'provider-unavailable',
+  'provider-quota-exceeded',
+  'provider-rate-limit',
+])
+
+/**
+ * The provider's own status and short message for the codes where it tells
+ * the user something the generic copy cannot (a spend cap, a quota, an
+ * outage). Built by `summarizeProviderError`, which is limited to 402, 429
+ * and 5xx and never carries URLs, keys or request content.
+ */
+function getProviderSummary(
+  code: ChatErrorCode,
+  error: unknown,
+  providerId: SupportedProviderId | GatewayId | undefined,
+): string | undefined {
+  return PROVIDER_SUMMARY_CODES.has(code)
+    ? summarizeProviderError(error, providerId)
+    : undefined
 }
 
 export const MODEL_TOOL_CALL_ERROR_STATUS = 422
@@ -543,7 +568,7 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
     case 'research-timeout':
       return 'The research run timed out.'
     case 'research-cancelled':
-      return 'The research run was cancelled.'
+      return 'The research run was canceled.'
     case 'research-start-failed':
       return 'Could not start the research job.'
     case 'clarification-failed':
@@ -586,7 +611,7 @@ function getDefaultChatWhy(
     case 'research-timeout':
       return 'The research run exceeded the maximum allowed time.'
     case 'research-cancelled':
-      return 'The research job was cancelled before it finished.'
+      return 'The research job was canceled before it finished.'
     case 'research-start-failed':
       return errorMessage
     case 'clarification-failed':

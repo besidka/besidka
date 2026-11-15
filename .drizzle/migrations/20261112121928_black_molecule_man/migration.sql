@@ -1,0 +1,1 @@
+ALTER TABLE `documents` ADD `ai_generated` integer;

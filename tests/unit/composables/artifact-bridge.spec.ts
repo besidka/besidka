@@ -602,7 +602,7 @@ describe('useArtifactBridge', () => {
     })
   })
 
-  describe('cancelling', () => {
+  describe('canceling', () => {
     it('rejects with declined by the viewer', async () => {
       const bridge = createBridge()
       const promise = bridge.complete({ prompt: 'Explain' })

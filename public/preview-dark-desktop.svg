@@ -36,7 +36,7 @@
       <g transform="translate(60,80)">
         <rect width="600" height="84" rx="14" fill="#1d141f"/>
         <text x="20" y="26" font-size="13" font-weight="600" fill="#fde4f1">You</text>
-        <text x="20" y="46" font-size="13" fill="#fde4f1">Summarise the attached PDFs and pull out the key</text>
+        <text x="20" y="46" font-size="13" fill="#fde4f1">Summarize the attached PDFs and pull out the key</text>
         <text x="20" y="64" font-size="13" fill="#fde4f1">decisions per quarter.</text>
         <g transform="translate(20,72)">
           <rect width="120" height="22" rx="6" fill="#3a2a3e"/>

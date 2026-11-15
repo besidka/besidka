@@ -3,7 +3,9 @@ import type { LegalConsentStatus } from '#shared/types/legal-consent.d'
 import { createError } from 'evlog'
 import {
   MCP_PRIVATE_ADMIN_WRITE_RATE_LIMIT,
+  MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT,
   MCP_PRIVATE_DELETE_RATE_LIMIT,
+  MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT,
   MCP_PRIVATE_TOOL_RATE_LIMIT,
   MCP_PRIVATE_WRITE_RATE_LIMIT,
 } from '~~/config/mcp-server'
@@ -103,6 +105,34 @@ function createRateLimitError(retryAfter: number | null) {
   })
 }
 
+async function consumeDeleteConnectorsLimit(
+  userId: number,
+  kv: KVNamespace,
+): Promise<void> {
+  const result = await createAuthRateLimitStorage(
+    kv,
+    `${MCP_RATE_LIMIT_KEY_PREFIX}:delete-connectors`,
+  ).consume(String(userId), MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT)
+
+  if (!result.allowed) {
+    throw createRateLimitError(result.retryAfter)
+  }
+}
+
+async function consumeDeleteSkillsLimit(
+  userId: number,
+  kv: KVNamespace,
+): Promise<void> {
+  const result = await createAuthRateLimitStorage(
+    kv,
+    `${MCP_RATE_LIMIT_KEY_PREFIX}:delete-skills`,
+  ).consume(String(userId), MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT)
+
+  if (!result.allowed) {
+    throw createRateLimitError(result.retryAfter)
+  }
+}
+
 export async function enforceMcpToolRateLimit(
   userId: number,
   toolName: McpPrivateToolName,
@@ -151,6 +181,18 @@ export async function enforceMcpToolRateLimit(
     if (!adminResult.allowed) {
       throw createRateLimitError(adminResult.retryAfter)
     }
+  }
+
+  if (toolName === 'delete_connectors') {
+    await consumeDeleteConnectorsLimit(userId, kv)
+
+    return
+  }
+
+  if (toolName === 'delete_skills') {
+    await consumeDeleteSkillsLimit(userId, kv)
+
+    return
   }
 
   if (!isMcpDeleteTool(toolName)) {

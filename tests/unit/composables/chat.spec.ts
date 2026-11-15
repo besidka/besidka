@@ -4,6 +4,9 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '#shared/types/chats.d'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { useComposerSkillInvocation } from '../../../app/composables/composer-skill-invocation'
+import { useChatConnectorSelection } from '../../../app/composables/composer-connectors'
+import { useFeatures } from '../../../app/composables/features'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
@@ -57,6 +60,19 @@ vi.mock('ai', async (importOriginal) => {
 
 mockNuxtImport('useSetChatTitle', () => {
   return () => undefined
+})
+
+mockNuxtImport('convertFilesToUIParts', () => {
+  return async () => {
+    await Promise.resolve()
+
+    return [{
+      type: 'file',
+      mediaType: 'text/plain',
+      filename: 'notes.txt',
+      url: '/files/notes',
+    }]
+  }
 })
 
 vi.mock('@ai-sdk/vue', () => {
@@ -961,6 +977,32 @@ describe('chat error helpers', () => {
     expect(hasVisibleAssistantContent(generateImageOnlyMessage)).toBe(true)
   })
 
+  it('counts a code_execution part in every state as visible content', () => {
+    const states = [
+      'input-streaming',
+      'input-available',
+      'output-available',
+      'output-error',
+    ]
+
+    for (const state of states) {
+      const message = {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-code_execution',
+            toolCallId: 'call_1',
+            state,
+            input: { language: 'python', code: 'print(1)' },
+          },
+        ],
+      } as unknown as UIMessage
+
+      expect(hasVisibleAssistantContent(message)).toBe(true)
+    }
+  })
+
   it('treats a persisted file-only reply as visible assistant content', () => {
     const fileAssistantMessage = {
       id: 'assistant-1',
@@ -1171,7 +1213,7 @@ describe('chat error helpers', () => {
   })
 
   it('blocks recovery when a research job exists, regardless of status, even on a normal model', () => {
-    // Model-independent: a running, failed, or cancelled job kept in memory
+    // Model-independent: a running, failed, or canceled job kept in memory
     // this session all collapse to the same "a research job exists" signal
     // at this predicate's boundary.
     expect(shouldBlockGenerationRecovery(false, true)).toBe(true)
@@ -1667,6 +1709,80 @@ describe('hasMeaningfulAssistantParts omitted context files notice', () => {
   })
 })
 
+describe('document parts in assistant messages', () => {
+  const documentReference = {
+    type: 'data-document',
+    data: {
+      documentId: 'doc-1',
+      format: 'docx',
+      title: 'Report',
+      specVersion: 1,
+      status: 'spec_ready',
+    },
+  }
+
+  function assistantWith(parts: unknown[]): UIMessage {
+    return {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts,
+    } as unknown as UIMessage
+  }
+
+  it('counts a live data-document or create_document part as an answer', () => {
+    expect(hasMeaningfulAssistantParts(
+      assistantWith([documentReference]),
+    )).toBe(true)
+    expect(hasMeaningfulAssistantParts(assistantWith([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'input-streaming',
+    }]))).toBe(true)
+  })
+
+  it('treats a persisted data-document reply as a real answer', () => {
+    expect(isFailureOnlyAssistantMessage(
+      assistantWith([documentReference]),
+    )).toBe(false)
+  })
+
+  it('counts a persisted failed create_document call, not an unfinished one', () => {
+    expect(isFailureOnlyAssistantMessage(assistantWith([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'output-error',
+      input: { format: 'pdf' },
+      errorText: 'The document could not be created.',
+    }]))).toBe(false)
+    expect(isFailureOnlyAssistantMessage(assistantWith([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'input-streaming',
+    }]))).toBe(true)
+  })
+
+  it('treats a data-document reference as visible content', () => {
+    expect(hasVisibleAssistantContent(
+      assistantWith([documentReference]),
+    )).toBe(true)
+  })
+
+  it('treats a create_document tool part in any state as visible content', () => {
+    for (const state of [
+      'input-streaming',
+      'input-available',
+      'output-available',
+      'output-error',
+    ]) {
+      expect(hasVisibleAssistantContent(assistantWith([{
+        type: 'tool-create_document',
+        toolCallId: 'call-1',
+        state,
+      }]))).toBe(true)
+    }
+  })
+})
+
 describe('resolveInitialChatTools', () => {
   function userMessage(tools: Message['tools']): Message {
     return { role: 'user', tools, usage: null } as unknown as Message
@@ -1690,6 +1806,20 @@ describe('resolveInitialChatTools', () => {
       userMessage(['web_search_exa']),
       assistantMessage('searched'),
     ], autoBrave)).toEqual(['web_search_exa'])
+  })
+
+  it('drops code_execution from an answered turn so it starts off on '
+    + 'reopen', () => {
+    expect(resolveInitialChatTools([
+      userMessage(['web_search_exa', 'code_execution']),
+      assistantMessage('searched'),
+    ], autoBrave)).toEqual(['web_search_exa'])
+  })
+
+  it('keeps code_execution for an unanswered turn that is resuming', () => {
+    expect(resolveInitialChatTools([
+      userMessage(['code_execution']),
+    ], autoBrave)).toEqual(['code_execution'])
   })
 
   it('restores the saved provider after an Auto skip, so the menu still '
@@ -1996,6 +2126,42 @@ describe('useChat request body exaSearchLevel', () => {
   })
 })
 
+describe('a reply that only waits for an approval', () => {
+  const userMessage = {
+    id: 'user-1',
+    role: 'user',
+    parts: [{ type: 'text', text: 'Create the issue' }],
+  } as UIMessage
+  const pausedMessage = {
+    id: 'assistant-approval',
+    role: 'assistant',
+    parts: [
+      { type: 'step-start' },
+      {
+        type: 'dynamic-tool',
+        toolName: 'mcp__linear__create_issue',
+        toolCallId: 'call-1',
+        state: 'approval-requested',
+        input: { title: 'x' },
+        approval: { id: 'approval-0001' },
+      },
+      {
+        type: 'data-tool-approval',
+        id: 'call-1',
+        data: { approvalId: 'approval-0001', toolCallId: 'call-1' },
+      },
+    ],
+  } as UIMessage
+
+  it('is a real answer, so no empty-answer notice and no Regenerate', () => {
+    expect(isFailureOnlyAssistantMessage(pausedMessage)).toBe(false)
+    expect(shouldSurfaceEmptyAssistantResponse([userMessage, pausedMessage]))
+      .toBe(false)
+    expect(hasRetryableAssistantFailure([userMessage, pausedMessage]))
+      .toBe(false)
+  })
+})
+
 describe('isFailureOnlyAssistantMessage with artifacts', () => {
   it('treats a reply that only holds an artifact as a real answer', () => {
     expect(isFailureOnlyAssistantMessage({
@@ -2039,5 +2205,333 @@ describe('hasVisibleAssistantContent with artifact tool parts', () => {
     } as unknown as UIMessage
 
     expect(hasVisibleAssistantContent(message)).toBe(true)
+  })
+})
+
+describe('useChat submit with attached artifacts', () => {
+  const attachedArtifact = {
+    artifactId: 'art-1',
+    version: 3,
+    kind: 'html' as const,
+    title: 'Quiz',
+  }
+
+  async function mountChat() {
+    let chat: ReturnType<typeof useChat> | null = null
+
+    const host = defineComponent({
+      setup() {
+        chat = useChat({ id: 'chat-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return chat!
+  }
+
+  it('puts the attachment part after the text of the sent message',
+    async () => {
+      const chat = await mountChat()
+
+      chat.input.value = 'Change question 3'
+      chat.attachedArtifacts.value = [attachedArtifact]
+
+      await chat.submit()
+
+      expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+        { type: 'text', text: 'Change question 3' },
+        { type: 'data-artifact-attachment', data: attachedArtifact },
+      ])
+    })
+
+  it('keeps the attachment when the composer clears it while the files '
+    + 'are still being converted', async () => {
+    const chat = await mountChat()
+
+    chat.input.value = 'Use both'
+    chat.files.value = [{
+      id: 'f1',
+      storageKey: 'k1',
+      name: 'notes.txt',
+      size: 4,
+      type: 'text/plain',
+    }] as never
+    chat.attachedArtifacts.value = [attachedArtifact]
+
+    const submitted = chat.submit()
+
+    chat.attachedArtifacts.value = []
+    chat.files.value = []
+    await submitted
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Use both' },
+      expect.objectContaining({ type: 'file', filename: 'notes.txt' }),
+      { type: 'data-artifact-attachment', data: attachedArtifact },
+    ])
+  })
+})
+
+describe('hasVisibleAssistantContent with a skill step', () => {
+  it('shows a message that only holds a running activate_skill part', () => {
+    const message = {
+      id: 'assistant-skill-step',
+      role: 'assistant',
+      parts: [{
+        type: 'tool-activate_skill',
+        toolCallId: 'call-1',
+        state: 'input-streaming',
+        input: { name: 'writing-style' },
+      }],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(message)).toBe(true)
+  })
+
+  it('does not count the activation data part as content on its own', () => {
+    const message = {
+      id: 'assistant-activation',
+      role: 'assistant',
+      parts: [{
+        type: 'data-skill-activation',
+        data: { skillId: 'skl1', name: 'writing-style', version: 1 },
+      }],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(message)).toBe(false)
+  })
+})
+
+describe('useChat submit with an attached skill', () => {
+  async function mountChat() {
+    let chat: ReturnType<typeof useChat> | null = null
+
+    const host = defineComponent({
+      setup() {
+        chat = useChat({ id: 'chat-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return chat!
+  }
+
+  it('puts the invocation part after the text of the sent message', async () => {
+    const chat = await mountChat()
+    const composer = useComposerSkillInvocation()
+
+    composer.set({ skillId: 'skl1', name: 'writing-style', version: 3 })
+    chat.input.value = 'Draft the email'
+
+    await chat.submit()
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Draft the email' },
+      {
+        type: 'data-skill-invocation',
+        data: { skillId: 'skl1', name: 'writing-style', version: 3 },
+      },
+    ])
+    composer.clear()
+  })
+
+  it('sends a message that is only the invocation', async () => {
+    const chat = await mountChat()
+    const composer = useComposerSkillInvocation()
+
+    composer.set({ skillId: 'skl1', name: 'writing-style', version: 3 })
+    chat.input.value = ''
+
+    await chat.submit()
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([{
+      type: 'data-skill-invocation',
+      data: { skillId: 'skl1', name: 'writing-style', version: 3 },
+    }])
+    composer.clear()
+  })
+
+  it('sends no invocation part when none is attached', async () => {
+    const chat = await mountChat()
+
+    useComposerSkillInvocation().clear()
+    chat.input.value = 'Plain'
+
+    await chat.submit()
+
+    expect(chat.chatSdk.messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Plain' },
+    ])
+  })
+})
+
+describe('connector tool parts in assistant messages', () => {
+  const failureNotice = {
+    type: 'text',
+    text: 'Image generation failed. Revise the prompt or try a'
+      + ' different provider.',
+  }
+
+  function connectorPart(state: string, toolName = 'mcp__notion__search') {
+    return {
+      type: 'dynamic-tool',
+      toolName,
+      toolCallId: 'call-1',
+      state,
+      input: { query: 'roadmap' },
+      output: '<untrusted_tool_result connector="notion" tool="search">x'
+        + '</untrusted_tool_result>',
+    }
+  }
+
+  function isFailureOnly(parts: unknown[]): boolean {
+    return isFailureOnlyAssistantMessage({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts,
+    } as unknown as UIMessage)
+  }
+
+  it('counts a finished or failed connector call as assistant content', () => {
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('output-available'),
+      failureNotice,
+    ])).toBe(false)
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('output-error'),
+      failureNotice,
+    ])).toBe(false)
+  })
+
+  it('does not count a connector call that never finished', () => {
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('input-available'),
+      failureNotice,
+    ])).toBe(true)
+  })
+
+  it('does not count a dynamic tool that is not a connector', () => {
+    expect(isFailureOnly([
+      { type: 'step-start' },
+      connectorPart('output-available', 'other_tool'),
+      failureNotice,
+    ])).toBe(true)
+  })
+
+  it('does not count the connectors notice as an answer', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{
+        type: 'data-connectors-notice',
+        data: { lines: ['Connectors are off for this message'] },
+      }],
+    } as unknown as UIMessage)).toBe(false)
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'data-connectors-notice',
+          data: { lines: ['Connectors are off for this message'] },
+        },
+        { type: 'text', text: 'Answer' },
+      ],
+    } as unknown as UIMessage)).toBe(true)
+  })
+})
+
+describe('useChat request body connectorIds', () => {
+  function setConnectorsFlag(isActive: boolean) {
+    useFeatures().features.value = {
+      isAdmin: false,
+      features: {
+        connectors: { enabled: isActive, active: isActive, variant: null },
+      },
+    } as never
+  }
+
+  async function buildRequestBody(): Promise<Record<string, unknown>> {
+    sdkMocks.transportOptions.length = 0
+
+    const host = defineComponent({
+      setup() {
+        useChat({ id: 'chat-1', slug: 'slug-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return sdkMocks.transportOptions.at(-1)!.prepareSendMessagesRequest({
+      messages: [{ id: 'user-1', role: 'user', parts: [] }],
+    }).body
+  }
+
+  function setSelection(chatKey: string, ids: string[], isKnown: boolean) {
+    useChatConnectorSelection().selection.value = { chatKey, ids, isKnown }
+  }
+
+  beforeEach(() => {
+    setSelection('new', [], true)
+  })
+
+  afterEach(() => {
+    useFeatures().features.value = null
+  })
+
+  it('sends the known selection of this chat while the flag is on', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-1', ['c1', 'c2'], true)
+
+    const body = await buildRequestBody()
+
+    expect(body.connectorIds).toEqual(['c1', 'c2'])
+  })
+
+  it('sends an empty array when the user turned every connector off', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-1', [], true)
+
+    const body = await buildRequestBody()
+
+    expect(body.connectorIds).toEqual([])
+  })
+
+  it('omits the field while the flag is off', async () => {
+    setConnectorsFlag(false)
+    setSelection('slug-1', ['c1'], true)
+
+    const body = await buildRequestBody()
+
+    expect('connectorIds' in body).toBe(false)
+  })
+
+  it('omits the field until the stored choice is known', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-1', [], false)
+
+    const body = await buildRequestBody()
+
+    expect('connectorIds' in body).toBe(false)
+  })
+
+  it('omits the field when the selection belongs to another chat', async () => {
+    setConnectorsFlag(true)
+    setSelection('slug-2', ['c1'], true)
+
+    const body = await buildRequestBody()
+
+    expect('connectorIds' in body).toBe(false)
   })
 })

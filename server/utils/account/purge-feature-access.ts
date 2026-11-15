@@ -83,7 +83,7 @@ export async function purgeUserFeatureAccess(
     .where(eq(schema.featureRuleSchedules.createdBy, userId))
 
   const auditLog = schema.featureAuditLog
-  const anonymisedAuditRows = await database
+  const anonymizedAuditRows = await database
     .update(auditLog)
     .set({
       actorUserId: nullWhenEqual(auditLog.actorUserId, userId),
@@ -101,6 +101,6 @@ export async function purgeUserFeatureAccess(
     featureGrantsDeleted: featureGrants.length,
     featureOptInsDeleted: featureOptIns.length,
     userRolesDeleted: userRoles.length,
-    featureAuditRowsAnonymised: anonymisedAuditRows.length,
+    featureAuditRowsAnonymised: anonymizedAuditRows.length,
   }
 }

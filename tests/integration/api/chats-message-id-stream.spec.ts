@@ -346,8 +346,17 @@ describe('chat stream message ids', () => {
       user: { id: '1' },
     }))
     vi.stubGlobal('validateMessageFilePolicy', vi.fn(async () => undefined))
-    vi.stubGlobal('convertFilesForAI', vi.fn(async messages => ({
-      messages,
+    vi.stubGlobal('convertFilesForAI', vi.fn(async (messages: any[]) => ({
+      messages: messages.map((message) => {
+        return {
+          ...message,
+          parts: message.parts.map((part: any) => {
+            return part.type === 'file' && part.mediaType.startsWith('text/')
+              ? { type: 'text', text: `[inlined ${part.mediaType}]` }
+              : part
+          }),
+        }
+      }),
       missingFiles: [],
     })))
     vi.stubGlobal('useChatProvider', vi.fn(() => ({

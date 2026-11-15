@@ -4,10 +4,13 @@ import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import {
   resolveReasoningLevelForModel,
   toReasoningEffort,
 } from './reasoning'
+
+const GEMINI_2_5_MODEL_PREFIX = 'gemini-2.5'
 
 export async function useGoogle(
   userId: string,
@@ -86,6 +89,17 @@ export async function useGoogle(
 
       result.tools['web_search_preview'] = google.tools.googleSearch({})
       result.exclusiveNativeWebSearch = true
+    }
+
+    if (requestedTools.includes('code_execution')) {
+      result.tools = {
+        ...result.tools,
+        [CODE_EXECUTION_TOOL_NAME]: google.tools.codeExecution({}),
+      }
+
+      if (model.startsWith(GEMINI_2_5_MODEL_PREFIX)) {
+        result.exclusiveNativeWebSearch = true
+      }
     }
 
     return result

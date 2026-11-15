@@ -454,6 +454,59 @@ describe('public shared chat view API', () => {
     expect(response.messages[0]).toHaveProperty('createdAt')
   })
 
+  it('exposes no skill name anywhere when the owner used a skill', async () => {
+    const handler = await getHandler()
+    const skillName = 'private-skill-name'
+    const { db } = createDb({
+      shares: [createShareFixture({ slug: 'skill-used' })],
+      chat: {
+        title: 'Chat title',
+        user: { name: 'Owner', image: null },
+        messages: [
+          createMessageFixture({
+            id: 'message-user',
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Rewrite this' },
+              {
+                type: 'data-skill-invocation',
+                data: { skillId: 'skl1', name: skillName, version: 1 },
+              },
+            ],
+          }),
+          createMessageFixture({
+            parts: [
+              {
+                type: 'tool-activate_skill',
+                toolCallId: 'call-skill',
+                state: 'output-available',
+                input: { name: skillName },
+                output: { status: 'activated', skillId: 'skl1', name: skillName },
+              },
+              {
+                type: 'data-skill-activation',
+                data: { skillId: 'skl1', name: skillName, version: 1 },
+              },
+              { type: 'text', text: 'Rewritten.' },
+            ],
+          }),
+        ],
+      },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: 'skill-used' },
+    } as never)
+
+    expect(JSON.stringify(response)).not.toContain(skillName)
+    expect(JSON.stringify(response)).not.toContain('skl1')
+    expect(response.messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Rewritten.' },
+    ])
+  })
+
   describe('author avatar', () => {
     const rawGoogleImage = 'https://lh3.googleusercontent.com/a/abc=s96-c'
 

@@ -210,6 +210,24 @@ export function omitPromptCacheControl(
 }
 
 /**
+ * Whether a persisted part is a call of one of the named tools: a static
+ * `tool-<name>` part, or a `dynamic-tool` part carrying the name (connector
+ * tools, whose names are only known at run time).
+ */
+export function isFollowUpToolPart(
+  part: { type: string, [key: string]: unknown },
+  followUpToolNames: ReadonlySet<string>,
+): boolean {
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string'
+      && followUpToolNames.has(part.toolName)
+  }
+
+  return part.type.startsWith('tool-')
+    && followUpToolNames.has(part.type.slice('tool-'.length))
+}
+
+/**
  * True when visible assistant text exists after the last completed follow-up
  * tool part. Text before it (a "Let me look that up." preamble) is not an
  * answer to the search results.
@@ -219,8 +237,7 @@ export function hasVisibleTextAfterLastFollowUpTool(input: {
   followUpToolNames: ReadonlySet<string>
 }): boolean {
   const lastFollowUpToolIndex = input.parts.findLastIndex((part) => {
-    return part.type.startsWith('tool-')
-      && input.followUpToolNames.has(part.type.slice('tool-'.length))
+    return isFollowUpToolPart(part, input.followUpToolNames)
       && (part.state === 'output-available' || part.state === 'output-error')
   })
 
@@ -1298,6 +1315,11 @@ function readHeldErrorText(
  * `forcedStepToolCall` and `forcedStepRejectedToolCall`. Tool-input chunks on
  * the forced step are buffered per call until the call resolves, and tool
  * errors on earlier steps always pass through.
+ *
+ * A send that ends on a call waiting for the user's approval (a
+ * `tool-approval-request` the SDK did not answer itself) is paused, not
+ * unanswered: no continuation runs, because the answer comes after the
+ * approval.
  */
 export function withSearchAnswerGuarantee(input: {
   stream: ReadableStream<UIMessageChunk>
@@ -1342,6 +1364,7 @@ export function withSearchAnswerGuarantee(input: {
   let successfulFollowUpToolOutputCount = 0
   let isAborted = false
   let hadUnrecoverableError = false
+  let isAwaitingApproval = false
 
   function recordToolOutput(chunk: UIMessageChunk) {
     if (
@@ -1750,6 +1773,10 @@ export function withSearchAnswerGuarantee(input: {
         isAborted = true
       }
 
+      if (chunk.type === 'tool-approval-request' && !chunk.isAutomatic) {
+        isAwaitingApproval = true
+      }
+
       if (chunk.type === 'finish-step') {
         releasePendingToolInput(controller)
         outcome.stepsCount += 1
@@ -1776,6 +1803,7 @@ export function withSearchAnswerGuarantee(input: {
         && !hasAnswerAfterFollowUp
         && !isAborted
         && !hadUnrecoverableError
+        && !isAwaitingApproval
 
       if (shouldContinue) {
         for (const closer of mainOpenPartClosers.values()) {

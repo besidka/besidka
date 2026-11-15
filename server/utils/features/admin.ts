@@ -53,6 +53,11 @@ export type FeatureAdminAction
     | 'artifact.takedown'
     | 'artifact.restore'
     | 'artifact-report.reject'
+    | 'legal-notice.approve'
+    | 'legal-notice.withdraw'
+    | 'legal-consent-version.approve'
+    | 'legal-notice-opt-out.add'
+    | 'legal-notice-opt-out.remove'
 
 interface FeatureRuleLedgerState {
   enabled: boolean

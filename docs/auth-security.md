@@ -82,7 +82,7 @@ is overridden to also match wildcard patterns via `matchesHostnamePattern()`
 `pr-442-besidka.chernenko.workers.dev` matches but
 `evil-besidka.chernenko.workers.dev.attacker.com` and
 `besidka.chernenko.workers.dev` do not). Without wildcards (production)
-the plain array is returned and behaviour is exact-match, byte-for-byte as
+the plain array is returned and behavior is exact-match, byte-for-byte as
 before. If a future Better Auth stops calling `.includes`, the override
 stops being consulted and the check falls back to the literal entries,
 which rejects wildcard hosts (403) rather than letting them through.
@@ -707,7 +707,7 @@ rendering below it.
   hang on a dead widget.
 - **Testing the interactive path locally.** Cloudflare's dummy sitekey
   `3x00000000000000000000FF` always forces the interactive checkbox,
-  which exercises the expand/collapse behaviour above. The other test
+  which exercises the expand/collapse behavior above. The other test
   keys never leave the invisible path.
 
 ## Changing an account's email address cannot lose any account data
@@ -943,7 +943,7 @@ endpoint. `mcp()` from `@better-auth/mcp` (built on
 | Setting | Value | Why |
 | --- | --- | --- |
 | `resource` | `${siteUrl}/mcp` | RFC 8707 resource; becomes the JWT `aud` |
-| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `artifacts:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `artifacts:write`, `artifacts:share`, `data:delete`, `admin:features` |
+| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `artifacts:read`, `connectors:read`, `skills:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `artifacts:write`, `artifacts:share`, `connectors:write`, `skills:write`, `data:delete`, `admin:features` |
 | `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline; disconnecting is still immediate because `/mcp` also checks the consent row |
 | `refreshTokenExpiresIn` | 2,592,000 (30 days) | library default, set explicitly; rotated on every refresh, 30s reuse overlap from `mcp()` |
 | PKCE | required, S256 only | library default |
@@ -998,7 +998,7 @@ browser, so they keep tighter per-user-IP limits. `/oauth2/revoke` and
 
 Unauthenticated registration cannot set privileged client fields. The
 plugin's registration schema rejects `skip_consent` (`z.never()`) and
-strips unknown keys such as `enable_end_session`. As defence in depth
+strips unknown keys such as `enable_end_session`. As defense in depth
 against a library change, a `hooks.before` on `/oauth2/register`
 (`stripPrivilegedClientRegistrationFields`) removes `skip_consent`,
 `skipConsent`, `enable_end_session` and `enableEndSession` from the body
@@ -1006,7 +1006,7 @@ before validation.
 
 **Registration bounds.** The same `hooks.before` also rejects, with
 `400 invalid_client_metadata`, a registration whose body is over 16 KiB
-(the `content-length` header, or the serialised body when there is none),
+(the `content-length` header, or the serialized body when there is none),
 whose `client_name` is over 120 characters, whose `client_uri`, `logo_uri`,
 `tos_uri`, `policy_uri`, `jwks_uri` or `backchannel_logout_uri` is over
 2048 characters, with more than 10 `redirect_uris` or
@@ -1144,7 +1144,7 @@ happened. Success logs `oauth_revoked_all` with the trigger path. The plugin's
 
 Approving an app sends "A new app was connected to your Besidka account"
 (`notifyOAuthAppConnected`): the app name (control characters stripped,
-capped at 120, labelled unverified), the scopes in plain words, the time
+capped at 120, labeled unverified), the scopes in plain words, the time
 and a link to `/profile/connected-apps`.
 
 `server/plugins/oauth-grant-sweep.ts` runs on the hourly cron

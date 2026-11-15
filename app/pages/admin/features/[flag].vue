@@ -280,8 +280,8 @@ const savedDraft = computed<RuleDraft>(() => {
 })
 
 const isDirty = computed<boolean>(() => {
-  return JSON.stringify(normaliseDraft(draft.value))
-    !== JSON.stringify(normaliseDraft(savedDraft.value))
+  return JSON.stringify(normalizeDraft(draft.value))
+    !== JSON.stringify(normalizeDraft(savedDraft.value))
 })
 
 const canSave = computed<boolean>(() => {
@@ -319,7 +319,7 @@ function createDraft(): RuleDraft {
   }
 }
 
-function normaliseDraft(value: RuleDraft) {
+function normalizeDraft(value: RuleDraft) {
   return {
     ...value,
     allowRoles: [...value.allowRoles].sort(),

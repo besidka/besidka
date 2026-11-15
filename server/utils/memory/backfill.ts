@@ -39,6 +39,7 @@ import {
 } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { currentLegalConsentCondition } from '~~/server/utils/legal/consent'
+import { loadApprovedConsentVersion } from '~~/server/utils/legal/consent-version'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import {
   instantiateMemoryModel,
@@ -586,7 +587,7 @@ export async function getBackfillProgress(input: {
 }
 
 /**
- * Marks the user's running job cancelled. Idempotent: with nothing running it
+ * Marks the user's running job canceled. Idempotent: with nothing running it
  * changes nothing and returns the latest job as it is.
  */
 export async function cancelBackfill(input: {
@@ -1208,6 +1209,10 @@ export async function sweepBackfillJobs(
   }
 
   if (input.maxRuntimeMs <= 0) {
+    return result
+  }
+
+  if (await loadApprovedConsentVersion({ db }) === null) {
     return result
   }
 

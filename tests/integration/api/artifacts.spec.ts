@@ -208,6 +208,104 @@ describe('artifacts owner API', () => {
       .rejects.toMatchObject({ status: 400 })
   })
 
+  it('counts the owner artifacts per kind for the whole library', async () => {
+    await seedArtifacts()
+    await createArtifact({
+      db: testDb.db,
+      storage: mocks.storage,
+      userId: ownerId,
+      kind: 'mermaid',
+      title: 'Flow chart',
+      content: 'graph TD; B-->C',
+      createdVia: 'chat',
+      createdBy: 'model',
+    })
+
+    const list = await handlers.list()
+    const emptyCounts = {
+      html: 0,
+      react: 0,
+      svg: 0,
+      mermaid: 0,
+      markdown: 0,
+    }
+    const expectedCounts = { ...emptyCounts, html: 1, mermaid: 2 }
+
+    const all = await list(createEvent())
+
+    expect(all.kindCounts).toEqual(expectedCounts)
+
+    const searched = await list(createEvent({ query: { query: 'Cell' } }))
+
+    expect(searched.total).toBe(1)
+    expect(searched.kindCounts).toEqual(expectedCounts)
+
+    const byKind = await list(createEvent({ query: { kind: 'html' } }))
+
+    expect(byKind.total).toBe(1)
+    expect(byKind.kindCounts).toEqual(expectedCounts)
+
+    const secondPage = await list(createEvent({
+      query: { offset: '2', limit: '1' },
+    }))
+
+    expect(secondPage.kindCounts).toEqual(expectedCounts)
+  })
+
+  it('does not count the artifacts of another user', async () => {
+    await seedArtifacts()
+
+    mocks.sessionUserId = strangerId
+
+    const result = await (await handlers.list())(createEvent())
+
+    expect(result.kindCounts).toEqual({
+      html: 0,
+      react: 0,
+      svg: 1,
+      mermaid: 0,
+      markdown: 0,
+    })
+  })
+
+  it('counts nothing for an empty library', async () => {
+    const result = await (await handlers.list())(createEvent())
+
+    expect(result.total).toBe(0)
+    expect(result.kindCounts).toEqual({
+      html: 0,
+      react: 0,
+      svg: 0,
+      mermaid: 0,
+      markdown: 0,
+    })
+  })
+
+  it('does not run the kind count behind a closed artifacts flag',
+    async () => {
+      await seedArtifacts()
+
+      mocks.featureActive = false
+
+      const result = await (await handlers.list())(createEvent())
+        .catch((exception: unknown) => exception)
+
+      expect(result).toMatchObject({ status: 404 })
+      expect(result).not.toHaveProperty('kindCounts')
+    })
+
+  it('answers 401 for the kind counts without a session', async () => {
+    await seedArtifacts()
+
+    mocks.sessionUserId = 0
+
+    const result = await (await handlers.list())(createEvent())
+      .catch((exception: unknown) => exception)
+
+    expect(result).toMatchObject({ status: 401 })
+    expect(result).not.toHaveProperty('kindCounts')
+  })
+
   it('returns the detail with versions and no content', async () => {
     const { quiz } = await seedArtifacts()
     const detail = await handlers.detail()

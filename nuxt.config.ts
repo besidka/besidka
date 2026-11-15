@@ -281,7 +281,7 @@ export default defineNuxtConfig({
       }),
     ),
     ...Object.fromEntries(
-      ['/a', '/a/**'].map((route) => {
+      ['/artifacts', '/artifacts/**'].map((route) => {
         return [route, createArtifactShareRouteRule()]
       }),
     ),
@@ -433,6 +433,8 @@ export default defineNuxtConfig({
         'application/pdf',
         'text/plain',
         'text/markdown',
+        'text/csv',
+        'text/tab-separated-values',
       ],
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
@@ -450,6 +452,9 @@ export default defineNuxtConfig({
       exaSearchCostPerThousandRequestsUsd: '',
       exaDeepSearchCostPerThousandRequestsUsd: '',
       deepseekSearchCostPerThousandRequestsUsd: '',
+      openaiCodeInterpreterCostPerSessionUsd: '',
+      anthropicCodeExecutionCostPerHourUsd: '',
+      anthropicCodeExecutionFreeHoursPerMonth: '',
     },
   },
   site: {
@@ -631,8 +636,8 @@ export default defineNuxtConfig({
       '/reset-password',
       '/2fa',
       '/oauth/**',
-      '/a',
-      '/a/**',
+      '/artifacts',
+      '/artifacts/**',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/**',

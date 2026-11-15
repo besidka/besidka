@@ -189,6 +189,20 @@
               <span>{{ PRIVACY_NOTE }}</span>
             </p>
 
+            <p
+              class="alert alert-info alert-soft text-sm"
+              role="note"
+              data-testid="artifact-share-search-note"
+            >
+              <Icon
+                name="lucide:eye-off"
+                size="16"
+                class="shrink-0"
+                aria-hidden="true"
+              />
+              <span>{{ SEARCH_NOTE }}</span>
+            </p>
+
             <div
               class="min-h-16"
               data-testid="artifact-share-pii-slot"
@@ -331,6 +345,12 @@
                         : 'Latest version' }}
                     </span>
                     <span
+                      class="badge badge-soft badge-sm"
+                      data-testid="artifact-share-visibility"
+                    >
+                      Hidden from search engines
+                    </span>
+                    <span
                       v-if="share.storageAllowed"
                       class="badge badge-soft badge-sm"
                     >
@@ -447,6 +467,9 @@ const isOpen = defineModel<boolean>('open', { required: true })
 
 const PRIVACY_NOTE
   = 'Anyone with the link can see this artifact. Viewers can report it.'
+const SEARCH_NOTE
+  = 'Private by default: only people who have the link can open it, '
+    + 'and search engines never show it.'
 const COPIED_RESET_MS = 2000
 const REVOKE_ACTION = 'Turn off'
 const DURATION_OPTIONS: Array<{

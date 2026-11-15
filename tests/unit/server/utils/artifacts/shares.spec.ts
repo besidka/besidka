@@ -128,7 +128,7 @@ describe('artifact shares', () => {
       expect(row?.tokenHash).toBe(await hashArtifactShareToken(created.token))
       expect(row?.tokenEncrypted).toBe(`enc:${created.token}`)
       expect(JSON.stringify(row)).not.toContain(`"${created.token}"`)
-      expect(created.url).toBe(`${BASE_URL}/a#${created.token}`)
+      expect(created.url).toBe(`${BASE_URL}/artifacts/${created.token}`)
     })
 
     it('round-trips share ids and never confuses them with artifact ids',
@@ -139,40 +139,40 @@ describe('artifact shares', () => {
         expect(decodeArtifactShareId('sh_')).toBeNull()
       })
 
-    it('extracts a token from a fragment link or a bare token', () => {
+    it('extracts a token from a link or a bare token', () => {
       const token = generateArtifactShareToken()
 
       expect(extractArtifactShareToken(token)).toBe(token)
       expect(extractArtifactShareToken(` ${token} `)).toBe(token)
-      expect(extractArtifactShareToken(`https://besidka.com/a#${token}`))
+      expect(extractArtifactShareToken(`https://besidka.com/artifacts/${token}`))
         .toBe(token)
-      expect(extractArtifactShareToken(`https://pr-1.example.dev/A#${token}`))
-        .toBe(token)
-      expect(extractArtifactShareToken(`https://besidka.com/a/#${token}`))
-        .toBe(token)
-      expect(extractArtifactShareToken(`/a#${token}`)).toBe(token)
-      expect(extractArtifactShareToken(`a#${token}`)).toBe(token)
+      expect(extractArtifactShareToken(
+        `https://pr-1.example.dev/artifacts/${token}/`,
+      )).toBe(token)
+      expect(extractArtifactShareToken(`/artifacts/${token}`)).toBe(token)
+      expect(extractArtifactShareToken(`artifacts/${token}`)).toBe(token)
     })
 
     it('rejects anything that is not a share link', () => {
       const token = generateArtifactShareToken()
 
-      expect(extractArtifactShareToken('https://besidka.com/a#short'))
+      expect(extractArtifactShareToken('https://besidka.com/artifacts/short'))
         .toBeNull()
-      expect(extractArtifactShareToken(`https://besidka.com/a/${token}`))
+      expect(extractArtifactShareToken(`https://besidka.com/a#${token}`))
         .toBeNull()
-      expect(extractArtifactShareToken(`https://besidka.com/b#${token}`))
+      expect(extractArtifactShareToken(`https://besidka.com/b/${token}`))
         .toBeNull()
-      expect(extractArtifactShareToken(`https://besidka.com/a?x#${token}x`))
-        .toBeNull()
-      expect(extractArtifactShareToken(`/about#${token}`)).toBeNull()
-      expect(extractArtifactShareToken(`ba#${token}`)).toBeNull()
+      expect(extractArtifactShareToken(
+        `https://besidka.com/artifacts/${token}/more`,
+      )).toBeNull()
+      expect(extractArtifactShareToken(`/about/${token}`)).toBeNull()
+      expect(extractArtifactShareToken(`bartifacts/${token}`)).toBeNull()
       expect(extractArtifactShareToken('pub-1')).toBeNull()
     })
 
-    it('builds the public link with the token in the fragment', () => {
+    it('builds the public link with the token in the path', () => {
       expect(buildArtifactShareUrl('tok', 'https://besidka.com/'))
-        .toBe('https://besidka.com/a#tok')
+        .toBe('https://besidka.com/artifacts/tok')
     })
   })
 

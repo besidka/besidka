@@ -1,6 +1,6 @@
 # Besidka plugin
 
-This plugin connects an AI client to the Besidka MCP server. It lets the client read and organise your Besidka chats, projects, project knowledge, memory, files and settings.
+This plugin connects an AI client to the Besidka MCP server. It lets the client read and organize your Besidka chats, projects, project knowledge, memory, files and settings.
 
 The MCP server URL is `https://besidka.com/mcp`.
 

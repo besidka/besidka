@@ -41,12 +41,22 @@ const scopeDetails: Record<string, ScopeDetails> = {
   },
   'settings:read': {
     title: 'Read your settings',
-    description: 'See your preferences and memory switches.',
+    description: 'See your preferences, memory switches and storage use.',
   },
   'artifacts:read': {
     title: 'Read your artifacts and their share links',
     description: 'See your artifacts, their content and versions, and the '
       + 'public links that are active.',
+  },
+  'connectors:read': {
+    title: 'See your connectors: names and addresses, never their keys',
+    description: 'See the connectors you added with their host, status and '
+      + 'tool names. Never their keys or sign-in tokens.',
+  },
+  'skills:read': {
+    title: 'See your skills and their full text',
+    description: 'See the skills and commands you saved, their files and '
+      + 'their full text, never anyone else\'s.',
   },
   'projects:write': {
     title: 'Change your projects',
@@ -64,11 +74,12 @@ const scopeDetails: Record<string, ScopeDetails> = {
   },
   'files:write': {
     title: 'Change your files',
-    description: 'Create text files and rename files.',
+    description: 'Create text files and documents (PDF, Word, PowerPoint, '
+      + 'Excel) and rename files.',
   },
   'settings:write': {
     title: 'Change your settings',
-    description: 'Change your preferences, favourite models and the memory '
+    description: 'Change your preferences, favorite models and the memory '
       + 'and chat search switches. It cannot add keys, turn on automatic '
       + 'memory updates or change the models memory uses.',
   },
@@ -83,11 +94,28 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'has the link can open it and report it. The link expires within 30 '
       + 'days, you can revoke it, and the app can create only a few a day.',
   },
+  'connectors:write': {
+    title: 'Add, change and delete connectors. New ones start switched off; '
+      + 'you switch them on in Besidka',
+    description: 'Add a connector, switched off, turn its tools off or end '
+      + 'their Always allow setting, and permanently delete connectors with '
+      + 'their stored sign-in and settings. It cannot '
+      + 'switch a connector on, sign in, enter keys or allow a tool without '
+      + 'asking. You do that in Besidka.',
+  },
+  'skills:write': {
+    title: 'Add, change and delete skills. Changes are saved switched off '
+      + 'for your review',
+    description: 'Add a skill, change its files, rename it, and permanently '
+      + 'delete skills with all their versions. Every addition and change '
+      + 'is saved switched off and waits for your review in Besidka. It '
+      + 'cannot switch a skill on, set it to Auto or share it.',
+  },
   'data:delete': {
     title: 'Delete your data',
     description: 'Permanently delete chats, messages, projects, knowledge, '
-      + 'files, artifacts and memory, and reset memory. Deleted data cannot be '
-      + 'restored.',
+      + 'files, artifacts and memory, and reset memory. Deleted data cannot '
+      + 'be restored.',
   },
   'admin:features': {
     title: 'Manage feature access (admin)',

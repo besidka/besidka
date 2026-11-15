@@ -8,7 +8,15 @@ import type {
   ChatInputTile,
   ChatInputToolsState,
 } from '~/types/chat-input-tools'
+import {
+  ARTIFACT_KIND_ICONS,
+  ARTIFACT_KIND_LABELS,
+} from '~/utils/artifact-parts'
 import type { WebSearchSelection } from '~/types/web-search'
+import {
+  CODE_EXECUTION_TOOL_ICON,
+  CODE_EXECUTION_TOOL_LABEL,
+} from '~/utils/code-execution-ui'
 import {
   CHAT_MEMORY_EXCLUSION_HELPER,
   CHAT_MEMORY_EXCLUSION_ICON,
@@ -102,7 +110,7 @@ function buildProjectTile(
 
   return {
     id: 'project',
-    section: 'project',
+    section: 'add',
     icon: { kind: 'icon', name: 'lucide:folder' },
     caption: 'Project',
     value: project.name,
@@ -229,6 +237,31 @@ function buildSearchTile(
   }
 }
 
+function buildCodeExecutionTile(
+  state: ChatInputToolsState,
+): ChatInputTile | null {
+  const { codeExecution } = state
+
+  if (!codeExecution?.visible || !codeExecution.enabled) {
+    return null
+  }
+
+  return {
+    id: 'code',
+    section: 'code',
+    icon: { kind: 'icon', name: CODE_EXECUTION_TOOL_ICON },
+    caption: 'Mode',
+    value: CODE_EXECUTION_TOOL_LABEL,
+    chipLabel: CODE_EXECUTION_TOOL_LABEL,
+    ariaLabel: `${CODE_EXECUTION_TOOL_LABEL} is on for the next message`,
+    removeLabel: 'Turn off run code',
+    isNeutral: false,
+    isAuto: false,
+    isLocked: false,
+    isDisabled: false,
+  }
+}
+
 function buildReasoningTile(
   state: ChatInputToolsState,
 ): ChatInputTile | null {
@@ -268,16 +301,107 @@ function buildReasoningTile(
   }
 }
 
+function buildSkillTile(
+  state: ChatInputToolsState,
+): ChatInputTile | null {
+  const selected = state.skills?.selected
+
+  if (!state.skills?.visible || !selected) {
+    return null
+  }
+
+  return {
+    id: 'skill',
+    section: 'skills',
+    icon: { kind: 'icon', name: 'lucide:sparkles' },
+    caption: 'Skill',
+    value: selected.name,
+    chipLabel: `Skill: ${selected.name}`,
+    ariaLabel: `Skill ${selected.name} is attached to the next message. `
+      + 'Open to read it.',
+    removeLabel: `Remove skill ${selected.name}`,
+    isNeutral: false,
+    isAuto: false,
+    isLocked: false,
+    isDisabled: false,
+  }
+}
+
+function buildConnectorsTile(
+  state: ChatInputToolsState,
+): ChatInputTile | null {
+  const connectors = state.connectors
+
+  if (!connectors?.visible) {
+    return null
+  }
+
+  const itemIds = new Set(connectors.items.map(item => item.id))
+  const count = connectors.selectedIds.filter(id => itemIds.has(id)).length
+
+  if (count === 0) {
+    return null
+  }
+
+  const label = count === 1 ? '1 connector' : `${count} connectors`
+
+  return {
+    id: 'connectors',
+    section: 'connectors',
+    icon: { kind: 'icon', name: 'lucide:cable' },
+    caption: 'Connectors',
+    value: String(count),
+    chipLabel: label,
+    ariaLabel: `${label} on for this chat. Open to change.`,
+    removeLabel: 'Turn off connectors',
+    isNeutral: false,
+    isAuto: false,
+    isLocked: false,
+    isDisabled: false,
+  }
+}
+
+export const ARTIFACT_TILE_ID_PREFIX = 'artifact-'
+
+function buildArtifactTiles(state: ChatInputToolsState): ChatInputTile[] {
+  if (!state.artifacts.visible) {
+    return []
+  }
+
+  return state.artifacts.attached.map((artifact) => {
+    const kindLabel = ARTIFACT_KIND_LABELS[artifact.kind]
+
+    return {
+      id: `${ARTIFACT_TILE_ID_PREFIX}${artifact.artifactId}`,
+      section: 'add',
+      icon: { kind: 'icon', name: ARTIFACT_KIND_ICONS[artifact.kind] },
+      caption: kindLabel,
+      value: artifact.title,
+      chipLabel: `Artifact: ${artifact.title}`,
+      ariaLabel: `Attached artifact: ${artifact.title}, `
+        + `${kindLabel}, version ${artifact.version}`,
+      removeLabel: `Remove ${artifact.title}`,
+      isNeutral: false,
+      isAuto: false,
+      isLocked: false,
+      isDisabled: false,
+    }
+  })
+}
+
 /**
  * The settings that differ from their defaults, in display order. Nothing is
  * returned until the model's capabilities resolve, so a saved choice the
- * model cannot honour never paints for a frame.
+ * model cannot honor never paints for a frame.
  */
 export function buildChatInputTiles(
   state: ChatInputToolsState,
 ): ChatInputTile[] {
+  const skillTiles = [buildSkillTile(state)]
+    .filter((tile): tile is ChatInputTile => tile !== null)
+
   if (!state.isCapabilityResolved) {
-    return []
+    return [...skillTiles, ...buildArtifactTiles(state)]
   }
 
   const builders = state.isDeepResearchModel
@@ -287,10 +411,14 @@ export function buildChatInputTiles(
       buildMemoryTile,
       buildImageTile,
       buildSearchTile,
+      buildCodeExecutionTile,
       buildReasoningTile,
+      buildConnectorsTile,
     ]
 
-  return builders
+  const settingTiles = builders
     .map(builder => builder(state))
     .filter((tile): tile is ChatInputTile => tile !== null)
+
+  return [...settingTiles, ...skillTiles, ...buildArtifactTiles(state)]
 }

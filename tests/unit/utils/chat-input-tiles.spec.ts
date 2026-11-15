@@ -47,6 +47,10 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
       count: 0,
       isImageInputSupported: true,
     },
+    artifacts: {
+      visible: false,
+      attached: [],
+    },
     project: {
       visible: true,
       context: null,
@@ -67,6 +71,7 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
     reasoning: { ...base.reasoning, ...overrides.reasoning },
     image: { ...base.image, ...overrides.image },
     files: { ...base.files, ...overrides.files },
+    artifacts: { ...base.artifacts, ...overrides.artifacts },
     project: { ...base.project, ...overrides.project },
     memory: { ...base.memory, ...overrides.memory },
   } as ChatInputToolsState
@@ -129,7 +134,7 @@ describe('buildChatInputTiles', () => {
 
       expect(tile).toMatchObject({
         id: 'project',
-        section: 'project',
+        section: 'add',
         caption: 'Project',
         value: 'Q4 launch roadmap',
         ariaLabel: 'Project: Q4 launch roadmap',
@@ -331,7 +336,7 @@ describe('buildChatInputTiles', () => {
       })
     })
 
-    it('appears when the model cannot honour the saved default', () => {
+    it('appears when the model cannot honor the saved default', () => {
       const [tile] = buildChatInputTiles(createState({
         reasoning: {
           level: 'off',
@@ -394,6 +399,56 @@ describe('buildChatInputTiles', () => {
   })
 })
 
+describe('code execution tile', () => {
+  it('adds a Run code tile after search when the tool is on', () => {
+    const state = createState({
+      webSearch: { selected: 'web_search' },
+    })
+    const tiles = buildChatInputTiles({
+      ...state,
+      codeExecution: {
+        visible: true,
+        enabled: true,
+        providerId: 'anthropic',
+      },
+    })
+
+    expect(tiles.map(tile => tile.id)).toEqual(['search', 'code'])
+    expect(tiles[1]).toMatchObject({
+      id: 'code',
+      section: 'code',
+      icon: { kind: 'icon', name: 'lucide:square-terminal' },
+      chipLabel: 'Run code',
+      value: 'Run code',
+      ariaLabel: 'Run code is on for the next message',
+      removeLabel: 'Turn off run code',
+      isNeutral: false,
+      isLocked: false,
+    })
+  })
+
+  it('adds no tile while the tool is off or the row is hidden', () => {
+    const state = createState()
+
+    expect(tileIds({
+      ...state,
+      codeExecution: { visible: true, enabled: false, providerId: 'openai' },
+    })).toEqual([])
+    expect(tileIds({
+      ...state,
+      codeExecution: { visible: false, enabled: true, providerId: 'openai' },
+    })).toEqual([])
+    expect(tileIds(state)).toEqual([])
+  })
+
+  it('adds no tile for a deep research model', () => {
+    expect(tileIds({
+      ...createState({ isDeepResearchModel: true }),
+      codeExecution: { visible: true, enabled: true, providerId: 'openai' },
+    })).not.toContain('code')
+  })
+})
+
 describe('chat input tile helpers', () => {
   it('formats web search values', () => {
     expect(getWebSearchValueLabel('web_search', 'auto')).toBe('Built-in')
@@ -430,5 +485,223 @@ describe('chat input tile helpers', () => {
       .toContain('dark:bg-base-300/40')
     expect(getChatInputTileToneClass({ isNeutral: false }))
       .toContain('dark:bg-(--color-accent-bg)/60')
+  })
+})
+
+describe('buildChatInputTiles artifact tiles', () => {
+  const attached = [
+    { artifactId: 'a1', version: 3, kind: 'html' as const, title: 'Quiz' },
+    { artifactId: 'a2', version: 1, kind: 'mermaid' as const, title: 'Flow' },
+  ]
+
+  it('adds one removable tile per attached artifact after the settings',
+    () => {
+      const state = createState({
+        memory: { excluded: true },
+        artifacts: { visible: true, attached },
+      })
+
+      expect(tileIds(state)).toEqual([
+        'memory',
+        'artifact-a1',
+        'artifact-a2',
+      ])
+
+      const [tile] = buildChatInputTiles(state).filter((candidate) => {
+        return candidate.id === 'artifact-a1'
+      })
+
+      expect(tile).toMatchObject({
+        section: 'add',
+        icon: { kind: 'icon', name: 'lucide:app-window' },
+        caption: 'HTML',
+        value: 'Quiz',
+        chipLabel: 'Artifact: Quiz',
+        removeLabel: 'Remove Quiz',
+        isNeutral: false,
+      })
+      expect(tile?.ariaLabel).toBe(
+        'Attached artifact: Quiz, HTML, version 3',
+      )
+    })
+
+  it('adds nothing when the artifacts feature is not available', () => {
+    const state = createState({
+      artifacts: { visible: false, attached },
+    })
+
+    expect(tileIds(state)).toEqual([])
+  })
+
+  it('shows them before the model capabilities resolve, settings do not',
+    () => {
+      const state = createState({
+        isCapabilityResolved: false,
+        memory: { excluded: true },
+        artifacts: { visible: true, attached },
+      })
+
+      expect(tileIds(state)).toEqual(['artifact-a1', 'artifact-a2'])
+    })
+})
+
+describe('buildChatInputTiles skill tile', () => {
+  const selected = {
+    skillId: 'skl1',
+    name: 'writing-style',
+    version: 3,
+    source: 'menu' as const,
+  }
+
+  it('adds one removable tile with the sparkles icon, the caption Skill and the name', () => {
+    const state = createState({
+      skills: { visible: true, items: [], selected },
+    } as Partial<ChatInputToolsState>)
+    const [tile] = buildChatInputTiles(state).filter((candidate) => {
+      return candidate.id === 'skill'
+    })
+
+    expect(tile).toMatchObject({
+      section: 'skills',
+      icon: { kind: 'icon', name: 'lucide:sparkles' },
+      caption: 'Skill',
+      value: 'writing-style',
+      chipLabel: 'Skill: writing-style',
+      removeLabel: 'Remove skill writing-style',
+      isNeutral: false,
+    })
+  })
+
+  it('comes after the settings and before the attached artifacts', () => {
+    const state = createState({
+      memory: { excluded: true },
+      skills: { visible: true, items: [], selected },
+      artifacts: {
+        visible: true,
+        attached: [{
+          artifactId: 'a1',
+          version: 1,
+          kind: 'html' as const,
+          title: 'Quiz',
+        }],
+      },
+    } as Partial<ChatInputToolsState>)
+
+    expect(tileIds(state)).toEqual(['memory', 'skill', 'artifact-a1'])
+  })
+
+  it('shows before the model capabilities resolve, like artifacts', () => {
+    const state = createState({
+      isCapabilityResolved: false,
+      memory: { excluded: true },
+      skills: { visible: true, items: [], selected },
+    } as Partial<ChatInputToolsState>)
+
+    expect(tileIds(state)).toEqual(['skill'])
+  })
+
+  it('adds nothing without a skill, or when the section is not visible', () => {
+    expect(tileIds(createState({
+      skills: { visible: true, items: [], selected: null },
+    } as Partial<ChatInputToolsState>))).toEqual([])
+    expect(tileIds(createState({
+      skills: { visible: false, items: [], selected },
+    } as Partial<ChatInputToolsState>))).toEqual([])
+    expect(tileIds(createState())).toEqual([])
+  })
+})
+
+describe('buildChatInputTiles connectors tile', () => {
+  const items = [
+    {
+      id: 'c1',
+      slug: 'notion',
+      title: 'Notion',
+      host: 'mcp.notion.com',
+      status: 'ready' as const,
+    },
+    {
+      id: 'c2',
+      slug: 'linear',
+      title: 'Linear',
+      host: 'mcp.linear.app',
+      status: 'ready' as const,
+    },
+  ]
+
+  function withConnectors(
+    selectedIds: string[],
+    visible = true,
+    overrides: StateOverrides = {},
+  ) {
+    return createState({
+      connectors: { visible, items, selectedIds },
+      ...overrides,
+    } as Partial<ChatInputToolsState>)
+  }
+
+  it('adds nothing until at least one connector is on', () => {
+    expect(tileIds(withConnectors([]))).toEqual([])
+    expect(tileIds(createState())).toEqual([])
+  })
+
+  it('adds one removable tile for a single connector', () => {
+    const [tile] = buildChatInputTiles(withConnectors(['c1']))
+
+    expect(tile).toMatchObject({
+      id: 'connectors',
+      section: 'connectors',
+      icon: { kind: 'icon', name: 'lucide:cable' },
+      caption: 'Connectors',
+      value: '1',
+      chipLabel: '1 connector',
+      removeLabel: 'Turn off connectors',
+      isNeutral: false,
+      isLocked: false,
+    })
+  })
+
+  it('counts the connectors that are on', () => {
+    const [tile] = buildChatInputTiles(withConnectors(['c1', 'c2']))
+
+    expect(tile?.chipLabel).toBe('2 connectors')
+    expect(tile?.ariaLabel).toContain('2 connectors')
+  })
+
+  it('ignores selected ids that are no longer selectable', () => {
+    expect(tileIds(withConnectors(['gone']))).toEqual([])
+    expect(buildChatInputTiles(withConnectors(['c1', 'gone']))[0]?.chipLabel)
+      .toBe('1 connector')
+  })
+
+  it('adds nothing while the row is hidden', () => {
+    expect(tileIds(withConnectors(['c1'], false))).toEqual([])
+  })
+
+  it('adds nothing for a deep research model or before capabilities resolve', () => {
+    expect(tileIds(withConnectors(['c1'], true, {
+      isDeepResearchModel: true,
+    }))).not.toContain('connectors')
+    expect(tileIds(withConnectors(['c1'], true, {
+      isCapabilityResolved: false,
+    }))).toEqual([])
+  })
+
+  it('comes after the settings and before the skill tile', () => {
+    const state = withConnectors(['c1'], true, {
+      memory: { excluded: true },
+      skills: {
+        visible: true,
+        items: [],
+        selected: {
+          skillId: 'skl1',
+          name: 'writing-style',
+          version: 1,
+          source: 'menu',
+        },
+      },
+    } as StateOverrides)
+
+    expect(tileIds(state)).toEqual(['memory', 'connectors', 'skill'])
   })
 })

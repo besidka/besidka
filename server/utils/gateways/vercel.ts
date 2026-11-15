@@ -173,7 +173,7 @@ async function fetchGenerationInfoWithRetry(
  * runs. So the first thing this does is re-read the row and stop if a
  * `totalCost` is already there — which also means the poll below costs
  * nothing on the normal path. It stays wired for a response that omits the
- * synchronous field, since that field's presence is observed behaviour, not
+ * synchronous field, since that field's presence is observed behavior, not
  * a documented contract.
  *
  * Any failure is logged as non-fatal context, never thrown — a missing cost

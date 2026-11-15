@@ -103,7 +103,10 @@ export function useArtifactHostActions(options: ArtifactHostActionsOptions) {
       return
     }
 
-    const completed = await runExportAction(pending.action, pending.input)
+    const completed = (await runExportAction(
+      pending.action,
+      pending.input,
+    )) === true
 
     pending.resolve({ completed })
   }
@@ -207,7 +210,7 @@ export function useArtifactHostActions(options: ArtifactHostActionsOptions) {
         return waitForParentExport(action, input)
       }
 
-      if (await runExportAction(action, input)) {
+      if ((await runExportAction(action, input)) === true) {
         return { completed: true }
       }
 

@@ -15,7 +15,7 @@ Ticket: BES-247 (A-2). Compliance input: `docs/legal/prechecks/artifacts.md`
 | --- | --- | --- |
 | Runtime document | `/v1/index.html` | The only document. Import map + one module script. |
 | Runtime code and vendored libraries | `/v1/assets/*` | Hashed file names, `immutable`, CORS `*`. |
-| Licence notices | `/v1/THIRD_PARTY_NOTICES.txt` | Generated at build time from the bundled packages. |
+| License notices | `/v1/THIRD_PARTY_NOTICES.txt` | Generated at build time from the bundled packages. |
 | Protocol | `packages/artifacts-protocol` | TypeScript source, no runtime dependencies, used by the app and the Worker. |
 
 The Worker is assets-only: no `main`, no bindings, `html_handling` and
@@ -116,7 +116,7 @@ different `kind` + `content` in a fresh iframe: `Frame.client.vue` calls
 differs from the one it already sent, and only then. A streamed preview
 followed by its first result, a metadata-only change (a new `version` or
 `title` with identical content), Preview/Code toggles and a panel that only
-collapses or restores keep the frame. The chat panel, the `/a#` share page
+collapses or restores keep the frame. The chat panel, the `/artifacts/<token>` share page
 and the admin preview all go through that component. The runtime e2e
 `realm-isolation.spec.ts` shows the failure in one frame and the clean
 sequence in fresh frames; `artifacts-panel.spec.ts` drives v1, v2, v1 with
@@ -167,13 +167,13 @@ specifiers (an esbuild plugin turns `require('react')` into a re-export of
 the import-mapped module), so artifact code, Recharts and lucide-react share
 one React instance.
 
-## Licences
+## Licenses
 
 `scripts/build.mjs` collects every npm package that ended up in a bundle
-(from the esbuild metafiles) and fails the build when a licence is outside
+(from the esbuild metafiles) and fails the build when a license is outside
 the allowlist in `scripts/licenses.mjs` (MIT, ISC, BSD-2/3-Clause,
 Apache-2.0, 0BSD, CC0-1.0, Unlicense, Zlib; compound `AND` expressions of
-those). Dual licences record the option taken: DOMPurify `(MPL-2.0 OR
+those). Dual licenses record the option taken: DOMPurify `(MPL-2.0 OR
 Apache-2.0)` is used under Apache-2.0. `khroma@2.1.0` has no `license` field;
 its shipped file is MIT, recorded in `LICENSE_OVERRIDES`.
 
@@ -182,11 +182,11 @@ the same renderer as the chat, and does not ship Mermaid. Mermaid 12 was
 vendored until BES-346, with its ELK layout (`elkjs`, `EPL-2.0 OR
 GPL-3.0-or-later`) replaced by a stub; with Pele there is no ELK to exclude
 and the build no longer carries that plugin. Pele has its own layout, so a
-`layout: elk` or `%%{init}` directive is not honoured, in the chat and in
+`layout: elk` or `%%{init}` directive is not honored, in the chat and in
 artifacts alike.
 
 The generated `/v1/THIRD_PARTY_NOTICES.txt` holds each package's name,
-version, licence and shipped licence text (marked's file includes the John
+version, license and shipped license text (marked's file includes the John
 Gruber notice). A-9 links it from the `/a/` footer and the Privacy Policy.
 
 ## Protocol (`@besidka/artifacts-protocol`, version 1)
@@ -235,7 +235,7 @@ names `__proto__`, `constructor` and `prototype`, storage values at most
 about 100 KB, 10,000 nodes and depth 32 (walked once per object, so shared
 references cannot make validation exponential), links only `http(s)`
 without user info or control and bidi characters, passed to `onOpenLink`
-normalised. At most 16 runtime requests are in flight; more are refused
+normalized. At most 16 runtime requests are in flight; more are refused
 with `-32012`, and a second `ui/initialize` or another protocol version is
 refused. Treat all port traffic as untrusted, every field artifact-authored
 (artifact code shares the runtime's realm and can reach the port): it comes
@@ -299,7 +299,7 @@ the first line is kept as written apart from trailing whitespace, so Copy
 returns the exact source of a Markdown or React block.
 
 Both elements render into an open shadow root, so artifact CSS cannot break
-them and React's reconciliation of the light-DOM text is untouched. Colours
+them and React's reconciliation of the light-DOM text is untouched. Colors
 come from the runtime palette (`src/palette.ts`, the same tokens as the
 shell, BES-354: the block chrome reads the theme's `--color-base-*`,
 `--color-accent` and `--color-error`, resolved to the chat's stone values, not
@@ -330,13 +330,13 @@ What the frame has to supply itself:
   (`Atkinson Hyperlegible Mono`) is not vendored: mono labels (class and ER
   diagrams) fall back to `monospace` and may be boxed slightly differently.
 - **Theme.** `.diagram` in `KIT_STYLE` maps the `--pele-*` variables to the
-  block's palette (`--besidka-*`) and to the chat's series colours in light
+  block's palette (`--besidka-*`) and to the chat's series colors in light
   and dark, like `app/assets/css/diagram-theme.css`.
 - **Width.** The block's content width is passed as `maxWidth`, so the
   direction switch at 480 px matches the chat; a resize re-renders.
 
 Measured 2026-11-10 with a neutral flowchart (ten nodes, two legend
-subgraphs, coloured labelled edges) in Chromium and WebKit, light and dark, at
+subgraphs, colored labeled edges) in Chromium and WebKit, light and dark, at
 1440 and 375 px: the chat block, the artifact preview and the full-screen
 viewer have the same layout.
 
@@ -410,7 +410,7 @@ right after a click in it. With focus anywhere else the request ends as
 plain text only.
 
 Spike (`tests/e2e-artifacts/clipboard-gesture-spike.spec.ts`, kept as an
-engine-behaviour recorder): a click in a `sandbox="allow-scripts"` frame,
+engine-behavior recorder): a click in a `sandbox="allow-scripts"` frame,
 then a message over a `MessagePort`, then `navigator.clipboard.writeText` in
 the parent.
 
@@ -652,23 +652,23 @@ instead of surfacing it in the evals, where it belongs to the instructions.
 `scripts/theme.mjs` (`pnpm run artifacts:theme`) reads the `light` and
 `dark` `@plugin "daisyui/theme"` blocks from `app/assets/css/main.css` and
 writes `src/design/theme.generated.ts` with the daisyUI settings and tokens
-(colours, `--radius-*`, `--size-*`, `--border`, `--depth`, `--noise`). The
+(colors, `--radius-*`, `--size-*`, `--border`, `--depth`, `--noise`). The
 values stay `var(--color-stone-800)` and so on: the compile includes
 Tailwind's theme, so they resolve exactly as in the app. App-only tokens
-(`--color-accent-bg`, `--color-text`, skeleton and logo colours) are listed
+(`--color-accent-bg`, `--color-text`, skeleton and logo colors) are listed
 in `APP_ONLY_TOKENS` and dropped; any other new token makes the script throw
 until it is added to one of the two lists. `design.spec.ts` fails when the
 generated file differs from what the script would write today, so a
 `main.css` theme change without `pnpm run artifacts:theme` fails CI.
 
-The same script writes `src/palette.generated.ts`: the colour tokens the
+The same script writes `src/palette.generated.ts`: the color tokens the
 block chrome and the shell need (`base-100/200/300/content`, accent, info,
-success, warning, error, plus the colours dark diagram series use), resolved
+success, warning, error, plus the colors dark diagram series use), resolved
 through `tailwindcss/theme.css` so Markdown, SVG and Mermaid artifacts, which
 load neither Tailwind nor daisyUI, still draw with the chat's palette. An HTML
 artifact redeclares the values it already has. `kit-theme.spec.ts` fails when
 that file is stale, and when a kit file or the kit or shell styles contain a
-colour literal (hex, `rgb()`, `oklch()`, slate or stone names) or read a
+color literal (hex, `rgb()`, `oklch()`, slate or stone names) or read a
 variable the palette does not declare.
 
 Deliberate differences (BES-335, BES-337, BES-359): `ARTIFACT_THEME_OVERRIDES`
@@ -688,10 +688,10 @@ dark (WCAG ratio computed from Tailwind's OKLCH values).
 | dark | `secondary` / content | stone-100 / stone-800 | stone-400 / stone-950 (7.6:1, 5.9:1) | was identical to the inverted primary (BES-337) |
 | dark | `neutral` / content | stone-800 / stone-100 | stone-500 / white (4.8:1, 3.2:1) | equal to the page, then 1.5:1 as stone-700 |
 
-Known weak spot: dark `neutral` as a text colour (`btn-soft`, `btn-dash`,
+Known weak spot: dark `neutral` as a text color (`btn-soft`, `btn-dash`,
 `btn-ghost`, `badge-soft` with `neutral`) is stone-500 on the stone-800 page
 (3.2:1). A lighter neutral would break the mirrored dark outline rule, which
-uses `neutral-content` as the outline colour. The app theme is unchanged.
+uses `neutral-content` as the outline color. The app theme is unchanged.
 `design.spec.ts` also checks that every overridden token still has its
 `main.css` value (so a main.css change forces a decision here) and that
 the light primary is untouched.
@@ -704,7 +704,7 @@ on `.btn`, and the dark-theme contrast rules: outline and focused
 `btn-neutral` use `neutral-content` (the app's stone-800 neutral would be invisible as
 text on the stone-800 page), and `text-base-content/60`, `/70` and labels
 are lighter. The app's matching rules for `btn-primary` and `btn-secondary`
-(their `*-content` colour) are left out on purpose: in the artifact theme
+(their `*-content` color) are left out on purpose: in the artifact theme
 both are light fills with dark content, so those rules would paint the
 outline button text and the focus ring dark on a stone-800 page. The
 spec checks the mirrored declarations still exist in `main.css` and that
@@ -811,7 +811,7 @@ digests with `pnpm --filter artifacts-runtime build --update-integrity`.
 The npm tarballs themselves are pinned by `pnpm-lock.yaml` integrity
 hashes.
 
-### Licences
+### Licenses
 
 `tailwindcss` and `daisyui` are MIT and appear in the notices like every
 bundled package. Nunito (`@fontsource/nunito`) is under the SIL Open Font
@@ -824,7 +824,7 @@ redistribution with software as long as the font is not sold on its own.
 
 ```bash
 pnpm run artifacts:dev        # build with dev headers + wrangler dev on :8788
-pnpm run artifacts:build      # production build (licence scan, bundle report)
+pnpm run artifacts:build      # production build (license scan, bundle report)
 pnpm run test:e2e:artifacts   # Playwright sandbox spec, Chromium + WebKit
 ```
 
@@ -864,7 +864,7 @@ runtime anywhere.
 - **PRs (`preview-build.yml`, job `artifacts-runtime`)**: when a PR changes
   `workers/`, `packages/`, `tests/e2e-artifacts/`, the Playwright config,
   `pnpm-lock.yaml` or `pnpm-workspace.yaml`,
-  the job builds the runtime with production headers (licence scan), uploads
+  the job builds the runtime with production headers (license scan), uploads
   `preview-artifacts-runtime`, installs Chromium and WebKit and runs the
   sandbox spec. This needs no Cloudflare access.
 - **Runtime previews (guarded)**: with the variable set, `preview-build.yml`
@@ -886,7 +886,7 @@ runtime anywhere.
   `wrangler deploy` for `besidka-artifacts` (concurrency group per Worker).
   `deploy` needs it and still runs when it is skipped. The change check
   compares only with the previous push, so a runtime change whose production
-  run failed or was cancelled is not redeployed by the next push: re-run the
+  run failed or was canceled is not redeployed by the next push: re-run the
   failed run or start the workflow by hand.
 
 ### Owner steps before the first deploy

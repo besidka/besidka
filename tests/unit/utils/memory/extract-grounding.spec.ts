@@ -100,7 +100,7 @@ describe('memory extraction evidence grounding', () => {
       .toBe(true)
   })
 
-  it('rejects a short quote that is glued to its neighbours', () => {
+  it('rejects a short quote that is glued to its neighbors', () => {
     expect(isGrounded('I\'m vegetarian', 'Note.I\'m vegetarian')).toBe(false)
     expect(isGrounded('I\'m vegetarian', 'I\'m vegetarianism')).toBe(false)
     expect(isGrounded('I\'m vegetarian', 'I\'m vegetarian.com')).toBe(false)

@@ -10,6 +10,14 @@ import {
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { detachArtifactsFromChats } from '~~/server/utils/artifacts/store'
+import { cleanupDocumentsForDeletedChats } from '~~/server/utils/documents/cleanup'
+import { cleanupSkillsForDeletedChats } from '~~/server/utils/skills/cleanup'
+import {
+  cleanupConnectorsForDeletedChats,
+} from '~~/server/utils/connectors/cleanup'
+import {
+  cleanupToolApprovalsForDeletedChats,
+} from '~~/server/utils/tool-approval/cleanup'
 import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -119,6 +127,30 @@ export default defineEventHandler(async (event) => {
       },
     })
   }
+
+  await cleanupDocumentsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
+
+  await cleanupSkillsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
+
+  await cleanupConnectorsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
+
+  await cleanupToolApprovalsForDeletedChats(db, {
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
 
   return { success: true }
 })

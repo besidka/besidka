@@ -351,6 +351,8 @@ test('Ask to fix from History opens the origin chat with the prompt '
   await expect(page.getByTestId('artifact-detail')).toBeVisible()
   await expect(page.getByTestId('artifact-detail'))
     .toHaveAttribute('data-source', 'owner')
+  await expect(page.getByTestId(`chat-input-tile-artifact-${ARTIFACT_ID}`))
+    .toHaveCount(0)
   expect(state.chatPosts).toBe(0)
 })
 
@@ -371,6 +373,8 @@ test('Ask to fix for a deleted origin chat explains it and starts a new '
 
   await expect(page).toHaveURL(/\/chats\/new$/)
   await expectPrefilledComposer(page)
+  await expect(page.getByTestId(`chat-input-tile-artifact-${ORPHAN_ID}`))
+    .toContainText(ORPHAN_TITLE)
   expect(state.chatPosts).toBe(0)
 })
 

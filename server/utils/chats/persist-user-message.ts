@@ -1,4 +1,11 @@
 import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
+import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
+import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import { isToolApprovalPart } from '#shared/utils/tool-approval-parts'
+import {
+  DOCUMENT_DATA_PART_TYPE,
+  isDocumentToolPartType,
+} from '#shared/utils/documents'
 import type { UIMessage } from 'ai'
 import type { RequestEvent } from 'nuxt/server'
 import type { Tools } from '#shared/types/chats.d'
@@ -53,7 +60,21 @@ export function hasMeaningfulAssistantParts(
 
     return part.type === 'file'
       || part.type === 'source-url'
+      || isToolApprovalPart(part)
       || part.type === ARTIFACT_DATA_PART_TYPE
+      || part.type === DOCUMENT_DATA_PART_TYPE
+      || (
+        isDocumentToolPartType(part.type)
+        && 'state' in part
+        && part.state === 'output-error'
+      )
+      || (
+        part.type === CODE_EXECUTION_PART_TYPE
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+      )
       || (
         isArtifactToolPartType(part.type)
         && 'state' in part
@@ -64,6 +85,13 @@ export function hasMeaningfulAssistantParts(
         && (
           part.state === 'output-available'
           || part.state === 'output-error'
+        )
+      )
+      || (
+        getConnectorToolCall(part) !== null
+        && (
+          (part as { state?: string }).state === 'output-available'
+          || (part as { state?: string }).state === 'output-error'
         )
       )
   })

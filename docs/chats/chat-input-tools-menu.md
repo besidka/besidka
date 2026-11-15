@@ -19,6 +19,8 @@ default shows as a tile at the start of the attachments row.
 | A setting tile | `app/components/ChatInput/SettingTile.vue` |
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
+| "Add artifact" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/ArtifactPicker.client.vue` (below, `docs/artifacts/attach.md`) |
+| "Add skill" row and its picker | `ToolsMenu/Content.vue`, `app/components/ChatInput/SkillPicker.client.vue` (below, `docs/skills.md` section 10.5) |
 | Types | `app/types/chat-input-tools.d.ts` |
 | Reasoning icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `REASONING_EXPANDED_ICON`, `REASONING_AUTO_HIDE_ICON`) |
 
@@ -26,6 +28,31 @@ default shows as a tile at the start of the attachments row.
 the tile builder only read it; every change goes back through ChatInput's
 existing handlers (`selectWebSearchProvider`, `toggleImageGeneration`, the
 clamp and restore watchers), so capability gating has one owner.
+
+## Row order: the most used rows nearest the "+"
+
+The menu opens above the composer (a popover above "+", a bottom sheet below
+md), so the rows nearest the trigger are the cheapest to reach. The order is
+therefore, top to bottom: the deep-research note (research models only),
+**Use memory**, Create image and Run code (the rarely used toggles), then
+**Reasoning**, **Web search**, and the **Add** section last (Attach files, Add
+from library, Generated images, Add artifact, Add skill, Project). It used to
+run the other way, with Add on top and memory at the bottom, which put the
+rows people use on every message farthest from the thumb. Dividers separate
+the groups (memory/image/code, Reasoning, Web search, Add) and render only
+when something visible sits on the other side, so a missing group never
+leaves a double divider.
+
+**Use memory is one compact line.** The label and the toggle, with no
+description line. The description sits behind an info button next to the label
+(`new-chat-memory-info`), the same pattern as the Auto row of web search: it
+toggles an `InfoNote` (`new-chat-memory-note`) and pressing it never flips the
+toggle. The note says "Learns from this chat and finds it in chat search.", and
+when the chat is excluded from memory it says the excluded-memory helper
+instead ("Besidka won't learn from this chat or find it in chat search..."), so
+that text is still one tap away. Info buttons carry `aria-controls`, which the
+focus logic uses to skip them: opening the menu from the keyboard focuses the
+first real control (the memory toggle), never an info icon.
 
 ## Shells
 
@@ -43,6 +70,15 @@ clamp and restore watchers), so capability gating has one owner.
   chip row is not rendered, and when it appears or goes the scroll offset
   absorbs its height so the tapped control stays put. The scroll area pads
   its bottom by at least the iOS safe area.
+- Clicking "+" while the popover is open closes it and focus stays on "+". The
+  popover also closes when focus leaves it, but a pointer press on "+" is
+  excluded from that rule: Safari does not focus a button on mouse down, so it
+  hands focus to a focusable ancestor outside the menu root. Without the
+  exclusion the focus-out closed the popover on pointer down and the click then
+  reopened it. `tools-menu.spec.ts` runs in the opt-in WebKit project
+  (`E2E_WEBKIT=1`) to cover this; Chromium never showed it. Below md the sheet
+  is modal, so "+" is inert behind it and the sheet closes through its close
+  button, the backdrop or Escape.
 - Radios and toggles keep the menu open. Rows that open a modal (attach,
   library, generated images, project) close it first.
 - The menu and the model picker share `useState('chat-input:open-popover')`,
@@ -64,7 +100,7 @@ from `hasAnyFiles`):
   `h-10 max-w-40`, icon on the left, the caption (small) and value (bold)
   stacked to its right and truncated to one line each. A removable tile
   reserves `pr-6` and the 16 px remove button sits at the right, vertically
-  centred (`right-1 top-3`), so it never covers the text.
+  centered (`right-1 top-3`), so it never covers the text.
 - **Square** (any file or image attachment, completed or uploading): the file
   tile geometry (`size-16 rounded-box`, the 16 px remove button at
   `top-1 right-1`), so every item in the row shares one size.
@@ -81,17 +117,59 @@ button already marks that edge. Order and rules:
 
 | Tile | Shown when | Remove (x) |
 |---|---|---|
-| Project | a project is attached | clears the project |
+| Project | a project is attached, tapping opens the Add section | clears the project |
 | Memory off (neutral gray, `lucide:book-x`) | a new chat excludes memory | turns memory back on |
 | Deep research | the model is a deep research model | none |
 | Image (caption "Mode", value "Image generation", like Deep research) | image generation is on or required | turns it off, none when required; a required tile (image-only models) shows a small lock badge (`isLocked`, `chat-input-tile-lock-badge`) on the icon and the title "Image generation is always on for this model", never the word "Required" |
 | Web search | a provider is selected; the icon is the provider, "Auto search" plus a sparkle badge while Auto is active | turns search off (and saves Off as the new-chat default, as before) |
 | Reasoning | the level differs from the effective default (below) | none, tapping opens the Reasoning section |
+| Attached artifact (one per artifact, up to 3, after the settings; the kind icon, the kind as caption, the title as value, id `artifact-<id>`) | the user attached it from "Add artifact" | detaches it, tapping opens the Add section |
 
 No tile renders until `isModelCapabilityResolved` is true, and the search and
 reasoning tiles follow their sections' visibility (hidden for deep research
 and while image creation is on or required). This keeps the race-sampler
 guarantee in `tests/e2e/chat/gateway-image-generation.spec.ts`.
+
+## Add artifact (BES-350)
+
+The Add section has a fourth row, **Add artifact** ("Artifacts from your
+chats", `lucide:app-window`, `tools-action-artifacts`), after "Generated
+images". It shows the number of attached artifacts as a badge and opens
+`ChatInput/ArtifactPicker.client.vue`, closing the menu first like the other
+rows that open a modal.
+
+- **Access gate.** The row, the tiles and the picker exist only when
+  `useFeature('artifacts').active` is true and the model is not a deep
+  research model. `ChatInput.client.vue` puts that single boolean into
+  `ChatInputToolsState.artifacts.visible`; `Content.vue` hides the row on it
+  and `buildChatInputTiles` builds no artifact tile without it. Without
+  access the menu is byte for byte what it was: no row, no divider, no empty
+  section, no picker component (it mounts on the first open, behind
+  `v-if`) and so no request to `/api/v1/artifacts`. Losing access, or picking
+  a deep research model, clears the attached artifacts. The server is the
+  real gate (`docs/artifacts/attach.md`); this only hides UI.
+- **Picker.** A `<dialog class="modal modal-bottom sm:modal-middle">` with
+  the History → Artifacts behavior: search (300 ms debounce, 2 characters
+  minimum), kind filter buttons (All, HTML, React, SVG, Mermaid, Markdown),
+  rows from `HistoryArtifactRow` in `mode="picker"` (title, kind, version,
+  updated date, origin chat or "Chat deleted", no actions menu, the whole row
+  is the button, a taken-down artifact cannot be picked), skeletons, empty and
+  no-results states, an error with Retry, and lazy loading from the same
+  `GET /api/v1/artifacts` through `useArtifactLibrary` (its own fetch key
+  `artifact-picker`, so the picker never shares data with the History page;
+  an intersection sentinel loads the next page and a Load more button stays
+  for keyboards). Filters live in memory (`useArtifactPickerFilters`), never
+  in the URL, and reset each time the picker opens.
+- **iOS.** Like the model picker, the dialog box is focused on open, never the
+  search field (the search wrapper is `inert` for the `showModal()` call, then
+  released, because iOS WebKit would focus the first text field). Desktop
+  devices focus the search. The box carries `sheet-safe-padding` and a fixed
+  `85dvh` height below `sm`, so the list does not jump while a search
+  narrows it.
+- **Pick** attaches the artifact at its current version (a second pick of the
+  same artifact does nothing, a fourth shows a warning) and closes the
+  picker. A sent message clears the tiles. A failed send on `/chats/new`
+  restores them, like files.
 
 ## Default reasoning level
 
@@ -103,7 +181,7 @@ legacy localStorage value)`, the same helper `chats/new.vue`,
 resolves to the product default, Off.
 
 - The Reasoning tile compares the level the model will actually use against
-  that effective default. A model that cannot honour the default (for
+  that effective default. A model that cannot honor the default (for
   example one that cannot stop reasoning while the default is Off) therefore
   shows the tile. That is intended: it is the case where the tile tells the
   user something.
@@ -118,7 +196,7 @@ resolves to the product default, Off.
   (`isSameReasoningCapability`). `reasoningCapability` is rebuilt as a new
   but equal object on every preference-storage write, because the model
   selection re-reads `localStorage` through the shared `storageVersion`,
-  and the settings sync writes favourites to preference storage in the same
+  and the settings sync writes favorites to preference storage in the same
   tick that delivers the saved default. A `defineModel` ref also reads its
   old value until the parent re-renders, so a clamp that re-ran in that
   flush clamped the stale Off and overwrote the default that had just been
@@ -262,7 +340,7 @@ an arrow key on a just-revealed row must work at once. `useRevealGuard` returns
 `shouldIgnoreActivation`, true only while guarded and when the activation is a
 pointer one: a `pointerdown` was seen on the control's label since the last
 `keydown`, or the click carries `detail > 0`. A guarded pointer click is
-cancelled with `preventDefault()` on the input, so a checkbox or radio does
+canceled with `preventDefault()` on the input, so a checkbox or radio does
 not flip and no `change` follows. A stray pointer `change` is also ignored and
 the DOM state is put back to the model value. `InlineButton` has no guard (it
 only ignores clicks while pending), so nothing changed there.
@@ -285,7 +363,7 @@ later open are not guarded either.
   Built-in, the provider logo (`ProviderIcon`, Brave and Exa) for the two
   external providers, none for Off. `SegmentedOption` takes `icon` (an Iconify
   name), `providerId` or `iconComponent` (a component name such as
-  `SvgoThinkLow`); the icon inherits the segment's text colour, so it follows
+  `SvgoThinkLow`); the icon inherits the segment's text color, so it follows
   the checked, hover and disabled states with no extra rules.
 - Every titled section header has an icon left of the title: Add
   `lucide:plus`, Web search `lucide:search`, Reasoning `SvgoThinkHigh` (the
@@ -335,9 +413,10 @@ later open are not guarded either.
 - Reasoning level segments carry the per-level think icons
   (`SvgoThinkOff|Low|Medium|High`; a toggle-mode model gets Off and the one
   level's icon on "On").
-- The groups are separated by one divider each (Add, Web search, Reasoning,
-  then the lower rows). A divider renders only when something above it is
-  visible, so a missing group never leaves a double divider.
+- The groups are separated by one divider each (memory and the other toggles,
+  Reasoning, Web search, then Add; see "Row order"). A divider renders only
+  when something above it and something below it is visible, so a missing
+  group never leaves a double divider.
 
 ### Why the segments had hover dead zones
 
@@ -358,3 +437,73 @@ the `<label>` carries `cursor-pointer` (`cursor-not-allowed` when disabled).
 
 - Keyboard shortcuts (`/` to open the menu from an empty textarea, Cmd/Ctrl+U
   to attach) are a follow-up.
+
+## Add skill row (skills layer S-3)
+
+The Add section ends with one row, "Add skill" (`tools-action-skills`, after
+"Add artifact"), shown only when the `skills` flag is on, the user has an
+enabled skill and the model is not a deep-research model. The Add section
+renders for this row alone when files are not visible, so the row order is:
+Attach files, Add from library, Generated images, Add artifact, Add skill,
+Project. The row (badge 1 while a skill is attached) emits `open-skills-picker`, which opens
+`ChatInput/SkillPicker.client.vue` (a searchable dialog from eight skills,
+with a "Manage skills" link) and attaches the chosen skill as the one composer
+invocation. A "Skill" tile (sparkles icon) shows it; tapping the tile opens the
+read-only skill preview instead of the menu. The earlier inline Skills section
+was dropped. See `docs/skills.md` section 5.7 and 10.5.
+
+### The `/` picker and the Skill tile (skills layer S-12)
+
+The tile and the "+" menu row are the same invocation state as a typed
+`/command` (`source: 'menu'` or `'text'`, `docs/skills.md` section 10.5). A
+typed command that matches an enabled command puts the "Skill" tile in the
+attachments row at once; its remove button deletes the token from the text when
+the tile came from the text and only clears the invocation when it came from the
+menu. One skill per message: a typed command replaces a menu pick, and a menu
+pick replaces the tile of a typed one (that token then stays plain text). The
+`/` picker itself is not part of this menu: it is `ChatInput/CommandPicker.vue`,
+anchored above the composer, never a dialog or a bottom sheet (focus and the iOS
+keyboard), gated on `skills.commands`, and it does not use
+`chat-input:open-popover`. The "+" menu keeps listing every enabled skill, with
+or without a command.
+
+## Connectors row (connectors layer C-5)
+
+The Add section has one more row, "Connectors" (`tools-action-connectors`,
+after "Add skill"), shown only when the `connectors` flag is on, the user has
+at least one connector that is on and connected (or drifted), the model can
+call tools, and the send is not a deep research or image generation send. The
+badge is the number of connectors on in this chat. It emits
+`open-connectors-picker`, which opens `ChatInput/ConnectorPicker.client.vue`:
+a dialog with a toggle per connector (title, host as plain text, a `badge
+badge-soft` when it is `drifted`), at most five on, and a "Manage connectors"
+link to `/profile/connectors`. Connectors are never listed inline in the menu.
+
+The choice is per chat. On an existing chat each toggle saves at once through
+`PUT /api/v1/chats/[slug]/connectors` and rolls back on failure; on
+`/chats/new` it is held in client state and handed to the new chat's slug
+before navigation. The send body carries `connectorIds` (only while the flag
+is on and the choice is known), which the server stores as the chat's choice.
+The tile "N connectors" shows while any is on, and its remove button turns
+them all off. Hiding the row (image mode, a model without tool calling) does
+not clear the choice. See `docs/connectors.md` section 6.1.
+
+## Add key links in Web search
+
+When Brave or Exa has no key, the Web search section lists one "Add a Brave
+key" / "Add an Exa key" link per missing key under the provider control
+(`web-search-add-key-list`, only rendered when at least one link exists, so
+the section spacing is unchanged otherwise). The list starts `mt-2` below the
+control, and each link is a full-row tap target with the same minimum height
+as an action row (`min-h-9`, `max-md:min-h-11`), the same text size, icon and
+arrow, and a hover background.
+
+## Project row
+
+The Project row ("Project" in a new chat, "Move to project" in an existing
+one, the project name or "None" as the value, a chevron, `tools-project`) is
+the last row of the Add section, after "Add skill". It no longer has a section
+of its own, so there is no `project` entry in `ToolsSection`. The Add section
+renders for this row alone (`state.project.visible`), the same way it does for
+the skill row, and the Project tile opens the menu at the Add section. The row
+emits `open-project-picker` and closes the menu first.

@@ -1,0 +1,19 @@
+[
+  { "type": "start" },
+  { "type": "start-step" },
+  {
+    "type": "tool-input-available",
+    "toolCallId": "gcall_01",
+    "toolName": "code_execution",
+    "providerExecuted": true,
+    "input": { "language": "PYTHON", "code": "print(sum(range(10)))" }
+  },
+  {
+    "type": "tool-output-available",
+    "toolCallId": "gcall_01",
+    "providerExecuted": true,
+    "output": { "outcome": "OUTCOME_OK", "output": "45\n" }
+  },
+  { "type": "finish-step" },
+  { "type": "finish", "finishReason": "stop" }
+]

@@ -244,9 +244,43 @@ async function deleteKey() {
   }
 }
 
+const LIVE_UPLOAD_NAMES_SHOWN = 5
+
+async function describeLiveUploads(): Promise<string> {
+  if (props.providerId !== 'anthropic') {
+    return ''
+  }
+
+  try {
+    const { skills } = await $fetch(
+      '/api/v1/profiles/keys/anthropic/uploads',
+    )
+
+    if (skills.length === 0) {
+      return ''
+    }
+
+    const names = skills
+      .slice(0, LIVE_UPLOAD_NAMES_SHOWN)
+      .map(skill => skill.name)
+      .join(', ')
+    const more = skills.length > LIVE_UPLOAD_NAMES_SHOWN
+      ? ` and ${skills.length - LIVE_UPLOAD_NAMES_SHOWN} more`
+      : ''
+
+    return ` Skills you allowed scripts for are still uploaded to your `
+      + `Anthropic workspace (${names}${more}). Without the key Besidka `
+      + 'cannot delete those copies: turn scripts off for them first, or '
+      + 'delete them in the Anthropic Console.'
+  } catch {
+    return ''
+  }
+}
+
 async function onDeleteKey() {
   const result = await useConfirm({
     text: `Are you sure you want to delete your ${meta.value.label} API key?`,
+    subtitle: (await describeLiveUploads()).trim() || undefined,
     actions: ['Confirm'],
   })
 

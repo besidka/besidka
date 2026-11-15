@@ -22,6 +22,7 @@ import {
   UPDATE_ARTIFACT_TOOL_NAME,
 } from '~~/server/utils/artifacts/message-parts'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { STORAGE_FULL_CODE } from '~~/server/utils/storage/errors'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -43,7 +44,7 @@ export const ARTIFACT_TOOL_ERROR_CODES = {
 
 const STORE_TO_TOOL_ERROR_CODES: Record<string, string> = {
   [ARTIFACT_ERROR_CODES.tooLarge]: ARTIFACT_TOOL_ERROR_CODES.tooLarge,
-  [ARTIFACT_ERROR_CODES.quotaExceeded]: ARTIFACT_TOOL_ERROR_CODES.quota,
+  [STORAGE_FULL_CODE]: ARTIFACT_TOOL_ERROR_CODES.quota,
   [ARTIFACT_ERROR_CODES.versionCap]: ARTIFACT_TOOL_ERROR_CODES.versionCap,
   [ARTIFACT_ERROR_CODES.versionConflict]:
     ARTIFACT_TOOL_ERROR_CODES.versionConflict,
@@ -324,18 +325,18 @@ export const ARTIFACT_DESIGN_INSTRUCTIONS = [
   '(flex, grid, gap-4, p-6, max-w-2xl mx-auto, sm:/md: prefixes);',
   'arbitrary values such as w-[18rem] work, and classes that scripts or',
   'React state add later work too.',
-  'Colours: only theme names, so light and dark follow the viewer:',
+  'Colors: only theme names, so light and dark follow the viewer:',
   'primary, secondary, accent, neutral (fills only), base-100 (page,',
   'cards), base-200 and base-300 (sections, borders), base-content (text,',
   'e.g. text-base-content/70 for muted), info, success, warning, error,',
-  'and *-content for text on a coloured fill. No fixed colours',
-  '(text-gray-700, bg-white, hex) except data colours in charts; no dark:',
+  'and *-content for text on a colored fill. No fixed colors',
+  '(text-gray-700, bg-white, hex) except data colors in charts; no dark:',
   'variants, no theme switcher, no body background.',
   'Components (parts; modifiers): btn (btn-primary, btn-accent, btn-ghost,',
   'btn-outline, btn-soft, btn-sm, btn-lg, btn-block, btn-circle); card',
   '(card-body, card-title, card-actions; card-border); alert',
   '(alert-info/success/warning/error, alert-soft); badge (badge-soft,',
-  'badge-outline, colours); progress (progress-accent); radial-progress',
+  'badge-outline, colors); progress (progress-accent); radial-progress',
   '(style --value); input, textarea, select, checkbox, radio, toggle,',
   'range; fieldset with fieldset-legend and label; tabs (tabs-box; tab,',
   'tab-active); collapse (collapse-title, collapse-content,',
@@ -355,7 +356,7 @@ export const ARTIFACT_DESIGN_INSTRUCTIONS = [
   'Write custom CSS only for what classes cannot do (keyframes, exact',
   'chart sizes), in one short <style> block; it overrides the classes.',
   'Keep it accessible: real <button> and <label> elements, aria-label on',
-  'icon-only buttons, text on fills with the matching *-content colour.',
+  'icon-only buttons, text on fills with the matching *-content color.',
 ].join(' ')
 
 /**
@@ -433,7 +434,8 @@ export function buildArtifactInstructions(
       + ' confirms each call and may decline, so catch errors and show a'
       + ' short message.'
       : 'Artifacts cannot call a model.',
-    'When the user refers to an artifact from this chat, change it with',
+    'When the user refers to an artifact from this chat or one they',
+    'attached (attached="true"), change it with',
     '`update_artifact` and its id; prefer small `edits` over sending the',
     'whole content again. A new, unrelated request is not an edit.',
     'After writing an artifact, add one or two sentences for the user;',
@@ -446,10 +448,12 @@ export function buildArtifactInstructions(
  * Builds the `create_artifact` and `update_artifact` chat tools. Each write
  * goes through the artifact store as a new immutable version, at most
  * `ARTIFACT_WRITES_PER_TURN` per send. `update_artifact` only reaches
- * artifacts created in this chat (`chatArtifactIds`: owned rows whose
- * origin is this chat) or in this turn, never one that a copied or branched
- * message merely references, so a shared chat cannot steer a model into
- * overwriting the reader's own artifacts. An edit is applied to the version
+ * artifacts created in this chat or attached by the user to a message of it
+ * (`chatArtifactIds`: owned rows whose origin is this chat, or whose public
+ * id sits in an attachment part of this chat's own user messages) or created
+ * in this turn, never one that a copied or branched message merely
+ * references, so a shared chat cannot steer a model into overwriting the
+ * reader's own artifacts. An edit is applied to the version
  * it read and refused if a newer one appeared meanwhile. Errors are thrown
  * as tool errors with a readable message the model can relay.
  */

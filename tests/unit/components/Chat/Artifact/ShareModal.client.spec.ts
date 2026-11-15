@@ -158,6 +158,12 @@ describe('Chat/Artifact/ShareModal.client', () => {
       expect(wrapper.get(byTestId('artifact-share-privacy-note')).text())
         .toBe('Anyone with the link can see this artifact. Viewers can '
           + 'report it.')
+      expect(wrapper.get(byTestId('artifact-share-search-note')).classes())
+        .toEqual(expect.arrayContaining(['alert', 'alert-info']))
+      expect(wrapper.get(byTestId('artifact-share-search-note')).text())
+        .toBe('Private by default: only people who have the link can open '
+          + 'it, and search engines never show it.')
+      expect(wrapper.find('input[data-testid*="index"]').exists()).toBe(false)
       expect(wrapper.text()).toContain('Let signed-in viewers save progress')
       expect(wrapper.text()).toContain(
         'Let signed-in viewers use AI features on their own key',
@@ -207,6 +213,20 @@ describe('Chat/Artifact/ShareModal.client', () => {
     expect(mocks.writeText).toHaveBeenCalledWith(LINK)
     expect(wrapper.find(byTestId('artifact-share-row-sh_new')).exists())
       .toBe(true)
+  })
+
+  it('shows every link as hidden from search engines', async () => {
+    routeFetch({
+      shares: [createShare(), createShare({ shareId: 'sh_2' })],
+    })
+
+    const wrapper = await mountModal()
+    const badges = wrapper.findAll(byTestId('artifact-share-visibility'))
+
+    expect(badges.map(badge => badge.text())).toEqual([
+      'Hidden from search engines',
+      'Hidden from search engines',
+    ])
   })
 
   it('lists links with status, version, expiry and MCP origin', async () => {
