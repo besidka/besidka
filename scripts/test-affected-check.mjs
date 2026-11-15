@@ -1916,6 +1916,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/runtime/project.spec.ts',
     'tests/unit/server/utils/skills/project/pins.spec.ts',
     'tests/unit/server/api/v1/projects/project-skills.spec.ts',
+    'tests/unit/server/mcp/tools/set-project-skills.spec.ts',
+    'tests/unit/server/utils/mcp/private/project-skills.spec.ts',
     'tests/unit/utils/projects/lifecycle.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/chats/request-schema.spec.ts',

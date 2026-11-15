@@ -1300,11 +1300,14 @@ no Prefer pin, or tool calling off) the tools stay unregistered, exactly as for
 an attached skill: the model sees the body and the file list but cannot read
 the files.
 
-**MCP (not built).** The ticket asks for `set_project_skills`
-(`projects:write`, same user's skills only, never enables an Off skill). It was
-not added because the skills tools of S-6 (#924) are not on `main`, and the
-version bump belongs with them (5.1.0, a new tool without a new scope).
-`setProjectSkills` is the single validation function the tool will call.
+**MCP (5.1.0).** `set_project_skills` (`skills:write`, destructive because the
+list replaces the pins, no new scope) calls `setProjectSkills` through
+`setMcpProjectSkills` (`server/utils/mcp/private/project-skills.ts`): the skills
+flag must be on, the hourly skill-change counter is taken after the checks
+pass, and an Off skill is pinned but never enabled. `get_project` adds
+`skills: [{ skillId, name, level, state }]` only when the token also holds
+`skills:read` and the flag is on, so a `projects:read` token never learns skill
+names. The tool is not offered in chat.
 
 ## 6. Threat model
 

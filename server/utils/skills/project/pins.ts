@@ -222,7 +222,9 @@ function createInvalidPinsError(why: string, fix: string) {
  * a broken skill cannot be pinned, and the always-loaded skills that can run
  * must fit `PROJECT_SKILLS_ALWAYS_MAX_TOKENS`. It never changes a skill: an
  * Off skill can be pinned and stays Off, so it does not load. The position is
- * the index in `entries`. Delete and inserts go in one batch.
+ * the index in `entries`. `beforeWrite` runs after every check passed and
+ * right before the write, so a caller can count only calls that write. Delete
+ * and inserts go in one batch.
  */
 export async function setProjectSkills(
   db: DbClient,
@@ -231,6 +233,7 @@ export async function setProjectSkills(
   projectId: string,
   entries: readonly ProjectSkillEntry[],
   logger: LoggerLike,
+  options: { beforeWrite?: () => Promise<void> } = {},
 ): Promise<ProjectSkillsView> {
   const internalProjectId = await requireOwnedProject(db, userId, projectId)
   const skillIds = entries.map(entry => entry.skillId)
@@ -315,6 +318,8 @@ export async function setProjectSkills(
       'Move a skill to Prefer.',
     )
   }
+
+  await options.beforeWrite?.()
 
   await db.batch([
     db.delete(schema.projectSkills)
