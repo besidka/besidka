@@ -39,6 +39,7 @@
       :has-no-commands="commands.hasNoCommands.value"
       @pick="commands.pick"
     />
+    <ChatInputToolApprovalChip />
     <div class="flex justify-center w-full px-2">
       <UiBubble
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"

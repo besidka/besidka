@@ -12,6 +12,8 @@ export const chatTestScenarios = [
   'code',
   'document',
   'skill',
+  'tool-approval',
+  'tool-approvals',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]

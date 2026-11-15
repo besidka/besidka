@@ -17,6 +17,7 @@ import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture
 import { TEST_CODE_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
 import { findLatestTestDocumentPart } from '~~/server/utils/chats/test/document-scenario'
 import { TEST_DOCUMENT_REPLY } from '~~/server/utils/chats/test/document-fixture'
+import { buildTestToolApprovalMessages } from '~~/server/utils/chats/test/tool-approval-fixture'
 import { DOCUMENT_FORMATS } from '#shared/utils/documents'
 import type { DocumentFormat } from '#shared/utils/documents'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
@@ -111,6 +112,21 @@ export default defineEventHandler(async (event) => {
   const testKey = error
     ? `${scenarioKey}-error-${error}`
     : scenarioKey
+
+  if (
+    effectiveScenario === 'tool-approval'
+    || effectiveScenario === 'tool-approvals'
+  ) {
+    return {
+      id: `test-chat-${testKey}`,
+      slug: `test-chat-${testKey}`,
+      title: `Test Chat - ${testKey}`,
+      messages: buildTestToolApprovalMessages(
+        scenarioKey,
+        effectiveScenario === 'tool-approvals' ? 2 : 1,
+      ),
+    }
+  }
 
   return {
     id: `test-chat-${testKey}`,

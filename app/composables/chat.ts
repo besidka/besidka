@@ -10,14 +10,18 @@ import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Message, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { AttachedArtifact } from '~/types/chat-input-tools'
-import type { ToolApprovalAnswer } from '~/composables/tool-approvals'
+import type {
+  ToolApprovalAnswer,
+  ToolApprovalController,
+  ToolApprovalFailure,
+} from '~/composables/tool-approvals'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
 } from '#shared/types/research.d'
 import { parseError } from 'evlog'
-import { DefaultChatTransport } from 'ai'
+import { DefaultChatTransport, isToolUIPart } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
 import {
@@ -1047,6 +1051,20 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
   const toolApprovalRemember = createToolApprovalRememberStore()
+  const toolApprovalsFeature = useFeature('tool-approvals')
+  const sendingApprovalIds = shallowRef<readonly string[]>([])
+  const answeredApprovalIds = shallowRef<readonly string[]>([])
+  const toolApprovalFailures = shallowRef<
+    Record<string, ToolApprovalFailure>
+  >({})
+  const toolApprovalAnsweredAt = shallowRef<Record<string, number>>({})
+  const toolApprovalFocusRequest = shallowRef<
+    { approvalId: string, nonce: number } | null
+  >(null)
+  let toolApprovalRequestError: unknown = null
+  let isToolApprovalResendHeld = false
+  let toolApprovalResendAttempts = 0
+  let toolApprovalResendTimeoutId: ReturnType<typeof setTimeout> | undefined
 
   const {
     messages: sdkMessages,
@@ -1056,6 +1074,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     stop: sdkStop,
     clearError: sdkClearError,
     addToolApprovalResponse: sdkAddToolApprovalResponse,
+    sendMessage: sdkSendMessage,
   } = useChatSdk<UIMessage>({
     id: chat.id,
     messages: hydratedMessages as unknown as UIMessage[],
@@ -1083,6 +1102,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
           const answeredIds = responses.map(response => response.approvalId)
 
           toolApprovalRemember.markInFlight(answeredIds)
+          sendingApprovalIds.value = answeredIds
 
           return { body: approvalBody }
         }
@@ -1111,9 +1131,27 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       },
     }),
     sendAutomaticallyWhen: ({ messages }) => {
+      if (isToolApprovalResendHeld) {
+        return false
+      }
+
       return shouldSendToolApprovalResponses(messages, toolApprovalRemember)
     },
     onFinish({ isAbort, isDisconnect, isError, messages }) {
+      const approvalRequestIds = toolApprovalRemember.getInFlight()
+
+      if (
+        approvalRequestIds.length > 0
+        && finishToolApprovalRequest({
+          approvalRequestIds,
+          isAbort,
+          isDisconnect,
+          isError,
+        })
+      ) {
+        return
+      }
+
       const isSuccessfulResponse = !isAbort && !isDisconnect && !isError
 
       toolApprovalRemember.settleInFlight(isSuccessfulResponse)
@@ -1212,6 +1250,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       hadInterruptionThisTurn = false
     },
     onError(error: any) {
+      if (toolApprovalRemember.getInFlight().length > 0) {
+        toolApprovalRequestError = error
+      }
+
       const parsedError = normalizeChatClientError(error, {
         requestId: transportRequestId.value,
       })
@@ -1497,6 +1539,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', recoverIfInterrupted)
     clearScheduledGenerationRetry()
+    clearToolApprovalResend()
     reasoningSegmentTracker.reset()
     disposeChatResearch()
     wakeLock.release()
@@ -1684,6 +1727,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   function stop() {
     clearScheduledGenerationRetry()
+    clearToolApprovalResend()
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     currentTurnStartedAt.value = 0
@@ -1791,6 +1835,17 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
    */
   async function answerToolApproval(answer: ToolApprovalAnswer) {
     toolApprovalRemember.set(answer.approvalId, answer.remember ?? 'once')
+    toolApprovalResendAttempts = 0
+    answeredApprovalIds.value = [
+      ...answeredApprovalIds.value.filter((approvalId) => {
+        return approvalId !== answer.approvalId
+      }),
+      answer.approvalId,
+    ]
+    toolApprovalAnsweredAt.value = {
+      ...toolApprovalAnsweredAt.value,
+      [answer.approvalId]: Date.now(),
+    }
 
     await sdkAddToolApprovalResponse({
       id: answer.approvalId,
@@ -1798,6 +1853,238 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       ...(answer.reason ? { reason: answer.reason } : {}),
     })
   }
+
+  function forgetAnsweredApprovals(approvalIds: readonly string[]) {
+    const ids = new Set(approvalIds)
+
+    answeredApprovalIds.value = answeredApprovalIds.value.filter(
+      (approvalId) => {
+        return !ids.has(approvalId)
+      },
+    )
+    toolApprovalRemember.forget(approvalIds)
+  }
+
+  /**
+   * Takes back a local answer while other calls of the same reply still
+   * wait, so nothing was sent yet.
+   */
+  function changeToolApprovalAnswer(approvalId: string) {
+    if (
+      sendingApprovalIds.value.includes(approvalId)
+      || ['submitted', 'streaming'].includes(sdkStatus.value)
+    ) {
+      return
+    }
+
+    forgetAnsweredApprovals([approvalId])
+    sdkMessages.value = revertToolApprovalResponses(
+      sdkMessages.value,
+      [approvalId],
+    ) as typeof sdkMessages.value
+  }
+
+  async function askAgainAfterApproval(messageId: string) {
+    const prompt = getPromptBeforeMessage(sdkMessages.value, messageId)
+
+    if (!prompt || input.value.trimEnd().endsWith(prompt)) {
+      return
+    }
+
+    await nuxtApp.callHook('chat-input:prefill', prompt)
+  }
+
+  function markToolApprovalFailures(
+    approvalIds: readonly string[],
+    failure: ToolApprovalFailure,
+  ) {
+    const failures = { ...toolApprovalFailures.value }
+
+    for (const approvalId of approvalIds) {
+      failures[approvalId] = failure
+    }
+
+    toolApprovalFailures.value = failures
+  }
+
+  function clearToolApprovalResend() {
+    isToolApprovalResendHeld = false
+
+    if (toolApprovalResendTimeoutId === undefined) {
+      return
+    }
+
+    clearTimeout(toolApprovalResendTimeoutId)
+    toolApprovalResendTimeoutId = undefined
+  }
+
+  /**
+   * Sends the same answers again after a "still working" signal or a
+   * dropped connection. The server keeps one claim per answer, so a resend
+   * either waits again, replays the stored reply into the same message or
+   * reports the run as interrupted; it never runs the tool twice.
+   */
+  function scheduleToolApprovalResend(approvalIds: readonly string[]) {
+    clearToolApprovalResend()
+
+    if (toolApprovalResendAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
+      toolApprovalRemember.markSent(approvalIds)
+      markToolApprovalFailures(approvalIds, 'interrupted')
+
+      return
+    }
+
+    toolApprovalResendAttempts += 1
+    isToolApprovalResendHeld = true
+    toolApprovalResendTimeoutId = setTimeout(() => {
+      toolApprovalResendTimeoutId = undefined
+      isToolApprovalResendHeld = false
+
+      if (['submitted', 'streaming'].includes(sdkStatus.value)) {
+        return
+      }
+
+      if (!shouldSendToolApprovalResponses(
+        sdkMessages.value,
+        toolApprovalRemember,
+      )) {
+        return
+      }
+
+      sdkSendMessage()
+    }, GENERATION_RETRY_DELAY_MS)
+  }
+
+  function hasRespondedApprovalParts(approvalIds: readonly string[]) {
+    const ids = new Set(approvalIds)
+
+    return sdkMessages.value.at(-1)?.parts.some((part) => {
+      return isToolUIPart(part)
+        && part.state === 'approval-responded'
+        && ids.has(part.approval.id)
+    }) ?? false
+  }
+
+  /**
+   * Settles a request that answered approvals. Returns true when it handled
+   * the outcome itself (the generic error card and Regenerate would point at
+   * a reply the server cannot regenerate): a pending signal or a dropped
+   * connection resends the answers, a 409 marks the calls expired or
+   * interrupted, and any other error brings the buttons back with a toast.
+   */
+  function finishToolApprovalRequest(input: {
+    approvalRequestIds: readonly string[]
+    isAbort: boolean
+    isDisconnect: boolean
+    isError: boolean
+  }): boolean {
+    const { approvalRequestIds } = input
+    const requestError = toolApprovalRequestError ?? sdkError.value
+    const wasPendingGenerationRetry = isPendingGenerationRetry
+
+    toolApprovalRequestError = null
+    sendingApprovalIds.value = []
+
+    if (input.isAbort) {
+      toolApprovalRemember.settleInFlight(true)
+      markToolApprovalFailures(approvalRequestIds, 'interrupted')
+
+      return false
+    }
+
+    const isInterruption = isAutoRecoverableTransportInterruption(
+      pendingError.value,
+      {
+        isAbort: false,
+        isDisconnect: input.isDisconnect,
+        isTestChat: isTestChat.value,
+      },
+    )
+
+    if (wasPendingGenerationRetry || isInterruption) {
+      isPendingGenerationRetry = false
+      pendingError.value = null
+      toolApprovalRemember.settleInFlight(false)
+      sdkClearError()
+      scheduleToolApprovalResend(approvalRequestIds)
+
+      return true
+    }
+
+    if (!input.isError) {
+      toolApprovalResendAttempts = 0
+
+      return false
+    }
+
+    if (!hasRespondedApprovalParts(approvalRequestIds)) {
+      toolApprovalRemember.settleInFlight(true)
+
+      return false
+    }
+
+    const classified = classifyToolApprovalError(requestError)
+
+    pendingError.value = null
+    sdkClearError()
+    isStopped.value = false
+
+    if (classified.kind === 'retry') {
+      toolApprovalRemember.settleInFlight(false)
+      forgetAnsweredApprovals(approvalRequestIds)
+      sdkMessages.value = revertToolApprovalResponses(
+        sdkMessages.value,
+        approvalRequestIds,
+      ) as typeof sdkMessages.value
+      useErrorMessage(classified.message, classified.why || classified.fix)
+
+      return true
+    }
+
+    toolApprovalRemember.settleInFlight(true)
+    markToolApprovalFailures(approvalRequestIds, classified.kind)
+
+    return true
+  }
+
+  const toolApprovalController: ToolApprovalController = {
+    isActive: computed<boolean>(() => {
+      return toolApprovalsFeature.value.active
+    }),
+    messages: renderableMessages,
+    isRequestActive: computed<boolean>(() => {
+      return ['submitted', 'streaming'].includes(sdkStatus.value)
+    }),
+    pendingApprovalIds: computed<string[]>(() => {
+      if (!toolApprovalsFeature.value.active) {
+        return []
+      }
+
+      return getPendingToolApprovalIds(
+        renderableMessages.value,
+        toolApprovalFailures.value,
+      )
+    }),
+    sendingApprovalIds,
+    answeredApprovalIds,
+    failures: toolApprovalFailures,
+    answeredAt: toolApprovalAnsweredAt,
+    focusRequest: toolApprovalFocusRequest,
+    answer: answerToolApproval,
+    change: changeToolApprovalAnswer,
+    askAgain: askAgainAfterApproval,
+    focusFirstPending: () => {
+      const approvalId = toolApprovalController.pendingApprovalIds.value[0]
+
+      if (!approvalId) {
+        return
+      }
+
+      toolApprovalFocusRequest.value = { approvalId, nonce: Date.now() }
+    },
+  }
+
+  provide(TOOL_APPROVAL_CONTROLLER_KEY, toolApprovalController)
 
   return {
     chatSdk,
