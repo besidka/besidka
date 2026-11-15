@@ -15,7 +15,15 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const skill = await loadOwnedSkill(db, userId, readSkillIdParam(event))
 
-  await deleteUserSkill(db, { userId, skillId: skill.id, logger })
+  const result = await deleteUserSkill(db, {
+    userId,
+    skillId: skill.id,
+    logger,
+  })
 
-  return { id: skill.id, deleted: true }
+  return {
+    id: skill.id,
+    deleted: true,
+    providerCopy: result.providerCopy,
+  }
 })

@@ -43,6 +43,7 @@ export interface SkillsSend {
   activeSkillsBlock: string | null
   invocationBlock: string | null
   holdsSkillText: boolean
+  scriptCandidateSkillIds: string[]
   streamActivations: DataSkillActivationPart[]
   getToolActivations: () => ReturnType<
     ReturnType<typeof getSkillTools>['getActivations']
@@ -80,6 +81,7 @@ const EMPTY_SKILLS_SEND: SkillsSend = {
   activeSkillsBlock: null,
   invocationBlock: null,
   holdsSkillText: false,
+  scriptCandidateSkillIds: [],
   streamActivations: [],
   getToolActivations: () => [],
 }
@@ -279,6 +281,12 @@ export async function prepareSkillsForSend(input: {
       || projectSkills.block !== null
       || invocationResult !== null
       || catalogHoldsImportedText,
+    scriptCandidateSkillIds: [...new Set([
+      ...toolSkills.map(skill => skill.id),
+      ...(active?.activeSkillIds ?? []),
+      ...projectSkills.loadedSkillIds,
+      ...(invocationResult ? [invocationResult.skillId] : []),
+    ])],
     streamActivations: [...streamActivations, ...projectSkills.activations],
     getToolActivations: toolsRun?.getActivations ?? (() => []),
   }

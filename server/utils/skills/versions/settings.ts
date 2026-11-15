@@ -18,7 +18,10 @@ import {
   loadOwnedSkill,
   loadVersionRow,
 } from '~~/server/utils/skills/versions/read'
-import { toSkillSummary } from '~~/server/utils/skills/versions/view'
+import {
+  loadSkillIdsWithScripts,
+  toSkillSummary,
+} from '~~/server/utils/skills/versions/view'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -199,9 +202,12 @@ export async function updateSkillSettings(input: {
     updated.currentVersion,
   )
 
+  const skillIdsWithScripts = await loadSkillIdsWithScripts(db, userId)
+
   return toSkillSummary(
     updated,
     null,
     countStoredHighlights(currentVersion?.findings),
+    skillIdsWithScripts.has(updated.id),
   )
 }

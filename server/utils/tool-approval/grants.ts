@@ -5,6 +5,10 @@ import { z } from 'zod'
 import type {
   ToolApprovalGrantItem,
 } from '#shared/types/tool-approval-grants.d'
+import {
+  SKILL_SCRIPTS_GATE_TOOL_NAME,
+  SKILL_SCRIPTS_GRANT_KEY,
+} from '#shared/utils/skills/scripts'
 import * as schema from '~~/server/db/schema'
 import { buildExposedToolName } from '~~/server/utils/connectors/tool-definitions'
 import {
@@ -145,6 +149,23 @@ async function listBesidkaGrantItems(
     ) {
       items.push(besidkaGrantItem('always', besidkaTool.name))
     }
+  }
+
+  const scriptsHash = Object.hasOwn(
+    settings.alwaysAllowTools,
+    SKILL_SCRIPTS_GRANT_KEY,
+  )
+    ? settings.alwaysAllowTools[SKILL_SCRIPTS_GRANT_KEY]
+    : null
+
+  if (scriptsHash) {
+    items.push({
+      scope: 'chat',
+      connectorId: '',
+      connectorTitle: 'Skill scripts',
+      toolName: SKILL_SCRIPTS_GATE_TOOL_NAME,
+      source: 'besidka',
+    })
   }
 
   return items

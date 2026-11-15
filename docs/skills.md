@@ -1659,54 +1659,172 @@ Anthropic only in v1. The OpenAI path (inline zip or uploaded skills in the
 shell tool) is **not built**: OpenAI's own skills guide says to avoid product
 designs where end users attach arbitrary skills (pre-check Q5).
 
-Applies when all hold: direct Anthropic model on the user's own Anthropic key
-(never a gateway, never a Besidka key); the D-7 code-execution tool is
-available for the model; `skills.scripts` is on with an active Labs opt-in;
-the skill has a `scripts/` folder and its "Allow scripts in provider
-containers" toggle is on; the skill is enabled for the chat.
+Built for BES-285. Applies when all hold: direct Anthropic model on the
+user's own Anthropic key (never a gateway, never a Besidka key); the D-7
+"Run code" tool is on for the message (`resolveCodeExecutionGate`); `skills.scripts`
+is on with an active Labs opt-in; tool approvals are on; the skill is enabled
+for the chat (catalog, active, pinned or invoked), has its "Allow scripts"
+toggle on and ships a `scripts/` file (`kind = 'script'`) in its current
+version. Anything else is the S-3 text-only behavior, and the resource list
+keeps its "text only, not executable here" note.
 
-1. **Disclosure before the first upload** (modal, and one line on the skill
-   card afterwards): the files become visible to everything in the user's
-   Anthropic workspace; Agent Skills is not covered by zero data retention;
-   files stay until deleted and then follow Anthropic's standard retention;
-   running them uses the code execution tool (container data kept up to 30
-   days, hours billed to the user's organization beyond the free allowance of
-   1,550 container-hours a month, then $0.05 an hour with a 5-minute minimum);
-   "Use Skills only from trusted sources".
-2. **Upload** with `uploadSkill({ api: anthropic.skills(), files, displayTitle })`
-   using the decrypted key (`useDecryptText`, never stored elsewhere). At most
-   20 skills per request and 30 MB per skill. Pin the returned version, never
-   `latest`.
-3. **Reserved words.** Anthropic skill names cannot contain `anthropic` or
-   `claude`; read it as a substring rule. The token is replaced, not prefixed
-   (`claude-api` becomes `bsk-c-api`), in the frontmatter `name` and the root
-   folder; the original name goes into `display_name` (255 characters;
-   `display_title` under the old `skills-2025-10-02` beta header, which is
-   what the SDK's `displayTitle` maps to, to confirm in S-5); a change note is added
-   to the uploaded `SKILL.md` (Apache-2.0 section 4(b)) and shown to the user.
-   Automatic for `open` skills, user-confirmed for `none` and `custom`;
-   `restricted` never gets here.
-4. **Store** `provider_skill_id`, `provider_skill_version` and
-   `provider_uploaded_name` on the `skills` row (D1, not KV). Re-upload lazily:
-   when `current_version` differs from the uploaded version, not on every save,
-   or when the provider answers not-found.
-5. **Send**: `providerOptions.anthropic.container.skills = [{ type: 'custom', skillId, version }]`
-   plus D-7's code execution tool; `activate_skill` stays.
-6. **Per-chat confirmation**: the first script run in a chat shows a C-6 style
-   card "Run scripts from <skill> in Anthropic's container on your key?",
-   remembered for the chat.
-7. **Outputs**: D-7's adapter downloads produced files with the user's key and
-   stores them with `persistFile` (`originProvider`, `originModel`); stdout in
-   `ChatCodeExecution.vue`; cost accounted like
-   `server/utils/ai/external-search-cost.ts`.
-8. **Delete**: `DELETE /v1/skills/{id}` on the user's key when "Allow scripts"
-   is turned off, the skill is deleted, or the account is deleted (before the
-   key is purged), then `provider_deleted_at`. If it fails, say so and point
-   to the Anthropic Console. Removing the Anthropic key while uploads exist
-   shows a warning listing them.
+Code: `shared/utils/skills/scripts.ts` (name rule, version encoding, set hash,
+disclosure text), `server/utils/skills/provider-upload.ts` (upload, delete,
+purge, live copies), `server/utils/skills/send-container-options.ts` (the send
+side), `server/utils/skills/scripts-toggle.ts` and the two routes
+`POST` and `DELETE /api/v1/skills/[id]/scripts`.
 
-The "+" menu shows a `badge badge-soft` "scripts" on such a skill, or the muted
-note "Scripts need a Claude model with code execution".
+1. **Disclosure before the first upload.** Turning the toggle on in the
+   skill's Settings tab opens a dialog (`ScriptsDialog.client.vue`) with the
+   points from `SKILL_SCRIPTS_DISCLOSURE_POINTS`: the files become visible to
+   everything in the user's Anthropic workspace; Agent Skills is not covered by
+   zero data retention; files stay until deleted and then follow Anthropic's
+   standard retention; running them uses the code execution tool (container
+   data kept up to 30 days, hours billed to the user's organization beyond the
+   free 1,550 container-hours a month, then $0.05 an hour with a 5-minute
+   minimum); "use only skills from sources you trust". The route refuses
+   (`scripts-disclosure-required`) without `disclosureAccepted: true`. After
+   that the row shows "Scripts on", with a tooltip about the upload.
+   Nothing is uploaded when the toggle is turned on; the upload is lazy
+   (point 5).
+2. **Reserved words.** Anthropic skill names cannot contain `anthropic` or
+   `claude`; this is read as a substring rule. Each word is replaced until none
+   is left (`claude-api` becomes `bsk-c-api`, `anthropic` becomes `bsk-a`; the
+   name only shrinks, so the 64 character limit holds), in the frontmatter
+   `name` line (only that line is rewritten) and in the uploaded root folder.
+   The original name goes into the display title (`displayTitle`, which the SDK
+   sends as `display_title`). A change note (a blockquote at the end of
+   `SKILL.md`) says what changed. The dialog states the new name; the route
+   needs `renameConfirmed` for a skill with license class `none` or `custom`
+   (409 `scripts-rename-confirmation-required` with `providerName`), and
+   renames `open` and `authored` skills on its own. `restricted` and `broken`
+   skills never get here.
+3. **Consent per chat (C-6).** The provider runs the code execution call inside
+   its own response, so Besidka cannot ask before an individual run
+   (`withProviderToolEgressGuard`). The consent therefore sits on whether the
+   skills reach the container at all. Until the chat holds a grant, a small gate
+   tool `run_skill_scripts` is registered (an app tool, a native write with
+   `consentGate: true`) and the instructions tell the model to call it before
+   running a script. The call goes through the C-6 policy as rule 10 (checked
+   right after rule 0, so taint and the always-ask rules do not change it): it
+   asks "Run scripts from <skill names> in Anthropic's container on your key?"
+   with `Allow once` and `Allow in this chat` only (reason `consent`, never
+   `always`). "Allow in this chat" stores the grant in the chat's
+   `besidka_chat_settings.alwaysAllowTools` under the key `run_skill_scripts`
+   (so the existing "reset grants" and chat-delete paths clear it), bound to the
+   **definition hash**: the sorted skill ids with their `current_version`
+   (`hashSkillScriptsSet`). A new version of a script, or another skill
+   joining the set, asks again. A denial leaves the send as S-3 shaped it (the
+   model continues without running); no upload happens. The skills are attached
+   only on the continuation that carries an approved answer, or from the start
+   when the chat holds a matching grant (and then the gate tool is not
+   registered).
+4. **Upload** with `uploadSkill({ api: anthropic.skills(), files, displayTitle })`
+   using the decrypted key, with every path under the uploaded root folder
+   (`<uploadedName>/SKILL.md`). At most 30 MB per skill and 8 skills per
+   request (the lower of the figures found; the earlier "20" was not
+   confirmed). The SDK only creates skills (`POST /v1/skills`), so a new version
+   is a new skill: the older copy is deleted first, then the new one is
+   uploaded. The response must carry a version; without one the copy is deleted
+   again and the send continues without scripts (fail closed, because an
+   omitted `version` would mean "latest").
+5. **Store and reuse.** `provider_skill_id`, `provider_skill_version` and
+   `provider_uploaded_name` on the `skills` row (D1, not KV).
+   `provider_skill_version` is one text column that holds two facts, written
+   as `<besidka current_version>:<anthropic version>` (for example
+   `3:1759178010641129`) and read back only through
+   `parseProviderSkillVersion`; a value it cannot parse counts as stale. The
+   copy is reused while the first number equals `current_version`, with no
+   request; otherwise it is replaced lazily on the next allowed send. The
+   container entry is `{ type: 'custom', providerReference: { anthropic: id },
+   version: <anthropic version> }`, pinned, never `latest`.
+6. **Send.** `providerOptions.anthropic.container.skills` plus D-7's code
+   execution tool, which stays `code_execution_20260120` (the SDK accepts it
+   for skills; `code_execution_20250825` is the one the ticket named, and
+   switching would add a second tool). `container.skills` survives the container
+   id that `withAnthropicContainerForwarding` adds on later steps: the AI SDK
+   merges step options deeply (`mergeObjects`), checked by a spec that runs a
+   two-step `streamText`. `activate_skill` stays.
+7. **Outputs and cost.** D-7's adapter downloads produced files with the user's
+   key and stores them with `persistFile` (`originProvider`, `originModel`);
+   stdout in `ChatCodeExecution.vue`. The wide event
+   `attributes.codeExecution` gains `skills` (how many were attached) next to
+   `calls`, `containers`, `files`. The container cost stays `null` for
+   Anthropic, because the response carries no billable usage (no
+   `server_tool_use` execution time) and the 1,550 free hours belong to the
+   organization; the count is always recorded, a figure never invented.
+8. **Delete.** `removeProviderCopy` lists and deletes every version, then the
+   skill (`DELETE /v1/skills/{id}/versions/{version}`, then
+   `DELETE /v1/skills/{id}`, beta `skills-2025-10-02`, sequential, `redirect:
+   'manual'`, 404 means gone, never throws), then clears the columns and sets
+   `provider_deleted_at`. It runs when "Allow scripts" is turned off, when the
+   skill is deleted (in the app or over MCP) and in `purgeUserSkills`, which
+   the account purge runs before the user row, and so the keys, are deleted.
+   When the skill is deleted (app route or MCP `delete_skills`) and the
+   provider delete fails, the skill is **not** deleted: the row keeps
+   `provider_skill_id`, the app answers 502 `provider-copy-delete-failed`
+   ("Could not delete the copy in your Anthropic workspace. Try again, or
+   delete it there.") and MCP reports the id in `providerCopyFailed` with the
+   same message, while the other ids of the call are still deleted. A retry
+   works once the copy is gone (a 404 counts as gone), also after the user
+   deleted it in the Anthropic Console; a missing or unreadable key counts as
+   a failure, so re-add the key first. Turning scripts off still switches the
+   setting off when the delete fails and reports `providerCopy: 'failed'`. The
+   account purge stays best effort and goes on after a failed delete: the copy
+   then lives on in the user's own Anthropic workspace, which the user
+   controls, and the purge logs only the counts
+   (`attributes.skills.providerPurge`: attempted, deleted, failed).
+   Removing the Anthropic key shows the skills that still have a copy
+   (`GET /api/v1/profiles/keys/anthropic/uploads`), because without the key
+   Besidka cannot delete them. Unverified: that the API requires versions to be
+   deleted before the skill (assumed from the API reference), and a live
+   upload; both wait for the manual check below.
+9. **Flag.** `skills.scripts` is `available: true`, `spend: 'foreground'`, so
+   `optIn: 'required'`, with `requires.keyKinds: ['provider']`. The Labs row
+   carries the cost note. It stays at `internal` until the owner decides.
+
+The "+" menu's skill picker shows a `badge badge-soft` "scripts" on a skill
+that allows them when the selected model is a direct Anthropic model with Run
+code available, or the muted note "Scripts need a Claude model with code
+execution" otherwise.
+
+**Concurrency and known limits.**
+
+- The upload on a continuation runs after the approval claim
+  (`claimContinuation`), so a double submit does not upload twice. The columns
+  are written only while `provider_skill_id` is still empty
+  (`UPDATE ... WHERE provider_skill_id IS NULL`): a request that loses that
+  race deletes its own upload and uses the winner's copy when it is current.
+  A failed write also deletes the new upload, so no copy is orphaned.
+- The consent is bound to the approved set. The pending request stores the
+  definition hash, and the replay compares it with the current one for every
+  native tool that carries a hash (`pendingMatchesDescriptor`): a skill edited
+  or another skill enabled between the request and the answer denies the
+  answer as `definition-drifted`, nothing is uploaded, and the model asks again
+  with the new hash. "Allow in this chat" stores the approved hash only.
+- After an approved attach, the gate entry carries a chat grant for the same
+  hash, so a second `run_skill_scripts` call in the same continuation does not
+  ask again.
+- A key that cannot be decrypted counts as a failed provider delete: turning
+  scripts off still works and reports it, and a skill delete is refused until
+  the key can be used (or the copy is gone at Anthropic and the key works
+  again).
+- The chat panel lists the chat grant as "Skill scripts"; "Reset" clears it
+  like every other chat grant.
+- The earlier design said to re-upload "when the provider answers
+  not-found". That rule is not built: if the user deletes the copy in the
+  Anthropic Console, sends in a chat that holds a grant fail at Anthropic
+  until the user turns scripts off and on again for that skill (turning it off
+  treats the 404 as gone, and the next allowed send uploads a fresh copy).
+- The cap of 8 skills per request is the lower of two figures and is not
+  confirmed against a source.
+
+**Not verified live (the owner's Anthropic key is capped until 2026-12-01).**
+Every test mocks `uploadSkill` and the provider requests. Deferred to a manual
+check on a preview with a real key: a skill whose script writes a CSV runs and
+the file appears in the chat and in the files with provenance; the reserved-word
+rule is a substring rule; skills with `code_execution_20260120`; the delete
+order; re-specifying `container.skills` together with a container id.
 
 ## 8. Data model
 
@@ -1764,7 +1882,7 @@ see section 13). Activations and invocations are message parts, not a table.
 | `created_via` | text | `app`, `mcp`, `share` |
 | `created_by_client_id` | text, null | MCP client id |
 | `provider_skill_id` | text, null | S-5 |
-| `provider_skill_version` | text, null | S-5 |
+| `provider_skill_version` | text, null | S-5; `<Besidka current_version>:<Anthropic version>`, parsed by `parseProviderSkillVersion` (section 7) |
 | `provider_uploaded_name` | text, null | S-5 (renamed name) |
 | `provider_deleted_at` | timestamp, null | S-5 |
 | `created_at`, `updated_at` | timestamps | |
@@ -2342,7 +2460,7 @@ Commands are skills, so there are no separate command tools. Outputs include
 | `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; argumentHint? }` | Saved disabled with `needs-review`. The license gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
 | `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Writes a persisted pending version (section 3.4), disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, its `sha256`, `findings`, `reviewUrl` and `diffSummary`. The app's accept and reject are bound to `{ version, sha256 }`, so a change after the user opened the review is refused with 409 |
 | `rename_skill` | `skills:write` | `idempotentHint`, not destructive | `{ id, name }` (regex, 1 to 64 characters, unique per user, reserved slash names refused) | Rewrites only the frontmatter `name`, as a new version (origin `rename`, note "Renamed from x"). Disables the skill and sets `needs-review` |
-| `delete_skills` | `skills:write` (audit change) | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`, plus provider-copy deletion with S-5 |
+| `delete_skills` | `skills:write` (audit change) | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`; also deletes the skill's Anthropic copy with the user's key (S-5); a failed copy delete keeps the skill and adds `providerCopyFailed` and `message` to the output |
 
 **How `rename_skill` handles the name rules.**
 
@@ -2386,8 +2504,8 @@ pending version with `sourceKind` `mcp` (so an accepted update is third-party
 text and the memory write lock applies), `rename_skill` and `update_skill`
 switch the skill off in the same batch that writes the version, a skill the
 user switches on while `needs-review` with nothing pending becomes `ready`,
-`LICENSE` and `NOTICE` are protected whatever the license class, and the
-`delete_skills` provider-copy deletion waits for S-5.
+`LICENSE` and `NOTICE` are protected whatever the license class, and
+`delete_skills` deletes the provider copy through the shared `deleteUserSkill` (S-5); a failed provider delete keeps the skill and is reported in the output as `providerCopyFailed` (ids) with a message; the input schema and the tool description are unchanged, so the MCP surface snapshot does not change.
 
 **Sharing tools (S-13, later).** Behind the reserved name: `share_skill
 { id, expiresInDays ≤ 30 }` and `revoke_skill_shares` under `skills:share`, and
@@ -2523,20 +2641,29 @@ Ticket keys without a BES id are new on 2026-11-13.
 
 ## 14. SDK verification
 
-Checked on 2026-11-08 in the installed packages.
+Checked on 2026-11-08 in the installed packages, and again for S-5 on
+2026-11-15 (`ai@7.0.173`, `@ai-sdk/anthropic@4.0.105`).
 
-- `ai@7.0.153`: `uploadSkill({ api, files, displayTitle?, providerOptions? }) → UploadSkillResult`
-  (signature read in `dist/index.d.ts`; the result's fields were not read).
-- `@ai-sdk/anthropic@4.0.88`: `anthropic.skills()` exists, and the provider
-  options have a `container` object with a `skills` array.
+- `ai`: `uploadSkill({ api, files, displayTitle?, providerOptions? })` returns
+  `{ providerReference, displayTitle?, name?, description?, latestVersion?,
+  providerMetadata?, warnings }`. `files` are `{ path, data }` with the path
+  relative to the skill root; Anthropic wants one shared root folder.
+- `@ai-sdk/anthropic`: `anthropic.skills()` only uploads (`POST /v1/skills`
+  with `display_title` and `files[]`, then one read of the version metadata).
+  It has no delete and no new-version call, so deletion is raw REST (section 7,
+  point 8). The provider option is `container: { id?, skills?: ({ type:
+  'anthropic', skillId, version? } | { type: 'custom', providerReference,
+  version? })[] }`, so a custom skill takes `providerReference`, not `skillId`.
+  A skills container adds the `code-execution-2025-08-25`, `skills-2025-10-02`
+  and `files-api-2025-04-14` betas and warns when neither
+  `code_execution_20250825` nor `code_execution_20260120` is present.
+- `uploadSkill`'s `latestVersion` can be missing: S-5 fails closed on that.
+- Re-verify all of this on every SDK bump (`server/utils/skills/provider-upload.ts`
+  and `send-container-options.ts` are the two call sites).
 
-Unverified (S-5 settles them first): the exact shape of `UploadSkillResult`
-and of a `custom` container skill entry (`skillId` or `providerReference`, and
-the version field); whether deleting through the provider API is exposed by the
-SDK or needs a raw REST call; that Anthropic's reserved-word rule is a
-substring rule (one test upload on a throwaway key). `yaml` and `fflate` are
-transitive today (`yaml` 2.9.0 as a devDependency, `fflate` 0.8.3); S-2 adds
-them as direct dependencies.
+Still unverified (the manual live check settles them): that Anthropic's
+reserved-word rule is a substring rule; that skills run under
+`code_execution_20260120`. `yaml` and `fflate` are direct dependencies since S-2.
 
 ## 15. Rejected alternatives
 

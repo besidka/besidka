@@ -55,6 +55,7 @@ import {
   resolveReplayApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
+import { SKILL_SCRIPTS_GRANT_KEY } from '#shared/utils/skills/scripts'
 import { addBesidkaChatGrant } from '~~/server/utils/besidka-tools/chat-settings'
 import {
   createApprovalState,
@@ -836,6 +837,33 @@ export async function applyRememberGrants(input: {
     const connector = entry?.connector
 
     if (!decision.approved || decision.remember === 'once' || !hash) {
+      continue
+    }
+
+    if (entry?.descriptor.consentGate === true) {
+      if (
+        decision.remember !== 'chat'
+        || decision.record.definitionHash !== hash
+      ) {
+        continue
+      }
+
+      try {
+        await addBesidkaChatGrant(input.db, input.userId, input.chatPublicId, {
+          toolName: SKILL_SCRIPTS_GRANT_KEY,
+          definitionHash: hash,
+        })
+      } catch (exception) {
+        input.logger.set({
+          attributes: {
+            toolApproval: {
+              grant: 'failed',
+              error: exceptionMessage(exception),
+            },
+          },
+        })
+      }
+
       continue
     }
 
