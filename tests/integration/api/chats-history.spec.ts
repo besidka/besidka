@@ -32,6 +32,9 @@ const mocks = vi.hoisted(() => ({
   cleanupConnectorsForDeletedChats: vi.fn(
     async (..._args: unknown[]) => ({}),
   ),
+  cleanupToolApprovalsForDeletedChats: vi.fn(
+    async (..._args: unknown[]) => ({}),
+  ),
 }))
 
 vi.mock('evlog', () => ({
@@ -87,6 +90,11 @@ vi.mock('~~/server/utils/skills/cleanup', () => ({
 
 vi.mock('~~/server/utils/connectors/cleanup', () => ({
   cleanupConnectorsForDeletedChats: mocks.cleanupConnectorsForDeletedChats,
+}))
+
+vi.mock('~~/server/utils/tool-approval/cleanup', () => ({
+  cleanupToolApprovalsForDeletedChats:
+    mocks.cleanupToolApprovalsForDeletedChats,
 }))
 
 vi.mock('~~/server/utils/search/index-writer', () => ({
@@ -710,6 +718,13 @@ describe('chat history API', () => {
           return {}
         },
       )
+      mocks.cleanupToolApprovalsForDeletedChats.mockImplementationOnce(
+        async () => {
+          callOrder.push('tool-approval-cleanup')
+
+          return {}
+        },
+      )
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
@@ -724,6 +739,7 @@ describe('chat history API', () => {
         'document-cleanup',
         'skill-cleanup',
         'connector-cleanup',
+        'tool-approval-cleanup',
       ])
       expect(mocks.cleanupDocumentsForDeletedChats).toHaveBeenCalledWith(
         db,
@@ -740,6 +756,13 @@ describe('chat history API', () => {
         }),
       )
       expect(mocks.cleanupConnectorsForDeletedChats).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          userId: 1,
+          chatIds: ['chat-1', 'chat-3'],
+        }),
+      )
+      expect(mocks.cleanupToolApprovalsForDeletedChats).toHaveBeenCalledWith(
         db,
         expect.objectContaining({
           userId: 1,

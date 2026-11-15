@@ -16,6 +16,7 @@ import { purgeUserDocuments } from '~~/server/utils/documents/cleanup'
 import { purgeUserSkills } from '~~/server/utils/skills/cleanup'
 import { purgeUserConnectors } from '~~/server/utils/connectors/cleanup'
 import { revokeAllUserConnectorTokens } from '~~/server/utils/connectors/revoke'
+import { purgeUserToolApprovals } from '~~/server/utils/tool-approval/cleanup'
 
 const r2BatchDeleteLimit = 1000
 
@@ -58,6 +59,9 @@ export interface PurgeUserDataResult {
   connectorToolSettingsDeleted: number
   connectorChatSettingsDeleted: number
   connectorToolCallsDeleted: number
+  besidkaToolPermissionsDeleted: number
+  besidkaChatSettingsDeleted: number
+  toolApprovalClaimsDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -94,6 +98,11 @@ export interface PurgeUserDataResult {
  *     `connector_tool_calls` rows (no FK to `users`; the audit rows go with
  *     the account, not with the connector), after a best-effort RFC 7009
  *     revocation of every connector token under a short deadline,
+ *   - tool approvals: the `besidka_tool_permissions`, `besidka_chat_settings`
+ *     and `tool_approval_claims` rows (no FK to `users`), and the approval
+ *     records in KV that the per-chat indexes of the user's 200 most
+ *     recently updated chats list; any other approval key expires within
+ *     24 hours,
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
@@ -291,6 +300,26 @@ export async function purgeUserData(
     throw exception
   }
 
+  let toolApprovalPurge: Awaited<ReturnType<typeof purgeUserToolApprovals>>
+
+  try {
+    toolApprovalPurge = await purgeUserToolApprovals(db, userId, logger)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'tool-approvals-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   for (const storageKey of storageKeys) {
     await invalidateFileCache(storageKey, logger)
   }
@@ -397,6 +426,7 @@ export async function purgeUserData(
     ...documentPurge,
     ...skillPurge,
     ...connectorPurge,
+    ...toolApprovalPurge,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
@@ -425,6 +455,9 @@ export async function purgeUserData(
     connectorToolSettingsDeleted,
     connectorChatSettingsDeleted,
     connectorToolCallsDeleted,
+    besidkaToolPermissionsDeleted,
+    besidkaChatSettingsDeleted,
+    toolApprovalClaimsDeleted,
     featureGrantsDeleted,
     featureOptInsDeleted,
     userRolesDeleted,
@@ -460,6 +493,9 @@ export async function purgeUserData(
         connectorToolSettingsDeleted,
         connectorChatSettingsDeleted,
         connectorToolCallsDeleted,
+        besidkaToolPermissionsDeleted,
+        besidkaChatSettingsDeleted,
+        toolApprovalClaimsDeleted,
         featureGrantsDeleted,
         featureOptInsDeleted,
         userRolesDeleted,

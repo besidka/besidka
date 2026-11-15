@@ -18,6 +18,9 @@ import { cleanupSkillsForDeletedChats } from '~~/server/utils/skills/cleanup'
 import {
   cleanupConnectorsForDeletedChats,
 } from '~~/server/utils/connectors/cleanup'
+import {
+  cleanupToolApprovalsForDeletedChats,
+} from '~~/server/utils/tool-approval/cleanup'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import {
@@ -289,6 +292,12 @@ export async function deleteChat(
   })
 
   await cleanupConnectorsForDeletedChats(db, {
+    userId,
+    chatIds: [chat.id],
+    logger,
+  })
+
+  await cleanupToolApprovalsForDeletedChats(db, {
     userId,
     chatIds: [chat.id],
     logger,

@@ -2,12 +2,12 @@ import { CONNECTOR_AUDIT_ARGS_HKDF_INFO } from '#shared/utils/connectors-policy'
 import type { ConnectorAuditOutcome } from '#shared/utils/connectors-policy'
 import { recordConnectorToolCall } from '~~/server/utils/connectors/store'
 import { canonicalJson } from '~~/server/utils/connectors/tool-definitions'
+import { bytesToHex, deriveHkdfBytes } from '~~/server/utils/hkdf'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
 type DbClient = ReturnType<typeof useDb>
 
 const textEncoder = new TextEncoder()
-const EMPTY_SALT = new Uint8Array(0)
 
 export type ConnectorArgsHasher = (args: unknown) => Promise<string>
 
@@ -25,23 +25,15 @@ export function createConnectorArgsHasher(
 
   function deriveKey(): Promise<CryptoKey> {
     keyPromise ??= (async () => {
-      const baseKey = await crypto.subtle.importKey(
-        'raw',
-        textEncoder.encode(secret),
-        'HKDF',
-        false,
-        ['deriveKey'],
+      const keyBytes = await deriveHkdfBytes(
+        secret,
+        CONNECTOR_AUDIT_ARGS_HKDF_INFO,
       )
 
-      return await crypto.subtle.deriveKey(
-        {
-          name: 'HKDF',
-          hash: 'SHA-256',
-          salt: EMPTY_SALT,
-          info: textEncoder.encode(CONNECTOR_AUDIT_ARGS_HKDF_INFO),
-        },
-        baseKey,
-        { name: 'HMAC', hash: 'SHA-256', length: 256 },
+      return await crypto.subtle.importKey(
+        'raw',
+        keyBytes,
+        { name: 'HMAC', hash: 'SHA-256' },
         false,
         ['sign'],
       )
@@ -57,9 +49,7 @@ export function createConnectorArgsHasher(
       textEncoder.encode(canonicalJson(args ?? {})),
     )
 
-    return Array.from(new Uint8Array(signature))
-      .map(byte => byte.toString(16).padStart(2, '0'))
-      .join('')
+    return bytesToHex(new Uint8Array(signature))
   }
 }
 

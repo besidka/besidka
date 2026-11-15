@@ -1557,6 +1557,22 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/chat-input-tiles.spec.ts',
   ]
 
+  const toolApprovalPolicyTests = [
+    'tests/unit/utils/tool-approval-policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/policy.spec.ts',
+    'tests/unit/server/utils/tool-approval/state.spec.ts',
+    'tests/unit/server/utils/tool-approval/secret.spec.ts',
+    'tests/unit/server/utils/tool-approval/kv.spec.ts',
+    'tests/unit/server/utils/tool-approval/claims.spec.ts',
+    'tests/unit/server/utils/tool-approval/cleanup.spec.ts',
+    'tests/unit/server/utils/hkdf.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+    'tests/integration/server/tool-approval-claim-sweep-plugin.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/server/utils/chats/lifecycle.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+
   const toolApprovalSpikeTests = [
     'tests/integration/api/tool-approval-spike.spec.ts',
   ]
@@ -3127,6 +3143,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/mcp\/tools\/.*\.ts|package\.json)$/,
       tests: toolApprovalSpikeTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/tool-approval-policy\.ts|server\/utils\/tool-approval\/.*\.ts|server\/utils\/hkdf\.ts|server\/utils\/connectors\/audit\.ts|server\/db\/schemas\/tool-approvals\.ts|server\/plugins\/tool-approval-claim-sweep\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/(memory-extraction-db|skills-public-id-mock)\.ts|\.drizzle\/migrations\/[^/]+_chunky_gabe_jones\/.*)$/,
+      tests: toolApprovalPolicyTests,
     },
     {
       pattern:
