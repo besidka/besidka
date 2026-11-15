@@ -864,6 +864,14 @@ export async function renameSkillForMcpClient(input: {
 
   assertSkillNotBroken(skill)
 
+  if (skill.pendingVersion !== null) {
+    throw createSkillEditError('pending-version', {
+      message: 'This skill has an update waiting for review',
+      why: 'A rename now would leave the waiting update with the old name',
+      fix: 'Ask the user to accept or reject the update in Besidka first',
+    })
+  }
+
   if (skill.name === name) {
     return {
       unchanged: true,

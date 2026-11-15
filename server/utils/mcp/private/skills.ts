@@ -273,8 +273,12 @@ async function loadSkillOrNotFound(
 ): Promise<SkillRow> {
   try {
     return await loadOwnedSkill(context.db, context.userId, skillId)
-  } catch {
-    throw createNotFoundError()
+  } catch (exception) {
+    if ((exception as { status?: number }).status === 404) {
+      throw createNotFoundError()
+    }
+
+    throw exception
   }
 }
 

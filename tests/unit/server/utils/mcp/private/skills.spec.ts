@@ -894,6 +894,17 @@ describe('MCP skills domain', () => {
         })
       })
 
+    it('refuses while an update waits for review', async () => {
+      const { skillId } = await seedOwned(undefined, { pendingVersion: 2 })
+      const failure = await failureOf(
+        renameMcpSkill(context(), { id: skillId, name: 'check-pr' }),
+      )
+
+      expect(failure.status).toBe(409)
+      expect((await skillRow(skillId)).name).toBe('review-pr')
+      expect((await skillRow(skillId)).enabled).toBe(true)
+    })
+
     it('does nothing for the same name', async () => {
       const { skillId } = await seedOwned()
       const result = await renameMcpSkill(context(), {
