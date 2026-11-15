@@ -1,6 +1,6 @@
 <template>
   <div
-    class="grid gap-6 py-4"
+    class="grid grid-cols-1 gap-6 py-4"
     data-testid="besidka-tool-permissions"
   >
     <UiSidePanelSkeleton
@@ -37,7 +37,7 @@
       <section
         v-for="group in groups"
         :key="group.tier"
-        class="grid gap-3"
+        class="grid grid-cols-1 gap-3"
         :data-testid="`besidka-tool-group-${group.tier}`"
       >
         <header class="flex items-start justify-between gap-3">
@@ -75,7 +75,7 @@
             </option>
           </select>
         </header>
-        <ul class="grid gap-2">
+        <ul class="grid grid-cols-1 gap-2">
           <li
             v-for="tool in group.tools"
             :key="tool.name"
@@ -84,7 +84,7 @@
           >
             <label
               :for="`${idPrefix}-tool-${tool.name}`"
-              class="min-w-0 truncate text-sm"
+              class="min-w-0 text-sm leading-snug"
             >
               {{ tool.title }}
             </label>
