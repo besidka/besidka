@@ -20,6 +20,7 @@ export interface MockMcpServerOptions {
   url: string
   tools?: MockMcpTool[]
   ttlMs?: number
+  icons?: unknown[]
   respond?: (
     name: string,
     args: Record<string, unknown>,
@@ -108,7 +109,11 @@ export function createMockMcpServer(
         result: {
           protocolVersion: '2025-06-18',
           capabilities: { tools: {} },
-          serverInfo: { name: 'mock', version: '1.0.0' },
+          serverInfo: {
+            name: 'mock',
+            version: '1.0.0',
+            ...(options.icons ? { icons: options.icons } : {}),
+          },
         },
       }, 200, { 'mcp-session-id': SESSION_ID })
     }

@@ -6,6 +6,8 @@ import {
   SAFE_FETCH_OAUTH_MAX_BYTES,
   SAFE_FETCH_REGISTRY_MAX_BYTES,
   CONNECTOR_CALL_TIMEOUT_MS,
+  CONNECTOR_ICON_MAX_BYTES,
+  CONNECTOR_ICON_TIMEOUT_MS,
   CONNECTOR_RESPONSE_MAX_BYTES,
   REGISTRY_FETCH_TIMEOUT_MS,
   SAFE_FETCH_CONNECTORS_USER_AGENT,
@@ -20,6 +22,7 @@ export const SAFE_FETCH_PURPOSES = [
   'mcp',
   'oauth',
   'registry',
+  'favicon',
   'skills-github',
   'skills-url',
 ] as const
@@ -54,9 +57,15 @@ export const SAFE_FETCH_PURPOSE_POLICY: Readonly<
     userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,
   },
   'registry': {
-    redirects: 'validated',
+    redirects: 'same-origin',
     timeoutMs: REGISTRY_FETCH_TIMEOUT_MS,
     maxResponseBytes: SAFE_FETCH_REGISTRY_MAX_BYTES,
+    userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,
+  },
+  'favicon': {
+    redirects: 'same-origin',
+    timeoutMs: CONNECTOR_ICON_TIMEOUT_MS,
+    maxResponseBytes: CONNECTOR_ICON_MAX_BYTES,
     userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,
   },
   'skills-github': {

@@ -1535,6 +1535,17 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
 
+  const connectorsRegistryTests = [
+    'tests/unit/utils/connectors-policy.spec.ts',
+    'tests/unit/utils/features/connectors-registry.spec.ts',
+    'tests/unit/server/utils/connectors/registry-entry.spec.ts',
+    'tests/unit/server/utils/connectors/registry-sync.spec.ts',
+    'tests/integration/server/mcp-registry-sync-plugin.spec.ts',
+    'tests/integration/api/connectors-registry.spec.ts',
+    'tests/unit/config/wrangler-registry-cron.spec.ts',
+    'tests/unit/server/utils/net/safe-fetch.spec.ts',
+  ]
+
   const connectorsOAuthTests = [
     'tests/unit/server/utils/connectors/credentials.spec.ts',
     'tests/unit/server/utils/connectors/oauth-client.spec.ts',
@@ -1645,6 +1656,27 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/features/registry.spec.ts',
     'tests/unit/utils/memory/tools/memory-tools.spec.ts',
     'tests/unit/utils/knowledge/context.spec.ts',
+  ]
+
+  const reasoningStepIconsTests = [
+    'tests/unit/utils/reasoning-step-icons.spec.ts',
+    'tests/unit/components/Chat/Reasoning/StepIcon.spec.ts',
+    'tests/unit/components/Chat/Reasoning.icons.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ConnectorStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/MemoryStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning/SearchStep.spec.ts',
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/unit/server/utils/chats/test/reasoning-icons-fixture.spec.ts',
+  ]
+
+  const connectorIconTests = [
+    'tests/unit/server/utils/connectors/icon.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/net/safe-fetch.spec.ts',
+    'tests/integration/api/connectors-icon.spec.ts',
   ]
 
   const toolApprovalSpikeTests = [
@@ -3252,6 +3284,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-catalog\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/registry-(entry|sync|search)\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+      tests: connectorsRegistryTests,
+    },
+    {
+      pattern:
         /^(shared\/utils\/(connectors-policy|connectors-slug)\.ts|shared\/utils\/features\/registry\.ts|config\/connectors-catalog\.ts|scripts\/check-connector-presets\.mjs|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(store|cleanup)\.ts|server\/utils\/account\/purge-user-data\.ts|server\/utils\/chats\/lifecycle\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts|tests\/setup\/helpers\/skills-public-id-mock\.ts|\.drizzle\/migrations\/[^/]+_known_rogue\/.*)$/,
       tests: connectorsStorageTests,
     },
@@ -3401,6 +3438,16 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/pages\/profile\/(preferences|settings)\.vue$/,
       tests: preferencesPageTests,
+    },
+    {
+      pattern:
+        /^(app\/utils\/reasoning-step-icons\.ts|app\/components\/Chat\/Reasoning(\/(StepIcon|ApprovalStep|ConnectorStep|MemoryStep|SearchStep|SkillStep))?\.vue|app\/composables\/composer-connectors\.ts|app\/pages\/shared\/\[slug\]\.vue|server\/utils\/chats\/test\/reasoning-icons-fixture\.ts|shared\/utils\/chat-test-errors\.ts)$/,
+      tests: reasoningStepIconsTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/connectors\/(icon|send-tools)\.ts|server\/api\/v1\/connectors\/\[id\]\/icon\.get\.ts|server\/api\/v1\/connectors\/delete\/bulk\.post\.ts|server\/utils\/net\/safe-fetch\.ts|shared\/utils\/connectors-policy\.ts|tests\/setup\/helpers\/(connector-icon-kv|mock-mcp-server)\.ts)$/,
+      tests: connectorIconTests,
     },
     {
       pattern: /^app\/(utils\/reasoning-icons\.ts|components\/Profile\/Security\/SectionCard\.vue)$/,

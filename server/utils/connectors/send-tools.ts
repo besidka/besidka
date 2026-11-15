@@ -84,6 +84,7 @@ import {
   normalizeToolDefinitions,
   redactSecrets,
 } from '~~/server/utils/connectors/tool-definitions'
+import { recordDeclaredConnectorIcons } from '~~/server/utils/connectors/icon'
 import type { ConnectorToolDefinition } from '~~/server/utils/connectors/tool-definitions'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
@@ -689,6 +690,11 @@ export async function getConnectorTools(
         )
 
         definitions = listed.definitions
+        await recordDeclaredConnectorIcons(
+          kv,
+          connector.id,
+          client.serverInfo,
+        )
         await writeCachedToolDefinitions(
           kv,
           cacheKey,

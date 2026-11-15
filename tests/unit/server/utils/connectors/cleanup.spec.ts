@@ -205,6 +205,55 @@ describe('connector deletion hooks', () => {
       ])
     })
 
+    it('deletes the icon caches of every purged connector, not others', async () => {
+      const { createFakeIconKv } = await import(
+        '../../../../setup/helpers/connector-icon-kv'
+      )
+      const kv = createFakeIconKv()
+
+      vi.stubGlobal('useKV', () => kv)
+      await seedConnectorData(userId)
+      await seedConnectorData(otherUserId)
+
+      const rows = await testDb.db.select({
+        id: schema.connectors.id,
+        owner: schema.connectors.userId,
+      }).from(schema.connectors)
+
+      for (const row of rows) {
+        const id = encodePublicId(row.id)
+
+        await kv.put(`connectors:icon:${id}`, 'x')
+        await kv.put(`connectors:icon-sources:${id}`, 'x')
+      }
+
+      await purgeUserConnectors(testDb.db, userId, logger)
+      vi.unstubAllGlobals()
+
+      const remaining = rows
+        .filter(row => row.owner === otherUserId)
+        .flatMap((row) => {
+          const id = encodePublicId(row.id)
+
+          return [`connectors:icon:${id}`, `connectors:icon-sources:${id}`]
+        })
+
+      expect([...kv.entries.keys()].sort()).toEqual(remaining.sort())
+    })
+
+    it('still purges when the icon cache cannot be reached', async () => {
+      vi.stubGlobal('useKV', () => {
+        throw new Error('KV down')
+      })
+      await seedConnectorData(userId)
+
+      const result = await purgeUserConnectors(testDb.db, userId, logger)
+
+      vi.unstubAllGlobals()
+
+      expect(result.connectorsDeleted).toBe(1)
+    })
+
     it('removes the audit rows with the account', async () => {
       await seedConnectorData(userId)
       await testDb.db.delete(schema.connectors)

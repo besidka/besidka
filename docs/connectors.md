@@ -1,7 +1,7 @@
 # Connectors design (Phase 4a)
 
-Status: **design, 2026-11-08; C-2 to C-5 built** (see the "As built"
-sections 5.5 and 6.1). This document is the source of
+Status: **design, 2026-11-08; C-2 to C-5 and C-8 built** (see the "As
+built" sections 5.5, 6.1 and 9.1). This document is the source of
 truth for the connectors track: C-2 (BES-235) to C-11 (BES-261) implement it,
 and C-1 (BES-233) wrote it. Where a ticket body and this document disagree,
 this document wins; section 13 lists every ticket that has to change. The
@@ -74,8 +74,10 @@ Feature flags (registered by C-2 in the P0-3 registry at stage `internal`,
 `connectors` and `connectors.oauth` are `available: true` since C-4, still at
 stage `internal`: an unavailable flag evaluates to off with `NOT_AVAILABLE`
 whatever the role or grant, so testers and previews could not reach the C-4
-routes. Stage `internal` keeps both admin- and grant-only. `connectors.registry`
-and `connectors.native` stay unavailable until their tickets ship.
+routes. Stage `internal` keeps both admin- and grant-only.
+`connectors.registry` is `available: true` since C-8 (the same reason: an
+unavailable flag evaluates to off for everyone), still at stage `internal`.
+`connectors.native` stays unavailable until its ticket ships.
 
 ## 2. Decisions
 
@@ -139,7 +141,9 @@ resolves a disagreement between tickets and is listed in section 13.
     context panel "Used" section.
 15. **No logos or third-party images (pre-check).** Presets, cards and registry
     rows show text and a generated initial avatar. No favicons, no registry
-    `icons`, no hotlinking.
+    `icons`, no hotlinking. Amended 2026-11-15 (BES-395): reasoning steps show
+    a connector icon, but only through the Besidka route of section 7.10, never
+    as a remote image; presets, cards and registry rows stay text only.
 16. **Results are data, never instructions.** Every connector result is wrapped
     and framed as untrusted, engages the memory write lock and never feeds
     memory extraction, chat search or shares.
@@ -224,7 +228,7 @@ Redirects follow a two-tier rule **(this doc)**:
 | --- | --- | --- | --- | --- | --- |
 | `mcp` | MCP transport calls to the connector's server URL | Same-origin only, at most 3 hops. A redirect to another origin stops with `CONNECTOR_ORIGIN_CHANGED`: the user edits the URL, which asks for consent again | 60 s per call, 10 s per connect | 1 MiB raw | `Besidka-Connectors/<version>` |
 | `oauth` | PRM, AS metadata, registration, token, revocation | At most 3 hops, each re-validated; `Authorization` and request body dropped on origin change; 303 becomes GET | 10 s | 256 KiB | `Besidka-Connectors/<version>` |
-| `registry` | `registry.modelcontextprotocol.io` | At most 3 validated hops | 30 s | 2 MiB per page | `Besidka-Connectors/<version>` |
+| `registry` | `registry.modelcontextprotocol.io` | Same-origin only, at most 3 hops; another origin stops with `CONNECTOR_ORIGIN_CHANGED` | 30 s | 2 MiB per page | `Besidka-Connectors/<version>` |
 | `skills-github` | Exactly `github.com/<owner>/<repo>.git/info/refs?service=git-upload-pack` (ref to commit SHA, update checks), and `codeload.github.com/<owner>/<repo>/zip/<sha>` (never `api.github.com`), through the narrow fetcher of `docs/skills.md` section 3.1 until C-3 lands. `githubFetch` returns `{ status, bytes }` (404 and 401 passed to the caller), not a `Response`, so the later `safeFetch` swap needs a small adapter | No redirect followed (`redirect: 'manual'`, any 3xx is an error); the older `github.com/.../archive` hop is gone | 30 s per call, body read included, inside one 60 s request deadline | 15 MiB (API answers 2 MiB) | `Besidka-Skills/<version>` (GitHub answers 403 without a UA) |
 | `skills-url` | A raw `SKILL.md` URL | At most 3 validated hops | 10 s | 256 KiB | `Besidka-Skills/<version>` |
 
@@ -1575,6 +1579,71 @@ read the stored grants. Where this changes sections 7.1 to 7.8:
   reasoning models skipping the tool because the old text said it was
   refused. Flag off, the text is unchanged.
 
+### 7.10 As built: step icons (BES-395, 2026-11-15)
+
+Every reasoning step starts with a small decorative icon; the title keeps the
+meaning. The one registry is `app/utils/reasoning-step-icons.ts`
+(`resolveReasoningStepSource`): it maps a tool name to an icon descriptor and
+a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
+`alt`). Only the four pinned icon collections are used
+(`docs/nuxt-icon-collections.md`).
+
+- **Built-in sources.** Search shows the brand of the vendor that ran it:
+  Brave and Exa by tool name, and for the native `web_search_preview` tool the
+  vendor in `usage.searchProvider` (Google, Anthropic, OpenAI, xAI, DeepSeek).
+  While the usage is not saved yet (streaming) or the route is a gateway, the
+  icon is a globe. Documents show their file type and name the format
+  ("Created DOCX"); while the input still streams there is no `format`, so the
+  generic title stays. Skills use `lucide:sparkles`, memory the memory icon,
+  chat and project knowledge their own icons, and the future `besidka__*` tools
+  the Besidka mark. Artifacts and code execution have icons in the registry,
+  but those tools are excluded from the step list today, so only an approval
+  step for them shows one.
+- **Connector icon, in this order.** (1) An icon the server declares in its
+  `initialize` result (`serverInfo.icons`, MCP 2025-06 and later; the
+  `@ai-sdk/mcp` schema is loose, so the field survives). It is read on the
+  tool-list cache miss in `send-tools.ts` and kept as sources in KV. Only a
+  `data:` image or a URL on the server's own origin is fetched; dark-theme
+  icons are skipped (the tile is light). (2) `/favicon.ico` of the server's
+  host. (3) A letter avatar, drawn by the client when the route answers 404.
+  Registry icons are not read: `mcp_registry_servers` has no icons column and
+  nothing syncs it yet.
+- **Fetch and storage.** `server/utils/connectors/icon.ts`, through
+  `safeFetch` with the new `favicon` purpose (redirects stay on the server's
+  origin, as for `mcp`; 32 KiB, 5 s). The answer must be a success and a
+  raster image by its magic bytes (PNG, JPEG, GIF, WebP, ICO) whose own header
+  declares at most 512 by 512 pixels (an ICO with an entry pointing outside the
+  file is refused too). SVG is refused: it is served from the app's own origin
+  and can carry script. The bytes live in KV under `connectors:icon:<id>` for
+  7 days; a miss is kept for a day, so a server without an icon is not asked on
+  every render. A changed set of declared sources drops the kept icon. Deleting a connector
+  (`delete/bulk` is the only delete path), disconnecting it, withdrawing its
+  consent and an account purge (`purgeUserConnectors`, best effort, one KV
+  delete at a time) remove the keys. No route changes a connector's URL or
+  origin (a new URL is a new connector), so there is nothing to clear there. A
+  short in-flight marker, `connectors:icon-lock:<connectorId>` (60 s, best
+  effort because KV is eventually consistent), makes concurrent cold requests
+  answer a 5 s 404 instead of all fetching.
+- **Route.** `GET /api/v1/connectors/[id]/icon`: session, `connectors` flag,
+  the connector must be the user's (404 otherwise), have current consent and
+  be `ready` or `drifted`, so nothing is fetched for a connector the user has
+  not connected. A loose per-user bucket allows 120 requests a minute. Headers: `cache-control: private, max-age=86400` (3600 for a
+  404), `x-content-type-options: nosniff`, `content-security-policy:
+  default-src 'none'; sandbox`, `cross-origin-resource-policy: same-origin`,
+  and `content-type` from the sniffed type.
+- **Never remote.** The chat loads the image only from this route
+  (`referrerpolicy="no-referrer"`), so a connector cannot see the viewer's
+  address. Shared pages pass `is-shared` to `ChatReasoning`, which forces the
+  generic plug icon and never requests the route (tool parts are also stripped
+  from shares, so there is nothing to show).
+- **Known limit.** Measured on 2026-11-15: only 2 of 11 well-known MCP hosts
+  serve `/favicon.ico` (Sentry, Vercel); Notion, Linear, Stripe, Atlassian and
+  others answer 404, so most connectors show the letter unless the server
+  declares icons. Options if that is not enough: read the HTML `<link rel=icon>`
+  of the host, or the registry `icons` once the registry is synced.
+- **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
+  with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
+
 ## 8. Data model
 
 All in `server/db/schemas/connectors.ts`, exported from `server/db/schema.ts`.
@@ -1746,13 +1815,19 @@ the id.
 | `remote_url` | text | the first `streamable-http` remote that passes `parseSafeOutboundUrl` |
 | `remote_type` | text | `streamable-http` |
 | `header_names` | json | names only, never values |
-| `status` | text | registry status |
+| `status` | text | registry status (`active` only in v1) |
 | `registry_updated_at` | timestamp | |
 | `synced_at` | timestamp | mark-and-sweep marker |
 
 Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 `icons`, `_meta` publisher fields, `packages`. Not user data, so no
 `user_id`.
+
+`title` and `description` come from third parties and are plain text only:
+the sync strips control, separator and invisible format characters (bidi
+controls, tag characters) and cuts by code points, but a consumer must still
+render them as text, never with `v-html`, markdown or any interpolation into
+HTML (C-7 consumes them).
 
 ### 8.7 KV keys
 
@@ -1761,11 +1836,15 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `connectors:oauth:<state>` | 600 s | OAuth state and PKCE verifier, deleted on read |
 | `connectors:refresh:<connectorId>` | 30 s | refresh lock |
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
+| `connectors:icon:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10) |
+| `connectors:icon-lock:<connectorId>` | 60 s | in-flight marker of a cold icon fetch |
+| `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
 | `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
 | `tool-approval:chat:<chatPublicId>` | 24 h | per-chat index of the keys above, used by chat delete and by expiry |
 | `tool-approval-rate:<userId>` | 120 s | approval answers in the current one-minute window (section 7.7) |
-| `connectors:registry:updated-since` | none | sync cursor |
+| `connectors:registry:updated-since` | none | incremental watermark (ISO), set only when a pass reaches its end |
+| `connectors:registry:progress` | none | C-8: JSON `{ mode, startedAt, updatedSince, cursor, maxUpdatedAt }` of an unfinished run, deleted when the run completes |
 | `connectors:registry:full-pass` | none | id of the last completed full pass |
 | `connectors:registry:erasures` | none | SHA-256 of registry names whose maintainers asked for removal |
 
@@ -1820,6 +1899,15 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_CALLS_PER_TURN` | 12 | C-5 |
 | `CONNECTOR_CALLS_PER_MINUTE` | 60 per user, all connectors | C-5 |
 | `CONNECTOR_CALLS_PER_MINUTE_PER_CONNECTOR` | 30 per user per connector | C-5 |
+| `CONNECTOR_ICON_MAX_BYTES` | 32,768 per icon (the `favicon` safe-fetch purpose cap) | BES-395 |
+| `CONNECTOR_ICON_TIMEOUT_MS` | 5,000 per icon request | BES-395 |
+| `CONNECTOR_ICON_TTL_SECONDS` | 7 days; a miss `CONNECTOR_ICON_MISS_TTL_SECONDS`, 1 day | BES-395 |
+| `CONNECTOR_ICON_MAX_DECLARED` | 4 declared icons kept per server | BES-395 |
+| `CONNECTOR_ICON_SOURCE_MAX_LENGTH` | 65,536 characters per declared source | BES-395 |
+| `CONNECTOR_ICON_CACHE_SECONDS` | 86,400 browser cache of the icon route | BES-395 |
+| `CONNECTOR_ICON_MAX_DIMENSION` | 512 pixels, width and height | BES-395 |
+| `CONNECTOR_ICON_ROUTES_PER_MINUTE` | 120 per user on the icon route | BES-395 |
+| `CONNECTOR_ICON_LOCK_TTL_SECONDS` | 60 | BES-395 |
 | `SAFE_FETCH_OAUTH_MAX_BYTES` | 262,144 | C-3, C-4 |
 | `SAFE_FETCH_REGISTRY_MAX_BYTES` | 2,097,152 per page | C-3, C-8 |
 | Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`). `skills-github` uses the narrow allowlisted fetcher (`docs/skills.md` section 3.1) until C-3 lands, and then may move to `safeFetch`. `skills-url` waits for C-3 (S-2U) | S-2G, S-2U, C-3 |
@@ -1837,7 +1925,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `SAFE_FETCH_DEFAULT_TIMEOUT_MS` | 10,000 | C-3 |
 | `SAFE_FETCH_DEFAULT_MAX_BYTES` | 2,097,152 | C-3 |
 | `SAFE_FETCH_MAX_REDIRECTS` | 3 | C-3 |
-| `REGISTRY_SYNC_CRON` | `0 * * * *` (the existing hourly trigger) | C-8 |
+| `REGISTRY_SYNC_CRON` | `7 * * * *` (its own hourly trigger, minute 7) | C-8 |
 | `REGISTRY_PAGE_SIZE` | 100 | C-8 |
 | `REGISTRY_PAGES_PER_RUN` | 20 | C-8 |
 | `REGISTRY_FETCH_TIMEOUT_MS` | 30,000 | C-8 |
@@ -1845,6 +1933,9 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `REGISTRY_FULL_PASS_HOURS` | 24 | C-8 |
 | `REGISTRY_SEARCH_PAGE_SIZE` | 20 | C-8 |
 | `REGISTRY_SEARCHES_PER_MINUTE` | 30 per user | C-8 |
+| `REGISTRY_RUN_BUDGET_MS` | 240,000 wall clock per sync run, checked before each page | C-8 |
+| `REGISTRY_SEARCH_QUERY_MIN_LENGTH` / `REGISTRY_SEARCH_QUERY_MAX_LENGTH` | 2 and 64 characters | C-8 |
+| `REGISTRY_UPSERT_BATCH` | 25 entries per `db.batch()` | C-8 |
 | `CONNECTOR_MCP_DELETE_BATCH` | 20 ids per `delete_connectors` call | C-9 |
 | `CONNECTOR_MCP_TOOLS_BATCH` | 100 tools per `update_connector_tools` call | C-9 |
 | `CONNECTOR_MCP_LIST_LIMIT` | 50 per `list_connectors` page | C-9 |
@@ -1861,6 +1952,56 @@ cursor for a full pass and stamps `synced_at`; when the pass completes, rows
 whose `synced_at` predates it are deleted (the registry is in preview and
 "data resets may occur"). A failure keeps the cursor and never throws out of
 the scheduled handler.
+
+### 9.1 As built (C-8, 2026-11-15)
+
+- **Cron.** `server/plugins/mcp-registry-sync.ts` runs on its own
+  `7 * * * *` trigger (so a slow run never delays the `0 * * * *` sweeps; added
+  to both `triggers.crons` lists in `wrangler.jsonc`) whatever the `connectors.registry` flag says, so data is
+  ready when the flag flips. `syncMcpRegistry` in
+  `server/utils/connectors/registry-sync.ts` reads at most 20 pages of 100
+  per run, stops early after four minutes of wall clock, and ends with
+  status 500 in the wide event (never an exception) on a registry or KV
+  failure. Counts go to `attributes.registry`.
+- **Resume.** Because 20 pages rarely cover the whole registry, an unfinished
+  run saves its page cursor in `connectors:registry:progress` and the next hour
+  continues. The cursor advances only after a page is written, the
+  `updated-since` watermark moves only when a pass reaches the end, and a
+  daily full pass deletes by `synced_at` only after it reaches the end. A full
+  pass that returns no entries sweeps nothing and counts as a failure, and so
+  does one whose sweep would delete more than half of the existing rows: the
+  sweep is aborted, the full-pass key does not advance, and the wide event
+  carries `attributes.registry.sweepAborted` (`stale`, `total`) for the owner
+  to look at. A page whose `nextCursor` is over 512 characters is a failure
+  and nothing from it is written. The
+  watermark after a full pass is its start minus five minutes (clock skew);
+  after an incremental pass it is the newest `updatedAt` seen, never later
+  than the run's start.
+- **Entries.** Each list entry is parsed on its own with zod; `title` and
+  `description` lose control, line and paragraph separator, `Cf` and tag
+  characters. Kept: `active`
+  status and the first `streamable-http` remote whose URL has no `{`, `}`, `$`
+  (or their encoded forms) and passes `parseSafeOutboundUrl`; header names
+  matching the connector header pattern. An entry that turns deleted,
+  deprecated, SSE-only, templated, unsafe, erased or malformed loses its
+  existing row in the same batch. Counted reasons: `shape`, `inactive`,
+  `no-remote`, `template`, `unsafe-url`, `erased`.
+- **Writes.** One batch per 25 entries of single-row statements: a delete of
+  the same name under another id (the id is name plus version), then an
+  `onConflictDoUpdate` insert. Never a multi-row `values([...])`.
+- **Search.** `GET /api/v1/connectors/registry?q=<2..64>&cursor=<0..1000>`
+  (`server/api/v1/connectors/registry/index.get.ts`): session, `connectors`
+  and `connectors.registry` flags, 30 searches a minute per user (own KV
+  bucket), `LIKE` with `ESCAPE` over name, title and description on the local
+  table only, ranked exact name or last name segment, exact title, prefix,
+  substring, then description; 20 per page with an integer cursor. Items hold
+  `id`, `name`, `title`, `description`, `remoteUrl`, `transport`, `authHint`
+  (`header` when the entry names a header, else `unknown`; the registry has no
+  auth-type field) and `presetId` (exact URL match). An empty table answers
+  `syncing: true`. No `websiteUrl` and no icons.
+- **Not built here.** The 90-day `connector_tool_calls` prune the ticket put
+  in this plugin (`CONNECTOR_AUDIT_PRUNE_BATCH` is still unused); no MCP tool
+  (section 11 lists none for C-8); no UI (C-7).
 
 ## 10. UI placement
 

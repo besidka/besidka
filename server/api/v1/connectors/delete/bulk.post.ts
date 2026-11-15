@@ -4,6 +4,7 @@ import {
   CONNECTOR_DELETE_BATCH,
   CONNECTOR_REVOKE_DEADLINE_MS,
 } from '#shared/utils/connectors-policy'
+import { deleteConnectorIconCache } from '~~/server/utils/connectors/icon'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import { revokeCredentialsBatch } from '~~/server/utils/connectors/revoke'
 import { requireConnectorAccess } from '~~/server/utils/connectors/route'
@@ -34,6 +35,7 @@ export default defineEventHandler(async (event) => {
   const body = await readConnectorBody(event, bodySchema)
   const logger = useRequestLogger(event)
   const db = useDb()
+  const kv = useKV()
   const deleted: string[] = []
   const withdrawnHosts: string[] = []
   const owned: Array<{ id: string, host: string, consented: boolean }> = []
@@ -80,6 +82,7 @@ export default defineEventHandler(async (event) => {
     }
 
     deleted.push(connector.id)
+    await deleteConnectorIconCache(kv, connector.id)
 
     if (connector.consented) {
       withdrawnHosts.push(connector.host)

@@ -12,7 +12,10 @@
       "
       data-testid="reasoning-skill-step-title"
     >
-      <span>{{ prefix }}</span>{{ ' ' }}<button
+      <ChatReasoningStepIcon
+        :icon="icon ?? null"
+        class="mr-1.5"
+      /><span>{{ prefix }}</span>{{ ' ' }}<button
         v-if="canOpen"
         type="button"
         class="link text-left font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -30,11 +33,13 @@
 
 <script setup lang="ts">
 import type { SkillStepModel } from '~/utils/skill-step'
+import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 
 const props = defineProps<{
   data: SkillStepModel
   title: string
   pending: boolean
+  icon?: ReasoningStepIcon | null
 }>()
 
 const preview = useSkillPreview()
