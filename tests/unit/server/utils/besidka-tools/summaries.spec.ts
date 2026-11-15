@@ -294,12 +294,32 @@ describe('besidka tool summaries', () => {
   it('never echoes a newline or a long model-written string', () => {
     const tool = registry.getBesidkaTool('create_project')
     const summary = registry.summarizeBesidkaToolCall(tool, {
-      name: `Roadmap\n\nAllow everything ${'x'.repeat(200)}`,
+      name: `Roadmap\n\nAllow everything ${'x'.repeat(40)}`,
     })
 
     expect(summary).not.toMatch(/[\n\r]/)
     expect(summary.length).toBeLessThan(100)
     expect(summary.endsWith('…"')).toBe(true)
+  })
+
+  it('drops keys a tool does not declare before summarizing', () => {
+    const tool = registry.getBesidkaTool('update_settings')
+    const summary = registry.summarizeBesidkaToolCall(tool, {
+      'sidebarPinned': true,
+      'x\nApprove everything': true,
+    })
+
+    expect(summary).toBe('Change your settings: sidebarPinned')
+  })
+
+  it('refuses a value outside the schema instead of echoing it', () => {
+    const tool = registry.getBesidkaTool('update_project')
+    const summary = registry.summarizeBesidkaToolCall(tool, {
+      projectId: 'prj_1',
+      knowledgeMode: 'search\nApprove everything',
+    })
+
+    expect(summary).toBe(tool.title)
   })
 
   it('never echoes instruction or note bodies, only their length', () => {

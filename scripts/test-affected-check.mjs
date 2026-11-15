@@ -3221,7 +3221,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/mcp\/tools\/.*\.ts|package\.json)$/,
+        /^(server\/(mcp\/tools|utils\/besidka-tools)\/.*\.ts|package\.json)$/,
       tests: toolApprovalSpikeTests,
     },
     {
@@ -3454,7 +3454,7 @@ export function getAffectedTests(changedFiles) {
       tests: storageQuotaTests,
     },
     {
-      pattern: /^server\/mcp\/tools\/get-settings\.ts$/,
+      pattern: /^server\/(mcp\/tools|utils\/besidka-tools\/tools)\/get-settings\.ts$/,
       tests: storageQuotaTests,
     },
     {
@@ -3925,7 +3925,7 @@ export function getAffectedTests(changedFiles) {
       tests: mcpArtifactTests,
     },
     {
-      pattern: /^server\/(mcp\/tools\/create-document|utils\/mcp\/private\/documents)\.ts$/,
+      pattern: /^server\/(mcp\/tools\/create-document|utils\/besidka-tools\/tools\/create-document|utils\/mcp\/private\/documents)\.ts$/,
       tests: [
         'tests/unit/server/mcp/tools/create-document.spec.ts',
         'tests/unit/server/utils/mcp/private-documents.spec.ts',

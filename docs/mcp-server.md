@@ -820,7 +820,7 @@ An entry carries, besides the MCP fields:
 | Field | Meaning |
 | --- | --- |
 | `mcpScope` | Filled from `MCP_PRIVATE_TOOL_SCOPES`, the only scope map |
-| `access` | `read`, `write`, `delete` (the `data:delete` scope) or `instructions` (text a model reads later: project instructions, notes and knowledge text) |
+| `access` | The shared `ToolAccess` of `shared/utils/tool-approval-policy.ts`: `read`, `write`, `delete` (the `data:delete` scope) or `instructions` (text a model reads later: project instructions, notes and knowledge text) |
 | `chat` | `{ expose: true, tier }` or `{ excluded: reason }`, never neither |
 | `chatDescription` | At most 300 characters, written for a model, no scope or MCP wording; required when exposed |
 | `summarize(input)` | One server-written sentence for an approval prompt; every exposed `write` and `ask-every-time` tool has one |
@@ -846,12 +846,15 @@ decide which wins.
 
 `summarize` is synchronous and sees only the parsed input, so it names things
 only when the input already holds a name (`confirmName`, `name`, `title`) and
-otherwise gives counts and ids. Every echoed string goes through
+otherwise gives counts and ids. `summarizeBesidkaToolCall` first parses the
+input with the tool's own schema, so a summarizer sees only declared,
+validated fields (an invented key or an out-of-schema value never reaches
+it). Free text and ids then go through
 `server/utils/besidka-tools/summary.ts`: control, format and separator
 characters collapse to one space, the length is capped and free text is
 quoted. Bodies and instructions are never echoed, only their length. A tool
-without a summarizer, or one that throws on odd input, falls back to its
-title (`summarizeBesidkaToolCall`). Looking up a chat title from its slug is
+without a summarizer, one whose input does not parse, or one that throws
+falls back to its title. Looking up a chat title from its slug is
 not done yet; it needs an asynchronous, server-side lookup.
 
 `tests/unit/server/utils/besidka-tools/parity.spec.ts` keeps the registry and

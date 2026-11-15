@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { McpPrivateToolName } from '~~/server/utils/mcp/tool-scopes'
 import type {
   BesidkaTool,
@@ -129,9 +130,11 @@ export function listChatExposedBesidkaTools(
 }
 
 /**
- * The sentence an approval prompt shows for a call, written by the server
- * from the parsed input. A tool without a summarizer, or one that throws on
- * unexpected input, falls back to its title.
+ * The sentence an approval prompt shows for a call, written by the server.
+ * The input is parsed with the tool's own schema first, so a summarizer only
+ * sees declared, validated fields and never an extra key a model invented.
+ * A tool without a summarizer, or an input that does not parse, falls back
+ * to the tool title.
  */
 export function summarizeBesidkaToolCall(
   tool: BesidkaTool,
@@ -141,8 +144,14 @@ export function summarizeBesidkaToolCall(
     return tool.title
   }
 
+  const parsed = z.object(tool.inputSchema ?? {}).safeParse(input)
+
+  if (!parsed.success) {
+    return tool.title
+  }
+
   try {
-    return tool.summarize(input as never)
+    return tool.summarize(parsed.data as never)
   } catch {
     return tool.title
   }

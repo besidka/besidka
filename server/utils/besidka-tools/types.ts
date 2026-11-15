@@ -1,11 +1,12 @@
 import type { z } from 'zod'
 import type { McpResourceScope } from '#shared/utils/mcp-oauth-scopes'
+import type { ToolAccess } from '#shared/utils/tool-approval-policy'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { McpPrivateToolName } from '~~/server/utils/mcp/tool-scopes'
 
 export type BesidkaToolLogValue = string | number | boolean
 
-export type BesidkaToolAccess = 'read' | 'write' | 'delete' | 'instructions'
+export type BesidkaToolAccess = ToolAccess
 
 export type BesidkaToolTier = 'read' | 'write' | 'ask-every-time'
 
