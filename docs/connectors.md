@@ -1045,6 +1045,17 @@ shared chats the section is empty because tool parts are already stripped.
 The send route asks before it runs; the continuation that answers (L5) and
 the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
 
+- **Behind the `tool-approvals` flag.** The send evaluates the flag once on
+  the server (`resolveSendFeatures`, never from the request body). Off, the
+  send behaves exactly as before C-6: no `toolApproval` and no secret, the
+  C-5 refusal sentences and the F2 stopgap in `getConnectorTools` (no
+  `isCallCleared`), the old connector instructions, the memory lock refusing
+  inside the tool with the old "Saving to memory is unavailable" prompt
+  line, no KV records, no pending audit rows, and artifact and document
+  writes unchanged. Everything below applies with the flag on. Only the
+  expiry of stored waiting calls and the persistence helpers (which only
+  touch approval parts) run in both states.
+
 - **One policy for every tool.** `server/utils/tool-approval/send.ts` builds
   one entry per tool the model can call, keyed by the name the model sees
   (and the SDK signs): `mcp__<slug>__<tool>` for connectors, the SDK name for
@@ -1068,7 +1079,12 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   block (`file`), active skill text (`skill`), and a chat branched from a
   public share (`shared-branch`, new). Plain attachments add no taint
   (unchanged from the memory lock). The memory lock itself is unchanged and
-  stays the second line in `memory_write`.
+  stays the second line in `memory_write`. With the flag on, a call the user
+  approved supersedes that lock (`isApprovedByUser` on `getMemoryTools`,
+  filled by the continuation through `markApprovedByUser`); the never-store
+  and sensitive-topic gate still runs on every approved write. The project
+  knowledge block then says that saving to memory needs the user's approval
+  in this turn (`withMemoryApprovalNotice`) instead of "unavailable".
 - **Read-only connector tools still run (deviation).** The L3 policy has no
   rule that lets a connector read run without a grant, so a tool the server
   marks `readOnlyHint` and not `destructiveHint` gets a grant from the send,
@@ -1104,9 +1120,10 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   reasoning, tool names and connector ids), then the turn record (pending ids
   and the serialized state with `rounds` 1 and the step count) and the
   per-chat index. A connector call also gets a `connector_tool_calls` row
-  with `outcome='pending'` and `approval='denied'` (the enum has no pending
-  value, and an approval nobody answers never ran), whose id goes into the
-  pending record for L5 to settle. A record that fails is logged and the
+  with `outcome='pending'` and `approval='pending'` (both columns are plain
+  `text`, the enum lives only in `shared/utils/connectors-policy.ts`, so the
+  new value needs no migration), whose id goes into the pending record for
+  L5 to settle. A record that fails is logged and the
   continuation will answer that the approval expired. `rememberOptions` and
   `auditCallId` are new fields on the L3 pending schema.
 - **Persistence.** An assistant message whose only content is a waiting call
@@ -1128,10 +1145,11 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
 - **Rendering until L6.** The waiting call shows as a reasoning step titled
   "Waiting for approval: <connector> · <tool>" (connectors) or "Waiting for
   approval: <tool>" (native). A waiting artifact call renders nothing yet.
-- **Merge order.** On its own this layer turns cases that used to run or be
-  refused (a memory write after web search, an artifact write in a send with
-  an active skill or after connector output, any connector write) into a
-  pause nobody can answer until L5 and L6 ship.
+- **Merge order.** With the flag on, this layer turns cases that used to run
+  or be refused (a memory write after web search, an artifact write in a
+  send with an active skill or after connector output, any connector write)
+  into a pause nobody can answer until L5 and L6 ship, so the flag stays off
+  outside internal testing until then.
 
 ## 8. Data model
 
@@ -1279,7 +1297,7 @@ Phase 6 routines.
 | `args_hmac` | text | section 7.4 |
 | `result_bytes` | integer | |
 | `outcome` | text | `ok`, `error`, `denied`, `timeout`, `pending` |
-| `approval` | text | `not-applicable`, `once`, `chat`, `always`, `denied` |
+| `approval` | text | `not-applicable`, `pending`, `once`, `chat`, `always`, `denied` |
 | `path` | text | `worker` or `native` |
 | `duration_ms` | integer | |
 | `created_at` | timestamp | |

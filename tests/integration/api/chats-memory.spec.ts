@@ -38,6 +38,13 @@ const mocks = vi.hoisted(() => ({
   chatSearchToolsInputs: [] as Array<Record<string, any>>,
   memoryToolsInputs: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
+  activeFlags: new Set<string>(),
+}))
+
+vi.mock('~~/server/utils/features/send-features', () => ({
+  resolveSendFeatures: async () => ({
+    isFeatureActive: (flag: string) => mocks.activeFlags.has(flag),
+  }),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -542,6 +549,7 @@ describe('memory send-path wiring', () => {
     mocks.mergedStreams = []
     mocks.chatSearchToolsInputs = []
     mocks.memoryToolsInputs = []
+    mocks.activeFlags = new Set()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('getRequestURL', () => {
@@ -1288,7 +1296,7 @@ describe('memory send-path wiring', () => {
         ['call-1', 'memory_list', {}],
         ['call-2', 'search_chats', { query: SEARCH_QUERY }],
         ['call-3', 'memory_read', { id: 'topics/pasta' }],
-        ['call-4', 'memory_read', { id: 'topics/pizza' }],
+        ['call-4', 'memory_write', { title: 'Pasta' }],
       ] as const
       const { doStream, assistantInsert, chunks } = await runSend({
         scenario: { settings: MEMORY_ON },
@@ -1308,7 +1316,7 @@ describe('memory send-path wiring', () => {
       })
 
       expect(budgetErrorPart).toEqual(expect.objectContaining({
-        type: 'tool-memory_read',
+        type: 'tool-memory_write',
         state: 'output-error',
       }))
       expect(budgetErrorPart?.errorText).toContain('limit')
@@ -1324,6 +1332,12 @@ describe('memory send-path wiring', () => {
       expect(readAttribute('memoryTools')).toEqual(expect.objectContaining({
         usedCalls: 3,
       }))
+    })
+  })
+
+  describe('with the tool-approvals flag on', () => {
+    beforeEach(() => {
+      mocks.activeFlags = new Set(['tool-approvals'])
     })
 
     it('asks before a memory_write in the same step as search_chats',

@@ -279,6 +279,13 @@ const featureList = [
     optIn: 'required',
   }),
   internalFeature({
+    key: 'tool-approvals',
+    title: 'Tool approvals',
+    description: 'Ask before a chat runs connector tools or writes after '
+      + 'untrusted content.',
+    available: true,
+  }),
+  internalFeature({
     key: 'ui.side-panel-demo',
     title: 'Side panel demo',
     description: 'A demo of the right-hand side panel.',

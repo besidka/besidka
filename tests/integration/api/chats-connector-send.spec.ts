@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
+import { CONNECTOR_APPROVAL_DENIAL_TEXT } from '#shared/utils/connectors-parts'
 import {
   keyProviderIdForGateway,
   readOpenRouterCost,
@@ -608,33 +609,28 @@ describe('connector tools in the chat send', () => {
       )
     })
 
-  it('asks for approval before a write tool and never reaches the server',
-    async () => {
-      const { doStream, assistantInsert } = await runSend({
-        server,
-        connectorIds: [CONNECTOR_ID],
-        steps: [
-          toolCallChunks('call-1', 'mcp__linear__create_issue', {
-            title: 'x',
-          }),
-          textChunks('Never reached.'),
-        ],
-      })
-      const part = (assistantInsert?.parts ?? []).find((candidate: any) => {
-        return candidate.type === 'dynamic-tool'
-      })
-
-      expect(doStream).toHaveBeenCalledTimes(1)
-      expect(part).toMatchObject({
-        toolName: 'mcp__linear__create_issue',
-        state: 'approval-requested',
-      })
-      expect(server.callCount('tools/call')).toBe(0)
-      expect(mocks.store.audit[0]).toMatchObject({
-        toolName: 'create_issue',
-        outcome: 'pending',
-      })
+  it('refuses a write tool with the approval sentence and never reaches '
+    + 'the server', async () => {
+    const { assistantInsert } = await runSend({
+      server,
+      connectorIds: [CONNECTOR_ID],
+      steps: [
+        toolCallChunks('call-1', 'mcp__linear__create_issue', { title: 'x' }),
+        textChunks('I could not create it.'),
+      ],
     })
+    const part = (assistantInsert?.parts ?? []).find((candidate: any) => {
+      return candidate.type === 'dynamic-tool'
+    })
+
+    expect(part.output).toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
+    expect(server.callCount('tools/call')).toBe(0)
+    expect(mocks.store.audit[0]).toMatchObject({
+      toolName: 'create_issue',
+      outcome: 'denied',
+      approval: 'denied',
+    })
+  })
 
   it('adds no connector tool and makes no request when none is enabled '
     + 'for the chat', async () => {

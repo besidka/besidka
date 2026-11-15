@@ -8,7 +8,11 @@ import {
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
   CONNECTOR_TOOLS_PER_REQUEST,
 } from '#shared/utils/connectors-policy'
-import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
+import {
+  CONNECTOR_APPROVAL_DENIAL_TEXT,
+  CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+  CONNECTOR_UNAPPROVED_CALL_TEXT,
+} from '#shared/utils/connectors-parts'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -141,6 +145,7 @@ describe('getConnectorTools', () => {
     existingToolCount?: number
     guard?: { untrustedResultSeen: boolean }
     isCallCleared?: (toolCallId: string | undefined) => boolean
+    legacy?: boolean
     limitCalls?: () => Promise<boolean>
     prepareDeadlineMs?: number
     keepSeedOrder?: boolean
@@ -173,7 +178,9 @@ describe('getConnectorTools', () => {
         }),
       existingToolCount: options.existingToolCount ?? 0,
       hashArgs,
-      isCallCleared: options.isCallCleared ?? (() => true),
+      ...(options.legacy
+        ? {}
+        : { isCallCleared: options.isCallCleared ?? (() => true) }),
       guard: options.guard,
       logger: { set: (values: unknown) => logged.push(values) },
       dependencies: {
@@ -486,6 +493,146 @@ describe('getConnectorTools', () => {
         expect(alpha.callCount('tools/call')).toBe(1)
         expect(beta.callCount('tools/call')).toBe(1)
       })
+
+    describe('with the tool-approvals flag off (C-5 rule)', () => {
+      it('refuses a tool without readOnlyHint and never reaches the server',
+        async () => {
+          const alpha = server('mcp.alpha.example.com')
+          const seeds: ConnectorSeed[] = [{
+            slug: 'alpha',
+            url: alpha.url,
+            auth: 'header',
+          }]
+
+          await addConnector(seeds[0]!)
+
+          const { tools } = await run({
+            connectorSeeds: seeds,
+            servers: [alpha],
+            legacy: true,
+          })
+          const output = await execute(tools, 'mcp__alpha__create_issue', {
+            title: 'x',
+          })
+
+          expect(output).toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
+          expect(alpha.callCount('tools/call')).toBe(0)
+
+          const [row] = await auditRows()
+
+          expect(row).toMatchObject({
+            toolName: 'create_issue',
+            outcome: 'denied',
+            approval: 'denied',
+            resultBytes: 0,
+          })
+        })
+
+      it('refuses a tool marked both read-only and destructive', async () => {
+        const alpha = server('mcp.alpha.example.com', {
+          tools: [
+            READ_TOOL,
+            {
+              name: 'purge',
+              description: 'Purge.',
+              annotations: { readOnlyHint: true, destructiveHint: true },
+            },
+          ],
+        })
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'header',
+        }]
+
+        await addConnector(seeds[0]!)
+
+        const { tools } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha],
+          legacy: true,
+        })
+
+        expect(await execute(tools, 'mcp__alpha__purge'))
+          .toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
+        expect(alpha.callCount('tools/call')).toBe(0)
+        expect((await auditRows())[0]).toMatchObject({
+          toolName: 'purge',
+          outcome: 'denied',
+        })
+        expect(await execute(tools, 'mcp__alpha__list_issues'))
+          .toContain('untrusted_tool_result')
+      })
+
+      it('refuses a call to a second connector once the send used one, '
+        + 'and still serves the first', async () => {
+        const alpha = server('mcp.alpha.example.com')
+        const beta = server('mcp.beta.example.com')
+        const seeds: ConnectorSeed[] = [
+          { slug: 'alpha', url: alpha.url, auth: 'header' },
+          { slug: 'beta', url: beta.url, auth: 'header' },
+        ]
+
+        for (const seed of seeds) {
+          await addConnector(seed)
+        }
+
+        const { tools } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha, beta],
+          legacy: true,
+        })
+
+        expect(await execute(tools, 'mcp__alpha__list_issues'))
+          .toContain('untrusted_tool_result')
+        expect(await execute(tools, 'mcp__beta__list_issues'))
+          .toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
+        expect(await execute(tools, 'mcp__alpha__list_issues'))
+          .toContain('untrusted_tool_result')
+        expect(beta.callCount('tools/call')).toBe(0)
+        expect(alpha.callCount('tools/call')).toBe(2)
+
+        const denied = (await auditRows()).filter((row) => {
+          return row.outcome === 'denied'
+        })
+
+        expect(denied).toHaveLength(1)
+        expect(denied[0]).toMatchObject({
+          connectorHost: 'mcp.beta.example.com',
+          approval: 'denied',
+          resultBytes: 0,
+        })
+      })
+
+      it('lets only the first connector called in a parallel step run',
+        async () => {
+          const alpha = server('mcp.alpha.example.com')
+          const beta = server('mcp.beta.example.com')
+          const seeds: ConnectorSeed[] = [
+            { slug: 'alpha', url: alpha.url, auth: 'header' },
+            { slug: 'beta', url: beta.url, auth: 'header' },
+          ]
+
+          for (const seed of seeds) {
+            await addConnector(seed)
+          }
+
+          const { tools } = await run({
+            connectorSeeds: seeds,
+            servers: [alpha, beta],
+            legacy: true,
+          })
+          const [first, second] = await Promise.all([
+            execute(tools, 'mcp__beta__list_issues'),
+            execute(tools, 'mcp__alpha__list_issues'),
+          ])
+
+          expect(first).toContain('untrusted_tool_result')
+          expect(second).toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
+          expect(alpha.callCount('tools/call')).toBe(0)
+          expect(beta.callCount('tools/call')).toBe(1)
+        })
+    })
 
     it('frames a server-reported error as untrusted and audits it as an '
       + 'error', async () => {

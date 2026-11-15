@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => ({
   isChatSearchToolEnabled: false,
   isMemoryToolsEnabled: false,
   memoryWriteSawUntrustedResult: [] as boolean[],
+  activeFlags: new Set<string>(),
   uiStreamOptions: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
   loadKnowledgeSendData: vi.fn(),
@@ -158,6 +159,12 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
       fileIds: [],
     }),
   ),
+}))
+
+vi.mock('~~/server/utils/features/send-features', () => ({
+  resolveSendFeatures: async () => ({
+    isFeatureActive: (flag: string) => mocks.activeFlags.has(flag),
+  }),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -652,6 +659,7 @@ describe('project knowledge send-path wiring', () => {
     mocks.isChatSearchToolEnabled = false
     mocks.isMemoryToolsEnabled = false
     mocks.memoryWriteSawUntrustedResult = []
+    mocks.activeFlags = new Set()
     mocks.uiStreamOptions = []
     mocks.loadKnowledgeSendData.mockReset()
     mocks.rerankModel = null
@@ -1030,8 +1038,35 @@ describe('project knowledge send-path wiring', () => {
     expect(readTurnText(prompt[2])).toBe(USER_TEXT)
   })
 
-  it('asks before memory_write after a knowledge tool result', async () => {
+  it('trips the memory_write lock after a knowledge tool result', async () => {
     mocks.isMemoryToolsEnabled = true
+
+    const { assistantInsert } = await runSend({
+      scenario: { mode: 'search' },
+      steps: [
+        createToolStep([
+          createToolCallChunk('call-1', 'search_project_knowledge', {
+            query: 'Aurora',
+          }),
+        ]),
+        createToolStep([
+          createToolCallChunk('call-2', 'memory_write', { title: 'Aurora' }),
+        ]),
+        createTextChunks('Not saved.'),
+      ],
+    })
+    const memoryWritePart = assistantInsert?.parts.find((part: any) => {
+      return part.toolCallId === 'call-2'
+    })
+
+    expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
+    expect(memoryWritePart?.state).toBe('output-error')
+  })
+
+  it('asks before memory_write after a knowledge tool result when tool '
+    + 'approvals are on', async () => {
+    mocks.isMemoryToolsEnabled = true
+    mocks.activeFlags = new Set(['tool-approvals'])
 
     const { assistantInsert } = await runSend({
       scenario: { mode: 'search' },
@@ -1267,7 +1302,7 @@ describe('project knowledge send-path wiring', () => {
       })
     }
 
-    it('asks before memory_write on a full-mode send with documents', async () => {
+    it('refuses memory_write on a full-mode send with documents', async () => {
       mocks.isMemoryToolsEnabled = true
 
       const { assistantInsert, doStream } = await runSend({
@@ -1277,12 +1312,33 @@ describe('project knowledge send-path wiring', () => {
 
       expect(systemPrompt).toContain('<project_knowledge>')
       expect(systemPrompt).toContain('Saving to memory is unavailable')
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
+      expect(findMemoryWritePart(assistantInsert)?.state)
+        .toBe('output-error')
+    })
+
+    it('asks before memory_write on a full-mode send with documents when '
+      + 'tool approvals are on, and says so in the prompt', async () => {
+      mocks.isMemoryToolsEnabled = true
+      mocks.activeFlags = new Set(['tool-approvals'])
+
+      const { assistantInsert, doStream } = await runSend({
+        steps: memoryWriteSteps(),
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(systemPrompt).toContain('<project_knowledge>')
+      expect(systemPrompt).toContain(
+        'Saving to memory needs the user\'s approval in this turn',
+      )
+      expect(systemPrompt).not.toContain('Saving to memory is unavailable')
       expect(mocks.memoryWriteSawUntrustedResult).toEqual([])
       expect(findMemoryWritePart(assistantInsert)?.state)
         .toBe('approval-requested')
+      expect(doStream).toHaveBeenCalledTimes(1)
     })
 
-    it('asks before memory_write on a full-mode send with media only', async () => {
+    it('refuses memory_write on a full-mode send with media only', async () => {
       mocks.isMemoryToolsEnabled = true
       stubChatProvider({ inputModalities: ['text', 'image'] })
 
@@ -1306,9 +1362,9 @@ describe('project knowledge send-path wiring', () => {
       const prompt = (doStream.mock.calls[0]?.[0] as any).prompt
 
       expect(JSON.stringify(prompt)).toContain(KNOWLEDGE_MEDIA_TURN_TEXT)
-      expect(mocks.memoryWriteSawUntrustedResult).toEqual([])
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
       expect(findMemoryWritePart(assistantInsert)?.state)
-        .toBe('approval-requested')
+        .toBe('output-error')
     })
 
     it('still allows memory_write on a search-mode send with only the file '

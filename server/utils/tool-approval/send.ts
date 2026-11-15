@@ -107,6 +107,8 @@ export interface SendToolApproval {
   ) => void
   canAsk: () => boolean
   isCallCleared: (toolCallId: string | undefined) => boolean
+  markApprovedByUser: (toolCallId: string) => void
+  isApprovedByUser: (toolCallId: string | undefined) => boolean
   getPendingDecision: (
     toolCallId: string,
   ) => PendingToolApprovalDecision | undefined
@@ -278,7 +280,10 @@ function denied(reason: ToolApprovalDenialReason): ToolApprovalStatus {
  * result brings are recorded right away, so a later call in the same step
  * is decided with them (a connector read next to an artifact write asks).
  * A call that needs approval is kept by its tool call id until the stream
- * pairs it with the SDK's approval id. Calls the provider runs itself are
+ * pairs it with the SDK's approval id. A call the user approved is marked
+ * with `markApprovedByUser` (the continuation, L5, does this before the SDK
+ * replays it); it is cleared for `execute` and lifts the memory write lock
+ * for that call only (`isApprovedByUser`). Calls the provider runs itself are
  * never gated; a web search among them taints the send. A tool with no
  * entry is denied, and so is a call that would need approval but has an
  * input over the KV payload cap or comes past the per-message cap, so a
@@ -291,6 +296,7 @@ export function createSendToolApproval(input: {
   const { state } = input
   const entries = new Map<string, SendToolEntry>()
   const clearedCallIds = new Set<string>()
+  const approvedCallIds = new Set<string>()
   const pendingDecisions = new Map<string, PendingToolApprovalDecision>()
 
   function recordRun(entry: SendToolEntry): void {
@@ -390,7 +396,14 @@ export function createSendToolApproval(input: {
     registerTools,
     canAsk,
     isCallCleared: (toolCallId) => {
-      return typeof toolCallId === 'string' && clearedCallIds.has(toolCallId)
+      return typeof toolCallId === 'string'
+        && (clearedCallIds.has(toolCallId) || approvedCallIds.has(toolCallId))
+    },
+    markApprovedByUser: (toolCallId) => {
+      approvedCallIds.add(toolCallId)
+    },
+    isApprovedByUser: (toolCallId) => {
+      return typeof toolCallId === 'string' && approvedCallIds.has(toolCallId)
     },
     getPendingDecision: toolCallId => pendingDecisions.get(toolCallId),
   }

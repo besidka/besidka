@@ -3,6 +3,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
 import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
+import { CONNECTOR_APPROVAL_DENIAL_TEXT } from '#shared/utils/connectors-parts'
 import { TOOL_APPROVAL_DATA_PART_TYPE } from '#shared/utils/tool-approval-parts'
 import {
   keyProviderIdForGateway,
@@ -36,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   capabilityTools: {} as Record<string, unknown>,
   artifactExecute: null as null | ReturnType<typeof vi.fn>,
   connectorUrls: {} as Record<string, string>,
+  holdsSkillText: false,
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -124,6 +126,19 @@ vi.mock('~~/server/utils/memory/tools/enabled', () => ({
 vi.mock('~~/server/utils/features/send-features', () => ({
   resolveSendFeatures: async () => ({
     isFeatureActive: (flag: string) => mocks.flags.has(flag),
+  }),
+}))
+
+vi.mock('~~/server/utils/skills/runtime/send', () => ({
+  prepareSkillsForSend: async () => ({
+    tools: {},
+    toolsRegistered: false,
+    instructionBlock: null,
+    activeSkillsBlock: null,
+    invocationBlock: null,
+    holdsSkillText: mocks.holdsSkillText,
+    streamActivations: [],
+    getToolActivations: () => [],
   }),
 }))
 
@@ -478,7 +493,8 @@ describe('tool approval requests in the chat send', () => {
     vi.clearAllMocks()
     mocks.mergedStreams = []
     mocks.writers = []
-    mocks.flags = new Set(['connectors'])
+    mocks.flags = new Set(['connectors', 'tool-approvals'])
+    mocks.holdsSkillText = false
     mocks.kv = new Map()
     mocks.chatMessages = []
     mocks.capabilityTools = {}
@@ -670,7 +686,7 @@ describe('tool approval requests in the chat send', () => {
       expect.objectContaining({
         toolName: 'create_issue',
         outcome: 'pending',
-        approval: 'denied',
+        approval: 'pending',
         chatPublicId: CHAT_PUBLIC_ID,
       }),
     ])
@@ -938,5 +954,113 @@ describe('tool approval requests in the chat send', () => {
     expect(mocks.kv.has('tool-approval:approval-0001')).toBe(false)
     expect(mocks.kv.has('tool-approval:turn:assistant-public-1')).toBe(false)
     expect(mocks.kv.has(`tool-approval:chat:${CHAT_PUBLIC_ID}`)).toBe(false)
+  })
+
+  it('asks before an artifact write in a send with active skill text',
+    async () => {
+      mocks.flags.add('artifacts')
+      mocks.holdsSkillText = true
+      createArtifactTool()
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-1', 'create_artifact', {
+            kind: 'html',
+            title: 'Plan',
+            content: '<p>hi</p>',
+          }),
+          textChunks('Never reached.'),
+        ],
+      })
+
+      expect(mocks.artifactExecute).not.toHaveBeenCalled()
+      expect(findPart(assistantInsert?.parts ?? [], 'tool-create_artifact'))
+        .toMatchObject({ state: 'approval-requested' })
+    })
+
+  describe('with the tool-approvals flag off', () => {
+    beforeEach(() => {
+      mocks.flags.delete('tool-approvals')
+    })
+
+    it('refuses a connector write with the C-5 sentence and stores nothing',
+      async () => {
+        const { doStream, assistantInsert } = await runSend({
+          servers: [linear],
+          connectorIds: ['conn-linear'],
+          steps: [
+            toolCallChunks('call-1', 'mcp__linear__create_issue', {
+              title: 'x',
+            }),
+            textChunks('I could not create it.'),
+          ],
+        })
+        const parts = assistantInsert?.parts ?? []
+
+        expect(doStream).toHaveBeenCalledTimes(2)
+        expect(findPart(parts, 'dynamic-tool')?.output)
+          .toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
+        expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+        expect(linear.callCount('tools/call')).toBe(0)
+        expect(mocks.store.audit).toEqual([expect.objectContaining({
+          outcome: 'denied',
+          approval: 'denied',
+        })])
+        expect([...mocks.kv.keys()].some((key) => {
+          return key.startsWith('tool-approval:')
+        })).toBe(false)
+        expect((doStream.mock.calls[0]?.[0] as any)?.prompt?.[0]?.content)
+          .toContain('tell the user it cannot run yet')
+      })
+
+    it('keeps the F2 stopgap for a second connector', async () => {
+      seedConnector({
+        id: 'conn-notion',
+        slug: 'notion',
+        title: 'Notion',
+        url: NOTION_URL,
+      })
+
+      await runSend({
+        servers: [linear, notion],
+        connectorIds: ['conn-linear', 'conn-notion'],
+        steps: [
+          toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+          toolCallChunks('call-2', 'mcp__notion__list_pages', {}),
+          textChunks('Done.'),
+        ],
+      })
+
+      expect(linear.callCount('tools/call')).toBe(1)
+      expect(notion.callCount('tools/call')).toBe(0)
+      expect(mocks.store.audit.at(-1)).toMatchObject({ outcome: 'denied' })
+    })
+
+    it('runs an artifact write after connector output or with skill text',
+      async () => {
+        mocks.flags.add('artifacts')
+        mocks.holdsSkillText = true
+        createArtifactTool()
+
+        await runSend({
+          servers: [linear],
+          connectorIds: ['conn-linear'],
+          steps: [
+            toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+            toolCallChunks('call-2', 'create_artifact', {
+              kind: 'html',
+              title: 'Plan',
+              content: '<p>hi</p>',
+            }),
+            textChunks('Done.'),
+          ],
+        })
+
+        expect(mocks.artifactExecute).toHaveBeenCalledTimes(1)
+        expect([...mocks.kv.keys()].some((key) => {
+          return key.startsWith('tool-approval:')
+        })).toBe(false)
+      })
   })
 })

@@ -182,6 +182,7 @@ import {
   estimateHistoryTokens,
   holdsUntrustedKnowledge,
   resolveProjectKnowledgeContext,
+  withMemoryApprovalNotice,
 } from '~~/server/utils/knowledge/context'
 import type {
   KnowledgeSendModel,
@@ -337,6 +338,7 @@ import {
 } from '~~/server/utils/connectors/chat-selection'
 import { redactConnectorToolPartsForPersistence } from '~~/server/utils/connectors/persist'
 import {
+  CONNECTOR_APPROVAL_INSTRUCTIONS,
   CONNECTOR_INSTRUCTIONS,
   getConnectorTools,
 } from '~~/server/utils/connectors/send-tools'
@@ -1575,6 +1577,25 @@ export default defineEventHandler(async (event) => {
   const memoryToolsRegistered = isMemoryToolsEnabled(memorySettings)
     && toolCallingAllowed
 
+  const sendFeatures = await resolveSendFeatures(
+    event,
+    [
+      'artifacts',
+      'artifacts.react',
+      'artifacts.storage',
+      'artifacts.llm-bridge',
+      'documents',
+      'skills',
+      'connectors',
+      'tool-approvals',
+      ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
+    ],
+    aiLogger,
+  )
+  const toolApprovalsActive = sendFeatures.isFeatureActive('tool-approvals')
+  const toolApprovalSend = createSendToolApproval({
+    state: createApprovalState(),
+  })
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
@@ -1646,6 +1667,9 @@ export default defineEventHandler(async (event) => {
       sourceMessageId: newMessage.id,
       userMessageText,
       budget: chatSearchBudget,
+      ...(toolApprovalsActive
+        ? { isApprovedByUser: toolApprovalSend.isApprovedByUser }
+        : {}),
       logger: aiLogger,
     })
 
@@ -1672,20 +1696,6 @@ export default defineEventHandler(async (event) => {
   })
 
   const assistantMessagePublicId = ulid()
-  const sendFeatures = await resolveSendFeatures(
-    event,
-    [
-      'artifacts',
-      'artifacts.react',
-      'artifacts.storage',
-      'artifacts.llm-bridge',
-      'documents',
-      'skills',
-      'connectors',
-      ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
-    ],
-    aiLogger,
-  )
   const artifactsActive = sendFeatures.isFeatureActive('artifacts')
   const documentsActive = sendFeatures.isFeatureActive('documents')
   const attachedArtifactIds = collectArtifactAttachments(allMessages)
@@ -1839,19 +1849,22 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const toolApprovalSend = createSendToolApproval({
-    state: createApprovalState(),
-  })
+  if (toolApprovalsActive) {
+    presetApprovalTaint(toolApprovalSend.state, {
+      requestedTools,
+      holdsUntrustedKnowledge: !!knowledgeContext
+        && holdsUntrustedKnowledge(knowledgeContext),
+      holdsArtifactContext: artifactContextBlock !== null,
+      holdsSkillText: skillsSend.holdsSkillText,
+      holdsPastChatExcerpts: pastChatPreRetrieval !== null,
+      isBranchedFromShare: Boolean(chat.branchedFromShareSlug),
+    })
+  }
 
-  presetApprovalTaint(toolApprovalSend.state, {
-    requestedTools,
-    holdsUntrustedKnowledge: !!knowledgeContext
-      && holdsUntrustedKnowledge(knowledgeContext),
-    holdsArtifactContext: artifactContextBlock !== null,
-    holdsSkillText: skillsSend.holdsSkillText,
-    holdsPastChatExcerpts: pastChatPreRetrieval !== null,
-    isBranchedFromShare: Boolean(chat.branchedFromShareSlug),
-  })
+  const knowledgeSystemBlock = knowledgeContext?.systemBlock
+    && toolApprovalsActive
+    ? withMemoryApprovalNotice(knowledgeContext.systemBlock)
+    : knowledgeContext?.systemBlock ?? null
 
   if (knowledgeContext && knowledgeToolsRegistered) {
     const { tools: knowledgeTools } = getKnowledgeTools({
@@ -1944,7 +1957,9 @@ export default defineEventHandler(async (event) => {
             connectors: selection.selected,
             existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
             hashArgs: hashConnectorArgs,
-            isCallCleared: toolApprovalSend.isCallCleared,
+            ...(toolApprovalsActive
+              ? { isCallCleared: toolApprovalSend.isCallCleared }
+              : {}),
             guard: chatSearchBudget,
             logger: aiLogger,
           })
@@ -1960,12 +1975,14 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    toolApprovalSend.registerTools(
-      parsedTools.tools,
-      connectorsRun?.approvalEntries,
-    )
+    if (toolApprovalsActive) {
+      toolApprovalSend.registerTools(
+        parsedTools.tools,
+        connectorsRun?.approvalEntries,
+      )
+    }
 
-    if (toolApprovalSend.canAsk()) {
+    if (toolApprovalsActive && toolApprovalSend.canAsk()) {
       toolApprovalSecret = await useToolApprovalSecret()
     }
   } catch (exception) {
@@ -1980,7 +1997,9 @@ export default defineEventHandler(async (event) => {
   }
   const connectorsInstructionBlock = connectorsRun
     && Object.keys(connectorsRun.tools).length > 0
-    ? CONNECTOR_INSTRUCTIONS
+    ? toolApprovalsActive
+      ? CONNECTOR_APPROVAL_INSTRUCTIONS
+      : CONNECTOR_INSTRUCTIONS
     : null
 
   const toolLoop = resolveToolLoop(parsedTools.tools, {
@@ -2273,7 +2292,7 @@ export default defineEventHandler(async (event) => {
               hasDeepSeekWebSearch,
               hasChatSearchTools: chatSearchToolsRegistered,
               memoryInstructions,
-              knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
+              knowledgeSystemBlock,
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
               documentsContextLine,
@@ -2510,7 +2529,9 @@ export default defineEventHandler(async (event) => {
         )
         const correctedUiMessageStream = emitSourcesForExternalSearchResults(
           insertParagraphBreakAfterNonTextGap(
-            toolApprovalCollector.apply(uiMessageStream),
+            toolApprovalsActive
+              ? toolApprovalCollector.apply(uiMessageStream)
+              : uiMessageStream,
           ),
         )
 
@@ -2527,7 +2548,7 @@ export default defineEventHandler(async (event) => {
               hasDeepSeekWebSearch: false,
               hasChatSearchTools: false,
               memoryInstructions,
-              knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
+              knowledgeSystemBlock,
               hasKnowledgeTools: false,
               skillsInstructionBlock: skillsSend.activeSkillsBlock,
               connectorsInstructionBlock,
@@ -2654,7 +2675,11 @@ export default defineEventHandler(async (event) => {
         })
         const wasPersisted = persistResult.persisted
 
-        if (wasPersisted && toolApprovalCollector.isPaused()) {
+        if (
+          toolApprovalsActive
+          && wasPersisted
+          && toolApprovalCollector.isPaused()
+        ) {
           await recordPendingToolApprovals({
             kv,
             userId,
@@ -2925,7 +2950,7 @@ async function recordPendingToolApprovals(input: {
           args: pending.input,
           resultBytes: 0,
           outcome: 'pending',
-          approval: 'denied',
+          approval: 'pending',
           durationMs: 0,
         }, input.logger)
       },

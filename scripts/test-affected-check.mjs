@@ -1595,6 +1595,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/connector-step.spec.ts',
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/utils/features/tool-approvals-registry.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/knowledge/context.spec.ts',
   ]
 
   const toolApprovalSpikeTests = [
@@ -3170,7 +3174,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts)\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/connectors\/(send-tools|audit)\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/(artifacts|documents)\/message-parts\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/Reasoning\.vue|app\/utils\/connector-step\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts)$/,
+        /^(shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|connectors-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/memory\/tools\/memory-tools\.ts|server\/utils\/knowledge\/context\.ts|app\/utils\/labs\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/connectors\/(send-tools|audit)\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/(artifacts|documents)\/message-parts\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/Reasoning\.vue|app\/utils\/connector-step\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts)$/,
       tests: toolApprovalRequestTests,
     },
     {

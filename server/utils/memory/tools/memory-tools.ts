@@ -229,8 +229,17 @@ export function assertUserRequestQuote(
   }
 }
 
-function assertNoUntrustedContentSeen(budget: ChatSearchBudget): void {
-  if (!budget.untrustedResultSeen) {
+/**
+ * The untrusted-output lock of `memory_write` and `memory_forget`. A call the
+ * user approved in the chat (`approvedByUser`, only possible with the
+ * `tool-approvals` flag) supersedes it, because the user saw the exact
+ * input; the compliance gate of the write still runs.
+ */
+function assertNoUntrustedContentSeen(
+  budget: ChatSearchBudget,
+  approvedByUser: boolean,
+): void {
+  if (!budget.untrustedResultSeen || approvedByUser) {
     return
   }
 
@@ -706,6 +715,7 @@ export function getMemoryTools(input: {
   sourceMessageId: string | null
   userMessageText: string | null
   budget: ChatSearchBudget
+  isApprovedByUser?: (toolCallId: string | undefined) => boolean
   logger?: Pick<LoggerLike, 'set'>
 }): FormattedTools {
   const context: MemoryToolContext = {
@@ -783,11 +793,14 @@ export function getMemoryTools(input: {
       [MEMORY_WRITE_TOOL_NAME]: withFollowUpTurn(tool({
         description: MEMORY_WRITE_DESCRIPTION,
         inputSchema: writeInputSchema,
-        async execute(toolInput) {
+        async execute(toolInput, options) {
           consumeChatSearchCall(input.budget)
 
           try {
-            assertNoUntrustedContentSeen(input.budget)
+            assertNoUntrustedContentSeen(
+              input.budget,
+              input.isApprovedByUser?.(options?.toolCallId) === true,
+            )
             assertUserRequestQuote(toolInput.userRequestQuote, userMessageText)
 
             return await writeMemoryEntry(context, toolInput)
@@ -799,11 +812,14 @@ export function getMemoryTools(input: {
       [MEMORY_FORGET_TOOL_NAME]: withFollowUpTurn(tool({
         description: MEMORY_FORGET_DESCRIPTION,
         inputSchema: forgetInputSchema,
-        async execute(toolInput) {
+        async execute(toolInput, options) {
           consumeChatSearchCall(input.budget)
 
           try {
-            assertNoUntrustedContentSeen(input.budget)
+            assertNoUntrustedContentSeen(
+              input.budget,
+              input.isApprovedByUser?.(options?.toolCallId) === true,
+            )
             assertUserRequestQuote(toolInput.userRequestQuote, userMessageText)
 
             const entry = await resolveVisibleEntry(context, toolInput.id)
