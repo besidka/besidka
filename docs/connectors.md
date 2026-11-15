@@ -910,8 +910,9 @@ is never trusted. A hash change clears both "always" entries for that tool.
 
 When the model calls a tool that needs approval:
 
-1. The stream emits the `tool-approval-request` and ends. No remote call
-   happens.
+1. The stream emits the `tool-approval-request` and ends. The gated call
+   makes no remote call; a call in the same step that needs no approval does
+   run in this request (section 14.1).
 2. The assistant message is persisted with the tool part in state
    `approval-requested`.
 3. The exact arguments go to KV `connectors:approval:<approvalId>` for 24 h.
@@ -943,9 +944,10 @@ extra model turn per approval.
 message keeps its parts when it holds an `approval-responded` part, so the
 continuation sees the call it answered. Earlier tool parts stay stripped.
 
-If the C-6 spike finds that AI SDK v7 continuation does not resume this way,
-the fallback is to execute the approved call server-side and append a
-synthetic tool result before the continuation turn.
+The C-6 spike (section 14.1) confirmed that AI SDK v7 continuation resumes
+this way, so the fallback of executing the approved call server-side with a
+synthetic tool result is not needed. It also corrected step 1: calls in the
+same step that need no approval do run in the first request.
 
 ### 7.3 Approval UI
 
@@ -1528,9 +1530,122 @@ Unverified (C-4 and C-6 settle them in their first commits):
   in C-5. The result schema is loose, so `ttlMs` is on the `listTools()`
   result and `getConnectorTools` reads it; `cacheScope` is not needed (the
   cache key already holds the connector id and the credentials generation).
-- AI SDK v7 approval continuation semantics (section 7.2 fallback).
+- AI SDK v7 approval continuation semantics: settled in C-6 L2 on
+  `ai@7.0.173` (section 14.1); the section 7.2 fallback is not needed.
 - OpenAI `requireApproval` and MCP output items as they arrive through
   `@ai-sdk/openai` (section 12 gate).
+
+### 14.1 Approval spike findings (C-6 L2, `ai@7.0.173`)
+
+Source: `tests/integration/api/tool-approval-spike.spec.ts`. It drives plain
+`streamText` with `MockLanguageModelV4`, `convertToModelMessages` and
+`toUIMessageStream`, independent of the Besidka route, and asserts what the SDK
+does. Each bullet is an observed fact, then the consequence for L3 to L5.
+Clauses tagged "(source)" were read in `node_modules/ai/dist/index.js` and are
+not asserted by a test.
+
+1. **A pending approval ends the send.** UI chunks, in order: `start`,
+   `start-step`, `tool-input-available`, `tool-approval-request`, `finish-step`,
+   `finish`. The finish reason is `tool-calls`, the same value as a normal
+   tool-calling step, so it cannot identify a pause. The loop stops (one model
+   call even with `stopWhen: isStepCount(5)`), the tool does not run, and
+   `onEnd` reports one step whose content is `tool-call` then
+   `tool-approval-request`, with that step's usage. The `start` chunk carries no
+   `messageId` when `originalMessages` is not passed (observed). On the
+   continuation, with `originalMessages` ending on the answered assistant
+   message, it carries that message's id (bullet 2).
+   Consequence: L4 detects the pause from the last step's content, never from
+   the finish reason, and the empty-answer logic must count an approval request
+   as content.
+2. **Continuation order.** With the part in `approval-responded` (approved),
+   the approved tool runs before any model call (zero model calls at execute
+   time), then the model is called exactly once. Chunks: `start` (with the
+   original assistant `messageId`), `tool-output-available` (no `start-step`
+   before it), `start-step`, text chunks, `finish-step`, `finish`. `onEnd`
+   covers only the continuation: one step, and usage of that model call only.
+   Reducing the chunks with `readUIMessageStream({ message })` puts the output
+   on the existing tool part (`output-available`) and appends a `step-start` and
+   the text, so L5 persists by updating the stored assistant message, not by
+   inserting a new one.
+   Denied: no execution, a `tool-output-denied` chunk, and the model receives
+   `{ type: 'execution-denied', reason }` as the tool result. Consequence: L5
+   adds the first request's usage to the continuation's, and per-send caps
+   (steps, calls, cost) restart per request, so they live in KV.
+3. **Parallel calls.** The SDK decides every call in the step, in stream order,
+   when its `tool-call` chunk arrives and starts executing only after the model
+   call ends, so all calls of a step are decided before any runs (a policy
+   function is called once per call and never sees its siblings; a taint set at
+   decision time should therefore be visible to later decisions in the same
+   step, inferred from the sequential order the test records, not asserted
+   separately). A call that
+   needs no approval runs in the first request, after the
+   `tool-approval-request` chunk, and the step still finishes `tool-calls`.
+   This corrects section 7.2 step 1 ("no remote call happens"): a read-only
+   connector call in the same step as a gated write does reach the remote
+   server before the user answers. The continuation does not re-run it: the
+   tool message holds its stored result next to the approval response, only
+   the approved call executes, and the model sees both results. Two gated calls
+   with only one answered: the answered call executes (`tool-output-available`)
+   and then the stream errors with `AI_MissingToolResultsError` for the
+   unanswered one, with no model call. Consequence: the continuation must carry
+   a response for every pending approval of the message, as the plan requires
+   (a partial answer runs one call and then fails the send). L4
+   audits and taints auto-run calls in the first request, and the UI must show
+   them as done while the other call waits.
+4. **Worker kill.** Cancelling the stream right after `tool-output-available`
+   leaves one execution, no `onEnd` and no `onAbort`. Resending the identical
+   continuation executes the tool a second time. Consequence: the D1 claim (one
+   `INSERT ... ON CONFLICT DO NOTHING` per approval id before the SDK sees the
+   response) is required for at-most-once, and cost or usage capture is lost
+   for a killed continuation.
+5. **Missing, renamed or re-decided tools on continuation.** A tool absent from
+   `tools` (removed or renamed) is not denied: the stream is `start`, `error`
+   (`AI_MissingToolResultsError`), with no model call and no execution. If the
+   policy returns `denied` on replay, the SDK re-checks it: `tool-output-denied`,
+   the model sees `execution-denied` with the policy's reason, nothing runs. If
+   it returns `user-approval` (or nothing) on replay, the approved response
+   still executes; there is no second prompt. Consequence: L5 writes its own
+   denial for a missing, blocked or drifted tool before calling `streamText`,
+   and expresses "refuse" as `denied`, never as `user-approval`.
+6. **A message after the trailing tool message.** Approvals are collected only
+   from the last model message. A user message appended after an answered
+   approval (through the UI messages or the model messages) does not run the
+   tool and is not silently ignored: the SDK raises `AI_MissingToolResultsError` before any model call
+   (`start`, `error`). Adding text to an earlier user turn is harmless.
+   The one silent path is a pending, unanswered approval followed by a new
+   user message: `convertToModelMessages` drops the `approval-requested` part,
+   so the model messages are just the two user messages, the tool never runs
+   and the send proceeds normally. It keeps `approval-responded` parts.
+   Consequence: `appendTextToLastUserTurn`, `appendAnthropicContainerUploads`
+   and similar helpers must be skipped in resume mode, and
+   `assertEndsWithApprovalResponse()` stays as the guard that returns a clean
+   409 instead of a stream error.
+7. **Signing.** With `experimental_toolApprovalSecret` the signature is on the
+   `tool-approval-request` chunk, on the UI part as `approval.signature`, and
+   on the model message `tool-approval-request`. It is an HMAC over approval
+   id, tool call id, tool name and the canonical input digest (source): not over
+   the user, chat or message. An untampered continuation passes. A changed input, a
+   changed approval id, a wrong secret or a missing signature each raise
+   `AI_InvalidToolApprovalSignatureError` ("invalid signature" or "missing
+   signature") before any model call or execution. A response id that matches
+   no request raises `AI_InvalidToolApprovalError`. Both surface as stream
+   `error` chunks, not as HTTP statuses. Without a secret, a tampered but
+   schema-valid input executes as sent. A denied response skips the signature
+   check (nothing runs). Consequence: the secret is mandatory, owner and chat
+   binding stay a KV lookup, and L5 validates ids and ownership before
+   streaming so these errors never reach the client.
+8. **Tool weight.** 46 of the 49 `server/mcp/tools/*.ts` definitions load under
+   the test stubs (the three public tools need `defineCachedFunction` and are
+   not planned for chat). Serialized as name, description and JSON Schema
+   (`asSchema(z.object(shape))`), the planned chat set is 29,228 bytes (about
+   7,300 tokens at 4 bytes per token): 8,641 read (11 tools), 8,538 write (8)
+   and 12,049 ask-every-time (13). With descriptions capped at 300 characters
+   it is 26,680 bytes; the schemas alone are 16,221. The first 16 tools in plan
+   order (11 read plus 5 write) are 14,555 bytes. All 46 loadable tools are
+   47,680 bytes. The plan lists 32 names (11, 8 and 13), not the 31 it counts.
+   Consequence: the built-in tool budget in L9 is real; at 32 tools it takes
+   about 29 KB of context on every send, so the "at most 16 built-in tools"
+   rule and the per-chat "Besidka" opt-in are not optional.
 
 ## 15. Host portability
 
