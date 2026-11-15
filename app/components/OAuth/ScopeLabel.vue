@@ -48,6 +48,16 @@ const scopeDetails: Record<string, ScopeDetails> = {
     description: 'See your artifacts, their content and versions, and the '
       + 'public links that are active.',
   },
+  'connectors:read': {
+    title: 'See your connectors: names and addresses, never their keys',
+    description: 'See the connectors you added with their host, status and '
+      + 'tool names. Never their keys or sign-in tokens.',
+  },
+  'skills:read': {
+    title: 'See your skills and their full text',
+    description: 'See the skills and commands you saved, their files and '
+      + 'their full text, never anyone else\'s.',
+  },
   'projects:write': {
     title: 'Change your projects',
     description: 'Create, rename, pin, archive and edit projects, their '
@@ -84,11 +94,28 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'has the link can open it and report it. The link expires within 30 '
       + 'days, you can revoke it, and the app can create only a few a day.',
   },
+  'connectors:write': {
+    title: 'Add, change and delete connectors. New ones start switched off; '
+      + 'you switch them on in Besidka',
+    description: 'Add a connector, switched off, turn its tools off or end '
+      + 'their Always allow setting, and permanently delete connectors with '
+      + 'their stored sign-in and settings. It cannot '
+      + 'switch a connector on, sign in, enter keys or allow a tool without '
+      + 'asking. You do that in Besidka.',
+  },
+  'skills:write': {
+    title: 'Add, change and delete skills. Changes are saved switched off '
+      + 'for your review',
+    description: 'Add a skill, change its files, rename it, and permanently '
+      + 'delete skills with all their versions. Every addition and change '
+      + 'is saved switched off and waits for your review in Besidka. It '
+      + 'cannot switch a skill on, set it to Auto or share it.',
+  },
   'data:delete': {
     title: 'Delete your data',
     description: 'Permanently delete chats, messages, projects, knowledge, '
-      + 'files, artifacts and memory, and reset memory. Deleted data cannot be '
-      + 'restored.',
+      + 'files, artifacts and memory, and reset memory. Deleted data cannot '
+      + 'be restored.',
   },
   'admin:features': {
     title: 'Manage feature access (admin)',

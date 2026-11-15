@@ -21,6 +21,7 @@ import {
 import { writeSkillVersion } from '~~/server/utils/skills/versions/write'
 import type {
   SkillWriteBucket,
+  WriteSkillVersionInput,
   WrittenSkillVersion,
 } from '~~/server/utils/skills/versions/write'
 
@@ -34,6 +35,8 @@ export interface SaveSkillInput {
   baseVersion: number
   changes: SkillChange[]
   note: string | null
+  createdByClientId?: string | null
+  skillSetExtra?: WriteSkillVersionInput['skillSetExtra']
   logger: LoggerLike
 }
 
@@ -164,7 +167,7 @@ async function scanAllFindingCounts(input: {
  * a delta. `jev:` and `rulesVersion` entries are never carried over: an
  * in-app save runs no extra check, and the version is stamped fresh.
  */
-async function computeFindingCounts(input: {
+export async function computeFindingCounts(input: {
   bucket: SkillWriteBucket
   userId: number
   skillId: string
@@ -332,6 +335,8 @@ export async function saveSkillChanges(
     origin: prepared.renamed ? 'rename' : 'editor',
     note: input.note,
     findingCounts,
+    createdByClientId: input.createdByClientId,
+    skillSetExtra: input.skillSetExtra,
     logger: input.logger,
   })
 

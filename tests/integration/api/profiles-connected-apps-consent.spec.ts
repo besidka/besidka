@@ -423,6 +423,44 @@ describe('connected apps consent form API', () => {
     expect(payload.scope).not.toContain('data:delete')
   })
 
+  it('grants connectors:read alone and drops the connector write scope '
+    + 'the user left off', async () => {
+    const handler = await getHandler()
+    const oauthQuery = signedQuery({
+      scope: 'openid offline_access connectors:read connectors:write',
+    })
+
+    await handler(createEvent(validBody({
+      oauth_query: oauthQuery,
+      scope: ['connectors:read'],
+    })))
+
+    const request = authHandler.mock.calls[0]![0] as Request
+    const payload = await request.json() as { scope: string }
+
+    expect(payload.scope).toBe('openid offline_access connectors:read')
+    expect(payload.scope).not.toContain('connectors:write')
+  })
+
+  it('grants skills:read alone and drops the skills write scope the user '
+    + 'left off', async () => {
+    const handler = await getHandler()
+    const oauthQuery = signedQuery({
+      scope: 'openid offline_access skills:read skills:write',
+    })
+
+    await handler(createEvent(validBody({
+      oauth_query: oauthQuery,
+      scope: ['skills:read'],
+    })))
+
+    const request = authHandler.mock.calls[0]![0] as Request
+    const payload = await request.json() as { scope: string }
+
+    expect(payload.scope).toBe('openid offline_access skills:read')
+    expect(payload.scope).not.toContain('skills:write')
+  })
+
   it('forwards a single scope sent as a plain string', async () => {
     const handler = await getHandler()
 

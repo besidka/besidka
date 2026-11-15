@@ -528,6 +528,44 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
   ]
+  const mcpConnectorTests = [
+    'tests/unit/server/mcp/tools/list-connectors.spec.ts',
+    'tests/unit/server/mcp/tools/get-connector.spec.ts',
+    'tests/unit/server/mcp/tools/add-connector.spec.ts',
+    'tests/unit/server/mcp/tools/update-connector-tools.spec.ts',
+    'tests/unit/server/mcp/tools/delete-connectors.spec.ts',
+    'tests/unit/server/utils/mcp/private/connectors.spec.ts',
+    'tests/unit/server/utils/connectors/store.spec.ts',
+    'tests/unit/utils/connectors-text.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+    'tests/integration/api/connectors-oauth-flow.spec.ts',
+  ]
+  const mcpSkillTests = [
+    'tests/unit/server/mcp/tools/list-skills.spec.ts',
+    'tests/unit/server/mcp/tools/get-skill.spec.ts',
+    'tests/unit/server/mcp/tools/create-skill.spec.ts',
+    'tests/unit/server/mcp/tools/update-skill.spec.ts',
+    'tests/unit/server/mcp/tools/rename-skill.spec.ts',
+    'tests/unit/server/mcp/tools/delete-skills.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/composables/skills-library.spec.ts',
+    'tests/unit/utils/skills/frontmatter.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+  ]
   const besidkaToolsTests = [
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
     'tests/unit/server/utils/besidka-tools/summary.spec.ts',
@@ -546,6 +584,29 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
     'tests/unit/pages/profile/labs.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
+  ]
+  const besidkaToolsChatTests = [
+    'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/composables/composer-besidka-tools.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/integration/api/chats-test-endpoint.spec.ts',
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/utils/reasoning-step-icons.spec.ts',
+    'tests/unit/components/Chat/ContextPanelApprovals.spec.ts',
+    'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
+    'tests/integration/api/chats-tool-approval-grants.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
   ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
@@ -1740,6 +1801,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/versions/restore.spec.ts',
     'tests/unit/server/utils/skills/versions/create.spec.ts',
     'tests/unit/server/utils/skills/versions/read-write-paths.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
     'tests/unit/server/api/v1/skills/skills-crud.spec.ts',
     'tests/unit/server/api/v1/skills/update-check.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
@@ -2568,6 +2631,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/besidka-tools\/(permissions|route|registry|types)\.ts|server\/utils\/tool-approval\/continuation\.ts|server\/api\/v1\/besidka-tools\/.*\.ts|app\/(composables|utils)\/besidka-tool-permissions\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|app\/components\/Search\/Modal\.client\.vue|app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|tests\/setup\/helpers\/(memory-extraction-db|connectors-oauth|skills-route)\.ts)$/,
       tests: besidkaToolPermissionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy|grants)\.ts|app\/components\/Chat\/ContextPanelApprovals\.vue|app\/components\/Profile\/BesidkaTools\/Permissions\.vue|app\/composables\/tool-approval-grants\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep|\/ApprovalDetails)?\.vue|server\/utils\/memory\/extract-input\.ts|shared\/utils\/tool-approval-parts\.ts|app\/utils\/(tool-approval-step|reasoning|reasoning-step-icons)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
+      tests: besidkaToolsChatTests,
     },
     {
       pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,
@@ -4271,7 +4339,17 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
+    },
+    {
+      pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
+      tests: mcpConnectorTests,
+    },
+    {
+      pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write|statements|route)))\.ts$/,
+      tests: mcpSkillTests,
     },
     {
       pattern: /^server\/utils\/settings\/apply-user-settings\.ts$/,
@@ -4305,6 +4383,8 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/mcp/tools/create-project.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
     },
     {

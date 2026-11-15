@@ -344,6 +344,7 @@ export function useAuth() {
             usePastedTexts().value = []
             preferenceStorage.removeItem('settings_reasoning_level')
             useLegalConsent().bindUser(null)
+            clearNuxtData(BESIDKA_TOOL_PERMISSIONS_KEY)
 
             if (!redirectTo) {
               return

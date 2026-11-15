@@ -239,8 +239,14 @@ const oauthScopePhrases: Record<string, string> = {
   'files:write': 'change your files',
   'settings:write': 'change your settings',
   'artifacts:read': 'read your artifacts and their share links',
+  'connectors:read': 'see your connectors and their tools',
+  'skills:read': 'see your skills and their full text',
   'artifacts:write': 'create and edit your artifacts',
   'artifacts:share': 'publish your artifacts as public links (up to 30 days)',
+  'connectors:write': 'add connectors (switched off), restrict their '
+    + 'tools and delete them',
+  'skills:write': 'add, change and delete skills (saved switched off for '
+    + 'your review)',
   'data:delete': 'permanently delete your data',
   'admin:features': 'grant or revoke experimental features for '
     + 'individual users (admin)',

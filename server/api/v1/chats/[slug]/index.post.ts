@@ -332,7 +332,17 @@ import {
   redactSkillToolPartsForPersistence,
 } from '~~/server/utils/skills/runtime/persist'
 import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
-import { CONNECTORS_PER_USER, CONNECTOR_STEPS_PER_TURN } from '#shared/utils/connectors-policy'
+import {
+  CONNECTORS_PER_USER,
+  CONNECTOR_STEPS_PER_TURN,
+  CONNECTOR_TOOLS_PER_REQUEST,
+  CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
+} from '#shared/utils/connectors-policy'
+import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
+import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
+import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
+import type { ClearedCallCheck } from '~~/server/utils/tool-approval/send'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
 import {
   auditConnectorCall,
@@ -369,6 +379,7 @@ import {
   createSendToolApproval,
   createToolApprovalStreamCollector,
   hasGuardedProviderTool,
+  hasBesidkaToolResult,
   presetApprovalTaint,
   recordToolApprovalPause,
   withholdProviderTools,
@@ -425,6 +436,7 @@ const chatSendBodySchema = z.object({
   webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
   connectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
     .optional(),
+  besidkaToolsEnabled: z.boolean().optional(),
   messages: z.array(incomingUserMessageSchema).length(1),
 })
 
@@ -1691,6 +1703,7 @@ export default defineEventHandler(async (event) => {
       'skills',
       'connectors',
       'tool-approvals',
+      'besidka-tools',
       ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
@@ -1972,6 +1985,9 @@ export default defineEventHandler(async (event) => {
       holdsUserAttachments: newMessage.parts.some((part) => {
         return part.type === 'file'
       }),
+      holdsBesidkaToolHistory: chat.messages.some((message) => {
+        return hasBesidkaToolResult(message.parts)
+      }),
     })
   }
 
@@ -2013,6 +2029,7 @@ export default defineEventHandler(async (event) => {
     useRuntimeConfig().encryptionKey,
   )
   let connectorsRun: ConnectorToolsRun | null = null
+  let besidkaToolsRun: PreparedBesidkaChatTools | null = null
   let toolApprovalSecret: string | undefined
   let resumeDecisions: ContinuationDecision[] = []
   let resumedStoredMessage: UIMessage | null = null
@@ -2023,6 +2040,31 @@ export default defineEventHandler(async (event) => {
   }>()
 
   try {
+    if (
+      toolApprovalsActive
+      && toolCallingAllowed
+      && sendFeatures.isFeatureActive('besidka-tools')
+    ) {
+      besidkaToolsRun = await prepareBesidkaChatTools({
+        db,
+        userId,
+        chatPublicId: chat.id,
+        chatSlug: params.data.slug,
+        requestedEnabled: isResume ? undefined : sendBody.besidkaToolsEnabled,
+        existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
+        consumeClearedCall: toolApprovalSend.consumeClearedCall,
+        guard: chatSearchBudget,
+        logger: aiLogger,
+      })
+
+      if (Object.keys(besidkaToolsRun.tools).length > 0) {
+        parsedTools = {
+          ...parsedTools,
+          tools: { ...parsedTools.tools, ...besidkaToolsRun.tools },
+        }
+      }
+    }
+
     if (sendFeatures.isFeatureActive('connectors')) {
       const requestedConnectorIds = sendBody.connectorIds
         ?? await listChatConnectorIds(db, userId, chat.id)
@@ -2077,6 +2119,7 @@ export default defineEventHandler(async (event) => {
             chatPublicId: chat.id,
             connectors: selection.selected,
             existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
+            existingDefinitionBytes: besidkaToolsRun?.definitionBytes ?? 0,
             hashArgs: hashConnectorArgs,
             ...(toolApprovalsActive
               ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
@@ -2107,7 +2150,10 @@ export default defineEventHandler(async (event) => {
     if (toolApprovalsActive) {
       toolApprovalSend.registerTools(
         parsedTools.tools,
-        connectorsRun?.approvalEntries,
+        new Map([
+          ...besidkaToolsRun?.approvalEntries ?? [],
+          ...connectorsRun?.approvalEntries ?? [],
+        ]),
       )
       parsedTools = {
         ...parsedTools,
@@ -2181,12 +2227,18 @@ export default defineEventHandler(async (event) => {
     await connectorsRun?.close()
   }
 
-  const connectorsInstructionBlock = connectorsRun
+  const connectorToolsInstructionBlock = connectorsRun
     && Object.keys(connectorsRun.tools).length > 0
     ? toolApprovalsActive
       ? CONNECTOR_APPROVAL_INSTRUCTIONS
       : CONNECTOR_INSTRUCTIONS
     : null
+  const hasBesidkaTools = !!besidkaToolsRun
+    && Object.keys(besidkaToolsRun.tools).length > 0
+  const connectorsInstructionBlock = [
+    connectorToolsInstructionBlock,
+    hasBesidkaTools ? besidkaToolsRun?.instructions : null,
+  ].filter(Boolean).join('\n\n') || null
 
   const toolLoop = resolveToolLoop(parsedTools.tools, {
     chatSearchSteps: chatSearchBudget
@@ -2196,7 +2248,10 @@ export default defineEventHandler(async (event) => {
       ? KNOWLEDGE_LIMITS.toolCallsPerSend
       : 0,
     skillSteps: skillsSend.toolsRegistered ? SKILL_TOOL_STEPS : 0,
-    connectorSteps: connectorsInstructionBlock ? CONNECTOR_STEPS_PER_TURN : 0,
+    connectorSteps: connectorToolsInstructionBlock
+      ? CONNECTOR_STEPS_PER_TURN
+      : 0,
+    besidkaSteps: hasBesidkaTools ? TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN : 0,
     guard: chatSearchBudget,
   })
   const containerToolLoopOptions = toolLoop
@@ -2223,14 +2278,17 @@ export default defineEventHandler(async (event) => {
       .map(([toolName]) => toolName)
       .filter(toolName => !isArtifactToolName(toolName)),
   )
+  const isApprovalGatedToolName = (toolName: string) => {
+    return isConnectorToolName(toolName) || isBesidkaChatToolName(toolName)
+  }
   const answerGuaranteeToolNames = new Set(
     [...followUpToolNames].filter((toolName) => {
-      return !isSkillToolName(toolName) && !isConnectorToolName(toolName)
+      return !isSkillToolName(toolName) && !isApprovalGatedToolName(toolName)
     }),
   )
   const persistenceFollowUpToolNames = new Set([
     ...answerGuaranteeToolNames,
-    ...[...followUpToolNames].filter(isConnectorToolName),
+    ...[...followUpToolNames].filter(isApprovalGatedToolName),
   ])
 
   let claimHeartbeats: ClaimHeartbeats | null = null
@@ -3216,6 +3274,108 @@ interface ContinuationChatRow {
   reasoning: string
   usage: unknown
   createdAt: Date
+}
+
+interface PreparedBesidkaChatTools extends BesidkaChatToolsRun {
+  instructions: string
+}
+
+/**
+ * The Besidka tools of a send, loaded only once the gate passed (the
+ * `besidka-tools` opt-in flag, `tool-approvals` and a tool-capable model):
+ * the chat's Besidka row decides whether there are any (on by default; a
+ * new chat's first send may carry the choice made before it had a slug,
+ * which is stored here), then the user's mode for every tool is resolved in
+ * one read before a tool is offered, and the tools are built within the
+ * room the native tools left (at most 24, 40 tools and 32 KiB in all). A
+ * tool that did not fit is only logged: the Labs permissions panel tells the
+ * user when more tools are allowed than a message offers.
+ */
+async function prepareBesidkaChatTools(input: {
+  db: ReturnType<typeof useDb>
+  userId: number
+  chatPublicId: string
+  chatSlug: string
+  requestedEnabled: boolean | undefined
+  existingToolCount: number
+  consumeClearedCall: (call: ClearedCallCheck) => boolean
+  guard: UntrustedContentGuard | undefined
+  logger: { set: (data: Record<string, unknown>) => void }
+}): Promise<PreparedBesidkaChatTools> {
+  const { db, userId, logger } = input
+  const { readBesidkaChatSettings, setBesidkaChatEnabled } = await import(
+    '~~/server/utils/besidka-tools/chat-settings'
+  )
+  const settings = await readBesidkaChatSettings(
+    db,
+    userId,
+    input.chatPublicId,
+  )
+  let isEnabled = settings.enabled
+
+  if (
+    input.requestedEnabled !== undefined
+    && input.requestedEnabled !== settings.enabled
+  ) {
+    isEnabled = input.requestedEnabled
+
+    try {
+      await setBesidkaChatEnabled(db, userId, input.chatPublicId, isEnabled)
+    } catch (exception) {
+      logger.set({
+        attributes: {
+          besidkaTools: {
+            selectionPersist: 'failed',
+            error: exceptionMessage(exception),
+          },
+        },
+      })
+    }
+  }
+
+  const adapter = await import('~~/server/utils/besidka-tools/chat-adapter')
+
+  if (!isEnabled) {
+    logger.set({ attributes: { besidkaTools: { enabled: false } } })
+
+    return {
+      tools: {},
+      approvalEntries: new Map(),
+      definitionBytes: 0,
+      leftOutCount: 0,
+      instructions: adapter.BESIDKA_TOOLS_INSTRUCTIONS,
+    }
+  }
+
+  const { listChatExposedBesidkaTools } = await import(
+    '~~/server/utils/besidka-tools/registry'
+  )
+  const { resolveBesidkaPermissionModes } = await import(
+    '~~/server/utils/besidka-tools/permissions'
+  )
+  const modes = await resolveBesidkaPermissionModes(
+    userId,
+    listChatExposedBesidkaTools().map(besidkaTool => besidkaTool.name),
+    db,
+  )
+  const run = await adapter.buildBesidkaChatTools({
+    db,
+    userId,
+    currentChatSlug: input.chatSlug,
+    modes,
+    chatGrants: settings.alwaysAllowTools,
+    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount,
+    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
+    consumeClearedCall: input.consumeClearedCall,
+    limitCalls: adapter.createBesidkaCallLimiter(useKV()),
+    ...(input.guard ? { guard: input.guard } : {}),
+    logger,
+  })
+
+  return {
+    ...run,
+    instructions: adapter.BESIDKA_TOOLS_INSTRUCTIONS,
+  }
 }
 
 type PreparedToolApprovalContinuation

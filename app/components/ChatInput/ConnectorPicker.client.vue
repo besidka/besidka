@@ -44,6 +44,40 @@
           class="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-box border border-base-200 p-1"
           data-testid="connector-picker-list-scroll"
         >
+          <label
+            v-if="besidka"
+            class="flex w-full items-center gap-3 rounded-box px-3 py-2 hover:bg-base-200 max-sm:min-h-11"
+            :class="besidka.isSaving ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
+            data-testid="connector-picker-besidka"
+          >
+            <span
+              class="grid size-8 shrink-0 place-items-center rounded-field bg-base-200"
+              aria-hidden="true"
+            >
+              <Logo
+                short
+                class="size-5"
+              />
+            </span>
+            <span class="flex min-w-0 grow flex-col">
+              <span class="truncate text-sm font-medium">
+                Besidka
+              </span>
+              <span class="truncate text-xs text-base-content/60">
+                Your chats, projects, files and settings
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              class="toggle toggle-sm toggle-accent shrink-0"
+              role="switch"
+              :checked="besidka.enabled"
+              :disabled="besidka.isSaving"
+              aria-label="Use Besidka tools in this chat"
+              data-testid="connector-picker-toggle-besidka"
+              @change="emit('toggle-besidka')"
+            >
+          </label>
           <ul
             v-if="items.length"
             class="grid grid-cols-[minmax(0,1fr)] gap-0.5"
@@ -95,7 +129,7 @@
             </li>
           </ul>
           <div
-            v-else
+            v-else-if="areConnectorsAvailable"
             class="px-6 py-10 text-center"
             data-testid="connector-picker-empty"
           >
@@ -112,7 +146,10 @@
             </p>
           </div>
         </div>
-        <div class="mt-3 flex shrink-0 items-center justify-between gap-3">
+        <div
+          v-if="areConnectorsAvailable"
+          class="mt-3 flex shrink-0 items-center justify-between gap-3"
+        >
           <p
             class="text-xs"
             :class="isAtLimit ? 'text-warning' : 'text-base-content/60'"
@@ -146,15 +183,21 @@
 import { CONNECTORS_PER_SEND } from '#shared/utils/connectors-policy'
 import type { ComposerConnectorItem } from '~/composables/composer-connectors'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: ComposerConnectorItem[]
   selectedIds: string[]
   isAtLimit: boolean
   isSaving: boolean
-}>()
+  besidka?: { enabled: boolean, isSaving: boolean } | null
+  areConnectorsAvailable?: boolean
+}>(), {
+  besidka: null,
+  areConnectorsAvailable: true,
+})
 
 const emit = defineEmits<{
-  toggle: [connectorId: string]
+  'toggle': [connectorId: string]
+  'toggle-besidka': []
 }>()
 
 const isOpen = defineModel<boolean>('open', { default: false })

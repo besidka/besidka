@@ -251,6 +251,22 @@ describe('useAuth shared-device cleanup', () => {
     expect(localStorage.getItem('settings_reasoning_level')).toBeNull()
   })
 
+  it('drops the cached Besidka tool permissions on sign-out', async () => {
+    const cached = useNuxtData(BESIDKA_TOOL_PERMISSIONS_KEY)
+
+    cached.data.value = { tools: [{ name: 'list_files' }] }
+    signOutMock.mockImplementation(async (options: {
+      fetchOptions: { onSuccess: () => Promise<void> }
+    }) => {
+      await options.fetchOptions.onSuccess()
+    })
+
+    await useAuth().signOut()
+
+    expect(useNuxtData(BESIDKA_TOOL_PERMISSIONS_KEY).data.value)
+      .toBeUndefined()
+  })
+
   it('clears the legacy reasoning level when deletion is requested',
     async () => {
       localStorage.setItem('settings_reasoning_level', 'low')

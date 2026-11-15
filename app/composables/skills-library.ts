@@ -484,6 +484,7 @@ export function useSkillActions() {
       mode?: SkillMode
       command?: string | null
       argumentHint?: string | null
+      licenseAcknowledged?: boolean
     },
   ): Promise<boolean> {
     return await runExclusive(skillId, async () => {
@@ -537,20 +538,31 @@ export function useSkillActions() {
   }
 
   async function setMode(
-    skill: Pick<SkillSummary, 'id' | 'name' | 'sourceKind' | 'enabled'>,
+    skill: Pick<SkillSummary, 'id' | 'name' | 'sourceKind' | 'enabled'>
+      & Partial<Pick<SkillSummary, 'status' | 'licenseClass'>>,
     mode: SkillMode,
   ): Promise<boolean> {
+    const needsLicenseTick = mode !== 'off'
+      && !skill.enabled
+      && skill.status === 'needs-review'
+      && (skill.licenseClass === 'none' || skill.licenseClass === 'custom')
+
     if (
       mode !== 'off'
       && !skill.enabled
-      && requiresEnableConfirmation(skill)
+      && (requiresEnableConfirmation(skill) || needsLicenseTick)
     ) {
+      const licenseWarning = skill.licenseClass === 'custom'
+        ? ' It carries a custom license: confirm that you may use it.'
+        : ' It states no license, so its author keeps all rights: confirm '
+          + 'that you may use it.'
       const confirmation = await useConfirm({
         text: `Turn on "${skill.name}"?`,
         subtitle: 'This skill was not written by you. Once it is on, the '
           + 'model can read it and follow its instructions in your chats. '
-          + 'Review it first if you have not.',
-        actions: ['Turn on'],
+          + 'Review it first if you have not.'
+          + (needsLicenseTick ? licenseWarning : ''),
+        actions: [needsLicenseTick ? 'Turn on and confirm' : 'Turn on'],
         labelDecline: 'Keep off',
       })
 
@@ -561,7 +573,10 @@ export function useSkillActions() {
       }
     }
 
-    return await saveSettings(skill.id, { mode })
+    return await saveSettings(skill.id, {
+      mode,
+      ...(needsLicenseTick ? { licenseAcknowledged: true } : {}),
+    })
   }
 
   async function deleteSkill(

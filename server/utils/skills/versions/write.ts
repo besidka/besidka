@@ -48,6 +48,8 @@ export interface WriteSkillVersionInput {
   note: string | null
   findingCounts: Record<string, number>
   blobsVerified?: boolean
+  createdByClientId?: string | null
+  skillSetExtra?: Partial<typeof schema.skills.$inferInsert>
   logger: LoggerLike
 }
 
@@ -193,6 +195,7 @@ export async function writeSkillVersion(
       licenseFileSha256: prepared.license.licenseFileSha256,
       findings: input.findingCounts,
       note: input.note,
+      createdByClientId: input.createdByClientId ?? null,
     },
     files: input.files,
     skillSet: {
@@ -209,6 +212,7 @@ export async function writeSkillVersion(
       filesCount: input.files.length,
       bytes: prepared.totalBytes,
       ...(markReady ? { status: 'ready' as const } : {}),
+      ...input.skillSetExtra,
     },
   })
   let results: unknown[]

@@ -22,6 +22,7 @@ function createModel(
     reason: 'always-ask',
     summary: '',
     rememberOptions: ['once'],
+    preview: '',
     input: { title: 'Bug' },
     partState: 'approval-requested',
     approved: null,
@@ -362,6 +363,30 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       reasonText: 'Changes or deletes data',
       input: { title: 'Bug' },
     }))
+  })
+
+  it('shows the text a content write saves, collapsed and in full in the '
+    + 'details', async () => {
+    const preview = `${'a'.repeat(600)}END`
+    const { wrapper } = await mountStep({
+      model: createModel({ preview, isBesidka: true }),
+    })
+    const step = wrapper.get(testId('preview'))
+
+    expect(step.attributes('open')).toBeUndefined()
+    expect(step.text()).toContain('Full text in View details')
+    expect(wrapper.get(testId('preview-text')).text()).not.toContain('END')
+
+    await wrapper.get(testId('details')).trigger('click')
+
+    expect(useSidePanel().currentView.value?.props)
+      .toEqual(expect.objectContaining({ preview }))
+  })
+
+  it('shows no preview for a call without text to save', async () => {
+    const { wrapper } = await mountStep()
+
+    expect(wrapper.find(testId('preview')).exists()).toBe(false)
   })
 
   it('is read-only without a controller', async () => {

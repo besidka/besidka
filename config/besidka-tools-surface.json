@@ -1,6 +1,18 @@
 {
   "tools": [
     {
+      "name": "add_connector",
+      "mcpScope": "connectors:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "chat": {
+        "excluded": "Connector management stays in the Besidka app and on the MCP server: adding a connector opens a new data recipient, which needs the consent screen of the app."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "add_memory",
       "mcpScope": "memory:write",
       "access": "write",
@@ -102,6 +114,18 @@
       "hasSummary": true
     },
     {
+      "name": "create_skill",
+      "mcpScope": "skills:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "chat": {
+        "excluded": "Skill management stays in the Besidka app and on the MCP server: a skill is a persistent instruction source, so a chat must not write the skills that steer it."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "delete_artifacts",
       "mcpScope": "data:delete",
       "access": "delete",
@@ -139,6 +163,18 @@
       },
       "chatDescription": "Permanently delete chats with their messages and the files only they produced. This cannot be undone.",
       "hasSummary": true
+    },
+    {
+      "name": "delete_connectors",
+      "mcpScope": "connectors:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "chat": {
+        "excluded": "Connector management stays in the Besidka app and on the MCP server."
+      },
+      "chatDescription": null,
+      "hasSummary": false
     },
     {
       "name": "delete_files",
@@ -192,6 +228,18 @@
       "hasSummary": true
     },
     {
+      "name": "delete_skills",
+      "mcpScope": "skills:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "chat": {
+        "excluded": "Skill management stays in the Besidka app and on the MCP server."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "get_artifact",
       "mcpScope": "artifacts:read",
       "access": "read",
@@ -212,6 +260,18 @@
       "destructiveHint": null,
       "chat": {
         "excluded": "The chat has its own read_chat tool."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
+      "name": "get_connector",
+      "mcpScope": "connectors:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "excluded": "Connector management stays in the Besidka app and on the MCP server: a chat that can see and change its own connectors is an injection path to a new data channel."
       },
       "chatDescription": null,
       "hasSummary": false
@@ -240,6 +300,18 @@
         "tier": "read"
       },
       "chatDescription": "Read your preferences (reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches) and your storage usage.",
+      "hasSummary": false
+    },
+    {
+      "name": "get_skill",
+      "mcpScope": "skills:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "excluded": "Skill management stays in the Besidka app and on the MCP server: a skill is a persistent instruction source, so a chat must not read or change the skills that steer it."
+      },
+      "chatDescription": null,
       "hasSummary": false
     },
     {
@@ -276,6 +348,18 @@
       "destructiveHint": null,
       "chat": {
         "excluded": "The chat has its own search_chats tool."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
+      "name": "list_connectors",
+      "mcpScope": "connectors:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "excluded": "Connector management stays in the Besidka app and on the MCP server: a chat that can see and change its own connectors is an injection path to a new data channel."
       },
       "chatDescription": null,
       "hasSummary": false
@@ -369,6 +453,18 @@
       "hasSummary": false
     },
     {
+      "name": "list_skills",
+      "mcpScope": "skills:read",
+      "access": "read",
+      "readOnlyHint": true,
+      "destructiveHint": null,
+      "chat": {
+        "excluded": "Skill management stays in the Besidka app and on the MCP server: a skill is a persistent instruction source, so a chat must not read or change the skills that steer it."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "move_chats_to_project",
       "mcpScope": "chats:write",
       "access": "write",
@@ -419,6 +515,18 @@
       },
       "chatDescription": "Rename a library file. The previous name is not kept.",
       "hasSummary": true
+    },
+    {
+      "name": "rename_skill",
+      "mcpScope": "skills:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "chat": {
+        "excluded": "Skill management stays in the Besidka app and on the MCP server: a skill is a persistent instruction source, so a chat must not rename the skills that steer it."
+      },
+      "chatDescription": null,
+      "hasSummary": false
     },
     {
       "name": "reset_memory",
@@ -509,6 +617,18 @@
       "hasSummary": true
     },
     {
+      "name": "update_connector_tools",
+      "mcpScope": "connectors:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "chat": {
+        "excluded": "Connector management stays in the Besidka app and on the MCP server: tool permissions are the user's own decision."
+      },
+      "chatDescription": null,
+      "hasSummary": false
+    },
+    {
       "name": "update_memory",
       "mcpScope": "memory:write",
       "access": "write",
@@ -571,6 +691,18 @@
       },
       "chatDescription": "Change preferences: reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. Each value replaces the previous one.",
       "hasSummary": true
+    },
+    {
+      "name": "update_skill",
+      "mcpScope": "skills:write",
+      "access": "write",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "chat": {
+        "excluded": "Skill management stays in the Besidka app and on the MCP server: a skill is a persistent instruction source, so a chat must not write the skills that steer it."
+      },
+      "chatDescription": null,
+      "hasSummary": false
     }
   ],
   "publicMcpToolsExcluded": [

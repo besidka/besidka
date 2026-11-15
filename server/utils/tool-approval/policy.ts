@@ -259,6 +259,25 @@ function isTaintedFor(
   return state.taint.size > 0
 }
 
+/**
+ * Whether a Besidka tool counts the send as tainted for rule 4. A Besidka
+ * read ignores the taint of earlier Besidka results: the user's own data
+ * feeding another read of the user's own data carries nothing out (the
+ * provider's web search is withheld after a Besidka read, and a connector
+ * call asks `cross-source`). Any other taint kind still counts for a read,
+ * and every taint kind counts for a Besidka write.
+ */
+export function isTaintedForBesidka(
+  descriptor: ToolApprovalDescriptor,
+  state: ApprovalState,
+): boolean {
+  if (descriptor.access !== 'read') {
+    return state.taint.size > 0
+  }
+
+  return [...state.taint].some(kind => kind !== 'besidka')
+}
+
 function hasCrossSourceRead(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
@@ -314,8 +333,10 @@ function grantMatches(
  *    write, memory writes and unclassified tools included, counts every
  *    taint kind, so a web page cannot steer it without asking.
  * 3. Connector call after reading another source: ask `cross-source`.
- * 4. Besidka tool of any access after untrusted content: ask
- *    `untrusted-output`.
+ * 4. Besidka tool after untrusted content: ask `untrusted-output`. A
+ *    Besidka read does not count earlier Besidka results as untrusted
+ *    (`isTaintedForBesidka`); web, knowledge, file, skill, connector and
+ *    shared-branch taint still count for it.
  * 5. Delete, instructions or `destructiveHint`: ask `always-ask`.
  * 6. User "always" grant whose tool name and definition hash still match,
  *    and for a connector the connector id too (or a Besidka tool set to
@@ -356,7 +377,10 @@ export function resolveToolApproval(
     return ask(3, 'cross-source')
   }
 
-  if (descriptor.family === 'besidka' && state.taint.size > 0) {
+  if (
+    descriptor.family === 'besidka'
+    && isTaintedForBesidka(descriptor, state)
+  ) {
     return ask(4, 'untrusted-output')
   }
 
