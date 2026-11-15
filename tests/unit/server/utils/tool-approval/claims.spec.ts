@@ -24,6 +24,7 @@ const {
   markClaimDone,
   markClaimFailed,
   sweepToolApprovalClaims,
+  touchClaim,
 } = await import('~~/server/utils/tool-approval/claims')
 
 const NOW = new Date('2026-11-15T12:00:00.000Z')
@@ -179,29 +180,107 @@ describe('tool approval claims', () => {
   })
 
   describe('isClaimLeaseExpired', () => {
+    function claimTouchedAgo(
+      status: 'claimed' | 'done' | 'failed',
+      milliseconds: number,
+    ) {
+      return { status, updatedAt: new Date(NOW.getTime() - milliseconds) }
+    }
+
     it('is false inside the 120 second lease', () => {
-      expect(isClaimLeaseExpired(
-        { status: 'claimed', createdAt: new Date(NOW.getTime() - 119_000) },
-        NOW,
-      )).toBe(false)
+      expect(isClaimLeaseExpired(claimTouchedAgo('claimed', 119_000), NOW))
+        .toBe(false)
     })
 
     it('is true for a claimed approval past the lease', () => {
-      expect(isClaimLeaseExpired(
-        { status: 'claimed', createdAt: new Date(NOW.getTime() - 121_000) },
-        NOW,
-      )).toBe(true)
+      expect(isClaimLeaseExpired(claimTouchedAgo('claimed', 121_000), NOW))
+        .toBe(true)
     })
 
     it('is false for a finished claim however old', () => {
+      expect(isClaimLeaseExpired(claimTouchedAgo('done', HOUR_MS), NOW))
+        .toBe(false)
+      expect(isClaimLeaseExpired(claimTouchedAgo('failed', HOUR_MS), NOW))
+        .toBe(false)
+    })
+
+    it('measures from updatedAt, not from creation', () => {
+      expect(isClaimLeaseExpired({
+        status: 'claimed',
+        createdAt: new Date(NOW.getTime() - HOUR_MS),
+        updatedAt: new Date(NOW.getTime() - 30_000),
+      } as never, NOW)).toBe(false)
+    })
+  })
+
+  describe('touchClaim', () => {
+    async function seedClaimedAt(approvalId: string, updatedAt: Date) {
+      await testDb.db.insert(schema.toolApprovalClaims).values({
+        approvalId,
+        userId,
+        chatPublicId: owner.chatPublicId,
+        messagePublicId: owner.messagePublicId,
+        status: 'claimed',
+        createdAt: new Date(updatedAt.getTime() - HOUR_MS),
+        updatedAt,
+      })
+    }
+
+    it('moves updatedAt forward and keeps the claim claimed', async () => {
+      await seedClaimedAt('approval_one', new Date(NOW.getTime() - 60_000))
+
+      expect(await touchClaim(testDb.db, 'approval_one', userId, NOW))
+        .toBe(true)
+
+      const claim = await findClaim(testDb.db, 'approval_one', userId)
+
+      expect(claim?.status).toBe('claimed')
+      expect(claim?.updatedAt.getTime()).toBe(NOW.getTime())
+      expect(isClaimLeaseExpired(claim!, new Date(NOW.getTime() + 100_000)))
+        .toBe(false)
+    })
+
+    it('extends a lease that would otherwise have lapsed', async () => {
+      await seedClaimedAt('approval_one', new Date(NOW.getTime() - 100_000))
+
+      const before = await findClaim(testDb.db, 'approval_one', userId)
+      const later = new Date(NOW.getTime() + 60_000)
+
+      expect(isClaimLeaseExpired(before!, later)).toBe(true)
+
+      await touchClaim(testDb.db, 'approval_one', userId, NOW)
+
       expect(isClaimLeaseExpired(
-        { status: 'done', createdAt: new Date(NOW.getTime() - HOUR_MS) },
-        NOW,
+        (await findClaim(testDb.db, 'approval_one', userId))!,
+        later,
       )).toBe(false)
-      expect(isClaimLeaseExpired(
-        { status: 'failed', createdAt: new Date(NOW.getTime() - HOUR_MS) },
-        NOW,
-      )).toBe(false)
+    })
+
+    it('does not revive a claim whose lease has lapsed', async () => {
+      const stale = new Date(NOW.getTime() - 121_000)
+
+      await seedClaimedAt('approval_one', stale)
+
+      expect(await touchClaim(testDb.db, 'approval_one', userId, NOW))
+        .toBe(false)
+      expect((await findClaim(testDb.db, 'approval_one', userId))?.updatedAt
+        .getTime()).toBe(stale.getTime())
+    })
+
+    it('does nothing for a finished claim', async () => {
+      await claimApproval(testDb.db, 'approval_one', owner)
+      await markClaimDone(testDb.db, 'approval_one', userId)
+
+      expect(await touchClaim(testDb.db, 'approval_one', userId)).toBe(false)
+    })
+
+    it('does nothing for another user or an unknown approval', async () => {
+      await claimApproval(testDb.db, 'approval_one', owner)
+
+      expect(await touchClaim(testDb.db, 'approval_one', otherUserId))
+        .toBe(false)
+      expect(await touchClaim(testDb.db, 'approval_none', userId))
+        .toBe(false)
     })
   })
 

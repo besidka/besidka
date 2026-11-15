@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampRemember,
+  connectorDestructiveHint,
   isRememberAllowed,
   resolveReplayApproval,
   resolveToolApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type {
+  ReplayPendingTool,
   ResolveToolApprovalInput,
   ToolApprovalDescriptor,
+  ToolApprovalGrant,
 } from '~~/server/utils/tool-approval/policy'
 import {
   connectorReadSource,
@@ -17,14 +20,37 @@ import {
   recordTaint,
   serializeApprovalState,
 } from '~~/server/utils/tool-approval/state'
+import {
+  TOOL_ACCESS_LEVELS,
+  TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
+  TOOL_APPROVAL_TAINT_KINDS,
+  TOOL_FAMILIES,
+  TOOL_PERMISSION_MODES,
+} from '#shared/utils/tool-approval-policy'
 import type {
   ToolApprovalTaintKind,
 } from '#shared/utils/tool-approval-policy'
+import {
+  MEMORY_FORGET_TOOL_NAME,
+  MEMORY_WRITE_TOOL_NAME,
+} from '~~/server/utils/memory/tools/memory-constants'
 
 const HASH = 'a'.repeat(64)
 const OTHER_HASH = 'b'.repeat(64)
 const CONNECTOR_ID = 'conn1'
 const OTHER_CONNECTOR_ID = 'conn2'
+const TOOL_NAME = 'create_page'
+
+function grant(
+  overrides: Partial<ToolApprovalGrant> = {},
+): ToolApprovalGrant {
+  return {
+    definitionHash: HASH,
+    connectorId: CONNECTOR_ID,
+    toolName: TOOL_NAME,
+    ...overrides,
+  }
+}
 
 function stateWith(
   taint: ToolApprovalTaintKind[] = [],
@@ -49,8 +75,10 @@ function connectorTool(
   return {
     family: 'connector',
     access: 'write',
+    toolName: TOOL_NAME,
     connectorId: CONNECTOR_ID,
     definitionHash: HASH,
+    destructiveHint: false,
     ...overrides,
   }
 }
@@ -61,7 +89,9 @@ function besidkaTool(
   return {
     family: 'besidka',
     access: 'write',
+    toolName: TOOL_NAME,
     definitionHash: HASH,
+    destructiveHint: false,
     ...overrides,
   }
 }
@@ -69,7 +99,13 @@ function besidkaTool(
 function nativeTool(
   overrides: Partial<ToolApprovalDescriptor> = {},
 ): ToolApprovalDescriptor {
-  return { family: 'native', access: 'write', ...overrides }
+  return {
+    family: 'native',
+    access: 'write',
+    toolName: TOOL_NAME,
+    destructiveHint: false,
+    ...overrides,
+  }
 }
 
 function decide(
@@ -101,8 +137,8 @@ describe('resolveToolApproval rules', () => {
     it('beats an always grant and a chat grant', () => {
       const decision = decide(connectorTool(), {
         permissionMode: 'blocked',
-        alwaysGrant: { definitionHash: HASH },
-        chatGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(0)
@@ -188,6 +224,54 @@ describe('resolveToolApproval rules', () => {
       expect(decision.status).toEqual({ type: 'not-applicable' })
     })
 
+    it.each(TOOL_APPROVAL_TAINT_KINDS)(
+      'asks for a native memory write after %s taint',
+      (kind) => {
+        for (const toolName of [
+          MEMORY_WRITE_TOOL_NAME,
+          MEMORY_FORGET_TOOL_NAME,
+        ]) {
+          const decision = decide(nativeTool({ toolName }), {
+            state: stateWith([kind]),
+          })
+
+          expect(decision.rule, toolName).toBe(2)
+          expect(decision.reason, toolName).toBe('untrusted-output')
+        }
+      },
+    )
+
+    it('asks for a marked native memory write after web taint', () => {
+      const decision = decide(
+        nativeTool({ toolName: 'save_note', writesMemory: true }),
+        { state: stateWith(['web']) },
+      )
+
+      expect(decision.rule).toBe(2)
+    })
+
+    it('lets a native memory write through when nothing is tainted', () => {
+      const decision = decide(nativeTool({ toolName: MEMORY_WRITE_TOOL_NAME }))
+
+      expect(decision.rule).toBe(8)
+    })
+
+    it('keeps the native memory tool names in step with the memory tools', () => {
+      expect([...TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES].sort())
+        .toEqual([MEMORY_FORGET_TOOL_NAME, MEMORY_WRITE_TOOL_NAME].sort())
+    })
+
+    it('keeps artifact and document writes on connector and skill taint', () => {
+      for (const toolName of ['create_artifact', 'create_document']) {
+        expect(decide(nativeTool({ toolName }), {
+          state: stateWith(['web', 'knowledge', 'file']),
+        }).rule, toolName).toBe(8)
+        expect(decide(nativeTool({ toolName }), {
+          state: stateWith(['connector']),
+        }).rule, toolName).toBe(2)
+      }
+    })
+
     it('asks for a delete after taint as untrusted-output, not always-ask', () => {
       const decision = decide(besidkaTool({ access: 'delete' }), {
         state: stateWith(['web']),
@@ -201,8 +285,8 @@ describe('resolveToolApproval rules', () => {
       const decision = decide(besidkaTool(), {
         state: stateWith(['web']),
         permissionMode: 'allow',
-        alwaysGrant: { definitionHash: HASH },
-        chatGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(2)
@@ -275,8 +359,8 @@ describe('resolveToolApproval rules', () => {
     it('is not lifted by an always grant or a chat grant', () => {
       const decision = decide(connectorTool({ access: 'read' }), {
         state: stateWith([], ['besidka']),
-        alwaysGrant: { definitionHash: HASH },
-        chatGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(3)
@@ -305,7 +389,7 @@ describe('resolveToolApproval rules', () => {
       const decision = decide(besidkaTool({ access: 'read' }), {
         state: stateWith(['file']),
         permissionMode: 'allow',
-        alwaysGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(4)
@@ -349,8 +433,8 @@ describe('resolveToolApproval rules', () => {
     it('is not lifted by Allow, an always grant or a chat grant', () => {
       const decision = decide(besidkaTool({ access: 'delete' }), {
         permissionMode: 'allow',
-        alwaysGrant: { definitionHash: HASH },
-        chatGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(5)
@@ -359,12 +443,22 @@ describe('resolveToolApproval rules', () => {
     it('offers only Allow once and never honors a chat grant', () => {
       const first = decide(besidkaTool({ access: 'delete' }))
       const afterChatGrant = decide(besidkaTool({ access: 'delete' }), {
-        chatGrant: { definitionHash: HASH },
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(first.rememberOptions).toEqual(['once'])
       expect(afterChatGrant.rule).toBe(5)
       expect(afterChatGrant.status.type).toBe('user-approval')
+    })
+
+    it('treats destructiveHint true as always-ask for every family', () => {
+      for (const descriptor of [
+        connectorTool({ destructiveHint: true }),
+        besidkaTool({ destructiveHint: true }),
+        nativeTool({ destructiveHint: true }),
+      ]) {
+        expect(decide(descriptor).rule, descriptor.family).toBe(5)
+      }
     })
 
     it('does not treat destructiveHint false as a signal', () => {
@@ -377,7 +471,7 @@ describe('resolveToolApproval rules', () => {
   describe('rule 6, an always grant', () => {
     it('runs a connector tool when the definition hash matches', () => {
       const decision = decide(connectorTool(), {
-        alwaysGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(6)
@@ -386,7 +480,7 @@ describe('resolveToolApproval rules', () => {
 
     it('asks again after the definition hash changed', () => {
       const decision = decide(connectorTool(), {
-        alwaysGrant: { definitionHash: OTHER_HASH },
+        alwaysGrant: grant({ definitionHash: OTHER_HASH }),
       })
 
       expect(decision.rule).toBe(9)
@@ -394,7 +488,7 @@ describe('resolveToolApproval rules', () => {
 
     it('never matches a grant without a hash', () => {
       const decision = decide(connectorTool(), {
-        alwaysGrant: { definitionHash: null },
+        alwaysGrant: grant({ definitionHash: null }),
       })
 
       expect(decision.rule).toBe(9)
@@ -402,7 +496,7 @@ describe('resolveToolApproval rules', () => {
 
     it('never matches a tool without a hash', () => {
       const decision = decide(connectorTool({ definitionHash: undefined }), {
-        alwaysGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(9)
@@ -410,7 +504,7 @@ describe('resolveToolApproval rules', () => {
 
     it('never matches when both hashes are missing', () => {
       const decision = decide(connectorTool({ definitionHash: undefined }), {
-        alwaysGrant: { definitionHash: null },
+        alwaysGrant: grant({ definitionHash: null }),
       })
 
       expect(decision.rule).toBe(9)
@@ -418,7 +512,7 @@ describe('resolveToolApproval rules', () => {
 
     it('never matches when both hashes are empty strings', () => {
       const decision = decide(connectorTool({ definitionHash: '' }), {
-        alwaysGrant: { definitionHash: '' },
+        alwaysGrant: grant({ definitionHash: '' }),
       })
 
       expect(decision.rule).toBe(9)
@@ -447,10 +541,58 @@ describe('resolveToolApproval rules', () => {
     })
   })
 
+  describe('grant identity', () => {
+    it.each([
+      ['rule 6', 'alwaysGrant', 6],
+      ['rule 7', 'chatGrant', 7],
+    ] as const)('%s needs the connector id, tool name and hash', (
+      _name,
+      grantKey,
+      rule,
+    ) => {
+      expect(decide(connectorTool(), {
+        [grantKey]: grant(),
+      }).rule).toBe(rule)
+      expect(decide(connectorTool(), {
+        [grantKey]: grant({ connectorId: OTHER_CONNECTOR_ID }),
+      }).rule).toBe(9)
+      expect(decide(connectorTool(), {
+        [grantKey]: grant({ connectorId: null }),
+      }).rule).toBe(9)
+      expect(decide(connectorTool(), {
+        [grantKey]: grant({ toolName: 'delete_page' }),
+      }).rule).toBe(9)
+      expect(decide(connectorTool(), {
+        [grantKey]: grant({ toolName: '' }),
+      }).rule).toBe(9)
+    })
+
+    it('does not carry a grant to another connector with the same hash', () => {
+      const decision = decide(
+        connectorTool({ connectorId: OTHER_CONNECTOR_ID }),
+        { alwaysGrant: grant() },
+      )
+
+      expect(decision.rule).toBe(9)
+    })
+
+    it('matches a Besidka grant on tool name and hash', () => {
+      expect(decide(besidkaTool(), {
+        chatGrant: grant({ connectorId: null }),
+      }).rule).toBe(7)
+      expect(decide(besidkaTool(), {
+        chatGrant: grant({ connectorId: null, toolName: 'update_chat' }),
+      }).rule).toBe(9)
+      expect(decide(besidkaTool(), {
+        chatGrant: grant({ connectorId: null, definitionHash: OTHER_HASH }),
+      }).rule).toBe(9)
+    })
+  })
+
   describe('rule 7, a chat grant', () => {
     it('runs a tool when the definition hash matches', () => {
       const decision = decide(connectorTool(), {
-        chatGrant: { definitionHash: HASH },
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(7)
@@ -459,7 +601,7 @@ describe('resolveToolApproval rules', () => {
 
     it('asks again after the definition hash changed', () => {
       const decision = decide(connectorTool(), {
-        chatGrant: { definitionHash: OTHER_HASH },
+        chatGrant: grant({ definitionHash: OTHER_HASH }),
       })
 
       expect(decision.rule).toBe(9)
@@ -467,7 +609,7 @@ describe('resolveToolApproval rules', () => {
 
     it('never matches a grant without a hash', () => {
       const decision = decide(besidkaTool(), {
-        chatGrant: { definitionHash: null },
+        chatGrant: grant({ definitionHash: null }),
       })
 
       expect(decision.rule).toBe(9)
@@ -475,7 +617,7 @@ describe('resolveToolApproval rules', () => {
 
     it('runs a Besidka tool when the registry hash matches', () => {
       const decision = decide(besidkaTool(), {
-        chatGrant: { definitionHash: HASH },
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(7)
@@ -483,8 +625,8 @@ describe('resolveToolApproval rules', () => {
 
     it('comes after the always grant', () => {
       const decision = decide(connectorTool(), {
-        alwaysGrant: { definitionHash: HASH },
-        chatGrant: { definitionHash: HASH },
+        alwaysGrant: grant({ definitionHash: HASH }),
+        chatGrant: grant({ definitionHash: HASH }),
       })
 
       expect(decision.rule).toBe(6)
@@ -516,6 +658,114 @@ describe('resolveToolApproval rules', () => {
         reason: 'default',
       })
     })
+  })
+})
+
+describe('fail closed on invalid input', () => {
+  it.each([
+    ['an unknown permission mode', { permissionMode: 'maybe' }],
+    ['a missing permission mode', { permissionMode: undefined }],
+  ])('denies %s', (_name, overrides) => {
+    const decision = decide(
+      nativeTool({ access: 'read' }),
+      overrides as Partial<ResolveToolApprovalInput>,
+    )
+
+    expect(decision.status).toEqual({
+      type: 'denied',
+      reason: 'invalid-input',
+    })
+    expect(decision.rememberOptions).toEqual([])
+  })
+
+  it.each([
+    ['an unknown family', { family: 'remote' }],
+    ['an unknown access', { access: 'admin' }],
+    ['an empty tool name', { toolName: '' }],
+    ['a blank tool name', { toolName: '   ' }],
+    ['a missing tool name', { toolName: undefined }],
+    ['a missing destructiveHint', { destructiveHint: undefined }],
+    ['a string destructiveHint', { destructiveHint: 'false' }],
+  ])('denies %s before any rule', (_name, overrides) => {
+    const decision = decide({
+      ...nativeTool({ access: 'read' }),
+      ...overrides,
+    } as ToolApprovalDescriptor)
+
+    expect(decision.rule).toBe(0)
+    expect(decision.status).toEqual({
+      type: 'denied',
+      reason: 'invalid-input',
+    })
+  })
+
+  it('denies a missing descriptor', () => {
+    const decision = decide(null as unknown as ToolApprovalDescriptor)
+
+    expect(decision.status).toEqual({
+      type: 'denied',
+      reason: 'invalid-input',
+    })
+  })
+
+  it('answers every known family, access and mode', () => {
+    for (const family of TOOL_FAMILIES) {
+      for (const access of TOOL_ACCESS_LEVELS) {
+        for (const permissionMode of TOOL_PERMISSION_MODES) {
+          const decision = decide(
+            {
+              family,
+              access,
+              toolName: TOOL_NAME,
+              connectorId: CONNECTOR_ID,
+              definitionHash: HASH,
+              destructiveHint: false,
+            },
+            { permissionMode },
+          )
+
+          expect(
+            decision.status.type === 'denied'
+            && decision.status.reason === 'invalid-input',
+            `${family} ${access} ${permissionMode}`,
+          ).toBe(false)
+        }
+      }
+    }
+  })
+})
+
+describe('connectorDestructiveHint', () => {
+  it('is false only for a tool the server marks read-only', () => {
+    expect(connectorDestructiveHint({ readOnlyHint: true })).toBe(false)
+    expect(connectorDestructiveHint({
+      readOnlyHint: true,
+      destructiveHint: true,
+    })).toBe(false)
+  })
+
+  it.each([
+    ['no annotations', undefined],
+    ['null annotations', null],
+    ['empty annotations', {}],
+    ['readOnlyHint false', { readOnlyHint: false }],
+    ['readOnlyHint null', { readOnlyHint: null }],
+    ['destructiveHint false alone', { destructiveHint: false }],
+    ['destructiveHint false next to readOnlyHint false', {
+      readOnlyHint: false,
+      destructiveHint: false,
+    }],
+    ['destructiveHint true', { destructiveHint: true }],
+  ])('is true for %s', (_name, annotations) => {
+    expect(connectorDestructiveHint(annotations)).toBe(true)
+  })
+
+  it('never trusts destructiveHint false for a tool that may write', () => {
+    const descriptor = connectorTool({
+      destructiveHint: connectorDestructiveHint({ destructiveHint: false }),
+    })
+
+    expect(decide(descriptor).rule).toBe(5)
   })
 })
 
@@ -616,10 +866,23 @@ describe('resolveToolApproval and approval state', () => {
 })
 
 describe('resolveReplayApproval', () => {
-  const pending = {
-    family: 'connector' as const,
+  const pending: ReplayPendingTool = {
+    family: 'connector',
+    access: 'write',
+    toolName: TOOL_NAME,
     connectorId: CONNECTOR_ID,
     definitionHash: HASH,
+  }
+  const besidkaPending: ReplayPendingTool = {
+    family: 'besidka',
+    access: 'write',
+    toolName: TOOL_NAME,
+    definitionHash: HASH,
+  }
+  const nativePending: ReplayPendingTool = {
+    family: 'native',
+    access: 'write',
+    toolName: TOOL_NAME,
   }
 
   function replay(
@@ -712,8 +975,6 @@ describe('resolveReplayApproval', () => {
   })
 
   it('compares the registry hash of a Besidka tool', () => {
-    const besidkaPending = { family: 'besidka' as const, definitionHash: HASH }
-
     expect(replay({
       descriptor: besidkaTool(),
       pending: besidkaPending,
@@ -727,7 +988,7 @@ describe('resolveReplayApproval', () => {
   it('lets a native tool through without a hash', () => {
     const decision = replay({
       descriptor: nativeTool(),
-      pending: { family: 'native' },
+      pending: nativePending,
     })
 
     expect(decision.denialReason).toBeNull()
@@ -756,7 +1017,7 @@ describe('resolveReplayApproval', () => {
 
     expect(replay({
       descriptor: besidkaTool(),
-      pending: { family: 'besidka', definitionHash: HASH },
+      pending: besidkaPending,
       state,
     }).denialReason).toBe('over-cap')
   })
@@ -768,7 +1029,7 @@ describe('resolveReplayApproval', () => {
 
     expect(replay({
       descriptor: besidkaTool(),
-      pending: { family: 'besidka', definitionHash: HASH },
+      pending: besidkaPending,
       state,
     }).denialReason).toBeNull()
   })
@@ -781,8 +1042,114 @@ describe('resolveReplayApproval', () => {
     expect(replay({ state }).denialReason).toBe('over-cap')
     expect(replay({
       descriptor: nativeTool(),
-      pending: { family: 'native' },
+      pending: nativePending,
       state,
     }).denialReason).toBe('over-cap')
+  })
+})
+
+describe('resolveReplayApproval identity and fail closed', () => {
+  const pending: ReplayPendingTool = {
+    family: 'native',
+    access: 'write',
+    toolName: TOOL_NAME,
+  }
+
+  function replay(
+    overrides: Partial<Parameters<typeof resolveReplayApproval>[0]> = {},
+  ) {
+    return resolveReplayApproval({
+      descriptor: nativeTool(),
+      pending,
+      state: createApprovalState(),
+      permissionMode: 'ask',
+      ...overrides,
+    })
+  }
+
+  it('denies when the access changed since the approval', () => {
+    expect(replay({ descriptor: nativeTool({ access: 'delete' }) })
+      .denialReason).toBe('definition-drifted')
+    expect(replay({
+      descriptor: connectorTool({ access: 'write' }),
+      pending: {
+        family: 'connector',
+        access: 'read',
+        toolName: TOOL_NAME,
+        connectorId: CONNECTOR_ID,
+        definitionHash: HASH,
+      },
+    }).denialReason).toBe('definition-drifted')
+  })
+
+  it('denies when the tool name changed, for every family', () => {
+    expect(replay({ descriptor: nativeTool({ toolName: 'other_tool' }) })
+      .denialReason).toBe('definition-drifted')
+    expect(replay({
+      descriptor: besidkaTool({ toolName: 'other_tool' }),
+      pending: {
+        family: 'besidka',
+        access: 'write',
+        toolName: TOOL_NAME,
+        definitionHash: HASH,
+      },
+    }).denialReason).toBe('definition-drifted')
+    expect(replay({
+      descriptor: connectorTool({ toolName: 'other_tool' }),
+      pending: {
+        family: 'connector',
+        access: 'write',
+        toolName: TOOL_NAME,
+        connectorId: CONNECTOR_ID,
+        definitionHash: HASH,
+      },
+    }).denialReason).toBe('definition-drifted')
+  })
+
+  it.each([
+    ['an unknown permission mode', { permissionMode: 'maybe' }],
+    ['a descriptor with an empty tool name', {
+      descriptor: nativeTool({ toolName: '' }),
+    }],
+    ['a descriptor with an unknown access', {
+      descriptor: { ...nativeTool(), access: 'admin' },
+    }],
+    ['a descriptor without destructiveHint', {
+      descriptor: { ...nativeTool(), destructiveHint: undefined },
+    }],
+    ['a pending record with an empty tool name', {
+      pending: { ...pending, toolName: '' },
+    }],
+    ['a pending record with an unknown family', {
+      pending: { ...pending, family: 'remote' },
+    }],
+    ['a pending record with an unknown access', {
+      pending: { ...pending, access: 'admin' },
+    }],
+  ])('denies %s as invalid input', (_name, overrides) => {
+    const decision = replay(
+      overrides as Partial<Parameters<typeof resolveReplayApproval>[0]>,
+    )
+
+    expect(decision.status).toEqual({
+      type: 'denied',
+      reason: 'invalid-input',
+    })
+    expect(decision.denialReason).toBe('invalid-input')
+  })
+
+  it('reports a missing tool before invalid input and Blocked', () => {
+    expect(replay({
+      descriptor: null,
+      pending: { ...pending, toolName: '' },
+      permissionMode: 'blocked',
+    }).denialReason).toBe('missing-tool')
+  })
+
+  it('reports invalid input before Blocked', () => {
+    expect(replay({
+      descriptor: nativeTool({ toolName: '' }),
+      permissionMode: 'blocked',
+    }).denialReason).toBe('invalid-input')
   })
 })

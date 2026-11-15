@@ -452,13 +452,34 @@ B. None has a foreign key, so nothing cascades. KV keeps its current state.
 - **`tool-approval:` keys older than the restore point.** The pending
   records (`tool-approval:<approvalId>`), the turn records
   (`tool-approval:turn:<messagePublicId>`) and the result records
-  (`tool-approval:result:<approvalId>`) live 24 hours. A record whose claim
+  (`tool-approval:result:<approvalId>`) live 24 hours, as does the per-chat
+  index `tool-approval:chat:<chatPublicId>` that lists the other three kinds
+  for one chat (see "Deleting a chat or an account" below). A record whose claim
   row was rolled back away can be approved and run once more, because the
   claim is what makes an approval single-use. Delete every key under the
   prefix in step 2b. The cost is that users with an unanswered approval see
   "This approval expired" and ask again.
 - **Claims.** Claim rows older than 48 hours are swept hourly, so a restore
-  never needs a claims repair once the KV prefix is empty.
+  never needs a claims repair once the KV prefix is empty. A claim's lease
+  runs from `updated_at`, so a restored row can look long expired; that only
+  ever answers "Interrupted. Ask again", never runs a call twice.
+- **Deleting a chat or an account.** Neither table has a foreign key, so the
+  deletion hooks delete the rows by `chat_public_id` or `user_id`
+  (`cleanupToolApprovalsForDeletedChats`, `purgeUserToolApprovals`). The KV
+  records are found through the per-chat index
+  `tool-approval:chat:<chatPublicId>` (24 hour TTL, refreshed on each write,
+  at most 200 approval ids and 100 message ids): the chat hook deletes every
+  pending, turn and result key the index lists, one key at a time. The
+  account purge does the same for the user's 200 most recently updated
+  chats, because the purge does not list chats itself. Residual: an id the
+  index dropped past its bound, an id lost to two writers racing on one
+  index (the read-modify-write is not atomic), the keys of a user's 201st
+  and older chats, and the keys of a chat deleted before this hook shipped
+  stay until their 24 hour TTL. A pending record holds the tool input the
+  user was asked to approve (capped at 64 KiB; a larger input is refused),
+  and a result record holds the tool output (capped at 64 KiB; a larger
+  output is replaced by a marker), and neither points back to an account
+  once its rows are gone.
 - **Ids.** `besidka_tool_permissions.id` and `besidka_chat_settings.id` use
   `AUTOINCREMENT`; record `sqlite_sequence` before the restore (runbook step
   0) and push both sequences past the old high-water marks (step 3), as for
@@ -810,7 +831,9 @@ npx wrangler d1 execute besidka --env production --remote --command="SELECT (SEL
 Send one notice to all users. It says that everything done after B was
 undone, that everyone was signed out, and that anyone who changed their
 password, 2FA, passkeys, email, linked accounts, BYOK keys or share settings
-after B must redo the change. No ledger can do that last part for them.
+after B must redo the change, and that they should re-check the tools they
+set to Blocked, because a Blocked setting made after B is gone and the tool
+can be called again. No ledger can do that last part for them.
 
 ## Known gaps and follow-ups
 

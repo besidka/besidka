@@ -906,6 +906,33 @@ The server's `readOnlyHint` only matters in F1 (a read-only tool is not
 subject to F1) and in the UI (badge, bulk shortcut). `destructiveHint: false`
 is never trusted. A hash change clears both "always" entries for that tool.
 
+The policy module (`server/utils/tool-approval/policy.ts`) adds these rules
+after the L3 audit (2026-11-15):
+
+- **Fail closed.** An unknown permission mode, family or access, an empty
+  tool name or a `destructiveHint` that is not a boolean is denied with
+  `invalid-input`, on a first call and on replay.
+- **`destructiveHint` is required** on the descriptor, so the code that
+  builds it has to decide. A connector tool takes it from
+  `connectorDestructiveHint(annotations)`: true unless the server declares
+  `readOnlyHint: true`. A server's `destructiveHint: false` on a tool that
+  is not read-only still counts as destructive, so such a tool goes to
+  always-ask (Allow once only) and no "always" or chat grant can lift it.
+- **Grants carry their identity.** A connector grant matches only on the
+  same connector id, tool name and definition hash; a Besidka grant on the
+  same tool name and registry hash.
+- **Replay compares more.** The pending record stores `access`, and a
+  replay is denied (`definition-drifted`) when the tool name or access
+  differs from the live descriptor, besides the family, connector and hash.
+- **Memory writes count every taint.** Native memory writes (`memory_write`,
+  `memory_forget`) ask after any taint kind, web included; native artifact
+  and document writes still count only connector and skill taint.
+- **State fails loudly.** Recording an unknown taint kind or an invalid read
+  source throws. Past 64 read sources the set collapses to one `overflow`
+  value that makes every connector call ask `cross-source`. A state that
+  fails to deserialize is a hard refusal for a continuation, never a fresh
+  state.
+
 ### 7.2 Approval ends the send
 
 When the model calls a tool that needs approval:

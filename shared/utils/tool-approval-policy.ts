@@ -46,6 +46,7 @@ export const TOOL_APPROVAL_DENIAL_REASONS = [
   'missing-tool',
   'definition-drifted',
   'over-cap',
+  'invalid-input',
 ] as const
 
 export type ToolFamily = typeof TOOL_FAMILIES[number]
@@ -63,6 +64,9 @@ export type ToolApprovalDenialReason
 export const TOOL_APPROVAL_RECORD_VERSION = 1
 export const TOOL_APPROVAL_TTL_SECONDS = 24 * HOUR_SECONDS
 export const TOOL_APPROVAL_SECRET_HKDF_INFO = 'besidka/tool-approval/v1'
+export const TOOL_APPROVAL_PAYLOAD_MAX_BYTES = 64 * 1024
+export const TOOL_APPROVAL_CHAT_INDEX_MAX_APPROVALS = 200
+export const TOOL_APPROVAL_CHAT_INDEX_MAX_MESSAGES = 100
 export const TOOL_APPROVAL_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
 export const TOOL_APPROVAL_SUBJECT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 export const TOOL_APPROVAL_KV_PREFIX = 'tool-approval:'
@@ -79,4 +83,9 @@ export const TOOL_APPROVAL_CLAIM_RETENTION_HOURS = 48
 export const TOOL_APPROVAL_CLAIM_SWEEP_BATCH = 500
 export const TOOL_APPROVAL_CLAIM_SWEEP_MAX_BATCHES = 10
 export const TOOL_APPROVAL_BESIDKA_READ_SOURCE = 'besidka'
+export const TOOL_APPROVAL_READ_SOURCE_OVERFLOW = 'overflow'
+export const TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES = [
+  'memory_write',
+  'memory_forget',
+] as const
 export const TOOL_APPROVAL_CONNECTOR_READ_SOURCE_PREFIX = 'connector:'

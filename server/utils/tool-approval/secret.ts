@@ -27,7 +27,9 @@ export async function deriveToolApprovalSecret(
 /**
  * Reads the encryption key from the runtime config and derives the approval
  * secret once per key. Throws when the key is missing: without a secret the
- * SDK would run a tampered but schema-valid tool input as sent.
+ * SDK would run a tampered but schema-valid tool input as sent. A derivation
+ * that rejects is dropped from the cache, so the next call tries again
+ * instead of failing for the life of the isolate.
  */
 export async function useToolApprovalSecret(): Promise<string> {
   const encryptionKey = String(useRuntimeConfig().encryptionKey ?? '')
@@ -47,5 +49,15 @@ export async function useToolApprovalSecret(): Promise<string> {
     }
   }
 
-  return await cachedSecret.secret
+  const cached = cachedSecret
+
+  try {
+    return await cached.secret
+  } catch (exception) {
+    if (cachedSecret === cached) {
+      cachedSecret = null
+    }
+
+    throw exception
+  }
 }

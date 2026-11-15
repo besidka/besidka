@@ -1,7 +1,11 @@
 import {
+  TOOL_ACCESS_LEVELS,
   TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN,
   TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
+  TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
   TOOL_APPROVAL_ROUNDS_PER_TURN,
+  TOOL_FAMILIES,
+  TOOL_PERMISSION_MODES,
 } from '#shared/utils/tool-approval-policy'
 import type {
   ToolAccess,
@@ -15,16 +19,53 @@ import type {
 import { connectorReadSource } from '~~/server/utils/tool-approval/state'
 import type { ApprovalState } from '~~/server/utils/tool-approval/state'
 
+/**
+ * What the policy needs to know about one tool call. `toolName` is the name
+ * the tool is registered under in its own family: the remote tool name for a
+ * connector, the registry name for a Besidka tool, the SDK tool name for a
+ * native tool. The same name goes into the pending record and the grants.
+ * `destructiveHint` is required so the code that builds a descriptor has to
+ * decide it; a connector tool takes it from `connectorDestructiveHint`.
+ * `writesMemory` marks a native tool that writes persistent memory; the
+ * native memory tool names count even without the marker.
+ */
 export interface ToolApprovalDescriptor {
   family: ToolFamily
   access: ToolAccess
+  toolName: string
   connectorId?: string
   definitionHash?: string
-  destructiveHint?: boolean
+  destructiveHint: boolean
+  writesMemory?: boolean
 }
 
+export interface DestructiveHintAnnotations {
+  readOnlyHint?: boolean | null
+  destructiveHint?: boolean | null
+}
+
+/**
+ * The `destructiveHint` for a connector tool descriptor: true unless the
+ * server declares `readOnlyHint: true`. A server's `destructiveHint: false`
+ * is never trusted for a tool that is not read-only (docs/connectors.md
+ * section 7.1), so a missing or false hint on a tool that may write still
+ * counts as destructive.
+ */
+export function connectorDestructiveHint(
+  annotations: DestructiveHintAnnotations | null | undefined,
+): boolean {
+  return annotations?.readOnlyHint !== true
+}
+
+/**
+ * A "always" or "in this chat" grant. A connector grant needs the same
+ * connector id, tool name and definition hash as the call; a Besidka grant
+ * needs the same tool name and registry hash.
+ */
 export interface ToolApprovalGrant {
   definitionHash: string | null
+  connectorId: string | null
+  toolName: string
 }
 
 export type ToolApprovalRule = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
@@ -51,6 +92,8 @@ export interface ToolApprovalDecision {
 
 export interface ReplayPendingTool {
   family: ToolFamily
+  access: ToolAccess
+  toolName: string
   connectorId?: string | null
   definitionHash?: string | null
 }
@@ -118,11 +161,43 @@ function ask(
   }
 }
 
+function isOneOf<Value extends string>(
+  values: readonly Value[],
+  candidate: unknown,
+): candidate is Value {
+  return typeof candidate === 'string'
+    && (values as readonly string[]).includes(candidate)
+}
+
+function hasToolName(toolName: unknown): boolean {
+  return typeof toolName === 'string' && toolName.trim().length > 0
+}
+
+function isValidDescriptor(descriptor: ToolApprovalDescriptor): boolean {
+  return Boolean(descriptor)
+    && isOneOf(TOOL_FAMILIES, descriptor.family)
+    && isOneOf(TOOL_ACCESS_LEVELS, descriptor.access)
+    && hasToolName(descriptor.toolName)
+    && typeof descriptor.destructiveHint === 'boolean'
+}
+
+function isValidPendingTool(pending: ReplayPendingTool): boolean {
+  return Boolean(pending)
+    && isOneOf(TOOL_FAMILIES, pending.family)
+    && isOneOf(TOOL_ACCESS_LEVELS, pending.access)
+    && hasToolName(pending.toolName)
+}
+
+function isMemoryWrite(descriptor: ToolApprovalDescriptor): boolean {
+  return descriptor.writesMemory === true
+    || isOneOf(TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES, descriptor.toolName)
+}
+
 function isTaintedFor(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
 ): boolean {
-  if (descriptor.family === 'native') {
+  if (descriptor.family === 'native' && !isMemoryWrite(descriptor)) {
     return UNTRUSTED_NATIVE_WRITE_TAINT.some((kind) => {
       return state.taint.has(kind)
     })
@@ -154,7 +229,20 @@ function grantMatches(
     return false
   }
 
-  return grant.definitionHash === descriptor.definitionHash
+  if (
+    grant.definitionHash !== descriptor.definitionHash
+    || !grant.toolName
+    || grant.toolName !== descriptor.toolName
+  ) {
+    return false
+  }
+
+  if (descriptor.family === 'connector') {
+    return Boolean(grant.connectorId)
+      && grant.connectorId === descriptor.connectorId
+  }
+
+  return true
 }
 
 /**
@@ -162,17 +250,23 @@ function grantMatches(
  * what this send has already read, the user's setting for the tool and the
  * grants they gave. The rules apply in order and the first match wins:
  *
- * 0. Blocked by the user: denied.
+ * 0. Invalid input, or Blocked by the user: denied. Input is invalid when
+ *    the permission mode, family or access is not one of the known values,
+ *    the tool name is empty or `destructiveHint` is not a boolean; it is
+ *    denied with `invalid-input`, never guessed at.
  * 1. Native read: no approval.
  * 2. Any non-read call after untrusted content: ask `untrusted-output`.
- *    Native writes count only connector and skill taint.
+ *    Native artifact and document writes count only connector and skill
+ *    taint. Native memory writes count every taint kind, so a web page
+ *    cannot steer a persistent memory write without asking.
  * 3. Connector call after reading another source: ask `cross-source`.
  * 4. Besidka tool of any access after untrusted content: ask
  *    `untrusted-output`.
  * 5. Delete, instructions or `destructiveHint`: ask `always-ask`.
- * 6. User "always" grant whose definition hash still matches (or a Besidka
- *    tool set to Allow): no approval.
- * 7. Chat grant whose definition hash still matches: no approval.
+ * 6. User "always" grant whose tool name and definition hash still match,
+ *    and for a connector the connector id too (or a Besidka tool set to
+ *    Allow): no approval.
+ * 7. Chat grant that matches the same way: no approval.
  * 8. Native write: no approval.
  * 9. Otherwise ask `default`.
  *
@@ -184,6 +278,13 @@ export function resolveToolApproval(
   input: ResolveToolApprovalInput,
 ): ToolApprovalDecision {
   const { descriptor, state } = input
+
+  if (
+    !isOneOf(TOOL_PERMISSION_MODES, input.permissionMode)
+    || !isValidDescriptor(descriptor)
+  ) {
+    return denied(0, 'invalid-input')
+  }
 
   if (input.permissionMode === 'blocked') {
     return denied(0, 'blocked')
@@ -208,7 +309,7 @@ export function resolveToolApproval(
   if (
     descriptor.access === 'delete'
     || descriptor.access === 'instructions'
-    || descriptor.destructiveHint === true
+    || descriptor.destructiveHint
   ) {
     return ask(5, 'always-ask')
   }
@@ -253,7 +354,11 @@ function pendingMatchesDescriptor(
   pending: ReplayPendingTool,
   descriptor: ToolApprovalDescriptor,
 ): boolean {
-  if (pending.family !== descriptor.family) {
+  if (
+    pending.family !== descriptor.family
+    || pending.toolName !== descriptor.toolName
+    || pending.access !== descriptor.access
+  ) {
     return false
   }
 
@@ -300,9 +405,12 @@ function exceedsTurnCaps(
  * missing from the toolset errors the whole stream instead of being denied.
  * So this returns only `not-applicable` or `denied`, and a continuation
  * writes its own denial from a `denied` result before calling `streamText`.
- * Denied: the tool is Blocked now, missing, its family, connector or
- * definition hash differs from the pending request, or the turn caps are
- * spent.
+ * Denied: the tool is missing, the input is invalid (an unknown permission
+ * mode, family or access, or an empty tool name, on either side), the tool
+ * is Blocked now, its family, tool name, access, connector or definition
+ * hash differs from the pending request, or the turn caps are spent. A
+ * changed access matters because a tool that was a read when approved and is
+ * a write now was approved for something else.
  */
 export function resolveReplayApproval(
   input: ResolveReplayApprovalInput,
@@ -326,6 +434,14 @@ function findReplayDenial(
 ): ToolApprovalDenialReason | null {
   if (!descriptor) {
     return 'missing-tool'
+  }
+
+  if (
+    !isOneOf(TOOL_PERMISSION_MODES, input.permissionMode)
+    || !isValidDescriptor(descriptor)
+    || !isValidPendingTool(input.pending)
+  ) {
+    return 'invalid-input'
   }
 
   if (input.permissionMode === 'blocked') {

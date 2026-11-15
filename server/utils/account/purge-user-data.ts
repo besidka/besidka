@@ -99,8 +99,10 @@ export interface PurgeUserDataResult {
  *     the account, not with the connector), after a best-effort RFC 7009
  *     revocation of every connector token under a short deadline,
  *   - tool approvals: the `besidka_tool_permissions`, `besidka_chat_settings`
- *     and `tool_approval_claims` rows (no FK to `users`); the pending
- *     approval records in KV have no user index and expire within 24 hours,
+ *     and `tool_approval_claims` rows (no FK to `users`), and the approval
+ *     records in KV that the per-chat indexes of the user's 200 most
+ *     recently updated chats list; any other approval key expires within
+ *     24 hours,
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account

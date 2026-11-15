@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt } from 'drizzle-orm'
+import { and, eq, gte, inArray, lt } from 'drizzle-orm'
 import {
   TOOL_APPROVAL_CLAIM_LEASE_SECONDS,
   TOOL_APPROVAL_CLAIM_RETENTION_HOURS,
@@ -27,6 +27,12 @@ const MILLISECONDS_PER_HOUR = 60 * 60 * MILLISECONDS_PER_SECOND
  * double click, a resend after a killed Worker) exactly one gets a row back.
  * The loser must not execute the call. Reading `RETURNING` rather than the
  * driver's change count behaves the same on D1 and on better-sqlite3.
+ *
+ * The claim proves nothing about who may use the approval: the owner passed
+ * in is only recorded. The caller MUST first load the KV record
+ * (`getToolApproval`) and check that its user, chat, message and tool call
+ * match the session and the request, and only then claim. A claim taken
+ * before that check would let one user burn another user's approval id.
  */
 export async function claimApproval(
   db: DbClient,
@@ -59,6 +65,35 @@ async function finishClaim(
       eq(schema.toolApprovalClaims.approvalId, approvalId),
       eq(schema.toolApprovalClaims.userId, userId),
       eq(schema.toolApprovalClaims.status, 'claimed'),
+    ))
+    .returning({ approvalId: schema.toolApprovalClaims.approvalId })
+
+  return updated.length === 1
+}
+
+/**
+ * Heartbeat for a long-running approved call: moves `updatedAt` forward so
+ * the lease is measured from the last sign of life rather than from the
+ * claim. Returns false when the claim is not `claimed` (already finished) or
+ * its lease has already lapsed, so a Worker the lease declared dead cannot
+ * revive the claim after the user was told the call was interrupted.
+ */
+export async function touchClaim(
+  db: DbClient,
+  approvalId: string,
+  userId: number,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const leaseCutoff = new Date(
+    now.getTime() - TOOL_APPROVAL_CLAIM_LEASE_SECONDS * MILLISECONDS_PER_SECOND,
+  )
+  const updated = await db.update(schema.toolApprovalClaims)
+    .set({ updatedAt: now })
+    .where(and(
+      eq(schema.toolApprovalClaims.approvalId, approvalId),
+      eq(schema.toolApprovalClaims.userId, userId),
+      eq(schema.toolApprovalClaims.status, 'claimed'),
+      gte(schema.toolApprovalClaims.updatedAt, leaseCutoff),
     ))
     .returning({ approvalId: schema.toolApprovalClaims.approvalId })
 
@@ -98,16 +133,18 @@ export async function findClaim(
 }
 
 /**
- * A claim that is still `claimed` after the lease means the Worker that took
- * it died before it recorded a result. The call may or may not have run, so
- * it is never executed again: the user is told it was interrupted.
+ * A claim that is still `claimed` and has not been touched for the lease
+ * means the Worker that took it died before it recorded a result. The lease
+ * runs from `updatedAt`, which `touchClaim` moves while the call is alive.
+ * The call may or may not have run, so it is never executed again: the user
+ * is told it was interrupted.
  */
 export function isClaimLeaseExpired(
-  claim: Pick<ToolApprovalClaim, 'status' | 'createdAt'>,
+  claim: Pick<ToolApprovalClaim, 'status' | 'updatedAt'>,
   now: Date,
 ): boolean {
   return claim.status === 'claimed'
-    && now.getTime() - claim.createdAt.getTime()
+    && now.getTime() - claim.updatedAt.getTime()
     > TOOL_APPROVAL_CLAIM_LEASE_SECONDS * MILLISECONDS_PER_SECOND
 }
 
