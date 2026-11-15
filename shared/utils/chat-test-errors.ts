@@ -15,6 +15,7 @@ export const chatTestScenarios = [
   'tool-approval',
   'tool-approvals',
   'besidka-tool-approval',
+  'reasoning-icons',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]

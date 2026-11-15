@@ -17,6 +17,10 @@
         :class="isExpandable ? 'cursor-pointer' : undefined"
         @click="toggle"
       >
+        <ChatReasoningStepIcon
+          :icon="icon ?? null"
+          class="order-0"
+        />
         <span
           data-testid="reasoning-memory-step-title"
           class="order-1 min-w-0"
@@ -142,11 +146,13 @@ import type {
   MemoryStepData,
   MemoryStepEntry,
 } from '~/types/memory-step.d'
+import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 
 const props = defineProps<{
   data: MemoryStepData
   title: string
   pending: boolean
+  icon?: ReasoningStepIcon | null
 }>()
 
 const nuxtApp = useNuxtApp()

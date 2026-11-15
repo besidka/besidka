@@ -181,6 +181,7 @@
             :reasoning-accumulated-ms="0"
             :reasoning-segment-started-at="0"
             :is-turn-thinking-held="false"
+            is-shared
           />
           <div
             v-for="(part, index) in getRenderedMessageParts(m)"

@@ -147,6 +147,7 @@
               </div>
               <ChatReasoningApprovalStep
                 v-if="step.approval"
+                :icon="step.icon"
                 :model="step.approval.model"
                 :state="step.approval.state"
                 :title="step.title"
@@ -159,6 +160,7 @@
               />
               <ChatReasoningSearchStep
                 v-else-if="step.search"
+                :icon="step.icon"
                 :data="step.search"
                 :title="step.title"
                 :pending="step.pending"
@@ -166,18 +168,21 @@
               />
               <ChatReasoningMemoryStep
                 v-else-if="step.memory"
+                :icon="step.icon"
                 :data="step.memory"
                 :title="step.title"
                 :pending="step.pending"
               />
               <ChatReasoningSkillStep
                 v-else-if="step.skill"
+                :icon="step.icon"
                 :data="step.skill"
                 :title="step.title"
                 :pending="step.pending"
               />
               <ChatReasoningConnectorStep
                 v-else-if="step.connector"
+                :icon="step.icon"
                 :data="step.connector"
                 :title="step.title"
                 :pending="step.pending"
@@ -192,6 +197,10 @@
                   class="collapse-title flex min-w-0 items-center p-0 text-xs"
                   @click.prevent="toggleStep(step)"
                 >
+                  <ChatReasoningStepIcon
+                    :icon="step.icon ?? null"
+                    class="mr-1.5"
+                  />
                   <span
                     :title="step.title"
                     data-testid="reasoning-step-title"
@@ -278,6 +287,8 @@ import type { SkillStepModel } from '~/utils/skill-step'
 import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
 import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
+import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
+import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
 import type {
   ApprovalStepModel,
   ApprovalStepState,
@@ -299,6 +310,15 @@ import {
   isConnectorStepFailed,
 } from '~/utils/connector-step'
 import { formatTokenCount } from '#shared/utils/message-format'
+import {
+  getToolPartDocumentFormat,
+  resolveReasoningStepSource,
+} from '~/utils/reasoning-step-icons'
+import type {
+  ReasoningStepIcon,
+  ReasoningStepSource,
+  ReasoningStepSourceInput,
+} from '~/utils/reasoning-step-icons'
 import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
 const HIDDEN_REASONING_TITLE = 'This model reasoned before answering, but '
@@ -313,10 +333,11 @@ const props = defineProps<{
   reasoningAccumulatedMs: number
   reasoningSegmentStartedAt: number
   isTurnThinkingHeld: boolean
+  isShared?: boolean
 }>()
 
 const { imageComponents } = useChatFormat()
-const { titlesBySlug } = useConnectorTitles()
+const { titlesBySlug, connectorsBySlug } = useConnectorTitles()
 const approvalController = useToolApprovalController()
 const sidePanel = useSidePanel()
 
@@ -351,6 +372,7 @@ interface ReasoningStep {
   memory: MemoryStepData | null
   skill: SkillStepModel | null
   connector: ConnectorToolCallModel | null
+  icon?: ReasoningStepIcon | null
   approval?: ReasoningApprovalStep | null
   approvalOutcome?: string
   grantMarker?: string
@@ -386,6 +408,23 @@ const reasoningIcon = computed<string>(() => {
 const searchedAt = computed<string | number | Date | undefined>(() => {
   return getMessageMetadata(props.message).createdAt
 })
+
+const searchProvider = computed<string | undefined>(() => {
+  return getMessageMetadata(props.message).usage?.searchProvider
+})
+
+function resolveStepSource(
+  input: Omit<
+    ReasoningStepSourceInput,
+    'searchProvider' | 'allowConnectorIcon'
+  >,
+): ReasoningStepSource {
+  return resolveReasoningStepSource({
+    ...input,
+    searchProvider: searchProvider.value,
+    allowConnectorIcon: !props.isShared,
+  })
+}
 
 const reasoningParts = computed<ReasoningUIPart[]>(() => {
   return props.message.parts.filter((part) => {
@@ -550,9 +589,15 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       : null
 
     if (skillStep) {
+      const skillSource = resolveStepSource({
+        toolName: SKILL_ACTIVATE_TOOL_NAME,
+        title: getSkillStepTitle(skillStep),
+      })
+
       steps.push({
         id: `skill-${partIndex}`,
-        title: getSkillStepTitle(skillStep),
+        title: skillSource.label,
+        icon: skillSource.icon,
         body: '',
         kind: 'tool',
         pending: props.status === 'streaming' && skillStep.state === 'working',
@@ -570,15 +615,27 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
 
     if (approvalEntry && approvalEntry.state !== 'approved') {
       const approvalStep = buildApprovalStep(approvalEntry)
-
-      steps.push({
-        id: `tool-${approvalEntry.model.toolCallId || partIndex}`,
+      const approvalSource = resolveStepSource({
+        toolName: approvalEntry.model.connectorSlug
+          ? `${CONNECTOR_TOOL_NAME_PREFIX}${approvalEntry.model.connectorSlug}`
+          + `__${approvalEntry.model.tool}`
+          : approvalEntry.model.tool,
         title: getApprovalStepTitle(
           approvalEntry.model,
           approvalEntry.model.connectorSlug
             ? titlesBySlug.value.get(approvalEntry.model.connectorSlug)
             : undefined,
         ),
+        connectorId: approvalEntry.model.connectorSlug
+          ? connectorsBySlug.value.get(approvalEntry.model.connectorSlug)?.id
+          : undefined,
+        connectorTitle: approvalStep.connectorName,
+      })
+
+      steps.push({
+        id: `tool-${approvalEntry.model.toolCallId || partIndex}`,
+        title: approvalSource.label,
+        icon: approvalSource.icon,
         body: '',
         kind: 'tool',
         pending: approvalEntry.state === 'sending',
@@ -605,12 +662,22 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       : null
 
     if (connectorCall) {
-      steps.push({
-        id: `tool-${(part as { toolCallId?: string }).toolCallId || partIndex}`,
+      const connectorSource = resolveStepSource({
+        toolName: `${CONNECTOR_TOOL_NAME_PREFIX}${connectorCall.slug}`
+          + `__${connectorCall.tool}`,
         title: getConnectorStepTitle(
           connectorCall,
           titlesBySlug.value.get(connectorCall.slug),
         ),
+        connectorId: connectorsBySlug.value.get(connectorCall.slug)?.id,
+        connectorTitle: titlesBySlug.value.get(connectorCall.slug)
+          || connectorCall.slug,
+      })
+
+      steps.push({
+        id: `tool-${(part as { toolCallId?: string }).toolCallId || partIndex}`,
+        title: connectorSource.label,
+        icon: connectorSource.icon,
         body: '',
         kind: 'tool',
         pending: props.status === 'streaming' && connectorCall.isRunning,
@@ -647,11 +714,21 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       ? `Waiting for approval: ${getToolPartName(part)}`
       : getToolStepTitle(getToolPartName(part), isPending, isFailed)
 
-    steps.push({
-      id: `tool-${toolCallId || partIndex}`,
+    const toolSource = resolveStepSource({
+      toolName: getToolPartName(part),
       title: searchData && isPreRetrievedStep
         ? formatPastChatPreRetrievalTitle(searchData.results.length)
         : toolStepTitle,
+      isPending,
+      isFailed,
+      isAwaitingApproval: isAwaitingApprovalToolPart(part),
+      documentFormat: getToolPartDocumentFormat(part),
+    })
+
+    steps.push({
+      id: `tool-${toolCallId || partIndex}`,
+      title: toolSource.label,
+      icon: toolSource.icon,
       body: '',
       kind: 'tool',
       pending: isPending,

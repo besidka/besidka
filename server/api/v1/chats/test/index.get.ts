@@ -17,6 +17,7 @@ import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture
 import { TEST_CODE_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
 import { findLatestTestDocumentPart } from '~~/server/utils/chats/test/document-scenario'
 import { TEST_DOCUMENT_REPLY } from '~~/server/utils/chats/test/document-fixture'
+import { buildTestReasoningIconsMessages } from '~~/server/utils/chats/test/reasoning-icons-fixture'
 import {
   buildTestBesidkaToolApprovalMessages,
   buildTestToolApprovalMessages,
@@ -137,6 +138,15 @@ export default defineEventHandler(async (event) => {
         scenarioKey,
         effectiveScenario === 'tool-approvals' ? 2 : 1,
       ),
+    }
+  }
+
+  if (effectiveScenario === 'reasoning-icons') {
+    return {
+      id: `test-chat-${testKey}`,
+      slug: `test-chat-${testKey}`,
+      title: `Test Chat - ${testKey}`,
+      messages: buildTestReasoningIconsMessages(scenarioKey),
     }
   }
 

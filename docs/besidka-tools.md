@@ -230,7 +230,9 @@ and its first send carries `besidkaToolsEnabled`, which the send stores.
 
 ### Approval step
 
-The step shows the Besidka mark before the title. The title is the
+The step shows the Besidka mark from the reasoning step icon registry
+(`app/utils/reasoning-step-icons.ts`, which uses the shared prefix) before
+the title, on the approval step and on a finished Besidka step alike. The title is the
 server-written summary ("Delete 1 chat: ..."); the reason after a Besidka
 read names "your Besidka data", and "Always allow" confirms with "Always
 allow Besidka to list projects? ...". A finished Besidka call is a reasoning

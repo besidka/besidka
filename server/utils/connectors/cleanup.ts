@@ -1,5 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { deleteConnectorIconCache } from '~~/server/utils/connectors/icon'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
@@ -27,6 +29,18 @@ function chunkItems<T>(items: T[], chunkSize: number): T[][] {
   }
 
   return chunks
+}
+
+async function deleteIconCaches(connectorIds: readonly string[]) {
+  try {
+    const kv = useKV()
+
+    for (const connectorId of connectorIds) {
+      await deleteConnectorIconCache(kv, connectorId)
+    }
+  } catch {
+    return
+  }
 }
 
 /**
@@ -103,6 +117,9 @@ export async function purgeUserConnectors(
   const connectors = await db.delete(schema.connectors)
     .where(eq(schema.connectors.userId, userId))
     .returning({ id: schema.connectors.id })
+  await deleteIconCaches(connectors.map((connector) => {
+    return encodePublicId(connector.id)
+  }))
   const toolCalls = await db.delete(schema.connectorToolCalls)
     .where(eq(schema.connectorToolCalls.userId, userId))
     .returning({ id: schema.connectorToolCalls.id })
