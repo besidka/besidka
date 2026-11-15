@@ -715,7 +715,11 @@ export function getMemoryTools(input: {
   sourceMessageId: string | null
   userMessageText: string | null
   budget: ChatSearchBudget
-  isApprovedByUser?: (toolCallId: string | undefined) => boolean
+  isApprovedByUser?: (call: {
+    toolCallId: string | undefined
+    toolName: string
+    input: unknown
+  }) => boolean
   logger?: Pick<LoggerLike, 'set'>
 }): FormattedTools {
   const context: MemoryToolContext = {
@@ -799,7 +803,11 @@ export function getMemoryTools(input: {
           try {
             assertNoUntrustedContentSeen(
               input.budget,
-              input.isApprovedByUser?.(options?.toolCallId) === true,
+              input.isApprovedByUser?.({
+                toolCallId: options?.toolCallId,
+                toolName: MEMORY_WRITE_TOOL_NAME,
+                input: toolInput,
+              }) === true,
             )
             assertUserRequestQuote(toolInput.userRequestQuote, userMessageText)
 
@@ -818,7 +826,11 @@ export function getMemoryTools(input: {
           try {
             assertNoUntrustedContentSeen(
               input.budget,
-              input.isApprovedByUser?.(options?.toolCallId) === true,
+              input.isApprovedByUser?.({
+                toolCallId: options?.toolCallId,
+                toolName: MEMORY_FORGET_TOOL_NAME,
+                input: toolInput,
+              }) === true,
             )
             assertUserRequestQuote(toolInput.userRequestQuote, userMessageText)
 

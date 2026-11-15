@@ -1202,7 +1202,7 @@ Where this differs from sections 7.2 and 7.6:
   default and auto web search is skipped.
 - **Order of checks, before anything runs.** Chat owner (404), the
   `tool-approvals` flag (404 when off), 30 answers a minute per user
-  (`tool-approval-rate:<userId>`, 429, fails open on a KV error), the
+  (`tool-approval-rate:<userId>`, 429; a KV error fails closed with 503), the
   message (not in the chat: 404; not the last message or not an assistant
   message: 409 `TOOL_APPROVAL_STALE`), claims that already exist for the
   answered ids (read before any KV record, see below), the generation lease
@@ -1210,8 +1210,8 @@ Where this differs from sections 7.2 and 7.6:
   another owner: 404, unreadable state: 409, never a fresh state), the
   answered ids against the turn's pending ids (anything but an exact match:
   400) and every pending record (missing: 409 expired; another user, chat,
-  message, or a tool call id the stored message does not hold in
-  `approval-requested`: 404).
+  message, or a tool call id and tool name the stored message does not
+  hold in `approval-requested`: 404).
 - **Duplicates.** Claims are looked up first, scoped to the user, because a
   double submit arrives after the first request deleted the pending
   records. While the message's generation lease is held, or a claim is
@@ -1223,8 +1223,13 @@ Where this differs from sections 7.2 and 7.6:
   never runs again; otherwise done claims replay the stored reply: the outcome of each
   answered call, then only the parts stored after them, never the whole
   message (the client still holds it). Claims are taken in sorted id order
-  after the tool set is built and before the stream starts, so of two racers
-  the one that loses the first id holds nothing and answers as pending.
+  after the tool set is built and every check that can refuse without
+  running a tool has passed, right after the generation lease of the
+  message is put and just before the stream starts, so of two racers the
+  one that loses the first id holds nothing and answers as pending (it
+  leaves the lease to the winner). Each approved claim gets a `touchClaim`
+  heartbeat from that moment until its call's result is fully produced
+  (for a tool that streams its output, until the stream is consumed).
 - **Re-check.** Every approved call is decided again with
   `resolveReplayApproval` against the live tool set, on a copy of the state
   that counts each earlier approved connector call of the same answer. A
@@ -1232,8 +1237,13 @@ Where this differs from sections 7.2 and 7.6:
   denial with a Besidka-written reason before `streamText`, so the SDK never
   meets a missing tool. A connector tool whose definition changed is hidden
   by the C-5 drift check, so today it reads as missing ("This tool is no
-  longer available"). A user denial carries the user's note with control
-  and bidirectional characters removed.
+  longer available"). A user denial carries the user's note with control,
+  bidirectional, other format (zero-width, word joiner) and tag characters
+  removed. The permission mode the replay check uses comes from
+  `resolveReplayPermissionMode()`, which returns `ask` for every tool until
+  the Besidka tool permissions (BES-394 L8) are stored; L8 must make it read
+  them, or a tool the user set to Blocked after approving would still run on
+  resume.
 - **Rounds cap.** The turn's `rounds` counter holds the pauses recorded so
   far (1 after the first pause). Exactly five rounds can be answered: the
   replay check denies only when `rounds > 5`, and the send denies a call
@@ -1270,11 +1280,15 @@ Where this differs from sections 7.2 and 7.6:
   that does not end on the answers into a 409 before any model call.
 - **Running.** Claimed answers are settled first: pending records deleted,
   denied claims done and their audit rows settled as denied. Each approved
-  call is marked with `markApprovedByUser` (cleared for `execute`, the
-  memory lock lifted for that call only, the never-store gate still runs),
-  and its `execute` is wrapped: a `touchClaim` heartbeat every 30 s, then
-  `tool-approval:result:<approvalId>` and the claim marked done (failed when
-  it threw) before the next model turn. A connector call settles its
+  call is marked with `markApprovedByUser`, bound to its tool name and
+  canonical input: the SDK replay, the `execute` clearance and the memory
+  lock (lifted for that call only, the never-store gate still runs) accept
+  only the same name and input, so a later call reusing the id is decided
+  like a new call, and the approval is used up once the call settles. Its
+  `execute` is wrapped: once the result is fully produced the claim is
+  marked done (failed when it threw) and its heartbeat stops, before the
+  next model turn. The output itself is not stored anywhere new
+  (`tool-approval:result:<approvalId>` is no longer written). A connector call settles its
   `pending` audit row (`approval` = the remember value) instead of writing a
   second row. The SDK's replay of an approved call records its taint, read
   source and connector count without a new decision.
@@ -1297,17 +1311,26 @@ Where this differs from sections 7.2 and 7.6:
   when the policy would ask, and out of later steps through `prepareStep`
   (`withProviderToolEgressGuard`). The rule counts every taint, so with the
   flag on, requesting web search and code execution together leaves code
-  execution out. On Anthropic routes the declarations stay mid-loop (the API
-  rejects tool history without them) and a resumed message that already
-  called the tool keeps it: there a provider-executed call after taint still
-  runs (known gap).
+  execution out. The same guard withholds the provider's own web search,
+  grounding and URL context once the turn has read a connector or the
+  user's Besidka data (any read source, the knowledge and past-chat
+  excerpts preset included; rule 4 of the plan), for the rest of the
+  request and on its continuations; web taint alone does not. With the
+  flag on, native web search is therefore unavailable after a connector
+  read and in project chats whose knowledge reaches the prompt as text.
+  On Anthropic routes the declarations stay mid-loop (the API rejects tool
+  history without them) and a resumed message that already called the tool
+  keeps it: there a provider-executed call after taint, web search
+  included, still runs within that request (known gap).
 - **Client.** `answerToolApproval` records the remember choice and calls
   the SDK's `addToolApprovalResponse`; `sendAutomaticallyWhen` sends the
   answers once every waiting call of the reply is answered. The SDK runs
   that check after every finished response too, so the composable keeps the
-  ids it already sent and sends each answer once: a pending signal or a
-  replay that leaves the answers in place does not loop. L6 decides what the
-  user sees then.
+  ids whose answers went through and sends each answer once: a pending
+  signal or a replay that leaves the answers in place does not loop. Answers
+  count as sent only after a successful response; after a 409, a 429 or a
+  network error they (and their remember choices) can be sent again. L6
+  decides what the user sees then.
 - **Known gaps for L6 and later.**
   - The duplicate replay omits reasoning parts and anything the stored copy
     no longer holds as a tool part (an artifact call rewritten to its
@@ -1518,7 +1541,6 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
 | `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
 | `tool-approval:chat:<chatPublicId>` | 24 h | per-chat index of the keys above, used by chat delete and by expiry |
-| `tool-approval:result:<approvalId>` | 24 h | output of an approved call, written before the next model turn (section 7.7) |
 | `tool-approval-rate:<userId>` | 120 s | approval answers in the current one-minute window (section 7.7) |
 | `connectors:registry:updated-since` | none | sync cursor |
 | `connectors:registry:full-pass` | none | id of the last completed full pass |

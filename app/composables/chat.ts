@@ -1082,8 +1082,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
           const { responses } = approvalBody.approval
           const answeredIds = responses.map(response => response.approvalId)
 
-          toolApprovalRemember.forget(answeredIds)
-          toolApprovalRemember.markSent(answeredIds)
+          toolApprovalRemember.markInFlight(answeredIds)
 
           return { body: approvalBody }
         }
@@ -1115,6 +1114,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return shouldSendToolApprovalResponses(messages, toolApprovalRemember)
     },
     onFinish({ isAbort, isDisconnect, isError, messages }) {
+      const isSuccessfulResponse = !isAbort && !isDisconnect && !isError
+
+      toolApprovalRemember.settleInFlight(isSuccessfulResponse)
+
       const requestId = transportRequestId.value
       const wasPendingGenerationRetry = isPendingGenerationRetry
       let parsedError = pendingError.value

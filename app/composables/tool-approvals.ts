@@ -29,18 +29,24 @@ export interface ToolApprovalRememberStore {
   forget: (approvalIds: readonly string[]) => void
   markSent: (approvalIds: readonly string[]) => void
   wasSent: (approvalId: string) => boolean
+  markInFlight: (approvalIds: readonly string[]) => void
+  settleInFlight: (isSuccess: boolean) => void
 }
 
 /**
  * Keeps the remember choice of each answered approval until the request
  * that carries the answers is built (the AI SDK records only `approved` and
- * `reason` on the tool part), and the ids whose answers were already sent,
- * so an automatic resend happens once per answer. One store per chat
+ * `reason` on the tool part), and the ids whose answers already went
+ * through, so an automatic resend happens once per answer. Answers count
+ * as sent only after a successful response (`settleInFlight(true)`); after
+ * an error (409, 429, a network failure) they can be sent again, with
+ * their remember choices kept. One store per chat
  * instance, so no state is shared across chats or server requests.
  */
 export function createToolApprovalRememberStore(): ToolApprovalRememberStore {
   const choices = new Map<string, ToolApprovalRemember>()
   const sentApprovalIds = new Set<string>()
+  let inFlightApprovalIds: string[] = []
 
   return {
     set: (approvalId, remember) => {
@@ -58,6 +64,19 @@ export function createToolApprovalRememberStore(): ToolApprovalRememberStore {
       }
     },
     wasSent: approvalId => sentApprovalIds.has(approvalId),
+    markInFlight: (approvalIds) => {
+      inFlightApprovalIds = [...approvalIds]
+    },
+    settleInFlight: (isSuccess) => {
+      if (isSuccess) {
+        for (const approvalId of inFlightApprovalIds) {
+          sentApprovalIds.add(approvalId)
+          choices.delete(approvalId)
+        }
+      }
+
+      inFlightApprovalIds = []
+    },
   }
 }
 

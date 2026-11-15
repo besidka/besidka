@@ -389,9 +389,11 @@ import {
   findExistingClaims,
   loadContinuation,
   settleClaimedContinuation,
+  startClaimHeartbeats,
   wrapApprovedExecutions,
 } from '~~/server/utils/tool-approval/continuation'
 import type {
+  ClaimHeartbeats,
   ContinuationDecision,
   LoadedContinuation,
 } from '~~/server/utils/tool-approval/continuation'
@@ -2164,82 +2166,6 @@ export default defineEventHandler(async (event) => {
     await connectorsRun?.close()
   }
 
-  if (resume) {
-    const isClaimed = await claimContinuation(
-      db,
-      resumeDecisions.map(decision => decision.approvalId),
-      resume.owner,
-    )
-
-    if (!isClaimed) {
-      await closeConnectorClients()
-      await codeExecutionSession?.tracker.cleanup()
-      logger.set({ attributes: { toolApproval: { claimLost: true } } })
-
-      return createGenerationPendingResponse()
-    }
-
-    await settleClaimedContinuation({
-      db,
-      kv: useKV(),
-      userId,
-      decisions: resumeDecisions,
-      logger: aiLogger,
-    })
-    await applyRememberGrants({
-      db,
-      userId,
-      chatPublicId: chat.id,
-      decisions: resumeDecisions,
-      entries: toolApprovalSend.entries,
-      logger: aiLogger,
-    })
-
-    for (const decision of resumeDecisions) {
-      if (!decision.approved) {
-        continue
-      }
-
-      toolApprovalSend.markApprovedByUser({
-        toolCallId: decision.toolCallId,
-        toolName: decision.toolName,
-        input: decision.record.input,
-      })
-
-      if (decision.record.auditCallId !== null) {
-        approvedAuditRows.set(decision.toolCallId, {
-          auditCallId: decision.record.auditCallId,
-          approval: connectorAuditApprovalOf(decision.remember),
-        })
-      }
-    }
-
-    parsedTools = {
-      ...parsedTools,
-      tools: wrapApprovedExecutions({
-        tools: parsedTools.tools,
-        decisions: resumeDecisions,
-        db,
-        kv: useKV(),
-        owner: resume.owner,
-        logger: aiLogger,
-      }),
-    }
-    aiLogger.set({
-      attributes: {
-        toolApproval: {
-          continuation: true,
-          approved: resumeDecisions.filter(decision => decision.approved)
-            .length,
-          denied: resumeDecisions.filter(decision => !decision.approved)
-            .length,
-          replayDenied: resumeDecisions.filter((decision) => {
-            return decision.denialReason !== null
-          }).length,
-        },
-      },
-    })
-  }
   const connectorsInstructionBlock = connectorsRun
     && Object.keys(connectorsRun.tools).length > 0
     ? toolApprovalsActive
@@ -2291,6 +2217,102 @@ export default defineEventHandler(async (event) => {
     ...answerGuaranteeToolNames,
     ...[...followUpToolNames].filter(isConnectorToolName),
   ])
+
+  let claimHeartbeats: ClaimHeartbeats | null = null
+
+  if (resume) {
+    await putGenerationGuard(
+      useKV(),
+      generationInProgressKvKey(chat.id, resume.owner.messagePublicId),
+      'put',
+      logger,
+    )
+
+    const isClaimed = await claimContinuation(
+      db,
+      resumeDecisions.map(decision => decision.approvalId),
+      resume.owner,
+    )
+
+    if (!isClaimed) {
+      await closeConnectorClients()
+      await codeExecutionSession?.tracker.cleanup()
+      logger.set({ attributes: { toolApproval: { claimLost: true } } })
+
+      return createGenerationPendingResponse()
+    }
+
+    claimHeartbeats = startClaimHeartbeats({
+      db,
+      owner: resume.owner,
+      approvalIds: resumeDecisions
+        .filter(decision => decision.approved)
+        .map(decision => decision.approvalId),
+      logger: aiLogger,
+    })
+
+    await settleClaimedContinuation({
+      db,
+      kv: useKV(),
+      userId,
+      decisions: resumeDecisions,
+      logger: aiLogger,
+    })
+    await applyRememberGrants({
+      db,
+      userId,
+      chatPublicId: chat.id,
+      decisions: resumeDecisions,
+      entries: toolApprovalSend.entries,
+      logger: aiLogger,
+    })
+
+    for (const decision of resumeDecisions) {
+      if (!decision.approved) {
+        continue
+      }
+
+      toolApprovalSend.markApprovedByUser({
+        toolCallId: decision.toolCallId,
+        toolName: decision.toolName,
+        input: decision.record.input,
+      })
+
+      if (decision.record.auditCallId !== null) {
+        approvedAuditRows.set(decision.toolCallId, {
+          auditCallId: decision.record.auditCallId,
+          approval: connectorAuditApprovalOf(decision.remember),
+        })
+      }
+    }
+
+    parsedTools = {
+      ...parsedTools,
+      tools: wrapApprovedExecutions({
+        tools: parsedTools.tools,
+        decisions: resumeDecisions,
+        db,
+        owner: resume.owner,
+        heartbeats: claimHeartbeats,
+        onSettled: toolApprovalSend.consumeApprovedCall,
+        logger: aiLogger,
+      }),
+    }
+    aiLogger.set({
+      attributes: {
+        toolApproval: {
+          continuation: true,
+          approved: resumeDecisions.filter(decision => decision.approved)
+            .length,
+          denied: resumeDecisions.filter(decision => !decision.approved)
+            .length,
+          replayDenied: resumeDecisions.filter((decision) => {
+            return decision.denialReason !== null
+          }).length,
+        },
+      },
+    })
+  }
 
   const stream = createUIMessageStream({
     onError(error) {
@@ -3147,6 +3169,7 @@ export default defineEventHandler(async (event) => {
         await closeConnectorClients()
         await codeExecutionSession?.tracker.cleanup()
         await generationGuardHeartbeat.stop()
+        claimHeartbeats?.stopAll()
 
         try {
           await kv.delete(generatingKey)
@@ -3218,13 +3241,18 @@ async function enforceToolApprovalRateLimit(input: {
     input.logger.set({
       attributes: {
         toolApproval: {
-          rateLimit: 'failed-open',
+          rateLimit: 'failed-closed',
           error: exceptionMessage(exception),
         },
       },
     })
 
-    return
+    throw createError({
+      message: 'Approval answers are unavailable right now',
+      status: 503,
+      why: 'The approval rate limit could not be checked',
+      fix: 'Answer again in a moment',
+    })
   }
 
   if (result.allowed) {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
+import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { CONNECTOR_CONSENT_VERSION } from '#shared/utils/connectors-policy'
 import {
@@ -35,6 +36,8 @@ const mocks = vi.hoisted(() => ({
   artifactExecute: null as null | ReturnType<typeof vi.fn>,
   connectorUrls: {} as Record<string, string>,
   holdsSkillText: false,
+  providerTools: {} as Record<string, unknown>,
+  failRateLimitRead: false,
   memoryToolsEnabled: false,
   memoryWrites: [] as Array<Record<string, any>>,
   claims: new Map<string, Record<string, any>>(),
@@ -202,8 +205,11 @@ vi.mock('~~/server/utils/memory/tools/memory-tools', async () => {
               writeInput: { body: string },
               options: { toolCallId?: string },
             ) {
-              const isApproved = input.isApprovedByUser?.(options.toolCallId)
-                === true
+              const isApproved = input.isApprovedByUser?.({
+                toolCallId: options.toolCallId,
+                toolName: 'memory_write',
+                input: writeInput,
+              }) === true
 
               if (input.budget?.untrustedResultSeen && !isApproved) {
                 throw Object.assign(new Error('Memory is locked.'), {
@@ -452,7 +458,13 @@ function createDb() {
 
 function createKv() {
   return {
-    get: vi.fn(async (key: string) => mocks.kv.get(key) ?? null),
+    get: vi.fn(async (key: string) => {
+      if (mocks.failRateLimitRead && key.startsWith('tool-approval-rate:')) {
+        throw new Error('KV unavailable')
+      }
+
+      return mocks.kv.get(key) ?? null
+    }),
     put: vi.fn(async (key: string, value: string) => {
       mocks.kv.set(key, value)
     }),
@@ -528,7 +540,7 @@ async function request(input: {
 
   vi.stubGlobal('useOpenAI', vi.fn(async () => ({
     instance: model,
-    tools: {},
+    tools: mocks.providerTools,
     providerOptions: {},
   })))
   vi.stubGlobal('fetch', createMockMcpFetch(input.servers))
@@ -687,6 +699,8 @@ describe('tool approval continuation', () => {
     mocks.flags = new Set(['connectors', 'tool-approvals'])
     mocks.holdsSkillText = false
     mocks.memoryToolsEnabled = false
+    mocks.providerTools = {}
+    mocks.failRateLimitRead = false
     mocks.memoryWrites = []
     mocks.claims = new Map()
     mocks.updates = []
@@ -846,10 +860,7 @@ describe('tool approval continuation', () => {
     expect(mocks.kv.has(`tool-approval:${approvalId}`)).toBe(false)
     expect(mocks.kv.has(`tool-approval:turn:${paused.messagePublicId}`))
       .toBe(false)
-    expect(readKvJson(`tool-approval:result:${approvalId}`)).toMatchObject({
-      toolCallId: 'call-1',
-      isError: false,
-    })
+    expect(mocks.kv.has(`tool-approval:result:${approvalId}`)).toBe(false)
     expect(mocks.claims.get(approvalId)?.status).toBe('done')
     expect(mocks.store.audit).toHaveLength(1)
     expect(mocks.store.settlements).toEqual([
@@ -1284,6 +1295,70 @@ describe('tool approval continuation', () => {
         return part.toolCallId === 'call-card'
       })).toMatchObject({ state: 'output-error' })
     })
+
+  it('answers 404 when the stored call names another tool', async () => {
+    const paused = await pauseCreateIssue()
+    const [approvalId] = paused.approvalIds
+    const pendingKey = `tool-approval:${approvalId}`
+
+    mocks.kv.set(pendingKey, JSON.stringify({
+      ...readKvJson(pendingKey),
+      toolName: 'mcp__linear__delete_everything',
+    }))
+
+    await expect(answer(paused, [{ approvalId, approved: true }]))
+      .rejects.toMatchObject({ status: 404 })
+    expect(mocks.claims.size).toBe(0)
+  })
+
+  it('refuses answers when the rate limit cannot be read', async () => {
+    const paused = await pauseCreateIssue()
+
+    mocks.failRateLimitRead = true
+
+    await expect(answer(paused, [
+      { approvalId: paused.approvalIds[0], approved: true },
+    ])).rejects.toMatchObject({ status: 503 })
+    expect(mocks.claims.size).toBe(0)
+  })
+
+  it('withholds provider web search after a connector read', async () => {
+    const listIssues = linear.tools.find(tool => tool.name === 'list_issues')!
+
+    listIssues.annotations = { readOnlyHint: true, openWorldHint: false }
+    mocks.providerTools = {
+      tools: { web_search: openai.tools.webSearch() },
+    }
+
+    const { doStream } = await request({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-read', 'mcp__linear__list_issues', {}),
+        textChunks('Here are the issues.'),
+      ],
+      body: {
+        model: MODEL_ID,
+        tools: ['web_search'],
+        reasoning: 'off',
+        connectorIds: ['conn-linear'],
+        messages: [{
+          id: USER_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'List and search' }],
+        }],
+      },
+    })
+    const toolNamesOf = (callIndex: number) => {
+      const options = doStream.mock.calls[callIndex]?.[0] as any
+
+      return (options?.tools ?? []).map((tool: any) => tool.name)
+    }
+
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(toolNamesOf(0)).toContain('web_search')
+    expect(toolNamesOf(1)).not.toContain('web_search')
+    expect(toolNamesOf(1)).toContain('mcp__linear__list_issues')
+  })
 
   it('answers 404 when the tool-approvals flag is off', async () => {
     const paused = await pauseCreateIssue()

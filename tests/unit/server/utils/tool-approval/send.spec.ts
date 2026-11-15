@@ -400,6 +400,57 @@ describe('createSendToolApproval', () => {
       })({} as never)).toBeUndefined()
     })
 
+  it('binds an approval to its call and uses it once', () => {
+    const approval = createApproval(['memory_write'])
+    const approved = {
+      toolCallId: 'call-1',
+      toolName: 'memory_write',
+      input: { body: 'Likes tea' },
+    }
+
+    approval.state.taint.add('web')
+    approval.markApprovedByUser(approved)
+
+    expect(approval.toolApproval(call('call-1', 'memory_write', {
+      body: 'Card 4111 1111 1111 1111',
+    }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.isApprovedByUser({
+      ...approved,
+      input: { body: 'Card 4111 1111 1111 1111' },
+    })).toBe(false)
+    expect(approval.isApprovedByUser({
+      ...approved,
+      toolName: 'memory_forget',
+    })).toBe(false)
+    expect(approval.isApprovedByUser(approved)).toBe(true)
+
+    approval.consumeApprovedCall('call-1')
+
+    expect(approval.isApprovedByUser(approved)).toBe(false)
+    expect(approval.toolApproval(call('call-1', 'memory_write', {
+      body: 'Likes tea',
+    }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+  })
+
+  it('withholds provider web search once the turn read private data', () => {
+    const approval = createSendToolApproval({ state: createApprovalState() })
+    const tools = {
+      web_search: { type: 'provider' },
+      google_search: { type: 'provider' },
+    } as never
+
+    approval.registerTools(tools)
+    approval.state.taint.add('web')
+
+    expect(approval.listWithheldProviderTools(tools)).toEqual([])
+
+    approval.state.readSources.add('connector:c1')
+
+    expect(approval.listWithheldProviderTools(tools))
+      .toEqual(['web_search', 'google_search'])
+    expect(hasGuardedProviderTool(approval, tools)).toBe(true)
+  })
+
   it('replays a call the user approved without a new decision', () => {
     const approval = createApproval([], [
       connectorEntry({

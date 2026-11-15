@@ -119,6 +119,10 @@ export interface ClearedCallCheck {
   input: unknown
 }
 
+export type ApprovedCall = Omit<ClearedCallCheck, 'toolCallId'> & {
+  toolCallId: string
+}
+
 export interface SendToolApproval {
   state: ApprovalState
   entries: Map<string, SendToolEntry>
@@ -130,10 +134,9 @@ export interface SendToolApproval {
   guardNativeWrites: (tools: ToolSet | undefined) => ToolSet | undefined
   canAsk: () => boolean
   consumeClearedCall: (call: ClearedCallCheck) => boolean
-  markApprovedByUser: (call: Omit<ClearedCallCheck, 'toolCallId'> & {
-    toolCallId: string
-  }) => void
-  isApprovedByUser: (toolCallId: string | undefined) => boolean
+  markApprovedByUser: (call: ApprovedCall) => void
+  isApprovedByUser: (call: ClearedCallCheck) => boolean
+  consumeApprovedCall: (toolCallId: string) => void
   getPendingDecision: (
     toolCallId: string,
   ) => PendingToolApprovalDecision | undefined
@@ -354,13 +357,17 @@ function toInputJson(input: unknown): string {
  * A call that needs approval is kept by its tool call id until the stream
  * pairs it with the SDK's approval id. A call the user approved is marked
  * with `markApprovedByUser` (the continuation, L5, does this before the SDK
- * replays it); it is cleared for `execute` and lifts the memory write lock
- * for that call only (`isApprovedByUser`); when the SDK replays it, the
- * call runs without a new decision and records its taint, read source and
- * connector count. A call the provider runs itself is never gated: the
- * provider has already run it when the SDK sees it, so it only records what
- * it brings (`withProviderToolEgressGuard` keeps such a tool out of a step
- * in which it would need approval). A connector call past the per-turn
+ * replays it), bound to its tool name and canonical input: it is cleared
+ * for `execute` and lifts the memory write lock for that call only
+ * (`isApprovedByUser` with the same name and input); when the SDK replays
+ * it with the same name and input, the call runs without a new decision and
+ * records its taint, read source and connector count, and any other call
+ * reusing its id is decided like a new call. The approval is single use:
+ * `consumeApprovedCall` drops it once the call settled. A call the provider
+ * runs itself is never gated: the provider has already run it when the SDK
+ * sees it, so it only records what it brings
+ * (`withProviderToolEgressGuard` keeps such a tool out of a step in which
+ * it would need approval). A connector call past the per-turn
  * connector cap is denied. A tool with no entry is denied, and so is a
  * call that would need approval but has an input over the KV payload cap
  * or comes past the per-message cap, so a
@@ -373,7 +380,19 @@ export function createSendToolApproval(input: {
   const { state } = input
   const entries = new Map<string, SendToolEntry>()
   const clearedCalls = new Map<string, ClearedCall>()
-  const approvedCallIds = new Set<string>()
+  const approvedCalls = new Map<string, ClearedCall>()
+
+  function matchesApprovedCall(call: ClearedCallCheck): boolean {
+    if (typeof call.toolCallId !== 'string') {
+      return false
+    }
+
+    const approved = approvedCalls.get(call.toolCallId)
+
+    return Boolean(approved)
+      && approved?.toolName === call.toolName
+      && approved.inputJson === toInputJson(call.input)
+  }
   const pendingDecisions = new Map<string, PendingToolApprovalDecision>()
 
   function recordRun(entry: SendToolEntry): void {
@@ -400,7 +419,7 @@ export function createSendToolApproval(input: {
       return denied('missing-tool')
     }
 
-    if (approvedCallIds.has(toolCall.toolCallId)) {
+    if (matchesApprovedCall(toolCall)) {
       recordRun(entry)
 
       return 'not-applicable'
@@ -559,16 +578,19 @@ export function createSendToolApproval(input: {
     }).status.type !== 'not-applicable'
   }
 
+  function shouldWithhold(entry: SendToolEntry): boolean {
+    if (entry.descriptor.access !== 'read') {
+      return wouldAsk(entry)
+    }
+
+    return entry.taint === 'web' && state.readSources.size > 0
+  }
+
   function listWithheldProviderTools(tools: ToolSet | undefined): string[] {
     return Object.entries(tools ?? {}).flatMap(([toolName, tool]) => {
       const entry = entries.get(toolName)
 
-      if (
-        !isProviderTool(tool)
-        || !entry
-        || entry.descriptor.access === 'read'
-        || !wouldAsk(entry)
-      ) {
+      if (!isProviderTool(tool) || !entry || !shouldWithhold(entry)) {
         return []
       }
 
@@ -592,14 +614,18 @@ export function createSendToolApproval(input: {
     canAsk,
     consumeClearedCall,
     markApprovedByUser: (call) => {
-      clearedCalls.set(call.toolCallId, {
+      const approved = {
         toolName: call.toolName,
         inputJson: toInputJson(call.input),
-      })
-      approvedCallIds.add(call.toolCallId)
+      }
+
+      clearedCalls.set(call.toolCallId, approved)
+      approvedCalls.set(call.toolCallId, approved)
     },
-    isApprovedByUser: (toolCallId) => {
-      return typeof toolCallId === 'string' && approvedCallIds.has(toolCallId)
+    isApprovedByUser: matchesApprovedCall,
+    consumeApprovedCall: (toolCallId) => {
+      approvedCalls.delete(toolCallId)
+      clearedCalls.delete(toolCallId)
     },
     getPendingDecision: toolCallId => pendingDecisions.get(toolCallId),
     listWithheldProviderTools,
@@ -610,10 +636,13 @@ type StepPreparation = Awaited<ReturnType<PrepareStepFunction<ToolSet>>>
 
 /**
  * Keeps a provider-executed tool that is not a read (code execution) out of
- * every step in which the policy would ask for it. The provider runs such a
- * call inside its own response, before Besidka sees it, so it can never wait
- * for approval; leaving the tool out is the only way to stop it. The tools
- * the base `prepareStep` already narrowed stay narrowed. With
+ * every step in which the policy would ask for it, and the provider's own
+ * web search, grounding and URL context out of every step once the turn
+ * read a connector or the user's Besidka data (rule 4: a fetch could carry
+ * that data out; web taint alone does not withhold them). The provider runs
+ * such a call inside its own response, before Besidka sees it, so it can
+ * never wait for approval; leaving the tool out is the only way to stop it.
+ * The tools the base `prepareStep` already narrowed stay narrowed. With
  * `keepDeclarations` (Anthropic, whose API rejects tool history without the
  * declaration) the base result is returned unchanged.
  */
@@ -648,8 +677,9 @@ export function withProviderToolEgressGuard(input: {
 }
 
 /**
- * Whether the send declares a provider-executed tool that is not a read, so
- * `withProviderToolEgressGuard` has something to withhold.
+ * Whether the send declares a provider-executed tool the guard may have to
+ * withhold (one that is not a read, or a web search, grounding or URL
+ * context tool), so `withProviderToolEgressGuard` has something to do.
  */
 export function hasGuardedProviderTool(
   approval: SendToolApproval,
@@ -660,7 +690,7 @@ export function hasGuardedProviderTool(
 
     return isProviderTool(tool)
       && Boolean(entry)
-      && entry?.descriptor.access !== 'read'
+      && (entry?.descriptor.access !== 'read' || entry.taint === 'web')
   })
 }
 

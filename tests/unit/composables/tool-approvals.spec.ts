@@ -105,4 +105,24 @@ describe('buildToolApprovalRequestBody', () => {
       { id: '1', state: 'approval-requested' },
     ]), store)).toBe(false)
   })
+
+  it('counts answers as sent only after a successful response', () => {
+    const store = createToolApprovalRememberStore()
+    const messages = pausedMessages([
+      { id: '1', state: 'approval-responded', approved: true },
+    ])
+
+    store.set('approval-1', 'chat')
+    store.markInFlight(['approval-1'])
+    store.settleInFlight(false)
+
+    expect(shouldSendToolApprovalResponses(messages, store)).toBe(true)
+    expect(store.get('approval-1')).toBe('chat')
+
+    store.markInFlight(['approval-1'])
+    store.settleInFlight(true)
+
+    expect(shouldSendToolApprovalResponses(messages, store)).toBe(false)
+    expect(store.get('approval-1')).toBeUndefined()
+  })
 })

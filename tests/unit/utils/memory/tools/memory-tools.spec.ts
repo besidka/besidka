@@ -51,7 +51,11 @@ describe('memory tools', () => {
     userMessageText?: string | null
     budget?: ReturnType<typeof createChatSearchBudget>
     db?: typeof testDb.db
-    isApprovedByUser?: (toolCallId: string | undefined) => boolean
+    isApprovedByUser?: (call: {
+      toolCallId: string | undefined
+      toolName: string
+      input: unknown
+    }) => boolean
   } = {}) {
     const budget = overrides.budget ?? createChatSearchBudget()
     const { tools } = getMemoryTools({
@@ -1890,7 +1894,10 @@ describe('memory tools', () => {
         const budget = createChatSearchBudget()
         const { tools } = build({
           budget,
-          isApprovedByUser: toolCallId => toolCallId === 'approved-call',
+          isApprovedByUser: (call) => {
+            return call.toolCallId === 'approved-call'
+              && call.toolName === 'memory_write'
+          },
         })
 
         budget.untrustedResultSeen = true

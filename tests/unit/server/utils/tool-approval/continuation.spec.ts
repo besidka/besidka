@@ -9,12 +9,28 @@ import {
   consumeToolApprovalResponses,
   decideContinuation,
   findContinuationTurn,
+  resolveReplayPermissionMode,
   sanitizeApprovalReason,
+  startClaimHeartbeats,
+  wrapApprovedExecutions,
 } from '~~/server/utils/tool-approval/continuation'
 import type { ToolApprovalPendingRecord } from '~~/server/utils/tool-approval/kv'
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
 import { createApprovalState } from '~~/server/utils/tool-approval/state'
+
+const claimMocks = vi.hoisted(() => ({
+  markClaimDone: vi.fn(async () => true),
+  markClaimFailed: vi.fn(async () => true),
+}))
+
+vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/tool-approval/claims')
+  >()
+
+  return { ...actual, ...claimMocks, touchClaim: vi.fn(async () => true) }
+})
 
 vi.mock('~~/server/utils/connectors/store', () => ({
   listConnectorChatSettings: vi.fn(),
@@ -94,6 +110,8 @@ function connectorEntries(hash: string = HASH) {
 describe('sanitizeApprovalReason', () => {
   it('keeps plain text only and caps the length', () => {
     expect(sanitizeApprovalReason(' Not‮\u0007\nnow ')).toBe('Not now')
+    expect(sanitizeApprovalReason('No\u200Bt\u2060 n\u{E0041}ow'))
+      .toBe('Not now')
     expect(sanitizeApprovalReason('   ')).toBeUndefined()
     expect(sanitizeApprovalReason('x'.repeat(900))).toHaveLength(500)
   })
@@ -376,5 +394,68 @@ describe('buildResumedAssistantMessages provider metadata', () => {
       input: { title: 'exact' },
       providerOptions: { google: { thoughtSignature: 'thought-sig' } },
     })
+  })
+})
+
+describe('resolveReplayPermissionMode', () => {
+  it('reads ask until tool permissions are stored', () => {
+    expect(resolveReplayPermissionMode()).toBe('ask')
+  })
+})
+
+describe('wrapApprovedExecutions', () => {
+  it('settles a streaming tool only after its output is consumed', async () => {
+    const [decision] = decideContinuation({
+      answers: [{
+        response: { approvalId: 'approval-1', approved: true, remember: 'once' },
+        record: pendingRecord(),
+      }],
+      entries: connectorEntries(),
+      state: createApprovalState(),
+    })
+    const owner = { userId: 1, chatPublicId: 'chat-1', messagePublicId: 'a-1' }
+    const heartbeats = startClaimHeartbeats({
+      db: {} as never,
+      owner,
+      approvalIds: ['approval-1'],
+      logger: { set: vi.fn() },
+    })
+    const stop = vi.spyOn(heartbeats, 'stop')
+    const onSettled = vi.fn()
+    const tools = wrapApprovedExecutions({
+      tools: {
+        [TOOL_NAME]: {
+          execute: async function* () {
+            yield 'partial'
+            yield 'final'
+          },
+        },
+      } as never,
+      decisions: [decision!],
+      db: {} as never,
+      owner,
+      heartbeats,
+      onSettled,
+      logger: { set: vi.fn() },
+    })!
+    const output = (tools[TOOL_NAME] as any).execute({}, {
+      toolCallId: 'call-1',
+    }) as AsyncIterable<unknown>
+    const seen: unknown[] = []
+
+    for await (const value of output) {
+      seen.push(value)
+
+      if (value === 'partial') {
+        expect(onSettled).not.toHaveBeenCalled()
+      }
+    }
+
+    heartbeats.stopAll()
+
+    expect(seen).toEqual(['partial', 'final'])
+    expect(onSettled).toHaveBeenCalledWith('call-1')
+    expect(stop).toHaveBeenCalledWith('approval-1')
+    expect(claimMocks.markClaimDone).toHaveBeenCalledTimes(1)
   })
 })

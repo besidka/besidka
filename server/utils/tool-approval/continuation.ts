@@ -6,7 +6,6 @@ import {
   TOOL_APPROVAL_CLAIM_HEARTBEAT_MS,
   TOOL_APPROVAL_EXPIRED_CODE,
   TOOL_APPROVAL_INTERRUPTED_CODE,
-  TOOL_APPROVAL_RECORD_VERSION,
   TOOL_APPROVAL_REASON_MAX_LENGTH,
   TOOL_APPROVAL_RESPONSES_PER_MINUTE,
   TOOL_APPROVAL_STALE_CODE,
@@ -14,6 +13,7 @@ import {
 import type {
   ToolApprovalDenialReason,
   ToolApprovalRemember,
+  ToolPermissionMode,
 } from '#shared/utils/tool-approval-policy'
 import type { ToolApprovalResponseInput } from '~~/server/utils/chats/request-schema'
 import {
@@ -44,7 +44,6 @@ import {
   deleteToolApproval,
   getToolApproval,
   getToolApprovalTurn,
-  putToolApprovalResult,
 } from '~~/server/utils/tool-approval/kv'
 import type {
   ToolApprovalPendingRecord,
@@ -66,6 +65,7 @@ type DbClient = ReturnType<typeof useDb>
 type MessagePart = UIMessage['parts'][number]
 
 const RATE_KEY_PREFIX = 'tool-approval-rate:'
+const INVISIBLE_FORMAT_CHARACTERS = /[\p{Cf}\u{E0000}-\u{E007F}]/gu
 const RATE_WINDOW_MILLISECONDS = 60_000
 const RATE_KEY_TTL_SECONDS = 120
 
@@ -146,6 +146,14 @@ function isToolPart(part: unknown): part is Record<string, unknown> {
     && (part.type === 'dynamic-tool' || part.type.startsWith('tool-'))
 }
 
+function toolNameOf(part: Record<string, unknown>): string | null {
+  if (part.type === 'dynamic-tool') {
+    return typeof part.toolName === 'string' ? part.toolName : null
+  }
+
+  return typeof part.type === 'string' ? part.type.slice('tool-'.length) : null
+}
+
 function approvalIdOf(part: Record<string, unknown>): string | null {
   return isRecord(part.approval) && typeof part.approval.id === 'string'
     ? part.approval.id
@@ -181,9 +189,10 @@ function notFoundError(why: string) {
 }
 
 /**
- * Removes control and bidirectional formatting characters from the note a
- * user may add to an answer, trims it and caps its length, so only plain
- * text ever reaches the model as part of a denial.
+ * Removes control, bidirectional, other format (zero-width, word joiner)
+ * and tag characters from the note a user may add to an answer, trims it
+ * and caps its length, so only plain text ever reaches the model as part of
+ * a denial.
  */
 export function sanitizeApprovalReason(
   reason: string | undefined,
@@ -191,6 +200,7 @@ export function sanitizeApprovalReason(
   const cleaned = stripControlAndBidiCharacters(
     (reason ?? '').replace(/\s+/g, ' '),
   )
+    .replace(INVISIBLE_FORMAT_CHARACTERS, '')
     .trim()
     .slice(0, TOOL_APPROVAL_REASON_MAX_LENGTH)
 
@@ -385,7 +395,8 @@ function findAwaitingToolPart(
  * against the turn's pending ids (anything but an exact match: 400, since a
  * partial answer runs one call and then fails the send), and each pending
  * record (missing: 409 expired; another user, chat, message, or a tool call
- * id the stored message does not hold in `approval-requested`: 404).
+ * id and tool name the stored message does not hold in
+ * `approval-requested`: 404).
  */
 export async function loadContinuation(input: {
   kv: KVNamespace
@@ -447,6 +458,7 @@ export async function loadContinuation(input: {
       || record.messagePublicId !== owner.messagePublicId
       || !part
       || part.toolCallId !== record.toolCallId
+      || toolNameOf(part) !== record.toolName
     ) {
       throw notFoundError('The waiting action belongs to another message')
     }
@@ -455,6 +467,16 @@ export async function loadContinuation(input: {
   }
 
   return { turn, state: deserialized.state, answers }
+}
+
+/**
+ * The user's permission mode for a tool whose approved call is replayed.
+ * Every tool is `ask` until the Besidka tool permissions (BES-394 L8) are
+ * stored; this is the one place that must then read them, or a tool the
+ * user set to Blocked after approving would still run on resume.
+ */
+export function resolveReplayPermissionMode(): ToolPermissionMode {
+  return 'ask'
 }
 
 function cloneState(state: ApprovalState): ApprovalState {
@@ -507,7 +529,7 @@ export function decideContinuation(input: {
       descriptor: entry?.descriptor ?? null,
       pending: record,
       state: replayState,
-      permissionMode: 'ask',
+      permissionMode: resolveReplayPermissionMode(),
     })
 
     if (replay.denialReason) {
@@ -836,21 +858,85 @@ function hasExecute(tool: unknown): tool is {
   return isRecord(tool) && typeof tool.execute === 'function'
 }
 
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return typeof value === 'object'
+    && value !== null
+    && Symbol.asyncIterator in value
+}
+
+export interface ClaimHeartbeats {
+  stop: (approvalId: string) => void
+  stopAll: () => void
+}
+
+/**
+ * One `touchClaim` heartbeat per claimed approval, started right after the
+ * claims are taken, so a slow setup or a long call never lets a live claim
+ * lapse into "interrupted". Each is stopped once its call's result is fully
+ * produced; whatever is left stops when the request ends. Bindings are
+ * captured up front because the heartbeats run from timers.
+ */
+export function startClaimHeartbeats(input: {
+  db: DbClient
+  owner: ToolApprovalClaimOwner
+  approvalIds: readonly string[]
+  logger: LoggerLike
+}): ClaimHeartbeats {
+  const { db, owner, logger } = input
+  const timers = new Map<string, ReturnType<typeof setInterval>>()
+
+  for (const approvalId of input.approvalIds) {
+    timers.set(approvalId, setInterval(async () => {
+      try {
+        await touchClaim(db, approvalId, owner.userId)
+      } catch (exception) {
+        logger.set({
+          attributes: {
+            toolApproval: {
+              heartbeat: 'failed',
+              error: exceptionMessage(exception),
+            },
+          },
+        })
+      }
+    }, TOOL_APPROVAL_CLAIM_HEARTBEAT_MS))
+  }
+
+  function stop(approvalId: string): void {
+    const timer = timers.get(approvalId)
+
+    if (timer !== undefined) {
+      clearInterval(timer)
+      timers.delete(approvalId)
+    }
+  }
+
+  return {
+    stop,
+    stopAll: () => {
+      for (const approvalId of [...timers.keys()]) {
+        stop(approvalId)
+      }
+    },
+  }
+}
+
 /**
  * Wraps the `execute` of every tool an approved call uses, for that call
- * only: while it runs, the claim gets a heartbeat (`touchClaim`), and when
- * it settles, its output goes to `tool-approval:result:<id>` and the claim
- * is marked done (failed when it threw) before the SDK starts the next
- * model turn. Bindings are captured up front because the heartbeat runs
- * from a timer. A failed bookkeeping write is logged and never changes the
- * call's result.
+ * only: once its result is fully produced (for a tool that streams its
+ * output, once the stream is consumed), the claim is marked done (failed
+ * when it threw), its heartbeat stops and the approval is used up
+ * (`onSettled`), all before the SDK starts the next model turn. The output
+ * itself is never stored. A failed claim write is logged and never changes
+ * the call's result.
  */
 export function wrapApprovedExecutions(input: {
   tools: ToolSet | undefined
   decisions: readonly ContinuationDecision[]
   db: DbClient
-  kv: KVNamespace
   owner: ToolApprovalClaimOwner
+  heartbeats: ClaimHeartbeats
+  onSettled: (toolCallId: string) => void
   logger: LoggerLike
 }): ToolSet | undefined {
   const approvedByCallId = new Map(input.decisions
@@ -864,34 +950,14 @@ export function wrapApprovedExecutions(input: {
   const toolNames = new Set([...approvedByCallId.values()].map((decision) => {
     return decision.toolName
   }))
-  const { db, kv, owner, logger } = input
+  const { db, owner, heartbeats, logger } = input
 
-  async function record(
+  async function settle(
     decision: ContinuationDecision,
     isError: boolean,
-    output: unknown,
   ): Promise<void> {
-    try {
-      await putToolApprovalResult(kv, decision.approvalId, {
-        version: TOOL_APPROVAL_RECORD_VERSION,
-        userId: owner.userId,
-        chatPublicId: owner.chatPublicId,
-        messagePublicId: owner.messagePublicId,
-        toolCallId: decision.toolCallId,
-        isError,
-        output,
-        recordedAt: Date.now(),
-      })
-    } catch (exception) {
-      logger.set({
-        attributes: {
-          toolApproval: {
-            resultWrite: 'failed',
-            error: exceptionMessage(exception),
-          },
-        },
-      })
-    }
+    heartbeats.stop(decision.approvalId)
+    input.onSettled(decision.toolCallId)
 
     try {
       if (isError) {
@@ -911,6 +977,40 @@ export function wrapApprovedExecutions(input: {
     }
   }
 
+  async function settleWhenResolved(
+    decision: ContinuationDecision,
+    result: unknown,
+  ): Promise<unknown> {
+    let output: unknown
+
+    try {
+      output = await result
+    } catch (exception) {
+      await settle(decision, true)
+
+      throw exception
+    }
+
+    await settle(decision, false)
+
+    return output
+  }
+
+  async function* settleAfterConsumption(
+    decision: ContinuationDecision,
+    output: AsyncIterable<unknown>,
+  ): AsyncGenerator<unknown> {
+    try {
+      yield* output
+    } catch (exception) {
+      await settle(decision, true)
+
+      throw exception
+    }
+
+    await settle(decision, false)
+  }
+
   return Object.fromEntries(Object.entries(input.tools).map(([name, tool]) => {
     if (!toolNames.has(name) || !hasExecute(tool)) {
       return [name, tool]
@@ -920,7 +1020,7 @@ export function wrapApprovedExecutions(input: {
 
     return [name, {
       ...tool,
-      execute: async (
+      execute: (
         toolInput: unknown,
         options?: { toolCallId?: string },
       ) => {
@@ -929,37 +1029,26 @@ export function wrapApprovedExecutions(input: {
           : undefined
 
         if (!decision) {
-          return await execute(toolInput, options)
+          return execute(toolInput, options)
         }
 
-        const heartbeat = setInterval(async () => {
-          try {
-            await touchClaim(db, decision.approvalId, owner.userId)
-          } catch (exception) {
-            logger.set({
-              attributes: {
-                toolApproval: {
-                  heartbeat: 'failed',
-                  error: exceptionMessage(exception),
-                },
-              },
-            })
-          }
-        }, TOOL_APPROVAL_CLAIM_HEARTBEAT_MS)
+        approvedByCallId.delete(decision.toolCallId)
+
+        let result: unknown
 
         try {
-          const output = await execute(toolInput, options)
-
-          await record(decision, false, output)
-
-          return output
+          result = execute(toolInput, options)
         } catch (exception) {
-          await record(decision, true, exceptionMessage(exception))
-
-          throw exception
-        } finally {
-          clearInterval(heartbeat)
+          return settle(decision, true).then(() => {
+            throw exception
+          })
         }
+
+        if (isAsyncIterable(result)) {
+          return settleAfterConsumption(decision, result)
+        }
+
+        return settleWhenResolved(decision, result)
       },
     } as ToolSet[string]]
   }))
