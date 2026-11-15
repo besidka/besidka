@@ -31,9 +31,9 @@ function parseWranglerConfig(): WranglerConfig {
 describe('wrangler.jsonc legal notice sweep vars', () => {
   const config = parseWranglerConfig()
 
-  it('sends real mail only from the production Worker', () => {
+  it('keeps legal notice emails off everywhere until the owner turns them on', () => {
     expect(config.env.production.vars.NUXT_LEGAL_NOTICE_SWEEP_ENABLED)
-      .toBe(true)
+      .toBe(false)
     expect(config.vars.NUXT_LEGAL_NOTICE_SWEEP_ENABLED).toBe(false)
     expect(config.env.production.previews.vars.NUXT_LEGAL_NOTICE_SWEEP_ENABLED)
       .toBe(false)
