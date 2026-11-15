@@ -1315,6 +1315,11 @@ function readHeldErrorText(
  * `forcedStepToolCall` and `forcedStepRejectedToolCall`. Tool-input chunks on
  * the forced step are buffered per call until the call resolves, and tool
  * errors on earlier steps always pass through.
+ *
+ * A send that ends on a call waiting for the user's approval (a
+ * `tool-approval-request` the SDK did not answer itself) is paused, not
+ * unanswered: no continuation runs, because the answer comes after the
+ * approval.
  */
 export function withSearchAnswerGuarantee(input: {
   stream: ReadableStream<UIMessageChunk>
@@ -1359,6 +1364,7 @@ export function withSearchAnswerGuarantee(input: {
   let successfulFollowUpToolOutputCount = 0
   let isAborted = false
   let hadUnrecoverableError = false
+  let isAwaitingApproval = false
 
   function recordToolOutput(chunk: UIMessageChunk) {
     if (
@@ -1767,6 +1773,10 @@ export function withSearchAnswerGuarantee(input: {
         isAborted = true
       }
 
+      if (chunk.type === 'tool-approval-request' && !chunk.isAutomatic) {
+        isAwaitingApproval = true
+      }
+
       if (chunk.type === 'finish-step') {
         releasePendingToolInput(controller)
         outcome.stepsCount += 1
@@ -1793,6 +1803,7 @@ export function withSearchAnswerGuarantee(input: {
         && !hasAnswerAfterFollowUp
         && !isAborted
         && !hadUnrecoverableError
+        && !isAwaitingApproval
 
       if (shouldContinue) {
         for (const closer of mainOpenPartClosers.values()) {

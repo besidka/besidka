@@ -1124,7 +1124,7 @@ describe('Chat/Reasoning', () => {
     expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
   })
 
-  it('renders the plain done title and green dot for approval-requested, not spinning nor failed', async () => {
+  it('renders a waiting-for-approval title and green dot for approval-requested, not spinning nor failed', async () => {
     const wrapper = await mountSuspended(Reasoning, {
       props: {
         message: createMessage([
@@ -1141,7 +1141,7 @@ describe('Chat/Reasoning', () => {
 
     const title = wrapper.get('[data-testid="reasoning-step-title"]')
 
-    expect(title.text()).toBe('Searched the web')
+    expect(title.text()).toBe('Waiting for approval: web_search_preview')
     expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(1)
     expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(0)
   })

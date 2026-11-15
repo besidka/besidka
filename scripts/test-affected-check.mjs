@@ -1573,6 +1573,30 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-history.spec.ts',
   ]
 
+  const toolApprovalRequestTests = [
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/utils/tool-approval-parts.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/chats-connector-send.spec.ts',
+    'tests/integration/api/chats-memory.spec.ts',
+    'tests/integration/api/chats-project-knowledge.spec.ts',
+    'tests/integration/api/chats-artifacts.spec.ts',
+    'tests/integration/api/chats-documents.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+    'tests/unit/server/utils/tool-approval/kv.spec.ts',
+    'tests/unit/server/utils/tool-approval/cleanup.spec.ts',
+    'tests/unit/server/utils/artifacts/message-parts.spec.ts',
+    'tests/unit/server/utils/documents/message-parts.spec.ts',
+    'tests/unit/server/utils/chats/persist-user-message.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/ai/search-answer-continuation.spec.ts',
+    'tests/unit/utils/connectors-parts.spec.ts',
+    'tests/unit/utils/connector-step.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+  ]
+
   const toolApprovalSpikeTests = [
     'tests/integration/api/tool-approval-spike.spec.ts',
   ]
@@ -3143,6 +3167,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/mcp\/tools\/.*\.ts|package\.json)$/,
       tests: toolApprovalSpikeTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts)\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/connectors\/(send-tools|audit)\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/(artifacts|documents)\/message-parts\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/Reasoning\.vue|app\/utils\/connector-step\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts)$/,
+      tests: toolApprovalRequestTests,
     },
     {
       pattern:

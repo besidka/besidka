@@ -57,7 +57,7 @@ describe('connector audit', () => {
         durationMs: 1,
       },
       logger,
-    )).resolves.toBeUndefined()
+    )).resolves.toBeNull()
     expect(JSON.stringify(logger.set.mock.calls)).not.toContain('secret detail')
     expect(logger.set).toHaveBeenCalledWith({
       attributes: { connectors: { id: 'c1', auditWrite: 'failed' } },

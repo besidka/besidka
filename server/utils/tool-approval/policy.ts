@@ -21,9 +21,10 @@ import type { ApprovalState } from '~~/server/utils/tool-approval/state'
 
 /**
  * What the policy needs to know about one tool call. `toolName` is the name
- * the tool is registered under in its own family: the remote tool name for a
- * connector, the registry name for a Besidka tool, the SDK tool name for a
- * native tool. The same name goes into the pending record and the grants.
+ * the model sees and the SDK signs: `mcp__<slug>__<tool>` for a connector,
+ * the exposed name for a Besidka tool, the SDK tool name for a native tool.
+ * The same name goes into the pending record and the grants; the remote
+ * connector tool name stays in the audit row.
  * `destructiveHint` is required so the code that builds a descriptor has to
  * decide it; a connector tool takes it from `connectorDestructiveHint`.
  * `writesMemory` marks a native tool that writes persistent memory; the

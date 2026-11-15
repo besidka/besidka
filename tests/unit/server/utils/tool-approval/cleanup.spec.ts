@@ -73,7 +73,9 @@ async function seedKvRecords(
     input: { title: 'Plan' },
     signature: 'sig',
     reason: 'default',
+    rememberOptions: ['once'],
     summary: 'Create',
+    auditCallId: null,
     snapshot: {
       model: 'claude-haiku-4-5',
       gateway: null,

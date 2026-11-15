@@ -12,6 +12,10 @@ export function getConnectorStepTitle(
     return `Using ${subject}`
   }
 
+  if (call.isAwaitingApproval) {
+    return `Waiting for approval: ${subject}`
+  }
+
   if (call.outcome === 'denied') {
     return `Needs approval: ${subject}`
   }

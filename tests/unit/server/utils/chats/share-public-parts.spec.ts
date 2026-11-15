@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import { stripToolPartsFromBranchedMessage } from '~~/server/utils/chats/branch'
+import {
+  isApprovalOnlyMessage,
+  stripToolPartsFromBranchedMessage,
+} from '~~/server/utils/chats/branch'
 import {
   dropEmptyUserMessages,
   filterPublicParts,
@@ -207,5 +210,65 @@ describe('connector parts in shares and branches', () => {
     expect(message!.parts).toEqual([
       { type: 'text', text: 'Here are your issues' },
     ])
+  })
+})
+
+describe('approval parts in shares and branches', () => {
+  const approvalParts = [
+    { type: 'step-start' },
+    {
+      type: 'dynamic-tool',
+      toolName: 'mcp__linear__create_issue',
+      toolCallId: 'call-1',
+      state: 'approval-requested',
+      input: { title: 'x' },
+      approval: { id: 'approval-0001' },
+    },
+    {
+      type: 'data-tool-approval',
+      id: 'call-1',
+      data: {
+        approvalId: 'approval-0001',
+        toolCallId: 'call-1',
+        toolName: 'mcp__linear__create_issue',
+        reason: 'always-ask',
+        summary: 'Linear wants to run create_issue',
+        rememberOptions: ['once'],
+      },
+    },
+  ] as UIMessage['parts']
+
+  it('leaves an approval-only message out of a public share', () => {
+    const messages = filterPublicParts([
+      { role: 'user', parts: [{ type: 'text', text: 'Do it' }] },
+      { role: 'assistant', parts: approvalParts },
+    ] as Array<{ role: string, parts: UIMessage['parts'] }>)
+
+    expect(messages).toEqual([
+      { role: 'user', parts: [{ type: 'text', text: 'Do it' }] },
+    ])
+  })
+
+  it('keeps the text of a message that also waited for an approval', () => {
+    const [message] = filterPublicParts([{
+      parts: [...approvalParts, { type: 'text', text: 'Waiting on you.' }],
+    }] as Array<{ parts: UIMessage['parts'] }>)
+
+    expect(message?.parts).toEqual([
+      { type: 'step-start' },
+      { type: 'text', text: 'Waiting on you.' },
+    ])
+  })
+
+  it('strips approval parts from a branch, with no connector marker', () => {
+    expect(stripToolPartsFromBranchedMessage(approvalParts)).toEqual([
+      { type: 'step-start' },
+    ])
+    expect(isApprovalOnlyMessage(approvalParts)).toBe(true)
+    expect(isApprovalOnlyMessage([
+      ...approvalParts,
+      { type: 'text', text: 'Waiting on you.' },
+    ])).toBe(false)
+    expect(isApprovalOnlyMessage([{ type: 'step-start' }])).toBe(false)
   })
 })

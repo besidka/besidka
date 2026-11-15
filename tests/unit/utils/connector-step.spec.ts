@@ -13,6 +13,7 @@ function createCall(
     slug: 'notion',
     tool: 'search',
     isRunning: false,
+    isAwaitingApproval: false,
     outcome: 'ok',
     isFramed: true,
     input: {},
@@ -34,6 +35,10 @@ describe('getConnectorStepTitle', () => {
       .toBe('Needs approval: Notion · search')
     expect(getConnectorStepTitle(createCall({ outcome: 'limited' }), 'Notion'))
       .toBe('Skipped Notion · search: limit reached')
+    expect(getConnectorStepTitle(
+      createCall({ isAwaitingApproval: true, outcome: null }),
+      'Notion',
+    )).toBe('Waiting for approval: Notion · search')
   })
 
   it('falls back to the slug for a deleted connector', () => {

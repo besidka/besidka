@@ -227,6 +227,7 @@ import type { SearchStepData } from '~/types/search-step.d'
 import type { SkillStepModel } from '~/utils/skill-step'
 import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
 import {
   getConnectorStepTitle,
   isConnectorStepFailed,
@@ -404,12 +405,15 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     const isPreRetrievedStep = searchData?.preRetrieval === true
       && !isPending
       && !isFailed
+    const toolStepTitle = isAwaitingApprovalToolPart(part)
+      ? `Waiting for approval: ${getToolPartName(part)}`
+      : getToolStepTitle(getToolPartName(part), isPending, isFailed)
 
     steps.push({
       id: `tool-${toolCallId || partIndex}`,
       title: searchData && isPreRetrievedStep
         ? formatPastChatPreRetrievalTitle(searchData.results.length)
-        : getToolStepTitle(getToolPartName(part), isPending, isFailed),
+        : toolStepTitle,
       body: '',
       kind: 'tool',
       pending: isPending,

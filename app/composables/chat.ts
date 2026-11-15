@@ -41,6 +41,7 @@ import {
   DOCUMENT_DATA_PART_TYPE,
   isDocumentToolPartType,
 } from '#shared/utils/documents'
+import { isToolApprovalPart } from '#shared/utils/tool-approval-parts'
 import { isArtifactToolPartType } from '~/utils/artifact-parts'
 import {
   isPersistedEmptyAnswerFailureText,
@@ -276,6 +277,7 @@ function hasMeaningfulPersistedAssistantParts(
 
     return part.type === 'file'
       || part.type === 'source-url'
+      || isToolApprovalPart(part)
       || part.type === ARTIFACT_DATA_PART_TYPE
       || part.type === DOCUMENT_DATA_PART_TYPE
       || (

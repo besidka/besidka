@@ -1030,7 +1030,7 @@ describe('project knowledge send-path wiring', () => {
     expect(readTurnText(prompt[2])).toBe(USER_TEXT)
   })
 
-  it('trips the memory_write lock after a knowledge tool result', async () => {
+  it('asks before memory_write after a knowledge tool result', async () => {
     mocks.isMemoryToolsEnabled = true
 
     const { assistantInsert } = await runSend({
@@ -1051,8 +1051,8 @@ describe('project knowledge send-path wiring', () => {
       return part.toolCallId === 'call-2'
     })
 
-    expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
-    expect(memoryWritePart?.state).toBe('output-error')
+    expect(mocks.memoryWriteSawUntrustedResult).toEqual([])
+    expect(memoryWritePart?.state).toBe('approval-requested')
   })
 
   it('measures history from the previous answer of the same token family',
@@ -1267,7 +1267,7 @@ describe('project knowledge send-path wiring', () => {
       })
     }
 
-    it('refuses memory_write on a full-mode send with documents', async () => {
+    it('asks before memory_write on a full-mode send with documents', async () => {
       mocks.isMemoryToolsEnabled = true
 
       const { assistantInsert, doStream } = await runSend({
@@ -1277,12 +1277,12 @@ describe('project knowledge send-path wiring', () => {
 
       expect(systemPrompt).toContain('<project_knowledge>')
       expect(systemPrompt).toContain('Saving to memory is unavailable')
-      expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([])
       expect(findMemoryWritePart(assistantInsert)?.state)
-        .toBe('output-error')
+        .toBe('approval-requested')
     })
 
-    it('refuses memory_write on a full-mode send with media only', async () => {
+    it('asks before memory_write on a full-mode send with media only', async () => {
       mocks.isMemoryToolsEnabled = true
       stubChatProvider({ inputModalities: ['text', 'image'] })
 
@@ -1306,9 +1306,9 @@ describe('project knowledge send-path wiring', () => {
       const prompt = (doStream.mock.calls[0]?.[0] as any).prompt
 
       expect(JSON.stringify(prompt)).toContain(KNOWLEDGE_MEDIA_TURN_TEXT)
-      expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([])
       expect(findMemoryWritePart(assistantInsert)?.state)
-        .toBe('output-error')
+        .toBe('approval-requested')
     })
 
     it('still allows memory_write on a search-mode send with only the file '

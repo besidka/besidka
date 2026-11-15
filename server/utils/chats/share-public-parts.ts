@@ -3,6 +3,10 @@ import { isToolUIPart } from 'ai'
 import { ARTIFACT_ATTACHMENT_PART_TYPE } from '#shared/utils/artifacts'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
 import {
+  TOOL_APPROVAL_DATA_PART_TYPE,
+  isToolApprovalPart,
+} from '#shared/utils/tool-approval-parts'
+import {
   SKILL_ACTIVATION_PART_TYPE,
   SKILL_INVOCATION_PART_TYPE,
 } from '#shared/utils/skills/runtime'
@@ -20,30 +24,44 @@ export function dropEmptyUserMessages<
   })
 }
 
+function isPublicPart(part: UIMessage['parts'][number]): boolean {
+  return !isToolUIPart(part)
+    && part.type !== ARTIFACT_ATTACHMENT_PART_TYPE
+    && part.type !== SKILL_INVOCATION_PART_TYPE
+    && part.type !== SKILL_ACTIVATION_PART_TYPE
+    && part.type !== CONNECTORS_NOTICE_PART_TYPE
+    && part.type !== TOOL_APPROVAL_DATA_PART_TYPE
+}
+
 /**
  * The message parts a public share exposes: everything except tool parts,
  * artifact attachments (an artifact the owner attached from the library
  * is no part of what the chat shows, so sharing the chat never reveals it)
  * the skill invocation and activation parts (a skill is the owner's
- * private text, so its name never reaches a shared chat) and the connector
- * notice (it names the owner's connectors). Connector call parts are
- * `dynamic-tool` parts, which `isToolUIPart` covers.
+ * private text, so its name never reaches a shared chat), the connector
+ * notice (it names the owner's connectors) and the `data-tool-approval`
+ * part of a call that waits for approval. Connector call parts are
+ * `dynamic-tool` parts, which `isToolUIPart` covers. A message that held
+ * only a pending approval has nothing left to show and is left out.
  * The shared view and the share personal-data check both read through this,
  * so the check sees exactly what a visitor would.
  */
 export function filterPublicParts<
   TMessage extends { parts: UIMessage['parts'] },
 >(messages: TMessage[]): TMessage[] {
-  return messages.map((message) => {
-    return {
-      ...message,
-      parts: message.parts.filter((part) => {
-        return !isToolUIPart(part)
-          && part.type !== ARTIFACT_ATTACHMENT_PART_TYPE
-          && part.type !== SKILL_INVOCATION_PART_TYPE
-          && part.type !== SKILL_ACTIVATION_PART_TYPE
-          && part.type !== CONNECTORS_NOTICE_PART_TYPE
-      }),
-    }
-  })
+  return messages
+    .map((message) => {
+      return {
+        message: {
+          ...message,
+          parts: message.parts.filter(isPublicPart),
+        },
+        hadApprovalPart: message.parts.some(isToolApprovalPart),
+      }
+    })
+    .filter(({ message, hadApprovalPart }) => {
+      return !hadApprovalPart
+        || message.parts.some(part => part.type !== 'step-start')
+    })
+    .map(({ message }) => message)
 }

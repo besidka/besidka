@@ -43,6 +43,24 @@ describe('isDocumentToolName', () => {
 })
 
 describe('rewriteDocumentToolParts', () => {
+  it('keeps a call that waits for approval with format, title and '
+    + 'approval id only', () => {
+    const parts = rewriteDocumentToolParts([
+      toolPart('approval-requested', {
+        approval: { id: 'approval-0001', signature: 'signed' },
+      }),
+    ] as Parts)
+
+    expect(parts).toEqual([{
+      type: 'tool-create_document',
+      toolCallId: 'call-1',
+      state: 'approval-requested',
+      input: { format: 'docx', title: 'Quarterly report' },
+      approval: { id: 'approval-0001' },
+    }])
+    expect(JSON.stringify(parts)).not.toContain(SECRET_MARKER)
+  })
+
   it('turns a finished call into a data-document reference', () => {
     const parts = rewriteDocumentToolParts([
       { type: 'text', text: 'Here it is.' },
@@ -151,11 +169,7 @@ describe('rewriteDocumentToolParts', () => {
   })
 
   it('drops an unfinished call from an interrupted stream', () => {
-    for (const state of [
-      'input-streaming',
-      'input-available',
-      'approval-requested',
-    ]) {
+    for (const state of ['input-streaming', 'input-available']) {
       expect(rewriteDocumentToolParts([
         { type: 'text', text: 'Working on it.' },
         toolPart(state),

@@ -8,6 +8,10 @@ import {
   CONNECTORS_NOTICE_PART_TYPE,
   isConnectorUsagePart,
 } from '#shared/utils/connectors-parts'
+import {
+  TOOL_APPROVAL_DATA_PART_TYPE,
+  isToolApprovalPart,
+} from '#shared/utils/tool-approval-parts'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
@@ -33,22 +37,34 @@ export async function insertBranchedMessages(
   userId: number,
   logger?: SearchIndexLogger,
 ): Promise<void> {
-  for (let offset = 0; offset < messages.length; offset += MESSAGE_BATCH_SIZE) {
-    const chunk = messages.slice(offset, offset + MESSAGE_BATCH_SIZE)
+  const keptMessages = messages
+    .filter(message => !isApprovalOnlyMessage(message.parts))
+    .map((message) => {
+      return {
+        ...message,
+        parts: stripToolPartsFromBranchedMessage(message.parts),
+      }
+    })
+
+  for (
+    let offset = 0;
+    offset < keptMessages.length;
+    offset += MESSAGE_BATCH_SIZE
+  ) {
+    const chunk = keptMessages.slice(offset, offset + MESSAGE_BATCH_SIZE)
     const inserts = chunk.map((message) => {
       return db
         .insert(schema.messages)
         .values({
           chatId,
           ...message,
-          parts: stripToolPartsFromBranchedMessage(message.parts),
         })
     }) as unknown as [BatchItem<'sqlite'>]
 
     await db.batch(inserts)
   }
 
-  if (!messages.length) {
+  if (!keptMessages.length) {
     return
   }
 
@@ -99,7 +115,23 @@ function isNonToolMessagePart(
   return typeof type === 'string'
     && type !== 'dynamic-tool'
     && type !== CONNECTORS_NOTICE_PART_TYPE
+    && type !== TOOL_APPROVAL_DATA_PART_TYPE
     && !type.startsWith('tool-')
+}
+
+/**
+ * A message that held a call waiting for approval and nothing a branch
+ * keeps once the tool parts are stripped. A branch never inherits a pending
+ * approval, so such a message is left out instead of copied empty.
+ */
+export function isApprovalOnlyMessage(parts: unknown): boolean {
+  if (!Array.isArray(parts) || !parts.some(isToolApprovalPart)) {
+    return false
+  }
+
+  return stripToolPartsFromBranchedMessage(parts).every((part) => {
+    return part.type === 'step-start'
+  })
 }
 
 /**

@@ -73,7 +73,9 @@ function pendingRecord(
     input: { title: 'Plan', nested: { items: [1, 2] } },
     signature: 'sig-value',
     reason: 'default',
+    rememberOptions: ['once', 'chat', 'always'],
     summary: 'Create the page "Plan"',
+    auditCallId: 7,
     snapshot: {
       model: 'claude-haiku-4-5',
       gateway: null,
