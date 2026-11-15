@@ -1678,8 +1678,8 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const toolPermissionsUiTests = [
-    'tests/unit/components/Ui/ToolPermissions.spec.ts',
-    'tests/unit/components/Ui/ToolPermissions/ModeControl.spec.ts',
+    'tests/unit/components/ui/ToolPermissions.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
     'tests/unit/utils/tool-permissions.spec.ts',
     'tests/unit/utils/besidka-tool-permissions.spec.ts',
     'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
@@ -3475,7 +3475,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Ui\/ToolPermissions(\.vue|\/.*\.vue)|app\/utils\/(tool-permissions|besidka-tool-permissions)\.ts|app\/components\/Profile\/(BesidkaTools|Connectors)\/.*\.vue|shared\/utils\/besidka-tool-permissions\.ts)$/,
+        /^(app\/components\/ui\/ToolPermissions(\.vue|\/.*\.vue)|app\/utils\/(tool-permissions|besidka-tool-permissions)\.ts|app\/components\/Profile\/(BesidkaTools|Connectors)\/.*\.vue|shared\/utils\/besidka-tool-permissions\.ts)$/,
       tests: toolPermissionsUiTests,
     },
     {

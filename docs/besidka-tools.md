@@ -28,7 +28,7 @@ permission and cannot be set.
 | --- | --- | --- |
 | `read` | Read-only | 11 |
 | `write` | Write | 8 |
-| `ask-every-time` | Ask every time | 13 |
+| `ask-every-time` | Always asks | 13 |
 
 A permission is one of three modes (`TOOL_PERMISSION_MODES`):
 
@@ -114,13 +114,20 @@ replay reads it as missing.
   so no profile tab (CLAUDE.md, "Profile pages navigation").
 - **Panel**: `app/components/Profile/BesidkaTools/Permissions.vue` in the
   shared `UiSidePanel` (`docs/ui/side-panel.md`; a bottom sheet below `md`).
-  Three groups: Read-only, Write, Ask every time. Each group has a select
-  (Blocked, Needs approval, Always allow; Custom appears, disabled, when the
-  tools of a group differ; no Always allow for Ask every time) and each tool
-  its own select with a plain-language title. Every change saves at once with
-  an optimistic update (`app/composables/besidka-tool-permissions.ts`); the
-  server's list replaces the local one, and a failure drops the optimistic
-  value and shows a toast from `parseError`.
+  It renders the shared `ui/ToolPermissions.vue`, the same component as the
+  connector detail panel (`docs/connectors.md` section 7.11): three
+  collapsible groups, Read-only, Write and a locked Always asks (collapsed by
+  default above 6 tools, a count badge), each with a select (Blocked, Needs
+  approval, Always allow; Custom appears, disabled, when the tools of a
+  group differ; no Always allow for Always asks), and per tool a radio
+  group of three icon buttons (check Always allow, hand Needs approval,
+  circle-slash Blocked) with tooltips on hover and keyboard focus. Always
+  allow stays focusable but `aria-disabled` on the Always asks tools, and
+  its tooltip says why. A group choice saves with `{ tier, mode }`, a tool
+  with `{ tool, mode }`. Every change saves at once with an optimistic update
+  (`app/composables/besidka-tool-permissions.ts`); the server's list
+  replaces the local one, and a failure drops the optimistic value and
+  shows a toast from `parseError`.
 - **Search popup**: with the flag on, Settings gets a "Besidka tool
   permissions" row after Labs. It opens `/profile/labs?panel=besidka-tool-permissions`,
   and Labs opens the panel, then clears the query.
@@ -192,20 +199,28 @@ read tier is `read`, write tier is `write`, and the ask-every-time tier keeps
 its `delete` or `instructions` access (`write` otherwise) and is marked
 destructive. The entry carries the user's mode, so:
 
+Owner decision, 2026-11-15 (`docs/connectors.md` section 7.11). A call is
+judged against the taint the send held when its model step began, so calls
+of one step never see each other's results:
+
 | Mode | Untainted send | After earlier Besidka results only | After web, knowledge, file, skill, connector or shared-branch content |
 | --- | --- | --- | --- |
 | Blocked | not offered; denied if called or replayed | same | same |
-| Needs approval | asks `default` (Allow once, in this chat, always, Deny) | read: asks `default`; write: asks `untrusted-output` (Allow once, Deny) | asks `untrusted-output` |
-| Always allow | runs, marked "Ran without asking (Always allowed)" | read: runs; write: asks `untrusted-output` | asks `untrusted-output` |
+| Needs approval | asks `default` (Allow once, in this chat, always, Deny) | read and write: asks `default` | read: asks `default`; write: asks `untrusted-output` (Allow once, Deny) |
+| Always allow | runs, marked "Ran without asking (Always allowed)" | read and write: run | read: runs; write: asks `untrusted-output` |
+
+The reason line of a Needs approval request says "Asks before each use.
+Change it in Tool permissions in Labs."
 
 The ask-every-time tier always asks `always-ask` with Allow once and Deny
 only, whatever the mode. Every Besidka result taints the send with `besidka`
-and records the `besidka` read source. A Besidka read does not count that
-taint (`isTaintedForBesidka` in `server/utils/tool-approval/policy.ts`, rule
-4): the user's own data feeding another read of it carries nothing out, so
-an Always allow or "in this chat" read keeps running. A Besidka write, and
-every Besidka call after any other taint kind, asks. A later connector call
-asks `cross-source`, and the provider's web
+and records the `besidka` read source. A Besidka read set to Always allow
+(or granted in this chat) runs after any taint: a read cannot carry data
+out by itself, and every write after outside content still asks. A Besidka
+write does not count `besidka` taint as outside content
+(`hasForeignTaint` in `server/utils/tool-approval/policy.ts`), but asks after
+any other taint kind or a connector read. A later connector write asks
+`cross-source`, and the provider's web
 search, grounding and URL context are withheld from later steps (the L5
 egress guard; it is not applied on Anthropic routes, as for connectors). The
 web searches Besidka runs itself (Brave, Exa, any function tool the send
@@ -213,9 +228,13 @@ classifies as a web read) are withheld the same way, and their `execute`
 refuses with "Web search is off for the rest of this message because it read
 the user's private data." on every route, Anthropic included, once a tool
 call of the turn read a connector or Besidka data. A send whose chat already
-holds a Besidka result (`hasBesidkaToolResult`) starts with `besidka` taint,
-so Besidka writes and the ask-every-time tier ask while reads keep their
-relaxed rule. Memory extraction skips an assistant turn that used a
+holds a Besidka result (`hasBesidkaToolResult`) starts with `besidka` taint;
+that taint alone no longer makes a Besidka read or write ask, and the
+ask-every-time tier asks anyway. Preset taint is the usual reason a fresh
+message asked before an Always allow read before 2026-11-15: the skills
+catalog with an imported skill (`skill`), past-chat excerpts or project
+knowledge (`knowledge`), a requested web search (`web`) or an attachment
+(`file`). Memory extraction skips an assistant turn that used a
 `besidka__` tool, like a connector turn. A
 Besidka call past 12 per user turn is denied `over-cap`, on the first request
 and on replay. A `besidka__` tool name with no entry is Blocked, never a

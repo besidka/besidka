@@ -906,6 +906,12 @@ Choices that differ from or add to section 6, 10 and 14:
 
 ### 7.1 Decision order
 
+> **Superseded in part by section 7.11 (owner decision, 2026-11-15).** F1
+> no longer applies to reads, a write's own source no longer counts as
+> untrusted, Always allow can be set on the Connectors page, and every
+> call of one model step is judged against the state at the start of that
+> step. Read section 7.11 for the rules as built.
+
 For every call, `toolApproval` (AI SDK, on `streamText`) returns
 `'not-applicable'` or `'user-approval'` with a reason, in this order:
 
@@ -1673,6 +1679,141 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   of the host, or the registry `icons` once the registry is synced.
 - **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
   with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
+
+### 7.11 As built: Always allow and grouped permissions (C-6, 2026-11-15)
+
+Owner feedback on the #923 preview: a Notion search asked "Because this
+message read content from outside Besidka" next to another Notion read, and
+Besidka reads set to Always allow asked in the first step of a fresh
+message. The owner asked for Claude-like tool permissions. Where this
+changes sections 7.1 to 7.9:
+
+- **What fired (Notion).** `notion-list-private-pages` and `notion-search`
+  came in one model step. The first ran on the send's own read-only grant
+  (rule 6) and recorded `connector` taint when it was decided (section 7.6,
+  "Taint is recorded at decision time"). The second then found the grant
+  unusable (tainted send, no `openWorldHint: false`) and got the synthetic
+  `untrusted-output` decision. Its reason line had nothing to do with the
+  tool's `ask` setting.
+- **One step, one state.** Every call of one model step is now judged
+  against the taint and read sources the send held when the step began
+  (`decisionStateFor` in `server/utils/tool-approval/send.ts`). The SDK
+  hands every call of a step the same `messages` array, decides all of them
+  before any runs, and runs the step's calls only at `model-call-end`, so
+  no call can hold a sibling's result. A provider-run call (web search,
+  grounding, URL context) still counts within its step, because the
+  provider ran it while the model was writing. The live state still
+  records each call when it is decided, so the turn record, the egress
+  guard and the next step see everything. A call without `messages` (unit
+  tests) is judged against the live state.
+- **Modes for connector tools, no migration.** A reviewed tool has one of
+  three modes, read from `connector_tool_settings`: **Blocked** is
+  `enabled = 0` (the tool is not offered), **Always allow** is
+  `approval = 'always'` with `approved_definition_hash` equal to the
+  reviewed `definition_hash`, and **Needs approval** is everything else
+  (the default `ask`). A changed definition is hidden until it is reviewed,
+  and the review stores the new hash with `approval = 'ask'`, so drift
+  always lands on Needs approval and needs a new Always allow.
+- **Reads (owner decision, 2026-11-15).** A read is a Besidka read tool or a
+  connector tool the server marks `readOnlyHint: true`, not
+  `destructiveHint: true`, and whose remote name and title name no delete
+  or share action (`hasAlwaysAskToolName`). A read set to Always allow
+  (or granted in this chat) runs without asking **after any taint kind and
+  any other source**, F2 included. A read set to Needs approval asks before
+  each use with reason `default` and every answer (Allow once, Allow in
+  this chat, Always allow, Deny), never the reduced `untrusted-output` set.
+  The reason line says "Asks before each use. Change it in the connector's
+  tool settings." (Besidka: "... in Tool permissions in Labs."). The send's
+  own read-only grant of section 7.6 (C-5 stopgap, `alwaysGrant`,
+  `alwaysGrantWhenTainted`) is gone: a read-only connector tool runs without
+  asking only once the user sets it to Always allow. Every existing
+  connector read therefore asks until the user sets its group to Always
+  allow. Why reads may run after anything: a read cannot carry data out by
+  itself, and every write after outside content still asks.
+  **Residual:** a connector read still sends its arguments to its server,
+  so an Always allow read after another source could put that content in a
+  query. The owner accepted this for reads; open-world fetch-like tools are
+  the case to watch.
+- **Writes, the F1 invariant as it now stands (owner decision,
+  2026-11-15).** A connector or Besidka write asks `untrusted-output`
+  (Allow once, Deny) when the send holds content from **outside the tool's
+  own source**: any taint kind other than the tool's own (`connector` for a
+  connector tool, `besidka` for a Besidka tool), or the tool's own kind
+  while the send also read another source. `connector` taint carries no
+  connector id, so it counts as the tool's own only while the send's read
+  sources are exactly that connector (`hasForeignTaint` in
+  `server/utils/tool-approval/policy.ts`); another connector, Besidka data,
+  the `overflow` marker or an unknown connector id make it foreign. F2
+  (`cross-source`) still asks for a connector write after another source.
+  With only its own source's content, a write set to Always allow (or
+  granted in this chat) runs, and a write set to Needs approval asks
+  `default` with every answer. This reverses item 6 of the 7.9 audit
+  follow-up ("no exemption for a call to the connector that produced the
+  untrusted content") for writes the user chose to allow.
+- **Always-ask tier.** A tool the server marks `destructiveHint: true`, or
+  whose remote name or title names delete, remove, revoke, destroy, drop,
+  purge, invite, share, transfer or publish, and the Besidka ask-every-time
+  tier always ask Allow once or Deny. Server labels are untrusted: the
+  name heuristic and the destructive mark win over `readOnlyHint`, also in
+  a group "Always allow". The page shows Always allow disabled with the
+  tooltip "this tool deletes or shares data, so it always asks"; the route
+  answers 400 `CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED`; a stored `always` on
+  such a tool is ignored by the policy; `applyRememberGrants` never writes
+  a grant for it, even when a forged answer slipped past the clamp.
+- **Policy order.** Native tools keep rules 1, 2 and 8. For connector and
+  Besidka calls: Blocked denies (rule 0); a read outside the always-ask
+  tier runs on Always allow (6) or a chat grant (7), else asks `default`
+  (9); a write or always-ask tool asks `untrusted-output` on foreign taint
+  (2), `cross-source` on another source for a connector (3), `always-ask`
+  for the tier (5), runs on Always allow (6) or a chat grant (7), else asks
+  `default` (9). Rule 4 is gone.
+- **Setting a mode.** `POST /api/v1/connectors/[id]/tools/settings` takes
+  `{ tools: [{ name, mode }] }` (`blocked`, `ask`, `allow`; at most 40 per
+  request, the page sends larger groups in batches). The legacy `enabled`
+  and `approval: 'ask'` fields still work, but not together with `mode`.
+  For `allow` the route loads the live tool list (the KV cache the send
+  uses), refuses the whole request when a tool is unknown, unreviewed,
+  changed since the review or in the always-ask tier, and binds
+  `approved_definition_hash` to the reviewed hash (the update also matches
+  `definition_hash`, so a concurrent review cannot be skipped). The
+  listing (`tools/list`) now reports `mode` and `canAlwaysAllow` per tool.
+  MCP keeps its restriction: `update_connector_tools` takes only
+  `enabled: false` and `approval: 'ask'` and can never set Always allow.
+- **In the chat.** The approval step already offers Always allow whenever
+  the request's `rememberOptions` hold `always`, which is now every
+  `default` request, reads included. Choosing it writes `approval =
+  'always'` bound to the current definition hash, only when that hash still
+  equals the reviewed one. Grants never lift `untrusted-output`,
+  `cross-source` or `always-ask` for a write.
+- **The UI.** `ui/ToolPermissions.vue` (with
+  `ui/ToolPermissions/ModeControl.vue` and `app/utils/tool-permissions.ts`)
+  is one presentational component for both places: groups in, `setTools`
+  and `setGroup` out. Each group has a toggle (chevron, label, count badge,
+  a lock on the locked group; collapsed by default above 6 tools,
+  `aria-expanded` and `aria-controls`), a description and a select
+  (Blocked, Needs approval, Always allow; Custom, disabled, when the tools
+  differ; only the modes some tool of the group takes). A group choice
+  applies to every tool that takes the mode and does not already have it.
+  Each tool row has a radio group of three icon buttons (check Always
+  allow, hand Needs approval, circle-slash Blocked) with `aria-label`s,
+  `aria-checked`, a roving tab stop, arrow keys that move focus (Enter or
+  Space chooses), and daisyUI tooltips that show on hover and on keyboard
+  focus ("Needs approval — asks before each use"). An unavailable mode
+  stays focusable with `aria-disabled` so its tooltip says why. The
+  connector panel groups tools as Read-only, Write and Always asks and
+  keeps the description and the Read-only, Changes data and Always asks
+  badges; the Labs panel groups Besidka tools by tier (the ask-every-time
+  tier is now labeled "Always asks").
+- **Tests.** `tests/unit/server/utils/tool-approval/policy.spec.ts`
+  ("reads (owner decision, 2026-11-15)", own-source writes),
+  `send.spec.ts` ("one model step"), `continuation.spec.ts`
+  ("applyRememberGrants Always allow"),
+  `tests/unit/server/utils/connectors/tool-review.spec.ts`,
+  `tests/unit/components/ui/ToolPermissions.spec.ts`,
+  `tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts`,
+  `tests/unit/utils/tool-permissions.spec.ts`, the panel specs, and the
+  integration specs `connectors-page`, `chats-tool-approval-request`,
+  `chats-tool-approval-continuation` and `chats-besidka-tools`.
 
 ## 8. Data model
 

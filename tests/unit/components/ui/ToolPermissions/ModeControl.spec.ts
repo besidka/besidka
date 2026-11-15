@@ -1,7 +1,7 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import ModeControl from '../../../../../app/components/Ui/ToolPermissions/ModeControl.vue'
+import ModeControl from '../../../../../app/components/ui/ToolPermissions/ModeControl.vue'
 
 enableAutoUnmount(afterEach)
 

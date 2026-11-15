@@ -1,7 +1,7 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import ToolPermissions from '../../../../app/components/Ui/ToolPermissions.vue'
+import ToolPermissions from '../../../../app/components/ui/ToolPermissions.vue'
 import type { ToolPermissionGroup } from '../../../../app/utils/tool-permissions'
 
 enableAutoUnmount(afterEach)

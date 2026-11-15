@@ -16,9 +16,12 @@
         type="button"
         role="radio"
         class="btn btn-circle btn-sm"
-        :class="option.isChecked
-          ? MODE_CHECKED_CLASS[option.mode]
-          : 'btn-ghost text-base-content/60'"
+        :class="[
+          option.isChecked
+            ? MODE_CHECKED_CLASS[option.mode]
+            : 'btn-ghost text-base-content/60',
+          { 'opacity-40': !option.isAvailable },
+        ]"
         :aria-checked="option.isChecked"
         :aria-label="option.label"
         :aria-disabled="!option.isAvailable || isBusy"
