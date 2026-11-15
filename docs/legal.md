@@ -350,6 +350,17 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   deterministic personal-data warnings returned to the client). The Privacy
   Policy already names the three scopes (A-9), so no legal text, hash or
   notice changes here.
+- **Two connector scopes, no consent version bump (2026-11-15, C-9).**
+  `connectors:read` and `connectors:write` (MCP 4.0.0, 16 resource scopes)
+  are new scope names, so no existing approval reaches the connector tools;
+  `connectors:write` is unticked by default. The tools can add a connector
+  switched off, turn tools off or back to ask, and delete connectors, never
+  switch one on, sign in, take a key or allow a tool without asking. The
+  Privacy Policy lists both permissions under "What a connected app can
+  reach"; the revision hash in `legal-document-revisions.ts` moved with an
+  extended note and the classification and notice id stayed as they were.
+  Whether the pending notice should mention connectors is the owner's
+  decision, together with the C-10 wording on connectors as recipients.
 - **Gate integration for connected clients (required, built).** The MCP
   server must treat a user whose gate status is not `current` like the in-app
   routes do: read nothing and change nothing for a connected client until the

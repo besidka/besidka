@@ -144,6 +144,102 @@ describe('Profile/Skills/Review', () => {
       .not.toMatch(/\bis safe\b|\bsafe to\b|\bverified\b/i)
   })
 
+  it('groups the highlights by severity in three named groups', async () => {
+    const base = createImportPreview()
+    const finding = {
+      path: 'SKILL.md',
+      line: 4,
+      snippet: 'x',
+      detail: null,
+      source: 'rules' as const,
+    }
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          findings: [
+            {
+              ...finding,
+              type: 'url',
+              rule: 'url',
+              severity: 'low',
+              line: 1,
+            },
+            {
+              ...finding,
+              type: 'injection',
+              rule: 'injection-ignore-previous',
+              severity: 'high',
+              line: 2,
+            },
+            {
+              ...finding,
+              type: 'secret',
+              rule: 'secret-ssh-path',
+              severity: 'medium',
+              line: 3,
+            },
+          ],
+          files: base.files,
+        }),
+      },
+    })
+    const summaries = wrapper.findAll('summary').map((summary) => {
+      return summary.text()
+    }).filter((text) => {
+      return /\(\d+\)$/.test(text)
+    })
+
+    expect(summaries).toEqual([
+      'Look closely (1)',
+      'Worth a look (1)',
+      'For your information (1)',
+    ])
+    expect(wrapper.get(testId('skill-review-findings-high')).attributes('open'))
+      .toBeDefined()
+    expect(wrapper.get(testId('skill-review-findings-low')).attributes('open'))
+      .toBeUndefined()
+    expect(wrapper.get(testId('skill-review-findings-high')).text())
+      .toContain('SKILL.md:2')
+  })
+
+  it('marks a quoted mention as probably an example', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          findings: [{
+            type: 'injection',
+            rule: 'injection-disregard-previous',
+            severity: 'low',
+            path: 'SKILL.md',
+            line: 4,
+            snippet: '"disregard the previous instruction"',
+            detail: 'quoted, probably an example',
+            source: 'rules',
+          }],
+        }),
+      },
+    })
+
+    expect(wrapper.get(testId('skill-review-finding-quoted')).text())
+      .toBe('(quoted, probably an example)')
+  })
+
+  it('never calls a skill clean, verified, trusted or harmless', async () => {
+    const withFindings = await mountSuspended(Review, {
+      props: { preview: createImportPreview() },
+    })
+    const withoutFindings = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({ findings: [], findingCounts: {} }),
+      },
+    })
+
+    for (const wrapper of [withFindings, withoutFindings]) {
+      expect(wrapper.text().replace('cannot tell whether a skill is safe', ''))
+        .not.toMatch(/\b(?:safe|clean|verified|trusted|harmless)\b/i)
+    }
+  })
+
   it('says nothing was highlighted when there are no findings', async () => {
     const wrapper = await mountSuspended(Review, {
       props: {
@@ -305,6 +401,9 @@ describe('Profile/Skills/Review', () => {
         preview: createImportPreview({
           findings: [{
             type: 'url',
+            rule: 'url',
+            severity: 'low',
+            source: 'rules',
             path: 'scripts/run.sh',
             line: 3,
             snippet: 'https://x.test',
@@ -338,8 +437,8 @@ describe('Profile/Skills/Review', () => {
       props: {
         preview: createImportPreview({
           findings: [
-            { type: 'url', path: 'scripts/run.sh', line: 2, snippet: 'b', detail: null },
-            { type: 'url', path: 'scripts/run.sh', line: 4, snippet: 'd', detail: null },
+            { type: 'url', rule: 'url', severity: 'low', source: 'rules', path: 'scripts/run.sh', line: 2, snippet: 'b', detail: null },
+            { type: 'url', rule: 'url', severity: 'low', source: 'rules', path: 'scripts/run.sh', line: 4, snippet: 'd', detail: null },
           ],
           files: base.files,
         }),

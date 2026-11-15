@@ -41,7 +41,7 @@
       class="text-xs text-base-content/70"
       data-testid="skill-file-findings-note"
     >
-      Highlighted: {{ describeFindingCounts(findingCounts) }}.
+      Highlighted: {{ describeFindingSummary(findingCounts) }}.
       Besidka highlights links and commands so you can review them. It cannot
       tell whether a skill is safe.
     </p>
@@ -81,12 +81,14 @@ const text = computed<string | null>(() => {
 
 const scan = computed(() => {
   return text.value === null
-    ? { findings: [], counts: {} }
+    ? { findings: [], counts: {}, severityCounts: {} }
     : scanSkillTextWithCounts(props.path, text.value)
 })
 
 const findings = computed(() => scan.value.findings)
-const findingCounts = computed(() => scan.value.counts)
+const findingCounts = computed(() => {
+  return { ...scan.value.counts, ...scan.value.severityCounts }
+})
 
 const errorMessage = computed<string>(() => {
   return error.value

@@ -1,5 +1,10 @@
 import type { SkillChange } from '#shared/utils/skills/edit'
-import { scanSkillTextWithCounts } from '#shared/utils/skills/findings'
+import {
+  isStoredFindingCountsStale,
+  readStoredFindingCounts,
+  scanSkillTextWithCounts,
+  toStoredFindingCounts,
+} from '#shared/utils/skills/findings'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { applySkillChanges } from '~~/server/utils/skills/versions/apply'
 import type { WorkingSkillFile } from '~~/server/utils/skills/versions/apply'
@@ -44,24 +49,93 @@ function countOccurrences(shas: string[]): Map<string, number> {
   return counts
 }
 
-function addCounts(
-  target: Record<string, number>,
-  counts: Record<string, number>,
+interface FindingTotals {
+  typeCounts: Record<string, number>
+  severityCounts: Record<string, number>
+}
+
+function addScanCounts(
+  totals: FindingTotals,
+  scan: ReturnType<typeof scanSkillTextWithCounts>,
   sign: 1 | -1,
 ): void {
-  for (const [type, count] of Object.entries(counts)) {
-    target[type] = Math.max(0, (target[type] ?? 0) + sign * count)
+  for (const [type, count] of Object.entries(scan.counts)) {
+    totals.typeCounts[type] = Math.max(
+      0,
+      (totals.typeCounts[type] ?? 0) + sign * count,
+    )
+  }
+
+  for (const [severity, count] of Object.entries(scan.severityCounts)) {
+    totals.severityCounts[severity] = Math.max(
+      0,
+      (totals.severityCounts[severity] ?? 0) + sign * count,
+    )
+  }
+}
+
+async function readBlobTextOrNull(input: {
+  bucket: SkillWriteBucket
+  userId: number
+  skillId: string
+  blobSha256: string
+}): Promise<string | null> {
+  try {
+    return await readBlobText(input)
+  } catch {
+    return null
   }
 }
 
 /**
- * Finding counts of the new version without reading the whole skill: the
- * counts of the base version, plus those of the contents that appeared and
- * minus those of the contents that went away. Contents are compared as a
- * multiset of blobs, so a rename changes nothing and a file copied to a
- * second path counts twice, as a full scan would. Only the removed blobs
- * are read from R2, at most one per changed file; a blob that is already
- * missing is skipped, so a save can still repair a broken skill.
+ * Finding counts of every file of the new version from scratch. Each unique
+ * blob is read and scanned once and counted once per path that holds it; a
+ * blob that is already missing is skipped, so a save can still repair a
+ * broken skill.
+ */
+async function scanAllFindingCounts(input: {
+  bucket: SkillWriteBucket
+  userId: number
+  skillId: string
+  nextOccurrences: Map<string, number>
+  heldTexts: Map<string, string>
+}): Promise<FindingTotals> {
+  const totals: FindingTotals = { typeCounts: {}, severityCounts: {} }
+
+  for (const [sha, occurrences] of input.nextOccurrences) {
+    const text = input.heldTexts.get(sha) ?? await readBlobTextOrNull({
+      bucket: input.bucket,
+      userId: input.userId,
+      skillId: input.skillId,
+      blobSha256: sha,
+    })
+
+    if (text === null) {
+      continue
+    }
+
+    const scan = scanSkillTextWithCounts('', text)
+
+    for (let copy = 0; copy < occurrences; copy++) {
+      addScanCounts(totals, scan, 1)
+    }
+  }
+
+  return totals
+}
+
+/**
+ * Finding counts of the new version. Normally without reading the whole
+ * skill: the counts of the base version, plus those of the contents that
+ * appeared and minus those of the contents that went away. Contents are
+ * compared as a multiset of blobs, so a rename changes nothing and a file
+ * copied to a second path counts twice, as a full scan would. Only the
+ * removed blobs are read from R2, at most one per changed file; a blob that
+ * is already missing is skipped, so a save can still repair a broken skill.
+ * Counts stored by an older rule set (or none at all) are not comparable with
+ * a scan by the current rules, so those versions get a full rescan instead of
+ * a delta. `jev:` and `rulesVersion` entries are never carried over: an
+ * in-app save runs no extra check, and the version is stamped fresh.
  */
 async function computeFindingCounts(input: {
   bucket: SkillWriteBucket
@@ -78,15 +152,39 @@ async function computeFindingCounts(input: {
   const nextOccurrences = countOccurrences(input.nextFiles.map((file) => {
     return file.blobSha256
   }))
-  const counts: Record<string, number> = { ...input.baseCounts }
+  const needsFullRescan = input.baseCounts === null
+    || isStoredFindingCountsStale(input.baseCounts)
+
+  if (needsFullRescan) {
+    const rescanned = await scanAllFindingCounts({
+      bucket: input.bucket,
+      userId: input.userId,
+      skillId: input.skillId,
+      nextOccurrences,
+      heldTexts: input.heldTexts,
+    })
+
+    return toStoredFindingCounts(
+      rescanned.typeCounts,
+      rescanned.severityCounts,
+    )
+  }
+
+  const stored = readStoredFindingCounts(input.baseCounts)
+  const totals: FindingTotals = {
+    typeCounts: { ...stored.typeCounts },
+    severityCounts: { ...stored.severityCounts },
+  }
 
   for (const [sha, nextCount] of nextOccurrences) {
     const appeared = nextCount - (baseOccurrences.get(sha) ?? 0)
     const text = input.heldTexts.get(sha)
 
     if (appeared > 0 && text !== undefined) {
+      const scan = scanSkillTextWithCounts('', text)
+
       for (let copy = 0; copy < appeared; copy++) {
-        addCounts(counts, scanSkillTextWithCounts('', text).counts, 1)
+        addScanCounts(totals, scan, 1)
       }
     }
   }
@@ -98,27 +196,25 @@ async function computeFindingCounts(input: {
       continue
     }
 
-    let text: string
+    const text = await readBlobTextOrNull({
+      bucket: input.bucket,
+      userId: input.userId,
+      skillId: input.skillId,
+      blobSha256: sha,
+    })
 
-    try {
-      text = await readBlobText({
-        bucket: input.bucket,
-        userId: input.userId,
-        skillId: input.skillId,
-        blobSha256: sha,
-      })
-    } catch {
+    if (text === null) {
       continue
     }
 
+    const scan = scanSkillTextWithCounts('', text)
+
     for (let copy = 0; copy < removed; copy++) {
-      addCounts(counts, scanSkillTextWithCounts('', text).counts, -1)
+      addScanCounts(totals, scan, -1)
     }
   }
 
-  return Object.fromEntries(Object.entries(counts).filter(([, count]) => {
-    return count > 0
-  }))
+  return toStoredFindingCounts(totals.typeCounts, totals.severityCounts)
 }
 
 /**

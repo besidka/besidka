@@ -254,7 +254,7 @@ export function useSkillEditor(skillId: MaybeRefOrGetter<string>) {
 
     return snapshot.path
       ? scanSkillTextWithCounts(snapshot.path, snapshot.text)
-      : { findings: [], counts: {} }
+      : { findings: [], counts: {}, severityCounts: {} }
   })
 
   const problems = computed<SkillEditorProblem[]>(() => {

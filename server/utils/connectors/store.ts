@@ -1,12 +1,14 @@
 import {
-  and, asc, desc, eq, getTableColumns, inArray, sql,
+  and, asc, desc, eq, getTableColumns, gte, inArray, ne, sql,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   allocateConnectorSlug,
 } from '#shared/utils/connectors-slug'
+import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import {
   CONNECTOR_TITLE_MAX_LENGTH,
+  CONNECTORS_MCP_DISABLED_MAX,
   CONNECTORS_PER_USER,
 } from '#shared/utils/connectors-policy'
 import type {
@@ -218,6 +220,21 @@ function toConnectorRecord(row: ConnectorRow): ConnectorRecord {
   return { ...row, id: encodePublicId(row.id) }
 }
 
+/**
+ * Whether a public connector id decodes to a database id. A string of the
+ * right alphabet can still be a made-up id, which decodes to `NaN` and must
+ * never reach a query.
+ */
+export function isConnectorIdDecodable(connectorId: string): boolean {
+  try {
+    const decoded = decodePublicId(connectorId)
+
+    return Number.isSafeInteger(decoded) && decoded > 0
+  } catch {
+    return false
+  }
+}
+
 function connectorIdEquals(connectorId: string) {
   return eq(schema.connectors.id, decodePublicId(connectorId))
 }
@@ -260,7 +277,7 @@ async function assertConnectorOwned(
 }
 
 function normalizeTitle(title: string): string {
-  return title.trim().slice(0, CONNECTOR_TITLE_MAX_LENGTH)
+  return sanitizeConnectorText(title, CONNECTOR_TITLE_MAX_LENGTH)
 }
 
 async function encryptOptional(
@@ -296,6 +313,17 @@ async function listTakenSlugs(
   }))
 }
 
+function createConnectorMcpLimitError() {
+  return createError({
+    message: 'Too many connectors added over MCP are still switched off',
+    status: 409,
+    code: 'CONNECTOR_MCP_LIMIT_REACHED',
+    why: `At most ${CONNECTORS_MCP_DISABLED_MAX} connectors added by `
+      + 'connected apps can wait switched off',
+    fix: 'Switch one on in Besidka, or delete one you do not use',
+  })
+}
+
 /**
  * Inserts a disabled connector in `needs-auth`: defaults live here, not in
  * SQL. The origin is derived from the URL here, never taken from the caller.
@@ -303,7 +331,9 @@ async function listTakenSlugs(
  * concurrent insert takes the same one. The URL is stored encrypted, the
  * origin in the clear. The per-user cap is enforced in the same batch as the
  * insert: the row is removed again, atomically, when it would be the
- * (cap + 1)th, so two concurrent creates cannot both pass a count.
+ * (cap + 1)th, so two concurrent creates cannot both pass a count. A row
+ * added over MCP is held to the same rule for connectors that are still
+ * switched off (`CONNECTORS_MCP_DISABLED_MAX`).
  */
 export async function createConnector(
   db: DbClient,
@@ -319,7 +349,7 @@ export async function createConnector(
     )
 
     try {
-      const [inserted, overCap] = await db.batch([
+      const [inserted, overCap, overMcpCap] = await db.batch([
         db.insert(schema.connectors).values({
           userId: input.userId,
           slug,
@@ -343,10 +373,26 @@ export async function createConnector(
               > ${CONNECTORS_PER_USER}`,
           ))
           .returning({ id: schema.connectors.id }),
+        db.delete(schema.connectors)
+          .where(and(
+            sql`${schema.connectors.id} = last_insert_rowid()`,
+            eq(schema.connectors.userId, input.userId),
+            eq(schema.connectors.createdVia, 'mcp'),
+            sql`(select count(*) from ${schema.connectors}
+              where ${schema.connectors.userId} = ${input.userId}
+              and ${schema.connectors.createdVia} = 'mcp'
+              and ${schema.connectors.enabled} = 0)
+              > ${CONNECTORS_MCP_DISABLED_MAX}`,
+          ))
+          .returning({ id: schema.connectors.id }),
       ])
 
       if (overCap.length > 0) {
         throw createConnectorLimitError()
+      }
+
+      if (overMcpCap.length > 0) {
+        throw createConnectorMcpLimitError()
       }
 
       return toConnectorRecord(inserted[0]!)
@@ -809,6 +855,128 @@ export async function listConnectorToolSettings(
   return rows.filter((row) => {
     return row.toolName !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
   })
+}
+
+export interface ConnectorToolReduction {
+  toolName: string
+  disable: boolean
+  askEveryTime: boolean
+}
+
+export interface ConnectorToolReductionResult {
+  unknownTools: string[]
+}
+
+/**
+ * The only tool-setting change that is safe for an external agent: turn a
+ * tool off, or set it back to "ask every time" (which also drops the
+ * approved definition hash, so an "Always allow" grant ends; a per-chat
+ * "Allow in this chat" grant is a different row and stays). It never
+ * inserts a row, never turns a tool on and never grants anything. All names
+ * are checked against the connector's own tool settings first, and nothing
+ * changes when one is unknown.
+ */
+export async function reduceConnectorToolSettings(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+  reductions: readonly ConnectorToolReduction[],
+): Promise<ConnectorToolReductionResult> {
+  await assertConnectorOwned(db, userId, connectorId)
+
+  const known = new Set((await listConnectorToolSettings(
+    db,
+    userId,
+    connectorId,
+  )).map((row) => {
+    return row.toolName
+  }))
+  const unknownTools = reductions
+    .map((reduction) => {
+      return reduction.toolName
+    })
+    .filter((toolName) => {
+      return !known.has(toolName)
+    })
+
+  if (unknownTools.length > 0 || reductions.length === 0) {
+    return { unknownTools }
+  }
+
+  const [first, ...rest] = reductions.map((reduction) => {
+    return db.update(schema.connectorToolSettings)
+      .set({
+        ...(reduction.disable ? { enabled: false } : {}),
+        ...(reduction.askEveryTime
+          ? { approval: 'ask' as const, approvedDefinitionHash: null }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(schema.connectorToolSettings.userId, userId),
+        eq(schema.connectorToolSettings.connectorId, connectorId),
+        eq(schema.connectorToolSettings.toolName, reduction.toolName),
+        ne(
+          schema.connectorToolSettings.toolName,
+          CONNECTOR_BASELINE_MARKER_TOOL_NAME,
+        ),
+      ))
+  })
+
+  await db.batch([first!, ...rest])
+
+  return { unknownTools: [] }
+}
+
+export interface ConnectorToolCounts {
+  total: number
+  enabled: number
+}
+
+export async function countConnectorToolSettings(
+  db: DbClient,
+  userId: number,
+): Promise<Map<string, ConnectorToolCounts>> {
+  const rows = await db.select({
+    connectorId: schema.connectorToolSettings.connectorId,
+    total: sql<number>`count(*)`,
+    enabled: sql<number>`coalesce(sum(case when ${
+      schema.connectorToolSettings.enabled
+    } then 1 else 0 end), 0)`,
+  })
+    .from(schema.connectorToolSettings)
+    .where(and(
+      eq(schema.connectorToolSettings.userId, userId),
+      ne(
+        schema.connectorToolSettings.toolName,
+        CONNECTOR_BASELINE_MARKER_TOOL_NAME,
+      ),
+    ))
+    .groupBy(schema.connectorToolSettings.connectorId)
+
+  return new Map(rows.map((row) => {
+    return [
+      String(row.connectorId),
+      { total: Number(row.total), enabled: Number(row.enabled) },
+    ]
+  }))
+}
+
+export async function countConnectorToolCallsSince(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+  since: Date,
+): Promise<number> {
+  const [row] = await db.select({ total: sql<number>`count(*)` })
+    .from(schema.connectorToolCalls)
+    .where(and(
+      eq(schema.connectorToolCalls.userId, userId),
+      eq(schema.connectorToolCalls.connectorId, connectorId),
+      gte(schema.connectorToolCalls.createdAt, since),
+    ))
+
+  return Number(row?.total ?? 0)
 }
 
 export async function readConnectorToolBaseline(

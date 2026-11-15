@@ -212,7 +212,7 @@
             :read-only-reason="selectedReadOnlyReason"
             :problems="paneProblems"
             :findings="selectedScan.findings"
-            :finding-counts="selectedScan.counts"
+            :finding-counts="selectedFindingCounts"
             :catalog-line="isModelInvocable ? catalogLine : ''"
             :catalog-tokens="catalogTokens"
             :body-tokens="bodyTokens"
@@ -421,6 +421,10 @@ const advancedValue = computed<string>({
 const selectedValueModel = computed<string>({
   get: () => selectedValue.value,
   set: value => setSelectedValue(value),
+})
+
+const selectedFindingCounts = computed<Record<string, number>>(() => {
+  return { ...selectedScan.value.counts, ...selectedScan.value.severityCounts }
 })
 
 const flaggedFiles = computed<Record<string, number>>(() => {

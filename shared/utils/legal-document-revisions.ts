@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: 'fae6474d9b8d114d313ddafd7129a2801f72f9e4abfe36e5ec927efb56518abe',
+    hash: '415b3b28633a41578f48a3d6e537a742bb0af87fbd086870b9894153c8c419e1',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -29,7 +29,13 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'clarifications (BES-393): artifacts count against the one storage '
       + 'limit instead of a separate 25 MB, and Read your settings includes '
       + 'storage use by type; no new purpose, recipient, transfer or '
-      + 'retention. An earlier edit changed British spellings to American '
+      + 'retention. Also the two connected-app permissions for connectors '
+      + '(see and add, switch off, restrict and delete; BES-256): they '
+      + 'describe what MCP tools can do and cannot do (never switch a '
+      + 'connector on, sign in or allow a tool without asking), and the '
+      + 'wording about connectors as recipients stays with C-10; whether '
+      + 'the existing notice needs to say more is the owner\'s decision. '
+      + 'An earlier edit changed British spellings to American '
       + 'English, with no change of meaning, so it adds no new '
       + 'classification.',
   },

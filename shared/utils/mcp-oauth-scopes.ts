@@ -12,6 +12,7 @@ export const MCP_READ_SCOPES = [
   'files:read',
   'settings:read',
   'artifacts:read',
+  'connectors:read',
 ] as const
 
 export const MCP_WRITE_SCOPES = [
@@ -22,6 +23,7 @@ export const MCP_WRITE_SCOPES = [
   'settings:write',
   'artifacts:write',
   'artifacts:share',
+  'connectors:write',
   'data:delete',
   'admin:features',
 ] as const

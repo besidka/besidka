@@ -1035,7 +1035,11 @@ canonical JSON arguments with the key
 `HKDF-SHA-256(NUXT_ENCRYPTION_KEY, info='besidka/connector-audit-args/v1')`;
 a plain hash would be reversible for short arguments. Never arguments, results,
 URLs with query strings, headers or tokens. Retention 90 days, pruned hourly
-in batches of 500 by the C-8 hourly plugin. Rows go with the account
+in batches of 500 (oldest first through the `created_at` index) by
+`server/plugins/connector-audit-prune.ts` on the existing `0 * * * *` cron. A run
+stops at the first short batch or after 20 seconds, and a backlog drains over
+the next runs; the wide event carries `attributes.connectorAuditPrune` with
+`deleted`, `batches` and `truncated`. Rows go with the account
 (`purgeUserData`) and are not deleted with the connector. Axiom gets counts,
 ids, tool name, outcome and duration under `attributes.connectors` (scalars
 only, `docs/axiom-map-fields.md`).
@@ -2185,7 +2189,7 @@ class) and `connectors:write` (write class, unticked by default, shown apart).
 Consent labels in `app/components/OAuth/ScopeLabel.vue`:
 
 - `connectors:read`: "See your connectors: names and addresses, never their keys"
-- `connectors:write`: "Add, change and remove connectors. New ones start switched off; you switch them on in Besidka"
+- `connectors:write`: "Add, change and delete connectors. New ones start switched off; you switch them on in Besidka"
 
 | Tool | Scope | Annotations | Input | Output |
 | --- | --- | --- | --- | --- |

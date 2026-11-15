@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { SkillFinding } from '#shared/utils/skills/findings'
 import {
   capSkillFindings,
   scanSkillText,
@@ -11,6 +12,20 @@ function types(text: string): string[] {
   return scanSkillText('SKILL.md', text).map((finding) => {
     return finding.type
   })
+}
+
+function makeFinding(overrides: Partial<SkillFinding>): SkillFinding {
+  return {
+    type: 'url',
+    rule: 'url',
+    severity: 'low',
+    path: 'a',
+    line: 1,
+    snippet: '',
+    detail: null,
+    source: 'rules',
+    ...overrides,
+  }
 }
 
 describe('scanSkillText', () => {
@@ -227,7 +242,7 @@ describe('hidden characters', () => {
 
     expect(findings.map((finding) => {
       return finding.type
-    })).toEqual(['long-line', 'hidden-character'])
+    })).toEqual(['hidden-character', 'long-line'])
   })
 
   it('shows a five digit code point in full', () => {
@@ -263,7 +278,7 @@ describe('finding counts and the cap', () => {
     }))).toEqual(
       new Set(['url', 'shell', 'injection', 'secret', 'hidden-character']),
     )
-    expect(scan.findings).toHaveLength(204)
+    expect(scan.findings).toHaveLength(202)
   })
 
   it('counts a blank run and a long line past the cap too', () => {
@@ -279,15 +294,15 @@ describe('finding counts and the cap', () => {
   it('capSkillFindings keeps the first of each missing type', () => {
     const findings = [
       ...Array.from({ length: 10 }, (_, line) => {
-        return { type: 'url' as const, path: 'a', line, snippet: '', detail: null }
+        return makeFinding({ type: 'url', line })
       }),
-      { type: 'shell' as const, path: 'a', line: 99, snippet: '', detail: null },
-      { type: 'shell' as const, path: 'a', line: 100, snippet: '', detail: null },
+      makeFinding({ type: 'shell', line: 99 }),
+      makeFinding({ type: 'shell', line: 100 }),
     ]
     const capped = capSkillFindings(findings, 5)
 
     expect(capped).toHaveLength(6)
     expect(capped.at(-1)).toMatchObject({ type: 'shell', line: 99 })
-    expect(capSkillFindings(findings, 20)).toBe(findings)
+    expect(capSkillFindings(findings, 20)).toEqual(findings)
   })
 })
