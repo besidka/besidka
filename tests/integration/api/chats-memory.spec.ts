@@ -47,6 +47,10 @@ vi.mock('~~/server/utils/features/send-features', () => ({
   }),
 }))
 
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
+}))
+
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>()
 

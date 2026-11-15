@@ -1063,9 +1063,18 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   `experimental_toolApprovalSecret` (`useToolApprovalSecret()`), but only
   when some tool could ask (anything other than a native read), so sends
   with only lookups keep their call arguments exactly as before. Native
-  memory, artifact and document tools are writes; lookups are reads; a tool
-  the classifier does not know is a write. Provider-executed calls are never
-  gated.
+  memory, artifact and document tools are writes; lookups are reads. Only
+  the artifact and document writes carry `onlyConnectorOrSkillTaint` (they
+  ask only after connector or skill output); memory writes and any native
+  tool the classifier does not know count every taint kind (fail closed).
+  Provider-executed calls of the web search, grounding and URL context
+  family run without a decision and taint the send; any other
+  provider-executed tool (code execution, web fetch) goes through the
+  policy as a write. The lookups that read the user's own data
+  (`search_chats`, `read_chat`, the memory reads, the project knowledge
+  reads, and knowledge or past-chat excerpts already in the prompt) record
+  the `besidka` read source, so a later connector call asks `cross-source`
+  (audit M1).
 - **Taint is recorded at decision time.** The SDK decides every call of a
   step, in stream order, before any of them runs (section 14.1), so a call
   that may run records its taint and read source when it is decided: a
@@ -1090,12 +1099,18 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   marks `readOnlyHint` and not `destructiveHint` gets a grant from the send,
   bound to its connector id, exposed name and definition hash. That keeps
   the C-5 behavior until the C-7 tool review sets real grants; F2 (rule 3)
-  still asks for it after another source was read. A tool marked both
-  read-only and destructive counts as destructive.
+  still asks for it after another source was read. The grant holds only
+  while the send is untainted, or when the server also marks the tool
+  `openWorldHint: false`; otherwise the call asks `untrusted-output`
+  (audit M2). This includes the connector's own earlier result, so a second
+  open-world read in one send asks. A tool marked both read-only and
+  destructive counts as destructive.
 - **Connector writes always land in `always-ask`.** `connectorDestructiveHint`
   is true for every tool that is not marked read-only, so a connector write
   offers only Allow once until C-7; `default` and its Always allow option are
-  unreachable for connectors today.
+  unreachable for connectors today. The summary names the exposed tool name,
+  never text the remote server chose, and the audit row keeps the remote
+  name with control and bidirectional characters removed (audit L1).
 - **What the SDK may not hold.** A tool with no entry is denied
   (`missing-tool`). A call that would need approval is denied (`over-cap`)
   when its input is over the 64 KiB KV cap or when it is the eleventh in one
@@ -1105,8 +1120,11 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
 - **The C-5 refusals are gone.** A connector call that needs approval is a
   real `tool-approval-request`; F2 and taint are the policy reasons
   `cross-source` and `untrusted-output`. `execute` still refuses any call the
-  policy did not clear by tool call id ("This tool call was not approved, so
-  it did not run."), as a second line behind the SDK.
+  policy did not clear ("This tool call was not approved, so it did not
+  run."), as a second line behind the SDK. A clearance is bound to the tool
+  call id, the exposed name and the canonical input, and is used up by the
+  first `execute`; the artifact, document and unclassified native writes
+  get the same check through `guardNativeWrites` (audit L2).
 - **The pause.** The stream collector strips the signature from the
   `tool-approval-request` chunk (the client and D1 never see it) and writes a
   `data-tool-approval` part right after it: approval id, tool call id, tool
@@ -1123,7 +1141,9 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   with `outcome='pending'` and `approval='pending'` (both columns are plain
   `text`, the enum lives only in `shared/utils/connectors-policy.ts`, so the
   new value needs no migration), whose id goes into the pending record for
-  L5 to settle. A record that fails is logged and the
+  L5 to settle. When the pending record cannot be stored after its audit
+  row was written, the row is settled right away as `outcome='error'`,
+  `approval='denied'` (audit L4). A record that fails is logged and the
   continuation will answer that the approval expired. `rememberOptions` and
   `auditCallId` are new fields on the L3 pending schema.
 - **Persistence.** An assistant message whose only content is a waiting call
@@ -1145,6 +1165,18 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
 - **Rendering until L6.** The waiting call shows as a reasoning step titled
   "Waiting for approval: <connector> · <tool>" (connectors) or "Waiting for
   approval: <tool>" (native). A waiting artifact call renders nothing yet.
+- **What L5 must enforce (audit L3).** The pending records are keyed by
+  approval id and outlive the turn for up to 24 hours unless a new user
+  message expires them; expiry is best effort (a failed delete or an id the
+  per-chat index lost leaves a stale record until its TTL). So the
+  continuation must accept an answer only when the approved call belongs to
+  the chat's last message and that message is the assistant message the
+  record names, besides checking user, chat and the turn's pending ids.
+- **Accepted residuals for v1 (audit L5).** Taint does not carry across
+  sends: a later message starts from a fresh state, and earlier turns reach
+  the model only as text, so content a connector or web page returned in an
+  earlier turn and quoted in an answer is not taint. Plain user attachments
+  add no taint either. Both are accepted for v1 and revisited with C-7.
 - **Merge order.** With the flag on, this layer turns cases that used to run
   or be refused (a memory write after web search, an artifact write in a
   send with an active skill or after connector output, any connector write)

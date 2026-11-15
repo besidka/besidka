@@ -42,6 +42,7 @@ function connectorEntry(input: {
   slug: string
   tool: string
   readOnly: boolean
+  openWorld?: boolean
 }) {
   return buildConnectorApprovalEntry({
     exposedName: `mcp__${input.slug}__${input.tool}`,
@@ -50,7 +51,10 @@ function connectorEntry(input: {
     connectorHost: `mcp.${input.slug}.example.com`,
     remoteToolName: input.tool,
     definitionHash: HASH,
-    annotations: input.readOnly ? { readOnlyHint: true } : {},
+    annotations: {
+      ...(input.readOnly ? { readOnlyHint: true } : {}),
+      ...(input.openWorld === false ? { openWorldHint: false } : {}),
+    },
   })
 }
 
@@ -76,24 +80,35 @@ function call(toolCallId: string, toolName: string, input: unknown = {}) {
 
 describe('classifyNativeTool', () => {
   it('classifies writes, lookups and unknown tools', () => {
-    expect(classifyNativeTool('memory_write')).toEqual({
+    expect(classifyNativeTool('memory_write')).toMatchObject({
       access: 'write',
       writesMemory: true,
+      onlyConnectorOrSkillTaint: false,
       taint: null,
     })
-    expect(classifyNativeTool('create_artifact').access).toBe('write')
+    expect(classifyNativeTool('create_artifact')).toMatchObject({
+      access: 'write',
+      onlyConnectorOrSkillTaint: true,
+    })
     expect(classifyNativeTool('create_document').access).toBe('write')
     expect(classifyNativeTool('web_search_brave').taint).toBe('web')
     expect(classifyNativeTool('web_search_preview').taint).toBe('web')
-    expect(classifyNativeTool('read_chat').taint).toBe('knowledge')
+    expect(classifyNativeTool('read_chat')).toMatchObject({
+      taint: 'knowledge',
+      readsPrivateData: true,
+    })
     expect(classifyNativeTool('activate_skill').taint).toBe('skill')
     expect(classifyNativeTool('memory_read')).toMatchObject({
       access: 'read',
+      readsPrivateData: true,
       taint: null,
     })
-    expect(classifyNativeTool('future_tool').access).toBe('write')
-    expect(classifyNativeTool('code_execution', { type: 'provider' }).access)
-      .toBe('read')
+    expect(classifyNativeTool('future_tool')).toMatchObject({
+      access: 'write',
+      onlyConnectorOrSkillTaint: false,
+    })
+    expect(classifyNativeTool('code_execution').access).toBe('write')
+    expect(classifyNativeTool('web_fetch').access).toBe('write')
   })
 })
 
@@ -112,7 +127,11 @@ describe('createSendToolApproval', () => {
 
     expect(approval.toolApproval(call('call-1', 'memory_write')))
       .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
-    expect(approval.isCallCleared('call-1')).toBe(false)
+    expect(approval.consumeClearedCall({
+      toolCallId: 'call-1',
+      toolName: 'memory_write',
+      input: {},
+    })).toBe(false)
     expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
       .toEqual(['once'])
   })
@@ -121,11 +140,118 @@ describe('createSendToolApproval', () => {
     () => {
       const approval = createApproval(['create_artifact'])
 
+      const content = 'x'.repeat(600 * 1024)
+
       expect(approval.toolApproval(call('call-1', 'create_artifact', {
-        content: 'x'.repeat(600 * 1024),
+        content,
       }))).toBe('not-applicable')
-      expect(approval.isCallCleared('call-1')).toBe(true)
+      expect(approval.consumeClearedCall({
+        toolCallId: 'call-1',
+        toolName: 'create_artifact',
+        input: { content },
+      })).toBe(true)
     })
+
+  it('binds a cleared call to its name and input and uses it up once', () => {
+    const approval = createApproval(['create_artifact', 'other_write'])
+
+    approval.toolApproval(call('call-1', 'create_artifact', { title: 'a' }))
+
+    expect(approval.consumeClearedCall({
+      toolCallId: 'call-1',
+      toolName: 'create_artifact',
+      input: { title: 'b' },
+    })).toBe(false)
+    expect(approval.consumeClearedCall({
+      toolCallId: 'call-1',
+      toolName: 'other_write',
+      input: { title: 'a' },
+    })).toBe(false)
+    expect(approval.consumeClearedCall({
+      toolCallId: 'call-1',
+      toolName: 'create_artifact',
+      input: { title: 'a' },
+    })).toBe(true)
+    expect(approval.consumeClearedCall({
+      toolCallId: 'call-1',
+      toolName: 'create_artifact',
+      input: { title: 'a' },
+    })).toBe(false)
+  })
+
+  it('refuses an uncleared call in a guarded native write', async () => {
+    const execute = vi.fn(async () => 'done')
+    const approval = createApproval(['create_artifact'])
+    const tools = approval.guardNativeWrites({
+      create_artifact: { execute },
+    } as never) as Record<string, any>
+
+    await expect(async () => {
+      await tools.create_artifact.execute({}, { toolCallId: 'call-9' })
+    }).rejects.toThrow('not approved')
+    expect(execute).not.toHaveBeenCalled()
+
+    approval.toolApproval(call('call-1', 'create_artifact', { title: 'a' }))
+
+    expect(await tools.create_artifact.execute(
+      { title: 'a' },
+      { toolCallId: 'call-1' },
+    )).toBe('done')
+  })
+
+  it('asks before an unclassified native write after web taint', () => {
+    const approval = createApproval(['future_write'])
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-1', 'future_write')))
+      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+  })
+
+  it('asks cross-source for a connector read after search_chats', () => {
+    const approval = createApproval(['search_chats'], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+      }),
+    ])
+
+    expect(approval.toolApproval(call('call-1', 'search_chats')))
+      .toBe('not-applicable')
+    expect(approval.toolApproval(call('call-2', 'mcp__linear__list_issues')))
+      .toEqual({ type: 'user-approval', reason: 'cross-source' })
+    expect([...approval.state.readSources]).toEqual(['besidka'])
+  })
+
+  it('asks untrusted-output for an open-world read-only connector tool '
+    + 'after taint, and runs a closed-world one', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+      }),
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'get_issue',
+        readOnly: true,
+        openWorld: false,
+      }),
+    ])
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
+      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once'])
+    expect(approval.toolApproval(call('call-2', 'mcp__linear__get_issue')))
+      .toBe('not-applicable')
+  })
 
   it('records a connector read when it is decided, so a same-step '
     + 'artifact write asks', () => {
@@ -169,7 +295,7 @@ describe('createSendToolApproval', () => {
       expect(approval.toolApproval(call('call-2', 'mcp__notion__list_pages')))
         .toEqual({ type: 'user-approval', reason: 'cross-source' })
       expect(approval.toolApproval(call('call-3', 'mcp__linear__list_issues')))
-        .toBe('not-applicable')
+        .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
     })
 
   it('asks always-ask for a connector tool that is not read-only', () => {
@@ -186,9 +312,9 @@ describe('createSendToolApproval', () => {
       .toEqual({ type: 'user-approval', reason: 'always-ask' })
   })
 
-  it('never gates a provider-executed call and taints the send with web',
+  it('never gates a provider-executed web search and taints the send',
     () => {
-      const approval = createApproval(['memory_write'])
+      const approval = createApproval(['memory_write', 'web_search_preview'])
 
       expect(approval.toolApproval({
         toolCall: {
@@ -200,6 +326,26 @@ describe('createSendToolApproval', () => {
       })).toBe('not-applicable')
       expect([...approval.state.taint]).toEqual(['web'])
     })
+
+  it('treats any other provider-executed tool as a write', () => {
+    const approval = createApproval(['code_execution'])
+    const providerCall = {
+      toolCall: {
+        toolCallId: 'call-1',
+        toolName: 'code_execution',
+        input: {},
+        providerExecuted: true,
+      },
+    }
+
+    expect(approval.toolApproval(providerCall)).toBe('not-applicable')
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval({
+      toolCall: { ...providerCall.toolCall, toolCallId: 'call-2' },
+    })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+  })
 
   it('denies a tool with no entry, an input over the cap and the 11th '
     + 'pending call', () => {
@@ -413,6 +559,7 @@ describe('recordToolApprovalPause', () => {
       stepCount: 2,
       snapshot: SNAPSHOT,
       auditPending,
+      settleFailedAudit: async () => undefined,
       logger,
     })
 
@@ -428,7 +575,7 @@ describe('recordToolApprovalPause', () => {
         signature: 'sig-1',
         reason: 'untrusted-output',
         auditCallId: 42,
-        summary: 'linear wants to run create_issue',
+        summary: 'linear wants to run mcp__linear__create_issue',
       })
     expect(JSON.parse(kv.store.get('tool-approval:turn:message-1')!))
       .toMatchObject({
@@ -458,12 +605,55 @@ describe('recordToolApprovalPause', () => {
       stepCount: 1,
       snapshot: SNAPSHOT,
       auditPending: async () => null,
+      settleFailedAudit: async () => undefined,
       logger: { set: vi.fn() },
     })
 
     expect(written).toBe(0)
     expect(kv.store.size).toBe(0)
   })
+})
+
+describe('recordToolApprovalPause audit settlement', () => {
+  it('settles the pending audit row when the record cannot be stored',
+    async () => {
+      const kv = createKv()
+      const approval = createApproval([], [
+        connectorEntry({
+          connectorId: 'c1',
+          slug: 'linear',
+          tool: 'create_issue',
+          readOnly: false,
+        }),
+      ])
+
+      approval.toolApproval(call('call-1', 'mcp__linear__create_issue'))
+
+      const settleFailedAudit = vi.fn(async () => undefined)
+      const { written } = await recordToolApprovalPause({
+        kv: kv as never,
+        userId: 7,
+        chatPublicId: 'chat-1',
+        messagePublicId: 'message-1',
+        approval,
+        collected: [{
+          approvalId: 'bad id',
+          toolCallId: 'call-1',
+          toolName: 'mcp__linear__create_issue',
+          input: {},
+          signature: 'sig',
+          pending: approval.getPendingDecision('call-1')!,
+        }],
+        stepCount: 1,
+        snapshot: SNAPSHOT,
+        auditPending: async () => 9,
+        settleFailedAudit,
+        logger: { set: vi.fn() },
+      })
+
+      expect(written).toBe(0)
+      expect(settleFailedAudit).toHaveBeenCalledWith(9)
+    })
 })
 
 describe('chatHasAwaitingApproval', () => {

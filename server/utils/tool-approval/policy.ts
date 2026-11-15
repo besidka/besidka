@@ -29,6 +29,10 @@ import type { ApprovalState } from '~~/server/utils/tool-approval/state'
  * decide it; a connector tool takes it from `connectorDestructiveHint`.
  * `writesMemory` marks a native tool that writes persistent memory; the
  * native memory tool names count even without the marker.
+ * `onlyConnectorOrSkillTaint` marks a native write (the artifact and
+ * document tools) that asks only after connector or skill output; every
+ * other native write counts every taint kind, so an unclassified tool fails
+ * closed.
  */
 export interface ToolApprovalDescriptor {
   family: ToolFamily
@@ -38,6 +42,7 @@ export interface ToolApprovalDescriptor {
   definitionHash?: string
   destructiveHint: boolean
   writesMemory?: boolean
+  onlyConnectorOrSkillTaint?: boolean
 }
 
 export interface DestructiveHintAnnotations {
@@ -198,7 +203,11 @@ function isTaintedFor(
   descriptor: ToolApprovalDescriptor,
   state: ApprovalState,
 ): boolean {
-  if (descriptor.family === 'native' && !isMemoryWrite(descriptor)) {
+  if (
+    descriptor.family === 'native'
+    && descriptor.onlyConnectorOrSkillTaint === true
+    && !isMemoryWrite(descriptor)
+  ) {
     return UNTRUSTED_NATIVE_WRITE_TAINT.some((kind) => {
       return state.taint.has(kind)
     })
@@ -257,9 +266,10 @@ function grantMatches(
  *    denied with `invalid-input`, never guessed at.
  * 1. Native read: no approval.
  * 2. Any non-read call after untrusted content: ask `untrusted-output`.
- *    Native artifact and document writes count only connector and skill
- *    taint. Native memory writes count every taint kind, so a web page
- *    cannot steer a persistent memory write without asking.
+ *    Native writes marked `onlyConnectorOrSkillTaint` (artifact and
+ *    document) count only connector and skill taint. Every other native
+ *    write, memory writes and unclassified tools included, counts every
+ *    taint kind, so a web page cannot steer it without asking.
  * 3. Connector call after reading another source: ask `cross-source`.
  * 4. Besidka tool of any access after untrusted content: ask
  *    `untrusted-output`.

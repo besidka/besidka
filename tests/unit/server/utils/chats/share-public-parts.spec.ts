@@ -232,7 +232,7 @@ describe('approval parts in shares and branches', () => {
         toolCallId: 'call-1',
         toolName: 'mcp__linear__create_issue',
         reason: 'always-ask',
-        summary: 'Linear wants to run create_issue',
+        summary: 'Linear wants to run mcp__linear__create_issue',
         rememberOptions: ['once'],
       },
     },

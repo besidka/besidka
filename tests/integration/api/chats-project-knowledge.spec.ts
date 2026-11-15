@@ -61,6 +61,10 @@ const mocks = vi.hoisted(() => ({
   kvPut: vi.fn(),
 }))
 
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
+}))
+
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>()
 

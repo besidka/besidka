@@ -2,9 +2,45 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   auditConnectorCall,
   createConnectorArgsHasher,
+  toAuditToolName,
 } from '~~/server/utils/connectors/audit'
 
 describe('connector audit', () => {
+  it('strips control and bidirectional characters from a tool name', () => {
+    expect(toAuditToolName('create\u202Eeussi\u0000_\u2066x\u2069'))
+      .toBe('createeussi_x')
+    expect(toAuditToolName('list_issues')).toBe('list_issues')
+  })
+
+  it('writes the stripped name into the audit row', async () => {
+    const rows: Array<Record<string, unknown>> = []
+    const db = {
+      insert: () => ({
+        values: (value: Record<string, unknown>) => {
+          rows.push(value)
+
+          return { returning: () => [{ id: 3 }] }
+        },
+      }),
+    }
+
+    const id = await auditConnectorCall(db as never, async () => 'hmac', {
+      userId: 1,
+      connectorId: 'c1',
+      connectorHost: 'mcp.example.com',
+      chatPublicId: 'chat1',
+      toolName: 'list\u202Eissues',
+      args: {},
+      resultBytes: 0,
+      outcome: 'pending',
+      approval: 'pending',
+      durationMs: 0,
+    })
+
+    expect(id).toBe(3)
+    expect(rows[0]).toMatchObject({ toolName: 'listissues' })
+  })
+
   it('derives a stable keyed digest that ignores key order', async () => {
     const hash = createConnectorArgsHasher('secret-one')
     const first = await hash({ b: 1, a: 'x' })

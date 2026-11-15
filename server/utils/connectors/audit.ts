@@ -14,6 +14,37 @@ const textEncoder = new TextEncoder()
 
 export type ConnectorArgsHasher = (args: unknown) => Promise<string>
 
+const BIDI_FORMATTING_CODE_POINTS = new Set<number>([
+  0x061C,
+  0x200E,
+  0x200F,
+  0x202A,
+  0x202B,
+  0x202C,
+  0x202D,
+  0x202E,
+  0x2066,
+  0x2067,
+  0x2068,
+  0x2069,
+])
+
+function isUnsafeAuditCodePoint(codePoint: number): boolean {
+  return codePoint <= 0x1F
+    || (codePoint >= 0x7F && codePoint <= 0x9F)
+    || BIDI_FORMATTING_CODE_POINTS.has(codePoint)
+}
+
+/**
+ * A remote tool name with control and bidirectional formatting characters
+ * removed, so an audit row cannot hide or reorder what it shows.
+ */
+export function toAuditToolName(toolName: string): string {
+  return [...toolName].filter((character) => {
+    return !isUnsafeAuditCodePoint(character.codePointAt(0) ?? 0)
+  }).join('')
+}
+
 /**
  * HMAC-SHA-256 of the canonical JSON arguments, keyed by
  * `HKDF-SHA-256(NUXT_ENCRYPTION_KEY, info='besidka/connector-audit-args/v1')`.
@@ -87,7 +118,7 @@ export async function auditConnectorCall(
       connectorId: input.connectorId,
       connectorHost: input.connectorHost,
       chatPublicId: input.chatPublicId,
-      toolName: input.toolName,
+      toolName: toAuditToolName(input.toolName),
       argsHmac: await hashArgs(input.args),
       resultBytes: input.resultBytes,
       outcome: input.outcome,

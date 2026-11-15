@@ -343,7 +343,10 @@ import {
   getConnectorTools,
 } from '~~/server/utils/connectors/send-tools'
 import type { ConnectorToolsRun } from '~~/server/utils/connectors/send-tools'
-import { listConnectors } from '~~/server/utils/connectors/store'
+import {
+  listConnectors,
+  settleConnectorToolCall,
+} from '~~/server/utils/connectors/store'
 import {
   TOOL_APPROVAL_DATA_PART_TYPE,
   hasAwaitingApprovalToolPart,
@@ -1958,7 +1961,7 @@ export default defineEventHandler(async (event) => {
             existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
             hashArgs: hashConnectorArgs,
             ...(toolApprovalsActive
-              ? { isCallCleared: toolApprovalSend.isCallCleared }
+              ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
               : {}),
             guard: chatSearchBudget,
             logger: aiLogger,
@@ -1980,6 +1983,10 @@ export default defineEventHandler(async (event) => {
         parsedTools.tools,
         connectorsRun?.approvalEntries,
       )
+      parsedTools = {
+        ...parsedTools,
+        tools: toolApprovalSend.guardNativeWrites(parsedTools.tools),
+      }
     }
 
     if (toolApprovalsActive && toolApprovalSend.canAsk()) {
@@ -2953,6 +2960,25 @@ async function recordPendingToolApprovals(input: {
           approval: 'pending',
           durationMs: 0,
         }, input.logger)
+      },
+      settleFailedAudit: async (auditCallId) => {
+        try {
+          await settleConnectorToolCall(input.db, input.userId, auditCallId, {
+            outcome: 'error',
+            approval: 'denied',
+            resultBytes: 0,
+            durationMs: 0,
+          })
+        } catch (exception) {
+          input.logger.set({
+            attributes: {
+              toolApproval: {
+                auditSettle: 'failed',
+                error: exceptionMessage(exception),
+              },
+            },
+          })
+        }
       },
       logger: input.logger,
     })

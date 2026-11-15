@@ -47,6 +47,10 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
+}))
+
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>()
 
@@ -210,6 +214,7 @@ vi.mock('~~/server/utils/connectors/store', () => {
 
       return store.audit.length
     },
+    settleConnectorToolCall: async () => undefined,
     listConnectorChatSettings: async () => store.chatSettings,
     upsertConnectorChatSettings: async (
       _db: unknown,
@@ -631,7 +636,7 @@ describe('tool approval requests in the chat send', () => {
         toolCallId: 'call-1',
         toolName: 'mcp__linear__create_issue',
         reason: 'always-ask',
-        summary: 'Linear wants to run create_issue',
+        summary: 'Linear wants to run mcp__linear__create_issue',
         rememberOptions: ['once'],
       },
     })
@@ -655,7 +660,7 @@ describe('tool approval requests in the chat send', () => {
       input: { title: 'x' },
       reason: 'always-ask',
       rememberOptions: ['once'],
-      summary: 'Linear wants to run create_issue',
+      summary: 'Linear wants to run mcp__linear__create_issue',
       auditCallId: 1,
       snapshot: {
         model: MODEL_ID,
@@ -722,6 +727,25 @@ describe('tool approval requests in the chat send', () => {
     expect([...mocks.kv.keys()].some((key) => {
       return key.startsWith('tool-approval:')
     })).toBe(false)
+  })
+
+  it('asks untrusted-output before a second open-world read of the same '
+    + 'connector', async () => {
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      connectorIds: ['conn-linear'],
+      steps: [
+        toolCallChunks('call-1', 'mcp__linear__list_issues', {}),
+        toolCallChunks('call-2', 'mcp__linear__list_issues', { page: 2 }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: { toolCallId: 'call-2', reason: 'untrusted-output' },
+    })
   })
 
   it('asks with reason cross-source for a second connector after the '
@@ -866,7 +890,7 @@ describe('tool approval requests in the chat send', () => {
                 toolCallId: 'call-1',
                 toolName: 'mcp__linear__create_issue',
                 reason: 'always-ask',
-                summary: 'Linear wants to run create_issue',
+                summary: 'Linear wants to run mcp__linear__create_issue',
                 rememberOptions: ['once'],
               },
             },

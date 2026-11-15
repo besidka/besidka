@@ -180,7 +180,11 @@ describe('getConnectorTools', () => {
       hashArgs,
       ...(options.legacy
         ? {}
-        : { isCallCleared: options.isCallCleared ?? (() => true) }),
+        : {
+          consumeClearedCall: (call: { toolCallId: string | undefined }) => {
+            return options.isCallCleared?.(call.toolCallId) ?? true
+          },
+        }),
       guard: options.guard,
       logger: { set: (values: unknown) => logged.push(values) },
       dependencies: {

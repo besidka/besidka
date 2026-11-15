@@ -82,7 +82,10 @@ import {
 import type { ConnectorToolDefinition } from '~~/server/utils/connectors/tool-definitions'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
-import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
+import type {
+  ClearedCallCheck,
+  SendToolEntry,
+} from '~~/server/utils/tool-approval/send'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -141,7 +144,7 @@ export interface GetConnectorToolsInput {
   connectors: readonly ConnectorRecord[]
   existingToolCount: number
   hashArgs: ConnectorArgsHasher
-  isCallCleared?: (toolCallId: string | undefined) => boolean
+  consumeClearedCall?: (call: ClearedCallCheck) => boolean
   guard?: UntrustedContentGuard
   logger: LoggerLike
   dependencies?: ConnectorClientDependencies & {
@@ -439,10 +442,11 @@ async function syncDriftStatus(
  * descriptions plus input schemas. Each exposed tool is
  * `mcp__<slug>__<tool>` and marked `withFollowUpTurn()`.
  *
- * With `isCallCleared` (the `tool-approvals` flag is on), whether a call may
- * run is decided by the send's approval policy
+ * With `consumeClearedCall` (the `tool-approvals` flag is on), whether a
+ * call may run is decided by the send's approval policy
  * (`server/utils/tool-approval/send.ts`), which also gets one approval entry
- * per exposed tool from here. `execute` only runs a call the policy cleared;
+ * per exposed tool from here. `execute` only runs a call the policy cleared,
+ * with the same exposed name and input, once;
  * any other call is refused with a plain sentence and never reaches the
  * server, as a second line behind the SDK, which does not call `execute` for
  * a call that waits for approval. Without it (the flag is off), the C-5 rule
@@ -768,21 +772,23 @@ export async function getConnectorTools(
       }, logger)
     }
 
-    function buildExecute(candidate: Candidate) {
+    function buildExecute(candidate: Candidate, exposedName: string) {
       return (
         args: unknown,
         options?: { abortSignal?: AbortSignal, toolCallId?: string },
       ) => {
-        return callLimiter.run(() => executeCall(candidate, args, options))
+        return callLimiter.run(() => {
+          return executeCall(candidate, exposedName, args, options)
+        })
       }
     }
 
     function findRefusal(
       candidate: Candidate,
-      toolCallId: string | undefined,
+      call: ClearedCallCheck,
     ): string | null {
-      if (input.isCallCleared) {
-        return input.isCallCleared(toolCallId)
+      if (input.consumeClearedCall) {
+        return input.consumeClearedCall(call)
           ? null
           : CONNECTOR_UNAPPROVED_CALL_TEXT
       }
@@ -805,6 +811,7 @@ export async function getConnectorTools(
 
     async function executeCall(
       candidate: Candidate,
+      exposedName: string,
       args: unknown,
       options?: { abortSignal?: AbortSignal, toolCallId?: string },
     ): Promise<string> {
@@ -821,7 +828,11 @@ export async function getConnectorTools(
         return text
       }
 
-      const refusal = findRefusal(candidate, options?.toolCallId)
+      const refusal = findRefusal(candidate, {
+        toolCallId: options?.toolCallId,
+        toolName: exposedName,
+        input: args,
+      })
 
       if (refusal) {
         return await deny(refusal)
@@ -943,7 +954,7 @@ export async function getConnectorTools(
         inputSchema: jsonSchema(
           candidate.definition.inputSchema as Parameters<typeof jsonSchema>[0],
         ),
-        execute: buildExecute(candidate),
+        execute: buildExecute(candidate, exposedName),
       })) as ToolSet[string]
     }
 
