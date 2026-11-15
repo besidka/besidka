@@ -537,6 +537,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/capabilities/conformance.spec.ts',
     'tests/unit/config/mcp-surface.spec.ts',
   ]
+  const besidkaToolPermissionsTests = [
+    'tests/unit/utils/besidka-tool-permissions.spec.ts',
+    'tests/unit/utils/features/besidka-tools-registry.spec.ts',
+    'tests/unit/server/utils/besidka-tools/permissions.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+  ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
     'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
@@ -2498,6 +2508,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(config\/besidka-tools-surface\.json|server\/(mcp\/tools\/.*|utils\/(mcp\/tool-scopes|besidka-tools\/.*))\.ts)$/,
       tests: besidkaToolsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/besidka-tools\/(permissions|route|registry|types)\.ts|server\/utils\/tool-approval\/continuation\.ts|server\/api\/v1\/besidka-tools\/.*\.ts|app\/(composables|utils)\/besidka-tool-permissions\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|app\/components\/Search\/Modal\.client\.vue|app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|tests\/setup\/helpers\/(memory-extraction-db|connectors-oauth|skills-route)\.ts)$/,
+      tests: besidkaToolPermissionsTests,
     },
     {
       pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,

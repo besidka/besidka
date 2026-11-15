@@ -1360,9 +1360,21 @@ only, and S-6 does not register it.
    confirmation that states the number of recipients (see `docs/legal.md`,
    "Owner approval in the admin area"). **Revisit when:** not planned.
 
+8. **The Besidka tool permissions and the `besidka-tools` opt-in**
+   (BES-394 L8). No tool reads or writes `besidka_tool_permissions`, and no
+   tool changes the opt-in. Why: a permission decides which of the user's
+   tools a model may run in a chat and whether it must ask. "Always allow" and
+   "Blocked" are the user's answer to "may a model do this without me
+   looking", and an agent that could set them could widen its own reach
+   (the same reason as items 1 and 6, and as the connector "Always allow" in
+   `docs/connectors.md`, section 11). They are set in Labs, in the Tool
+   permissions panel (`docs/besidka-tools.md`). **Revisit when:** a tool can
+   only lower access (set Blocked or Needs approval, never Always allow) and
+   a user names a workflow that needs it.
+
 ### Not possible, not omitted
 
-8. **Chat archive and restore.** Besidka has no chat archive (only
+9. **Chat archive and restore.** Besidka has no chat archive (only
    project archive, which `update_project` has). **Knowledge folders** are a
    client-only idea: a `folderId` plus browser-local names, with no server
    entity to call. **Binary, PDF and image upload, and project file

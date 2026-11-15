@@ -1248,10 +1248,11 @@ Where this differs from sections 7.2 and 7.6:
   longer available"). A user denial carries the user's note with control,
   bidirectional, other format (zero-width, word joiner) and tag characters
   removed. The permission mode the replay check uses comes from
-  `resolveReplayPermissionMode()`, which returns `ask` for every tool until
-  the Besidka tool permissions (BES-394 L8) are stored; L8 must make it read
-  them, or a tool the user set to Blocked after approving would still run on
-  resume.
+  `resolveReplayPermissionMode(family, toolName, besidkaModes)`: the stored
+  Besidka tool permission for a `besidka` call (BES-394 L8,
+  `docs/besidka-tools.md`, so a tool the user set to Blocked after approving
+  is denied on resume), and `ask` for a connector tool, whose Blocked state is
+  the C-5 tool setting that hides the tool from the live set.
 - **Rounds cap.** The turn's `rounds` counter holds the pauses recorded so
   far (1 after the first pause). Exactly five rounds can be answered: the
   replay check denies only when `rounds > 5`, and the send denies a call

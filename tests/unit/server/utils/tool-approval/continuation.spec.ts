@@ -452,8 +452,106 @@ describe('buildResumedAssistantMessages provider metadata', () => {
 })
 
 describe('resolveReplayPermissionMode', () => {
-  it('reads ask until tool permissions are stored', () => {
+  it('keeps ask for connector tools and when no family is given', () => {
     expect(resolveReplayPermissionMode()).toBe('ask')
+    expect(resolveReplayPermissionMode('connector', TOOL_NAME)).toBe('ask')
+    expect(resolveReplayPermissionMode(
+      'connector',
+      'besidka__create_file',
+      new Map([['besidka__create_file', 'blocked' as const]]),
+    )).toBe('ask')
+  })
+
+  it('reads the resolved mode of a Besidka tool and fails closed', () => {
+    const modes = new Map([
+      ['besidka__create_file', 'blocked' as const],
+      ['besidka__list_files', 'allow' as const],
+      ['besidka__get_project', 'ask' as const],
+    ])
+
+    expect(resolveReplayPermissionMode(
+      'besidka',
+      'besidka__create_file',
+      modes,
+    )).toBe('blocked')
+    expect(resolveReplayPermissionMode('besidka', 'besidka__list_files', modes))
+      .toBe('allow')
+    expect(resolveReplayPermissionMode('besidka', 'besidka__get_project', modes))
+      .toBe('ask')
+    expect(resolveReplayPermissionMode('besidka', 'besidka__nope', modes))
+      .toBe('blocked')
+    expect(resolveReplayPermissionMode('besidka', 'besidka__list_files'))
+      .toBe('blocked')
+  })
+})
+
+describe('decideContinuation with Besidka tool permissions', () => {
+  const BESIDKA_TOOL_NAME = 'besidka__create_file'
+
+  function besidkaEntries() {
+    return new Map<string, SendToolEntry>([[
+      BESIDKA_TOOL_NAME,
+      {
+        descriptor: {
+          family: 'besidka',
+          access: 'write',
+          toolName: BESIDKA_TOOL_NAME,
+          destructiveHint: false,
+        },
+        summary: 'Create a file',
+        taint: 'besidka',
+        readSource: null,
+        alwaysGrant: null,
+        alwaysGrantWhenTainted: false,
+        connector: null,
+      },
+    ]])
+  }
+
+  function besidkaAnswer() {
+    return {
+      response: {
+        approvalId: 'approval-1',
+        approved: true,
+        remember: 'once' as const,
+      },
+      record: pendingRecord({
+        family: 'besidka',
+        toolName: BESIDKA_TOOL_NAME,
+        connectorId: null,
+        definitionHash: null,
+      }),
+    }
+  }
+
+  it('denies an approved call the user has since blocked', () => {
+    const [decision] = decideContinuation({
+      answers: [besidkaAnswer()],
+      entries: besidkaEntries(),
+      state: createApprovalState(),
+      besidkaPermissionModes: new Map([[BESIDKA_TOOL_NAME, 'blocked']]),
+    })
+
+    expect(decision).toMatchObject({
+      approved: false,
+      denialReason: 'blocked',
+      reason: TOOL_APPROVAL_DENIAL_TEXT.blocked,
+    })
+  })
+
+  it('keeps an approved call that is still ask or allow', () => {
+    for (const mode of ['ask', 'allow'] as const) {
+      const modes = new Map([[BESIDKA_TOOL_NAME, mode]])
+
+      const [decision] = decideContinuation({
+        answers: [besidkaAnswer()],
+        entries: besidkaEntries(),
+        state: createApprovalState(),
+        besidkaPermissionModes: modes,
+      })
+
+      expect(decision).toMatchObject({ approved: true, denialReason: null })
+    }
   })
 })
 

@@ -151,12 +151,16 @@ Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 `research.export`, `research.mcp`), `connectors` (and `.oauth`, `.registry`,
 `.native`), `google.drive` (and `google.calendar`, `google.byo`,
 `google.gmail`), `skills` (and `.import-url`, `.commands`, `.scripts`),
-`tool-approvals`, and `ui.side-panel-demo`. Of the `connectors` flags only
+`tool-approvals`, `besidka-tools`, and `ui.side-panel-demo`. Of the `connectors` flags only
 `connectors` and `connectors.oauth` are `available: true` (C-4, still
 `internal`, so admin- and grant-only); `.registry` and `.native` stay
 unavailable. `tool-approvals` (C-6) is `available: true`, spends nothing and
 is evaluated once per chat send (`resolveSendFeatures`); off, the send
 behaves exactly as before C-6 (`docs/connectors.md` section 7.6).
+`besidka-tools` (BES-394 L8) is `available: true` with `optIn: 'required'`
+and `spend: 'none'`: it spends nothing, and the opt-in is the user's consent
+to let a model use their Besidka tools, with a permission for each tool
+(`docs/besidka-tools.md`).
 
 As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,
 `FEATURE_KEYS`, `isFeatureKey(key)` (own keys only, so `constructor` is

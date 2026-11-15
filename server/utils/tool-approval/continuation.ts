@@ -13,6 +13,7 @@ import {
 import type {
   ToolApprovalDenialReason,
   ToolApprovalRemember,
+  ToolFamily,
   ToolPermissionMode,
 } from '#shared/utils/tool-approval-policy'
 import type { ToolApprovalResponseInput } from '~~/server/utils/chats/request-schema'
@@ -471,11 +472,24 @@ export async function loadContinuation(input: {
 
 /**
  * The user's permission mode for a tool whose approved call is replayed.
- * Every tool is `ask` until the Besidka tool permissions (BES-394 L8) are
- * stored; this is the one place that must then read them, or a tool the
- * user set to Blocked after approving would still run on resume.
+ * A Besidka tool reads the modes the send resolved from the stored Besidka
+ * tool permissions (`resolveBesidkaPermissionModes`, keyed by the tool name
+ * of the call), so a tool the user set to Blocked after approving does not
+ * run on resume; a Besidka call with no resolved mode fails closed as
+ * Blocked. Connector tools keep `ask`: their Blocked state is the C-5 tool
+ * settings, which hide the tool from the live tool set, so the replay reads
+ * it as missing. The registry is not imported here on purpose: the chat
+ * route loads it only when an answer is a Besidka call.
  */
-export function resolveReplayPermissionMode(): ToolPermissionMode {
+export function resolveReplayPermissionMode(
+  family: ToolFamily | null = null,
+  toolName = '',
+  besidkaModes: ReadonlyMap<string, ToolPermissionMode> = new Map(),
+): ToolPermissionMode {
+  if (family === 'besidka') {
+    return besidkaModes.get(toolName) ?? 'blocked'
+  }
+
   return 'ask'
 }
 
@@ -504,6 +518,7 @@ export function decideContinuation(input: {
   answers: readonly PendingApprovalAnswer[]
   entries: ReadonlyMap<string, SendToolEntry>
   state: ApprovalState
+  besidkaPermissionModes?: ReadonlyMap<string, ToolPermissionMode>
 }): ContinuationDecision[] {
   const replayState = cloneState(input.state)
 
@@ -530,7 +545,11 @@ export function decideContinuation(input: {
       descriptor: entry?.descriptor ?? null,
       pending: record,
       state: replayState,
-      permissionMode: resolveReplayPermissionMode(),
+      permissionMode: resolveReplayPermissionMode(
+        entry?.descriptor.family ?? record.family,
+        record.toolName,
+        input.besidkaPermissionModes,
+      ),
     })
 
     if (replay.denialReason) {

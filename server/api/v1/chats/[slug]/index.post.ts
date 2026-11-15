@@ -2133,10 +2133,19 @@ export default defineEventHandler(async (event) => {
     }
 
     if (resume) {
+      const besidkaToolNames = resume.loaded.answers
+        .filter(answer => answer.record.family === 'besidka')
+        .map(answer => answer.record.toolName)
+      const besidkaPermissionModes = besidkaToolNames.length
+        ? await (await import('~~/server/utils/besidka-tools/permissions'))
+          .resolveBesidkaPermissionModes(userId, besidkaToolNames, db)
+        : undefined
+
       resumeDecisions = decideContinuation({
         answers: resume.loaded.answers,
         entries: toolApprovalSend.entries,
         state: resume.loaded.state,
+        besidkaPermissionModes,
       })
 
       const resumedMessages = buildResumedAssistantMessages({

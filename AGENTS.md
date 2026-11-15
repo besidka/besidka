@@ -806,6 +806,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `delete_skills`; MCP 4.0.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
+- `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
+  (BES-394 L8): the `besidka-tools` opt-in flag, the three tiers and the
+  Blocked, Needs approval, Always allow modes (the ask-every-time tier never
+  takes Always allow), `besidka_tool_permissions` with the default "ask" and no
+  row, the `GET` and `PUT /api/v1/besidka-tools/permissions` routes and their
+  guards, `resolveBesidkaPermissionMode` and the continuation replay seam that
+  denies a tool blocked after approval, the Labs "Tool permissions" panel and
+  the Search row, and why MCP has no tool for it
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the
