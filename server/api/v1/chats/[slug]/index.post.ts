@@ -1877,6 +1877,7 @@ export default defineEventHandler(async (event) => {
     db,
     getBucket: () => useFileStorage(),
     userId,
+    projectId: chat.projectId,
     isSkillsActive: sendFeatures.isFeatureActive('skills'),
     isToolCallingAllowed: toolCallingAllowed,
     family: resolveKnowledgeTokenFamily({

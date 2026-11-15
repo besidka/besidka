@@ -1524,6 +1524,24 @@ describe('skills in the used group', () => {
     expect(context.kindCounts.skill).toBe(2)
   })
 
+  it('labels a project skill activation as a project skill', () => {
+    const context = privateContext([
+      message('m1', 'assistant', [{
+        type: 'data-skill-activation',
+        data: {
+          skillId: 'skl1',
+          name: 'translate',
+          version: 2,
+          source: 'project',
+        },
+      }]),
+    ])
+
+    expect(context.used.map((item) => {
+      return [item.kind, item.title, item.meta?.action]
+    })).toEqual([['skill', 'translate', 'Project skill']])
+  })
+
   it('never lists a skill on a shared chat', () => {
     const context = publicContext([
       message('m1', 'user', [{

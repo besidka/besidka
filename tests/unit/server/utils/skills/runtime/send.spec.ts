@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryExtractionTestDb,
+  seedProject,
   seedUser,
 } from '../../../../../setup/helpers/memory-extraction-db'
 import type {
@@ -364,5 +365,158 @@ describe('prepareSkillsForSend', () => {
       skill: 'ask-skill',
       path: 'SKILL.md',
     }).success).toBe(true)
+  })
+
+  describe('project skills', () => {
+    let projectId: string
+    let position: number
+
+    async function pin(skillId: string, level: 'always' | 'prefer') {
+      await testDb.db.insert(schema.projectSkills).values({
+        projectId,
+        skillId,
+        userId,
+        level,
+        position: position++,
+      })
+    }
+
+    beforeEach(async () => {
+      projectId = await seedProject(testDb.db, userId)
+      position = 0
+    })
+
+    it('adds nothing for a project without pins', async () => {
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).not.toContain('<project_skills>')
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('loads an always skill in every send, also without tool calling', async () => {
+      await pin(askId, 'always')
+
+      const withTools = await prepare({ projectId })
+      const withoutTools = await prepare({
+        projectId,
+        isToolCallingAllowed: false,
+      })
+
+      for (const result of [withTools, withoutTools]) {
+        expect(result.instructionBlock).toContain('ASK BODY')
+        expect(result.activeSkillsBlock).toContain('ASK BODY')
+        expect(result.holdsSkillText).toBe(true)
+        expect(result.streamActivations).toEqual([
+          expect.objectContaining({
+            type: 'data-skill-activation',
+            data: expect.objectContaining({
+              skillId: askId,
+              source: 'project',
+            }),
+          }),
+        ])
+      }
+
+      expect(withoutTools.toolsRegistered).toBe(false)
+    })
+
+    it('keeps an always skill out of the catalog and the tool enum', async () => {
+      await pin(autoId, 'always')
+
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).toContain('AUTO BODY')
+      expect(result.instructionBlock).not.toContain('- auto-skill:')
+      expect(result.toolsRegistered).toBe(false)
+    })
+
+    it('lists a prefer skill first with the marker, even in Only when I ask', async () => {
+      await pin(askId, 'prefer')
+
+      const result = await prepare({ projectId })
+
+      expect(result.toolsRegistered).toBe(true)
+      expect(result.instructionBlock).not.toContain('ASK BODY')
+      expect(result.instructionBlock!.indexOf('- ask-skill (project\'s choice)'))
+        .toBeLessThan(result.instructionBlock!.indexOf('- auto-skill:'))
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('never loads an Off pinned skill', async () => {
+      const off = await seed('off-skill', 'OFF BODY', { enabled: false })
+
+      await pin(off, 'always')
+
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).not.toContain('OFF BODY')
+      expect(result.holdsSkillText).toBe(false)
+    })
+
+    it('lets the skill the user attached win over the same project pin', async () => {
+      await pin(askId, 'always')
+
+      const result = await prepare({
+        projectId,
+        newMessageParts: [invocation(askId, 'ask-skill')],
+      })
+
+      expect(result.invocationBlock).toContain('ASK BODY')
+      expect(result.instructionBlock).not.toContain('invoked="project"')
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('does not apply another project\'s pins', async () => {
+      const otherProject = await seedProject(testDb.db, userId)
+
+      await testDb.db.insert(schema.projectSkills).values({
+        projectId: otherProject,
+        skillId: askId,
+        userId,
+        level: 'always',
+        position: 0,
+      })
+
+      const result = await prepare({ projectId })
+
+      expect(result.instructionBlock).not.toContain('ASK BODY')
+    })
+
+    it('does not re-inject a project skill from stored project activations', async () => {
+      const result = await prepare({
+        projectId,
+        storedMessages: [{
+          role: 'assistant',
+          parts: [{
+            type: 'data-skill-activation',
+            data: {
+              skillId: autoId,
+              name: 'auto-skill',
+              version: 1,
+              source: 'project',
+            },
+          }],
+        }],
+      })
+
+      expect(result.activeSkillsBlock).toBeNull()
+    })
+
+    it('keeps an activated prefer skill active on the next send in Only when I ask', async () => {
+      await pin(askId, 'prefer')
+
+      const result = await prepare({
+        projectId,
+        storedMessages: [{
+          role: 'assistant',
+          parts: [{
+            type: 'data-skill-activation',
+            data: { skillId: askId, name: 'ask-skill', version: 1 },
+          }],
+        }],
+      })
+
+      expect(result.activeSkillsBlock).toContain('ASK BODY')
+    })
   })
 })

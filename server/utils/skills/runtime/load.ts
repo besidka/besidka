@@ -1,4 +1,5 @@
-import { and, asc, eq, inArray, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne, or } from 'drizzle-orm'
+import type { ProjectSkillLevel } from '#shared/utils/skills-policy'
 import { splitSkillFrontmatter } from '#shared/utils/skills/frontmatter'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import * as schema from '~~/server/db/schema'
@@ -19,6 +20,11 @@ export interface RuntimeSkillRow {
   sourceKind: string
   enabled: boolean
   modelInvocable: boolean
+}
+
+export interface ProjectRuntimeSkillRow extends RuntimeSkillRow {
+  level: ProjectSkillLevel
+  position: number
 }
 
 export interface RuntimeSkillFile {
@@ -62,6 +68,37 @@ export async function listCatalogSkills(
 }
 
 /**
+ * The skills pinned to a project that can run right now: enabled and
+ * `ready` (a skill that is Off, awaiting review or broken is skipped without
+ * a word), in the order the user set. The pin overrides the invocation mode,
+ * so a skill set to Only when I ask is returned too.
+ */
+export async function listProjectRuntimeSkills(
+  db: DbClient,
+  userId: number,
+  projectId: string,
+): Promise<ProjectRuntimeSkillRow[]> {
+  return await db.select({
+    ...RUNTIME_SKILL_COLUMNS,
+    level: schema.projectSkills.level,
+    position: schema.projectSkills.position,
+  })
+    .from(schema.projectSkills)
+    .innerJoin(
+      schema.skills,
+      eq(schema.skills.id, schema.projectSkills.skillId),
+    )
+    .where(and(
+      eq(schema.projectSkills.projectId, projectId),
+      eq(schema.projectSkills.userId, userId),
+      eq(schema.skills.userId, userId),
+      eq(schema.skills.enabled, true),
+      eq(schema.skills.status, 'ready'),
+    ))
+    .orderBy(asc(schema.projectSkills.position))
+}
+
+/**
  * One skill the user owns that can run right now: enabled and not broken.
  * Anything else, including an id that does not decode, is `null`, so callers
  * can answer every failure the same way.
@@ -92,12 +129,13 @@ export async function findRunnableSkill(
  * The skills a chat may keep re-injecting: the same rows as
  * `findRunnableSkill`, and also model-invocable. A skill switched to Only
  * when I ask runs once per explicit invocation, so an earlier activation of
- * it does not carry over.
+ * it does not carry over, unless the project pins it (`pinnedSkillIds`).
  */
 export async function findRunnableSkills(
   db: DbClient,
   userId: number,
   skillIds: readonly string[],
+  pinnedSkillIds: ReadonlySet<string> = new Set(),
 ): Promise<RuntimeSkillRow[]> {
   const decodable = skillIds.filter(isDecodableSkillPublicId)
 
@@ -111,7 +149,12 @@ export async function findRunnableSkills(
       inArray(schema.skills.id, decodable),
       eq(schema.skills.userId, userId),
       eq(schema.skills.enabled, true),
-      eq(schema.skills.modelInvocable, true),
+      pinnedSkillIds.size > 0
+        ? or(
+          eq(schema.skills.modelInvocable, true),
+          inArray(schema.skills.id, [...pinnedSkillIds]),
+        )
+        : eq(schema.skills.modelInvocable, true),
       ne(schema.skills.status, 'broken'),
     ))
 }

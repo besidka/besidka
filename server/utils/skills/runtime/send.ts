@@ -19,11 +19,13 @@ import {
   listCatalogSkills,
 } from '~~/server/utils/skills/runtime/load'
 import type { RuntimeSkillRow } from '~~/server/utils/skills/runtime/load'
+import type { ProjectSkillsSend } from '~~/server/utils/skills/runtime/project'
 import {
   buildActiveSkillsBlock,
   collectActivatedSkillIds,
   collectActivatedSkillNames,
 } from '~~/server/utils/skills/runtime/reinject'
+import { prepareProjectSkillsForSend } from '~~/server/utils/skills/runtime/project'
 import { getSkillTools } from '~~/server/utils/skills/runtime/tools'
 import type { SkillReadBucket } from '~~/server/utils/skills/versions/read'
 
@@ -40,6 +42,30 @@ export interface SkillsSend {
   getToolActivations: () => ReturnType<
     ReturnType<typeof getSkillTools>['getActivations']
   >
+}
+
+function mergeCatalogSkills(
+  autoSkills: readonly RuntimeSkillRow[],
+  projectSkills: ProjectSkillsSend,
+): Array<RuntimeSkillRow & { preferred: boolean }> {
+  const loadedIds = new Set(projectSkills.loadedSkillIds)
+  const preferredIds = new Set(
+    projectSkills.preferredSkills.map(skill => skill.id),
+  )
+  const merged = autoSkills
+    .filter(skill => !loadedIds.has(skill.id))
+    .map((skill) => {
+      return { ...skill, preferred: preferredIds.has(skill.id) }
+    })
+  const mergedIds = new Set(merged.map(skill => skill.id))
+
+  for (const skill of projectSkills.preferredSkills) {
+    if (!mergedIds.has(skill.id) && !loadedIds.has(skill.id)) {
+      merged.push({ ...skill, preferred: true })
+    }
+  }
+
+  return merged
 }
 
 const EMPTY_SKILLS_SEND: SkillsSend = {
@@ -61,6 +87,10 @@ const EMPTY_SKILLS_SEND: SkillsSend = {
  *   only when the model supports tool calling and the catalog is not empty;
  * - the skill the user attached to this message (`data-skill-invocation`),
  *   as text for the latest user turn, which works without tool calling;
+ * - the skills pinned to the chat's project: the always-loaded ones as a
+ *   `<project_skills>` block (every send, also without tool calling), the
+ *   preferred ones first in the catalog, whatever their invocation mode;
+ *   an Off, unreviewed or broken skill never loads;
  * - the skills the chat keeps active (`data-skill-activation` parts of
  *   earlier answers, plus the attached one when it is Auto), as an
  *   `<active_skills>` block, which is also added when tool calling is off.
@@ -73,6 +103,7 @@ export async function prepareSkillsForSend(input: {
   db: DbClient
   getBucket: () => SkillReadBucket
   userId: number
+  projectId?: string | null
   isSkillsActive: boolean
   isToolCallingAllowed: boolean
   family: KnowledgeTokenFamily
@@ -116,6 +147,17 @@ export async function prepareSkillsForSend(input: {
       version: invocationResult.version,
     })]
     : []
+  const projectSkills = await prepareProjectSkillsForSend({
+    db,
+    bucket,
+    userId,
+    projectId: input.projectId ?? null,
+    family,
+    skipSkillIds: new Set(
+      invocationResult ? [invocationResult.skillId] : [],
+    ),
+    logger,
+  })
   const activatedSkillIds = collectActivatedSkillIds(
     input.storedMessages,
     streamActivations.map(part => part.data.skillId),
@@ -126,14 +168,19 @@ export async function prepareSkillsForSend(input: {
     userId,
     skillIds: activatedSkillIds,
     skillNames: collectActivatedSkillNames(input.storedMessages),
-    skipSkillIds: new Set(
-      invocationResult ? [invocationResult.skillId] : [],
-    ),
+    skipSkillIds: new Set([
+      ...(invocationResult ? [invocationResult.skillId] : []),
+      ...projectSkills.loadedSkillIds,
+    ]),
+    pinnedSkillIds: projectSkills.pinnedSkillIds,
     family,
     logger,
   })
   const catalogSkills: RuntimeSkillRow[] = input.isToolCallingAllowed
-    ? await listCatalogSkills(db, userId)
+    ? mergeCatalogSkills(
+      await listCatalogSkills(db, userId),
+      projectSkills,
+    )
     : []
   const catalog = buildSkillCatalog({ skills: catalogSkills, family })
   let toolSkills = catalogSkills
@@ -167,7 +214,14 @@ export async function prepareSkillsForSend(input: {
 
   const catalogHoldsImportedText = catalog !== null
     && catalogSkills.some(skill => !isAuthoredSkillSource(skill.sourceKind))
-  const instructionBlock = [catalog?.block, active?.block]
+  const instructionBlock = [
+    projectSkills.block,
+    catalog?.block,
+    active?.block,
+  ]
+    .filter((block): block is string => !!block)
+    .join('\n\n') || null
+  const activeSkillsBlock = [projectSkills.block, active?.block]
     .filter((block): block is string => !!block)
     .join('\n\n') || null
 
@@ -181,6 +235,8 @@ export async function prepareSkillsForSend(input: {
         invoked: invocationResult !== null,
         activeCount: active?.activeSkillIds.length ?? 0,
         activeUnavailable: active?.unavailable ?? 0,
+        projectLoaded: projectSkills.loadedSkillIds.length,
+        projectPreferred: projectSkills.preferredSkills.length,
         activeOmitted: active?.omitted ?? 0,
         catalogHoldsImportedText,
       },
@@ -191,12 +247,13 @@ export async function prepareSkillsForSend(input: {
     tools: toolsRun?.tools ?? {},
     toolsRegistered: toolsRun !== null,
     instructionBlock,
-    activeSkillsBlock: active?.block ?? null,
+    activeSkillsBlock,
     invocationBlock: invocationResult?.block ?? null,
     holdsSkillText: active !== null
+      || projectSkills.block !== null
       || invocationResult !== null
       || catalogHoldsImportedText,
-    streamActivations,
+    streamActivations: [...streamActivations, ...projectSkills.activations],
     getToolActivations: toolsRun?.getActivations ?? (() => []),
   }
 }

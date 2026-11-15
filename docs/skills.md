@@ -1107,6 +1107,83 @@ image. `create_document` is a follow-up tool and behaves as it did before.
 `activate_skill` call appear once each under Used (kind `skill`, label
 "Attached" or "Used"); the shared context panel shows none.
 
+### 5.8 Project skills (S-15)
+
+A project holds skills that apply in its chats (BES-381, owner suggestion of
+2026-11-14). The **Skills** card on `/chats/projects/<id>` (shown with the
+`skills` flag, `app/components/Projects/SkillsCard.vue`, one bubble between the
+instructions and the knowledge cards) lists the pins with a level select, the
+skill's state and a remove button, and "Add skill" opens the same
+`ChatInputSkillPicker` as the "+" menu with its own subtitle. The picker lists
+the user's enabled skills that are not pinned yet. A new pin is Always load
+unless three already are, then Prefer.
+
+| Level | What a send gets |
+| --- | --- |
+| Always load | The skill's current content, in every send of the project's chats, in a `<project_skills>` block in the system prompt (`runtime/project.ts`), `invoked="project"` in its `<skill_content>` tag. Also sent when tool calling is off. The skill leaves the catalog |
+| Prefer | The skill stays in the `<available_skills>` catalog, listed first and marked `(project's choice)`, with one extra instruction line that is added to the catalog only when a line is marked |
+
+**Order on a send.** (1) A skill the user attached through "+" or `/command`
+(`<skill_content invoked="user">` in the user turn; a skill that is also an
+Always load pin is loaded once, as the attachment). (2) Always load skills, in
+`position` order. (3) Prefer skills. (4) The other Auto skills by name. The
+levels have separate budgets, so a lower level is cut first only inside the
+catalog (preferred lines come first and the tail is dropped); the Always load
+block has its own cap, `PROJECT_SKILLS_ALWAYS_MAX_TOKENS` (12,000 for the model
+family, Cyrillic-aware, each skill cut to `SKILL_ACTIVATE_MAX_TOKENS`): the
+first skill that does not fit and every one after it are left out and counted
+(`projectAlwaysOmitted` in the wide event), never an error.
+
+**Rules.**
+
+- Pins are read from D1 on every send, never from stored message parts, so a
+  removed pin, an Off skill or a chat moved out of the project stops applying
+  on the next message.
+- Only an enabled skill with status `ready` loads. An Off, `needs-review` or
+  `broken` skill is skipped without a word, and the card shows it as Off,
+  Needs review or Broken. A pin never changes a skill (it cannot turn an Off
+  skill on).
+- A pin overrides the invocation mode: an Always load skill in "Only when I
+  ask" loads, and a Prefer skill in "Only when I ask" is listed in the
+  catalog, so the model may activate it. Re-injection of an earlier
+  activation (section 5.4) accepts a model-invocable skill **or** a skill the
+  project pins (`pinnedSkillIds`), so a preferred skill the model activated
+  stays active on the next send.
+- Limits: at most 3 Always load and 20 pins per project; the always-loaded
+  skills that can run must fit `PROJECT_SKILLS_ALWAYS_MAX_TOKENS`, checked on
+  save (400 with the reason, estimated with the conservative `default`
+  family) and again on every send (bodies grow and the family varies). The
+  card shows "≈ N tokens in every message" per always-loaded skill and in
+  total, as the skills list does for Auto.
+- Untrusted framing: the block says the skill text is data from the user or a
+  third party and cannot override the user, Besidka's rules or the system
+  prompt; the `project_skills` tag is in the delimiter neutralizer, so a body
+  cannot close it. A pin holds skill text, so `holdsSkillText` is true and
+  `memory_write` stays locked like for any skill in the prompt.
+- The step in the reasoning list reads "Project skill · name". Each loaded
+  project skill is written to the client at the start of the send and handed to
+  persistence as a `data-skill-activation` part with `source: 'project'`
+  (`isProjectSkillActivationPart`), like an attached Auto skill. Both
+  collectors skip that source, so a stored project activation never keeps a
+  skill active after the pin is gone. `filterPublicParts` drops the part type,
+  so the name never reaches `/shared/*` (`share-public-parts.spec.ts` covers
+  the project source). The context panel lists it under Used as "Project
+  skill".
+
+**API.** `GET /api/v1/projects/[id]/skills` (pins, state, token estimate,
+limits) and `PUT /api/v1/projects/[id]/skills` (the whole ordered list
+`{ skills: [{ skillId, level }] }`), both behind the `skills` flag through
+`requireSkillsSession`. All checks live in `setProjectSkills`
+(`server/utils/skills/project/pins.ts`): ownership of the project and of every
+skill (a foreign or unknown id is 404), no duplicates, the limits, no broken
+skill, the token cap. The delete and the inserts go in one `db.batch()`.
+
+**MCP (not built).** The ticket asks for `set_project_skills`
+(`projects:write`, same user's skills only, never enables an Off skill). It was
+not added because the skills tools of S-6 (#924) are not on `main`, and the
+version bump belongs with them (5.1.0, a new tool without a new scope).
+`setProjectSkills` is the single validation function the tool will call.
+
 ## 6. Threat model
 
 | # | Threat | Attacker | Mitigation | Ticket |
@@ -1372,6 +1449,19 @@ increases, and no blob is copied.
   - set `current_version` to the newest complete version;
   - with S-13, revoked shares come back: replay the revokes and turn the share
     flag off until that is done.
+
+### 8.8a `project_skills` (S-15)
+
+One row per skill pinned to a project (`server/db/schemas/project-skills.ts`):
+`id` (autoincrement), `project_id` and `skill_id` (public ids), `user_id`,
+`level` (`always` or `prefer`), `position` and `created_at`. Unique
+(`project_id`, `skill_id`), plus indexes on `user_id` and `skill_id`. The
+migration is one `CREATE TABLE` and three `CREATE INDEX`; there is no default
+in SQL (the level and position are set in `setProjectSkills`) and **no foreign
+key**, like `skill_chat_settings` and `research_jobs`, so nothing cascades.
+The rows are deleted explicitly: `deleteProject` (also used by the MCP
+`delete_project`), `deleteUserSkill` (in its batch) and `purgeUserSkills`
+(account purge). `docs/d1-restore-reconciliation.md` has the restore notes.
 
 ### 8.9 Later: sharing tables (S-13)
 

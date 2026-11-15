@@ -130,4 +130,45 @@ describe('buildSkillCatalog', () => {
       .toBeGreaterThan(estimateMemoryTokens(latinCatalog.block, 'anthropic'))
     expect(cyrillicCatalog.tokens).toBeLessThanOrEqual(1500)
   })
+
+  it('lists the project\'s preferred skills first with a marker', () => {
+    const catalog = buildSkillCatalog({
+      family: 'anthropic',
+      skills: [
+        { name: 'alpha', description: 'First by name.' },
+        { name: 'zulu', description: 'Last by name.', preferred: true },
+      ],
+    })!
+
+    expect(catalog.block.indexOf('- zulu (project\'s choice): Last by name.'))
+      .toBeLessThan(catalog.block.indexOf('- alpha: First by name.'))
+    expect(catalog.block).toContain('choose it before the others')
+    expect(catalog.names).toEqual(['zulu', 'alpha'])
+  })
+
+  it('leaves the catalog text unchanged without a preferred skill', () => {
+    const catalog = buildSkillCatalog({
+      family: 'anthropic',
+      skills: [{ name: 'alpha', description: 'Only one.' }],
+    })!
+
+    expect(catalog.block).not.toContain('choice')
+  })
+
+  it('cuts the other skills before the preferred ones when over budget', () => {
+    const others = Array.from({ length: 80 }, (_, index) => {
+      return { name: `other-${index}`, description: 'd'.repeat(400) }
+    })
+    const catalog = buildSkillCatalog({
+      family: 'anthropic',
+      budgetTokens: 200,
+      skills: [
+        ...others,
+        { name: 'preferred-skill', description: 'p', preferred: true },
+      ],
+    })!
+
+    expect(catalog.omitted).toBeGreaterThan(0)
+    expect(catalog.block).toContain('- preferred-skill (project\'s choice)')
+  })
 })

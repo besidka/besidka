@@ -1758,6 +1758,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/storage.spec.ts',
     'tests/unit/server/utils/skills/cleanup.spec.ts',
     'tests/unit/server/utils/skills/sweep.spec.ts',
+    'tests/unit/utils/projects/lifecycle.spec.ts',
     'tests/integration/server/skills-storage-sweep-plugin.spec.ts',
     'tests/unit/server/utils/files/derived-keys-delete-sites.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
@@ -1874,6 +1875,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/runtime/tools.spec.ts',
     'tests/unit/server/utils/skills/runtime/reinject.spec.ts',
     'tests/unit/server/utils/skills/runtime/send.spec.ts',
+    'tests/unit/server/utils/skills/runtime/project.spec.ts',
+    'tests/unit/server/utils/skills/project/pins.spec.ts',
+    'tests/unit/server/api/v1/projects/project-skills.spec.ts',
+    'tests/unit/utils/projects/lifecycle.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/chats/request-schema.spec.ts',
     'tests/unit/server/utils/chats/share-public-parts.spec.ts',
@@ -1898,6 +1903,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/shared-chat-view.spec.ts',
     'tests/unit/components/Chat/SkillInvocation.spec.ts',
     'tests/unit/components/Chat/SkillPreview.client.spec.ts',
+    'tests/unit/components/Projects/SkillsCard.spec.ts',
     'tests/unit/components/ChatInput/SkillPicker.client.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
@@ -3392,12 +3398,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/runtime\/.*\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts|model-turns)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/shared\/\[slug\]\/index\.get\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
+        /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(runtime|project)\/.*\.ts|server\/db\/schemas\/project-skills\.ts|server\/api\/v1\/projects\/\[id\]\/skills\/.*\.ts|server\/utils\/projects\/lifecycle\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts|model-turns)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/shared\/\[slug\]\/index\.get\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
       tests: skillsRuntimeTests,
     },
     {
       pattern:
-        /^(app\/components\/Chat\/(Reasoning|Reasoning\/SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/utils\/reasoning\.ts|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills|composer-commands|markdown-textarea)\.ts|app\/utils\/(skill-step|chat-input-tiles|composer-command)\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(CommandPicker|CommandMirror)\.vue|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
+        /^(app\/components\/Chat\/(Reasoning|Reasoning\/SkillStep|SkillInvocation|SkillPreview\.client)\.vue|app\/utils\/reasoning\.ts|app\/components\/ChatInput\/SkillPicker\.client\.vue|app\/composables\/(composer-skill-invocation|composer-skills|composer-commands|markdown-textarea)\.ts|app\/utils\/(skill-step|chat-input-tiles|composer-command)\.ts|app\/components\/Projects\/SkillsCard\.vue|app\/pages\/chats\/projects\/\[id\]\.vue|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(CommandPicker|CommandMirror)\.vue|app\/types\/chat-input-tools\.d\.ts|app\/layouts\/chat\.vue|app\/composables\/chat-test\.ts|server\/api\/v1\/chats\/test\/index\.post\.ts|shared\/utils\/chat-test-errors\.ts|tests\/e2e\/helpers\/skills\.ts|app\/pages\/chats\/skills\/index\.vue|shared\/utils\/skills\/runtime\.ts)$/,
       tests: skillsComposerTests,
     },
     {
