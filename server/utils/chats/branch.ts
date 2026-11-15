@@ -10,6 +10,7 @@ import {
 } from '#shared/utils/connectors-parts'
 import {
   TOOL_APPROVAL_DATA_PART_TYPE,
+  TOOL_GRANT_DATA_PART_TYPE,
   isToolApprovalPart,
 } from '#shared/utils/tool-approval-parts'
 import * as schema from '~~/server/db/schema'
@@ -116,6 +117,7 @@ function isNonToolMessagePart(
     && type !== 'dynamic-tool'
     && type !== CONNECTORS_NOTICE_PART_TYPE
     && type !== TOOL_APPROVAL_DATA_PART_TYPE
+    && type !== TOOL_GRANT_DATA_PART_TYPE
     && !type.startsWith('tool-')
 }
 

@@ -909,7 +909,9 @@ For every call, `toolApproval` (AI SDK, on `streamText`) returns
 
 The server's `readOnlyHint` only matters in F1 (a read-only tool is not
 subject to F1) and in the UI (badge, bulk shortcut). `destructiveHint: false`
-is never trusted. A hash change clears both "always" entries for that tool.
+is never trusted: it never skips the prompt, and a tool marked that way asks
+exactly like a tool with no hint. A hash change clears both "always" entries
+for that tool.
 
 The policy module (`server/utils/tool-approval/policy.ts`) adds these rules
 after the L3 audit (2026-11-15):
@@ -919,10 +921,12 @@ after the L3 audit (2026-11-15):
   `invalid-input`, on a first call and on replay.
 - **`destructiveHint` is required** on the descriptor, so the code that
   builds it has to decide. A connector tool takes it from
-  `connectorDestructiveHint(annotations)`: true unless the server declares
-  `readOnlyHint: true`. A server's `destructiveHint: false` on a tool that
-  is not read-only still counts as destructive, so such a tool goes to
-  always-ask (Allow once only) and no "always" or chat grant can lift it.
+  `connectorDestructiveHint(annotations)`: true only when the server
+  declares `destructiveHint: true` (changed in the grants layer, section
+  7.9). Such a tool goes to always-ask (Allow once only) and no "always" or
+  chat grant can lift it. A tool that is not read-only and not marked
+  destructive, `destructiveHint: false` included, is a plain write: it asks
+  with reason `default` and offers all four answers.
 - **Grants carry their identity.** A connector grant matches only on the
   same connector id, tool name and definition hash; a Besidka grant on the
   same tool name and registry hash.
@@ -1012,10 +1016,10 @@ in a separate card (C-6 plan, L6 builds it):
 - Shared pages never render approval steps (spec).
 
 Revocation: the connector card's tool list sets a tool back to "Ask every
-time" (`POST /api/v1/connectors/[id]/tools/settings`), and the chat context
-panel offers "Reset approvals in this chat"
-(`POST /api/v1/chats/[slug]/connector-approvals/reset`). There is one route
-for tool approval settings, not two.
+time" (`POST /api/v1/connectors/[id]/tools/settings`, C-7), and the chat
+context panel offers "Reset approvals in this chat"
+(`POST /api/v1/chats/[slug]/tool-approvals/reset`, built in section 7.9 with
+a per-tool remove for "always").
 
 ### 7.4 Audit log
 
@@ -1086,8 +1090,10 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   the memory write lock's triggers: requested web search (`web`), project
   knowledge text and past-chat excerpts (`knowledge`), the artifact context
   block (`file`), active skill text (`skill`), and a chat branched from a
-  public share (`shared-branch`, new). Plain attachments add no taint
-  (unchanged from the memory lock). The memory lock itself is unchanged and
+  public share (`shared-branch`, new). Plain attachments added no taint
+  here; since the grants audit (section 7.9) a file the user attached to
+  the message adds `file` (the memory write lock is unchanged and still
+  ignores them). The memory lock itself is unchanged and
   stays the second line in `memory_write`. With the flag on, a call the user
   approved supersedes that lock (`isApprovedByUser` on `getMemoryTools`,
   filled by the continuation through `markApprovedByUser`); the never-store
@@ -1105,10 +1111,11 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   (audit M2). This includes the connector's own earlier result, so a second
   open-world read in one send asks. A tool marked both read-only and
   destructive counts as destructive.
-- **Connector writes always land in `always-ask`.** `connectorDestructiveHint`
-  is true for every tool that is not marked read-only, so a connector write
-  offers only Allow once until C-7; `default` and its Always allow option are
-  unreachable for connectors today. The summary names the exposed tool name,
+- **Connector writes landed in `always-ask` (superseded by section 7.9).**
+  `connectorDestructiveHint` was true for every tool that was not marked
+  read-only, so a connector write offered only Allow once. Since the grants
+  layer only `destructiveHint: true` is always-ask and plain writes ask with
+  `default`. The summary names the exposed tool name,
   never text the remote server chose, and the audit row keeps the remote
   name with control and bidirectional characters removed (audit L1).
 - **What the SDK may not hold.** A tool with no entry is denied
@@ -1176,7 +1183,8 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   sends: a later message starts from a fresh state, and earlier turns reach
   the model only as text, so content a connector or web page returned in an
   earlier turn and quoted in an answer is not taint. Plain user attachments
-  add no taint either. Both are accepted for v1 and revisited with C-7.
+  added no taint either (changed in section 7.9: they now add `file`). The
+  cross-send residual is accepted for v1 and revisited with C-7.
 - **Merge order.** With the flag on, this layer turns cases that used to run
   or be refused (a memory write after web search, an artifact write in a
   send with an active skill or after connector output, any connector write)
@@ -1257,10 +1265,9 @@ Where this differs from sections 7.2 and 7.6:
 - **Remember.** The choice is clamped to the options the request offered.
   "In this chat" writes the exposed name and hash to
   `connector_chat_settings.alwaysAllowTools`, "always" sets the existing
-  `connector_tool_settings` row to `always` with the approved hash. Every
-  connector write is in the always-ask tier, so today every answer clamps to
-  `once`; the send reads these grants only from C-7. Native writes never
-  offer more than once.
+  `connector_tool_settings` row to `always` with the approved hash. Since
+  section 7.9 a plain connector write offers both, and the send and the
+  replay read them back. Native writes never offer more than once.
 - **Messages.** The history is sanitized as for any send. The paused
   message is rebuilt twice: for the model, each answered call takes its
   exact input from KV and, when approved, its signature (the stored input is
@@ -1309,9 +1316,11 @@ Where this differs from sections 7.2 and 7.6:
   Instead, a provider-executed tool that is not a read (code execution, any
   unclassified provider tool) is left out of the send before the first step
   when the policy would ask, and out of later steps through `prepareStep`
-  (`withProviderToolEgressGuard`). The rule counts every taint, so with the
-  flag on, requesting web search and code execution together leaves code
-  execution out. The same guard withholds the provider's own web search,
+  (`withProviderToolEgressGuard`). Provider code execution is exempt from
+  this withholding for every taint kind, because the Anthropic, OpenAI and
+  Gemini code sandboxes have no network egress and so cannot carry data
+  out (grants audit, section 7.9); web fetch and any unclassified provider
+  tool are still left out. The same guard withholds the provider's own web search,
   grounding and URL context once a tool call of the turn has read a
   connector or the user's Besidka data (a connector result, `search_chats`,
   `read_chat`, the memory and project knowledge reads; rule 4 of the plan),
@@ -1386,8 +1395,8 @@ The buttons for the pauses of 7.6 and 7.7. Where this differs from 7.3:
 - **Buttons.** `btn-sm`, stacked full width below `md`: Allow once
   (`btn-primary`), Allow in this chat and Always allow (`btn-soft`) only
   when the call's `rememberOptions` holds them, Deny (`btn-ghost`). The
-  client builds no matrix of its own. Always allow has no confirmation
-  step yet, because no call offers it until C-7. Enter on the focused step
+  client builds no matrix of its own. Always allow asks for an inline
+  confirmation first (section 7.9). Enter on the focused step
   (not on a button inside it, not repeated, not during IME composition)
   means Allow once, only when Allow once is offered; Esc collapses the
   arguments. "View details" opens `UiSidePanel` (bottom sheet below `md`)
@@ -1453,6 +1462,117 @@ The buttons for the pauses of 7.6 and 7.7. Where this differs from 7.3:
   continuation against a live connector, and screen reader output were not
   checked. The approval state survives no reload: after a reload, an
   answered but unsent call reads as interrupted.
+
+### 7.9 As built: remembered approvals (C-6 grants layer, 2026-11-15)
+
+The owner report on BES-244: the step never offered "Always allow", because
+the L3 audit put every connector write in the always-ask tier and nothing
+read the stored grants. Where this changes sections 7.1 to 7.8:
+
+- **Tiers.** `connectorDestructiveHint` is true only for an explicit
+  `destructiveHint: true`. The buttons follow the reason:
+
+  | Reason | Buttons |
+  |---|---|
+  | `untrusted-output`, `cross-source` | Allow once, Deny |
+  | `always-ask` (server `destructiveHint: true`; Besidka delete and instructions tools) | Allow once, Deny |
+  | `default` (a plain connector write) | Allow once, Allow in this chat, Always allow, Deny |
+
+  `readOnlyHint: true` stays the only signal that lets a connector tool run
+  without asking.
+- **Read path.** With the `tool-approvals` flag on, `getConnectorTools`
+  reads this chat's `connector_chat_settings` once per send and puts two
+  grants on every connector entry (`SendToolEntry.userGrants`): "always"
+  from the tool's `connector_tool_settings` row when `approval='always'`,
+  with its `approvedDefinitionHash`, and "in this chat" from
+  `alwaysAllowTools[<exposed name>]`. Each grant carries the hash it was
+  given for, bound to the connector id and the exposed name, so a tool whose
+  reviewed definition changed asks again. These are exactly the two values
+  `applyRememberGrants` writes. The continuation goes through the same
+  `getConnectorTools`, so a later call in a resumed turn reads them too.
+  Flag off, nothing is read.
+- **What a grant never lifts.** Rules 2, 3 and 5 run before the grant rules,
+  so a grant never skips a prompt caused by untrusted output, a source
+  switch or the always-ask tier. Every connector call, a granted write
+  included, records `connector` taint and its read source, so a grant only
+  skips the prompt for a connector write made before anything untrusted ran
+  in that send; a second write in the same send asks Allow once / Deny.
+  User grants on a read-only tool count only while the auto-run grant
+  would (an untainted send, or `openWorldHint: false`).
+- **Forged answers.** `decideContinuation` clamps the remember choice to the
+  options the pending record stored, so a `chat` or `always` answer to a
+  once-only request is stored as `once`.
+- **Confirmation.** Always allow opens an inline confirmation inside the
+  step (no modal): "Always allow <tool> from <Connector>? Besidka will run
+  it without asking in every chat until the tool changes. You can remove
+  this in the chat panel." Focus moves to its Always allow button; Cancel or
+  Esc closes it and returns focus to the step. Enter on the step still means
+  Allow once.
+- **Context panel.** An owned chat with the flag on shows an Approvals
+  section under the context groups (`Chat/ContextPanelApprovals.vue`,
+  `useChatToolApprovalGrants()`): every "in this chat" grant of this chat
+  and every "always" grant of the connectors the chat has on, by connector
+  title and remote tool name, never hashes. A grant whose stored hash no
+  longer matches the reviewed definition is not listed. "Reset approvals in
+  this chat" clears every chat grant; "Remove" sets one always grant back to
+  ask. The list reloads when the panel opens and after each finished send.
+- **Routes** (`server/api/v1/chats/[slug]/tool-approvals/`):
+  `GET index` lists the grants; `POST reset` sets `alwaysAllowTools` to `{}`
+  in this chat's `connector_chat_settings` and `besidka_chat_settings` rows
+  and keeps each connector switched on or off; `POST revoke`
+  (`{ connectorId, toolName }`, the remote tool name) sets
+  `approval='ask'` and `approvedDefinitionHash=null` and keeps the reviewed
+  hash. The POSTs run the same-origin guard and the connector write limit
+  (10 a minute); all three answer 404 when the flag is off or the chat is
+  not the user's. No migration: the tables are the C-6 L3 ones.
+- **Not built.** No Besidka-family tool exists yet (BES-394 L8), so nothing
+  reads `besidka_chat_settings` grants; reset already clears them.
+- **Audit follow-up (2026-11-15).** The security audit of #912 found these,
+  fixed in the same PR:
+  - *Attachments taint the send (H1).* A file the user attached to the
+    current message records `file` taint (`presetApprovalTaint`,
+    `holdsUserAttachments`), so no grant runs a tool in a send that holds a
+    document. Because the taint counts for every rule, a send with an
+    attachment also asks for memory writes (Allow once / Deny) and asks
+    `untrusted-output` for open-world connector reads. Provider code
+    execution stays available, because its sandbox has no network egress
+    (section 7.7), so "analyze this CSV" keeps working.
+  - *Cross-send residual, accepted (H1).* Taint does not carry across
+    sends, so a grant runs its tool in a later message even when an earlier
+    message read untrusted content that is still in the history. This is
+    the Claude-like behavior the owner asked for; no per-chat taint flag is
+    stored. The Always allow confirmation and the "Allow in this chat"
+    tooltip say so in plain words.
+  - *Visible runs (M1).* A call that ran under a grant gets a
+    `data-tool-grant` part (`toolCallId`, `toolName`, `scope`), written
+    after its output. The reasoning step shows "Ran without asking (Always
+    allowed)" or "(Allowed in this chat)" with Manage, which opens the chat
+    panel. Shares and branches drop the part; the history sanitizer keeps
+    only text.
+  - *Name heuristic (M2).* A connector tool whose remote name or title
+    contains delete, remove, revoke, destroy, drop, purge, invite, share,
+    transfer or publish (`hasAlwaysAskToolName`: split on non-letters and
+    camelCase, whole words, any case) is always-ask whatever its
+    annotations say, also when it claims `readOnlyHint: true`. The panel
+    does not list a grant on such a tool. The confirmation adds that what
+    the tool does is declared by the service itself.
+  - *Revoke (L1).* The connector id is decoded and looked up among the
+    user's connectors before the update, so an id that does not decode or
+    is someone else's answers 404, never 500. The request log gets the
+    outcome and the connector id only.
+  - *URL change (L2).* Not applicable: no route edits a connector's URL
+    (`PATCH /api/v1/connectors/[id]` takes `enabled` and `title` only), so a
+    new URL is a new connector with its own baseline and no grants.
+  - *Same connector (item 6).* No exemption for a call to the connector
+    that produced the untrusted content: its own earlier output can carry
+    instructions just as well, so a granted write after any connector read
+    in the send still asks Allow once / Deny.
+- **Memory tool text.** With the flag on, the `memory_write` and
+  `memory_forget` descriptions say a call after untrusted content needs the
+  user's approval in this turn and that the model should still call it when
+  the user asked (`buildMemoryWriteDescriptions`). The live check had shown
+  reasoning models skipping the tool because the old text said it was
+  refused. Flag off, the text is unchanged.
 
 ## 8. Data model
 

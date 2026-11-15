@@ -299,6 +299,7 @@
           </div>
         </div>
       </section>
+      <ChatContextPanelApprovals v-if="data.kind === 'owned'" />
     </template>
     <LazyChatImagePreview
       v-if="previewImage && previewSourceUrl"

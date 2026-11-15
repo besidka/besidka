@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { UIMessageChunk } from 'ai'
-import { TOOL_APPROVAL_DATA_PART_TYPE } from '#shared/utils/tool-approval-parts'
+import {
+  TOOL_APPROVAL_DATA_PART_TYPE,
+  TOOL_GRANT_DATA_PART_TYPE,
+} from '#shared/utils/tool-approval-parts'
 import {
   buildConnectorApprovalEntry,
   chatHasAwaitingApproval,
@@ -14,7 +17,12 @@ import {
   withProviderToolEgressGuard,
 } from '~~/server/utils/tool-approval/send'
 import type { SendToolApproval } from '~~/server/utils/tool-approval/send'
-import { createApprovalState } from '~~/server/utils/tool-approval/state'
+import {
+  createApprovalState,
+  deserializeApprovalState,
+  serializeApprovalState,
+} from '~~/server/utils/tool-approval/state'
+import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
 
 const HASH = 'a'.repeat(64)
 const SNAPSHOT = {
@@ -46,6 +54,9 @@ function connectorEntry(input: {
   tool: string
   readOnly: boolean
   openWorld?: boolean
+  destructive?: boolean
+  title?: string
+  grantHashes?: { always: string | null, chat: string | null }
 }) {
   return buildConnectorApprovalEntry({
     exposedName: `mcp__${input.slug}__${input.tool}`,
@@ -53,11 +64,14 @@ function connectorEntry(input: {
     connectorTitle: input.slug,
     connectorHost: `mcp.${input.slug}.example.com`,
     remoteToolName: input.tool,
+    ...(input.title ? { remoteToolTitle: input.title } : {}),
     definitionHash: HASH,
     annotations: {
       ...(input.readOnly ? { readOnlyHint: true } : {}),
       ...(input.openWorld === false ? { openWorldHint: false } : {}),
+      ...(input.destructive ? { destructiveHint: true } : {}),
     },
+    ...(input.grantHashes ? { grantHashes: input.grantHashes } : {}),
   })
 }
 
@@ -301,7 +315,7 @@ describe('createSendToolApproval', () => {
         .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
     })
 
-  it('asks always-ask for a connector tool that is not read-only', () => {
+  it('asks default with every answer for a plain connector write', () => {
     const approval = createApproval([], [
       connectorEntry({
         connectorId: 'c1',
@@ -312,7 +326,27 @@ describe('createSendToolApproval', () => {
     ])
 
     expect(approval.toolApproval(call('call-1', 'mcp__linear__create_issue')))
+      .toEqual({ type: 'user-approval', reason: 'default' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once', 'chat', 'always'])
+  })
+
+  it('asks always-ask with Allow once only for destructiveHint true', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'delete_issue',
+        readOnly: false,
+        destructive: true,
+        grantHashes: { always: HASH, chat: HASH },
+      }),
+    ])
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__delete_issue')))
       .toEqual({ type: 'user-approval', reason: 'always-ask' })
+    expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+      .toEqual(['once'])
   })
 
   it('never gates a provider-executed web search and taints the send',
@@ -351,7 +385,7 @@ describe('createSendToolApproval', () => {
     async () => {
       const approval = createSendToolApproval({ state: createApprovalState() })
       const tools = {
-        code_execution: { type: 'provider' },
+        web_fetch: { type: 'provider' },
         web_search: { type: 'provider' },
         memory_write: { execute: vi.fn() },
       } as never
@@ -369,7 +403,7 @@ describe('createSendToolApproval', () => {
       approval.state.taint.add('connector')
 
       expect(approval.listWithheldProviderTools(tools))
-        .toEqual(['code_execution'])
+        .toEqual(['web_fetch'])
       expect(Object.keys(withholdProviderTools({
         approval,
         tools,
@@ -379,15 +413,15 @@ describe('createSendToolApproval', () => {
         approval,
         tools,
         keepWhenHistoryHolds: [{
-          type: 'tool-code_execution',
+          type: 'tool-web_fetch',
           state: 'output-available',
         }],
-      }) ?? {})).toContain('code_execution')
+      }) ?? {})).toContain('web_fetch')
 
       const prepareStep = withProviderToolEgressGuard({
         approval,
         tools,
-        base: () => ({ activeTools: ['code_execution', 'memory_write'] }),
+        base: () => ({ activeTools: ['web_fetch', 'memory_write'] }),
         keepDeclarations: false,
       })
 
@@ -399,6 +433,27 @@ describe('createSendToolApproval', () => {
         keepDeclarations: true,
       })({} as never)).toBeUndefined()
     })
+
+  it.each(['web', 'connector', 'skill', 'knowledge', 'file', 'besidka'] as const)(
+    'never withholds provider code execution after %s taint',
+    (kind) => {
+      const approval = createSendToolApproval({
+        state: createApprovalState(),
+      })
+      const tools = { code_execution: { type: 'provider' } } as never
+
+      approval.registerTools(tools)
+      approval.state.taint.add(kind)
+      approval.state.toolReadSources.add('connector:c1')
+
+      expect(approval.listWithheldProviderTools(tools)).toEqual([])
+      expect(withholdProviderTools({
+        approval,
+        tools,
+        keepWhenHistoryHolds: null,
+      })).toBe(tools)
+    },
+  )
 
   it('binds an approval to its call and uses it once', () => {
     const approval = createApproval(['memory_write'])
@@ -506,7 +561,7 @@ describe('createSendToolApproval', () => {
     approval.state.counters.rounds = 4
 
     expect(approval.toolApproval(call('call-1', 'mcp__linear__create_issue')))
-      .toEqual({ type: 'user-approval', reason: 'always-ask' })
+      .toEqual({ type: 'user-approval', reason: 'default' })
 
     approval.state.counters.rounds = 5
 
@@ -854,5 +909,383 @@ describe('chatHasAwaitingApproval', () => {
     expect(chatHasAwaitingApproval([
       { parts: [{ type: 'dynamic-tool', state: 'output-available' }] },
     ])).toBe(false)
+  })
+})
+
+describe('user grants in the send', () => {
+  const OLD_HASH = 'b'.repeat(64)
+
+  function writeEntry(
+    grantHashes: { always: string | null, chat: string | null },
+    connectorId = 'c1',
+  ) {
+    return connectorEntry({
+      connectorId,
+      slug: 'linear',
+      tool: 'create_issue',
+      readOnly: false,
+      grantHashes,
+    })
+  }
+
+  it('runs a plain write with an "in this chat" grant for its hash', () => {
+    const approval = createApproval([], [
+      writeEntry({ always: null, chat: HASH }),
+    ])
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__create_issue')))
+      .toBe('not-applicable')
+    expect(approval.consumeClearedCall({
+      toolCallId: 'call-1',
+      toolName: 'mcp__linear__create_issue',
+      input: {},
+    })).toBe(true)
+  })
+
+  it('runs a plain write with an "always" grant for its hash', () => {
+    const approval = createApproval([], [
+      writeEntry({ always: HASH, chat: null }),
+    ])
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__create_issue')))
+      .toBe('not-applicable')
+  })
+
+  it('asks again with every answer when the tool changed since the grant',
+    () => {
+      const approval = createApproval([], [
+        writeEntry({ always: OLD_HASH, chat: OLD_HASH }),
+      ])
+
+      expect(
+        approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
+      ).toEqual({ type: 'user-approval', reason: 'default' })
+      expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+        .toEqual(['once', 'chat', 'always'])
+    })
+
+  it.each([
+    ['web', ['web'], []],
+    ['connector', ['connector'], []],
+    ['skill', ['skill'], []],
+  ] as const)(
+    'still asks untrusted-output with Allow once only after %s taint',
+    (_name, taint) => {
+      const approval = createApproval([], [
+        writeEntry({ always: HASH, chat: HASH }),
+      ])
+
+      taint.forEach(kind => approval.state.taint.add(kind))
+
+      expect(
+        approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
+      ).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+        .toEqual(['once'])
+    },
+  )
+
+  it('still asks cross-source with Allow once only after another source',
+    () => {
+      const approval = createApproval([], [
+        writeEntry({ always: HASH, chat: HASH }),
+      ])
+
+      approval.state.readSources.add('connector:c2')
+
+      expect(
+        approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
+      ).toEqual({ type: 'user-approval', reason: 'cross-source' })
+      expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+        .toEqual(['once'])
+    })
+
+  it('asks for a second write after a granted write in the same send',
+    () => {
+      const approval = createApproval([], [
+        writeEntry({ always: HASH, chat: HASH }),
+      ])
+
+      expect(
+        approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
+      ).toBe('not-applicable')
+      expect(
+        approval.toolApproval(call('call-2', 'mcp__linear__create_issue')),
+      ).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    })
+
+  it('never lets a grant of another connector match', () => {
+    const entry = writeEntry({ always: HASH, chat: HASH })
+    const approval = createApproval([], [{
+      ...entry,
+      userGrants: {
+        always: { ...entry.userGrants!.always!, connectorId: 'c9' },
+        chat: { ...entry.userGrants!.chat!, connectorId: 'c9' },
+      },
+    }])
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__create_issue')))
+      .toEqual({ type: 'user-approval', reason: 'default' })
+  })
+
+  it('ignores user grants on a read-only tool after untrusted content', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+        grantHashes: { always: HASH, chat: HASH },
+      }),
+    ])
+
+    approval.state.taint.add('web')
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
+      .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+  })
+})
+
+describe('grants audit follow-ups', () => {
+  const NO_PRESET = {
+    requestedTools: [],
+    holdsUntrustedKnowledge: false,
+    holdsArtifactContext: false,
+    holdsSkillText: false,
+    holdsPastChatExcerpts: false,
+    isBranchedFromShare: false,
+  }
+
+  function grantedWrite(tool = 'create_issue', title?: string) {
+    return connectorEntry({
+      connectorId: 'c1',
+      slug: 'linear',
+      tool,
+      readOnly: false,
+      ...(title ? { title } : {}),
+      grantHashes: { always: HASH, chat: HASH },
+    })
+  }
+
+  describe('user attachments (H1)', () => {
+    it('taints the send with file, and the taint survives a resume', () => {
+      const state = createApprovalState()
+
+      presetApprovalTaint(state, { ...NO_PRESET, holdsUserAttachments: true })
+
+      expect([...state.taint]).toEqual(['file'])
+
+      const restored = deserializeApprovalState(
+        JSON.parse(JSON.stringify(serializeApprovalState(state))),
+      )
+
+      expect(restored.ok && [...restored.state.taint]).toEqual(['file'])
+    })
+
+    it('adds no taint without attachments', () => {
+      const state = createApprovalState()
+
+      presetApprovalTaint(state, { ...NO_PRESET, holdsUserAttachments: false })
+
+      expect(state.taint.size).toBe(0)
+    })
+
+    it('asks Allow once / Deny for a granted write in a send with an '
+      + 'attachment', () => {
+      const approval = createApproval([], [grantedWrite()])
+
+      presetApprovalTaint(approval.state, {
+        ...NO_PRESET,
+        holdsUserAttachments: true,
+      })
+
+      expect(
+        approval.toolApproval(call('call-1', 'mcp__linear__create_issue')),
+      ).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+        .toEqual(['once'])
+    })
+
+    it('asks for a memory write and keeps code execution with an '
+      + 'attachment', () => {
+      const approval = createSendToolApproval({
+        state: createApprovalState(),
+      })
+      const tools = {
+        code_execution: { type: 'provider' },
+        memory_write: { execute: vi.fn() },
+      } as never
+
+      approval.registerTools(tools)
+      presetApprovalTaint(approval.state, {
+        ...NO_PRESET,
+        holdsUserAttachments: true,
+      })
+
+      expect(approval.toolApproval(call('call-1', 'memory_write')))
+        .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(approval.listWithheldProviderTools(tools)).toEqual([])
+    })
+  })
+
+  describe('grant marker (M1)', () => {
+    it('records which user grant let a call run', () => {
+      const always = createApproval([], [connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'create_issue',
+        readOnly: false,
+        grantHashes: { always: HASH, chat: null },
+      })])
+      const chat = createApproval([], [connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'create_issue',
+        readOnly: false,
+        grantHashes: { always: null, chat: HASH },
+      })])
+
+      always.toolApproval(call('call-1', 'mcp__linear__create_issue'))
+      chat.toolApproval(call('call-1', 'mcp__linear__create_issue'))
+
+      expect(always.getGrantScope('call-1')).toBe('always')
+      expect(chat.getGrantScope('call-1')).toBe('chat')
+    })
+
+    it('records no grant for a read that runs on its read-only hint', () => {
+      const approval = createApproval([], [connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+        grantHashes: { always: HASH, chat: HASH },
+      })])
+
+      expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
+        .toBe('not-applicable')
+      expect(approval.getGrantScope('call-1')).toBeNull()
+    })
+
+    it('writes a data-tool-grant part after the output of a granted call',
+      async () => {
+        const approval = createApproval([], [grantedWrite()])
+
+        approval.toolApproval(call('call-1', 'mcp__linear__create_issue'))
+
+        const collector = createToolApprovalStreamCollector(approval)
+        const chunks: UIMessageChunk[] = [
+          {
+            type: 'tool-input-available',
+            toolCallId: 'call-1',
+            toolName: 'mcp__linear__create_issue',
+            input: {},
+            dynamic: true,
+          },
+          {
+            type: 'tool-output-available',
+            toolCallId: 'call-1',
+            output: 'ok',
+            dynamic: true,
+          },
+        ]
+        const output: UIMessageChunk[] = []
+        const reader = collector.apply(new ReadableStream({
+          start(controller) {
+            chunks.forEach(chunk => controller.enqueue(chunk))
+            controller.close()
+          },
+        })).getReader()
+
+        while (true) {
+          const { done, value } = await reader.read()
+
+          if (done) {
+            break
+          }
+
+          output.push(value)
+        }
+
+        expect(output.map(chunk => chunk.type)).toEqual([
+          'tool-input-available',
+          'tool-output-available',
+          TOOL_GRANT_DATA_PART_TYPE,
+        ])
+        expect(output[2]).toEqual({
+          type: TOOL_GRANT_DATA_PART_TYPE,
+          id: 'grant-call-1',
+          data: {
+            toolCallId: 'call-1',
+            toolName: 'mcp__linear__create_issue',
+            scope: 'always',
+          },
+        })
+      })
+  })
+
+  describe('name heuristic (M2)', () => {
+    it.each([
+      'delete_issue',
+      'deleteIssue',
+      'RemoveMember',
+      'revoke-token',
+      'destroy',
+      'drop_table',
+      'purgeCache',
+      'invite_user',
+      'share_file',
+      'transferOwnership',
+      'PUBLISH_PAGE',
+    ])('treats %s as always-ask', (name) => {
+      expect(hasAlwaysAskToolName(name)).toBe(true)
+    })
+
+    it.each([
+      'create_issue',
+      'dropdown_list',
+      'shared_drives_list',
+      'list_publishers',
+      'removal_status',
+    ])('leaves %s alone', (name) => {
+      expect(hasAlwaysAskToolName(name)).toBe(false)
+    })
+
+    it('matches the title too, never the exposed name', () => {
+      expect(hasAlwaysAskToolName('update_item', 'Share item with a team'))
+        .toBe(true)
+      expect(hasAlwaysAskToolName('mcp__share__create_issue')).toBe(true)
+      expect(grantedWrite('create_issue').descriptor.destructiveHint)
+        .toBe(false)
+    })
+
+    it('asks always-ask once/deny for a granted tool named for deletion',
+      () => {
+        const approval = createApproval([], [grantedWrite('delete_issue')])
+
+        expect(
+          approval.toolApproval(call('call-1', 'mcp__linear__delete_issue')),
+        ).toEqual({ type: 'user-approval', reason: 'always-ask' })
+        expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+          .toEqual(['once'])
+      })
+
+    it('never auto-runs a read-only tool whose title shares data', () => {
+      const entry = connectorEntry({
+        connectorId: 'c1',
+        slug: 'drive',
+        tool: 'file_access',
+        title: 'Share file',
+        readOnly: true,
+      })
+      const approval = createApproval([], [entry])
+
+      expect(entry.descriptor).toMatchObject({
+        access: 'write',
+        destructiveHint: true,
+      })
+      expect(entry.alwaysGrant).toBeNull()
+      expect(approval.toolApproval(call('call-1', 'mcp__drive__file_access')))
+        .toEqual({ type: 'user-approval', reason: 'always-ask' })
+    })
   })
 })

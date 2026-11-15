@@ -57,6 +57,7 @@ import type {
 } from '~~/server/utils/connectors/mcp-client'
 import {
   CONNECTOR_BASELINE_MARKER_SETTING,
+  listConnectorChatSettings,
   readConnectorCredentials,
   readConnectorToolBaseline,
   readConnectorUrl,
@@ -166,6 +167,7 @@ interface Candidate {
   connector: ConnectorRecord
   definition: ConnectorToolDefinition
   definitionHash: string
+  alwaysGrantHash: string | null
   isReadOnly: boolean
   handle: ConnectorClientHandle
   secrets: Set<string>
@@ -403,6 +405,72 @@ async function saveBaseline(
   }
 }
 
+/**
+ * The user's "Always allow" grant of one connector tool: the hash the
+ * continuation stored in `approvedDefinitionHash` when the tool setting is
+ * `always`, else null.
+ */
+function alwaysGrantHashOf(
+  settings: ReadonlyArray<{
+    toolName: string
+    approval: string
+    approvedDefinitionHash: string | null
+  }>,
+  toolName: string,
+): string | null {
+  const setting = settings.find(row => row.toolName === toolName)
+
+  return setting?.approval === 'always'
+    ? setting.approvedDefinitionHash
+    : null
+}
+
+function chatGrantHashOf(
+  grants: Record<string, string> | undefined,
+  exposedName: string,
+): string | null {
+  if (!grants || !Object.hasOwn(grants, exposedName)) {
+    return null
+  }
+
+  const hash = grants[exposedName]
+
+  return typeof hash === 'string' && hash ? hash : null
+}
+
+/**
+ * The "Allow in this chat" grants of this chat per connector id: the
+ * exposed tool name mapped to the hash the continuation stored. A failed
+ * read is logged and means no grants, so every call asks.
+ */
+async function readChatGrants(
+  db: DbClient,
+  userId: number,
+  chatPublicId: string,
+  logger: LoggerLike,
+): Promise<Map<string, Record<string, string>>> {
+  try {
+    const rows = await listConnectorChatSettings(db, userId, chatPublicId)
+
+    return new Map(rows.map((row) => {
+      return [row.connectorId, row.alwaysAllowTools ?? {}]
+    }))
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        connectors: {
+          chatGrantsRead: 'failed',
+          error: exception instanceof Error
+            ? exception.message
+            : String(exception),
+        },
+      },
+    })
+
+    return new Map()
+  }
+}
+
 async function syncDriftStatus(
   db: DbClient,
   userId: number,
@@ -453,8 +521,10 @@ async function syncDriftStatus(
  * With `consumeClearedCall` (the `tool-approvals` flag is on), whether a
  * call may run is decided by the send's approval policy
  * (`server/utils/tool-approval/send.ts`), which also gets one approval entry
- * per exposed tool from here. `execute` only runs a call the policy cleared,
- * with the same exposed name and input, once;
+ * per exposed tool from here, carrying the user's "Always allow" grant (the
+ * tool setting) and this chat's "Allow in this chat" grant with the
+ * definition hash each was given for. `execute` only runs a call the
+ * policy cleared, with the same exposed name and input, once;
  * any other call is refused with a plain sentence and never reaches the
  * server, as a second line behind the SDK, which does not call `execute` for
  * a call that waits for approval. Without it (the flag is off), the C-5 rule
@@ -673,6 +743,9 @@ export async function getConnectorTools(
   try {
     const plans = await prepareAll()
     const candidates: Candidate[] = []
+    const chatGrantsByConnector = input.consumeClearedCall
+      ? await readChatGrants(db, userId, input.chatPublicId, logger)
+      : new Map<string, Record<string, string>>()
 
     for (const plan of plans) {
       if (plan.notice) {
@@ -741,6 +814,9 @@ export async function getConnectorTools(
           connector,
           definition,
           definitionHash: hashes.get(definition.name)!,
+          alwaysGrantHash: input.consumeClearedCall
+            ? alwaysGrantHashOf(settings, definition.name)
+            : null,
           isReadOnly: isDefinitionAutoRunnable(definition),
           handle,
           secrets,
@@ -972,8 +1048,18 @@ export async function getConnectorTools(
         connectorTitle: candidate.connector.title,
         connectorHost: hostOf(candidate.connector),
         remoteToolName: candidate.definition.name,
+        ...(candidate.definition.title
+          ? { remoteToolTitle: candidate.definition.title }
+          : {}),
         definitionHash: candidate.definitionHash,
         annotations: candidate.definition.annotations,
+        grantHashes: {
+          always: candidate.alwaysGrantHash,
+          chat: chatGrantHashOf(
+            chatGrantsByConnector.get(candidate.connector.id),
+            exposedName,
+          ),
+        },
       }))
       tools[exposedName] = withFollowUpTurn(dynamicTool({
         description: candidate.definition.description,

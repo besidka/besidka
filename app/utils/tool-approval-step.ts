@@ -5,7 +5,10 @@ import type {
 } from '#shared/utils/tool-approval-policy'
 import type { ToolApprovalPartData } from '#shared/utils/tool-approval-parts'
 import type { ToolApprovalFailure } from '~/composables/tool-approvals'
-import { isToolApprovalDataPart } from '#shared/utils/tool-approval-parts'
+import {
+  isToolApprovalDataPart,
+  isToolGrantDataPart,
+} from '#shared/utils/tool-approval-parts'
 import {
   getConnectorToolCall,
   parseConnectorToolName,
@@ -386,4 +389,31 @@ export function formatApprovalProgress(
   }
 
   return `${answeredCount} of ${totalCount} answered`
+}
+
+const GRANT_MARKER_TEXT = {
+  always: 'Ran without asking (Always allowed)',
+  chat: 'Ran without asking (Allowed in this chat)',
+} as const
+
+/**
+ * The line under a tool step that ran without asking because of a grant
+ * the user gave, read from the server-written `data-tool-grant` part with
+ * the same tool call id, or an empty string.
+ */
+export function getGrantMarkerText(
+  parts: UIMessage['parts'],
+  toolCallId: string | undefined,
+): string {
+  if (!toolCallId) {
+    return ''
+  }
+
+  const grantPart = parts.find((part) => {
+    return isToolGrantDataPart(part) && part.data.toolCallId === toolCallId
+  })
+
+  return isToolGrantDataPart(grantPart)
+    ? GRANT_MARKER_TEXT[grantPart.data.scope]
+    : ''
 }
