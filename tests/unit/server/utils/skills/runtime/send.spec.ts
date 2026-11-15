@@ -420,7 +420,7 @@ describe('prepareSkillsForSend', () => {
       expect(withoutTools.toolsRegistered).toBe(false)
     })
 
-    it('keeps an always skill out of the catalog and the tool enum', async () => {
+    it('keeps an always skill out of the catalog and registers no tools without one', async () => {
       await pin(autoId, 'always')
 
       const result = await prepare({ projectId })
@@ -428,6 +428,28 @@ describe('prepareSkillsForSend', () => {
       expect(result.instructionBlock).toContain('AUTO BODY')
       expect(result.instructionBlock).not.toContain('- auto-skill:')
       expect(result.toolsRegistered).toBe(false)
+    })
+
+    it('lets the model read the files of an always skill when a catalog exists', async () => {
+      await pin(askId, 'always')
+
+      const result = await prepare({ projectId })
+      const readFile = result.tools.read_skill_file as unknown as {
+        inputSchema: { safeParse: (value: unknown) => { success: boolean } }
+      }
+      const activate = result.tools.activate_skill as unknown as {
+        inputSchema: { safeParse: (value: unknown) => { success: boolean } }
+      }
+
+      expect(result.toolsRegistered).toBe(true)
+      expect(result.instructionBlock).toContain('ASK BODY')
+      expect(result.instructionBlock).not.toContain('- ask-skill')
+      expect(readFile.inputSchema.safeParse({
+        skill: 'ask-skill',
+        path: 'SKILL.md',
+      }).success).toBe(true)
+      expect(activate.inputSchema.safeParse({ name: 'ask-skill' }).success)
+        .toBe(true)
     })
 
     it('lists a prefer skill first with the marker, even in Only when I ask', async () => {

@@ -1178,6 +1178,14 @@ limits) and `PUT /api/v1/projects/[id]/skills` (the whole ordered list
 skill (a foreign or unknown id is 404), no duplicates, the limits, no broken
 skill, the token cap. The delete and the inserts go in one `db.batch()`.
 
+**Files of an Always load skill.** The `<skill_resources>` list and the cut
+notice name `read_skill_file`, so when a catalog exists the loaded pins are
+added to the tool enum (not to the catalog) and marked active, which makes
+`activate_skill` answer "already active". With no catalog (no Auto skill and
+no Prefer pin, or tool calling off) the tools stay unregistered, exactly as for
+an attached skill: the model sees the body and the file list but cannot read
+the files.
+
 **MCP (not built).** The ticket asks for `set_project_skills`
 (`projects:write`, same user's skills only, never enables an Off skill). It was
 not added because the skills tools of S-6 (#924) are not on `main`, and the

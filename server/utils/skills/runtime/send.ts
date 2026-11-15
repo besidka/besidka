@@ -186,6 +186,10 @@ export async function prepareSkillsForSend(input: {
   let toolSkills = catalogSkills
   let toolsRun: ReturnType<typeof getSkillTools> | null = null
 
+  if (catalog && projectSkills.loadedSkills.length > 0) {
+    toolSkills = [...toolSkills, ...projectSkills.loadedSkills]
+  }
+
   if (catalog && invocationResult) {
     const invokedRow = toolSkills.some((skill) => {
       return skill.id === invocationResult.skillId
@@ -204,6 +208,7 @@ export async function prepareSkillsForSend(input: {
       skills: toolSkills,
       activeSkillIds: new Set([
         ...(active?.activeSkillIds ?? []),
+        ...projectSkills.loadedSkillIds,
         ...(invocationResult ? [invocationResult.skillId] : []),
       ]),
       family,

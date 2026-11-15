@@ -25,6 +25,7 @@ type DbClient = ReturnType<typeof useDb>
 export interface ProjectSkillsSend {
   block: string | null
   loadedSkillIds: string[]
+  loadedSkills: ProjectRuntimeSkillRow[]
   preferredSkills: RuntimeSkillRow[]
   activations: DataSkillActivationPart[]
   tokens: number
@@ -36,6 +37,7 @@ export interface ProjectSkillsSend {
 export const EMPTY_PROJECT_SKILLS_SEND: ProjectSkillsSend = {
   block: null,
   loadedSkillIds: [],
+  loadedSkills: [],
   preferredSkills: [],
   activations: [],
   tokens: 0,
@@ -93,6 +95,7 @@ export async function prepareProjectSkillsForSend(input: {
   })
   const sections: string[] = []
   const loadedSkillIds: string[] = []
+  const loadedSkills: ProjectRuntimeSkillRow[] = []
   const activations: DataSkillActivationPart[] = []
   let tokens = 0
   let omitted = 0
@@ -126,6 +129,7 @@ export async function prepareProjectSkillsForSend(input: {
     tokens += sectionTokens
     sections.push(loaded.text)
     loadedSkillIds.push(row.id)
+    loadedSkills.push(row)
     activations.push(toSkillActivationPart(
       { skillId: row.id, name: row.name, version: row.currentVersion },
       undefined,
@@ -154,6 +158,7 @@ export async function prepareProjectSkillsForSend(input: {
       ].join('\n')
       : null,
     loadedSkillIds,
+    loadedSkills,
     preferredSkills: rows.filter(row => row.level === 'prefer'),
     activations,
     tokens,
