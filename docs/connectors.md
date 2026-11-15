@@ -1611,7 +1611,7 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   JPEG, GIF, WebP, ICO). SVG is refused: it is served from the app's own origin
   and can carry script. The bytes live in KV under `connectors:icon:<id>` for
   7 days; a miss is kept for a day, so a server without an icon is not asked on
-  every render. Deleting a connector removes both keys; an account purge relies
+  every render. A changed set of declared sources drops the kept icon. Deleting a connector (`delete/bulk` is the only delete path) removes both keys; an account purge relies
   on the TTL and on the owner check below.
 - **Route.** `GET /api/v1/connectors/[id]/icon`: session, `connectors` flag,
   the connector must be the user's (404 otherwise), have current consent and
@@ -1818,6 +1818,8 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `connectors:oauth:<state>` | 600 s | OAuth state and PKCE verifier, deleted on read |
 | `connectors:refresh:<connectorId>` | 30 s | refresh lock |
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
+| `connectors:icon:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10) |
+| `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
 | `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
 | `tool-approval:chat:<chatPublicId>` | 24 h | per-chat index of the keys above, used by chat delete and by expiry |
@@ -1877,6 +1879,12 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_CALLS_PER_TURN` | 12 | C-5 |
 | `CONNECTOR_CALLS_PER_MINUTE` | 60 per user, all connectors | C-5 |
 | `CONNECTOR_CALLS_PER_MINUTE_PER_CONNECTOR` | 30 per user per connector | C-5 |
+| `CONNECTOR_ICON_MAX_BYTES` | 32,768 per icon (the `favicon` safe-fetch purpose cap) | BES-395 |
+| `CONNECTOR_ICON_TIMEOUT_MS` | 5,000 per icon request | BES-395 |
+| `CONNECTOR_ICON_TTL_SECONDS` | 7 days; a miss `CONNECTOR_ICON_MISS_TTL_SECONDS`, 1 day | BES-395 |
+| `CONNECTOR_ICON_MAX_DECLARED` | 4 declared icons kept per server | BES-395 |
+| `CONNECTOR_ICON_SOURCE_MAX_LENGTH` | 65,536 characters per declared source | BES-395 |
+| `CONNECTOR_ICON_CACHE_SECONDS` | 86,400 browser cache of the icon route | BES-395 |
 | `SAFE_FETCH_OAUTH_MAX_BYTES` | 262,144 | C-3, C-4 |
 | `SAFE_FETCH_REGISTRY_MAX_BYTES` | 2,097,152 per page | C-3, C-8 |
 | Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`). `skills-github` uses the narrow allowlisted fetcher (`docs/skills.md` section 3.1) until C-3 lands, and then may move to `safeFetch`. `skills-url` waits for C-3 (S-2U) | S-2G, S-2U, C-3 |

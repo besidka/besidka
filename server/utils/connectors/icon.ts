@@ -13,7 +13,7 @@ const ICON_KEY_PREFIX = 'connectors:icon:'
 const ICON_SOURCES_KEY_PREFIX = 'connectors:icon-sources:'
 const DATA_URI_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/i
 const FAVICON_PATH = '/favicon.ico'
-const EMPTY_VALUE = ''
+const MISS_MARKER = '-'
 
 export const CONNECTOR_ICON_CONTENT_TYPES = [
   'image/png',
@@ -188,8 +188,10 @@ export function parseDeclaredConnectorIcons(
 
 /**
  * Remembers the icons a connected server declared, so the icon route can
- * fetch one later without opening a connection. Best effort: a failed write
- * only means the favicon is used.
+ * fetch one later without opening a connection. When the sources are new or
+ * changed, the kept icon (a favicon, or a miss) is dropped so the declared
+ * icon wins on the next render. Best effort: a failed write only means the
+ * favicon is used.
  */
 export async function recordDeclaredConnectorIcons(
   kv: KVNamespace,
@@ -202,12 +204,19 @@ export async function recordDeclaredConnectorIcons(
     return
   }
 
+  const serialized = JSON.stringify(declared)
+
   try {
-    await kv.put(
-      connectorIconSourcesKey(connectorId),
-      JSON.stringify(declared),
-      { expirationTtl: CONNECTOR_ICON_TTL_SECONDS },
-    )
+    const stored = await kv.get(connectorIconSourcesKey(connectorId))
+
+    if (stored === serialized) {
+      return
+    }
+
+    await kv.put(connectorIconSourcesKey(connectorId), serialized, {
+      expirationTtl: CONNECTOR_ICON_TTL_SECONDS,
+    })
+    await kv.delete(connectorIconKey(connectorId))
   } catch {
     return
   }
@@ -304,13 +313,16 @@ async function readStoredIcon(
       'arrayBuffer',
     )
 
+    if (metadata?.origin === 'none') {
+      return { isStored: true, image: null }
+    }
+
     if (value === null) {
       return { isStored: false }
     }
 
     if (
-      metadata?.origin === 'none'
-      || !isConnectorIconContentType(metadata?.contentType)
+      !isConnectorIconContentType(metadata?.contentType)
       || value.byteLength === 0
     ) {
       return { isStored: true, image: null }
@@ -344,7 +356,7 @@ async function storeIcon(
       return
     }
 
-    await kv.put(connectorIconKey(connectorId), EMPTY_VALUE, {
+    await kv.put(connectorIconKey(connectorId), MISS_MARKER, {
       expirationTtl: CONNECTOR_ICON_MISS_TTL_SECONDS,
       metadata: { origin: 'none' } satisfies ConnectorIconMetadata,
     })

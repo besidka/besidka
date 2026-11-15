@@ -247,6 +247,59 @@ describe('resolveConnectorIcon', () => {
       .toBe(CONNECTOR_ICON_MISS_TTL_SECONDS)
   })
 
+  it('lets a declared icon replace a cached miss or favicon', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async (url: string) => {
+      return url.endsWith('/favicon.ico') ? null : image('image/png')
+    })
+
+    expect(await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage },
+    })).toBeNull()
+
+    await recordDeclaredConnectorIcons(asKv(kv), connector.id, {
+      icons: [{ src: '/icon.png' }],
+    })
+
+    expect(kv.entries.has(connectorIconKey(connector.id))).toBe(false)
+    expect((await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage },
+    }))?.contentType).toBe('image/png')
+    expect(kv.entries.get(connectorIconKey(connector.id))?.metadata)
+      .toMatchObject({ origin: 'declared' })
+  })
+
+  it('keeps a cached icon while the declared sources are unchanged', async () => {
+    const kv = createFakeIconKv()
+    const icons = { icons: [{ src: '/icon.png' }] }
+    const fetchImage = vi.fn(async () => image('image/png'))
+
+    await recordDeclaredConnectorIcons(asKv(kv), connector.id, icons)
+    await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage },
+    })
+    await recordDeclaredConnectorIcons(asKv(kv), connector.id, icons)
+    await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage },
+    })
+
+    expect(fetchImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads a miss from its metadata, whatever the stored value', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async () => image('image/png'))
+
+    await kv.put(connectorIconKey(connector.id), new ArrayBuffer(0), {
+      metadata: { origin: 'none' },
+    })
+
+    expect(await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage },
+    })).toBeNull()
+    expect(fetchImage).not.toHaveBeenCalled()
+  })
+
   it('ignores a stored value whose type is not an allowed image type', async () => {
     const kv = createFakeIconKv()
 

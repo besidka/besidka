@@ -1419,6 +1419,29 @@ describe('Chat/Reasoning', () => {
     expect(reasoningStepDetails?.attributes('open')).toBeDefined()
   })
 
+  it('exposes a chevron for a step with a body, which the bodyless check relies on', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: '**Plan**\n\nBody of the step.', state: 'done' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
+      },
+      global: { stubs: { MDCCached: true } },
+    })
+    const stepSummary = wrapper.findAll('details')[1]!.get('summary')
+    const chevrons = stepSummary.findAll('.iconify').filter((icon) => {
+      return icon.classes().join(' ').includes('chevron')
+    })
+
+    expect(chevrons).toHaveLength(1)
+  })
+
   it('exposes no chevron for a bodyless tool step and ignores clicks on it', async () => {
     const wrapper = await mountSuspended(Reasoning, {
       props: {
