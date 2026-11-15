@@ -343,6 +343,13 @@ just stale data.
   the user notice (step 7): users re-enable the skills they want. Slash and
   model toggles (`slash_command`, `model_invocable`) are settings, stay as
   they are and do nothing while `enabled` is 0.
+- **Provider copies.** With `skills.scripts`, a skill row can hold the id of
+  a copy in the user's Anthropic workspace (`provider_skill_id`). A restore
+  can bring back an id Besidka already deleted (the delete then answers 404,
+  which counts as gone) and can leave a copy uploaded in the window without
+  an id (the user removes it in the Anthropic Console, under Skills). Neither
+  is a Besidka-side exposure; say so in the user notice for users who allowed
+  scripts.
 - **Deletions come back as rows without blobs.** A skill deleted in the
   window (or with its account) returns with its rows while its blobs under
   `user-skills/` are gone. Replay the deletes from Axiom
