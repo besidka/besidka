@@ -49,6 +49,7 @@ const DESTRUCTIVE_TOOLS = [
   'set_feature_access',
   'revoke_artifact_shares',
   'delete_artifacts',
+  'delete_connectors',
 ]
 
 function readToolSources() {
@@ -186,6 +187,30 @@ describe('mcp tool scopes', () => {
     expect(isMcpWriteScope('artifacts:write')).toBe(true)
     expect(isMcpWriteScope('artifacts:share')).toBe(true)
     expect(isMcpWriteScope('artifacts:read')).toBe(false)
+  })
+
+  it('puts the connector tools behind their own scopes', () => {
+    for (const name of ['list_connectors', 'get_connector'] as const) {
+      expect(getMcpToolRequiredScopes(name), name)
+        .toEqual(['connectors:read'])
+      expect(isMcpWriteTool(name), name).toBe(false)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    for (const name of [
+      'add_connector',
+      'update_connector_tools',
+      'delete_connectors',
+    ] as const) {
+      expect(getMcpToolRequiredScopes(name), name)
+        .toEqual(['connectors:write'])
+      expect(isMcpWriteTool(name), name).toBe(true)
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    expect(isMcpWriteScope('connectors:write')).toBe(true)
+    expect(isMcpWriteScope('connectors:read')).toBe(false)
+    expect(isMcpDeleteScope('connectors:write')).toBe(false)
   })
 
   it('never lets a tool write feature rules', () => {

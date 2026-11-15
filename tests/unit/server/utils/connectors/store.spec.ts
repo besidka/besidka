@@ -182,7 +182,7 @@ describe('connectors store', () => {
       await addConnector(userId)
 
       expect(batch).toHaveBeenCalledTimes(1)
-      expect(batch.mock.calls[0]![0]).toHaveLength(2)
+      expect(batch.mock.calls[0]![0]).toHaveLength(3)
     })
 
     it('records who added an MCP connector', async () => {

@@ -5,6 +5,7 @@ import type {
   BesidkaToolChatExposure,
   BesidkaToolTier,
 } from '~~/server/utils/besidka-tools/types'
+import { addConnectorBesidkaTool } from '~~/server/utils/besidka-tools/tools/add-connector'
 import { addMemoryBesidkaTool } from '~~/server/utils/besidka-tools/tools/add-memory'
 import { addProjectNoteBesidkaTool } from '~~/server/utils/besidka-tools/tools/add-project-note'
 import { addProjectTextBesidkaTool } from '~~/server/utils/besidka-tools/tools/add-project-text'
@@ -16,17 +17,20 @@ import { createProjectBesidkaTool } from '~~/server/utils/besidka-tools/tools/cr
 import { deleteArtifactsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-artifacts'
 import { deleteChatMessageBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-chat-message'
 import { deleteChatsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-chats'
+import { deleteConnectorsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-connectors'
 import { deleteFilesBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-files'
 import { deleteMemoryBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-memory'
 import { deleteProjectBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-project'
 import { deleteProjectKnowledgeItemsBesidkaTool } from '~~/server/utils/besidka-tools/tools/delete-project-knowledge-items'
 import { getArtifactBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-artifact'
 import { getChatBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-chat'
+import { getConnectorBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-connector'
 import { getProjectBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-project'
 import { getSettingsBesidkaTool } from '~~/server/utils/besidka-tools/tools/get-settings'
 import { listArtifactSharesBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-artifact-shares'
 import { listArtifactsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-artifacts'
 import { listChatsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-chats'
+import { listConnectorsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-connectors'
 import { listFeatureAccessBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-feature-access'
 import { listFeatureFlagsBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-feature-flags'
 import { listFilesBesidkaTool } from '~~/server/utils/besidka-tools/tools/list-files'
@@ -45,6 +49,7 @@ import { setFeatureAccessBesidkaTool } from '~~/server/utils/besidka-tools/tools
 import { shareArtifactBesidkaTool } from '~~/server/utils/besidka-tools/tools/share-artifact'
 import { updateArtifactBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-artifact'
 import { updateChatBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-chat'
+import { updateConnectorToolsBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-connector-tools'
 import { updateMemoryBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-memory'
 import { updateProjectBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-project'
 import { updateProjectInstructionsBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-project-instructions'
@@ -52,6 +57,7 @@ import { updateProjectKnowledgeItemBesidkaTool } from '~~/server/utils/besidka-t
 import { updateSettingsBesidkaTool } from '~~/server/utils/besidka-tools/tools/update-settings'
 
 export const BESIDKA_TOOLS = {
+  add_connector: addConnectorBesidkaTool,
   add_memory: addMemoryBesidkaTool,
   add_project_note: addProjectNoteBesidkaTool,
   add_project_text: addProjectTextBesidkaTool,
@@ -63,17 +69,20 @@ export const BESIDKA_TOOLS = {
   delete_artifacts: deleteArtifactsBesidkaTool,
   delete_chat_message: deleteChatMessageBesidkaTool,
   delete_chats: deleteChatsBesidkaTool,
+  delete_connectors: deleteConnectorsBesidkaTool,
   delete_files: deleteFilesBesidkaTool,
   delete_memory: deleteMemoryBesidkaTool,
   delete_project: deleteProjectBesidkaTool,
   delete_project_knowledge_items: deleteProjectKnowledgeItemsBesidkaTool,
   get_artifact: getArtifactBesidkaTool,
   get_chat: getChatBesidkaTool,
+  get_connector: getConnectorBesidkaTool,
   get_project: getProjectBesidkaTool,
   get_settings: getSettingsBesidkaTool,
   list_artifact_shares: listArtifactSharesBesidkaTool,
   list_artifacts: listArtifactsBesidkaTool,
   list_chats: listChatsBesidkaTool,
+  list_connectors: listConnectorsBesidkaTool,
   list_feature_access: listFeatureAccessBesidkaTool,
   list_feature_flags: listFeatureFlagsBesidkaTool,
   list_files: listFilesBesidkaTool,
@@ -92,6 +101,7 @@ export const BESIDKA_TOOLS = {
   share_artifact: shareArtifactBesidkaTool,
   update_artifact: updateArtifactBesidkaTool,
   update_chat: updateChatBesidkaTool,
+  update_connector_tools: updateConnectorToolsBesidkaTool,
   update_memory: updateMemoryBesidkaTool,
   update_project: updateProjectBesidkaTool,
   update_project_instructions: updateProjectInstructionsBesidkaTool,

@@ -48,6 +48,11 @@ const scopeDetails: Record<string, ScopeDetails> = {
     description: 'See your artifacts, their content and versions, and the '
       + 'public links that are active.',
   },
+  'connectors:read': {
+    title: 'See your connectors: names and addresses, never their keys',
+    description: 'See the connectors you added with their host, status and '
+      + 'tool names. Never their keys or sign-in tokens.',
+  },
   'projects:write': {
     title: 'Change your projects',
     description: 'Create, rename, pin, archive and edit projects, their '
@@ -83,6 +88,14 @@ const scopeDetails: Record<string, ScopeDetails> = {
     description: 'Create a public link to one of your artifacts. Anyone who '
       + 'has the link can open it and report it. The link expires within 30 '
       + 'days, you can revoke it, and the app can create only a few a day.',
+  },
+  'connectors:write': {
+    title: 'Add, change and remove connectors. New ones start switched off; '
+      + 'you switch them on in Besidka',
+    description: 'Add a connector, switched off, turn its tools off or end '
+      + 'their Always allow setting, and delete connectors. It cannot '
+      + 'switch a connector on, sign in, enter keys or allow a tool without '
+      + 'asking. You do that in Besidka.',
   },
   'data:delete': {
     title: 'Delete your data',

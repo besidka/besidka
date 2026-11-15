@@ -528,6 +528,22 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
   ]
+  const mcpConnectorTests = [
+    'tests/unit/server/mcp/tools/list-connectors.spec.ts',
+    'tests/unit/server/mcp/tools/get-connector.spec.ts',
+    'tests/unit/server/mcp/tools/add-connector.spec.ts',
+    'tests/unit/server/mcp/tools/update-connector-tools.spec.ts',
+    'tests/unit/server/mcp/tools/delete-connectors.spec.ts',
+    'tests/unit/server/utils/mcp/private/connectors.spec.ts',
+    'tests/unit/server/utils/connectors/store.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+    'tests/integration/api/connectors-oauth-flow.spec.ts',
+  ]
   const besidkaToolsTests = [
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
     'tests/unit/server/utils/besidka-tools/summary.spec.ts',
@@ -4201,7 +4217,12 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
       ],
+    },
+    {
+      pattern: /^server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store)))\.ts$/,
+      tests: mcpConnectorTests,
     },
     {
       pattern: /^server\/utils\/settings\/apply-user-settings\.ts$/,
@@ -4235,6 +4256,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/mcp/tools/create-project.spec.ts',
         ...mcpUiParityTests,
         ...mcpArtifactTests,
+        ...mcpConnectorTests,
       ],
     },
     {
