@@ -68,6 +68,7 @@ import type { FormattedTools } from '~~/server/types/tools.d'
 import type { SearchRates, SearchUsage } from '~~/server/utils/ai/search-usage'
 import type { WebSearchStep } from '~~/server/utils/ai/web-search-cost'
 import { createError, createRequestLogger, log } from 'evlog'
+import { z } from 'zod'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
@@ -84,6 +85,7 @@ import * as schema from '~~/server/db/schema'
 import {
   buildMessageUsage,
   addImageGenerationCostToUsage,
+  sumMessageUsages,
   addAutoWebSearchUsage,
   addKnowledgeContextUsage,
   addSearchUsage,
@@ -125,8 +127,13 @@ import {
   persistUserMessage,
 } from '~~/server/utils/chats/persist-user-message'
 import {
+  chatToolSchema,
   chatToolsSchema,
   incomingUserMessageSchema,
+  toolApprovalContinuationBodySchema,
+} from '~~/server/utils/chats/request-schema'
+import type {
+  ToolApprovalContinuationBody,
 } from '~~/server/utils/chats/request-schema'
 import {
   getActiveShareForChat,
@@ -352,16 +359,43 @@ import {
   hasAwaitingApprovalToolPart,
   isAwaitingApprovalToolPart,
 } from '#shared/utils/tool-approval-parts'
-import { deleteToolApprovalChatRecords } from '~~/server/utils/tool-approval/kv'
+import {
+  deleteToolApprovalChatRecords,
+  deleteToolApprovalTurn,
+} from '~~/server/utils/tool-approval/kv'
 import { useToolApprovalSecret } from '~~/server/utils/tool-approval/secret'
 import {
   chatHasAwaitingApproval,
   createSendToolApproval,
   createToolApprovalStreamCollector,
+  hasGuardedProviderTool,
   presetApprovalTaint,
   recordToolApprovalPause,
+  withholdProviderTools,
+  withProviderToolEgressGuard,
 } from '~~/server/utils/tool-approval/send'
 import { createApprovalState } from '~~/server/utils/tool-approval/state'
+import {
+  applyRememberGrants,
+  assertEndsWithApprovalResponse,
+  buildResumedAssistantMessages,
+  claimContinuation,
+  classifyDuplicateContinuation,
+  connectorAuditApprovalOf,
+  consumeToolApprovalResponses,
+  createInterruptedError,
+  decideContinuation,
+  findContinuationTurn,
+  findExistingClaims,
+  loadContinuation,
+  settleClaimedContinuation,
+  wrapApprovedExecutions,
+} from '~~/server/utils/tool-approval/continuation'
+import type {
+  ContinuationDecision,
+  LoadedContinuation,
+} from '~~/server/utils/tool-approval/continuation'
+import type { ToolApprovalClaimOwner } from '~~/server/utils/tool-approval/claims'
 import {
   appendAnthropicContainerUploads,
   buildCodeExecutionInstruction,
@@ -379,6 +413,37 @@ import {
   requireLegalConsent,
 } from '~~/server/utils/legal/consent'
 
+const chatSendBodySchema = z.object({
+  model: z.string().nonempty(),
+  gateway: z.enum(gatewayIds).optional(),
+  tools: chatToolsSchema,
+  reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
+  exaSearchLevel: z.enum(EXA_SEARCH_LEVELS)
+    .default(DEFAULT_EXA_SEARCH_LEVEL),
+  webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
+  connectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
+    .optional(),
+  messages: z.array(incomingUserMessageSchema).length(1),
+})
+
+type ChatSendBody = z.infer<typeof chatSendBodySchema>
+
+const chatRequestBodySchema = z.union([
+  toolApprovalContinuationBodySchema,
+  chatSendBodySchema,
+])
+
+interface ToolApprovalResume {
+  owner: ToolApprovalClaimOwner
+  assistant: {
+    id: string
+    publicId: string | null
+    parts: UIMessage['parts']
+    usage: MessageUsage | null
+  }
+  loaded: LoadedContinuation
+}
+
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
   const params = z.object({
@@ -393,18 +458,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await readValidatedBody(event, z.object({
-    model: z.string().nonempty(),
-    gateway: z.enum(gatewayIds).optional(),
-    tools: chatToolsSchema,
-    reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
-    exaSearchLevel: z.enum(EXA_SEARCH_LEVELS)
-      .default(DEFAULT_EXA_SEARCH_LEVEL),
-    webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
-    connectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
-      .optional(),
-    messages: z.array(incomingUserMessageSchema).length(1),
-  }).safeParse)
+  const body = await readValidatedBody(
+    event,
+    chatRequestBodySchema.safeParse,
+  )
 
   if (body.error) {
     throw createError({
@@ -414,13 +471,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const exaSearchLevel = body.data.exaSearchLevel
-
-  let reasoningLevel: ReasoningLevel = body.data.gateway
-    && !isGatewayReasoningSupported(body.data.gateway)
-    ? 'off'
-    : body.data.reasoning
-
+  const continuationRequest = 'approval' in body.data
+    ? body.data.approval
+    : null
   const session = await useUserSession()
 
   if (!session) {
@@ -482,19 +535,51 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  let resume: ToolApprovalResume | null = null
+  let sendBody: ChatSendBody
+
+  if (continuationRequest) {
+    const prepared = await prepareToolApprovalContinuation({
+      event,
+      db,
+      userId,
+      chat,
+      request: continuationRequest,
+      logger,
+    })
+
+    if ('response' in prepared) {
+      return prepared.response
+    }
+
+    resume = prepared.resume
+    sendBody = prepared.sendBody
+  } else {
+    sendBody = body.data as ChatSendBody
+  }
+
+  const isResume = resume !== null
+  const exaSearchLevel = sendBody.exaSearchLevel
+
+  let reasoningLevel: ReasoningLevel = sendBody.gateway
+    && !isGatewayReasoningSupported(sendBody.gateway)
+    ? 'off'
+    : sendBody.reasoning
+
   logger.set({
     userId,
     chatId: chat.id,
     projectId: chat.projectId,
     reasoning: reasoningLevel,
-    tools: body.data.tools,
+    tools: sendBody.tools,
+    ...(isResume ? { attributes: { toolApproval: { resume: true } } } : {}),
   })
 
   const {
     messages: newMessages,
     model: userModel,
     gateway: gatewayId,
-  } = body.data
+  } = sendBody
   const newMessage = newMessages[0]
 
   if (!newMessage) {
@@ -553,7 +638,7 @@ export default defineEventHandler(async (event) => {
     : undefined
   const defaultTools = firstUserMessage
     ? firstUserMessage.tools || []
-    : body.data.tools
+    : sendBody.tools
   const persistedSentMessage = firstUserMessage
     ?? chat.messages.find((message) => {
       return message.role === 'user'
@@ -561,7 +646,7 @@ export default defineEventHandler(async (event) => {
     })
   const autoWebSearchKv = useKV()
   const firstMessageDecisionKey = firstUserMessage
-    && body.data.webSearchMode === 'auto'
+    && sendBody.webSearchMode === 'auto'
     ? {
       chatId: chat.id,
       messageId: firstUserMessage.publicId ?? firstUserMessage.id,
@@ -578,7 +663,7 @@ export default defineEventHandler(async (event) => {
     ? persistedSentMessage.tools || []
     : null
   const candidateTools = collectAutoWebSearchCandidateTools({
-    mode: body.data.webSearchMode,
+    mode: sendBody.webSearchMode,
     defaultTools,
     persistedTools: reusablePersistedTools,
   })
@@ -713,8 +798,8 @@ export default defineEventHandler(async (event) => {
   const autoWebSearch = await resolveAutoWebSearch({
     db,
     userId,
-    mode: body.data.webSearchMode,
-    chosenTools: firstUserMessage ? defaultTools : body.data.tools,
+    mode: sendBody.webSearchMode,
+    chosenTools: firstUserMessage ? defaultTools : sendBody.tools,
     defaultTools,
     persistedTools: reusablePersistedTools,
     messageText: readUserMessageText(newMessage.parts) ?? '',
@@ -751,7 +836,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const codeExecutionGate = await resolveCodeExecutionGate({
+  const resolvedCodeExecutionGate = await resolveCodeExecutionGate({
     event,
     requestedTools: gatewayId
       ? selectedTools
@@ -761,7 +846,14 @@ export default defineEventHandler(async (event) => {
     modelId: model?.id,
     logger,
   })
-  const requestedTools: ModelTool[] = codeExecutionGate.tools
+  const codeExecutionGate = isResume
+    ? { ...resolvedCodeExecutionGate, filesActive: false }
+    : resolvedCodeExecutionGate
+  const requestedTools: ModelTool[] = isResume
+    ? codeExecutionGate.tools.filter((requestedTool) => {
+      return requestedTool !== 'image_generation'
+    })
+    : codeExecutionGate.tools
 
   logger.set({ tools: requestedTools })
 
@@ -806,7 +898,7 @@ export default defineEventHandler(async (event) => {
     persistedUserIndex,
   )
 
-  if (newMessage.role === 'user' && persistedAssistantMessage) {
+  if (!isResume && newMessage.role === 'user' && persistedAssistantMessage) {
     logger.set({
       stage: 'replay-persisted-assistant',
       replayedAssistantPublicId: persistedAssistantMessage.id,
@@ -851,7 +943,7 @@ export default defineEventHandler(async (event) => {
   // constraint. The flag is set for the duration of generation (see
   // execute() below) so a retry within that window gets a lightweight
   // "still working" signal instead of starting a duplicate generation.
-  if (newMessage.role === 'user' && persistedUserIndex >= 0) {
+  if (!isResume && newMessage.role === 'user' && persistedUserIndex >= 0) {
     const isGenerating = await useKV().get(
       generationInProgressKvKey(chat.id, newMessage.id),
     )
@@ -884,9 +976,10 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const resumedAssistantId = resume?.owner.messagePublicId ?? null
   const allMessages = [
     ...previousMessages.filter((message) => {
-      return message.id !== newMessage.id
+      return message.id !== newMessage.id && message.id !== resumedAssistantId
     }),
     newMessage,
   ]
@@ -986,11 +1079,15 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  if (newMessage.role === 'user' && chatHasAwaitingApproval(chat.messages)) {
+  if (
+    !isResume
+    && newMessage.role === 'user'
+    && chatHasAwaitingApproval(chat.messages)
+  ) {
     await expirePendingToolApprovals(chat.id, logger)
   }
 
-  if (newMessage.role === 'user') {
+  if (!isResume && newMessage.role === 'user') {
     await persistUserMessage({
       db,
       event,
@@ -1042,6 +1139,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const isAnthropicRoute = modelProviderId?.replace(/^~/, '') === 'anthropic'
   const gatewayTelemetryAttributes = gatewayId
     ? {
       attributes: {
@@ -1597,7 +1695,7 @@ export default defineEventHandler(async (event) => {
   )
   const toolApprovalsActive = sendFeatures.isFeatureActive('tool-approvals')
   const toolApprovalSend = createSendToolApproval({
-    state: createApprovalState(),
+    state: resume?.loaded.state ?? createApprovalState(),
   })
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
@@ -1629,7 +1727,8 @@ export default defineEventHandler(async (event) => {
 
   const userMessageText = readUserMessageText(newMessage.parts)
   const pastChatPreRetrievalRun: Promise<PastChatPreRetrieval | null>
-    = isChatSearchToolEnabled(memorySettings)
+    = !isResume
+      && isChatSearchToolEnabled(memorySettings)
       && !toolCallingAllowed
       && userMessageText !== null
       ? resolvePastChatPreRetrieval({
@@ -1698,7 +1797,7 @@ export default defineEventHandler(async (event) => {
     logger: aiLogger,
   })
 
-  const assistantMessagePublicId = ulid()
+  const assistantMessagePublicId = resume?.owner.messagePublicId ?? ulid()
   const artifactsActive = sendFeatures.isFeatureActive('artifacts')
   const documentsActive = sendFeatures.isFeatureActive('documents')
   const attachedArtifactIds = collectArtifactAttachments(allMessages)
@@ -1831,7 +1930,7 @@ export default defineEventHandler(async (event) => {
       artifactToolsRegistered,
       documentToolsRegistered,
     ].filter(Boolean).length,
-    userMessageText,
+    userMessageText: isResume ? null : userMessageText,
     newMessageId: newMessage.id,
     resolveRerankModel,
     scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
@@ -1850,9 +1949,13 @@ export default defineEventHandler(async (event) => {
       || skillsSend.holdsSkillText,
       holdsPastChatExcerpts: pastChatPreRetrieval !== null,
     })
+
+    if (resume && resume.loaded.state.taint.size > 0) {
+      chatSearchBudget.untrustedResultSeen = true
+    }
   }
 
-  if (toolApprovalsActive) {
+  if (toolApprovalsActive && !isResume) {
     presetApprovalTaint(toolApprovalSend.state, {
       requestedTools,
       holdsUntrustedKnowledge: !!knowledgeContext
@@ -1903,20 +2006,27 @@ export default defineEventHandler(async (event) => {
   )
   let connectorsRun: ConnectorToolsRun | null = null
   let toolApprovalSecret: string | undefined
+  let resumeDecisions: ContinuationDecision[] = []
+  let resumedStoredMessage: UIMessage | null = null
+  let resumeModelMessages: ModelMessage[] = []
+  const approvedAuditRows = new Map<string, {
+    auditCallId: number
+    approval: ReturnType<typeof connectorAuditApprovalOf>
+  }>()
 
   try {
     if (sendFeatures.isFeatureActive('connectors')) {
-      const requestedConnectorIds = body.data.connectorIds
+      const requestedConnectorIds = sendBody.connectorIds
         ?? await listChatConnectorIds(db, userId, chat.id)
 
-      if (requestedConnectorIds.length > 0 || body.data.connectorIds) {
+      if (requestedConnectorIds.length > 0 || sendBody.connectorIds) {
         const userConnectors = await listConnectors(db, userId)
         const selection = resolveConnectorSelection(
           userConnectors,
           requestedConnectorIds,
         )
 
-        if (body.data.connectorIds) {
+        if (sendBody.connectorIds && !isResume) {
           try {
             await persistChatConnectorSelection(db, {
               userId,
@@ -1963,6 +2073,14 @@ export default defineEventHandler(async (event) => {
             ...(toolApprovalsActive
               ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
               : {}),
+            ...(resume
+              ? {
+                approvedAuditRow: (toolCallId: string | undefined) => {
+                  return approvedAuditRows.get(toolCallId ?? '') ?? null
+                },
+                callsUsedThisTurn: resume.loaded.state.counters.connectorCalls,
+              }
+              : {}),
             guard: chatSearchBudget,
             logger: aiLogger,
           })
@@ -1989,8 +2107,51 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    if (toolApprovalsActive && toolApprovalSend.canAsk()) {
+    if (toolApprovalsActive && (isResume || toolApprovalSend.canAsk())) {
       toolApprovalSecret = await useToolApprovalSecret()
+    }
+
+    if (toolApprovalsActive) {
+      parsedTools = {
+        ...parsedTools,
+        tools: withholdProviderTools({
+          approval: toolApprovalSend,
+          tools: parsedTools.tools,
+          keepWhenHistoryHolds: isAnthropicRoute
+            ? resume?.assistant.parts ?? []
+            : null,
+        }),
+      }
+    }
+
+    if (resume) {
+      resumeDecisions = decideContinuation({
+        answers: resume.loaded.answers,
+        entries: toolApprovalSend.entries,
+        state: resume.loaded.state,
+      })
+
+      const resumedMessages = buildResumedAssistantMessages({
+        messageId: resume.owner.messagePublicId,
+        parts: resume.assistant.parts,
+        decisions: resumeDecisions,
+      })
+      const resumeHistory = buildKnowledgeAwareMessagesForModel({
+        messagesForAI,
+        modelProviderId,
+        mediaTurns: knowledge?.mediaTurns ?? [],
+        excerpts: null,
+      })
+
+      assertOnlyDeliverableFileParts(resumeHistory, {
+        inlineContainerFiles: isInlineContainerSend,
+      })
+      resumedStoredMessage = resumedMessages.storedMessage
+      resumeModelMessages = await convertToModelMessages([
+        ...resumeHistory,
+        resumedMessages.modelMessage,
+      ])
+      assertEndsWithApprovalResponse(resumeModelMessages)
     }
   } catch (exception) {
     await connectorsRun?.close()
@@ -2001,6 +2162,83 @@ export default defineEventHandler(async (event) => {
 
   const closeConnectorClients = async () => {
     await connectorsRun?.close()
+  }
+
+  if (resume) {
+    const isClaimed = await claimContinuation(
+      db,
+      resumeDecisions.map(decision => decision.approvalId),
+      resume.owner,
+    )
+
+    if (!isClaimed) {
+      await closeConnectorClients()
+      await codeExecutionSession?.tracker.cleanup()
+      logger.set({ attributes: { toolApproval: { claimLost: true } } })
+
+      return createGenerationPendingResponse()
+    }
+
+    await settleClaimedContinuation({
+      db,
+      kv: useKV(),
+      userId,
+      decisions: resumeDecisions,
+      logger: aiLogger,
+    })
+    await applyRememberGrants({
+      db,
+      userId,
+      chatPublicId: chat.id,
+      decisions: resumeDecisions,
+      entries: toolApprovalSend.entries,
+      logger: aiLogger,
+    })
+
+    for (const decision of resumeDecisions) {
+      if (!decision.approved) {
+        continue
+      }
+
+      toolApprovalSend.markApprovedByUser({
+        toolCallId: decision.toolCallId,
+        toolName: decision.toolName,
+        input: decision.record.input,
+      })
+
+      if (decision.record.auditCallId !== null) {
+        approvedAuditRows.set(decision.toolCallId, {
+          auditCallId: decision.record.auditCallId,
+          approval: connectorAuditApprovalOf(decision.remember),
+        })
+      }
+    }
+
+    parsedTools = {
+      ...parsedTools,
+      tools: wrapApprovedExecutions({
+        tools: parsedTools.tools,
+        decisions: resumeDecisions,
+        db,
+        kv: useKV(),
+        owner: resume.owner,
+        logger: aiLogger,
+      }),
+    }
+    aiLogger.set({
+      attributes: {
+        toolApproval: {
+          continuation: true,
+          approved: resumeDecisions.filter(decision => decision.approved)
+            .length,
+          denied: resumeDecisions.filter(decision => !decision.approved)
+            .length,
+          replayDenied: resumeDecisions.filter((decision) => {
+            return decision.denialReason !== null
+          }).length,
+        },
+      },
+    })
   }
   const connectorsInstructionBlock = connectorsRun
     && Object.keys(connectorsRun.tools).length > 0
@@ -2020,10 +2258,24 @@ export default defineEventHandler(async (event) => {
     connectorSteps: connectorsInstructionBlock ? CONNECTOR_STEPS_PER_TURN : 0,
     guard: chatSearchBudget,
   })
-  const toolLoopOptions = toolLoop
+  const containerToolLoopOptions = toolLoop
     && codeExecutionSession?.provider === 'anthropic'
     ? withAnthropicContainerForwarding(toolLoop.options)
     : toolLoop?.options
+  const guardsProviderTools = toolApprovalsActive
+    && !isAnthropicRoute
+    && hasGuardedProviderTool(toolApprovalSend, parsedTools.tools)
+  const toolLoopOptions = guardsProviderTools
+    ? {
+      ...containerToolLoopOptions,
+      prepareStep: withProviderToolEgressGuard({
+        approval: toolApprovalSend,
+        tools: parsedTools.tools,
+        base: containerToolLoopOptions?.prepareStep,
+        keepDeclarations: false,
+      }),
+    }
+    : containerToolLoopOptions
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
@@ -2051,7 +2303,10 @@ export default defineEventHandler(async (event) => {
     async execute({ writer }) {
       const messagePublicId = assistantMessagePublicId
       const kv = useKV()
-      const generatingKey = generationInProgressKvKey(chat.id, newMessage.id)
+      const generatingKey = generationInProgressKvKey(
+        chat.id,
+        isResume ? messagePublicId : newMessage.id,
+      )
 
       // Mirrors the guard above: hold this flag for the lifetime of the
       // generation so a client retry of the same user message id (issue
@@ -2073,18 +2328,20 @@ export default defineEventHandler(async (event) => {
       )
 
       try {
-        for (const activationPart of skillsSend.streamActivations) {
+        const streamActivations = isResume ? [] : skillsSend.streamActivations
+
+        for (const activationPart of streamActivations) {
           writer.write(activationPart)
         }
 
-        if (connectorNotices.length > 0) {
+        if (!isResume && connectorNotices.length > 0) {
           writer.write({
             type: CONNECTORS_NOTICE_PART_TYPE,
             data: { lines: connectorNotices },
           })
         }
 
-        if (missingFiles.length > 0) {
+        if (!isResume && missingFiles.length > 0) {
           writer.write({
             type: 'data-missing-files',
             data: {
@@ -2096,7 +2353,7 @@ export default defineEventHandler(async (event) => {
           })
         }
 
-        if (omittedFiles.length > 0) {
+        if (!isResume && omittedFiles.length > 0) {
           writer.write({
             type: 'data-omitted-context-files',
             data: {
@@ -2106,7 +2363,7 @@ export default defineEventHandler(async (event) => {
           })
         }
 
-        if (knowledgeContext?.notice) {
+        if (!isResume && knowledgeContext?.notice) {
           writer.write({
             type: 'data-knowledge-notice',
             data: {
@@ -2135,20 +2392,22 @@ export default defineEventHandler(async (event) => {
         let result: MultiConsumerStreamTextResult
         let modelMessages: ModelMessage[] = []
         let mainLoopSteps: SearchAnswerContinuationStep[] = []
-        const messagesForModel = buildKnowledgeAwareMessagesForModel({
-          messagesForAI,
-          modelProviderId,
-          mediaTurns: knowledge?.mediaTurns ?? [],
-          excerpts: [
-            knowledge?.excerpts,
-            pastChatPreRetrieval?.block,
-            artifactContextBlock,
-          ]
-            .filter((excerpts): excerpts is string => !!excerpts)
-            .join('\n\n') || null,
-          skillInvocationBlock: skillsSend.invocationBlock,
-          userMessageId: newMessage.id,
-        })
+        const messagesForModel = isResume
+          ? []
+          : buildKnowledgeAwareMessagesForModel({
+            messagesForAI,
+            modelProviderId,
+            mediaTurns: knowledge?.mediaTurns ?? [],
+            excerpts: [
+              knowledge?.excerpts,
+              pastChatPreRetrieval?.block,
+              artifactContextBlock,
+            ]
+              .filter((excerpts): excerpts is string => !!excerpts)
+              .join('\n\n') || null,
+            skillInvocationBlock: skillsSend.invocationBlock,
+            userMessageId: newMessage.id,
+          })
 
         function recordSdkWarnings(
           key: 'aiWarnings' | 'aiContinuationWarnings',
@@ -2274,12 +2533,16 @@ export default defineEventHandler(async (event) => {
           // wire one: on this stack it is a no-op, or would defeat that
           // replay by skipping persist. (Providers also bill and omit usage
           // on abort, so there is no cost to recover here either.)
-          assertOnlyDeliverableFileParts(messagesForModel, {
-            inlineContainerFiles: isInlineContainerSend,
-          })
-          modelMessages = await convertToModelMessages(messagesForModel)
+          if (isResume) {
+            modelMessages = resumeModelMessages
+          } else {
+            assertOnlyDeliverableFileParts(messagesForModel, {
+              inlineContainerFiles: isInlineContainerSend,
+            })
+            modelMessages = await convertToModelMessages(messagesForModel)
+          }
 
-          if (codeExecutionSession?.provider === 'anthropic') {
+          if (!isResume && codeExecutionSession?.provider === 'anthropic') {
             modelMessages = appendAnthropicContainerUploads(
               modelMessages,
               codeExecutionSession.uploadedFileIds,
@@ -2341,7 +2604,7 @@ export default defineEventHandler(async (event) => {
                 experimental_toolApprovalSecret: toolApprovalSecret,
               }
               : {}),
-            ...(parsedTools.toolChoice
+            ...(parsedTools.toolChoice && !isResume
               ? { toolChoice: parsedTools.toolChoice }
               : {}),
             ...(toolLoopOptions ?? {}),
@@ -2436,10 +2699,13 @@ export default defineEventHandler(async (event) => {
               knowledgeMode: knowledgeContext.decision.mode,
             })
             : usageWithEstimate
-          const usage = addAutoWebSearchUsage(
+          const requestUsage = addAutoWebSearchUsage(
             usageWithKnowledge,
             autoWebSearchOutcome,
           )
+          const usage = resume
+            ? sumMessageUsages(resume.assistant.usage, requestUsage)
+            : requestUsage
 
           return {
             createdAt: new Date().toISOString(),
@@ -2448,10 +2714,9 @@ export default defineEventHandler(async (event) => {
         }
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
-          originalMessages: endOriginalMessagesOnUserTurn(
-            messagesForAI,
-            newMessage.id,
-          ),
+          originalMessages: resumedStoredMessage
+            ? [...messagesForAI, resumedStoredMessage]
+            : endOriginalMessagesOnUserTurn(messagesForAI, newMessage.id),
           generateMessageId: () => messagePublicId,
           sendSources: true,
           sendReasoning,
@@ -2672,8 +2937,16 @@ export default defineEventHandler(async (event) => {
               pastChatPreRetrieval,
             ) as UIMessage['parts'][number]
             : undefined,
-          skillActivationParts: skillsSend.streamActivations as
-            unknown as UIMessage['parts'],
+          skillActivationParts: isResume
+            ? []
+            : skillsSend.streamActivations as unknown as UIMessage['parts'],
+          resume: resume && resumedStoredMessage
+            ? {
+              storedMessage: resumedStoredMessage,
+              storedPartCount: resume.assistant.parts.length,
+              previousUsage: resume.assistant.usage,
+            }
+            : undefined,
           getConnectorSecrets: connectorsRun?.secrets,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
@@ -2681,6 +2954,14 @@ export default defineEventHandler(async (event) => {
           getCodeExecutionFileIds: codeExecutionStream?.getSavedFileIds,
         })
         const wasPersisted = persistResult.persisted
+
+        if (
+          resume
+          && wasPersisted
+          && !toolApprovalCollector.isPaused()
+        ) {
+          await deleteResumedTurn(messagePublicId, aiLogger)
+        }
 
         if (
           toolApprovalsActive
@@ -2887,6 +3168,262 @@ export default defineEventHandler(async (event) => {
     stream,
   })
 })
+
+interface ContinuationChatRow {
+  id: string
+  publicId: string | null
+  role: string
+  parts: unknown
+  tools: string[] | null
+  reasoning: string
+  usage: unknown
+  createdAt: Date
+}
+
+type PreparedToolApprovalContinuation
+  = | { response: Response }
+    | { resume: ToolApprovalResume, sendBody: ChatSendBody }
+
+function createGenerationPendingResponse(): Response {
+  return createUIMessageStreamResponse({
+    stream: createUIMessageStream({
+      execute({ writer }) {
+        writer.write({ type: 'start' })
+        writer.write({
+          type: 'data-generation-pending',
+          data: {},
+          transient: true,
+        })
+        writer.write({ type: 'finish' })
+      },
+    }),
+  })
+}
+
+async function enforceToolApprovalRateLimit(input: {
+  event: RequestEvent
+  userId: number
+  responses: number
+  logger: LoggerLike
+}): Promise<void> {
+  let result: Awaited<ReturnType<typeof consumeToolApprovalResponses>>
+
+  try {
+    result = await consumeToolApprovalResponses(
+      useKV(),
+      input.userId,
+      input.responses,
+    )
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        toolApproval: {
+          rateLimit: 'failed-open',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    return
+  }
+
+  if (result.allowed) {
+    return
+  }
+
+  input.event.res.headers.set('Retry-After', String(result.retryAfter))
+
+  throw createError({
+    message: 'Too many approval answers',
+    status: 429,
+    why: 'An account can answer at most 30 approvals a minute',
+    fix: 'Wait a moment and answer again',
+  })
+}
+
+function readResumeTools(tools: string[] | null): ChatSendBody['tools'] {
+  return (tools ?? []).flatMap((storedTool) => {
+    const parsed = chatToolSchema.safeParse(storedTool)
+
+    return parsed.success && parsed.data !== 'image_generation'
+      ? [parsed.data]
+      : []
+  })
+}
+
+/**
+ * Everything a request that answers approvals checks before it may do any
+ * work, in this order: the `tool-approvals` flag (404 when off, like any
+ * gated route), the per-user response limit, the answered message (it must
+ * be this chat's last message and an assistant message), claims already
+ * taken for the answered ids (read before any KV record, because the first
+ * request deleted them: a duplicate waits while the message's generation
+ * lease or a claim is live, reports an interruption when a claim lapsed or
+ * the stored reply still waits, and otherwise replays the stored reply),
+ * the generation lease of the message, and the stored turn
+ * and pending records with their owners. The model, gateway, reasoning and
+ * connectors come from the pending record snapshot and the tools from the
+ * turn's stored user message, never from the request body. Auto web search
+ * is skipped (`always` keeps the stored tools as they are).
+ */
+async function prepareToolApprovalContinuation(input: {
+  event: RequestEvent
+  db: ReturnType<typeof useDb>
+  userId: number
+  chat: { id: string, messages: ContinuationChatRow[] }
+  request: ToolApprovalContinuationBody['approval']
+  logger: LoggerLike
+}): Promise<PreparedToolApprovalContinuation> {
+  const { event, db, userId, chat, request, logger } = input
+  const features = await resolveSendFeatures(event, ['tool-approvals'], logger)
+
+  if (!features.isFeatureActive('tool-approvals')) {
+    throw createError({
+      message: 'Not found',
+      status: 404,
+      why: 'Tool approvals are not available for this account',
+    })
+  }
+
+  await enforceToolApprovalRateLimit({
+    event,
+    userId,
+    responses: request.responses.length,
+    logger,
+  })
+
+  const turn = findContinuationTurn(chat.messages, request.messageId)
+  const owner: ToolApprovalClaimOwner = {
+    userId,
+    chatPublicId: chat.id,
+    messagePublicId: request.messageId,
+  }
+  const approvalIds = request.responses.map(response => response.approvalId)
+  const claims = await findExistingClaims(db, approvalIds, owner)
+
+  logger.set({
+    attributes: {
+      toolApproval: {
+        continuation: true,
+        responses: request.responses.length,
+        existingClaims: claims.length,
+      },
+    },
+  })
+
+  const generatingKey = generationInProgressKvKey(chat.id, request.messageId)
+
+  if (claims.length > 0) {
+    if (await useKV().get(generatingKey)) {
+      return { response: createGenerationPendingResponse() }
+    }
+
+    const duplicate = classifyDuplicateContinuation(claims)
+
+    if (duplicate === 'in-progress') {
+      return { response: createGenerationPendingResponse() }
+    }
+
+    if (
+      duplicate === 'interrupted'
+      || hasAwaitingApprovalToolPart(turn.assistant.parts)
+    ) {
+      throw createInterruptedError()
+    }
+
+    return {
+      response: createUIMessageStreamResponse({
+        stream: createUIMessageStream({
+          execute({ writer }) {
+            const chunks = buildContinuationReplayChunks({
+              publicId: request.messageId,
+              parts: turn.assistant.parts as UIMessage['parts'],
+              answeredApprovalIds: new Set(approvalIds),
+            })
+
+            for (const chunk of chunks) {
+              writer.write(chunk)
+            }
+          },
+        }),
+      }),
+    }
+  }
+
+  if (await useKV().get(generatingKey)) {
+    return { response: createGenerationPendingResponse() }
+  }
+
+  const loaded = await loadContinuation({
+    kv: useKV(),
+    owner,
+    responses: request.responses,
+    assistantParts: turn.assistant.parts,
+  })
+  const snapshot = loaded.answers[0]!.record.snapshot
+  const gateway = snapshot.gateway === null
+    ? null
+    : z.enum(gatewayIds).safeParse(snapshot.gateway)
+
+  if (gateway && !gateway.success) {
+    throw createError({
+      message: 'This approval expired',
+      status: 409,
+      why: 'The paused send used a gateway that is no longer supported',
+      fix: 'Ask again',
+    })
+  }
+
+  return {
+    resume: {
+      owner,
+      assistant: {
+        id: turn.assistant.id,
+        publicId: turn.assistant.publicId,
+        parts: turn.assistant.parts as UIMessage['parts'],
+        usage: (turn.assistant.usage ?? null) as MessageUsage | null,
+      },
+      loaded,
+    },
+    sendBody: {
+      model: snapshot.model,
+      gateway: gateway?.data,
+      tools: readResumeTools(turn.user.tools),
+      reasoning: snapshot.reasoning,
+      exaSearchLevel: DEFAULT_EXA_SEARCH_LEVEL,
+      webSearchMode: 'always',
+      connectorIds: snapshot.connectorIds,
+      messages: [{
+        id: turn.user.publicId ?? turn.user.id,
+        role: 'user',
+        parts: turn.user.parts as ChatSendBody['messages'][number]['parts'],
+      }],
+    },
+  }
+}
+
+/**
+ * Removes the turn record once a continuation finished without a new pause:
+ * nothing in the turn waits any more. A failure is logged; the record
+ * expires within 24 hours and its pending ids are already claimed.
+ */
+async function deleteResumedTurn(
+  messagePublicId: string,
+  logger: LoggerLike,
+): Promise<void> {
+  try {
+    await deleteToolApprovalTurn(useKV(), messagePublicId)
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        toolApproval: {
+          turnDelete: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+}
 
 /**
  * A new user message ends every approval still waiting in the chat: the
@@ -3808,12 +4345,23 @@ function buildPersistedAssistantReplayChunks(input: {
   parts: UIMessage['parts']
   sendReasoning: boolean
 }): InferUIMessageChunk<UIMessage>[] {
-  const chunks: InferUIMessageChunk<UIMessage>[] = [{
-    type: 'start',
-    messageId: input.publicId,
-  }]
+  return [
+    { type: 'start', messageId: input.publicId },
+    ...buildReplayPartChunks(input.parts, input.sendReasoning, 0),
+    { type: 'finish' },
+  ]
+}
 
-  for (const [index, part] of input.parts.entries()) {
+function buildReplayPartChunks(
+  parts: UIMessage['parts'],
+  sendReasoning: boolean,
+  indexOffset: number,
+): InferUIMessageChunk<UIMessage>[] {
+  const chunks: InferUIMessageChunk<UIMessage>[] = []
+
+  for (const [partIndex, part] of parts.entries()) {
+    const index = partIndex + indexOffset
+
     if (part.type === 'text') {
       const id = `replay-text-${index}`
 
@@ -3827,7 +4375,7 @@ function buildPersistedAssistantReplayChunks(input: {
     }
 
     if (part.type === 'reasoning') {
-      if (!input.sendReasoning || !part.text) {
+      if (!sendReasoning || !part.text) {
         continue
       }
 
@@ -3886,9 +4434,154 @@ function buildPersistedAssistantReplayChunks(input: {
     }
   }
 
+  return chunks
+}
+
+function readToolPartRecord(part: unknown): {
+  toolCallId: string
+  state: string
+  approvalId: string | null
+  output: unknown
+  errorText: unknown
+} | null {
+  if (typeof part !== 'object' || part === null) {
+    return null
+  }
+
+  const record = part as Record<string, unknown>
+  const isToolPart = typeof record.type === 'string'
+    && (record.type === 'dynamic-tool' || record.type.startsWith('tool-'))
+
+  if (
+    !isToolPart
+    || typeof record.toolCallId !== 'string'
+    || typeof record.state !== 'string'
+  ) {
+    return null
+  }
+
+  const approval = record.approval as { id?: unknown } | undefined
+
+  return {
+    toolCallId: record.toolCallId,
+    state: record.state,
+    approvalId: typeof approval?.id === 'string' ? approval.id : null,
+    output: record.output,
+    errorText: record.errorText,
+  }
+}
+
+function buildAnsweredToolChunk(
+  tool: NonNullable<ReturnType<typeof readToolPartRecord>>,
+): InferUIMessageChunk<UIMessage> | null {
+  if (tool.state === 'output-available') {
+    return {
+      type: 'tool-output-available',
+      toolCallId: tool.toolCallId,
+      output: tool.output,
+    }
+  }
+
+  if (tool.state === 'output-denied') {
+    return { type: 'tool-output-denied', toolCallId: tool.toolCallId }
+  }
+
+  if (tool.state === 'output-error') {
+    return {
+      type: 'tool-output-error',
+      toolCallId: tool.toolCallId,
+      errorText: typeof tool.errorText === 'string'
+        ? tool.errorText
+        : 'The tool call failed.',
+    }
+  }
+
+  return null
+}
+
+/**
+ * The replay for a request whose approvals another request already ran: the
+ * client still holds the paused message with its answers, so this sends the
+ * outcome of each answered call and then only the parts stored after the
+ * last of them (the reply the continuation wrote), never the whole message
+ * again. Parts the stored copy no longer holds as tool parts (an artifact
+ * call rewritten to its reference) send nothing; a reload shows them.
+ */
+function buildContinuationReplayChunks(input: {
+  publicId: string
+  parts: UIMessage['parts']
+  answeredApprovalIds: ReadonlySet<string>
+}): InferUIMessageChunk<UIMessage>[] {
+  const chunks: InferUIMessageChunk<UIMessage>[] = [{
+    type: 'start',
+    messageId: input.publicId,
+  }]
+  let lastAnsweredIndex = -1
+
+  for (const [index, part] of input.parts.entries()) {
+    const tool = readToolPartRecord(part)
+    const answeredData = part.type === TOOL_APPROVAL_DATA_PART_TYPE
+      && input.answeredApprovalIds.has(
+        String((part as { data?: { approvalId?: unknown } }).data?.approvalId),
+      )
+
+    if (answeredData) {
+      lastAnsweredIndex = index
+
+      continue
+    }
+
+    if (!tool?.approvalId || !input.answeredApprovalIds.has(tool.approvalId)) {
+      continue
+    }
+
+    lastAnsweredIndex = index
+
+    const chunk = buildAnsweredToolChunk(tool)
+
+    if (chunk) {
+      chunks.push(chunk)
+    }
+  }
+
+  if (lastAnsweredIndex >= 0) {
+    chunks.push(...buildReplayPartChunks(
+      input.parts.slice(lastAnsweredIndex + 1),
+      false,
+      lastAnsweredIndex + 1,
+    ))
+  }
+
   chunks.push({ type: 'finish' })
 
   return chunks
+}
+
+async function updateResumedAssistantMessage(input: {
+  db: ReturnType<typeof useDb>
+  chatId: string
+  publicId: string
+  parts: UIMessage['parts']
+  tools: ModelTool[]
+  usage: MessageUsage | null
+}): Promise<{ id: string, publicId: string | null } | undefined> {
+  const [row] = await input.db.update(schema.messages)
+    .set({
+      parts: input.parts,
+      tools: input.tools,
+      usage: input.usage,
+    })
+    .where(and(
+      eq(schema.messages.publicId, input.publicId),
+      eq(schema.messages.chatId, input.chatId),
+      eq(schema.messages.role, 'assistant'),
+    ))
+    .returning({
+      id: schema.messages.id,
+      publicId: schema.messages.publicId,
+    })
+
+  return row
 }
 
 /**
@@ -3981,6 +4674,11 @@ async function persistAssistantMessageFromStream(input: {
   pastChatChipPart?: UIMessage['parts'][number]
   skillActivationParts?: UIMessage['parts']
   getConnectorSecrets?: () => string[]
+  resume?: {
+    storedMessage: UIMessage
+    storedPartCount: number
+    previousUsage: MessageUsage | null
+  }
 }): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
@@ -4002,6 +4700,7 @@ async function persistAssistantMessageFromStream(input: {
 
     for await (const message of readUIMessageStream<UIMessage>({
       stream: trackedStream,
+      ...(input.resume ? { message: input.resume.storedMessage } : {}),
       onError(error) {
         input.logger.set({
           attributes: {
@@ -4098,6 +4797,21 @@ async function persistAssistantMessageFromStream(input: {
       return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
+    if (input.resume && finalParts.length < input.resume.storedPartCount) {
+      input.logger.set({
+        attributes: {
+          assistantPersist: {
+            skipped: true,
+            resumedPartsShrank: true,
+            storedParts: input.resume.storedPartCount,
+            finalParts: finalParts.length,
+          },
+        },
+      })
+
+      return { persisted: false, emptyAnswerFailure: false, answered: false }
+    }
+
     const generatedFileIds = [
       ...getGeneratedImageFileIds(
         partsAfterGatewayImages,
@@ -4187,20 +4901,29 @@ async function persistAssistantMessageFromStream(input: {
       })
     }
 
-    const assistantMessage = await insertMessageWithPublicId({
-      db: input.db,
-      values: {
+    const assistantMessage = input.resume
+      ? await updateResumedAssistantMessage({
+        db: input.db,
         chatId: input.chatId,
-        role: 'assistant',
-        parts: input.pastChatChipPart
-          ? [input.pastChatChipPart, ...finalParts]
-          : finalParts,
+        publicId: input.publicId,
+        parts: finalParts,
         tools: usedImageGeneration ? ['image_generation'] : [],
-        reasoning: input.reasoning,
-        usage: usage ?? null,
-      },
-      publicId: input.publicId,
-    })
+        usage: sumMessageUsages(input.resume.previousUsage, usage) ?? null,
+      })
+      : await insertMessageWithPublicId({
+        db: input.db,
+        values: {
+          chatId: input.chatId,
+          role: 'assistant',
+          parts: input.pastChatChipPart
+            ? [input.pastChatChipPart, ...finalParts]
+            : finalParts,
+          tools: usedImageGeneration ? ['image_generation'] : [],
+          reasoning: input.reasoning,
+          usage: usage ?? null,
+        },
+        publicId: input.publicId,
+      })
 
     if (
       assistantMessage

@@ -23,8 +23,12 @@ import {
 } from '#shared/utils/connectors-parts'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
-import { auditConnectorCall } from '~~/server/utils/connectors/audit'
+import {
+  auditConnectorCall,
+  settleConnectorAuditRow,
+} from '~~/server/utils/connectors/audit'
 import type { ConnectorArgsHasher } from '~~/server/utils/connectors/audit'
+import type { ConnectorAuditApproval } from '#shared/utils/connectors-policy'
 import { createConnectorCallLimiter } from '~~/server/utils/connectors/call-limits'
 import type { ConnectorCallLimiter } from '~~/server/utils/connectors/call-limits'
 import {
@@ -145,6 +149,10 @@ export interface GetConnectorToolsInput {
   existingToolCount: number
   hashArgs: ConnectorArgsHasher
   consumeClearedCall?: (call: ClearedCallCheck) => boolean
+  approvedAuditRow?: (
+    toolCallId: string | undefined,
+  ) => { auditCallId: number, approval: ConnectorAuditApproval } | null
+  callsUsedThisTurn?: number
   guard?: UntrustedContentGuard
   logger: LoggerLike
   dependencies?: ConnectorClientDependencies & {
@@ -456,7 +464,11 @@ async function syncDriftStatus(
  * has a 60 s timeout, is limited to 12 per send and to 60 a minute per user
  * and 30 per connector, and its text is redacted of this connector's secrets,
  * cut to 64 KiB, framed as untrusted, and raises `guard.untrustedResultSeen`.
- * Every call writes one audit row with ids, size, outcome and duration only.
+ * Every call writes one audit row with ids, size, outcome and duration only;
+ * a call the user approved settles the `pending` row its pause wrote
+ * (`approvedAuditRow`) instead. `callsUsedThisTurn` carries the connector
+ * calls earlier requests of the same user turn already made, so the 12-call
+ * limit holds across approval rounds.
  * An upstream error text never reaches the model: a call that fails or times
  * out throws an error with a sentence Besidka wrote, so the persisted tool
  * part is an error.
@@ -747,18 +759,32 @@ export async function getConnectorTools(
     const tools: ToolSet = {}
     const approvalEntries = new Map<string, SendToolEntry>()
     let definitionBytes = 0
-    let callsThisTurn = 0
+    let callsThisTurn = Math.max(0, input.callsUsedThisTurn ?? 0)
     let sourceConnectorId: string | null = null
     let isCapped = false
 
-    function recordCall(call: {
+    async function recordCall(call: {
       candidate: Candidate
       args: unknown
       resultBytes: number
       outcome: 'ok' | 'error' | 'denied' | 'timeout'
       startedAt: number
+      toolCallId: string | undefined
     }) {
-      return auditConnectorCall(db, input.hashArgs, {
+      const approvedRow = input.approvedAuditRow?.(call.toolCallId) ?? null
+
+      if (approvedRow) {
+        await settleConnectorAuditRow(db, userId, approvedRow.auditCallId, {
+          outcome: call.outcome,
+          approval: call.outcome === 'denied' ? 'denied' : approvedRow.approval,
+          resultBytes: call.resultBytes,
+          durationMs: Math.max(0, now() - call.startedAt),
+        }, logger)
+
+        return approvedRow.auditCallId
+      }
+
+      return await auditConnectorCall(db, input.hashArgs, {
         userId,
         connectorId: call.candidate.connector.id,
         connectorHost: hostOf(call.candidate.connector),
@@ -823,6 +849,7 @@ export async function getConnectorTools(
           resultBytes: 0,
           outcome: 'denied',
           startedAt,
+          toolCallId: options?.toolCallId,
         })
 
         return text
@@ -882,6 +909,7 @@ export async function getConnectorTools(
           resultBytes: framed.bytes,
           outcome,
           startedAt,
+          toolCallId: options?.toolCallId,
         })
 
         return framed.text
@@ -894,6 +922,7 @@ export async function getConnectorTools(
           resultBytes: 0,
           outcome,
           startedAt,
+          toolCallId: options?.toolCallId,
         })
 
         throw createError({

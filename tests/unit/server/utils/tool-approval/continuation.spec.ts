@@ -1,0 +1,330 @@
+import { describe, expect, it, vi } from 'vitest'
+import { convertToModelMessages } from 'ai'
+import type { UIMessage } from 'ai'
+import {
+  TOOL_APPROVAL_DENIAL_TEXT,
+  assertEndsWithApprovalResponse,
+  buildResumedAssistantMessages,
+  classifyDuplicateContinuation,
+  consumeToolApprovalResponses,
+  decideContinuation,
+  findContinuationTurn,
+  sanitizeApprovalReason,
+} from '~~/server/utils/tool-approval/continuation'
+import type { ToolApprovalPendingRecord } from '~~/server/utils/tool-approval/kv'
+import { buildConnectorApprovalEntry } from '~~/server/utils/tool-approval/send'
+import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
+import { createApprovalState } from '~~/server/utils/tool-approval/state'
+
+vi.mock('~~/server/utils/connectors/store', () => ({
+  listConnectorChatSettings: vi.fn(),
+  listConnectorToolSettings: vi.fn(),
+  upsertConnectorChatSettings: vi.fn(),
+  upsertConnectorToolSettings: vi.fn(),
+  recordConnectorToolCall: vi.fn(),
+  settleConnectorToolCall: vi.fn(),
+}))
+
+const HASH = 'b'.repeat(64)
+const TOOL_NAME = 'mcp__linear__create_issue'
+
+function message(
+  id: string,
+  role: 'user' | 'assistant',
+  parts: unknown[] = [],
+) {
+  return {
+    id: `row-${id}`,
+    publicId: id,
+    role,
+    parts,
+    tools: [],
+    reasoning: 'off',
+    usage: null,
+    createdAt: new Date(),
+  }
+}
+
+function pendingRecord(
+  overrides: Partial<ToolApprovalPendingRecord> = {},
+): ToolApprovalPendingRecord {
+  return {
+    version: 1,
+    userId: 1,
+    chatPublicId: 'chat-1',
+    messagePublicId: 'assistant-1',
+    toolCallId: 'call-1',
+    family: 'connector',
+    access: 'write',
+    toolName: TOOL_NAME,
+    connectorId: 'c1',
+    definitionHash: HASH,
+    input: { title: 'exact' },
+    signature: 'signed',
+    reason: 'always-ask',
+    rememberOptions: ['once'],
+    summary: 'Linear wants to run create_issue',
+    auditCallId: 7,
+    snapshot: {
+      model: 'gpt-5-mini',
+      gateway: null,
+      reasoning: 'off',
+      toolNames: [TOOL_NAME],
+      connectorIds: ['c1'],
+    },
+    ...overrides,
+  }
+}
+
+function connectorEntries(hash: string = HASH) {
+  return new Map<string, SendToolEntry>([[
+    TOOL_NAME,
+    buildConnectorApprovalEntry({
+      exposedName: TOOL_NAME,
+      connectorId: 'c1',
+      connectorTitle: 'Linear',
+      connectorHost: 'mcp.linear.example.com',
+      remoteToolName: 'create_issue',
+      definitionHash: hash,
+      annotations: {},
+    }),
+  ]])
+}
+
+describe('sanitizeApprovalReason', () => {
+  it('keeps plain text only and caps the length', () => {
+    expect(sanitizeApprovalReason(' Not‮\u0007\nnow ')).toBe('Not now')
+    expect(sanitizeApprovalReason('   ')).toBeUndefined()
+    expect(sanitizeApprovalReason('x'.repeat(900))).toHaveLength(500)
+  })
+})
+
+describe('findContinuationTurn', () => {
+  const messages = [
+    message('user-1', 'user'),
+    message('assistant-1', 'assistant'),
+  ]
+
+  it('returns the paused reply and its user message', () => {
+    const turn = findContinuationTurn(messages, 'assistant-1')
+
+    expect(turn.assistant.publicId).toBe('assistant-1')
+    expect(turn.user.publicId).toBe('user-1')
+  })
+
+  it('answers 404 for a foreign message and 409 for a stale one', () => {
+    expect(() => findContinuationTurn(messages, 'elsewhere'))
+      .toThrow(expect.objectContaining({ status: 404 }))
+    expect(() => findContinuationTurn(messages, 'user-1'))
+      .toThrow(expect.objectContaining({
+        status: 409,
+        code: 'TOOL_APPROVAL_STALE',
+      }))
+    expect(() => findContinuationTurn([
+      ...messages,
+      message('user-2', 'user'),
+    ], 'assistant-1')).toThrow(expect.objectContaining({ status: 409 }))
+  })
+})
+
+describe('classifyDuplicateContinuation', () => {
+  const now = new Date('2026-11-15T12:00:00Z')
+  const claim = {
+    approvalId: 'approval-1',
+    userId: 1,
+    chatPublicId: 'chat-1',
+    messagePublicId: 'assistant-1',
+    status: 'claimed' as const,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  it('replays done claims, waits for live ones, reports lapsed ones', () => {
+    expect(classifyDuplicateContinuation([{ ...claim, status: 'done' }], now))
+      .toBe('replay')
+    expect(classifyDuplicateContinuation([claim], now)).toBe('in-progress')
+    expect(classifyDuplicateContinuation([{
+      ...claim,
+      updatedAt: new Date(now.getTime() - 121_000),
+    }], now)).toBe('interrupted')
+  })
+})
+
+describe('consumeToolApprovalResponses', () => {
+  it('counts responses per minute and refuses past 30', async () => {
+    const store = new Map<string, string>()
+    const kv = {
+      get: async (key: string) => store.get(key) ?? null,
+      put: async (key: string, value: string) => {
+        store.set(key, value)
+      },
+    }
+    const now = 1_000_000
+
+    expect(await consumeToolApprovalResponses(kv as never, 1, 25, now))
+      .toEqual({ allowed: true, retryAfter: 0 })
+    expect(await consumeToolApprovalResponses(kv as never, 1, 6, now + 1000))
+      .toEqual({ allowed: false, retryAfter: 59 })
+    expect(await consumeToolApprovalResponses(kv as never, 1, 6, now + 61_000))
+      .toEqual({ allowed: true, retryAfter: 0 })
+  })
+})
+
+describe('decideContinuation', () => {
+  it('keeps an approved call that still matches and clamps remember', () => {
+    const [decision] = decideContinuation({
+      answers: [{
+        response: { approvalId: 'approval-1', approved: true, remember: 'always' },
+        record: pendingRecord(),
+      }],
+      entries: connectorEntries(),
+      state: createApprovalState(),
+    })
+
+    expect(decision).toMatchObject({
+      approved: true,
+      remember: 'once',
+      denialReason: null,
+    })
+  })
+
+  it('denies a drifted, missing or over-cap call with Besidka text', () => {
+    const state = createApprovalState()
+    const answer = {
+      response: { approvalId: 'approval-1', approved: true, remember: 'once' },
+      record: pendingRecord(),
+    } as const
+
+    expect(decideContinuation({
+      answers: [answer],
+      entries: connectorEntries('c'.repeat(64)),
+      state,
+    })[0]).toMatchObject({
+      approved: false,
+      reason: TOOL_APPROVAL_DENIAL_TEXT['definition-drifted'],
+    })
+    expect(decideContinuation({
+      answers: [answer],
+      entries: new Map(),
+      state,
+    })[0]).toMatchObject({
+      approved: false,
+      denialReason: 'missing-tool',
+    })
+
+    state.counters.connectorCalls = 11
+
+    const decisions = decideContinuation({
+      answers: [answer, {
+        response: { ...answer.response, approvalId: 'approval-2' },
+        record: pendingRecord({ toolCallId: 'call-2' }),
+      }],
+      entries: connectorEntries(),
+      state,
+    })
+
+    expect(decisions.map(decision => decision.denialReason))
+      .toEqual([null, 'over-cap'])
+    expect(state.counters.connectorCalls).toBe(11)
+  })
+
+  it('carries the user note on a denial', () => {
+    const [decision] = decideContinuation({
+      answers: [{
+        response: {
+          approvalId: 'approval-1',
+          approved: false,
+          remember: 'chat',
+          reason: 'Wrong project',
+        },
+        record: pendingRecord(),
+      }],
+      entries: connectorEntries(),
+      state: createApprovalState(),
+    })
+
+    expect(decision).toMatchObject({
+      approved: false,
+      remember: 'once',
+      reason: 'The user declined this action. Their note: Wrong project',
+    })
+  })
+})
+
+describe('buildResumedAssistantMessages', () => {
+  const storedParts = [
+    { type: 'step-start' },
+    { type: 'text', text: 'Let me file it.' },
+    {
+      type: 'dynamic-tool',
+      toolName: TOOL_NAME,
+      toolCallId: 'call-1',
+      state: 'approval-requested',
+      input: { title: 'redacted' },
+      approval: { id: 'approval-1', requestReason: 'always-ask' },
+    },
+    {
+      type: 'data-tool-approval',
+      id: 'call-1',
+      data: { approvalId: 'approval-1' },
+    },
+  ]
+
+  function decisions(approved: boolean) {
+    return decideContinuation({
+      answers: [{
+        response: { approvalId: 'approval-1', approved, remember: 'once' },
+        record: pendingRecord(),
+      }],
+      entries: connectorEntries(),
+      state: createApprovalState(),
+    })
+  }
+
+  it('gives the model the exact input and signature, D1 neither', () => {
+    const { modelMessage, storedMessage } = buildResumedAssistantMessages({
+      messageId: 'assistant-1',
+      parts: storedParts,
+      decisions: decisions(true),
+    })
+    const modelTool = modelMessage.parts.find((part: any) => {
+      return part.toolCallId === 'call-1'
+    }) as any
+    const storedTool = storedMessage.parts.find((part: any) => {
+      return part.toolCallId === 'call-1'
+    }) as any
+
+    expect(modelMessage.parts.map(part => part.type))
+      .toEqual(['step-start', 'text', 'dynamic-tool'])
+    expect(modelTool).toMatchObject({
+      state: 'approval-responded',
+      input: { title: 'exact' },
+      approval: { id: 'approval-1', approved: true, signature: 'signed' },
+    })
+    expect(storedMessage.parts).toHaveLength(storedParts.length)
+    expect(storedTool).toMatchObject({
+      state: 'approval-responded',
+      input: { title: 'redacted' },
+      approval: { id: 'approval-1', approved: true },
+    })
+    expect(storedTool.approval.signature).toBeUndefined()
+  })
+
+  it('builds a prompt that ends on the approval answers', async () => {
+    const { modelMessage } = buildResumedAssistantMessages({
+      messageId: 'assistant-1',
+      parts: storedParts,
+      decisions: decisions(false),
+    })
+    const modelMessages = await convertToModelMessages([
+      { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Go' }] },
+      modelMessage,
+    ] as UIMessage[])
+
+    expect(() => assertEndsWithApprovalResponse(modelMessages)).not.toThrow()
+    expect(() => assertEndsWithApprovalResponse([
+      ...modelMessages,
+      { role: 'user', content: 'More' },
+    ])).toThrow(expect.objectContaining({ status: 409 }))
+  })
+})

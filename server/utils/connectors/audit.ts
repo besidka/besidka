@@ -3,7 +3,10 @@ import type {
   ConnectorAuditApproval,
   ConnectorAuditOutcome,
 } from '#shared/utils/connectors-policy'
-import { recordConnectorToolCall } from '~~/server/utils/connectors/store'
+import {
+  recordConnectorToolCall,
+  settleConnectorToolCall,
+} from '~~/server/utils/connectors/store'
 import { canonicalJson } from '~~/server/utils/connectors/tool-definitions'
 import { bytesToHex, deriveHkdfBytes } from '~~/server/utils/hkdf'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -40,7 +43,15 @@ function isUnsafeAuditCodePoint(codePoint: number): boolean {
  * removed, so an audit row cannot hide or reorder what it shows.
  */
 export function toAuditToolName(toolName: string): string {
-  return [...toolName].filter((character) => {
+  return stripControlAndBidiCharacters(toolName)
+}
+
+/**
+ * The text with C0 and C1 control characters and bidirectional formatting
+ * characters removed.
+ */
+export function stripControlAndBidiCharacters(text: string): string {
+  return [...text].filter((character) => {
     return !isUnsafeAuditCodePoint(character.codePointAt(0) ?? 0)
   }).join('')
 }
@@ -134,5 +145,35 @@ export async function auditConnectorCall(
     })
 
     return null
+  }
+}
+
+export interface ConnectorCallSettlement {
+  outcome: ConnectorAuditOutcome
+  approval: ConnectorAuditApproval
+  resultBytes: number
+  durationMs: number
+}
+
+/**
+ * Settles the `pending` audit row a paused call left behind with what really
+ * happened once the user answered, instead of writing a second row. A failed
+ * write is logged and never fails the call.
+ */
+export async function settleConnectorAuditRow(
+  db: DbClient,
+  userId: number,
+  auditCallId: number,
+  settlement: ConnectorCallSettlement,
+  logger?: LoggerLike,
+): Promise<void> {
+  try {
+    await settleConnectorToolCall(db, userId, auditCallId, settlement)
+  } catch {
+    logger?.set({
+      attributes: {
+        connectors: { auditSettle: 'failed' },
+      },
+    })
   }
 }

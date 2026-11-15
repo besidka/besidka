@@ -1605,6 +1605,19 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/tool-approval-spike.spec.ts',
   ]
 
+  const toolApprovalContinuationTests = [
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/integration/api/chats-tool-approval-request.spec.ts',
+    'tests/integration/api/tool-approval-spike.spec.ts',
+    'tests/unit/composables/tool-approvals.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/utils/message-usage.spec.ts',
+    'tests/unit/server/utils/connectors/send-tools.spec.ts',
+    'tests/unit/server/utils/connectors/audit.spec.ts',
+  ]
+
   const skillsStorageTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
@@ -3176,6 +3189,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|connectors-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/memory\/tools\/memory-tools\.ts|server\/utils\/knowledge\/context\.ts|app\/utils\/labs\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/connectors\/(send-tools|audit)\.ts|server\/utils\/chats\/(branch|share-public-parts|persist-user-message)\.ts|server\/utils\/(artifacts|documents)\/message-parts\.ts|server\/utils\/ai\/search-answer-continuation\.ts|server\/utils\/files\/assistant-files\.ts|app\/composables\/chat\.ts|app\/components\/Chat\/Reasoning\.vue|app\/utils\/connector-step\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts)$/,
       tests: toolApprovalRequestTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/tool-approval-(policy|parts)\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/chats\/request-schema\.ts|server\/utils\/connectors\/(send-tools|audit|store)\.ts|server\/utils\/ai\/message-usage\.ts|app\/composables\/(chat|tool-approvals)\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts|package\.json)$/,
+      tests: toolApprovalContinuationTests,
     },
     {
       pattern:

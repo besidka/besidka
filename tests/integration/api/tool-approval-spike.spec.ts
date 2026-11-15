@@ -11,6 +11,7 @@ import {
 } from 'ai'
 import type { ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
 import { z } from 'zod'
+import { anthropic } from '@ai-sdk/anthropic'
 
 vi.mock('nitropack/runtime', () => {
   return {
@@ -1034,5 +1035,68 @@ describe('tool approval spike (ai 7.0.173)', () => {
     expect(sum('cappedBytes')).toBeGreaterThan(22_000)
     expect(sum('schemaBytes')).toBeGreaterThan(13_000)
     expect(sum('schemaBytes')).toBeLessThan(20_000)
+  })
+
+  it('9. a provider-executed call runs before any approval', async () => {
+    const providerResult = {
+      type: 'bash_code_execution_result',
+      stdout: '1',
+      stderr: '',
+      return_code: 0,
+      content: [],
+    }
+    const model = createScriptedModel([[
+      {
+        type: 'tool-call',
+        toolCallId: 'call-1',
+        toolName: 'code_execution',
+        input: JSON.stringify({
+          type: 'bash_code_execution',
+          command: 'echo 1',
+        }),
+        providerExecuted: true,
+      },
+      {
+        type: 'tool-result',
+        toolCallId: 'call-1',
+        toolName: 'code_execution',
+        result: providerResult,
+        providerExecuted: true,
+      },
+      ...textStep('It printed 1'),
+    ]])
+    const result = await send({
+      model,
+      tools: {
+        code_execution: anthropic.tools.codeExecution_20250825(),
+      } as ToolSet,
+      uiMessages: [USER_MESSAGE],
+      toolApproval: () => ({ type: 'user-approval', reason: 'asked' }),
+      secret: SECRET,
+    })
+    const assistant = await lastMessageOf(result.chunks)
+
+    expect(types(result.chunks)).toEqual([
+      'start',
+      'start-step',
+      'tool-input-available',
+      'tool-approval-request',
+      'tool-output-available',
+      'text-start',
+      'text-delta',
+      'text-end',
+      'finish-step',
+      'finish',
+    ])
+    expect(model.doStreamCalls).toHaveLength(1)
+    expect(result.events.onEnd.finishReason).toBe('stop')
+    expect(
+      assistant.parts.map((part: any) => [part.type, part.state]),
+    ).toEqual([
+      ['step-start', undefined],
+      ['tool-code_execution', 'output-available'],
+      ['text', 'done'],
+    ])
+    expect(findPendingPart(assistant)).toBeUndefined()
   })
 })
