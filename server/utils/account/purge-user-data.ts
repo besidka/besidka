@@ -17,6 +17,7 @@ import { purgeUserSkills } from '~~/server/utils/skills/cleanup'
 import { purgeUserConnectors } from '~~/server/utils/connectors/cleanup'
 import { revokeAllUserConnectorTokens } from '~~/server/utils/connectors/revoke'
 import { purgeUserToolApprovals } from '~~/server/utils/tool-approval/cleanup'
+import { purgeUserLegalNoticeData } from '~~/server/utils/legal/purge'
 
 const r2BatchDeleteLimit = 1000
 
@@ -69,6 +70,7 @@ export interface PurgeUserDataResult {
   featureOptInsDeleted: number
   userRolesDeleted: number
   featureAuditRowsAnonymised: number
+  legalNoticeOptOutsDeleted: number
   sessionKeysDeleted: number
 }
 
@@ -109,8 +111,11 @@ export interface PurgeUserDataResult {
  *     authenticated until its TTL expires,
  *   - rows carrying a `userId` with no foreign key to `users`
  *     (`image_generation_locks`, `verifications` whose `value` is the id,
- *     and the feature access tables `feature_grants`, `feature_opt_ins`,
- *     `user_roles`; `feature_audit_log` rows are anonymized instead),
+ *     `legal_notice_email_optouts`, and the feature access tables
+ *     `feature_grants`, `feature_opt_ins`, `user_roles`;
+ *     `feature_audit_log` rows are anonymized instead, and the user's id as
+ *     the approving admin on legal notice and consent version approvals is
+ *     nulled),
  *   - `message_search` FTS5 rows: a standalone virtual table with no FK to
  *     `messages`, scoped only by an `owner` tag column, so a deleted user's
  *     indexed message text would otherwise sit until the hourly GC sweep
@@ -395,6 +400,26 @@ export async function purgeUserData(
     }
   }
 
+  let legalNoticeData: Awaited<ReturnType<typeof purgeUserLegalNoticeData>>
+
+  try {
+    legalNoticeData = await purgeUserLegalNoticeData(userId, db)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'legal-notice-purge',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   let featureAccess: Awaited<ReturnType<typeof purgeUserFeatureAccess>>
 
   try {
@@ -431,6 +456,7 @@ export async function purgeUserData(
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
     ...featureAccess,
+    ...legalNoticeData,
     sessionKeysDeleted: sessionStorageKeys.length,
   }
 
@@ -462,6 +488,7 @@ export async function purgeUserData(
     featureOptInsDeleted,
     userRolesDeleted,
     featureAuditRowsAnonymised,
+    legalNoticeOptOutsDeleted,
     ...existingResult
   } = result
 
@@ -500,6 +527,7 @@ export async function purgeUserData(
         featureOptInsDeleted,
         userRolesDeleted,
         featureAuditRowsAnonymised,
+        legalNoticeOptOutsDeleted,
       },
     },
   })

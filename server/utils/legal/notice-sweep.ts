@@ -1,4 +1,16 @@
-import { and, asc, count, eq, gte, isNull, lt, or, sql } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  count,
+  eq,
+  gte,
+  isNull,
+  lt,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm'
 import type { LegalNotice } from '#shared/utils/legal-notices'
 import {
   LEGAL_NOTICES,
@@ -15,6 +27,7 @@ import {
 import type { RenderedEmail } from '~~/server/utils/email-template'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildLegalNoticeEmail } from '~~/server/utils/legal/notice-email'
+import { selectApprovedLegalNotices } from '~~/server/utils/legal/notice-approvals'
 import {
   renderLegalNoticeEmail,
   sendLegalNoticeEmail,
@@ -24,6 +37,8 @@ import type {
 } from '~~/server/utils/legal/notice-sender'
 
 type DbClient = ReturnType<typeof useDb>
+
+type RecipientDatabase = Pick<DbClient, 'select'>
 
 export const LEGAL_NOTICE_MAX_ATTEMPTS = 3
 
@@ -58,6 +73,7 @@ const FOREIGN_KEY_ERROR_CODE = 'SQLITE_CONSTRAINT_FOREIGNKEY'
 
 export type LegalNoticeSweepStopReason
   = | 'no-active-notice'
+    | 'no-approved-notice'
     | 'completed'
     | 'quota'
     | 'daily-cap'
@@ -101,6 +117,8 @@ export interface SweepLegalNoticesResult {
   userDeletedCount: number
   errorCodes: Record<string, number>
   notices: SweepLegalNoticesNoticeCount[]
+  unapprovedNoticeIds: string[]
+  changedNoticeIds: string[]
   stopReason: LegalNoticeSweepStopReason
   runtimeMs: number
 }
@@ -206,6 +224,37 @@ function retryableDeliveryCondition(instant: Date) {
   )
 }
 
+function noticeDeliveryJoin(notice: LegalNotice): SQL {
+  return and(
+    eq(schema.legalNoticeDeliveries.userId, schema.users.id),
+    eq(schema.legalNoticeDeliveries.noticeId, notice.id),
+  ) as SQL
+}
+
+function legalNoticeRecipientCondition(
+  db: RecipientDatabase,
+  notice: LegalNotice,
+  instant: Date,
+): SQL {
+  return and(
+    eq(schema.users.emailVerified, true),
+    lt(
+      schema.users.createdAt,
+      new Date(parseNoticeInstant(notice.publishedAt)),
+    ),
+    or(
+      isNull(schema.legalNoticeDeliveries.id),
+      retryableDeliveryCondition(instant),
+    ),
+    notExists(
+      db
+        .select({ userId: schema.legalNoticeEmailOptOuts.userId })
+        .from(schema.legalNoticeEmailOptOuts)
+        .where(eq(schema.legalNoticeEmailOptOuts.userId, schema.users.id)),
+    ),
+  ) as SQL
+}
+
 export async function selectLegalNoticeCandidates(
   db: DbClient,
   notice: LegalNotice,
@@ -218,26 +267,29 @@ export async function selectLegalNoticeCandidates(
       email: schema.users.email,
     })
     .from(schema.users)
-    .leftJoin(
-      schema.legalNoticeDeliveries,
-      and(
-        eq(schema.legalNoticeDeliveries.userId, schema.users.id),
-        eq(schema.legalNoticeDeliveries.noticeId, notice.id),
-      ),
-    )
-    .where(and(
-      eq(schema.users.emailVerified, true),
-      lt(
-        schema.users.createdAt,
-        new Date(parseNoticeInstant(notice.publishedAt)),
-      ),
-      or(
-        isNull(schema.legalNoticeDeliveries.id),
-        retryableDeliveryCondition(instant),
-      ),
-    ))
+    .leftJoin(schema.legalNoticeDeliveries, noticeDeliveryJoin(notice))
+    .where(legalNoticeRecipientCondition(db, notice, instant))
     .orderBy(asc(schema.users.id))
     .limit(limit)
+}
+
+/**
+ * How many users the sweep would email for `notice` right now, by the same
+ * rule it selects them with: verified accounts created before the notice was
+ * published, not yet sent or skipped, and not opted out.
+ */
+export async function countLegalNoticeRecipients(
+  db: RecipientDatabase,
+  notice: LegalNotice,
+  instant: Date,
+): Promise<number> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(schema.users)
+    .leftJoin(schema.legalNoticeDeliveries, noticeDeliveryJoin(notice))
+    .where(legalNoticeRecipientCondition(db, notice, instant))
+
+  return row?.total ?? 0
 }
 
 async function claimDelivery(
@@ -299,7 +351,9 @@ async function markDelivery(
 }
 
 /**
- * One cron tick of legal change notice delivery. Each recipient is claimed
+ * One cron tick of legal change notice delivery. Only notices the owner
+ * approved in the admin area, unchanged since, are sent, and never to a user
+ * with a legal notice email opt-out. Each recipient is claimed
  * with an insert-or-guarded-update before the send, so two overlapping ticks
  * never mail the same user twice. A claim that is not completed within an
  * hour is treated as a Worker that died mid-send and is retried, which is the
@@ -328,6 +382,8 @@ export async function sweepLegalNotices(
     userDeletedCount: 0,
     errorCodes: {},
     notices: [],
+    unapprovedNoticeIds: [],
+    changedNoticeIds: [],
     stopReason: 'no-active-notice',
     runtimeMs: 0,
   }
@@ -354,13 +410,38 @@ export async function sweepLegalNotices(
     }
   }
 
-  const activeNotices = getNoticesInSendWindow(
+  const noticesInWindow = getNoticesInSendWindow(
     input.notices ?? LEGAL_NOTICES,
     startedAt,
   )
 
-  if (activeNotices.length === 0) {
+  if (noticesInWindow.length === 0) {
     return finish('no-active-notice')
+  }
+
+  let activeNotices: LegalNotice[]
+
+  try {
+    const selection = await selectApprovedLegalNotices(db, noticesInWindow)
+
+    activeNotices = selection.approved
+    result.unapprovedNoticeIds = selection.unapprovedIds
+    result.changedNoticeIds = selection.changedIds
+  } catch (exception) {
+    input.logger?.set({
+      attributes: {
+        legalNoticeSweepError: {
+          phase: 'approvals',
+          message: exceptionMessage(exception),
+        },
+      },
+    })
+
+    return finish('error')
+  }
+
+  if (activeNotices.length === 0) {
+    return finish('no-approved-notice')
   }
 
   if (!input.privacyEmail) {

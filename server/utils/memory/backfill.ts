@@ -39,6 +39,7 @@ import {
 } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { currentLegalConsentCondition } from '~~/server/utils/legal/consent'
+import { loadApprovedConsentVersion } from '~~/server/utils/legal/consent-version'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import {
   instantiateMemoryModel,
@@ -1200,6 +1201,9 @@ export async function sweepBackfillJobs(
   const db = input.db ?? useDb()
   const limits = MEMORY_EXTRACTION_LIMITS
   const startedAt = Date.now()
+
+  await loadApprovedConsentVersion({ db })
+
   const result: SweepBackfillJobsResult = {
     jobs: 0,
     chats: 0,

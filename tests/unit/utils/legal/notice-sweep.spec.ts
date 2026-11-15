@@ -5,9 +5,11 @@ import * as schema from '~~/server/db/schema'
 import {
   LEGAL_NOTICE_FAILED_BACKOFF_MS,
   LEGAL_NOTICE_STALE_SENDING_MS,
+  countLegalNoticeRecipients,
   getNoticesInSendWindow,
   sweepLegalNotices,
 } from '~~/server/utils/legal/notice-sweep'
+import { hashLegalNotice } from '~~/server/utils/legal/notice-approvals'
 import {
   createMemoryExtractionTestDb,
 } from '../../../setup/helpers/memory-extraction-db'
@@ -115,6 +117,28 @@ describe('sweepLegalNotices', () => {
     })
   }
 
+  async function approveNotice(
+    notice: LegalNotice,
+    values: Partial<typeof schema.legalNoticeApprovals.$inferInsert> = {},
+  ): Promise<void> {
+    await testDb.db.insert(schema.legalNoticeApprovals).values({
+      noticeId: notice.id,
+      noticeHash: await hashLegalNotice(notice),
+      recipientEstimate: 0,
+      approvedBy: 1,
+      approvedAt: minutesBefore(60),
+      ...values,
+    })
+  }
+
+  async function optOut(userId: number): Promise<void> {
+    await testDb.db.insert(schema.legalNoticeEmailOptOuts).values({
+      userId,
+      source: 'admin',
+      createdBy: 1,
+    })
+  }
+
   async function readDeliveries() {
     return await testDb.db
       .select()
@@ -148,9 +172,11 @@ describe('sweepLegalNotices', () => {
     })
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = createMemoryExtractionTestDb()
     userSequence = 0
+    await approveNotice(NOTICE)
+    await approveNotice(SECOND_NOTICE)
     renderNotice.mockReset()
     renderNotice.mockResolvedValue({
       html: '<p>The notice</p>',
@@ -164,6 +190,136 @@ describe('sweepLegalNotices', () => {
 
   afterEach(() => {
     testDb.close()
+  })
+
+  describe('owner approval', () => {
+    it('sends nothing for a notice in its window without an approval',
+      async () => {
+        await testDb.db.delete(schema.legalNoticeApprovals)
+        await seedRecipient()
+
+        const result = await sweep()
+
+        expect(result.stopReason).toBe('no-approved-notice')
+        expect(result.unapprovedNoticeIds).toEqual([NOTICE.id])
+        expect(result.selectedCount).toBe(0)
+        expect(sendNotice).not.toHaveBeenCalled()
+        expect(renderNotice).not.toHaveBeenCalled()
+        expect(await readDeliveries()).toEqual([])
+      })
+
+    it('sends only the approved notice when two are in their window',
+      async () => {
+        await testDb.db
+          .delete(schema.legalNoticeApprovals)
+          .where(eq(schema.legalNoticeApprovals.noticeId, NOTICE.id))
+        await seedRecipient()
+
+        const result = await sweep({ notices: [NOTICE, SECOND_NOTICE] })
+
+        expect(result.unapprovedNoticeIds).toEqual([NOTICE.id])
+        expect(result.notices.map((notice) => {
+          return notice.noticeId
+        })).toEqual([SECOND_NOTICE.id])
+        expect((await readDeliveries()).map((row) => {
+          return row.noticeId
+        })).toEqual([SECOND_NOTICE.id])
+      })
+
+    it('stops sending once the approval is withdrawn', async () => {
+      await seedRecipient()
+      await seedRecipient()
+
+      const first = await sweep({ batchSize: 1 })
+
+      await testDb.db
+        .update(schema.legalNoticeApprovals)
+        .set({ withdrawnAt: NOW, withdrawnBy: 1 })
+        .where(eq(schema.legalNoticeApprovals.noticeId, NOTICE.id))
+
+      const second = await sweep({ batchSize: 1 })
+
+      expect(first.sentCount).toBe(1)
+      expect(second.stopReason).toBe('no-approved-notice')
+      expect(second.sentCount).toBe(0)
+      expect(sendNotice).toHaveBeenCalledTimes(1)
+      expect(await readDeliveries()).toHaveLength(1)
+    })
+
+    it('sends nothing for a notice changed in code after its approval',
+      async () => {
+        await seedRecipient()
+
+        const changedNotice: LegalNotice = {
+          ...NOTICE,
+          summary: ['A different text than the one approved.'],
+        }
+        const result = await sweep({ notices: [changedNotice] })
+
+        expect(result.stopReason).toBe('no-approved-notice')
+        expect(result.changedNoticeIds).toEqual([NOTICE.id])
+        expect(sendNotice).not.toHaveBeenCalled()
+      })
+
+    it('never mails a user with a legal notice email opt-out', async () => {
+      const optedOut = await seedRecipient()
+      const recipient = await seedRecipient()
+
+      await optOut(optedOut)
+
+      const result = await sweep()
+
+      expect(result.sentCount).toBe(1)
+      expect((await readDeliveries()).map((row) => {
+        return row.userId
+      })).toEqual([recipient])
+      expect(sendNotice).toHaveBeenCalledTimes(1)
+      expect(sendNotice).toHaveBeenCalledWith(expect.objectContaining({
+        to: `recipient-${recipient}@example.test`,
+      }))
+    })
+
+    it('stops with an error and sends nothing when approvals cannot be read',
+      async () => {
+        await seedRecipient()
+        testDb.sqlite.exec('DROP TABLE legal_notice_approvals')
+
+        const result = await sweep()
+
+        expect(result.stopReason).toBe('error')
+        expect(sendNotice).not.toHaveBeenCalled()
+      })
+  })
+
+  describe('countLegalNoticeRecipients', () => {
+    it('counts the users the sweep would mail now', async () => {
+      const sent = await seedRecipient()
+      const optedOut = await seedRecipient()
+      await seedRecipient()
+      await seedRecipient({ emailVerified: false })
+      await seedRecipient({ createdAt: AFTER_PUBLISHED })
+      await seedDelivery(sent, { status: 'sent', sentAt: minutesBefore(30) })
+      await optOut(optedOut)
+
+      expect(await countLegalNoticeRecipients(testDb.db, NOTICE, NOW))
+        .toBe(1)
+    })
+
+    it('counts nobody once every user has a skipped delivery', async () => {
+      const first = await seedRecipient()
+      const second = await seedRecipient()
+      await seedDelivery(first, {
+        status: 'skipped',
+        lastErrorCode: 'E_OWNER_STOPPED',
+      })
+      await seedDelivery(second, {
+        status: 'skipped',
+        lastErrorCode: 'E_OWNER_STOPPED',
+      })
+
+      expect(await countLegalNoticeRecipients(testDb.db, NOTICE, NOW))
+        .toBe(0)
+    })
   })
 
   describe('selection', () => {
@@ -285,6 +441,24 @@ describe('sweepLegalNotices', () => {
       await seedRecipient()
       await seedRecipient()
       await seedRecipient()
+
+      let renderCalls = 0
+      let releaseRenders: () => void = () => {}
+      const bothTicksSelected = new Promise<void>((resolve) => {
+        releaseRenders = resolve
+      })
+
+      renderNotice.mockImplementation(async () => {
+        renderCalls += 1
+
+        if (renderCalls === 2) {
+          releaseRenders()
+        }
+
+        await bothTicksSelected
+
+        return { html: '<p>The notice</p>', text: 'The notice' }
+      })
 
       const [first, second] = await Promise.all([sweep(), sweep()])
 
@@ -842,6 +1016,7 @@ describe('sweepLegalNotices', () => {
     })
 
     it('uses 14 days when the notice has a short-notice reason', async () => {
+      await approveNotice(SHORT_NOTICE)
       await seedRecipient()
       await seedRecipient()
 

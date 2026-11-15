@@ -112,6 +112,8 @@ export async function runLegalNoticeSweepJob(
           userDeletedCount: result.userDeletedCount,
           errorCodes: result.errorCodes,
           notices: result.notices,
+          unapprovedNoticeIds: result.unapprovedNoticeIds,
+          changedNoticeIds: result.changedNoticeIds,
           stopReason: result.stopReason,
           runtimeMs: result.runtimeMs,
         },
