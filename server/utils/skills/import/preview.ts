@@ -6,6 +6,7 @@ import type { SkillArchiveFile } from '#shared/utils/skills/archive'
 import { SKILL_MAX_UPLOAD_BYTES } from '#shared/utils/skills-policy'
 import type { SkillImportRelease } from '#shared/types/skills.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { resolveJevRoleModel } from '~~/server/utils/jev/roles'
 import { readSkillLookalikeContext } from '~~/server/utils/skills/lookalike-context'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import { findInstalledSkill } from '~~/server/utils/skills/import/installed'
@@ -101,7 +102,10 @@ export async function readSkillUpload(
 /**
  * Analyzes an extracted skill, applies the license gate, stages it for one
  * hour and returns what the review screen needs. A restricted license stops
- * here, so it is never staged.
+ * here, so it is never staged. The answer carries `jev: 'available'` when the
+ * user has a TypeSafe AI key and "Prompt-injection screening" is on, which is
+ * when the review screen may call the stage's `screen` route; nothing is sent
+ * to TypeSafe AI from here.
  */
 export async function createSkillImportPreview(input: {
   db: ReturnType<typeof useDb>
@@ -159,6 +163,12 @@ export async function createSkillImportPreview(input: {
     files: input.files,
   })
   const warnings = [...input.archiveWarnings, ...analysis.warnings]
+  const jevModel = await resolveJevRoleModel({
+    db: input.db,
+    userId: input.userId,
+    role: 'injectionScreening',
+    logger: input.logger,
+  })
   const installed = await findInstalledSkill({
     db: input.db,
     userId: input.userId,
@@ -221,5 +231,6 @@ export async function createSkillImportPreview(input: {
     },
     requiresLicenseAcknowledgement: manifest.license.class === 'none'
       || manifest.license.class === 'custom',
+    ...(jevModel ? { jev: 'available' as const } : {}),
   }
 }

@@ -88,6 +88,22 @@ describe('recordJevRoleLog', () => {
       })
     })
 
+  it('keeps the caller name across repeated calls', () => {
+    const { fields, logger } = createLogger()
+
+    recordJevRoleLog('injectionScreening', {
+      status: 'ok',
+      source: 'skill',
+      calls: 1,
+    }, logger)
+    recordJevRoleLog('injectionScreening', { status: 'ok', calls: 2 }, logger)
+
+    expect(fields.at(-1)?.attributes.injectionScreeningJev).toMatchObject({
+      source: 'skill',
+      calls: 3,
+    })
+  })
+
   it('caps the logged scores', () => {
     const { fields, logger } = createLogger()
 

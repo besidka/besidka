@@ -35,6 +35,7 @@ export interface RuntimeSkillFile {
 
 export interface LoadedSkillContent extends RuntimeSkillRow {
   body: string
+  skillMdText: string
   files: RuntimeSkillFile[]
 }
 
@@ -196,6 +197,7 @@ export async function loadSkillContent(input: {
   return {
     ...skill,
     body: split.ok ? split.body.replace(/^\n+/, '') : text,
+    skillMdText: text,
     files: files.map((file) => {
       return { path: file.path, bytes: file.bytes, kind: file.kind }
     }),

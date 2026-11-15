@@ -86,7 +86,7 @@ describe('Profile/Skills/ModelView', () => {
 
     expect(wrapper.find(testId('skill-file-line-flagged')).exists()).toBe(true)
     expect(wrapper.get(testId('skill-model-findings-note')).text())
-      .toContain('It cannot tell whether a skill is safe')
+      .toContain('It does not decide whether to use a skill')
   })
 
   it('flags a body above the activation cap', async () => {

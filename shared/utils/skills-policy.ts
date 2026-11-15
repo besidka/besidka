@@ -78,6 +78,7 @@ export const SKILL_MAX_PATH_DEPTH = 6
 export const SKILL_MAX_FRONTMATTER_BYTES = 16 * KIBIBYTE
 export const SKILLS_PER_USER = 50
 export const SKILL_IMPORTS_PER_HOUR = 10
+export const SKILL_SCREENS_PER_HOUR = 60
 export const SKILL_STAGE_TTL = 60 * 60
 export const SKILL_FINDING_LONG_LINE = 2000
 export const SKILL_FINDING_BLANK_RUN = 50
