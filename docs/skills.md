@@ -1627,8 +1627,8 @@ key. A picked skill that cannot be read is skipped without an error.
 **Where.** `server/utils/skills/jev/` (`prefilter.ts`, `questions.ts`,
 `selection.ts`), `jevSelection` on `prepareSkillsForSend`, and two calls in
 `server/api/v1/chats/[slug]/index.post.ts` (`prepareSkillSelection` before the
-Auto web search step, `resolveSkillSelection` started right after it and
-awaited before `prepareSkillsForSend`).
+Auto web search step, `resolveSkillSelection` started after the replay
+guards and awaited before `prepareSkillsForSend`).
 
 ## 6. Threat model
 

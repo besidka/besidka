@@ -1,9 +1,11 @@
+import type { FeatureKey } from '#shared/utils/features/registry'
 import type { JevRoleId } from '#shared/utils/jev-policy'
 
 export interface TypesafeRoleCopy {
   id: JevRoleId
   title: string
   description: string
+  feature?: FeatureKey
 }
 
 export const typesafeRoleCopies: TypesafeRoleCopy[] = [
@@ -63,6 +65,7 @@ export const typesafeRoleCopies: TypesafeRoleCopy[] = [
   },
   {
     id: 'skillSelection',
+    feature: 'skills',
     title: 'Skill selection',
     description: 'Picks one of your Auto skills for a message when a local '
       + 'match suggests it. Sends your message and up to three skill '

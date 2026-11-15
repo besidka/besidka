@@ -36,7 +36,33 @@ const mocks = vi.hoisted(() => ({
   skillsFlagActive: true,
   historyMessages: [] as Array<Record<string, unknown>>,
   lastInsertValues: null as ReturnType<typeof vi.fn> | null,
+  jevModel: null as object | null,
+  jevDecide: vi.fn(),
 }))
+
+vi.mock('~~/server/utils/jev/client', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/jev/client')
+  >()
+
+  return {
+    ...actual,
+    jevDecide: (...args: unknown[]) => mocks.jevDecide(...args),
+  }
+})
+
+vi.mock('~~/server/utils/jev/roles', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/jev/roles')
+  >()
+
+  return {
+    ...actual,
+    resolveJevRoleModel: vi.fn(async (input: { role: string }) => {
+      return input.role === 'skillSelection' ? mocks.jevModel : null
+    }),
+  }
+})
 
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>()
@@ -418,6 +444,14 @@ describe('skills on the chat send path', () => {
     mocks.chatProjectId = null
     mocks.historyMessages = []
     mocks.skillsFlagActive = true
+    mocks.jevModel = null
+    mocks.jevDecide.mockReset().mockResolvedValue({
+      ok: true,
+      status: 'ok',
+      probabilities: { sel_0: 0.95 },
+      inputTokens: 300,
+      latencyMs: 50,
+    })
     mocks.activeFlags = new Set(['skills'])
     seedSkill({ id: 'skl1', name: 'writing-style', modelInvocable: true })
     seedSkill({ id: 'skl2', name: 'meeting-notes', modelInvocable: false })
@@ -545,6 +579,134 @@ describe('skills on the chat send path', () => {
         version: 1,
       }),
     }])
+  })
+
+  describe('skill picked by TypeSafe AI', () => {
+    const SELECTING_TEXT = 'Rewrite this paragraph in my writing style'
+
+    function findActivations(assistantInsert: any) {
+      return (assistantInsert?.parts ?? []).filter((part: any) => {
+        return part.type === 'data-skill-activation'
+      })
+    }
+
+    beforeEach(() => {
+      mocks.jevModel = { id: 'jev-model' }
+    })
+
+    it('injects the picked Auto skill and stores an activation, not an invocation', async () => {
+      const { doStream, assistantInsert } = await runSend({
+        steps: [text('Done.')],
+        parts: [{ type: 'text', text: SELECTING_TEXT }],
+      })
+      const call = doStream.mock.calls[0]?.[0] as any
+      const inserted = mocks.lastInsertValues!.mock.calls.map(([value]) => {
+        return JSON.stringify(value)
+      }).join('\n')
+
+      expect(mocks.jevDecide).toHaveBeenCalledTimes(1)
+
+      const jevCall = mocks.jevDecide.mock.calls[0]![0]
+
+      expect(Object.keys(jevCall.questions)).toEqual(['sel_0'])
+      expect(jevCall.state.skill_0).toContain('writing-style')
+      expect(readLastUserText(call)).toContain('Besidka matched the skill')
+      expect(readLastUserText(call)).toContain('SKILL BODY')
+      expect(readSystemPrompt(call)).not.toContain('SKILL BODY')
+      expect(findActivations(assistantInsert)).toEqual([{
+        type: 'data-skill-activation',
+        data: expect.objectContaining({
+          skillId: 'skl1',
+          name: 'writing-style',
+          source: 'jev',
+        }),
+      }])
+      expect(inserted).not.toContain('data-skill-invocation')
+    })
+
+    it('makes no Jev call and adds nothing when the role is off', async () => {
+      mocks.jevModel = null
+
+      const { doStream, assistantInsert } = await runSend({
+        steps: [text('Done.')],
+        parts: [{ type: 'text', text: SELECTING_TEXT }],
+      })
+      const call = doStream.mock.calls[0]?.[0] as any
+
+      expect(mocks.jevDecide).not.toHaveBeenCalled()
+      expect(readLastUserText(call)).not.toContain('SKILL BODY')
+      expect(findActivations(assistantInsert)).toEqual([])
+    })
+
+    it('makes no Jev call for a message no skill matches', async () => {
+      await runSend({
+        steps: [text('Done.')],
+        parts: [{ type: 'text', text: 'What is the capital of Australia?' }],
+      })
+
+      expect(mocks.jevDecide).not.toHaveBeenCalled()
+    })
+
+    it('makes no Jev call when the user attached a skill', async () => {
+      const { doStream } = await runSend({
+        steps: [text('Done.')],
+        parts: [
+          { type: 'text', text: SELECTING_TEXT },
+          invocationPart('skl1', 'writing-style'),
+        ],
+      })
+      const call = doStream.mock.calls[0]?.[0] as any
+
+      expect(mocks.jevDecide).not.toHaveBeenCalled()
+      expect(readLastUserText(call)).toContain('The user attached the skill')
+    })
+
+    it('makes no Jev call when the skills flag is off', async () => {
+      mocks.activeFlags = new Set()
+
+      await runSend({
+        steps: [text('Done.')],
+        parts: [{ type: 'text', text: SELECTING_TEXT }],
+      })
+
+      expect(mocks.jevDecide).not.toHaveBeenCalled()
+    })
+
+    it('sends as without a key when Jev fails', async () => {
+      mocks.jevDecide.mockResolvedValue({
+        ok: false,
+        status: 'timeout',
+        latencyMs: 800,
+      })
+
+      const { doStream, assistantInsert } = await runSend({
+        steps: [text('Done.')],
+        parts: [{ type: 'text', text: SELECTING_TEXT }],
+      })
+      const call = doStream.mock.calls[0]?.[0] as any
+
+      expect(readLastUserText(call)).not.toContain('SKILL BODY')
+      expect(readToolNames(call)).toContain('activate_skill')
+      expect(findActivations(assistantInsert)).toEqual([])
+    })
+
+    it('stays below the threshold: nothing is applied', async () => {
+      mocks.jevDecide.mockResolvedValue({
+        ok: true,
+        status: 'ok',
+        probabilities: { sel_0: 0.3 },
+        inputTokens: 300,
+        latencyMs: 50,
+      })
+
+      const { doStream } = await runSend({
+        steps: [text('Done.')],
+        parts: [{ type: 'text', text: SELECTING_TEXT }],
+      })
+
+      expect(readLastUserText(doStream.mock.calls[0]?.[0] as any))
+        .not.toContain('SKILL BODY')
+    })
   })
 
   it('re-injects an earlier activation into the system prompt on a later send', async () => {

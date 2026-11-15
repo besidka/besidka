@@ -3100,7 +3100,9 @@ of `null` ("reset") turns it off. No migration: the toggle lives in the
 existing nullable JSON column. MCP cannot change it (`update_settings` has no
 role field). The toggle sits with the others in the "TypeSafe AI checks"
 section of the Smart checks tab (`/profile/keys?tab=memory-checks`), with a
-short cost note.
+short cost note. The row, and the sentence about it in the tab's intro, show
+only while the `skills` feature is active for the user (`feature: 'skills'` on
+the role copy), so nobody sees a setting for something they cannot use yet.
 
 **Order of gates, cheapest first** (`prepareSkillSelection`,
 `server/utils/skills/jev/selection.ts`, called once before Auto web search):
@@ -3145,9 +3147,12 @@ its call (Auto mode, a chosen search provider, no forced search, no reused
 decision), the skill questions ride in it and `resolveAutoWebSearch` hands the
 raw result back as `jevResult`, so the role adds no HTTP call
 (`calls: 0`, `shared: 1` in the log). Otherwise `resolveSkillSelection` makes
-its own single call with `{ message, recent_turns: [] }`, started right after
-the web search step and awaited just before `prepareSkillsForSend`, so it
-overlaps the other pre-send work. A failed shared call is not repeated.
+its own single call with `{ message, recent_turns: [] }`, started after the
+replay and generation-in-progress guards (a replayed or duplicate send never
+spends) and awaited just before `prepareSkillsForSend`, so it overlaps the
+other pre-send work. Regenerate: a turn that already has a stored answer is
+replayed without running the model, so no selection runs; a send retried after
+a stopped or failed stream asks again and may pick again. A failed shared call is not repeated.
 **Deviation from the ticket:** past-chat retrieval (J6) does not use
 `decideSendPathJev` (`decidePastChatSearch` calls `jevDecide` with its own
 state), so on a send with no Auto web search call the skill check is one
@@ -3228,19 +3233,20 @@ inside the scripts.
   and without the four web questions: the largest skill score difference was
   0.010.
 
-**Prefilter** (message found by name or description words only; the gold skill
-must be in the top three). The first run showed the floor alone does not
+**Prefilter** (message found by name or description words only; the right
+skill must be in the top three; numbers from the shipped code, floor capped
+for few skills). The first run showed the floor alone does not
 separate: single-term matches score 2.4 to 6.4 for the right skill and 2.1 to
 7.1 for the wrong one at 16 to 50 skills, so the floor only removes terms that
 are in most descriptions, and the matched-term count is the real lever.
 
 | Corpus | minTerms 1: right skill in the top 3 / negatives that reach Jev | minTerms 2: right skill in the top 3 / negatives that reach Jev |
 |---|---|---|
-| 3 skills | 77% / 10% | 54% / 5% |
-| 10 | 81% / 33% | 54% / 13% |
-| 16 | 81% / 48% | 54% / 18% |
-| 30 | 77% / 53% | 54% / 20% |
-| 50 | 75% / 53% | 54% / 20% |
+| 3 skills | 77% / 10% | 54% / 8% |
+| 10 | 81% / 33% | 54% / 15% |
+| 16 | 81% / 48% | 54% / 20% |
+| 30 | 77% / 53% | 54% / 23% |
+| 50 | 75% / 53% | 54% / 23% |
 
 Chosen: floor 1 (capped for few skills), one matched term. A paraphrase that
 shares no word with the description, or a message in another language than

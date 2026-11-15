@@ -9,9 +9,11 @@ import TypesafeChecks
 const state = reactive<{
   isLoaded: boolean
   roles: Record<string, boolean>
+  isSkillsActive: boolean
 }>({
   isLoaded: true,
   roles: {},
+  isSkillsActive: true,
 })
 
 const mocks = vi.hoisted(() => ({
@@ -30,11 +32,22 @@ mockNuxtImport('useTypesafeRoles', () => {
   })
 })
 
+mockNuxtImport('useFeature', () => {
+  return () => {
+    return computed(() => ({
+      enabled: true,
+      active: state.isSkillsActive,
+      variant: null,
+    }))
+  }
+})
+
 enableAutoUnmount(afterEach)
 
 beforeEach(() => {
   state.isLoaded = true
   state.roles = {}
+  state.isSkillsActive = true
   mocks.setRole.mockReset().mockImplementation(async (
     role: string,
     isOn: boolean,
@@ -101,6 +114,19 @@ describe('Profile/Keys/TypesafeChecks', () => {
     await flushPromises()
 
     expect(mocks.setRole).toHaveBeenCalledWith('skillSelection', true)
+  })
+
+  it('hides skill selection until the skills feature is active', async () => {
+    state.isSkillsActive = false
+
+    const wrapper = await mountSuspended(TypesafeChecks)
+
+    expect(wrapper.find(
+      '[data-testid="typesafe-role-toggle-skillSelection"]',
+    ).exists()).toBe(false)
+    expect(wrapper.find(
+      '[data-testid="typesafe-role-toggle-pastChatRetrieval"]',
+    ).exists()).toBe(true)
   })
 
   it('shows a role switched off as unchecked and saves a flip', async () => {

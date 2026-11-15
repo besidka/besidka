@@ -1,5 +1,8 @@
 import MiniSearch from 'minisearch'
-import { JEV_SKILL_SELECTION } from '#shared/utils/jev-policy'
+import {
+  JEV_SEND_PATH_MAX_TURN_CHARS,
+  JEV_SKILL_SELECTION,
+} from '#shared/utils/jev-policy'
 import { STOP_WORDS } from '~~/server/utils/knowledge/search'
 import {
   buildStemmedSearchText,
@@ -64,13 +67,16 @@ function stemSkillText(skill: SkillPrefilterSkill): string {
 
 /**
  * The distinct stemmed terms of a message that can say anything about a
- * skill: stop words and tokens shorter than `minTermLength` are dropped, and
- * only the first `maxQueryTerms` stay, so a pasted document cannot turn the
- * prefilter into a scan.
+ * skill: stop words and tokens shorter than `minTermLength` are dropped,
+ * only the first `maxQueryTerms` stay, and only the first
+ * `JEV_SEND_PATH_MAX_TURN_CHARS` characters are read, so a pasted document
+ * cannot turn the prefilter into a scan.
  */
 export function buildSkillQueryTerms(message: string): string[] {
   const { minTermLength, maxQueryTerms } = JEV_SKILL_SELECTION.prefilter
-  const terms = buildStemmedSearchText(message)
+  const terms = buildStemmedSearchText(
+    message.slice(0, JEV_SEND_PATH_MAX_TURN_CHARS),
+  )
     .split(STEM_SEPARATOR)
     .filter((term) => {
       return term.length >= minTermLength && !STOP_WORD_STEMS.has(term)

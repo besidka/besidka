@@ -31,7 +31,6 @@ const SKILL_SELECTION_ROLE = 'skillSelection'
 
 export interface SkillSelectionPlan {
   candidates: RuntimeSkillRow[]
-  scores: number[]
   messageText: string
   model: Experimental_DecisionModel
   extraJev: SendPathJevExtra
@@ -130,7 +129,6 @@ export async function prepareSkillSelection(input: {
 
     return {
       candidates: matches.map(match => match.skill),
-      scores: matches.map(match => match.score),
       messageText,
       model,
       extraJev: buildSkillSelectionJev(matches.map(match => match.skill)),

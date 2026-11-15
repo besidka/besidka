@@ -841,10 +841,6 @@ export default defineEventHandler(async (event) => {
     extraJev: skillSelectionPlan?.extraJev,
     logger,
   })
-  const skillSelectionRun = resolveSkillSelection(
-    skillSelectionPlan,
-    autoWebSearch.jevResult,
-  )
   const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
     = autoWebSearch.outcome ?? undefined
   const selectedTools = autoWebSearch.tools
@@ -1009,6 +1005,11 @@ export default defineEventHandler(async (event) => {
       })
     }
   }
+
+  const skillSelectionRun = resolveSkillSelection(
+    skillSelectionPlan,
+    autoWebSearch.jevResult,
+  )
 
   const resumedAssistantId = resume?.owner.messagePublicId ?? null
   const allMessages = [
