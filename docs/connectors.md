@@ -139,7 +139,9 @@ resolves a disagreement between tickets and is listed in section 13.
     context panel "Used" section.
 15. **No logos or third-party images (pre-check).** Presets, cards and registry
     rows show text and a generated initial avatar. No favicons, no registry
-    `icons`, no hotlinking.
+    `icons`, no hotlinking. Amended 2026-11-15 (BES-395): reasoning steps show
+    a connector icon, but only through the Besidka route of section 7.10, never
+    as a remote image; presets, cards and registry rows stay text only.
 16. **Results are data, never instructions.** Every connector result is wrapped
     and framed as untrusted, engages the memory write lock and never feeds
     memory extraction, chat search or shares.
@@ -1573,6 +1575,62 @@ read the stored grants. Where this changes sections 7.1 to 7.8:
   the user asked (`buildMemoryWriteDescriptions`). The live check had shown
   reasoning models skipping the tool because the old text said it was
   refused. Flag off, the text is unchanged.
+
+### 7.10 As built: step icons (BES-395, 2026-11-15)
+
+Every reasoning step starts with a small decorative icon; the title keeps the
+meaning. The one registry is `app/utils/reasoning-step-icons.ts`
+(`resolveReasoningStepSource`): it maps a tool name to an icon descriptor and
+a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
+`alt`). Only the four pinned icon collections are used
+(`docs/nuxt-icon-collections.md`).
+
+- **Built-in sources.** Search shows the brand of the vendor that ran it:
+  Brave and Exa by tool name, and for the native `web_search_preview` tool the
+  vendor in `usage.searchProvider` (Google, Anthropic, OpenAI, xAI, DeepSeek).
+  While the usage is not saved yet (streaming) or the route is a gateway, the
+  icon is a globe. Documents show their file type and name the format
+  ("Created DOCX"); while the input still streams there is no `format`, so the
+  generic title stays. Skills use `lucide:sparkles`, memory the memory icon,
+  chat and project knowledge their own icons, and the future `besidka__*` tools
+  the Besidka mark. Artifacts and code execution have icons in the registry,
+  but those tools are excluded from the step list today, so only an approval
+  step for them shows one.
+- **Connector icon, in this order.** (1) An icon the server declares in its
+  `initialize` result (`serverInfo.icons`, MCP 2025-06 and later; the
+  `@ai-sdk/mcp` schema is loose, so the field survives). It is read on the
+  tool-list cache miss in `send-tools.ts` and kept as sources in KV. Only a
+  `data:` image or a URL on the server's own origin is fetched; dark-theme
+  icons are skipped (the tile is light). (2) `/favicon.ico` of the server's
+  host. (3) A letter avatar, drawn by the client when the route answers 404.
+  Registry icons are not read: `mcp_registry_servers` has no icons column and
+  nothing syncs it yet.
+- **Fetch and storage.** `server/utils/connectors/icon.ts`, through
+  `safeFetch` with the new `favicon` purpose (validated redirects, 32 KiB, 5 s).
+  The answer must be a success and a raster image by its magic bytes (PNG,
+  JPEG, GIF, WebP, ICO). SVG is refused: it is served from the app's own origin
+  and can carry script. The bytes live in KV under `connectors:icon:<id>` for
+  7 days; a miss is kept for a day, so a server without an icon is not asked on
+  every render. Deleting a connector removes both keys; an account purge relies
+  on the TTL and on the owner check below.
+- **Route.** `GET /api/v1/connectors/[id]/icon`: session, `connectors` flag,
+  the connector must be the user's (404 otherwise), have current consent and
+  be `ready` or `drifted`, so nothing is fetched for a connector the user has
+  not connected. Headers: `cache-control: private, max-age=86400` (3600 for a
+  404), `x-content-type-options: nosniff`, `content-security-policy:
+  default-src 'none'; sandbox`, and `content-type` from the sniffed type.
+- **Never remote.** The chat loads the image only from this route
+  (`referrerpolicy="no-referrer"`), so a connector cannot see the viewer's
+  address. Shared pages pass `is-shared` to `ChatReasoning`, which forces the
+  generic plug icon and never requests the route (tool parts are also stripped
+  from shares, so there is nothing to show).
+- **Known limit.** Measured on 2026-11-15: only 2 of 11 well-known MCP hosts
+  serve `/favicon.ico` (Sentry, Vercel); Notion, Linear, Stripe, Atlassian and
+  others answer 404, so most connectors show the letter unless the server
+  declares icons. Options if that is not enough: read the HTML `<link rel=icon>`
+  of the host, or the registry `icons` once the registry is synced.
+- **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
+  with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
 
 ## 8. Data model
 
