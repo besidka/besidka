@@ -1810,10 +1810,12 @@ changes sections 7.1 to 7.9:
   keeps the description and the Read-only, Changes data and Always asks
   badges; the Labs panel groups Besidka tools by tier (the ask-every-time
   tier is now labeled "Always asks").
-- **Second lines not changed.** The memory write lock and the web search
-  refusal still read the live state at execute time, so a memory write or
-  a Besidka-run web search in the same step as a connector read can still
-  be refused by them although the policy cleared it.
+- **Second lines.** The memory write lock is set between steps, so a
+  `memory_write` in the same step as `search_chats` now runs, and one in the
+  next step asks (`chats-memory` integration spec). The refusal of a
+  Besidka-run web search still reads the live state at execute time, so a
+  Brave or Exa search in the same step as a connector read is still
+  refused.
 - **Tests.** `tests/unit/server/utils/tool-approval/policy.spec.ts`
   ("reads (owner decision, 2026-11-15)", own-source writes),
   `send.spec.ts` ("one model step"), `continuation.spec.ts`
