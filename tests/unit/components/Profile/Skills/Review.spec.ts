@@ -167,7 +167,7 @@ describe('Profile/Skills/Review', () => {
             {
               ...finding,
               type: 'injection',
-              rule: 'injection-ignore-previous',
+              rule: 'injection-override',
               severity: 'high',
               line: 2,
             },
@@ -208,7 +208,7 @@ describe('Profile/Skills/Review', () => {
         preview: createImportPreview({
           findings: [{
             type: 'injection',
-            rule: 'injection-disregard-previous',
+            rule: 'injection-override',
             severity: 'low',
             path: 'SKILL.md',
             line: 4,

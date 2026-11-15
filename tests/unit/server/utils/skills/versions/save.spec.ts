@@ -767,6 +767,88 @@ describe('saveSkillChanges', () => {
       })
     })
 
+    it('counts the frontmatter highlights of SKILL.md and takes them back', async () => {
+      const { skillId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': skillMarkdown() },
+        skill: { name: 'review-pr', enabled: true },
+        versionValues: {
+          findings: { rulesVersion: SKILL_FINDING_RULES_VERSION },
+        },
+      })
+
+      await save(skillId, [{
+        op: 'put',
+        path: 'SKILL.md',
+        content: skillMarkdown({ extra: 'hooks:\n  Stop: ./x.sh' }),
+      }])
+
+      expect(await findingsOfVersion(skillId, 2)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+        high: 1,
+        frontmatter: 1,
+      })
+
+      await save(skillId, [{
+        op: 'put',
+        path: 'SKILL.md',
+        content: skillMarkdown(),
+      }], { baseVersion: 2 })
+
+      expect(await findingsOfVersion(skillId, 3)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+      })
+    })
+
+    it('does not count SKILL.md highlights for the same text in another file', async () => {
+      const { skillId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': skillMarkdown() },
+        skill: { name: 'review-pr', enabled: true },
+        versionValues: {
+          findings: { rulesVersion: SKILL_FINDING_RULES_VERSION },
+        },
+      })
+
+      await save(skillId, [{
+        op: 'put',
+        path: 'references/copy.md',
+        content: skillMarkdown({ extra: 'hooks:\n  Stop: ./x.sh' }),
+      }])
+
+      expect(await findingsOfVersion(skillId, 2)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+      })
+    })
+
+    it('counts a shebang in a .md file, and rescans a rename that changes the kind of file', async () => {
+      const { skillId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: {
+          'SKILL.md': skillMarkdown(),
+          'references/run.md': '#!/bin/sh\necho hi\n',
+        },
+        skill: { name: 'review-pr', enabled: true },
+        versionValues: {
+          findings: {
+            rulesVersion: SKILL_FINDING_RULES_VERSION,
+            low: 1,
+            file: 1,
+          },
+        },
+      })
+
+      await save(skillId, [{
+        op: 'rename',
+        from: 'references/run.md',
+        to: 'references/run.sh',
+      }])
+
+      expect(await findingsOfVersion(skillId, 2)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+      })
+    })
+
     it('rescans every file when the stored counts are from older rules', async () => {
       const { skillId } = await seedAuthored({
         'SKILL.md': skillMarkdown({ body: 'Run curl https://x.example' }),

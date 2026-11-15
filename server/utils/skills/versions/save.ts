@@ -1,5 +1,7 @@
 import type { SkillChange } from '#shared/utils/skills/edit'
 import {
+  getSkillScanRole,
+  getSkillScanRolePath,
   isStoredFindingCountsStale,
   readStoredFindingCounts,
   scanSkillTextWithCounts,
@@ -39,11 +41,35 @@ export type SaveSkillResult
   = | ({ unchanged: false, id: string } & WrittenSkillVersion)
     | { unchanged: true, id: string, version: number }
 
-function countOccurrences(shas: string[]): Map<string, number> {
+const SCAN_KEY_SEPARATOR = '\u0000'
+
+/**
+ * The key a file is counted under: its blob and the scan role of its path.
+ * The same bytes read differently as SKILL.md (frontmatter highlights), as a
+ * `.md` or `.txt` file (the `#!` check) and as any other file, so a blob
+ * shared by paths of different roles is scanned once per role.
+ */
+function toScanKey(file: WorkingSkillFile): string {
+  return `${getSkillScanRole(file.path)}${SCAN_KEY_SEPARATOR}${
+    file.blobSha256}`
+}
+
+function parseScanKey(key: string): { sha: string, path: string } {
+  const [role, sha] = key.split(SCAN_KEY_SEPARATOR)
+
+  return {
+    sha: sha!,
+    path: getSkillScanRolePath(role as ReturnType<typeof getSkillScanRole>),
+  }
+}
+
+function countOccurrences(files: WorkingSkillFile[]): Map<string, number> {
   const counts = new Map<string, number>()
 
-  for (const sha of shas) {
-    counts.set(sha, (counts.get(sha) ?? 0) + 1)
+  for (const file of files) {
+    const key = toScanKey(file)
+
+    counts.set(key, (counts.get(key) ?? 0) + 1)
   }
 
   return counts
@@ -102,7 +128,8 @@ async function scanAllFindingCounts(input: {
 }): Promise<FindingTotals> {
   const totals: FindingTotals = { typeCounts: {}, severityCounts: {} }
 
-  for (const [sha, occurrences] of input.nextOccurrences) {
+  for (const [key, occurrences] of input.nextOccurrences) {
+    const { sha, path } = parseScanKey(key)
     const text = input.heldTexts.get(sha) ?? await readBlobTextOrNull({
       bucket: input.bucket,
       userId: input.userId,
@@ -114,7 +141,7 @@ async function scanAllFindingCounts(input: {
       continue
     }
 
-    const scan = scanSkillTextWithCounts('', text)
+    const scan = scanSkillTextWithCounts(path, text)
 
     for (let copy = 0; copy < occurrences; copy++) {
       addScanCounts(totals, scan, 1)
@@ -146,12 +173,8 @@ async function computeFindingCounts(input: {
   nextFiles: WorkingSkillFile[]
   heldTexts: Map<string, string>
 }): Promise<Record<string, number>> {
-  const baseOccurrences = countOccurrences(input.baseFiles.map((file) => {
-    return file.blobSha256
-  }))
-  const nextOccurrences = countOccurrences(input.nextFiles.map((file) => {
-    return file.blobSha256
-  }))
+  const baseOccurrences = countOccurrences(input.baseFiles)
+  const nextOccurrences = countOccurrences(input.nextFiles)
   const needsFullRescan = input.baseCounts === null
     || isStoredFindingCountsStale(input.baseCounts)
 
@@ -176,12 +199,20 @@ async function computeFindingCounts(input: {
     severityCounts: { ...stored.severityCounts },
   }
 
-  for (const [sha, nextCount] of nextOccurrences) {
-    const appeared = nextCount - (baseOccurrences.get(sha) ?? 0)
-    const text = input.heldTexts.get(sha)
+  for (const [key, nextCount] of nextOccurrences) {
+    const { sha, path } = parseScanKey(key)
+    const appeared = nextCount - (baseOccurrences.get(key) ?? 0)
+    const text = appeared > 0
+      ? input.heldTexts.get(sha) ?? await readBlobTextOrNull({
+        bucket: input.bucket,
+        userId: input.userId,
+        skillId: input.skillId,
+        blobSha256: sha,
+      })
+      : null
 
-    if (appeared > 0 && text !== undefined) {
-      const scan = scanSkillTextWithCounts('', text)
+    if (appeared > 0 && text !== null) {
+      const scan = scanSkillTextWithCounts(path, text)
 
       for (let copy = 0; copy < appeared; copy++) {
         addScanCounts(totals, scan, 1)
@@ -189,8 +220,9 @@ async function computeFindingCounts(input: {
     }
   }
 
-  for (const [sha, baseCount] of baseOccurrences) {
-    const removed = baseCount - (nextOccurrences.get(sha) ?? 0)
+  for (const [key, baseCount] of baseOccurrences) {
+    const { sha, path } = parseScanKey(key)
+    const removed = baseCount - (nextOccurrences.get(key) ?? 0)
 
     if (removed <= 0) {
       continue
@@ -207,7 +239,7 @@ async function computeFindingCounts(input: {
       continue
     }
 
-    const scan = scanSkillTextWithCounts('', text)
+    const scan = scanSkillTextWithCounts(path, text)
 
     for (let copy = 0; copy < removed; copy++) {
       addScanCounts(totals, scan, -1)

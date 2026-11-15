@@ -6,6 +6,7 @@ import type { SkillArchiveFile } from '#shared/utils/skills/archive'
 import { SKILL_MAX_UPLOAD_BYTES } from '#shared/utils/skills-policy'
 import type { SkillImportRelease } from '#shared/types/skills.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { readSkillLookalikeContext } from '~~/server/utils/skills/lookalike-context'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import { findInstalledSkill } from '~~/server/utils/skills/import/installed'
 import { stageSkillImport } from '~~/server/utils/skills/import/stage'
@@ -118,9 +119,16 @@ export async function createSkillImportPreview(input: {
   archiveWarnings: string[]
   logger: LoggerLike
 }) {
+  const lookalike = await readSkillLookalikeContext({
+    db: input.db,
+    userId: input.userId,
+    sourceUrl: input.provenance?.url ?? null,
+  })
   const analysis = await analyzeSkillFiles({
     files: input.files,
     folderName: input.folderName,
+    source: lookalike.source,
+    otherSkillNames: lookalike.otherSkillNames,
   })
 
   if (!analysis.ok) {

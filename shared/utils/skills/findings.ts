@@ -3,17 +3,50 @@ import {
   SKILL_FINDING_BLANK_RUN,
   SKILL_FINDING_LONG_LINE,
 } from '#shared/utils/skills-policy'
+import { EXTRA_FINDING_EXPLANATIONS } from '#shared/utils/skills/finding-explanations'
+import type {
+  QuoteMode,
+  RuleRefinement,
+  TextRule,
+} from '#shared/utils/skills/finding-rule-types'
+import { BASE_TEXT_RULES } from '#shared/utils/skills/finding-rules-base'
+import { EXECUTION_TEXT_RULES } from '#shared/utils/skills/finding-rules-execution'
+import {
+  EMAIL_PATTERN,
+  HARDCODED_SECRET_MASK_PATTERN,
+  INTENT_TEXT_RULES,
+  SENSITIVE_OBJECT_PATTERN,
+  SEND_VERB_PATTERN,
+} from '#shared/utils/skills/finding-rules-intent'
+import { scanSkillFrontmatter } from '#shared/utils/skills/frontmatter-findings'
 import {
   HIDDEN_CHARACTER_PATTERN,
+  TAG_CHARACTER_RUN_PATTERN,
+  decodeTagCharacters,
+  isEmojiTagSequence,
+  isTagBlockCharacter,
   showHiddenCharacters,
 } from '#shared/utils/skills/hidden-characters'
+import {
+  findConfusableIndex,
+  findMixedScriptWord,
+  hasNonAscii,
+  toConfusableSkeleton,
+} from '#shared/utils/skills/lookalikes'
+import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
+import {
+  classifySkillUrl,
+  findRiskyHost,
+} from '#shared/utils/skills/url-hosts'
+
+export type { QuoteMode } from '#shared/utils/skills/finding-rule-types'
 
 export {
   formatHiddenCharacter,
   showHiddenCharacters,
 } from '#shared/utils/skills/hidden-characters'
 
-export const SKILL_FINDING_RULES_VERSION = 2
+export const SKILL_FINDING_RULES_VERSION = 3
 
 export const SKILL_FINDING_TYPES = [
   'url',
@@ -73,9 +106,13 @@ export interface SkillScanState {
   frontmatterKey: string | null
 }
 
-export type QuoteMode = 'quotes' | 'inline-code'
-
 export const SKILL_FINDING_QUOTED_DETAIL = 'quoted, probably an example'
+
+export const SKILL_FINDING_CATALOG_DETAIL
+  = 'sent with every message while the skill is on Auto'
+
+export const SKILL_FINDING_CATALOG_CALLOUT
+  = 'This text is in every message while the skill is on Auto.'
 
 const SEVERITY_RANK: Record<SkillFindingSeverity, number> = {
   high: 0,
@@ -95,6 +132,31 @@ const CODE_SPAN_REACH_CHARACTERS = 300
 const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`)\]]+/gi
 const IPV4_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
 const WHITESPACE_RUN_PATTERN = /\s+/g
+const SKILL_FINDING_PADDING_RUN = 200
+const MAX_DECODES_PER_LINE = 8
+const MAX_DECODES_PER_SCAN = 200
+const ENCODED_DECODE_MAX_CHARACTERS = 4096
+const DECODED_HIT_MAX_CHARACTERS = 60
+const PRINTABLE_RATIO = 0.85
+const BASE64_RUN_PATTERN = /[A-Za-z0-9+/]{24,}={0,2}/g
+const BASE64_LONG_RUN_CHARACTERS = 120
+const ESCAPE_RUN_PATTERN
+  = /(?:\\x[0-9a-f]{2}){20,}|(?:%[0-9a-f]{2}){20,}|(?:\\u[0-9a-f]{4}){10,}/gi
+const ESCAPE_UNIT_PATTERN
+  = /\\x([0-9a-f]{2})|%([0-9a-f]{2})|\\u([0-9a-f]{4})/gi
+const TRAILING_PADDING_PATTERN = /=+$/
+const READABLE_TEXT_PATTERN = /^[\p{L}\p{N}\p{P}\p{Zs}]+$/u
+const DATA_IMAGE_PREFIX_PATTERN = /data:image\/[a-z0-9.+-]{1,20};base64,$/i
+const IMAGE_REFERENCE_PATTERN = /!\[([^\]]{0,200})\](?:\[([^\]]{0,50})\])?/g
+const REFERENCE_DEFINITION_PATTERN
+  = /^ {0,3}\[([^\]]{1,50})\]: ?<?(https?:\/\/[^\s>]{1,500})/i
+const REFERENCE_QUERY_PATTERN = /[?&][^\s=&#]{1,100}=/
+const CATALOG_KEYS: ReadonlySet<string> = new Set([
+  'description',
+  'argument-hint',
+  'metadata',
+])
+const DOCUMENT_EXTENSIONS: ReadonlySet<string> = new Set(['md', 'txt'])
 const URL_TEST_PATTERN = /\bhttps?:\/\//i
 const FRONTMATTER_FENCE_PATTERN = /^---[ \t]*$/
 const FRONTMATTER_END_PATTERN = /^(?:---|\.\.\.)[ \t]*$/
@@ -111,16 +173,6 @@ const CLOSING_QUOTES: Record<string, string> = {
   '«': '»',
 }
 
-interface TextRule {
-  rule: string
-  type: SkillFindingType
-  severity: SkillFindingSeverity
-  detail: string | null
-  pattern: RegExp
-  quote?: QuoteMode
-  accept?: (match: RegExpExecArray) => boolean
-}
-
 interface CompiledTextRule extends TextRule {
   scanner: RegExp
 }
@@ -129,166 +181,69 @@ interface RuleMatch {
   index: number
   length: number
   quoted: boolean
-}
-
-function hasRecursiveForceFlags(match: RegExpExecArray): boolean {
-  const flags = match[1]!.toLowerCase()
-
-  return flags.includes('r') && flags.includes('f')
+  refinement: RuleRefinement | null
 }
 
 /**
  * Text rules run on a line whose whitespace runs are collapsed to one space,
  * so none of them needs `\s+` or `\s*`, and each has a single, unambiguous
  * way to match: nothing can backtrack quadratically on an untrusted line.
- * Every rule has an id that never changes; later rule sets add rows here.
+ * Every rule has an id that never changes; later rule sets add rows to the
+ * tables in the `finding-rules-*` files.
  */
-const TEXT_RULES: ReadonlyArray<TextRule> = [
-  {
-    rule: 'shell-curl',
-    type: 'shell',
-    severity: 'low',
-    detail: 'curl',
-    pattern: /\bcurl\b/i,
-  },
-  {
-    rule: 'shell-wget',
-    type: 'shell',
-    severity: 'low',
-    detail: 'wget',
-    pattern: /\bwget\b/i,
-  },
-  {
-    rule: 'shell-pipe-to-shell',
-    type: 'shell',
-    severity: 'low',
-    detail: '| sh',
-    pattern: /\| ?(?:sudo )?(?:ba|z|da)?sh\b/i,
-  },
-  {
-    rule: 'shell-shell-c',
-    type: 'shell',
-    severity: 'medium',
-    detail: 'bash -c',
-    pattern: /\b(?:ba|z|da)?sh -c\b/i,
-  },
-  {
-    rule: 'shell-sudo',
-    type: 'shell',
-    severity: 'low',
-    detail: 'sudo',
-    pattern: /\bsudo\b/i,
-  },
-  {
-    rule: 'shell-chmod-x',
-    type: 'shell',
-    severity: 'low',
-    detail: 'chmod +x',
-    pattern: /\bchmod \+x\b/i,
-  },
-  {
-    rule: 'shell-eval',
-    type: 'shell',
-    severity: 'low',
-    detail: 'eval',
-    pattern: /\beval\b/i,
-  },
-  {
-    rule: 'shell-base64-decode',
-    type: 'shell',
-    severity: 'medium',
-    detail: 'base64 -d',
-    pattern: /\bbase64 (?:-d|--decode)\b/i,
-  },
-  {
-    rule: 'shell-pip-install',
-    type: 'shell',
-    severity: 'low',
-    detail: 'pip install',
-    pattern: /\bpip3? install\b/i,
-  },
-  {
-    rule: 'shell-npm-install',
-    type: 'shell',
-    severity: 'low',
-    detail: 'npm i',
-    pattern: /\bnpm (?:i|install)\b/i,
-  },
-  {
-    rule: 'shell-powershell-encoded',
-    type: 'shell',
-    severity: 'medium',
-    detail: 'powershell -enc',
-    pattern: /\bpowershell(?:\.exe)? (?:[^ ]{1,40} ){0,8}-e(?:nc|ncodedcommand)?\b/i,
-  },
-  {
-    rule: 'shell-rm-recursive-force',
-    type: 'shell',
-    severity: 'medium',
-    detail: 'rm -rf',
-    pattern: /\brm((?: -[a-z]+)+)/i,
-    accept: hasRecursiveForceFlags,
-  },
-  {
-    rule: 'injection-ignore-previous',
-    type: 'injection',
-    severity: 'high',
-    detail: 'ignore previous',
-    pattern: /\bignore (?:all )?(?:the )?(?:previous|prior|above)\b/i,
-    quote: 'quotes',
-  },
-  {
-    rule: 'injection-disregard-previous',
-    type: 'injection',
-    severity: 'high',
-    detail: 'disregard previous',
-    pattern: /\bdisregard (?:all )?(?:the )?(?:previous|prior|above)\b/i,
-    quote: 'quotes',
-  },
-  {
-    rule: 'injection-system-prompt',
-    type: 'injection',
-    severity: 'low',
-    detail: 'system prompt',
-    pattern: /\bsystem prompt\b/i,
-  },
-  {
-    rule: 'secret-api-key',
-    type: 'secret',
-    severity: 'low',
-    detail: 'API_KEY',
-    pattern: /API_KEY\b/,
-  },
-  {
-    rule: 'secret-env-file',
-    type: 'secret',
-    severity: 'low',
-    detail: '.env',
-    pattern: /(?:^|[\s"'`(=/])\.env(?:\.[a-z]{1,12})?(?![\w-])/,
-  },
-  {
-    rule: 'secret-ssh-path',
-    type: 'secret',
-    severity: 'medium',
-    detail: '~/.ssh',
-    pattern: /~\/\.ssh\b/,
-    quote: 'quotes',
-  },
+export const SKILL_TEXT_RULES: ReadonlyArray<TextRule> = [
+  ...BASE_TEXT_RULES,
+  ...EXECUTION_TEXT_RULES,
+  ...INTENT_TEXT_RULES,
 ]
 
-const COMPILED_TEXT_RULES: ReadonlyArray<CompiledTextRule> = TEXT_RULES.map(
-  (rule) => {
-    return {
-      ...rule,
-      scanner: new RegExp(
-        rule.pattern.source,
-        rule.pattern.flags.includes('g')
-          ? rule.pattern.flags
-          : `${rule.pattern.flags}g`,
-      ),
-    }
-  },
-)
+const COMPILED_TEXT_RULES: ReadonlyArray<CompiledTextRule>
+  = SKILL_TEXT_RULES.map(
+    (rule) => {
+      return {
+        ...rule,
+        scanner: new RegExp(
+          rule.pattern.source,
+          rule.pattern.flags.includes('g')
+            ? rule.pattern.flags
+            : `${rule.pattern.flags}g`,
+        ),
+      }
+    },
+  )
+
+const DECODED_TEXT_RULES: ReadonlyArray<CompiledTextRule>
+  = COMPILED_TEXT_RULES.filter((rule) => {
+    return rule.severity === 'high' && !rule.refine
+  })
+
+const EXPLANATIONS: ReadonlyMap<string, string> = new Map([
+  ...SKILL_TEXT_RULES.map((rule): [string, string] => {
+    return [rule.rule, rule.explanation]
+  }),
+  ...Object.entries(EXTRA_FINDING_EXPLANATIONS),
+])
+
+/**
+ * The plain explanation of a rule for the review screens, or null for a rule
+ * id this build does not know. Besidka never runs what a rule describes; the
+ * texts say what Claude Code would do.
+ */
+export function getSkillFindingExplanation(rule: string): string | null {
+  return EXPLANATIONS.get(rule) ?? null
+}
+
+/**
+ * The callout for a finding in the description, argument hint or metadata of
+ * SKILL.md, which reach every send while the skill is on Auto.
+ */
+export function getSkillFindingCallout(
+  finding: Pick<SkillFinding, 'detail'>,
+): string | null {
+  return finding.detail?.includes(SKILL_FINDING_CATALOG_DETAIL)
+    ? SKILL_FINDING_CATALOG_CALLOUT
+    : null
+}
 
 export function isSkillFindingSeverity(
   value: string,
@@ -635,17 +590,49 @@ class FindingCollector {
   }
 }
 
+interface ScanBudget {
+  longDecodesRemaining: number
+  shortDecodesRemaining: number
+}
+
+interface ExtraFinding {
+  type: SkillFindingType
+  rule: string
+  severity: SkillFindingSeverity
+  index: number
+  detail: string | null
+}
+
 interface LineScanContext {
   collapsed: string
+  maskedCollapsed: string
   context: SkillScanContext
   path: string
   lineNumber: number
   hasUrl: boolean | null
+  isCatalog: boolean
+  budget: ScanBudget
+  references: ReadonlyMap<string, string>
+}
+
+interface ScanFileContext {
+  path: string
+  isSkillMd: boolean
+  isDocument: boolean
+  budget: ScanBudget
+  references: ReadonlyMap<string, string>
+}
+
+function raiseSeverity(
+  severity: SkillFindingSeverity,
+): SkillFindingSeverity {
+  return severity === 'low' ? 'medium' : 'high'
 }
 
 function describeWithContext(
   detail: string | null,
   context: SkillScanContext,
+  isCatalogText: boolean,
 ): string | null {
   const note = context.inDynamicFence
     ? 'in a ```! block'
@@ -653,7 +640,11 @@ function describeWithContext(
       ? 'in a code block'
       : null
 
-  return [detail, note].filter(Boolean).join(', ') || null
+  return [
+    detail,
+    note,
+    isCatalogText ? SKILL_FINDING_CATALOG_DETAIL : null,
+  ].filter(Boolean).join(', ') || null
 }
 
 function findRuleMatch(
@@ -682,10 +673,16 @@ function findRuleMatch(
       continue
     }
 
+    const refinement = rule.refine ? rule.refine(match, window) : null
+
+    if (rule.refine && !refinement) {
+      continue
+    }
+
     const index = windowStart + match.index
 
     if (!rule.quote) {
-      return { index, length: match[0].length, quoted: false }
+      return { index, length: match[0].length, quoted: false, refinement }
     }
 
     if (rule.quote === 'inline-code' && line.hasUrl === null) {
@@ -702,28 +699,321 @@ function findRuleMatch(
     })
 
     if (!quoted) {
-      return { index, length: match[0].length, quoted: false }
+      return { index, length: match[0].length, quoted: false, refinement }
     }
 
-    firstQuoted ??= { index, length: match[0].length, quoted: true }
+    firstQuoted ??= {
+      index,
+      length: match[0].length,
+      quoted: true,
+      refinement,
+    }
   }
 
   return firstQuoted
 }
 
+function toPrintableText(binary: string): string | null {
+  let printable = 0
+
+  for (let position = 0; position < binary.length; position++) {
+    const code = binary.charCodeAt(position)
+
+    if ((code >= 0x20 && code <= 0x7E) || code === 9 || code === 10
+      || code === 13) {
+      printable++
+    }
+  }
+
+  return binary.length > 0 && printable / binary.length >= PRINTABLE_RATIO
+    ? binary
+    : null
+}
+
+function decodeBase64Run(run: string): string | null {
+  const trimmed = run.slice(0, ENCODED_DECODE_MAX_CHARACTERS).replace(
+    TRAILING_PADDING_PATTERN,
+    '',
+  )
+  const usable = trimmed.length % 4 === 1
+    ? trimmed.slice(0, -1)
+    : `${trimmed}${'='.repeat((4 - (trimmed.length % 4)) % 4)}`
+
+  if (usable.length < 4) {
+    return null
+  }
+
+  try {
+    return toPrintableText(atob(usable))
+  } catch {
+    return null
+  }
+}
+
+function decodeEscapedRun(run: string): string | null {
+  const decoded = run.slice(0, ENCODED_DECODE_MAX_CHARACTERS).replace(
+    ESCAPE_UNIT_PATTERN,
+    (
+      _unit,
+      hex: string | undefined,
+      percent: string | undefined,
+      wide: string | undefined,
+    ) => {
+      return String.fromCharCode(
+        Number.parseInt(hex ?? percent ?? wide ?? '0', 16),
+      )
+    },
+  )
+
+  return toPrintableText(decoded)
+}
+
+function decodeReadablePercentText(run: string): string | null {
+  try {
+    const decoded = decodeURIComponent(
+      run.slice(0, ENCODED_DECODE_MAX_CHARACTERS),
+    )
+
+    return READABLE_TEXT_PATTERN.test(decoded) ? decoded : null
+  } catch {
+    return null
+  }
+}
+
+function findDecodedHit(decoded: string): string | null {
+  const collapsed = decoded.replace(WHITESPACE_RUN_PATTERN, ' ')
+
+  for (const rule of DECODED_TEXT_RULES) {
+    const match = rule.pattern.exec(collapsed)
+
+    if (match && (!rule.accept || rule.accept(match))) {
+      return match[0].trim().slice(0, DECODED_HIT_MAX_CHARACTERS)
+    }
+  }
+
+  return null
+}
+
+function evaluateEncodedRun(input: {
+  kind: 'base64' | 'hex'
+  run: string
+  before: string
+  index: number
+  line: LineScanContext
+  decodesInLine: number
+}): ExtraFinding | null {
+  const rule = input.kind === 'base64' ? 'base64-run' : 'hex-run'
+  const base = { type: 'encoded' as const, rule, index: input.index }
+  const isShortRun = input.kind === 'base64'
+    && input.run.length < BASE64_LONG_RUN_CHARACTERS
+  const isDataImage = input.kind === 'base64'
+    && DATA_IMAGE_PREFIX_PATTERN.test(input.before)
+
+  if (isDataImage) {
+    return isShortRun
+      ? null
+      : { ...base, severity: 'low', detail: 'embedded image data' }
+  }
+
+  const budget = input.line.budget
+  const hasBudget = isShortRun
+    ? budget.shortDecodesRemaining > 0
+    : budget.longDecodesRemaining > 0
+
+  if (hasBudget && input.decodesInLine < MAX_DECODES_PER_LINE) {
+    if (isShortRun) {
+      budget.shortDecodesRemaining--
+    } else {
+      budget.longDecodesRemaining--
+    }
+
+    const isPercentRun = input.kind === 'hex' && input.run.startsWith('%')
+    const readable = isPercentRun ? decodeReadablePercentText(input.run) : null
+    const decoded = input.kind === 'base64'
+      ? decodeBase64Run(input.run)
+      : readable ?? decodeEscapedRun(input.run)
+    const hit = decoded === null ? null : findDecodedHit(decoded)
+
+    if (hit !== null) {
+      return {
+        ...base,
+        severity: 'high',
+        detail: `decoded text contains: ${hit}`,
+      }
+    }
+
+    if (readable !== null) {
+      return {
+        ...base,
+        severity: 'low',
+        detail: 'percent-encoded text',
+      }
+    }
+  }
+
+  if (isShortRun) {
+    return null
+  }
+
+  return {
+    ...base,
+    severity: 'medium',
+    detail: input.kind === 'base64'
+      ? `${input.run.length} characters of Base64 text`
+      : `${input.run.length} escaped characters`,
+  }
+}
+
+function keepStronger(
+  extras: Map<string, ExtraFinding>,
+  extra: ExtraFinding,
+): void {
+  const known = extras.get(extra.rule)
+
+  if (
+    !known
+    || compareSkillFindingSeverity(extra.severity, known.severity) < 0
+  ) {
+    extras.set(extra.rule, extra)
+  }
+}
+
+function findPaddingRun(line: string): number {
+  let runStart = -1
+
+  for (let position = 0; position < line.length; position++) {
+    const code = line.charCodeAt(position)
+
+    if (code === 32 || code === 9) {
+      if (runStart === -1) {
+        runStart = position
+      }
+
+      continue
+    }
+
+    if (runStart > 0 && position - runStart >= SKILL_FINDING_PADDING_RUN) {
+      return runStart
+    }
+
+    runStart = -1
+  }
+
+  return -1
+}
+
+function findHiddenCharacters(line: string): { first: number, count: number } {
+  let first = -1
+  let count = 0
+
+  for (const match of line.matchAll(HIDDEN_CHARACTER_PATTERN)) {
+    if (isTagBlockCharacter(match[0])) {
+      continue
+    }
+
+    count++
+
+    if (first === -1) {
+      first = match.index
+    }
+  }
+
+  return { first, count }
+}
+
+function findTagText(line: string): { index: number, text: string } | null {
+  for (const match of line.matchAll(TAG_CHARACTER_RUN_PATTERN)) {
+    if (isEmojiTagSequence(
+      line.slice(Math.max(0, match.index - 2), match.index),
+      match[0],
+    )) {
+      continue
+    }
+
+    return { index: match.index, text: decodeTagCharacters(match[0]) }
+  }
+
+  return null
+}
+
+function readHostname(rawUrl: string): string | null {
+  try {
+    return new URL(rawUrl).hostname
+  } catch {
+    return null
+  }
+}
+
+function maskSecret(secret: string): string {
+  return `${secret.slice(0, 4)}${'•'.repeat(Math.max(0, secret.length - 4))}`
+}
+
+function maskSecrets(text: string): string {
+  return text.replace(HARDCODED_SECRET_MASK_PATTERN, maskSecret)
+}
+
+function scanWindowForExfiltration(
+  window: string,
+  windowStart: number,
+  urls: string[],
+  extras: Map<string, ExtraFinding>,
+): void {
+  const verb = SEND_VERB_PATTERN.exec(window)
+
+  if (!verb || !SENSITIVE_OBJECT_PATTERN.test(window)) {
+    return
+  }
+
+  const riskyHost = urls.map((url) => {
+    return findRiskyHost(url)
+  }).find(Boolean)
+  const hasDestination = urls.length > 0
+    || (window.includes('@') && EMAIL_PATTERN.test(window))
+
+  if (!hasDestination) {
+    return
+  }
+
+  keepStronger(extras, {
+    type: 'exfiltration',
+    rule: 'exfiltration-send',
+    severity: riskyHost ? 'high' : 'medium',
+    index: windowStart + verb.index,
+    detail: riskyHost ? `sends to a ${riskyHost.kind}` : 'sends to an address',
+  })
+}
+
 function scanLine(
-  path: string,
+  file: ScanFileContext,
   lineNumber: number,
   line: string,
   context: SkillScanContext,
   collector: FindingCollector,
 ): void {
+  const path = file.path
+  const collapsed = line.replace(WHITESPACE_RUN_PATTERN, ' ')
+  const maskedCollapsed = maskSecrets(collapsed)
+  const lineContext: LineScanContext = {
+    collapsed,
+    maskedCollapsed,
+    context,
+    path,
+    lineNumber,
+    hasUrl: null,
+    isCatalog: file.isSkillMd
+      && context.inFrontmatter
+      && context.frontmatterKey !== null
+      && CATALOG_KEYS.has(context.frontmatterKey),
+    budget: file.budget,
+    references: file.references,
+  }
   const add = (input: {
     type: SkillFindingType
     rule: string
     severity: SkillFindingSeverity
     snippet: string
     detail?: string | null
+    isCatalogText?: boolean
   }) => {
     collector.add({
       type: input.type,
@@ -732,7 +1022,11 @@ function scanLine(
       path,
       line: lineNumber,
       snippet: input.snippet,
-      detail: describeWithContext(input.detail ?? null, context),
+      detail: describeWithContext(
+        input.detail ?? null,
+        context,
+        input.isCatalogText ?? false,
+      ),
       source: 'rules',
     })
   }
@@ -742,34 +1036,63 @@ function scanLine(
       type: 'long-line',
       rule: 'long-line',
       severity: 'low',
-      snippet: toSnippet(line.slice(0, SNIPPET_MAX_CHARACTERS + 1)),
+      snippet: toSnippet(maskedCollapsed.slice(0, SNIPPET_MAX_CHARACTERS + 1)),
       detail: `${line.length} characters`,
     })
   }
 
-  const hiddenIndex = line.search(HIDDEN_CHARACTER_PATTERN)
+  const paddingIndex = findPaddingRun(line)
 
-  if (hiddenIndex !== -1) {
-    const hiddenMatches = line.match(HIDDEN_CHARACTER_PATTERN)!
+  if (paddingIndex !== -1) {
+    add({
+      type: 'long-line',
+      rule: 'padding-spaces',
+      severity: 'medium',
+      snippet: toSnippetAround(
+        maskedCollapsed,
+        line.slice(0, paddingIndex).replace(WHITESPACE_RUN_PATTERN, ' ').length,
+      ),
+      detail: 'a long run of spaces inside the line',
+    })
+  }
 
+  const hidden = findHiddenCharacters(line)
+
+  if (hidden.first !== -1) {
     add({
       type: 'hidden-character',
       rule: 'hidden-character',
       severity: 'medium',
-      snippet: toSnippetAround(line, hiddenIndex),
-      detail: `${hiddenMatches.length} hidden`,
+      snippet: toSnippetAround(maskSecrets(line), hidden.first),
+      detail: `${hidden.count} hidden`,
     })
   }
 
-  const collapsed = line.replace(WHITESPACE_RUN_PATTERN, ' ')
-  const lineContext: LineScanContext = {
-    collapsed,
-    context,
-    path,
-    lineNumber,
-    hasUrl: null,
+  const tagText = findTagText(line)
+
+  if (tagText) {
+    add({
+      type: 'hidden-character',
+      rule: 'tag-characters',
+      severity: 'high',
+      snippet: toSnippetAround(maskSecrets(line), tagText.index),
+      detail: tagText.text === ''
+        ? 'invisible tag characters'
+        : `hidden text: «${tagText.text.slice(0, SNIPPET_MAX_CHARACTERS)}»`,
+    })
   }
+
   const matches = new Map<CompiledTextRule, RuleMatch>()
+  const extras = new Map<string, ExtraFinding>()
+  const skeletonHits = new Map<CompiledTextRule, number>()
+  const urlFindings: Array<{
+    rule: string
+    severity: SkillFindingSeverity
+    snippet: string
+    detail: string | null
+  }> = []
+  let longDecodesInLine = 0
+  let shortDecodesInLine = 0
   const ownedLimit = (windowStart: number) => {
     return windowStart + WINDOW_STEP_CHARACTERS
   }
@@ -780,26 +1103,47 @@ function scanLine(
     windowStart += WINDOW_STEP_CHARACTERS
   ) {
     const window = collapsed.slice(windowStart, windowStart + WINDOW_CHARACTERS)
+    const maskedWindow = maskedCollapsed.slice(
+      windowStart,
+      windowStart + WINDOW_CHARACTERS,
+    )
     const isLastWindow = windowStart + WINDOW_CHARACTERS >= collapsed.length
     const isOwned = (index: number) => {
       return isLastWindow || windowStart + index < ownedLimit(windowStart)
     }
+    const urlRanges: Array<[number, number]> = []
+    const windowUrls: string[] = []
 
     for (const match of window.matchAll(URL_PATTERN)) {
-      if (isOwned(match.index)) {
-        add({
-          type: 'url',
-          rule: 'url',
-          severity: 'low',
-          snippet: toSnippet(match[0].slice(0, SNIPPET_MAX_CHARACTERS + 1)),
-        })
+      urlRanges.push([match.index, match.index + match[0].length])
+      windowUrls.push(match[0])
+
+      if (!isOwned(match.index)) {
+        continue
       }
+
+      const classification = classifySkillUrl(match[0])
+
+      urlFindings.push({
+        rule: classification?.rule ?? 'url',
+        severity: classification?.severity ?? 'low',
+        snippet: toSnippet(
+          maskedWindow.slice(
+            match.index,
+            match.index + Math.min(match[0].length, SNIPPET_MAX_CHARACTERS + 1),
+          ),
+        ),
+        detail: classification?.detail ?? null,
+      })
     }
 
     for (const match of window.matchAll(IPV4_PATTERN)) {
-      if (isOwned(match.index) && isValidIpv4(match[0])) {
-        add({
-          type: 'url',
+      const isInsideUrl = urlRanges.some(([start, end]) => {
+        return match.index >= start && match.index < end
+      })
+
+      if (isOwned(match.index) && !isInsideUrl && isValidIpv4(match[0])) {
+        urlFindings.push({
           rule: 'url-ip-address',
           severity: 'low',
           snippet: toSnippet(match[0]),
@@ -822,9 +1166,93 @@ function scanLine(
       }
     }
 
+    scanWindowForExfiltration(window, windowStart, windowUrls, extras)
+
+    for (const match of window.matchAll(BASE64_RUN_PATTERN)) {
+      if (!isOwned(match.index)) {
+        continue
+      }
+
+      const isShortRun = match[0].length < BASE64_LONG_RUN_CHARACTERS
+      const encoded = evaluateEncodedRun({
+        kind: 'base64',
+        run: match[0],
+        before: window.slice(Math.max(0, match.index - 40), match.index),
+        index: windowStart + match.index,
+        line: lineContext,
+        decodesInLine: isShortRun ? shortDecodesInLine++ : longDecodesInLine++,
+      })
+
+      if (encoded) {
+        keepStronger(extras, encoded)
+      }
+    }
+
+    for (const match of window.matchAll(ESCAPE_RUN_PATTERN)) {
+      if (!isOwned(match.index)) {
+        continue
+      }
+
+      const encoded = evaluateEncodedRun({
+        kind: 'hex',
+        run: match[0],
+        before: '',
+        index: windowStart + match.index,
+        line: lineContext,
+        decodesInLine: longDecodesInLine++,
+      })
+
+      if (encoded) {
+        keepStronger(extras, encoded)
+      }
+    }
+
+    if (!extras.has('mixed-script')) {
+      const word = findMixedScriptWord(window)
+
+      if (word !== null) {
+        keepStronger(extras, {
+          type: 'hidden-character',
+          rule: 'mixed-script',
+          severity: 'medium',
+          index: windowStart + window.indexOf(word),
+          detail: `mixes alphabets: ${word.slice(0, 40)}`,
+        })
+      }
+    }
+
+    if (hasNonAscii(window)) {
+      const skeleton = toConfusableSkeleton(window)
+
+      if (skeleton !== window) {
+        for (const rule of DECODED_TEXT_RULES) {
+          if (!skeletonHits.has(rule) && rule.pattern.test(skeleton)) {
+            skeletonHits.set(
+              rule,
+              windowStart + Math.max(0, findConfusableIndex(window)),
+            )
+          }
+        }
+      }
+    }
+
     if (isLastWindow) {
       break
     }
+  }
+
+  const ruleByName = new Map(COMPILED_TEXT_RULES.map((rule) => {
+    return [rule.rule, rule]
+  }))
+
+  for (const found of urlFindings) {
+    add({
+      type: 'url',
+      rule: found.rule,
+      severity: found.severity,
+      snippet: found.snippet,
+      detail: found.detail,
+    })
   }
 
   for (const rule of COMPILED_TEXT_RULES) {
@@ -834,14 +1262,132 @@ function scanLine(
       continue
     }
 
+    if (rule.supersededBy && matches.has(ruleByName.get(rule.supersededBy)!)) {
+      continue
+    }
+
+    const isCatalogText = lineContext.isCatalog
+      && rule.catalogRaise === true
+      && !found.quoted
+    const baseSeverity = found.refinement?.severity ?? rule.severity
+    const severity = found.quoted
+      ? 'low'
+      : isCatalogText
+        ? raiseSeverity(baseSeverity)
+        : baseSeverity
+    const detail = found.quoted
+      ? SKILL_FINDING_QUOTED_DETAIL
+      : found.refinement?.detail !== undefined
+        ? found.refinement.detail
+        : rule.detail
+
     add({
       type: rule.type,
       rule: rule.rule,
-      severity: found.quoted ? 'low' : rule.severity,
-      snippet: toSnippetAround(collapsed, found.index),
-      detail: found.quoted ? SKILL_FINDING_QUOTED_DETAIL : rule.detail,
+      severity,
+      snippet: toSnippetAround(maskedCollapsed, found.index),
+      detail,
+      isCatalogText,
     })
   }
+
+  for (const [rule, index] of skeletonHits) {
+    if (matches.has(rule)) {
+      continue
+    }
+
+    keepStronger(extras, {
+      type: 'hidden-character',
+      rule: 'lookalike-letters',
+      severity: 'high',
+      index,
+      detail: `uses lookalike letters (${rule.rule})`,
+    })
+  }
+
+  for (const extra of extras.values()) {
+    add({
+      type: extra.type,
+      rule: extra.rule,
+      severity: extra.severity,
+      snippet: toSnippetAround(maskedCollapsed, extra.index),
+      detail: extra.detail,
+    })
+  }
+}
+
+function findReferenceImages(
+  collapsed: string,
+  references: ReadonlyMap<string, string>,
+  matches: Map<string, { index: number, url: string }>,
+): void {
+  for (
+    let windowStart = 0;
+    windowStart < collapsed.length || windowStart === 0;
+    windowStart += WINDOW_STEP_CHARACTERS
+  ) {
+    const window = collapsed.slice(windowStart, windowStart + WINDOW_CHARACTERS)
+
+    for (const match of window.matchAll(IMAGE_REFERENCE_PATTERN)) {
+      const label = (match[2] || match[1] || '').toLowerCase()
+      const url = references.get(label)
+
+      if (url !== undefined && !matches.has(label)) {
+        matches.set(label, { index: windowStart + match.index, url })
+      }
+    }
+
+    if (windowStart + WINDOW_CHARACTERS >= collapsed.length) {
+      break
+    }
+  }
+}
+
+function collectReferenceDefinitions(lines: string[]): Map<string, string> {
+  const references = new Map<string, string>()
+
+  for (const line of lines) {
+    const match = REFERENCE_DEFINITION_PATTERN.exec(line)
+
+    if (match) {
+      references.set(match[1]!.toLowerCase(), match[2]!)
+    }
+  }
+
+  return references
+}
+
+export type SkillScanRole = 'skill-md' | 'document' | 'other'
+
+const SKILL_SCAN_ROLE_PATHS: Readonly<Record<SkillScanRole, string>> = {
+  'skill-md': SKILL_MD_FILE_NAME,
+  'document': 'document.md',
+  'other': '',
+}
+
+/**
+ * How the path changes what a scan finds: SKILL.md gets the frontmatter
+ * highlights, a `.md` or `.txt` file gets the `#!` check, and any other file
+ * gets the text rules only.
+ */
+export function getSkillScanRole(path: string): SkillScanRole {
+  if (path === SKILL_MD_FILE_NAME) {
+    return 'skill-md'
+  }
+
+  const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+
+  return path.includes('.') && DOCUMENT_EXTENSIONS.has(extension)
+    ? 'document'
+    : 'other'
+}
+
+/**
+ * A path that stands for a scan role, for a caller that holds file content
+ * without its path, such as a blob shared by several paths.
+ */
+export function getSkillScanRolePath(role: SkillScanRole): string {
+  return SKILL_SCAN_ROLE_PATHS[role]
 }
 
 /**
@@ -849,8 +1395,10 @@ function scanLine(
  * counts every finding, and returns a bounded list with the most severe
  * findings first. Hidden characters are looked for on the whole line; the
  * text rules run over 5,000 character windows that overlap by 500, so a
- * payload far along a line is found too. Nothing here depends on the file
- * path, so the same text gives the same findings wherever it lives.
+ * payload far along a line is found too. The text findings do not depend on
+ * the path. Only three things do: the frontmatter highlights and the raised
+ * severity of the description are for `SKILL.md`, and a `#!` first line is a
+ * highlight only in a `.md` or `.txt` file.
  */
 export function scanSkillTextWithCounts(
   path: string,
@@ -860,8 +1408,25 @@ export function scanSkillTextWithCounts(
   const collector = new FindingCollector(maxStored)
   const lines = text.split('\n')
   const state = createSkillScanState(lines)
+  const role = getSkillScanRole(path)
+  const references = collectReferenceDefinitions(lines)
+  const file: ScanFileContext = {
+    path,
+    isSkillMd: role === 'skill-md',
+    isDocument: role === 'document',
+    budget: {
+      longDecodesRemaining: MAX_DECODES_PER_SCAN,
+      shortDecodesRemaining: MAX_DECODES_PER_SCAN,
+    },
+    references,
+  }
   let blankRunStart = 0
   let blankRunLength = 0
+  let dynamicOpening: {
+    line: number
+    startLines: number
+    firstCommand: string
+  } | null = null
 
   const closeBlankRun = () => {
     if (blankRunLength > SKILL_FINDING_BLANK_RUN) {
@@ -880,9 +1445,78 @@ export function scanSkillTextWithCounts(
     blankRunLength = 0
   }
 
+  const closeDynamicBlock = (endLines: number) => {
+    if (!dynamicOpening) {
+      return
+    }
+
+    const count = endLines - dynamicOpening.startLines
+
+    if (count === 0) {
+      dynamicOpening = null
+
+      return
+    }
+
+    collector.add({
+      type: 'execution',
+      rule: 'dynamic-context-fence',
+      severity: 'high',
+      path,
+      line: dynamicOpening.line,
+      snippet: toSnippet(maskSecrets(`\`\`\`! ${dynamicOpening.firstCommand}`)),
+      detail: `${count} ${count === 1 ? 'line' : 'lines'} would run as shell in Claude Code`,
+      source: 'rules',
+    })
+    dynamicOpening = null
+  }
+
+  if (role === 'document' && lines[0]?.startsWith('#!')) {
+    collector.add({
+      type: 'file',
+      rule: 'shebang-in-text',
+      severity: 'low',
+      path,
+      line: 1,
+      snippet: toSnippet(maskSecrets(lines[0])),
+      detail: 'starts like a script',
+      source: 'rules',
+    })
+  }
+
+  if (role === 'skill-md') {
+    for (const finding of scanSkillFrontmatter(text)) {
+      collector.add({
+        type: 'frontmatter',
+        rule: finding.rule,
+        severity: finding.severity,
+        path,
+        line: finding.line,
+        snippet: toSnippet(maskSecrets(finding.snippet)),
+        detail: finding.detail,
+        source: 'rules',
+      })
+    }
+  }
+
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!
+    const wasInDynamicFence = dynamicOpening !== null
     const context = advanceSkillScanState(state, line, index)
+
+    if (!wasInDynamicFence && state.fence?.dynamic) {
+      dynamicOpening = {
+        line: index + 1,
+        startLines: state.dynamicLines,
+        firstCommand: '',
+      }
+    } else if (dynamicOpening) {
+      if (state.fence === null) {
+        closeDynamicBlock(state.dynamicLines)
+      } else if (dynamicOpening.firstCommand === '' && line.trim() !== '') {
+        dynamicOpening.firstCommand = line.trim()
+      }
+    }
 
     if (line.trim() === '') {
       if (blankRunLength === 0) {
@@ -895,15 +1529,58 @@ export function scanSkillTextWithCounts(
     }
 
     closeBlankRun()
-    scanLine(path, index + 1, line, context, collector)
+    scanLine(file, index + 1, line, context, collector)
+
+    if (references.size > 0 && line.includes('![')) {
+      scanReferenceImages(file, index + 1, line, context, collector)
+    }
   }
 
   closeBlankRun()
+  closeDynamicBlock(state.dynamicLines)
 
   return {
     findings: collector.findings,
     counts: collector.counts,
     severityCounts: collector.severityCounts,
+  }
+}
+
+function scanReferenceImages(
+  file: ScanFileContext,
+  lineNumber: number,
+  line: string,
+  context: SkillScanContext,
+  collector: FindingCollector,
+): void {
+  const collapsed = line.replace(WHITESPACE_RUN_PATTERN, ' ')
+  const found = new Map<string, { index: number, url: string }>()
+
+  findReferenceImages(collapsed, file.references, found)
+
+  for (const { index, url } of found.values()) {
+    const hostname = readHostname(url)
+
+    if (hostname === null) {
+      continue
+    }
+
+    const hasQuery = REFERENCE_QUERY_PATTERN.test(url)
+
+    collector.add({
+      type: 'exfiltration',
+      rule: hasQuery ? 'markdown-image-query' : 'markdown-image-external',
+      severity: hasQuery ? 'high' : 'medium',
+      path: file.path,
+      line: lineNumber,
+      snippet: toSnippetAround(maskSecrets(collapsed), index),
+      detail: describeWithContext(
+        hasQuery ? `sends text to ${hostname}` : hostname,
+        context,
+        false,
+      ),
+      source: 'rules',
+    })
   }
 }
 

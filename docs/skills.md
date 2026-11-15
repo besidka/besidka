@@ -410,60 +410,174 @@ never trusts the client's result.
 ### 3.3 Findings
 
 `scanSkillText(path, text)` (`shared/utils/skills/findings.ts`) returns
-highlights, never a verdict:
-
-- URLs (http, https, IP addresses);
-- shell patterns: `curl`, `wget`, `| sh`, `bash -c`, `rm -rf`, `sudo`,
-  `chmod +x`, `eval`, `base64 -d`, `pip install`, `npm i`, `powershell -enc`;
-- bidi, zero-width and format characters U+202A to U+202E, U+2066 to U+2069,
-  U+200B to U+200F, U+FEFF (shown visibly as `⟨U+202E⟩`);
-- lines over 2,000 characters and runs of more than 50 blank lines (padding
-  that hides text below the fold);
-- injection phrasing ("ignore previous", "system prompt");
-- references to secrets (`API_KEY`, `.env`, `~/.ssh`).
+highlights, never a verdict. Besidka never runs any of the text it highlights;
+the explanations say what Claude Code would do with it.
 
 Every finding carries a `rule` id (kebab-case, never renamed), a `severity`
 (`high` "Look closely", `medium` "Worth a look", `low` "For your
 information") and a `source` (`rules`, or `jev` for a later optional check).
-The finding types are the seven above plus `execution`, `exfiltration`,
-`concealment`, `role`, `credential`, `encoded`, `frontmatter` and `file`, which
-later rule sets fill; each rule is one row of the rule table in
-`findings.ts`. Today's mapping: "ignore previous" and "disregard previous" are
-high; `~/.ssh`, `rm -rf`, `bash -c`, `base64 -d`, `powershell -enc` and hidden
-characters are medium; links, IP addresses, plain `curl`, `wget`, `| sh`,
-`sudo`, `chmod +x`, `eval`, `pip install`, `npm i`, "system prompt",
-`API_KEY`, `.env`, long lines and blank runs are low (a bare "eval" or
-"system prompt" is prose far more often than code, and `| sh` also matches
-`{zsh|bash}`).
+Each rule has a plain explanation, read with `getSkillFindingExplanation(rule)`
+and written in the rule table rows (`finding-rules-*.ts`) or in
+`finding-explanations.ts`. The finding types are `url`, `shell`,
+`hidden-character`, `long-line`, `blank-run`, `injection`, `secret`,
+`execution`, `exfiltration`, `concealment`, `role`, `credential`, `encoded`,
+`frontmatter` and `file`. Every text rule is one row of the tables in
+`shared/utils/skills/finding-rules-base.ts` (the first rule set),
+`finding-rules-execution.ts` and `finding-rules-intent.ts`.
+
+What is highlighted, and at which severity:
+
+- **Code that would run (high).** `` !`cmd` `` at a line start or after a space
+  (`dynamic-context-inline`; not `` KEY=!`cmd` ``) and a ```` ```! ```` block
+  (`dynamic-context-fence`, one finding on the opening line with "N lines would
+  run as shell in Claude Code"); a download piped into an interpreter
+  (`fetch-pipe-run`), `bash <(curl ...)` (`process-substitution`),
+  `eval "$(curl ...)"` (`command-substitution`), PowerShell download cradles
+  and `FromBase64String` (`powershell-cradle`), `certutil -urlcache` and
+  similar (`lolbin`), download then `chmod +x` (`download-chmod`), archives
+  with a password (`password-archive`) and scheduled tasks, startup entries and
+  `authorized_keys` (`persistence`). A package source change is medium
+  (`registry-redirect`). `curl ... | jq` and `diff <(ls a) <(ls b)` match
+  nothing. The three download rules use the `inline-code` quote mode: a match
+  inside an inline code span on a line with no link is low, "quoted, probably
+  an example".
+- **Encoded text.** A Base64 run is decoded first and the text is scanned with
+  the high rules: a hit is high with "decoded text contains: ..."; a run of 120
+  or more characters that decodes to nothing notable (or is not text) is
+  medium; a run of 24 to 119 characters is only reported when it decodes to a
+  command; a `data:image/...;base64,` prefix makes the run low. `\xNN`, `%NN`
+  and `\uNNNN` runs work the same way (`hex-run`). Decode calls such as
+  `atob(` and `base64 -d` are medium (`decode-call`, which replaces
+  `shell-base64-decode` on the same text). Decoding is depth one, at most 4,096
+  characters, at most 8 runs per line and 200 per file. 200 or more spaces
+  inside a line are medium (`padding-spaces`, read on the raw line before the
+  whitespace collapse).
+- **Sending data out.** An image with a query string is high
+  (`markdown-image-query`, also reference-style `![x][1]` with a
+  `[1]: https://...?q=` definition elsewhere in the file), any other external
+  image is medium (`markdown-image-external`, dropped when the query rule
+  matches), and a web address with a placeholder is low (`templated-url`),
+  raised to high inside a link or an image, or when the variable name looks
+  like key, token, secret, password, conversation, history, memory or summary.
+  A line with a send verb, a sensitive object and an address is medium, high
+  with a risky host (`exfiltration-send`).
+- **Where a link goes.** One finding per link, with the most important reason
+  (`classifySkillUrl`, `shared/utils/skills/url-hosts.ts`, the host list is
+  data in the same file): webhook, request catcher, tunnel and out-of-band
+  testing hosts are high (`url-risky-host`); paste, file drop, dynamic DNS and
+  shortener hosts, IP addresses, international (punycode) host names and links
+  to a script or archive are medium; private IP addresses are high; plain
+  `http:` and a non-standard port are low. A link with nothing to say stays the
+  plain low `url`. Loopback addresses (`127.0.0.1`, `[::1]`) are medium, not
+  high: a skill that talks to a local development server is common, and
+  `anthropics/skills` has one. This departs from the gap table, which put
+  private and loopback addresses at high.
+- **Instructions.** `injection-override` (replaces the two older "ignore
+  previous" and "disregard previous" rules; "Ignore files in .gitignore" and
+  "ignore previous versions of the API" do not match), `role-hijack`,
+  `fake-role-tag` and `authority-claim` are high. `concealment` is high
+  ("do not tell the user about ...", "without informing the user", "secretly");
+  the bare "do not tell the user" is medium (`concealment-soft`, dropped when
+  `concealment` matches). `no-confirm` and `system-prompt-extraction` are
+  medium; the bare "system prompt" stays low and is dropped when the
+  extraction rule matches. All of these use the `quotes` mode.
+- **Secrets.** `secret-harvest` (a verb aimed at your or all keys, tokens or
+  credentials) and `credential-path` are high; `secret-mention` (dropped when
+  `secret-harvest` matches) and `hardcoded-secret` are medium. A hard-coded
+  secret is shown masked in the finding and in every other finding of that
+  line. `env-dump` is medium until the owner decides (umbrella question 4).
+  `hardcoded-secret` reuses the provider key formats of the memory never-store
+  check (`shared/utils/secret-patterns.ts`); the credential assignment
+  detectors (`password = ...`) and the PIN, URL userinfo and card checks are
+  not reused: they are tuned for chat transcripts, use `\s*`, and would fire
+  on documentation examples.
+- **Characters.** Tag-block characters outside an emoji tag sequence are high
+  with "hidden text: «...»" (`tag-characters`; the England flag is exempt, and
+  `showHiddenCharacters` shows the decoded text instead of a row of code
+  points). A word that mixes Latin with Cyrillic or Greek letters is medium
+  (`mixed-script`); the execution, injection, role, concealment and secret
+  rules run a second time on a confusable skeleton (NFKC, then a UTS #39
+  subset) and a hit that the plain text did not have is high, "uses lookalike
+  letters" (`lookalike-letters`). Words of up to three letters that mix Latin
+  and Greek, such as "μm", are left alone.
+- **Frontmatter, SKILL.md only** (`frontmatter-findings.ts`, read from the
+  parsed object, each on the line of its key): `hooks` is high
+  (`frontmatter-hooks`); `allowed-tools` entries `Bash`, `Shell`, `PowerShell`
+  and `Bash(*)`, `Bash(curl:*)` are high, unscoped `WebFetch`, `Write`, `Edit`,
+  `*` and `mcp__*` are medium, `Bash(git status)` is nothing, and the wording
+  stays "requested tools, not granted"; `shell: powershell`, `context`, `agent`
+  and `model` are low (`frontmatter-runtime-key`); an over-broad trigger in the
+  description (`broad-trigger`) and XML tags in the name or description
+  (`frontmatter-xml-tag`) are medium. Intent rules (`injection-override`,
+  `role-hijack`, `fake-role-tag`, `authority-claim`, `concealment`,
+  `concealment-soft`, `no-confirm`, `system-prompt-extraction`,
+  `secret-harvest`, `secret-mention`) found in `description`, `argument-hint`
+  or `metadata` go up one level (a quoted mention stays low), and their detail
+  carries the callout text (`getSkillFindingCallout`): "This text is in every
+  message while the skill is on Auto."
+- **File set** (`file-set-findings.ts`, run by `analyzeSkillFiles`, all low):
+  `script-file` ("Text only here. It would run in Claude Code."),
+  `unreferenced-file` (SKILL.md never names the path, its folder or its
+  license), `missing-reference` (a Markdown link or backticked path in SKILL.md
+  with a document, script or archive extension that is not in the file set;
+  images are skipped because a skill holds none), `dotfile-path` (`path.ts`
+  allows `.x.md` and `.dir/a.md`, it rejects a bare `.env`) and
+  `shebang-in-text` (a `#!` first line in a `.md` or `.txt` file, found by the
+  text scan). `name-lookalike` and `owner-lookalike` need the source and the
+  account's other skill names, which only the server passes to
+  `analyzeSkillFiles` (`readSkillLookalikeContext`: preview, update check and
+  MCP create); the browser worker passes neither. The frozen lists are in
+  `known-names.ts` (`anthropics/skills@2c5958ec`, the Besidka template ids, and
+  the owners); Damerau-Levenshtein distance 1 for names of up to six
+  characters and 2 for longer ones, never an exact match, and nothing when the
+  source is exactly `anthropics/skills`.
+
+The older rules keep their ids and severities: links and IP addresses, `curl`,
+`wget`, `| sh`, `sudo`, `chmod +x`, `eval`, `pip install`, `npm i`, `API_KEY`
+and `.env` are low; `~/.ssh`, `rm -rf`, `bash -c`, `powershell -enc` and hidden
+characters are medium.
+
+Cisco's skill scanner signatures for concealment, unrestricted mode, system
+prompt reveal and environment dumps (Apache-2.0) inspired several rows; the
+attribution text lands with SS-10. No OWASP text is copied.
 
 - **Collector.** Keeps the most severe findings first (severity, then
   position), at most 200 per file and 500 per skill, and still at least one
   finding of every type present, so a skill full of links cannot hide one
   command. Counts always cover every finding.
-- **Quoted mentions.** A match of a rule marked quotable (injection and secret
-  rules today) inside quotes or a backtick span that closes within about 24
-  characters drops to `low` with the detail "quoted, probably an example". A
-  quoted value after `:` or `=`, and any match inside a ```` ```! ```` block,
-  never drops. The `inline-code` mode (for the execution rules that arrive
-  later) drops a match inside an inline code span on a line without a URL.
+- **Quoted mentions.** A match of a rule marked quotable (the injection, role,
+  concealment, secret and `~/.ssh` rules, in the `quotes` mode) inside quotes or
+  a backtick span that closes within about 24 characters drops to `low` with
+  the detail "quoted, probably an example". A quoted value after `:` or `=`,
+  and any match inside a ```` ```! ```` block, never drops. The `inline-code`
+  mode (the three download-and-run rules) drops a match inside an inline code
+  span on a line without a URL.
 - **Scanner state.** The scan tracks the ```` ```! ```` fence (Claude Code runs
   these before a skill loads), normal code fences and the frontmatter range
   with its top-level key. The state only describes a finding (detail text such
-  as "in a code block", and the key that a later rule uses to raise severity
-  for `description`, `argument-hint` and `metadata`); it never hides one. The
-  scan does not depend on the file path.
+  as "in a code block", and the key that raises severity for `description`,
+  `argument-hint` and `metadata`); it never hides one. The text findings do not
+  depend on the file path. Three things do: the frontmatter highlights and the
+  raised severity are for `SKILL.md` only, and `#!` on the first line counts in
+  `.md` and `.txt` files only. A caller that holds a blob without its path
+  (the in-app save) counts each blob once per path class
+  (`getSkillScanRole`).
 - **Long lines.** Text rules run over 5,000 character windows that overlap by
   500, across the whole line, with bounded regexes; a rule reports once per
   line, and the snippet is cut around the match.
 - **Stored counts.** `skill_versions.findings` holds
-  `{ "rulesVersion": 2, "high": 1, "execution": 1 }`: the rules version
+  `{ "rulesVersion": 3, "high": 1, "execution": 1 }`: the rules version
   (`SKILL_FINDING_RULES_VERSION`), the severity counts and the type counts. It
   is a JSON column, so a new version needs no migration. Counts without a
   version, or with an older one, are stale: an in-app save drops `rulesVersion`
   and `jev:` entries and does a full rescan instead of a delta, and the update
   review rescans the version in the browser (read file by file, never written
   back) and says "Rescanned with newer checks". Nothing runs in the
-  background.
+  background. Version 3 added the execution, intent, frontmatter and file-set
+  rules. The file-set and lookalike findings are counted when a skill is
+  imported, updated or created over MCP, and carried along by an in-app save;
+  a rescan after a rules version bump (browser or save) does not recount them,
+  so their low tally can drop until the next import or update.
 - **Update re-check.** A finding is "new" unless the old text holds the same
   rule on a line with the same whitespace-normalized content, compared as a
   multiset (`rule` plus the SHA-256 of the full line). A URL changed after
