@@ -191,6 +191,33 @@ describe('useComposerConnectors', () => {
     expect(useChatConnectorSelection().selection.value.isKnown).toBe(true)
   })
 
+  it('filters a stored choice against the selectable connectors', async () => {
+    data.value = {
+      connectors: [
+        createConnector(),
+        createConnector({ id: 'c2', slug: 'linear', title: 'Linear' }),
+        createConnector({ id: 'c3', slug: 'off', title: 'Off', enabled: false }),
+      ],
+    }
+    mocks.fetch
+      .mockResolvedValueOnce({ connectorIds: ['c3', 'gone', 'c1'] })
+      .mockResolvedValueOnce({ connectorIds: ['c1', 'c2'] })
+
+    const { composable } = await mountComposable('chat-slug')
+
+    await flushPromises()
+
+    expect(composable.selectedIds.value).toEqual(['c1'])
+
+    await composable.toggle('c2')
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/chats/chat-slug/connectors',
+      { method: 'PUT', body: { connectorIds: ['c1', 'c2'] } },
+    )
+    expect(composable.selectedIds.value).toEqual(['c1', 'c2'])
+  })
+
   it('does not read the stored choice when the user has no connectors', async () => {
     data.value = { connectors: [] }
 

@@ -2,6 +2,7 @@ import { CONNECTORS_PER_SEND } from '#shared/utils/connectors-policy'
 import type { ConnectorStatus } from '#shared/utils/connectors-policy'
 import {
   listConnectorChatSettings,
+  listConnectors,
   upsertConnectorChatSettings,
 } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
@@ -109,6 +110,31 @@ export async function listChatConnectorIds(
   return rows
     .filter(row => row.enabled)
     .map(row => row.connectorId)
+}
+
+/**
+ * The stored choice of a chat limited to connectors that can be switched on
+ * right now. A row stays on after its connector is turned off, disconnected
+ * or loses consent, so the raw list can name connectors a client cannot
+ * select. Rows are left untouched, so the choice returns when the connector
+ * does.
+ */
+export async function listSelectableChatConnectorIds(
+  db: DbClient,
+  userId: number,
+  chatPublicId: string,
+): Promise<string[]> {
+  const storedIds = await listChatConnectorIds(db, userId, chatPublicId)
+
+  if (storedIds.length === 0) {
+    return []
+  }
+
+  const connectors = await listConnectors(db, userId)
+
+  return resolveConnectorSelection(connectors, storedIds)
+    .selected
+    .map(connector => connector.id)
 }
 
 /**

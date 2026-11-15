@@ -20,6 +20,7 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 const {
   isConnectorSelectable,
   listChatConnectorIds,
+  listSelectableChatConnectorIds,
   persistChatConnectorSelection,
   resolveConnectorSelection,
   toConnectorSummary,
@@ -194,6 +195,25 @@ describe('connector chat selection', () => {
           .find(row => row.connectorId === first)?.alwaysAllowTools)
           .toEqual({ list: 'hash-1' })
       })
+
+    it('lists only stored connectors that are selectable now', async () => {
+      const ready = await addConnector('ready')
+      const off = await addConnector('off')
+      const auth = await addConnector('auth')
+
+      await persistChatConnectorSelection(testDb.db, {
+        userId,
+        chatPublicId: chatId,
+        selectedIds: [ready, off, auth],
+      })
+      await updateConnector(testDb.db, userId, off, { enabled: false })
+      await updateConnector(testDb.db, userId, auth, { status: 'needs-auth' })
+
+      expect(await listSelectableChatConnectorIds(testDb.db, userId, chatId))
+        .toEqual([ready])
+      expect((await listChatConnectorIds(testDb.db, userId, chatId)).sort())
+        .toEqual([ready, off, auth].sort())
+    })
 
     it('stores nothing for an empty selection of a fresh chat', async () => {
       await persistChatConnectorSelection(testDb.db, {

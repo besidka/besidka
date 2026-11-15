@@ -205,6 +205,33 @@ describe('connector chat selection routes', () => {
         .connectorIds).toEqual([second])
     })
 
+    it('omits a stored connector that was turned off or needs sign-in, '
+      + 'and returns it once it is selectable again', async () => {
+      const { updateConnector } = await import(
+        '~~/server/utils/connectors/store'
+      )
+      const kept = await addConnector('kept')
+      const turnedOff = await addConnector('turned-off')
+      const needsAuth = await addConnector('needs-auth')
+
+      await call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [kept, turnedOff, needsAuth] },
+      })
+      await updateConnector(testDb.db, userId, turnedOff, { enabled: false })
+      await updateConnector(testDb.db, userId, needsAuth, {
+        status: 'needs-auth',
+      })
+
+      expect((await call(getPath, { params: { slug: chat.slug } }))
+        .connectorIds).toEqual([kept])
+
+      await updateConnector(testDb.db, userId, turnedOff, { enabled: true })
+
+      expect((await call(getPath, { params: { slug: chat.slug } }))
+        .connectorIds.sort()).toEqual([kept, turnedOff].sort())
+    })
+
     it('refuses a sixth connector, an unknown id and a connector that is '
       + 'not ready', async () => {
       const ids: string[] = []

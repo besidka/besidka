@@ -175,9 +175,11 @@ export function useComposerConnectors(
           return
         }
 
+        const selectableIds = new Set(items.value.map(item => item.id))
+
         selection.value = {
           chatKey: key,
-          ids: response.connectorIds,
+          ids: response.connectorIds.filter(id => selectableIds.has(id)),
           isKnown: true,
         }
       } catch {
@@ -189,18 +191,22 @@ export function useComposerConnectors(
     { immediate: true },
   )
 
-  watch([library.isLoaded, items], ([isLoaded, currentItems]) => {
-    if (!isLoaded || selection.value.chatKey !== chatKey.value) {
-      return
-    }
+  watch(
+    [library.isLoaded, items, () => selection.value.ids],
+    ([isLoaded, currentItems, currentIds]) => {
+      if (!isLoaded || selection.value.chatKey !== chatKey.value) {
+        return
+      }
 
-    const knownIds = new Set(currentItems.map(item => item.id))
-    const keptIds = selection.value.ids.filter(id => knownIds.has(id))
+      const knownIds = new Set(currentItems.map(item => item.id))
+      const keptIds = currentIds.filter(id => knownIds.has(id))
 
-    if (keptIds.length !== selection.value.ids.length) {
-      selection.value = { ...selection.value, ids: keptIds }
-    }
-  }, { immediate: true })
+      if (keptIds.length !== currentIds.length) {
+        selection.value = { ...selection.value, ids: keptIds }
+      }
+    },
+    { immediate: true },
+  )
 
   async function setSelectedIds(nextIds: string[]) {
     const key = chatKey.value
