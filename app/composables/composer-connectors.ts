@@ -290,13 +290,13 @@ export function useComposerConnectors(
 }
 
 /**
- * Display titles for connector tool steps, by slug, read from the cached
- * list without fetching it (the step component loads it). A deleted
+ * Display titles and ids for connector tool steps, by slug, read from the
+ * cached list without fetching it (the step component loads it). A deleted
  * connector has no entry, so callers fall back to the slug.
  */
 export function useConnectorTitles() {
   const { data } = useNuxtData<{
-    connectors: Array<{ slug: string, title: string }>
+    connectors: Array<{ id: string, slug: string, title: string }>
   }>(CONNECTORS_LIBRARY_KEY)
 
   const titlesBySlug = computed<Map<string, string>>(() => {
@@ -305,5 +305,13 @@ export function useConnectorTitles() {
     }))
   })
 
-  return { titlesBySlug }
+  const connectorsBySlug = computed<
+    Map<string, { id: string, title: string }>
+  >(() => {
+    return new Map((data.value?.connectors ?? []).map((connector) => {
+      return [connector.slug, { id: connector.id, title: connector.title }]
+    }))
+  })
+
+  return { titlesBySlug, connectorsBySlug }
 }

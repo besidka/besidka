@@ -1437,7 +1437,11 @@ describe('Chat/Reasoning', () => {
     const stepDetails = wrapper.findAll('details')[1]
     const stepSummary = stepDetails!.get('summary')
 
-    expect(stepSummary.find('.iconify').exists()).toBe(false)
+    const chevrons = stepSummary.findAll('.iconify').filter((icon) => {
+      return icon.classes().join(' ').includes('chevron')
+    })
+
+    expect(chevrons).toHaveLength(0)
 
     await stepSummary.trigger('click')
     await wrapper.vm.$nextTick()

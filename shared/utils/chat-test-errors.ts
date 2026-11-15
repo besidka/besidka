@@ -14,6 +14,7 @@ export const chatTestScenarios = [
   'skill',
   'tool-approval',
   'tool-approvals',
+  'reasoning-icons',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]

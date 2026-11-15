@@ -998,4 +998,12 @@ describe('safeFetch', () => {
     expect(SAFE_FETCH_PURPOSE_POLICY.oauth.maxResponseBytes).toBe(256 * 1024)
     expect(SAFE_FETCH_PURPOSE_POLICY.mcp.maxResponseBytes).toBe(1024 * 1024)
   })
+
+  it('keeps the favicon purpose small, short and redirect-validated', () => {
+    expect(SAFE_FETCH_PURPOSE_POLICY.favicon).toMatchObject({
+      redirects: 'validated',
+      timeoutMs: 5_000,
+      maxResponseBytes: 32 * 1024,
+    })
+  })
 })
