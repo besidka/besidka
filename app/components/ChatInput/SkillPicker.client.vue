@@ -87,6 +87,20 @@
                   <span class="truncate text-xs text-base-content/60">
                     {{ item.description }}
                   </span>
+                  <span
+                    v-if="item.hasScriptsAllowed && !canRunScripts"
+                    class="truncate text-xs text-base-content/60"
+                    data-testid="skill-picker-scripts-note"
+                  >
+                    Scripts need a Claude model with code execution
+                  </span>
+                </span>
+                <span
+                  v-if="item.hasScriptsAllowed && canRunScripts"
+                  class="badge badge-soft badge-sm shrink-0"
+                  data-testid="skill-picker-scripts-badge"
+                >
+                  scripts
                 </span>
                 <span class="badge badge-soft badge-sm shrink-0">
                   {{ SKILL_MODE_LABELS[item.mode] }}
@@ -156,8 +170,10 @@ const props = withDefaults(defineProps<{
   items: ComposerSkillItem[]
   selectedId: string | null
   subtitle?: string
+  canRunScripts?: boolean
 }>(), {
   subtitle: 'Attach one skill to your next message',
+  canRunScripts: false,
 })
 
 const emit = defineEmits<{

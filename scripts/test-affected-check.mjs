@@ -1898,6 +1898,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Skills/ModeControl.spec.ts',
     'tests/unit/components/Profile/Skills/ModelView.spec.ts',
     'tests/unit/components/Profile/Skills/NewMenu.spec.ts',
+    'tests/unit/components/Profile/Skills/ScriptsDialog.client.spec.ts',
+    'tests/unit/components/Profile/Skills/Settings.spec.ts',
     'tests/unit/components/Profile/Skills/RenameForm.spec.ts',
     'tests/unit/components/Profile/Skills/Review.spec.ts',
     'tests/unit/components/Profile/Skills/Row.spec.ts',

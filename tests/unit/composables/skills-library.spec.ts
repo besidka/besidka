@@ -561,4 +561,79 @@ describe('useSkillActions', () => {
     await expect(useSkillActions().checkForUpdates(createSkillSummary()))
       .resolves.toBe('update')
   })
+
+  describe('scripts', () => {
+    it('turns scripts on with the disclosure and the name confirmation', async () => {
+      const skill = createSkillSummary({ id: 'skill-1', hasScripts: true })
+
+      await expect(useSkillActions().setScripts(skill, true))
+        .resolves.toBe(true)
+
+      expect(mocks.confirm).not.toHaveBeenCalled()
+      expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/skill-1/scripts', {
+        method: 'POST',
+        body: { disclosureAccepted: true, renameConfirmed: true },
+      })
+    })
+
+    it('asks before turning scripts off and deletes only after a yes', async () => {
+      const skill = createSkillSummary({ id: 'skill-1', hasScripts: true })
+
+      mocks.confirm.mockResolvedValueOnce(null)
+
+      await expect(useSkillActions().setScripts(skill, false))
+        .resolves.toBe(false)
+      expect(mocks.fetch).not.toHaveBeenCalled()
+
+      mocks.confirm.mockResolvedValueOnce({ label: 'Turn off', index: 0 })
+      mocks.fetch.mockResolvedValueOnce({ providerCopy: 'deleted' })
+
+      await expect(useSkillActions().setScripts(skill, false))
+        .resolves.toBe(true)
+      expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/skills/skill-1/scripts', {
+        method: 'DELETE',
+      })
+      expect(mocks.errorMessage).not.toHaveBeenCalled()
+    })
+
+    it('points to the Anthropic Console when the copy could not be deleted', async () => {
+      const skill = createSkillSummary({ id: 'skill-1', hasScripts: true })
+
+      mocks.confirm.mockResolvedValueOnce({ label: 'Turn off', index: 0 })
+      mocks.fetch.mockResolvedValueOnce({ providerCopy: 'failed' })
+
+      await expect(useSkillActions().setScripts(skill, false))
+        .resolves.toBe(true)
+      expect(mocks.errorMessage).toHaveBeenCalledWith(
+        'The copy at Anthropic could not be deleted',
+        expect.stringContaining('Anthropic Console'),
+      )
+    })
+
+    it('shows the server reason when turning scripts on fails', async () => {
+      mocks.fetch.mockRejectedValueOnce(
+        Object.assign(new Error('Add your Anthropic API key first'), {
+          data: { message: 'Add your Anthropic API key first' },
+        }),
+      )
+
+      await expect(useSkillActions().setScripts(
+        createSkillSummary({ hasScripts: true }),
+        true,
+      )).resolves.toBe(false)
+      expect(mocks.errorMessage).toHaveBeenCalled()
+    })
+
+    it('warns when deleting a skill could not delete its Anthropic copy', async () => {
+      mocks.confirm.mockResolvedValueOnce({ label: 'Delete', index: 0 })
+      mocks.fetch.mockResolvedValueOnce({ providerCopy: 'failed' })
+
+      await expect(useSkillActions().deleteSkill(createSkillSummary()))
+        .resolves.toBe(true)
+      expect(mocks.errorMessage).toHaveBeenCalledWith(
+        'The copy at Anthropic could not be deleted',
+        expect.any(String),
+      )
+    })
+  })
 })
