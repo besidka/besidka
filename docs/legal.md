@@ -361,6 +361,20 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   extended note and the classification and notice id stayed as they were.
   Whether the pending notice should mention connectors is the owner's
   decision, together with the C-10 wording on connectors as recipients.
+- **Two skills scopes, no consent version bump (2026-11-15, S-6).**
+  `skills:read` and `skills:write` (MCP 5.0.0, 18 resource scopes) are new
+  scope names, so no existing approval reaches the skill tools;
+  `skills:write` is unticked by default. The tools list and read the user's
+  own skills, add, change and rename them (always saved switched off with
+  status `needs-review`, through the same validation, license classifier and
+  content scanner as an import), and `delete_skills` sits under `skills:write`
+  (like `delete_connectors`) with its own hourly cap. They never switch a
+  skill on, set it to Auto, give it a command, share it or import it from a
+  link. The Privacy Policy lists both permissions and names the skills
+  exception to "Delete your data"; the revision hash in
+  `legal-document-revisions.ts` moved with an extended note, and the
+  classification and notice id stayed as they were. Whether the pending
+  notice should mention skills is the owner's decision.
 - **Gate integration for connected clients (required, built).** The MCP
   server must treat a user whose gate status is not `current` like the in-app
   routes do: read nothing and change nothing for a connected client until the

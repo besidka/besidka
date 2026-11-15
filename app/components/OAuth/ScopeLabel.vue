@@ -53,6 +53,11 @@ const scopeDetails: Record<string, ScopeDetails> = {
     description: 'See the connectors you added with their host, status and '
       + 'tool names. Never their keys or sign-in tokens.',
   },
+  'skills:read': {
+    title: 'See your skills and their full text',
+    description: 'See the skills and commands you saved, their files and '
+      + 'their full text, never anyone else\'s.',
+  },
   'projects:write': {
     title: 'Change your projects',
     description: 'Create, rename, pin, archive and edit projects, their '
@@ -98,11 +103,19 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'switch a connector on, sign in, enter keys or allow a tool without '
       + 'asking. You do that in Besidka.',
   },
+  'skills:write': {
+    title: 'Add, change and delete skills. Changes are saved switched off '
+      + 'for your review',
+    description: 'Add a skill, change its files, rename it, and permanently '
+      + 'delete skills with all their versions. Every addition and change '
+      + 'is saved switched off and waits for your review in Besidka. It '
+      + 'cannot switch a skill on, set it to Auto or share it.',
+  },
   'data:delete': {
     title: 'Delete your data',
     description: 'Permanently delete chats, messages, projects, knowledge, '
-      + 'files, artifacts and memory, and reset memory. Deleted data cannot be '
-      + 'restored.',
+      + 'files, artifacts and memory, and reset memory. Deleted data cannot '
+      + 'be restored.',
   },
   'admin:features': {
     title: 'Manage feature access (admin)',

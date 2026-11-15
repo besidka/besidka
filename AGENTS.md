@@ -760,7 +760,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `feature_rule_schedules` table, the 5-minute applier, the claim, the
   notice-gated `blocked` state, admin notifications)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
-  44 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  56 per-user tools behind OAuth, three of them admin-only; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
@@ -805,7 +805,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   rule until C-6), the threat model, Anthropic-only provider-container scripts,
   the data model, limits, the manager, editor and `/` picker, MCP tools
   (`list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`,
-  `delete_skills`; MCP 4.0.0; the name `skills:share` reserved in the docs only), the never-public
+  `delete_skills`; MCP 5.0.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it
   imposes on S-1 to S-14
 - `docs/besidka-tools.md` - Per-tool permissions for Besidka's own tools
