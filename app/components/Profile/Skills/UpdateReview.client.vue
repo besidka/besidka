@@ -89,13 +89,13 @@
               Highlighted in the update: {{ pendingFindingSummary }}.
             </template>
             <template v-else>
-              Nothing was highlighted in the update.
+              The built-in checks highlighted nothing in the update.
             </template>
             <template v-if="currentFindingSummary">
               The version in use has: {{ currentFindingSummary }}.
             </template>
             Besidka highlights links and commands so you can review them. It
-            cannot tell whether a skill is safe.
+            shows what to look at. It does not decide whether to use a skill.
             <template v-if="isRescanned">
               Rescanned with newer checks.
             </template>
@@ -105,6 +105,18 @@
           </p>
         </div>
       </div>
+
+      <ProfileSkillsJevSection
+        :view="jevScreen.view.value"
+        @retry="jevScreen.run()"
+        @check-rest="jevScreen.checkRest()"
+      />
+      <ProfileSkillsFindingGroups
+        v-if="jevScreen.findings.value.length"
+        :findings="jevScreen.findings.value"
+        :is-selectable="false"
+        test-id="skill-update-jev-findings"
+      />
 
       <div
         v-if="localEdits.length"
@@ -413,6 +425,16 @@ const {
   },
   { watch: [pending] },
 )
+
+const jevScreen = useSkillJevScreen(() => {
+  return pending.value
+    ? {
+      kind: 'version',
+      skillId: props.skillId,
+      version: pending.value.version,
+    }
+    : null
+})
 
 const isReviewed = shallowRef<boolean>(false)
 const isHighlightsRead = shallowRef<boolean>(false)

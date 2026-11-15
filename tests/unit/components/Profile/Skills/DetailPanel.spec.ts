@@ -149,7 +149,7 @@ describe('Profile/Skills/DetailPanel', () => {
       .toContain('name: review-pr')
     expect(wrapper.findAll(testId('skill-file-line-flagged'))).toHaveLength(1)
     expect(wrapper.get(testId('skill-file-findings-note')).text()).toContain(
-      'Besidka highlights links and commands so you can review them. It cannot tell whether a skill is safe.',
+      'Besidka highlights links and commands so you can review them. It shows what to look at. It does not decide whether to use a skill.',
     )
   })
 

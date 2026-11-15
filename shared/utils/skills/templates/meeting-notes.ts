@@ -20,7 +20,7 @@ description: Turn raw meeting notes into a short summary, the decisions and the 
 
 # Meeting notes
 
-Turn the notes below into a clean record of the meeting.
+Turn the notes below into a tidy record of the meeting.
 
 $ARGUMENTS
 

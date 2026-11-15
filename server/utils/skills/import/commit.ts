@@ -26,6 +26,15 @@ import type {
   SkillStageKv,
   SkillStageManifest,
 } from '~~/server/utils/skills/import/stage'
+import {
+  deleteSkillJevMarks,
+  readStoredSkillJevResult,
+  skillJevMarksKey,
+  skillJevStageKey,
+  toStoredJevFindingCounts,
+  writeStoredSkillJevResult,
+} from '~~/server/utils/skills/jev/store'
+import type { StoredSkillJevResult } from '~~/server/utils/skills/jev/store'
 import { buildVersionStatements } from '~~/server/utils/skills/versions/statements'
 import {
   deleteSkillPrefix,
@@ -791,6 +800,14 @@ export async function persistPendingVersion(input: {
     version,
   })
 
+  if (input.pendingVersion !== null) {
+    await deleteSkillJevMarks({
+      userId: manifest.userId,
+      skillId,
+      versions: [input.pendingVersion],
+    })
+  }
+
   return { version }
 }
 
@@ -903,6 +920,48 @@ async function restoreSkillStage(
 }
 
 /**
+ * The marks of the staged check go to the version the commit created (version
+ * 1 of a new skill, or the pending version of an update), under the key that
+ * goes with that version. `jevResult` is null when no check ran for the
+ * current question set. The entry carries the content hash of that version,
+ * so it can never answer for other text if the number is reused. Best
+ * effort: the counts are already stored.
+ */
+async function keepStageJevMarks(input: {
+  db: DbClient
+  kv: SkillStageKv
+  userId: number
+  result: CommitSkillImportResult
+  jevResult: StoredSkillJevResult | null
+}): Promise<void> {
+  if (!input.jevResult) {
+    return
+  }
+
+  const version = input.result.kind === 'created'
+    ? input.result.version
+    : input.result.pendingVersion
+  const [row] = await input.db.select({ sha256: schema.skillVersions.sha256 })
+    .from(schema.skillVersions)
+    .where(and(
+      eq(schema.skillVersions.skillId, input.result.id),
+      eq(schema.skillVersions.userId, input.userId),
+      eq(schema.skillVersions.version, version),
+    ))
+    .limit(1)
+
+  if (!row) {
+    return
+  }
+
+  await writeStoredSkillJevResult({
+    kv: input.kv,
+    key: skillJevMarksKey(input.userId, input.result.id, version),
+    result: { ...input.jevResult, versionSha256: row.sha256 },
+  })
+}
+
+/**
  * Turns a staged import preview into a skill. Without `asUpdateOf` it
  * creates a new disabled skill with version 1; a name collision answers 409
  * and keeps the stage, so the user can retry with `asUpdateOf` (a persisted
@@ -925,6 +984,18 @@ export async function commitSkillImport(
   }
 
   assertAcknowledgments(manifest, input.licenseAcknowledged)
+
+  const jevResult = await readStoredSkillJevResult(
+    kv,
+    skillJevStageKey(manifest.stageId),
+  )
+  const jevCounts = toStoredJevFindingCounts(jevResult)
+  const committing: SkillStageManifest = Object.keys(jevCounts).length === 0
+    ? manifest
+    : {
+      ...manifest,
+      findingCounts: { ...manifest.findingCounts, ...jevCounts },
+    }
 
   if (input.asUpdateOf && input.name !== undefined) {
     throw createError({
@@ -965,7 +1036,7 @@ export async function commitSkillImport(
         prepared: await prepareUpdateImport({
           db,
           bucket,
-          manifest,
+          manifest: committing,
           skillId: input.asUpdateOf,
         }),
         skillId: input.asUpdateOf,
@@ -997,7 +1068,11 @@ export async function commitSkillImport(
       result = await createSkillFromStage({
         db,
         bucket,
-        prepared: await prepareRenamedImport({ bucket, manifest, name }),
+        prepared: await prepareRenamedImport({
+          bucket,
+          manifest: committing,
+          name,
+        }),
         name,
       })
     } catch (exception) {
@@ -1008,6 +1083,14 @@ export async function commitSkillImport(
   }
 
   await invalidateStorageCache(userId, logger)
+
+  await keepStageJevMarks({
+    db,
+    kv,
+    userId,
+    result,
+    jevResult: Object.keys(jevCounts).length === 0 ? null : jevResult,
+  })
 
   try {
     await deleteSkillStage({ kv, bucket, manifest })

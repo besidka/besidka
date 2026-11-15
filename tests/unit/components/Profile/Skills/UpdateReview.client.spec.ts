@@ -498,4 +498,77 @@ describe('Profile/Skills/UpdateReview', () => {
     expect(get('skill-update-none').textContent)
       .toContain('There is no update to review.')
   })
+
+  describe('TypeSafe AI section', () => {
+    const answer = {
+      state: 'screened',
+      questionSetVersion: 1,
+      status: 'ok',
+      findings: [{
+        type: 'exfiltration',
+        rule: 'jev-send-out',
+        severity: 'high',
+        path: 'references/setup.md',
+        line: 40,
+        snippet: '',
+        detail: 'TypeSafe AI, lines 40 to 92',
+        source: 'jev',
+      }],
+      marks: [{
+        path: 'references/setup.md',
+        startLine: 40,
+        endLine: 92,
+        question: 'k1_send_out',
+        rule: 'jev-send-out',
+        severity: 'high',
+        score: 0.9,
+      }],
+      unchecked: [],
+      tooLarge: false,
+      calls: 1,
+      callsSpent: 1,
+      callsLeft: 47,
+    }
+
+    it('posts to the version route when the update review opens and shows the marks', async () => {
+      setUp()
+      mocks.fetch.mockResolvedValue(answer)
+      await mountReview()
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/skills/SkillPublicId01/versions/4/screen',
+        { method: 'POST', body: {} },
+      )
+      expect(get('skill-jev-marked').textContent).toContain(
+        'asks to send data out (references/setup.md lines 40 to 92)',
+      )
+      expect(
+        get('skill-update-jev-findings')
+          .querySelector('[data-testid="skill-review-finding-source"]')
+          ?.textContent?.trim(),
+      ).toBe('TypeSafe AI')
+      expect(get('skill-update-accept')).toBeTruthy()
+    })
+
+    it('shows no section when TypeSafe AI is unavailable', async () => {
+      setUp()
+      mocks.fetch.mockResolvedValue({ ...answer, state: 'unavailable' })
+      await mountReview()
+      await flushPromises()
+
+      expect(find('skill-jev-section')).toBeNull()
+      expect(find('skill-update-jev-findings')).toBeNull()
+    })
+
+    it('does not make a request when there is no update to review', async () => {
+      setUp()
+      ;(detail.value as { pendingVersionInfo: unknown })
+        .pendingVersionInfo = null
+      await mountReview()
+      await flushPromises()
+
+      expect(mocks.fetch).not.toHaveBeenCalled()
+    })
+  })
 })

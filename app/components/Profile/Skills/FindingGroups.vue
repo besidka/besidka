@@ -35,6 +35,13 @@
               >
                 {{ getFindingMarker(finding.type) }}
               </span>
+              <span
+                v-if="finding.source === 'jev'"
+                class="badge badge-soft badge-info badge-xs shrink-0"
+                data-testid="skill-review-finding-source"
+              >
+                TypeSafe AI
+              </span>
               <span class="shrink-0 font-mono">
                 {{ showPath ? `${finding.path}:` : 'Line ' }}{{ finding.line }}
               </span>

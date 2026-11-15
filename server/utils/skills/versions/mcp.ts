@@ -35,6 +35,7 @@ import {
 } from '~~/server/utils/skills/import/commit'
 import { createSkillImportError } from '~~/server/utils/skills/import/errors'
 import { createSkillSourceVersion } from '~~/server/utils/skills/import/zip'
+import { deleteSkillJevMarks } from '~~/server/utils/skills/jev/store'
 import { putSkillBlob } from '~~/server/utils/skills/storage'
 import {
   findUniqueViolation,
@@ -662,6 +663,14 @@ async function persistMcpPendingVersion(input: {
   const claimed = results[guardedStatements.length - 1]
 
   if (Array.isArray(claimed) && claimed.length > 0) {
+    if (input.replacedPendingVersion !== null) {
+      await deleteSkillJevMarks({
+        userId,
+        skillId,
+        versions: [input.replacedPendingVersion],
+      })
+    }
+
     return version
   }
 

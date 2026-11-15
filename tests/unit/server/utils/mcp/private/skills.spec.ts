@@ -26,6 +26,7 @@ import type {
   FakeSkillKv,
 } from '../../../../../setup/helpers/skills-db'
 import { skillMarkdown } from '../../../../../setup/helpers/skill-archives'
+import { skillJevMarksKey } from '~~/server/utils/skills/jev/store'
 
 const mocks = vi.hoisted(() => {
   return {
@@ -725,6 +726,37 @@ describe('MCP skills domain', () => {
         baseVersion: 1,
         changes: [{ op: 'put', path: 'b.md', content: 'B\n' }],
       })).resolves.toMatchObject({ pendingVersion: 3 })
+    })
+
+    it('deletes the Jev marks of the pending version it replaces', async () => {
+      const { skillId } = await seedOwned()
+
+      vi.stubGlobal('useKV', () => kv)
+
+      try {
+        await updateMcpSkill(context(), {
+          id: skillId,
+          baseVersion: 1,
+          changes: [{ op: 'put', path: 'a.md', content: 'A\n' }],
+        })
+
+        const replacedKey = skillJevMarksKey(userId, skillId, 2)
+        const keptKey = skillJevMarksKey(userId, skillId, 1)
+
+        kv.values.set(replacedKey, '{}')
+        kv.values.set(keptKey, '{}')
+
+        await updateMcpSkill(context(), {
+          id: skillId,
+          baseVersion: 1,
+          changes: [{ op: 'put', path: 'b.md', content: 'B\n' }],
+        })
+
+        expect(kv.values.has(replacedKey)).toBe(false)
+        expect(kv.values.has(keptKey)).toBe(true)
+      } finally {
+        vi.unstubAllGlobals()
+      }
     })
 
     it('answers 409 and deletes nothing when another update won the race',

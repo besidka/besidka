@@ -188,6 +188,7 @@ export interface SkillImportPreview {
     fromRepositoryRoot: boolean
   }
   requiresLicenseAcknowledgement: boolean
+  jev?: 'available'
 }
 
 export interface SkillGithubPick {

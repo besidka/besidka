@@ -1772,7 +1772,20 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/tools/memory-tools.spec.ts',
   ]
 
+  const skillJevScreeningTests = [
+    'tests/unit/server/utils/jev/skill-screening.spec.ts',
+    'tests/unit/server/utils/skills/jev/screen.spec.ts',
+    'tests/unit/server/utils/skills/jev/lifecycle.spec.ts',
+    'tests/unit/server/utils/skills/import/screen-rate-limit.spec.ts',
+    'tests/unit/server/utils/skills/import/preview-jev.spec.ts',
+    'tests/unit/server/api/v1/skills/screen.spec.ts',
+    'tests/unit/utils/jev-skill-policy.spec.ts',
+    'tests/unit/utils/jev/injection-screening.spec.ts',
+    'tests/unit/utils/jev/logging.spec.ts',
+  ]
+
   const skillsStorageTests = [
+    ...skillJevScreeningTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
     'tests/unit/server/utils/skills/storage.spec.ts',
@@ -1787,6 +1800,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const skillsVersionsTests = [
+    ...skillJevScreeningTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/skills/edit.spec.ts',
     'tests/unit/utils/skills/templates.spec.ts',
@@ -1821,6 +1835,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const skillsImportTests = [
+    ...skillJevScreeningTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/skills/path.spec.ts',
     'tests/unit/utils/skills/frontmatter.spec.ts',
@@ -1889,6 +1904,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Skills/EditorPane.spec.ts',
     'tests/unit/components/Profile/Skills/FileTree.spec.ts',
     'tests/unit/components/Profile/Skills/FindingGroups.spec.ts',
+    'tests/unit/components/Profile/Skills/JevSection.spec.ts',
     'tests/unit/components/Profile/Skills/ProblemList.spec.ts',
     'tests/unit/components/Profile/Skills/FileViewer.spec.ts',
     'tests/unit/components/Profile/Skills/Filters.spec.ts',
@@ -1920,6 +1936,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/runtime/persist.spec.ts',
     'tests/unit/server/utils/skills/runtime/invocation.spec.ts',
     'tests/unit/server/utils/skills/runtime/tools.spec.ts',
+    'tests/unit/server/utils/skills/runtime/tools-notice.spec.ts',
+    'tests/unit/utils/skills/runtime-notice.spec.ts',
     'tests/unit/server/utils/skills/runtime/reinject.spec.ts',
     'tests/unit/server/utils/skills/runtime/send.spec.ts',
     'tests/unit/server/utils/skills/runtime/project.spec.ts',
@@ -2957,6 +2975,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^(server\/utils\/jev\/.*|shared\/utils\/jev-(policy|schemas))\.ts$/,
       tests: [
         ...jevFoundationTests,
+        ...skillJevScreeningTests,
         ...pastChatRetrievalTests,
         ...profileSettingsTests,
         ...typesafeRolesUiTests,
@@ -3465,7 +3484,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/(runtime|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(runtime|project)\/.*\.ts|server\/db\/schemas\/project-skills\.ts|server\/api\/v1\/projects\/\[id\]\/skills\/.*\.ts|server\/utils\/projects\/lifecycle\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts|model-turns)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/shared\/\[slug\]\/index\.get\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
+        /^(shared\/utils\/skills\/(runtime|runtime-notice|jev-findings|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(runtime|project)\/.*\.ts|server\/db\/schemas\/project-skills\.ts|server\/api\/v1\/projects\/\[id\]\/skills\/.*\.ts|server\/utils\/projects\/lifecycle\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/chats\/(request-schema|share-public-parts|model-turns)\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/api\/v1\/shared\/\[slug\]\/index\.get\.ts|server\/api\/v1\/chats\/shares\/\[slug\]\/branch\.post\.ts|server\/utils\/chats\/context\/sections\.ts|server\/api\/v1\/chats\/new\/index\.put\.ts|tests\/setup\/helpers\/skills-(db|public-id-mock)\.ts)$/,
       tests: skillsRuntimeTests,
     },
     {
@@ -3475,7 +3494,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor|skill-jev-screen)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes|jev-findings|runtime-notice)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
       tests: skillsManagerTests,
     },
     {
