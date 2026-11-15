@@ -1,4 +1,5 @@
 import { defineEventHandler } from 'nuxt/server'
+import { deleteConnectorIconCache } from '~~/server/utils/connectors/icon'
 import { revokeStoredConnectorCredentials } from '~~/server/utils/connectors/revoke'
 import {
   requireConnectorAccess,
@@ -34,6 +35,8 @@ export default defineEventHandler(async (event) => {
     status: 'needs-auth',
     lastError: null,
   })
+
+  await deleteConnectorIconCache(useKV(), connector.id)
 
   useRequestLogger(event).set({
     attributes: {

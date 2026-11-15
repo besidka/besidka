@@ -17,6 +17,7 @@ import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture
 import { TEST_CODE_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
 import { findLatestTestDocumentPart } from '~~/server/utils/chats/test/document-scenario'
 import { TEST_DOCUMENT_REPLY } from '~~/server/utils/chats/test/document-fixture'
+import { buildTestReasoningIconsMessages } from '~~/server/utils/chats/test/reasoning-icons-fixture'
 import { buildTestToolApprovalMessages } from '~~/server/utils/chats/test/tool-approval-fixture'
 import { DOCUMENT_FORMATS } from '#shared/utils/documents'
 import type { DocumentFormat } from '#shared/utils/documents'
@@ -125,6 +126,15 @@ export default defineEventHandler(async (event) => {
         scenarioKey,
         effectiveScenario === 'tool-approvals' ? 2 : 1,
       ),
+    }
+  }
+
+  if (effectiveScenario === 'reasoning-icons') {
+    return {
+      id: `test-chat-${testKey}`,
+      slug: `test-chat-${testKey}`,
+      title: `Test Chat - ${testKey}`,
+      messages: buildTestReasoningIconsMessages(scenarioKey),
     }
   }
 

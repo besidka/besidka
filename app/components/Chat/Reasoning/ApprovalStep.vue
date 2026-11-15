@@ -17,7 +17,10 @@
       class="min-w-0 break-words text-xs font-medium"
       data-testid="reasoning-approval-step-title"
     >
-      {{ title }}
+      <ChatReasoningStepIcon
+        :icon="icon ?? null"
+        class="mr-1.5"
+      />{{ title }}
     </p>
     <p
       v-if="state === 'denied'"
@@ -203,6 +206,7 @@
 
 <script setup lang="ts">
 import { LazyChatReasoningApprovalDetails } from '#components'
+import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 import type { ToolApprovalRemember } from '#shared/utils/tool-approval-policy'
 import type {
   ApprovalStepModel,
@@ -224,6 +228,7 @@ const props = defineProps<{
   outcome: string
   messageId: string
   connectorName?: string
+  icon?: ReasoningStepIcon | null
 }>()
 
 const CHAT_GRANT_HINT = 'Runs this tool without asking in later messages '

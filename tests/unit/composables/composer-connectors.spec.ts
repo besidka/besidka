@@ -428,4 +428,31 @@ describe('useConnectorTitles', () => {
     expect(titles!.get('notion')).toBe('Notion')
     expect(titles!.get('gone')).toBeUndefined()
   })
+
+  it('maps slugs to ids and titles for the connector icon route', async () => {
+    data.value = {
+      connectors: [createConnector({
+        id: 'conn-1',
+        slug: 'notion',
+        title: 'Notion',
+      })],
+    }
+
+    let connectorsBySlug: Map<string, { id: string, title: string }> | null
+      = null
+
+    await mountSuspended(defineComponent({
+      setup() {
+        connectorsBySlug = useConnectorTitles().connectorsBySlug.value
+
+        return () => null
+      },
+    }))
+
+    expect(connectorsBySlug!.get('notion')).toEqual({
+      id: 'conn-1',
+      title: 'Notion',
+    })
+    expect(connectorsBySlug!.get('gone')).toBeUndefined()
+  })
 })

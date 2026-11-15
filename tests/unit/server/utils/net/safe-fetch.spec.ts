@@ -551,6 +551,34 @@ describe('safeFetch', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1)
       })
 
+      it('keeps a favicon fetch on its origin', async () => {
+        fetchMock.mockImplementationOnce(async () => {
+          return redirect(302, 'https://other.example.org/favicon.ico')
+        })
+
+        const exception = await errorOf(
+          safeFetch('https://example.com/favicon.ico', {
+            purpose: 'favicon',
+          }),
+        )
+
+        expect(exception.code).toBe('CONNECTOR_ORIGIN_CHANGED')
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      })
+
+      it('follows a same-origin redirect of a favicon fetch', async () => {
+        fetchMock
+          .mockImplementationOnce(async () => redirect(301, '/icons/f.ico'))
+          .mockImplementationOnce(async () => ok())
+
+        const response = await safeFetch('https://example.com/favicon.ico', {
+          purpose: 'favicon',
+        })
+
+        expect(response.status).toBe(200)
+        expect(calls()[1]![0]).toBe('https://example.com/icons/f.ico')
+      })
+
       it('treats another port or scheme host as another origin', async () => {
         fetchMock.mockImplementationOnce(async () => {
           return redirect(302, 'https://example.com:8443/mcp')
@@ -997,5 +1025,13 @@ describe('safeFetch', () => {
     expect(SAFE_FETCH_PURPOSE_POLICY.mcp.redirects).toBe('same-origin')
     expect(SAFE_FETCH_PURPOSE_POLICY.oauth.maxResponseBytes).toBe(256 * 1024)
     expect(SAFE_FETCH_PURPOSE_POLICY.mcp.maxResponseBytes).toBe(1024 * 1024)
+  })
+
+  it('keeps the favicon purpose small, short and on one origin', () => {
+    expect(SAFE_FETCH_PURPOSE_POLICY.favicon).toMatchObject({
+      redirects: 'same-origin',
+      timeoutMs: 5_000,
+      maxResponseBytes: 32 * 1024,
+    })
   })
 })
