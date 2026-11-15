@@ -81,7 +81,7 @@ const REMEMBER_OPTIONS_BY_REASON: Record<
 > = {
   'untrusted-output': ['once'],
   'cross-source': ['once'],
-  'always-ask': ['once', 'chat'],
+  'always-ask': ['once'],
   'default': ['once', 'chat', 'always'],
 }
 

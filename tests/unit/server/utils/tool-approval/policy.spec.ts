@@ -356,13 +356,13 @@ describe('resolveToolApproval rules', () => {
       expect(decision.rule).toBe(5)
     })
 
-    it('offers Allow in this chat but rule 7 never honors it', () => {
+    it('offers only Allow once and never honors a chat grant', () => {
       const first = decide(besidkaTool({ access: 'delete' }))
       const afterChatGrant = decide(besidkaTool({ access: 'delete' }), {
         chatGrant: { definitionHash: HASH },
       })
 
-      expect(first.rememberOptions).toContain('chat')
+      expect(first.rememberOptions).toEqual(['once'])
       expect(afterChatGrant.rule).toBe(5)
       expect(afterChatGrant.status.type).toBe('user-approval')
     })
@@ -523,7 +523,7 @@ describe('button matrix', () => {
   it.each([
     ['untrusted-output', ['once']],
     ['cross-source', ['once']],
-    ['always-ask', ['once', 'chat']],
+    ['always-ask', ['once']],
     ['default', ['once', 'chat', 'always']],
   ])('offers %j remember options %j', (reason, options) => {
     const decisions = [
@@ -554,7 +554,7 @@ describe('button matrix', () => {
     expect(isRememberAllowed(forced, 'once')).toBe(true)
     expect(isRememberAllowed(forced, 'chat')).toBe(false)
     expect(isRememberAllowed(forced, 'always')).toBe(false)
-    expect(isRememberAllowed(always, 'chat')).toBe(true)
+    expect(isRememberAllowed(always, 'chat')).toBe(false)
     expect(isRememberAllowed(always, 'always')).toBe(false)
     expect(isRememberAllowed(defaulted, 'always')).toBe(true)
   })
@@ -567,7 +567,7 @@ describe('button matrix', () => {
     expect(clampRemember(forced, 'always')).toBe('once')
     expect(clampRemember(forced, 'chat')).toBe('once')
     expect(clampRemember(always, 'always')).toBe('once')
-    expect(clampRemember(always, 'chat')).toBe('chat')
+    expect(clampRemember(always, 'chat')).toBe('once')
     expect(clampRemember(defaulted, 'always')).toBe('always')
   })
 
