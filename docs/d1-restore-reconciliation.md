@@ -52,6 +52,7 @@ command below is for the operator, preview first.
 | Spec objects written in the window | No row, no owner | Medium (privacy) | No |
 | Skills disabled, deleted or pruned in the window (`skills`, `skill_versions`, `skill_files`) | Rows return as they were at B, often enabled; their blobs in R2 stay gone, so a restored skill reads `broken` | High (a disabled skill is live instruction text again) | No |
 | Skill blobs written in the window | No `skill_files` row references them | Low (privacy) | Yes (the hourly sweep, after one hour) |
+| Project skill pins added, changed or removed in the window (`project_skills`) | A removed pin returns; a pin of a deleted skill or project returns but loads nothing | Low (a pin only loads an enabled, ready skill, and skills are disabled after a restore) | No |
 | Connectors deleted, disconnected or disabled in the window (`connectors`, `connector_tool_settings`, `connector_chat_settings`) | Rows return as they were at B, often enabled, with their consent columns | High (a switched-off data channel to a third-party server is open again) | No |
 | Connector credentials revoked in the window (`connector_credentials`) | Encrypted access and refresh tokens and header values return, usable again; the provider may or may not have revoked them | **High (a revoked credential works again)** | No |
 | `connector_tool_calls` audit rows | Rolled back, so the window's calls vanish from the audit trail; rows older than the retention that the sweep deleted return | Medium | Yes (the 90-day sweep) |
@@ -368,6 +369,18 @@ just stale data.
   opened. Only the current and pending versions are used at runtime, and the
   newest 20 versions are kept, so the diff above decides whether the skill
   itself is affected.
+- **Project skills.** `project_skills` (`server/db/schemas/project-skills.ts`,
+  no foreign key, `AUTOINCREMENT`) rolls back with the rest. A pin the user
+  removed in the window comes back, and so does a pin of a skill or a project
+  deleted in the window, pointing at a row that no longer exists. The runtime
+  joins `project_skills` to `skills` for the same user, so a pin without its
+  skill or project loads nothing and needs no repair. A restored always-load
+  pin of a skill that comes back is held by the `UPDATE skills SET enabled = 0`
+  above: the pin is read on every send but only loads an enabled, `ready`
+  skill, so the user chooses again. Add the table to the `sqlite_sequence`
+  record of step 0, and replay project and skill deletes from Axiom
+  (`attributes.skills.projectPinsDeleted`, `attributes.skills.cleanup`) to
+  delete the restored pin rows too.
 - **Per-chat choices.** `skill_chat_settings` rows of chats deleted in the
   window return with a chat id that no longer exists. They do nothing and
   disappear with the account purge; no repair is needed.

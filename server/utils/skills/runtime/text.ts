@@ -10,12 +10,14 @@ export const SKILL_CONTENT_TAG = 'skill_content'
 export const SKILL_RESOURCES_TAG = 'skill_resources'
 export const SKILL_ACTIVE_BLOCK_TAG = 'active_skills'
 export const SKILL_CATALOG_TAG = 'available_skills'
+export const SKILL_PROJECT_BLOCK_TAG = 'project_skills'
 
 const SKILL_DELIMITER_TAGS = [
   SKILL_CONTENT_TAG,
   SKILL_RESOURCES_TAG,
   SKILL_ACTIVE_BLOCK_TAG,
   SKILL_CATALOG_TAG,
+  SKILL_PROJECT_BLOCK_TAG,
   'skill_notice',
 ]
 const DELIMITER_OPENING = new RegExp(

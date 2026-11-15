@@ -92,7 +92,7 @@ never data.
 | `connectors:read` | `list_connectors`, `get_connector` |
 | `connectors:write` | `add_connector` (created switched off), `update_connector_tools` (only reduces), `delete_connectors` (destructive; the one delete that is not under `data:delete`) |
 | `skills:read` | `list_skills`, `get_skill` |
-| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill), `delete_skills` (destructive; the second delete that is not under `data:delete`) |
+| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill), `delete_skills` (destructive; the second delete that is not under `data:delete`), `set_project_skills` (5.1.0, replaces the skills pinned to a project; destructive because omitted pins are removed; never changes a skill) |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
@@ -126,7 +126,7 @@ would reach existing clients silently). The design is in
 | `connectors:read` | read, built in 4.0.0 | `list_connectors`, `get_connector` | C-9 |
 | `connectors:write` | write, built in 4.0.0 | `add_connector` (created disabled), `update_connector_tools`, `delete_connectors` (destructive) | C-9 |
 | `skills:read` | read, built in 5.0.0 | `list_skills`, `get_skill` | S-6 |
-| `skills:write` | write, built in 5.0.0 | `create_skill`, `update_skill`, `rename_skill` (all leave the skill disabled), `delete_skills` (destructive) | S-6 |
+| `skills:write` | write, built in 5.0.0 | `create_skill`, `update_skill`, `rename_skill` (all leave the skill disabled), `delete_skills` (destructive), `set_project_skills` (5.1.0) | S-6, S-15 |
 
 `list_my_features` (P0-8) goes under the existing `settings:read`, because
 it only reads the caller's own state. Deletes of the new artifact and skill
@@ -156,7 +156,7 @@ do and removes no user content. `update_skill` is on the list because it
 switches the skill off and stages a replacement of its files; `rename_skill`
 is not, because it writes a new version and keeps the old ones.
 
-Since 5.0.0 the surface has 56 private tools: six skill tools under the new
+Since 5.1.0 the surface has 57 private tools (`set_project_skills`, S-15, is the only addition, with no new scope). Since 5.0.0 it had 56 private tools: six skill tools under the new
 `skills:read` and `skills:write` scopes were added to the
 50 of 4.0.0 (see [The skills scopes](#the-skills-scopes)).
 
@@ -190,7 +190,7 @@ stays reserved in the docs only: no tool uses it, so S-6 does not register it
   `MCP_PRIVATE_TOOL_SCOPES`, `app/components/OAuth/ScopeLabel.vue` (labels
   "See your skills and their full text" and "Add, change and delete skills.
   Changes are saved switched off for your review"), the write warning in
-  `ScopePicker.vue`, the scope phrases of the security emails, and `MCP_SERVER_VERSION` 5.0.0 in the four version
+  `ScopePicker.vue`, the scope phrases of the security emails, and `MCP_SERVER_VERSION` 5.0.0 (5.1.0 with `set_project_skills`) in the four version
   files. The Privacy Policy lists both permissions and names the skills exception
   to "Delete your data"; its revision hash was updated without a change of
   classification or notice.
@@ -958,7 +958,7 @@ directly in `server/mcp/` is loaded as a named handler.
 
 ### The Besidka tools registry (BES-394 L7)
 
-The 56 private tools are not defined in `server/mcp/tools/`. Each has one
+The 57 private tools are not defined in `server/mcp/tools/`. Each has one
 transport-neutral entry in `server/utils/besidka-tools/tools/<name>.ts`
 (`defineBesidkaTool`), and the file in `server/mcp/tools/` is a three-line
 shim:
@@ -1008,7 +1008,7 @@ decide which wins.
 | `ask-every-time` | 13 | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_artifacts`, `revoke_chat_shares`, `revoke_artifact_shares`, `share_artifact`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_settings` |
 | excluded, admin | 3 | `list_feature_flags`, `list_feature_access`, `set_feature_access` |
 | excluded, connector management | 5 | `list_connectors`, `get_connector`, `add_connector`, `update_connector_tools`, `delete_connectors` |
-| excluded, skill management | 6 | `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`, `delete_skills` |
+| excluded, skill management | 7 | `list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`, `delete_skills`, `set_project_skills` |
 | excluded, native twin | 10 | `create_artifact`, `update_artifact`, `create_document`, `list_memory`, `add_memory`, `update_memory`, `delete_memory`, `reset_memory`, `list_chats`, `get_chat` |
 
 `summarize` is synchronous and sees only the parsed input, so it names things
@@ -1120,6 +1120,7 @@ text only and capped.
 | `create_skill` | `skills:write` | no | 1 to 50 text files, 400 KiB in all, with a `SKILL.md`; optional `argumentHint` (no command, no mode). Saved disabled with `needs-review`; returns `id`, `name`, `licenseClass`, `findings`, `reviewUrl` | `createSkillForMcpClient` (`server/utils/skills/versions/mcp.ts`): `validateSkillEditPath`, `analyzeSkillFiles` (license gate, scanner), `insertSkillWithinLimits`, `buildVersionStatements` |
 | `update_skill` | `skills:write` | yes | `id`, `baseVersion` and up to 50 `put`, `delete` or `rename` changes. A pending version, the skill off with `needs-review`; returns `pendingVersion`, `sha256`, `findings`, `diffSummary`, `reviewUrl`. A stale `baseVersion` is a 409; a changed `name` is refused | `stageSkillUpdateForMcpClient`: `applySkillChanges` with the license files locked, `prepareSkillVersion`, `computeFindingCounts` |
 | `rename_skill` | `skills:write` | no | `id` and `name` (lowercase letters, digits and single hyphens, up to 64, unique, not a reserved name). Rewrites the `name:` line of `SKILL.md` as a `rename` version; disables the skill and sets `needs-review`; returns `warnings` | `renameSkillForMcpClient` over `saveSkillChanges` with `skillSetExtra`. The command is not touched |
+| `set_project_skills` | `skills:write` | yes | `projectId` and `skills`, the whole ordered list of `{ skillId, level }` (`always` or `prefer`, at most 20 and 3 `always`). Replaces the pins; an empty list clears them; returns the pins with `state` (`active`, `off`, `needs-review`, `broken`), `alwaysTokens` and `limits`. Only the user's own skills (a foreign id is 404), no broken skill, `always` skills must fit 12,000 tokens; never changes a skill, so an Off skill is pinned but does not load. Counts against the hourly skill-change cap | `setProjectSkills`, the function the app route `PUT /api/v1/projects/[id]/skills` calls. `get_project` adds a `skills` list when the token also holds `skills:read` and the skills flag is on |
 | `delete_skills` | `skills:write` | yes | `ids` (1 to 20) and `confirm: true`; `{ deleted, notFound }` | `deleteUserSkill`, one skill at a time (rows, then the R2 prefix). Its own hourly cap of 20 |
 | `get_settings` | `settings:read` | no | Reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only. Since 3.2.0 also a `storage` block: `usedBytes`, `totalBytes` and `categories` (`id`, `bytes`, `count` for `aiImages`, `uploads`, `generatedFiles`, `artifacts`, `knowledge`, `skills`), the same numbers as the Storage page | `getMcpSettings`, `getMcpStorage` (`getUserStorageBreakdown`) |
 | `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |

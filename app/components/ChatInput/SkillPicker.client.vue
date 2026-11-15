@@ -22,7 +22,7 @@
               Add skill
             </h3>
             <p class="mt-1 text-sm text-base-content/70">
-              Attach one skill to your next message
+              {{ subtitle }}
             </p>
           </div>
           <button
@@ -152,10 +152,13 @@
 import { SKILL_MODE_LABELS } from '#shared/utils/skills/mode'
 import type { ComposerSkillItem } from '~/composables/composer-skills'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: ComposerSkillItem[]
   selectedId: string | null
-}>()
+  subtitle?: string
+}>(), {
+  subtitle: 'Attach one skill to your next message',
+})
 
 const emit = defineEmits<{
   pick: [item: ComposerSkillItem]
