@@ -72,6 +72,23 @@ describe('Profile/Connectors/AddDialog', () => {
     expect(document.body.querySelector('img')).toBeNull()
   })
 
+  it('opens on the Directory tab when asked and the registry flag is on', async () => {
+    registryActive.value = true
+
+    await mountDialog({ initialTab: 'directory' })
+
+    expect(getByTestId('connector-add-tab-directory')
+      .getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('falls back to Presets when the Directory is asked for without the registry flag', async () => {
+    await mountDialog({ initialTab: 'directory' })
+
+    expect(findByTestId('connector-add-tab-directory')).toBeNull()
+    expect(getByTestId('connector-add-tab-presets')
+      .getAttribute('aria-selected')).toBe('true')
+  })
+
   it('adds a preset by id and marks presets that exist', async () => {
     mocks.fetch.mockResolvedValue({ connector: { id: 'new1' } })
 

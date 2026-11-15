@@ -148,13 +148,17 @@ describe('useComposerConnectors', () => {
     expect(composable.isVisible.value).toBe(true)
   })
 
-  it('is empty and hidden while the flag is off or nothing is selectable', async () => {
+  it('stays visible with nothing selectable and hides only when the flag is off', async () => {
     data.value = { connectors: [createConnector({ enabled: false })] }
 
     const { composable } = await mountComposable()
 
     expect(composable.items.value).toEqual([])
-    expect(composable.isVisible.value).toBe(false)
+    expect(composable.isVisible.value).toBe(true)
+
+    data.value = { connectors: [] }
+
+    expect(composable.isVisible.value).toBe(true)
 
     data.value = { connectors: [createConnector()] }
     connectorsActive.value = false

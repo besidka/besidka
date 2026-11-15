@@ -220,7 +220,8 @@
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
-      :are-connectors-available="composerConnectors.isFeatureActive.value"
+      :is-loaded="composerConnectors.isLoaded.value"
+      :is-registry-available="connectorsRegistryFeature.active"
       @toggle="composerConnectors.toggle"
       @toggle-besidka="composerBesidkaTools.toggle"
     />
@@ -965,15 +966,14 @@ const besidkaPickerRow = computed(() => {
   }
 })
 
+const connectorsRegistryFeature = useFeature('connectors.registry')
+
 const isConnectorsEnabled = computed<boolean>(() => {
-  return (
-    composerConnectors.isVisible.value
-    || composerBesidkaTools.isAvailable.value
-  )
-  && isToolCallingSupported.value
-  && !isDeepResearchModel.value
-  && !isImageGenerationEnabled.value
-  && !isImageGenerationRequired.value
+  return composerConnectors.isVisible.value
+    && isToolCallingSupported.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
 })
 
 const commands = useComposerCommands({
@@ -1037,6 +1037,7 @@ const toolsState = computed<ChatInputToolsState>(() => {
       visible: isConnectorsEnabled.value,
       items: composerConnectors.items.value,
       selectedIds: composerConnectors.selectedIds.value,
+      isBesidkaOn: besidkaPickerRow.value?.enabled === true,
     },
     project: {
       visible: shouldDisplayProjectPicker.value,

@@ -885,6 +885,22 @@ Choices that differ from or add to section 6, 10 and 14:
   model context or the chat search index (specs).
 - **Not wired to the notice.** `data-connectors-notice` is written to the
   client stream only, so it is not persisted (like the knowledge notice).
+- **The "+" row is always offered (BES-249, 2026-11-15).** The "Connectors"
+  row shows whenever the `connectors` flag is on for the user, the model can
+  call tools and the send is not deep research or image generation. It does
+  not need an existing connector: a user with none opens the picker to add one.
+  The first version hid the row until a connector was on and connected, and an
+  account with zero connectors could not find where to turn connectors on.
+  The picker (still a dialog, never inline items) shows the Besidka row when
+  that feature is active, a toggle per enabled, ready or drifted connector,
+  and an empty state "No connectors yet" with a primary "Add a connector"
+  link (`/profile/connectors?add=presets`). At the top it has "Browse
+  connectors" (`/profile/connectors?add=directory`, only with the
+  `connectors.registry` flag) and "Manage connectors" (`/profile/connectors`).
+  The page reads `add` (`presets`, `url` or `directory`), opens the add dialog
+  on that tab (`directory` falls back to `presets` without the registry flag)
+  and removes the parameter from the URL. The row badge is the number of
+  connectors on in the chat plus one when Besidka tools are on.
 
 ## 7. Approvals
 
@@ -2024,9 +2040,9 @@ No new nav pill slots (roadmap decision).
 | Place | What | Ticket |
 | --- | --- | --- |
 | Profile tab | `{ to: '/profile/connectors', label: 'Connectors', icon: 'lucide:cable' }` in `app/layouts/profile.vue`, after Connected apps (and after Labs from P0-7), shown only when `useFeature('connectors')` | C-7 |
-| Search popup | Settings row `search-option-connectors`, same icon and label, flag-gated, id added to `tests/unit/components/Search/Modal.spec.ts` | C-7 |
+| Search popup | Row `search-option-connectors` in the Chat group right after Skills (moved from the last Settings row, BES-249), icon `lucide:cable`, flag-gated, id added to `tests/unit/components/Search/Modal.spec.ts` | C-7 |
 | User dropdown | Nothing (`Sidebar/AuthCta.vue` stays Security and API Keys, plus the chat-page rows from P0-13) | C-7 |
-| "+" menu | One row "Connectors" in the Add section of `app/components/ChatInput/ToolsMenu/Content.vue` that opens `ChatInput/ConnectorPicker.client.vue` (a toggle per enabled, ready or drifted connector, at most five on, a "Manage connectors" link); never an inline list (owner rule). Shown only when the `connectors` flag is on, the user has a selectable connector and the model can call tools. Tile "N connectors" from `buildChatInputTiles` (`docs/chats/chat-input-tools-menu.md`) | C-5 |
+| "+" menu | One row "Connectors" in the Add section of `app/components/ChatInput/ToolsMenu/Content.vue` that opens `ChatInput/ConnectorPicker.client.vue` (Besidka row, a toggle per enabled, ready or drifted connector, at most five on, "Browse connectors" with `connectors.registry`, "Manage connectors", an empty state with "Add a connector"); never an inline list (owner rule). Shown whenever the `connectors` flag is on and the model can call tools, with or without a connector (section 6.1). Tile "N connectors" from `buildChatInputTiles` (`docs/chats/chat-input-tools-menu.md`) | C-5 |
 | Chat bubble | Tool steps in `ChatReasoning`, the approval inside the call's reasoning step, "Run by OpenAI" badge on native calls | C-5, C-6, C-11 |
 | Context panel | "Used → Connectors" (section 7.5) | C-5 |
 | Labs | `connectors.native` opt-in row | C-11 |

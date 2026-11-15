@@ -407,9 +407,9 @@ describe('Search/Modal.client', () => {
       .toBe(false)
   })
 
-  it('adds the Connectors row as the last Settings row only with the connectors feature', async () => {
+  it('adds the Connectors row to the Chat group right after Skills only with the connectors feature', async () => {
     connectorsActive.value = true
-    besidkaToolsActive.value = true
+    skillsActive.value = true
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -419,7 +419,9 @@ describe('Search/Modal.client', () => {
       .map(option => option.attributes('id'))
 
     expect(ids.indexOf('search-option-connectors'))
-      .toBe(ids.indexOf('search-option-besidka-tool-permissions') + 1)
+      .toBe(ids.indexOf('search-option-skills') + 1)
+    expect(ids.indexOf('search-option-connectors'))
+      .toBeLessThan(ids.indexOf('search-option-storage'))
     expect(wrapper.get('#search-option-connectors').text())
       .toBe('Connectors')
     expect(wrapper.get('#search-option-connectors .iconify').classes())

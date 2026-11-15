@@ -470,14 +470,20 @@ or without a command.
 ## Connectors row (connectors layer C-5)
 
 The Add section has one more row, "Connectors" (`tools-action-connectors`,
-after "Add skill"), shown only when the `connectors` flag is on, the user has
-at least one connector that is on and connected (or drifted), the model can
-call tools, and the send is not a deep research or image generation send. The
-badge is the number of connectors on in this chat. It emits
-`open-connectors-picker`, which opens `ChatInput/ConnectorPicker.client.vue`:
-a dialog with a toggle per connector (title, host as plain text, a `badge
-badge-soft` when it is `drifted`), at most five on, and a "Manage connectors"
-link to `/profile/connectors`. Connectors are never listed inline in the menu.
+after "Add skill"), shown whenever the `connectors` flag is on, the model can
+call tools, and the send is not a deep research or image generation send. It
+does not need an existing connector, so an account with none can still reach
+it to add one (BES-249). The badge is the number of connectors on in this chat
+plus one when Besidka tools are on. It emits `open-connectors-picker`, which
+opens `ChatInput/ConnectorPicker.client.vue`: a dialog with, from the top,
+"Browse connectors" (only with the `connectors.registry` flag, opens the
+Directory tab of the add dialog on `/profile/connectors?add=directory`) and
+"Manage connectors" (`/profile/connectors`), the Besidka row when that feature
+is active, a toggle per connector (title, host as plain text, a `badge
+badge-soft` when it is `drifted`), at most five on, and the limit hint. With no
+connector it shows "No connectors yet" and a primary "Add a connector" link
+(`/profile/connectors?add=presets`); a skeleton shows until the list has
+loaded. Connectors are never listed inline in the menu.
 
 The choice is per chat. On an existing chat each toggle saves at once through
 `PUT /api/v1/chats/[slug]/connectors` and rolls back on failure; on

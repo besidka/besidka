@@ -289,14 +289,6 @@ function buildSettingsGroup(): SearchModalGroup<SearchModalEntry> {
           run: () => goTo(BESIDKA_TOOL_PERMISSIONS_LABS_PATH),
         }]
         : []),
-      ...(connectorsFeature.value.active
-        ? [{
-          id: 'search-option-connectors',
-          iconName: 'lucide:cable',
-          label: 'Connectors',
-          run: () => goTo('/profile/connectors'),
-        }]
-        : []),
     ],
   }
 }
@@ -420,6 +412,14 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
             iconName: 'lucide:sparkles',
             label: 'Skills',
             run: () => goTo('/chats/skills'),
+          }]
+          : []),
+        ...(connectorsFeature.value.active
+          ? [{
+            id: 'search-option-connectors',
+            iconName: 'lucide:cable',
+            label: 'Connectors',
+            run: () => goTo('/profile/connectors'),
           }]
           : []),
       ],

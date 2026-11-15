@@ -125,6 +125,7 @@ export interface ChatInputToolsState {
     visible: boolean
     items: ComposerConnectorItem[]
     selectedIds: string[]
+    isBesidkaOn?: boolean
   }
   project: {
     visible: boolean

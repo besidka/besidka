@@ -192,6 +192,9 @@ useSeoMeta({
 })
 
 const SKELETON_ROWS = 3
+const ADD_TAB_IDS = ['presets', 'url', 'directory'] as const
+
+type AddTabId = typeof ADD_TAB_IDS[number]
 
 const connectorsFeature = useFeature('connectors')
 
@@ -205,7 +208,7 @@ const sidePanel = useSidePanel()
 const connect = useConnectorConnect()
 const { connectors, hasLoaded, error, refresh } = useConnectorsPage()
 
-const addTab = shallowRef<'presets' | 'url' | null>(null)
+const addTab = shallowRef<AddTabId | null>(null)
 const busyIds = shallowRef<Set<string>>(new Set())
 const liveMessage = shallowRef<string>('')
 const pendingOpenId = shallowRef<string | null>(null)
@@ -224,7 +227,7 @@ const selectedId = computed<string | null>(() => {
     : null
 })
 
-function openAdd(tab: 'presets' | 'url') {
+function openAdd(tab: AddTabId) {
   addTab.value = tab
 }
 
@@ -285,8 +288,14 @@ async function handleRouteQuery() {
     ? query.connector
     : null
 
-  if (!callback && !requestedId) {
+  const requestedAddTab = ADD_TAB_IDS.find(id => id === query.add) ?? null
+
+  if (!callback && !requestedId && !requestedAddTab) {
     return
+  }
+
+  if (requestedAddTab) {
+    openAdd(requestedAddTab)
   }
 
   if (callback?.kind === 'connected') {
@@ -307,7 +316,10 @@ async function handleRouteQuery() {
   await router.replace({
     path: route.path,
     query: Object.fromEntries(Object.entries(query).filter(([key]) => {
-      return key !== 'connected' && key !== 'error' && key !== 'connector'
+      return key !== 'connected'
+        && key !== 'error'
+        && key !== 'connector'
+        && key !== 'add'
     })),
   })
 }

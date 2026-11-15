@@ -196,7 +196,7 @@
         label="Connectors"
         hint="Let the model use your tools"
         icon="lucide:cable"
-        :badge="state.connectors.selectedIds.length || undefined"
+        :badge="connectorsBadge"
         data-testid="tools-action-connectors"
         @click="emit('open-connectors-picker')"
       />
@@ -253,6 +253,19 @@ const isMemoryNoteOpen = shallowRef<boolean>(false)
 const isReasoningSectionVisible = computed<boolean>(() => {
   return props.state.reasoning.visible
     && props.state.reasoning.mode !== 'none'
+})
+
+const connectorsBadge = computed<number | undefined>(() => {
+  const connectors = props.state.connectors
+
+  if (!connectors) {
+    return undefined
+  }
+
+  const count = connectors.selectedIds.length
+    + (connectors.isBesidkaOn ? 1 : 0)
+
+  return count || undefined
 })
 
 const isAddSectionVisible = computed<boolean>(() => {

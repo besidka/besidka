@@ -218,7 +218,7 @@ type AddTab = 'presets' | 'url' | 'directory'
 
 const props = withDefaults(defineProps<{
   addedPresetIds: ReadonlySet<string>
-  initialTab?: 'presets' | 'url'
+  initialTab?: AddTab
 }>(), {
   initialTab: 'presets',
 })
@@ -229,7 +229,11 @@ const emit = defineEmits<{
 }>()
 
 const registryFeature = useFeature('connectors.registry')
-const tab = shallowRef<AddTab>(props.initialTab)
+const tab = shallowRef<AddTab>(
+  props.initialTab === 'directory' && !registryFeature.value.active
+    ? 'presets'
+    : props.initialTab,
+)
 const url = shallowRef<string>('')
 const title = shallowRef<string>('')
 const urlError = shallowRef<string>('')

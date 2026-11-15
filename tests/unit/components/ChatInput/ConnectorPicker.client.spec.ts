@@ -51,7 +51,8 @@ async function mountPicker(
     isAtLimit: boolean
     isSaving: boolean
     besidka: { enabled: boolean, isSaving: boolean } | null
-    areConnectorsAvailable: boolean
+    isLoaded: boolean
+    isRegistryAvailable: boolean
   }> = {},
 ) {
   const wrapper = await mountSuspended(ConnectorPicker, {
@@ -228,18 +229,68 @@ describe('ChatInput/ConnectorPicker', () => {
       .disabled).toBe(false)
   })
 
-  it('shows only the Besidka row when connectors are not available',
-    async () => {
-      await mountPicker({
-        items: [],
-        besidka: { enabled: true, isSaving: false },
-        areConnectorsAvailable: false,
-      })
-
-      expect(find('connector-picker-besidka')).not.toBeNull()
-      expect(find('connector-picker-empty')).toBeNull()
-      expect(find('connector-picker-manage')).toBeNull()
+  it('shows the Besidka row above the empty state when there are no connectors', async () => {
+    await mountPicker({
+      items: [],
+      besidka: { enabled: true, isSaving: false },
     })
+
+    expect(find('connector-picker-besidka')).not.toBeNull()
+    expect(find('connector-picker-empty')).not.toBeNull()
+  })
+
+  it('offers an Add a connector action in the empty state', async () => {
+    const wrapper = await mountPicker({ items: [] })
+    const add = get('connector-picker-add')
+
+    expect(add.className).toContain('btn-primary')
+    expect(add.outerHTML).toContain('/profile/connectors')
+    expect(add.outerHTML).toContain('add=presets')
+
+    add.click()
+    await flushPromises()
+
+    expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
+  })
+
+  it('shows a skeleton instead of the empty state until the list is loaded', async () => {
+    await mountPicker({ items: [], isLoaded: false })
+
+    expect(find('connector-picker-skeleton')).not.toBeNull()
+    expect(find('connector-picker-empty')).toBeNull()
+  })
+
+  it('shows Manage connectors at the top, with or without connectors', async () => {
+    await mountPicker({ items: [] })
+
+    const manage = get('connector-picker-manage')
+
+    expect(manage.outerHTML).toContain('/profile/connectors')
+    expect(manage.textContent).toContain('Manage connectors')
+    expect(get('connector-picker-actions').contains(manage)).toBe(true)
+  })
+
+  it('shows Browse connectors only when the registry is available', async () => {
+    await mountPicker()
+
+    expect(find('connector-picker-browse')).toBeNull()
+
+    document.body.innerHTML = ''
+
+    await mountPicker({ isRegistryAvailable: true })
+
+    const browse = get('connector-picker-browse')
+
+    expect(browse.textContent).toContain('Browse connectors')
+    expect(browse.outerHTML).toContain('add=directory')
+  })
+
+  it('keeps the limit hint with no connectors', async () => {
+    await mountPicker({ items: [] })
+
+    expect(get('connector-picker-limit-hint').textContent)
+      .toContain('Up to 5 at once')
+  })
 
   it('closes from the close button', async () => {
     const wrapper = await mountPicker()

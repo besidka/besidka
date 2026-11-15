@@ -119,9 +119,7 @@ export function useComposerConnectors(
       .sort((left, right) => left.title.localeCompare(right.title))
   })
 
-  const isVisible = computed<boolean>(() => {
-    return library.isActive.value && items.value.length > 0
-  })
+  const isVisible = computed<boolean>(() => library.isActive.value)
 
   const selectedIds = computed<string[]>(() => {
     return selection.value.chatKey === chatKey.value
@@ -279,7 +277,7 @@ export function useComposerConnectors(
   return {
     items,
     isVisible,
-    isFeatureActive: library.isActive,
+    isLoaded: library.isLoaded,
     selectedIds,
     selectedCount,
     isAtLimit,

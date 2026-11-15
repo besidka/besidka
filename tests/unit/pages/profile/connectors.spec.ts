@@ -275,6 +275,31 @@ describe('profile connectors page', () => {
         .toBe('Connector signed in')
     })
 
+  it('opens the add dialog on the tab named by the add query and clears it', async () => {
+    mocks.query = { add: 'directory', keep: '1' }
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.get('[data-testid="add-dialog-stub"]').text())
+      .toBe('directory')
+    expect(mocks.replace).toHaveBeenCalledWith({
+      path: '/profile/connectors',
+      query: { keep: '1' },
+    })
+  })
+
+  it('ignores an unknown add query value', async () => {
+    mocks.query = { add: 'bogus' }
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('[data-testid="add-dialog-stub"]').exists())
+      .toBe(false)
+    expect(mocks.replace).not.toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/profile/connectors' }),
+    )
+  })
+
   it('maps a callback error code to a fixed message and never shows the '
     + 'raw value', async () => {
     mocks.query = { error: 'CONNECTOR_OAUTH_DENIED' }

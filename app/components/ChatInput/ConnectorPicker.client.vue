@@ -41,6 +41,39 @@
         </div>
 
         <div
+          class="mb-3 flex shrink-0 flex-wrap gap-2"
+          data-testid="connector-picker-actions"
+        >
+          <NuxtLink
+            v-if="isRegistryAvailable"
+            to="/profile/connectors?add=directory"
+            class="btn btn-sm min-h-11 sm:min-h-8"
+            data-testid="connector-picker-browse"
+            @click="close"
+          >
+            <Icon
+              name="lucide:search"
+              size="16"
+              aria-hidden="true"
+            />
+            Browse connectors
+          </NuxtLink>
+          <NuxtLink
+            to="/profile/connectors"
+            class="btn btn-sm min-h-11 sm:min-h-8"
+            data-testid="connector-picker-manage"
+            @click="close"
+          >
+            <Icon
+              name="lucide:settings-2"
+              size="16"
+              aria-hidden="true"
+            />
+            Manage connectors
+          </NuxtLink>
+        </div>
+
+        <div
           class="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-box border border-base-200 p-1"
           data-testid="connector-picker-list-scroll"
         >
@@ -129,7 +162,16 @@
             </li>
           </ul>
           <div
-            v-else-if="areConnectorsAvailable"
+            v-else-if="!isLoaded"
+            class="grid gap-2 p-2"
+            aria-hidden="true"
+            data-testid="connector-picker-skeleton"
+          >
+            <div class="skeleton skeleton--default h-10 w-full rounded-box" />
+            <div class="skeleton skeleton--default h-10 w-full rounded-box" />
+          </div>
+          <div
+            v-else
             class="px-6 py-10 text-center"
             data-testid="connector-picker-empty"
           >
@@ -144,28 +186,23 @@
             <p class="mt-1 text-sm text-base-content/70">
               Add a connector, then turn it on here.
             </p>
+            <NuxtLink
+              to="/profile/connectors?add=presets"
+              class="btn btn-primary btn-sm mt-4 min-h-11 sm:min-h-8"
+              data-testid="connector-picker-add"
+              @click="close"
+            >
+              Add a connector
+            </NuxtLink>
           </div>
         </div>
-        <div
-          v-if="areConnectorsAvailable"
-          class="mt-3 flex shrink-0 items-center justify-between gap-3"
+        <p
+          class="mt-3 shrink-0 text-xs"
+          :class="isAtLimit ? 'text-warning' : 'text-base-content/60'"
+          data-testid="connector-picker-limit-hint"
         >
-          <p
-            class="text-xs"
-            :class="isAtLimit ? 'text-warning' : 'text-base-content/60'"
-            data-testid="connector-picker-limit-hint"
-          >
-            {{ limitHint }}
-          </p>
-          <NuxtLink
-            to="/profile/connectors"
-            class="link link-hover shrink-0 text-sm"
-            data-testid="connector-picker-manage"
-            @click="close"
-          >
-            Manage connectors
-          </NuxtLink>
-        </div>
+          {{ limitHint }}
+        </p>
       </div>
       <form
         method="dialog"
@@ -189,10 +226,12 @@ const props = withDefaults(defineProps<{
   isAtLimit: boolean
   isSaving: boolean
   besidka?: { enabled: boolean, isSaving: boolean } | null
-  areConnectorsAvailable?: boolean
+  isLoaded?: boolean
+  isRegistryAvailable?: boolean
 }>(), {
   besidka: null,
-  areConnectorsAvailable: true,
+  isLoaded: true,
+  isRegistryAvailable: false,
 })
 
 const emit = defineEmits<{
