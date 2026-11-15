@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryExtractionTestDb,
+  seedChat,
   seedUser,
 } from '../../setup/helpers/memory-extraction-db'
 import type {
@@ -256,6 +257,50 @@ describe('Besidka tool permission routes', () => {
 
       expect((await failureOf(put({ tool: 'list_files', mode: 'ask' })))
         .status).toBe(429)
+    })
+  })
+
+  describe('chat Besidka row', () => {
+    const chatGetPath = '~~/server/api/v1/chats/[slug]/besidka-tools/index.get'
+    const chatPutPath = '~~/server/api/v1/chats/[slug]/besidka-tools/index.put'
+
+    it('is on by default and switches off and on for one chat', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const otherChat = await seedChat(testDb.db, userId)
+      const params = { slug: chat.slug }
+
+      expect(await call(chatGetPath, { params })).toEqual({ enabled: true })
+      expect(await call(chatPutPath, { params, body: { enabled: false } }))
+        .toEqual({ enabled: false })
+      expect(await call(chatGetPath, { params })).toEqual({ enabled: false })
+      expect(await call(chatGetPath, { params: { slug: otherChat.slug } }))
+        .toEqual({ enabled: true })
+      expect(await call(chatPutPath, { params, body: { enabled: true } }))
+        .toEqual({ enabled: true })
+    })
+
+    it('is hidden behind the flag, refuses another user\'s chat and a bad '
+      + 'body', async () => {
+      const chat = await seedChat(testDb.db, userId)
+      const params = { slug: chat.slug }
+
+      expect((await failureOf(call(chatPutPath, {
+        params,
+        body: { enabled: 'yes' },
+      }))).status).toBe(400)
+
+      sessionUserId = await seedUser(testDb.db, null)
+
+      expect((await failureOf(call(chatGetPath, { params }))).status)
+        .toBe(404)
+      expect((await failureOf(call(chatGetPath, {
+        params: { slug: 'not-a-slug' },
+      }))).status).toBe(404)
+
+      mocks.flags.clear()
+
+      expect((await failureOf(call(chatGetPath, { params }))).status)
+        .toBe(404)
     })
   })
 })

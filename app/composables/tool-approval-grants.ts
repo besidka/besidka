@@ -124,5 +124,6 @@ export function useChatToolApprovalGrants() {
 }
 
 export function grantKeyOf(grant: ToolApprovalGrantItem): string {
-  return `${grant.scope}:${grant.connectorId}:${grant.toolName}`
+  return `${grant.source ?? 'connector'}:${grant.scope}:${grant.connectorId}:`
+    + grant.toolName
 }

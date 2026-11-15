@@ -279,6 +279,7 @@ export function useComposerConnectors(
   return {
     items,
     isVisible,
+    isFeatureActive: library.isActive,
     selectedIds,
     selectedCount,
     isAtLimit,

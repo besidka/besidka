@@ -728,6 +728,62 @@ describe('createToolApprovalStreamCollector', () => {
       })])
     })
 
+  it('writes the described summary and the preview into the data part',
+    async () => {
+      const approval = createSendToolApproval({ state: createApprovalState() })
+
+      approval.registerTools({ besidka__add_note: {} } as never, new Map([[
+        'besidka__add_note',
+        {
+          descriptor: {
+            family: 'besidka',
+            access: 'write',
+            toolName: 'besidka__add_note',
+            definitionHash: HASH,
+            destructiveHint: false,
+          },
+          summary: 'Add a note',
+          describe: async () => 'Add the note "Rules"',
+          preview: (input: unknown) => (input as { body: string }).body,
+          permissionMode: 'ask',
+          taint: 'besidka',
+          readSource: 'besidka',
+          alwaysGrant: null,
+          alwaysGrantWhenTainted: false,
+          connector: null,
+        },
+      ]]))
+      approval.toolApproval(call('call-1', 'besidka__add_note', {
+        body: 'Be brief.',
+      }))
+
+      const { collector, output } = await pipe(approval, [
+        {
+          type: 'tool-input-available',
+          toolCallId: 'call-1',
+          toolName: 'besidka__add_note',
+          input: { body: 'Be brief.' },
+        },
+        {
+          type: 'tool-approval-request',
+          approvalId: 'approval-0001',
+          toolCallId: 'call-1',
+          reason: 'default',
+          signature: 'signed',
+        },
+      ])
+
+      expect(output).toContainEqual(expect.objectContaining({
+        type: TOOL_APPROVAL_DATA_PART_TYPE,
+        data: expect.objectContaining({
+          summary: 'Add the note "Rules"',
+          preview: 'Be brief.',
+        }),
+      }))
+      expect(collector.getCollected()[0]?.pending.summary)
+        .toBe('Add the note "Rules"')
+    })
+
   it('strips an automatic request of its signature and does not pause',
     async () => {
       const approval = createApproval(['memory_write'])
