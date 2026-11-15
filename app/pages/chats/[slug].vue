@@ -78,6 +78,10 @@
             v-if="m.role === 'assistant'"
             :message="m"
           />
+          <ChatConnectorsNotice
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
           <ChatDeepResearchMeta
             v-if="hasResearchMetaPart(m)"
             :message="m"

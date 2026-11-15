@@ -1,6 +1,7 @@
 import type { RequestEvent } from 'nuxt/server'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { isConnectorUsagePart } from '#shared/utils/connectors-parts'
 import * as schema from '~~/server/db/schema'
 import { listChatDocumentFileIds } from '~~/server/utils/documents/chat-files'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -118,6 +119,21 @@ export async function getActiveShareForChat(
   })
 
   return share ?? null
+}
+
+/**
+ * Whether any answer in the chat called a connector tool, so the share
+ * dialog can warn that replies may repeat data from a connected service.
+ */
+export async function chatUsedConnector(chatId: string): Promise<boolean> {
+  const messages = await useDb().query.messages.findMany({
+    where: { chatId, role: 'assistant' },
+    columns: { parts: true },
+  })
+
+  return messages.some((message) => {
+    return message.parts.some(part => isConnectorUsagePart(part))
+  })
 }
 
 export async function enumerateChatFileIds(

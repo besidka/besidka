@@ -1320,6 +1320,31 @@ describe('hasVisibleTextAfterLastFollowUpTool', () => {
     })).toBe(false)
   })
 
+  it('matches a dynamic-tool part by tool name, the shape connector calls '
+    + 'are persisted in', () => {
+    const connectorNames = new Set(['mcp__linear__list_issues'])
+    const connectorPart = {
+      type: 'dynamic-tool',
+      toolName: 'mcp__linear__list_issues',
+      state: 'output-available',
+    }
+
+    expect(hasVisibleTextAfterLastFollowUpTool({
+      parts: [connectorPart],
+      followUpToolNames: connectorNames,
+    })).toBe(false)
+    expect(hasVisibleTextAfterLastFollowUpTool({
+      parts: [connectorPart, { type: 'text', text: 'Here you go.' }],
+      followUpToolNames: connectorNames,
+    })).toBe(true)
+    expect(hasVisibleTextAfterLastFollowUpTool({
+      parts: [
+        { type: 'dynamic-tool', toolName: 'other', state: 'output-available' },
+      ],
+      followUpToolNames: connectorNames,
+    })).toBe(false)
+  })
+
   it('treats an artifact after the last follow-up tool as an answer', () => {
     expect(hasVisibleTextAfterLastFollowUpTool({
       parts: [

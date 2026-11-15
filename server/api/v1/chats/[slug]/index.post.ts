@@ -166,6 +166,7 @@ import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
 import {
+  isConnectorToolName,
   resolveToolLoop,
   TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
   toolRequiresFollowUpTurn,
@@ -235,6 +236,7 @@ import {
   buildSearchAnswerContinuationMessages,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
+  isFollowUpToolPart,
   omitPromptCacheControl,
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
@@ -322,6 +324,21 @@ import {
   redactSkillToolPartsForPersistence,
 } from '~~/server/utils/skills/runtime/persist'
 import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
+import { CONNECTORS_PER_USER, CONNECTOR_STEPS_PER_TURN } from '#shared/utils/connectors-policy'
+import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
+import { createConnectorArgsHasher } from '~~/server/utils/connectors/audit'
+import {
+  listChatConnectorIds,
+  persistChatConnectorSelection,
+  resolveConnectorSelection,
+} from '~~/server/utils/connectors/chat-selection'
+import { redactConnectorToolPartsForPersistence } from '~~/server/utils/connectors/persist'
+import {
+  CONNECTOR_INSTRUCTIONS,
+  getConnectorTools,
+} from '~~/server/utils/connectors/send-tools'
+import type { ConnectorToolsRun } from '~~/server/utils/connectors/send-tools'
+import { listConnectors } from '~~/server/utils/connectors/store'
 import {
   appendAnthropicContainerUploads,
   buildCodeExecutionInstruction,
@@ -361,6 +378,8 @@ export default defineEventHandler(async (event) => {
     exaSearchLevel: z.enum(EXA_SEARCH_LEVELS)
       .default(DEFAULT_EXA_SEARCH_LEVEL),
     webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
+    connectorIds: z.array(z.string().max(64)).max(CONNECTORS_PER_USER)
+      .optional(),
     messages: z.array(incomingUserMessageSchema).length(1),
   }).safeParse)
 
@@ -1460,6 +1479,8 @@ export default defineEventHandler(async (event) => {
     && (selectedBraveSearch || selectedExaSearch)
     && gatewayToolCall !== true
   ) {
+    await codeExecutionSession?.tracker.cleanup()
+
     throw createError({
       message: 'The selected model does not support the requested tool.',
       status: 400,
@@ -1637,6 +1658,7 @@ export default defineEventHandler(async (event) => {
       'artifacts.llm-bridge',
       'documents',
       'skills',
+      'connectors',
       ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
     ],
     aiLogger,
@@ -1822,6 +1844,95 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const connectorNotices: string[] = []
+  let connectorsRun: ConnectorToolsRun | null = null
+
+  try {
+    if (sendFeatures.isFeatureActive('connectors')) {
+      const requestedConnectorIds = body.data.connectorIds
+        ?? await listChatConnectorIds(db, userId, chat.id)
+
+      if (requestedConnectorIds.length > 0 || body.data.connectorIds) {
+        const userConnectors = await listConnectors(db, userId)
+        const selection = resolveConnectorSelection(
+          userConnectors,
+          requestedConnectorIds,
+        )
+
+        if (body.data.connectorIds) {
+          try {
+            await persistChatConnectorSelection(db, {
+              userId,
+              chatPublicId: chat.id,
+              selectedIds: selection.selected.map(connector => connector.id),
+            })
+          } catch (exception) {
+            aiLogger.set({
+              attributes: {
+                connectors: {
+                  selectionPersist: 'failed',
+                  error: exceptionMessage(exception),
+                },
+              },
+            })
+          }
+        }
+
+        if (selection.selected.length > 0 && !toolCallingAllowed) {
+          connectorNotices.push('Connectors are off for this message.')
+        }
+
+        if (selection.selected.length > 0 && toolCallingAllowed) {
+          for (const connector of selection.overCap) {
+            connectorNotices.push(
+              `${connector.title} was left out: a message can use at most 5 connectors.`,
+            )
+          }
+
+          for (const connector of selection.skipped) {
+            connectorNotices.push(
+              `${connector.title} is switched off or not connected, so its tools were not used.`,
+            )
+          }
+
+          connectorsRun = await getConnectorTools({
+            db,
+            kv: useKV(),
+            userId,
+            chatPublicId: chat.id,
+            connectors: selection.selected,
+            existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
+            hashArgs: createConnectorArgsHasher(
+              useRuntimeConfig().encryptionKey,
+            ),
+            guard: chatSearchBudget,
+            logger: aiLogger,
+          })
+          connectorNotices.push(...connectorsRun.notices)
+
+          if (Object.keys(connectorsRun.tools).length > 0) {
+            parsedTools = {
+              ...parsedTools,
+              tools: { ...parsedTools.tools, ...connectorsRun.tools },
+            }
+          }
+        }
+      }
+    }
+  } catch (exception) {
+    await codeExecutionSession?.tracker.cleanup()
+
+    throw exception
+  }
+
+  const closeConnectorClients = async () => {
+    await connectorsRun?.close()
+  }
+  const connectorsInstructionBlock = connectorsRun
+    && Object.keys(connectorsRun.tools).length > 0
+    ? CONNECTOR_INSTRUCTIONS
+    : null
+
   const toolLoop = resolveToolLoop(parsedTools.tools, {
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
@@ -1830,6 +1941,7 @@ export default defineEventHandler(async (event) => {
       ? KNOWLEDGE_LIMITS.toolCallsPerSend
       : 0,
     skillSteps: skillsSend.toolsRegistered ? SKILL_TOOL_STEPS : 0,
+    connectorSteps: connectorsInstructionBlock ? CONNECTOR_STEPS_PER_TURN : 0,
     guard: chatSearchBudget,
   })
   const toolLoopOptions = toolLoop
@@ -1843,8 +1955,14 @@ export default defineEventHandler(async (event) => {
       .filter(toolName => !isArtifactToolName(toolName)),
   )
   const answerGuaranteeToolNames = new Set(
-    [...followUpToolNames].filter(toolName => !isSkillToolName(toolName)),
+    [...followUpToolNames].filter((toolName) => {
+      return !isSkillToolName(toolName) && !isConnectorToolName(toolName)
+    }),
   )
+  const persistenceFollowUpToolNames = new Set([
+    ...answerGuaranteeToolNames,
+    ...[...followUpToolNames].filter(isConnectorToolName),
+  ])
 
   const stream = createUIMessageStream({
     onError(error) {
@@ -1881,6 +1999,13 @@ export default defineEventHandler(async (event) => {
       try {
         for (const activationPart of skillsSend.streamActivations) {
           writer.write(activationPart)
+        }
+
+        if (connectorNotices.length > 0) {
+          writer.write({
+            type: CONNECTORS_NOTICE_PART_TYPE,
+            data: { lines: connectorNotices },
+          })
         }
 
         if (missingFiles.length > 0) {
@@ -2103,6 +2228,7 @@ export default defineEventHandler(async (event) => {
               artifactInstructions,
               documentsContextLine,
               skillsInstructionBlock: skillsSend.instructionBlock,
+              connectorsInstructionBlock,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
             }),
@@ -2120,7 +2246,7 @@ export default defineEventHandler(async (event) => {
             // never set this either, so they keep their existing uncapped
             // behavior unchanged.
             maxOutputTokens: gatewayMaxOutputTokens,
-            onEnd({ usage, providerMetadata, steps }) {
+            async onEnd({ usage, providerMetadata, steps }) {
               mainLoopSteps = [...steps]
               recordAiStreamUsage({
                 usage: resolveLoopUsage(usage, steps),
@@ -2128,7 +2254,10 @@ export default defineEventHandler(async (event) => {
                 providerMetadata,
               })
               recordSdkWarnings('aiWarnings', steps)
+              await closeConnectorClients()
             },
+            onError: closeConnectorClients,
+            onAbort: closeConnectorClients,
             tools: parsedTools.tools,
             ...(parsedTools.toolChoice
               ? { toolChoice: parsedTools.toolChoice }
@@ -2340,6 +2469,7 @@ export default defineEventHandler(async (event) => {
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: false,
               skillsInstructionBlock: skillsSend.activeSkillsBlock,
+              connectorsInstructionBlock,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -2444,7 +2574,7 @@ export default defineEventHandler(async (event) => {
           gatewayPricing,
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
-          followUpToolNames: answerGuaranteeToolNames,
+          followUpToolNames: persistenceFollowUpToolNames,
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
           knowledgeMode: knowledgeContext?.decision.mode,
           autoWebSearch: autoWebSearchOutcome,
@@ -2455,6 +2585,7 @@ export default defineEventHandler(async (event) => {
             : undefined,
           skillActivationParts: skillsSend.streamActivations as
             unknown as UIMessage['parts'],
+          getConnectorSecrets: connectorsRun?.secrets,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -2618,6 +2749,7 @@ export default defineEventHandler(async (event) => {
           }
         }
       } finally {
+        await closeConnectorClients()
         await codeExecutionSession?.tracker.cleanup()
         await generationGuardHeartbeat.stop()
 
@@ -3559,6 +3691,7 @@ async function persistAssistantMessageFromStream(input: {
   getCodeExecutionFileIds?: () => string[]
   pastChatChipPart?: UIMessage['parts'][number]
   skillActivationParts?: UIMessage['parts']
+  getConnectorSecrets?: () => string[]
 }): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
@@ -3643,8 +3776,7 @@ async function persistAssistantMessageFromStream(input: {
       })
       && responseParts.some((part) => {
         return isToolUIPart(part)
-          && part.type.startsWith('tool-')
-          && input.followUpToolNames.has(part.type.slice('tool-'.length))
+          && isFollowUpToolPart(part, input.followUpToolNames)
           && (
             part.state === 'output-available'
             || part.state === 'output-error'
@@ -3656,16 +3788,19 @@ async function persistAssistantMessageFromStream(input: {
         text: getPersistedEmptyAnswerFailureText(),
       }]
       : normalizedParts
-    const finalParts = redactSkillToolPartsForPersistence(
-      redactMemoryToolPartsForPersistence(
-        appendSkillActivationParts([
-          ...(input.skillActivationParts ?? []),
-          ...stripUndeliveredInlineDataParts(
-            partsBeforeSizeGuard,
-            input.logger,
-          ),
-        ]),
+    const finalParts = redactConnectorToolPartsForPersistence(
+      redactSkillToolPartsForPersistence(
+        redactMemoryToolPartsForPersistence(
+          appendSkillActivationParts([
+            ...(input.skillActivationParts ?? []),
+            ...stripUndeliveredInlineDataParts(
+              partsBeforeSizeGuard,
+              input.logger,
+            ),
+          ]),
+        ),
       ),
+      input.getConnectorSecrets?.() ?? [],
     )
 
     if (!hasMeaningfulAssistantParts(finalParts)) {
@@ -4046,6 +4181,7 @@ function buildChatInstructions(input: {
   artifactInstructions?: string | null
   documentsContextLine?: string | null
   skillsInstructionBlock?: string | null
+  connectorsInstructionBlock?: string | null
   codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
@@ -4062,6 +4198,7 @@ function buildChatInstructions(input: {
     artifactInstructions,
     documentsContextLine,
     skillsInstructionBlock,
+    connectorsInstructionBlock,
     codeExecutionInputNames,
     now = new Date(),
   } = input
@@ -4089,6 +4226,10 @@ function buildChatInstructions(input: {
 
   if (skillsInstructionBlock) {
     instructions.push(skillsInstructionBlock)
+  }
+
+  if (connectorsInstructionBlock) {
+    instructions.push(connectorsInstructionBlock)
   }
 
   if (requestedTools.includes('code_execution')) {

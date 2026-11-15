@@ -21,6 +21,8 @@ function createState(
     lower?: boolean
     skills?: boolean
     skillAttached?: boolean
+    connectors?: boolean
+    connectorsOn?: number
     project?: boolean
     projectName?: string
   } = {},
@@ -32,6 +34,8 @@ function createState(
     lower = true,
     skills = false,
     skillAttached = false,
+    connectors = false,
+    connectorsOn = 0,
     project = false,
     projectName,
   } = overrides
@@ -84,6 +88,26 @@ function createState(
         version: 1,
         mode: 'auto',
       }],
+    },
+    connectors: {
+      visible: connectors,
+      items: [
+        {
+          id: 'c1',
+          slug: 'notion',
+          title: 'Notion',
+          host: 'mcp.notion.com',
+          status: 'ready',
+        },
+        {
+          id: 'c2',
+          slug: 'linear',
+          title: 'Linear',
+          host: 'mcp.linear.app',
+          status: 'ready',
+        },
+      ],
+      selectedIds: ['c1', 'c2'].slice(0, connectorsOn),
     },
     project: {
       visible: project,
@@ -155,6 +179,77 @@ describe('ChatInput/ToolsMenu/Content skills', () => {
 
     expect(wrapper.get('[data-testid="tools-action-skills"] .badge').text())
       .toBe('1')
+  })
+})
+
+describe('ChatInput/ToolsMenu/Content connectors row', () => {
+  it('adds one Connectors row to the Add section and never lists connectors inline', async () => {
+    const hidden = await mountContent(createState())
+    const shown = await mountContent(createState({ connectors: true }))
+
+    expect(hidden.find('[data-testid="tools-action-connectors"]').exists())
+      .toBe(false)
+    expect(layout(shown)).toEqual(layout(hidden))
+
+    const row = shown.get('[data-testid="tools-action-connectors"]')
+
+    expect(row.text()).toContain('Connectors')
+    expect(shown.findAll('[data-testid="tools-action-connectors"]'))
+      .toHaveLength(1)
+    expect(shown.text()).not.toContain('Notion')
+    expect(shown.text()).not.toContain('mcp.notion.com')
+    expect(shown.element.querySelector('input[type="checkbox"][aria-label*="Notion"]'))
+      .toBeNull()
+  })
+
+  it('renders the Add section when only the Connectors row is visible', async () => {
+    const wrapper = await mountContent(createState({
+      files: false,
+      connectors: true,
+    }))
+
+    expect(layout(wrapper).at(-1)).toBe('add')
+    expect(wrapper.find('[data-testid="tools-action-attach"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="tools-action-connectors"]').exists())
+      .toBe(true)
+  })
+
+  it('shows how many connectors are on as a badge and opens the picker', async () => {
+    const wrapper = await mountContent(createState({ connectors: true }))
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"]')
+      .find('.badge').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="tools-action-connectors"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('open-connectors-picker')).toHaveLength(1)
+
+    await wrapper.setProps({
+      state: createState({ connectors: true, connectorsOn: 2 }),
+    })
+
+    expect(wrapper.get('[data-testid="tools-action-connectors"] .badge').text())
+      .toBe('2')
+  })
+
+  it('sits after Add skill and before the Project row', async () => {
+    const wrapper = await mountContent(createState({
+      skills: true,
+      connectors: true,
+      project: true,
+    }))
+    const rows = wrapper.findAll(
+      '[data-section="add"] button[data-testid^="tools-"]',
+    )
+    const ids = rows.map(row => row.attributes('data-testid'))
+
+    expect(ids.slice(-3)).toEqual([
+      'tools-action-skills',
+      'tools-action-connectors',
+      'tools-project',
+    ])
   })
 })
 

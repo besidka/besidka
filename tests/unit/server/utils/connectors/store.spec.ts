@@ -18,6 +18,8 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
 })
 
 const {
+  CONNECTOR_BASELINE_MARKER_SETTING,
+  CONNECTOR_BASELINE_MARKER_TOOL_NAME,
   createConnector,
   deleteConnector,
   deleteConnectorCredentials,
@@ -26,6 +28,7 @@ const {
   listConnectorToolSettings,
   listConnectors,
   readConnectorCredentials,
+  readConnectorToolBaseline,
   readConnectorUrl,
   recordConnectorToolCall,
   saveConnectorCredentials,
@@ -505,6 +508,40 @@ describe('connectors store', () => {
         definitionHash: 'victim-hash',
         approval: 'ask',
       }))
+    })
+
+    it('keeps the baseline marker out of tool listings and still counts '
+      + 'it as a baseline', async () => {
+      const connector = await addConnector(userId)
+
+      expect(await readConnectorToolBaseline(
+        testDb.db,
+        userId,
+        connector.id,
+      )).toEqual({ isBaselined: false, settings: [] })
+
+      await upsertConnectorToolSettings(
+        testDb.db,
+        userId,
+        connector.id,
+        [CONNECTOR_BASELINE_MARKER_SETTING],
+      )
+
+      expect(CONNECTOR_BASELINE_MARKER_TOOL_NAME).toBe('')
+      expect(await listConnectorToolSettings(
+        testDb.db,
+        userId,
+        connector.id,
+      )).toEqual([])
+      expect(await readConnectorToolBaseline(
+        testDb.db,
+        userId,
+        connector.id,
+      )).toEqual({ isBaselined: true, settings: [] })
+
+      const result = await deleteConnector(testDb.db, userId, connector.id)
+
+      expect(result.toolSettingsDeleted).toBe(1)
     })
 
     it('refuses chat settings for a connector of another user', async () => {

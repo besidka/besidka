@@ -458,6 +458,27 @@ keyboard), gated on `skills.commands`, and it does not use
 `chat-input:open-popover`. The "+" menu keeps listing every enabled skill, with
 or without a command.
 
+## Connectors row (connectors layer C-5)
+
+The Add section has one more row, "Connectors" (`tools-action-connectors`,
+after "Add skill"), shown only when the `connectors` flag is on, the user has
+at least one connector that is on and connected (or drifted), the model can
+call tools, and the send is not a deep research or image generation send. The
+badge is the number of connectors on in this chat. It emits
+`open-connectors-picker`, which opens `ChatInput/ConnectorPicker.client.vue`:
+a dialog with a toggle per connector (title, host as plain text, a `badge
+badge-soft` when it is `drifted`), at most five on, and a "Manage connectors"
+link to `/profile/connectors`. Connectors are never listed inline in the menu.
+
+The choice is per chat. On an existing chat each toggle saves at once through
+`PUT /api/v1/chats/[slug]/connectors` and rolls back on failure; on
+`/chats/new` it is held in client state and handed to the new chat's slug
+before navigation. The send body carries `connectorIds` (only while the flag
+is on and the choice is known), which the server stores as the chat's choice.
+The tile "N connectors" shows while any is on, and its remove button turns
+them all off. Hiding the row (image mode, a model without tool calling) does
+not clear the choice. See `docs/connectors.md` section 6.1.
+
 ## Add key links in Web search
 
 When Brave or Exa has no key, the Web search section lists one "Add a Brave

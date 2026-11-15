@@ -8,6 +8,7 @@ import { isProjectKnowledgeToolName } from '~~/server/utils/ai/knowledge-tools'
 import { isArtifactToolName } from '~~/server/utils/artifacts/message-parts'
 import { isDocumentToolName } from '~~/server/utils/documents/message-parts'
 import { isSkillToolName } from '#shared/utils/skills/runtime'
+import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -41,6 +42,7 @@ export interface ToolLoopBudget {
   chatSearchSteps?: number
   knowledgeSteps?: number
   skillSteps?: number
+  connectorSteps?: number
   guard?: UntrustedContentGuard
 }
 
@@ -82,6 +84,10 @@ export function toolRequiresFollowUpTurn(tool: unknown): boolean {
   return (tool as Record<string, unknown>).requiresFollowUpTurn === true
 }
 
+export function isConnectorToolName(toolName: string): boolean {
+  return toolName.startsWith(CONNECTOR_TOOL_NAME_PREFIX)
+}
+
 function isBudgetedLookupToolName(toolName: string): boolean {
   return isChatSearchToolName(toolName) || isMemoryToolName(toolName)
 }
@@ -90,6 +96,7 @@ function isWebFollowUpToolName(toolName: string): boolean {
   return !isBudgetedLookupToolName(toolName)
     && !isProjectKnowledgeToolName(toolName)
     && !isSkillToolName(toolName)
+    && !isConnectorToolName(toolName)
 }
 
 function isUntrustedToolResultPart(part: unknown): boolean {
@@ -219,8 +226,10 @@ function createToolLoopPrepareStep(
  * registered follow-up tool is neither a chat-search, a memory nor a
  * project-knowledge tool (web search), `chatSearchSteps` more when a
  * chat-search or memory tool is registered, `knowledgeSteps` more when a
- * project-knowledge tool is registered, and `skillSteps` more when a skill
- * tool is registered, so no lookup family ever eats another family's rounds.
+ * project-knowledge tool is registered, `skillSteps` more when a skill
+ * tool is registered, and `connectorSteps` more when a connector tool
+ * (`mcp__<slug>__<tool>`) is registered, so no lookup family ever eats
+ * another family's rounds.
  * When the follow-up tools grant no steps at all (lookup tools with a
  * non-positive allowance), the cap falls back to
  * `TOOL_LOOP_MAX_TOOL_STEPS` so the loop never degenerates to a single step.
@@ -253,13 +262,16 @@ export function resolveToolLoop(
   const hasChatSearchTool = followUpToolNames.some(isBudgetedLookupToolName)
   const hasKnowledgeTool = followUpToolNames.some(isProjectKnowledgeToolName)
   const hasSkillTool = followUpToolNames.some(isSkillToolName)
+  const hasConnectorTool = followUpToolNames.some(isConnectorToolName)
   const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
   const knowledgeSteps = Math.max(0, budget?.knowledgeSteps ?? 0)
   const skillSteps = Math.max(0, budget?.skillSteps ?? 0)
+  const connectorSteps = Math.max(0, budget?.connectorSteps ?? 0)
   const toolSteps = (hasWebFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
     + (hasChatSearchTool ? chatSearchSteps : 0)
     + (hasKnowledgeTool ? knowledgeSteps : 0)
     + (hasSkillTool ? skillSteps : 0)
+    + (hasConnectorTool ? connectorSteps : 0)
   const maxSteps = (toolSteps || TOOL_LOOP_MAX_TOOL_STEPS) + 1
 
   return {

@@ -81,6 +81,7 @@
 		"@ai-sdk/deepseek": "^3.0.73",
 		"@ai-sdk/gateway": "4.0.126",
 		"@ai-sdk/google": "^4.0.105",
+		"@ai-sdk/mcp": "2.0.93",
 		"@ai-sdk/moonshotai": "^3.0.78",
 		"@ai-sdk/openai": "^4.0.102",
 		"@ai-sdk/openai-compatible": "^3.0.78",

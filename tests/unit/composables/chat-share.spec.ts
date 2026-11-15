@@ -121,6 +121,30 @@ describe('useChatShare', () => {
     })
   })
 
+  it('reads usedConnector from the GET response and clears it on close', async () => {
+    fetchMock.mockResolvedValue({
+      share: null,
+      hasFiles: false,
+      usedConnector: true,
+    })
+
+    const {
+      closeShareModal,
+      loadShare,
+      targetChatSlug,
+      targetUsedConnector,
+    } = useChatShare()
+
+    targetChatSlug.value = 'chat-1'
+    await loadShare('chat-1')
+
+    expect(targetUsedConnector.value).toBe(true)
+
+    closeShareModal()
+
+    expect(targetUsedConnector.value).toBe(false)
+  })
+
   it('opens the modal and overrides targetHasFiles from the GET response', async () => {
     fetchMock.mockResolvedValue({
       share: null,

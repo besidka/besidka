@@ -126,6 +126,57 @@ describe('memory extraction input', () => {
       expect(window.consumedCount).toBe(5)
     })
 
+  it('excludes assistant turns that called a connector tool', async () => {
+    const { loadMemoryExtractionWindow } = await loadInput()
+
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('List my open issues'),
+    ], minutesBefore(50))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      {
+        type: 'dynamic-tool',
+        toolName: 'mcp__linear__list_issues',
+        output: '<untrusted_tool_result>x</untrusted_tool_result>',
+      },
+      textPart('CONNECTOR-DATA-IN-ANSWER'),
+    ], minutesBefore(49))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      textPart('A normal answer'),
+    ], minutesBefore(48))
+
+    const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+    expect(window.transcript).not.toContain('CONNECTOR-DATA')
+    expect(window.transcript).toContain('List my open issues')
+    expect(window.transcript).toContain('A normal answer')
+    expect(window.consumedCount).toBe(3)
+  })
+
+  it('excludes a branched turn that kept only the connector marker',
+    async () => {
+      const { loadMemoryExtractionWindow } = await loadInput()
+
+      await seedMessage(testDb.db, chatId, 'user', [
+        textPart('List my open issues'),
+      ], minutesBefore(50))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        textPart('CONNECTOR-DATA-IN-BRANCHED-ANSWER'),
+        {
+          type: 'data-connectors-notice',
+          data: { lines: [], usedConnector: true },
+        },
+      ], minutesBefore(49))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        textPart('A normal answer'),
+      ], minutesBefore(48))
+
+      const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+      expect(window.transcript).not.toContain('CONNECTOR-DATA')
+      expect(window.transcript).toContain('A normal answer')
+      expect(window.consumedCount).toBe(3)
+    })
+
   it('excludes the turn that carries the past-chat pre-retrieval chip',
     async () => {
       const { loadMemoryExtractionWindow } = await loadInput()

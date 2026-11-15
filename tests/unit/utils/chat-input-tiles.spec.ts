@@ -610,3 +610,98 @@ describe('buildChatInputTiles skill tile', () => {
     expect(tileIds(createState())).toEqual([])
   })
 })
+
+describe('buildChatInputTiles connectors tile', () => {
+  const items = [
+    {
+      id: 'c1',
+      slug: 'notion',
+      title: 'Notion',
+      host: 'mcp.notion.com',
+      status: 'ready' as const,
+    },
+    {
+      id: 'c2',
+      slug: 'linear',
+      title: 'Linear',
+      host: 'mcp.linear.app',
+      status: 'ready' as const,
+    },
+  ]
+
+  function withConnectors(
+    selectedIds: string[],
+    visible = true,
+    overrides: StateOverrides = {},
+  ) {
+    return createState({
+      connectors: { visible, items, selectedIds },
+      ...overrides,
+    } as Partial<ChatInputToolsState>)
+  }
+
+  it('adds nothing until at least one connector is on', () => {
+    expect(tileIds(withConnectors([]))).toEqual([])
+    expect(tileIds(createState())).toEqual([])
+  })
+
+  it('adds one removable tile for a single connector', () => {
+    const [tile] = buildChatInputTiles(withConnectors(['c1']))
+
+    expect(tile).toMatchObject({
+      id: 'connectors',
+      section: 'connectors',
+      icon: { kind: 'icon', name: 'lucide:cable' },
+      caption: 'Connectors',
+      value: '1',
+      chipLabel: '1 connector',
+      removeLabel: 'Turn off connectors',
+      isNeutral: false,
+      isLocked: false,
+    })
+  })
+
+  it('counts the connectors that are on', () => {
+    const [tile] = buildChatInputTiles(withConnectors(['c1', 'c2']))
+
+    expect(tile?.chipLabel).toBe('2 connectors')
+    expect(tile?.ariaLabel).toContain('2 connectors')
+  })
+
+  it('ignores selected ids that are no longer selectable', () => {
+    expect(tileIds(withConnectors(['gone']))).toEqual([])
+    expect(buildChatInputTiles(withConnectors(['c1', 'gone']))[0]?.chipLabel)
+      .toBe('1 connector')
+  })
+
+  it('adds nothing while the row is hidden', () => {
+    expect(tileIds(withConnectors(['c1'], false))).toEqual([])
+  })
+
+  it('adds nothing for a deep research model or before capabilities resolve', () => {
+    expect(tileIds(withConnectors(['c1'], true, {
+      isDeepResearchModel: true,
+    }))).not.toContain('connectors')
+    expect(tileIds(withConnectors(['c1'], true, {
+      isCapabilityResolved: false,
+    }))).toEqual([])
+  })
+
+  it('comes after the settings and before the skill tile', () => {
+    const state = withConnectors(['c1'], true, {
+      memory: { excluded: true },
+      skills: {
+        visible: true,
+        items: [],
+        selected: {
+          skillId: 'skl1',
+          name: 'writing-style',
+          version: 1,
+          source: 'menu',
+        },
+      },
+    } as StateOverrides)
+
+    expect(tileIds(state)).toEqual(['memory', 'connectors', 'skill'])
+  })
+})
