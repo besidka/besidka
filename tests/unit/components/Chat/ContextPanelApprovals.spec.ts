@@ -95,6 +95,29 @@ describe('Chat/ContextPanelApprovals', () => {
     expect(mocks.revokeAlwaysGrant).toHaveBeenCalledWith(ALWAYS_GRANT)
   })
 
+  it('links a Besidka Always allow grant to the Labs permissions',
+    async () => {
+      mocks.grants = [{
+        scope: 'always',
+        connectorId: '',
+        connectorTitle: 'Besidka',
+        toolName: 'list_projects',
+        source: 'besidka',
+      }]
+
+      const wrapper = await mountSuspended(ContextPanelApprovals)
+      const row = wrapper.get('[data-testid="chat-context-approval-always"]')
+      const manage = row.get(
+        '[data-testid="chat-context-approval-manage-besidka"]',
+      )
+
+      expect(row.text()).toContain('Besidka · Always allowed, in every chat')
+      expect(manage.attributes('to'))
+        .toBe('/profile/labs?panel=besidka-tool-permissions')
+      expect(row.find('[data-testid="chat-context-approval-remove"]')
+        .exists()).toBe(false)
+    })
+
   it('hides Reset when only always grants apply', async () => {
     mocks.grants = [ALWAYS_GRANT]
 

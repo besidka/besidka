@@ -90,14 +90,16 @@
               v-for="(step, index) in reasoningSteps"
               :key="step.id"
               class="relative min-w-0"
-              :class="step.approvalOutcome
+              :class="step.approvalOutcome || step.grantMarker
                 ? 'grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2'
                 : 'flex gap-2'
               "
             >
               <div
                 class="relative flex w-5 shrink-0 items-start justify-center"
-                :class="{ 'row-span-2': step.approvalOutcome }"
+                :class="{
+                  'row-span-2': step.approvalOutcome || step.grantMarker,
+                }"
               >
                 <span
                   v-if="index > 0"
@@ -298,9 +300,9 @@ import {
   getApprovalReasonText,
   getApprovalSourceLabel,
   getApprovalStepModel,
+  getApprovalStepSummaryLine,
   getApprovalStepTitle,
   getGrantMarkerText,
-  getApprovalSummaryLine,
   resolveApprovalStepState,
 } from '~/utils/tool-approval-step'
 import {
@@ -535,7 +537,7 @@ function buildApprovalStep(
       ? titlesBySlug.value.get(connectorSlug) || connectorSlug
       : '',
     reasonText: getApprovalReasonText(entry.model.reason, sourceLabel),
-    summaryLine: getApprovalSummaryLine(entry.model.summary),
+    summaryLine: getApprovalStepSummaryLine(entry.model),
     progress: isLastAwaiting && entry.state !== 'sending'
       ? formatApprovalProgress(answeredCount, awaiting.length)
       : '',
@@ -617,7 +619,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         toolName: approvalEntry.model.connectorSlug
           ? `${CONNECTOR_TOOL_NAME_PREFIX}${approvalEntry.model.connectorSlug}`
           + `__${approvalEntry.model.tool}`
-          : approvalEntry.model.tool,
+          : approvalEntry.model.toolName,
         title: getApprovalStepTitle(
           approvalEntry.model,
           approvalEntry.model.connectorSlug
@@ -736,6 +738,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       skill: null,
       connector: null,
       approvalOutcome,
+      grantMarker: getGrantMarkerText(props.message.parts, toolCallId),
     })
   }
 

@@ -962,6 +962,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   } = useAutoWebSearch()
   const connectorsFeature = useFeature('connectors')
   const { selection: connectorSelection } = useChatConnectorSelection()
+  const isBesidkaToolsAvailable = useBesidkaToolsAvailability()
+  const { selection: besidkaToolsSelection } = useBesidkaToolsSelection()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   // App-wide signal for whether any chat turn is actively streaming, read by
@@ -1049,6 +1051,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return { connectorIds: ids }
   }
 
+  function getBesidkaToolsField(): { besidkaToolsEnabled?: boolean } {
+    const { chatKey, enabled, isKnown } = besidkaToolsSelection.value
+
+    if (!isBesidkaToolsAvailable.value || !isKnown || chatKey !== chatSlug) {
+      return {}
+    }
+
+    return { besidkaToolsEnabled: enabled }
+  }
+
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
   const toolApprovalRemember = createToolApprovalRememberStore()
   const toolApprovalsFeature = useFeature('tool-approvals')
@@ -1126,6 +1138,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
               prefStorage.getItem('settings_exa_search_level'),
             ),
             ...getConnectorIdsField(),
+            ...getBesidkaToolsField(),
           },
         }
       },

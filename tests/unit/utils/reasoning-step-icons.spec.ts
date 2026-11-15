@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { BESIDKA_TOOL_NAME_PREFIX } from '#shared/utils/besidka-tool-permissions'
 import {
-  BESIDKA_TOOL_NAME_PREFIX,
   REASONING_STEP_ICON_COLLECTIONS,
   getConnectorLetter,
   getToolPartDocumentFormat,

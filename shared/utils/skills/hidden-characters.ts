@@ -32,6 +32,18 @@ export const TAG_CHARACTER_RUN_PATTERN = /[\u{E0000}-\u{E007F}]+/gu
 const FLAG_TAG_SEQUENCE_PATTERN
   = /^[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{1,10}\u{E007F}$/u
 
+const UNSAFE_TEXT_CHARACTERS
+  = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{E0000}-\u{E007F}]/gu
+
+/**
+ * Removes control, bidi, format and tag characters from text that came from
+ * outside, keeping tabs and line breaks, so a skill description cannot hide
+ * or reorder what the user reads in a catalog, a list or an approval.
+ */
+export function stripUnsafeSkillCharacters(text: string): string {
+  return text.replace(UNSAFE_TEXT_CHARACTERS, '')
+}
+
 export function hasHiddenCharacter(text: string): boolean {
   return HIDDEN_CHARACTER_TEST_PATTERN.test(text)
 }

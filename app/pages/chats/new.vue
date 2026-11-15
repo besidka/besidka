@@ -121,6 +121,7 @@ const tools = shallowRef<Tools>(
   isWebSearchTool(savedWebSearchTool) ? [savedWebSearchTool] : [],
 )
 const connectorSelection = useChatConnectorSelection()
+const besidkaToolsSelection = useBesidkaToolsSelection()
 const pending = shallowRef<boolean>(false)
 const isClarifying = shallowRef<boolean>(false)
 const isCreatingResearchChat = shallowRef<boolean>(false)
@@ -658,6 +659,7 @@ async function onSubmit() {
 
     draftBackup.clear()
     connectorSelection.handOff(response.slug)
+    besidkaToolsSelection.handOff(response.slug)
     await navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
     // Back up the draft only on a real failure (a successful send never leaves

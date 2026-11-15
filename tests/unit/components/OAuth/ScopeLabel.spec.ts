@@ -18,6 +18,44 @@ describe('OAuth scope label', () => {
     }
   })
 
+  it('names the connector scopes and says what they cannot do', async () => {
+    const read = await mountSuspended(ScopeLabel, {
+      props: { scope: 'connectors:read', withDescription: true },
+    })
+    const write = await mountSuspended(ScopeLabel, {
+      props: { scope: 'connectors:write', withDescription: true },
+    })
+
+    expect(read.text()).toContain(
+      'See your connectors: names and addresses, never their keys',
+    )
+    expect(read.text()).toContain('Never their keys or sign-in tokens')
+    expect(write.text()).toContain(
+      'Add, change and delete connectors. New ones start switched off; '
+      + 'you switch them on in Besidka',
+    )
+    expect(write.text()).toContain('It cannot switch a connector on')
+    expect(write.text()).toContain('You do that in Besidka')
+  })
+
+  it('names the skill scopes and says what they cannot do', async () => {
+    const read = await mountSuspended(ScopeLabel, {
+      props: { scope: 'skills:read', withDescription: true },
+    })
+    const write = await mountSuspended(ScopeLabel, {
+      props: { scope: 'skills:write', withDescription: true },
+    })
+
+    expect(read.text()).toContain('See your skills and their full text')
+    expect(write.text()).toContain(
+      'Add, change and delete skills. Changes are saved switched off for '
+      + 'your review',
+    )
+    expect(write.text()).toContain('permanently delete skills')
+    expect(write.text()).toContain('It cannot switch a skill on')
+    expect(write.text()).toContain('set it to Auto or share it')
+  })
+
   it('describes what publishing exposes', async () => {
     const wrapper = await mountSuspended(ScopeLabel, {
       props: { scope: 'artifacts:share', withDescription: true },

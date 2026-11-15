@@ -206,6 +206,28 @@ describe('Besidka tool permissions', () => {
         )).toBe('allow')
       })
 
+    it('reads a stored mode it does not know as "blocked"', async () => {
+      await testDb.db.insert(schema.besidkaToolPermissions).values({
+        userId,
+        toolName: 'list_files',
+        mode: 'sometimes' as never,
+      })
+
+      expect(await resolveBesidkaPermissionMode(
+        userId,
+        'list_files',
+        { db: testDb.db },
+      )).toBe('blocked')
+      expect(await resolveBesidkaPermissionModes(
+        userId,
+        ['besidka__list_files', 'get_project'],
+        testDb.db,
+      )).toEqual(new Map([
+        ['besidka__list_files', 'blocked'],
+        ['get_project', 'ask'],
+      ]))
+    })
+
     it('reads an unknown or excluded tool as "blocked"', async () => {
       for (const tool of ['nope', 'set_feature_access', 'add_memory']) {
         expect(await resolveBesidkaPermissionMode(

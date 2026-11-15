@@ -37,6 +37,7 @@ export interface ToolApprovalPartData {
   reason: ToolApprovalReason
   summary: string
   rememberOptions: ToolApprovalRemember[]
+  preview?: string
 }
 
 export interface ToolApprovalDataPart {

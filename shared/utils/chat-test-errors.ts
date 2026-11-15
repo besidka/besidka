@@ -14,6 +14,7 @@ export const chatTestScenarios = [
   'skill',
   'tool-approval',
   'tool-approvals',
+  'besidka-tool-approval',
   'reasoning-icons',
 ] as const
 
