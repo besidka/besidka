@@ -168,6 +168,25 @@ function parseFrontmatterBlock(raw: string): Record<string, unknown> | null {
   return parsed as Record<string, unknown>
 }
 
+/**
+ * The frontmatter as a plain object, with its raw text, for checks that need
+ * keys the skill model does not keep (`hooks`, `shell`, `context`). Null when
+ * there is no readable frontmatter block.
+ */
+export function readSkillFrontmatterData(
+  text: string,
+): { data: Record<string, unknown>, raw: string } | null {
+  const split = splitSkillFrontmatter(text)
+
+  if (!split.ok) {
+    return null
+  }
+
+  const data = parseFrontmatterBlock(split.raw)
+
+  return data ? { data, raw: split.raw } : null
+}
+
 function isScalar(value: unknown): value is string | number | boolean {
   return typeof value === 'string'
     || typeof value === 'number'

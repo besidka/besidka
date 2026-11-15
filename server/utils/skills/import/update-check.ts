@@ -47,6 +47,7 @@ import {
   loadVersionFiles,
   readChangedFileTexts,
 } from '~~/server/utils/skills/versions/read'
+import { readSkillLookalikeContext } from '~~/server/utils/skills/lookalike-context'
 import { countUserSkills } from '~~/server/utils/skills/usage'
 
 type DbClient = ReturnType<typeof useDb>
@@ -521,9 +522,17 @@ export async function checkGithubSkillUpdate(
     }
   }
 
+  const lookalike = await readSkillLookalikeContext({
+    db: input.db,
+    userId: input.userId,
+    sourceUrl: skill.sourceUrl,
+    excludeSkillId: input.skillId,
+  })
   const analysis = await analyzeSkillFiles({
     files,
     folderName: loaded.folderName,
+    source: lookalike.source,
+    otherSkillNames: lookalike.otherSkillNames,
   })
 
   if (!analysis.ok) {

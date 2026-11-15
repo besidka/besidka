@@ -1807,6 +1807,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/api/v1/skills/update-check.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
     'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/utils/skills/findings-execution.spec.ts',
+    'tests/unit/utils/skills/findings-intent.spec.ts',
+    'tests/unit/utils/skills/findings-frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings-redos.spec.ts',
+    'tests/unit/utils/skills/url-hosts.spec.ts',
+    'tests/unit/utils/skills/known-names.spec.ts',
+    'tests/unit/utils/skills/file-set-findings.spec.ts',
     'tests/unit/server/utils/skills/import/update-findings.spec.ts',
   ]
 
@@ -1816,7 +1823,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/skills/frontmatter.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
     'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/utils/skills/findings-execution.spec.ts',
+    'tests/unit/utils/skills/findings-intent.spec.ts',
+    'tests/unit/utils/skills/findings-frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings-redos.spec.ts',
+    'tests/unit/utils/skills/url-hosts.spec.ts',
+    'tests/unit/utils/skills/known-names.spec.ts',
+    'tests/unit/utils/skills/file-set-findings.spec.ts',
     'tests/unit/server/utils/skills/import/update-findings.spec.ts',
+    'tests/unit/server/utils/skills/lookalike-context.spec.ts',
+    'tests/unit/server/utils/skills/import/preview-lookalike.spec.ts',
     'tests/unit/utils/skills/license.spec.ts',
     'tests/unit/utils/skills/archive.spec.ts',
     'tests/unit/utils/skills/analyze.spec.ts',
@@ -3409,7 +3425,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
+        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending|lookalike-context)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
       tests: skillsVersionsTests,
     },
     {
@@ -3424,7 +3440,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
       tests: skillsManagerTests,
     },
     {
@@ -3893,7 +3909,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)\.ts$/,
+      pattern: /^(server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)|shared\/utils\/secret-patterns)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,

@@ -8,6 +8,10 @@ import {
   REDACTION_PLACEHOLDER,
   neverStoreKindIds,
 } from '#shared/utils/memory-policy'
+import {
+  API_KEY_PREFIX_ALTERNATIVES,
+  BEARER_TOKEN_ALTERNATIVE,
+} from '#shared/utils/secret-patterns'
 import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
 import {
   foldPolishDiacritics,
@@ -163,23 +167,7 @@ const PASSPORT_PATTERN = new RegExp(
 const API_KEY_PATTERN = new RegExp(
   [
     '(?<![A-Za-z0-9])(?:',
-    'sk-[A-Za-z0-9_-]{20,}',
-    '|AIza[A-Za-z0-9_-]{35}',
-    '|AQ\\.[A-Za-z0-9_-]{30,}',
-    '|gh[pousr]_[A-Za-z0-9]{30,}',
-    '|github_pat_[A-Za-z0-9_]{40,}',
-    '|xox[abprs]-[A-Za-z0-9-]{10,}',
-    '|(?:AKIA|ASIA)[A-Z0-9]{16}',
-    '|(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,}',
-    '|xai-[A-Za-z0-9]{30,}',
-    '|gsk_[A-Za-z0-9]{30,}',
-    '|hf_[A-Za-z0-9]{30,}',
-    '|npm_[A-Za-z0-9]{36}',
-    '|glpat-[A-Za-z0-9_-]{20,}',
-    '|vck_[A-Za-z0-9]{20,}',
-    '|BSA[A-Za-z0-9_-]{20,}',
-    '|SG\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}',
-    '|[Bb]earer\\s+[A-Za-z0-9._~+/=-]{20,}',
+    [...API_KEY_PREFIX_ALTERNATIVES, BEARER_TOKEN_ALTERNATIVE].join('|'),
     ')',
   ].join(''),
   'gu',
