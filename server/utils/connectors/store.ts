@@ -1,5 +1,5 @@
 import {
-  and, asc, desc, eq, getTableColumns, sql,
+  and, asc, desc, eq, getTableColumns, inArray, sql,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
@@ -824,6 +824,87 @@ export async function readConnectorToolBaseline(
       return row.toolName !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
     }),
   }
+}
+
+/**
+ * Deletes the reviewed rows of tools the server no longer lists. The
+ * baseline marker row is never deleted here.
+ */
+export async function deleteConnectorToolSettings(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+  toolNames: readonly string[],
+): Promise<number> {
+  const names = toolNames.filter((name) => {
+    return name !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
+  })
+
+  if (names.length === 0) {
+    return 0
+  }
+
+  const rows = await db.delete(schema.connectorToolSettings)
+    .where(and(
+      eq(schema.connectorToolSettings.userId, userId),
+      eq(schema.connectorToolSettings.connectorId, connectorId),
+      inArray(schema.connectorToolSettings.toolName, names),
+    ))
+    .returning({ id: schema.connectorToolSettings.id })
+
+  return rows.length
+}
+
+export interface ConnectorToolSwitch {
+  toolName: string
+  enabled?: boolean
+  resetApproval?: boolean
+}
+
+/**
+ * Turns reviewed tools on or off and sets "Always allow" back to "Ask every
+ * time", without touching the reviewed definition hash, so a page toggle
+ * can never accept a changed definition. Rows of other users, unknown tools
+ * and the baseline marker are left alone. Returns the names that changed.
+ */
+export async function updateConnectorToolSwitches(
+  db: DbClient,
+  userId: number,
+  connectorId: string,
+  switches: readonly ConnectorToolSwitch[],
+): Promise<string[]> {
+  const statements = switches
+    .filter((entry) => {
+      return entry.toolName !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
+        && (entry.enabled !== undefined || entry.resetApproval)
+    })
+    .map((entry) => {
+      return db.update(schema.connectorToolSettings)
+        .set({
+          ...(entry.enabled !== undefined ? { enabled: entry.enabled } : {}),
+          ...(entry.resetApproval
+            ? { approval: 'ask' as const, approvedDefinitionHash: null }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(schema.connectorToolSettings.userId, userId),
+          eq(schema.connectorToolSettings.connectorId, connectorId),
+          eq(schema.connectorToolSettings.toolName, entry.toolName),
+        ))
+        .returning({ toolName: schema.connectorToolSettings.toolName })
+    })
+
+  if (statements.length === 0) {
+    return []
+  }
+
+  const [first, ...rest] = statements
+  const results = await db.batch([first!, ...rest])
+
+  return results.flatMap((rows) => {
+    return rows.map(row => row.toolName)
+  })
 }
 
 export async function upsertConnectorChatSettings(

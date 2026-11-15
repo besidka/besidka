@@ -216,7 +216,7 @@ function noticeForSkippedConnector(title: string): string {
     + 'tools were not used. Try again.'
 }
 
-function resolveAuth(input: {
+export function resolveAuth(input: {
   connector: ConnectorRecord
   credentials: ConnectorCredentials | null
   secrets: Set<string>
@@ -298,7 +298,7 @@ function rejectWhenAborted(signal: AbortSignal): Promise<never> {
   })
 }
 
-function untilDeadline<Result>(
+export function untilDeadline<Result>(
   task: Promise<Result>,
   signal: AbortSignal,
 ): Promise<Result> {
@@ -323,7 +323,7 @@ async function waitAtMost(
   }
 }
 
-async function listRemoteDefinitions(
+export async function listRemoteDefinitions(
   client: ConnectorClient,
   signal: AbortSignal,
 ): Promise<{

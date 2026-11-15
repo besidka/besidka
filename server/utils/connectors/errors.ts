@@ -127,6 +127,18 @@ export const CONNECTOR_ERRORS = {
       + 'so it is hidden from the model',
     fix: 'Review the changed tools on the Connectors page',
   },
+  CONNECTOR_TOOLS_REVIEW_STALE: {
+    message: 'The tools changed again',
+    status: 409,
+    why: 'The server\'s tool list differs from the one you reviewed',
+    fix: 'Review the tools again',
+  },
+  CONNECTOR_TOOL_NOT_FOUND: {
+    message: 'Tool not found',
+    status: 404,
+    why: 'No reviewed tool of this connector has this name',
+    fix: 'Reload the tool list',
+  },
   CONNECTOR_UNREACHABLE: {
     message: 'The connector could not be reached',
     status: 502,
