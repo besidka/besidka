@@ -840,6 +840,24 @@ describe('safeFetch', () => {
       expect(SAFE_FETCH_PURPOSE_POLICY.oauth.timeoutMs).toBe(10_000)
       expect(SAFE_FETCH_PURPOSE_POLICY.registry.timeoutMs).toBe(30_000)
     })
+
+    it('keeps the registry on its own origin', async () => {
+      expect(SAFE_FETCH_PURPOSE_POLICY.registry.redirects).toBe('same-origin')
+
+      fetchMock
+        .mockImplementationOnce(async () => {
+          return redirect(302, 'https://elsewhere.example.org/v0.1/servers')
+        })
+        .mockImplementationOnce(async () => ok())
+
+      const exception = await errorOf(safeFetch(
+        'https://registry.modelcontextprotocol.io/v0.1/servers',
+        { purpose: 'registry' },
+      ))
+
+      expect(exception.code).toBe('CONNECTOR_ORIGIN_CHANGED')
+      expect(calls()).toHaveLength(1)
+    })
   })
 
   describe('caller signal and failures', () => {

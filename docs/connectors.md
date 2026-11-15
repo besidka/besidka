@@ -1,7 +1,7 @@
 # Connectors design (Phase 4a)
 
-Status: **design, 2026-11-08; C-2 to C-5 built** (see the "As built"
-sections 5.5 and 6.1). This document is the source of
+Status: **design, 2026-11-08; C-2 to C-5 and C-8 built** (see the "As
+built" sections 5.5, 6.1 and 9.1). This document is the source of
 truth for the connectors track: C-2 (BES-235) to C-11 (BES-261) implement it,
 and C-1 (BES-233) wrote it. Where a ticket body and this document disagree,
 this document wins; section 13 lists every ticket that has to change. The
@@ -74,8 +74,10 @@ Feature flags (registered by C-2 in the P0-3 registry at stage `internal`,
 `connectors` and `connectors.oauth` are `available: true` since C-4, still at
 stage `internal`: an unavailable flag evaluates to off with `NOT_AVAILABLE`
 whatever the role or grant, so testers and previews could not reach the C-4
-routes. Stage `internal` keeps both admin- and grant-only. `connectors.registry`
-and `connectors.native` stay unavailable until their tickets ship.
+routes. Stage `internal` keeps both admin- and grant-only.
+`connectors.registry` is `available: true` since C-8 (the same reason: an
+unavailable flag evaluates to off for everyone), still at stage `internal`.
+`connectors.native` stays unavailable until its ticket ships.
 
 ## 2. Decisions
 
@@ -226,7 +228,7 @@ Redirects follow a two-tier rule **(this doc)**:
 | --- | --- | --- | --- | --- | --- |
 | `mcp` | MCP transport calls to the connector's server URL | Same-origin only, at most 3 hops. A redirect to another origin stops with `CONNECTOR_ORIGIN_CHANGED`: the user edits the URL, which asks for consent again | 60 s per call, 10 s per connect | 1 MiB raw | `Besidka-Connectors/<version>` |
 | `oauth` | PRM, AS metadata, registration, token, revocation | At most 3 hops, each re-validated; `Authorization` and request body dropped on origin change; 303 becomes GET | 10 s | 256 KiB | `Besidka-Connectors/<version>` |
-| `registry` | `registry.modelcontextprotocol.io` | At most 3 validated hops | 30 s | 2 MiB per page | `Besidka-Connectors/<version>` |
+| `registry` | `registry.modelcontextprotocol.io` | Same-origin only, at most 3 hops; another origin stops with `CONNECTOR_ORIGIN_CHANGED` | 30 s | 2 MiB per page | `Besidka-Connectors/<version>` |
 | `skills-github` | Exactly `github.com/<owner>/<repo>.git/info/refs?service=git-upload-pack` (ref to commit SHA, update checks), and `codeload.github.com/<owner>/<repo>/zip/<sha>` (never `api.github.com`), through the narrow fetcher of `docs/skills.md` section 3.1 until C-3 lands. `githubFetch` returns `{ status, bytes }` (404 and 401 passed to the caller), not a `Response`, so the later `safeFetch` swap needs a small adapter | No redirect followed (`redirect: 'manual'`, any 3xx is an error); the older `github.com/.../archive` hop is gone | 30 s per call, body read included, inside one 60 s request deadline | 15 MiB (API answers 2 MiB) | `Besidka-Skills/<version>` (GitHub answers 403 without a UA) |
 | `skills-url` | A raw `SKILL.md` URL | At most 3 validated hops | 10 s | 256 KiB | `Besidka-Skills/<version>` |
 
@@ -1813,13 +1815,19 @@ the id.
 | `remote_url` | text | the first `streamable-http` remote that passes `parseSafeOutboundUrl` |
 | `remote_type` | text | `streamable-http` |
 | `header_names` | json | names only, never values |
-| `status` | text | registry status |
+| `status` | text | registry status (`active` only in v1) |
 | `registry_updated_at` | timestamp | |
 | `synced_at` | timestamp | mark-and-sweep marker |
 
 Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 `icons`, `_meta` publisher fields, `packages`. Not user data, so no
 `user_id`.
+
+`title` and `description` come from third parties and are plain text only:
+the sync strips control, separator and invisible format characters (bidi
+controls, tag characters) and cuts by code points, but a consumer must still
+render them as text, never with `v-html`, markdown or any interpolation into
+HTML (C-7 consumes them).
 
 ### 8.7 KV keys
 
@@ -1835,7 +1843,8 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
 | `tool-approval:chat:<chatPublicId>` | 24 h | per-chat index of the keys above, used by chat delete and by expiry |
 | `tool-approval-rate:<userId>` | 120 s | approval answers in the current one-minute window (section 7.7) |
-| `connectors:registry:updated-since` | none | sync cursor |
+| `connectors:registry:updated-since` | none | incremental watermark (ISO), set only when a pass reaches its end |
+| `connectors:registry:progress` | none | C-8: JSON `{ mode, startedAt, updatedSince, cursor, maxUpdatedAt }` of an unfinished run, deleted when the run completes |
 | `connectors:registry:full-pass` | none | id of the last completed full pass |
 | `connectors:registry:erasures` | none | SHA-256 of registry names whose maintainers asked for removal |
 
@@ -1916,7 +1925,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `SAFE_FETCH_DEFAULT_TIMEOUT_MS` | 10,000 | C-3 |
 | `SAFE_FETCH_DEFAULT_MAX_BYTES` | 2,097,152 | C-3 |
 | `SAFE_FETCH_MAX_REDIRECTS` | 3 | C-3 |
-| `REGISTRY_SYNC_CRON` | `0 * * * *` (the existing hourly trigger) | C-8 |
+| `REGISTRY_SYNC_CRON` | `7 * * * *` (its own hourly trigger, minute 7) | C-8 |
 | `REGISTRY_PAGE_SIZE` | 100 | C-8 |
 | `REGISTRY_PAGES_PER_RUN` | 20 | C-8 |
 | `REGISTRY_FETCH_TIMEOUT_MS` | 30,000 | C-8 |
@@ -1924,6 +1933,9 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `REGISTRY_FULL_PASS_HOURS` | 24 | C-8 |
 | `REGISTRY_SEARCH_PAGE_SIZE` | 20 | C-8 |
 | `REGISTRY_SEARCHES_PER_MINUTE` | 30 per user | C-8 |
+| `REGISTRY_RUN_BUDGET_MS` | 240,000 wall clock per sync run, checked before each page | C-8 |
+| `REGISTRY_SEARCH_QUERY_MIN_LENGTH` / `REGISTRY_SEARCH_QUERY_MAX_LENGTH` | 2 and 64 characters | C-8 |
+| `REGISTRY_UPSERT_BATCH` | 25 entries per `db.batch()` | C-8 |
 | `CONNECTOR_MCP_DELETE_BATCH` | 20 ids per `delete_connectors` call | C-9 |
 | `CONNECTOR_MCP_TOOLS_BATCH` | 100 tools per `update_connector_tools` call | C-9 |
 | `CONNECTOR_MCP_LIST_LIMIT` | 50 per `list_connectors` page | C-9 |
@@ -1940,6 +1952,56 @@ cursor for a full pass and stamps `synced_at`; when the pass completes, rows
 whose `synced_at` predates it are deleted (the registry is in preview and
 "data resets may occur"). A failure keeps the cursor and never throws out of
 the scheduled handler.
+
+### 9.1 As built (C-8, 2026-11-15)
+
+- **Cron.** `server/plugins/mcp-registry-sync.ts` runs on its own
+  `7 * * * *` trigger (so a slow run never delays the `0 * * * *` sweeps; added
+  to both `triggers.crons` lists in `wrangler.jsonc`) whatever the `connectors.registry` flag says, so data is
+  ready when the flag flips. `syncMcpRegistry` in
+  `server/utils/connectors/registry-sync.ts` reads at most 20 pages of 100
+  per run, stops early after four minutes of wall clock, and ends with
+  status 500 in the wide event (never an exception) on a registry or KV
+  failure. Counts go to `attributes.registry`.
+- **Resume.** Because 20 pages rarely cover the whole registry, an unfinished
+  run saves its page cursor in `connectors:registry:progress` and the next hour
+  continues. The cursor advances only after a page is written, the
+  `updated-since` watermark moves only when a pass reaches the end, and a
+  daily full pass deletes by `synced_at` only after it reaches the end. A full
+  pass that returns no entries sweeps nothing and counts as a failure, and so
+  does one whose sweep would delete more than half of the existing rows: the
+  sweep is aborted, the full-pass key does not advance, and the wide event
+  carries `attributes.registry.sweepAborted` (`stale`, `total`) for the owner
+  to look at. A page whose `nextCursor` is over 512 characters is a failure
+  and nothing from it is written. The
+  watermark after a full pass is its start minus five minutes (clock skew);
+  after an incremental pass it is the newest `updatedAt` seen, never later
+  than the run's start.
+- **Entries.** Each list entry is parsed on its own with zod; `title` and
+  `description` lose control, line and paragraph separator, `Cf` and tag
+  characters. Kept: `active`
+  status and the first `streamable-http` remote whose URL has no `{`, `}`, `$`
+  (or their encoded forms) and passes `parseSafeOutboundUrl`; header names
+  matching the connector header pattern. An entry that turns deleted,
+  deprecated, SSE-only, templated, unsafe, erased or malformed loses its
+  existing row in the same batch. Counted reasons: `shape`, `inactive`,
+  `no-remote`, `template`, `unsafe-url`, `erased`.
+- **Writes.** One batch per 25 entries of single-row statements: a delete of
+  the same name under another id (the id is name plus version), then an
+  `onConflictDoUpdate` insert. Never a multi-row `values([...])`.
+- **Search.** `GET /api/v1/connectors/registry?q=<2..64>&cursor=<0..1000>`
+  (`server/api/v1/connectors/registry/index.get.ts`): session, `connectors`
+  and `connectors.registry` flags, 30 searches a minute per user (own KV
+  bucket), `LIKE` with `ESCAPE` over name, title and description on the local
+  table only, ranked exact name or last name segment, exact title, prefix,
+  substring, then description; 20 per page with an integer cursor. Items hold
+  `id`, `name`, `title`, `description`, `remoteUrl`, `transport`, `authHint`
+  (`header` when the entry names a header, else `unknown`; the registry has no
+  auth-type field) and `presetId` (exact URL match). An empty table answers
+  `syncing: true`. No `websiteUrl` and no icons.
+- **Not built here.** The 90-day `connector_tool_calls` prune the ticket put
+  in this plugin (`CONNECTOR_AUDIT_PRUNE_BATCH` is still unused); no MCP tool
+  (section 11 lists none for C-8); no UI (C-7).
 
 ## 10. UI placement
 
