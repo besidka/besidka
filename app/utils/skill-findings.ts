@@ -1,6 +1,9 @@
 import {
+  SKILL_FINDING_CATALOG_DETAIL,
   SKILL_FINDING_SEVERITIES,
   SKILL_FINDING_QUOTED_DETAIL,
+  getSkillFindingCallout,
+  getSkillFindingExplanation,
   readStoredFindingCounts,
 } from '#shared/utils/skills/findings'
 import type {
@@ -43,6 +46,24 @@ const FINDING_MARKERS: Record<SkillFindingType, string> = {
   'encoded': 'Encoded',
   'frontmatter': 'Setting',
   'file': 'File',
+}
+
+const HIGHLIGHT_CATEGORIES: Record<SkillFindingType, string> = {
+  'url': 'a link to an unusual address',
+  'shell': 'a command',
+  'hidden-character': 'hidden text',
+  'long-line': 'a very long line',
+  'blank-run': 'blank lines',
+  'injection': 'instruction-like text',
+  'secret': 'a key or secret',
+  'execution': 'code that runs in Claude Code',
+  'exfiltration': 'a request to send data out',
+  'concealment': 'a request to hide actions from you',
+  'role': 'a role or authority claim',
+  'credential': 'a credential',
+  'encoded': 'encoded text',
+  'frontmatter': 'a setting that asks for access',
+  'file': 'a file to check',
 }
 
 export const FINDING_SEVERITY_GROUPS: ReadonlyArray<{
@@ -163,4 +184,63 @@ export function groupFindingsByLine(
   }
 
   return lines
+}
+
+/**
+ * The plain explanation of a finding and, when it adds something, the detail
+ * the rule found (a host, a decoded text). A quoted mention and the "in every
+ * message" detail are shown on their own, not as detail.
+ */
+export function describeFinding(finding: SkillFinding): {
+  explanation: string
+  detail: string
+  callout: string | null
+} {
+  const explanation = getSkillFindingExplanation(finding.rule) ?? ''
+  const hasPlainDetail = finding.detail
+    && finding.detail !== SKILL_FINDING_QUOTED_DETAIL
+    && !finding.detail.includes(SKILL_FINDING_CATALOG_DETAIL)
+
+  return {
+    explanation: explanation || finding.detail || '',
+    detail: hasPlainDetail && explanation ? finding.detail! : '',
+    callout: getSkillFindingCallout(finding),
+  }
+}
+
+/**
+ * "code that runs in Claude Code, a request to hide actions from you" for the
+ * "Look closely" findings, each kind once, in order of appearance.
+ */
+export function describeHighlightCategories(
+  findings: SkillFinding[],
+): string {
+  const categories = findings
+    .filter(finding => finding.severity === 'high')
+    .map(finding => HIGHLIGHT_CATEGORIES[finding.type])
+
+  return [...new Set(categories)].join(', ')
+}
+
+/**
+ * The second tick of the install and accept screens: "I read the 3
+ * highlights marked Look closely (code that runs in Claude Code)". Empty when
+ * there is nothing marked Look closely.
+ */
+export function describeHighlightTick(
+  count: number,
+  findings: SkillFinding[],
+): string {
+  if (count <= 0) {
+    return ''
+  }
+
+  const categories = describeHighlightCategories(findings)
+  const subject = count === 1
+    ? 'the highlight'
+    : `the ${count} highlights`
+
+  return categories
+    ? `I read ${subject} marked Look closely (${categories})`
+    : `I read ${subject} marked Look closely`
 }

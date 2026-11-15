@@ -1692,6 +1692,16 @@ export function readStoredFindingCounts(
 }
 
 /**
+ * The number of "Look closely" highlights in stored counts, or 0 for counts
+ * stored before the rules had severities.
+ */
+export function countStoredHighlights(
+  stored: Record<string, number> | null | undefined,
+): number {
+  return readStoredFindingCounts(stored).severityCounts.high ?? 0
+}
+
+/**
  * Counts stored by an older rule set, or before counts carried a version,
  * are not comparable with a scan by the current rules. A skill version with
  * no counts at all has nothing to re-scan.

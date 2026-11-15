@@ -583,6 +583,38 @@ attribution text lands with SS-10. No OWASP text is copied.
   multiset (`rule` plus the SHA-256 of the full line). A URL changed after
   character 120 and a second copy of a known line are therefore new.
 
+- **Review screens (BES-388).** One component (`FindingGroups.vue`) renders the
+  three groups in the order Look closely, Worth a look, For your information
+  (collapsed), with `path:line`, the rule explanation, the rule detail, "(quoted,
+  probably an example)" and, for a highlight in the description, "This text is in
+  every message while the skill is on Auto." It is used in the import review, the
+  update review and the editor (`ProblemList.vue`, without the path). With N
+  highlights marked Look closely (N from the stored severity counts) install and
+  accept need a second tick, "I read the N highlights marked Look closely
+  (kinds)". An update asks for it only when the update adds one (the `changes`
+  block of `GET .../versions/<v>/diff?changes=true`: new highlights, `newHosts`
+  not linked by any file of the version in use, `changedSettings` for
+  `allowed-tools`, `hooks` and `description`, `newScripts`); when that list is
+  partial or missing it falls back to the stored count of the update. The first
+  switch on repeats the kinds in the confirmation, found by scanning the current
+  files in the browser. The manager row shows `badge badge-soft` "N to look at"
+  from `SkillSummary.highlightCount` (the stored count of the current version,
+  one query in `listUserSkills`); a version stored by older rules has no
+  severities until it is rescanned in the update review. No new hard block.
+  Banned in all skill UI: safe, safety rating, clean, verified, trusted,
+  harmless, malicious (for the user's skill) and a green check for "no
+  findings"; the two mandated sentences that contain "safe" and "harmless" are
+  the only exceptions.
+- **Corpus guard (BES-389).** `tests/fixtures/skills/anthropics/` holds 18
+  skill folders of `anthropics/skills@2c5958ec` (Apache-2.0, see its
+  `SOURCE.md`). `corpus-benign.spec.ts` asserts 0 high, only the 27 measured
+  medium findings (rule, path and line) and the count of every low rule within
+  10 percent (at least 3). `corpus-attack-patterns.spec.ts` runs 24 synthetic
+  attack patterns, each in a plain, a corporate, a Ukrainian and a Polish
+  wording; the misses are a recorded table of known gaps that the spec keeps
+  honest (a gap that starts being caught fails until it is removed). The ReDoS
+  suite is `findings-redos.spec.ts`.
+
 ### 3.4 Import preview, commit and update
 
 Staging (KV and R2 with a 1 h lifetime) exists only for the import preview,

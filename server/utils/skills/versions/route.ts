@@ -99,6 +99,7 @@ export const versionQuerySchema = z.object({
 
 export const diffQuerySchema = z.object({
   against: z.coerce.number().int().min(1).optional(),
+  changes: z.enum(['true', 'false']).optional(),
 })
 
 /**

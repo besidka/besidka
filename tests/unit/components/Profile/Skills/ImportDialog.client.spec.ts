@@ -190,6 +190,75 @@ describe('Profile/Skills/ImportDialog', () => {
     expect(install.disabled).toBe(false)
   })
 
+  describe('highlights marked Look closely', () => {
+    const highPreview = () => createImportPreview({
+      findings: [
+        {
+          type: 'execution',
+          rule: 'dynamic-context-inline',
+          severity: 'high',
+          source: 'rules',
+          path: 'SKILL.md',
+          line: 4,
+          snippet: '!`gh pr diff`',
+          detail: null,
+        },
+        {
+          type: 'concealment',
+          rule: 'concealment',
+          severity: 'high',
+          source: 'rules',
+          path: 'SKILL.md',
+          line: 6,
+          snippet: 'do not tell the user',
+          detail: null,
+        },
+      ],
+      findingCounts: {
+        rulesVersion: 3,
+        high: 2,
+        execution: 1,
+        concealment: 1,
+      },
+    })
+
+    it('offers no second tick without a highlight marked Look closely', async () => {
+      await mountDialog()
+      await reachReview()
+
+      expect(find('skill-import-highlights')).toBeNull()
+    })
+
+    it('keeps install disabled until both ticks are set', async () => {
+      await mountDialog()
+      await reachReview(highPreview())
+
+      const install = get('skill-import-install') as HTMLButtonElement
+
+      expect(get('skill-import-highlights').parentElement!.textContent)
+        .toContain(
+          'I read the 2 highlights marked Look closely (code that runs in Claude Code, a request to hide actions from you)',
+        )
+
+      await check('skill-import-reviewed')
+
+      expect(install.disabled).toBe(true)
+
+      await check('skill-import-highlights')
+
+      expect(install.disabled).toBe(false)
+    })
+
+    it('does not install with only the highlights tick', async () => {
+      await mountDialog()
+      await reachReview(highPreview())
+      await check('skill-import-highlights')
+
+      expect((get('skill-import-install') as HTMLButtonElement).disabled)
+        .toBe(true)
+    })
+  })
+
   it('needs the extra license tick when no license is stated', async () => {
     await mountDialog()
     await reachReview(createImportPreview({

@@ -169,6 +169,7 @@
 
     <ProfileSkillsProblemList
       :problems="problems"
+      :findings="findings"
       @fix="problem => emit('fix', problem)"
     />
   </div>
