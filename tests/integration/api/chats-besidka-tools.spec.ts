@@ -608,28 +608,28 @@ describe('Besidka tools in the chat send', () => {
 
   const finalAnswer = [textChunks('Done.')]
 
-  it('offers Besidka tools only when every gate passes', async () => {
+  it('offers Besidka tools when every gate passes', async () => {
     setModes({ list_projects: 'ask' })
 
-    const exposed = await runSend({ steps: finalAnswer })
+    const { doStream } = await runSend({ steps: finalAnswer })
+    const system = JSON.stringify(doStream.mock.calls[0]?.[0]?.prompt)
 
-    expect(firstCallToolNames(exposed.doStream))
-      .toEqual(['besidka__list_projects'])
-
-    const system = JSON.stringify(exposed.doStream.mock.calls[0]?.[0]?.prompt)
-
+    expect(firstCallToolNames(doStream)).toEqual(['besidka__list_projects'])
     expect(system).toContain('besidka__')
     expect(system).toContain('untrusted_tool_result')
+  })
 
-    for (const flags of [['tool-approvals'], ['besidka-tools'], []]) {
-      mocks.flags = new Set(flags)
-      mocks.mergedStreams = []
-      mocks.writers = []
+  it.each([
+    ['tool approvals only', ['tool-approvals']],
+    ['the Besidka tools opt-in only', ['besidka-tools']],
+    ['neither flag', []],
+  ])('offers no Besidka tool with %s', async (_label, flags) => {
+    setModes({ list_projects: 'ask' })
+    mocks.flags = new Set(flags)
 
-      const { doStream } = await runSend({ steps: finalAnswer })
+    const { doStream } = await runSend({ steps: finalAnswer })
 
-      expect(firstCallToolNames(doStream)).toEqual([])
-    }
+    expect(firstCallToolNames(doStream)).toEqual([])
   })
 
   it('offers nothing in a chat with Besidka switched off, and on a model '

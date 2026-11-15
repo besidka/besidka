@@ -220,7 +220,7 @@
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
-      :are-connectors-available="composerConnectors.isVisible.value"
+      :are-connectors-available="composerConnectors.isFeatureActive.value"
       @toggle="composerConnectors.toggle"
       @toggle-besidka="composerBesidkaTools.toggle"
     />

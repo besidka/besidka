@@ -90,14 +90,16 @@
               v-for="(step, index) in reasoningSteps"
               :key="step.id"
               class="relative min-w-0"
-              :class="step.approvalOutcome
+              :class="step.approvalOutcome || step.grantMarker
                 ? 'grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2'
                 : 'flex gap-2'
               "
             >
               <div
                 class="relative flex w-5 shrink-0 items-start justify-center"
-                :class="{ 'row-span-2': step.approvalOutcome }"
+                :class="{
+                  'row-span-2': step.approvalOutcome || step.grantMarker,
+                }"
               >
                 <span
                   v-if="index > 0"
