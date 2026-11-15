@@ -675,7 +675,7 @@ capability and reports:
 | `route_prefix_without_routes` | A `routesPrefix` directory has no route files |
 | `route_without_feature_guard` | A `.ts` file under `server/api/v1/<prefix>/` does not call `requireFeature(event, '<flag>')` with the capability's flag or a child of it (comments are ignored) |
 | `mcp_tool_without_scope` | An `mcpTools` name is missing from `MCP_PRIVATE_TOOL_SCOPES` |
-| `mcp_tool_without_private_wrapper` | `server/mcp/tools/<name-with-dashes>.ts` is missing or does not call `withMcpPrivateTool(` |
+| `mcp_tool_without_private_wrapper` | `server/mcp/tools/<name-with-dashes>.ts` is missing or calls neither `withMcpPrivateTool(` nor `toMcpToolDefinition(` (the shim over a Besidka tool) |
 | `job_without_feature` | A job has no `feature`, or one outside the capability's flag tree |
 
 The checks read source text, so they are a heuristic: a guard inside a

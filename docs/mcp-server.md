@@ -791,6 +791,81 @@ unit-tested in `server/utils/mcp/*.ts` (public tools) and
 `server/mcp/tools/`: a subdirectory sets a toolkit group, and a `.ts` file
 directly in `server/mcp/` is loaded as a named handler.
 
+### The Besidka tools registry (BES-394 L7)
+
+The 45 private tools are not defined in `server/mcp/tools/`. Each has one
+transport-neutral entry in `server/utils/besidka-tools/tools/<name>.ts`
+(`defineBesidkaTool`), and the file in `server/mcp/tools/` is a three-line
+shim:
+
+```ts
+export default defineMcpTool(
+  toMcpToolDefinition(deleteChatsBesidkaTool),
+)
+```
+
+`toMcpToolDefinition` (`server/utils/besidka-tools/mcp-adapter.ts`) passes the
+name, title, description, schema and annotations through untouched and wraps
+the handler in `withMcpPrivateTool`, so tokens, scopes, limits, consent,
+logging and error handling are unchanged and `config/mcp-surface.json` stays
+byte-identical (no `MCP_SERVER_VERSION` bump). The four public tools are not
+in the registry: they hold no user data.
+`server/utils/besidka-tools/registry.ts` aggregates the entries, keyed by
+`McpPrivateToolName` (a missing entry is a type error). It is the one place
+the chat send (BES-394 L9) will build its tools from, so the MCP server and
+the chat cannot drift.
+
+An entry carries, besides the MCP fields:
+
+| Field | Meaning |
+| --- | --- |
+| `mcpScope` | Filled from `MCP_PRIVATE_TOOL_SCOPES`, the only scope map |
+| `access` | The shared `ToolAccess` of `shared/utils/tool-approval-policy.ts`: `read`, `write`, `delete` (the `data:delete` scope) or `instructions` (text a model reads later: project instructions, notes and knowledge text) |
+| `chat` | `{ expose: true, tier }` or `{ excluded: reason }`, never neither |
+| `chatDescription` | At most 300 characters, written for a model, no scope or MCP wording; required when exposed |
+| `summarize(input)` | One server-written sentence for an approval prompt; every exposed `write` and `ask-every-time` tool has one |
+| `handler(input, context)` | The shared implementation; `context` has `userId`, `clientId`, `scopes`, `db`, `logger` and `log` |
+
+`access` follows the annotations and the scope: `read` if and only if
+`readOnlyHint` is true, `delete` if and only if the scope is `data:delete`
+(which implies `destructiveHint: true`). The chat `tier` is stored on its own,
+because the plan's tiers do not follow the hints: `update_chat`,
+`update_project`, `update_project_knowledge_item` and `rename_file` are
+`write` tier although they carry `destructiveHint: true`, while `share_artifact`,
+`add_project_note` and `add_project_text` are `ask-every-time` with
+`destructiveHint: false`. A policy that also keys on `destructiveHint` must
+decide which wins.
+
+| Chat exposure | Count | Tools |
+| --- | --- | --- |
+| `read` | 11 | `list_shared_chats`, `list_projects`, `get_project`, `read_project_knowledge_item`, `list_files`, `read_file`, `get_settings`, `list_my_features`, `list_artifacts`, `get_artifact`, `list_artifact_shares` |
+| `write` | 8 | `update_chat`, `move_chats_to_project`, `branch_chat`, `create_project`, `update_project`, `update_project_knowledge_item`, `create_file`, `rename_file` |
+| `ask-every-time` | 13 | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_artifacts`, `revoke_chat_shares`, `revoke_artifact_shares`, `share_artifact`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_settings` |
+| excluded, admin | 3 | `list_feature_flags`, `list_feature_access`, `set_feature_access` |
+| excluded, native twin | 10 | `create_artifact`, `update_artifact`, `create_document`, `list_memory`, `add_memory`, `update_memory`, `delete_memory`, `reset_memory`, `list_chats`, `get_chat` |
+
+`summarize` is synchronous and sees only the parsed input, so it names things
+only when the input already holds a name (`confirmName`, `name`, `title`) and
+otherwise gives counts and ids. `summarizeBesidkaToolCall` first parses the
+input with the tool's own schema, so a summarizer sees only declared,
+validated fields (an invented key or an out-of-schema value never reaches
+it). Free text and ids then go through
+`server/utils/besidka-tools/summary.ts`: control, format and separator
+characters collapse to one space, the length is capped and free text is
+quoted. Bodies and instructions are never echoed, only their length. A tool
+without a summarizer, one whose input does not parse, or one that throws
+falls back to its title. Looking up a chat title from its slug is
+not done yet; it needs an asynchronous, server-side lookup.
+
+`tests/unit/server/utils/besidka-tools/parity.spec.ts` keeps the registry and
+the MCP server in step and writes `config/besidka-tools-surface.json` (run
+`pnpm run besidka-tools:surface` after a change): every private tool has an
+entry and a shim, each entry is exposed or excluded with a reason, `access`
+agrees with the annotations, and every chat description fits. The registry
+exports are named `<tool>BesidkaTool`, never default exports: Nitro
+auto-imports `server/utils/**`, and a default export would take the file name
+(`createDocument`, `deleteArtifacts`) and shadow real helpers.
+
 ### Public tools
 
 | Tool | Source |

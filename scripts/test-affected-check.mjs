@@ -528,6 +528,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/mcp/private/artifacts.spec.ts',
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
   ]
+  const besidkaToolsTests = [
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/server/utils/besidka-tools/summary.spec.ts',
+    'tests/unit/server/utils/besidka-tools/summaries.spec.ts',
+    'tests/unit/server/utils/besidka-tools/mcp-adapter.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/capabilities/conformance.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+  ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
     'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
@@ -2483,8 +2492,12 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/mcp-version-guard.spec.ts'],
     },
     {
-      pattern: /^(config\/(mcp-surface\.json|mcp-server\.ts)|server\/(mcp\/tools\/.*|utils\/mcp\/tool-scopes)\.ts)$/,
+      pattern: /^(config\/(mcp-surface\.json|mcp-server\.ts)|server\/(mcp\/tools\/.*|utils\/(mcp\/tool-scopes|besidka-tools\/.*))\.ts)$/,
       tests: ['tests/unit/config/mcp-surface.spec.ts'],
+    },
+    {
+      pattern: /^(config\/besidka-tools-surface\.json|server\/(mcp\/tools\/.*|utils\/(mcp\/tool-scopes|besidka-tools\/.*))\.ts)$/,
+      tests: besidkaToolsTests,
     },
     {
       pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,
@@ -3224,7 +3237,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/mcp\/tools\/.*\.ts|package\.json)$/,
+        /^(server\/(mcp\/tools|utils\/besidka-tools)\/.*\.ts|package\.json)$/,
       tests: toolApprovalSpikeTests,
     },
     {
@@ -3462,7 +3475,7 @@ export function getAffectedTests(changedFiles) {
       tests: storageQuotaTests,
     },
     {
-      pattern: /^server\/mcp\/tools\/get-settings\.ts$/,
+      pattern: /^server\/(mcp\/tools|utils\/besidka-tools\/tools)\/get-settings\.ts$/,
       tests: storageQuotaTests,
     },
     {
@@ -3933,7 +3946,7 @@ export function getAffectedTests(changedFiles) {
       tests: mcpArtifactTests,
     },
     {
-      pattern: /^server\/(mcp\/tools\/create-document|utils\/mcp\/private\/documents)\.ts$/,
+      pattern: /^server\/(mcp\/tools\/create-document|utils\/besidka-tools\/tools\/create-document|utils\/mcp\/private\/documents)\.ts$/,
       tests: [
         'tests/unit/server/mcp/tools/create-document.spec.ts',
         'tests/unit/server/utils/mcp/private-documents.spec.ts',
@@ -4151,7 +4164,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/server/plugins/landing-cache-control.spec.ts'],
     },
     {
-      pattern: /^(server\/(mcp\/.*|utils\/mcp\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
+      pattern: /^(server\/(mcp\/.*|utils\/(mcp|besidka-tools)\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
       tests: [
         'tests/unit/server/utils/content/minimark.spec.ts',
         'tests/unit/server/utils/mcp/cached-content.spec.ts',

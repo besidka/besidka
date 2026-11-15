@@ -21,8 +21,12 @@ import {
 const TOOLS_DIRECTORY = fileURLToPath(
   new URL('../../../../../server/mcp/tools/', import.meta.url),
 )
+const IMPLEMENTATIONS_DIRECTORY = fileURLToPath(
+  new URL('../../../../../server/utils/besidka-tools/tools/', import.meta.url),
+)
 const TOOL_NAME = /name: '([a-z_]+)'/
 const PRIVATE_WRAPPER = /withMcpPrivateTool\(\s*'([a-z_]+)'/
+const REGISTRY_SHIM = /toMcpToolDefinition\(/
 const DELETE_SCOPE_MENTION = /\(data:delete\)/
 const READ_ONLY_HINT = /readOnlyHint: (true|false)/
 const DESTRUCTIVE_HINT = /destructiveHint: (true|false)/
@@ -53,13 +57,20 @@ function readToolSources() {
       return file.endsWith('.ts')
     })
     .map((file) => {
-      const source = readFileSync(`${TOOLS_DIRECTORY}${file}`, 'utf8')
+      const shimSource = readFileSync(`${TOOLS_DIRECTORY}${file}`, 'utf8')
+      const isRegistryShim = REGISTRY_SHIM.test(shimSource)
+      const source = isRegistryShim
+        ? readFileSync(`${IMPLEMENTATIONS_DIRECTORY}${file}`, 'utf8')
+        : shimSource
+      const name = TOOL_NAME.exec(source)?.[1] ?? ''
 
       return {
         file,
-        name: TOOL_NAME.exec(source)?.[1] ?? '',
+        name,
         mentionsDeleteScope: DELETE_SCOPE_MENTION.test(source),
-        wrapperName: PRIVATE_WRAPPER.exec(source)?.[1] ?? null,
+        wrapperName: isRegistryShim
+          ? name
+          : PRIVATE_WRAPPER.exec(source)?.[1] ?? null,
         readOnly: READ_ONLY_HINT.exec(source)?.[1] === 'true',
         destructive: DESTRUCTIVE_HINT.exec(source)?.[1] === 'true',
       }

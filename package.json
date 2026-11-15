@@ -73,6 +73,7 @@
 		"legal:hash": "node scripts/legal-revision-hash.mjs",
 		"shiki:parity": "node scripts/shiki-token-parity.mjs",
 		"mcp:surface": "vitest run tests/unit/config/mcp-surface.spec.ts -u",
+		"besidka-tools:surface": "vitest run tests/unit/server/utils/besidka-tools/parity.spec.ts -u",
 		"mcp:version-guard": "node scripts/mcp-version-guard.mjs",
 		"bench:files-index": "node scripts/bench/files-user-id-index.mjs"
 	},

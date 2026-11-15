@@ -143,7 +143,7 @@ describe('capability conformance', () => {
       return file.path
     })).toContain('server/api/v1/features/index.get.ts')
     expect(readRepositoryMcpToolSource('list_memory'))
-      .toContain('withMcpPrivateTool(')
+      .toContain('toMcpToolDefinition(')
     expect(readRepositoryMcpToolSource('missing_tool')).toBeNull()
   })
 
