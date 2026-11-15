@@ -25,6 +25,7 @@ import {
   insertSkillWithinLimits,
   reclaimAbandonedPlaceholder,
 } from '~~/server/utils/skills/import/commit'
+import { readSkillLookalikeContext } from '~~/server/utils/skills/lookalike-context'
 import { putSkillBlobs } from '~~/server/utils/skills/storage'
 import {
   findUniqueViolation,
@@ -193,7 +194,16 @@ export async function createAuthoredSkill(
 
     return { path: file.path, bytes, text: file.content }
   })
-  const analysis = await analyzeSkillFiles({ files, folderName: null })
+  const lookalike = await readSkillLookalikeContext({
+    db,
+    userId,
+    sourceUrl: null,
+  })
+  const analysis = await analyzeSkillFiles({
+    files,
+    folderName: null,
+    otherSkillNames: lookalike.otherSkillNames,
+  })
 
   if (!analysis.ok) {
     throw createSkillEditError('frontmatter-invalid', {

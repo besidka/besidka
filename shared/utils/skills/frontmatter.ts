@@ -1,4 +1,5 @@
 import { parse } from 'yaml'
+import { stripUnsafeSkillCharacters } from '#shared/utils/skills/hidden-characters'
 import {
   SKILL_ARGUMENT_HINT_MAX,
   SKILL_MAX_FRONTMATTER_BYTES,
@@ -165,6 +166,25 @@ function parseFrontmatterBlock(raw: string): Record<string, unknown> | null {
   }
 
   return parsed as Record<string, unknown>
+}
+
+/**
+ * The frontmatter as a plain object, with its raw text, for checks that need
+ * keys the skill model does not keep (`hooks`, `shell`, `context`). Null when
+ * there is no readable frontmatter block.
+ */
+export function readSkillFrontmatterData(
+  text: string,
+): { data: Record<string, unknown>, raw: string } | null {
+  const split = splitSkillFrontmatter(text)
+
+  if (!split.ok) {
+    return null
+  }
+
+  const data = parseFrontmatterBlock(split.raw)
+
+  return data ? { data, raw: split.raw } : null
 }
 
 function isScalar(value: unknown): value is string | number | boolean {
@@ -383,18 +403,18 @@ export function parseSkillMarkdown(text: string): ParsedSkillMarkdown {
   }
 
   const rawDescription = data.description
+  const cleanedDescription = typeof rawDescription === 'string'
+    ? stripUnsafeSkillCharacters(rawDescription).trim()
+    : ''
 
-  if (
-    typeof rawDescription !== 'string'
-    || rawDescription.trim() === ''
-  ) {
+  if (cleanedDescription === '') {
     return failure(
       'description-missing',
       'SKILL.md needs a "description" in its frontmatter',
     )
   }
 
-  let description = rawDescription.trim()
+  let description = cleanedDescription
 
   if (description.length > SKILL_DESCRIPTION_MAX) {
     description = description.slice(0, SKILL_DESCRIPTION_MAX)

@@ -84,9 +84,10 @@ describe('analyzeSkillFiles', () => {
     expect(result.ok && result.findingCounts).toEqual({
       rulesVersion: SKILL_FINDING_RULES_VERSION,
       medium: 1,
-      low: 3,
+      low: 5,
       url: 1,
       shell: 3,
+      file: 2,
     })
   })
 

@@ -546,6 +546,26 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profiles-connected-apps-consent.spec.ts',
     'tests/integration/api/connectors-oauth-flow.spec.ts',
   ]
+  const mcpSkillTests = [
+    'tests/unit/server/mcp/tools/list-skills.spec.ts',
+    'tests/unit/server/mcp/tools/get-skill.spec.ts',
+    'tests/unit/server/mcp/tools/create-skill.spec.ts',
+    'tests/unit/server/mcp/tools/update-skill.spec.ts',
+    'tests/unit/server/mcp/tools/rename-skill.spec.ts',
+    'tests/unit/server/mcp/tools/delete-skills.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/skills/versions/save.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
+    'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/composables/skills-library.spec.ts',
+    'tests/unit/utils/skills/frontmatter.spec.ts',
+    'tests/unit/config/mcp-surface.spec.ts',
+    'tests/unit/components/OAuth/ScopeLabel.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+  ]
   const besidkaToolsTests = [
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
     'tests/unit/server/utils/besidka-tools/summary.spec.ts',
@@ -1782,10 +1802,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/versions/restore.spec.ts',
     'tests/unit/server/utils/skills/versions/create.spec.ts',
     'tests/unit/server/utils/skills/versions/read-write-paths.spec.ts',
+    'tests/unit/server/utils/skills/versions/settings.spec.ts',
+    'tests/unit/server/utils/mcp/private/skills.spec.ts',
     'tests/unit/server/api/v1/skills/skills-crud.spec.ts',
     'tests/unit/server/api/v1/skills/update-check.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
     'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/utils/skills/findings-execution.spec.ts',
+    'tests/unit/utils/skills/findings-intent.spec.ts',
+    'tests/unit/utils/skills/findings-frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings-redos.spec.ts',
+    'tests/unit/utils/skills/url-hosts.spec.ts',
+    'tests/unit/utils/skills/known-names.spec.ts',
+    'tests/unit/utils/skills/file-set-findings.spec.ts',
     'tests/unit/server/utils/skills/import/update-findings.spec.ts',
   ]
 
@@ -1795,7 +1824,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/skills/frontmatter.spec.ts',
     'tests/unit/utils/skills/findings.spec.ts',
     'tests/unit/utils/skills/findings-severity.spec.ts',
+    'tests/unit/utils/skills/findings-execution.spec.ts',
+    'tests/unit/utils/skills/findings-intent.spec.ts',
+    'tests/unit/utils/skills/findings-frontmatter.spec.ts',
+    'tests/unit/utils/skills/findings-redos.spec.ts',
+    'tests/unit/utils/skills/url-hosts.spec.ts',
+    'tests/unit/utils/skills/known-names.spec.ts',
+    'tests/unit/utils/skills/file-set-findings.spec.ts',
     'tests/unit/server/utils/skills/import/update-findings.spec.ts',
+    'tests/unit/server/utils/skills/lookalike-context.spec.ts',
+    'tests/unit/server/utils/skills/import/preview-lookalike.spec.ts',
     'tests/unit/utils/skills/license.spec.ts',
     'tests/unit/utils/skills/archive.spec.ts',
     'tests/unit/utils/skills/analyze.spec.ts',
@@ -3393,7 +3431,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
+        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending|lookalike-context)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
       tests: skillsVersionsTests,
     },
     {
@@ -3408,7 +3446,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
       tests: skillsManagerTests,
     },
     {
@@ -3877,7 +3915,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)\.ts$/,
+      pattern: /^(server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)|shared\/utils\/secret-patterns)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,
@@ -4308,11 +4346,16 @@ export function getAffectedTests(changedFiles) {
         ...mcpUiParityTests,
         ...mcpArtifactTests,
         ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
     },
     {
       pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
       tests: mcpConnectorTests,
+    },
+    {
+      pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write|statements|route)))\.ts$/,
+      tests: mcpSkillTests,
     },
     {
       pattern: /^server\/utils\/settings\/apply-user-settings\.ts$/,
@@ -4347,6 +4390,7 @@ export function getAffectedTests(changedFiles) {
         ...mcpUiParityTests,
         ...mcpArtifactTests,
         ...mcpConnectorTests,
+        ...mcpSkillTests,
       ],
     },
     {

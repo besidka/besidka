@@ -6,6 +6,7 @@ import {
 import type { SkillFileKind } from '#shared/utils/skills-policy'
 import { parseSkillMarkdown } from '#shared/utils/skills/frontmatter'
 import type { SkillFrontmatter } from '#shared/utils/skills/frontmatter'
+import { scanSkillFileSet } from '#shared/utils/skills/file-set-findings'
 import {
   capSkillFindings,
   scanSkillTextWithCounts,
@@ -67,6 +68,8 @@ export type SkillAnalysis
 export interface SkillAnalysisInput {
   files: SkillAnalysisInputFile[]
   folderName: string | null
+  source?: string | null
+  otherSkillNames?: readonly string[]
   fallbackLicenseFiles?: Array<{ path: string, text: string }>
 }
 
@@ -173,6 +176,21 @@ export async function analyzeSkillFiles(
     for (const [severity, count] of Object.entries(scan.severityCounts)) {
       severityCounts[severity] = (severityCounts[severity] ?? 0) + count
     }
+  }
+
+  const fileSetFindings = scanSkillFileSet({
+    files: input.files,
+    name: parsed.frontmatter.name,
+    source: input.source ?? null,
+    otherSkillNames: input.otherSkillNames ?? [],
+  })
+
+  findings.push(...fileSetFindings)
+
+  for (const finding of fileSetFindings) {
+    typeCounts[finding.type] = (typeCounts[finding.type] ?? 0) + 1
+    severityCounts[finding.severity]
+      = (severityCounts[finding.severity] ?? 0) + 1
   }
 
   const totalFindings = Object.values(typeCounts).reduce(

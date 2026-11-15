@@ -205,6 +205,58 @@ describe('useSkillActions', () => {
     expect(mocks.fetch).toHaveBeenCalledTimes(1)
   })
 
+  it('asks for the license tick when an app\'s skill with no license is '
+    + 'turned on', async () => {
+    mocks.confirm.mockResolvedValue({ label: 'Turn on and confirm', index: 0 })
+
+    const skill = createSkillSummary({
+      sourceKind: 'mcp',
+      enabled: false,
+      status: 'needs-review',
+      licenseClass: 'none',
+    })
+
+    await expect(useSkillActions().setMode(skill, 'ask')).resolves.toBe(true)
+
+    expect(mocks.confirm.mock.calls[0]![0].subtitle)
+      .toContain('states no license')
+    expect(mocks.fetch).toHaveBeenCalledWith(`/api/v1/skills/${skill.id}`, {
+      method: 'PATCH',
+      body: { mode: 'ask', licenseAcknowledged: true },
+    })
+  })
+
+  it('sends no license tick for an open license or a skill already reviewed',
+    async () => {
+      mocks.confirm.mockResolvedValue({ label: 'Turn on', index: 0 })
+
+      const open = createSkillSummary({
+        sourceKind: 'mcp',
+        enabled: false,
+        status: 'needs-review',
+        licenseClass: 'open',
+      })
+      const reviewed = createSkillSummary({
+        sourceKind: 'mcp',
+        enabled: false,
+        status: 'ready',
+        licenseClass: 'none',
+      })
+
+      await useSkillActions().setMode(open, 'auto')
+      await useSkillActions().setMode(reviewed, 'auto')
+
+      expect(mocks.fetch).toHaveBeenNthCalledWith(1, `/api/v1/skills/${open.id}`, {
+        method: 'PATCH',
+        body: { mode: 'auto' },
+      })
+      expect(mocks.fetch).toHaveBeenNthCalledWith(
+        2,
+        `/api/v1/skills/${reviewed.id}`,
+        { method: 'PATCH', body: { mode: 'auto' } },
+      )
+    })
+
   it('asks again for a skill that is already on only when it comes from Off', async () => {
     const skill = createSkillSummary({ sourceKind: 'zip', enabled: true })
 
