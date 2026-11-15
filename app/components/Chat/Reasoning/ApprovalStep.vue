@@ -45,6 +45,23 @@
         {{ reasonText }}
       </p>
       <details
+        v-if="clippedPreview.text"
+        class="mt-1 text-xs"
+        data-testid="reasoning-approval-step-preview"
+      >
+        <summary class="min-h-6 cursor-pointer leading-6 text-base-content/60">
+          Text to save
+          <span
+            v-if="clippedPreview.isClipped"
+            class="ml-1"
+          >· Full text in View details</span>
+        </summary>
+        <p
+          class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-field bg-base-200 p-2 text-xs"
+          data-testid="reasoning-approval-step-preview-text"
+        >{{ clippedPreview.text }}</p>
+      </details>
+      <details
         v-if="argumentsText"
         :open="isArgumentsOpen"
         class="mt-1 text-xs"
@@ -213,6 +230,7 @@ import type {
   ApprovalStepState,
 } from '~/utils/tool-approval-step'
 import {
+  clipApprovalPreview,
   formatApprovalArguments,
   getApprovalButtons,
   getBesidkaAlwaysConfirmText,
@@ -293,6 +311,10 @@ const isFocusable = computed<boolean>(() => {
 
 const argumentsText = computed<string>(() => {
   return formatApprovalArguments(props.model.input)
+})
+
+const clippedPreview = computed(() => {
+  return clipApprovalPreview(props.model.preview)
 })
 
 const isShortened = computed<boolean>(() => {
@@ -422,6 +444,7 @@ function openDetails() {
       reasonText: props.reasonText,
       input: props.model.input,
       isShortened: isShortened.value,
+      preview: props.model.preview,
     },
   })
 }

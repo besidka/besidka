@@ -39,6 +39,7 @@ export interface ApprovalStepModel {
   reason: ToolApprovalReason
   summary: string
   rememberOptions: ToolApprovalRemember[]
+  preview: string
   input: unknown
   partState: string
   approved: boolean | null
@@ -209,6 +210,7 @@ export function getApprovalStepModel(
     reason: isApprovalReason(data?.reason) ? data.reason : 'default',
     summary: typeof data?.summary === 'string' ? data.summary : '',
     rememberOptions: readRememberOptions(data?.rememberOptions),
+    preview: typeof data?.preview === 'string' ? data.preview : '',
     input: part.input,
     partState: part.state,
     approved: typeof approval?.approved === 'boolean'
@@ -271,6 +273,28 @@ export function getApprovalStepTitle(
   }
 
   return NATIVE_APPROVAL_TITLES[model.tool] ?? `Run ${model.tool}`
+}
+
+const PREVIEW_COLLAPSED_MAX_CHARS = 500
+
+/**
+ * The start of a content write's text for the approval step; the full text
+ * is in View details.
+ */
+export function clipApprovalPreview(preview: string): {
+  text: string
+  isClipped: boolean
+} {
+  const characters = Array.from(preview)
+
+  if (characters.length <= PREVIEW_COLLAPSED_MAX_CHARS) {
+    return { text: preview, isClipped: false }
+  }
+
+  return {
+    text: `${characters.slice(0, PREVIEW_COLLAPSED_MAX_CHARS).join('')}…`,
+    isClipped: true,
+  }
 }
 
 export function humanizeBesidkaToolName(tool: string): string {

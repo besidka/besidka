@@ -941,8 +941,10 @@ after the L3 audit (2026-11-15):
   allow or chat-granted read runs after another Besidka read. Web,
   knowledge, file, skill, connector and shared-branch taint still make it
   ask, and a Besidka write asks after any taint. Egress stays covered: the
-  provider's web search is withheld after a Besidka read, and a connector
-  call after it asks `cross-source`.
+  provider's web search, and the Brave and Exa searches Besidka runs itself
+  (withheld from later steps and refused at execute time, also on Anthropic
+  routes), stop after a connector or Besidka read, and a connector call
+  after it asks `cross-source`.
 - **Memory writes count every taint.** Native memory writes (`memory_write`,
   `memory_forget`) ask after any taint kind, web included; native artifact
   and document writes still count only connector and skill taint.

@@ -379,6 +379,7 @@ import {
   createSendToolApproval,
   createToolApprovalStreamCollector,
   hasGuardedProviderTool,
+  hasBesidkaToolResult,
   presetApprovalTaint,
   recordToolApprovalPause,
   withholdProviderTools,
@@ -1983,6 +1984,9 @@ export default defineEventHandler(async (event) => {
       isBranchedFromShare: Boolean(chat.branchedFromShareSlug),
       holdsUserAttachments: newMessage.parts.some((part) => {
         return part.type === 'file'
+      }),
+      holdsBesidkaToolHistory: chat.messages.some((message) => {
+        return hasBesidkaToolResult(message.parts)
       }),
     })
   }

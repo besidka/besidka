@@ -823,6 +823,63 @@ describe('Besidka tools in the chat send', () => {
     })
   })
 
+  it('never asks before a delete of the current chat, which always fails',
+    async () => {
+      setModes({ delete_chats: 'ask' })
+
+      const { assistantInsert } = await runSend({
+        steps: [
+          toolCallChunks('call-1', 'besidka__delete_chats', {
+            slugs: [CHAT_SLUG.toLowerCase()],
+          }),
+          textChunks('I cannot delete this chat.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+      expect(findPart(parts, 'tool-besidka__delete_chats')).toMatchObject({
+        state: 'output-error',
+        errorText: expect.stringContaining('chat you are in'),
+      })
+    })
+
+  it('asks before a write when an earlier answer used Besidka tools',
+    async () => {
+      setModes({ list_projects: 'allow', rename_file: 'allow' })
+      mocks.chatMessages = [{
+        id: 'row-old',
+        publicId: 'old-assistant',
+        role: 'assistant',
+        parts: [{
+          type: 'tool-besidka__list_files',
+          toolCallId: 'old-call',
+          state: 'output-available',
+          input: {},
+          output: 'framed',
+        }],
+        tools: [],
+        reasoning: 'off',
+        usage: null,
+        createdAt: new Date(),
+      }]
+
+      const { assistantInsert } = await runSend({
+        steps: [
+          toolCallChunks('call-1', 'besidka__rename_file', {
+            fileId: 'f1',
+            name: 'notes.txt',
+          }),
+          textChunks('Never reached.'),
+        ],
+      })
+
+      const parts = assistantInsert?.parts ?? []
+
+      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE))
+        .toMatchObject({ data: { reason: 'untrusted-output' } })
+    })
+
   it('offers 24 tools at most, read first, with no notice in the chat',
     async () => {
       setModes({ rename_file: 'allow' }, 'ask')

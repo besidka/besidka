@@ -567,6 +567,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextPanelApprovals.spec.ts',
     'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
     'tests/integration/api/chats-tool-approval-grants.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
   ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
@@ -2558,7 +2560,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy|grants)\.ts|app\/components\/Chat\/ContextPanelApprovals\.vue|app\/components\/Profile\/BesidkaTools\/Permissions\.vue|app\/composables\/tool-approval-grants\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep)?\.vue|app\/utils\/(tool-approval-step|reasoning|reasoning-step-icons)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy|grants)\.ts|app\/components\/Chat\/ContextPanelApprovals\.vue|app\/components\/Profile\/BesidkaTools\/Permissions\.vue|app\/composables\/tool-approval-grants\.ts|shared\/types\/tool-approval-grants\.d\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep|\/ApprovalDetails)?\.vue|server\/utils\/memory\/extract-input\.ts|shared\/utils\/tool-approval-parts\.ts|app\/utils\/(tool-approval-step|reasoning|reasoning-step-icons)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
       tests: besidkaToolsChatTests,
     },
     {

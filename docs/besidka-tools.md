@@ -159,14 +159,21 @@ one definition the client and the server share), with the entry's
   input, once); any other call answers "This tool call was not approved, so it
   did not run.";
 - refuses `delete_chats`, `move_chats_to_project` and `delete_chat_message`
-  when they name the chat the send runs in, with a plain tool error. The
-  refusal happens at run time, after the approval, not before the prompt;
+  when they name the chat the send runs in (slugs compared in one case), with
+  a plain tool error. The approval entry marks such a call
+  `failsWithoutRunning`, so it is cleared without a prompt and the user is
+  never asked for a call that cannot run;
 - keeps to 30 calls a minute per user on its own KV prefix
   (`besidka-tools-chat-calls`), failing closed when KV cannot count;
 - runs the registry handler as the session user with client id
-  `besidka-chat` and **no scopes**, so `list_artifact_shares`,
-  `list_shared_chats` and `get_chat` never put share link tokens into model
-  context;
+  `besidka-chat` and **no scopes**, so `list_artifact_shares` and
+  `list_shared_chats` leave share URLs out;
+- keeps share link tokens out of model context and the stored message:
+  `share_artifact` creates the link but its chat result is only the share
+  id, expiry and warnings with "Share link created; open it from the
+  artifact panel." (`toChatToolResult`; MCP clients still get the URL).
+  `get_chat` over MCP and `read_chat` in chats read text parts only, so a
+  tool output never reaches them;
 - frames the JSON result exactly like a connector result
   (`<untrusted_tool_result connector="besidka" tool="...">`, cut to 64 KiB) and
   raises the untrusted-content guard. A handler's client error (4xx) passes
@@ -200,13 +207,28 @@ an Always allow or "in this chat" read keeps running. A Besidka write, and
 every Besidka call after any other taint kind, asks. A later connector call
 asks `cross-source`, and the provider's web
 search, grounding and URL context are withheld from later steps (the L5
-egress guard; it is not applied on Anthropic routes, as for connectors). A
+egress guard; it is not applied on Anthropic routes, as for connectors). The
+web searches Besidka runs itself (Brave, Exa, any function tool the send
+classifies as a web read) are withheld the same way, and their `execute`
+refuses with "Web search is off for the rest of this message because it read
+the user's private data." on every route, Anthropic included, once a tool
+call of the turn read a connector or Besidka data. A send whose chat already
+holds a Besidka result (`hasBesidkaToolResult`) starts with `besidka` taint,
+so Besidka writes and the ask-every-time tier ask while reads keep their
+relaxed rule. Memory extraction skips an assistant turn that used a
+`besidka__` tool, like a connector turn. A
 Besidka call past 12 per user turn is denied `over-cap`, on the first request
 and on replay. A `besidka__` tool name with no entry is Blocked, never a
 native write.
 
 The approval summary is the registry's `summarize()` for the call's input
-(`summarizeBesidkaToolCall`, parsed with the tool's schema first). "Allow in
+(`summarizeBesidkaToolCall`, parsed with the tool's schema first). For
+`delete_chats` and `delete_files` the send looks the titles up with one query
+when the pause is recorded ("Delete 2 chats: "Plan", "Draft""). Content
+writes (`update_project_instructions`, `add_project_note`,
+`update_project_knowledge_item`, `create_file`) carry the text they would
+save as the approval's `preview`: the step shows its first 500 characters
+collapsed under "Text to save", and View details shows all of it. "Allow in
 this chat" stores the tool's registry hash (`hashBesidkaChatTool`: chat name,
 description, input schema, access and tier) in
 `besidka_chat_settings.alwaysAllowTools`; "Always allow" sets the tool's

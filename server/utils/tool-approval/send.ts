@@ -26,6 +26,7 @@ import {
   TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
   TOOL_APPROVAL_PAYLOAD_MAX_BYTES,
   TOOL_APPROVAL_PENDING_PER_MESSAGE,
+  TOOL_APPROVAL_PREVIEW_MAX_LENGTH,
   TOOL_APPROVAL_RECORD_VERSION,
   TOOL_APPROVAL_ROUNDS_PER_TURN,
   TOOL_APPROVAL_SUMMARY_MAX_LENGTH,
@@ -76,6 +77,10 @@ type KvNamespace = Parameters<typeof putToolApproval>[0]
 
 const TEXT_ENCODER = new TextEncoder()
 
+export const WEB_SEARCH_AFTER_PRIVATE_READ_TEXT = 'Web search is off for the '
+  + 'rest of this message because it read the user\'s private data. Answer '
+  + 'without searching.'
+
 const NATIVE_TOOL_SUMMARIES: Record<string, string> = {
   memory_write: 'Besidka wants to save a memory',
   memory_forget: 'Besidka wants to forget a memory',
@@ -105,11 +110,21 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * approval, Always allow); every other tool is decided as `ask`.
  * `summarize` writes the summary of one call from its input (a Besidka
  * tool's registry summarizer); without it every call shows `summary`.
+ * `describe` writes a fuller summary with one lookup (the titles of the
+ * chats a delete names), called once per pause before the summary is shown
+ * or stored; null or a failure keeps `summarize`'s. `preview` is the text a
+ * content write would store, shown with the approval.
+ * `failsWithoutRunning` marks a call `execute` always refuses with a plain
+ * error (a Besidka delete or move of the current chat): it is cleared
+ * without a prompt, so the user is never asked for a call that cannot run.
  */
 export interface SendToolEntry {
   descriptor: ToolApprovalDescriptor
   summary: string
   summarize?: (input: unknown) => string
+  describe?: (input: unknown) => Promise<string | null>
+  preview?: (input: unknown) => string | null
+  failsWithoutRunning?: (input: unknown) => boolean
   permissionMode?: ToolPermissionMode
   taint: ToolApprovalTaintKind | null
   readSource: string | null
@@ -144,6 +159,7 @@ export interface PendingToolApprovalDecision {
   entry: SendToolEntry
   decision: ToolApprovalDecision
   summary: string
+  preview: string | null
 }
 
 export interface ToolApprovalCall {
@@ -219,6 +235,16 @@ function hasExecute(tool: unknown): tool is {
   return isRecord(tool) && typeof tool.execute === 'function'
 }
 
+/**
+ * A web search Besidka runs itself (a function tool, not the provider's):
+ * Brave, Exa, or any other tool the send classifies as a web read.
+ */
+function isOwnWebSearch(entry: SendToolEntry, tool: unknown): boolean {
+  return entry.descriptor.family === 'native'
+    && entry.taint === 'web'
+    && !isProviderTool(tool)
+}
+
 function payloadBytes(value: unknown): number {
   const serialized = JSON.stringify(value)
 
@@ -240,6 +266,35 @@ function summarizeCall(entry: SendToolEntry, input: unknown): string {
     return clampSummary(entry.summarize(input)) || entry.summary
   } catch {
     return entry.summary
+  }
+}
+
+function previewCall(entry: SendToolEntry, input: unknown): string | null {
+  try {
+    const preview = entry.preview?.(input)
+
+    return preview ? preview.slice(0, TOOL_APPROVAL_PREVIEW_MAX_LENGTH) : null
+  } catch {
+    return null
+  }
+}
+
+async function describeCall(
+  pending: PendingToolApprovalDecision,
+  input: unknown,
+): Promise<void> {
+  if (!pending.entry.describe) {
+    return
+  }
+
+  try {
+    const described = await pending.entry.describe(input)
+
+    if (described) {
+      pending.summary = clampSummary(described)
+    }
+  } catch {
+    return
   }
 }
 
@@ -572,6 +627,15 @@ export function createSendToolApproval(input: {
       return denied('over-cap')
     }
 
+    if (entry.failsWithoutRunning?.(toolCall.input) === true) {
+      clearedCalls.set(toolCall.toolCallId, {
+        toolName: toolCall.toolName,
+        inputJson: toInputJson(toolCall.input),
+      })
+
+      return 'not-applicable'
+    }
+
     const isGrantUsable = state.taint.size === 0
       || entry.alwaysGrantWhenTainted
       || (
@@ -628,6 +692,7 @@ export function createSendToolApproval(input: {
       entry,
       decision,
       summary: summarizeCall(entry, toolCall.input),
+      preview: previewCall(entry, toolCall.input),
     })
 
     return { type: 'user-approval', reason: decision.status.reason }
@@ -691,6 +756,10 @@ export function createSendToolApproval(input: {
     return Object.fromEntries(Object.entries(tools).map(([toolName, tool]) => {
       const entry = entries.get(toolName)
 
+      if (entry && isOwnWebSearch(entry, tool) && hasExecute(tool)) {
+        return [toolName, guardWebSearch(tool)]
+      }
+
       if (
         !entry
         || entry.descriptor.family !== 'native'
@@ -726,6 +795,35 @@ export function createSendToolApproval(input: {
     }))
   }
 
+  /**
+   * Refuses a web search Besidka runs itself (Brave, Exa or any other
+   * function tool that searches the web) once a tool call of the turn read
+   * a connector or the user's Besidka data, so the query cannot carry that
+   * data out. The send also leaves such a tool out of later steps; this is
+   * the line that holds where it cannot (Anthropic routes).
+   */
+  function guardWebSearch(tool: {
+    execute: (input: unknown, options?: { toolCallId?: string }) => unknown
+  }): ToolSet[string] {
+    const execute = tool.execute.bind(tool)
+
+    return {
+      ...tool,
+      execute: (input: unknown, options?: { toolCallId?: string }) => {
+        if (state.toolReadSources.size > 0) {
+          throw createError({
+            message: WEB_SEARCH_AFTER_PRIVATE_READ_TEXT,
+            status: 403,
+            why: 'A tool call of this message read private data.',
+            fix: 'Answer without a web search.',
+          })
+        }
+
+        return execute(input, options)
+      },
+    } as unknown as ToolSet[string]
+  }
+
   function wouldAsk(entry: SendToolEntry): boolean {
     return resolveToolApproval({
       descriptor: entry.descriptor,
@@ -750,7 +848,15 @@ export function createSendToolApproval(input: {
     return Object.entries(tools ?? {}).flatMap(([toolName, tool]) => {
       const entry = entries.get(toolName)
 
-      if (!isProviderTool(tool) || !entry || !shouldWithhold(entry)) {
+      if (!entry) {
+        return []
+      }
+
+      if (isOwnWebSearch(entry, tool)) {
+        return state.toolReadSources.size > 0 ? [toolName] : []
+      }
+
+      if (!isProviderTool(tool) || !shouldWithhold(entry)) {
         return []
       }
 
@@ -800,9 +906,10 @@ type StepPreparation = Awaited<ReturnType<PrepareStepFunction<ToolSet>>>
  * unclassified provider tool; code execution is exempt because its sandbox
  * has no network access, so it cannot carry data out) out of
  * every step in which the policy would ask for it, and the provider's own
- * web search, grounding and URL context out of every step once a tool call
- * of the turn read a connector or the user's Besidka data (rule 4: a fetch
- * could carry that data out). Web taint alone, and knowledge or past-chat
+ * web search, grounding and URL context, and the web searches Besidka runs
+ * itself (Brave, Exa), out of every step once a tool call of the turn read
+ * a connector or the user's Besidka data (rule 4: a query could carry that
+ * data out). Web taint alone, and knowledge or past-chat
  * excerpts preset into the prompt, do not withhold them. The provider runs
  * such a call inside its own response, before Besidka sees it, so it can
  * never wait for approval; leaving the tool out is the only way to stop it.
@@ -841,9 +948,10 @@ export function withProviderToolEgressGuard(input: {
 }
 
 /**
- * Whether the send declares a provider-executed tool the guard may have to
- * withhold (one that is not a read, or a web search, grounding or URL
- * context tool), so `withProviderToolEgressGuard` has something to do.
+ * Whether the send declares a tool the guard may have to withhold: a
+ * provider-executed tool that is not a read, a provider web search,
+ * grounding or URL context tool, or a web search Besidka runs itself (Brave,
+ * Exa), so `withProviderToolEgressGuard` has something to do.
  */
 export function hasGuardedProviderTool(
   approval: SendToolApproval,
@@ -852,9 +960,15 @@ export function hasGuardedProviderTool(
   return Object.entries(tools ?? {}).some(([toolName, tool]) => {
     const entry = approval.entries.get(toolName)
 
-    return isProviderTool(tool)
-      && Boolean(entry)
-      && (entry?.descriptor.access !== 'read' || entry.taint === 'web')
+    if (!entry) {
+      return false
+    }
+
+    return isOwnWebSearch(entry, tool)
+      || (
+        isProviderTool(tool)
+        && (entry.descriptor.access !== 'read' || entry.taint === 'web')
+      )
   })
 }
 
@@ -862,8 +976,9 @@ export function hasGuardedProviderTool(
  * Records, before the first model step, the untrusted content the send
  * already puts in front of the model, with the same triggers as the memory
  * write lock (`presetMemoryWriteLock`) plus a chat branched from a public
- * share and files the user attached to this message (`file`, so no
- * remembered approval runs a tool in a send that holds a document).
+ * share, files the user attached to this message (`file`, so no
+ * remembered approval runs a tool in a send that holds a document) and an
+ * earlier Besidka tool result in the chat (`besidka`).
  */
 export function presetApprovalTaint(
   state: ApprovalState,
@@ -875,6 +990,7 @@ export function presetApprovalTaint(
     holdsPastChatExcerpts: boolean
     isBranchedFromShare: boolean
     holdsUserAttachments?: boolean
+    holdsBesidkaToolHistory?: boolean
   },
 ): void {
   if (send.requestedTools.some(isWebSearchTool)) {
@@ -897,6 +1013,27 @@ export function presetApprovalTaint(
   if (send.isBranchedFromShare) {
     recordTaint(state, 'shared-branch')
   }
+
+  if (send.holdsBesidkaToolHistory) {
+    recordTaint(state, 'besidka')
+  }
+}
+
+/**
+ * Whether stored parts hold a Besidka tool call that ran (a result or an
+ * error). An earlier answer built on Besidka results may quote that data, so
+ * a later send starts with `besidka` taint: Besidka writes and the
+ * ask-every-time tier ask, Besidka reads keep their relaxed rule.
+ */
+export function hasBesidkaToolResult(parts: unknown): boolean {
+  return Array.isArray(parts) && parts.some((part) => {
+    if (!isRecord(part) || typeof part.type !== 'string') {
+      return false
+    }
+
+    return isBesidkaChatToolName(part.type.replace(/^tool-/, ''))
+      && (part.state === 'output-available' || part.state === 'output-error')
+  })
 }
 
 type ToolCallProviderMetadata = Record<string, Record<string, unknown>>
@@ -976,7 +1113,7 @@ export function createToolApprovalStreamCollector(
       UIMessageChunk,
       UIMessageChunk
     >({
-      transform(chunk, controller) {
+      async transform(chunk, controller) {
         if (chunk.type === 'tool-input-available') {
           inputs.set(chunk.toolCallId, {
             toolName: chunk.toolName,
@@ -1022,6 +1159,8 @@ export function createToolApprovalStreamCollector(
           return
         }
 
+        await describeCall(pending, call.input)
+
         collected.push({
           approvalId: chunk.approvalId,
           toolCallId: chunk.toolCallId,
@@ -1039,6 +1178,7 @@ export function createToolApprovalStreamCollector(
           reason: pending.decision.reason ?? 'default',
           summary: pending.summary,
           rememberOptions: [...pending.decision.rememberOptions],
+          ...(pending.preview ? { preview: pending.preview } : {}),
         }
 
         controller.enqueue({

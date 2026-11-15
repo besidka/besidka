@@ -17,20 +17,27 @@ vi.mock('~~/server/utils/mcp/private/projects', async (importOriginal) => {
 
 const {
   BESIDKA_CURRENT_CHAT_REFUSAL_TEXT,
+  BESIDKA_SHARE_LINK_CREATED_TEXT,
   BESIDKA_TOOL_FAILURE_TEXT,
   BESIDKA_TOOL_RATE_LIMIT_TEXT,
   besidkaToolAccess,
   buildBesidkaChatTools,
   createBesidkaCallLimiter,
   hashBesidkaChatTool,
+  previewBesidkaToolCall,
   selectBesidkaChatTools,
   targetsCurrentChat,
+  toChatToolResult,
 } = await import('~~/server/utils/besidka-tools/chat-adapter')
 const { listChatExposedBesidkaTools } = await import(
   '~~/server/utils/besidka-tools/registry'
 )
 const {
+  WEB_SEARCH_AFTER_PRIVATE_READ_TEXT,
   createSendToolApproval,
+  hasBesidkaToolResult,
+  hasGuardedProviderTool,
+  presetApprovalTaint,
   withProviderToolEgressGuard,
 } = await import('~~/server/utils/tool-approval/send')
 const { createApprovalState } = await import(
@@ -612,4 +619,212 @@ describe('Besidka calls on replay', () => {
     expect(decisions.map(decision => decision.denialReason))
       .toEqual([null, 'over-cap'])
   })
+})
+
+describe('audit fixes', () => {
+  function fakeDb(rows: Array<Record<string, unknown>>) {
+    return {
+      select: () => ({
+        from: () => ({
+          where: async () => rows,
+        }),
+      }),
+    }
+  }
+
+  it('keeps the share link out of a chat result', () => {
+    expect(toChatToolResult('share_artifact', {
+      shareId: 'sh_1',
+      url: 'https://besidka.com/artifacts/secret-token',
+      expiresAt: '2026-12-01T00:00:00.000Z',
+      warnings: ['email'],
+    })).toEqual({
+      shareId: 'sh_1',
+      expiresAt: '2026-12-01T00:00:00.000Z',
+      warnings: ['email'],
+      message: BESIDKA_SHARE_LINK_CREATED_TEXT,
+    })
+    expect(toChatToolResult('list_projects', { projects: [] }))
+      .toEqual({ projects: [] })
+  })
+
+  it('compares the current chat slug in one case', () => {
+    expect(targetsCurrentChat('delete_chats', {
+      slugs: [CURRENT_SLUG.toLowerCase()],
+    }, CURRENT_SLUG)).toBe(true)
+    expect(targetsCurrentChat('delete_chat_message', {
+      slug: ` ${CURRENT_SLUG.toLowerCase()} `,
+      messageId: 'm1',
+    }, CURRENT_SLUG.toLowerCase())).toBe(true)
+  })
+
+  it('never asks for a call that targets the current chat', async () => {
+    const { run } = await build({
+      modes: modesWith({ delete_chats: 'ask' }, 'blocked'),
+    })
+    const approval = createSendToolApproval({ state: createApprovalState() })
+
+    approval.registerTools(run.tools, run.approvalEntries)
+
+    expect(approval.toolApproval({
+      toolCall: {
+        toolCallId: 'c1',
+        toolName: 'besidka__delete_chats',
+        input: { slugs: [CURRENT_SLUG.toLowerCase()] },
+      },
+    })).toBe('not-applicable')
+    expect(approval.getPendingDecision('c1')).toBeUndefined()
+
+    const failure = await failureOf(execute(
+      run,
+      'besidka__delete_chats',
+      { slugs: [CURRENT_SLUG.toLowerCase()] },
+    ))
+
+    expect(failure.message).toBe(BESIDKA_CURRENT_CHAT_REFUSAL_TEXT)
+  })
+
+  it('previews the text of a content write', () => {
+    expect(previewBesidkaToolCall('update_project_instructions', {
+      projectId: 'p1',
+      instructions: 'Always answer in French.',
+    })).toBe('Always answer in French.')
+    expect(previewBesidkaToolCall('create_file', { name: 'a', text: 'Hi' }))
+      .toBe('Hi')
+    expect(previewBesidkaToolCall('list_projects', {})).toBeNull()
+    expect(previewBesidkaToolCall('add_project_note', { body: '  ' }))
+      .toBeNull()
+  })
+
+  it('names the chats and files a delete removes, with one query',
+    async () => {
+      const chats = await buildBesidkaChatTools({
+        db: fakeDb([{ title: 'Plan' }, { title: '' }]) as never,
+        userId: 7,
+        currentChatSlug: CURRENT_SLUG,
+        modes: modesWith({ delete_chats: 'ask' }, 'blocked'),
+        chatGrants: {},
+        maxTools: 40,
+        maxBytes: UNLIMITED_BYTES,
+        consumeClearedCall: () => true,
+        limitCalls: async () => true,
+        logger: { set: vi.fn() },
+      })
+
+      expect(await chats.approvalEntries.get('besidka__delete_chats')
+        ?.describe?.({ slugs: [OTHER_SLUG, '01HZXCCCCCCCCCCCCCCCCCCCCC'] }))
+        .toBe('Delete 2 chats: "Plan", "Untitled chat"')
+
+      const files = await buildBesidkaChatTools({
+        db: fakeDb([{ name: 'notes.txt' }]) as never,
+        userId: 7,
+        currentChatSlug: CURRENT_SLUG,
+        modes: modesWith({ delete_files: 'ask' }, 'blocked'),
+        chatGrants: {},
+        maxTools: 40,
+        maxBytes: UNLIMITED_BYTES,
+        consumeClearedCall: () => true,
+        limitCalls: async () => true,
+        logger: { set: vi.fn() },
+      })
+
+      expect(await files.approvalEntries.get('besidka__delete_files')
+        ?.describe?.({ fileIds: ['f1', 'f2'] }))
+        .toBe('Delete 2 files from your library: "notes.txt" and 1 more')
+    })
+
+  it('writes the preview and the fuller summary into the approval part',
+    async () => {
+      const { run } = await build({
+        modes: modesWith({ add_project_note: 'ask' }, 'blocked'),
+      })
+      const approval = createSendToolApproval({ state: createApprovalState() })
+
+      approval.registerTools(run.tools, run.approvalEntries)
+
+      approval.toolApproval({
+        toolCall: {
+          toolCallId: 'c1',
+          toolName: 'besidka__add_project_note',
+          input: { projectId: 'p1', title: 'Rules', body: 'Be brief.' },
+        },
+      })
+
+      expect(approval.getPendingDecision('c1')?.preview).toBe('Be brief.')
+    })
+
+  it('starts a send with Besidka taint after an earlier Besidka result',
+    async () => {
+      const state = createApprovalState()
+
+      presetApprovalTaint(state, {
+        requestedTools: [],
+        holdsUntrustedKnowledge: false,
+        holdsArtifactContext: false,
+        holdsSkillText: false,
+        holdsPastChatExcerpts: false,
+        isBranchedFromShare: false,
+        holdsBesidkaToolHistory: hasBesidkaToolResult([{
+          type: 'tool-besidka__list_files',
+          state: 'output-available',
+        }]),
+      })
+
+      const { run } = await build({
+        modes: modesWith({ list_projects: 'allow', rename_file: 'allow' }),
+      })
+      const approval = createSendToolApproval({ state })
+
+      approval.registerTools(run.tools, run.approvalEntries)
+
+      expect(approval.toolApproval({
+        toolCall: { toolCallId: 'c1', toolName: 'besidka__list_projects', input: {} },
+      })).toBe('not-applicable')
+      expect(approval.toolApproval({
+        toolCall: {
+          toolCallId: 'c2',
+          toolName: 'besidka__rename_file',
+          input: { fileId: 'f1', name: 'x.txt' },
+        },
+      })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+      expect(hasBesidkaToolResult([{
+        type: 'tool-besidka__list_files',
+        state: 'approval-requested',
+      }])).toBe(false)
+    })
+
+  it('withholds and refuses Besidka-run web search after a private read',
+    async () => {
+      const search = vi.fn(async () => 'results')
+      const { run } = await build({
+        modes: modesWith({ list_projects: 'allow' }),
+      })
+      const approval = createSendToolApproval({ state: createApprovalState() })
+      const tools = {
+        ...run.tools,
+        web_search_brave: { execute: search },
+      } as never
+
+      approval.registerTools(tools, run.approvalEntries)
+
+      const guarded = approval.guardNativeWrites(tools) as unknown as Record<
+        string,
+        { execute: (input: unknown) => Promise<unknown> }
+      >
+
+      expect(hasGuardedProviderTool(approval, tools)).toBe(true)
+      expect(approval.listWithheldProviderTools(tools)).toEqual([])
+      expect(await guarded.web_search_brave!.execute({ q: 'x' }))
+        .toBe('results')
+
+      approval.toolApproval({
+        toolCall: { toolCallId: 'c1', toolName: 'besidka__list_projects', input: {} },
+      })
+
+      expect(approval.listWithheldProviderTools(tools))
+        .toEqual(['web_search_brave'])
+      expect(() => guarded.web_search_brave!.execute({ q: 'x' }))
+        .toThrow(WEB_SEARCH_AFTER_PRIVATE_READ_TEXT)
+      expect(search).toHaveBeenCalledTimes(1)
+    })
 })

@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
+import { and, eq, inArray } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { z } from 'zod'
 import {
@@ -21,12 +22,18 @@ import {
   connectorSha256Hex,
   frameUntrustedResult,
 } from '~~/server/utils/connectors/tool-definitions'
+import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   listChatExposedBesidkaTools,
   summarizeBesidkaToolCall,
 } from '~~/server/utils/besidka-tools/registry'
+import {
+  listTokens,
+  pluralize,
+  quoteText,
+} from '~~/server/utils/besidka-tools/summary'
 import type { ChatExposedBesidkaTool } from '~~/server/utils/besidka-tools/registry'
 import type {
   BesidkaToolContext,
@@ -48,9 +55,21 @@ export const BESIDKA_TOOL_RATE_LIMIT_TEXT = 'Too many Besidka tool calls. '
 export const BESIDKA_CURRENT_CHAT_REFUSAL_TEXT = 'Besidka does not delete or '
   + 'move the chat you are in, or delete its messages, from inside it.'
 
+export const BESIDKA_SHARE_LINK_CREATED_TEXT = 'Share link created; open it '
+  + 'from the artifact panel.'
+
 const RATE_LIMIT_KEY_PREFIX = 'besidka-tools-chat-calls'
 const RATE_LIMIT_WINDOW_SECONDS = 60
 const TEXT_ENCODER = new TextEncoder()
+
+const PREVIEW_FIELDS: Readonly<Record<string, string>> = {
+  update_project_instructions: 'instructions',
+  add_project_note: 'body',
+  update_project_knowledge_item: 'body',
+  create_file: 'text',
+}
+
+const NAMED_TITLES_MAX = 3
 
 const CURRENT_CHAT_GUARDED_TOOLS: ReadonlySet<string> = new Set([
   'delete_chats',
@@ -93,6 +112,48 @@ export type BesidkaCallLimiter = (userId: number) => Promise<boolean>
 
 export function toBesidkaChatToolName(registryName: string): string {
   return `${BESIDKA_TOOL_NAME_PREFIX}${registryName}`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * The result of a `share_artifact` call as the model sees it in a chat: the
+ * share id, expiry and warnings, never the link. The link carries its access
+ * token, and a chat result is persisted with the message and read again by
+ * later turns, so the user opens the link from the artifact panel instead.
+ */
+function withoutShareLink(result: unknown): unknown {
+  if (!isRecord(result)) {
+    return result
+  }
+
+  return {
+    shareId: result.shareId,
+    expiresAt: result.expiresAt,
+    warnings: result.warnings,
+    message: BESIDKA_SHARE_LINK_CREATED_TEXT,
+  }
+}
+
+const CHAT_RESULT_TRANSFORMS: Readonly<
+  Record<string, (result: unknown) => unknown>
+> = {
+  share_artifact: withoutShareLink,
+}
+
+/**
+ * The handler result a chat model may see. MCP clients get the result
+ * unchanged; a chat drops what must not enter model context or the stored
+ * message (`CHAT_RESULT_TRANSFORMS`).
+ */
+export function toChatToolResult(registryName: string, result: unknown) {
+  const transform = Object.hasOwn(CHAT_RESULT_TRANSFORMS, registryName)
+    ? CHAT_RESULT_TRANSFORMS[registryName]
+    : undefined
+
+  return transform ? transform(result) : result
 }
 
 function byteLength(text: string): number {
@@ -239,13 +300,21 @@ function readSlugs(input: unknown): string[] {
   const { slugs, slug } = input as { slugs?: unknown, slug?: unknown }
   const values = Array.isArray(slugs) ? slugs : [slug]
 
-  return values.filter((value): value is string => typeof value === 'string')
+  return values
+    .filter((value): value is string => typeof value === 'string')
+    .map(normalizeSlug)
+}
+
+function normalizeSlug(value: string): string {
+  return value.trim().toUpperCase()
 }
 
 /**
  * Whether a call would delete or move the chat the send runs in, or delete
  * one of its messages. Such a call is refused with a plain tool error: the
- * chat is generating this very reply.
+ * chat is generating this very reply. Slugs are compared in one case, since
+ * a ULID reads the same in either. The approval entry marks such a call
+ * `failsWithoutRunning`, so the user is never asked for it.
  */
 export function targetsCurrentChat(
   registryName: string,
@@ -253,7 +322,7 @@ export function targetsCurrentChat(
   currentChatSlug: string,
 ): boolean {
   return CURRENT_CHAT_GUARDED_TOOLS.has(registryName)
-    && readSlugs(input).includes(currentChatSlug)
+    && readSlugs(input).includes(normalizeSlug(currentChatSlug))
 }
 
 function readStatus(exception: unknown): number {
@@ -282,11 +351,107 @@ function toolFailure(message: string, status: number) {
   })
 }
 
+/**
+ * The text a content write would store, shown with its approval so the user
+ * reads what they allow, not only its length.
+ */
+export function previewBesidkaToolCall(
+  registryName: string,
+  input: unknown,
+): string | null {
+  const field = Object.hasOwn(PREVIEW_FIELDS, registryName)
+    ? PREVIEW_FIELDS[registryName]
+    : undefined
+
+  if (!field || !isRecord(input)) {
+    return null
+  }
+
+  const value = input[field]
+
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function readStrings(input: unknown, key: string): string[] {
+  if (!isRecord(input) || !Array.isArray(input[key])) {
+    return []
+  }
+
+  return (input[key] as unknown[]).filter((value): value is string => {
+    return typeof value === 'string'
+  })
+}
+
+function namedList(titles: readonly string[], ids: readonly string[]) {
+  const named = titles.slice(0, NAMED_TITLES_MAX).map((title) => {
+    return quoteText(title, 40)
+  })
+  const hiddenCount = ids.length - named.length
+
+  return hiddenCount > 0
+    ? `${named.join(', ')} and ${hiddenCount} more`
+    : named.join(', ')
+}
+
+type BesidkaCallDescriber = (
+  db: DbClient,
+  userId: number,
+  input: unknown,
+) => Promise<string | null>
+
+/**
+ * Summaries of deletes that name what goes, with one query: the chat titles
+ * of `delete_chats` and the file names of `delete_files`. Ids the user does
+ * not own, or that do not decode, are left out of the titles but counted.
+ */
+const CALL_DESCRIBERS: Readonly<Record<string, BesidkaCallDescriber>> = {
+  delete_chats: async (db, userId, input) => {
+    const slugs = readStrings(input, 'slugs')
+
+    if (!slugs.length) {
+      return null
+    }
+
+    const rows = await db.select({ title: schema.chats.title })
+      .from(schema.chats)
+      .where(and(
+        eq(schema.chats.userId, userId),
+        inArray(schema.chats.slug, slugs),
+      ))
+    const titles = rows.map(row => row.title?.trim() || 'Untitled chat')
+
+    return titles.length
+      ? `Delete ${pluralize(slugs.length, 'chat')}: ${namedList(titles, slugs)}`
+      : `Delete ${pluralize(slugs.length, 'chat')}: ${listTokens(slugs)}`
+  },
+  delete_files: async (db, userId, input) => {
+    const fileIds = readStrings(input, 'fileIds')
+
+    if (!fileIds.length) {
+      return null
+    }
+
+    const rows = await db.select({ name: schema.files.name })
+      .from(schema.files)
+      .where(and(
+        eq(schema.files.userId, userId),
+        inArray(schema.files.id, fileIds),
+      ))
+
+    return rows.length
+      ? `Delete ${pluralize(fileIds.length, 'file')} from your library: `
+      + namedList(rows.map(row => row.name), fileIds)
+      : null
+  },
+}
+
 function buildApprovalEntry(input: {
   besidkaTool: ChatExposedBesidkaTool
   mode: ToolPermissionMode
   definitionHash: string
   chatGrantHash: string | null
+  currentChatSlug: string
+  describe?: (input: unknown) => Promise<string | null>
 }): SendToolEntry {
   const { besidkaTool, definitionHash } = input
   const exposedName = toBesidkaChatToolName(besidkaTool.name)
@@ -302,6 +467,17 @@ function buildApprovalEntry(input: {
     summary: besidkaTool.title,
     summarize: (callInput: unknown) => {
       return summarizeBesidkaToolCall(besidkaTool, callInput)
+    },
+    ...(input.describe ? { describe: input.describe } : {}),
+    preview: (callInput: unknown) => {
+      return previewBesidkaToolCall(besidkaTool.name, callInput)
+    },
+    failsWithoutRunning: (callInput: unknown) => {
+      return targetsCurrentChat(
+        besidkaTool.name,
+        callInput,
+        input.currentChatSlug,
+      )
     },
     permissionMode: input.mode,
     taint: 'besidka',
@@ -366,6 +542,14 @@ export async function buildBesidkaChatTools(input: {
       chatGrantHash: Object.hasOwn(input.chatGrants, exposedName)
         ? input.chatGrants[exposedName] ?? null
         : null,
+      currentChatSlug: input.currentChatSlug,
+      ...(Object.hasOwn(CALL_DESCRIBERS, candidate.tool.name)
+        ? {
+          describe: (callInput: unknown) => {
+            return CALL_DESCRIBERS[candidate.tool.name]!(db, userId, callInput)
+          },
+        }
+        : {}),
     }))
   }
 
@@ -393,7 +577,9 @@ export async function buildBesidkaChatTools(input: {
       return frameUntrustedResult({
         slug: BESIDKA_CHAT_RESULT_SOURCE,
         toolName: besidkaTool.name,
-        text: JSON.stringify(result ?? null),
+        text: JSON.stringify(
+          toChatToolResult(besidkaTool.name, result) ?? null,
+        ),
       }).text
     } catch (exception) {
       const status = readStatus(exception)

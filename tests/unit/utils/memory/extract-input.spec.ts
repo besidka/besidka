@@ -152,6 +152,31 @@ describe('memory extraction input', () => {
     expect(window.consumedCount).toBe(3)
   })
 
+  it('excludes assistant turns that used a Besidka tool', async () => {
+    const { loadMemoryExtractionWindow } = await loadInput()
+
+    await seedMessage(testDb.db, chatId, 'user', [
+      textPart('List my projects'),
+    ], minutesBefore(50))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      {
+        type: 'tool-besidka__list_projects',
+        state: 'output-available',
+        output: '<untrusted_tool_result>x</untrusted_tool_result>',
+      },
+      textPart('BESIDKA-DATA-IN-ANSWER'),
+    ], minutesBefore(49))
+    await seedMessage(testDb.db, chatId, 'assistant', [
+      textPart('A normal answer'),
+    ], minutesBefore(48))
+
+    const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+    expect(window.transcript).not.toContain('BESIDKA-DATA')
+    expect(window.transcript).toContain('List my projects')
+    expect(window.transcript).toContain('A normal answer')
+  })
+
   it('excludes a branched turn that kept only the connector marker',
     async () => {
       const { loadMemoryExtractionWindow } = await loadInput()

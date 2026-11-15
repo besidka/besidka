@@ -68,6 +68,7 @@ describe('getApprovalStepModel', () => {
       reason: 'always-ask',
       summary: 'Linear wants to run mcp__linear__create_issue',
       rememberOptions: ['once'],
+      preview: '',
       input: { title: 'Bug' },
       partState: 'approval-requested',
       approved: null,
