@@ -10,7 +10,10 @@
       @cancel.prevent="requestClose"
       @close="onClose"
     >
-      <div class="modal-box flex max-h-[90dvh] w-full max-w-lg flex-col gap-0 p-0">
+      <div
+        class="modal-box flex max-h-[90dvh] w-full flex-col gap-0 p-0"
+        :class="size === 'lg' ? 'max-w-3xl' : 'max-w-lg'"
+      >
         <header class="flex shrink-0 items-center gap-3 border-b border-base-300 px-4 py-3 pt-[max(0.75rem,var(--sat))] sm:pt-3">
           <h2
             :id="titleId"
@@ -66,7 +69,9 @@ const props = withDefaults(defineProps<{
   hookClass?: string
   testId?: string
   isBusy?: boolean
+  size?: 'md' | 'lg'
 }>(), {
+  size: 'md',
   hookClass: '',
   testId: 'connector-dialog',
   isBusy: false,

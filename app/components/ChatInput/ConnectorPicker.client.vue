@@ -167,12 +167,12 @@
                   : 'cursor-pointer'
                 "
               >
-                <span
-                  class="grid size-8 shrink-0 place-items-center rounded-field bg-base-200 text-sm font-semibold uppercase text-base-content/70"
-                  aria-hidden="true"
-                >
-                  {{ getInitial(item.title) }}
-                </span>
+                <ProfileConnectorsAvatar
+                  :title="item.title"
+                  :connector-id="item.id"
+                  :preset-id="item.presetId"
+                  :is-icon-available="item.isIconAvailable"
+                />
                 <span class="flex min-w-0 grow flex-col">
                   <span class="truncate text-sm font-medium">
                     {{ item.title }}
@@ -343,10 +343,6 @@ function isSelected(connectorId: string): boolean {
 
 function isRowDisabled(connectorId: string): boolean {
   return props.isSaving || (props.isAtLimit && !isSelected(connectorId))
-}
-
-function getInitial(title: string): string {
-  return title.trim().charAt(0) || '?'
 }
 
 async function showDialog() {

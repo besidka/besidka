@@ -290,8 +290,10 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     expect(response.status).toBe(404)
     expect(response.headers.get('cache-control')).toBe('private, max-age=3600')
 
+    const callsAfterFirst = fetchMock.mock.calls.length
+
     await request(connectorId)
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterFirst)
   })
 })

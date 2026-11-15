@@ -1,0 +1,98 @@
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { enableAutoUnmount } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
+import Avatar from '../../../../../app/components/Profile/Connectors/Avatar.vue'
+
+enableAutoUnmount(afterEach)
+
+describe('Profile/Connectors/Avatar', () => {
+  it('shows a letter when nothing can be fetched', async () => {
+    const wrapper = await mountSuspended(Avatar, { props: { title: 'sentry' } })
+
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.text()).toBe('S')
+  })
+
+  it('loads a connector icon only through our route, and only when available',
+    async () => {
+      const unavailable = await mountSuspended(Avatar, {
+        props: { title: 'Notion', connectorId: 'c1' },
+      })
+
+      expect(unavailable.find('img').exists()).toBe(false)
+
+      const available = await mountSuspended(Avatar, {
+        props: { title: 'Notion', connectorId: 'c1', isIconAvailable: true },
+      })
+      const image = available.find('img')
+
+      expect(image.attributes('src')).toBe('/api/v1/connectors/c1/icon')
+      expect(image.attributes('referrerpolicy')).toBe('no-referrer')
+      expect(image.attributes('alt')).toBe('')
+    })
+
+  it('loads a directory icon from the registry route by id, url-encoded',
+    async () => {
+      const wrapper = await mountSuspended(Avatar, {
+        props: { title: 'Linear', registryId: 'app.linear/linear@1.0.2' },
+      })
+
+      expect(wrapper.find('img').attributes('src'))
+        .toBe('/api/v1/connectors/registry/icon?id='
+          + 'app.linear%2Flinear%401.0.2')
+    })
+
+  it('falls back to the letter when the image fails', async () => {
+    const wrapper = await mountSuspended(Avatar, {
+      props: { title: 'Linear', registryId: 'x@1' },
+    })
+
+    await wrapper.find('img').trigger('error')
+
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.text()).toBe('L')
+  })
+
+  it('tries again when the icon address changes', async () => {
+    const wrapper = await mountSuspended(Avatar, {
+      props: { title: 'Linear', registryId: 'a@1' },
+    })
+
+    await wrapper.find('img').trigger('error')
+    await wrapper.setProps({ registryId: 'b@1' })
+
+    expect(wrapper.find('img').exists()).toBe(true)
+  })
+
+  it('draws a preset brand mark when there is no image to ask for', async () => {
+    const wrapper = await mountSuspended(Avatar, {
+      props: { title: 'GitHub', presetId: 'github', connectorId: 'c1' },
+    })
+
+    expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
+      .toBe(true)
+    expect(wrapper.find('img').exists()).toBe(false)
+  })
+
+  it('prefers the connected icon, and falls back to the brand mark when '
+    + 'it fails', async () => {
+    const wrapper = await mountSuspended(Avatar, {
+      props: {
+        title: 'Linear',
+        presetId: 'linear',
+        connectorId: 'c1',
+        isIconAvailable: true,
+      },
+    })
+
+    expect(wrapper.find('img').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
+      .toBe(false)
+
+    await wrapper.find('img').trigger('error')
+
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
+      .toBe(true)
+  })
+})

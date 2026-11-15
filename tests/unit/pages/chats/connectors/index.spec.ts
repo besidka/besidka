@@ -162,6 +162,7 @@ describe('chats connectors page', () => {
           createConnectorItem({
             id: 'conn2',
             title: 'Notion',
+            presetId: null,
             status: 'needs-auth',
             createdVia: 'mcp',
             addedByApp: 'Claude',

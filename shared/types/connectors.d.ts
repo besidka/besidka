@@ -92,4 +92,6 @@ export interface ConnectorDirectoryItem {
   remoteUrl: string
   authHint: 'header' | 'unknown'
   presetId: string | null
+  publisher: string | null
+  isAdded: boolean
 }

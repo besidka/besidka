@@ -1,6 +1,10 @@
 import { defineEventHandler } from 'nuxt/server'
-import { CONNECTOR_ICON_CACHE_SECONDS } from '#shared/utils/connectors-policy'
 import { isConnectorConsentCurrent } from '~~/server/utils/connectors/consent'
+import {
+  ICON_BUSY_CACHE_SECONDS,
+  iconImageResponse,
+  iconMissResponse,
+} from '~~/server/utils/connectors/icon-response'
 import {
   CONNECTOR_ICON_BUSY,
   resolveConnectorIcon,
@@ -10,18 +14,6 @@ import {
   requireOwnedConnector,
 } from '~~/server/utils/connectors/route'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
-
-const MISS_CACHE_SECONDS = 3600
-const BUSY_CACHE_SECONDS = 5
-
-function buildHeaders(cacheSeconds: number): Record<string, string> {
-  return {
-    'cache-control': `private, max-age=${cacheSeconds}`,
-    'x-content-type-options': 'nosniff',
-    'content-security-policy': 'default-src \'none\'; sandbox',
-    'cross-origin-resource-policy': 'same-origin',
-  }
-}
 
 /**
  * The icon of one of the user's connectors, for the reasoning steps. The
@@ -41,10 +33,7 @@ export default defineEventHandler(async (event) => {
     && (connector.status === 'ready' || connector.status === 'drifted')
 
   if (!isEligible) {
-    return new Response(null, {
-      status: 404,
-      headers: buildHeaders(MISS_CACHE_SECONDS),
-    })
+    return iconMissResponse()
   }
 
   const image = await resolveConnectorIcon(
@@ -54,25 +43,8 @@ export default defineEventHandler(async (event) => {
   )
 
   if (image === CONNECTOR_ICON_BUSY) {
-    return new Response(null, {
-      status: 404,
-      headers: buildHeaders(BUSY_CACHE_SECONDS),
-    })
+    return iconMissResponse(ICON_BUSY_CACHE_SECONDS)
   }
 
-  if (!image) {
-    return new Response(null, {
-      status: 404,
-      headers: buildHeaders(MISS_CACHE_SECONDS),
-    })
-  }
-
-  return new Response(image.bytes, {
-    status: 200,
-    headers: {
-      ...buildHeaders(CONNECTOR_ICON_CACHE_SECONDS),
-      'content-type': image.contentType,
-      'content-length': String(image.bytes.byteLength),
-    },
-  })
+  return image ? iconImageResponse(image) : iconMissResponse()
 })

@@ -144,6 +144,10 @@ resolves a disagreement between tickets and is listed in section 13.
     `icons`, no hotlinking. Amended 2026-11-15 (BES-395): reasoning steps show
     a connector icon, but only through the Besidka route of section 7.10, never
     as a remote image; presets, cards and registry rows stay text only.
+    Amended again 2026-11-16 (BES-398): directory cards and the four presets
+    show an icon too, still never a remote image (section 10.2): presets draw
+    a bundled `simple-icons` mark, registry rows load the Besidka route
+    `GET /api/v1/connectors/registry/icon`, and a letter remains the fallback.
 16. **Results are data, never instructions.** Every connector result is wrapped
     and framed as untrusted, engages the memory write lock and never feeds
     memory extraction, chat search or shares.
@@ -161,7 +165,7 @@ Worker's network position), and the integrity of what the model reads.
 | T3 | Env or template interpolation in a user URL or header (LibreChat CVE-2026-32625: `${VAR}` from `process.env` interpolated into a user MCP URL leaked secrets) | Malicious user | Never interpolate anything into user-supplied URLs or headers. Registry entries with `{var}` or `${...}` in the URL are skipped. Header names validated by regex, values stored encrypted and sent verbatim | C-3, C-8 |
 | T4 | Token theft at rest | Database or backup leak | Access, refresh and header values encrypted with `useEncryptText` (`server/utils/encryption.ts`, `NUXT_ENCRYPTION_KEY`); full server URL encrypted (paths and queries can carry secrets); never logged, never returned by any API or MCP tool | C-2, C-4 |
 | T5 | Confused deputy and token passthrough: Besidka's own session or MCP token sent to a remote server, or one server's token sent to another | Malicious server | Credentials keyed per user × connector × issuer; a connector sends only tokens issued by its own authorization server (MCP authorization spec); RFC 8707 `resource` binds the token audience; `Authorization` stripped on any origin change; Besidka session cookies and `/mcp` tokens never leave the Worker | C-4 |
-| T6 | Spoofed host lookalike (`notlon.so`, `mcp.linear.app.evil.com`, IDN homograph) presented as a known service | Phishing link, malicious registry entry | The consent screen and every card show the punycode host in plain text; presets match by exact URL only, so a typed host never inherits preset trust; registry rows labeled "Not reviewed by Besidka"; no logos that could lend credibility | C-7, C-8 |
+| T6 | Spoofed host lookalike (`notlon.so`, `mcp.linear.app.evil.com`, IDN homograph) presented as a known service | Phishing link, malicious registry entry | The consent screen and every card show the punycode host in plain text; presets match by exact URL only, so a typed host never inherits preset trust; registry rows labeled "Not reviewed by Besidka"; no logos that could lend credibility (amended by BES-398: a card now shows an icon that the entry's own registry record or its host supplies, so an icon is as spoofable as the name and never a trust mark; there is no verified badge, "by <publisher>" is only the registry namespace, and the host stays in plain text on every card) | C-7, C-8, C-14 |
 | T7 | Tool rug pull: a tool's description or schema changes after approval to steer the model | Malicious or compromised server | Per-tool definition hash (section 8) computed on every `tools/list`; changed or added tools hidden until reviewed in the drift dialog; "Always allow" is bound to the hash and falls away on change; annotations are part of the hash because `fingerprintTools` omits them | C-2, C-5, C-6, C-7 |
 | T8 | Prompt injection through tool results | Content in a third-party system (an issue body, a Notion page) | Results wrapped as `<untrusted_tool_result connector="<slug>" tool="<name>">` with a system rule that the content is data; `UntrustedContentGuard` (`server/utils/ai/tool-loop.ts`) set after any connector result; write calls after untrusted content always ask (section 7); memory write lock extended; results never reach memory extraction or chat search. TypeSafe AI screening is **not** applied to connector results in v1 (pre-check Q13: private third-party data needs its own consent) | C-5, C-6 |
 | T9 | Cross-connector exfiltration: a result from connector A makes the model send A's data to connector B | Injected content | Any call to a connector other than the ones whose results the send has already read asks, read-only or not, "always" or not (section 7, rule F2) | C-6 |
@@ -916,8 +920,9 @@ Choices that differ from or add to section 6, 10 and 14:
   connectors" (`/chats/connectors?add=directory`, only with the
   `connectors.registry` flag) and "Manage connectors" (`/chats/connectors`).
   The page reads `add` (`presets`, `url` or `directory`), opens the add dialog
-  on that tab (`directory` falls back to `presets` without the registry flag)
-  and removes the parameter from the URL. The row badge is the number of
+  on that tab and removes the parameter from the URL. With the registry flag
+  on, `presets` and `directory` both open Browse (the four presets are its
+  Featured row); without it, `directory` falls back to Presets (section 10.2). The row badge is the number of
   connectors on in the chat plus one when Besidka tools are on.
 
 ## 7. Approvals
@@ -1654,8 +1659,9 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   `data:` image or a URL on the server's own origin is fetched; dark-theme
   icons are skipped (the tile is light). (2) `/favicon.ico` of the server's
   host. (3) A letter avatar, drawn by the client when the route answers 404.
-  Registry icons are not read: `mcp_registry_servers` has no icons column and
-  nothing syncs it yet.
+  Registry icons are not read here (the connector route needs the user's
+  own consented connector); BES-398 reads them for directory cards, section
+  10.2.
 - **Fetch and storage.** `server/utils/connectors/icon.ts`, through
   `safeFetch` with the new `favicon` purpose (redirects stay on the server's
   origin, as for `mcp`; 32 KiB, 5 s). The answer must be a success and a
@@ -1686,9 +1692,10 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   from shares, so there is nothing to show).
 - **Known limit.** Measured on 2026-11-15: only 2 of 11 well-known MCP hosts
   serve `/favicon.ico` (Sentry, Vercel); Notion, Linear, Stripe, Atlassian and
-  others answer 404, so most connectors show the letter unless the server
-  declares icons. Options if that is not enough: read the HTML `<link rel=icon>`
-  of the host, or the registry `icons` once the registry is synced.
+  others answer 404, so most connectors showed the letter unless the server
+  declares icons. BES-398 (section 10.2) added the page's `<link rel=icon>`,
+  the parent domain of a service host, SVG and, for directory cards, the
+  registry's own `icons`.
 - **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
   with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
 
@@ -1886,6 +1893,8 @@ HTML (C-7 consumes them).
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
 | `connectors:icon:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10) |
 | `connectors:icon-lock:<connectorId>` | 60 s | in-flight marker of a cold icon fetch |
+| `connectors:icon:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |
+| `connectors:registry:sync-now-lock` | 150 s | BES-398: best-effort marker that an admin's Sync now is running |
 | `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
 | `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
@@ -1907,7 +1916,8 @@ HTML (C-7 consumes them).
 | `linear` | Linear | `https://mcp.linear.app/mcp` | `['oauth', 'header']` | none |
 | `atlassian` | Atlassian | `https://mcp.atlassian.com/v2/mcp` | `['oauth', 'header']` | "Your Atlassian admin must allow besidka.com (or enable API tokens). Some tools use Rovo credits from your organization." |
 
-Text names only, no icons. The catalog footer reads "Names belong to their
+Text names, plus (BES-398) a bundled `simple-icons` mark per preset
+(`app/utils/connector-brand-icons.ts`; no request, no remote image). The catalog footer reads "Names belong to their
 owners. Besidka is not affiliated with them." No referral or affiliate
 parameters, no interpolation. `scripts/check-connector-presets.mjs` (C-2)
 probes each URL in a scheduled CI job and only warns. No Google Workspace MCP
@@ -1956,6 +1966,12 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_ICON_MAX_DIMENSION` | 512 pixels, width and height | BES-395 |
 | `CONNECTOR_ICON_ROUTES_PER_MINUTE` | 120 per user on the icon route | BES-395 |
 | `CONNECTOR_ICON_LOCK_TTL_SECONDS` | 60 | BES-395 |
+| `CONNECTOR_ICON_HTML_MAX_BYTES` | 131,072 for the home page read for `<link rel=icon>` | BES-398 |
+| `CONNECTOR_ICON_HTML_LINKS` | 3 icon links tried per page | BES-398 |
+| `CONNECTOR_ICON_RESOLVE_BUDGET_MS` | 15,000 wall clock for all steps of one cold icon | BES-398 |
+| `REGISTRY_SEARCH_MAX_CURSOR` | 2,000 offset (100 pages of 20) for browse and search | BES-398 |
+| `REGISTRY_SYNC_NOW_MAX_PAGES` | 20 pages of 100 per Sync now run | BES-398 |
+| `REGISTRY_SYNC_NOW_LOCK_SECONDS` | 150 | BES-398 |
 | `SAFE_FETCH_OAUTH_MAX_BYTES` | 262,144 | C-3, C-4 |
 | `SAFE_FETCH_REGISTRY_MAX_BYTES` | 2,097,152 per page | C-3, C-8 |
 | Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`). `skills-github` uses the narrow allowlisted fetcher (`docs/skills.md` section 3.1) until C-3 lands, and then may move to `safeFetch`. `skills-url` waits for C-3 (S-2U) | S-2G, S-2U, C-3 |
@@ -2223,6 +2239,119 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   and profile layout specs. No e2e spec: the flow needs a reachable MCP
   server, and the SSRF rules refuse a local mock by design.
 - **MCP.** Nothing new (C-9).
+
+### 10.2 As built: directory, service icons and Sync now (BES-398, C-14, 2026-11-16)
+
+- **Add dialog.** With `connectors.registry` the dialog is wider (`max-w-3xl`,
+  a `size` prop on `Profile/Connectors/Dialog.client.vue`) and has two tabs,
+  Browse (default) and Add by URL; `?add=presets` and `?add=directory` both
+  open Browse. Without the flag it keeps Presets and Add by URL and no search.
+  Browse is `Profile/Connectors/RegistrySearch.client.vue`: a search box (a
+  250 ms pause, no Search button; under two characters it keeps browsing), the
+  **Featured** row (the four presets, `PresetCard.vue`, hidden while a search
+  is active), then "All connectors" with the total as a badge and a paged
+  card grid, "Show more" for the next 20. A card has the icon, name,
+  "by <publisher>", Add or Added, a two-line description, the host in plain
+  text and the auth kind. There is no verified mark: "From the Official MCP
+  Registry. Not reviewed by Besidka." stays under the grid.
+- **Browse and search route.** `GET /api/v1/connectors/registry` takes an
+  optional `q` (blank browses, 2 to 64 characters searches) and `cursor` (0 to
+  2,000). Browse leaves out the four featured presets, puts entries with a
+  `title` first (the registry has no popularity data, no stars and no download
+  counts, so a curated title is the only quality proxy) and then sorts by
+  title. Search ranking is unchanged. The first page also returns `total`.
+  Items gain `publisher` (the registry name namespace: `app.linear` is Linear,
+  `io.github.acme` is Acme; a label, not a trust mark, `null` when absent) and
+  `isAdded`: true when one of the user's own connectors has the exact same
+  URL (the encrypted URLs are decrypted in memory for the connectors whose
+  plain `origin` matches, and only the boolean leaves). The 30 requests a
+  minute and the `connectors.registry` gate are unchanged. Search is still
+  `LIKE`: the table has no FTS index and 11,000 short rows answer in
+  milliseconds.
+- **Icons on cards.** The client never receives a remote image URL.
+  `GET /api/v1/connectors/registry/icon?id=<registry id>` (flag
+  `connectors.registry`, the icon rate bucket of 120 a minute) takes only the
+  registry id, looks the row up (active only), and resolves the icon from the
+  row, never from the request: (1) the entry's registry `icons`, read live
+  with one `GET /v0.1/servers/<name>/versions/latest` through `safeFetch`
+  (`registry` purpose) only on a cache miss, because the mirror has no icons
+  column and a D1 migration is out of scope; any `https` icon URL is fetched
+  through `safeFetch` (an icon on `static.<vendor>.com` is the normal case),
+  (2) `/favicon.ico` of the entry's host, (3) the `<link rel="apple-touch-icon">`
+  and `<link rel="icon">` tags of its home page (same origin only, three
+  links), (4) the same for the parent domain when the host starts with `mcp.`,
+  `api.`, `app.`, `www.`, `server.`, `remote.`, `gateway.` or `mcp-server.`.
+  The whole cold resolution is bounded by 15 s. The result is kept in KV under
+  a hash of the registry name (versions and users share it; it is public data)
+  for 7 days, a miss for 1 day, with the same in-flight lock as connector
+  icons, so 20 cards open at once cost at most one fetch each. In the first
+  production measurement 29 of 100 registry entries declared icons.
+- **Same code for connector icons.** Steps 2 to 4 now also run for a connected
+  connector (section 7.10), so Notion and Linear stop showing letters when
+  their home page names an icon. A connector's own declared icons keep the
+  same-origin rule; only registry `icons` may come from another host, because
+  they come from the registry and not from the server being connected.
+- **SVG.** Icons may now be `image/svg+xml` besides PNG, JPEG, GIF, WebP and
+  ICO. `server/utils/connectors/svg-icon.ts` is an allowlist that rejects on
+  the first hit and never rewrites: only `svg`, `g`, shapes, gradients, `stop`,
+  `clipPath`, `mask`, `title` and `desc` pass; any `script`, `style`, `use`,
+  `image`, `foreignObject`, animation or `text` element, `on*` attribute,
+  external, `data:` or entity reference, `xml:base`, foreign namespace,
+  DOCTYPE, ENTITY, CDATA or processing instruction fails the file. The cap is
+  still 32 KiB, and the route keeps `default-src 'none'; sandbox`, `nosniff`
+  and `cross-origin-resource-policy: same-origin`; the client loads the icon
+  only through `<img referrerpolicy="no-referrer">`, where script never runs.
+- **Where the icon shows.** Directory cards (registry route); the four
+  presets in Featured and in the Presets tab (bundled `simple-icons` marks,
+  also for a connector whose `presetId` is a preset, in the list and the "+"
+  picker, with no request); the connectors list, the picker (new: it showed a
+  letter), the detail panel header and the reasoning steps through the
+  existing connector icon route once the connector is connected. A letter is
+  the fallback everywhere: an unavailable icon, a 404 and an image `error`
+  all end there. A connector the user added but has not connected still
+  shows a letter (or its preset mark), because "adding sends nothing" stays
+  true: the host is first contacted when the user connects it. Browsing the
+  directory does contact the host of each visible card (a favicon request
+  from Besidka's servers, no user data, no cookies, user agent
+  `Besidka-Connectors/1.0`), and the registry for entries that declare
+  icons. No personal data goes out, so this adds no recipient of user data;
+  the Art. 30 record has no row for these anonymous public fetches (the
+  connector icon fetch of BES-395 had none either), which is an open owner
+  and legal question, not a change made here. No legal notice, consent
+  version or Privacy Policy text was touched.
+- **Sync now.** Admins only. `GET /api/v1/admin/connectors/registry` returns
+  `{ rows, lastSyncedAt, hasUnfinishedRun, isRunning }`;
+  `POST /api/v1/admin/connectors/registry/sync` (`requireAdmin`, so a
+  non-admin gets the usual 404; same-origin check as the other admin writes;
+  `Cache-Control: private, no-store`) runs `syncMcpRegistry` once, the same
+  function the hourly cron calls, with `maxPages: 20`, then returns
+  `{ outcome: 'completed' | 'partial' | 'failed' | 'busy', pages, upserted,
+  error?, ...status }`. Cursor, watermark, erasure list and sweep rules are
+  the cron's, so a partial run resumes where it stopped. A KV lock
+  (`connectors:registry:sync-now-lock`, 150 s, best effort because KV is
+  eventually consistent; the cron does not take it) answers `busy`. The route
+  awaits the run and keeps the request open, because a client disconnect would
+  kill a `waitUntil` run after 30 s anyway; closing the tab only loses the
+  answer, and the saved cursor resumes it. The button is in the Browse view,
+  visible only when `useIsAdmin()` is true, next to a line "N entries copied,
+  last synced <time>", and it repeats the POST while the outcome is `partial`
+  (at most 12 runs, about 24,000 entries), then reloads the directory. Writes
+  stay at one batch per 25 entries of single-row statements, so no statement
+  nears 100 bound parameters, and a run makes at most six simultaneous
+  connections. The wide event carries `attributes.registry.syncNow`.
+  **Previews share one D1** (`besidka-preview`), so one Sync now fills every
+  preview.
+- **Specs.** `tests/unit/server/utils/connectors/{icon,svg-icon,
+  registry-sync-now}.spec.ts`, `tests/integration/api/{connectors-registry,
+  connectors-registry-icon,admin-connectors-registry,connectors-icon}.spec.ts`,
+  `tests/unit/components/Profile/Connectors/{RegistrySearch.client,Avatar,
+  PresetCard,AddDialog.client}.spec.ts`, the picker and composer specs and
+  `tests/unit/utils/{connectors-publisher,connector-brand-icons}.spec.ts`.
+- **Not built.** A popularity sort (no data), a verified or "official" badge
+  (the registry has no such field and Besidka does not review entries),
+  registry `icons` kept in D1 or per-row KV (a migration; thousands of KV
+  writes per sync), an admin page for the sync (the button is enough), a
+  "Featured" list longer than the four curated presets, category filters.
 
 ## 11. MCP exposure
 

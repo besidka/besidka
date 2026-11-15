@@ -13,6 +13,8 @@ const items: ComposerConnectorItem[] = [
     title: 'Notion',
     host: 'mcp.notion.com',
     status: 'ready',
+    presetId: 'notion',
+    isIconAvailable: false,
   },
   {
     id: 'c2',
@@ -20,6 +22,8 @@ const items: ComposerConnectorItem[] = [
     title: 'Linear',
     host: 'mcp.linear.app',
     status: 'drifted',
+    presetId: null,
+    isIconAvailable: true,
   },
   {
     id: 'c3',
@@ -27,6 +31,8 @@ const items: ComposerConnectorItem[] = [
     title: 'Sentry',
     host: 'mcp.sentry.dev',
     status: 'ready',
+    presetId: null,
+    isIconAvailable: false,
   },
 ]
 
@@ -100,18 +106,25 @@ describe('ChatInput/ConnectorPicker', () => {
 
     expect(list.textContent).toContain('Notion')
     expect(list.textContent).toContain('mcp.notion.com')
-    expect(list.querySelectorAll('img')).toHaveLength(0)
+    expect(Array.from(list.querySelectorAll('img')).every((image) => {
+      return image.getAttribute('src')?.startsWith('/api/v1/connectors/')
+    })).toBe(true)
     expect(list.querySelectorAll('li')).toHaveLength(3)
   })
 
-  it('shows a generated initial instead of a logo', async () => {
+  it('shows a brand mark for a preset, the icon route for a connected '
+    + 'connector and a letter otherwise, never a remote image', async () => {
     await mountPicker()
 
-    const initials = Array.from(
-      get('connector-picker-list').querySelectorAll('li span[aria-hidden="true"]'),
-    ).map(element => element.textContent?.trim())
+    const list = get('connector-picker-list')
+    const images = Array.from(list.querySelectorAll('img'))
 
-    expect(initials).toEqual(['N', 'L', 'S'])
+    expect(list.querySelectorAll('[data-testid="connector-avatar-brand"]'))
+      .toHaveLength(1)
+    expect(images.map(image => image.getAttribute('src')))
+      .toEqual(['/api/v1/connectors/c2/icon'])
+    expect(images[0]?.getAttribute('referrerpolicy')).toBe('no-referrer')
+    expect(list.textContent).toContain('S')
   })
 
   it('reflects the selection in each toggle', async () => {

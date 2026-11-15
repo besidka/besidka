@@ -3,10 +3,11 @@
     title="Add connector"
     hook-class="js-connector-add-modal"
     test-id="connector-add-dialog"
+    :size="registryFeature.active ? 'lg' : 'md'"
     :is-busy="isSubmitting"
     @close="emit('close')"
   >
-    <div class="grid gap-4">
+    <div class="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div
         class="tabs tabs-box tabs-sm w-full"
         role="tablist"
@@ -36,48 +37,21 @@
         :id="`connector-add-panel-${tab}`"
         role="tabpanel"
         :aria-labelledby="`connector-add-tab-${tab}`"
-        class="grid gap-3"
+        class="grid grid-cols-[minmax(0,1fr)] gap-3"
       >
         <template v-if="tab === 'presets'">
           <ul
             class="grid gap-2 sm:grid-cols-2"
             data-testid="connector-add-presets"
           >
-            <li
+            <ProfileConnectorsPresetCard
               v-for="preset in CONNECTOR_PRESETS"
               :key="preset.id"
-              class="card card-border card-sm"
-              :data-testid="`connector-preset-${preset.id}`"
-            >
-              <div class="card-body gap-2">
-                <div class="flex items-center gap-3">
-                  <ProfileConnectorsAvatar :title="preset.title" />
-                  <div class="min-w-0 grow">
-                    <p class="truncate font-medium">
-                      {{ preset.title }}
-                    </p>
-                    <p class="text-xs text-base-content/70">
-                      {{ authHint(preset.auth) }}
-                    </p>
-                  </div>
-                </div>
-                <p
-                  v-if="preset.notice"
-                  class="text-xs text-base-content/70"
-                >
-                  {{ preset.notice }}
-                </p>
-                <button
-                  type="button"
-                  class="btn btn-sm min-h-11 sm:min-h-8"
-                  :disabled="isSubmitting || addedPresetIds.has(preset.id)"
-                  :data-testid="`connector-preset-add-${preset.id}`"
-                  @click="addPreset(preset.id)"
-                >
-                  {{ addedPresetIds.has(preset.id) ? 'Added' : 'Add' }}
-                </button>
-              </div>
-            </li>
+              :preset="preset"
+              :is-added="addedPresetIds.has(preset.id)"
+              :is-busy="isSubmitting"
+              @add="addPreset"
+            />
           </ul>
           <p class="text-xs text-base-content/70">
             {{ CONNECTOR_CATALOG_FOOTER }}
@@ -186,7 +160,16 @@
             :added-preset-ids="addedPresetIds"
             :is-adding="isSubmitting"
             @add="addFromDirectory"
+            @add-preset="addPreset"
           />
+          <p
+            v-if="presetError"
+            class="text-sm text-error"
+            role="alert"
+            data-testid="connector-preset-error"
+          >
+            {{ presetError }}
+          </p>
           <p
             v-if="directoryError"
             class="text-sm text-error"
@@ -217,17 +200,14 @@ import {
   CONNECTOR_CATALOG_FOOTER,
   CONNECTOR_PRESETS,
 } from '~~/config/connectors-catalog'
-import type { ConnectorPreset } from '~~/config/connectors-catalog'
 import type { ConnectorDirectoryItem } from '#shared/types/connectors.d'
 
 type AddTab = 'presets' | 'url' | 'directory'
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   addedPresetIds: ReadonlySet<string>
   initialTab?: AddTab
-}>(), {
-  initialTab: 'presets',
-})
+}>()
 
 const emit = defineEmits<{
   added: [connectorId: string]
@@ -235,11 +215,7 @@ const emit = defineEmits<{
 }>()
 
 const registryFeature = useFeature('connectors.registry')
-const tab = shallowRef<AddTab>(
-  props.initialTab === 'directory' && !registryFeature.value.active
-    ? 'presets'
-    : props.initialTab,
-)
+const tab = shallowRef<AddTab>(resolveInitialTab())
 const url = shallowRef<string>('')
 const title = shallowRef<string>('')
 const urlError = shallowRef<string>('')
@@ -250,11 +226,10 @@ const isSubmitting = shallowRef<boolean>(false)
 
 const tabOptions = computed<Array<{ id: AddTab, label: string }>>(() => {
   return [
-    { id: 'presets', label: 'Presets' },
+    registryFeature.value.active
+      ? { id: 'directory', label: 'Browse' }
+      : { id: 'presets', label: 'Presets' },
     { id: 'url', label: 'Add by URL' },
-    ...(registryFeature.value.active
-      ? [{ id: 'directory' as const, label: 'Directory' }]
-      : []),
   ]
 })
 
@@ -262,12 +237,12 @@ const addedPresetIds = computed<ReadonlySet<string>>(() => {
   return props.addedPresetIds
 })
 
-function authHint(auth: ConnectorPreset['auth']): string {
-  const labels = auth.map((kind) => {
-    return kind === 'oauth' ? 'Sign in' : 'API key or token'
-  })
+function resolveInitialTab(): AddTab {
+  if (props.initialTab === 'url') {
+    return 'url'
+  }
 
-  return labels.join(' or ')
+  return registryFeature.value.active ? 'directory' : 'presets'
 }
 
 function selectTab(next: AddTab) {

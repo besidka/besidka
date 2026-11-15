@@ -8,9 +8,12 @@ import {
   CONNECTOR_ICON_BUSY,
   connectorIconKey,
   connectorIconLockKey,
+  connectorIconOrigins,
   connectorIconSourcesKey,
   deleteConnectorIconCache,
+  fetchConnectorIconHtml,
   fetchConnectorIconImage,
+  parseConnectorIconLinks,
   parseDeclaredConnectorIcons,
   readConnectorIconDimensions,
   recordDeclaredConnectorIcons,
@@ -29,6 +32,8 @@ import {
 } from '../../../../setup/helpers/connector-icon-kv'
 
 const connector = { id: 'conn1', origin: 'https://mcp.notion.com' }
+
+const fetchHtml = vi.fn(async () => null)
 
 function asKv(kv: ReturnType<typeof createFakeIconKv>) {
   return kv as never
@@ -58,8 +63,12 @@ describe('sniffConnectorIconType', () => {
     expect(sniffConnectorIconType(ICO_BYTES)).toBe('image/x-icon')
   })
 
-  it('refuses SVG, HTML, an empty ICO and cursors', () => {
-    expect(sniffConnectorIconType(SVG_BYTES)).toBeNull()
+  it('names an SVG by its text start only, and refuses HTML, an empty ICO '
+    + 'and cursors', () => {
+    expect(sniffConnectorIconType(SVG_BYTES)).toBe('image/svg+xml')
+    expect(sniffConnectorIconType(new TextEncoder().encode(
+      '\n<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>',
+    ))).toBe('image/svg+xml')
     expect(sniffConnectorIconType(new TextEncoder().encode('<html></html>')))
       .toBeNull()
     expect(sniffConnectorIconType(
@@ -197,7 +206,7 @@ describe('resolveConnectorIcon', () => {
     })
 
     const result = await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(result?.contentType).toBe('image/png')
@@ -220,7 +229,7 @@ describe('resolveConnectorIcon', () => {
       icons: [{ src: '/assets/logo.png' }],
     })
     await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(fetchImage).toHaveBeenCalledWith(
@@ -238,7 +247,7 @@ describe('resolveConnectorIcon', () => {
     })
 
     const result = await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(result?.contentType).toBe('image/png')
@@ -254,12 +263,13 @@ describe('resolveConnectorIcon', () => {
     })
 
     const result = await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(result).toBeNull()
-    expect(fetchImage).toHaveBeenCalledTimes(1)
-    expect(fetchImage).toHaveBeenCalledWith(
+    expect(fetchImage).toHaveBeenCalledTimes(2)
+    expect(fetchImage).toHaveBeenNthCalledWith(
+      1,
       'https://mcp.notion.com/favicon.ico',
       undefined,
     )
@@ -276,11 +286,14 @@ describe('resolveConnectorIcon', () => {
       ],
     })
     await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
-      .toEqual(['https://mcp.notion.com/favicon.ico'])
+      .toEqual([
+        'https://mcp.notion.com/favicon.ico',
+        'https://notion.com/favicon.ico',
+      ])
   })
 
   it('falls back to the favicon of the host, then to nothing', async () => {
@@ -288,7 +301,7 @@ describe('resolveConnectorIcon', () => {
     const fetchImage = vi.fn(async () => image('image/x-icon'))
 
     const result = await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(result?.contentType).toBe('image/x-icon')
@@ -301,7 +314,7 @@ describe('resolveConnectorIcon', () => {
 
     const emptyKv = createFakeIconKv()
     const none = await resolveConnectorIcon(asKv(emptyKv), connector, {
-      dependencies: { fetchImage: async () => null },
+      dependencies: { fetchImage: async () => null, fetchHtml },
     })
 
     expect(none).toBeNull()
@@ -312,10 +325,10 @@ describe('resolveConnectorIcon', () => {
     const fetchImage = vi.fn(async () => image('image/png'))
 
     await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
     const second = await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(fetchImage).toHaveBeenCalledTimes(1)
@@ -327,13 +340,13 @@ describe('resolveConnectorIcon', () => {
     const fetchImage = vi.fn(async () => null)
 
     await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
     await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
-    expect(fetchImage).toHaveBeenCalledTimes(1)
+    expect(fetchImage).toHaveBeenCalledTimes(2)
     expect(kv.entries.get(connectorIconKey(connector.id))?.ttl)
       .toBe(CONNECTOR_ICON_MISS_TTL_SECONDS)
   })
@@ -345,7 +358,7 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })).toBeNull()
 
     await recordDeclaredConnectorIcons(asKv(kv), connector.id, {
@@ -354,7 +367,7 @@ describe('resolveConnectorIcon', () => {
 
     expect(kv.entries.has(connectorIconKey(connector.id))).toBe(false)
     expect((await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     }))?.contentType).toBe('image/png')
     expect(kv.entries.get(connectorIconKey(connector.id))?.metadata)
       .toMatchObject({ origin: 'declared' })
@@ -367,11 +380,11 @@ describe('resolveConnectorIcon', () => {
 
     await recordDeclaredConnectorIcons(asKv(kv), connector.id, icons)
     await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
     await recordDeclaredConnectorIcons(asKv(kv), connector.id, icons)
     await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })
 
     expect(fetchImage).toHaveBeenCalledTimes(1)
@@ -386,7 +399,7 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })).toBeNull()
     expect(fetchImage).not.toHaveBeenCalled()
   })
@@ -398,12 +411,12 @@ describe('resolveConnectorIcon', () => {
       connectorIconKey(connector.id),
       SVG_BYTES.buffer as ArrayBuffer,
       {
-        metadata: { contentType: 'image/svg+xml', origin: 'declared' },
+        metadata: { contentType: 'image/bmp', origin: 'declared' },
       },
     )
 
     const result = await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage: vi.fn(async () => null) },
+      dependencies: { fetchImage: vi.fn(async () => null), fetchHtml },
     })
 
     expect(result).toBeNull()
@@ -449,7 +462,7 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage },
+      dependencies: { fetchImage, fetchHtml },
     })).toBe(CONNECTOR_ICON_BUSY)
     expect(fetchImage).not.toHaveBeenCalled()
     expect(kv.entries.has(connectorIconKey(connector.id))).toBe(false)
@@ -576,5 +589,259 @@ describe('fetchConnectorIconImage', () => {
 
     expect(await fetchConnectorIconImage('https://mcp.notion.com/favicon.ico'))
       .toBeNull()
+  })
+})
+
+const SAFE_SVG = new TextEncoder().encode(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8">'
+  + '<circle cx="4" cy="4" r="3"/></svg>',
+)
+
+describe('SVG icons', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps a safe SVG fetched over the network', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(SAFE_SVG)))
+
+    const result = await fetchConnectorIconImage(
+      'https://mcp.notion.com/icon.svg',
+    )
+
+    expect(result?.contentType).toBe('image/svg+xml')
+    expect(new Uint8Array(result!.bytes)).toEqual(SAFE_SVG)
+  })
+
+  it('refuses an SVG with script, however the server labels it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(SVG_BYTES, {
+        headers: { 'content-type': 'image/svg+xml' },
+      })
+    }))
+
+    expect(await fetchConnectorIconImage('https://mcp.notion.com/icon.svg'))
+      .toBeNull()
+  })
+
+  it('refuses an SVG over the size cap', async () => {
+    const padding = '<g/>'.repeat(CONNECTOR_ICON_MAX_BYTES)
+    const big = new TextEncoder().encode(
+      `<svg xmlns="http://www.w3.org/2000/svg">${padding}</svg>`,
+    )
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(big)))
+
+    expect(await fetchConnectorIconImage('https://mcp.notion.com/icon.svg'))
+      .toBeNull()
+  })
+
+  it('serves a stored SVG back with its type', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async () => ({
+      bytes: SAFE_SVG.buffer.slice(0) as ArrayBuffer,
+      contentType: 'image/svg+xml',
+    } satisfies ConnectorIconImage))
+
+    await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+
+    const stored = await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+
+    expect(stored).toMatchObject({ contentType: 'image/svg+xml' })
+    expect(fetchImage).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('parseConnectorIconLinks', () => {
+  const page = 'https://linear.app/'
+
+  it('ranks the Apple touch icon first, then plain icons, in page order', () => {
+    const html = `<head>
+      <link rel="icon" href="/a.png">
+      <link rel="shortcut icon" href="/b.ico">
+      <link href="/touch.png" rel="apple-touch-icon" sizes="180x180">
+      <link rel="stylesheet" href="/x.css">
+      <link rel="mask-icon" href="/mask.svg">
+    </head>`
+
+    expect(parseConnectorIconLinks(html, page)).toEqual([
+      'https://linear.app/touch.png',
+      'https://linear.app/a.png',
+      'https://linear.app/b.ico',
+    ])
+  })
+
+  it('resolves relative links against the page and keeps at most three', () => {
+    const html = [1, 2, 3, 4]
+      .map(index => `<link rel="icon" href="i${index}.png">`)
+      .join('')
+
+    expect(parseConnectorIconLinks(html, 'https://linear.app/app/index.html'))
+      .toEqual([
+        'https://linear.app/app/i1.png',
+        'https://linear.app/app/i2.png',
+        'https://linear.app/app/i3.png',
+      ])
+  })
+
+  it('drops other origins, data, javascript and unparsable links', () => {
+    const html = `
+      <link rel="icon" href="https://cdn.evil.example/a.png">
+      <link rel="icon" href="//cdn.evil.example/b.png">
+      <link rel="icon" href="data:image/png;base64,AAAA">
+      <link rel="icon" href="javascript:alert(1)">
+      <link rel="icon" href="http://linear.app/plain.png">
+      <link rel="icon">`
+
+    expect(parseConnectorIconLinks(html, page)).toEqual([])
+  })
+
+  it('returns nothing for a bad page address and for text without links', () => {
+    expect(parseConnectorIconLinks('<link rel="icon" href="/a.png">', 'nope'))
+      .toEqual([])
+    expect(parseConnectorIconLinks('<p>hello</p>', page)).toEqual([])
+  })
+})
+
+describe('connectorIconOrigins', () => {
+  it('adds the parent domain for the usual service prefixes only', () => {
+    expect(connectorIconOrigins('https://mcp.linear.app'))
+      .toEqual(['https://mcp.linear.app', 'https://linear.app'])
+    expect(connectorIconOrigins('https://api.example.co.uk:8443'))
+      .toEqual(['https://api.example.co.uk:8443', 'https://example.co.uk:8443'])
+    expect(connectorIconOrigins('https://linear.app'))
+      .toEqual(['https://linear.app'])
+    expect(connectorIconOrigins('https://mcp.dev'))
+      .toEqual(['https://mcp.dev'])
+    expect(connectorIconOrigins('https://tools.linear.app'))
+      .toEqual(['https://tools.linear.app'])
+    expect(connectorIconOrigins('not a url')).toEqual([])
+  })
+})
+
+describe('resolveConnectorIcon beyond the favicon', () => {
+  it('reads the icon links of the page when /favicon.ico is missing', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async (url: string) => {
+      return url === 'https://mcp.notion.com/touch.png'
+        ? image('image/png')
+        : null
+    })
+    const pageFetch = vi.fn(async () => ({
+      html: '<link rel="apple-touch-icon" href="/touch.png">',
+      url: 'https://mcp.notion.com/',
+    }))
+
+    const result = await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage, fetchHtml: pageFetch },
+    })
+
+    expect(result?.contentType).toBe('image/png')
+    expect(pageFetch).toHaveBeenCalledWith('https://mcp.notion.com/', undefined)
+    expect(kv.entries.get(connectorIconKey(connector.id))?.metadata)
+      .toMatchObject({ origin: 'favicon' })
+  })
+
+  it('tries the parent domain of a service host last', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async (url: string) => {
+      return url === 'https://notion.com/favicon.ico'
+        ? image('image/x-icon')
+        : null
+    })
+
+    const result = await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+
+    expect(result?.contentType).toBe('image/x-icon')
+    expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
+      .toEqual([
+        'https://mcp.notion.com/favicon.ico',
+        'https://notion.com/favicon.ico',
+      ])
+  })
+
+  it('fetches remote sources from any https host, before the origin', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async () => image('image/png'))
+
+    const result = await resolveConnectorIcon(
+      asKv(kv),
+      {
+        ...connector,
+        readRemoteSources: async () => [
+          { src: 'http://insecure.example/a.png' },
+          { src: 'https://static.linear.app/icon-256.png' },
+        ],
+      },
+      { dependencies: { fetchImage, fetchHtml } },
+    )
+
+    expect(result?.contentType).toBe('image/png')
+    expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
+      .toEqual(['https://static.linear.app/icon-256.png'])
+    expect(kv.entries.get(connectorIconKey(connector.id))?.metadata)
+      .toMatchObject({ origin: 'declared' })
+  })
+
+  it('does not read remote sources when a copy is already stored', async () => {
+    const kv = createFakeIconKv()
+    const readRemoteSources = vi.fn(async () => [])
+    const fetchImage = vi.fn(async () => image('image/png'))
+    const target = { ...connector, readRemoteSources }
+
+    await resolveConnectorIcon(asKv(kv), target, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+    await resolveConnectorIcon(asKv(kv), target, {
+      dependencies: { fetchImage, fetchHtml },
+    })
+
+    expect(readRemoteSources).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('fetchConnectorIconHtml', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('returns the page text for a successful HTML answer', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response('<link rel="icon" href="/a.png">', {
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
+    }))
+
+    expect(await fetchConnectorIconHtml('https://linear.app/'))
+      .toMatchObject({ html: '<link rel="icon" href="/a.png">' })
+  })
+
+  it('refuses a non-HTML answer, a failure and a private address', async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response('{}', {
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await fetchConnectorIconHtml('https://linear.app/')).toBeNull()
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { status: 500 })))
+
+    expect(await fetchConnectorIconHtml('https://linear.app/')).toBeNull()
+
+    fetchMock.mockClear()
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await fetchConnectorIconHtml('https://192.168.0.1/')).toBeNull()
+    expect(await fetchConnectorIconHtml('https://localhost/')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
