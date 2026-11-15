@@ -394,7 +394,7 @@ function exceedsTurnCaps(
 ): boolean {
   const { counters } = state
 
-  if (counters.rounds >= TOOL_APPROVAL_ROUNDS_PER_TURN) {
+  if (counters.rounds > TOOL_APPROVAL_ROUNDS_PER_TURN) {
     return true
   }
 
@@ -419,7 +419,10 @@ function exceedsTurnCaps(
  * Denied: the tool is missing, the input is invalid (an unknown permission
  * mode, family or access, or an empty tool name, on either side), the tool
  * is Blocked now, its family, tool name, access, connector or definition
- * hash differs from the pending request, or the turn caps are spent. A
+ * hash differs from the pending request, or the turn caps are spent. The
+ * rounds counter holds the pauses recorded so far, so the answer to pause
+ * number `TOOL_APPROVAL_ROUNDS_PER_TURN` still runs and only a later one is
+ * denied (the send refuses to open such a pause in the first place). A
  * changed access matters because a tool that was a read when approved and is
  * a write now was approved for something else.
  */

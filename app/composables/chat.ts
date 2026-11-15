@@ -10,6 +10,7 @@ import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Message, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { AttachedArtifact } from '~/types/chat-input-tools'
+import type { ToolApprovalAnswer } from '~/composables/tool-approvals'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
@@ -1045,6 +1046,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
+  const toolApprovalRemember = createToolApprovalRememberStore()
 
   const {
     messages: sdkMessages,
@@ -1053,6 +1055,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     regenerate: sdkRegenerate,
     stop: sdkStop,
     clearError: sdkClearError,
+    addToolApprovalResponse: sdkAddToolApprovalResponse,
   } = useChatSdk<UIMessage>({
     id: chat.id,
     messages: hydratedMessages as unknown as UIMessage[],
@@ -1070,6 +1073,20 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return response
       },
       prepareSendMessagesRequest({ messages }) {
+        const approvalBody = buildToolApprovalRequestBody(
+          messages,
+          toolApprovalRemember,
+        )
+
+        if (approvalBody) {
+          const { responses } = approvalBody.approval
+          const answeredIds = responses.map(response => response.approvalId)
+
+          toolApprovalRemember.markInFlight(answeredIds)
+
+          return { body: approvalBody }
+        }
+
         const lastMessage = messages[messages.length - 1]
 
         const canSendCapabilityGatedFields = isModelCapabilityResolved.value
@@ -1093,7 +1110,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         }
       },
     }),
+    sendAutomaticallyWhen: ({ messages }) => {
+      return shouldSendToolApprovalResponses(messages, toolApprovalRemember)
+    },
     onFinish({ isAbort, isDisconnect, isError, messages }) {
+      const isSuccessfulResponse = !isAbort && !isDisconnect && !isError
+
+      toolApprovalRemember.settleInFlight(isSuccessfulResponse)
+
       const requestId = transportRequestId.value
       const wasPendingGenerationRetry = isPendingGenerationRetry
       let parsedError = pendingError.value
@@ -1760,10 +1784,26 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return 'off'
   }
 
+  /**
+   * Answers one waiting tool call. Once every waiting call of the reply is
+   * answered, the SDK sends the answers on its own
+   * (`sendAutomaticallyWhen`) and the reply continues in the same message.
+   */
+  async function answerToolApproval(answer: ToolApprovalAnswer) {
+    toolApprovalRemember.set(answer.approvalId, answer.remember ?? 'once')
+
+    await sdkAddToolApprovalResponse({
+      id: answer.approvalId,
+      approved: answer.approved,
+      ...(answer.reason ? { reason: answer.reason } : {}),
+    })
+  }
+
   return {
     chatSdk,
     input,
     submit,
+    answerToolApproval,
     stop,
     isStopped,
     regenerate,

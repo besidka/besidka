@@ -1183,6 +1183,177 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   into a pause nobody can answer until L5 and L6 ship, so the flag stays off
   outside internal testing until then.
 
+### 7.7 As built: the continuation (C-6 L5, 2026-11-15)
+
+The request that answers a pause (`server/utils/tool-approval/continuation.ts`
+and the resume branch of `server/api/v1/chats/[slug]/index.post.ts`). There
+are no buttons yet (L6); the client can already answer through
+`answerToolApproval` on `useChat` (`app/composables/tool-approvals.ts`).
+Where this differs from sections 7.2 and 7.6:
+
+- **Request shape.** The send route accepts either today's
+  `{ messages: [user] }` body or
+  `{ approval: { messageId, responses: [{ approvalId, approved, remember, reason? }] } }`
+  (1 to 10 responses, each approval id once, `reason` at most 500
+  characters). Model, gateway, reasoning and connectors come from the
+  pending record snapshot, the tools from the stored user message of the
+  turn (image generation dropped, code execution kept without re-uploading
+  files), never from the body. The Exa search level falls back to the
+  default and auto web search is skipped.
+- **Order of checks, before anything runs.** Chat owner (404), the
+  `tool-approvals` flag (404 when off), 30 answers a minute per user
+  (`tool-approval-rate:<userId>`, 429; a KV error fails closed with 503), the
+  message (not in the chat: 404; not the last message or not an assistant
+  message: 409 `TOOL_APPROVAL_STALE`), claims that already exist for the
+  answered ids (read before any KV record, see below), the generation lease
+  of the message, the turn record (missing: 409 `TOOL_APPROVAL_EXPIRED`,
+  another owner: 404, unreadable state: 409, never a fresh state), the
+  answered ids against the turn's pending ids (anything but an exact match:
+  400) and every pending record (missing: 409 expired; another user, chat,
+  message, or a tool call id and tool name the stored message does not
+  hold in `approval-requested`: 404).
+- **Duplicates.** Claims are looked up first, scoped to the user, because a
+  double submit arrives after the first request deleted the pending
+  records. While the message's generation lease is held, or a claim is
+  inside its lease, the answer is the generation guard's
+  `data-generation-pending` (claims turn done before the follow-up model
+  turn streams, so the lease is checked first); a lapsed claim with no
+  result, or done claims whose stored reply still waits for approval, is
+  409 `TOOL_APPROVAL_INTERRUPTED` ("Interrupted. Ask again"), and the call
+  never runs again; otherwise done claims replay the stored reply: the outcome of each
+  answered call, then only the parts stored after them, never the whole
+  message (the client still holds it). Claims are taken in sorted id order
+  after the tool set is built and every check that can refuse without
+  running a tool has passed, right after the generation lease of the
+  message is put and just before the stream starts, so of two racers the
+  one that loses the first id holds nothing and answers as pending (it
+  leaves the lease to the winner). Each approved claim gets a `touchClaim`
+  heartbeat from that moment until its call's result is fully produced
+  (for a tool that streams its output, until the stream is consumed).
+- **Re-check.** Every approved call is decided again with
+  `resolveReplayApproval` against the live tool set, on a copy of the state
+  that counts each earlier approved connector call of the same answer. A
+  missing tool, a drift, Blocked, invalid input or a spent cap becomes a
+  denial with a Besidka-written reason before `streamText`, so the SDK never
+  meets a missing tool. A connector tool whose definition changed is hidden
+  by the C-5 drift check, so today it reads as missing ("This tool is no
+  longer available"). A user denial carries the user's note with control,
+  bidirectional, other format (zero-width, word joiner) and tag characters
+  removed. The permission mode the replay check uses comes from
+  `resolveReplayPermissionMode()`, which returns `ask` for every tool until
+  the Besidka tool permissions (BES-394 L8) are stored; L8 must make it read
+  them, or a tool the user set to Blocked after approving would still run on
+  resume.
+- **Rounds cap.** The turn's `rounds` counter holds the pauses recorded so
+  far (1 after the first pause). Exactly five rounds can be answered: the
+  replay check denies only when `rounds > 5`, and the send denies a call
+  that would open a sixth pause (`over-cap`) instead of asking a question
+  nobody could answer. `TOOL_APPROVAL_ROUNDS_PER_TURN` is the single limit
+  both checks read.
+- **Connector calls per turn.** The send's `toolApproval` now denies a
+  connector call once the turn spent 12 connector calls, and
+  `getConnectorTools` starts its per-send counter from the turn's count
+  (`callsUsedThisTurn`), so the limit holds across rounds.
+- **Remember.** The choice is clamped to the options the request offered.
+  "In this chat" writes the exposed name and hash to
+  `connector_chat_settings.alwaysAllowTools`, "always" sets the existing
+  `connector_tool_settings` row to `always` with the approved hash. Every
+  connector write is in the always-ask tier, so today every answer clamps to
+  `once`; the send reads these grants only from C-7. Native writes never
+  offer more than once.
+- **Messages.** The history is sanitized as for any send. The paused
+  message is rebuilt twice: for the model, each answered call takes its
+  exact input from KV and, when approved, its signature (the stored input is
+  redacted), and only finished tool calls, text, reasoning and step
+  boundaries stay; text and reasoning keep their stored provider metadata
+  (Anthropic thinking signatures, Gemini thought signatures) in their
+  original order, and each answered call gets the provider metadata of its
+  call (`callProviderMetadata`, for example a Gemini thought signature)
+  back from the pending record, which stores it since L5 because the stored
+  artifact and document copies drop it; for D1 and `readUIMessageStream`,
+  the stored parts with
+  the answered calls in `approval-responded` and nothing added. Resume mode
+  skips the user-turn add-ons (knowledge excerpts, past-chat excerpts, skill
+  invocation, auto web search, Anthropic container uploads, image
+  generation, a forced `toolChoice`) and the stream prelude parts the
+  message already holds. `assertEndsWithApprovalResponse()` turns a prompt
+  that does not end on the answers into a 409 before any model call.
+- **Running.** Claimed answers are settled first: pending records deleted,
+  denied claims done and their audit rows settled as denied. Each approved
+  call is marked with `markApprovedByUser`, bound to its tool name and
+  canonical input: the SDK replay, the `execute` clearance and the memory
+  lock (lifted for that call only, the never-store gate still runs) accept
+  only the same name and input, so a later call reusing the id is decided
+  like a new call, and the approval is used up once the call settles. Its
+  `execute` is wrapped: once the result is fully produced the claim is
+  marked done (failed when it threw) and its heartbeat stops, before the
+  next model turn. The output itself is not stored anywhere new
+  (`tool-approval:result:<approvalId>` is no longer written). A connector call settles its
+  `pending` audit row (`approval` = the remember value) instead of writing a
+  second row. The SDK's replay of an approved call records its taint, read
+  source and connector count without a new decision.
+- **Persistence.** The reply resumes into the same message id
+  (`originalMessages` ends on the stored message) and is written with an
+  update by public id; an update whose parts would be fewer than the stored
+  ones is refused. Usage adds up (`sumMessageUsages`): tokens and costs sum,
+  the knowledge and auto web search fields keep the first request's values,
+  and the client's finish metadata shows the sum too. The generation lease
+  is keyed on the assistant public id. A continuation that pauses again
+  writes new pending records and a turn record with `rounds` plus one; one
+  that ends deletes the turn record.
+- **Provider-executed tools (spike 9, section 14.1).** They can never wait
+  for approval: the provider runs the call inside its own response, so the
+  result arrives right after the request chunk. `toolApproval` therefore
+  never asks for a provider-executed call (L4 asked for code execution after
+  taint and wrote pending records for a call that had already run).
+  Instead, a provider-executed tool that is not a read (code execution, any
+  unclassified provider tool) is left out of the send before the first step
+  when the policy would ask, and out of later steps through `prepareStep`
+  (`withProviderToolEgressGuard`). The rule counts every taint, so with the
+  flag on, requesting web search and code execution together leaves code
+  execution out. The same guard withholds the provider's own web search,
+  grounding and URL context once a tool call of the turn has read a
+  connector or the user's Besidka data (a connector result, `search_chats`,
+  `read_chat`, the memory and project knowledge reads; rule 4 of the plan),
+  for the rest of the request and on its continuations. The state keeps
+  those reads apart (`toolReadSources`, optional in older turn records):
+  knowledge and past-chat excerpts preset into the prompt still count for
+  F2 (`readSources`) but never withhold the web search the user turned on,
+  and web taint alone does not either.
+  On Anthropic routes the declarations stay mid-loop (the API rejects tool
+  history without them) and a resumed message that already called the tool
+  keeps it: there a provider-executed call after taint, web search
+  included, still runs within that request (known gap).
+- **Client.** `answerToolApproval` records the remember choice and calls
+  the SDK's `addToolApprovalResponse`; `sendAutomaticallyWhen` sends the
+  answers once every waiting call of the reply is answered. The SDK runs
+  that check after every finished response too, so the composable keeps the
+  ids whose answers went through and sends each answer once: a pending
+  signal or a replay that leaves the answers in place does not loop. Answers
+  count as sent only after a successful response; after a 409, a 429 or a
+  network error they (and their remember choices) can be sent again. L6
+  decides what the user sees then.
+- **Known gaps for L6 and later.**
+  - The duplicate replay omits reasoning parts and anything the stored copy
+    no longer holds as a tool part (an artifact call rewritten to its
+    reference); a reload shows them.
+  - On Anthropic routes a provider-executed tool keeps its declaration
+    mid-loop after taint, so Anthropic code execution can still run after
+    untrusted content. Its sandbox has no network access, so the exposure is
+    what the code prints back into the conversation.
+  - A continuation that fails after its update can leave
+    `approval-responded` parts in D1; a resend of the same answers then
+    reads as interrupted ("Interrupted. Ask again").
+  - A killed continuation loses its usage: `onEnd` never fires (section
+    14.1 bullet 6), and the tool may already have run.
+  - With the flag on and code execution withheld, the code execution
+    session, its instruction line and its stream wrapper are still set up.
+  - Provider metadata is restored from D1 and KV but only checked against
+    mock models; a real Anthropic-with-thinking or Gemini resume is not
+    verified yet.
+  - The Besidka permission modes (Blocked, Allow) are not read yet, so
+    replay uses `ask` and Blocked is not reachable from the route.
+
 ## 8. Data model
 
 All in `server/db/schemas/connectors.ts`, exported from `server/db/schema.ts`.
@@ -1372,6 +1543,7 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
 | `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
 | `tool-approval:chat:<chatPublicId>` | 24 h | per-chat index of the keys above, used by chat delete and by expiry |
+| `tool-approval-rate:<userId>` | 120 s | approval answers in the current one-minute window (section 7.7) |
 | `connectors:registry:updated-since` | none | sync cursor |
 | `connectors:registry:full-pass` | none | id of the last completed full pass |
 | `connectors:registry:erasures` | none | SHA-256 of registry names whose maintainers asked for removal |
@@ -1825,6 +1997,18 @@ not asserted by a test.
    Consequence: the built-in tool budget in L9 is real; at 32 tools it takes
    about 29 KB of context on every send, so the "at most 16 built-in tools"
    rule and the per-chat "Besidka" opt-in are not optional.
+
+9. **Provider-executed calls cannot wait.** A provider tool (Anthropic
+   code execution) whose call the policy answers with `user-approval` still
+   runs: the provider sends its result in the same response, right after the
+   `tool-approval-request` chunk (`start`, `start-step`,
+   `tool-input-available`, `tool-approval-request`, `tool-output-available`,
+   text, `finish-step`, `finish`), the finish reason is `stop`, the part ends
+   `output-available` and no `approval-requested` part remains. On a
+   continuation the SDK also skips local execution of approved
+   provider-executed calls (source). Consequence: never ask for a
+   provider-executed call; leave the tool out of the step instead (section
+   7.7).
 
 ## 15. Host portability
 

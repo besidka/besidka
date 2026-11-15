@@ -7,8 +7,11 @@ import {
   classifyNativeTool,
   createSendToolApproval,
   createToolApprovalStreamCollector,
+  hasGuardedProviderTool,
   presetApprovalTaint,
   recordToolApprovalPause,
+  withholdProviderTools,
+  withProviderToolEgressGuard,
 } from '~~/server/utils/tool-approval/send'
 import type { SendToolApproval } from '~~/server/utils/tool-approval/send'
 import { createApprovalState } from '~~/server/utils/tool-approval/state'
@@ -327,7 +330,7 @@ describe('createSendToolApproval', () => {
       expect([...approval.state.taint]).toEqual(['web'])
     })
 
-  it('treats any other provider-executed tool as a write', () => {
+  it('never asks for a provider-executed call, which already ran', () => {
     const approval = createApproval(['code_execution'])
     const providerCall = {
       toolCall: {
@@ -338,13 +341,193 @@ describe('createSendToolApproval', () => {
       },
     }
 
-    expect(approval.toolApproval(providerCall)).toBe('not-applicable')
-
     approval.state.taint.add('web')
 
-    expect(approval.toolApproval({
-      toolCall: { ...providerCall.toolCall, toolCallId: 'call-2' },
-    })).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.toolApproval(providerCall)).toBe('not-applicable')
+    expect(approval.getPendingDecision('call-1')).toBeUndefined()
+  })
+
+  it('withholds a provider-executed write only while the policy would ask',
+    async () => {
+      const approval = createSendToolApproval({ state: createApprovalState() })
+      const tools = {
+        code_execution: { type: 'provider' },
+        web_search: { type: 'provider' },
+        memory_write: { execute: vi.fn() },
+      } as never
+
+      approval.registerTools(tools)
+
+      expect(approval.listWithheldProviderTools(tools)).toEqual([])
+      expect(withholdProviderTools({
+        approval,
+        tools,
+        keepWhenHistoryHolds: null,
+      })).toBe(tools)
+      expect(hasGuardedProviderTool(approval, tools)).toBe(true)
+
+      approval.state.taint.add('connector')
+
+      expect(approval.listWithheldProviderTools(tools))
+        .toEqual(['code_execution'])
+      expect(Object.keys(withholdProviderTools({
+        approval,
+        tools,
+        keepWhenHistoryHolds: null,
+      }) ?? {})).toEqual(['web_search', 'memory_write'])
+      expect(Object.keys(withholdProviderTools({
+        approval,
+        tools,
+        keepWhenHistoryHolds: [{
+          type: 'tool-code_execution',
+          state: 'output-available',
+        }],
+      }) ?? {})).toContain('code_execution')
+
+      const prepareStep = withProviderToolEgressGuard({
+        approval,
+        tools,
+        base: () => ({ activeTools: ['code_execution', 'memory_write'] }),
+        keepDeclarations: false,
+      })
+
+      expect(await prepareStep({} as never))
+        .toEqual({ activeTools: ['memory_write'] })
+      expect(await withProviderToolEgressGuard({
+        approval,
+        tools,
+        keepDeclarations: true,
+      })({} as never)).toBeUndefined()
+    })
+
+  it('binds an approval to its call and uses it once', () => {
+    const approval = createApproval(['memory_write'])
+    const approved = {
+      toolCallId: 'call-1',
+      toolName: 'memory_write',
+      input: { body: 'Likes tea' },
+    }
+
+    approval.state.taint.add('web')
+    approval.markApprovedByUser(approved)
+
+    expect(approval.toolApproval(call('call-1', 'memory_write', {
+      body: 'Card 4111 1111 1111 1111',
+    }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+    expect(approval.isApprovedByUser({
+      ...approved,
+      input: { body: 'Card 4111 1111 1111 1111' },
+    })).toBe(false)
+    expect(approval.isApprovedByUser({
+      ...approved,
+      toolName: 'memory_forget',
+    })).toBe(false)
+    expect(approval.isApprovedByUser(approved)).toBe(true)
+
+    approval.consumeApprovedCall('call-1')
+
+    expect(approval.isApprovedByUser(approved)).toBe(false)
+    expect(approval.toolApproval(call('call-1', 'memory_write', {
+      body: 'Likes tea',
+    }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
+  })
+
+  it('keeps provider web search with knowledge excerpts in the prompt, and '
+    + 'withholds it after a tool read private data', () => {
+    const approval = createSendToolApproval({ state: createApprovalState() })
+    const tools = {
+      web_search: { type: 'provider' },
+      google_search: { type: 'provider' },
+      search_chats: { execute: vi.fn() },
+    } as never
+
+    approval.registerTools(tools)
+    presetApprovalTaint(approval.state, {
+      requestedTools: ['web_search'],
+      holdsUntrustedKnowledge: true,
+      holdsArtifactContext: false,
+      holdsSkillText: false,
+      holdsPastChatExcerpts: true,
+      isBranchedFromShare: false,
+    })
+
+    expect([...approval.state.readSources]).toEqual(['besidka'])
+    expect(approval.listWithheldProviderTools(tools)).toEqual([])
+    expect(hasGuardedProviderTool(approval, tools)).toBe(true)
+
+    expect(approval.toolApproval(call('call-1', 'search_chats', {
+      query: 'pasta',
+    }))).toBe('not-applicable')
+    expect(approval.listWithheldProviderTools(tools))
+      .toEqual(['web_search', 'google_search'])
+  })
+
+  it('replays a call the user approved without a new decision', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'create_issue',
+        readOnly: false,
+      }),
+    ])
+
+    approval.markApprovedByUser({
+      toolCallId: 'call-1',
+      toolName: 'mcp__linear__create_issue',
+      input: { title: 'x' },
+    })
+
+    expect(approval.toolApproval(call(
+      'call-1',
+      'mcp__linear__create_issue',
+      { title: 'x' },
+    ))).toBe('not-applicable')
+    expect(approval.getPendingDecision('call-1')).toBeUndefined()
+    expect(approval.state.counters.connectorCalls).toBe(1)
+    expect([...approval.state.taint]).toEqual(['connector'])
+    expect(approval.consumeClearedCall({
+      toolCallId: 'call-1',
+      toolName: 'mcp__linear__create_issue',
+      input: { title: 'x' },
+    })).toBe(true)
+  })
+
+  it('opens no sixth approval round in one user turn', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'create_issue',
+        readOnly: false,
+      }),
+    ])
+
+    approval.state.counters.rounds = 4
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__create_issue')))
+      .toEqual({ type: 'user-approval', reason: 'always-ask' })
+
+    approval.state.counters.rounds = 5
+
+    expect(approval.toolApproval(call('call-2', 'mcp__linear__create_issue')))
+      .toEqual({ type: 'denied', reason: 'over-cap' })
+  })
+
+  it('denies a connector call once the turn spent its connector calls', () => {
+    const approval = createApproval([], [
+      connectorEntry({
+        connectorId: 'c1',
+        slug: 'linear',
+        tool: 'list_issues',
+        readOnly: true,
+      }),
+    ])
+
+    approval.state.counters.connectorCalls = 12
+
+    expect(approval.toolApproval(call('call-1', 'mcp__linear__list_issues')))
+      .toEqual({ type: 'denied', reason: 'over-cap' })
   })
 
   it('denies a tool with no entry, an input over the cap and the 11th '

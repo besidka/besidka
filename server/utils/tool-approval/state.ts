@@ -22,15 +22,23 @@ export interface ApprovalCounters {
 
 export type ApprovalCounterName = keyof ApprovalCounters
 
+/**
+ * `readSources` holds every source the turn has read, including knowledge
+ * and past-chat excerpts preset into the prompt (rule 3, cross-source);
+ * `toolReadSources` holds only the sources a tool call read during the
+ * turn, which is what withholds the provider's own web search.
+ */
 export interface ApprovalState {
   taint: Set<ToolApprovalTaintKind>
   readSources: Set<string>
+  toolReadSources: Set<string>
   counters: ApprovalCounters
 }
 
 export interface SerializedApprovalState {
   taint: ToolApprovalTaintKind[]
   readSources: string[]
+  toolReadSources: string[]
   counters: ApprovalCounters
 }
 
@@ -46,6 +54,9 @@ export const serializedApprovalStateSchema = z.object({
   readSources: z.array(
     z.string().min(1).max(TOOL_APPROVAL_READ_SOURCE_MAX_LENGTH),
   ).max(TOOL_APPROVAL_READ_SOURCES_MAX),
+  toolReadSources: z.array(
+    z.string().min(1).max(TOOL_APPROVAL_READ_SOURCE_MAX_LENGTH),
+  ).max(TOOL_APPROVAL_READ_SOURCES_MAX).default([]),
   counters: z.object({
     rounds: counterSchema,
     steps: counterSchema,
@@ -58,6 +69,7 @@ export function createApprovalState(): ApprovalState {
   return {
     taint: new Set(),
     readSources: new Set(),
+    toolReadSources: new Set(),
     counters: {
       rounds: 0,
       steps: 0,
@@ -144,6 +156,25 @@ export function recordRead(
 }
 
 /**
+ * Records a source a tool call read during the turn: it counts for rule 3
+ * like any read (`recordRead`) and also marks the turn as having read
+ * private data through a tool. Past the bound the tool set keeps what it
+ * has; one entry is enough to withhold the provider's web search.
+ */
+export function recordToolRead(
+  state: ApprovalState,
+  source: string,
+): ApprovalState {
+  recordRead(state, source)
+
+  if (state.toolReadSources.size < TOOL_APPROVAL_READ_SOURCES_MAX) {
+    state.toolReadSources.add(source)
+  }
+
+  return state
+}
+
+/**
  * Throws on an amount that is not a non-negative integer: a `NaN` counter
  * would make every `>=` cap check false. Counters stop at the cap, so a
  * serialized state always passes the schema again.
@@ -194,6 +225,7 @@ export function serializeApprovalState(
         - TOOL_APPROVAL_TAINT_KINDS.indexOf(second)
     }),
     readSources: [...state.readSources].sort(),
+    toolReadSources: [...state.toolReadSources].sort(),
     counters: { ...state.counters },
   }
 }
@@ -219,6 +251,7 @@ export function deserializeApprovalState(
     state: {
       taint: new Set(parsed.data.taint),
       readSources: new Set(parsed.data.readSources),
+      toolReadSources: new Set(parsed.data.toolReadSources),
       counters: { ...parsed.data.counters },
     },
   }

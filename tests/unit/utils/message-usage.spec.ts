@@ -8,6 +8,7 @@ import {
   addSearchUsage,
   addResearchCostEstimateToUsage,
   buildMessageUsage,
+  sumMessageUsages,
 } from '../../../server/utils/ai/message-usage'
 
 const PRICED_MODEL_ID = 'gpt-5.4'
@@ -847,5 +848,57 @@ describe('addKnowledgeContextUsage', () => {
       steps: [step(1, 1)],
       knowledgeTokens: 1,
     })).toBeUndefined()
+  })
+})
+
+describe('sumMessageUsages', () => {
+  const first: MessageUsage = {
+    model: 'gpt-5-mini',
+    provider: 'openai',
+    inputTokens: 100,
+    outputTokens: 20,
+    totalTokens: 120,
+    inputCost: 0.1,
+    knowledgeTokens: 40,
+    firstStepInputTokens: 100,
+    searchUnits: 1,
+    searchCost: 0.01,
+    searchProvider: 'brave',
+    searchBillingUnit: 'search',
+  }
+  const second: MessageUsage = {
+    model: 'gpt-5-mini',
+    provider: 'openai',
+    inputTokens: 150,
+    outputTokens: 30,
+    totalTokens: 180,
+    inputCost: 0.2,
+    outputCost: 0.05,
+    lastStepOutputTokens: 30,
+  }
+
+  it('adds tokens and costs and keeps first-request measurements', () => {
+    expect(sumMessageUsages(first, second)).toEqual({
+      model: 'gpt-5-mini',
+      provider: 'openai',
+      inputTokens: 250,
+      outputTokens: 50,
+      totalTokens: 300,
+      inputCost: expect.closeTo(0.3, 10),
+      outputCost: 0.05,
+      knowledgeTokens: 40,
+      firstStepInputTokens: 100,
+      lastStepOutputTokens: 30,
+      searchUnits: 1,
+      searchCost: 0.01,
+      searchProvider: 'brave',
+      searchBillingUnit: 'search',
+    })
+  })
+
+  it('returns whichever side exists', () => {
+    expect(sumMessageUsages(null, second)).toBe(second)
+    expect(sumMessageUsages(first, undefined)).toBe(first)
+    expect(sumMessageUsages(undefined, undefined)).toBeUndefined()
   })
 })

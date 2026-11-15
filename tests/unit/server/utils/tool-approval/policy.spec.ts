@@ -1059,6 +1059,10 @@ describe('resolveReplayApproval', () => {
 
     incrementCounter(state, 'rounds', 5)
 
+    expect(replay({ state }).denialReason).toBeNull()
+
+    incrementCounter(state, 'rounds')
+
     expect(replay({ state }).denialReason).toBe('over-cap')
     expect(replay({
       descriptor: nativeTool(),

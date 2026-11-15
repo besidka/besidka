@@ -1,4 +1,9 @@
-import type { ToolApprovalStatus, ToolSet, UIMessageChunk } from 'ai'
+import type {
+  PrepareStepFunction,
+  ToolApprovalStatus,
+  ToolSet,
+  UIMessageChunk,
+} from 'ai'
 import { createError } from 'evlog'
 import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
@@ -9,10 +14,12 @@ import {
 import type { ToolApprovalPartData } from '#shared/utils/tool-approval-parts'
 import {
   TOOL_APPROVAL_BESIDKA_READ_SOURCE,
+  TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
   TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
   TOOL_APPROVAL_PAYLOAD_MAX_BYTES,
   TOOL_APPROVAL_PENDING_PER_MESSAGE,
   TOOL_APPROVAL_RECORD_VERSION,
+  TOOL_APPROVAL_ROUNDS_PER_TURN,
   TOOL_APPROVAL_SUMMARY_MAX_LENGTH,
 } from '#shared/utils/tool-approval-policy'
 import type {
@@ -49,6 +56,7 @@ import {
   incrementCounter,
   recordRead,
   recordTaint,
+  recordToolRead,
   serializeApprovalState,
 } from '~~/server/utils/tool-approval/state'
 import type { ApprovalState } from '~~/server/utils/tool-approval/state'
@@ -112,6 +120,10 @@ export interface ClearedCallCheck {
   input: unknown
 }
 
+export type ApprovedCall = Omit<ClearedCallCheck, 'toolCallId'> & {
+  toolCallId: string
+}
+
 export interface SendToolApproval {
   state: ApprovalState
   entries: Map<string, SendToolEntry>
@@ -123,13 +135,13 @@ export interface SendToolApproval {
   guardNativeWrites: (tools: ToolSet | undefined) => ToolSet | undefined
   canAsk: () => boolean
   consumeClearedCall: (call: ClearedCallCheck) => boolean
-  markApprovedByUser: (call: Omit<ClearedCallCheck, 'toolCallId'> & {
-    toolCallId: string
-  }) => void
-  isApprovedByUser: (toolCallId: string | undefined) => boolean
+  markApprovedByUser: (call: ApprovedCall) => void
+  isApprovedByUser: (call: ClearedCallCheck) => boolean
+  consumeApprovedCall: (toolCallId: string) => void
   getPendingDecision: (
     toolCallId: string,
   ) => PendingToolApprovalDecision | undefined
+  listWithheldProviderTools: (tools: ToolSet | undefined) => string[]
 }
 
 interface NativeToolClass {
@@ -346,13 +358,20 @@ function toInputJson(input: unknown): string {
  * A call that needs approval is kept by its tool call id until the stream
  * pairs it with the SDK's approval id. A call the user approved is marked
  * with `markApprovedByUser` (the continuation, L5, does this before the SDK
- * replays it); it is cleared for `execute` and lifts the memory write lock
- * for that call only (`isApprovedByUser`). A call the provider runs itself is
- * not gated when it belongs to the web search family, which taints the
- * send; any other provider-executed call goes through the policy as a write.
- * A tool with no
- * entry is denied, and so is a call that would need approval but has an
- * input over the KV payload cap or comes past the per-message cap, so a
+ * replays it), bound to its tool name and canonical input: it is cleared
+ * for `execute` and lifts the memory write lock for that call only
+ * (`isApprovedByUser` with the same name and input); when the SDK replays
+ * it with the same name and input, the call runs without a new decision and
+ * records its taint, read source and connector count, and any other call
+ * reusing its id is decided like a new call. The approval is single use:
+ * `consumeApprovedCall` drops it once the call settled. A call the provider
+ * runs itself is never gated: the provider has already run it when the SDK
+ * sees it, so it only records what it brings
+ * (`withProviderToolEgressGuard` keeps such a tool out of a step in which
+ * it would need approval). A connector call past the per-turn
+ * connector cap is denied. A tool with no entry is denied, and so is a
+ * call that would need approval but has an input over the KV payload cap
+ * or comes past the per-message cap, so a
  * pause never holds a call Besidka cannot store. A call that may run is
  * never held to the payload cap.
  */
@@ -362,7 +381,19 @@ export function createSendToolApproval(input: {
   const { state } = input
   const entries = new Map<string, SendToolEntry>()
   const clearedCalls = new Map<string, ClearedCall>()
-  const approvedCallIds = new Set<string>()
+  const approvedCalls = new Map<string, ClearedCall>()
+
+  function matchesApprovedCall(call: ClearedCallCheck): boolean {
+    if (typeof call.toolCallId !== 'string') {
+      return false
+    }
+
+    const approved = approvedCalls.get(call.toolCallId)
+
+    return Boolean(approved)
+      && approved?.toolName === call.toolName
+      && approved.inputJson === toInputJson(call.input)
+  }
   const pendingDecisions = new Map<string, PendingToolApprovalDecision>()
 
   function recordRun(entry: SendToolEntry): void {
@@ -371,7 +402,7 @@ export function createSendToolApproval(input: {
     }
 
     if (entry.readSource) {
-      recordRead(state, entry.readSource)
+      recordToolRead(state, entry.readSource)
     }
 
     if (entry.descriptor.family === 'connector') {
@@ -389,15 +420,23 @@ export function createSendToolApproval(input: {
       return denied('missing-tool')
     }
 
-    if (
-      toolCall.providerExecuted === true
-      && entry.descriptor.access === 'read'
-    ) {
-      if (entry.taint) {
-        recordTaint(state, entry.taint)
-      }
+    if (matchesApprovedCall(toolCall)) {
+      recordRun(entry)
 
       return 'not-applicable'
+    }
+
+    if (toolCall.providerExecuted === true) {
+      recordRun(entry)
+
+      return 'not-applicable'
+    }
+
+    if (
+      entry.descriptor.family === 'connector'
+      && state.counters.connectorCalls >= TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN
+    ) {
+      return denied('over-cap')
     }
 
     const isGrantUsable = state.taint.size === 0
@@ -419,12 +458,10 @@ export function createSendToolApproval(input: {
     }
 
     if (decision.status.type === 'not-applicable') {
-      if (toolCall.providerExecuted !== true) {
-        clearedCalls.set(toolCall.toolCallId, {
-          toolName: toolCall.toolName,
-          inputJson: toInputJson(toolCall.input),
-        })
-      }
+      clearedCalls.set(toolCall.toolCallId, {
+        toolName: toolCall.toolName,
+        inputJson: toInputJson(toolCall.input),
+      })
 
       recordRun(entry)
 
@@ -434,6 +471,7 @@ export function createSendToolApproval(input: {
     if (
       pendingDecisions.size >= TOOL_APPROVAL_PENDING_PER_MESSAGE
       || payloadBytes(toolCall.input) > TOOL_APPROVAL_PAYLOAD_MAX_BYTES
+      || state.counters.rounds >= TOOL_APPROVAL_ROUNDS_PER_TURN
     ) {
       return denied('over-cap')
     }
@@ -533,6 +571,34 @@ export function createSendToolApproval(input: {
     }))
   }
 
+  function wouldAsk(entry: SendToolEntry): boolean {
+    return resolveToolApproval({
+      descriptor: entry.descriptor,
+      state,
+      permissionMode: 'ask',
+    }).status.type !== 'not-applicable'
+  }
+
+  function shouldWithhold(entry: SendToolEntry): boolean {
+    if (entry.descriptor.access !== 'read') {
+      return wouldAsk(entry)
+    }
+
+    return entry.taint === 'web' && state.toolReadSources.size > 0
+  }
+
+  function listWithheldProviderTools(tools: ToolSet | undefined): string[] {
+    return Object.entries(tools ?? {}).flatMap(([toolName, tool]) => {
+      const entry = entries.get(toolName)
+
+      if (!isProviderTool(tool) || !entry || !shouldWithhold(entry)) {
+        return []
+      }
+
+      return [toolName]
+    })
+  }
+
   function canAsk(): boolean {
     return [...entries.values()].some((entry) => {
       return entry.descriptor.family !== 'native'
@@ -549,17 +615,85 @@ export function createSendToolApproval(input: {
     canAsk,
     consumeClearedCall,
     markApprovedByUser: (call) => {
-      clearedCalls.set(call.toolCallId, {
+      const approved = {
         toolName: call.toolName,
         inputJson: toInputJson(call.input),
-      })
-      approvedCallIds.add(call.toolCallId)
+      }
+
+      clearedCalls.set(call.toolCallId, approved)
+      approvedCalls.set(call.toolCallId, approved)
     },
-    isApprovedByUser: (toolCallId) => {
-      return typeof toolCallId === 'string' && approvedCallIds.has(toolCallId)
+    isApprovedByUser: matchesApprovedCall,
+    consumeApprovedCall: (toolCallId) => {
+      approvedCalls.delete(toolCallId)
+      clearedCalls.delete(toolCallId)
     },
     getPendingDecision: toolCallId => pendingDecisions.get(toolCallId),
+    listWithheldProviderTools,
   }
+}
+
+type StepPreparation = Awaited<ReturnType<PrepareStepFunction<ToolSet>>>
+
+/**
+ * Keeps a provider-executed tool that is not a read (code execution) out of
+ * every step in which the policy would ask for it, and the provider's own
+ * web search, grounding and URL context out of every step once a tool call
+ * of the turn read a connector or the user's Besidka data (rule 4: a fetch
+ * could carry that data out). Web taint alone, and knowledge or past-chat
+ * excerpts preset into the prompt, do not withhold them. The provider runs
+ * such a call inside its own response, before Besidka sees it, so it can
+ * never wait for approval; leaving the tool out is the only way to stop it.
+ * The tools the base `prepareStep` already narrowed stay narrowed. With
+ * `keepDeclarations` (Anthropic, whose API rejects tool history without the
+ * declaration) the base result is returned unchanged.
+ */
+export function withProviderToolEgressGuard(input: {
+  approval: SendToolApproval
+  tools: ToolSet | undefined
+  base?: PrepareStepFunction<ToolSet>
+  keepDeclarations: boolean
+}): PrepareStepFunction<ToolSet> {
+  return async (options) => {
+    const prepared: StepPreparation = input.base
+      ? await input.base(options)
+      : undefined
+
+    if (input.keepDeclarations) {
+      return prepared
+    }
+
+    const withheld = input.approval.listWithheldProviderTools(input.tools)
+
+    if (withheld.length === 0) {
+      return prepared
+    }
+
+    const declared = prepared?.activeTools ?? Object.keys(input.tools ?? {})
+    const activeTools = declared.filter((toolName) => {
+      return !withheld.includes(toolName)
+    })
+
+    return { ...prepared, activeTools }
+  }
+}
+
+/**
+ * Whether the send declares a provider-executed tool the guard may have to
+ * withhold (one that is not a read, or a web search, grounding or URL
+ * context tool), so `withProviderToolEgressGuard` has something to do.
+ */
+export function hasGuardedProviderTool(
+  approval: SendToolApproval,
+  tools: ToolSet | undefined,
+): boolean {
+  return Object.entries(tools ?? {}).some(([toolName, tool]) => {
+    const entry = approval.entries.get(toolName)
+
+    return isProviderTool(tool)
+      && Boolean(entry)
+      && (entry?.descriptor.access !== 'read' || entry.taint === 'web')
+  })
 }
 
 /**
@@ -601,11 +735,14 @@ export function presetApprovalTaint(
   }
 }
 
+type ToolCallProviderMetadata = Record<string, Record<string, unknown>>
+
 export interface CollectedToolApproval {
   approvalId: string
   toolCallId: string
   toolName: string
   input: unknown
+  callProviderMetadata: ToolCallProviderMetadata | null
   signature: string
   pending: PendingToolApprovalDecision
 }
@@ -632,7 +769,11 @@ export interface ToolApprovalStreamCollector {
 export function createToolApprovalStreamCollector(
   approval: SendToolApproval,
 ): ToolApprovalStreamCollector {
-  const inputs = new Map<string, { toolName: string, input: unknown }>()
+  const inputs = new Map<string, {
+    toolName: string
+    input: unknown
+    providerMetadata?: ToolCallProviderMetadata
+  }>()
   const collected: CollectedToolApproval[] = []
   let stepCount = 0
   let isPaused = false
@@ -649,6 +790,7 @@ export function createToolApprovalStreamCollector(
           inputs.set(chunk.toolCallId, {
             toolName: chunk.toolName,
             input: chunk.input,
+            providerMetadata: chunk.providerMetadata,
           })
         }
 
@@ -684,6 +826,7 @@ export function createToolApprovalStreamCollector(
           toolCallId: chunk.toolCallId,
           toolName: call.toolName,
           input: call.input,
+          callProviderMetadata: call.providerMetadata ?? null,
           signature,
           pending,
         })
@@ -768,6 +911,7 @@ export async function recordToolApprovalPause(
         connectorId: entry.descriptor.connectorId ?? null,
         definitionHash: entry.descriptor.definitionHash ?? null,
         input: collected.input,
+        callProviderMetadata: collected.callProviderMetadata,
         signature: collected.signature,
         reason: decision.reason ?? 'default',
         rememberOptions: [...decision.rememberOptions],
@@ -819,4 +963,44 @@ export function chatHasAwaitingApproval(
   messages: ReadonlyArray<{ parts: unknown }>,
 ): boolean {
   return messages.some(message => hasAwaitingApprovalToolPart(message.parts))
+}
+
+function partCallsTool(part: unknown, toolName: string): boolean {
+  if (!isRecord(part) || typeof part.type !== 'string') {
+    return false
+  }
+
+  return part.type === `tool-${toolName}`
+    || (part.type === 'dynamic-tool' && part.toolName === toolName)
+}
+
+/**
+ * Leaves out, before the first step, every provider-executed tool the
+ * policy would ask for given what the send already holds. On a route that
+ * needs the declaration for tool history (Anthropic), a tool the given
+ * history already called stays.
+ */
+export function withholdProviderTools(input: {
+  approval: SendToolApproval
+  tools: ToolSet | undefined
+  keepWhenHistoryHolds: readonly unknown[] | null
+}): ToolSet | undefined {
+  if (!input.tools) {
+    return input.tools
+  }
+
+  const withheld = input.approval.listWithheldProviderTools(input.tools)
+    .filter((toolName) => {
+      return !input.keepWhenHistoryHolds?.some((part) => {
+        return partCallsTool(part, toolName)
+      })
+    })
+
+  if (withheld.length === 0) {
+    return input.tools
+  }
+
+  return Object.fromEntries(Object.entries(input.tools).filter(([name]) => {
+    return !withheld.includes(name)
+  }))
 }
