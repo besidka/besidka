@@ -396,6 +396,23 @@ describe('private MCP connector tools', () => {
         expect(credentials).toHaveLength(0)
       })
 
+    it('cleans the title an app sends and falls back to the host when '
+      + 'nothing is left', async () => {
+      const cleaned = await addMcpConnector(context(), {
+        url: SECRET_URL,
+        title: 'Lin\u202Eear\u200B\n  Pro',
+      })
+
+      expect(cleaned.title).toBe('Lin ear Pro')
+
+      const emptied = await addMcpConnector(context(), {
+        url: 'https://other.example.org/mcp',
+        title: '\u200B\u202E',
+      })
+
+      expect(emptied.title).toBe('other.example.org')
+    })
+
     it('records a preset added over MCP as mcp, not preset', async () => {
       const result = await addMcpConnector(context(), {
         presetId: 'github',
@@ -563,6 +580,28 @@ describe('private MCP connector tools', () => {
       expect(row?.enabled).toBe(false)
       expect(settings).toHaveLength(3)
     })
+
+    it('returns cleaned tool names and accepts the cleaned name back',
+      async () => {
+        const connector = await seedConnector()
+        const dirtyName = 'sear\u202Ech\u200B'.padEnd(300, 'x')
+
+        await upsertConnectorToolSettings(testDb.db, userId, connector.id, [
+          toolSetting(dirtyName),
+        ])
+
+        const detail = await getMcpConnector(context(), { id: connector.id })
+
+        expect(detail.tools[0]?.name).toHaveLength(128)
+        expect(detail.tools[0]?.name).not.toMatch(/[\u202E\u200B]/)
+
+        const result = await updateMcpConnectorTools(context(), {
+          id: connector.id,
+          tools: [{ name: detail.tools[0]!.name, enabled: false }],
+        })
+
+        expect(result.tools[0]?.enabled).toBe(false)
+      })
 
     it('refuses to turn a tool on or to grant Always allow, even if the '
       + 'schema is bypassed', async () => {

@@ -1,5 +1,9 @@
 import { createError } from 'evlog'
+import {
+  CONNECTOR_TITLE_MAX_LENGTH,
+} from '#shared/utils/connectors-policy'
 import type { ConnectorCreatedVia } from '#shared/utils/connectors-policy'
+import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import { deriveConnectorSlugBase } from '#shared/utils/connectors-slug'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
 import { createConnector } from '~~/server/utils/connectors/store'
@@ -75,7 +79,10 @@ export async function addConnector(
     throw invalidAddress()
   }
 
-  const title = input.title?.trim() || preset?.title || parsed.url.hostname
+  const title = sanitizeConnectorText(
+    input.title ?? '',
+    CONNECTOR_TITLE_MAX_LENGTH,
+  ) || preset?.title || parsed.url.hostname
   const connector = await createConnector(db, {
     userId: input.userId,
     title,

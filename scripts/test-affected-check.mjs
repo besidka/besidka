@@ -536,6 +536,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/mcp/tools/delete-connectors.spec.ts',
     'tests/unit/server/utils/mcp/private/connectors.spec.ts',
     'tests/unit/server/utils/connectors/store.spec.ts',
+    'tests/unit/utils/connectors-text.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
     'tests/unit/config/mcp-surface.spec.ts',
@@ -4269,7 +4271,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store)))\.ts$/,
+      pattern: /^(shared\/utils\/connectors-text\.ts|server\/(mcp\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|utils\/(besidka-tools\/tools\/(list|get|add|update|delete)-connectors?(-tools)?|mcp\/(private\/(connectors|connector-context)|readable-error)|connectors\/(add|delete|store))))\.ts$/,
       tests: mcpConnectorTests,
     },
     {

@@ -1,6 +1,7 @@
 import { createError } from 'evlog'
 import {
   CONNECTOR_MCP_DELETE_BATCH,
+  CONNECTOR_REMOTE_TOOL_NAME_MAX_LENGTH,
   CONNECTOR_MCP_LIST_LIMIT,
   CONNECTOR_MCP_TOOLS_BATCH,
   CONNECTOR_PAGE_PATH,
@@ -10,6 +11,7 @@ import type {
   ConnectorStatus,
   ConnectorToolApproval,
 } from '#shared/utils/connectors-policy'
+import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import { addConnector } from '~~/server/utils/connectors/add'
 import { deleteConnectorsWithRevocation } from '~~/server/utils/connectors/delete'
 import {
@@ -207,10 +209,17 @@ function toConnectorSummary(
 
 type ToolSettingRows = Awaited<ReturnType<typeof listConnectorToolSettings>>
 
+function cleanToolName(toolName: string): string {
+  return sanitizeConnectorText(
+    toolName,
+    CONNECTOR_REMOTE_TOOL_NAME_MAX_LENGTH,
+  )
+}
+
 function toToolList(rows: ToolSettingRows): McpConnectorTool[] {
   return rows.map((row) => {
     return {
-      name: row.toolName,
+      name: cleanToolName(row.toolName),
       enabled: row.enabled,
       approval: row.approval,
       serverReadOnly: row.serverReadOnly,
@@ -370,16 +379,37 @@ export async function updateMcpConnectorTools(
     throw createNotFoundError()
   }
 
+  const storedSettings = await listConnectorToolSettings(
+    context.db,
+    context.userId,
+    connector.id,
+  )
+  const storedNamesByCleanName = new Map<string, string[]>()
+
+  for (const row of storedSettings) {
+    const cleanName = cleanToolName(row.toolName)
+
+    storedNamesByCleanName.set(cleanName, [
+      ...(storedNamesByCleanName.get(cleanName) ?? []),
+      row.toolName,
+    ])
+  }
+
   const { unknownTools } = await reduceConnectorToolSettings(
     context.db,
     context.userId,
     connector.id,
-    input.tools.map((change) => {
-      return {
-        toolName: change.name,
-        disable: change.enabled === false,
-        askEveryTime: change.approval === 'ask',
-      }
+    input.tools.flatMap((change) => {
+      const storedNames = storedNamesByCleanName.get(change.name)
+        ?? [change.name]
+
+      return storedNames.map((storedName) => {
+        return {
+          toolName: storedName,
+          disable: change.enabled === false,
+          askEveryTime: change.approval === 'ask',
+        }
+      })
     }),
   )
 

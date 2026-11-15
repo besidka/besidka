@@ -31,7 +31,7 @@ describe('OAuth scope label', () => {
     )
     expect(read.text()).toContain('Never their keys or sign-in tokens')
     expect(write.text()).toContain(
-      'Add, change and remove connectors. New ones start switched off; '
+      'Add, change and delete connectors. New ones start switched off; '
       + 'you switch them on in Besidka',
     )
     expect(write.text()).toContain('It cannot switch a connector on')

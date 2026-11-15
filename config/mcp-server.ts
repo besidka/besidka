@@ -22,6 +22,11 @@ export const MCP_PRIVATE_DELETE_RATE_LIMIT = {
   max: 20,
 } as const
 
+export const MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT = {
+  window: 3600,
+  max: 20,
+} as const
+
 export const MCP_ARTIFACT_SHARE_DAILY_LIMIT = {
   window: 86_400,
   max: 10,

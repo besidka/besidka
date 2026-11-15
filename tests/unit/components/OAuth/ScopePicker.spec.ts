@@ -148,7 +148,7 @@ describe('OAuth scope picker', () => {
       'See your connectors: names and addresses, never their keys',
     )
     expect(wrapper.text()).toContain(
-      'Add, change and remove connectors. New ones start switched off; '
+      'Add, change and delete connectors. New ones start switched off; '
       + 'you switch them on in Besidka',
     )
     expect(wrapper.get('[data-testid="oauth-write-warning"]').text())

@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '33b9e5a3d12a0aa5ba6710c618204d6e84e71c529f1aa240d920a2d9bf32a88f',
+    hash: '415b3b28633a41578f48a3d6e537a742bb0af87fbd086870b9894153c8c419e1',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '

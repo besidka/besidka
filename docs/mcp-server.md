@@ -177,7 +177,7 @@ scope, so it is unticked by default and shown with the warning style.
 - **Where they are registered:** `shared/utils/mcp-oauth-scopes.ts`,
   `MCP_PRIVATE_TOOL_SCOPES`, `app/components/OAuth/ScopeLabel.vue` (labels
   "See your connectors: names and addresses, never their keys" and "Add,
-  change and remove connectors. New ones start switched off; you switch them
+  change and delete connectors. New ones start switched off; you switch them
   on in Besidka"), the write warning in `ScopePicker.vue`, the
   scope phrases of the security emails, and `MCP_SERVER_VERSION` 4.0.0 in the
   four version files. The Privacy Policy lists the permissions ("What a
@@ -191,8 +191,9 @@ scope, so it is unticked by default and shown with the warning style.
   and settings, not user content, and it reduces exposure like
   `revoke_chat_shares`. It carries `destructiveHint: true`, is in
   `DESTRUCTIVE_TOOLS`, needs `confirm: true` and up to 20 ids, and counts
-  against the write limit (30 a minute), not the 20 an hour delete limit,
-  which belongs to the `data:delete` scope. Its registry `access` is `write`,
+  against the write limit (30 a minute) and a delete cap of its own, 20 an
+  hour (`MCP_PRIVATE_DELETE_CONNECTORS_RATE_LIMIT`), separate from the 20 an
+  hour bucket of the `data:delete` scope. Its registry `access` is `write`,
   because the parity spec ties `delete` to the `data:delete` scope.
 - **The feature gate is in the handler.** `assertMcpConnectorsAvailable`
   checks the `connectors` flag and the user's Labs toggle and answers a
@@ -202,6 +203,14 @@ scope, so it is unticked by default and shown with the warning style.
 - **No tool is in the chat.** All five registry entries are
   `chat: { excluded }`. A chat that could list, add or restrict its own
   connectors would give an injected prompt a path to a new data channel.
+- **Text from outside is cleaned.** Connector titles (from the app and from
+  remote servers' names) and remote tool names go through
+  `sanitizeConnectorText` (`shared/utils/connectors-text.ts`): control, bidi,
+  format and tag characters are removed, whitespace collapses and the text is
+  cut by code points. `list_connectors` and `get_connector` return the cleaned
+  tool name (at most 128 characters), and `update_connector_tools` accepts it.
+  `createdVia` is in both outputs so the app can mark "added by a connected
+  app".
 - **Output is built from an explicit field list**, never from a connector
   row: no URL beyond the host, no credentials, no consent fields, no
   `lastError`, no client registration, no call arguments. The private spec

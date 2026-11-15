@@ -5,6 +5,7 @@ import { createError } from 'evlog'
 import {
   allocateConnectorSlug,
 } from '#shared/utils/connectors-slug'
+import { sanitizeConnectorText } from '#shared/utils/connectors-text'
 import {
   CONNECTOR_TITLE_MAX_LENGTH,
   CONNECTORS_MCP_DISABLED_MAX,
@@ -276,7 +277,7 @@ async function assertConnectorOwned(
 }
 
 function normalizeTitle(title: string): string {
-  return title.trim().slice(0, CONNECTOR_TITLE_MAX_LENGTH)
+  return sanitizeConnectorText(title, CONNECTOR_TITLE_MAX_LENGTH)
 }
 
 async function encryptOptional(

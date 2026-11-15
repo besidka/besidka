@@ -90,10 +90,11 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'days, you can revoke it, and the app can create only a few a day.',
   },
   'connectors:write': {
-    title: 'Add, change and remove connectors. New ones start switched off; '
+    title: 'Add, change and delete connectors. New ones start switched off; '
       + 'you switch them on in Besidka',
     description: 'Add a connector, switched off, turn its tools off or end '
-      + 'their Always allow setting, and delete connectors. It cannot '
+      + 'their Always allow setting, and permanently delete connectors with '
+      + 'their stored sign-in and settings. It cannot '
       + 'switch a connector on, sign in, enter keys or allow a tool without '
       + 'asking. You do that in Besidka.',
   },
