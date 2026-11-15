@@ -76,6 +76,30 @@ test.describe('desktop', () => {
     await expect(page.locator(SEARCH_TILE)).toHaveCount(0)
   })
 
+  test('clicking "+" again closes the menu and keeps focus on it',
+    async ({ page }) => {
+      await openNewChat(page)
+
+      const trigger = page.locator(TOOLS_TRIGGER)
+      const panel = page.locator(TOOLS_PANEL)
+
+      await trigger.click()
+      await expect(panel).toBeVisible()
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+      await trigger.click()
+      await expect(panel).toBeHidden()
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      await page.waitForTimeout(300)
+      await expect(panel).toBeHidden()
+
+      await trigger.click()
+      await expect(panel).toBeVisible()
+
+      await page.mouse.click(900, 120)
+      await expect(panel).toBeHidden()
+    })
+
   test('section titles carry icons and a search pick shows a price badge '
     + 'that toggles its note without moving the header', async ({ page }) => {
     await openNewChat(page)
