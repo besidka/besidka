@@ -8,7 +8,7 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-11-04 |
+| Date | 2026-11-04; connector rows added 2026-11-15 (C-10, BES-257) |
 | Controller | One private individual in Poland. No company, no DPO, non-commercial (`docs/legal/art30-record.md`, section 1) |
 | Authority | Prezes Urzędu Ochrony Danych Osobowych (UODO) |
 | Closes | `docs/legal/compliance-review-2026-10.md`, section 3.4 |
@@ -102,6 +102,8 @@ is not a breach. Record it anyway (section 7).
 | A generated document carries active content or is misused (planned, D-3, D-4) | Disable the `documents` flag in `/admin`, which stops new documents, then delete the affected files with the user's file delete path. The renderer Worker `besidka-doc-renderer` has no public route, so no Worker route needs closing |
 | Vulnerable or abused route, or a flood | Disable the route or block traffic (2.7) |
 | A connected AI app is abused | Delete the grants: tables `oauth_access_tokens`, `oauth_refresh_tokens`, `oauth_consents` (row 10a of the Art. 30 record). Every `/mcp` call checks for a live consent row, so it stops at the next call (`docs/legal/dpia.md`, risk row 33) |
+| Connector credentials leaked, a connector abused, or a stolen session that could have added or switched on a connector (row 10b of the Art. 30 record) | For the user, delete the rows of `connector_credentials`, then set the user's `connectors` to `enabled = 0`, `status = 'needs-auth'` delete their `connector_chat_settings` grants and reset the standing ones with `UPDATE connector_tool_settings SET approval = 'ask', approved_definition_hash = NULL WHERE user_id = <id>`. Before deleting, call the authorization server's revocation endpoint where it advertises one (best effort, through `safeFetch`, as account deletion does). The audit rows in `connector_tool_calls` are evidence: keep them. Tell the user which services to revoke at (the connector list names the host). A stolen session can also switch on a connector that sends the user's data to an address the attacker chose, so list the user's connectors by host before you decide who to tell |
+| The client metadata document (`/connectors/client-metadata.json`) was changed, for example a `redirect_uris` entry added | Redeploy the correct document. Authorization servers cache it for hours, so assume codes could be captured until the caches expire. Never change the `client_id` as a fix. Revoke tokens issued in the window and ask affected users to reconnect |
 | Admin account or admin MCP client compromised (feature access, `docs/feature-flags.md`) | Remove the address from the `NUXT_ADMIN_EMAILS` Worker secret and redeploy. Delete any `admin` rows in `user_roles`. Revoke the connected app that holds `admin:features` (its rows in `oauth_access_tokens`, `oauth_refresh_tokens` and `oauth_consents`), then revoke the account's sessions (2.3). If rules were changed, set the `NUXT_FEATURES_DISABLED` var to `*` and redeploy, which turns every feature off for everyone. Review `feature_audit_log` and the Axiom `attributes.featureAccess` lines (actor, targets, `admin.read` counts) to see what was read and changed, and reverse it. The admin search shows every user's email and name, so assess it as an exposure of the account list (section 3) |
 | VAPID private key leaked | Rotate it. Every push subscription is invalidated and browsers re-subscribe by themselves (`docs/push-notifications.md`, "VAPID keys") |
 | Bad migration, lost data | Stop deploys and further migrations. Plan a Time Travel restore (`CLAUDE.md`; `docs/d1-restore-reconciliation.md`) |
@@ -164,6 +166,8 @@ again. The re-encryption job must cover that column too. A leak of the secret
 plus a read of D1 exposes every live link: treat it as row 9 of section 3 and
 revoke all artifact links (2.6). Lookups use `token_hash` only, which the
 secret does not protect and does not need to.
+
+**Connector credentials.** `connectors.url_encrypted` and the encrypted columns of `connector_credentials` (tokens, header value, client registration) use the same secret, so a leak of `NUXT_ENCRYPTION_KEY` plus a read of D1 exposes access to the user's accounts at other services (GitHub, Notion and the rest), a harm higher than a model key, which "spends money". Treat it as row 13 of section 3. For these columns the documented rotation is **wipe and re-authorize**: delete every `connector_credentials` row and set every connector to `needs-auth`, and the users sign in again; no re-encryption job is needed (the `keys` job stays open). The audit key for `connector_tool_calls.args_hmac` is derived from the same secret with HKDF, so after a rotation old and new hashes of the same arguments differ. No Besidka-held client secret exists for any preset (GitHub is token-only in v1), so there is no client-secret reset step.
 
 ### 2.6 Revoke share links
 
@@ -249,6 +253,8 @@ para 113; the UODO guide lists it among high-risk factors). Besidka chats can ho
 | 9 | Live artifact links exposed (`token_encrypted` with the secret, or a bulk leak of links) | As row 4 | Judge | Judge, owners of exposed links | Like a share link: the content was meant for whoever had the link, but not for everyone. Look at the content (row 49 of the DPIA), how long, and access in the logs. Revoke all (2.6) |
 | 10 | `artifact_storage` or `artifact_reports` exposed | As row 4; EDPB 9/2022 para 113 for special categories | Yes | Judge | Viewer answers can be health or belief data; reports hold reporters' names and emails, and a reporter may face retaliation. Lean towards telling them |
 | 11 | Runtime origin, CSP or sandbox misconfigured, so artifacts could read the page or the network | None. **Inference** | Judge | Judge | Turn the global `artifacts` rule off first. Then check whether any artifact used it (reports, `runtimeNavigation` lines, unusual traffic). With no evidence of use, record only |
+| 12 | Connector credentials exposed (a D1 read) with `NUXT_ENCRYPTION_KEY` safe | EDPB 9/2022 paras 77 to 79; Case 10 | Record only | No | Strong encryption and an uncompromised key: the tokens are unintelligible. The same proviso as row 2 |
+| 13 | Connector credentials exposed and `NUXT_ENCRYPTION_KEY` leaked too, or a stolen session used to add or switch on a connector | Same | Yes | Yes. Tell them to revoke the tokens at each connected service (the connector list names the host; the email lists the services per preset) and to check what happened in those accounts | Treat the tokens as plaintext. They give read and write access to the user's accounts and data in other services, and the data of other people in them |
 
 **Art. 34(3): you may skip telling people when** the data was encrypted and the
 key is safe; or you took steps afterwards so that the high risk is no longer

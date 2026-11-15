@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: 'fae6474d9b8d114d313ddafd7129a2801f72f9e4abfe36e5ec927efb56518abe',
+    hash: '1fbfad7dfb8f5b7e5760da33d025a939e703bce1acec0d8a8aadb9b4f6da9d42',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -29,12 +29,20 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'clarifications (BES-393): artifacts count against the one storage '
       + 'limit instead of a separate 25 MB, and Read your settings includes '
       + 'storage use by type; no new purpose, recipient, transfer or '
-      + 'retention. An earlier edit changed British spellings to American '
+      + 'retention. CONNECTORS (C-10, BES-257): the section Connectors you '
+      + 'add, the recipient row, the transfer paragraph (explicit consent '
+      + 'per connector, Art. 49(1)(a)), the legal-basis and retention rows '
+      + '(tool-call log 90 days, registry copy) and the registry copy are '
+      + 'judged MATERIAL (new purpose, new recipient category, new '
+      + 'transfer, new retention) and are NOT described by the notice id on '
+      + 'this record, which predates them. No notice exists for connectors: '
+      + 'announcing them is the owner\'s decision in /admin/legal. An '
+      + 'earlier edit changed British spellings to American '
       + 'English, with no change of meaning, so it adds no new '
       + 'classification.',
   },
   'terms-of-use': {
-    hash: '74f82cf285bd82700c1393da884409cb1626b78e8f336c0b3852e19a69f4bb0b',
+    hash: '0ed3e797911d7fb10e00c9c56051e257d416a6095972b6231e507613510c1031',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'New prohibited use for code run with Run code or written through '
@@ -43,9 +51,16 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'Anthropic\'s skills, documents and code results not checked by '
       + 'Besidka, and the AI mark on documents. Body still includes the '
       + '2026-12-artifacts changes, effective 2026-12-19.'
-      + ' Latest edit is spelling only (British variants changed to '
-      + 'American English), with no change of meaning, so it adds no '
-      + 'new classification.',
+      + ' CONNECTORS (C-10, BES-257): the Connectors section and edits to '
+      + 'the key, sensitive-information, other-people\'s-data and liability '
+      + 'sections (new duties for the account a user gives a connector, a '
+      + 'call the user approved is the user\'s action, and more not-liable '
+      + 'items) are judged MATERIAL and are NOT described by the notice id '
+      + 'on this record, which predates them. No notice exists for '
+      + 'connectors: announcing them is the owner\'s decision in '
+      + '/admin/legal. Latest earlier edit is spelling only (British '
+      + 'variants changed to American English), with no change of meaning, '
+      + 'so it adds no new classification.',
   },
   'cookie-policy': {
     hash: '23698e9dfcd63b36e96015181acd14ee63db8d28cf75e09ea09993897450f58c',

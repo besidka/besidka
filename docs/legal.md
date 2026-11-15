@@ -985,6 +985,86 @@ re-prompted.
 - **Not changed.** The consent gate, `CURRENT_CONSENT_VERSION`, the consent
   modal, the cookie banner categories.
 
+## 2026-11-15 connectors (C-10, BES-257): decisions
+
+Engineer-drafted, not lawyer-reviewed. The Privacy Policy gained the section
+"Connectors you add" and a few edits elsewhere, and the Terms gained a
+"Connectors" section and four small edits, from the input list of
+`docs/legal/prechecks/connectors.md`. The records are Art. 30 rows 10b and 10c
+(`docs/legal/art30-record.md`), DPIA section 3.15, risk rows 73 to 87 and
+residual items 28 to 33 (`docs/legal/dpia.md`), and two rows each in the
+breach runbook (`docs/legal/breach-runbook.md`, sections 2.2, 2.5 and 3).
+
+- **Materiality: material, not announced.** Under the checklist above the
+  change is a new purpose (the model calls tools on third-party services), a
+  new recipient category (any remote MCP server the user names, in a country
+  Besidka cannot know), a new transfer (Art. 49(1)(a), per connector) and, in
+  the Terms, new duties (own the account you give a connector, a call you
+  approve is your action) and a longer list of what Besidka is not liable for.
+  The tool-call log (90 days) and the registry copy are new retention and a
+  new store. Both documents are `material`.
+- **No notice was added, on purpose.** An agent never adds or schedules a
+  `LEGAL_NOTICES` entry (`CLAUDE.md`, "Legal notices and consent versions:
+  owner only"), so no notice id, date or summary for connectors exists
+  anywhere in the repository. The revision record in
+  `shared/utils/legal-document-revisions.ts` cannot say "material, notice
+  pending", so the two records moved to the new hash and kept their existing
+  `material` classification and `noticeId` (`2026-12-code-and-documents`), with
+  a note that says the connectors text is **not** described by that notice. Read
+  the note, not the id. `/admin/legal` shows notices, not this record, so the
+  reused id approves nothing about connectors.
+- **Merging publishes the text.** The pages go live with the next deploy and
+  content import, before any notice. Policy "Changes to this policy" promises a
+  notice at least 30 days before a material change takes effect, so the owner
+  should decide on the notice before merging the `content/legal/` files, or
+  accept that the text is published first and the notice follows (the features
+  stay at `internal`, so nothing it describes reaches users first).
+- **What the owner decides.** Whether and when to announce connectors, in
+  `/admin/legal`. The pre-check suggests the id `2026-12-connectors`, 30 days
+  between `publishedAt` and `effectiveAt`, and five summary bullets (the new
+  feature, what is sent where, the consent per connector, the 90-day log, the
+  registry copy). Do not publish it while `2026-11-legal-notices` is still the
+  active banner (until 2026-12-18) unless the last-write-wins dismissal limit
+  above is accepted. Check the verified-user count against the daily email
+  cap first. The `connectors` flag stays at `internal` until the notice takes
+  effect, because anyone who signs up after a notice is published agrees to
+  the new text and everyone before it has the 30 days the policy promises.
+- **`CURRENT_CONSENT_VERSION` is unchanged (`2026-11-a`).** The two sign-up
+  boxes keep their wording. The connect-time consent is a separate record with
+  its own version (`CONNECTOR_CONSENT_VERSION`), the same pattern as the
+  connected-apps approval. Revisit only if the sign-up wording is ever
+  extended to name connectors, which would re-prompt everyone.
+- **The consent step is a per-connector consent, not "user initiation".** The
+  ticket asked whether a user's own choice of server is enough for the transfer
+  rules. It is not: Besidka's server sends the call, so Besidka is the exporter,
+  and a user choosing the recipient does not move that role (EDPB 05/2021,
+  footnote 15 and Example 4; pre-check, "The user's-own-act alternative").
+  The consent is Art. 49(1)(a), one tick with the Art. 9(2)(a) consent, naming
+  the host, asked again on a changed origin or issuer. The weakness (the
+  country is unknown, the transfers repeat, EDPB 2/2018) is disclosed in the
+  policy and left to the owner and counsel (DPIA section 6, item 28). The screen
+  itself is C-7, which already carries these criteria, so no new note for C-7
+  was needed.
+- **Third parties in tool results: Art. 14(5)(b), not the household
+  exemption.** Besidka does not read results and cannot know whose data they
+  hold. The Privacy Policy section is the notice. The household exemption
+  (Recital 18) covers the user, not the operator.
+- **Two sentences describe things that are not merged.** The connected-app
+  scopes `connectors:read` and `connectors:write` belong to C-9 (PR #920), which
+  edits the same policy list and the same revision record, so whichever of the
+  two merges second must rerun `pnpm run legal:hash` and combine the notes. The
+  sentence on Besidka's own tools belongs to BES-394 (PR #919, chat exposure).
+  Neither needs a policy change if it is delayed, because both sentences say
+  the same recipients apply.
+- **Registry erasure runbook.** A maintainer's removal request is handled by
+  adding the SHA-256 of the registry name to the KV key
+  `connectors:registry:erasures` (a JSON list of hashes, `docs/connectors.md`
+  section 8.7) and deleting the row in `mcp_registry_servers` by name. The next
+  sync keeps the entry out. Answer within a month (Art. 12(3)).
+- **No change to the Cookie Policy.** No cookie or browser storage was added.
+  The icon is a same-origin image and the connect flow uses a full-page
+  redirect. If C-7 stores any UI state in the browser, check it.
+
 ## Not legal advice
 
 The whole legal package is engineer-drafted and has not been reviewed by a

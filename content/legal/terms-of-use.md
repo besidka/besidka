@@ -2,7 +2,7 @@
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
 updatedAt: 2026-10-29
-summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. You may connect an AI app of your choice to your account, and what it does with your data is between you and that app. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Artifact links make an AI-generated artifact openable by anyone who has the link; such pages are never indexed and say they are AI-generated and not reviewed by me, and an artifact must not phish, ask visitors for passwords, payment details, who they are or how to contact them, redirect them, try to spend their keys, target children or serve as website hosting. Anyone can report illegal content to me by email, or with the report form on an artifact, and a person will look at it; rights holders can send a copyright notice to the same address, and the same address takes removal orders for terrorist content. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
+summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. You may connect an AI app of your choice to your account, and what it does with your data is between you and that app. You may also add a connector, a remote server whose tools your chats can use. You answer for the account you give it, what it does in a service after you approve a call is your action, and I do not check or control any server. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Artifact links make an AI-generated artifact openable by anyone who has the link; such pages are never indexed and say they are AI-generated and not reviewed by me, and an artifact must not phish, ask visitors for passwords, payment details, who they are or how to contact them, redirect them, try to spend their keys, target children or serve as website hosting. Anyone can report illegal content to me by email, or with the report form on an artifact, and a person will look at it; rights holders can send a copyright notice to the same address, and the same address takes removal orders for terrorist content. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
 ## Who I am
@@ -69,7 +69,7 @@ You can delete your account at any time from your settings. That deletes your ac
 
 ## You need your own API key
 
-This section applies to every key you enter: an AI provider key, an AI gateway key or credential, a search provider key, and a TypeSafe AI key.
+This section applies to every key you enter: an AI provider key, an AI gateway key or credential, a search provider key, and a TypeSafe AI key. It applies in the same way to the sign-in details you give a connector (a token, or a key or header you paste), which the [Connectors](#connectors) section covers.
 
 - You must have the right to use the API key you enter, and you must comply with the terms and usage policies of whoever issued it — your AI provider, AI gateway, search provider or TypeSafe AI. Breaking them is between you and them, but it can also mean Besidka stops working for you.
 - Your key is stored encrypted (see the [Privacy Policy](/privacy-policy)), but you should still treat entering a key anywhere as a decision with risk. Use a key scoped and limited to what you need, and rotate it if you have any doubt.
@@ -126,19 +126,33 @@ Do not use Besidka to:
 - Resell or wrap the hosted service as your own commercial product. You may self-host the code instead; that is what the license is for.
 - Make or publish an [artifact](#artifact-links) that imitates a sign-in or payment form, asks visitors for passwords or payment details, asks them to identify themselves or for their contact details, account details or age, redirects visitors or tries to navigate its frame to another address (a link the visitor confirms in Besidka is fine), tries to spend visitors' API keys or to get more out of them than the request they confirm, is aimed at children under 13, or uses artifact links as general website hosting, a landing page or advertising.
 
+## Connectors
+
+A connector is a remote server that you add so that the AI model in your chats can use its tools, for example GitHub, Notion, Linear, Atlassian or another server whose address you give me. How it works and what it means for your data is in the [Privacy Policy](/privacy-policy#connectors-you-add). A connector is different from a connected app: an app reaches Besidka, and a connector is a service Besidka reaches for you.
+
+- **You choose the server, and you answer for the account you give it.** You need the right to use the account, token or key you give a connector, and a work or school account may need your employer's or school's permission. Use a key limited to what you need. The rules in [You need your own API key](#you-need-your-own-api-key) apply to it.
+- **What a connector does in a service is your action.** When a call you approved, or allowed to run without asking, creates, changes, shares or deletes something in a service, you did it, under that service's terms. Check the arguments in an approval before you allow it. A tool you allowed for good, or for a chat, runs without asking again until the tool changes, also in a later message after text from outside was read, so allow only what you are comfortable with. What a server does is between you and it, and I cannot undo it.
+- **I run only the calls you can approve in the app.** I do not run a connector call that needs your approval until you give it. A connector that a connected app added starts switched off and signed out, and only you can sign in and switch it on in Besidka, on the screen that asks for your consent.
+- **I do not check, endorse or control any server, preset or registry entry.** The presets (GitHub, Notion, Linear and Atlassian) are a convenience, not a partnership, and the registry copy is not reviewed by me. I am not responsible for what a server does with the data it receives, or for what it sends back, which can be wrong, harmful or written to steer the model.
+- **No guarantee.** A server or a preset can stop working, change its tools or refuse Besidka at any time, and I may change or remove connectors as I may any part of the free service (see [Availability and changes to the service](#availability-and-changes-to-the-service)). I may also refuse a server or switch a connector off if it looks unsafe or abusive.
+- **You can disconnect at any time.** Disconnecting, or deleting a connector, stops any further calls and removes your sign-in details from Besidka. It does not undo what a server already received or did.
+- **Names belong to their owners.** GitHub, Notion, Linear, Atlassian and every other name are the marks of their owners, and I am not affiliated with them.
+- **Your other responsibilities stay.** What a connector reads or writes through your account is your use of Besidka, so [Other people's data](#other-peoples-data) and [What you may not do](#what-you-may-not-do) apply.
+
 ## Sensitive information
 
 You may share sensitive information about yourself in Besidka, such as details of your health or your beliefs, if you want the assistant's help with it. Before you do, know what happens to it:
 
 - It is stored with the rest of the chat and sent to the AI provider, AI gateway or search provider you chose, and to TypeSafe AI if you added a key and left a check on, under your own account with them. On a free Google Gemini key outside the EEA, Switzerland and the UK, Google may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
 - I store and send it only with your explicit consent, which I ask for in the app, separately from these terms. The [Privacy Policy](/privacy-policy#sensitive-information-in-your-chats) explains it, including how to withdraw it. If you do not give that consent, or you withdraw it, you can still read, export and delete your data, but you cannot send new messages or add new content.
+- A connector server is not one of these providers. Each connector has its own consent, on its connect screen, for the sensitive information you send it and get back from it.
 - Please take particular care with other people's sensitive information, and with anything about criminal offenses; see [Other people's data](#other-peoples-data).
 
 I do not read your chats. What the app does with chat content beyond storing and sending it, such as memory and looking up your earlier chats, is described in the [Privacy Policy](/privacy-policy). None of it is used to make decisions about you.
 
 ## Other people's data
 
-If you put someone else's personal data into a chat, you are responsible for having a lawful reason to do that. If you then publish that chat with a share link, you are responsible for that publication too — see below. Memory never keeps sensitive information about anyone, you or other people; see the [Privacy Policy](/privacy-policy#memory).
+If you put someone else's personal data into a chat, you are responsible for having a lawful reason to do that. The same goes for what a connector brings into your chat from a service you connected, such as the people named in your notes or tickets, and for what your model sends to the connector. If you then publish that chat with a share link, you are responsible for that publication too — see below. Memory never keeps sensitive information about anyone, you or other people; see the [Privacy Policy](/privacy-policy#memory).
 
 ## Your content
 
@@ -336,7 +350,7 @@ Subject to the above, and to the extent the law allows, I am not liable for:
 
 - loss or corruption of data, beyond restoring from my routine backups;
 - decisions you take, or content you publish, based on AI output;
-- what your AI provider or AI gateway does with your prompts, what your search provider does with your search queries, what TypeSafe AI does with the text its checks receive, or what any of them charges your account;
+- what your AI provider or AI gateway does with your prompts, what your search provider does with your search queries, what TypeSafe AI does with the text its checks receive, what a connector server does with the data it receives or what a call you approved does in a connected service, or what any of them charges your account;
 - unavailability of the service or of a third party it depends on; or
 - consequences of a share link you created, once the content has been public.
 
