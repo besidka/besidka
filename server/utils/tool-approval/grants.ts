@@ -8,6 +8,7 @@ import type {
 import * as schema from '~~/server/db/schema'
 import { buildExposedToolName } from '~~/server/utils/connectors/tool-definitions'
 import {
+  getConnector,
   listConnectorChatSettings,
   listConnectors,
   readConnectorToolBaseline,
@@ -20,6 +21,8 @@ import {
 import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { decodePublicId } from '~~/server/utils/custom-db-types'
+import { hasAlwaysAskToolName } from '~~/server/utils/tool-approval/policy'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -59,6 +62,7 @@ async function chatGrantItems(
     if (
       Object.hasOwn(alwaysAllowTools, exposedName)
       && alwaysAllowTools[exposedName] === setting.definitionHash
+      && !hasAlwaysAskToolName(setting.toolName)
     ) {
       items.push(grantItem('chat', connector, setting.toolName))
     }
@@ -75,6 +79,7 @@ function alwaysGrantItems(
     .filter((setting) => {
       return setting.approval === 'always'
         && setting.approvedDefinitionHash === setting.definitionHash
+        && !hasAlwaysAskToolName(setting.toolName)
     })
     .map(setting => grantItem('always', connector, setting.toolName))
 }
@@ -83,7 +88,8 @@ function alwaysGrantItems(
  * The approvals the user gave that still apply in this chat: "Allow in this
  * chat" grants of this chat, and "Always allow" grants of the connectors
  * this chat has on. A grant whose stored hash no longer matches the tool's
- * reviewed definition is left out, because the send ignores it too. Only
+ * reviewed definition, or on a tool whose name now makes it always-ask, is
+ * left out, because the send ignores it too. Only
  * names leave the server, never hashes.
  */
 export async function listChatToolApprovalGrants(
@@ -162,16 +168,38 @@ export async function resetChatToolApprovalGrants(
   return connectorRows.length + besidkaRows.length
 }
 
+export function isDecodableConnectorId(connectorId: string): boolean {
+  try {
+    const id = decodePublicId(connectorId)
+
+    return Number.isSafeInteger(id) && id > 0
+  } catch {
+    return false
+  }
+}
+
 /**
  * Sets one connector tool back to "Ask every time": the setting keeps its
- * reviewed definition hash and loses the approved one. Returns whether a
- * row of this user was changed.
+ * reviewed definition hash and loses the approved one. The connector id is
+ * decoded and looked up through the user's own connectors first, so an id
+ * that does not decode or belongs to someone else changes nothing. Returns
+ * whether a row of this user was changed.
  */
 export async function revokeAlwaysToolApprovalGrant(
   db: DbClient,
   userId: number,
   input: { connectorId: string, toolName: string },
 ): Promise<boolean> {
+  if (!isDecodableConnectorId(input.connectorId)) {
+    return false
+  }
+
+  const connector = await getConnector(db, userId, input.connectorId)
+
+  if (!connector) {
+    return false
+  }
+
   const rows = await db.update(schema.connectorToolSettings)
     .set({ approval: 'ask', approvedDefinitionHash: null })
     .where(and(

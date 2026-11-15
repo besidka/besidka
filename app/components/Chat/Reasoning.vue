@@ -240,6 +240,23 @@
               >
                 {{ step.approvalOutcome }}
               </p>
+              <p
+                v-if="step.grantMarker"
+                class="col-start-2 -mt-2 mb-2.5 flex flex-wrap items-center gap-x-2 text-xs text-base-content/60"
+                data-testid="reasoning-grant-marker"
+              >
+                <span>{{ step.grantMarker }}</span>
+                <button
+                  v-if="approvalController"
+                  type="button"
+                  class="btn btn-link btn-xs min-h-6 px-0 text-base-content/70"
+                  aria-label="Manage remembered approvals in the chat panel"
+                  data-testid="reasoning-grant-manage"
+                  @click="openGrantsPanel"
+                >
+                  Manage
+                </button>
+              </p>
             </li>
           </ul>
         </div>
@@ -250,6 +267,8 @@
 
 <script setup lang="ts">
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
+import { LazyChatContextPanel } from '#components'
+import { CHAT_CONTEXT_VIEW_KEY } from '~/composables/chat-context'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MemoryStepData } from '~/types/memory-step.d'
 import type { SearchStepData } from '~/types/search-step.d'
@@ -269,6 +288,7 @@ import {
   getApprovalSourceLabel,
   getApprovalStepModel,
   getApprovalStepTitle,
+  getGrantMarkerText,
   getApprovalSummaryLine,
   resolveApprovalStepState,
 } from '~/utils/tool-approval-step'
@@ -296,6 +316,16 @@ const props = defineProps<{
 const { imageComponents } = useChatFormat()
 const { titlesBySlug } = useConnectorTitles()
 const approvalController = useToolApprovalController()
+const sidePanel = useSidePanel()
+
+function openGrantsPanel() {
+  sidePanel.open({
+    viewKey: CHAT_CONTEXT_VIEW_KEY,
+    title: 'Chat',
+    mode: 'context',
+    component: LazyChatContextPanel,
+  })
+}
 
 interface ReasoningApprovalStep {
   model: ApprovalStepModel
@@ -321,6 +351,7 @@ interface ReasoningStep {
   connector: ConnectorToolCallModel | null
   approval?: ReasoningApprovalStep | null
   approvalOutcome?: string
+  grantMarker?: string
 }
 
 interface MessageApprovalEntry {
@@ -587,6 +618,10 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         skill: null,
         connector: connectorCall,
         approvalOutcome,
+        grantMarker: getGrantMarkerText(
+          props.message.parts,
+          (part as { toolCallId?: string }).toolCallId,
+        ),
       })
 
       continue

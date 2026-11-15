@@ -9,9 +9,14 @@ import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import {
   TOOL_APPROVAL_DATA_PART_TYPE,
+  TOOL_GRANT_DATA_PART_TYPE,
   hasAwaitingApprovalToolPart,
 } from '#shared/utils/tool-approval-parts'
-import type { ToolApprovalPartData } from '#shared/utils/tool-approval-parts'
+import type {
+  ToolApprovalPartData,
+  ToolGrantPartData,
+  ToolGrantScope,
+} from '#shared/utils/tool-approval-parts'
 import {
   TOOL_APPROVAL_BESIDKA_READ_SOURCE,
   TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
@@ -43,6 +48,7 @@ import {
 import type { ToolApprovalPendingSnapshot } from '~~/server/utils/tool-approval/kv'
 import {
   connectorDestructiveHint,
+  hasAlwaysAskToolName,
   resolveToolApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type {
@@ -162,6 +168,7 @@ export interface SendToolApproval {
   getPendingDecision: (
     toolCallId: string,
   ) => PendingToolApprovalDecision | undefined
+  getGrantScope: (toolCallId: string) => ToolGrantScope | null
   listWithheldProviderTools: (tools: ToolSet | undefined) => string[]
 }
 
@@ -298,7 +305,9 @@ export function buildNativeApprovalEntry(toolName: string): SendToolEntry {
  * also marks the tool `openWorldHint: false`; otherwise the call asks
  * `untrusted-output`, because an open-world read can carry data out. This
  * stands in for the per-tool review of C-7. A tool marked both read-only and
- * destructive counts as destructive. `grantHashes` are the hashes the user's
+ * destructive counts as destructive, and so does a tool whose remote name or
+ * title names a delete or share action (`hasAlwaysAskToolName`), whatever
+ * its annotations say. `grantHashes` are the hashes the user's
  * own grants were given for; each becomes a grant bound to this connector
  * and exposed name, so it matches only while the tool is unchanged.
  */
@@ -308,11 +317,16 @@ export function buildConnectorApprovalEntry(input: {
   connectorTitle: string
   connectorHost: string
   remoteToolName: string
+  remoteToolTitle?: string
   definitionHash: string
   annotations: DestructiveHintAnnotations & { openWorldHint?: boolean | null }
   grantHashes?: ConnectorGrantHashes
 }): SendToolEntry {
   const { annotations } = input
+  const hasAlwaysAskName = hasAlwaysAskToolName(
+    input.remoteToolName,
+    input.remoteToolTitle,
+  )
   const toGrant = (definitionHash: string | null | undefined) => {
     return definitionHash
       ? {
@@ -324,6 +338,7 @@ export function buildConnectorApprovalEntry(input: {
   }
   const isAutoRunnable = annotations.readOnlyHint === true
     && annotations.destructiveHint !== true
+    && !hasAlwaysAskName
 
   return {
     descriptor: {
@@ -332,7 +347,8 @@ export function buildConnectorApprovalEntry(input: {
       toolName: input.exposedName,
       connectorId: input.connectorId,
       definitionHash: input.definitionHash,
-      destructiveHint: connectorDestructiveHint(annotations),
+      destructiveHint: connectorDestructiveHint(annotations)
+        || hasAlwaysAskName,
     },
     summary: clampSummary(
       `${input.connectorTitle} wants to run ${input.exposedName}`,
@@ -357,6 +373,22 @@ export function buildConnectorApprovalEntry(input: {
       remoteToolName: input.remoteToolName,
     },
   }
+}
+
+/**
+ * Which of the user's own grants let a call run without asking: `chat` for
+ * rule 7, `always` for rule 6 when the grant passed in was the user's (not
+ * the send's own read-only grant). Null when no user grant decided it.
+ */
+function userGrantScopeOf(
+  decision: ToolApprovalDecision,
+  autoGrant: ToolApprovalGrant | null,
+): ToolGrantScope | null {
+  if (decision.rule === 7) {
+    return 'chat'
+  }
+
+  return decision.rule === 6 && !autoGrant ? 'always' : null
 }
 
 function denied(reason: ToolApprovalDenialReason): ToolApprovalStatus {
@@ -431,6 +463,7 @@ export function createSendToolApproval(input: {
       && approved.inputJson === toInputJson(call.input)
   }
   const pendingDecisions = new Map<string, PendingToolApprovalDecision>()
+  const grantedCalls = new Map<string, ToolGrantScope>()
 
   function recordRun(entry: SendToolEntry): void {
     if (entry.taint) {
@@ -480,15 +513,15 @@ export function createSendToolApproval(input: {
     const areUserGrantsUsable = entry.descriptor.access !== 'read'
       || isGrantUsable
     const userGrants = areUserGrantsUsable ? entry.userGrants : undefined
+    const autoGrant = isGrantUsable ? entry.alwaysGrant : null
     const resolved = resolveToolApproval({
       descriptor: entry.descriptor,
       state,
       permissionMode: 'ask',
-      alwaysGrant: (isGrantUsable ? entry.alwaysGrant : null)
-        ?? userGrants?.always
-        ?? null,
+      alwaysGrant: autoGrant ?? userGrants?.always ?? null,
       chatGrant: userGrants?.chat ?? null,
     })
+    const grantScope = userGrantScopeOf(resolved, autoGrant)
     const decision = entry.alwaysGrant
       && !isGrantUsable
       && resolved.reason === 'default'
@@ -504,6 +537,10 @@ export function createSendToolApproval(input: {
         toolName: toolCall.toolName,
         inputJson: toInputJson(toolCall.input),
       })
+
+      if (grantScope) {
+        grantedCalls.set(toolCall.toolCallId, grantScope)
+      }
 
       recordRun(entry)
 
@@ -671,6 +708,7 @@ export function createSendToolApproval(input: {
       clearedCalls.delete(toolCallId)
     },
     getPendingDecision: toolCallId => pendingDecisions.get(toolCallId),
+    getGrantScope: toolCallId => grantedCalls.get(toolCallId) ?? null,
     listWithheldProviderTools,
   }
 }
@@ -742,7 +780,8 @@ export function hasGuardedProviderTool(
  * Records, before the first model step, the untrusted content the send
  * already puts in front of the model, with the same triggers as the memory
  * write lock (`presetMemoryWriteLock`) plus a chat branched from a public
- * share.
+ * share and files the user attached to this message (`file`, so no
+ * remembered approval runs a tool in a send that holds a document).
  */
 export function presetApprovalTaint(
   state: ApprovalState,
@@ -753,6 +792,7 @@ export function presetApprovalTaint(
     holdsSkillText: boolean
     holdsPastChatExcerpts: boolean
     isBranchedFromShare: boolean
+    holdsUserAttachments?: boolean
   },
 ): void {
   if (send.requestedTools.some(isWebSearchTool)) {
@@ -764,7 +804,7 @@ export function presetApprovalTaint(
     recordRead(state, TOOL_APPROVAL_BESIDKA_READ_SOURCE)
   }
 
-  if (send.holdsArtifactContext) {
+  if (send.holdsArtifactContext || send.holdsUserAttachments) {
     recordTaint(state, 'file')
   }
 
@@ -819,6 +859,33 @@ export function createToolApprovalStreamCollector(
   const collected: CollectedToolApproval[] = []
   let stepCount = 0
   let isPaused = false
+  const markedGrants = new Set<string>()
+
+  function enqueueGrantPart(
+    toolCallId: string,
+    controller: TransformStreamDefaultController<UIMessageChunk>,
+  ): void {
+    const scope = approval.getGrantScope(toolCallId)
+    const call = inputs.get(toolCallId)
+
+    if (!scope || !call || markedGrants.has(toolCallId)) {
+      return
+    }
+
+    markedGrants.add(toolCallId)
+
+    const data: ToolGrantPartData = {
+      toolCallId,
+      toolName: call.toolName,
+      scope,
+    }
+
+    controller.enqueue({
+      type: TOOL_GRANT_DATA_PART_TYPE,
+      id: `grant-${toolCallId}`,
+      data,
+    })
+  }
 
   function apply(
     stream: ReadableStream<UIMessageChunk>,
@@ -838,6 +905,16 @@ export function createToolApprovalStreamCollector(
 
         if (chunk.type === 'finish-step') {
           stepCount += 1
+        }
+
+        if (
+          chunk.type === 'tool-output-available'
+          || chunk.type === 'tool-output-error'
+        ) {
+          controller.enqueue(chunk)
+          enqueueGrantPart(chunk.toolCallId, controller)
+
+          return
         }
 
         if (chunk.type !== 'tool-approval-request') {

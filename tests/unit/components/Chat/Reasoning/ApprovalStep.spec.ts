@@ -167,6 +167,10 @@ describe('Chat/Reasoning/ApprovalStep', () => {
     expect(wrapper.get(testId('actions')).findAll('button')
       .map(button => button.text()))
       .toEqual(['Allow once', 'Allow in this chat', 'Always allow', 'Deny'])
+    expect(wrapper.get(testId('allow-chat')).attributes('title')).toBe(
+      'Runs this tool without asking in later messages of this chat, also '
+      + 'after content from earlier messages.',
+    )
   })
 
   it('confirms Always allow inline, naming the connector and tool',
@@ -184,7 +188,9 @@ describe('Chat/Reasoning/ApprovalStep', () => {
       expect(wrapper.find(testId('actions')).exists()).toBe(false)
       expect(wrapper.get(testId('always-confirm')).text()).toContain(
         'Always allow create_issue from Linear? Besidka will run it without '
-        + 'asking in every chat until the tool changes.',
+        + 'asking in every chat and in later messages, also after content '
+        + 'from earlier messages, until the tool changes. What the tool does '
+        + 'is declared by the service itself.',
       )
 
       await wrapper.get(testId('always-confirm-allow')).trigger('click')

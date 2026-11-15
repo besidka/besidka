@@ -109,6 +109,7 @@
           type="button"
           class="btn btn-sm max-md:w-full"
           :class="button.remember === 'once' ? 'btn-primary' : 'btn-soft'"
+          :title="button.remember === 'chat' ? CHAT_GRANT_HINT : undefined"
           :disabled="isBusy"
           :data-testid="`reasoning-approval-step-allow-${button.remember}`"
           @click="onAllowClick(button.remember)"
@@ -225,6 +226,9 @@ const props = defineProps<{
   connectorName?: string
 }>()
 
+const CHAT_GRANT_HINT = 'Runs this tool without asking in later messages '
+  + 'of this chat, also after content from earlier messages.'
+
 const controller = useToolApprovalController()
 const sidePanel = useSidePanel()
 
@@ -255,8 +259,9 @@ const alwaysConfirmText = computed<string>(() => {
     : props.model.tool
 
   return `Always allow ${source}? Besidka will run it without asking in `
-    + 'every chat until the tool changes. You can remove this in the chat '
-    + 'panel.'
+    + 'every chat and in later messages, also after content from earlier '
+    + 'messages, until the tool changes. What the tool does is declared by '
+    + 'the service itself. You can remove this in the chat panel.'
 })
 
 const buttons = computed(() => {

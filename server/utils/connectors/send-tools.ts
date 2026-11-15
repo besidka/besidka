@@ -1048,6 +1048,9 @@ export async function getConnectorTools(
         connectorTitle: candidate.connector.title,
         connectorHost: hostOf(candidate.connector),
         remoteToolName: candidate.definition.name,
+        ...(candidate.definition.title
+          ? { remoteToolTitle: candidate.definition.title }
+          : {}),
         definitionHash: candidate.definitionHash,
         annotations: candidate.definition.annotations,
         grantHashes: {

@@ -4,6 +4,26 @@ import type {
 } from '#shared/utils/tool-approval-policy'
 
 export const TOOL_APPROVAL_DATA_PART_TYPE = 'data-tool-approval'
+export const TOOL_GRANT_DATA_PART_TYPE = 'data-tool-grant'
+
+export type ToolGrantScope = 'chat' | 'always'
+
+/**
+ * Written by the server after a call that ran without asking because of a
+ * grant the user gave ("Allow in this chat" or "Always allow"), so the
+ * reasoning step can say so. Private: shares and branches drop it.
+ */
+export interface ToolGrantPartData {
+  toolCallId: string
+  toolName: string
+  scope: ToolGrantScope
+}
+
+export interface ToolGrantDataPart {
+  type: typeof TOOL_GRANT_DATA_PART_TYPE
+  id: string
+  data: ToolGrantPartData
+}
 
 const AWAITING_APPROVAL_STATES = new Set<string>([
   'approval-requested',
@@ -52,6 +72,16 @@ export function isToolApprovalDataPart(
   return isRecord(part)
     && part.type === TOOL_APPROVAL_DATA_PART_TYPE
     && isRecord(part.data)
+}
+
+export function isToolGrantDataPart(
+  part: unknown,
+): part is ToolGrantDataPart {
+  return isRecord(part)
+    && part.type === TOOL_GRANT_DATA_PART_TYPE
+    && isRecord(part.data)
+    && typeof part.data.toolCallId === 'string'
+    && (part.data.scope === 'chat' || part.data.scope === 'always')
 }
 
 /**

@@ -1641,6 +1641,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextPanelApprovals.spec.ts',
     'tests/unit/components/Chat/ContextPanel.spec.ts',
     'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/server/utils/tool-approval/grants.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/server/utils/chats/share-public-parts.spec.ts',
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
   ]
 
   const skillsStorageTests = [
@@ -3227,7 +3231,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/api\/v1\/chats\/\[slug\]\/tool-approvals\/.*\.ts|server\/utils\/tool-approval\/(grants|send|policy|continuation)\.ts|server\/utils\/connectors\/(send-tools|store|route|body)\.ts|shared\/types\/tool-approval-grants\.d\.ts|app\/composables\/tool-approval-grants\.ts|app\/components\/Chat\/(ContextPanel|ContextPanelApprovals)\.vue|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue)$/,
+        /^(server\/api\/v1\/chats\/\[slug\]\/tool-approvals\/.*\.ts|server\/utils\/tool-approval\/(grants|send|policy|continuation)\.ts|server\/utils\/connectors\/(send-tools|store|route|body)\.ts|shared\/types\/tool-approval-grants\.d\.ts|app\/composables\/tool-approval-grants\.ts|app\/components\/Chat\/(ContextPanel|ContextPanelApprovals|Reasoning)\.vue|app\/components\/Chat\/Reasoning\/ApprovalStep\.vue|app\/utils\/tool-approval-step\.ts|shared\/utils\/tool-approval-parts\.ts|server\/utils\/chats\/(branch|share-public-parts)\.ts|server\/utils\/memory\/tools\/memory-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts)$/,
       tests: toolApprovalGrantsTests,
     },
     {

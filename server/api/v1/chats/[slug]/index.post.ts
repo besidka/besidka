@@ -1969,6 +1969,9 @@ export default defineEventHandler(async (event) => {
       holdsSkillText: skillsSend.holdsSkillText,
       holdsPastChatExcerpts: pastChatPreRetrieval !== null,
       isBranchedFromShare: Boolean(chat.branchedFromShareSlug),
+      holdsUserAttachments: newMessage.parts.some((part) => {
+        return part.type === 'file'
+      }),
     })
   }
 

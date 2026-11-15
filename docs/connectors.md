@@ -1090,8 +1090,10 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   the memory write lock's triggers: requested web search (`web`), project
   knowledge text and past-chat excerpts (`knowledge`), the artifact context
   block (`file`), active skill text (`skill`), and a chat branched from a
-  public share (`shared-branch`, new). Plain attachments add no taint
-  (unchanged from the memory lock). The memory lock itself is unchanged and
+  public share (`shared-branch`, new). Plain attachments added no taint
+  here; since the grants audit (section 7.9) a file the user attached to
+  the message adds `file` (the memory write lock is unchanged and still
+  ignores them). The memory lock itself is unchanged and
   stays the second line in `memory_write`. With the flag on, a call the user
   approved supersedes that lock (`isApprovedByUser` on `getMemoryTools`,
   filled by the continuation through `markApprovedByUser`); the never-store
@@ -1181,7 +1183,8 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   sends: a later message starts from a fresh state, and earlier turns reach
   the model only as text, so content a connector or web page returned in an
   earlier turn and quoted in an answer is not taint. Plain user attachments
-  add no taint either. Both are accepted for v1 and revisited with C-7.
+  added no taint either (changed in section 7.9: they now add `file`). The
+  cross-send residual is accepted for v1 and revisited with C-7.
 - **Merge order.** With the flag on, this layer turns cases that used to run
   or be refused (a memory write after web search, an artifact write in a
   send with an active skill or after connector output, any connector write)
@@ -1522,6 +1525,46 @@ read the stored grants. Where this changes sections 7.1 to 7.8:
   not the user's. No migration: the tables are the C-6 L3 ones.
 - **Not built.** No Besidka-family tool exists yet (BES-394 L8), so nothing
   reads `besidka_chat_settings` grants; reset already clears them.
+- **Audit follow-up (2026-11-15).** The security audit of #912 found these,
+  fixed in the same PR:
+  - *Attachments taint the send (H1).* A file the user attached to the
+    current message records `file` taint (`presetApprovalTaint`,
+    `holdsUserAttachments`), so no grant runs a tool in a send that holds a
+    document. Because the taint counts for every rule, a send with an
+    attachment also asks for memory writes (Allow once / Deny), asks
+    `untrusted-output` for open-world connector reads, and leaves
+    provider code execution out (`withholdProviderTools`, as with web
+    search in section 7.7).
+  - *Cross-send residual, accepted (H1).* Taint does not carry across
+    sends, so a grant runs its tool in a later message even when an earlier
+    message read untrusted content that is still in the history. This is
+    the Claude-like behavior the owner asked for; no per-chat taint flag is
+    stored. The Always allow confirmation and the "Allow in this chat"
+    tooltip say so in plain words.
+  - *Visible runs (M1).* A call that ran under a grant gets a
+    `data-tool-grant` part (`toolCallId`, `toolName`, `scope`), written
+    after its output. The reasoning step shows "Ran without asking (Always
+    allowed)" or "(Allowed in this chat)" with Manage, which opens the chat
+    panel. Shares and branches drop the part; the history sanitizer keeps
+    only text.
+  - *Name heuristic (M2).* A connector tool whose remote name or title
+    contains delete, remove, revoke, destroy, drop, purge, invite, share,
+    transfer or publish (`hasAlwaysAskToolName`: split on non-letters and
+    camelCase, whole words, any case) is always-ask whatever its
+    annotations say, also when it claims `readOnlyHint: true`. The panel
+    does not list a grant on such a tool. The confirmation adds that what
+    the tool does is declared by the service itself.
+  - *Revoke (L1).* The connector id is decoded and looked up among the
+    user's connectors before the update, so an id that does not decode or
+    is someone else's answers 404, never 500. The request log gets the
+    outcome and the connector id only.
+  - *URL change (L2).* Not applicable: no route edits a connector's URL
+    (`PATCH /api/v1/connectors/[id]` takes `enabled` and `title` only), so a
+    new URL is a new connector with its own baseline and no grants.
+  - *Same connector (item 6).* No exemption for a call to the connector
+    that produced the untrusted content: its own earlier output can carry
+    instructions just as well, so a granted write after any connector read
+    in the send still asks Allow once / Deny.
 - **Memory tool text.** With the flag on, the `memory_write` and
   `memory_forget` descriptions say a call after untrusted content needs the
   user's approval in this turn and that the model should still call it when

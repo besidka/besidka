@@ -268,3 +268,53 @@ describe('Chat/Reasoning approval steps', () => {
     wrapper.unmount()
   })
 })
+
+describe('Chat/Reasoning grant marker', () => {
+  function grantedCall(scope: 'always' | 'chat') {
+    return [
+      {
+        type: 'dynamic-tool',
+        toolName: 'mcp__linear__create_issue',
+        toolCallId: 'call-9',
+        state: 'output-available',
+        input: { title: 'Bug' },
+        output: 'Created WEB-42',
+      },
+      {
+        type: 'data-tool-grant',
+        id: 'grant-call-9',
+        data: {
+          toolCallId: 'call-9',
+          toolName: 'mcp__linear__create_issue',
+          scope,
+        },
+      },
+    ]
+  }
+
+  it.each([
+    ['always', 'Ran without asking (Always allowed)'],
+    ['chat', 'Ran without asking (Allowed in this chat)'],
+  ] as const)('marks a call that ran under a %s grant', async (scope, text) => {
+    const wrapper = await mountMessage(grantedCall(scope))
+    const marker = wrapper.get('[data-testid="reasoning-grant-marker"]')
+
+    expect(marker.text()).toContain(text)
+    expect(marker.find('[data-testid="reasoning-grant-manage"]').exists())
+      .toBe(true)
+  })
+
+  it('marks nothing for a call without a grant part', async () => {
+    const wrapper = await mountMessage([grantedCall('always')[0]])
+
+    expect(wrapper.find('[data-testid="reasoning-grant-marker"]').exists())
+      .toBe(false)
+  })
+
+  it('offers no Manage link without a chat controller', async () => {
+    const wrapper = await mountMessage(grantedCall('chat'), null)
+
+    expect(wrapper.find('[data-testid="reasoning-grant-manage"]').exists())
+      .toBe(false)
+  })
+})

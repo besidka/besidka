@@ -65,6 +65,47 @@ export function connectorDestructiveHint(
   return annotations?.destructiveHint === true
 }
 
+const ALWAYS_ASK_TOOL_NAME_WORDS: ReadonlySet<string> = new Set([
+  'delete',
+  'remove',
+  'revoke',
+  'destroy',
+  'drop',
+  'purge',
+  'invite',
+  'share',
+  'transfer',
+  'publish',
+])
+
+function toolNameWords(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+}
+
+/**
+ * Whether a connector tool's remote name or title names an action that
+ * removes data or hands it to someone else (delete, remove, revoke, destroy,
+ * drop, purge, invite, share, transfer, publish). Such a tool is always-ask
+ * whatever its annotations say, because the annotations are the server's
+ * own claim. Words are split on non-letters and camelCase, so
+ * `delete_issue`, `deleteIssue` and "Share file" match and `dropdown_list`
+ * does not. Pass the remote name and title, never the exposed
+ * `mcp__<slug>__` name, so a connector slug cannot change the result.
+ */
+export function hasAlwaysAskToolName(
+  ...names: ReadonlyArray<string | null | undefined>
+): boolean {
+  return names.some((name) => {
+    return typeof name === 'string'
+      && toolNameWords(name).some(word => ALWAYS_ASK_TOOL_NAME_WORDS.has(word))
+  })
+}
+
 /**
  * A "always" or "in this chat" grant. A connector grant needs the same
  * connector id, tool name and definition hash as the call; a Besidka grant

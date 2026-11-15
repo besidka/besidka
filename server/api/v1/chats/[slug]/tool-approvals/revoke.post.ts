@@ -23,7 +23,17 @@ export default defineEventHandler(async (event) => {
     write: true,
   })
   const body = await readConnectorBody(event, bodySchema)
+  const logger = useRequestLogger(event)
   const isRevoked = await revokeAlwaysToolApprovalGrant(useDb(), userId, body)
+
+  logger.set({
+    attributes: {
+      toolApproval: {
+        alwaysGrantRevoke: isRevoked ? 'revoked' : 'not-found',
+        connectorId: body.connectorId,
+      },
+    },
+  })
 
   if (!isRevoked) {
     throw createError({
@@ -32,10 +42,6 @@ export default defineEventHandler(async (event) => {
       why: 'No tool setting of this account matches the connector and tool',
     })
   }
-
-  useRequestLogger(event).set({
-    attributes: { toolApproval: { alwaysGrantRevoked: true } },
-  })
 
   return { ok: true }
 })

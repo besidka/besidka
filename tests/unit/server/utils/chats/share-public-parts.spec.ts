@@ -272,3 +272,44 @@ describe('approval parts in shares and branches', () => {
     expect(isApprovalOnlyMessage([{ type: 'step-start' }])).toBe(false)
   })
 })
+
+describe('grant marker parts in shares and branches', () => {
+  const grantedParts = [
+    { type: 'step-start' },
+    {
+      type: 'dynamic-tool',
+      toolName: 'mcp__linear__create_issue',
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { title: 'x' },
+      output: 'Created WEB-42',
+    },
+    {
+      type: 'data-tool-grant',
+      id: 'grant-call-1',
+      data: {
+        toolCallId: 'call-1',
+        toolName: 'mcp__linear__create_issue',
+        scope: 'always',
+      },
+    },
+    { type: 'text', text: 'Filed WEB-42.' },
+  ] as UIMessage['parts']
+
+  it('leaves the grant part out of a public share', () => {
+    const [message] = filterPublicParts([{ parts: grantedParts }] as Array<{
+      parts: UIMessage['parts']
+    }>)
+
+    expect(message?.parts).toEqual([
+      { type: 'step-start' },
+      { type: 'text', text: 'Filed WEB-42.' },
+    ])
+  })
+
+  it('leaves the grant part out of a branch', () => {
+    expect(stripToolPartsFromBranchedMessage(grantedParts).some((part) => {
+      return part.type === 'data-tool-grant'
+    })).toBe(false)
+  })
+})
