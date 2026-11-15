@@ -36,6 +36,7 @@ export interface CreateCodeExecutionStreamInput {
   userId: number
   apiKey: string
   filesEnabled: boolean
+  skillsAttached?: number
   tracker: ProviderResourceTracker
   rates: CodeExecutionRates
   logger: LoggerLike
@@ -207,6 +208,7 @@ export function createCodeExecutionStream(
             files: usage.files,
             bytes: usage.bytes,
             skipped: usage.skipped,
+            skills: input.skillsAttached,
           }, input.rates),
           provenanceMissing: usage.provenanceMissing,
         },

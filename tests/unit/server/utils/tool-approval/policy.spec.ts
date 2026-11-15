@@ -681,6 +681,167 @@ describe('resolveToolApproval rules', () => {
   })
 })
 
+describe('consent gate', () => {
+  function consentGate(
+    overrides: Partial<ToolApprovalDescriptor> = {},
+  ): ToolApprovalDescriptor {
+    return nativeTool({
+      toolName: 'run_skill_scripts',
+      definitionHash: HASH,
+      consentGate: true,
+      ...overrides,
+    })
+  }
+
+  function chatGrantFor(hash: string | null = HASH): ToolApprovalGrant {
+    return {
+      definitionHash: hash,
+      connectorId: null,
+      toolName: 'run_skill_scripts',
+    }
+  }
+
+  it('asks for consent, offering once and chat only, with no grant', () => {
+    const decision = decide(consentGate())
+
+    expect(decision.rule).toBe(10)
+    expect(decision.reason).toBe('consent')
+    expect(decision.status).toEqual({
+      type: 'user-approval',
+      reason: 'consent',
+    })
+    expect(decision.rememberOptions).toEqual(['once', 'chat'])
+  })
+
+  it('asks even though a plain native write would pass', () => {
+    expect(decide(nativeTool()).status).toEqual({ type: 'not-applicable' })
+    expect(decide(consentGate()).status.type).toBe('user-approval')
+  })
+
+  it('lets a chat grant for the same hash through', () => {
+    const decision = decide(consentGate(), { chatGrant: chatGrantFor() })
+
+    expect(decision.rule).toBe(10)
+    expect(decision.status).toEqual({ type: 'not-applicable' })
+  })
+
+  it('asks again for a chat grant that was given for another hash', () => {
+    const decision = decide(consentGate(), {
+      chatGrant: chatGrantFor(OTHER_HASH),
+    })
+
+    expect(decision.status.type).toBe('user-approval')
+  })
+
+  it('never takes an always grant', () => {
+    const decision = decide(consentGate(), { alwaysGrant: chatGrantFor() })
+
+    expect(decision.status.type).toBe('user-approval')
+    expect(decision.rememberOptions).not.toContain('always')
+  })
+
+  it('asks after untrusted content the same way, and still offers chat', () => {
+    const decision = decide(consentGate(), {
+      state: stateWith(['web', 'skill', 'connector']),
+    })
+
+    expect(decision.reason).toBe('consent')
+    expect(decision.rememberOptions).toEqual(['once', 'chat'])
+  })
+
+  it('lets a chat grant through after untrusted content', () => {
+    const decision = decide(consentGate(), {
+      state: stateWith(['skill']),
+      chatGrant: chatGrantFor(),
+    })
+
+    expect(decision.status).toEqual({ type: 'not-applicable' })
+  })
+
+  it('is denied when the user blocked it, and on invalid input', () => {
+    expect(decide(consentGate(), { permissionMode: 'blocked' }).status)
+      .toEqual({ type: 'denied', reason: 'blocked' })
+    expect(decide(consentGate({ toolName: '' })).status)
+      .toEqual({ type: 'denied', reason: 'invalid-input' })
+  })
+
+  it('downgrades an always answer to once', () => {
+    const decision = decide(consentGate())
+
+    expect(clampRemember(decision, 'always')).toBe('once')
+    expect(clampRemember(decision, 'chat')).toBe('chat')
+  })
+
+  it('replays an approved call while the tool still matches', () => {
+    const replay = resolveReplayApproval({
+      descriptor: consentGate(),
+      pending: {
+        family: 'native',
+        access: 'write',
+        toolName: 'run_skill_scripts',
+        definitionHash: HASH,
+      },
+      state: createApprovalState(),
+      permissionMode: 'ask',
+    })
+
+    expect(replay.status).toEqual({ type: 'not-applicable' })
+  })
+})
+
+describe('replay of a native tool that carries a definition hash', () => {
+  function gate(
+    overrides: Partial<ToolApprovalDescriptor> = {},
+  ): ToolApprovalDescriptor {
+    return nativeTool({
+      toolName: 'run_skill_scripts',
+      definitionHash: HASH,
+      consentGate: true,
+      ...overrides,
+    })
+  }
+
+  function replay(
+    descriptor: ToolApprovalDescriptor,
+    definitionHash: string | null | undefined,
+  ) {
+    return resolveReplayApproval({
+      descriptor,
+      pending: {
+        family: 'native',
+        access: 'write',
+        toolName: 'run_skill_scripts',
+        definitionHash,
+      },
+      state: createApprovalState(),
+      permissionMode: 'ask',
+    })
+  }
+
+  it('passes while the approved hash is still the current one', () => {
+    expect(replay(gate(), HASH).status).toEqual({ type: 'not-applicable' })
+  })
+
+  it('denies as drifted when the set of skills changed after the request', () => {
+    expect(replay(gate(), OTHER_HASH)).toEqual({
+      status: { type: 'denied', reason: 'definition-drifted' },
+      denialReason: 'definition-drifted',
+    })
+  })
+
+  it('denies as drifted for a request stored without a hash', () => {
+    expect(replay(gate(), null).denialReason).toBe('definition-drifted')
+    expect(replay(gate(), undefined).denialReason).toBe('definition-drifted')
+  })
+
+  it('keeps a native tool without a hash as it was', () => {
+    expect(replay(nativeTool({ toolName: 'run_skill_scripts' }), null)
+      .status).toEqual({ type: 'not-applicable' })
+    expect(replay(nativeTool({ toolName: 'run_skill_scripts' }), HASH)
+      .status).toEqual({ type: 'not-applicable' })
+  })
+})
+
 describe('fail closed on invalid input', () => {
   it.each([
     ['an unknown permission mode', { permissionMode: 'maybe' }],

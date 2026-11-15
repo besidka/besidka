@@ -229,6 +229,7 @@
       v-model:open="isSkillPickerOpen"
       :items="composerSkills.items.value"
       :selected-id="skillInvocation.invocation.value?.skillId ?? null"
+      :can-run-scripts="canRunSkillScripts"
       @pick="onSkillSelected"
     />
     <LazyChatTextFileModal
@@ -340,6 +341,7 @@ const {
 } = useChatInput()
 const codeExecutionFeature = useFeature('code-execution')
 const codeExecutionFilesFeature = useFeature('code-execution.files')
+const skillScriptsFeature = useFeature('skills.scripts')
 const { features: loadedFeatures } = useFeatures()
 const { ensureSendConsent } = useLegalConsent()
 const {
@@ -897,6 +899,12 @@ const isCodeExecutionAvailable = computed<boolean>(() => {
 
 const isCodeExecutionRowVisible = computed<boolean>(() => {
   return isCodeExecutionAvailable.value && !isImageGenerationActive.value
+})
+
+const canRunSkillScripts = computed<boolean>(() => {
+  return skillScriptsFeature.value.active
+    && isCodeExecutionRowVisible.value
+    && selectedModelBillingProviderId.value === 'anthropic'
 })
 
 const isReasoningSectionVisible = computed<boolean>(() => {

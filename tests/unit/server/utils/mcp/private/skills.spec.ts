@@ -1161,6 +1161,91 @@ describe('MCP skills domain', () => {
     })
   })
 
+  describe('delete_skills with an Anthropic copy', () => {
+    async function seedUploaded() {
+      const owned = await seedOwned()
+
+      await testDb.db.update(schema.skills)
+        .set({
+          allowScripts: true,
+          providerSkillId: 'skill_01',
+          providerSkillVersion: '1:1759178010',
+          providerUploadedName: 'a-skill',
+        })
+        .where(eq(schema.skills.id, owned.skillId))
+      await testDb.db.insert(schema.keys).values({
+        userId,
+        provider: 'anthropic',
+        apiKey: 'sk-ant-test',
+      })
+      vi.stubGlobal('useDecryptText', async (value: string) => value)
+
+      return owned.skillId
+    }
+
+    it('keeps the skill and reports its id when the copy cannot be deleted', async () => {
+      const skillId = await seedUploaded()
+
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response(null, { status: 500 })
+      }))
+
+      const result = await deleteMcpSkills(context(), { ids: [skillId] })
+
+      expect(result).toEqual({
+        deleted: [],
+        notFound: [],
+        providerCopyFailed: [skillId],
+        message: 'Could not delete the copy in your Anthropic workspace. '
+          + 'Try again, or delete it there.',
+      })
+      expect(await skillCount()).toBe(1)
+      expect((await skillRow(skillId)).providerSkillId).toBe('skill_01')
+    })
+
+    it('deletes the other skills of the same call', async () => {
+      const failing = await seedUploaded()
+      const plain = await seedOwned(undefined, { name: 'plain-skill' })
+
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response(null, { status: 500 })
+      }))
+
+      const result = await deleteMcpSkills(context(), {
+        ids: [failing, plain.skillId],
+      })
+
+      expect(result.deleted).toEqual([plain.skillId])
+      expect(result.providerCopyFailed).toEqual([failing])
+    })
+
+    it('deletes the skill and the copy when Anthropic answers', async () => {
+      const skillId = await seedUploaded()
+      const calls: string[] = []
+
+      vi.stubGlobal('fetch', vi.fn(async (
+        url: unknown,
+        init?: RequestInit,
+      ) => {
+        calls.push(`${init?.method} ${String(url)}`)
+
+        return init?.method === 'GET'
+          ? new Response(JSON.stringify({ data: [] }), { status: 200 })
+          : new Response(null, { status: 204 })
+      }))
+
+      const result = await deleteMcpSkills(context(), { ids: [skillId] })
+
+      expect(result).toEqual({
+        deleted: [skillId],
+        notFound: [],
+      })
+      expect(calls).toContain(
+        'DELETE https://api.anthropic.com/v1/skills/skill_01',
+      )
+    })
+  })
+
   describe('delete_skills', () => {
     it('deletes own skills and reports the rest as not found', async () => {
       const mine = await seedOwned()

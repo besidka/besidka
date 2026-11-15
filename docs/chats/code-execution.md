@@ -136,6 +136,15 @@ response carries no billable usage); Gemini 0 beyond tokens. The composer
 note reads the public rates from the same config. The message usage line in
 the UI is unchanged.
 
+## Skill scripts (Anthropic only)
+
+With `skills.scripts` on, a skill the user allowed scripts for can be handed to
+the same Anthropic container (`container.skills`). The attached skills are
+counted as `attributes.codeExecution.skills`; the container cost stays `null`.
+The consent, upload and delete rules are in `docs/skills.md` section 7. The tool
+stays `code_execution_20260120`, and `container.skills` is kept next to the
+forwarded container id on later steps (a spec runs a two-step `streamText`).
+
 ## Known limits
 
 - `pause_turn`: the AI SDK maps Anthropic's `pause_turn` to a plain stop, and

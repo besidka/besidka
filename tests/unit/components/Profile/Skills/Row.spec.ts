@@ -58,6 +58,30 @@ describe('Profile/Skills/Row', () => {
     )
   })
 
+  it('shows Scripts on only for a skill with scripts that allows them', async () => {
+    const on = await mountRow(createSkillSummary({
+      hasScripts: true,
+      allowScripts: true,
+      scriptsUploaded: true,
+    }))
+
+    expect(on.get(testId('skill-row-scripts')).text()).toBe('Scripts on')
+    expect(on.get(testId('skill-row-scripts')).attributes('title'))
+      .toContain('Uploaded to your Anthropic workspace')
+
+    const off = await mountRow(createSkillSummary({
+      hasScripts: true,
+      allowScripts: false,
+    }))
+    const none = await mountRow(createSkillSummary({
+      hasScripts: false,
+      allowScripts: true,
+    }))
+
+    expect(off.find(testId('skill-row-scripts')).exists()).toBe(false)
+    expect(none.find(testId('skill-row-scripts')).exists()).toBe(false)
+  })
+
   it('shows no highlights badge, not even a zero, without highlights', async () => {
     const wrapper = await mountRow(createSkillSummary({ highlightCount: 0 }))
 
