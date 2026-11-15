@@ -1350,4 +1350,55 @@ describe('Chat/ContextPanel', () => {
         expect(useSidePanel().viewKey.value).toBe('chat-context')
       })
   })
+
+  describe('Manage connectors link', () => {
+    function connectorItem(tool: string, connectorId?: string) {
+      return item({
+        id: `connector:linear:${tool}`,
+        sectionId: 'connectors',
+        kind: 'connector',
+        title: 'Linear',
+        meta: {
+          tool,
+          outcome: 'ok',
+          ...(connectorId ? { connectorId } : {}),
+        },
+      })
+    }
+
+    it('opens the one connector the chat used on the Connectors page',
+      async () => {
+        artifactsActive.value = true
+        data.value = ownedData({
+          used: [
+            connectorItem('search_issues', 'conn1'),
+            connectorItem('get_issue', 'conn1'),
+          ],
+          counts: { outputs: 0, inputs: 0, used: 2 },
+        })
+
+        const wrapper = await mountPanel()
+        const link = wrapper.get(testId('chat-context-manage-connectors'))
+
+        expect(link.attributes('to'))
+          .toBe('/profile/connectors?connector=conn1')
+      })
+
+    it('links the page itself when the chat used several connectors',
+      async () => {
+        artifactsActive.value = true
+        data.value = ownedData({
+          used: [
+            connectorItem('search_issues', 'conn1'),
+            connectorItem('search_pages', 'conn2'),
+          ],
+          counts: { outputs: 0, inputs: 0, used: 2 },
+        })
+
+        const wrapper = await mountPanel()
+
+        expect(wrapper.get(testId('chat-context-manage-connectors'))
+          .attributes('to')).toBe('/profile/connectors')
+      })
+  })
 })

@@ -127,6 +127,13 @@ export const CONNECTOR_ERRORS = {
       + 'so it is hidden from the model',
     fix: 'Review the changed tools on the Connectors page',
   },
+  CONNECTOR_TOOLS_REVIEW_REQUIRED: {
+    message: 'Review the tools before turning this connector on',
+    status: 409,
+    why: 'The connector\'s tools were never reviewed, or some changed and '
+      + 'are not accepted yet',
+    fix: 'Review the tools first',
+  },
   CONNECTOR_TOOLS_REVIEW_STALE: {
     message: 'The tools changed again',
     status: 409,

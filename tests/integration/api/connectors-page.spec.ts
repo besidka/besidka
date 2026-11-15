@@ -524,6 +524,65 @@ describe('Connectors page routes', () => {
       })
   })
 
+  describe('PATCH /api/v1/connectors/[id] enable', () => {
+    const patchPath = '~~/server/api/v1/connectors/[id]/index.patch'
+
+    function enable(connectorId: string) {
+      return call(patchPath, {
+        params: { id: connectorId },
+        body: { enabled: true },
+      })
+    }
+
+    it('refuses to turn on a connector whose tools were never reviewed',
+      async () => {
+        const connectorId = await addConnector('linear')
+        const failure = await failureOf(enable(connectorId)) as {
+          status: number
+          code?: string
+          data?: { fix?: string }
+        }
+
+        expect(failure.status).toBe(409)
+        expect(failure.code).toBe('CONNECTOR_TOOLS_REVIEW_REQUIRED')
+        expect((await call(listPath)).connectors[0].enabled).toBe(false)
+      })
+
+    it('refuses while tools changed, and allows it after the review',
+      async () => {
+        const { updateConnector } = await import(
+          '~~/server/utils/connectors/store'
+        )
+        const connectorId = await addConnector('linear')
+
+        await serveTools(connectorId, [{ name: 'search' }])
+        await review(connectorId, (await listTools(connectorId)).reviewToken)
+        await updateConnector(testDb.db, userId, connectorId, {
+          status: 'drifted',
+        })
+
+        expect((await failureOf(enable(connectorId))).code)
+          .toBe('CONNECTOR_TOOLS_REVIEW_REQUIRED')
+
+        await serveTools(connectorId, [{ name: 'search' }, { name: 'post' }])
+        await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+        const result = await enable(connectorId)
+
+        expect(result.connector.enabled).toBe(true)
+      })
+
+    it('still turns a connector off without a review', async () => {
+      const connectorId = await addConnector('linear', { enabled: true })
+      const result = await call(patchPath, {
+        params: { id: connectorId },
+        body: { enabled: false },
+      })
+
+      expect(result.connector.enabled).toBe(false)
+    })
+  })
+
   describe('POST /api/v1/connectors/[id]/tools/settings', () => {
     it('turns reviewed tools on and off and removes Always allow without '
       + 'accepting a new definition', async () => {

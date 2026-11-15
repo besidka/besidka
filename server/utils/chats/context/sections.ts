@@ -56,12 +56,17 @@ export interface ChatContextArtifact {
  * Data a section needs beyond the message parts, loaded once per request
  * before the build: artifacts maps each listable artifact id (owned by the
  * chat owner, not deleted, not taken down) to its row; connectors maps each
- * of the owner's connector slugs to its title, and is null while the
+ * of the owner's connector slugs to its id and title, and is null while the
  * `connectors` flag is off, which keeps the connectors section empty.
  */
 export interface ChatContextScope {
   artifacts: ReadonlyMap<string, ChatContextArtifact>
-  connectors: ReadonlyMap<string, string> | null
+  connectors: ReadonlyMap<string, ChatContextConnector> | null
+}
+
+export interface ChatContextConnector {
+  id: string
+  title: string
 }
 
 /**
@@ -684,13 +689,19 @@ const connectorsSection: ChatContextSection = {
         continue
       }
 
+      const connector = scope.connectors.get(call.slug)
+
       accumulator.increment('used', {
         id: `connector:${call.slug}:${call.tool}`,
         sectionId: 'connectors',
         kind: 'connector',
-        title: toTitle(scope.connectors.get(call.slug) ?? call.slug),
+        title: toTitle(connector?.title ?? call.slug),
         messageId: message.id,
-        meta: { tool: call.tool, outcome: call.outcome },
+        meta: {
+          tool: call.tool,
+          outcome: call.outcome,
+          ...(connector ? { connectorId: connector.id } : {}),
+        },
       })
     }
   },

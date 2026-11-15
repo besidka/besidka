@@ -1561,7 +1561,7 @@ describe('connector calls in the used group', () => {
   function connectorContext(messages: ChatContextMessage[]) {
     return buildChatContext(messages, {
       visibility: 'private',
-      connectors: new Map([['notion', 'Notion']]),
+      connectors: new Map([['notion', { id: 'conn1', title: 'Notion' }]]),
     })
   }
 
@@ -1675,7 +1675,7 @@ describe('connector calls in the used group', () => {
       ]),
     ], {
       visibility: 'public',
-      connectors: new Map([['notion', 'Notion']]),
+      connectors: new Map([['notion', { id: 'conn1', title: 'Notion' }]]),
     })
 
     expect(context.used).toEqual([])

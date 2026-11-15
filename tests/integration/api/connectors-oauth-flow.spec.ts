@@ -984,6 +984,13 @@ describe('connector OAuth flow', () => {
 
     it('enables a connected connector with a current consent', async () => {
       const { connector } = await connectedConnector()
+      const { CONNECTOR_BASELINE_MARKER_SETTING, upsertConnectorToolSettings }
+        = await import('~~/server/utils/connectors/store')
+
+      await upsertConnectorToolSettings(testDb.db, userId, connector.id, [
+        CONNECTOR_BASELINE_MARKER_SETTING,
+      ])
+
       const { result } = await patch(connector.id, { enabled: true })
 
       expect(result.connector.enabled).toBe(true)

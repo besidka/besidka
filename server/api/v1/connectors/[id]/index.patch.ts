@@ -13,6 +13,7 @@ import {
 } from '~~/server/utils/connectors/route'
 import {
   readConnectorCredentials,
+  readConnectorToolBaseline,
   updateConnector,
 } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
@@ -24,11 +25,10 @@ const bodySchema = z.object({
   title: z.string().trim().min(1).max(CONNECTOR_TITLE_MAX_LENGTH).optional(),
 })
 
-async function assertCanEnable(userId: number, connector: ConnectorRecord) {
-  if (connector.status !== 'ready') {
-    throw createConnectorError('CONNECTOR_NOT_READY')
-  }
-
+async function assertConsentsForEnable(
+  userId: number,
+  connector: ConnectorRecord,
+) {
   const db = useDb()
 
   await requireLegalConsent(userId, db)
@@ -48,11 +48,36 @@ async function assertCanEnable(userId: number, connector: ConnectorRecord) {
   assertConnectorConsent(connector, issuerHostOf(credentials.issuer))
 }
 
+async function assertCanEnable(userId: number, connector: ConnectorRecord) {
+  if (connector.status === 'drifted') {
+    throw createConnectorError('CONNECTOR_TOOLS_REVIEW_REQUIRED')
+  }
+
+  if (connector.status !== 'ready') {
+    throw createConnectorError('CONNECTOR_NOT_READY')
+  }
+
+  await assertConsentsForEnable(userId, connector)
+
+  const { isBaselined } = await readConnectorToolBaseline(
+    useDb(),
+    userId,
+    connector.id,
+  )
+
+  if (!isBaselined) {
+    throw createConnectorError('CONNECTOR_TOOLS_REVIEW_REQUIRED')
+  }
+}
+
 /**
  * Renames a connector or turns it on or off, in the app only. Turning it on
- * needs a connected connector, a current sign-up consent and a current
- * per-connector consent for its origin and issuer; turning it off is always
- * allowed.
+ * needs a connected connector whose tools were reviewed on the Connectors
+ * page (a first review, and no unaccepted change: `drifted` is refused), a
+ * current sign-up consent and a current per-connector consent for its
+ * origin and issuer; turning it off is always allowed. The review rule is
+ * enforced here, not only in the page, because any client can call this
+ * route.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireConnectorAccess(event)

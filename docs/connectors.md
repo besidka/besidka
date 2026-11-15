@@ -2081,10 +2081,14 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
 - **First review.** A connector with no baseline lists every tool as `new`
   with the server's description and labels, and the panel asks the user to
   "Turn on these tools" or "Keep disabled" before its first use. Until then
-  the row shows Review instead of the switch, and the panel's Use in chats
-  switch stays off, so the first enable always goes through the review
-  (the server does not enforce this: `PATCH` still needs only `ready` and
-  the consents). The
+  the row shows Review instead of the switch and the panel's Use in chats
+  switch stays off. The server enforces it too, because MCP and any other
+  client can call the route: `PATCH /api/v1/connectors/[id]`
+  `{ enabled: true }` answers 409 `CONNECTOR_TOOLS_REVIEW_REQUIRED` ("Review
+  the tools first") while no baseline exists, and while the connector is
+  `drifted`, after the consent checks. Turning a connector off never needs a
+  review. A connector that was already on keeps the trust-on-first-use
+  baseline of section 6.1. The
   trust-on-first-use baseline of section 6.1 stays for a connector that is
   used in a chat before anyone opens the panel.
 - **Drift review.** `POST /api/v1/connectors/[id]/tools/review`
@@ -2140,10 +2144,11 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   a lookup key into `CONNECTOR_CODE_MESSAGES`
   (`shared/utils/connectors-messages.ts`, kept equal to the server's
   `CONNECTOR_ERRORS` by a spec); an unknown value shows a fixed fallback and
-  is never rendered. The page also opens `?connector=<id>` in the panel
-  (the chat context panel's "Manage connectors" row still links the page
-  itself, because the row is per group, not per connector). Each parameter
-  is removed from the address after use.
+  is never rendered. The page also opens `?connector=<id>` in the panel:
+  the chat context panel's "Manage connectors" row links there when the chat
+  used one connector (its connector items now carry `meta.connectorId`), and
+  to the page itself when it used several. Each parameter is removed from
+  the address after use.
 - **Profile tab row.** With Connectors the row has eight tabs, and every
   label does not fit the 704 px row at any width (the layout caps it at
   `max-w-4xl`), so from the eighth tab on inactive tabs show only their

@@ -34,6 +34,8 @@ export const CONNECTOR_CODE_MESSAGES: Readonly<Record<string, string>> = {
   CONNECTOR_SCOPE_DEGRADED:
     'The service granted fewer permissions than requested',
   CONNECTOR_TOOLS_DRIFTED: 'Some tools of this connector changed',
+  CONNECTOR_TOOLS_REVIEW_REQUIRED:
+    'Review the tools before turning this connector on',
   CONNECTOR_TOOLS_REVIEW_STALE: 'The tools changed again',
   CONNECTOR_TOOL_NOT_FOUND: 'Tool not found',
   CONNECTOR_UNREACHABLE: 'The connector could not be reached',
