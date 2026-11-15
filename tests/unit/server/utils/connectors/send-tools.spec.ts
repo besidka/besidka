@@ -1053,6 +1053,43 @@ describe('getConnectorTools', () => {
         expect(second.summary.cacheHits).toBe(1)
       })
 
+    it('keeps the icons a server declares in its initialize result',
+      async () => {
+        const alpha = createMockMcpServer({
+          url: 'https://mcp.alpha.example.com/mcp',
+          tools: [{ name: 'list_issues', description: 'List' }],
+          icons: [{ src: 'https://mcp.alpha.example.com/icon.png' }],
+        })
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'none',
+        }]
+        const connectorId = await addConnector(seeds[0]!)
+
+        await run({ connectorSeeds: seeds, servers: [alpha] })
+
+        expect(JSON.parse(
+          kv.values.get(`connectors:icon-sources:${connectorId}`)!,
+        )).toEqual([{ src: 'https://mcp.alpha.example.com/icon.png' }])
+      })
+
+    it('stores no icon sources for a server that declares none', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'none',
+      }]
+
+      await addConnector(seeds[0]!)
+      await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect([...kv.values.keys()].some((key) => {
+        return key.startsWith('connectors:icon-sources:')
+      })).toBe(false)
+    })
+
     it('clamps a server ttl to the 60 s to 1 h range and defaults to 10 min',
       async () => {
         const fast = server('mcp.fast.example.com', { ttlMs: 1000 })

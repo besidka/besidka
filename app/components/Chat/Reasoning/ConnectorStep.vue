@@ -10,7 +10,10 @@
         :class="titleClass"
         data-testid="reasoning-connector-step-title"
       >
-        {{ title }}{{ pending ? '…' : '' }}
+        <ChatReasoningStepIcon
+          :icon="icon ?? null"
+          class="mr-1.5"
+        />{{ title }}{{ pending ? '…' : '' }}
       </p>
       <span
         v-if="data.isFramed"
@@ -39,11 +42,13 @@
 <script setup lang="ts">
 import type { ConnectorToolCallModel } from '#shared/utils/connectors-parts'
 import { formatConnectorArguments } from '~/utils/connector-step'
+import type { ReasoningStepIcon } from '~/utils/reasoning-step-icons'
 
 const props = defineProps<{
   data: ConnectorToolCallModel
   title: string
   pending: boolean
+  icon?: ReasoningStepIcon | null
 }>()
 
 useConnectorLibrary()

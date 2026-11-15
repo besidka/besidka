@@ -1,6 +1,7 @@
 import {
   CONNECTOR_REVOKE_DEADLINE_MS,
 } from '#shared/utils/connectors-policy'
+import { deleteConnectorIconCache } from '~~/server/utils/connectors/icon'
 import { revokeCredentialsBatch } from '~~/server/utils/connectors/revoke'
 import {
   deleteConnector,
@@ -32,6 +33,7 @@ export async function deleteConnectorsWithRevocation(
   connectorIds: readonly string[],
   logger: LoggerLike,
 ): Promise<DeleteConnectorsResult> {
+  const kv = useKV()
   const deleted: string[] = []
   const notFound: string[] = []
   const withdrawnHosts: string[] = []
@@ -89,6 +91,7 @@ export async function deleteConnectorsWithRevocation(
     }
 
     deleted.push(connector.id)
+    await deleteConnectorIconCache(kv, connector.id)
 
     if (connector.consented) {
       withdrawnHosts.push(connector.host)

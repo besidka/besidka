@@ -219,6 +219,7 @@ const featureList = [
     title: 'Connector directory',
     description: 'Pick connectors from a directory.',
     parent: 'connectors',
+    available: true,
   }),
   internalFeature({
     key: 'connectors.native',

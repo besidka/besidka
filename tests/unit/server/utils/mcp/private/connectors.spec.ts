@@ -137,6 +137,13 @@ describe('private MCP connector tools', () => {
     vi.stubGlobal('useDecryptText', vi.fn(async (cipher: string) => {
       return cipher.slice('enc:'.length)
     }))
+    vi.stubGlobal('useKV', () => {
+      return {
+        delete: vi.fn(async () => {}),
+        get: vi.fn(async () => null),
+        put: vi.fn(async () => {}),
+      }
+    })
   })
 
   afterEach(() => {
