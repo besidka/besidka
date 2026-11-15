@@ -7,7 +7,7 @@ import {
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
-  loadAnthropicApiKey,
+  loadAnthropicApiKeyOrNull,
   removeProviderCopy,
 } from '~~/server/utils/skills/provider-upload'
 import type { ProviderSkillDeleteOutcome } from '~~/server/utils/skills/provider-upload'
@@ -116,7 +116,7 @@ export async function enableSkillScripts(input: {
     })
   }
 
-  if (!await loadAnthropicApiKey(db, userId)) {
+  if (!await loadAnthropicApiKeyOrNull(db, userId, input.logger)) {
     throw createSkillEditError('scripts-key-missing', {
       message: 'Add your Anthropic API key first',
       why: 'Skill scripts run in your own Anthropic workspace',
@@ -175,7 +175,7 @@ export async function disableSkillScripts(input: {
       db,
       userId,
       skill,
-      apiKey: await loadAnthropicApiKey(db, userId),
+      apiKey: await loadAnthropicApiKeyOrNull(db, userId, input.logger),
       logger: input.logger,
     })
     : 'none'

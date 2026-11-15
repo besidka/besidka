@@ -243,6 +243,27 @@ export async function prepareSkillScriptsForSend(input: {
     SKILL_SCRIPTS_GRANT_KEY,
   ) && settings.alwaysAllowTools[SKILL_SCRIPTS_GRANT_KEY] === definitionHash
   const skillNames = eligibleSkills.map(skill => skill.name)
+  const approvalEntries = new Map<string, SendToolEntry>()
+
+  if (!isGrantMatched) {
+    approvalEntries.set(SKILL_SCRIPTS_GATE_TOOL_NAME, {
+      descriptor: {
+        family: 'native',
+        access: 'write',
+        toolName: SKILL_SCRIPTS_GATE_TOOL_NAME,
+        destructiveHint: false,
+        consentGate: true,
+        definitionHash,
+      },
+      summary: buildSkillScriptsApprovalSummary(skillNames),
+      taint: null,
+      readSource: null,
+      alwaysGrant: null,
+      alwaysGrantWhenTainted: false,
+      connector: null,
+    })
+  }
+
   let attachment: SkillScriptsAttachment | null = null
 
   async function attach(attachInput: {
@@ -298,6 +319,19 @@ export async function prepareSkillScriptsForSend(input: {
       failed: false,
     }
 
+    const gateEntry = approvalEntries.get(SKILL_SCRIPTS_GATE_TOOL_NAME)
+
+    if (gateEntry) {
+      gateEntry.userGrants = {
+        always: null,
+        chat: {
+          definitionHash,
+          connectorId: null,
+          toolName: SKILL_SCRIPTS_GATE_TOOL_NAME,
+        },
+      }
+    }
+
     input.logger.set({
       attributes: {
         skills: {
@@ -319,27 +353,6 @@ export async function prepareSkillScriptsForSend(input: {
         getAttachment: () => attachment,
       }) as ToolSet[string],
     }
-  const approvalEntries = new Map<string, SendToolEntry>()
-
-  if (!isGrantMatched) {
-    approvalEntries.set(SKILL_SCRIPTS_GATE_TOOL_NAME, {
-      descriptor: {
-        family: 'native',
-        access: 'write',
-        toolName: SKILL_SCRIPTS_GATE_TOOL_NAME,
-        destructiveHint: false,
-        consentGate: true,
-        definitionHash,
-      },
-      summary: buildSkillScriptsApprovalSummary(skillNames),
-      taint: null,
-      readSource: null,
-      alwaysGrant: null,
-      alwaysGrantWhenTainted: false,
-      connector: null,
-    })
-  }
-
   return {
     gate: {
       isActive: true,

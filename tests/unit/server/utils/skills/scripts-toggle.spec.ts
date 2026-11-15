@@ -285,6 +285,34 @@ describe('skill scripts toggle', () => {
       })
     })
 
+    it('treats a key that cannot be decrypted as a failed provider delete', async () => {
+      await seedKey()
+      vi.stubGlobal('useDecryptText', async () => {
+        throw new Error('bad ciphertext')
+      })
+
+      const fetcher = vi.fn()
+
+      vi.stubGlobal('fetch', fetcher)
+
+      const skillId = await seedSkill({
+        allowScripts: true,
+        providerSkillId: 'skill_01',
+        providerSkillVersion: '1:1759178010',
+        providerUploadedName: 'data-report',
+      })
+      const result = await disableSkillScripts({
+        db: testDb.db,
+        userId,
+        skillId,
+        logger: mocks.logger,
+      })
+
+      expect(result.providerCopy).toBe('failed')
+      expect(result.skill.allowScripts).toBe(false)
+      expect(fetcher).not.toHaveBeenCalled()
+    })
+
     it('makes no request for a skill that was never uploaded', async () => {
       const fetcher = vi.fn()
 

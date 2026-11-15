@@ -401,6 +401,27 @@ describe('skills deletion hooks', () => {
       expect(result.providerCopy).toBe('failed')
     })
 
+    it('still deletes the skill when the key cannot be decrypted', async () => {
+      await seedAnthropicKey(userId)
+
+      const calls = stubProvider()
+
+      vi.stubGlobal('useDecryptText', async () => {
+        throw new Error('bad ciphertext')
+      })
+
+      const skillId = await seedUploadedSkill(userId)
+      const result = await deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)
+
+      expect(result.skillDeleted).toBe(true)
+      expect(result.providerCopy).toBe('failed')
+      expect(calls).toEqual([])
+    })
+
     it('makes no provider request for a skill that was never uploaded', async () => {
       const calls = stubProvider()
       const skillId = await seedFullSkill(userId)

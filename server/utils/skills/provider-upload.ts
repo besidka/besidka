@@ -121,6 +121,29 @@ export async function loadAnthropicApiKey(
   return await useDecryptText(key.apiKey)
 }
 
+/**
+ * The same key, but a key that cannot be read (a decrypt failure) is `null`
+ * and logged without any detail, so a delete that needs it reports a failed
+ * provider delete instead of blocking the user.
+ */
+export async function loadAnthropicApiKeyOrNull(
+  db: DbClient,
+  userId: number,
+  logger: LoggerLike,
+): Promise<string | null> {
+  try {
+    return await loadAnthropicApiKey(db, userId)
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        skills: { providerKey: { error: exceptionMessage(exception) } },
+      },
+    })
+
+    return null
+  }
+}
+
 async function requestProvider(input: {
   url: string
   method: 'GET' | 'DELETE'
@@ -479,6 +502,47 @@ async function buildUploadFiles(input: {
   return files
 }
 
+async function readConcurrentCopy(input: {
+  db: DbClient
+  userId: number
+  skill: UploadableSkill
+  fallbackName: string
+}): Promise<ProviderSkillReference> {
+  const [latest] = await input.db.select({
+    providerSkillId: schema.skills.providerSkillId,
+    providerSkillVersion: schema.skills.providerSkillVersion,
+    providerUploadedName: schema.skills.providerUploadedName,
+    providerDeletedAt: schema.skills.providerDeletedAt,
+  })
+    .from(schema.skills)
+    .where(and(
+      eq(schema.skills.id, input.skill.id),
+      eq(schema.skills.userId, input.userId),
+    ))
+    .limit(1)
+  const pinned = parseProviderSkillVersion(latest?.providerSkillVersion)
+
+  if (
+    latest?.providerSkillId
+    && pinned
+    && isProviderCopyCurrent(latest, input.skill.currentVersion)
+  ) {
+    return {
+      skillId: input.skill.id,
+      name: latest.providerUploadedName ?? input.fallbackName,
+      providerSkillId: latest.providerSkillId,
+      providerVersion: pinned.providerVersion,
+    }
+  }
+
+  throw createProviderSkillError(
+    'The skill could not be stored after the upload',
+    'Another request changed the copy of this skill at the same time.',
+    'Try again.',
+    409,
+  )
+}
+
 /**
  * Makes sure the Anthropic copy of one skill matches its `current_version`
  * and returns the pinned reference. A copy made from the same version is
@@ -598,20 +662,50 @@ export async function ensureProviderSkill(input: {
     )
   }
 
-  await db.update(schema.skills)
-    .set({
-      providerSkillId: uploaded.providerSkillId,
-      providerSkillVersion: encodeProviderSkillVersion({
-        besidkaVersion: skill.currentVersion,
-        providerVersion: pinnedVersion,
-      }),
-      providerUploadedName: naming.providerName,
-      providerDeletedAt: null,
+  let isCopyStored = false
+
+  try {
+    const stored = await db.update(schema.skills)
+      .set({
+        providerSkillId: uploaded.providerSkillId,
+        providerSkillVersion: encodeProviderSkillVersion({
+          besidkaVersion: skill.currentVersion,
+          providerVersion: pinnedVersion,
+        }),
+        providerUploadedName: naming.providerName,
+        providerDeletedAt: null,
+      })
+      .where(and(
+        eq(schema.skills.id, skill.id),
+        eq(schema.skills.userId, input.userId),
+        isNull(schema.skills.providerSkillId),
+      ))
+      .returning({ id: schema.skills.id })
+
+    isCopyStored = stored.length > 0
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        skills: { providerUpload: { storeError: exceptionMessage(exception) } },
+      },
     })
-    .where(and(
-      eq(schema.skills.id, skill.id),
-      eq(schema.skills.userId, input.userId),
-    ))
+  }
+
+  if (!isCopyStored) {
+    await deleteProviderSkill({
+      providerSkillId: uploaded.providerSkillId,
+      apiKey: input.apiKey,
+      logger: input.logger,
+      fetcher: input.fetcher,
+    })
+
+    return await readConcurrentCopy({
+      db,
+      userId: input.userId,
+      skill,
+      fallbackName: naming.providerName,
+    })
+  }
 
   input.logger.set({
     attributes: {

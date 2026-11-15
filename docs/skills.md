@@ -1487,6 +1487,29 @@ that allows them when the selected model is a direct Anthropic model with Run
 code available, or the muted note "Scripts need a Claude model with code
 execution" otherwise.
 
+**Concurrency and known limits.**
+
+- The upload on a continuation runs after the approval claim
+  (`claimContinuation`), so a double submit does not upload twice. The columns
+  are written only while `provider_skill_id` is still empty
+  (`UPDATE ... WHERE provider_skill_id IS NULL`): a request that loses that
+  race deletes its own upload and uses the winner's copy when it is current.
+  A failed write also deletes the new upload, so no copy is orphaned.
+- After an approved attach, the gate entry carries a chat grant for the same
+  hash, so a second `run_skill_scripts` call in the same continuation does not
+  ask again.
+- A key that cannot be decrypted counts as a failed provider delete, never as
+  a blocked skill delete or toggle.
+- The chat panel lists the chat grant as "Skill scripts"; "Reset" clears it
+  like every other chat grant.
+- The earlier design said to re-upload "when the provider answers
+  not-found". That rule is not built: if the user deletes the copy in the
+  Anthropic Console, sends in a chat that holds a grant fail at Anthropic
+  until the user turns scripts off and on again for that skill (turning it off
+  treats the 404 as gone, and the next allowed send uploads a fresh copy).
+- The cap of 8 skills per request is the lower of two figures and is not
+  confirmed against a source.
+
 **Not verified live (the owner's Anthropic key is capped until 2026-12-01).**
 Every test mocks `uploadSkill` and the provider requests. Deferred to a manual
 check on a preview with a real key: a skill whose script writes a CSV runs and

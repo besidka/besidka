@@ -30,6 +30,12 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await skillPublicIdMockFactory()
 })
 
+const { resolveToolApproval } = await import(
+  '~~/server/utils/tool-approval/policy'
+)
+const { createApprovalState } = await import(
+  '~~/server/utils/tool-approval/state'
+)
 const {
   SKILL_SCRIPTS_ALLOWED_TEXT,
   SKILL_SCRIPTS_UPLOAD_FAILED_TEXT,
@@ -238,6 +244,45 @@ describe('prepareSkillScriptsForSend', () => {
       })
       expect(await run.attach({ isApproved: true })).toBe(attachment)
       expect(uploader).toHaveBeenCalledTimes(1)
+    })
+
+    it('lets a second gate call of the same turn through once attached', async () => {
+      const skillId = await seedSkill('data-report')
+      const run = await prepare({ candidateSkillIds: [skillId] })
+      const entry = run.gate.approvalEntries.get(SKILL_SCRIPTS_GATE_TOOL_NAME)!
+      const askBefore = resolveToolApproval({
+        descriptor: entry.descriptor,
+        state: createApprovalState(),
+        permissionMode: 'ask',
+        chatGrant: entry.userGrants?.chat ?? null,
+      })
+
+      await run.attach({ isApproved: true })
+
+      const askAfter = resolveToolApproval({
+        descriptor: entry.descriptor,
+        state: createApprovalState(),
+        permissionMode: 'ask',
+        chatGrant: entry.userGrants?.chat ?? null,
+      })
+
+      expect(askBefore.status.type).toBe('user-approval')
+      expect(askAfter.status).toEqual({ type: 'not-applicable' })
+    })
+
+    it('gives no grant when the upload failed', async () => {
+      const skillId = await seedSkill('data-report')
+      const run = await prepare({
+        candidateSkillIds: [skillId],
+        uploader: vi.fn(async () => {
+          throw new Error('boom')
+        }),
+      })
+      const entry = run.gate.approvalEntries.get(SKILL_SCRIPTS_GATE_TOOL_NAME)!
+
+      await run.attach({ isApproved: true })
+
+      expect(entry.userGrants).toBeUndefined()
     })
 
     it('tells the model the upload failed through the tool result', async () => {

@@ -4,7 +4,7 @@ import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
-  loadAnthropicApiKey,
+  loadAnthropicApiKeyOrNull,
   removeAllProviderCopies,
   removeProviderCopy,
 } from '~~/server/utils/skills/provider-upload'
@@ -196,7 +196,7 @@ async function removeSkillProviderCopy(
     db,
     userId: input.userId,
     skill,
-    apiKey: await loadAnthropicApiKey(db, input.userId),
+    apiKey: await loadAnthropicApiKeyOrNull(db, input.userId, input.logger),
     logger: input.logger,
   })
 }

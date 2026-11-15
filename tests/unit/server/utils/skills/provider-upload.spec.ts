@@ -294,6 +294,88 @@ describe('provider upload', () => {
       })).toBe(true)
     })
 
+    it('keeps the copy of a concurrent request and deletes its own upload', async () => {
+      const skill = await seedScriptSkill()
+      const fetcher = vi.fn(async (
+        _url: FetchInput,
+        init?: RequestInit,
+      ) => {
+        return init?.method === 'GET'
+          ? jsonResponse({ data: [] })
+          : emptyResponse()
+      })
+      const uploader = vi.fn(async () => {
+        await testDb.db.update(schema.skills)
+          .set({
+            providerSkillId: 'skill_winner',
+            providerSkillVersion: '1:1760000000',
+            providerUploadedName: 'bsk-c-api',
+          })
+          .where(eq(schema.skills.id, skill.id))
+
+        return { providerSkillId: 'skill_ours', latestVersion: '1759178010' }
+      })
+
+      const reference = await ensureProviderSkill({
+        db: testDb.db,
+        bucket,
+        userId,
+        skill,
+        apiKey: API_KEY,
+        logger: mocks.logger,
+        uploader,
+        fetcher: fetcher as unknown as typeof fetch,
+      })
+      const stored = await loadOwnedSkill(testDb.db, userId, skill.id)
+
+      expect(reference).toMatchObject({
+        providerSkillId: 'skill_winner',
+        providerVersion: '1760000000',
+      })
+      expect(stored.providerSkillId).toBe('skill_winner')
+      expect(fetcher.mock.calls.some(([url, init]) => {
+        return init?.method === 'DELETE'
+          && String(url).endsWith('/skills/skill_ours')
+      })).toBe(true)
+    })
+
+    it('fails and deletes its own upload when the winner is not current', async () => {
+      const skill = await seedScriptSkill()
+      const fetcher = vi.fn(async (
+        _url: FetchInput,
+        init?: RequestInit,
+      ) => {
+        return init?.method === 'GET'
+          ? jsonResponse({ data: [] })
+          : emptyResponse()
+      })
+      const uploader = vi.fn(async () => {
+        await testDb.db.update(schema.skills)
+          .set({
+            providerSkillId: 'skill_stale',
+            providerSkillVersion: '0:1',
+          })
+          .where(eq(schema.skills.id, skill.id))
+
+        return { providerSkillId: 'skill_ours', latestVersion: '1759178010' }
+      })
+
+      await expect(ensureProviderSkill({
+        db: testDb.db,
+        bucket,
+        userId,
+        skill,
+        apiKey: API_KEY,
+        logger: mocks.logger,
+        uploader,
+        fetcher: fetcher as unknown as typeof fetch,
+      })).rejects.toMatchObject({ status: 409 })
+      expect(fetcher.mock.calls.some(([url, init]) => {
+        return init?.method === 'DELETE'
+          && String(url).endsWith('/skills/skill_ours')
+      })).toBe(true)
+    })
+
     it('does not store an id when the upload fails', async () => {
       const skill = await seedScriptSkill()
       const uploader = vi.fn(async () => {

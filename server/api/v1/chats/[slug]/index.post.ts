@@ -2254,19 +2254,6 @@ export default defineEventHandler(async (event) => {
       assertOnlyDeliverableFileParts(resumeHistory, {
         inlineContainerFiles: isInlineContainerSend,
       })
-      if (
-        skillScriptsRun.gate.isActive
-        && !skillScriptsRun.gate.isGrantMatched
-        && resumeDecisions.some((decision) => {
-          return decision.approved
-            && decision.toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
-        })
-      ) {
-        skillScriptsAttachment = await skillScriptsRun.attach({
-          isApproved: true,
-        })
-      }
-
       resumedStoredMessage = resumedMessages.storedMessage
       resumeModelMessages = await convertToModelMessages([
         ...resumeHistory,
@@ -2279,13 +2266,6 @@ export default defineEventHandler(async (event) => {
     await codeExecutionSession?.tracker.cleanup()
 
     throw exception
-  }
-
-  if (skillScriptsAttachment?.container) {
-    providerOptions.anthropic = {
-      ...providerOptions.anthropic,
-      container: skillScriptsAttachment.container,
-    }
   }
 
   const closeConnectorClients = async () => {
@@ -2452,6 +2432,26 @@ export default defineEventHandler(async (event) => {
         },
       },
     })
+
+    if (
+      skillScriptsRun.gate.isActive
+      && !skillScriptsRun.gate.isGrantMatched
+      && resumeDecisions.some((decision) => {
+        return decision.approved
+          && decision.toolName === SKILL_SCRIPTS_GATE_TOOL_NAME
+      })
+    ) {
+      skillScriptsAttachment = await skillScriptsRun.attach({
+        isApproved: true,
+      })
+    }
+  }
+
+  if (skillScriptsAttachment?.container) {
+    providerOptions.anthropic = {
+      ...providerOptions.anthropic,
+      container: skillScriptsAttachment.container,
+    }
   }
 
   const stream = createUIMessageStream({

@@ -177,6 +177,25 @@ describe('Besidka chat settings', () => {
         .toEqual({ enabled: true, alwaysAllowTools: {} })
     })
 
+  it('lists the skill scripts grant in the chat panel, so it can be reset',
+    async () => {
+      await addBesidkaChatGrant(testDb.db, userId, CHAT, {
+        toolName: 'run_skill_scripts',
+        definitionHash: HASH,
+      })
+
+      expect(await listChatToolApprovalGrants(testDb.db, userId, CHAT))
+        .toEqual([{
+          scope: 'chat',
+          connectorId: '',
+          connectorTitle: 'Skill scripts',
+          toolName: 'run_skill_scripts',
+          source: 'besidka',
+        }])
+      expect(await listChatToolApprovalGrants(testDb.db, userId, OTHER_CHAT))
+        .toEqual([])
+    })
+
   it('stores nothing for a once or always answer to the scripts consent',
     async () => {
       const entry = {
