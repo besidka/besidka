@@ -1376,6 +1376,29 @@ describe('tool approval continuation', () => {
       tools: { web_search: openai.tools.webSearch() },
     }
 
+    await request({
+      servers: [linear],
+      steps: [textChunks('Ready.')],
+      body: {
+        model: MODEL_ID,
+        tools: [],
+        reasoning: 'off',
+        connectorIds: ['conn-linear'],
+        messages: [{
+          id: 'user-baseline',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Hello' }],
+        }],
+      },
+    })
+
+    for (const setting of mocks.store.toolSettings) {
+      if (setting.toolName === 'list_issues') {
+        setting.approval = 'always'
+        setting.approvedDefinitionHash = setting.definitionHash
+      }
+    }
+
     const { doStream } = await request({
       servers: [linear],
       steps: [

@@ -3,6 +3,7 @@ import { convertToModelMessages } from 'ai'
 import type { UIMessage } from 'ai'
 import {
   TOOL_APPROVAL_DENIAL_TEXT,
+  applyRememberGrants,
   assertEndsWithApprovalResponse,
   buildResumedAssistantMessages,
   classifyDuplicateContinuation,
@@ -32,11 +33,15 @@ vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
   return { ...actual, ...claimMocks, touchClaim: vi.fn(async () => true) }
 })
 
-vi.mock('~~/server/utils/connectors/store', () => ({
-  listConnectorChatSettings: vi.fn(),
+const storeMocks = vi.hoisted(() => ({
   listConnectorToolSettings: vi.fn(),
-  upsertConnectorChatSettings: vi.fn(),
   upsertConnectorToolSettings: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/connectors/store', () => ({
+  ...storeMocks,
+  listConnectorChatSettings: vi.fn(),
+  upsertConnectorChatSettings: vi.fn(),
   recordConnectorToolCall: vi.fn(),
   settleConnectorToolCall: vi.fn(),
 }))
@@ -608,5 +613,83 @@ describe('wrapApprovedExecutions', () => {
     expect(onSettled).toHaveBeenCalledWith('call-1')
     expect(stop).toHaveBeenCalledWith('approval-1')
     expect(claimMocks.markClaimDone).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('applyRememberGrants Always allow', () => {
+  const READ_NAME = 'mcp__notion__notion-search'
+
+  function readEntries(annotations: Record<string, boolean>) {
+    return new Map<string, SendToolEntry>([[
+      READ_NAME,
+      buildConnectorApprovalEntry({
+        exposedName: READ_NAME,
+        connectorId: 'c1',
+        connectorTitle: 'Notion',
+        connectorHost: 'mcp.notion.example.com',
+        remoteToolName: 'notion-search',
+        definitionHash: HASH,
+        annotations,
+      }),
+    ]])
+  }
+
+  function setting(definitionHash = HASH) {
+    return {
+      toolName: 'notion-search',
+      definitionHash,
+      serverReadOnly: true,
+      enabled: true,
+      approval: 'ask',
+      approvedDefinitionHash: null,
+    }
+  }
+
+  async function apply(entries: Map<string, SendToolEntry>) {
+    await applyRememberGrants({
+      db: {} as never,
+      userId: 1,
+      chatPublicId: 'chat-1',
+      decisions: [{
+        approvalId: 'approval-1',
+        toolCallId: 'call-1',
+        toolName: READ_NAME,
+        approved: true,
+        remember: 'always',
+      } as never],
+      entries,
+      logger: { set: vi.fn() } as never,
+    })
+  }
+
+  it('sets a read-only tool to Always allow bound to the reviewed hash',
+    async () => {
+      storeMocks.upsertConnectorToolSettings.mockClear()
+      storeMocks.listConnectorToolSettings.mockResolvedValueOnce([setting()])
+
+      await apply(readEntries({ readOnlyHint: true }))
+
+      expect(storeMocks.upsertConnectorToolSettings).toHaveBeenCalledWith(
+        {},
+        1,
+        'c1',
+        [expect.objectContaining({
+          toolName: 'notion-search',
+          approval: 'always',
+          approvedDefinitionHash: HASH,
+        })],
+      )
+    })
+
+  it('never grants a destructive tool or a drifted definition', async () => {
+    storeMocks.upsertConnectorToolSettings.mockClear()
+    storeMocks.listConnectorToolSettings
+      .mockResolvedValue([setting('c'.repeat(64))])
+
+    await apply(readEntries({ readOnlyHint: true, destructiveHint: true }))
+    await apply(readEntries({ readOnlyHint: true }))
+
+    expect(storeMocks.upsertConnectorToolSettings).not.toHaveBeenCalled()
+    storeMocks.listConnectorToolSettings.mockReset()
   })
 })

@@ -52,6 +52,7 @@ import type {
 } from '~~/server/utils/tool-approval/kv'
 import {
   clampRemember,
+  isAlwaysAskTier,
   resolveReplayApproval,
 } from '~~/server/utils/tool-approval/policy'
 import type { SendToolEntry } from '~~/server/utils/tool-approval/send'
@@ -815,8 +816,9 @@ async function applyBesidkaRememberGrant(input: {
  * "in this chat" maps the exposed tool name to its definition hash in the
  * connector's chat settings, "always" sets the connector tool setting to
  * `always` with the approved hash (only when that setting row exists). The
- * choice was already clamped to what the request offered: only a plain
- * write (reason `default`) offers more than `once`. The send and the replay
+ * choice was already clamped to what the request offered: only reason
+ * `default` offers more than `once`, and a tool in the always-ask tier is
+ * never granted even if a choice slipped through. The send and the replay
  * read back exactly these two values (`getConnectorTools`). For a Besidka
  * tool, "in this chat" stores the registry hash in the chat's
  * `besidka_chat_settings.alwaysAllowTools`, and "always" sets the tool's
@@ -835,11 +837,17 @@ export async function applyRememberGrants(input: {
     const hash = entry?.descriptor.definitionHash
     const connector = entry?.connector
 
-    if (!decision.approved || decision.remember === 'once' || !hash) {
+    if (
+      !decision.approved
+      || decision.remember === 'once'
+      || !hash
+      || !entry
+      || isAlwaysAskTier(entry.descriptor)
+    ) {
       continue
     }
 
-    if (entry?.descriptor.family === 'besidka') {
+    if (entry.descriptor.family === 'besidka') {
       try {
         await applyBesidkaRememberGrant({
           db: input.db,
@@ -900,7 +908,7 @@ export async function applyRememberGrants(input: {
         return setting.toolName === connector.remoteToolName
       })
 
-      if (!current) {
+      if (!current || current.definitionHash !== hash) {
         continue
       }
 

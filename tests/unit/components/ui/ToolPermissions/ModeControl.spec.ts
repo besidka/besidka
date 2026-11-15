@@ -1,0 +1,101 @@
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { enableAutoUnmount } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
+import ModeControl from '../../../../../app/components/Ui/ToolPermissions/ModeControl.vue'
+
+enableAutoUnmount(afterEach)
+
+async function mountControl(props: Record<string, unknown> = {}) {
+  return await mountSuspended(ModeControl, {
+    props: {
+      label: 'Search issues',
+      mode: 'ask',
+      modes: ['blocked', 'ask', 'allow'],
+      ...props,
+    },
+    attachTo: document.body,
+  })
+}
+
+describe('Ui/ToolPermissions/ModeControl', () => {
+  it('is a labeled radio group with three icon options and tooltips',
+    async () => {
+      const wrapper = await mountControl()
+      const group = wrapper.get('[role="radiogroup"]')
+      const radios = wrapper.findAll('[role="radio"]')
+
+      expect(group.attributes('aria-label'))
+        .toBe('Permission for Search issues')
+      expect(radios.map(radio => radio.attributes('aria-label')))
+        .toEqual(['Always allow', 'Needs approval', 'Blocked'])
+      expect(radios.map(radio => radio.attributes('aria-checked')))
+        .toEqual(['false', 'true', 'false'])
+      expect(radios.map((radio) => {
+        return radio.element.parentElement?.getAttribute('data-tip')
+      })).toEqual([
+        'Always allow — runs without asking',
+        'Needs approval — asks before each use',
+        'Blocked — never offered to the model',
+      ])
+      expect(radios.map(radio => radio.attributes('tabindex')))
+        .toEqual(['-1', '0', '-1'])
+    })
+
+  it('emits the chosen mode and nothing for the current one', async () => {
+    const wrapper = await mountControl()
+
+    await wrapper.get('[data-testid="tool-permission-option-ask"]')
+      .trigger('click')
+    await wrapper.get('[data-testid="tool-permission-option-allow"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('select')).toEqual([['allow']])
+  })
+
+  it('keeps an unavailable mode focusable, explains it and ignores it',
+    async () => {
+      const wrapper = await mountControl({
+        modes: ['blocked', 'ask'],
+        unavailableHint: 'this tool deletes or shares data, so it always asks',
+      })
+      const allow = wrapper.get('[data-testid="tool-permission-option-allow"]')
+
+      expect(allow.attributes('aria-disabled')).toBe('true')
+      expect(allow.attributes('disabled')).toBeUndefined()
+      expect(allow.element.parentElement?.getAttribute('data-tip'))
+        .toBe('Always allow — this tool deletes or shares data, so it always '
+          + 'asks')
+
+      await allow.trigger('click')
+
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+  it('ignores clicks while busy', async () => {
+    const wrapper = await mountControl({ isBusy: true })
+
+    await wrapper.get('[data-testid="tool-permission-option-blocked"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('select')).toBeUndefined()
+  })
+
+  it('moves focus between options with the arrow keys and wraps', async () => {
+    const wrapper = await mountControl()
+    const radios = wrapper.findAll('[role="radio"]')
+
+    ;(radios[1]!.element as HTMLButtonElement).focus()
+    await radios[1]!.trigger('keydown', { key: 'ArrowRight' })
+
+    expect(document.activeElement).toBe(radios[2]!.element)
+
+    await radios[2]!.trigger('keydown', { key: 'ArrowDown' })
+
+    expect(document.activeElement).toBe(radios[0]!.element)
+
+    await radios[0]!.trigger('keydown', { key: 'ArrowLeft' })
+
+    expect(document.activeElement).toBe(radios[2]!.element)
+    expect(wrapper.emitted('select')).toBeUndefined()
+  })
+})

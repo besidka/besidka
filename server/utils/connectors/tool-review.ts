@@ -56,6 +56,7 @@ import {
 import type {
   ConnectorToolDefinition,
 } from '~~/server/utils/connectors/tool-definitions'
+import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   connectorDestructiveHint,
@@ -185,12 +186,87 @@ export async function loadConnectorToolDefinitions(input: {
   }
 }
 
+/**
+ * Whether a tool is in the always-ask tier as listed: the server marks it
+ * destructive, or its remote name or title names a delete or share action.
+ * Such a tool can never be set to Always allow.
+ */
+export function isConnectorToolAlwaysAsk(
+  definition: ConnectorToolDefinition,
+): boolean {
+  return connectorDestructiveHint(definition.annotations)
+    || hasAlwaysAskToolName(definition.name, definition.title)
+}
+
+function toolModeOf(
+  change: ConnectorToolChange,
+  enabled: boolean,
+  setting: BaselineSetting | undefined,
+): ToolPermissionMode {
+  if (!enabled) {
+    return 'blocked'
+  }
+
+  return change === 'none' && !!setting && isAlwaysGrantActive(setting)
+    ? 'allow'
+    : 'ask'
+}
+
+/**
+ * The reviewed definition hash of each named tool that may be set to Always
+ * allow, or the names that may not: a tool missing from the live list or the
+ * baseline, a tool whose live definition differs from the reviewed one, and
+ * a tool in the always-ask tier. Server labels never decide this alone: the
+ * name heuristic and the destructive mark win over `readOnlyHint`.
+ */
+export function resolveAlwaysAllowHashes(input: {
+  definitions: readonly ConnectorToolDefinition[]
+  hashes: ReadonlyMap<string, string>
+  settings: readonly BaselineSetting[]
+  toolNames: readonly string[]
+}): { hashes: Map<string, string>, refused: string[] } {
+  const definitionsByName = new Map(input.definitions.map((definition) => {
+    return [definition.name, definition]
+  }))
+  const settingsByName = new Map(input.settings.map((setting) => {
+    return [setting.toolName, setting]
+  }))
+  const hashes = new Map<string, string>()
+  const refused: string[] = []
+
+  for (const toolName of input.toolNames) {
+    const definition = definitionsByName.get(toolName)
+    const setting = settingsByName.get(toolName)
+    const liveHash = input.hashes.get(toolName)
+
+    if (
+      !definition
+      || !setting
+      || !liveHash
+      || liveHash !== setting.definitionHash
+      || isConnectorToolAlwaysAsk(definition)
+    ) {
+      refused.push(toolName)
+
+      continue
+    }
+
+    hashes.set(toolName, setting.definitionHash)
+  }
+
+  return { hashes, refused }
+}
+
 function toReviewTool(
   definition: ConnectorToolDefinition,
   change: ConnectorToolChange,
   setting: BaselineSetting | undefined,
 ): ConnectorReviewTool {
   const destructive = connectorDestructiveHint(definition.annotations)
+  const alwaysAsk = isConnectorToolAlwaysAsk(definition)
+  const enabled = change === 'none' || change === 'changed'
+    ? setting?.enabled ?? false
+    : false
 
   return {
     name: definition.name,
@@ -199,14 +275,13 @@ function toReviewTool(
     readOnly: isDefinitionReadOnly(definition) && !destructive,
     destructive,
     openWorld: definition.annotations.openWorldHint ?? null,
-    alwaysAsk: destructive
-      || hasAlwaysAskToolName(definition.name, definition.title),
+    alwaysAsk,
     change,
-    enabled: change === 'none' || change === 'changed'
-      ? setting?.enabled ?? false
-      : false,
+    enabled,
     alwaysAllowed: change === 'none' && !!setting
       && isAlwaysGrantActive(setting),
+    mode: toolModeOf(change, enabled, setting),
+    canAlwaysAllow: change === 'none' && !alwaysAsk,
   }
 }
 
@@ -336,7 +411,7 @@ function settingFor(
  * Stores the reviewed tool list as the new baseline. `accept` turns new and
  * added tools on and keeps a changed tool's previous switch; `keep-disabled`
  * stores them off, so they stay out of chats until the user turns one on.
- * Either way a new or changed tool starts at "Ask every time" (an "Always
+ * Either way a new or changed tool starts at "Needs approval" (an "Always
  * allow" was given for the old definition and never carries over), removed
  * tools lose their rows, and a first review also writes the baseline
  * marker. A connector that was `drifted` is `ready` again.

@@ -1,87 +1,59 @@
 <template>
-  <div class="grid gap-2">
+  <div class="grid gap-3">
     <p
       class="text-xs text-base-content/70"
       data-testid="connector-tools-counter"
     >
       {{ enabledCount }} of {{ tools.length }} on. A message can use up to
       {{ perMessageLimit }} tools from all connectors; read-only tools go
-      first. Labels are as reported by the server.
+      first. Labels are as reported by the server. Needs approval asks before
+      each use; Always allow runs without asking.
     </p>
-    <ul
+    <UiToolPermissions
       v-if="tools.length"
-      class="list"
+      :groups="groups"
+      :is-busy="isBusy"
       data-testid="connector-tools"
+      @set-tools="emit('setModes', $event)"
+      @set-group="onSetGroup"
     >
-      <li
-        v-for="tool in tools"
-        :key="tool.name"
-        class="list-row items-start gap-3 px-0 py-3"
-        data-testid="connector-tool"
-        :data-tool-name="tool.name"
-      >
-        <div class="list-col-grow min-w-0">
-          <p class="break-words font-medium">
-            {{ tool.title || tool.name }}
-          </p>
-          <p
-            v-if="tool.title && tool.title !== tool.name"
-            class="break-all font-mono text-xs text-base-content/70"
-          >
-            {{ tool.name }}
-          </p>
-          <p
-            v-if="tool.description"
-            class="mt-1 whitespace-pre-line break-words text-sm text-base-content/80"
-            :class="{ 'line-clamp-2': !expanded.has(tool.name) }"
-            data-testid="connector-tool-description"
-          >
-            {{ tool.description }}
-          </p>
-          <button
-            v-if="tool.description.length > DESCRIPTION_PREVIEW_LENGTH"
-            type="button"
-            class="link link-hover text-xs"
-            :aria-expanded="expanded.has(tool.name)"
-            @click="toggleExpanded(tool.name)"
-          >
-            {{ expanded.has(tool.name) ? 'Show less' : 'Show more' }}
-          </button>
-          <div class="mt-2 flex flex-wrap items-center gap-2">
-            <ProfileConnectorsToolBadges :tool="tool" />
-            <span
-              v-if="tool.alwaysAllowed"
-              class="badge badge-soft badge-info badge-sm"
-              data-testid="connector-tool-always"
-            >
-              Always allowed
-            </span>
-            <button
-              v-if="tool.alwaysAllowed"
-              type="button"
-              class="btn btn-ghost btn-xs min-h-6"
-              :disabled="isBusy"
-              :aria-label="`Remove Always allow for ${tool.title || tool.name}`"
-              data-testid="connector-tool-always-remove"
-              @click="emit('removeAlways', tool.name)"
-            >
-              Remove
-            </button>
-          </div>
+      <template #tool="{ tool }">
+        <p class="break-words text-sm font-medium">
+          {{ tool.title }}
+        </p>
+        <p
+          v-if="toolsByName.get(tool.name)?.title
+            && toolsByName.get(tool.name)?.title !== tool.name"
+          class="break-all font-mono text-xs text-base-content/70"
+        >
+          {{ tool.name }}
+        </p>
+        <p
+          v-if="toolsByName.get(tool.name)?.description"
+          class="whitespace-pre-line break-words text-xs text-base-content/80"
+          :class="{ 'line-clamp-2': !expanded.has(tool.name) }"
+          data-testid="connector-tool-description"
+        >
+          {{ toolsByName.get(tool.name)?.description }}
+        </p>
+        <button
+          v-if="(toolsByName.get(tool.name)?.description.length ?? 0)
+            > DESCRIPTION_PREVIEW_LENGTH"
+          type="button"
+          class="link link-hover justify-self-start text-xs"
+          :aria-expanded="expanded.has(tool.name)"
+          @click="toggleExpanded(tool.name)"
+        >
+          {{ expanded.has(tool.name) ? 'Show less' : 'Show more' }}
+        </button>
+        <div
+          v-if="toolsByName.get(tool.name)"
+          class="flex flex-wrap items-center gap-2"
+        >
+          <ProfileConnectorsToolBadges :tool="toolsByName.get(tool.name)!" />
         </div>
-        <label class="flex min-h-11 items-center sm:min-h-8">
-          <span class="sr-only">Use {{ tool.title || tool.name }}</span>
-          <input
-            type="checkbox"
-            class="toggle toggle-sm"
-            :checked="tool.enabled"
-            :disabled="isBusy"
-            data-testid="connector-tool-toggle"
-            @change="onToggle(tool, $event)"
-          >
-        </label>
-      </li>
-    </ul>
+      </template>
+    </UiToolPermissions>
     <p
       v-else
       class="text-sm text-base-content/70"
@@ -94,8 +66,46 @@
 
 <script setup lang="ts">
 import type { ConnectorReviewTool } from '#shared/types/connectors.d'
+import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
+import type {
+  ToolPermissionChange,
+  ToolPermissionGroup,
+} from '~/utils/tool-permissions'
+
+type ConnectorToolGroupId = 'read' | 'write' | 'always-asks'
 
 const DESCRIPTION_PREVIEW_LENGTH = 140
+
+const ALL_MODES: readonly ToolPermissionMode[] = ['blocked', 'ask', 'allow']
+
+const ALWAYS_ASK_MODES: readonly ToolPermissionMode[] = ['blocked', 'ask']
+
+const ALWAYS_ASK_HINT = 'this tool deletes or shares data, so it always asks'
+
+const GROUPS: ReadonlyArray<{
+  id: ConnectorToolGroupId
+  label: string
+  description: string
+}> = [
+  {
+    id: 'read',
+    label: 'Read-only',
+    description: 'Look things up. Always allow lets them run after other '
+      + 'content in the message, too.',
+  },
+  {
+    id: 'write',
+    label: 'Write',
+    description: 'Create or change data. Even with Always allow, they ask '
+      + 'after content from another source.',
+  },
+  {
+    id: 'always-asks',
+    label: 'Always asks',
+    description: 'Delete or share data, by the server\'s label or the tool\'s '
+      + 'name. They ask before every use.',
+  },
+]
 
 const props = withDefaults(defineProps<{
   tools: ConnectorReviewTool[]
@@ -106,8 +116,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  toggle: [toolName: string, enabled: boolean]
-  removeAlways: [toolName: string]
+  setModes: [changes: ToolPermissionChange[]]
 }>()
 
 const expanded = shallowRef<Set<string>>(new Set())
@@ -115,6 +124,48 @@ const expanded = shallowRef<Set<string>>(new Set())
 const enabledCount = computed<number>(() => {
   return props.tools.filter(tool => tool.enabled).length
 })
+
+const toolsByName = computed<Map<string, ConnectorReviewTool>>(() => {
+  return new Map(props.tools.map(tool => [tool.name, tool]))
+})
+
+function groupOf(tool: ConnectorReviewTool): ConnectorToolGroupId {
+  if (tool.alwaysAsk || !tool.canAlwaysAllow) {
+    return 'always-asks'
+  }
+
+  return tool.readOnly ? 'read' : 'write'
+}
+
+const groups = computed<ToolPermissionGroup[]>(() => {
+  return GROUPS.map((group) => {
+    const isLocked = group.id === 'always-asks'
+
+    return {
+      ...group,
+      isLocked,
+      tools: props.tools
+        .filter(tool => groupOf(tool) === group.id)
+        .map((tool) => {
+          return {
+            name: tool.name,
+            title: tool.title || tool.name,
+            mode: tool.mode,
+            modes: isLocked ? ALWAYS_ASK_MODES : ALL_MODES,
+            ...(isLocked ? { unavailableHint: ALWAYS_ASK_HINT } : {}),
+          }
+        }),
+    }
+  })
+})
+
+function onSetGroup(
+  _groupId: string,
+  _mode: ToolPermissionMode,
+  changes: ToolPermissionChange[],
+) {
+  emit('setModes', changes)
+}
 
 function toggleExpanded(toolName: string) {
   const next = new Set(expanded.value)
@@ -126,12 +177,5 @@ function toggleExpanded(toolName: string) {
   }
 
   expanded.value = next
-}
-
-function onToggle(tool: ConnectorReviewTool, event: Event) {
-  const target = event.target as HTMLInputElement
-
-  emit('toggle', tool.name, target.checked)
-  target.checked = tool.enabled
 }
 </script>

@@ -1027,13 +1027,17 @@ export interface ConnectorToolSwitch {
   toolName: string
   enabled?: boolean
   resetApproval?: boolean
+  alwaysAllowHash?: string
 }
 
 /**
- * Turns reviewed tools on or off and sets "Always allow" back to "Ask every
- * time", without touching the reviewed definition hash, so a page toggle
- * can never accept a changed definition. Rows of other users, unknown tools
- * and the baseline marker are left alone. Returns the names that changed.
+ * Turns reviewed tools on or off, sets "Always allow" back to "Needs
+ * approval" (`resetApproval`), or sets it (`alwaysAllowHash`, the reviewed
+ * definition hash the caller checked), without touching the reviewed
+ * definition hash, so a page change can never accept a changed definition.
+ * An "Always allow" applies only while the stored hash equals the one it was
+ * given for. Rows of other users, unknown tools and the baseline marker are
+ * left alone. Returns the names that changed.
  */
 export async function updateConnectorToolSwitches(
   db: DbClient,
@@ -1044,21 +1048,36 @@ export async function updateConnectorToolSwitches(
   const statements = switches
     .filter((entry) => {
       return entry.toolName !== CONNECTOR_BASELINE_MARKER_TOOL_NAME
-        && (entry.enabled !== undefined || entry.resetApproval)
+        && (
+          entry.enabled !== undefined
+          || entry.resetApproval
+          || entry.alwaysAllowHash
+        )
     })
     .map((entry) => {
+      const approval = entry.alwaysAllowHash
+        ? {
+          approval: 'always' as const,
+          approvedDefinitionHash: entry.alwaysAllowHash,
+        }
+        : { approval: 'ask' as const, approvedDefinitionHash: null }
+
       return db.update(schema.connectorToolSettings)
         .set({
           ...(entry.enabled !== undefined ? { enabled: entry.enabled } : {}),
-          ...(entry.resetApproval
-            ? { approval: 'ask' as const, approvedDefinitionHash: null }
-            : {}),
+          ...(entry.resetApproval || entry.alwaysAllowHash ? approval : {}),
           updatedAt: new Date(),
         })
         .where(and(
           eq(schema.connectorToolSettings.userId, userId),
           eq(schema.connectorToolSettings.connectorId, connectorId),
           eq(schema.connectorToolSettings.toolName, entry.toolName),
+          ...(entry.alwaysAllowHash
+            ? [eq(
+              schema.connectorToolSettings.definitionHash,
+              entry.alwaysAllowHash,
+            )]
+            : []),
         ))
         .returning({ toolName: schema.connectorToolSettings.toolName })
     })

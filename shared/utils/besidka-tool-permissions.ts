@@ -24,7 +24,7 @@ export const BESIDKA_TOOL_TIER_LABELS: Record<
 > = {
   'read': 'Read-only',
   'write': 'Write',
-  'ask-every-time': 'Ask every time',
+  'ask-every-time': 'Always asks',
 }
 
 export const BESIDKA_TOOL_TIER_DESCRIPTIONS: Record<
