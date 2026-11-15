@@ -422,6 +422,53 @@ highlights, never a verdict:
 - injection phrasing ("ignore previous", "system prompt");
 - references to secrets (`API_KEY`, `.env`, `~/.ssh`).
 
+Every finding carries a `rule` id (kebab-case, never renamed), a `severity`
+(`high` "Look closely", `medium` "Worth a look", `low` "For your
+information") and a `source` (`rules`, or `jev` for a later optional check).
+The finding types are the seven above plus `execution`, `exfiltration`,
+`concealment`, `role`, `credential`, `encoded`, `frontmatter` and `file`, which
+later rule sets fill; each rule is one row of the rule table in
+`findings.ts`. Today's mapping: "ignore previous" and "disregard previous" are
+high; `~/.ssh`, `rm -rf`, `bash -c`, `base64 -d`, `powershell -enc` and hidden
+characters are medium; links, IP addresses, plain `curl`, `wget`, `| sh`,
+`sudo`, `chmod +x`, `eval`, `pip install`, `npm i`, "system prompt",
+`API_KEY`, `.env`, long lines and blank runs are low (a bare "eval" or
+"system prompt" is prose far more often than code, and `| sh` also matches
+`{zsh|bash}`).
+
+- **Collector.** Keeps the most severe findings first (severity, then
+  position), at most 200 per file and 500 per skill, and still at least one
+  finding of every type present, so a skill full of links cannot hide one
+  command. Counts always cover every finding.
+- **Quoted mentions.** A match of a rule marked quotable (injection and secret
+  rules today) inside quotes or a backtick span that closes within about 24
+  characters drops to `low` with the detail "quoted, probably an example". A
+  quoted value after `:` or `=`, and any match inside a ```` ```! ```` block,
+  never drops. The `inline-code` mode (for the execution rules that arrive
+  later) drops a match inside an inline code span on a line without a URL.
+- **Scanner state.** The scan tracks the ```` ```! ```` fence (Claude Code runs
+  these before a skill loads), normal code fences and the frontmatter range
+  with its top-level key. The state only describes a finding (detail text such
+  as "in a code block", and the key that a later rule uses to raise severity
+  for `description`, `argument-hint` and `metadata`); it never hides one. The
+  scan does not depend on the file path.
+- **Long lines.** Text rules run over 5,000 character windows that overlap by
+  500, across the whole line, with bounded regexes; a rule reports once per
+  line, and the snippet is cut around the match.
+- **Stored counts.** `skill_versions.findings` holds
+  `{ "rulesVersion": 2, "high": 1, "execution": 1 }`: the rules version
+  (`SKILL_FINDING_RULES_VERSION`), the severity counts and the type counts. It
+  is a JSON column, so a new version needs no migration. Counts without a
+  version, or with an older one, are stale: an in-app save drops `rulesVersion`
+  and `jev:` entries and does a full rescan instead of a delta, and the update
+  review rescans the version in the browser (read file by file, never written
+  back) and says "Rescanned with newer checks". Nothing runs in the
+  background.
+- **Update re-check.** A finding is "new" unless the old text holds the same
+  rule on a line with the same whitespace-normalized content, compared as a
+  multiset (`rule` plus the SHA-256 of the full line). A URL changed after
+  character 120 and a second copy of a known line are therefore new.
+
 ### 3.4 Import preview, commit and update
 
 Staging (KV and R2 with a 1 h lifetime) exists only for the import preview,
@@ -1221,7 +1268,7 @@ unique (`user_id`, `name`); unique (`user_id`, `slash_name`); (`user_id`, `updat
 | `sha256` | of the canonical file set; accept and reject are bound to it (section 3.4) |
 | `files_count`, `bytes` | |
 | `license_class`, `license_file_sha256` | |
-| `findings` | json of counts by type |
+| `findings` | json: `rulesVersion`, severity counts (`high`, `medium`, `low`) and type counts |
 | `note` | at most 200 characters |
 | `created_at` | |
 

@@ -151,6 +151,9 @@ describe('Profile/Skills/EditorPane', () => {
     const wrapper = await mountPane({
       findings: [{
         type: 'url',
+        rule: 'url',
+        severity: 'low',
+        source: 'rules',
         path: 'SKILL.md',
         line: 1,
         snippet: 'https://example.com',

@@ -9,6 +9,7 @@ import type { SkillFrontmatter } from '#shared/utils/skills/frontmatter'
 import {
   capSkillFindings,
   scanSkillTextWithCounts,
+  toStoredFindingCounts,
 } from '#shared/utils/skills/findings'
 import type { SkillFinding } from '#shared/utils/skills/findings'
 import { classifySkillLicense } from '#shared/utils/skills/license'
@@ -149,7 +150,8 @@ export async function analyzeSkillFiles(
 
   const files: SkillAnalysisFile[] = []
   const findings: SkillFinding[] = []
-  const findingCounts: Record<string, number> = {}
+  const typeCounts: Record<string, number> = {}
+  const severityCounts: Record<string, number> = {}
   let totalBytes = 0
 
   for (const file of input.files) {
@@ -165,11 +167,15 @@ export async function analyzeSkillFiles(
     findings.push(...scan.findings)
 
     for (const [type, count] of Object.entries(scan.counts)) {
-      findingCounts[type] = (findingCounts[type] ?? 0) + count
+      typeCounts[type] = (typeCounts[type] ?? 0) + count
+    }
+
+    for (const [severity, count] of Object.entries(scan.severityCounts)) {
+      severityCounts[severity] = (severityCounts[severity] ?? 0) + count
     }
   }
 
-  const totalFindings = Object.values(findingCounts).reduce(
+  const totalFindings = Object.values(typeCounts).reduce(
     (total, count) => total + count,
     0,
   )
@@ -187,7 +193,7 @@ export async function analyzeSkillFiles(
     files,
     skillMd: skillMdFile.text,
     findings: shownFindings,
-    findingCounts,
+    findingCounts: toStoredFindingCounts(typeCounts, severityCounts),
     warnings,
     license,
     totalBytes,

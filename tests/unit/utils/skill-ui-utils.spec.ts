@@ -3,8 +3,13 @@ import { formatRelativeTime } from '../../../app/utils/relative-time'
 import { buildSkillFileTreeRows } from '../../../app/utils/skill-file-tree'
 import {
   describeFindingCounts,
+  describeFindingSummary,
+  describeQuotedMention,
+  describeSeverityCounts,
+  groupFindingsBySeverity,
   groupFindingsByLine,
 } from '../../../app/utils/skill-findings'
+import type { SkillFinding } from '#shared/utils/skills/findings'
 import {
   describeSkillVersionOrigin,
   findLocalEditsSinceImport,
@@ -57,11 +62,59 @@ describe('skill findings helpers', () => {
     expect(describeFindingCounts(null)).toBe('')
   })
 
+  it('groups findings by severity in a fixed order and drops empty groups', () => {
+    const make = (
+      severity: SkillFinding['severity'],
+      detail: string | null = null,
+    ): SkillFinding => {
+      return {
+        type: 'url',
+        rule: 'url',
+        severity,
+        path: 'a.md',
+        line: 1,
+        snippet: '',
+        detail,
+        source: 'rules',
+      }
+    }
+    const groups = groupFindingsBySeverity([
+      make('low'),
+      make('high'),
+      make('low'),
+    ])
+
+    expect(groups.map(group => `${group.title}:${group.findings.length}`))
+      .toEqual(['Look closely:1', 'For your information:2'])
+    expect(groups.map(group => group.isOpenByDefault)).toEqual([true, false])
+    expect(describeQuotedMention(make('low', 'quoted, probably an example')))
+      .toBe('(quoted, probably an example)')
+    expect(describeQuotedMention(make('low', 'curl'))).toBe('')
+  })
+
+  it('tallies severities from stored counts', () => {
+    const counts = {
+      rulesVersion: 2,
+      high: 1,
+      low: 4,
+      shell: 1,
+      url: 4,
+    }
+
+    expect(describeSeverityCounts(counts))
+      .toBe('1 to look closely at, 4 for your information')
+    expect(describeFindingSummary(counts)).toBe(
+      '1 to look closely at, 4 for your information (4 links, 1 command)',
+    )
+    expect(describeFindingSummary({ url: 2 })).toBe('2 links')
+    expect(describeSeverityCounts({ url: 2 })).toBe('')
+  })
+
   it('groups findings by line for one file', () => {
     const lines = groupFindingsByLine([
-      { type: 'url', path: 'a.md', line: 2, snippet: '', detail: null },
-      { type: 'shell', path: 'a.md', line: 2, snippet: '', detail: null },
-      { type: 'url', path: 'b.md', line: 2, snippet: '', detail: null },
+      { type: 'url', rule: 'url', severity: 'low', source: 'rules', path: 'a.md', line: 2, snippet: '', detail: null },
+      { type: 'shell', rule: 'shell-curl', severity: 'low', source: 'rules', path: 'a.md', line: 2, snippet: '', detail: null },
+      { type: 'url', rule: 'url', severity: 'low', source: 'rules', path: 'b.md', line: 2, snippet: '', detail: null },
     ], 'a.md')
 
     expect(lines.get(2)).toHaveLength(2)

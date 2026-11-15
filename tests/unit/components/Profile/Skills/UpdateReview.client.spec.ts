@@ -33,13 +33,24 @@ mockNuxtImport('useLazyFetch', () => {
     }
   }
 })
+const pendingFindings = ref<unknown>(null)
+const currentFindings = ref<unknown>(null)
+let asyncDataCalls = 0
+
 mockNuxtImport('useLazyAsyncData', () => {
-  return () => ({
-    data: diff,
-    status: ref('success'),
-    error: ref(null),
-    refresh: vi.fn(),
-  })
+  return () => {
+    const sources = [diff, pendingFindings, currentFindings]
+    const data = sources[asyncDataCalls % sources.length]!
+
+    asyncDataCalls += 1
+
+    return {
+      data,
+      status: ref('success'),
+      error: ref(null),
+      refresh: vi.fn(),
+    }
+  }
 })
 
 enableAutoUnmount(afterEach)
@@ -166,6 +177,9 @@ describe('Profile/Skills/UpdateReview', () => {
     detail.value = null
     versions.value = null
     diff.value = null
+    pendingFindings.value = null
+    currentFindings.value = null
+    asyncDataCalls = 0
   })
 
   afterEach(() => {
@@ -184,6 +198,44 @@ describe('Profile/Skills/UpdateReview', () => {
     )
     expect(get('skill-update-finding-counts').textContent)
       .toContain('2 links')
+  })
+
+  it('shows the rescanned counts and says they come from newer checks', async () => {
+    setUp()
+    pendingFindings.value = {
+      counts: { rulesVersion: 2, high: 1, low: 1, injection: 1, url: 1 },
+      isRescanned: true,
+    }
+    currentFindings.value = {
+      counts: { rulesVersion: 2, low: 1, url: 1 },
+      isRescanned: true,
+    }
+    await mountReview()
+
+    const text = get('skill-update-finding-counts').textContent
+
+    expect(text).toContain(
+      '1 to look closely at, 1 for your information (1 link, 1 instruction-like phrase)',
+    )
+    expect(text).toContain('Rescanned with newer checks.')
+  })
+
+  it('shows counts from the current rules without a rescan note', async () => {
+    setUp()
+    pendingFindings.value = {
+      counts: { rulesVersion: 2, low: 2, url: 2 },
+      isRescanned: false,
+    }
+    currentFindings.value = {
+      counts: { rulesVersion: 2, low: 1, url: 1 },
+      isRescanned: false,
+    }
+    await mountReview()
+
+    const text = get('skill-update-finding-counts').textContent
+
+    expect(text).not.toContain('Rescanned')
+    expect(text).toContain('2 for your information (2 links)')
   })
 
   it('links to the GitHub compare view', async () => {

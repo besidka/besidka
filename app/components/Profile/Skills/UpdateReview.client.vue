@@ -96,6 +96,9 @@
             </template>
             Besidka highlights links and commands so you can review them. It
             cannot tell whether a skill is safe.
+            <template v-if="isRescanned">
+              Rescanned with newer checks.
+            </template>
           </p>
           <p>
             Accepting switches the skill off until you turn it on again.
@@ -331,12 +334,79 @@ const canAccept = computed<boolean>(() => {
     && (!needsLicenseTick.value || isLicenseAcknowledged.value)
 })
 
+async function rescanVersion(
+  version: number | undefined,
+  stored: Record<string, number> | null | undefined,
+) {
+  return await rescanStoredFindingCounts({
+    stored: stored ?? null,
+    listPaths: async () => {
+      const listing = await $fetch(`/api/v1/skills/${props.skillId}/files`, {
+        query: { version },
+      })
+
+      if (!('files' in listing) || !listing.files) {
+        throw new Error('The version has no file list')
+      }
+
+      return listing.files.map((file) => {
+        return file.path
+      })
+    },
+    readText: async (path) => {
+      const file = await $fetch(`/api/v1/skills/${props.skillId}/files`, {
+        query: { version, path },
+      })
+
+      if (!('text' in file)) {
+        throw new Error('The file has no text')
+      }
+
+      return file.text
+    },
+  })
+}
+
+const { data: pendingFindings } = useLazyAsyncData(
+  () => `skill-update-findings-${props.skillId}-${pending.value?.version ?? 0}`,
+  async () => {
+    return await rescanVersion(
+      pending.value?.version,
+      pending.value?.findings,
+    )
+  },
+  { watch: [pending] },
+)
+
+const { data: currentFindings } = useLazyAsyncData(
+  () => `skill-update-current-findings-${props.skillId}-${
+    skill.value?.currentVersionInfo?.version ?? 0
+  }`,
+  async () => {
+    return await rescanVersion(
+      skill.value?.currentVersionInfo?.version,
+      skill.value?.currentVersionInfo?.findings,
+    )
+  },
+  { watch: [skill] },
+)
+
 const pendingFindingSummary = computed<string>(() => {
-  return describeFindingCounts(pending.value?.findings)
+  return describeFindingSummary(
+    pendingFindings.value?.counts ?? pending.value?.findings,
+  )
 })
 
 const currentFindingSummary = computed<string>(() => {
-  return describeFindingCounts(skill.value?.currentVersionInfo?.findings)
+  return describeFindingSummary(
+    currentFindings.value?.counts ?? skill.value?.currentVersionInfo?.findings,
+  )
+})
+
+const isRescanned = computed<boolean>(() => {
+  return Boolean(
+    pendingFindings.value?.isRescanned || currentFindings.value?.isRescanned,
+  )
 })
 
 const compareUrl = computed<string | null>(() => {

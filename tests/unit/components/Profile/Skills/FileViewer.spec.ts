@@ -49,6 +49,9 @@ describe('Profile/Skills/FileViewer', () => {
         findings: [
           {
             type: 'shell',
+            rule: 'shell-curl',
+            severity: 'low',
+            source: 'rules',
             path: 'SKILL.md',
             line: 2,
             snippet: 'curl',
@@ -56,6 +59,9 @@ describe('Profile/Skills/FileViewer', () => {
           },
           {
             type: 'url',
+            rule: 'url',
+            severity: 'low',
+            source: 'rules',
             path: 'SKILL.md',
             line: 2,
             snippet: 'https://x.test',
@@ -63,6 +69,9 @@ describe('Profile/Skills/FileViewer', () => {
           },
           {
             type: 'url',
+            rule: 'url',
+            severity: 'low',
+            source: 'rules',
             path: 'other.md',
             line: 1,
             snippet: 'https://y.test',
