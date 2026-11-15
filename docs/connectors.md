@@ -1312,12 +1312,14 @@ Where this differs from sections 7.2 and 7.6:
   (`withProviderToolEgressGuard`). The rule counts every taint, so with the
   flag on, requesting web search and code execution together leaves code
   execution out. The same guard withholds the provider's own web search,
-  grounding and URL context once the turn has read a connector or the
-  user's Besidka data (any read source, the knowledge and past-chat
-  excerpts preset included; rule 4 of the plan), for the rest of the
-  request and on its continuations; web taint alone does not. With the
-  flag on, native web search is therefore unavailable after a connector
-  read and in project chats whose knowledge reaches the prompt as text.
+  grounding and URL context once a tool call of the turn has read a
+  connector or the user's Besidka data (a connector result, `search_chats`,
+  `read_chat`, the memory and project knowledge reads; rule 4 of the plan),
+  for the rest of the request and on its continuations. The state keeps
+  those reads apart (`toolReadSources`, optional in older turn records):
+  knowledge and past-chat excerpts preset into the prompt still count for
+  F2 (`readSources`) but never withhold the web search the user turned on,
+  and web taint alone does not either.
   On Anthropic routes the declarations stay mid-loop (the API rejects tool
   history without them) and a resumed message that already called the tool
   keeps it: there a provider-executed call after taint, web search

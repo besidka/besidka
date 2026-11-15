@@ -484,6 +484,7 @@ function cloneState(state: ApprovalState): ApprovalState {
 
   state.taint.forEach(kind => clone.taint.add(kind))
   state.readSources.forEach(source => clone.readSources.add(source))
+  state.toolReadSources.forEach(source => clone.toolReadSources.add(source))
   Object.assign(clone.counters, state.counters)
 
   return clone

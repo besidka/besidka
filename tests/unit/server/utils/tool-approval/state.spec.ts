@@ -16,6 +16,7 @@ import {
   incrementCounter,
   recordRead,
   recordTaint,
+  recordToolRead,
   serializeApprovalState,
 } from '~~/server/utils/tool-approval/state'
 
@@ -321,5 +322,36 @@ describe('read sources past the cap', () => {
 
     expect(decision.rule).toBe(3)
     expect(decision.reason).toBe('cross-source')
+  })
+})
+
+describe('recordToolRead', () => {
+  it('counts a tool read for rule 3 and marks it apart from preset reads',
+    () => {
+      const state = createApprovalState()
+
+      recordRead(state, 'besidka')
+
+      expect([...state.toolReadSources]).toEqual([])
+
+      recordToolRead(state, connectorReadSource('c1'))
+
+      expect([...state.readSources]).toEqual(['besidka', 'connector:c1'])
+      expect([...state.toolReadSources]).toEqual(['connector:c1'])
+
+      const restored = deserializeApprovalState(serializeApprovalState(state))
+
+      expect(restored.ok && [...restored.state.toolReadSources])
+        .toEqual(['connector:c1'])
+    })
+
+  it('reads a turn record written before tool reads were tracked', () => {
+    const restored = deserializeApprovalState({
+      taint: ['web'],
+      readSources: ['besidka'],
+      counters: { rounds: 1, steps: 1, connectorCalls: 0, builtInCalls: 0 },
+    })
+
+    expect(restored.ok && [...restored.state.toolReadSources]).toEqual([])
   })
 })

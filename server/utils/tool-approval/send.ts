@@ -56,6 +56,7 @@ import {
   incrementCounter,
   recordRead,
   recordTaint,
+  recordToolRead,
   serializeApprovalState,
 } from '~~/server/utils/tool-approval/state'
 import type { ApprovalState } from '~~/server/utils/tool-approval/state'
@@ -401,7 +402,7 @@ export function createSendToolApproval(input: {
     }
 
     if (entry.readSource) {
-      recordRead(state, entry.readSource)
+      recordToolRead(state, entry.readSource)
     }
 
     if (entry.descriptor.family === 'connector') {
@@ -583,7 +584,7 @@ export function createSendToolApproval(input: {
       return wouldAsk(entry)
     }
 
-    return entry.taint === 'web' && state.readSources.size > 0
+    return entry.taint === 'web' && state.toolReadSources.size > 0
   }
 
   function listWithheldProviderTools(tools: ToolSet | undefined): string[] {
@@ -637,9 +638,10 @@ type StepPreparation = Awaited<ReturnType<PrepareStepFunction<ToolSet>>>
 /**
  * Keeps a provider-executed tool that is not a read (code execution) out of
  * every step in which the policy would ask for it, and the provider's own
- * web search, grounding and URL context out of every step once the turn
- * read a connector or the user's Besidka data (rule 4: a fetch could carry
- * that data out; web taint alone does not withhold them). The provider runs
+ * web search, grounding and URL context out of every step once a tool call
+ * of the turn read a connector or the user's Besidka data (rule 4: a fetch
+ * could carry that data out). Web taint alone, and knowledge or past-chat
+ * excerpts preset into the prompt, do not withhold them. The provider runs
  * such a call inside its own response, before Besidka sees it, so it can
  * never wait for approval; leaving the tool out is the only way to stop it.
  * The tools the base `prepareStep` already narrowed stay narrowed. With

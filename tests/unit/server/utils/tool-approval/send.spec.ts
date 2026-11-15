@@ -432,23 +432,34 @@ describe('createSendToolApproval', () => {
     }))).toEqual({ type: 'user-approval', reason: 'untrusted-output' })
   })
 
-  it('withholds provider web search once the turn read private data', () => {
+  it('keeps provider web search with knowledge excerpts in the prompt, and '
+    + 'withholds it after a tool read private data', () => {
     const approval = createSendToolApproval({ state: createApprovalState() })
     const tools = {
       web_search: { type: 'provider' },
       google_search: { type: 'provider' },
+      search_chats: { execute: vi.fn() },
     } as never
 
     approval.registerTools(tools)
-    approval.state.taint.add('web')
+    presetApprovalTaint(approval.state, {
+      requestedTools: ['web_search'],
+      holdsUntrustedKnowledge: true,
+      holdsArtifactContext: false,
+      holdsSkillText: false,
+      holdsPastChatExcerpts: true,
+      isBranchedFromShare: false,
+    })
 
+    expect([...approval.state.readSources]).toEqual(['besidka'])
     expect(approval.listWithheldProviderTools(tools)).toEqual([])
+    expect(hasGuardedProviderTool(approval, tools)).toBe(true)
 
-    approval.state.readSources.add('connector:c1')
-
+    expect(approval.toolApproval(call('call-1', 'search_chats', {
+      query: 'pasta',
+    }))).toBe('not-applicable')
     expect(approval.listWithheldProviderTools(tools))
       .toEqual(['web_search', 'google_search'])
-    expect(hasGuardedProviderTool(approval, tools)).toBe(true)
   })
 
   it('replays a call the user approved without a new decision', () => {
