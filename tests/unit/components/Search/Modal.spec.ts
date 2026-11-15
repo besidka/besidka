@@ -27,6 +27,7 @@ const isAdmin = ref<boolean>(false)
 const artifactsActive = ref<boolean>(false)
 const documentsActive = ref<boolean>(false)
 const skillsActive = ref<boolean>(false)
+const besidkaToolsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -51,7 +52,9 @@ mockNuxtImport('useFeature', () => {
       ? documentsActive.value
       : key === 'skills'
         ? skillsActive.value
-        : artifactsActive.value
+        : key === 'besidka-tools'
+          ? besidkaToolsActive.value
+          : artifactsActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -132,6 +135,7 @@ describe('Search/Modal.client', () => {
     artifactsActive.value = false
     documentsActive.value = false
     skillsActive.value = false
+    besidkaToolsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -362,6 +366,41 @@ describe('Search/Modal.client', () => {
     await nextTick()
 
     expect(wrapper.find('#search-option-skills').exists()).toBe(false)
+  })
+
+  it('adds the Besidka tool permissions row to Settings after Labs only with the besidka-tools feature', async () => {
+    besidkaToolsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.indexOf('search-option-besidka-tool-permissions'))
+      .toBe(ids.indexOf('search-option-labs') + 1)
+    expect(wrapper.get('#search-option-besidka-tool-permissions').text())
+      .toBe('Besidka tool permissions')
+    expect(wrapper.get('#search-option-besidka-tool-permissions .iconify')
+      .classes()).toContain('i-lucide:wrench')
+
+    await wrapper.find('#search-option-besidka-tool-permissions')
+      .trigger('click')
+
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/profile/labs?panel=besidka-tool-permissions')
+  })
+
+  it('omits the Besidka tool permissions row without the besidka-tools feature', async () => {
+    artifactsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-besidka-tool-permissions').exists())
+      .toBe(false)
   })
 
   it('shows the Admin rows in their own group, before Interface, only to admins', async () => {

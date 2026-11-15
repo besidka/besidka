@@ -100,6 +100,7 @@
 import type { HistoryChat } from '#shared/types/history.d'
 import { parseError } from 'evlog'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
+import { BESIDKA_TOOL_PERMISSIONS_LABS_PATH } from '~/utils/besidka-tool-permissions'
 
 interface SearchInputInstance {
   inputRef: HTMLInputElement | null
@@ -132,6 +133,7 @@ const isAdmin = useIsAdmin()
 const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
 const skillsFeature = useFeature('skills')
+const besidkaToolsFeature = useFeature('besidka-tools')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
@@ -278,6 +280,14 @@ function buildSettingsGroup(): SearchModalGroup<SearchModalEntry> {
         label: 'Labs',
         run: () => goTo('/profile/labs'),
       },
+      ...(besidkaToolsFeature.value.active
+        ? [{
+          id: 'search-option-besidka-tool-permissions',
+          iconName: 'lucide:wrench',
+          label: 'Besidka tool permissions',
+          run: () => goTo(BESIDKA_TOOL_PERMISSIONS_LABS_PATH),
+        }]
+        : []),
     ],
   }
 }

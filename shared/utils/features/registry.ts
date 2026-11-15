@@ -286,6 +286,14 @@ const featureList = [
     available: true,
   }),
   internalFeature({
+    key: 'besidka-tools',
+    title: 'Besidka tools',
+    description: 'Let the model use your Besidka data and tools in chats, '
+      + 'with your permission for each tool.',
+    optIn: 'required',
+    available: true,
+  }),
+  internalFeature({
     key: 'ui.side-panel-demo',
     title: 'Side panel demo',
     description: 'A demo of the right-hand side panel.',
