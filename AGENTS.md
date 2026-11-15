@@ -24,6 +24,8 @@ This holds even when a feature is finished, every phase is done, and the legal c
 
 Why: on 2026-11-15 three notices that agents had scheduled earlier emailed every user three times in one morning about one Privacy Policy update, and users asked to unsubscribe. The sweep was stopped (#906). Announcing legal changes is the owner's decision, made in the admin area.
 
+The admin area enforces this (BES-396): a notice is emailed only after the owner approves it in `/admin/legal` and while `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on, and a `CURRENT_CONSENT_VERSION` bump re-prompts nobody until the owner approves that version there. An agent never approves, withdraws or seeds an approval (`legal_notice_approvals`, `legal_consent_version_approvals`), in code, SQL, a migration or a test fixture that reaches a real database. See `docs/legal.md`, "Owner approval in the admin area".
+
 ## Package Manager
 
 Use **pnpm** exclusively for this project. Do not use npm, npx, bun, bunx, or other package managers.
@@ -109,6 +111,8 @@ These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `u
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
 `user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymizes `feature_audit_log` (see `docs/feature-flags.md`).
+
+`legal_notice_approvals`, `legal_consent_version_approvals` and `legal_notice_email_optouts` (`server/db/schemas/legal-approvals.ts`) have no FK and no cascade: `purgeUserData` deletes the user's opt-out and nulls their id as an approver (see `docs/legal.md`, "Owner approval in the admin area", and `docs/d1-restore-reconciliation.md`).
 
 `documents` (`server/db/schemas/documents.ts`) has no FK and no cascade: `purgeUserData` deletes its rows and the spec objects under `documents/<userId>/`, and the deletion hooks in `server/utils/documents/cleanup.ts` remove the rest (see `docs/d1-restore-reconciliation.md`).
 
@@ -386,8 +390,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   list, and "Notifying users of changes": the three signals (git-derived Last
   updated date, `CURRENT_CONSENT_VERSION`, `LEGAL_NOTICES` for material
   changes: email, in-app banner and the generated `::legal-change-history`),
-  the CI hash gate (`legal-document-revisions.ts`, `pnpm run legal:hash`),
-  the WP260 materiality checklist, the 30/14-day rule, and how to add a notice
+  the owner approval in `/admin/legal` that every notice email and consent
+  version bump needs (two switches for email, the notice content hash, the
+  stated recipient count, the effective consent version and its
+  `2026-11-a` baseline, opt-outs, audit actions), the CI hash gate
+  (`legal-document-revisions.ts`, `pnpm run legal:hash`), the WP260
+  materiality checklist, the 30/14-day rule, and how to add a notice
 - `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory
   (opt-in removed from v1, owner 2026-10-25, option (c)): why explicit consent
   is the only basis, why it was not shipped, option (b) with its launch
