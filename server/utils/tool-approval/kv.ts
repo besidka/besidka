@@ -11,6 +11,7 @@ import {
   TOOL_APPROVAL_PENDING_PER_MESSAGE,
   TOOL_APPROVAL_RECORD_VERSION,
   TOOL_APPROVAL_REASONS,
+  TOOL_APPROVAL_REMEMBER_OPTIONS,
   TOOL_APPROVAL_SUBJECT_ID_PATTERN,
   TOOL_APPROVAL_SUMMARY_MAX_LENGTH,
   TOOL_APPROVAL_TTL_SECONDS,
@@ -53,7 +54,10 @@ const pendingApprovalSchema = z.object({
   input: z.unknown(),
   signature: z.string().min(1).max(SIGNATURE_MAX_LENGTH),
   reason: z.enum(TOOL_APPROVAL_REASONS),
+  rememberOptions: z.array(z.enum(TOOL_APPROVAL_REMEMBER_OPTIONS))
+    .max(TOOL_APPROVAL_REMEMBER_OPTIONS.length),
   summary: z.string().max(TOOL_APPROVAL_SUMMARY_MAX_LENGTH),
+  auditCallId: z.number().int().positive().nullable(),
   snapshot: pendingSnapshotSchema,
 })
 

@@ -150,10 +150,13 @@ Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 (and `.files`, `.skills`), `research.custom` (and `research.custom.max`,
 `research.export`, `research.mcp`), `connectors` (and `.oauth`, `.registry`,
 `.native`), `google.drive` (and `google.calendar`, `google.byo`,
-`google.gmail`), `skills` (and `.import-url`, `.commands`, `.scripts`), and
-`ui.side-panel-demo`. Of the `connectors` flags only `connectors` and
-`connectors.oauth` are `available: true` (C-4, still `internal`, so admin- and
-grant-only); `.registry` and `.native` stay unavailable.
+`google.gmail`), `skills` (and `.import-url`, `.commands`, `.scripts`),
+`tool-approvals`, and `ui.side-panel-demo`. Of the `connectors` flags only
+`connectors` and `connectors.oauth` are `available: true` (C-4, still
+`internal`, so admin- and grant-only); `.registry` and `.native` stay
+unavailable. `tool-approvals` (C-6) is `available: true`, spends nothing and
+is evaluated once per chat send (`resolveSendFeatures`); off, the send
+behaves exactly as before C-6 (`docs/connectors.md` section 7.6).
 
 As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,
 `FEATURE_KEYS`, `isFeatureKey(key)` (own keys only, so `constructor` is

@@ -1,6 +1,10 @@
 import type { UIMessage } from 'ai'
 import type { DataArtifactPart } from '#shared/utils/artifacts'
 import {
+  isAwaitingApprovalToolPart,
+  toStoredAwaitingApprovalToolPart,
+} from '#shared/utils/tool-approval-parts'
+import {
   ARTIFACT_DATA_PART_TYPE,
   isArtifactKind,
   isDataArtifactPart,
@@ -54,6 +58,17 @@ function toDataArtifactPart(output: unknown): DataArtifactPart | null {
   return isDataArtifactPart(candidate) ? candidate : null
 }
 
+function readSummaryInput(part: Record<string, unknown>) {
+  const input = readRecord(part.input)
+  const kind = isArtifactKind(input?.kind) ? input.kind : undefined
+  const title = typeof input?.title === 'string' ? input.title : undefined
+
+  return {
+    ...(kind ? { kind } : {}),
+    ...(title ? { title } : {}),
+  }
+}
+
 function toFailedToolPart(part: Record<string, unknown>): MessagePart {
   const input = readRecord(part.input)
   const kind = isArtifactKind(input?.kind) ? input.kind : undefined
@@ -77,7 +92,8 @@ function toFailedToolPart(part: Record<string, unknown>): MessagePart {
  * Rewrites the artifact tool parts of an assistant message for persistence
  * so `messages.parts` never holds artifact content: a finished call becomes
  * a small `data-artifact` reference, a failed call keeps only its kind,
- * title and error text, and an unfinished call (an interrupted stream) is
+ * title and error text, a call that waits for approval keeps only its kind,
+ * title and approval id, and an unfinished call (an interrupted stream) is
  * dropped. Every other part is returned unchanged.
  */
 export function rewriteArtifactToolParts(
@@ -106,6 +122,15 @@ export function rewriteArtifactToolParts(
 
     if (record.state === 'output-error') {
       rewritten.push(toFailedToolPart(record))
+
+      continue
+    }
+
+    if (isAwaitingApprovalToolPart(record)) {
+      rewritten.push(toStoredAwaitingApprovalToolPart(
+        record,
+        readSummaryInput(record),
+      ) as unknown as MessagePart)
     }
   }
 

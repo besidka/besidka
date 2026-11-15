@@ -51,6 +51,7 @@ describe('memory tools', () => {
     userMessageText?: string | null
     budget?: ReturnType<typeof createChatSearchBudget>
     db?: typeof testDb.db
+    isApprovedByUser?: (toolCallId: string | undefined) => boolean
   } = {}) {
     const budget = overrides.budget ?? createChatSearchBudget()
     const { tools } = getMemoryTools({
@@ -69,6 +70,9 @@ describe('memory tools', () => {
         ? DEFAULT_MESSAGE
         : overrides.userMessageText,
       budget,
+      ...(overrides.isApprovedByUser
+        ? { isApprovedByUser: overrides.isApprovedByUser }
+        : {}),
       logger: { set: loggerSet },
     })
 
@@ -1880,6 +1884,47 @@ describe('memory tools', () => {
         ).rejects.toMatchObject({ status: 403 })
         expect(readRow(1)).toBeDefined()
       })
+
+    it('lets a write the user approved past the lock, for that call only',
+      async () => {
+        const budget = createChatSearchBudget()
+        const { tools } = build({
+          budget,
+          isApprovedByUser: toolCallId => toolCallId === 'approved-call',
+        })
+
+        budget.untrustedResultSeen = true
+
+        await expect(tools.memory_write!.execute(writeInput(), toolOptions))
+          .rejects.toMatchObject({ status: 403 })
+
+        const written = await tools.memory_write!.execute(
+          writeInput({ title: 'Baking', body: 'Bakes bread.' }),
+          { ...toolOptions, toolCallId: 'approved-call' },
+        )
+
+        expect(written.action).toBe('created')
+      })
+
+    it('still runs the never-store gate on an approved write', async () => {
+      const budget = createChatSearchBudget()
+      const { tools } = build({
+        budget,
+        userMessageText: `Remember my card ${CARD_NUMBER} please`,
+        isApprovedByUser: () => true,
+      })
+
+      budget.untrustedResultSeen = true
+
+      await expect(tools.memory_write!.execute(
+        writeInput({
+          body: `Card ${CARD_NUMBER}`,
+          userRequestQuote: 'Remember my card',
+        }),
+        toolOptions,
+      )).rejects.toMatchObject({ status: 422 })
+      expect(testDb.countEntries()).toBe(1)
+    })
 
     it('still spends the budget on a guarded call', async () => {
       const budget = createChatSearchBudget()

@@ -5,6 +5,7 @@ import {
   CONNECTOR_CALL_LIMIT_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
   CONNECTOR_RATE_LIMIT_TEXT,
+  CONNECTOR_UNAPPROVED_CALL_TEXT,
   getConnectorNoticeLines,
   getConnectorToolCall,
   isConnectorUsagePart,
@@ -96,6 +97,30 @@ describe('getConnectorToolCall', () => {
     expect(getConnectorToolCall(createPart({
       output: CONNECTOR_APPROVAL_DENIAL_TEXT,
     }))).toMatchObject({ outcome: 'denied', isFramed: false })
+  })
+})
+
+describe('a connector call that waits for approval', () => {
+  it('has no outcome yet and does not count as connector usage', () => {
+    const part = createPart({
+      state: 'approval-requested',
+      output: undefined,
+      approval: { id: 'approval-0001' },
+    })
+
+    expect(getConnectorToolCall(part)).toMatchObject({
+      isRunning: false,
+      isAwaitingApproval: true,
+      outcome: null,
+    })
+    expect(isConnectorUsagePart(part)).toBe(false)
+    expect(isConnectorUsagePart(createPart())).toBe(true)
+  })
+
+  it('reads the unapproved-call refusal as a denial', () => {
+    expect(getConnectorToolCall(createPart({
+      output: CONNECTOR_UNAPPROVED_CALL_TEXT,
+    }))?.outcome).toBe('denied')
   })
 })
 

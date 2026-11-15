@@ -1,6 +1,7 @@
 import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
 import { CODE_EXECUTION_PART_TYPE } from '#shared/utils/code-execution'
 import { getConnectorToolCall } from '#shared/utils/connectors-parts'
+import { isToolApprovalPart } from '#shared/utils/tool-approval-parts'
 import {
   DOCUMENT_DATA_PART_TYPE,
   isDocumentToolPartType,
@@ -59,6 +60,7 @@ export function hasMeaningfulAssistantParts(
 
     return part.type === 'file'
       || part.type === 'source-url'
+      || isToolApprovalPart(part)
       || part.type === ARTIFACT_DATA_PART_TYPE
       || part.type === DOCUMENT_DATA_PART_TYPE
       || (

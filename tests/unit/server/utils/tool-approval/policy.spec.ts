@@ -217,11 +217,26 @@ describe('resolveToolApproval rules', () => {
       'file',
       'besidka',
       'shared-branch',
-    ])('lets a native write through after %s taint', (kind) => {
-      const decision = decide(nativeTool(), { state: stateWith([kind]) })
+    ])('lets a relaxed native write through after %s taint', (kind) => {
+      const decision = decide(nativeTool({ onlyConnectorOrSkillTaint: true }), {
+        state: stateWith([kind]),
+      })
 
       expect(decision.rule).toBe(8)
       expect(decision.status).toEqual({ type: 'not-applicable' })
+    })
+
+    it.each<ToolApprovalTaintKind>([
+      'web',
+      'knowledge',
+      'file',
+      'besidka',
+      'shared-branch',
+    ])('asks for an unmarked native write after %s taint', (kind) => {
+      const decision = decide(nativeTool(), { state: stateWith([kind]) })
+
+      expect(decision.rule).toBe(2)
+      expect(decision.reason).toBe('untrusted-output')
     })
 
     it.each(TOOL_APPROVAL_TAINT_KINDS)(
@@ -263,10 +278,15 @@ describe('resolveToolApproval rules', () => {
 
     it('keeps artifact and document writes on connector and skill taint', () => {
       for (const toolName of ['create_artifact', 'create_document']) {
-        expect(decide(nativeTool({ toolName }), {
+        const descriptor = nativeTool({
+          toolName,
+          onlyConnectorOrSkillTaint: true,
+        })
+
+        expect(decide(descriptor, {
           state: stateWith(['web', 'knowledge', 'file']),
         }).rule, toolName).toBe(8)
-        expect(decide(nativeTool({ toolName }), {
+        expect(decide(descriptor, {
           state: stateWith(['connector']),
         }).rule, toolName).toBe(2)
       }

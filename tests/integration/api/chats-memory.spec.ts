@@ -38,6 +38,17 @@ const mocks = vi.hoisted(() => ({
   chatSearchToolsInputs: [] as Array<Record<string, any>>,
   memoryToolsInputs: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
+  activeFlags: new Set<string>(),
+}))
+
+vi.mock('~~/server/utils/features/send-features', () => ({
+  resolveSendFeatures: async () => ({
+    isFeatureActive: (flag: string) => mocks.activeFlags.has(flag),
+  }),
+}))
+
+vi.mock('~~/server/utils/tool-approval/secret', () => ({
+  useToolApprovalSecret: async () => 'test-tool-approval-secret',
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -542,6 +553,7 @@ describe('memory send-path wiring', () => {
     mocks.mergedStreams = []
     mocks.chatSearchToolsInputs = []
     mocks.memoryToolsInputs = []
+    mocks.activeFlags = new Set()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('getRequestURL', () => {
@@ -1325,5 +1337,65 @@ describe('memory send-path wiring', () => {
         usedCalls: 3,
       }))
     })
+  })
+
+  describe('with the tool-approvals flag on', () => {
+    beforeEach(() => {
+      mocks.activeFlags = new Set(['tool-approvals'])
+    })
+
+    it('asks before a memory_write in the same step as search_chats',
+      async () => {
+        const searchCall = createToolCallChunks('call-1', 'search_chats', {
+          query: SEARCH_QUERY,
+        })
+        const writeCall = createToolCallChunks('call-2', 'memory_write', {
+          title: 'Pasta',
+        })
+        const { doStream, assistantInsert } = await runSend({
+          scenario: { settings: MEMORY_ON },
+          steps: [
+            [searchCall[0]!, writeCall[0]!, searchCall[1]!],
+            createTextChunks('Never reached.'),
+          ],
+        })
+        const parts = assistantInsert?.parts ?? []
+
+        expect(doStream).toHaveBeenCalledTimes(1)
+        expect(parts.find((part: any) => part.toolCallId === 'call-2'))
+          .toEqual(expect.objectContaining({
+            type: 'tool-memory_write',
+            state: 'approval-requested',
+          }))
+        expect(parts.find((part: any) => part.toolCallId === 'call-1'))
+          .toEqual(expect.objectContaining({ state: 'output-available' }))
+        expect(parts).toContainEqual(expect.objectContaining({
+          type: 'data-tool-approval',
+          data: expect.objectContaining({ reason: 'untrusted-output' }),
+        }))
+      })
+
+    it('asks before a memory_write when the send requested web search',
+      async () => {
+        const { doStream, assistantInsert } = await runSend({
+          tools: ['web_search_brave'],
+          scenario: { settings: MEMORY_ON },
+          steps: [
+            createToolCallChunks('call-1', 'memory_write', { title: 'Pasta' }),
+            createTextChunks('Never reached.'),
+          ],
+        })
+        const parts = assistantInsert?.parts ?? []
+
+        expect(doStream).toHaveBeenCalledTimes(1)
+        expect(parts.find((part: any) => part.toolCallId === 'call-1'))
+          .toEqual(expect.objectContaining({
+            type: 'tool-memory_write',
+            state: 'approval-requested',
+          }))
+        expect(parts.some((part: any) => {
+          return part.type === 'text' && part.text.length > 0
+        })).toBe(false)
+      })
   })
 })

@@ -1,6 +1,10 @@
 import type { UIMessage } from 'ai'
 import type { DataDocumentPart } from '#shared/utils/documents'
 import {
+  isAwaitingApprovalToolPart,
+  toStoredAwaitingApprovalToolPart,
+} from '#shared/utils/tool-approval-parts'
+import {
   DOCUMENT_DATA_PART_TYPE,
   DOCUMENT_INVALID_INPUT_ERROR_TEXT,
   DOCUMENT_TOOL_NAME,
@@ -73,8 +77,9 @@ function toFailedToolPart(part: Record<string, unknown>): MessagePart {
  * Rewrites the `create_document` tool parts of an assistant message for
  * persistence so `messages.parts` never holds a document spec: a finished
  * call becomes a small `data-document` reference, a failed call keeps only
- * its format and a fixed error text, and an unfinished call (an interrupted
- * stream) is dropped. Every other part is returned unchanged.
+ * its format and a fixed error text, a call that waits for approval keeps
+ * only its format, title and approval id, and an unfinished call (an
+ * interrupted stream) is dropped. Every other part is returned unchanged.
  */
 export function rewriteDocumentToolParts(
   parts: UIMessage['parts'],
@@ -113,6 +118,19 @@ export function rewriteDocumentToolParts(
 
     if (record.state === 'output-error') {
       rewritten.push(toFailedToolPart(record))
+
+      continue
+    }
+
+    if (isAwaitingApprovalToolPart(record)) {
+      const input = readRecord(record.input)
+      const format = isDocumentFormat(input?.format) ? input.format : undefined
+      const title = typeof input?.title === 'string' ? input.title : undefined
+
+      rewritten.push(toStoredAwaitingApprovalToolPart(record, {
+        ...(format ? { format } : {}),
+        ...(title ? { title } : {}),
+      }) as unknown as MessagePart)
     }
   }
 

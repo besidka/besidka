@@ -1386,6 +1386,61 @@ describe('hasVisibleTextAfterLastFollowUpTool', () => {
 })
 
 describe('withSearchAnswerGuarantee', () => {
+  it('runs no continuation when the turn ends waiting for an approval',
+    async () => {
+      const finish: UIMessageChunk = {
+        type: 'finish',
+        finishReason: 'tool-calls',
+      }
+      const { guarantee, startContinuation } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          { type: 'start-step' },
+          {
+            type: 'tool-input-available',
+            toolCallId: 'call-2',
+            toolName: 'memory_write',
+            input: {},
+          },
+          {
+            type: 'tool-approval-request',
+            approvalId: 'approval-0001',
+            toolCallId: 'call-2',
+          },
+          { type: 'finish-step' },
+          finish,
+        ],
+        continuationChunks: createTextChunks('Should not stream'),
+      })
+      const chunks = await readAll(guarantee.stream)
+
+      expect(startContinuation).not.toHaveBeenCalled()
+      expect(chunks.at(-1)).toBe(finish)
+      expect(guarantee.getOutcome().continuationRan).toBe(false)
+    })
+
+  it('still continues after an automatic denial', async () => {
+    const { guarantee, startContinuation } = createGuarantee({
+      chunks: [
+        ...createSearchStepChunks('call-1'),
+        { type: 'start-step' },
+        {
+          type: 'tool-approval-request',
+          approvalId: 'approval-0002',
+          toolCallId: 'call-2',
+          isAutomatic: true,
+        },
+        { type: 'finish-step' },
+        { type: 'finish', finishReason: 'stop' },
+      ],
+      continuationChunks: createTextChunks('Answer'),
+    })
+
+    await readAll(guarantee.stream)
+
+    expect(startContinuation).toHaveBeenCalledTimes(1)
+  })
+
   it('passes a turn that answered through unchanged', async () => {
     const finish: UIMessageChunk = {
       type: 'finish',

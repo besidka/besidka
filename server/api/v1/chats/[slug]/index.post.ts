@@ -182,6 +182,7 @@ import {
   estimateHistoryTokens,
   holdsUntrustedKnowledge,
   resolveProjectKnowledgeContext,
+  withMemoryApprovalNotice,
 } from '~~/server/utils/knowledge/context'
 import type {
   KnowledgeSendModel,
@@ -326,7 +327,10 @@ import {
 import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
 import { CONNECTORS_PER_USER, CONNECTOR_STEPS_PER_TURN } from '#shared/utils/connectors-policy'
 import { CONNECTORS_NOTICE_PART_TYPE } from '#shared/utils/connectors-parts'
-import { createConnectorArgsHasher } from '~~/server/utils/connectors/audit'
+import {
+  auditConnectorCall,
+  createConnectorArgsHasher,
+} from '~~/server/utils/connectors/audit'
 import {
   listChatConnectorIds,
   persistChatConnectorSelection,
@@ -334,11 +338,30 @@ import {
 } from '~~/server/utils/connectors/chat-selection'
 import { redactConnectorToolPartsForPersistence } from '~~/server/utils/connectors/persist'
 import {
+  CONNECTOR_APPROVAL_INSTRUCTIONS,
   CONNECTOR_INSTRUCTIONS,
   getConnectorTools,
 } from '~~/server/utils/connectors/send-tools'
 import type { ConnectorToolsRun } from '~~/server/utils/connectors/send-tools'
-import { listConnectors } from '~~/server/utils/connectors/store'
+import {
+  listConnectors,
+  settleConnectorToolCall,
+} from '~~/server/utils/connectors/store'
+import {
+  TOOL_APPROVAL_DATA_PART_TYPE,
+  hasAwaitingApprovalToolPart,
+  isAwaitingApprovalToolPart,
+} from '#shared/utils/tool-approval-parts'
+import { deleteToolApprovalChatRecords } from '~~/server/utils/tool-approval/kv'
+import { useToolApprovalSecret } from '~~/server/utils/tool-approval/secret'
+import {
+  chatHasAwaitingApproval,
+  createSendToolApproval,
+  createToolApprovalStreamCollector,
+  presetApprovalTaint,
+  recordToolApprovalPause,
+} from '~~/server/utils/tool-approval/send'
+import { createApprovalState } from '~~/server/utils/tool-approval/state'
 import {
   appendAnthropicContainerUploads,
   buildCodeExecutionInstruction,
@@ -416,6 +439,7 @@ export default defineEventHandler(async (event) => {
     columns: {
       id: true,
       projectId: true,
+      branchedFromShareSlug: true,
     },
     with: {
       project: {
@@ -961,6 +985,10 @@ export default defineEventHandler(async (event) => {
       files: { unsupportedCount: unsupportedFiles.length },
     },
   })
+
+  if (newMessage.role === 'user' && chatHasAwaitingApproval(chat.messages)) {
+    await expirePendingToolApprovals(chat.id, logger)
+  }
 
   if (newMessage.role === 'user') {
     await persistUserMessage({
@@ -1552,6 +1580,25 @@ export default defineEventHandler(async (event) => {
   const memoryToolsRegistered = isMemoryToolsEnabled(memorySettings)
     && toolCallingAllowed
 
+  const sendFeatures = await resolveSendFeatures(
+    event,
+    [
+      'artifacts',
+      'artifacts.react',
+      'artifacts.storage',
+      'artifacts.llm-bridge',
+      'documents',
+      'skills',
+      'connectors',
+      'tool-approvals',
+      ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
+    ],
+    aiLogger,
+  )
+  const toolApprovalsActive = sendFeatures.isFeatureActive('tool-approvals')
+  const toolApprovalSend = createSendToolApproval({
+    state: createApprovalState(),
+  })
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
@@ -1623,6 +1670,9 @@ export default defineEventHandler(async (event) => {
       sourceMessageId: newMessage.id,
       userMessageText,
       budget: chatSearchBudget,
+      ...(toolApprovalsActive
+        ? { isApprovedByUser: toolApprovalSend.isApprovedByUser }
+        : {}),
       logger: aiLogger,
     })
 
@@ -1649,20 +1699,6 @@ export default defineEventHandler(async (event) => {
   })
 
   const assistantMessagePublicId = ulid()
-  const sendFeatures = await resolveSendFeatures(
-    event,
-    [
-      'artifacts',
-      'artifacts.react',
-      'artifacts.storage',
-      'artifacts.llm-bridge',
-      'documents',
-      'skills',
-      'connectors',
-      ...DOCUMENT_FORMATS.map(format => DOCUMENT_FEATURE_KEYS[format]),
-    ],
-    aiLogger,
-  )
   const artifactsActive = sendFeatures.isFeatureActive('artifacts')
   const documentsActive = sendFeatures.isFeatureActive('documents')
   const attachedArtifactIds = collectArtifactAttachments(allMessages)
@@ -1816,6 +1852,23 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (toolApprovalsActive) {
+    presetApprovalTaint(toolApprovalSend.state, {
+      requestedTools,
+      holdsUntrustedKnowledge: !!knowledgeContext
+        && holdsUntrustedKnowledge(knowledgeContext),
+      holdsArtifactContext: artifactContextBlock !== null,
+      holdsSkillText: skillsSend.holdsSkillText,
+      holdsPastChatExcerpts: pastChatPreRetrieval !== null,
+      isBranchedFromShare: Boolean(chat.branchedFromShareSlug),
+    })
+  }
+
+  const knowledgeSystemBlock = knowledgeContext?.systemBlock
+    && toolApprovalsActive
+    ? withMemoryApprovalNotice(knowledgeContext.systemBlock)
+    : knowledgeContext?.systemBlock ?? null
+
   if (knowledgeContext && knowledgeToolsRegistered) {
     const { tools: knowledgeTools } = getKnowledgeTools({
       getSearcher: knowledgeContext.getSearcher,
@@ -1845,7 +1898,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const connectorNotices: string[] = []
+  const hashConnectorArgs = createConnectorArgsHasher(
+    useRuntimeConfig().encryptionKey,
+  )
   let connectorsRun: ConnectorToolsRun | null = null
+  let toolApprovalSecret: string | undefined
 
   try {
     if (sendFeatures.isFeatureActive('connectors')) {
@@ -1902,9 +1959,10 @@ export default defineEventHandler(async (event) => {
             chatPublicId: chat.id,
             connectors: selection.selected,
             existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
-            hashArgs: createConnectorArgsHasher(
-              useRuntimeConfig().encryptionKey,
-            ),
+            hashArgs: hashConnectorArgs,
+            ...(toolApprovalsActive
+              ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
+              : {}),
             guard: chatSearchBudget,
             logger: aiLogger,
           })
@@ -1919,7 +1977,23 @@ export default defineEventHandler(async (event) => {
         }
       }
     }
+
+    if (toolApprovalsActive) {
+      toolApprovalSend.registerTools(
+        parsedTools.tools,
+        connectorsRun?.approvalEntries,
+      )
+      parsedTools = {
+        ...parsedTools,
+        tools: toolApprovalSend.guardNativeWrites(parsedTools.tools),
+      }
+    }
+
+    if (toolApprovalsActive && toolApprovalSend.canAsk()) {
+      toolApprovalSecret = await useToolApprovalSecret()
+    }
   } catch (exception) {
+    await connectorsRun?.close()
     await codeExecutionSession?.tracker.cleanup()
 
     throw exception
@@ -1930,7 +2004,9 @@ export default defineEventHandler(async (event) => {
   }
   const connectorsInstructionBlock = connectorsRun
     && Object.keys(connectorsRun.tools).length > 0
-    ? CONNECTOR_INSTRUCTIONS
+    ? toolApprovalsActive
+      ? CONNECTOR_APPROVAL_INSTRUCTIONS
+      : CONNECTOR_INSTRUCTIONS
     : null
 
   const toolLoop = resolveToolLoop(parsedTools.tools, {
@@ -2223,7 +2299,7 @@ export default defineEventHandler(async (event) => {
               hasDeepSeekWebSearch,
               hasChatSearchTools: chatSearchToolsRegistered,
               memoryInstructions,
-              knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
+              knowledgeSystemBlock,
               hasKnowledgeTools: knowledgeToolsRegistered,
               artifactInstructions,
               documentsContextLine,
@@ -2259,6 +2335,12 @@ export default defineEventHandler(async (event) => {
             onError: closeConnectorClients,
             onAbort: closeConnectorClients,
             tools: parsedTools.tools,
+            ...(toolApprovalSecret
+              ? {
+                toolApproval: toolApprovalSend.toolApproval,
+                experimental_toolApprovalSecret: toolApprovalSecret,
+              }
+              : {}),
             ...(parsedTools.toolChoice
               ? { toolChoice: parsedTools.toolChoice }
               : {}),
@@ -2449,8 +2531,15 @@ export default defineEventHandler(async (event) => {
             return JSON.stringify(chatError)
           },
         })
+        const toolApprovalCollector = createToolApprovalStreamCollector(
+          toolApprovalSend,
+        )
         const correctedUiMessageStream = emitSourcesForExternalSearchResults(
-          insertParagraphBreakAfterNonTextGap(uiMessageStream),
+          insertParagraphBreakAfterNonTextGap(
+            toolApprovalsActive
+              ? toolApprovalCollector.apply(uiMessageStream)
+              : uiMessageStream,
+          ),
         )
 
         function startSearchAnswerContinuation(
@@ -2466,7 +2555,7 @@ export default defineEventHandler(async (event) => {
               hasDeepSeekWebSearch: false,
               hasChatSearchTools: false,
               memoryInstructions,
-              knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
+              knowledgeSystemBlock,
               hasKnowledgeTools: false,
               skillsInstructionBlock: skillsSend.activeSkillsBlock,
               connectorsInstructionBlock,
@@ -2592,6 +2681,31 @@ export default defineEventHandler(async (event) => {
           getCodeExecutionFileIds: codeExecutionStream?.getSavedFileIds,
         })
         const wasPersisted = persistResult.persisted
+
+        if (
+          toolApprovalsActive
+          && wasPersisted
+          && toolApprovalCollector.isPaused()
+        ) {
+          await recordPendingToolApprovals({
+            kv,
+            userId,
+            chatPublicId: chat.id,
+            messagePublicId,
+            approval: toolApprovalSend,
+            collector: toolApprovalCollector,
+            snapshot: {
+              model: modelId,
+              gateway: gatewayId ?? null,
+              reasoning: reasoningLevel,
+              toolNames: Object.keys(parsedTools.tools ?? {}),
+              connectorIds: connectorsRun?.connectorIds ?? [],
+            },
+            hashArgs: hashConnectorArgs,
+            db,
+            logger: aiLogger,
+          })
+        }
 
         if (searchAnswerGuarantee) {
           recordToolLoopOutcome(searchAnswerGuarantee.getOutcome())
@@ -2773,6 +2887,123 @@ export default defineEventHandler(async (event) => {
     stream,
   })
 })
+
+/**
+ * A new user message ends every approval still waiting in the chat: the
+ * pending, turn and result records the per-chat index lists are deleted, so
+ * a stale request can never be answered later. A failure is logged and does
+ * not stop the send; the records expire within 24 hours.
+ */
+async function expirePendingToolApprovals(
+  chatPublicId: string,
+  logger: { set: (fields: Record<string, unknown>) => void },
+): Promise<void> {
+  try {
+    const { keysDeleted } = await deleteToolApprovalChatRecords(
+      useKV(),
+      chatPublicId,
+    )
+
+    logger.set({ attributes: { toolApproval: { expired: keysDeleted } } })
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        toolApproval: {
+          expire: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+}
+
+async function recordPendingToolApprovals(input: {
+  kv: ReturnType<typeof useKV>
+  db: ReturnType<typeof useDb>
+  userId: number
+  chatPublicId: string
+  messagePublicId: string
+  approval: ReturnType<typeof createSendToolApproval>
+  collector: ReturnType<typeof createToolApprovalStreamCollector>
+  snapshot: Parameters<typeof recordToolApprovalPause>[0]['snapshot']
+  hashArgs: ReturnType<typeof createConnectorArgsHasher>
+  logger: { set: (fields: Record<string, unknown>) => void }
+}): Promise<void> {
+  const collected = input.collector.getCollected()
+
+  try {
+    const { written } = await recordToolApprovalPause({
+      kv: input.kv,
+      userId: input.userId,
+      chatPublicId: input.chatPublicId,
+      messagePublicId: input.messagePublicId,
+      approval: input.approval,
+      collected,
+      stepCount: input.collector.getStepCount(),
+      snapshot: input.snapshot,
+      auditPending: async (pending) => {
+        const connector = pending.pending.entry.connector
+
+        if (!connector) {
+          return null
+        }
+
+        return await auditConnectorCall(input.db, input.hashArgs, {
+          userId: input.userId,
+          connectorId: connector.id,
+          connectorHost: connector.host,
+          chatPublicId: input.chatPublicId,
+          toolName: connector.remoteToolName,
+          args: pending.input,
+          resultBytes: 0,
+          outcome: 'pending',
+          approval: 'pending',
+          durationMs: 0,
+        }, input.logger)
+      },
+      settleFailedAudit: async (auditCallId) => {
+        try {
+          await settleConnectorToolCall(input.db, input.userId, auditCallId, {
+            outcome: 'error',
+            approval: 'denied',
+            resultBytes: 0,
+            durationMs: 0,
+          })
+        } catch (exception) {
+          input.logger.set({
+            attributes: {
+              toolApproval: {
+                auditSettle: 'failed',
+                error: exceptionMessage(exception),
+              },
+            },
+          })
+        }
+      },
+      logger: input.logger,
+    })
+
+    input.logger.set({
+      attributes: {
+        toolApproval: {
+          paused: true,
+          requested: collected.length,
+          recorded: written,
+        },
+      },
+    })
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        toolApproval: {
+          paused: true,
+          turnWrite: 'failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+}
 
 function countCarriedFileParts(modelContextMessages: UIMessage[]): number {
   const userMessages = modelContextMessages.filter((message) => {
@@ -3640,12 +3871,70 @@ function buildPersistedAssistantReplayChunks(input: {
         url: part.url,
         mediaType: part.mediaType,
       })
+
+      continue
+    }
+
+    if (part.type === TOOL_APPROVAL_DATA_PART_TYPE) {
+      chunks.push(part as InferUIMessageChunk<UIMessage>)
+
+      continue
+    }
+
+    if (isAwaitingApprovalToolPart(part)) {
+      chunks.push(...buildAwaitingApprovalReplayChunks(part))
     }
   }
 
   chunks.push({ type: 'finish' })
 
   return chunks
+}
+
+/**
+ * The chunks that rebuild a stored tool part waiting for approval: its
+ * input, then the approval request with the stored approval id and reason.
+ * The stored part has no signature, and the replay adds none.
+ */
+function buildAwaitingApprovalReplayChunks(
+  part: UIMessage['parts'][number],
+): InferUIMessageChunk<UIMessage>[] {
+  const record = part as unknown as {
+    type: string
+    toolCallId?: unknown
+    toolName?: unknown
+    input?: unknown
+    approval?: { id?: unknown, requestReason?: unknown }
+  }
+  const isDynamic = record.type === 'dynamic-tool'
+  const toolName = isDynamic ? record.toolName : record.type.slice(5)
+  const approvalId = record.approval?.id
+
+  if (
+    typeof record.toolCallId !== 'string'
+    || typeof toolName !== 'string'
+    || typeof approvalId !== 'string'
+  ) {
+    return []
+  }
+
+  const requestReason = record.approval?.requestReason
+
+  return [
+    {
+      type: 'tool-input-available',
+      toolCallId: record.toolCallId,
+      toolName,
+      input: record.input,
+      ...(isDynamic ? { dynamic: true } : {}),
+    },
+    {
+      type: 'tool-approval-request',
+      approvalId,
+      toolCallId: record.toolCallId,
+      ...(typeof requestReason === 'string' ? { reason: requestReason } : {}),
+    },
+  ]
 }
 
 type MultiConsumerStreamTextResult = Extract<
@@ -3769,7 +4058,9 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
+    const isAwaitingApproval = hasAwaitingApprovalToolPart(normalizedParts)
     const ranFollowUpToolWithoutAnswer = input.followUpToolNames.size > 0
+      && !isAwaitingApproval
       && !hasVisibleTextAfterLastFollowUpTool({
         parts: normalizedParts,
         followUpToolNames: input.followUpToolNames,
@@ -4027,6 +4318,7 @@ async function persistAssistantMessageFromStream(input: {
       emptyAnswerFailure: ranFollowUpToolWithoutAnswer,
       answered: !!assistantMessage
         && !streamErrorText
+        && !isAwaitingApproval
         && !hasPersistedFailureNotice(finalParts),
     }
   } catch (exception) {

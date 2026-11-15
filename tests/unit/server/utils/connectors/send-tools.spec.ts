@@ -11,6 +11,7 @@ import {
 import {
   CONNECTOR_APPROVAL_DENIAL_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+  CONNECTOR_UNAPPROVED_CALL_TEXT,
 } from '#shared/utils/connectors-parts'
 import * as schema from '~~/server/db/schema'
 import {
@@ -143,6 +144,8 @@ describe('getConnectorTools', () => {
     servers: MockMcpServer[]
     existingToolCount?: number
     guard?: { untrustedResultSeen: boolean }
+    isCallCleared?: (toolCallId: string | undefined) => boolean
+    legacy?: boolean
     limitCalls?: () => Promise<boolean>
     prepareDeadlineMs?: number
     keepSeedOrder?: boolean
@@ -175,6 +178,13 @@ describe('getConnectorTools', () => {
         }),
       existingToolCount: options.existingToolCount ?? 0,
       hashArgs,
+      ...(options.legacy
+        ? {}
+        : {
+          consumeClearedCall: (call: { toolCallId: string | undefined }) => {
+            return options.isCallCleared?.(call.toolCallId) ?? true
+          },
+        }),
       guard: options.guard,
       logger: { set: (values: unknown) => logged.push(values) },
       dependencies: {
@@ -320,34 +330,118 @@ describe('getConnectorTools', () => {
       expect(JSON.stringify(row)).not.toContain('secret issue body')
     })
 
-    it('refuses a tool without readOnlyHint and never reaches the server',
-      async () => {
-        const alpha = server('mcp.alpha.example.com')
-        const seeds: ConnectorSeed[] = [{
-          slug: 'alpha',
-          url: alpha.url,
-          auth: 'header',
-        }]
+    it('refuses a call the approval policy did not clear and never reaches '
+      + 'the server', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
 
-        await addConnector(seeds[0]!)
+      await addConnector(seeds[0]!)
 
-        const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
-        const output = await execute(tools, 'mcp__alpha__create_issue', {
-          title: 'x',
-        })
-
-        expect(output).toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
-        expect(alpha.callCount('tools/call')).toBe(0)
-
-        const [row] = await auditRows()
-
-        expect(row).toMatchObject({
-          toolName: 'create_issue',
-          outcome: 'denied',
-          approval: 'denied',
-          resultBytes: 0,
-        })
+      const { tools } = await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+        isCallCleared: toolCallId => toolCallId === 'cleared-call',
       })
+      const output = await execute(tools, 'mcp__alpha__list_issues', {
+        state: 'open',
+      })
+
+      expect(output).toBe(CONNECTOR_UNAPPROVED_CALL_TEXT)
+      expect(alpha.callCount('tools/call')).toBe(0)
+
+      const [row] = await auditRows()
+
+      expect(row).toMatchObject({
+        toolName: 'list_issues',
+        outcome: 'denied',
+        approval: 'denied',
+        resultBytes: 0,
+      })
+    })
+
+    it('runs a write tool the approval policy cleared', async () => {
+      const alpha = server('mcp.alpha.example.com')
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+
+      await addConnector(seeds[0]!)
+
+      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
+
+      expect(await execute(tools, 'mcp__alpha__create_issue', { title: 'x' }))
+        .toContain('untrusted_tool_result')
+      expect(alpha.callCount('tools/call')).toBe(1)
+    })
+
+    it('gives every exposed tool an approval entry with its hints, hash and '
+      + 'connector', async () => {
+      const alpha = server('mcp.alpha.example.com', {
+        tools: [
+          READ_TOOL,
+          WRITE_TOOL,
+          {
+            name: 'purge',
+            description: 'Purge.',
+            annotations: { readOnlyHint: true, destructiveHint: true },
+          },
+        ],
+      })
+      const seeds: ConnectorSeed[] = [{
+        slug: 'alpha',
+        url: alpha.url,
+        auth: 'header',
+      }]
+      const connectorId = await addConnector(seeds[0]!)
+      const { approvalEntries, connectorIds } = await run({
+        connectorSeeds: seeds,
+        servers: [alpha],
+      })
+      const read = approvalEntries.get('mcp__alpha__list_issues')!
+      const write = approvalEntries.get('mcp__alpha__create_issue')!
+      const purge = approvalEntries.get('mcp__alpha__purge')!
+
+      expect(connectorIds).toEqual([connectorId])
+      expect([...approvalEntries.keys()].sort()).toEqual([
+        'mcp__alpha__create_issue',
+        'mcp__alpha__list_issues',
+        'mcp__alpha__purge',
+      ])
+      expect(read.descriptor).toMatchObject({
+        family: 'connector',
+        access: 'read',
+        toolName: 'mcp__alpha__list_issues',
+        connectorId,
+        destructiveHint: false,
+      })
+      expect(read.descriptor.definitionHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(read.alwaysGrant).toEqual({
+        definitionHash: read.descriptor.definitionHash,
+        connectorId,
+        toolName: 'mcp__alpha__list_issues',
+      })
+      expect(read.connector).toEqual({
+        id: connectorId,
+        host: 'mcp.alpha.example.com',
+        remoteToolName: 'list_issues',
+      })
+      expect(write.descriptor).toMatchObject({
+        access: 'write',
+        destructiveHint: true,
+      })
+      expect(write.alwaysGrant).toBeNull()
+      expect(purge.descriptor).toMatchObject({
+        access: 'write',
+        destructiveHint: true,
+      })
+      expect(purge.alwaysGrant).toBeNull()
+    })
 
     it('answers a failed call with a sentence Besidka wrote, not the '
       + 'server text', async () => {
@@ -378,78 +472,7 @@ describe('getConnectorTools', () => {
       expect((await auditRows())[0]).toMatchObject({ outcome: 'error' })
     })
 
-    it('refuses a tool marked both read-only and destructive', async () => {
-      const alpha = server('mcp.alpha.example.com', {
-        tools: [
-          READ_TOOL,
-          {
-            name: 'purge',
-            description: 'Purge.',
-            annotations: { readOnlyHint: true, destructiveHint: true },
-          },
-        ],
-      })
-      const seeds: ConnectorSeed[] = [{
-        slug: 'alpha',
-        url: alpha.url,
-        auth: 'header',
-      }]
-
-      await addConnector(seeds[0]!)
-
-      const { tools } = await run({ connectorSeeds: seeds, servers: [alpha] })
-
-      expect(await execute(tools, 'mcp__alpha__purge'))
-        .toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
-      expect(alpha.callCount('tools/call')).toBe(0)
-      expect((await auditRows())[0]).toMatchObject({
-        toolName: 'purge',
-        outcome: 'denied',
-      })
-      expect(await execute(tools, 'mcp__alpha__list_issues'))
-        .toContain('untrusted_tool_result')
-    })
-
-    it('refuses a call to a second connector once the send used one, '
-      + 'and still serves the first', async () => {
-      const alpha = server('mcp.alpha.example.com')
-      const beta = server('mcp.beta.example.com')
-      const seeds: ConnectorSeed[] = [
-        { slug: 'alpha', url: alpha.url, auth: 'header' },
-        { slug: 'beta', url: beta.url, auth: 'header' },
-      ]
-
-      for (const seed of seeds) {
-        await addConnector(seed)
-      }
-
-      const { tools } = await run({
-        connectorSeeds: seeds,
-        servers: [alpha, beta],
-      })
-
-      expect(await execute(tools, 'mcp__alpha__list_issues'))
-        .toContain('untrusted_tool_result')
-      expect(await execute(tools, 'mcp__beta__list_issues'))
-        .toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
-      expect(await execute(tools, 'mcp__alpha__list_issues'))
-        .toContain('untrusted_tool_result')
-      expect(beta.callCount('tools/call')).toBe(0)
-      expect(alpha.callCount('tools/call')).toBe(2)
-
-      const denied = (await auditRows()).filter((row) => {
-        return row.outcome === 'denied'
-      })
-
-      expect(denied).toHaveLength(1)
-      expect(denied[0]).toMatchObject({
-        connectorHost: 'mcp.beta.example.com',
-        approval: 'denied',
-        resultBytes: 0,
-      })
-    })
-
-    it('lets only the first connector called in a parallel step run',
+    it('leaves calls to a second connector to the approval policy',
       async () => {
         const alpha = server('mcp.alpha.example.com')
         const beta = server('mcp.beta.example.com')
@@ -466,16 +489,154 @@ describe('getConnectorTools', () => {
           connectorSeeds: seeds,
           servers: [alpha, beta],
         })
-        const [first, second] = await Promise.all([
-          execute(tools, 'mcp__beta__list_issues'),
-          execute(tools, 'mcp__alpha__list_issues'),
-        ])
 
-        expect(first).toContain('untrusted_tool_result')
-        expect(second).toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
-        expect(alpha.callCount('tools/call')).toBe(0)
+        expect(await execute(tools, 'mcp__alpha__list_issues'))
+          .toContain('untrusted_tool_result')
+        expect(await execute(tools, 'mcp__beta__list_issues'))
+          .toContain('untrusted_tool_result')
+        expect(alpha.callCount('tools/call')).toBe(1)
         expect(beta.callCount('tools/call')).toBe(1)
       })
+
+    describe('with the tool-approvals flag off (C-5 rule)', () => {
+      it('refuses a tool without readOnlyHint and never reaches the server',
+        async () => {
+          const alpha = server('mcp.alpha.example.com')
+          const seeds: ConnectorSeed[] = [{
+            slug: 'alpha',
+            url: alpha.url,
+            auth: 'header',
+          }]
+
+          await addConnector(seeds[0]!)
+
+          const { tools } = await run({
+            connectorSeeds: seeds,
+            servers: [alpha],
+            legacy: true,
+          })
+          const output = await execute(tools, 'mcp__alpha__create_issue', {
+            title: 'x',
+          })
+
+          expect(output).toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
+          expect(alpha.callCount('tools/call')).toBe(0)
+
+          const [row] = await auditRows()
+
+          expect(row).toMatchObject({
+            toolName: 'create_issue',
+            outcome: 'denied',
+            approval: 'denied',
+            resultBytes: 0,
+          })
+        })
+
+      it('refuses a tool marked both read-only and destructive', async () => {
+        const alpha = server('mcp.alpha.example.com', {
+          tools: [
+            READ_TOOL,
+            {
+              name: 'purge',
+              description: 'Purge.',
+              annotations: { readOnlyHint: true, destructiveHint: true },
+            },
+          ],
+        })
+        const seeds: ConnectorSeed[] = [{
+          slug: 'alpha',
+          url: alpha.url,
+          auth: 'header',
+        }]
+
+        await addConnector(seeds[0]!)
+
+        const { tools } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha],
+          legacy: true,
+        })
+
+        expect(await execute(tools, 'mcp__alpha__purge'))
+          .toBe(CONNECTOR_APPROVAL_DENIAL_TEXT)
+        expect(alpha.callCount('tools/call')).toBe(0)
+        expect((await auditRows())[0]).toMatchObject({
+          toolName: 'purge',
+          outcome: 'denied',
+        })
+        expect(await execute(tools, 'mcp__alpha__list_issues'))
+          .toContain('untrusted_tool_result')
+      })
+
+      it('refuses a call to a second connector once the send used one, '
+        + 'and still serves the first', async () => {
+        const alpha = server('mcp.alpha.example.com')
+        const beta = server('mcp.beta.example.com')
+        const seeds: ConnectorSeed[] = [
+          { slug: 'alpha', url: alpha.url, auth: 'header' },
+          { slug: 'beta', url: beta.url, auth: 'header' },
+        ]
+
+        for (const seed of seeds) {
+          await addConnector(seed)
+        }
+
+        const { tools } = await run({
+          connectorSeeds: seeds,
+          servers: [alpha, beta],
+          legacy: true,
+        })
+
+        expect(await execute(tools, 'mcp__alpha__list_issues'))
+          .toContain('untrusted_tool_result')
+        expect(await execute(tools, 'mcp__beta__list_issues'))
+          .toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
+        expect(await execute(tools, 'mcp__alpha__list_issues'))
+          .toContain('untrusted_tool_result')
+        expect(beta.callCount('tools/call')).toBe(0)
+        expect(alpha.callCount('tools/call')).toBe(2)
+
+        const denied = (await auditRows()).filter((row) => {
+          return row.outcome === 'denied'
+        })
+
+        expect(denied).toHaveLength(1)
+        expect(denied[0]).toMatchObject({
+          connectorHost: 'mcp.beta.example.com',
+          approval: 'denied',
+          resultBytes: 0,
+        })
+      })
+
+      it('lets only the first connector called in a parallel step run',
+        async () => {
+          const alpha = server('mcp.alpha.example.com')
+          const beta = server('mcp.beta.example.com')
+          const seeds: ConnectorSeed[] = [
+            { slug: 'alpha', url: alpha.url, auth: 'header' },
+            { slug: 'beta', url: beta.url, auth: 'header' },
+          ]
+
+          for (const seed of seeds) {
+            await addConnector(seed)
+          }
+
+          const { tools } = await run({
+            connectorSeeds: seeds,
+            servers: [alpha, beta],
+            legacy: true,
+          })
+          const [first, second] = await Promise.all([
+            execute(tools, 'mcp__beta__list_issues'),
+            execute(tools, 'mcp__alpha__list_issues'),
+          ])
+
+          expect(first).toContain('untrusted_tool_result')
+          expect(second).toBe(CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT)
+          expect(alpha.callCount('tools/call')).toBe(0)
+          expect(beta.callCount('tools/call')).toBe(1)
+        })
+    })
 
     it('frames a server-reported error as untrusted and audits it as an '
       + 'error', async () => {

@@ -2126,6 +2126,42 @@ describe('useChat request body exaSearchLevel', () => {
   })
 })
 
+describe('a reply that only waits for an approval', () => {
+  const userMessage = {
+    id: 'user-1',
+    role: 'user',
+    parts: [{ type: 'text', text: 'Create the issue' }],
+  } as UIMessage
+  const pausedMessage = {
+    id: 'assistant-approval',
+    role: 'assistant',
+    parts: [
+      { type: 'step-start' },
+      {
+        type: 'dynamic-tool',
+        toolName: 'mcp__linear__create_issue',
+        toolCallId: 'call-1',
+        state: 'approval-requested',
+        input: { title: 'x' },
+        approval: { id: 'approval-0001' },
+      },
+      {
+        type: 'data-tool-approval',
+        id: 'call-1',
+        data: { approvalId: 'approval-0001', toolCallId: 'call-1' },
+      },
+    ],
+  } as UIMessage
+
+  it('is a real answer, so no empty-answer notice and no Regenerate', () => {
+    expect(isFailureOnlyAssistantMessage(pausedMessage)).toBe(false)
+    expect(shouldSurfaceEmptyAssistantResponse([userMessage, pausedMessage]))
+      .toBe(false)
+    expect(hasRetryableAssistantFailure([userMessage, pausedMessage]))
+      .toBe(false)
+  })
+})
+
 describe('isFailureOnlyAssistantMessage with artifacts', () => {
   it('treats a reply that only holds an artifact as a real answer', () => {
     expect(isFailureOnlyAssistantMessage({

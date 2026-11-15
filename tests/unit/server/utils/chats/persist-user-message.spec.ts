@@ -3,6 +3,25 @@ import { describe, expect, it } from 'vitest'
 import { hasMeaningfulAssistantParts } from '~~/server/utils/chats/persist-user-message'
 
 describe('hasMeaningfulAssistantParts', () => {
+  it('counts a reply that only waits for an approval', () => {
+    expect(hasMeaningfulAssistantParts([
+      { type: 'step-start' },
+      {
+        type: 'dynamic-tool',
+        toolName: 'mcp__linear__create_issue',
+        toolCallId: 'call-1',
+        state: 'approval-requested',
+        input: {},
+        approval: { id: 'approval-0001' },
+      },
+    ] as UIMessage['parts'])).toBe(true)
+    expect(hasMeaningfulAssistantParts([{
+      type: 'data-tool-approval',
+      id: 'call-1',
+      data: { approvalId: 'approval-0001' },
+    }] as UIMessage['parts'])).toBe(true)
+  })
+
   it('counts a data-artifact reference as an answer', () => {
     expect(hasMeaningfulAssistantParts([{
       type: 'data-artifact',

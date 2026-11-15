@@ -2,6 +2,7 @@ import {
   CONNECTOR_RESULT_TAG,
   CONNECTOR_TOOL_NAME_PREFIX,
 } from '#shared/utils/connectors-policy'
+import { isAwaitingApprovalToolPart } from '#shared/utils/tool-approval-parts'
 
 export const CONNECTORS_NOTICE_PART_TYPE = 'data-connectors-notice'
 
@@ -12,6 +13,9 @@ export const CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT = 'This tool belongs to a '
   + 'different connector than the one already used in this message, so it '
   + 'cannot run without your approval; approvals arrive in the next update.'
 
+export const CONNECTOR_UNAPPROVED_CALL_TEXT = 'This tool call was not '
+  + 'approved, so it did not run.'
+
 export const CONNECTOR_CALL_LIMIT_TEXT = 'Connector call limit for this '
   + 'message reached. Answer with what you already have.'
 
@@ -21,6 +25,7 @@ export const CONNECTOR_RATE_LIMIT_TEXT = 'This connector received too many '
 const DENIAL_TEXTS: readonly string[] = [
   CONNECTOR_APPROVAL_DENIAL_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+  CONNECTOR_UNAPPROVED_CALL_TEXT,
 ]
 const LIMIT_TEXTS: readonly string[] = [
   CONNECTOR_CALL_LIMIT_TEXT,
@@ -42,6 +47,7 @@ export interface ConnectorToolCallModel {
   slug: string
   tool: string
   isRunning: boolean
+  isAwaitingApproval: boolean
   outcome: ConnectorToolOutcome | null
   isFramed: boolean
   input: unknown
@@ -107,7 +113,7 @@ export function isConnectorLimitRefusal(output: unknown): boolean {
  * The persisted `dynamic-tool` part of one connector call as a render model,
  * or null for every other part. A denial arrives as a successful result with
  * a plain sentence, so the outcome is read from the output text, not only
- * from the part state.
+ * from the part state. A call that waits for approval has no outcome yet.
  */
 export function getConnectorToolCall(
   part: unknown,
@@ -128,9 +134,10 @@ export function getConnectorToolCall(
 
   const state = typeof part.state === 'string' ? part.state : ''
   const isRunning = RUNNING_STATES.has(state)
+  const isAwaitingApproval = isAwaitingApprovalToolPart(part)
   let outcome: ConnectorToolOutcome | null = null
 
-  if (!isRunning) {
+  if (!isRunning && !isAwaitingApproval) {
     if (FAILED_STATES.has(state)) {
       outcome = 'error'
     } else if (isConnectorApprovalDenial(part.output)) {
@@ -145,6 +152,7 @@ export function getConnectorToolCall(
   return {
     ...parsed,
     isRunning,
+    isAwaitingApproval,
     outcome,
     isFramed: isFramedConnectorOutput(part.output),
     input: part.input,
@@ -192,8 +200,15 @@ export function isConnectorUsedMarker(part: unknown): boolean {
 
 /**
  * Whether a persisted part shows that the answer used a connector: a connector
- * call, or the slim marker a branch keeps in place of the calls it strips.
+ * call, or the slim marker a branch keeps in place of the calls it strips. A
+ * call that still waits for approval never ran, so it does not count.
  */
 export function isConnectorUsagePart(part: unknown): boolean {
-  return getConnectorToolCall(part) !== null || isConnectorUsedMarker(part)
+  const call = getConnectorToolCall(part)
+
+  if (call) {
+    return !call.isAwaitingApproval
+  }
+
+  return isConnectorUsedMarker(part)
 }

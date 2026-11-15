@@ -36,6 +36,7 @@ export const CONNECTOR_AUDIT_OUTCOMES = [
 
 export const CONNECTOR_AUDIT_APPROVALS = [
   'not-applicable',
+  'pending',
   'once',
   'chat',
   'always',
