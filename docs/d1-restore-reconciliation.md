@@ -626,6 +626,27 @@ previews use namespace `6ee10a2a05034ba092a9fb815f633e06`.
 
 ### 0. Before the restore
 
+0. Turn legal notice emails off on preview and production, before anything
+   else. A restore can revive approvals the owner withdrew and drop the
+   `skipped` and `sent` delivery rows written after B, which makes those
+   users recipients again. Every `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` line must
+   read `false` (it is a plain var, so a dashboard edit would be overwritten
+   by the next deploy):
+
+   ```bash
+   git grep -n '"NUXT_LEGAL_NOTICE_SWEEP_ENABLED"' wrangler.jsonc
+   ```
+
+   If any line reads `true`, set all of them to `false` and deploy both
+   Workers before the restore:
+
+   ```bash
+   pnpm run deploy:prod   # production (besidka.com)
+   pnpm run deploy        # the long-lived preview, shared by PR previews
+   ```
+
+   Keep it off until step 2c is done, every approval is withdrawn and the
+   opt-outs are checked against the Axiom ledger.
 1. Stop deploys. If the restore undoes a migration, merge its removal or
    rewrite into `main` first (see "Migrations re-apply" above).
 2. Write down **R** and keep the undo bookmark that `time-travel restore`
@@ -709,11 +730,14 @@ current; deleting it first would make every location read the older version
 from the restored D1 and ask those users again, and record them under the
 older version.
 
+Run the same `UPDATE` on `besidka-preview` (`--remote`, no `--env`).
 Every approval is withdrawn, whether or not the restore revived it, so no
-notice is emailed until the owner approves it again in `/admin/legal`. If
-`NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on, turning it off first is the faster
-stop. Then query `attributes.legalAdmin` in `besidka-prod` for the window
-and:
+notice is emailed until the owner approves it again in `/admin/legal`. The
+sweep switch stays off from step 0: the restore may also have removed the
+`skipped` and `sent` rows written after B, so a re-approved notice would
+reach users who were already told or who were deliberately skipped. The
+admin page shows the new recipient count before any approval. Then query
+`attributes.legalAdmin` in `besidka-prod` for the window and:
 
 1. re-approve, in the admin area and within an hour of the restore (the KV
    lifetime), a consent version approved in the window

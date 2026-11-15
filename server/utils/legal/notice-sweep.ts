@@ -27,7 +27,15 @@ import {
 import type { RenderedEmail } from '~~/server/utils/email-template'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildLegalNoticeEmail } from '~~/server/utils/legal/notice-email'
-import { selectApprovedLegalNotices } from '~~/server/utils/legal/notice-approvals'
+import {
+  checkLegalNoticeClaim,
+  countDeliveriesSinceApproval,
+  selectApprovedLegalNotices,
+} from '~~/server/utils/legal/notice-approvals'
+import type {
+  ApprovedLegalNotice,
+  LegalNoticeClaimCheck,
+} from '~~/server/utils/legal/notice-approvals'
 import {
   renderLegalNoticeEmail,
   sendLegalNoticeEmail,
@@ -70,6 +78,15 @@ const NOOP_ERROR_CODE = 'E_EMAIL_NOOP'
 const FOREIGN_KEY_ERROR_MESSAGE = 'FOREIGN KEY CONSTRAINT FAILED'
 
 const FOREIGN_KEY_ERROR_CODE = 'SQLITE_CONSTRAINT_FOREIGNKEY'
+
+const WITHHELD_ERROR_CODES: Record<
+  Exclude<LegalNoticeClaimCheck, 'approved'>,
+  string
+> = {
+  'withdrawn': 'E_APPROVAL_WITHDRAWN',
+  'exhausted': 'E_APPROVAL_EXHAUSTED',
+  'opted-out': 'E_RECIPIENT_OPTED_OUT',
+}
 
 export type LegalNoticeSweepStopReason
   = | 'no-active-notice'
@@ -119,6 +136,8 @@ export interface SweepLegalNoticesResult {
   notices: SweepLegalNoticesNoticeCount[]
   unapprovedNoticeIds: string[]
   changedNoticeIds: string[]
+  exhaustedNoticeIds: string[]
+  withheldCount: number
   stopReason: LegalNoticeSweepStopReason
   runtimeMs: number
 }
@@ -131,11 +150,25 @@ interface Candidate {
 interface Claim {
   id: number
   attempts: number
+  isNew: boolean
 }
 
 interface FailedClaim {
   claim: Claim
   errorCode: string
+}
+
+/**
+ * The `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` switch, read strictly: only the
+ * boolean `true` or the string `'true'` turn it on. Anything else, including
+ * the string `'false'`, a number or a typo, leaves legal notice emails off.
+ */
+export function isLegalNoticeSweepEnabled(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase() === 'true'
+  }
+
+  return value === true
 }
 
 function isSkippableErrorCode(code: string): boolean {
@@ -315,7 +348,7 @@ async function claimDelivery(
     })
 
   if (inserted) {
-    return inserted
+    return { ...inserted, isNew: true }
   }
 
   const [reclaimed] = await db
@@ -335,7 +368,37 @@ async function claimDelivery(
       attempts: schema.legalNoticeDeliveries.attempts,
     })
 
-  return reclaimed ?? null
+  return reclaimed ? { ...reclaimed, isNew: false } : null
+}
+
+/**
+ * Gives back a claim whose send was withheld by the re-check before it: a
+ * fresh claim is removed, a reclaimed retry goes back to `failed` with its
+ * attempt refunded, so nothing records a notice that was never sent.
+ */
+async function releaseClaim(
+  db: DbClient,
+  claim: Claim,
+  errorCode: string,
+  instant: Date,
+): Promise<void> {
+  if (claim.isNew) {
+    await db
+      .delete(schema.legalNoticeDeliveries)
+      .where(eq(schema.legalNoticeDeliveries.id, claim.id))
+
+    return
+  }
+
+  await db
+    .update(schema.legalNoticeDeliveries)
+    .set({
+      status: 'failed',
+      attempts: Math.max(claim.attempts - 1, 0),
+      lastErrorCode: errorCode,
+      updatedAt: instant,
+    })
+    .where(eq(schema.legalNoticeDeliveries.id, claim.id))
 }
 
 async function markDelivery(
@@ -384,6 +447,8 @@ export async function sweepLegalNotices(
     notices: [],
     unapprovedNoticeIds: [],
     changedNoticeIds: [],
+    exhaustedNoticeIds: [],
+    withheldCount: 0,
     stopReason: 'no-active-notice',
     runtimeMs: 0,
   }
@@ -419,7 +484,7 @@ export async function sweepLegalNotices(
     return finish('no-active-notice')
   }
 
-  let activeNotices: LegalNotice[]
+  let activeNotices: ApprovedLegalNotice[]
 
   try {
     const selection = await selectApprovedLegalNotices(db, noticesInWindow)
@@ -451,7 +516,16 @@ export async function sweepLegalNotices(
   let sentToday = await countSentToday(db, startedAt)
   let remainingBatch = input.batchSize
 
-  for (const notice of activeNotices) {
+  for (const { notice, approval } of activeNotices) {
+    const approvedRemaining = approval.recipientEstimate
+      - await countDeliveriesSinceApproval(db, approval)
+
+    if (approvedRemaining <= 0) {
+      result.exhaustedNoticeIds.push(notice.id)
+
+      continue
+    }
+
     const limit = Math.min(remainingBatch, input.dailyCap - sentToday)
 
     if (limit <= 0) {
@@ -464,7 +538,7 @@ export async function sweepLegalNotices(
       db,
       notice,
       startedAt,
-      limit,
+      Math.min(limit, approvedRemaining),
     )
     const noticeCount: SweepLegalNoticesNoticeCount = {
       noticeId: notice.id,
@@ -530,6 +604,30 @@ export async function sweepLegalNotices(
           result.claimMissedCount += 1
 
           continue
+        }
+
+        const check = await checkLegalNoticeClaim(
+          db,
+          approval,
+          candidate.userId,
+        )
+
+        if (check !== 'approved') {
+          const withheldCode = WITHHELD_ERROR_CODES[check]
+
+          await releaseClaim(db, claim, withheldCode, clock())
+          countErrorCode(withheldCode)
+          result.withheldCount += 1
+
+          if (check === 'opted-out') {
+            continue
+          }
+
+          if (check === 'exhausted') {
+            result.exhaustedNoticeIds.push(notice.id)
+          }
+
+          break
         }
 
         let sent: { messageId: string } | null = null

@@ -142,7 +142,12 @@
                 {{ notice.recipientsNow === 1 ? 'user' : 'users' }}
                 would be emailed now
                 <template v-if="notice.approval.approvedAt">
-                  · approved
+                  ·
+                  <span :data-testid="`admin-legal-notice-budget-${notice.id}`">
+                    Approved for {{ notice.approval.recipientEstimate }},
+                    sent {{ notice.approval.deliveredSinceApproval }}
+                  </span>
+                  on
                   <UiLocalDate
                     :value="notice.approval.approvedAt"
                     with-time

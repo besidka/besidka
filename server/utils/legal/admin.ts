@@ -37,6 +37,7 @@ import {
   resolveEffectiveConsentVersion,
 } from '~~/server/utils/legal/consent-version'
 import {
+  countDeliveriesSinceApproval,
   hashLegalNotice,
   readActiveLegalNoticeApprovals,
 } from '~~/server/utils/legal/notice-approvals'
@@ -86,7 +87,10 @@ function resolveNow(context: Pick<FeatureAdminContext, 'now'>): Date {
 
 /**
  * Legal notice emails and consent versions are approved only by a person in
- * the admin UI, never by an MCP client or a schedule.
+ * the admin UI, never by an MCP client or a schedule. The HTTP routes under
+ * `/api/v1/admin/legal/` are UI-only by construction: they build their
+ * context with `createFeatureAdminWriteContext`, whose actor kind is `ui`.
+ * An MCP admin tool must never call these writers, even with a `ui` actor.
  */
 function assertAdminInterface(context: FeatureAdminContext): void {
   if (context.actor.kind === 'ui') {
@@ -267,6 +271,9 @@ export async function getLegalAdminOverview(
         approvedAt: approval?.approvedAt.toISOString() ?? null,
         approvedBy: approval?.approvedBy ?? null,
         recipientEstimate: approval?.recipientEstimate ?? null,
+        deliveredSinceApproval: approval
+          ? await countDeliveriesSinceApproval(db, approval)
+          : null,
       },
     })
   }

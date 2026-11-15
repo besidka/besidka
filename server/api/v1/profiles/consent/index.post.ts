@@ -1,11 +1,15 @@
 import { createError } from 'evlog'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import {
-  getEffectiveConsentVersion,
+  CURRENT_CONSENT_VERSION,
   recordLegalConsent,
+  throwConsentVersionUnavailable,
   toLegalConsentState,
 } from '~~/server/utils/legal/consent'
-import { loadApprovedConsentVersion } from '~~/server/utils/legal/consent-version'
+import {
+  loadApprovedConsentVersion,
+  resolveEffectiveConsentVersion,
+} from '~~/server/utils/legal/consent-version'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
@@ -42,9 +46,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await loadApprovedConsentVersion()
+  const approvedVersion = await loadApprovedConsentVersion()
 
-  const effectiveVersion = getEffectiveConsentVersion()
+  if (approvedVersion === null) {
+    throwConsentVersionUnavailable()
+  }
+
+  const effectiveVersion = resolveEffectiveConsentVersion(
+    CURRENT_CONSENT_VERSION,
+    approvedVersion,
+  )
 
   if (body.data.version !== effectiveVersion) {
     throw createError({
@@ -56,7 +67,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
-  const record = await recordLegalConsent(userId)
+  const record = await recordLegalConsent(
+    userId,
+    useDb(),
+    new Date(),
+    effectiveVersion,
+  )
 
   logger.set({
     userId,

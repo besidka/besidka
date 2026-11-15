@@ -351,6 +351,7 @@ describe('legal admin writers', () => {
           approval: {
             state: 'approved',
             recipientEstimate: 1,
+            deliveredSinceApproval: 0,
             approvedByEmail: `user-${approver}@example.test`,
           },
         })
@@ -361,7 +362,11 @@ describe('legal admin writers', () => {
           isCodeVersionApproved: false,
         })
         expect(overview.optOuts).toEqual([
-          expect.objectContaining({ userId: optedOut, source: 'admin' }),
+          expect.objectContaining({
+            userId: optedOut,
+            source: 'admin',
+            createdAt: IN_WINDOW.toISOString(),
+          }),
         ])
       })
   })

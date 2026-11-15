@@ -19,7 +19,11 @@ import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
+  BASELINE_APPROVED_CONSENT_VERSION,
+  compareConsentVersions,
   getCachedApprovedConsentVersion,
+  isApprovedConsentVersionUnavailable,
+  isConsentVersion,
   loadApprovedConsentVersion,
   resolveEffectiveConsentVersion,
 } from '~~/server/utils/legal/consent-version'
@@ -48,6 +52,31 @@ export function getEffectiveConsentVersion(): string {
     CURRENT_CONSENT_VERSION,
     getCachedApprovedConsentVersion(),
   )
+}
+
+/**
+ * Whether a stored consent version is the one users are asked for. While the
+ * approved version cannot be read, any version from the baseline up to the
+ * code version counts, so a storage outage never re-prompts anyone.
+ */
+export function isEffectiveConsentVersion(
+  version: string | null | undefined,
+): boolean {
+  if (!isApprovedConsentVersionUnavailable()) {
+    return version === getEffectiveConsentVersion()
+  }
+
+  if (!isConsentVersion(version)) {
+    return false
+  }
+
+  const lowestPossible = resolveEffectiveConsentVersion(
+    CURRENT_CONSENT_VERSION,
+    BASELINE_APPROVED_CONSENT_VERSION,
+  )
+
+  return compareConsentVersions(version, lowestPossible) >= 0
+    && compareConsentVersions(version, CURRENT_CONSENT_VERSION) <= 0
 }
 
 const PRIVACY_POLICY_CONSENT_LINK
@@ -114,10 +143,9 @@ export function getLegalConsentStatus(
     return 'withdrawn'
   }
 
-  const effectiveVersion = getEffectiveConsentVersion()
   const isCurrentVersion
-    = record.sensitiveContentConsentVersion === effectiveVersion
-      && record.termsVersion === effectiveVersion
+    = isEffectiveConsentVersion(record.sensitiveContentConsentVersion)
+      && isEffectiveConsentVersion(record.termsVersion)
       && Boolean(record.termsAcceptedAt)
       && Boolean(record.ageConfirmedAt)
 
@@ -369,14 +397,35 @@ async function upsertUserSettings(
     })
 }
 
+export function throwConsentVersionUnavailable(): never {
+  throw createError({
+    message: 'Consent cannot be recorded right now',
+    status: 503,
+    why: 'The approved consent version could not be read.',
+    fix: 'Try again in a minute.',
+  })
+}
+
+/**
+ * Records the Terms, age and Art. 9 consent under `version`, the effective
+ * version the caller showed and checked; without it, the effective version
+ * read here. Refuses with 503 while the approved version cannot be read, so
+ * a consent is never recorded under a guessed version.
+ */
 export async function recordLegalConsent(
   userId: number,
   db: DbClient = useDb(),
   now: Date = new Date(),
+  version?: string,
 ): Promise<LegalConsentRecord> {
   const grantedAt = toWholeSecond(now)
   const existing = await readLegalConsent(userId, db)
-  const effectiveVersion = getEffectiveConsentVersion()
+
+  if (isApprovedConsentVersionUnavailable()) {
+    throwConsentVersionUnavailable()
+  }
+
+  const effectiveVersion = version ?? getEffectiveConsentVersion()
   const hasSameSecondWithdrawal = isWithdrawnAfterGrant(
     grantedAt,
     existing.sensitiveContentConsentWithdrawnAt,

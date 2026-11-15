@@ -1,4 +1,4 @@
-import { isNull } from 'drizzle-orm'
+import { and, count, eq, gte, isNull, or } from 'drizzle-orm'
 import type { LegalNotice } from '#shared/utils/legal-notices'
 import { sha256Hex } from '#shared/utils/knowledge-hash'
 import * as schema from '~~/server/db/schema'
@@ -6,6 +6,8 @@ import * as schema from '~~/server/db/schema'
 type DbClient = ReturnType<typeof useDb>
 
 type NoticeApprovalDatabase = Pick<DbClient, 'select'>
+
+type NoticeApprovalCheckDatabase = Pick<DbClient, 'select' | 'batch'>
 
 export interface ActiveLegalNoticeApproval {
   id: number
@@ -16,8 +18,19 @@ export interface ActiveLegalNoticeApproval {
   approvedAt: Date
 }
 
+export interface ApprovedLegalNotice {
+  notice: LegalNotice
+  approval: ActiveLegalNoticeApproval
+}
+
+export type LegalNoticeClaimCheck
+  = | 'approved'
+    | 'withdrawn'
+    | 'exhausted'
+    | 'opted-out'
+
 export interface ApprovedLegalNotices {
-  approved: LegalNotice[]
+  approved: ApprovedLegalNotice[]
   unapprovedIds: string[]
   changedIds: string[]
 }
@@ -96,8 +109,90 @@ export async function selectApprovedLegalNotices(
       continue
     }
 
-    result.approved.push(notice)
+    result.approved.push({ notice, approval })
   }
 
   return result
+}
+
+function deliveredSinceApprovalCondition(
+  approval: Pick<ActiveLegalNoticeApproval, 'noticeId' | 'approvedAt'>,
+) {
+  return and(
+    eq(schema.legalNoticeDeliveries.noticeId, approval.noticeId),
+    or(
+      and(
+        eq(schema.legalNoticeDeliveries.status, 'sent'),
+        gte(schema.legalNoticeDeliveries.sentAt, approval.approvedAt),
+      ),
+      and(
+        eq(schema.legalNoticeDeliveries.status, 'sending'),
+        gte(schema.legalNoticeDeliveries.updatedAt, approval.approvedAt),
+      ),
+    ),
+  )
+}
+
+/**
+ * Deliveries sent or in flight for the notice since it was approved. The
+ * approval covers at most `recipientEstimate` of them, the number the owner
+ * confirmed.
+ */
+export async function countDeliveriesSinceApproval(
+  db: NoticeApprovalDatabase,
+  approval: Pick<ActiveLegalNoticeApproval, 'noticeId' | 'approvedAt'>,
+): Promise<number> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(schema.legalNoticeDeliveries)
+    .where(deliveredSinceApprovalCondition(approval))
+
+  return row?.total ?? 0
+}
+
+/**
+ * Re-checks a claimed delivery right before its send, in one round trip:
+ * the approval is still the active one (so its hash is unchanged), the user
+ * has not opted out, and the deliveries since the approval, this claim
+ * included, stay within the confirmed number of recipients.
+ */
+export async function checkLegalNoticeClaim(
+  db: NoticeApprovalCheckDatabase,
+  approval: ActiveLegalNoticeApproval,
+  userId: number,
+): Promise<LegalNoticeClaimCheck> {
+  const [activeRows, optOutRows, deliveredRows] = await db.batch([
+    db
+      .select({ id: schema.legalNoticeApprovals.id })
+      .from(schema.legalNoticeApprovals)
+      .where(and(
+        eq(schema.legalNoticeApprovals.id, approval.id),
+        eq(schema.legalNoticeApprovals.noticeHash, approval.noticeHash),
+        isNull(schema.legalNoticeApprovals.withdrawnAt),
+      ))
+      .limit(1),
+    db
+      .select({ userId: schema.legalNoticeEmailOptOuts.userId })
+      .from(schema.legalNoticeEmailOptOuts)
+      .where(eq(schema.legalNoticeEmailOptOuts.userId, userId))
+      .limit(1),
+    db
+      .select({ total: count() })
+      .from(schema.legalNoticeDeliveries)
+      .where(deliveredSinceApprovalCondition(approval)),
+  ])
+
+  if (activeRows.length === 0) {
+    return 'withdrawn'
+  }
+
+  if (optOutRows.length > 0) {
+    return 'opted-out'
+  }
+
+  if ((deliveredRows[0]?.total ?? 0) > approval.recipientEstimate) {
+    return 'exhausted'
+  }
+
+  return 'approved'
 }

@@ -1201,9 +1201,6 @@ export async function sweepBackfillJobs(
   const db = input.db ?? useDb()
   const limits = MEMORY_EXTRACTION_LIMITS
   const startedAt = Date.now()
-
-  await loadApprovedConsentVersion({ db })
-
   const result: SweepBackfillJobsResult = {
     jobs: 0,
     chats: 0,
@@ -1212,6 +1209,10 @@ export async function sweepBackfillJobs(
   }
 
   if (input.maxRuntimeMs <= 0) {
+    return result
+  }
+
+  if (await loadApprovedConsentVersion({ db }) === null) {
     return result
   }
 

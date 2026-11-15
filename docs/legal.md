@@ -460,7 +460,9 @@ admin area.
 both hold:
 
 1. `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on in the Worker (off in production,
-   and the sweep never runs in development), and
+   and the sweep never runs in development). It is read strictly: only the
+   boolean `true` or the string `'true'` turn it on, and anything else,
+   including the string `'false'`, leaves emails off; and
 2. the notice has an active approval in `legal_notice_approvals`, made in
    `/admin/legal` (**Legal** tab), whose stored hash still matches the
    notice in code. The hash covers the id, documents, the three dates, the
@@ -470,8 +472,22 @@ both hold:
 
 The dates still apply on top: an approved notice is emailed only from
 `sendFrom` until `effectiveAt`, and a notice already in effect cannot be
-approved. Withdrawing an approval stops the emails from the next 5-minute
-tick; a tick already running finishes its batch of at most 25. The sweep
+approved.
+
+**An approval covers the number the owner confirmed, no more.** Once the
+deliveries sent or in flight since the approval reach its
+`recipientEstimate`, the notice stops (logged as `exhaustedNoticeIds`), so a
+user who signs up earlier, verifies later or is retried never gets an email
+without a new approval. The page shows "Approved for N, sent M".
+
+**Every send is re-checked.** After a recipient is claimed and before the
+email goes out, the sweep checks in one round trip that the approval is
+still the active one, that the user has not opted out and that the confirmed
+number is not exceeded. A withdrawal stops the next send of that notice, and
+an opt-out skips that user, even in the middle of a tick. A withheld claim
+is removed, or a retried one goes back to `failed` with its attempt
+refunded (`E_APPROVAL_WITHDRAWN`, `E_APPROVAL_EXHAUSTED`,
+`E_RECIPIENT_OPTED_OUT`, counted as `withheldCount`). The sweep
 logs `unapprovedNoticeIds` and `changedNoticeIds` and stops with
 `no-approved-notice` when nothing in its window is approved; if the approvals
 cannot be read it stops with `error` and sends nothing.
@@ -496,8 +512,13 @@ introducing the gate changed nobody's status. The migration seeds nothing.
 Only the version currently in code can be approved, and only when it is newer
 than the approved one. The approved version is cached in KV
 (`legal:consent-version:approved`, 1 hour) and per isolate (1 minute); a
-failed read keeps the last known value, or the baseline, so a storage outage
-never lets a code bump take effect. Known limit: a bump in code still ships
+failed read keeps the last known value, so a storage outage never lets a
+code bump take effect. When an isolate has never read it and both KV and D1
+fail, Besidka does not guess: recording a consent answers 503, a stored
+consent between the baseline and the code version still counts as current
+(nobody is asked again because of the outage), and the memory extraction and
+backfill sweeps skip the tick. The consent route reads the effective version
+once and uses that value for both the 409 check and the record. Known limit: a bump in code still ships
 the new consent wording to first-time users at once, recorded under the old
 approved version until the owner approves the new one.
 

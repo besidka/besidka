@@ -4,7 +4,9 @@ import {
   CURRENT_CONSENT_VERSION,
   getEffectiveConsentVersion,
   getLegalConsentStatus,
+  isEffectiveConsentVersion,
   readLegalConsent,
+  recordLegalConsent,
 } from '~~/server/utils/legal/consent'
 import {
   APPROVED_CONSENT_VERSION_CACHE_KEY,
@@ -12,6 +14,7 @@ import {
   BASELINE_APPROVED_CONSENT_VERSION,
   compareConsentVersions,
   getCachedApprovedConsentVersion,
+  isApprovedConsentVersionUnavailable,
   loadApprovedConsentVersion,
   rememberApprovedConsentVersion,
   resetApprovedConsentVersionMemo,
@@ -196,6 +199,33 @@ describe('consent version gate', () => {
         now: APPROVED_CONSENT_VERSION_MEMO_TTL_MS * 2,
       })).resolves.toBe('2026-12-a')
     })
+
+    it('returns null without a cached value when KV and D1 both fail',
+      async () => {
+        const kv = createKv()
+
+        kv.get.mockRejectedValue(new Error('kv down'))
+        testDb.sqlite.exec('DROP TABLE legal_consent_version_approvals')
+
+        await expect(loadApprovedConsentVersion({ db: testDb.db, kv }))
+          .resolves.toBeNull()
+        expect(isApprovedConsentVersionUnavailable()).toBe(true)
+        expect(getLegalConsentStatus(recordOn('2026-11-a'))).toBe('current')
+        expect(isEffectiveConsentVersion('2026-10-a')).toBe(false)
+        expect(isEffectiveConsentVersion('2027-01-a')).toBe(false)
+      })
+
+    it('refuses to record consent while the version is unavailable',
+      async () => {
+        const kv = createKv()
+
+        kv.get.mockRejectedValue(new Error('kv down'))
+        vi.stubGlobal('useKV', () => kv)
+        testDb.sqlite.exec('DROP TABLE legal_consent_version_approvals')
+
+        await expect(recordLegalConsent(1, testDb.db))
+          .rejects.toMatchObject({ status: 503 })
+      })
 
     it('loads the approved version before reading a user consent', async () => {
       const kv = createKv({

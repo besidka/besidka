@@ -34,6 +34,8 @@ interface ApprovedConsentVersionMemo {
 
 let approvedVersionMemo: ApprovedConsentVersionMemo | null = null
 
+let isApprovedVersionUnavailable = false
+
 export function isConsentVersion(value: unknown): value is string {
   return typeof value === 'string' && CONSENT_VERSION_PATTERN.test(value)
 }
@@ -90,10 +92,20 @@ export function rememberApprovedConsentVersion(
   }
 
   approvedVersionMemo = { version, loadedAt: now }
+  isApprovedVersionUnavailable = false
 }
 
 export function resetApprovedConsentVersionMemo(): void {
   approvedVersionMemo = null
+  isApprovedVersionUnavailable = false
+}
+
+/**
+ * True when neither KV nor D1 could be read and this isolate has never read
+ * the approved version, so the baseline in use is a guess, not an answer.
+ */
+export function isApprovedConsentVersionUnavailable(): boolean {
+  return isApprovedVersionUnavailable && approvedVersionMemo === null
 }
 
 export async function readApprovedConsentVersionFromDb(
@@ -158,15 +170,17 @@ export async function cacheApprovedConsentVersion(
 /**
  * Refreshes the approved consent version for this isolate at most once a
  * minute: KV first, then D1 (which then refills KV). A failed read keeps the
- * last known value, or the baseline in a fresh isolate, so a storage outage
- * can never make a code bump take effect. Every path that compares consent
- * versions reaches this through `readLegalConsent` or a sweep entry point.
+ * last known value. In an isolate that never read it, a failed read returns
+ * `null`: callers then refuse to record consent and never mark a user
+ * outdated, and the background sweeps skip the tick. Every path that
+ * compares consent versions reaches this through `readLegalConsent` or a
+ * sweep entry point.
  */
 export async function loadApprovedConsentVersion(input: {
   db?: ConsentVersionDatabase
   kv?: ConsentVersionKV
   now?: number
-} = {}): Promise<string> {
+} = {}): Promise<string | null> {
   const now = input.now ?? Date.now()
 
   if (
@@ -197,6 +211,12 @@ export async function loadApprovedConsentVersion(input: {
 
     return version
   } catch {
-    return getCachedApprovedConsentVersion()
+    if (approvedVersionMemo) {
+      return approvedVersionMemo.version
+    }
+
+    isApprovedVersionUnavailable = true
+
+    return null
   }
 }

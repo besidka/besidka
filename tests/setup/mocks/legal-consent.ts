@@ -52,6 +52,9 @@ function grantedRecord(): LegalConsentRecord {
 export const CURRENT_CONSENT_VERSION = actual.CURRENT_CONSENT_VERSION
 export const CURRENT_CONSENT_TEXT_SHA256 = actual.CURRENT_CONSENT_TEXT_SHA256
 export const getEffectiveConsentVersion = actual.getEffectiveConsentVersion
+export const isEffectiveConsentVersion = actual.isEffectiveConsentVersion
+export const throwConsentVersionUnavailable
+  = actual.throwConsentVersionUnavailable
 export const hasModelTransferConsent = actual.hasModelTransferConsent
 export const assertModelTransferConsent = actual.assertModelTransferConsent
 export const legalConsentColumns = actual.legalConsentColumns

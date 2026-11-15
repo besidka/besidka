@@ -299,7 +299,11 @@ sweep stops with `email-noop` on the first send and marks nobody as told.
 `effectiveAt`, or 14 with a `shortNoticeReason`), `claimMissedCount`,
 `userDeletedCount`, `errorCodes`, the per-notice counts,
 `unapprovedNoticeIds` and `changedNoticeIds` (notices in their window without
-an approval, or changed since it), `stopReason` and `runtimeMs`. Never an
+an approval, or changed since it), `exhaustedNoticeIds` (notices whose
+approval reached its confirmed number of recipients), `withheldCount`
+(claims dropped by the re-check before a send: `E_APPROVAL_WITHDRAWN`,
+`E_APPROVAL_EXHAUSTED`, `E_RECIPIENT_OPTED_OUT`), `stopReason` and
+`runtimeMs`. Never an
 address or a name. Stop reasons: `no-active-notice`, `no-approved-notice`,
 `completed`, `quota`, `daily-cap`, `max-runtime`, `privacy-email-missing`,
 `consecutive-failures`, `email-noop`, `error`. The last three set the event

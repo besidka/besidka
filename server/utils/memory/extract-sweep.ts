@@ -345,10 +345,11 @@ export async function sweepMemoryExtraction(
   const db = input.db ?? useDb()
   const startedAt = Date.now()
   const now = input.now ?? new Date()
-
-  await loadApprovedConsentVersion({ db })
-
-  const chats = await selectDueChats(db, Math.max(input.batchSize, 1), now)
+  const isConsentVersionKnown
+    = await loadApprovedConsentVersion({ db }) !== null
+  const chats = isConsentVersionKnown
+    ? await selectDueChats(db, Math.max(input.batchSize, 1), now)
+    : []
   const resolveCache = new Map<string, ResolvedMemoryModel>()
   const result: SweepMemoryExtractionResult = {
     selectedCount: chats.length,

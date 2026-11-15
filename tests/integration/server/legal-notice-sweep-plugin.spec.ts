@@ -82,6 +82,37 @@ describe('legal notice sweep plugin', () => {
     expect(createLogger).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['false', false],
+    [' FALSE ', false],
+    ['0', false],
+    ['', false],
+    [0, false],
+    [1, false],
+    [null, false],
+    [undefined, false],
+    ['yes', false],
+    [false, false],
+    ['true', true],
+    [' True ', true],
+    [true, true],
+  ])('reads the switch %o strictly as %s', async (value, isEnabled) => {
+    const { createLogger } = createLoggerMock()
+    const runSweep = vi.fn().mockResolvedValue(sweepResult)
+    const runLegalNoticeSweepJob = await loadJob()
+
+    await runLegalNoticeSweepJob({
+      controller,
+      config: { ...config, legalNoticeSweepEnabled: value },
+      createLogger,
+      runSweep,
+      shipWideEvent: vi.fn(),
+      isDevelopment: false,
+    })
+
+    expect(runSweep).toHaveBeenCalledTimes(isEnabled ? 1 : 0)
+  })
+
   it('does nothing in development even when enabled', async () => {
     const { createLogger } = createLoggerMock()
     const runSweep = vi.fn()

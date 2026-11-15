@@ -38,12 +38,21 @@ function createOverview(overrides: {
         windowState: 'open',
         deliveries: { sent: 0, skipped: 30, failed: 0, sending: 0 },
         recipientsNow: 2,
-        approval: {
-          state: overrides.approvalState ?? 'none',
-          approvedAt: null,
-          recipientEstimate: null,
-          approvedByEmail: null,
-        },
+        approval: overrides.approvalState && overrides.approvalState !== 'none'
+          ? {
+            state: overrides.approvalState,
+            approvedAt: '2026-11-15T12:00:00.000Z',
+            recipientEstimate: 2,
+            deliveredSinceApproval: 1,
+            approvedByEmail: null,
+          }
+          : {
+            state: 'none',
+            approvedAt: null,
+            recipientEstimate: null,
+            deliveredSinceApproval: null,
+            approvedByEmail: null,
+          },
       },
     ],
     consent: {
@@ -155,6 +164,10 @@ describe('admin legal page', () => {
     const wrapper = await mountPage(createOverview({
       approvalState: 'approved',
     }))
+
+    expect(wrapper.get(
+      `[data-testid="admin-legal-notice-budget-${NOTICE_ID}"]`,
+    ).text()).toBe('Approved for 2, sent 1')
 
     await wrapper.get(
       `[data-testid="admin-legal-notice-withdraw-${NOTICE_ID}"]`,

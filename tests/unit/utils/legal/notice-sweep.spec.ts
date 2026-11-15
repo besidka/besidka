@@ -124,7 +124,7 @@ describe('sweepLegalNotices', () => {
     await testDb.db.insert(schema.legalNoticeApprovals).values({
       noticeId: notice.id,
       noticeHash: await hashLegalNotice(notice),
-      recipientEstimate: 0,
+      recipientEstimate: 1000,
       approvedBy: 1,
       approvedAt: minutesBefore(60),
       ...values,
@@ -277,6 +277,118 @@ describe('sweepLegalNotices', () => {
       expect(sendNotice).toHaveBeenCalledWith(expect.objectContaining({
         to: `recipient-${recipient}@example.test`,
       }))
+    })
+
+    it('stops once the confirmed number of recipients is reached',
+      async () => {
+        await testDb.db.delete(schema.legalNoticeApprovals)
+        await approveNotice(NOTICE, { recipientEstimate: 1 })
+        await seedRecipient()
+        await seedRecipient()
+
+        const first = await sweep()
+        const second = await sweep()
+
+        expect(first.sentCount).toBe(1)
+        expect(first.selectedCount).toBe(1)
+        expect(second.sentCount).toBe(0)
+        expect(second.exhaustedNoticeIds).toEqual([NOTICE.id])
+        expect(sendNotice).toHaveBeenCalledTimes(1)
+        expect(await readDeliveries()).toHaveLength(1)
+      })
+
+    it('does not count deliveries sent before the approval', async () => {
+      const earlier = await seedRecipient()
+      await seedRecipient()
+      await seedDelivery(earlier, {
+        status: 'sent',
+        sentAt: minutesBefore(24 * 60),
+      })
+      await testDb.db.delete(schema.legalNoticeApprovals)
+      await approveNotice(NOTICE, { recipientEstimate: 1 })
+
+      const result = await sweep()
+
+      expect(result.sentCount).toBe(1)
+      expect(result.exhaustedNoticeIds).toEqual([])
+    })
+
+    it('never exceeds the confirmed number when two ticks overlap',
+      async () => {
+        await testDb.db.delete(schema.legalNoticeApprovals)
+        await approveNotice(NOTICE, { recipientEstimate: 2 })
+        await seedRecipient()
+        await seedRecipient()
+        await seedRecipient()
+
+        const [first, second] = await Promise.all([sweep(), sweep()])
+
+        expect(first.sentCount + second.sentCount).toBeLessThanOrEqual(2)
+        expect(sendNotice.mock.calls.length).toBeLessThanOrEqual(2)
+      })
+
+    it('withholds a send when another tick used up the confirmed number',
+      async () => {
+        await testDb.db.delete(schema.legalNoticeApprovals)
+        await approveNotice(NOTICE, { recipientEstimate: 2 })
+        await seedRecipient()
+        const second = await seedRecipient()
+        const elsewhere = await seedRecipient({ emailVerified: false })
+
+        sendNotice.mockImplementationOnce(async () => {
+          await seedDelivery(elsewhere, { status: 'sent', sentAt: NOW })
+
+          return { messageId: 'first' }
+        })
+
+        const result = await sweep()
+
+        expect(sendNotice).toHaveBeenCalledTimes(1)
+        expect(result.exhaustedNoticeIds).toEqual([NOTICE.id])
+        expect(result.errorCodes).toEqual({ E_APPROVAL_EXHAUSTED: 1 })
+        expect(await readDelivery(second)).toBeUndefined()
+      })
+
+    it('stops the next send when the approval is withdrawn mid-tick',
+      async () => {
+        await seedRecipient()
+        const second = await seedRecipient()
+
+        sendNotice.mockImplementationOnce(async () => {
+          await testDb.db
+            .update(schema.legalNoticeApprovals)
+            .set({ withdrawnAt: NOW, withdrawnBy: 1 })
+            .where(eq(schema.legalNoticeApprovals.noticeId, NOTICE.id))
+
+          return { messageId: 'first' }
+        })
+
+        const result = await sweep()
+
+        expect(sendNotice).toHaveBeenCalledTimes(1)
+        expect(result.sentCount).toBe(1)
+        expect(result.withheldCount).toBe(1)
+        expect(result.errorCodes).toEqual({ E_APPROVAL_WITHDRAWN: 1 })
+        expect(await readDelivery(second)).toBeUndefined()
+      })
+
+    it('skips a user who opts out mid-tick and mails the rest', async () => {
+      await seedRecipient()
+      const optingOut = await seedRecipient()
+      const last = await seedRecipient()
+
+      sendNotice.mockImplementationOnce(async () => {
+        await optOut(optingOut)
+
+        return { messageId: 'first' }
+      })
+
+      const result = await sweep()
+
+      expect(result.sentCount).toBe(2)
+      expect(result.withheldCount).toBe(1)
+      expect(await readDelivery(optingOut)).toBeUndefined()
+      expect(await readDelivery(last)).toMatchObject({ status: 'sent' })
     })
 
     it('stops with an error and sends nothing when approvals cannot be read',
