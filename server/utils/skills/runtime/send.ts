@@ -2,10 +2,14 @@ import type { ToolSet } from 'ai'
 import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import { isAuthoredSkillSource } from '#shared/utils/skills-policy'
 import {
+  SKILL_ACTIVATION_SOURCE_JEV,
   findSkillInvocation,
   toSkillActivationPart,
 } from '#shared/utils/skills/runtime'
-import type { DataSkillActivationPart } from '#shared/utils/skills/runtime'
+import type {
+  DataSkillActivationPart,
+  SkillInvocationPartData,
+} from '#shared/utils/skills/runtime'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildSkillCatalog } from '~~/server/utils/skills/runtime/catalog'
@@ -96,6 +100,12 @@ const EMPTY_SKILLS_SEND: SkillsSend = {
  *   earlier answers, plus the attached one when it is Auto), as an
  *   `<active_skills>` block, which is also added when tool calling is off.
  *
+ * - the skill TypeSafe AI picked for this message (`jevSelection`, only when
+ *   the user attached none), injected like an attachment but worded as
+ *   Besidka's match, and never stored on the user message; a skill that
+ *   cannot be read is skipped without an error, since the model still has
+ *   the catalog.
+ *
  * It never adds a tool other than the two skill tools, whatever a skill
  * says. A user who attached a skill that cannot be read gets the generic
  * 400 for a new message; a stored message just runs without it.
@@ -113,6 +123,7 @@ export async function prepareSkillsForSend(input: {
   userMessageText: string | null
   isStoredUserMessage: boolean
   preloadedInvocation?: LoadedSkillInvocation | null
+  jevSelection?: SkillInvocationPartData | null
   guard?: UntrustedContentGuard
   logger: LoggerLike
 }): Promise<SkillsSend> {
@@ -123,15 +134,18 @@ export async function prepareSkillsForSend(input: {
   const { db, userId, family, logger } = input
   const bucket = input.getBucket()
   const invocation = findSkillInvocation(input.newMessageParts)
-  const invocationResult = invocation
+  const jevInvocation = invocation ? null : input.jevSelection ?? null
+  const attachedInvocation = invocation ?? jevInvocation
+  const invocationResult = attachedInvocation
     ? await buildSkillInvocationBlock({
       db,
       bucket,
       userId,
-      invocation,
+      invocation: attachedInvocation,
       argumentsText: input.userMessageText ?? '',
       family,
-      preloaded: input.preloadedInvocation,
+      preloaded: invocation ? input.preloadedInvocation : null,
+      invokedBy: jevInvocation ? 'jev' : 'user',
       logger,
     })
     : null
@@ -142,11 +156,15 @@ export async function prepareSkillsForSend(input: {
 
   const streamActivations: DataSkillActivationPart[] = invocationResult
     && invocationResult.keepsActive
-    ? [toSkillActivationPart({
-      skillId: invocationResult.skillId,
-      name: invocationResult.name,
-      version: invocationResult.version,
-    })]
+    ? [toSkillActivationPart(
+      {
+        skillId: invocationResult.skillId,
+        name: invocationResult.name,
+        version: invocationResult.version,
+      },
+      undefined,
+      jevInvocation ? SKILL_ACTIVATION_SOURCE_JEV : undefined,
+    )]
     : []
   const projectSkills = await prepareProjectSkillsForSend({
     db,
@@ -240,6 +258,7 @@ export async function prepareSkillsForSend(input: {
         catalogTokens: catalog?.tokens ?? 0,
         toolsRegistered: toolsRun !== null,
         invoked: invocationResult !== null,
+        selectedByJev: jevInvocation !== null && invocationResult !== null,
         activeCount: active?.activeSkillIds.length ?? 0,
         activeUnavailable: active?.unavailable ?? 0,
         projectLoaded: projectSkills.loadedSkillIds.length,

@@ -21,7 +21,11 @@ const mocks = vi.hoisted(() => ({
 mockNuxtImport('useTypesafeRoles', () => {
   return () => ({
     isLoaded: computed(() => state.isLoaded),
-    isRoleOn: (role: string) => state.roles[role] !== false,
+    isRoleOn: (role: string) => {
+      return role === 'skillSelection'
+        ? state.roles[role] === true
+        : state.roles[role] !== false
+    },
     setRole: mocks.setRole,
   })
 })
@@ -61,7 +65,8 @@ describe('Profile/Keys/TypesafeChecks', () => {
       const toggle = wrapper.get(`[data-testid="typesafe-role-toggle-${role}"]`)
       const description = wrapper.get(`#typesafe-role-${role}-description`)
 
-      expect((toggle.element as HTMLInputElement).checked).toBe(true)
+      expect((toggle.element as HTMLInputElement).checked)
+        .toBe(role !== 'skillSelection')
       expect(description.text()).toMatch(/sends /i)
     }
   })
@@ -77,6 +82,25 @@ describe('Profile/Keys/TypesafeChecks', () => {
       + 'phone numbers and card numbers removed. Never blocks sharing.')
     expect(text).toContain('results from your model\'s own web search can\'t '
       + 'be checked.')
+  })
+
+  it('shows skill selection off by default, with its cost note, and saves '
+    + 'a switch on', async () => {
+    const wrapper = await mountSuspended(TypesafeChecks)
+    const toggle = wrapper.get(
+      '[data-testid="typesafe-role-toggle-skillSelection"]',
+    )
+    const description = wrapper.get('#typesafe-role-skillSelection-description')
+
+    expect((toggle.element as HTMLInputElement).checked).toBe(false)
+    expect(description.text()).toContain('costs a small amount on your '
+      + 'TypeSafe AI key')
+    expect(description.text()).toContain('Off by default')
+
+    await toggle.setValue(true)
+    await flushPromises()
+
+    expect(mocks.setRole).toHaveBeenCalledWith('skillSelection', true)
   })
 
   it('shows a role switched off as unchecked and saves a flip', async () => {

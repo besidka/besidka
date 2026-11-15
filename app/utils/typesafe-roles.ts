@@ -61,4 +61,13 @@ export const typesafeRoleCopies: TypesafeRoleCopy[] = [
       + 'TypeSafe AI doesn\'t answer, Besidka searches your past chats '
       + 'anyway.',
   },
+  {
+    id: 'skillSelection',
+    title: 'Skill selection',
+    description: 'Picks one of your Auto skills for a message when a local '
+      + 'match suggests it. Sends your message and up to three skill '
+      + 'names and descriptions, only when one matches, and costs a small '
+      + 'amount on your TypeSafe AI key. Off by default. If TypeSafe AI '
+      + 'doesn\'t answer, the model picks from your skills as usual.',
+  },
 ]

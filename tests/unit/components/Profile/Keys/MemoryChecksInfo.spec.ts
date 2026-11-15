@@ -24,7 +24,9 @@ describe('Profile/Keys/MemoryChecksInfo', () => {
       expect(text).not.toContain('never for chat')
       expect(text).toContain('memory checks, Auto web search, a memory '
         + 'pre-filter, prompt-injection screening, search re-ranking, a share '
-        + 'check and past-chat retrieval')
+        + 'check, past-chat retrieval and skill selection')
+      expect(text).toContain('skill selection, which stays off until you '
+        + 'switch it on')
       expect(text).toContain('Each check sends TypeSafe AI (US) only the text '
         + 'it needs')
       expect(text).toContain('It adds no chat models.')

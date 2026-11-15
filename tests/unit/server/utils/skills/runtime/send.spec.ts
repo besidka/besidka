@@ -345,6 +345,104 @@ describe('prepareSkillsForSend', () => {
     expect(result.invocationBlock).toBeNull()
   })
 
+  describe('skill picked by TypeSafe AI', () => {
+    function selection(skillId: string, name: string) {
+      return { skillId, name, version: 1 }
+    }
+
+    it('injects the picked skill like an attachment, worded as Besidka\'s match', async () => {
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toContain('Besidka matched the skill')
+      expect(result.invocationBlock).not.toContain('The user attached')
+      expect(result.invocationBlock).toContain('invoked="jev"')
+      expect(result.invocationBlock).toContain('AUTO BODY hello')
+      expect(result.holdsSkillText).toBe(true)
+      expect(result.instructionBlock).not.toContain('AUTO BODY')
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          skills: expect.objectContaining({ selectedByJev: true }),
+        },
+      })
+    })
+
+    it('shows as a skill step and keeps the skill active for later sends', async () => {
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.streamActivations).toHaveLength(1)
+      expect(result.streamActivations[0]).toMatchObject({
+        type: 'data-skill-activation',
+        data: { skillId: autoId, version: 1, source: 'jev' },
+      })
+
+      const later = await prepare({
+        storedMessages: [
+          { role: 'assistant', parts: [result.streamActivations[0]!] },
+        ],
+      })
+
+      expect(later.activeSkillsBlock).toContain('AUTO BODY')
+    })
+
+    it('marks the skill active for the tools, so activate_skill answers already active', async () => {
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.toolsRegistered).toBe(true)
+      expect(result.activeSkillsBlock).toBeNull()
+    })
+
+    it('works without tool calling', async () => {
+      const result = await prepare({
+        isToolCallingAllowed: false,
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.toolsRegistered).toBe(false)
+      expect(result.invocationBlock).toContain('AUTO BODY')
+    })
+
+    it('never overrides a skill the user attached', async () => {
+      const result = await prepare({
+        newMessageParts: [invocation(askId, 'ask-skill')],
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toContain('ASK BODY')
+      expect(result.invocationBlock).not.toContain('AUTO BODY')
+      expect(result.invocationBlock).toContain('The user attached')
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('skips a picked skill that cannot be read, without an error', async () => {
+      bucket.objects.clear()
+
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toBeNull()
+      expect(result.streamActivations).toEqual([])
+    })
+
+    it('does nothing for a skill that is no longer runnable', async () => {
+      await testDb.db.update(schema.skills)
+        .set({ enabled: false })
+        .where(eq(schema.skills.id, autoId))
+
+      const result = await prepare({
+        jevSelection: selection(autoId, 'auto-skill'),
+      })
+
+      expect(result.invocationBlock).toBeNull()
+    })
+  })
+
   it('sets the memory guard only through the tools, never at preparation', async () => {
     const guard = { untrustedResultSeen: false }
 

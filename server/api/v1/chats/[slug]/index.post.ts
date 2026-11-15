@@ -333,6 +333,10 @@ import {
 } from '~~/server/utils/skills/runtime/persist'
 import { prepareSkillsForSend } from '~~/server/utils/skills/runtime/send'
 import {
+  prepareSkillSelection,
+  resolveSkillSelection,
+} from '~~/server/utils/skills/jev/selection'
+import {
   CONNECTORS_PER_USER,
   CONNECTOR_STEPS_PER_TURN,
   CONNECTOR_TOOLS_PER_REQUEST,
@@ -809,6 +813,17 @@ export default defineEventHandler(async (event) => {
     encryptedExaApiKey = exaKey.apiKey
   }
 
+  const skillSelectionPlan = await prepareSkillSelection({
+    event,
+    db,
+    userId,
+    projectId: chat.projectId,
+    isResume,
+    messageText: readUserMessageText(newMessage.parts),
+    newMessageParts: newMessage.parts,
+    storedMessages: chat.messages,
+    logger,
+  })
   const autoWebSearch = await resolveAutoWebSearch({
     db,
     userId,
@@ -823,8 +838,13 @@ export default defineEventHandler(async (event) => {
       }),
       JEV_AUTO_WEB_SEARCH.recentTurns,
     ),
+    extraJev: skillSelectionPlan?.extraJev,
     logger,
   })
+  const skillSelectionRun = resolveSkillSelection(
+    skillSelectionPlan,
+    autoWebSearch.jevResult,
+  )
   const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
     = autoWebSearch.outcome ?? undefined
   const selectedTools = autoWebSearch.tools
@@ -1890,6 +1910,7 @@ export default defineEventHandler(async (event) => {
     userMessageText,
     isStoredUserMessage,
     preloadedInvocation: preloadedSkillInvocation,
+    jevSelection: await skillSelectionRun,
     guard: chatSearchBudget,
     logger: aiLogger,
   })

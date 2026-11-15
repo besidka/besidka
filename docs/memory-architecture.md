@@ -2041,36 +2041,42 @@ quotes the behavior documented in 3.1 to 3.19, so re-check it when any of
 those change.
 
 TypeSafe AI Jev is an optional helper that runs on the user's own TypeSafe AI
-key. One key powers seven roles (`JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`).
-Saving the key is the opt-in: every role is then on, each has its own switch,
-and deleting the key stops all of them. No role can allow what a deterministic
+key. One key powers eight roles (`JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`).
+Saving the key is the opt-in: every role except Skill selection (J7, which
+spends the key on messages and so is off until switched on) is then on, each
+has its own switch, and deleting the key stops all of them. No role can allow what a deterministic
 rule refused, and no role can delete user content. Reading order of this
 section:
 
 1. **J0: foundation** - the shared client, settings, the one role table, the
    API every role uses.
 2. **Memory checks** - the first role, the add-only check on memory writes.
-3. **J1 to J6** - one section per role, in order: Auto web search, extraction
+3. **J1 to J7** - one section per role, in order: Auto web search, extraction
    pre-filter, prompt-injection screening, re-ranking, share check, past-chat
-   retrieval.
+   retrieval, skill selection.
 4. **Delta audit fixes (#560)** - the findings of the 2026-10-26 delta audit
    and where each one is described.
 5. **Legal and consent** - recipient, transfer basis and consent version.
 
 #### J0: foundation (shared client, settings, role table)
 
-The memory check (next section) is the first of seven roles that share one
+The memory check (next section) is the first of eight roles that share one
 client in `server/utils/jev/`. The same key powers all of them. Each role is
-assistive. Six of the seven fail toward what Besidka does without the key: when
-TypeSafe AI errors, times out or is rate-limited, the answer is the built-in
-behavior. The exception is `pastChatRetrieval` (J6), which fails toward
-acting: without a key it does not pre-search, but a Jev failure makes it
+assistive. Seven of the eight fail toward what Besidka does without the key:
+when TypeSafe AI errors, times out or is rate-limited, the answer is the
+built-in behavior (for `skillSelection`, J7, that is no change: the model
+still picks from the catalog). The exception is `pastChatRetrieval` (J6),
+which fails toward acting: without a key it does not pre-search, but a Jev failure makes it
 search. The "Failure direction" column below is the single statement of this
 for every role; each role's section repeats it in the same words.
 
 **Settings.** `user_settings.typesafe_roles` is a nullable JSON column. `null`
-means every role is on. A role is on unless it is explicitly `false`. With no
-TypeSafe AI key every role is off, whatever the column says. The roles are
+means every role is on, except the opt-in roles (`JEV_OPT_IN_ROLE_IDS`, today
+`skillSelection`). A role is on unless it is explicitly `false`; an opt-in
+role is on only when it is explicitly `true`, so `null`, `{}` and a missing id
+all mean off for it (`isJevRoleSwitchedOn`, used by the server and by the
+Smart checks toggles). With no TypeSafe AI key every role is off, whatever
+the column says. The roles are
 toggled on the Smart checks tab under "TypeSafe AI checks". The column is
 nullable with no SQL default, so the migration is a plain `ADD COLUMN`.
 
@@ -2096,6 +2102,7 @@ Constants are from `shared/utils/jev-policy.ts` unless a file is named;
 | `rerank` | J4 | Past-chat and project-knowledge search: the query and passages, never-store removed, each cut to about 300 tokens, up to 30 per search | Up to 30 candidates (`maxCandidates`); passages 300 tokens (`maxPassageTokens`); drop below 0.5 (`dropBelow`), and only while at least `limit` candidates remain | 800 ms | Original BM25 order |
 | `sharePiiCheck` | J5 | When the share window opens, before a public link is published: the chat text being shared, with never-store values, emails and phone numbers removed. Warning only, never blocks | `p1_personal`: warn at or above 0.3 (`warnAtOrAbove`); chunks of 25,000 tokens; request debounce 400 ms (`JEV_SHARE_CHECK_DEBOUNCE_MS`) | 1,500 ms | Detector warnings plus a generic "check before sharing" reminder; Generate untouched |
 | `pastChatRetrieval` | J6 | Sends where `search_chats` and `read_chat` are not registered (a model or gateway without tool calling, a forced `toolChoice`, or image generation), only while **Search and reference chats** is on, each message: the message and the last three turns, never-store removed. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts. A listed phrase searches with no Jev call | `s1_previous`: search at or above 0.25 (`preSearchAtOrAbove`); 3 hits; excerpts capped at 1,500 tokens; message 2,000 characters, each turn 600 | 800 ms | **Searches anyway** (the one role that fails toward acting). Without a key or with the role off: no pre-search |
+| `skillSelection` | J7 | **Opt-in, off until switched on.** Each message, only when the `skills` flag is on, the user attached or typed no skill, and a local BM25 prefilter over the names and descriptions of the user's Auto skills keeps at least one: the message (never-store removed) and, for each of at most three candidates, its name and description cut to 300 characters, in state keys `skill_<i>`. Skills already active in the chat or pinned to always load are not candidates. No candidate means no Jev call and no key read | Prefilter: floor `minScore` 1 (capped for few skills), at least 1 matched term, top 3 (`maxCandidates`). One question per candidate, `sel_<i>`: apply the best one at or above 0.6 (`applyAtOrAbove`); at most one skill per message. Rides in the Auto web search call when that call is made (`decideSendPathJev` `extra`), else one call of its own | 800 ms | No change: the model picks from the catalog as without a key |
 
 **Logging.** Each role writes one wide-event field, `attributes.<role>Jev`
 (for example `attributes.rerankJev`), with counts, scores, statuses and
@@ -2116,7 +2123,7 @@ so no raw `fetch` is needed. Fragile seams to re-check on every upgrade:
 - `providerOptions.typesafe.longContext` must stay off on the send path. The
   eval measured a p95 of 840 ms at 50k tokens, which breaks the 800 ms budget.
 
-**API for role PRs (J1-J6).** Every role builds on these; none of them
+**API for role PRs (J1-J7).** Every role builds on these; none of them
 throws on a Jev failure:
 
 - `resolveJevRoleModel({ db, userId, role, logger? })` in
@@ -2156,7 +2163,8 @@ throws on a Jev failure:
 (`null` or a partial role map). `PATCH` takes `typesafeRoles` as a strict
 partial map of booleans, merged into the stored object with SQLite
 `json_patch` in the same UPDATE, so two toggles saved at once cannot drop each
-other; `null` resets every role to on. The `memoryChecks` role is honored by
+other; `null` resets every role to its default (on, except the opt-in `skillSelection`,
+which goes off). The `memoryChecks` role is honored by
 `resolveMemoryJevChecker`.
 
 #### Memory checks (`memoryChecks`)
@@ -3074,6 +3082,197 @@ generation) while **Search and reference chats** is on in the settings.
   for a model without tool calling that uses its built-in search in Auto. The
   merge, one shared state and one `decideSendPathJev` call, is described under
   "J6 seam" in J1 and is not done.
+
+#### J7: Skill selection (`skillSelection`, S-14, BES-380, 2026-11-15)
+
+An optional helper that picks one of the user's Auto skills for a message and
+applies it, so a model that cannot call tools can still use a skill and a
+model that can does not have to notice it in the catalog. It is **opt-in**:
+unlike every other role it spends the user's key on messages, so it is off
+until the user switches it on ("no spend without consent"). The decision log
+for the skills runtime is `docs/skills.md` section 5.9.
+
+**Off by default, in code.** `JEV_OPT_IN_ROLE_IDS` lists the roles that need
+`typesafe_roles.<role> === true`. `isJevRoleSwitchedOn` is the one function the
+server (`isJevRoleEnabled`) and the toggles (`useTypesafeRoles`) read, so a
+`null` column, `{}` and a missing id are all off for it, and a settings PATCH
+of `null` ("reset") turns it off. No migration: the toggle lives in the
+existing nullable JSON column. MCP cannot change it (`update_settings` has no
+role field). The toggle sits with the others in the "TypeSafe AI checks"
+section of the Smart checks tab (`/profile/keys?tab=memory-checks`), with a
+short cost note.
+
+**Order of gates, cheapest first** (`prepareSkillSelection`,
+`server/utils/skills/jev/selection.ts`, called once before Auto web search):
+
+1. Nothing for a resume, an empty message, or a message that already carries
+   a skill the user attached or typed (`findSkillInvocation`). It never runs
+   while typing: only a send reaches it.
+2. The `skills` flag (memoized per request: no extra read).
+3. The user's Auto skills (`listCatalogSkills`, enabled, model-invocable, not
+   broken; the same query the catalog makes), minus skills already active in
+   this chat (`collectActivatedSkillIds`: an activation of a skill the model
+   or the user applied, S-3 re-injects it anyway; a stored project-pin
+   activation does not count) and skills pinned to the chat's project at the
+   always level (they load every send). Prefer pins stay candidates.
+4. The local prefilter. No candidate: no key read, no Jev call, nothing logged.
+5. Only then `resolveJevRoleModel({ role: 'skillSelection' })` (the key and the
+   role switch). Without a key or with the role off: nothing happens.
+
+**Prefilter** (`server/utils/skills/jev/prefilter.ts`). MiniSearch BM25 over
+the stemmed name and description of each skill (the same stemmer and
+`STOP_WORDS` as the knowledge search, plus a short list of English filler
+words such as "this", "between" and "make"); the query is the message's
+distinct terms, at most 24. A skill stays when its score is at least
+`prefilter.minScore` (1) and at least `minMatchedTerms` (1) distinct term hit
+it, and the best `maxCandidates` (3) go on. The floor is a BM25 score, which
+falls with the number of skills, so `resolveSkillMinScore` caps it at 60% of
+the best score one rare term can reach (so one or two skills still work).
+Nothing leaves the process.
+
+**Questions** (`server/utils/skills/jev/questions.ts`, the pattern of
+`rerank.ts`). One state key per candidate, `skill_<i>`, holding
+`name: description` (whitespace collapsed, never-store removed, cut to
+`maxCatalogLineChars`, 300), and one boolean question `sel_<i>`
+(`JEV_SKILL_SELECTION.task`: "Does `message` ask for the kind of work that
+`skill_<i>` describes?") that only names its key. A description is third-party
+text, so no skill text ever sits in an instruction or a criterion; the ids
+cannot collide with `w1_live` to `w4_factual` or the rerank `c<i>`.
+
+**One call.** `decideSendPathJev` takes an optional `extra: { state,
+questions }` that it merges under the base keys. When Auto web search makes
+its call (Auto mode, a chosen search provider, no forced search, no reused
+decision), the skill questions ride in it and `resolveAutoWebSearch` hands the
+raw result back as `jevResult`, so the role adds no HTTP call
+(`calls: 0`, `shared: 1` in the log). Otherwise `resolveSkillSelection` makes
+its own single call with `{ message, recent_turns: [] }`, started right after
+the web search step and awaited just before `prepareSkillsForSend`, so it
+overlaps the other pre-send work. A failed shared call is not repeated.
+**Deviation from the ticket:** past-chat retrieval (J6) does not use
+`decideSendPathJev` (`decidePastChatSearch` calls `jevDecide` with its own
+state), so on a send with no Auto web search call the skill check is one
+call, and on a model without tool calling with J6 on there are two calls
+that run in parallel. Merging J6 in needs its result before the pre-search
+and was left out.
+
+**Decision.** The best candidate scoring at or above
+`applyAtOrAbove` (0.6) wins; the earlier (better prefiltered) candidate wins a
+tie; at most one skill per message. A missing or non-finite answer is skipped.
+Any failure, the 800 ms timeout or no score at or above the threshold changes
+nothing: the model decides from the catalog, as without a key.
+
+**Injection.** `prepareSkillsForSend` takes the winner as `jevSelection` and
+treats it exactly like a skill attached with "+": the current version is
+loaded into a block appended to the latest user turn (never the system prompt,
+so the prompt cache is untouched), `holdsSkillText` is true so the memory
+write stays locked, the `activate_skill` tool answers "already active", and
+it works without tool calling. The wording differs: "Besidka matched the skill
+below to this message ..." (`SKILL_JEV_INVOCATION_INSTRUCTION`) and
+`invoked="jev"` in the tag, never "The user attached". Nothing is stored on
+the user message (no `data-skill-invocation` part, so no chip on the user's
+text). The send streams and persists a `data-skill-activation` part with
+`source: 'jev'` on the answer, which shows in the reasoning list as
+**"Applied skill · name"** (the step an attached Auto skill already has; no
+card in the reply) and keeps the skill active for the next sends like any
+other activation. A skill that cannot be read is skipped with no error.
+
+**Logging.** `attributes.skillSelectionJev`: `status`, `calls`, `questions`,
+`inputTokens`, `latencyMs`, `counts` (`candidates`, `shared`, `applied`) and the
+scores, never text. `attributes.skills.selectedByJev` says a pick was injected.
+
+**Cost.** A call with up to three candidates is about 450 to 720 input tokens
+(see SS-14 below), about $0.00003 at the published $0.042 per million input
+tokens. Riding in the web search call adds about 270 tokens for three
+questions. The cost note on the toggle says "a small amount".
+
+**Legal.** This is an eighth TypeSafe AI role with a new purpose (choosing a
+skill from the message). The text for the owner's end-of-phase batch is in the
+S-14 pull request (DPIA 3.7a, the Art. 30 row 11a, the Privacy Policy tables
+and the key guide copy); this change edits none of them and schedules no
+notice.
+
+#### SS-14: skill selection eval (BES-380, 2026-11-15)
+
+The prefilter floor and the Jev threshold of J7 needed values, and a check
+that merging three more questions into the web search call does not shift
+its answers. A small synthetic run, like SS-7; the raw results stay in the
+session scratchpad.
+
+**Method.** 16 skills (14 English, one Ukrainian, one Polish, with realistic
+one-sentence descriptions), 34 filler skills only to grow the corpus for the
+prefilter, and 120 messages: 88 base (48 positives, three per skill, direct
+and paraphrased, three in Ukrainian or Polish; 40 negatives: 16 general, 16
+near-misses that share words with a skill but ask about the topic, 8 in other
+domains) and 32 hard (16 positives with little overlap or two acceptable
+skills, 16 negatives in the same domain asking for something else). The
+shipped wording, state builder and prefilter were bundled from the repo and
+run as is. Prefilter numbers are free and used the 88 base messages at corpus
+sizes of 3, 10, 16, 30 and 50 skills. Jev ran with the owner's TypeSafe AI key
+(`jev-1.14.0`), no retries, 3 at a time, never-store redaction not applied:
+**112 calls** of the 150 allowed (3 probes, 59 base messages with at least
+one candidate, 28 hard messages with candidates, 22 base messages again with
+the four web search questions merged in), 0 failed. The key was read only
+inside the scripts.
+
+- **Cost.** 81,673 input tokens and 5,845 output tokens in all, about $0.0034
+  at the published $0.042 per million input tokens (a third-party figure, not
+  checked against billing; output tokens are not priced). One candidate:
+  446 input tokens; three: 719; three plus the four web questions: 1,553, so
+  the web questions cost about 830 tokens and three skill questions about
+  270. The three-call probe stopped nothing: the dearest call was far below
+  the $0.01 limit.
+- **Latency** (from a Mac, 3 at a time, not from a Worker): p50 173 ms, p95
+  322 ms, max 388 ms over all 112; the merged calls p95 323 ms. The 800 ms
+  budget holds with margin.
+- **Merging does not change the skill answers.** The same 22 messages with
+  and without the four web questions: the largest skill score difference was
+  0.010.
+
+**Prefilter** (message found by name or description words only; the gold skill
+must be in the top three). The first run showed the floor alone does not
+separate: single-term matches score 2.4 to 6.4 for the right skill and 2.1 to
+7.1 for the wrong one at 16 to 50 skills, so the floor only removes terms that
+are in most descriptions, and the matched-term count is the real lever.
+
+| Corpus | minTerms 1: right skill in the top 3 / negatives that reach Jev | minTerms 2: right skill in the top 3 / negatives that reach Jev |
+|---|---|---|
+| 3 skills | 77% / 10% | 54% / 5% |
+| 10 | 81% / 33% | 54% / 13% |
+| 16 | 81% / 48% | 54% / 18% |
+| 30 | 77% / 53% | 54% / 20% |
+| 50 | 75% / 53% | 54% / 20% |
+
+Chosen: floor 1 (capped for few skills), one matched term. A paraphrase that
+shares no word with the description, or a message in another language than
+the description (a Ukrainian ask against an English description), is missed
+by design and left to the catalog. The cost is Jev calls on negatives, which
+are cheap: about half the negative messages of a user with 16 or more skills
+reach Jev (59% of the 56 negatives, hard ones included, at 16 skills). The ticket's "most messages cost nothing" holds for few skills and
+for messages that name no skill topic, not for a large library. Stop words:
+the English filler list was added after the first run showed "between",
+"before" and "this" admitting unrelated skills.
+
+**Jev threshold.** Scores are strongly bimodal. Of the 64 positives, 52 had
+an acceptable skill among the candidates (the other 12 were prefilter
+misses, 10 with no candidate at all): the lowest best score was 0.68 (a
+standup note with no keyword), all the others 0.93 to 0.99. Wrong candidates on positive messages scored at most
+0.38; the 51 candidates of the 33 negatives that reached Jev at most 0.15 (a new
+email next to `email-polish`, macOS release notes next to `release-notes`;
+0.06 on the base set). Every threshold from 0.2 to 0.65 gives the same
+decisions: 52 right skills applied, 0 wrong skills, 0 false applies on 56
+negatives (0 of 16 hard ones); at 0.7 the 0.68 is lost. **`applyAtOrAbove` is 0.6**, a precision bias: a skill applied by
+mistake stays active for the rest of the chat and locks memory writes, while
+a miss costs only the catalog fallback. The 0.68 is the thin spot and the
+reason not to go above 0.65.
+
+**Limits of this eval.** Synthetic messages and descriptions written by the
+author, mostly English; the set is easy for Jev (no score between 0.38 and
+0.68 on any candidate), so the plateau hides where the threshold truly sits
+and the margins on real traffic are unknown; 16 skills at most, with
+near-duplicates only in a handful of pairs (commit and pull request, cover
+letter and email); no skill with a long or vague description; the prefilter
+numbers measure vocabulary overlap and say nothing about quality of skills.
+Re-tune on real traffic (the logged scores are what to read).
 
 #### Delta audit fixes (#560)
 

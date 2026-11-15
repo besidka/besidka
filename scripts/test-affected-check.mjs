@@ -676,7 +676,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/rerank.spec.ts',
     'tests/integration/api/jev-rerank.spec.ts',
   ]
+  const skillSelectionTests = [
+    'tests/unit/server/utils/skills/jev/prefilter.spec.ts',
+    'tests/unit/server/utils/skills/jev/questions.spec.ts',
+    'tests/unit/server/utils/skills/jev/selection.spec.ts',
+    'tests/unit/server/utils/skills/runtime/send.spec.ts',
+  ]
   const jevFoundationTests = [
+    ...skillSelectionTests,
     'tests/unit/utils/jev/client.spec.ts',
     'tests/unit/utils/jev/logging.spec.ts',
     'tests/unit/utils/jev/roles.spec.ts',
@@ -1786,6 +1793,7 @@ export function getAffectedTests(changedFiles) {
 
   const skillsStorageTests = [
     ...skillJevScreeningTests,
+    ...skillSelectionTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
     'tests/unit/server/utils/skills/storage.spec.ts',
@@ -1927,6 +1935,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const skillsRuntimeTests = [
+    ...skillSelectionTests,
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/skills/mode.spec.ts',
     'tests/unit/server/utils/skills/runtime/text.spec.ts',

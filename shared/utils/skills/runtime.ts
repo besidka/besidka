@@ -11,7 +11,11 @@ export type SkillInvocationSource = 'menu' | 'text'
 
 export const SKILL_ACTIVATION_SOURCE_PROJECT = 'project'
 
-export type SkillActivationSource = typeof SKILL_ACTIVATION_SOURCE_PROJECT
+export const SKILL_ACTIVATION_SOURCE_JEV = 'jev'
+
+export type SkillActivationSource
+  = | typeof SKILL_ACTIVATION_SOURCE_PROJECT
+    | typeof SKILL_ACTIVATION_SOURCE_JEV
 
 export interface SkillInvocationPartData {
   skillId: string
