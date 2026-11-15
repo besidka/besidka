@@ -1591,9 +1591,14 @@ read the stored grants. Where this changes sections 7.1 to 7.8:
     only text.
   - *Name heuristic (M2).* A connector tool whose remote name or title
     contains delete, remove, revoke, destroy, drop, purge, invite, share,
-    transfer or publish (`hasAlwaysAskToolName`: split on non-letters and
-    camelCase, whole words, any case) is always-ask whatever its
-    annotations say, also when it claims `readOnlyHint: true`. The panel
+    unshare, transfer, publish, unpublish, send, post, forward or reply
+    (`hasAlwaysAskToolName`: split on non-letters and camelCase, whole
+    words, any case; the last six were added by the #937 security review on
+    2026-11-16) is always-ask whatever its annotations say, also when it
+    claims `readOnlyHint: true`. Whole words keep plural nouns out:
+    `search_posts`, `list_replies`, `list_shares` and `get_sender` stay
+    reads, while `send_email`, `sendMessage`, `post-comment`,
+    `forwardMessage` and `unshare_page` match. The panel
     does not list a grant on such a tool. The confirmation adds that what
     the tool does is declared by the service itself.
   - *Revoke (L1).* The connector id is decoded and looked up among the
@@ -1740,7 +1745,8 @@ changes sections 7.1 to 7.9:
   (`ask`) only when the user never chose a mode for the tool; an explicit
   Always allow or Needs approval becomes `needs-approval`, so drift needs a
   new Always allow. "Remove" in the chat panel and MCP's `approval: 'ask'`
-  now store `needs-approval`, so they make a plain read ask; MCP's
+  now store `needs-approval`, and so does the legacy `approval: 'ask'` of
+  the settings route, so they make a plain read ask; MCP's
   `get_connector` still reports that value as `ask`.
 - **Reads (owner decisions, 2026-11-15).** A read is a Besidka read tool or
   a connector tool the server marks `readOnlyHint: true`, not
@@ -1781,8 +1787,13 @@ changes sections 7.1 to 7.9:
   untrusted content") for writes the user chose to allow.
 - **Always-ask tier.** A tool the server marks `destructiveHint: true`, or
   whose remote name or title names delete, remove, revoke, destroy, drop,
-  purge, invite, share, transfer or publish, and the Besidka ask-every-time
-  tier always ask Allow once or Deny. Server labels are untrusted: the
+  purge, invite, share, unshare, transfer, publish, unpublish, send, post,
+  forward or reply (whole words, section 7.9), and the Besidka
+  ask-every-time tier always ask Allow once or Deny. Without the send
+  words, a `send_email` the server labels read-only could have been set to
+  Always allow and, with the own-source exemption, run after an inbox read
+  returned someone else's text. A spec keeps every exposed Besidka tool
+  whose name matches the list in the ask-every-time tier. Server labels are untrusted: the
   name heuristic and the destructive mark win over `readOnlyHint`, also in
   a group "Always allow". The page shows Always allow disabled with the
   tooltip "this tool deletes or shares data, so it always asks"; the route

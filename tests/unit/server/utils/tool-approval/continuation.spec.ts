@@ -681,6 +681,45 @@ describe('applyRememberGrants Always allow', () => {
       )
     })
 
+  it.each(['send_email', 'sendMessage', 'post-comment', 'forwardMessage',
+    'unshare_page'])('never grants Always allow to %s from a chat answer',
+    async (tool) => {
+      storeMocks.upsertConnectorToolSettings.mockClear()
+      storeMocks.listConnectorToolSettings.mockResolvedValue([{
+        ...setting(),
+        toolName: tool,
+      }])
+
+      await applyRememberGrants({
+        db: {} as never,
+        userId: 1,
+        chatPublicId: 'chat-1',
+        decisions: [{
+          approvalId: 'approval-1',
+          toolCallId: 'call-1',
+          toolName: `mcp__mail__${tool}`,
+          approved: true,
+          remember: 'always',
+        } as never],
+        entries: new Map<string, SendToolEntry>([[
+          `mcp__mail__${tool}`,
+          buildConnectorApprovalEntry({
+            exposedName: `mcp__mail__${tool}`,
+            connectorId: 'c1',
+            connectorTitle: 'Mail',
+            connectorHost: 'mcp.mail.example.com',
+            remoteToolName: tool,
+            definitionHash: HASH,
+            annotations: { readOnlyHint: true },
+          }),
+        ]]),
+        logger: { set: vi.fn() } as never,
+      })
+
+      expect(storeMocks.upsertConnectorToolSettings).not.toHaveBeenCalled()
+      storeMocks.listConnectorToolSettings.mockReset()
+    })
+
   it('never grants a destructive tool or a drifted definition', async () => {
     storeMocks.upsertConnectorToolSettings.mockClear()
     storeMocks.listConnectorToolSettings

@@ -67,6 +67,25 @@ describe('resolveAlwaysAllowHashes', () => {
     })
   })
 
+  it('refuses send, post, forward, reply and unshare tools and keeps reads '
+    + 'named with plural nouns', () => {
+    const names = ['send_email', 'sendMessage', 'post-comment',
+      'forwardMessage', 'unshare_page', 'search_posts']
+    const sendDefinitions = names.map((name) => {
+      return definition(name, { readOnlyHint: true })
+    })
+
+    expect(resolveAlwaysAllowHashes({
+      definitions: sendDefinitions,
+      hashes: new Map(names.map(name => [name, HASH])),
+      settings: names.map(name => setting(name)),
+      toolNames: names,
+    })).toEqual({
+      hashes: new Map([['search_posts', HASH]]),
+      refused: names.slice(0, 5),
+    })
+  })
+
   it('refuses the always-ask tier, whatever readOnlyHint says', () => {
     expect(resolveAlwaysAllowHashes({
       definitions,

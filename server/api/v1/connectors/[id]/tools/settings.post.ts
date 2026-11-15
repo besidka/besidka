@@ -70,7 +70,7 @@ function toSwitch(
   return {
     toolName: tool.name,
     enabled: tool.enabled,
-    resetApproval: tool.approval === 'ask',
+    needsApproval: tool.approval === 'ask',
   }
 }
 
@@ -150,7 +150,8 @@ async function resolveAllowedHashes(input: {
  * allow, which is bound to the reviewed definition hash and refused for a
  * tool that deletes or shares data or changed since the review (checked on
  * the live tool list, never on the client's word). The legacy fields turn a
- * tool on or off (`enabled`) or remove an Always allow (`approval: 'ask'`).
+ * tool on or off (`enabled`) or set it to Needs approval (`approval:
+ * 'ask'`, stored as the explicit `needs-approval`).
  * No change touches the reviewed hash, so a changed tool stays hidden until
  * the user reviews it. Unknown names answer 404.
  */

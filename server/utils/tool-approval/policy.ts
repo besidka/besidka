@@ -75,8 +75,14 @@ const ALWAYS_ASK_TOOL_NAME_WORDS: ReadonlySet<string> = new Set([
   'purge',
   'invite',
   'share',
+  'unshare',
   'transfer',
   'publish',
+  'unpublish',
+  'send',
+  'post',
+  'forward',
+  'reply',
 ])
 
 function toolNameWords(name: string): string[] {
@@ -91,12 +97,15 @@ function toolNameWords(name: string): string[] {
 /**
  * Whether a connector tool's remote name or title names an action that
  * removes data or hands it to someone else (delete, remove, revoke, destroy,
- * drop, purge, invite, share, transfer, publish). Such a tool is always-ask
- * whatever its annotations say, because the annotations are the server's
- * own claim. Words are split on non-letters and camelCase, so
- * `delete_issue`, `deleteIssue` and "Share file" match and `dropdown_list`
- * does not. Pass the remote name and title, never the exposed
- * `mcp__<slug>__` name, so a connector slug cannot change the result.
+ * drop, purge, invite, share, unshare, transfer, publish, unpublish, send,
+ * post, forward, reply). Such a tool is always-ask whatever its annotations
+ * say, because the annotations are the server's own claim. Words are split
+ * on non-letters and camelCase and must match whole, so `delete_issue`,
+ * `deleteIssue`, `send_email`, `unshare_page` and "Share file" match, while
+ * `dropdown_list` and the plural nouns of `search_posts` or
+ * `list_shared_drives` do not. Pass the remote name and title, never the
+ * exposed `mcp__<slug>__` name, so a connector slug cannot change the
+ * result.
  */
 export function hasAlwaysAskToolName(
   ...names: ReadonlyArray<string | null | undefined>

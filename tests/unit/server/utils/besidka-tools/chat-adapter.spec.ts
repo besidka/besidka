@@ -192,6 +192,23 @@ describe('selectBesidkaChatTools', () => {
   })
 })
 
+describe('Besidka tiers and the always-ask name list', () => {
+  it('keeps every exposed tool named like a delete, share or send in the '
+    + 'ask-every-time tier', async () => {
+    const { hasAlwaysAskToolName } = await import(
+      '~~/server/utils/tool-approval/policy'
+    )
+    const misfiled = listChatExposedBesidkaTools()
+      .filter((besidkaTool) => {
+        return hasAlwaysAskToolName(besidkaTool.name)
+          && besidkaTool.chat.tier !== 'ask-every-time'
+      })
+      .map(besidkaTool => besidkaTool.name)
+
+    expect(misfiled).toEqual([])
+  })
+})
+
 describe('Besidka tool descriptors', () => {
   it('takes the access from the registry tier, not the annotations', () => {
     expect(besidkaToolAccess(exposedTool('list_projects'))).toBe('read')

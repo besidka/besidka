@@ -1510,6 +1510,13 @@ describe('grants audit follow-ups', () => {
       'share_file',
       'transferOwnership',
       'PUBLISH_PAGE',
+      'send_email',
+      'sendMessage',
+      'post-comment',
+      'forwardMessage',
+      'reply_to_thread',
+      'unshare_page',
+      'unpublishPost',
     ])('treats %s as always-ask', (name) => {
       expect(hasAlwaysAskToolName(name)).toBe(true)
     })
@@ -1520,9 +1527,41 @@ describe('grants audit follow-ups', () => {
       'shared_drives_list',
       'list_publishers',
       'removal_status',
+      'search_posts',
+      'list_replies',
+      'get_sender',
+      'list_shares',
+      'postal_code_lookup',
     ])('leaves %s alone', (name) => {
       expect(hasAlwaysAskToolName(name)).toBe(false)
     })
+
+    it.each(['send_email', 'sendMessage', 'post-comment', 'forwardMessage',
+      'unshare_page'])(
+      'always asks for read-only-labeled %s, also after its own connector',
+      (tool) => {
+        const entry = connectorEntry({
+          connectorId: 'c1',
+          slug: 'mail',
+          tool,
+          readOnly: true,
+          grantHashes: { always: HASH, chat: HASH },
+        })
+        const approval = createApproval([], [entry])
+
+        approval.state.taint.add('connector')
+        approval.state.readSources.add('connector:c1')
+
+        expect(entry.descriptor).toMatchObject({
+          access: 'write',
+          destructiveHint: true,
+        })
+        expect(approval.toolApproval(call('call-1', `mcp__mail__${tool}`)))
+          .toEqual({ type: 'user-approval', reason: 'always-ask' })
+        expect(approval.getPendingDecision('call-1')?.decision.rememberOptions)
+          .toEqual(['once'])
+      },
+    )
 
     it('matches the title too, never the exposed name', () => {
       expect(hasAlwaysAskToolName('update_item', 'Share item with a team'))

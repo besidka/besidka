@@ -618,7 +618,7 @@ describe('Connectors page routes', () => {
       expect(rows.search).toMatchObject({ enabled: false, approval: 'always' })
       expect(rows.post).toMatchObject({
         enabled: true,
-        approval: 'ask',
+        approval: 'needs-approval',
         approvedDefinitionHash: null,
         definitionHash: postHash,
       })
@@ -650,7 +650,7 @@ describe('Connectors page routes', () => {
 
       await serveTools(connectorId, [
         { name: 'search', annotations: { readOnlyHint: true } },
-        { name: 'post' },
+        { name: 'create_page' },
         { name: 'list' },
       ])
       await review(connectorId, (await listTools(connectorId)).reviewToken)
@@ -660,13 +660,13 @@ describe('Connectors page routes', () => {
         body: {
           tools: [
             { name: 'search', mode: 'allow' },
-            { name: 'post', mode: 'allow' },
+            { name: 'create_page', mode: 'allow' },
             { name: 'list', mode: 'blocked' },
           ],
         },
       })
 
-      expect(result.updated.sort()).toEqual(['list', 'post', 'search'])
+      expect(result.updated.sort()).toEqual(['create_page', 'list', 'search'])
 
       const rows = Object.fromEntries((await settingsOf(connectorId)).settings
         .map(row => [row.toolName, row]))
@@ -676,7 +676,7 @@ describe('Connectors page routes', () => {
         approval: 'always',
         approvedDefinitionHash: rows.search!.definitionHash,
       })
-      expect(rows.post).toMatchObject({ enabled: true, approval: 'always' })
+      expect(rows.create_page).toMatchObject({ enabled: true, approval: 'always' })
       expect(rows.list).toMatchObject({ enabled: false })
 
       const listing = await listTools(connectorId)
@@ -684,7 +684,7 @@ describe('Connectors page routes', () => {
         return [tool.name, tool.mode]
       }))
 
-      expect(modes).toEqual({ search: 'allow', post: 'allow', list: 'blocked' })
+      expect(modes).toEqual({ search: 'allow', create_page: 'allow', list: 'blocked' })
 
       await call(settingsPath, {
         params: { id: connectorId },
@@ -790,6 +790,51 @@ describe('Connectors page routes', () => {
         params: { id: connectorId },
         body: { tools: [{ name: 'search', mode: 'allow', enabled: true }] },
       }))).status).toBe(400)
+    })
+
+    it('refuses Always allow for send, post, forward and unshare tools '
+      + 'labeled read-only, and stores a legacy ask as Needs approval',
+    async () => {
+      const connectorId = await addConnector('mail')
+      const names = ['send_email', 'sendMessage', 'post-comment',
+        'forwardMessage', 'unshare_page']
+
+      await serveTools(connectorId, [
+        ...names.map((name) => {
+          return { name, annotations: { readOnlyHint: true } }
+        }),
+        { name: 'search_posts', annotations: { readOnlyHint: true } },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      for (const name of names) {
+        expect((await failureOf(call(settingsPath, {
+          params: { id: connectorId },
+          body: { tools: [{ name, mode: 'allow' }] },
+        }))).code, name).toBe('CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED')
+      }
+
+      const listing = await listTools(connectorId)
+
+      expect(Object.fromEntries(listing.tools.map((tool) => {
+        return [tool.name, [tool.alwaysAsk, tool.mode]]
+      }))).toEqual({
+        'send_email': [true, 'ask'],
+        'sendMessage': [true, 'ask'],
+        'post-comment': [true, 'ask'],
+        'forwardMessage': [true, 'ask'],
+        'unshare_page': [true, 'ask'],
+        'search_posts': [false, 'allow'],
+      })
+
+      await call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'search_posts', approval: 'ask' }] },
+      })
+
+      expect((await settingsOf(connectorId)).settings
+        .find(row => row.toolName === 'search_posts'))
+        .toMatchObject({ approval: 'needs-approval' })
     })
 
     it('refuses Always allow on a connector that is not connected, with a '
