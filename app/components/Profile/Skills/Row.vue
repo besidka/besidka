@@ -41,6 +41,13 @@
           {{ statusBadge.label }}
         </span>
         <span
+          v-if="skill.highlightCount > 0"
+          class="badge badge-soft badge-warning badge-sm"
+          data-testid="skill-row-highlights"
+        >
+          {{ skill.highlightCount }} to look at
+        </span>
+        <span
           v-if="skill.pendingVersion !== null"
           class="badge badge-soft badge-info badge-sm"
           data-testid="skill-row-pending"

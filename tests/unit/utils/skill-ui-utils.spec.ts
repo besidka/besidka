@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { formatRelativeTime } from '../../../app/utils/relative-time'
 import { buildSkillFileTreeRows } from '../../../app/utils/skill-file-tree'
 import {
+  describeFinding,
   describeFindingCounts,
   describeFindingSummary,
+  describeHighlightCategories,
+  describeHighlightTick,
   describeQuotedMention,
   describeSeverityCounts,
   groupFindingsBySeverity,
@@ -174,5 +177,75 @@ describe('skill labels', () => {
       { version: 2, origin: 'update', isPending: true },
       { version: 1, origin: 'import', isPending: false },
     ])).toEqual([])
+  })
+})
+
+describe('highlight tick and finding text', () => {
+  function makeFinding(overrides: Partial<SkillFinding>): SkillFinding {
+    return {
+      type: 'execution',
+      rule: 'dynamic-context-inline',
+      severity: 'high',
+      path: 'SKILL.md',
+      line: 4,
+      snippet: 'x',
+      detail: null,
+      source: 'rules',
+      ...overrides,
+    }
+  }
+
+  it('names each Look closely kind once, in order', () => {
+    expect(describeHighlightCategories([
+      makeFinding({}),
+      makeFinding({ type: 'concealment', rule: 'concealment' }),
+      makeFinding({ line: 9 }),
+      makeFinding({ type: 'url', rule: 'url', severity: 'low' }),
+    ])).toBe('code that runs in Claude Code, a request to hide actions from you')
+  })
+
+  it('words the second tick with the count and the kinds', () => {
+    const findings = [makeFinding({})]
+
+    expect(describeHighlightTick(3, findings)).toBe(
+      'I read the 3 highlights marked Look closely (code that runs in Claude Code)',
+    )
+    expect(describeHighlightTick(1, findings)).toBe(
+      'I read the highlight marked Look closely (code that runs in Claude Code)',
+    )
+    expect(describeHighlightTick(2, [])).toBe(
+      'I read the 2 highlights marked Look closely',
+    )
+  })
+
+  it('gives no second tick for no highlight', () => {
+    expect(describeHighlightTick(0, [])).toBe('')
+  })
+
+  it('keeps the quoted and catalog details out of the rule detail', () => {
+    expect(describeFinding(makeFinding({
+      detail: 'quoted, probably an example',
+    })).detail).toBe('')
+    expect(describeFinding(makeFinding({
+      detail: 'sent with every message while the skill is on Auto',
+    }))).toMatchObject({
+      detail: '',
+      callout: 'This text is in every message while the skill is on Auto.',
+    })
+    expect(describeFinding(makeFinding({
+      type: 'exfiltration',
+      rule: 'markdown-image-query',
+      detail: 'sends text to evil.example',
+    })).detail).toBe('sends text to evil.example')
+  })
+
+  it('falls back to the detail for a rule this build does not know', () => {
+    expect(describeFinding(makeFinding({
+      rule: 'a-rule-from-the-future',
+      detail: 'something worth reading',
+    }))).toMatchObject({
+      explanation: 'something worth reading',
+      detail: '',
+    })
   })
 })

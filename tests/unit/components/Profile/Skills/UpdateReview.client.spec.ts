@@ -238,6 +238,130 @@ describe('Profile/Skills/UpdateReview', () => {
     expect(text).toContain('2 for your information (2 links)')
   })
 
+  describe('what changed since the version in use', () => {
+    const highFinding = {
+      type: 'execution' as const,
+      rule: 'dynamic-context-inline',
+      severity: 'high' as const,
+      source: 'rules' as const,
+      path: 'SKILL.md',
+      line: 8,
+      snippet: '!`gh pr diff`',
+      detail: null,
+    }
+
+    function setChanges(changes: Record<string, unknown> | null) {
+      setUp()
+      ;(diff.value as { changes: unknown }).changes = changes === null
+        ? null
+        : {
+          newFindings: [],
+          newHosts: [],
+          changedSettings: [],
+          newScripts: [],
+          isPartial: false,
+          ...changes,
+        }
+    }
+
+    it('lists new highlights, new addresses, changed settings and new scripts', async () => {
+      setChanges({
+        newFindings: [highFinding],
+        newHosts: ['hooks.slack.com', 'evil.example'],
+        changedSettings: [{
+          key: 'allowed-tools',
+          before: 'Read',
+          after: 'Bash(*)',
+        }],
+        newScripts: ['scripts/setup.sh'],
+      })
+      await mountReview()
+
+      expect(get('skill-update-new-findings-high').textContent)
+        .toContain('SKILL.md:8')
+      expect(get('skill-update-new-hosts').textContent)
+        .toContain('hooks.slack.com')
+      expect(get('skill-update-new-hosts').textContent)
+        .toContain('evil.example')
+      expect(get('skill-update-changed-setting').textContent)
+        .toContain('allowed-tools')
+      expect(get('skill-update-changed-setting').textContent)
+        .toContain('Bash(*)')
+      expect(get('skill-update-new-scripts').textContent)
+        .toContain('scripts/setup.sh')
+    })
+
+    it('says so when nothing new was highlighted', async () => {
+      setChanges({})
+      await mountReview()
+
+      expect(get('skill-update-new-findings-none').textContent?.trim())
+        .toBe('Nothing new was highlighted.')
+      expect(find('skill-update-new-hosts')).toBeNull()
+      expect(find('skill-update-changed-settings')).toBeNull()
+      expect(find('skill-update-new-scripts')).toBeNull()
+    })
+
+    it('asks for the second tick on a new highlight and blocks accept without it', async () => {
+      setChanges({ newFindings: [highFinding] })
+      await mountReview()
+      await check('skill-update-reviewed')
+
+      const accept = get('skill-update-accept') as HTMLButtonElement
+
+      expect(get('skill-update-highlights').parentElement!.textContent)
+        .toContain(
+          'I read the highlight marked Look closely (code that runs in Claude Code)',
+        )
+      expect(accept.disabled).toBe(true)
+
+      await check('skill-update-highlights')
+
+      expect(accept.disabled).toBe(false)
+    })
+
+    it('asks for no second tick when the update adds no highlight, even if the old version had some', async () => {
+      setChanges({})
+      ;(detail.value as {
+        currentVersionInfo: { findings: Record<string, number> }
+      }).currentVersionInfo.findings = {
+        rulesVersion: 3,
+        high: 2,
+        execution: 2,
+      }
+      pendingFindings.value = {
+        counts: { rulesVersion: 3, high: 2, execution: 2 },
+        isRescanned: false,
+      }
+      await mountReview()
+      await check('skill-update-reviewed')
+
+      expect(find('skill-update-highlights')).toBeNull()
+      expect((get('skill-update-accept') as HTMLButtonElement).disabled)
+        .toBe(false)
+    })
+
+    it('falls back to the stored count when the changes are partial', async () => {
+      setChanges({ isPartial: true })
+      pendingFindings.value = {
+        counts: { rulesVersion: 3, high: 1, execution: 1 },
+        isRescanned: false,
+      }
+      await mountReview()
+
+      expect(find('skill-update-highlights')).not.toBeNull()
+      expect(get('skill-update-changes-partial').textContent)
+        .toContain('may be incomplete')
+    })
+
+    it('shows no changes section when the server sent none', async () => {
+      setChanges(null)
+      await mountReview()
+
+      expect(find('skill-update-changes')).toBeNull()
+    })
+  })
+
   it('links to the GitHub compare view', async () => {
     setUp()
     await mountReview()

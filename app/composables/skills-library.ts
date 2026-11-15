@@ -3,12 +3,14 @@ import { parseError } from 'evlog'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { formatSkillCatalogLine } from '#shared/utils/skills/compose'
 import { getSkillSourceGroup } from '#shared/utils/skills/edit'
+import { scanSkillText } from '#shared/utils/skills/findings'
 import {
   formatGithubSourceVersion,
   isSemverTag,
 } from '#shared/utils/skills/release'
 import type { SkillMode } from '#shared/utils/skills/mode'
 import type { SkillSourceGroup } from '#shared/utils/skills/edit'
+import type { SkillFinding } from '#shared/utils/skills/findings'
 import type {
   SkillSummary,
   SkillsListResponse,
@@ -537,9 +539,55 @@ export function useSkillActions() {
     })
   }
 
+  /**
+   * The "Look closely" kinds of the current version, read by scanning its
+   * files here in the browser, or an empty string when they cannot be read.
+   */
+  async function readHighlightCategories(skillId: string): Promise<string> {
+    try {
+      const listing = await $fetch(`/api/v1/skills/${skillId}/files`)
+      const findings: SkillFinding[] = []
+
+      if (!('files' in listing) || !listing.files) {
+        return ''
+      }
+
+      for (const entry of listing.files) {
+        const file = await $fetch(`/api/v1/skills/${skillId}/files`, {
+          query: { path: entry.path },
+        })
+
+        if ('text' in file) {
+          findings.push(...scanSkillText(entry.path, file.text))
+        }
+      }
+
+      return describeHighlightCategories(findings)
+    } catch {
+      return ''
+    }
+  }
+
+  async function describeHighlightsForConfirmation(
+    skill: Pick<SkillSummary, 'id'> & Partial<Pick<SkillSummary, 'highlightCount'>>,
+  ): Promise<string> {
+    if (!skill.highlightCount) {
+      return ''
+    }
+
+    const categories = await readHighlightCategories(skill.id)
+    const count = skill.highlightCount === 1
+      ? '1 highlight is marked Look closely'
+      : `${skill.highlightCount} highlights are marked Look closely`
+
+    return categories
+      ? ` ${count}: ${categories}.`
+      : ` ${count}.`
+  }
+
   async function setMode(
     skill: Pick<SkillSummary, 'id' | 'name' | 'sourceKind' | 'enabled'>
-      & Partial<Pick<SkillSummary, 'status' | 'licenseClass'>>,
+      & Partial<Pick<SkillSummary, 'status' | 'licenseClass' | 'highlightCount'>>,
     mode: SkillMode,
   ): Promise<boolean> {
     const needsLicenseTick = mode !== 'off'
@@ -561,6 +609,7 @@ export function useSkillActions() {
         subtitle: 'This skill was not written by you. Once it is on, the '
           + 'model can read it and follow its instructions in your chats. '
           + 'Review it first if you have not.'
+          + await describeHighlightsForConfirmation(skill)
           + (needsLicenseTick ? licenseWarning : ''),
         actions: [needsLicenseTick ? 'Turn on and confirm' : 'Turn on'],
         labelDecline: 'Keep off',

@@ -2,12 +2,45 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Review from '../../../../../app/components/Profile/Skills/Review.vue'
+import { EXTRA_FINDING_EXPLANATIONS } from '#shared/utils/skills/finding-explanations'
+import {
+  SKILL_FINDING_CATALOG_CALLOUT,
+  SKILL_TEXT_RULES,
+  getSkillFindingExplanation,
+} from '#shared/utils/skills/findings'
+import type { SkillFinding } from '#shared/utils/skills/findings'
 import { createImportPreview } from '../../../../setup/helpers/skills-ui'
 
 enableAutoUnmount(afterEach)
 
+const BANNED_WORDS
+  = /\b(?:safe|safety rating|clean|verified|trusted|harmless|malicious)\b/i
+
 function testId(id: string) {
   return `[data-testid="${id}"]`
+}
+
+function stripMandatedSentences(text: string): string {
+  return text
+    .replace('cannot tell whether a skill is safe', '')
+    .replace(
+      'No highlight does not mean the text is harmless.',
+      '',
+    )
+}
+
+function makeFinding(overrides: Partial<SkillFinding>): SkillFinding {
+  return {
+    type: 'url',
+    rule: 'url',
+    severity: 'low',
+    path: 'SKILL.md',
+    line: 4,
+    snippet: 'x',
+    detail: null,
+    source: 'rules',
+    ...overrides,
+  }
 }
 
 describe('Profile/Skills/Review', () => {
@@ -235,8 +268,112 @@ describe('Profile/Skills/Review', () => {
     })
 
     for (const wrapper of [withFindings, withoutFindings]) {
-      expect(wrapper.text().replace('cannot tell whether a skill is safe', ''))
-        .not.toMatch(/\b(?:safe|clean|verified|trusted|harmless)\b/i)
+      expect(stripMandatedSentences(wrapper.text()))
+        .not.toMatch(BANNED_WORDS)
+    }
+  })
+
+  it('says that no highlight does not mean the text is harmless', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({ findings: [], findingCounts: {} }),
+      },
+    })
+
+    expect(wrapper.get(testId('skill-review-no-highlight-note')).text())
+      .toBe(
+        'No highlight does not mean the text is harmless. Read the files that matter to you.',
+      )
+    expect(wrapper.html()).not.toContain('lucide:circle-check')
+    expect(wrapper.html()).not.toContain('lucide:shield-check')
+  })
+
+  it('lists Look closely first with the path, line and a plain explanation', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          findings: [
+            makeFinding({
+              type: 'url',
+              rule: 'url',
+              severity: 'low',
+              line: 1,
+            }),
+            makeFinding({
+              type: 'execution',
+              rule: 'dynamic-context-inline',
+              severity: 'high',
+              line: 9,
+              snippet: '!`gh pr diff`',
+            }),
+            makeFinding({
+              type: 'secret',
+              rule: 'env-dump',
+              severity: 'medium',
+              line: 3,
+            }),
+          ],
+        }),
+      },
+    })
+    const groups = wrapper.findAll(
+      '[data-testid^="skill-review-findings-"]',
+    ).map((group) => {
+      return group.attributes('data-testid')
+    })
+    const high = wrapper.get(testId('skill-review-findings-high'))
+
+    expect(groups).toEqual([
+      'skill-review-findings-high',
+      'skill-review-findings-medium',
+      'skill-review-findings-low',
+    ])
+    expect(high.get(testId('skill-review-finding')).text())
+      .toContain('SKILL.md:9')
+    expect(high.get(testId('skill-review-finding-explanation')).text())
+      .toContain(getSkillFindingExplanation('dynamic-context-inline')!)
+    expect(high.get(testId('skill-review-finding-explanation')).text())
+      .toContain('Besidka never runs')
+  })
+
+  it('shows the callout for a highlight in the description', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          findings: [
+            makeFinding({
+              type: 'injection',
+              rule: 'injection-override',
+              severity: 'high',
+              line: 3,
+              detail: 'sent with every message while the skill is on Auto',
+            }),
+            makeFinding({
+              type: 'injection',
+              rule: 'injection-override',
+              severity: 'high',
+              line: 20,
+            }),
+          ],
+        }),
+      },
+    })
+    const callouts = wrapper.findAll(testId('skill-review-finding-callout'))
+
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0]!.text())
+      .toBe('This text is in every message while the skill is on Auto.')
+  })
+
+  it('keeps every explanation and callout free of banned words', () => {
+    const texts = [
+      ...SKILL_TEXT_RULES.map(rule => rule.explanation),
+      ...Object.values(EXTRA_FINDING_EXPLANATIONS),
+      SKILL_FINDING_CATALOG_CALLOUT,
+    ]
+
+    for (const text of texts) {
+      expect(text, text).not.toMatch(BANNED_WORDS)
     }
   })
 

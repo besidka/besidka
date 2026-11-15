@@ -149,6 +149,109 @@
         </span>
       </div>
 
+      <section
+        v-if="changes"
+        class="grid gap-3"
+        aria-labelledby="skill-update-changes-title"
+        data-testid="skill-update-changes"
+      >
+        <h3
+          id="skill-update-changes-title"
+          class="text-sm font-semibold"
+        >
+          What changed since your version
+        </h3>
+        <div
+          class="grid gap-1"
+          data-testid="skill-update-new-findings-section"
+        >
+          <h4 class="text-sm font-medium">
+            New since your version
+          </h4>
+          <ProfileSkillsFindingGroups
+            v-if="changes.newFindings.length"
+            :findings="changes.newFindings"
+            :is-selectable="false"
+            test-id="skill-update-new-findings"
+          />
+          <p
+            v-else
+            class="text-sm text-base-content/70"
+            data-testid="skill-update-new-findings-none"
+          >
+            Nothing new was highlighted.
+          </p>
+        </div>
+        <div
+          v-if="changes.newHosts.length"
+          class="grid gap-1"
+          data-testid="skill-update-new-hosts"
+        >
+          <h4 class="text-sm font-medium">
+            New addresses
+          </h4>
+          <ul class="grid gap-0.5 text-xs">
+            <li
+              v-for="host in changes.newHosts"
+              :key="host"
+              class="font-mono break-all"
+              data-testid="skill-update-new-host"
+            >
+              {{ host }}
+            </li>
+          </ul>
+        </div>
+        <div
+          v-if="changes.changedSettings.length"
+          class="grid gap-1"
+          data-testid="skill-update-changed-settings"
+        >
+          <h4 class="text-sm font-medium">
+            Changed settings
+          </h4>
+          <ul class="grid gap-1 text-xs">
+            <li
+              v-for="setting in changes.changedSettings"
+              :key="setting.key"
+              class="grid gap-0.5"
+              data-testid="skill-update-changed-setting"
+            >
+              <span class="font-mono">{{ setting.key }}</span>
+              <span class="break-words text-base-content/70">
+                {{ setting.before ?? 'not set' }}
+                &rarr;
+                {{ setting.after ?? 'not set' }}
+              </span>
+            </li>
+          </ul>
+        </div>
+        <div
+          v-if="changes.newScripts.length"
+          class="grid gap-1"
+          data-testid="skill-update-new-scripts"
+        >
+          <h4 class="text-sm font-medium">
+            New script files
+          </h4>
+          <ul class="grid gap-0.5 text-xs">
+            <li
+              v-for="path in changes.newScripts"
+              :key="path"
+              class="font-mono break-all"
+            >
+              {{ path }}
+            </li>
+          </ul>
+        </div>
+        <p
+          v-if="changes.isPartial"
+          class="text-xs text-base-content/70"
+          data-testid="skill-update-changes-partial"
+        >
+          Not every changed file was read, so these lists may be incomplete.
+        </p>
+      </section>
+
       <div
         v-if="diffStatus === 'pending' && !diff"
         class="skeleton skeleton--default h-40 w-full"
@@ -200,6 +303,18 @@
               data-testid="skill-update-reviewed"
             >
             I reviewed this update
+          </label>
+          <label
+            v-if="highlightTickLabel"
+            class="flex min-h-8 cursor-pointer items-center gap-2"
+          >
+            <input
+              v-model="isHighlightsRead"
+              type="checkbox"
+              class="checkbox checkbox-sm"
+              data-testid="skill-update-highlights"
+            >
+            {{ highlightTickLabel }}
           </label>
           <label
             v-if="needsLicenseTick"
@@ -254,6 +369,7 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { countStoredHighlights } from '#shared/utils/skills/findings'
 
 const props = defineProps<{
   skillId: string
@@ -292,12 +408,14 @@ const {
 
     return await $fetch(
       `/api/v1/skills/${props.skillId}/versions/${pending.value.version}/diff`,
+      { query: { changes: 'true' } },
     )
   },
   { watch: [pending] },
 )
 
 const isReviewed = shallowRef<boolean>(false)
+const isHighlightsRead = shallowRef<boolean>(false)
 const isLicenseAcknowledged = shallowRef<boolean>(false)
 const isSubmitting = shallowRef<boolean>(false)
 const errorMessage = shallowRef<string>('')
@@ -327,11 +445,6 @@ const needsLicenseTick = computed<boolean>(() => {
   const current = skill.value?.currentVersionInfo?.licenseClass
 
   return (next === 'none' || next === 'custom') && next !== current
-})
-
-const canAccept = computed<boolean>(() => {
-  return isReviewed.value
-    && (!needsLicenseTick.value || isLicenseAcknowledged.value)
 })
 
 async function rescanVersion(
@@ -409,6 +522,36 @@ const isRescanned = computed<boolean>(() => {
   )
 })
 
+const changes = computed(() => {
+  return diff.value?.changes ?? null
+})
+
+const newHighlightCount = computed<number>(() => {
+  if (changes.value && !changes.value.isPartial) {
+    return changes.value.newFindings.filter((finding) => {
+      return finding.severity === 'high'
+    }).length
+  }
+
+  return countStoredHighlights(
+    pendingFindings.value?.counts ?? pending.value?.findings,
+  )
+})
+
+const highlightTickLabel = computed<string>(() => {
+  return describeHighlightTick(
+    newHighlightCount.value,
+    changes.value?.newFindings ?? [],
+  )
+})
+
+const canAccept = computed<boolean>(() => {
+  return isReviewed.value
+    && diffStatus.value !== 'pending'
+    && (!highlightTickLabel.value || isHighlightsRead.value)
+    && (!needsLicenseTick.value || isLicenseAcknowledged.value)
+})
+
 const compareUrl = computed<string | null>(() => {
   const current = skill.value
   const next = pending.value
@@ -429,6 +572,7 @@ const compareUrl = computed<string | null>(() => {
 
 watch(() => pending.value?.sha256, () => {
   isReviewed.value = false
+  isHighlightsRead.value = false
   isLicenseAcknowledged.value = false
 })
 
