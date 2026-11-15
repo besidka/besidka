@@ -8,10 +8,13 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const skillsActive = ref<boolean>(false)
+const connectorsActive = ref<boolean>(false)
 
 mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
-    const active = key === 'skills' && skillsActive.value
+    const active = key === 'skills'
+      ? skillsActive.value
+      : key === 'connectors' && connectorsActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -46,6 +49,28 @@ async function mountLayout() {
 describe('profile layout', () => {
   beforeEach(() => {
     skillsActive.value = false
+    connectorsActive.value = false
+  })
+
+  it('adds the Connectors tab after Labs only with the connectors flag', async () => {
+    mocks.routePath = '/profile/connectors'
+    connectorsActive.value = true
+
+    const wrapper = await mountLayout()
+    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+    expect(tabs.map(tab => tab.text()).at(-1)).toBe('Connectors')
+    expect(tabs.at(-1)?.attributes('to')).toBe('/profile/connectors')
+    expect(tabs.at(-1)?.classes()).toContain('tab-active')
+    expect(tabs.at(-1)?.find('.iconify').classes())
+      .toContain('i-lucide:cable')
+
+    connectorsActive.value = false
+
+    const withoutFlag = await mountLayout()
+
+    expect(withoutFlag.findAll('nav[aria-label="Account sections"] a')
+      .map(tab => tab.text())).not.toContain('Connectors')
   })
 
   it('lists Security, API Keys, Memory, Preferences, Storage, Connected apps and Labs tabs in that order', async () => {

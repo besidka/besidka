@@ -115,7 +115,9 @@ interface ProfileTab {
   childRoutes: string[]
 }
 
-const tabs: ProfileTab[] = [
+const connectorsFeature = useFeature('connectors')
+
+const baseTabs: ProfileTab[] = [
   {
     to: '/profile/security',
     label: 'Security',
@@ -159,6 +161,19 @@ const tabs: ProfileTab[] = [
     childRoutes: [],
   },
 ]
+
+const connectorsTab: ProfileTab = {
+  to: '/profile/connectors',
+  label: 'Connectors',
+  icon: 'lucide:cable',
+  childRoutes: [],
+}
+
+const tabs = computed<ProfileTab[]>(() => {
+  return connectorsFeature.value.active
+    ? [...baseTabs, connectorsTab]
+    : baseTabs
+})
 
 function isTabActive(tab: ProfileTab) {
   if (currentRoute.path === tab.to) {

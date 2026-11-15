@@ -134,6 +134,7 @@ const artifactsFeature = useFeature('artifacts')
 const documentsFeature = useFeature('documents')
 const skillsFeature = useFeature('skills')
 const besidkaToolsFeature = useFeature('besidka-tools')
+const connectorsFeature = useFeature('connectors')
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
@@ -286,6 +287,14 @@ function buildSettingsGroup(): SearchModalGroup<SearchModalEntry> {
           iconName: 'lucide:wrench',
           label: 'Besidka tool permissions',
           run: () => goTo(BESIDKA_TOOL_PERMISSIONS_LABS_PATH),
+        }]
+        : []),
+      ...(connectorsFeature.value.active
+        ? [{
+          id: 'search-option-connectors',
+          iconName: 'lucide:cable',
+          label: 'Connectors',
+          run: () => goTo('/profile/connectors'),
         }]
         : []),
     ],

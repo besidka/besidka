@@ -1588,6 +1588,21 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/chat-input-tiles.spec.ts',
   ]
 
+  const connectorsPageTests = [
+    'tests/integration/api/connectors-page.spec.ts',
+    'tests/integration/api/connectors-chat-selection.spec.ts',
+    'tests/unit/utils/connectors-messages.spec.ts',
+    'tests/unit/utils/connectors-consent-text.spec.ts',
+    'tests/unit/composables/connectors.spec.ts',
+    'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/unit/pages/profile/connectors.spec.ts',
+    'tests/unit/components/Profile/Connectors/AddDialog.client.spec.ts',
+    'tests/unit/components/Profile/Connectors/ConnectDialog.client.spec.ts',
+    'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+  ]
+
   const toolApprovalPolicyTests = [
     'tests/unit/utils/tool-approval-policy.spec.ts',
     'tests/unit/server/utils/tool-approval/policy.spec.ts',
@@ -3284,6 +3299,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
       tests: connectorsChatToolsUiTests,
+    },
+    {
+      pattern:
+        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/profile\/connectors\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors)\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
+      tests: connectorsPageTests,
     },
     {
       pattern:

@@ -141,6 +141,17 @@ export const CONNECTOR_OAUTH_CALLBACK_PATH = '/api/v1/connectors/oauth/callback'
 export const CONNECTOR_PAGE_PATH = '/profile/connectors'
 export const CONNECTOR_CLIENT_METADATA_MAX_AGE_SECONDS = HOUR_SECONDS
 export const CONNECTOR_CONSENT_VERSION = '2026-11-a'
+
+/**
+ * SHA-256 of the connector consent wording
+ * (`app/components/Profile/Connectors/ConsentText.vue`, the
+ * `data-connector-consent-text` spans, tags stripped, whitespace collapsed).
+ * The spec `tests/unit/utils/connectors-consent-text.spec.ts` fails when the
+ * wording changes, so a change cannot ship without a decision on
+ * `CONNECTOR_CONSENT_VERSION`, whose bump asks again for every connector.
+ */
+export const CONNECTOR_CONSENT_TEXT_SHA256
+  = 'fbe16d886c0f54dd87d6b335301a2df5b75c58bd00265fd1c8d89c4deb6ee63a'
 export const CONNECTOR_CONSENT_ERROR_CODE = 'CONNECTOR_CONSENT_REQUIRED'
 export const CONNECTOR_CALLBACK_FAILURES_MAX = 20
 export const CONNECTOR_CALLBACK_FAILURE_WINDOW_SECONDS = 10 * MINUTE_SECONDS

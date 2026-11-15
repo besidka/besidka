@@ -28,6 +28,7 @@ const artifactsActive = ref<boolean>(false)
 const documentsActive = ref<boolean>(false)
 const skillsActive = ref<boolean>(false)
 const besidkaToolsActive = ref<boolean>(false)
+const connectorsActive = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -54,7 +55,9 @@ mockNuxtImport('useFeature', () => {
         ? skillsActive.value
         : key === 'besidka-tools'
           ? besidkaToolsActive.value
-          : artifactsActive.value
+          : key === 'connectors'
+            ? connectorsActive.value
+            : artifactsActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -136,6 +139,7 @@ describe('Search/Modal.client', () => {
     documentsActive.value = false
     skillsActive.value = false
     besidkaToolsActive.value = false
+    connectorsActive.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -401,6 +405,38 @@ describe('Search/Modal.client', () => {
 
     expect(wrapper.find('#search-option-besidka-tool-permissions').exists())
       .toBe(false)
+  })
+
+  it('adds the Connectors row as the last Settings row only with the connectors feature', async () => {
+    connectorsActive.value = true
+    besidkaToolsActive.value = true
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.indexOf('search-option-connectors'))
+      .toBe(ids.indexOf('search-option-besidka-tool-permissions') + 1)
+    expect(wrapper.get('#search-option-connectors').text())
+      .toBe('Connectors')
+    expect(wrapper.get('#search-option-connectors .iconify').classes())
+      .toContain('i-lucide:cable')
+
+    await wrapper.find('#search-option-connectors').trigger('click')
+
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/profile/connectors')
+  })
+
+  it('omits the Connectors row without the connectors feature', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-connectors').exists()).toBe(false)
   })
 
   it('shows the Admin rows in their own group, before Interface, only to admins', async () => {
