@@ -12,6 +12,18 @@ Vercel AI Gateway by default (`.agents/skills/ai-sdk/SKILL.md`) does not apply
 here — gateway usage in this project is always an explicit user choice, never
 an agent default.
 
+## 🚨 Legal notices and consent versions: owner only 🚨
+
+Only the owner may announce a legal change to users. An agent must never, without the owner's explicit approval in chat for that exact change:
+
+- add, schedule or reschedule an entry in `LEGAL_NOTICES` (`shared/utils/legal-notices.ts`), or change its `sendFrom`, `publishedAt` or `effectiveAt`;
+- bump `CURRENT_CONSENT_VERSION` or anything else that re-prompts users;
+- turn on `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` or send legal notice emails in any other way.
+
+This holds even when a feature is finished, every phase is done, and the legal checklist in `docs/legal.md` says a change is material. Write the Privacy Policy or Terms text, record the hash, and stop: tell the owner that a notice is needed and wait. Do not batch, schedule ahead or "prepare" a notice with a future date either.
+
+Why: on 2026-11-15 three notices that agents had scheduled earlier emailed every user three times in one morning about one Privacy Policy update, and users asked to unsubscribe. The sweep was stopped (#906). Announcing legal changes is the owner's decision, made in the admin area.
+
 ## Package Manager
 
 Use **pnpm** exclusively for this project. Do not use npm, npx, bun, bunx, or other package managers.
