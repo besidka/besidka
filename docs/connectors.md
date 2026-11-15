@@ -1316,9 +1316,11 @@ Where this differs from sections 7.2 and 7.6:
   Instead, a provider-executed tool that is not a read (code execution, any
   unclassified provider tool) is left out of the send before the first step
   when the policy would ask, and out of later steps through `prepareStep`
-  (`withProviderToolEgressGuard`). The rule counts every taint, so with the
-  flag on, requesting web search and code execution together leaves code
-  execution out. The same guard withholds the provider's own web search,
+  (`withProviderToolEgressGuard`). Provider code execution is exempt from
+  this withholding for every taint kind, because the Anthropic, OpenAI and
+  Gemini code sandboxes have no network egress and so cannot carry data
+  out (grants audit, section 7.9); web fetch and any unclassified provider
+  tool are still left out. The same guard withholds the provider's own web search,
   grounding and URL context once a tool call of the turn has read a
   connector or the user's Besidka data (a connector result, `search_chats`,
   `read_chat`, the memory and project knowledge reads; rule 4 of the plan),
@@ -1531,10 +1533,10 @@ read the stored grants. Where this changes sections 7.1 to 7.8:
     current message records `file` taint (`presetApprovalTaint`,
     `holdsUserAttachments`), so no grant runs a tool in a send that holds a
     document. Because the taint counts for every rule, a send with an
-    attachment also asks for memory writes (Allow once / Deny), asks
-    `untrusted-output` for open-world connector reads, and leaves
-    provider code execution out (`withholdProviderTools`, as with web
-    search in section 7.7).
+    attachment also asks for memory writes (Allow once / Deny) and asks
+    `untrusted-output` for open-world connector reads. Provider code
+    execution stays available, because its sandbox has no network egress
+    (section 7.7), so "analyze this CSV" keeps working.
   - *Cross-send residual, accepted (H1).* Taint does not carry across
     sends, so a grant runs its tool in a later message even when an earlier
     message read untrusted content that is still in the history. This is

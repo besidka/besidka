@@ -385,7 +385,7 @@ describe('createSendToolApproval', () => {
     async () => {
       const approval = createSendToolApproval({ state: createApprovalState() })
       const tools = {
-        code_execution: { type: 'provider' },
+        web_fetch: { type: 'provider' },
         web_search: { type: 'provider' },
         memory_write: { execute: vi.fn() },
       } as never
@@ -403,7 +403,7 @@ describe('createSendToolApproval', () => {
       approval.state.taint.add('connector')
 
       expect(approval.listWithheldProviderTools(tools))
-        .toEqual(['code_execution'])
+        .toEqual(['web_fetch'])
       expect(Object.keys(withholdProviderTools({
         approval,
         tools,
@@ -413,15 +413,15 @@ describe('createSendToolApproval', () => {
         approval,
         tools,
         keepWhenHistoryHolds: [{
-          type: 'tool-code_execution',
+          type: 'tool-web_fetch',
           state: 'output-available',
         }],
-      }) ?? {})).toContain('code_execution')
+      }) ?? {})).toContain('web_fetch')
 
       const prepareStep = withProviderToolEgressGuard({
         approval,
         tools,
-        base: () => ({ activeTools: ['code_execution', 'memory_write'] }),
+        base: () => ({ activeTools: ['web_fetch', 'memory_write'] }),
         keepDeclarations: false,
       })
 
@@ -433,6 +433,27 @@ describe('createSendToolApproval', () => {
         keepDeclarations: true,
       })({} as never)).toBeUndefined()
     })
+
+  it.each(['web', 'connector', 'skill', 'knowledge', 'file', 'besidka'] as const)(
+    'never withholds provider code execution after %s taint',
+    (kind) => {
+      const approval = createSendToolApproval({
+        state: createApprovalState(),
+      })
+      const tools = { code_execution: { type: 'provider' } } as never
+
+      approval.registerTools(tools)
+      approval.state.taint.add(kind)
+      approval.state.toolReadSources.add('connector:c1')
+
+      expect(approval.listWithheldProviderTools(tools)).toEqual([])
+      expect(withholdProviderTools({
+        approval,
+        tools,
+        keepWhenHistoryHolds: null,
+      })).toBe(tools)
+    },
+  )
 
   it('binds an approval to its call and uses it once', () => {
     const approval = createApproval(['memory_write'])
@@ -1085,7 +1106,7 @@ describe('grants audit follow-ups', () => {
         .toEqual(['once'])
     })
 
-    it('asks for a memory write and withholds code execution with an '
+    it('asks for a memory write and keeps code execution with an '
       + 'attachment', () => {
       const approval = createSendToolApproval({
         state: createApprovalState(),
@@ -1103,8 +1124,7 @@ describe('grants audit follow-ups', () => {
 
       expect(approval.toolApproval(call('call-1', 'memory_write')))
         .toEqual({ type: 'user-approval', reason: 'untrusted-output' })
-      expect(approval.listWithheldProviderTools(tools))
-        .toEqual(['code_execution'])
+      expect(approval.listWithheldProviderTools(tools)).toEqual([])
     })
   })
 

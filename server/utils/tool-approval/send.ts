@@ -7,6 +7,7 @@ import type {
 import { createError } from 'evlog'
 import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
+import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
 import {
   TOOL_APPROVAL_DATA_PART_TYPE,
   TOOL_GRANT_DATA_PART_TYPE,
@@ -659,6 +660,10 @@ export function createSendToolApproval(input: {
   }
 
   function shouldWithhold(entry: SendToolEntry): boolean {
+    if (entry.descriptor.toolName === CODE_EXECUTION_TOOL_NAME) {
+      return false
+    }
+
     if (entry.descriptor.access !== 'read') {
       return wouldAsk(entry)
     }
@@ -716,7 +721,9 @@ export function createSendToolApproval(input: {
 type StepPreparation = Awaited<ReturnType<PrepareStepFunction<ToolSet>>>
 
 /**
- * Keeps a provider-executed tool that is not a read (code execution) out of
+ * Keeps a provider-executed tool that is not a read (web fetch or any
+ * unclassified provider tool; code execution is exempt because its sandbox
+ * has no network access, so it cannot carry data out) out of
  * every step in which the policy would ask for it, and the provider's own
  * web search, grounding and URL context out of every step once a tool call
  * of the turn read a connector or the user's Besidka data (rule 4: a fetch
