@@ -13,7 +13,7 @@ import {
 import * as schema from '~~/server/db/schema'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import { readBesidkaChatSettings } from '~~/server/utils/besidka-tools/chat-settings'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { ensureProviderSkill } from '~~/server/utils/skills/provider-upload'
 import type {
@@ -296,7 +296,7 @@ export async function prepareSkillScriptsForSend(input: {
       input.logger.set({
         attributes: {
           skills: {
-            scripts: { attachFailed: exceptionMessage(exception) },
+            scripts: { attachFailed: exceptionSummary(exception) },
           },
         },
       })

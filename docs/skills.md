@@ -1706,8 +1706,20 @@ side), `server/utils/skills/scripts-toggle.ts` and the two routes
    `provider_deleted_at`. It runs when "Allow scripts" is turned off, when the
    skill is deleted (in the app or over MCP) and in `purgeUserSkills`, which
    the account purge runs before the user row, and so the keys, are deleted.
-   A failed delete keeps the id and is reported (`providerCopy: 'failed'`), and
-   the app points the user to the Anthropic Console; account deletion goes on.
+   When the skill is deleted (app route or MCP `delete_skills`) and the
+   provider delete fails, the skill is **not** deleted: the row keeps
+   `provider_skill_id`, the app answers 502 `provider-copy-delete-failed`
+   ("Could not delete the copy in your Anthropic workspace. Try again, or
+   delete it there.") and MCP reports the id in `providerCopyFailed` with the
+   same message, while the other ids of the call are still deleted. A retry
+   works once the copy is gone (a 404 counts as gone), also after the user
+   deleted it in the Anthropic Console; a missing or unreadable key counts as
+   a failure, so re-add the key first. Turning scripts off still switches the
+   setting off when the delete fails and reports `providerCopy: 'failed'`. The
+   account purge stays best effort and goes on after a failed delete: the copy
+   then lives on in the user's own Anthropic workspace, which the user
+   controls, and the purge logs only the counts
+   (`attributes.skills.providerPurge`: attempted, deleted, failed).
    Removing the Anthropic key shows the skills that still have a copy
    (`GET /api/v1/profiles/keys/anthropic/uploads`), because without the key
    Besidka cannot delete them. Unverified: that the API requires versions to be
@@ -1730,11 +1742,19 @@ execution" otherwise.
   (`UPDATE ... WHERE provider_skill_id IS NULL`): a request that loses that
   race deletes its own upload and uses the winner's copy when it is current.
   A failed write also deletes the new upload, so no copy is orphaned.
+- The consent is bound to the approved set. The pending request stores the
+  definition hash, and the replay compares it with the current one for every
+  native tool that carries a hash (`pendingMatchesDescriptor`): a skill edited
+  or another skill enabled between the request and the answer denies the
+  answer as `definition-drifted`, nothing is uploaded, and the model asks again
+  with the new hash. "Allow in this chat" stores the approved hash only.
 - After an approved attach, the gate entry carries a chat grant for the same
   hash, so a second `run_skill_scripts` call in the same continuation does not
   ask again.
-- A key that cannot be decrypted counts as a failed provider delete, never as
-  a blocked skill delete or toggle.
+- A key that cannot be decrypted counts as a failed provider delete: turning
+  scripts off still works and reports it, and a skill delete is refused until
+  the key can be used (or the copy is gone at Anthropic and the key works
+  again).
 - The chat panel lists the chat grant as "Skill scripts"; "Reset" clears it
   like every other chat grant.
 - The earlier design said to re-upload "when the provider answers
@@ -2386,7 +2406,7 @@ Commands are skills, so there are no separate command tools. Outputs include
 | `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; argumentHint? }` | Saved disabled with `needs-review`. The license gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
 | `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Writes a persisted pending version (section 3.4), disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, its `sha256`, `findings`, `reviewUrl` and `diffSummary`. The app's accept and reject are bound to `{ version, sha256 }`, so a change after the user opened the review is refused with 409 |
 | `rename_skill` | `skills:write` | `idempotentHint`, not destructive | `{ id, name }` (regex, 1 to 64 characters, unique per user, reserved slash names refused) | Rewrites only the frontmatter `name`, as a new version (origin `rename`, note "Renamed from x"). Disables the skill and sets `needs-review` |
-| `delete_skills` | `skills:write` (audit change) | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`; also deletes the skill's Anthropic copy with the user's key (S-5), output unchanged |
+| `delete_skills` | `skills:write` (audit change) | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`; also deletes the skill's Anthropic copy with the user's key (S-5); a failed copy delete keeps the skill and adds `providerCopyFailed` and `message` to the output |
 
 **How `rename_skill` handles the name rules.**
 
@@ -2431,7 +2451,7 @@ text and the memory write lock applies), `rename_skill` and `update_skill`
 switch the skill off in the same batch that writes the version, a skill the
 user switches on while `needs-review` with nothing pending becomes `ready`,
 `LICENSE` and `NOTICE` are protected whatever the license class, and
-`delete_skills` deletes the provider copy through the shared `deleteUserSkill` (S-5); a failed provider delete is logged and not part of the MCP output, so the MCP surface and its snapshot do not change.
+`delete_skills` deletes the provider copy through the shared `deleteUserSkill` (S-5); a failed provider delete keeps the skill and is reported in the output as `providerCopyFailed` (ids) with a message; the input schema and the tool description are unchanged, so the MCP surface snapshot does not change.
 
 **Sharing tools (S-13, later).** Behind the reserved name: `share_skill
 { id, expiresInDays ≤ 30 }` and `revoke_skill_shares` under `skills:share`, and

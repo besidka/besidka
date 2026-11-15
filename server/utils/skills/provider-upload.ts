@@ -14,7 +14,7 @@ import {
 } from '#shared/utils/skills/scripts'
 import * as schema from '~~/server/db/schema'
 import { ANTHROPIC_API_VERSION } from '~~/server/utils/code-execution/container-files'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   loadVersionFiles,
@@ -32,7 +32,7 @@ export const ANTHROPIC_SKILLS_BETA = 'skills-2025-10-02'
 export const PROVIDER_SKILL_REQUEST_TIMEOUT_MS = 10_000
 export const PROVIDER_SKILL_DELETE_MAX_ROUNDS = 5
 
-const SAFE_ID_PATTERN = /^[A-Za-z0-9_.-]{1,200}$/
+const SAFE_ID_PATTERN = /^(?!\.+$)[A-Za-z0-9_.-]{1,200}$/
 const NOT_FOUND_STATUS = 404
 const SKILL_MD_PATH = 'SKILL.md'
 const textDecoder = new TextDecoder()
@@ -136,7 +136,7 @@ export async function loadAnthropicApiKeyOrNull(
   } catch (exception) {
     logger.set({
       attributes: {
-        skills: { providerKey: { error: exceptionMessage(exception) } },
+        skills: { providerKey: exceptionSummary(exception) },
       },
     })
 
@@ -164,7 +164,7 @@ async function listProviderVersions(input: {
   fetcher: typeof fetch
 }): Promise<string[] | 'already-gone'> {
   const response = await requestProvider({
-    url: `${ANTHROPIC_SKILLS_URL}/${input.providerSkillId}/versions?limit=100`,
+    url: `${ANTHROPIC_SKILLS_URL}/${encodeURIComponent(input.providerSkillId)}/versions?limit=100`,
     method: 'GET',
     apiKey: input.apiKey,
     fetcher: input.fetcher,
@@ -230,7 +230,7 @@ export async function deleteProviderSkill(input: {
 
       for (const version of versions) {
         const response = await requestProvider({
-          url: `${ANTHROPIC_SKILLS_URL}/${input.providerSkillId}/versions/${version}`,
+          url: `${ANTHROPIC_SKILLS_URL}/${encodeURIComponent(input.providerSkillId)}/versions/${encodeURIComponent(version)}`,
           method: 'DELETE',
           apiKey: input.apiKey,
           fetcher,
@@ -245,7 +245,7 @@ export async function deleteProviderSkill(input: {
     }
 
     const response = await requestProvider({
-      url: `${ANTHROPIC_SKILLS_URL}/${input.providerSkillId}`,
+      url: `${ANTHROPIC_SKILLS_URL}/${encodeURIComponent(input.providerSkillId)}`,
       method: 'DELETE',
       apiKey: input.apiKey,
       fetcher,
@@ -262,7 +262,7 @@ export async function deleteProviderSkill(input: {
     input.logger.set({
       attributes: {
         skills: {
-          providerDelete: { error: exceptionMessage(exception) },
+          providerDelete: exceptionSummary(exception),
         },
       },
     })
@@ -377,7 +377,7 @@ export async function removeAllProviderCopies(input: {
   } catch (exception) {
     input.logger.set({
       attributes: {
-        skills: { providerPurge: { keyError: exceptionMessage(exception) } },
+        skills: { providerPurge: { key: exceptionSummary(exception) } },
       },
     })
   }
@@ -634,7 +634,7 @@ export async function ensureProviderSkill(input: {
   } catch (exception) {
     input.logger.set({
       attributes: {
-        skills: { providerUpload: { error: exceptionMessage(exception) } },
+        skills: { providerUpload: exceptionSummary(exception) },
       },
     })
 
@@ -647,7 +647,11 @@ export async function ensureProviderSkill(input: {
 
   const pinnedVersion = uploaded.latestVersion
 
-  if (!pinnedVersion || !SAFE_ID_PATTERN.test(pinnedVersion)) {
+  if (
+    !pinnedVersion
+    || !SAFE_ID_PATTERN.test(pinnedVersion)
+    || !SAFE_ID_PATTERN.test(uploaded.providerSkillId)
+  ) {
     await deleteProviderSkill({
       providerSkillId: uploaded.providerSkillId,
       apiKey: input.apiKey,
@@ -686,7 +690,7 @@ export async function ensureProviderSkill(input: {
   } catch (exception) {
     input.logger.set({
       attributes: {
-        skills: { providerUpload: { storeError: exceptionMessage(exception) } },
+        skills: { providerUpload: { store: exceptionSummary(exception) } },
       },
     })
   }

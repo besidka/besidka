@@ -917,7 +917,7 @@ describe('tool approval continuation', () => {
       }],
     }
 
-    function installGate() {
+    function installGate(hash = GATE_HASH) {
       const execute = vi.fn(async () => 'Allowed.')
       const attach = vi.fn(async (input: { isApproved: boolean }) => {
         return input.isApproved
@@ -930,7 +930,7 @@ describe('tool approval continuation', () => {
           isActive: true,
           isGrantMatched: false,
           skillNames: ['data-report'],
-          definitionHash: GATE_HASH,
+          definitionHash: hash,
           tools: {
             [GATE]: tool({
               description: 'Ask for the scripts consent.',
@@ -945,7 +945,7 @@ describe('tool approval continuation', () => {
               toolName: GATE,
               destructiveHint: false,
               consentGate: true,
-              definitionHash: GATE_HASH,
+              definitionHash: hash,
             },
             summary:
               'Run scripts from data-report in Anthropic\'s container on '
@@ -1036,6 +1036,32 @@ describe('tool approval continuation', () => {
       ], [textChunks('Ran it.')])
 
       expect(mocks.grantCalls).toEqual([])
+    })
+
+    it.each([
+      ['a version of the skill was edited', 'd'.repeat(64)],
+      ['another skill was enabled for scripts', 'e'.repeat(64)],
+    ])('asks again instead of uploading when %s after the request', async (
+      _label,
+      newHash,
+    ) => {
+      installGate()
+
+      const paused = await pauseGate()
+      const [approvalId] = paused.approvalIds
+      const drifted = installGate(newHash)
+      const { doStream } = await answer(paused, [
+        { approvalId, approved: true, remember: 'chat' },
+      ], [textChunks('Asking again.')])
+      const options = doStream.mock.calls[0]![0] as any
+
+      expect(drifted.execute).not.toHaveBeenCalled()
+      expect(drifted.attach).not.toHaveBeenCalledWith({ isApproved: true })
+      expect(options.providerOptions.anthropic?.container).toBeUndefined()
+      expect(mocks.grantCalls).toEqual([])
+      expect(JSON.stringify(lastToolMessage(doStream))).toContain(
+        'changed',
+      )
     })
 
     it('uploads nothing and sends no container when the user denies', async () => {

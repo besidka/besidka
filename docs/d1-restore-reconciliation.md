@@ -349,7 +349,11 @@ just stale data.
   which counts as gone) and can leave a copy uploaded in the window without
   an id (the user removes it in the Anthropic Console, under Skills). Neither
   is a Besidka-side exposure; say so in the user notice for users who allowed
-  scripts.
+  scripts. The same holds for a failed account purge: the purge is best
+  effort for the provider copies (it logs only the counts), so a copy that
+  could not be deleted stays in the user's own Anthropic workspace, which the
+  user controls, until the user deletes it in the Anthropic Console. A single
+  skill delete, by contrast, is refused while its copy cannot be deleted.
 - **Deletions come back as rows without blobs.** A skill deleted in the
   window (or with its account) returns with its rows while its blobs under
   `user-skills/` are gone. Replay the deletes from Axiom

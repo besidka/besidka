@@ -486,6 +486,94 @@ describe('provider upload', () => {
       expect(JSON.stringify(mocks.logger.set.mock.calls)).not.toContain(API_KEY)
     })
 
+    it.each(['.', '..', '...', 'a/b', 'a%2Fb', ''])(
+      'refuses the id %j without a request',
+      async (providerSkillId) => {
+        const fetcher = vi.fn()
+
+        expect(await deleteProviderSkill({
+          providerSkillId,
+          apiKey: API_KEY,
+          logger: mocks.logger,
+          fetcher: fetcher as unknown as typeof fetch,
+        })).toBe('failed')
+        expect(fetcher).not.toHaveBeenCalled()
+      },
+    )
+
+    it('never follows a dot-only version from the listing', async () => {
+      let listed = 0
+      const urls: string[] = []
+      const fetcher = vi.fn(async (url: FetchInput, init?: RequestInit) => {
+        urls.push(`${init?.method} ${String(url)}`)
+
+        if (init?.method === 'GET') {
+          listed += 1
+
+          return jsonResponse({
+            data: listed === 1 ? [{ version: '..' }, { version: '7' }] : [],
+          })
+        }
+
+        return emptyResponse()
+      })
+
+      await deleteProviderSkill({
+        providerSkillId: 'skill_01',
+        apiKey: API_KEY,
+        logger: mocks.logger,
+        fetcher: fetcher as unknown as typeof fetch,
+      })
+
+      expect(urls.some(url => url.includes('/..'))).toBe(false)
+      expect(urls).toContain(
+        'DELETE https://api.anthropic.com/v1/skills/skill_01/versions/7',
+      )
+    })
+
+    it('deletes an upload whose id is not a plain identifier', async () => {
+      const skill = await seedScriptSkill()
+      const uploader = vi.fn(async () => {
+        return { providerSkillId: '..', latestVersion: '1759178010' }
+      })
+
+      await expect(ensureProviderSkill({
+        db: testDb.db,
+        bucket,
+        userId,
+        skill,
+        apiKey: API_KEY,
+        logger: mocks.logger,
+        uploader,
+      })).rejects.toMatchObject({ status: 502 })
+      expect((await loadOwnedSkill(testDb.db, userId, skill.id))
+        .providerSkillId).toBeNull()
+    })
+
+    it('logs the error kind, never the provider text', async () => {
+      const skill = await seedScriptSkill()
+      const secret = 'name: my-private-skill description: confidential'
+      const uploader = vi.fn(async () => {
+        throw new Error(`Invalid frontmatter: ${secret}`)
+      })
+
+      await expect(ensureProviderSkill({
+        db: testDb.db,
+        bucket,
+        userId,
+        skill,
+        apiKey: API_KEY,
+        logger: mocks.logger,
+        uploader,
+      })).rejects.toMatchObject({ status: 502 })
+
+      const logged = JSON.stringify(mocks.logger.set.mock.calls)
+
+      expect(logged).not.toContain('confidential')
+      expect(logged).not.toContain('Invalid frontmatter')
+      expect(logged).toContain('"errorName":"Error"')
+    })
+
     it('refuses an id that is not a plain identifier', async () => {
       const fetcher = vi.fn()
 

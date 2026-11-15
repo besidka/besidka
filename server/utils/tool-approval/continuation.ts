@@ -841,7 +841,10 @@ export async function applyRememberGrants(input: {
     }
 
     if (entry?.descriptor.consentGate === true) {
-      if (decision.remember !== 'chat') {
+      if (
+        decision.remember !== 'chat'
+        || decision.record.definitionHash !== hash
+      ) {
         continue
       }
 

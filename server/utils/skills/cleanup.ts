@@ -1,5 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { createProviderCopyDeleteError } from '~~/server/utils/skills/versions/errors'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -222,6 +223,17 @@ export async function deleteUserSkill(
 ): Promise<DeleteUserSkillResult> {
   const { userId, skillId, logger } = input
   const providerCopy = await removeSkillProviderCopy(db, input)
+
+  if (providerCopy === 'failed') {
+    logger.set({
+      attributes: {
+        skills: { cleanup: { skillDeleteRefused: { skillId } } },
+      },
+    })
+
+    throw createProviderCopyDeleteError()
+  }
+
   const [chatSettings, projectPins, files, versions, skills] = await db.batch([
     db.delete(schema.skillChatSettings)
       .where(and(

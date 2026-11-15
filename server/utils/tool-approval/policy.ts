@@ -457,7 +457,8 @@ function pendingMatchesDescriptor(
   }
 
   if (descriptor.family === 'native') {
-    return true
+    return descriptor.definitionHash === undefined
+      || (pending.definitionHash ?? null) === descriptor.definitionHash
   }
 
   if (descriptor.family === 'besidka') {

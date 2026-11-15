@@ -738,11 +738,7 @@ export function useSkillActions() {
 
     return await runExclusive(skill.id, async () => {
       try {
-        const result = await $fetch(`/api/v1/skills/${skill.id}`, {
-          method: 'DELETE',
-        })
-
-        warnAboutProviderCopy(result.providerCopy)
+        await $fetch(`/api/v1/skills/${skill.id}`, { method: 'DELETE' })
         await refreshSkillData()
 
         return true

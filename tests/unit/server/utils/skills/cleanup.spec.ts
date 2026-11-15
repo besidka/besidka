@@ -386,11 +386,48 @@ describe('skills deletion hooks', () => {
       expect(await countRows(schema.skills)).toBe(0)
     })
 
-    it('still deletes the skill and reports a failed provider delete', async () => {
+    it('refuses to delete the skill while its Anthropic copy cannot be deleted', async () => {
       await seedAnthropicKey(userId)
       stubProvider(500)
 
       const skillId = await seedUploadedSkill(userId)
+
+      await expect(deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)).rejects.toMatchObject({
+        status: 502,
+        code: 'provider-copy-delete-failed',
+        message: 'Could not delete the copy in your Anthropic workspace. '
+          + 'Try again, or delete it there.',
+      })
+
+      const [row] = await testDb.db.select().from(schema.skills)
+
+      expect(row?.providerSkillId).toBe('skill_01')
+      expect(await countRows(schema.skillVersions)).toBe(1)
+      expect(await countRows(schema.skillFiles)).toBe(2)
+      expect(bucket.objects.size).toBeGreaterThan(0)
+    })
+
+    it('deletes the skill on a retry once the copy is gone at Anthropic', async () => {
+      await seedAnthropicKey(userId)
+
+      const skillId = await seedUploadedSkill(userId)
+
+      stubProvider(500)
+
+      await expect(deleteUserSkill(testDb.db, {
+        userId,
+        skillId,
+        logger: mocks.logger,
+      }, bucket)).rejects.toMatchObject({ status: 502 })
+
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return new Response(null, { status: 404 })
+      }))
+
       const result = await deleteUserSkill(testDb.db, {
         userId,
         skillId,
@@ -398,10 +435,10 @@ describe('skills deletion hooks', () => {
       }, bucket)
 
       expect(result.skillDeleted).toBe(true)
-      expect(result.providerCopy).toBe('failed')
+      expect(result.providerCopy).toBe('already-gone')
     })
 
-    it('still deletes the skill when the key cannot be decrypted', async () => {
+    it('refuses the delete when the key cannot be decrypted, keeping the id', async () => {
       await seedAnthropicKey(userId)
 
       const calls = stubProvider()
@@ -411,14 +448,18 @@ describe('skills deletion hooks', () => {
       })
 
       const skillId = await seedUploadedSkill(userId)
-      const result = await deleteUserSkill(testDb.db, {
+
+      await expect(deleteUserSkill(testDb.db, {
         userId,
         skillId,
         logger: mocks.logger,
-      }, bucket)
+      }, bucket)).rejects.toMatchObject({
+        code: 'provider-copy-delete-failed',
+      })
 
-      expect(result.skillDeleted).toBe(true)
-      expect(result.providerCopy).toBe('failed')
+      const [row] = await testDb.db.select().from(schema.skills)
+
+      expect(row?.providerSkillId).toBe('skill_01')
       expect(calls).toEqual([])
     })
 
@@ -460,7 +501,7 @@ describe('skills deletion hooks', () => {
       expect(await countRows(schema.skills)).toBe(0)
     })
 
-    it('does not stop the purge when a copy cannot be deleted', async () => {
+    it('keeps the account purge best effort when a copy cannot be deleted', async () => {
       stubProvider()
       await seedUploadedSkill(userId)
 

@@ -60,7 +60,11 @@ function besidkaEntry(toolName: string) {
   }
 }
 
-function decision(toolName: string, remember: 'once' | 'chat' | 'always') {
+function decision(
+  toolName: string,
+  remember: 'once' | 'chat' | 'always',
+  record: Record<string, unknown> = {},
+) {
   return {
     approvalId: `approval-${toolName}`,
     toolCallId: `call-${toolName}`,
@@ -69,7 +73,7 @@ function decision(toolName: string, remember: 'once' | 'chat' | 'always') {
     reason: undefined,
     remember,
     denialReason: null,
-    record: {} as never,
+    record: record as never,
   }
 }
 
@@ -163,7 +167,9 @@ describe('Besidka chat settings', () => {
         db: testDb.db,
         userId,
         chatPublicId: CHAT,
-        decisions: [decision('run_skill_scripts', 'chat')],
+        decisions: [
+          decision('run_skill_scripts', 'chat', { definitionHash: HASH }),
+        ],
         entries: new Map([['run_skill_scripts', entry]]),
         logger: { set: vi.fn() },
       })
@@ -196,6 +202,37 @@ describe('Besidka chat settings', () => {
         .toEqual([])
     })
 
+  it('stores no scripts grant when the approved hash is not the current one',
+    async () => {
+      const entry = {
+        ...besidkaEntry('run_skill_scripts'),
+        descriptor: {
+          family: 'native' as const,
+          access: 'write' as const,
+          toolName: 'run_skill_scripts',
+          definitionHash: 'b'.repeat(64),
+          destructiveHint: false,
+          consentGate: true,
+        },
+        taint: null,
+        readSource: null,
+      }
+
+      await applyRememberGrants({
+        db: testDb.db,
+        userId,
+        chatPublicId: CHAT,
+        decisions: [
+          decision('run_skill_scripts', 'chat', { definitionHash: HASH }),
+        ],
+        entries: new Map([['run_skill_scripts', entry]]),
+        logger: { set: vi.fn() },
+      })
+
+      expect(await readBesidkaChatSettings(testDb.db, userId, CHAT))
+        .toEqual({ enabled: true, alwaysAllowTools: {} })
+    })
+
   it('stores nothing for a once or always answer to the scripts consent',
     async () => {
       const entry = {
@@ -217,8 +254,8 @@ describe('Besidka chat settings', () => {
         userId,
         chatPublicId: CHAT,
         decisions: [
-          decision('run_skill_scripts', 'once'),
-          decision('run_skill_scripts', 'always'),
+          decision('run_skill_scripts', 'once', { definitionHash: HASH }),
+          decision('run_skill_scripts', 'always', { definitionHash: HASH }),
         ],
         entries: new Map([['run_skill_scripts', entry]]),
         logger: { set: vi.fn() },

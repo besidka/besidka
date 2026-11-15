@@ -779,12 +779,66 @@ describe('consent gate', () => {
         family: 'native',
         access: 'write',
         toolName: 'run_skill_scripts',
+        definitionHash: HASH,
       },
       state: createApprovalState(),
       permissionMode: 'ask',
     })
 
     expect(replay.status).toEqual({ type: 'not-applicable' })
+  })
+})
+
+describe('replay of a native tool that carries a definition hash', () => {
+  function gate(
+    overrides: Partial<ToolApprovalDescriptor> = {},
+  ): ToolApprovalDescriptor {
+    return nativeTool({
+      toolName: 'run_skill_scripts',
+      definitionHash: HASH,
+      consentGate: true,
+      ...overrides,
+    })
+  }
+
+  function replay(
+    descriptor: ToolApprovalDescriptor,
+    definitionHash: string | null | undefined,
+  ) {
+    return resolveReplayApproval({
+      descriptor,
+      pending: {
+        family: 'native',
+        access: 'write',
+        toolName: 'run_skill_scripts',
+        definitionHash,
+      },
+      state: createApprovalState(),
+      permissionMode: 'ask',
+    })
+  }
+
+  it('passes while the approved hash is still the current one', () => {
+    expect(replay(gate(), HASH).status).toEqual({ type: 'not-applicable' })
+  })
+
+  it('denies as drifted when the set of skills changed after the request', () => {
+    expect(replay(gate(), OTHER_HASH)).toEqual({
+      status: { type: 'denied', reason: 'definition-drifted' },
+      denialReason: 'definition-drifted',
+    })
+  })
+
+  it('denies as drifted for a request stored without a hash', () => {
+    expect(replay(gate(), null).denialReason).toBe('definition-drifted')
+    expect(replay(gate(), undefined).denialReason).toBe('definition-drifted')
+  })
+
+  it('keeps a native tool without a hash as it was', () => {
+    expect(replay(nativeTool({ toolName: 'run_skill_scripts' }), null)
+      .status).toEqual({ type: 'not-applicable' })
+    expect(replay(nativeTool({ toolName: 'run_skill_scripts' }), HASH)
+      .status).toEqual({ type: 'not-applicable' })
   })
 })
 

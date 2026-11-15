@@ -624,15 +624,23 @@ describe('useSkillActions', () => {
       expect(mocks.errorMessage).toHaveBeenCalled()
     })
 
-    it('warns when deleting a skill could not delete its Anthropic copy', async () => {
+    it('keeps the skill and shows the server reason when its Anthropic copy cannot be deleted', async () => {
       mocks.confirm.mockResolvedValueOnce({ label: 'Delete', index: 0 })
-      mocks.fetch.mockResolvedValueOnce({ providerCopy: 'failed' })
+      mocks.fetch.mockRejectedValueOnce(Object.assign(
+        new Error('Could not delete the copy in your Anthropic workspace.'),
+        {
+          data: {
+            message: 'Could not delete the copy in your Anthropic workspace. '
+              + 'Try again, or delete it there.',
+          },
+        },
+      ))
 
       await expect(useSkillActions().deleteSkill(createSkillSummary()))
-        .resolves.toBe(true)
+        .resolves.toBe(false)
       expect(mocks.errorMessage).toHaveBeenCalledWith(
-        'The copy at Anthropic could not be deleted',
-        expect.any(String),
+        expect.stringContaining('Anthropic workspace'),
+        undefined,
       )
     })
   })
