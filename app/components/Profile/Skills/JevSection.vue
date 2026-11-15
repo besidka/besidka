@@ -93,7 +93,7 @@
         class="text-sm text-base-content/70"
         data-testid="skill-jev-all-parts"
       >
-        Checked all parts.
+        Checked every part. It marked nothing.
       </p>
 
       <p

@@ -112,11 +112,11 @@ describe('Profile/Skills/JevSection', () => {
       .toMatch(/^Marked 5 passages: .+ and 2 more\.$/)
   })
 
-  it('says Checked all parts, muted, when nothing was marked', async () => {
+  it('says Checked every part and that it marked nothing, muted, when nothing was marked', async () => {
     const wrapper = await mountView(makeView())
     const line = wrapper.get(testId('skill-jev-all-parts'))
 
-    expect(line.text()).toBe('Checked all parts.')
+    expect(line.text()).toBe('Checked every part. It marked nothing.')
     expect(line.classes()).toContain('text-base-content/70')
     expect(wrapper.find(testId('skill-jev-marked')).exists()).toBe(false)
     expect(wrapper.find(testId('skill-jev-unchecked')).exists()).toBe(false)

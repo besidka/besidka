@@ -2,7 +2,7 @@ import { JEV_SKILL_SCREENING } from '#shared/utils/jev-policy'
 import {
   buildSkillHighlightNotice,
   scanHighRuleRanges,
-  shiftNoticeRanges,
+  clipNoticeRanges,
   toJevNoticeRanges,
 } from '#shared/utils/skills/runtime-notice'
 import type { SkillNoticeRange } from '#shared/utils/skills/runtime-notice'
@@ -77,8 +77,9 @@ async function readVerifiedJevRanges(input: {
  * text with the rules, so it makes no model call and costs no spend. A
  * failure to read the marks or to scan leaves the notice out and never
  * fails the tool.
- * `skippedLines` is how many lines at the top the reader does not see (the
- * frontmatter of an activated skill) and `shownLines` how many lines it does.
+ * Line numbers are those of the file. `firstLine` and `lastLine` bound the
+ * lines the reader received (the whole file for `read_skill_file`, the body
+ * that survived the cut for `activate_skill`).
  */
 async function computeSkillHighlightNotice(input: {
   db: DbClient
@@ -88,8 +89,8 @@ async function computeSkillHighlightNotice(input: {
   version: number
   path: string
   fullText: string
-  skippedLines?: number
-  shownLines?: number
+  firstLine: number
+  lastLine: number
 }): Promise<string | null> {
   const ranges = [
     ...scanHighRuleRanges(input.path, input.fullText),
@@ -104,13 +105,12 @@ async function computeSkillHighlightNotice(input: {
       })
       : []),
   ]
-  const skippedLines = input.skippedLines ?? 0
-  const shownLines = input.shownLines
-    ?? input.fullText.split('\n').length - skippedLines
 
-  return buildSkillHighlightNotice(
-    shiftNoticeRanges({ ranges, skippedLines, shownLines }),
-  )
+  return buildSkillHighlightNotice(clipNoticeRanges({
+    ranges,
+    firstLine: input.firstLine,
+    lastLine: input.lastLine,
+  }))
 }
 
 export async function findSkillHighlightNotice(

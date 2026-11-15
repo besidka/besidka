@@ -166,6 +166,8 @@ export function getSkillTools(input: {
               skill: loaded,
               family: input.family,
             })
+            const skippedLines = countLines(loaded.skillMdText)
+              - countLines(loaded.body)
             const notice = await findSkillHighlightNotice({
               db: input.db,
               kv: input.kv,
@@ -174,9 +176,8 @@ export function getSkillTools(input: {
               version: skill.currentVersion,
               path: SKILL_MD_FILE_NAME,
               fullText: loaded.skillMdText,
-              skippedLines: countLines(loaded.skillMdText)
-                - countLines(loaded.body),
-              shownLines: countLines(loaded.body),
+              firstLine: skippedLines + 1,
+              lastLine: skippedLines + formatted.shownBodyLines,
             })
 
             activations.set(skill.id, toSkillActivationPart(identity).data)
@@ -272,7 +273,8 @@ export function getSkillTools(input: {
             version: skill.currentVersion,
             path: normalized.path,
             fullText: file.text,
-            shownLines: countLines(cut.text),
+            firstLine: 1,
+            lastLine: countLines(cut.text),
           })
 
           return {

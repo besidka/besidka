@@ -5,8 +5,8 @@ import {
   SKILL_NOTICE_PREFIX,
   SKILL_NOTICE_SUFFIX,
   buildSkillHighlightNotice,
+  clipNoticeRanges,
   scanHighRuleRanges,
-  shiftNoticeRanges,
   toJevNoticeRanges,
 } from '#shared/utils/skills/runtime-notice'
 import { createSkillJevMark } from '#shared/utils/skills/jev-findings'
@@ -65,39 +65,39 @@ describe('buildSkillHighlightNotice', () => {
   })
 })
 
-describe('shiftNoticeRanges', () => {
+describe('clipNoticeRanges', () => {
   const range = { startLine: 10, endLine: 12, reason: 'a command' }
 
-  it('moves ranges up by the skipped lines', () => {
-    expect(shiftNoticeRanges({
+  it('keeps file numbering for a range inside the window', () => {
+    expect(clipNoticeRanges({
       ranges: [range],
-      skippedLines: 4,
-      shownLines: 50,
-    })).toEqual([{ startLine: 6, endLine: 8, reason: 'a command' }])
+      firstLine: 5,
+      lastLine: 50,
+    })).toEqual([range])
   })
 
-  it('drops ranges inside the skipped lines and past the shown ones', () => {
-    expect(shiftNoticeRanges({
+  it('drops ranges before the first and after the last line', () => {
+    expect(clipNoticeRanges({
       ranges: [
         { startLine: 2, endLine: 3, reason: 'a command' },
         { startLine: 60, endLine: 61, reason: 'a command' },
       ],
-      skippedLines: 4,
-      shownLines: 20,
+      firstLine: 5,
+      lastLine: 20,
     })).toEqual([])
   })
 
-  it('clamps a range that straddles the first or the last shown line', () => {
-    expect(shiftNoticeRanges({
+  it('clips a range that straddles the first or the last line', () => {
+    expect(clipNoticeRanges({
       ranges: [
-        { startLine: 3, endLine: 6, reason: 'a command' },
+        { startLine: 3, endLine: 8, reason: 'a command' },
         { startLine: 18, endLine: 30, reason: 'a command' },
       ],
-      skippedLines: 4,
-      shownLines: 20,
+      firstLine: 5,
+      lastLine: 20,
     })).toEqual([
-      { startLine: 1, endLine: 2, reason: 'a command' },
-      { startLine: 14, endLine: 20, reason: 'a command' },
+      { startLine: 5, endLine: 8, reason: 'a command' },
+      { startLine: 18, endLine: 20, reason: 'a command' },
     ])
   })
 })

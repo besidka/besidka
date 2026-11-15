@@ -22,6 +22,7 @@ const SCRIPT_NOTE = 'text only, not executable here'
 export interface FormattedSkillContent {
   text: string
   isTruncated: boolean
+  shownBodyLines: number
 }
 
 function buildTruncationNotice(): string {
@@ -97,5 +98,9 @@ export function formatSkillContent(input: {
     ...(resources ? [resources] : []),
   ].join('\n')
 
-  return { text, isTruncated }
+  return {
+    text,
+    isTruncated,
+    shownBodyLines: byTokens.text.split('\n').length,
+  }
 }

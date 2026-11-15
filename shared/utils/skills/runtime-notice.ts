@@ -62,29 +62,28 @@ export function toJevNoticeRanges(marks: SkillJevMark[]): SkillNoticeRange[] {
 }
 
 /**
- * The ranges as the reader sees the text: moved up by the lines that were
- * cut off the top (the frontmatter of an activated skill) and dropped when
- * they fall outside what is shown. A range that starts above the first
- * shown line is clamped to it.
+ * The ranges the reader actually received, in the numbering of the file
+ * (frontmatter included, the same numbering `read_skill_file` shows). A range
+ * outside the window `firstLine` to `lastLine` is dropped and one that
+ * straddles an edge is clipped to it, so the notice never cites a line the
+ * reader did not get (the frontmatter of an activated skill, or a cut tail).
  */
-export function shiftNoticeRanges(input: {
+export function clipNoticeRanges(input: {
   ranges: SkillNoticeRange[]
-  skippedLines: number
-  shownLines: number
+  firstLine: number
+  lastLine: number
 }): SkillNoticeRange[] {
   return input.ranges
+    .filter((range) => {
+      return range.endLine >= input.firstLine
+        && range.startLine <= input.lastLine
+    })
     .map((range) => {
       return {
         ...range,
-        startLine: Math.max(1, range.startLine - input.skippedLines),
-        endLine: range.endLine - input.skippedLines,
+        startLine: Math.max(range.startLine, input.firstLine),
+        endLine: Math.min(range.endLine, input.lastLine),
       }
-    })
-    .filter((range) => {
-      return range.endLine >= 1 && range.startLine <= input.shownLines
-    })
-    .map((range) => {
-      return { ...range, endLine: Math.min(range.endLine, input.shownLines) }
     })
 }
 

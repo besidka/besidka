@@ -963,9 +963,14 @@ calls, input tokens, latency and counts `skillChunks`, `skillCached`,
 the import review (`Review.vue`) and the update review
 (`UpdateReview.client.vue`), driven by `useSkillJevScreen`
 (`app/composables/skill-jev-screen.ts`). Nothing in it waits for TypeSafe AI:
-the install and accept buttons and both ticks work in every state, and the
-second tick still counts rule highlights only, so a late mark never changes
-what the user agreed to.
+the install and accept buttons and both ticks work in every state. The second
+tick ("I read the N highlights marked Look closely") counts rule highlights
+only, on purpose: a mark that arrives after the user ticked must never change
+what they agreed to. For the same reason the warning line above the groups
+("Highlighted in the files: …") counts rules only, and when there are none it
+says "The built-in checks highlighted nothing." (not "Nothing was
+highlighted"), so it cannot contradict a TypeSafe AI mark shown below it. A
+Look closely group can therefore hold more rows than the tick counts.
 
 - **When it runs.** Once, when the screen opens, client side only. The import
   review posts `{}` to the stage route only when the preview carries
@@ -980,14 +985,14 @@ what the user agreed to.
   "Still checking" and the user can reopen the screen.
 - **States.** "Checking…"; "Marked N passages: asks to send data out
   (references/setup.md lines 40 to 92), …" (three listed, then "and N more");
-  "Checked all parts." (muted, nothing else); "Not checked: N parts." with
+  "Checked every part. It marked nothing." (muted, nothing else); "Not checked: N parts." with
   "Check the rest" (only when `status` is ok, `unchecked` is not empty and
   `callsLeft` is above 0, otherwise a note that the budget is used up);
   "Did not finish: TypeSafe AI did not answer. N parts not checked." with
   "Try again" (also for a rejected key and for a failed request, which shows
   its message). Marks and "Not checked" can show together. No state says
   "clean" or "no issues" and none has a check icon or a success color. The
-  response has no chunk totals, so the muted line says "all parts", not "14 of
+  response has no chunk totals, so the muted line says "every part", not "14 of
   14"; `N` in "Not checked" counts merged line ranges.
 - **Marks as findings.** The import review merges the answer's `findings`
   into the same "Look closely" and "Worth a look" groups, the file viewer
@@ -1133,9 +1138,15 @@ Where it comes from (`server/utils/skills/runtime/notice.ts`,
 - Rule highlights are found by running `scanSkillText` over the text the tool
   has already read (the stored findings are counts only), keeping
   `severity === 'high'`. For `activate_skill` the scan covers the whole
-  `SKILL.md`, and the line numbers are moved up by the lines of the
-  frontmatter, so they match the body the model gets. A range in the
-  frontmatter is dropped.
+  `SKILL.md`.
+- One numbering: line numbers are those of the file, frontmatter included, the
+  same numbers `read_skill_file` shows for `SKILL.md` and the review screen
+  shows. The notice only cites lines the model actually received
+  (`clipNoticeRanges`): for `read_skill_file` the lines after the 64 KiB cut
+  are dropped, and for `activate_skill` the frontmatter is dropped (the model
+  gets the body only) and so is everything past the 40 KiB or token cut
+  (`FormattedSkillContent.shownBodyLines`). A range that straddles an edge is
+  clipped to it.
 - TypeSafe AI marks are read from `skills:marks:u<userId>:<skillId>:<version>`
   through the version row: the entry counts only when its `versionSha256`
   equals the version's `sha256` and its `questionSetVersion` is the current

@@ -164,7 +164,7 @@
             Highlighted in the files: {{ findingSummary }}.
           </template>
           <template v-else>
-            Nothing was highlighted.
+            The built-in checks highlighted nothing.
           </template>
           Besidka highlights links and commands so you can review them. It
           cannot tell whether a skill is safe.

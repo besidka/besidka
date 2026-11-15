@@ -89,7 +89,7 @@
               Highlighted in the update: {{ pendingFindingSummary }}.
             </template>
             <template v-else>
-              Nothing was highlighted in the update.
+              The built-in checks highlighted nothing in the update.
             </template>
             <template v-if="currentFindingSummary">
               The version in use has: {{ currentFindingSummary }}.

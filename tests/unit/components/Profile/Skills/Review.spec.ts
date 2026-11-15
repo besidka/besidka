@@ -391,7 +391,7 @@ describe('Profile/Skills/Review', () => {
     })
 
     expect(wrapper.get(testId('skill-review-finding-counts')).text())
-      .toContain('Nothing was highlighted.')
+      .toContain('The built-in checks highlighted nothing.')
     expect(wrapper.find(testId('skill-review-findings')).exists()).toBe(false)
   })
 
@@ -780,11 +780,11 @@ describe('Profile/Skills/Review: TypeSafe AI section', () => {
       .toBe(ruleCount + 1)
   })
 
-  it('says Checked all parts when nothing was marked, and never a verdict', async () => {
+  it('says Checked every part when nothing was marked, and never a verdict', async () => {
     const { wrapper } = await mountJev(jevResponse())
 
     expect(wrapper.get(testId('skill-jev-all-parts')).text())
-      .toBe('Checked all parts.')
+      .toBe('Checked every part. It marked nothing.')
     expect(wrapper.get(testId('skill-jev-section')).text())
       .not.toMatch(JEV_BANNED_COPY)
     expect(wrapper.get(testId('skill-review-no-highlight-note')).text())

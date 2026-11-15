@@ -1905,7 +1905,6 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Skills/FileTree.spec.ts',
     'tests/unit/components/Profile/Skills/FindingGroups.spec.ts',
     'tests/unit/components/Profile/Skills/JevSection.spec.ts',
-    'tests/unit/utils/skills/runtime-notice.spec.ts',
     'tests/unit/components/Profile/Skills/ProblemList.spec.ts',
     'tests/unit/components/Profile/Skills/FileViewer.spec.ts',
     'tests/unit/components/Profile/Skills/Filters.spec.ts',
