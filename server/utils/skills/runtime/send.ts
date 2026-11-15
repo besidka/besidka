@@ -2,10 +2,14 @@ import type { ToolSet } from 'ai'
 import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import { isAuthoredSkillSource } from '#shared/utils/skills-policy'
 import {
+  SKILL_ACTIVATION_SOURCE_JEV,
   findSkillInvocation,
   toSkillActivationPart,
 } from '#shared/utils/skills/runtime'
-import type { DataSkillActivationPart } from '#shared/utils/skills/runtime'
+import type {
+  DataSkillActivationPart,
+  SkillInvocationPartData,
+} from '#shared/utils/skills/runtime'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { buildSkillCatalog } from '~~/server/utils/skills/runtime/catalog'
@@ -39,6 +43,7 @@ export interface SkillsSend {
   activeSkillsBlock: string | null
   invocationBlock: string | null
   holdsSkillText: boolean
+  scriptCandidateSkillIds: string[]
   streamActivations: DataSkillActivationPart[]
   getToolActivations: () => ReturnType<
     ReturnType<typeof getSkillTools>['getActivations']
@@ -76,6 +81,7 @@ const EMPTY_SKILLS_SEND: SkillsSend = {
   activeSkillsBlock: null,
   invocationBlock: null,
   holdsSkillText: false,
+  scriptCandidateSkillIds: [],
   streamActivations: [],
   getToolActivations: () => [],
 }
@@ -96,6 +102,15 @@ const EMPTY_SKILLS_SEND: SkillsSend = {
  *   earlier answers, plus the attached one when it is Auto), as an
  *   `<active_skills>` block, which is also added when tool calling is off.
  *
+ * - the skill TypeSafe AI picked for this message (`jevSelection`, only when
+ *   the user attached none), injected like an attachment but worded as
+ *   Besidka's match, and never stored on the user message; a skill that
+ *   cannot be read is skipped without an error, since the model still has
+ *   the catalog. The pick applies to this send only: its activation part
+ *   (`source: 'jev'`) shows the step but is never read back as active;
+ * - `preloadedCatalogSkills`, the Auto skills the send path already read for
+ *   the skill selector, so the catalog is not read twice.
+ *
  * It never adds a tool other than the two skill tools, whatever a skill
  * says. A user who attached a skill that cannot be read gets the generic
  * 400 for a new message; a stored message just runs without it.
@@ -113,6 +128,8 @@ export async function prepareSkillsForSend(input: {
   userMessageText: string | null
   isStoredUserMessage: boolean
   preloadedInvocation?: LoadedSkillInvocation | null
+  jevSelection?: SkillInvocationPartData | null
+  preloadedCatalogSkills?: readonly RuntimeSkillRow[] | null
   guard?: UntrustedContentGuard
   logger: LoggerLike
 }): Promise<SkillsSend> {
@@ -123,15 +140,18 @@ export async function prepareSkillsForSend(input: {
   const { db, userId, family, logger } = input
   const bucket = input.getBucket()
   const invocation = findSkillInvocation(input.newMessageParts)
-  const invocationResult = invocation
+  const jevInvocation = invocation ? null : input.jevSelection ?? null
+  const attachedInvocation = invocation ?? jevInvocation
+  const invocationResult = attachedInvocation
     ? await buildSkillInvocationBlock({
       db,
       bucket,
       userId,
-      invocation,
+      invocation: attachedInvocation,
       argumentsText: input.userMessageText ?? '',
       family,
-      preloaded: input.preloadedInvocation,
+      preloaded: invocation ? input.preloadedInvocation : null,
+      invokedBy: jevInvocation ? 'jev' : 'user',
       logger,
     })
     : null
@@ -142,11 +162,15 @@ export async function prepareSkillsForSend(input: {
 
   const streamActivations: DataSkillActivationPart[] = invocationResult
     && invocationResult.keepsActive
-    ? [toSkillActivationPart({
-      skillId: invocationResult.skillId,
-      name: invocationResult.name,
-      version: invocationResult.version,
-    })]
+    ? [toSkillActivationPart(
+      {
+        skillId: invocationResult.skillId,
+        name: invocationResult.name,
+        version: invocationResult.version,
+      },
+      undefined,
+      jevInvocation ? SKILL_ACTIVATION_SOURCE_JEV : undefined,
+    )]
     : []
   const projectSkills = await prepareProjectSkillsForSend({
     db,
@@ -179,7 +203,8 @@ export async function prepareSkillsForSend(input: {
   })
   const catalogSkills: RuntimeSkillRow[] = input.isToolCallingAllowed
     ? mergeCatalogSkills(
-      await listCatalogSkills(db, userId),
+      input.preloadedCatalogSkills
+      ?? await listCatalogSkills(db, userId),
       projectSkills,
     )
     : []
@@ -240,6 +265,7 @@ export async function prepareSkillsForSend(input: {
         catalogTokens: catalog?.tokens ?? 0,
         toolsRegistered: toolsRun !== null,
         invoked: invocationResult !== null,
+        selectedByJev: jevInvocation !== null && invocationResult !== null,
         activeCount: active?.activeSkillIds.length ?? 0,
         activeUnavailable: active?.unavailable ?? 0,
         projectLoaded: projectSkills.loadedSkillIds.length,
@@ -260,6 +286,12 @@ export async function prepareSkillsForSend(input: {
       || projectSkills.block !== null
       || invocationResult !== null
       || catalogHoldsImportedText,
+    scriptCandidateSkillIds: [...new Set([
+      ...toolSkills.map(skill => skill.id),
+      ...(active?.activeSkillIds ?? []),
+      ...projectSkills.loadedSkillIds,
+      ...(invocationResult ? [invocationResult.skillId] : []),
+    ])],
     streamActivations: [...streamActivations, ...projectSkills.activations],
     getToolActivations: toolsRun?.getActivations ?? (() => []),
   }

@@ -26,6 +26,7 @@ export const TOOL_APPROVAL_REASONS = [
   'untrusted-output',
   'cross-source',
   'always-ask',
+  'consent',
   'default',
 ] as const
 

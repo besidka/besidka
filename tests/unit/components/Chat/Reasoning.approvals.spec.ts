@@ -102,6 +102,38 @@ async function mountMessage(
 const STEP = '[data-testid="reasoning-approval-step"]'
 
 describe('Chat/Reasoning approval steps', () => {
+  it('shows the skill scripts consent with its summary, reason and both buttons',
+    async () => {
+      const wrapper = await mountMessage([
+        approvalCall('1', {
+          type: 'tool-run_skill_scripts',
+          toolName: undefined,
+          input: {},
+        }),
+        approvalData('1', {
+          toolName: 'run_skill_scripts',
+          reason: 'consent',
+          summary: 'Run scripts from data-report in Anthropic\'s container '
+            + 'on your key?',
+          rememberOptions: ['once', 'chat'],
+        }),
+      ])
+      const step = wrapper.get(STEP)
+
+      expect(step.get('[data-testid="reasoning-approval-step-title"]').text())
+        .toBe('Run skill scripts')
+      expect(step.get('[data-testid="reasoning-approval-step-summary"]').text())
+        .toContain('Anthropic\'s container on your key?')
+      expect(step.get('[data-testid="reasoning-approval-step-reason"]').text())
+        .toBe('Uploads the skill to your Anthropic workspace')
+      expect(step.find('[data-testid="reasoning-approval-step-allow-once"]')
+        .exists()).toBe(true)
+      expect(step.find('[data-testid="reasoning-approval-step-allow-chat"]')
+        .exists()).toBe(true)
+      expect(step.find('[data-testid="reasoning-approval-step-allow-always"]')
+        .exists()).toBe(false)
+    })
+
   it('shows a Besidka call with the Besidka mark and its summary as title',
     async () => {
       const wrapper = await mountMessage([

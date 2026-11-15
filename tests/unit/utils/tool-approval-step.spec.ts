@@ -232,6 +232,18 @@ describe('approval copy', () => {
       .toBe('Save to memory')
     expect(getApprovalStepTitle({ ...native, tool: 'besidka__x' }, undefined))
       .toBe('Run besidka__x')
+    expect(getApprovalStepTitle(
+      { ...native, tool: 'run_skill_scripts' },
+      undefined,
+    )).toBe('Run skill scripts')
+  })
+
+  it('keeps the scripts summary as the line under the title', () => {
+    expect(getApprovalSummaryLine(
+      'Run scripts from data-report in Anthropic\'s container on your key?',
+    )).toBe(
+      'Run scripts from data-report in Anthropic\'s container on your key?',
+    )
   })
 
   it('hides summaries that only restate the title', () => {
@@ -252,6 +264,8 @@ describe('approval copy', () => {
       .toBe('Because it would use a different connector')
     expect(getApprovalReasonText('always-ask', ''))
       .toBe('Changes or deletes data')
+    expect(getApprovalReasonText('consent', ''))
+      .toBe('Uploads the skill to your Anthropic workspace')
     expect(getApprovalReasonText('default', ''))
       .toBe('Runs only after you allow it')
     expect(getApprovalReasonText('default', '', 'mcp__notion__notion-search'))

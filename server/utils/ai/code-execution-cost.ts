@@ -20,6 +20,7 @@ export interface CodeExecutionUsage {
   bytes: number
   skipped: number
   containerSeconds?: number
+  skills?: number
 }
 
 function parseRate(value: string | number | undefined): number | undefined {
@@ -94,6 +95,7 @@ export function describeCodeExecutionUsage(
     ...(usage.containerSeconds === undefined
       ? {}
       : { containerSeconds: usage.containerSeconds }),
+    ...(usage.skills ? { skills: usage.skills } : {}),
     ...(cost === null ? {} : { cost }),
   }
 }

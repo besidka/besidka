@@ -72,6 +72,26 @@ describe('skill part persistence', () => {
     expect(redactSkillToolPartsForPersistence(parts)).toEqual(parts)
   })
 
+  it('still stores a real activation when a TypeSafe AI pick of the same '
+    + 'skill is on the message', () => {
+    const picked = {
+      type: 'data-skill-activation',
+      data: { skillId: 'skl1', name: 'writing-style', version: 3, source: 'jev' },
+    }
+    const parts = appendSkillActivationParts([
+      picked,
+      activatePart(),
+    ] as unknown as UIMessage['parts'], '2026-11-14T00:00:00.000Z')
+    const activations = parts.filter((part) => {
+      return part.type === 'data-skill-activation'
+    })
+
+    expect(activations).toHaveLength(2)
+    expect(activations[1]).toMatchObject({
+      data: { skillId: 'skl1', activatedAt: '2026-11-14T00:00:00.000Z' },
+    })
+  })
+
   it('derives one activation data part per activated skill', () => {
     const parts = appendSkillActivationParts([
       activatePart(),

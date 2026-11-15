@@ -673,7 +673,11 @@ describe('skills create, save, restore and read routes', () => {
     it('deletes the skill and its objects', async () => {
       const { result } = await call('remove')
 
-      expect(result).toEqual({ id: skillId, deleted: true })
+      expect(result).toEqual({
+        id: skillId,
+        deleted: true,
+        providerCopy: 'none',
+      })
       expect(await testDb.db.select().from(schema.skills)).toEqual([])
       expect(await testDb.db.select().from(schema.skillFiles)).toEqual([])
       expect(bucket.objects.size).toBe(0)

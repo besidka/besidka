@@ -19,6 +19,11 @@ export type SendPathJevState = {
   recent_turns: SendPathTurn[]
 }
 
+export type SendPathJevExtra = {
+  state: Record<string, string>
+  questions: JevQuestions
+}
+
 interface SendPathMessage {
   role: string
   parts: ReadonlyArray<{ type: string, text?: string }> | null | undefined
@@ -84,19 +89,22 @@ export function buildSendPathJevState(input: {
 
 /**
  * One Jev call on the send path for any set of questions, so roles that
- * read the same message (Auto web search, past-chat retrieval) can share a
- * single round trip by merging their question maps. Never throws.
+ * read the same message can share a single round trip by merging their
+ * question maps. `extra` carries another role's state keys and questions
+ * (the skill selector's `skill_<i>`); a key of the base `state` or of
+ * `questions` always wins over an extra one of the same name. Never throws.
  */
 export async function decideSendPathJev(input: {
   model: Experimental_DecisionModel
   state: SendPathJevState
   questions: JevQuestions
+  extra?: SendPathJevExtra
   abortSignal?: AbortSignal
 }): Promise<JevDecideResult> {
   return await jevDecide({
     model: input.model,
-    state: input.state,
-    questions: input.questions,
+    state: { ...input.extra?.state, ...input.state },
+    questions: { ...input.extra?.questions, ...input.questions },
     timeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
     abortSignal: input.abortSignal,
   })

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import anthropicChart from '../../fixtures/code-execution/anthropic-chart.json'
 import openaiCsv from '../../fixtures/code-execution/openai-csv.json'
 import googleStdout from '../../fixtures/code-execution/google-stdout.json'
@@ -413,6 +413,174 @@ describe('chat send pipeline: provider code execution', () => {
     vi.stubGlobal('readOpenRouterCost', readOpenRouterCost)
     vi.stubGlobal('readVercelGatewayCost', readVercelGatewayCost)
     vi.stubGlobal('readVercelGenerationId', readVercelGenerationId)
+  })
+
+  describe('skill scripts in the Anthropic container', () => {
+    const container = {
+      skills: [{
+        type: 'custom',
+        providerReference: { anthropic: 'skill_01' },
+        version: '1759178010',
+      }],
+    }
+
+    afterEach(() => {
+      vi.doUnmock('~~/server/utils/skills/send-container-options')
+    })
+
+    function mockScriptsRun(run: Record<string, unknown> | null) {
+      vi.doMock('~~/server/utils/skills/send-container-options', async (
+        importOriginal,
+      ) => {
+        const actual = await importOriginal<
+          typeof import('~~/server/utils/skills/send-container-options')
+        >()
+
+        return {
+          ...actual,
+          prepareSkillScriptsForSend: vi.fn(async () => run ?? {
+            gate: {
+              isActive: false,
+              isGrantMatched: false,
+              skillNames: [],
+              definitionHash: null,
+              tools: {},
+              approvalEntries: new Map(),
+            },
+            eligibleSkills: [],
+            attach: async () => ({
+              container: null,
+              attachedCount: 0,
+              failed: false,
+            }),
+          }),
+        }
+      })
+    }
+
+    it('sends container.skills and the sandbox line when the chat holds a grant', async () => {
+      stubProvider('anthropic', ['code_execution'], 'claude-haiku-5-5')
+      mockScriptsRun({
+        gate: {
+          isActive: true,
+          isGrantMatched: true,
+          skillNames: ['data-report'],
+          definitionHash: 'hash',
+          tools: {},
+          approvalEntries: new Map(),
+        },
+        eligibleSkills: [],
+        attach: vi.fn(async () => ({
+          container,
+          attachedCount: 1,
+          failed: false,
+        })),
+      })
+
+      await runHandler(baseBody())
+
+      const options = mocks.streamTextOptions[0]!
+
+      expect(options.providerOptions.anthropic.container).toEqual(container)
+      expect(Object.keys(options.tools ?? {}))
+        .not.toContain('run_skill_scripts')
+      expect(String(options.instructions)).toContain(
+        'scripts of these skills are available in the code sandbox: data-report',
+      )
+    })
+
+    it('registers the gate tool and attaches nothing before the user allowed it', async () => {
+      stubProvider('anthropic', ['code_execution'], 'claude-haiku-5-5')
+
+      const gateTool = {
+        description: 'gate',
+        inputSchema: {},
+        requiresFollowUpTurn: true,
+        execute: vi.fn(),
+      }
+
+      mockScriptsRun({
+        gate: {
+          isActive: true,
+          isGrantMatched: false,
+          skillNames: ['data-report'],
+          definitionHash: 'hash',
+          tools: { run_skill_scripts: gateTool },
+          approvalEntries: new Map(),
+        },
+        eligibleSkills: [],
+        attach: vi.fn(async () => ({
+          container: null,
+          attachedCount: 0,
+          failed: false,
+        })),
+      })
+
+      await runHandler(baseBody())
+
+      const options = mocks.streamTextOptions[0]!
+
+      expect(options.providerOptions.anthropic?.container).toBeUndefined()
+      expect(Object.keys(options.tools ?? {})).toContain('run_skill_scripts')
+      expect(String(options.instructions)).toContain('call run_skill_scripts')
+    })
+
+    it('leaves the send as it was when scripts do not apply', async () => {
+      stubProvider('anthropic', ['code_execution'], 'claude-haiku-5-5')
+      mockScriptsRun(null)
+
+      await runHandler(baseBody())
+
+      const options = mocks.streamTextOptions[0]!
+
+      expect(options.providerOptions.anthropic?.container).toBeUndefined()
+      expect(Object.keys(options.tools ?? {}))
+        .not.toContain('run_skill_scripts')
+      expect(String(options.instructions)).not.toContain('run_skill_scripts')
+    })
+
+    it('does not run for an OpenAI or Google send', async () => {
+      const prepare = vi.fn()
+
+      vi.doMock('~~/server/utils/skills/send-container-options', async (
+        importOriginal,
+      ) => {
+        const actual = await importOriginal<
+          typeof import('~~/server/utils/skills/send-container-options')
+        >()
+
+        return { ...actual, prepareSkillScriptsForSend: prepare }
+      })
+      prepare.mockImplementation(async (
+        input: { isDirectAnthropic: boolean },
+      ) => {
+        expect(input.isDirectAnthropic).toBe(false)
+
+        return {
+          gate: {
+            isActive: false,
+            isGrantMatched: false,
+            skillNames: [],
+            definitionHash: null,
+            tools: {},
+            approvalEntries: new Map(),
+          },
+          eligibleSkills: [],
+          attach: async () => ({
+            container: null,
+            attachedCount: 0,
+            failed: false,
+          }),
+        }
+      })
+      stubProvider('openai', ['code_execution'], 'gpt-5.5')
+
+      await runHandler(baseBody({ model: 'gpt-5.5' }))
+
+      expect(prepare).toHaveBeenCalledTimes(1)
+      expect(mocks.streamTextOptions[0]!.providerOptions.anthropic)
+        .toBeUndefined()
+    })
   })
 
   it('registers the tool for Anthropic, saves the files, persists a compact part and deletes provider copies', async () => {

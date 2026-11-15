@@ -644,10 +644,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   2026-10-26 security audit dispositions (3.17), the "tell Besidka what to
   remember" editor (3.18), the optional TypeSafe AI Jev checks (3.19: one role
   table matching `shared/utils/jev-policy.ts`, the add-only memory check, the
-  `memory-check` key kind, the seven per-role toggles in
-  `user_settings.typesafe_roles`, the failure direction of each role, J1 to
-  J6, the delta audit fixes #560, and the `experimental_decide` seam to
-  re-check on SDK upgrades), the as-built phase map (section 5), and the
+  `memory-check` key kind, the eight per-role toggles in
+  `user_settings.typesafe_roles` (the skill selector J7 is opt-in: off for a
+  null column), the failure direction of each role, J1 to J7, the SS-7 and
+  SS-14 evals, the delta audit fixes #560, and the `experimental_decide` seam
+  to re-check on SDK upgrades), the as-built phase map (section 5), and the
   decision log (section 7: no expiry, singletons, entry caps, the write lock,
   the pending Anthropic token factor, non-atomic leases, deferred issues
   #537 to #540)
@@ -805,7 +806,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   rule until C-6), the threat model, Anthropic-only provider-container scripts,
   the data model, limits, the manager, editor and `/` picker, project
   skills that always load or are preferred in a project's chats (S-15,
-  section 5.8), MCP tools
+  section 5.8), the optional TypeSafe AI skill selector (S-14, section 5.9),
+  MCP tools
   (`list_skills`, `get_skill`, `create_skill`, `update_skill`, `rename_skill`,
   `delete_skills`, `set_project_skills`; MCP 5.1.0; the name `skills:share` reserved in the docs only), the never-public
   invariant and the optional S-13 sharing design, and the ticket changes it

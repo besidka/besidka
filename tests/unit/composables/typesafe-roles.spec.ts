@@ -58,6 +58,7 @@ describe('useTypesafeRoles', () => {
 
     expect(isRoleOn('rerank')).toBe(false)
     expect(isRoleOn('autoWebSearch')).toBe(true)
+    expect(isRoleOn('skillSelection')).toBe(false)
   })
 
   it('saves only the flipped role', async () => {

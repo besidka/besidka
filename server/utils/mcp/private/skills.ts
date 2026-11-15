@@ -46,6 +46,10 @@ import {
   loadVersionRow,
   readBlobText,
 } from '~~/server/utils/skills/versions/read'
+import {
+  PROVIDER_COPY_DELETE_FAILED_MESSAGE,
+  isProviderCopyDeleteError,
+} from '~~/server/utils/skills/versions/errors'
 import type { SkillRow } from '~~/server/utils/skills/versions/read'
 import type { SkillWriteBucket } from '~~/server/utils/skills/versions/write'
 
@@ -602,6 +606,7 @@ export async function deleteMcpSkills(
 
   const deleted: string[] = []
   const notFound: string[] = []
+  const providerCopyFailed: string[] = []
 
   for (const skillId of new Set(input.ids)) {
     if (!isDecodableSkillPublicId(skillId)) {
@@ -610,17 +615,29 @@ export async function deleteMcpSkills(
       continue
     }
 
-    const result = await readable(async () => {
-      return await deleteUserSkill(
-        context.db,
-        {
-          userId: context.userId,
-          skillId,
-          logger: context.logger,
-        },
-        context.bucket,
-      )
-    })
+    let result: Awaited<ReturnType<typeof deleteUserSkill>>
+
+    try {
+      result = await readable(async () => {
+        return await deleteUserSkill(
+          context.db,
+          {
+            userId: context.userId,
+            skillId,
+            logger: context.logger,
+          },
+          context.bucket,
+        )
+      })
+    } catch (exception) {
+      if (!isProviderCopyDeleteError(exception)) {
+        throw exception
+      }
+
+      providerCopyFailed.push(skillId)
+
+      continue
+    }
 
     if (result.skillDeleted) {
       deleted.push(skillId)
@@ -629,5 +646,14 @@ export async function deleteMcpSkills(
     }
   }
 
-  return { deleted, notFound }
+  return {
+    deleted,
+    notFound,
+    ...(providerCopyFailed.length > 0
+      ? {
+        providerCopyFailed,
+        message: PROVIDER_COPY_DELETE_FAILED_MESSAGE,
+      }
+      : {}),
+  }
 }

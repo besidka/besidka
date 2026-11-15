@@ -86,6 +86,7 @@ const NATIVE_APPROVAL_TITLES: Record<string, string> = {
   create_artifact: 'Create an artifact',
   update_artifact: 'Update an artifact',
   create_document: 'Create a document',
+  run_skill_scripts: 'Run skill scripts',
 }
 
 const SUMMARY_ONLY_INPUT_TOOLS = new Set<string>([
@@ -395,6 +396,10 @@ export function getApprovalReasonText(
 
   if (reason === 'always-ask') {
     return 'Changes or deletes data'
+  }
+
+  if (reason === 'consent') {
+    return 'Uploads the skill to your Anthropic workspace'
   }
 
   if (isBesidkaChatToolName(toolName)) {

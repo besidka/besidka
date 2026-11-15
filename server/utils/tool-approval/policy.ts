@@ -34,6 +34,10 @@ import type { ApprovalState } from '~~/server/utils/tool-approval/state'
  * document tools) that asks only after connector or skill output; every
  * other native write counts every taint kind, so an unclassified tool fails
  * closed.
+ * `consentGate` marks a tool that only records the user's consent to an
+ * action the provider then runs (the skill scripts gate): it asks until a
+ * chat grant for its exact definition hash exists, whatever the taint, and
+ * offers `once` and `chat` only.
  */
 export interface ToolApprovalDescriptor {
   family: ToolFamily
@@ -44,6 +48,7 @@ export interface ToolApprovalDescriptor {
   destructiveHint: boolean
   writesMemory?: boolean
   onlyConnectorOrSkillTaint?: boolean
+  consentGate?: boolean
 }
 
 export interface DestructiveHintAnnotations {
@@ -127,7 +132,7 @@ export interface ToolApprovalGrant {
   toolName: string
 }
 
-export type ToolApprovalRule = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+export type ToolApprovalRule = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
 export type ToolApprovalOutcome
   = | { type: 'not-applicable' }
@@ -184,6 +189,7 @@ const REMEMBER_OPTIONS_BY_REASON: Record<
   'untrusted-output': ['once'],
   'cross-source': ['once'],
   'always-ask': ['once'],
+  'consent': ['once', 'chat'],
   'default': ['once', 'chat', 'always'],
 }
 
@@ -429,6 +435,10 @@ function resolveNativeApproval(
  * 5. Always-ask tier: ask `always-ask`.
  * 6. Always allow, 7. chat grant, matched as for reads: no approval.
  * 9. Otherwise ask `default`.
+ * 10. A consent gate (`consentGate`) is decided right after rule 0, before
+ *    every other rule: a chat grant that matches its definition hash lets it
+ *    run, anything else asks `consent` (`once` or `chat`), whatever the
+ *    taint.
  *
  * Grants and Always allow never lift rules 2, 3 and 5 for a write, and a
  * missing hash on either side never matches a grant.
@@ -447,6 +457,12 @@ export function resolveToolApproval(
 
   if (input.permissionMode === 'blocked') {
     return denied(0, 'blocked')
+  }
+
+  if (descriptor.consentGate === true) {
+    return grantMatches(input.chatGrant, descriptor)
+      ? allowed(10)
+      : ask(10, 'consent')
   }
 
   if (descriptor.family === 'native') {
@@ -537,7 +553,8 @@ function pendingMatchesDescriptor(
   }
 
   if (descriptor.family === 'native') {
-    return true
+    return descriptor.definitionHash === undefined
+      || (pending.definitionHash ?? null) === descriptor.definitionHash
   }
 
   if (descriptor.family === 'besidka') {

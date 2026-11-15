@@ -50,9 +50,10 @@ function get(id: string): HTMLElement {
 async function mountPicker(
   selectedId: string | null = null,
   pickerItems: ComposerSkillItem[] = items,
+  canRunScripts = false,
 ) {
   const wrapper = await mountSuspended(SkillPicker, {
-    props: { items: pickerItems, selectedId, open: true },
+    props: { items: pickerItems, selectedId, open: true, canRunScripts },
     attachTo: document.body,
     global: { stubs: { teleport: false } },
   })
@@ -90,6 +91,38 @@ describe('ChatInput/SkillPicker', () => {
       .toContain('Auto')
     expect(get('skill-picker-item-meeting-notes').textContent)
       .toContain('Only when I ask')
+  })
+
+  describe('scripts', () => {
+    const scriptItems: ComposerSkillItem[] = [
+      { ...items[0]!, hasScriptsAllowed: true },
+      items[1]!,
+    ]
+
+    it('shows a scripts badge on an allowed skill when scripts can run', async () => {
+      await mountPicker(null, scriptItems, true)
+
+      expect(get('skill-picker-item-writing-style').textContent)
+        .toContain('scripts')
+      expect(find('skill-picker-scripts-badge')).not.toBeNull()
+      expect(find('skill-picker-scripts-note')).toBeNull()
+    })
+
+    it('says scripts need a Claude model with code execution otherwise', async () => {
+      await mountPicker(null, scriptItems, false)
+
+      expect(get('skill-picker-scripts-note').textContent).toContain(
+        'Scripts need a Claude model with code execution',
+      )
+      expect(find('skill-picker-scripts-badge')).toBeNull()
+    })
+
+    it('says nothing about scripts for a skill that does not allow them', async () => {
+      await mountPicker(null, items, true)
+
+      expect(find('skill-picker-scripts-badge')).toBeNull()
+      expect(find('skill-picker-scripts-note')).toBeNull()
+    })
   })
 
   it('shows the search field only from eight skills', async () => {

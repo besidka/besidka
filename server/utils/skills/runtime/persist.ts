@@ -3,7 +3,7 @@ import {
   SKILL_ACTIVATE_TOOL_NAME,
   SKILL_READ_FILE_TOOL_NAME,
   isDataSkillActivationPart,
-  isProjectSkillActivationPart,
+  isTransientSkillActivationPart,
   toSkillActivationPart,
 } from '#shared/utils/skills/runtime'
 
@@ -86,7 +86,7 @@ export function appendSkillActivationParts(
   for (const part of parts) {
     if (
       isDataSkillActivationPart(part)
-      && !isProjectSkillActivationPart(part)
+      && !isTransientSkillActivationPart(part)
     ) {
       known.add(part.data.skillId)
     }

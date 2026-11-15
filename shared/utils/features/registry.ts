@@ -274,10 +274,14 @@ const featureList = [
   internalFeature({
     key: 'skills.scripts',
     title: 'Skill scripts',
-    description: 'Skills that ship scripts.',
+    description: 'Run the scripts that ship with your skills in Anthropic\'s '
+      + 'code sandbox, on your own key. Container time is billed by '
+      + 'Anthropic after its free monthly allowance.',
     parent: 'skills',
     spend: 'foreground',
     optIn: 'required',
+    requires: { bindings: [], keyKinds: ['provider'] },
+    available: true,
   }),
   internalFeature({
     key: 'tool-approvals',

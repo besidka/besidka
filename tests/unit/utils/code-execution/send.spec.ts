@@ -1,4 +1,7 @@
+import { stepCountIs, streamText, tool } from 'ai'
 import type { ModelMessage } from 'ai'
+import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test'
+import { z } from 'zod'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -262,6 +265,96 @@ describe('withAnthropicContainerForwarding', () => {
     })
 
     expect(await wrapped.prepareStep({ steps: [{}] })).toBe(original)
+  })
+})
+
+describe('skill containers across the steps of a tool loop', () => {
+  const usage = {
+    inputTokens: { total: 1, noCache: 1 },
+    outputTokens: { total: 1, text: 1 },
+  }
+
+  it('keeps the attached skills next to the forwarded container id', async () => {
+    const { withAnthropicContainerForwarding } = await loadSend()
+    const seenOptions: Array<Record<string, Record<string, unknown>>> = []
+    let call = 0
+    const model = new MockLanguageModelV4({
+      doStream: async (options) => {
+        seenOptions.push(
+          options.providerOptions as Record<string, Record<string, unknown>>,
+        )
+        call += 1
+
+        const parts = call === 1
+          ? [
+            { type: 'stream-start', warnings: [] },
+            {
+              type: 'tool-call',
+              toolCallId: 'call_1',
+              toolName: 'echo',
+              input: '{}',
+            },
+            {
+              type: 'finish',
+              finishReason: { unified: 'tool-calls', raw: 'tool_use' },
+              usage,
+              providerMetadata: {
+                anthropic: { container: { id: 'cntr_1' } },
+              },
+            },
+          ]
+          : [
+            { type: 'stream-start', warnings: [] },
+            { type: 'text-start', id: 't1' },
+            { type: 'text-delta', id: 't1', delta: 'done' },
+            { type: 'text-end', id: 't1' },
+            {
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'end_turn' },
+              usage,
+            },
+          ]
+
+        return {
+          stream: convertArrayToReadableStream(parts as never),
+        }
+      },
+    })
+    const container = {
+      skills: [{
+        type: 'custom',
+        providerReference: { anthropic: 'skill_01' },
+        version: '1759178010',
+      }],
+    }
+    const loop = withAnthropicContainerForwarding({
+      stopWhen: stepCountIs(3),
+      prepareStep: async () => undefined,
+    })
+    const result = streamText({
+      model,
+      messages: [{ role: 'user', content: 'run it' }],
+      tools: {
+        echo: tool({
+          description: 'echo',
+          inputSchema: z.object({}),
+          execute: async () => 'ok',
+        }),
+      },
+      providerOptions: {
+        anthropic: { cacheControl: { type: 'ephemeral' }, container },
+      },
+      ...loop,
+    })
+
+    await result.consumeStream()
+
+    expect(seenOptions).toHaveLength(2)
+    expect(seenOptions[0]!.anthropic!.container).toEqual(container)
+    expect(seenOptions[1]!.anthropic).toMatchObject({
+      cacheControl: { type: 'ephemeral' },
+      container: { id: 'cntr_1', skills: container.skills },
+    })
   })
 })
 

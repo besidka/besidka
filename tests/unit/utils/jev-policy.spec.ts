@@ -9,6 +9,7 @@ import {
   JEV_EXTRACTION_PREFILTER,
   JEV_INJECTION_SCREENING,
   JEV_MODEL_ID,
+  JEV_OPT_IN_ROLE_IDS,
   JEV_PAST_CHAT_PHRASES,
   JEV_PAST_CHAT_RETRIEVAL,
   JEV_EXPLICIT_SEARCH_PHRASES,
@@ -37,7 +38,9 @@ describe('jev policy', () => {
       'rerank',
       'sharePiiCheck',
       'pastChatRetrieval',
+      'skillSelection',
     ])
+    expect(JEV_OPT_IN_ROLE_IDS).toEqual(['skillSelection'])
     expect(JEV_SEND_PATH_TIMEOUT_MS).toBe(800)
     expect(JEV_BACKGROUND_TIMEOUT_MS).toBe(2500)
   })
@@ -241,6 +244,25 @@ describe('jev policy', () => {
     expect(isJevRoleSwitchedOn(null, 'rerank')).toBe(true)
     expect(isJevRoleSwitchedOn({}, 'rerank')).toBe(true)
     expect(isJevRoleSwitchedOn({ rerank: false }, 'rerank')).toBe(false)
+  })
+
+  it('keeps an opt-in role off unless it is explicitly true', () => {
+    expect(isJevRoleSwitchedOn(null, 'skillSelection')).toBe(false)
+    expect(isJevRoleSwitchedOn(undefined, 'skillSelection')).toBe(false)
+    expect(isJevRoleSwitchedOn({}, 'skillSelection')).toBe(false)
+    expect(isJevRoleSwitchedOn({ rerank: true }, 'skillSelection'))
+      .toBe(false)
+    expect(isJevRoleSwitchedOn({ skillSelection: false }, 'skillSelection'))
+      .toBe(false)
+    expect(isJevRoleSwitchedOn({ skillSelection: true }, 'skillSelection'))
+      .toBe(true)
+  })
+
+  it('accepts the skill selection switch in a settings patch', () => {
+    expect(jevRoleSettingsPatchSchema.safeParse({ skillSelection: true })
+      .success).toBe(true)
+    expect(jevRoleSettingsPatchSchema.safeParse({ unknownRole: true })
+      .success).toBe(false)
   })
 })
 
