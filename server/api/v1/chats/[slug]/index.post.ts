@@ -339,6 +339,7 @@ import {
   CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
 } from '#shared/utils/connectors-policy'
 import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
+import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
 import type { ClearedCallCheck } from '~~/server/utils/tool-approval/send'
@@ -2277,14 +2278,17 @@ export default defineEventHandler(async (event) => {
       .map(([toolName]) => toolName)
       .filter(toolName => !isArtifactToolName(toolName)),
   )
+  const isApprovalGatedToolName = (toolName: string) => {
+    return isConnectorToolName(toolName) || isBesidkaChatToolName(toolName)
+  }
   const answerGuaranteeToolNames = new Set(
     [...followUpToolNames].filter((toolName) => {
-      return !isSkillToolName(toolName) && !isConnectorToolName(toolName)
+      return !isSkillToolName(toolName) && !isApprovalGatedToolName(toolName)
     }),
   )
   const persistenceFollowUpToolNames = new Set([
     ...answerGuaranteeToolNames,
-    ...[...followUpToolNames].filter(isConnectorToolName),
+    ...[...followUpToolNames].filter(isApprovalGatedToolName),
   ])
 
   let claimHeartbeats: ClaimHeartbeats | null = null

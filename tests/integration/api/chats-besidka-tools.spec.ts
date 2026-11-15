@@ -743,6 +743,25 @@ describe('Besidka tools in the chat send', () => {
       })
     })
 
+  it('answers after a Besidka read without the search-answer continuation',
+    async () => {
+      setModes({ list_projects: 'allow' })
+
+      const { doStream, assistantInsert } = await runSend({
+        steps: [
+          toolCallChunks('call-1', 'besidka__list_projects', {}),
+          textChunks('You have one project.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(parts.at(-1)).toMatchObject({
+        type: 'text',
+        text: 'You have one project.',
+      })
+    })
+
   it('asks Allow once or Deny only before a delete', async () => {
     setModes({ delete_chats: 'ask' })
 

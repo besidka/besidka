@@ -42,6 +42,8 @@ const mocks = vi.hoisted(() => ({
   memoryWrites: [] as Array<Record<string, any>>,
   claims: new Map<string, Record<string, any>>(),
   updates: [] as Array<Record<string, any>>,
+  besidkaModes: new Map<string, string>(),
+  listMcpProjects: null as null | ((...args: unknown[]) => unknown),
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -51,6 +53,45 @@ const mocks = vi.hoisted(() => ({
     settlements: [] as Array<Record<string, any>>,
   },
 }))
+
+vi.mock('~~/server/utils/besidka-tools/chat-settings', () => ({
+  readBesidkaChatSettings: async () => {
+    return { enabled: true, alwaysAllowTools: {} }
+  },
+  setBesidkaChatEnabled: async () => ({ enabled: true, alwaysAllowTools: {} }),
+  addBesidkaChatGrant: async () => undefined,
+}))
+
+vi.mock('~~/server/utils/besidka-tools/permissions', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/besidka-tools/permissions')
+  >()
+
+  return {
+    ...actual,
+    resolveBesidkaPermissionModes: async (
+      _userId: number,
+      toolNames: readonly string[],
+    ) => {
+      return new Map(toolNames.map((toolName) => {
+        const name = actual.toBesidkaRegistryName(toolName)
+
+        return [toolName, mocks.besidkaModes.get(name) ?? 'blocked']
+      }))
+    },
+  }
+})
+
+vi.mock('~~/server/utils/mcp/private/projects', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/mcp/private/projects')
+  >()
+
+  return {
+    ...actual,
+    listMcpProjects: (...args: unknown[]) => mocks.listMcpProjects?.(...args),
+  }
+})
 
 vi.mock('~~/server/utils/tool-approval/claims', async (importOriginal) => {
   const actual = await importOriginal<
@@ -704,6 +745,11 @@ describe('tool approval continuation', () => {
     mocks.memoryWrites = []
     mocks.claims = new Map()
     mocks.updates = []
+    mocks.besidkaModes = new Map()
+    mocks.listMcpProjects = vi.fn(async () => ({
+      projects: [{ id: 'prj_1', name: 'Launch' }],
+      nextCursor: null,
+    }))
     mocks.kv = new Map()
     mocks.chatMessages = []
     mocks.capabilityTools = {}
@@ -1358,6 +1404,67 @@ describe('tool approval continuation', () => {
     expect(toolNamesOf(0)).toContain('web_search')
     expect(toolNamesOf(1)).not.toContain('web_search')
     expect(toolNamesOf(1)).toContain('mcp__linear__list_issues')
+  })
+
+  describe('Besidka tools', () => {
+    beforeEach(() => {
+      mocks.flags = new Set(['connectors', 'tool-approvals', 'besidka-tools'])
+      mocks.besidkaModes = new Map([['list_projects', 'ask']])
+    })
+
+    async function pauseListProjects() {
+      return await pauseTurn({
+        servers: [linear],
+        steps: [toolCallChunks('call-b', 'besidka__list_projects', {})],
+      })
+    }
+
+    it('runs an approved Besidka call once and frames its result',
+      async () => {
+        const paused = await pauseListProjects()
+        const [approvalId] = paused.approvalIds
+
+        expect(mocks.listMcpProjects).not.toHaveBeenCalled()
+        expect(readKvJson(`tool-approval:${approvalId}`))
+          .toMatchObject({ family: 'besidka' })
+
+        await answer(paused, [{ approvalId, approved: true }])
+
+        const toolPart = findPart(
+          mocks.updates.at(-1)!.parts,
+          'tool-besidka__list_projects',
+        )
+
+        expect(mocks.listMcpProjects).toHaveBeenCalledTimes(1)
+        expect(toolPart).toMatchObject({
+          state: 'output-available',
+          output: expect.stringContaining(
+            '<untrusted_tool_result connector="besidka"',
+          ),
+        })
+        expect(mocks.claims.get(approvalId)?.status).toBe('done')
+      })
+
+    it('denies an approved Besidka call the user has since blocked',
+      async () => {
+        const paused = await pauseListProjects()
+        const [approvalId] = paused.approvalIds
+
+        mocks.besidkaModes = new Map([['list_projects', 'blocked']])
+
+        const { doStream } = await answer(paused, [
+          { approvalId, approved: true },
+        ])
+
+        expect(mocks.listMcpProjects).not.toHaveBeenCalled()
+        expect(lastToolMessage(doStream).content[0].output).toEqual({
+          type: 'execution-denied',
+          reason: 'This tool is blocked in the user\'s settings, so the '
+            + 'action did not run.',
+        })
+        expect(writtenChunks().some(chunk => chunk.type === 'error'))
+          .toBe(false)
+      })
   })
 
   it('answers 404 when the tool-approvals flag is off', async () => {
