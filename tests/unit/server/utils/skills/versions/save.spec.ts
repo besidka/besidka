@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { and, asc, eq } from 'drizzle-orm'
+import { SKILL_FINDING_RULES_VERSION } from '#shared/utils/skills/findings'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -712,8 +713,34 @@ describe('saveSkillChanges', () => {
   })
 
   describe('findings', () => {
-    it('counts what the save adds and removes', async () => {
-      const { skillId } = await seedAuthored()
+    async function findingsOfVersion(skillId: string, version: number) {
+      const [row] = await testDb.db.select()
+        .from(schema.skillVersions)
+        .where(and(
+          eq(schema.skillVersions.skillId, skillId),
+          eq(schema.skillVersions.version, version),
+        ))
+
+      return row!.findings
+    }
+
+    it('counts what the save adds and removes from current counts', async () => {
+      const { skillId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: {
+          'SKILL.md': skillMarkdown(),
+          'references/notes.md': 'First note\n',
+        },
+        skill: { name: 'review-pr', enabled: true },
+        versionValues: {
+          findings: {
+            'rulesVersion': SKILL_FINDING_RULES_VERSION,
+            'low': 4,
+            'url': 4,
+            'jev:passages': 2,
+          },
+        },
+      })
 
       await save(skillId, [{
         op: 'put',
@@ -721,14 +748,11 @@ describe('saveSkillChanges', () => {
         content: 'See https://example.com/page now\n',
       }])
 
-      const [withUrl] = await testDb.db.select()
-        .from(schema.skillVersions)
-        .where(and(
-          eq(schema.skillVersions.skillId, skillId),
-          eq(schema.skillVersions.version, 2),
-        ))
-
-      expect(withUrl!.findings).toEqual({ url: 1 })
+      expect(await findingsOfVersion(skillId, 2)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+        low: 5,
+        url: 5,
+      })
 
       await save(skillId, [{
         op: 'put',
@@ -736,14 +760,55 @@ describe('saveSkillChanges', () => {
         content: 'Plain text again\n',
       }], { baseVersion: 2 })
 
-      const [clean] = await testDb.db.select()
-        .from(schema.skillVersions)
-        .where(and(
-          eq(schema.skillVersions.skillId, skillId),
-          eq(schema.skillVersions.version, 3),
-        ))
+      expect(await findingsOfVersion(skillId, 3)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+        low: 4,
+        url: 4,
+      })
+    })
 
-      expect(clean!.findings).toEqual({})
+    it('rescans every file when the stored counts are from older rules', async () => {
+      const { skillId } = await seedAuthored({
+        'SKILL.md': skillMarkdown({ body: 'Run curl https://x.example' }),
+        'references/notes.md': 'First note\n',
+      })
+
+      await save(skillId, [{
+        op: 'put',
+        path: 'references/notes.md',
+        content: 'See https://example.com/page now\n',
+      }])
+
+      expect(await findingsOfVersion(skillId, 2)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+        low: 3,
+        url: 2,
+        shell: 1,
+      })
+    })
+
+    it('rescans a skill whose version carries no counts', async () => {
+      const { skillId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: {
+          'SKILL.md': skillMarkdown(),
+          'references/notes.md': 'See https://example.com/a\n',
+        },
+        skill: { name: 'review-pr', enabled: true },
+        versionValues: { findings: null },
+      })
+
+      await save(skillId, [{
+        op: 'put',
+        path: 'references/extra.md',
+        content: 'Extra\n',
+      }])
+
+      expect(await findingsOfVersion(skillId, 2)).toEqual({
+        rulesVersion: SKILL_FINDING_RULES_VERSION,
+        low: 1,
+        url: 1,
+      })
     })
 
     it('can repair a skill whose blob is missing', async () => {

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
+import { SKILL_FINDING_RULES_VERSION } from '#shared/utils/skills/findings'
 import { skillMarkdown } from '../../../setup/helpers/skill-archives'
 
 const encoder = new TextEncoder()
@@ -80,7 +81,13 @@ describe('analyzeSkillFiles', () => {
       folderName: null,
     })
 
-    expect(result.ok && result.findingCounts).toEqual({ url: 1, shell: 3 })
+    expect(result.ok && result.findingCounts).toEqual({
+      rulesVersion: SKILL_FINDING_RULES_VERSION,
+      medium: 1,
+      low: 3,
+      url: 1,
+      shell: 3,
+    })
   })
 
   it('gives the same content hash whatever the file order', async () => {

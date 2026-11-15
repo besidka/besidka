@@ -162,7 +162,7 @@
         class="text-xs text-base-content/70"
         data-testid="skill-editor-findings-note"
       >
-        Highlighted: {{ describeFindingCounts(findingCounts) }}. They show
+        Highlighted: {{ describeFindingSummary(findingCounts) }}. They show
         in Model view.
       </p>
     </template>
