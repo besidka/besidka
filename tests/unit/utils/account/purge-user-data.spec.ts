@@ -39,6 +39,12 @@ const connectorPurgeCounts = {
   connectorToolCallsDeleted: 12,
 }
 
+const toolApprovalPurgeCounts = {
+  besidkaToolPermissionsDeleted: 4,
+  besidkaChatSettingsDeleted: 2,
+  toolApprovalClaimsDeleted: 5,
+}
+
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
   invalidateStorageCache: vi.fn(),
@@ -47,6 +53,7 @@ const mocks = vi.hoisted(() => ({
   purgeUserDocuments: vi.fn(),
   purgeUserSkills: vi.fn(),
   purgeUserConnectors: vi.fn(),
+  purgeUserToolApprovals: vi.fn(),
   artifactBlobStore: { delete: vi.fn() },
 }))
 
@@ -64,6 +71,10 @@ vi.mock('~~/server/utils/skills/cleanup', () => ({
 
 vi.mock('~~/server/utils/connectors/cleanup', () => ({
   purgeUserConnectors: mocks.purgeUserConnectors,
+}))
+
+vi.mock('~~/server/utils/tool-approval/cleanup', () => ({
+  purgeUserToolApprovals: mocks.purgeUserToolApprovals,
 }))
 
 vi.mock('~~/server/utils/artifacts/blob-store', () => ({
@@ -165,6 +176,7 @@ describe('purgeUserData', () => {
     mocks.purgeUserDocuments.mockResolvedValue(documentPurgeCounts)
     mocks.purgeUserSkills.mockResolvedValue(skillPurgeCounts)
     mocks.purgeUserConnectors.mockResolvedValue(connectorPurgeCounts)
+    mocks.purgeUserToolApprovals.mockResolvedValue(toolApprovalPurgeCounts)
   })
 
   it('removes every R2 object in a single batched delete call', async () => {
@@ -195,6 +207,7 @@ describe('purgeUserData', () => {
       ...documentPurgeCounts,
       ...skillPurgeCounts,
       ...connectorPurgeCounts,
+      ...toolApprovalPurgeCounts,
       fileCacheKeysInvalidated: 3,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
@@ -385,6 +398,7 @@ describe('purgeUserData', () => {
           ...documentPurgeCounts,
           ...skillPurgeCounts,
           ...connectorPurgeCounts,
+          ...toolApprovalPurgeCounts,
           ...featureAccessCounts,
         },
       },
@@ -538,6 +552,40 @@ describe('purgeUserData', () => {
     }))
   })
 
+  it('purges the tool approval rows with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 17, logger })
+
+    expect(mocks.purgeUserToolApprovals).toHaveBeenCalledWith(db, 17, logger)
+    expect(result).toEqual(expect.objectContaining(toolApprovalPurgeCounts))
+  })
+
+  it('aborts and stays retryable when the tool approval purge fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserToolApprovals.mockRejectedValueOnce(new Error('d1 down'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 18, logger })).rejects.toThrow(
+      'd1 down',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: { phase: 'tool-approvals-delete', userId: 18 },
+    }))
+  })
+
   it('purges knowledge objects even when the user has no files', async () => {
     const db = createDb([])
     const storage = createStorage(['knowledge/u7/p2/items/9.md'])
@@ -683,6 +731,7 @@ describe('purgeUserData', () => {
       ...documentPurgeCounts,
       ...skillPurgeCounts,
       ...connectorPurgeCounts,
+      ...toolApprovalPurgeCounts,
       fileCacheKeysInvalidated: 0,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,

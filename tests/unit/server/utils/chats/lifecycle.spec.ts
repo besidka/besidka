@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     cleanupDocumentsForDeletedMessage: vi.fn(),
     cleanupSkillsForDeletedChats: vi.fn(),
     cleanupConnectorsForDeletedChats: vi.fn(),
+    cleanupToolApprovalsForDeletedChats: vi.fn(),
     detachChatsFromMemory: vi.fn(),
     detachArtifactsFromChats: vi.fn(),
     removeChatsFromSearchIndex: vi.fn(),
@@ -46,6 +47,13 @@ vi.mock('~~/server/utils/skills/cleanup', () => {
 vi.mock('~~/server/utils/connectors/cleanup', () => {
   return {
     cleanupConnectorsForDeletedChats: mocks.cleanupConnectorsForDeletedChats,
+  }
+})
+
+vi.mock('~~/server/utils/tool-approval/cleanup', () => {
+  return {
+    cleanupToolApprovalsForDeletedChats:
+      mocks.cleanupToolApprovalsForDeletedChats,
   }
 })
 
@@ -178,6 +186,11 @@ describe('chat lifecycle', () => {
     })
     mocks.cleanupConnectorsForDeletedChats.mockImplementation(async () => {
       mocks.calls.push('connector-cleanup')
+
+      return {}
+    })
+    mocks.cleanupToolApprovalsForDeletedChats.mockImplementation(async () => {
+      mocks.calls.push('tool-approval-cleanup')
 
       return {}
     })
@@ -474,6 +487,7 @@ describe('chat lifecycle', () => {
           'document-cleanup',
           'skill-cleanup',
           'connector-cleanup',
+          'tool-approval-cleanup',
         ])
         expect(mocks.cleanupDocumentsForDeletedChats).toHaveBeenCalledWith(
           db,
@@ -487,6 +501,11 @@ describe('chat lifecycle', () => {
           db,
           { userId: USER_ID, chatIds: ['c1'], logger: mocks.logger },
         )
+        expect(mocks.cleanupToolApprovalsForDeletedChats)
+          .toHaveBeenCalledWith(
+            db,
+            { userId: USER_ID, chatIds: ['c1'], logger: mocks.logger },
+          )
         expect(mocks.detachArtifactsFromChats).toHaveBeenCalledWith({
           db,
           userId: USER_ID,
