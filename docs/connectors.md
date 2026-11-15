@@ -1354,6 +1354,106 @@ Where this differs from sections 7.2 and 7.6:
   - The Besidka permission modes (Blocked, Allow) are not read yet, so
     replay uses `ask` and Blocked is not reachable from the route.
 
+### 7.8 As built: the approval UI (C-6 L6, 2026-11-15)
+
+The buttons for the pauses of 7.6 and 7.7. Where this differs from 7.3:
+
+- **Where.** `Chat/Reasoning/ApprovalStep.vue` is a step in the
+  `ChatReasoning` chain, built from the tool part and the
+  `data-tool-approval` part with the same tool call id
+  (`app/utils/tool-approval-step.ts`). Only behind the `tool-approvals`
+  flag (client `useFeature`) and only where the chat page provides the
+  controller (`TOOL_APPROVAL_CONTROLLER_KEY` from `useChat`): with the flag
+  off, and on pages without a chat (shared pages), the step keeps the L4
+  "Waiting for approval:" title. A new waiting call opens the reasoning
+  block even with auto-hide on; a later collapse by the user sticks.
+- **Copy.** The title is "<Connector> wants to run <tool>" (the connector's
+  display name, else its slug) or a plain description for native writes
+  ("Save to memory", "Forget a memory", "Create an artifact", "Update an
+  artifact", "Create a document"). Everything is rendered as text. The
+  server summary is shown only when it says more than the title; today's
+  summaries all restate it, so none shows. One reason line per policy
+  reason: `untrusted-output` names the last connector that answered in the
+  message, or "the web" after a web source, or "outside Besidka";
+  `cross-source` "Because it would use a different connector";
+  `always-ask` "Changes or deletes data"; `default` "Runs only after you
+  allow it". There is no "Changes data" badge.
+- **Arguments.** The stored input as pretty JSON in a collapsed `<pre>`,
+  marked "Shown shortened" when it holds `[redacted]`, was cut at 4,000
+  characters, or is an artifact or document write (the stored copy keeps
+  only kind or format and title). URLs and e-mail addresses are not
+  highlighted.
+- **Buttons.** `btn-sm`, stacked full width below `md`: Allow once
+  (`btn-primary`), Allow in this chat and Always allow (`btn-soft`) only
+  when the call's `rememberOptions` holds them, Deny (`btn-ghost`). The
+  client builds no matrix of its own. Always allow has no confirmation
+  step yet, because no call offers it until C-7. Enter on the focused step
+  (not on a button inside it, not repeated, not during IME composition)
+  means Allow once, only when Allow once is offered; Esc collapses the
+  arguments. "View details" opens `UiSidePanel` (bottom sheet below `md`)
+  with the title, reason, exposed tool name and the full arguments; it has
+  no buttons.
+- **Several calls.** Each step has its own buttons. An answered step shows
+  "You allowed this" or "You denied this" with a Change link that takes
+  the local answer back; the last waiting step shows "1 of 2 answered".
+  The SDK sends once every call is answered (7.7).
+- **States** (`resolveApprovalStepState`): pending; answered; sending
+  (buttons disabled, "Sending your answer…", the step bullet spins); denied
+  (one line "Denied · 14:05"); approved (the regular connector, memory or
+  tool step plus a line "Allowed · 14:05"); expired (a call on an earlier
+  message, or a 409 `TOOL_APPROVAL_EXPIRED` or `TOOL_APPROVAL_STALE`);
+  interrupted (a 409 `TOOL_APPROVAL_INTERRUPTED`, a stopped request, or an
+  answered call found after a reload that this tab never sent). The time
+  shows only when the answer was given in this tab; nothing stores it.
+- **Ask again (deviation).** Regenerate cannot ask again: it re-sends the
+  same user message id, and the send route's #263 guard replays the stored
+  approval-only reply. Ask again therefore puts the original prompt back
+  into the composer (`chat-input:prefill`, skipped when the draft already
+  ends with it) and says "Your message is back in the box. Send it to try
+  again." Sending it is a new user message, which expires the old records.
+- **Errors.** A request that answered approvals is settled by
+  `finishToolApprovalRequest` in `useChat`, before the generic error path,
+  so no error card is appended to the paused reply and Regenerate does not
+  show: a 409 marks its calls expired or interrupted (read from the body's
+  `data.code` through `parseError`); a 429, a 503 or any other error puts
+  the calls back to `approval-requested` (`revertToolApprovalResponses`)
+  and shows a toast with the error's message and `why`, so the buttons come
+  back. An error after the calls already settled falls through to the
+  generic handling.
+- **Pending signal and dropped connections.** A `data-generation-pending`
+  answer or a transport interruption resends the same answers after the
+  generation retry delay (4 seconds, at most 150 times) through the SDK's
+  `sendMessage()`, instead of the old `regenerate()` that would replay the
+  stored reply; the auto-send is held meanwhile so it does not loop. The
+  server's claims make a resend wait, replay only the parts stored after
+  the answered calls into the same message, or report the run
+  interrupted; it never runs a call twice.
+- **Chip.** `ChatInput/ToolApprovalChip.vue` sits in flow above the
+  composer, inside its fixed container, so it lifts with the keyboard and
+  counts toward the composer height: "1 action waiting for approval"
+  (pluralized). It takes no space when nothing waits. While the composer is
+  collapsed on scroll, the chip is what the peek shows. A click expands the reasoning
+  block, scrolls the first waiting step to the center and focuses it.
+  Its polite live region stays mounted while the flag is on and says
+  "Action waiting for approval"; nothing moves focus when an approval
+  arrives. The focused step draws a plain `focus:` outline, because focus
+  moved by script after a mouse click does not match `:focus-visible`.
+- **Tests.** `tests/unit/utils/tool-approval-step.spec.ts`,
+  `tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts`,
+  `tests/unit/components/Chat/Reasoning.approvals.spec.ts`,
+  `tests/unit/components/ChatInput/ToolApprovalChip.spec.ts`,
+  `tests/unit/composables/chat.tool-approvals.spec.ts` and the helpers in
+  `tests/unit/composables/tool-approvals.spec.ts`. The e2e spec
+  `tests/e2e/chat/tool-approval.spec.ts` uses the dev test chat scenarios
+  `tool-approval` (one connector call) and `tool-approvals` (a connector
+  call and a memory write after a web source) and answers the POST with
+  `page.route`, because the e2e harness has no MCP or connector mocks
+  (the mock MCP server is an integration-test helper).
+- **Not verified.** The iOS keyboard and PWA layout of the chip, a real
+  continuation against a live connector, and screen reader output were not
+  checked. The approval state survives no reload: after a reload, an
+  answered but unsent call reads as interrupted.
+
 ## 8. Data model
 
 All in `server/db/schemas/connectors.ts`, exported from `server/db/schema.ts`.
