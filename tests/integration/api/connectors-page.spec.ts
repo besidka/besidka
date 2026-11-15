@@ -292,6 +292,7 @@ describe('Connectors page routes', () => {
     }
 
     it('adds the entry\'s own address as a registry connector', async () => {
+      mocks.flags.add('connectors.registry')
       await addEntry('io.example/tracker@1.0.0', 'active')
 
       const result = await call(createPath, {
@@ -310,7 +311,16 @@ describe('Connectors page routes', () => {
       })
     })
 
+    it('needs the registry flag for a directory entry', async () => {
+      await addEntry('io.example/tracker@1.0.0', 'active')
+
+      expect((await failureOf(call(createPath, {
+        body: { registryId: 'io.example/tracker@1.0.0' },
+      }))).status).toBe(404)
+    })
+
     it('refuses an unknown or inactive entry', async () => {
+      mocks.flags.add('connectors.registry')
       await addEntry('io.example/old@1.0.0', 'deprecated')
 
       for (const registryId of ['io.example/old@1.0.0', 'missing@1']) {

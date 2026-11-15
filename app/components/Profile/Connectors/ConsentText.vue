@@ -15,13 +15,13 @@
       />
       <p>
         <span data-connector-consent-text>
-          Besidka will send data to <strong>{{ host }}</strong>.
+          Besidka will send data to <strong class="break-all font-mono font-semibold">{{ host }}</strong>.
         </span>
         <span
           v-if="issuerHost && issuerHost !== host"
           data-connector-consent-text
         >
-          You sign in through <strong>{{ issuerHost }}</strong>.
+          You sign in through <strong class="break-all font-mono font-semibold">{{ issuerHost }}</strong>.
         </span>
         <span data-connector-consent-text>
           This server may be outside the European Economic Area, in a country

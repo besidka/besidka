@@ -34,6 +34,13 @@
           {{ status.label }}
         </span>
         <span
+          v-if="connector.createdVia === 'mcp'"
+          class="badge badge-soft badge-warning badge-sm"
+          data-testid="connector-row-mcp-badge"
+        >
+          Added by a connected app
+        </span>
+        <span
           v-if="toolsLine"
           data-testid="connector-row-tools"
         >
@@ -59,7 +66,7 @@
       Connect
     </button>
     <button
-      v-else-if="connector.status === 'drifted'"
+      v-else-if="needsReview"
       type="button"
       class="btn btn-sm min-h-11 sm:min-h-8"
       :disabled="isBusy"
@@ -117,6 +124,11 @@ const status = computed<ConnectorStatusLabel>(() => {
 const needsConnect = computed<boolean>(() => {
   return props.connector.status === 'needs-auth'
     || props.connector.consent.state !== 'current'
+})
+
+const needsReview = computed<boolean>(() => {
+  return props.connector.status === 'drifted'
+    || (!props.connector.enabled && !props.connector.tools.isBaselined)
 })
 
 const canEnable = computed<boolean>(() => {

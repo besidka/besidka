@@ -12,6 +12,7 @@ import * as schema from '~~/server/db/schema'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import { requireConnectorAccess } from '~~/server/utils/connectors/route'
 import { createConnector } from '~~/server/utils/connectors/store'
+import { requireFeature } from '~~/server/utils/features/guards'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
 
@@ -64,6 +65,10 @@ export default defineEventHandler(async (event) => {
       why: 'No catalog entry has this id',
       fix: 'Pick a preset from the list',
     })
+  }
+
+  if (body.registryId && !preset) {
+    await requireFeature(event, 'connectors.registry')
   }
 
   const registryEntry = !preset && body.registryId

@@ -209,6 +209,41 @@ describe('Profile/Connectors/ConnectDialog', () => {
     expect(wrapper.emitted('connected')?.[0]).toEqual(['conn1'])
   })
 
+  it('names the host first for a connector an app added over MCP',
+    async () => {
+      connector.value = createConnectorItem({
+        title: 'Google Drive',
+        host: 'drive.evil.example',
+        createdVia: 'mcp',
+        addedByApp: 'Some agent',
+        status: 'needs-auth',
+        consent: { state: 'missing', issuerHost: null, givenAt: null },
+      })
+      respond({
+        '/connect/discover': {
+          authType: 'none',
+          host: 'drive.evil.example',
+          issuerHost: null,
+          issuerDiffers: false,
+          notice: null,
+        },
+      })
+      await mountDialog()
+
+      const dialog = document.body.querySelector(
+        'dialog.js-connector-connect-modal',
+      )!
+
+      expect(dialog.querySelector('h2')?.textContent?.trim())
+        .toBe('Connect drive.evil.example')
+      expect(getByTestId('connector-connect-identity').textContent)
+        .toContain('drive.evil.example')
+      expect(getByTestId('connector-connect-mcp-badge').textContent?.trim())
+        .toBe('Added by a connected app')
+      expect(getByTestId('connector-consent-text').textContent)
+        .toContain('drive.evil.example')
+    })
+
   it('shows a fixed error when the server cannot be reached', async () => {
     respond({
       '/connect/discover': Object.assign(new Error('x'), {

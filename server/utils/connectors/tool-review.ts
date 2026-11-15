@@ -14,6 +14,7 @@ import {
   issuerHostOf,
 } from '~~/server/utils/connectors/consent'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
+import { recordDeclaredConnectorIcons } from '~~/server/utils/connectors/icon'
 import {
   createConcurrencyLimiter,
   createConnectorClientHandle,
@@ -92,7 +93,9 @@ export interface ConnectorToolsReviewPlan {
  * the send also uses, else from one connection that is closed again. The
  * sign-up consent is the route's check; the per-connector consent (for the
  * stored issuer of an OAuth connector) is checked here before any request
- * that carries the token. The connect and list share one 8 s deadline.
+ * that carries the token. The connect and list share one 8 s deadline. On a
+ * cache miss it keeps the icons the server declares, like the send does, so
+ * opening the page first does not lose them.
  */
 export async function loadConnectorToolDefinitions(input: {
   db: DbClient
@@ -164,6 +167,7 @@ export async function loadConnectorToolDefinitions(input: {
       deadline.signal,
     )
 
+    await recordDeclaredConnectorIcons(kv, connector.id, client.serverInfo)
     await writeCachedToolDefinitions(
       kv,
       cacheKey,

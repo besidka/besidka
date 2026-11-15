@@ -35,6 +35,13 @@
             {{ status.label }}
           </span>
           <span
+            v-if="connector.createdVia === 'mcp'"
+            class="badge badge-soft badge-warning badge-sm"
+            data-testid="connector-detail-mcp-badge"
+          >
+            Added by a connected app
+          </span>
+          <span
             v-if="authLabel"
             class="text-xs text-base-content/70"
           >
@@ -296,7 +303,17 @@ const canToggle = computed<boolean>(() => {
   }
 
   return current.enabled
-    || (current.status === 'ready' && current.consent.state === 'current')
+    || (
+      current.status === 'ready'
+      && current.consent.state === 'current'
+      && isReviewed.value
+    )
+})
+
+const isReviewed = computed<boolean>(() => {
+  return listing.value?.state === 'ok'
+    && listing.value.isBaselined
+    && listing.value.counts.pending === 0
 })
 
 const enableHint = computed<string>(() => {
@@ -308,6 +325,10 @@ const enableHint = computed<string>(() => {
 
   if (current.status === 'drifted') {
     return 'Review the changed tools first.'
+  }
+
+  if (listing.value?.state === 'ok' && !isReviewed.value) {
+    return 'Review the tools below first.'
   }
 
   if (current.status !== 'ready' || current.consent.state !== 'current') {

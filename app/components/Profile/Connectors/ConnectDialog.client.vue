@@ -15,6 +15,29 @@
     </p>
 
     <div
+      v-if="connector"
+      class="mb-4 flex items-center gap-3"
+      data-testid="connector-connect-identity"
+    >
+      <ProfileConnectorsAvatar :title="connector.title" />
+      <div class="grid min-w-0 gap-0.5">
+        <p class="break-all font-mono text-base font-semibold">
+          {{ connector.host }}
+        </p>
+        <p class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
+          <span class="break-words">{{ connector.title }}</span>
+          <span
+            v-if="connector.createdVia === 'mcp'"
+            class="badge badge-soft badge-warning badge-sm"
+            data-testid="connector-connect-mcp-badge"
+          >
+            Added by a connected app
+          </span>
+        </p>
+      </div>
+    </div>
+
+    <div
       v-if="step === 'discovering'"
       class="grid gap-2"
       aria-hidden="true"
@@ -278,7 +301,15 @@ const canUseHeader = computed<boolean>(() => {
 })
 
 const dialogTitle = computed<string>(() => {
-  return `Connect ${connector.value?.title ?? 'connector'}`
+  const current = connector.value
+
+  if (!current) {
+    return 'Connect'
+  }
+
+  return current.createdVia === 'mcp'
+    ? `Connect ${current.host}`
+    : `Connect ${current.title}`
 })
 
 const headerIntro = computed<string>(() => {

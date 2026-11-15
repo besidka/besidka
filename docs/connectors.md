@@ -2071,7 +2071,8 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   counts. Never the URL, credentials or a hash.
 - **Tool listing is a POST.** `POST /api/v1/connectors/[id]/tools/list`
   reads the KV tool cache the send uses, else connects once (8 s deadline,
-  the handle is closed again) with the stored token, so it runs the
+  the handle is closed again, and the icons the server declares are kept as
+  on the send's miss path) with the stored token, so it runs the
   same-origin guard, the sign-up consent and the per-connector consent for
   the stored issuer first. It shares the 60-a-minute bucket of the picker
   toggles. A connector that is not connected, has no current consent or
@@ -2079,7 +2080,11 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   fixed message.
 - **First review.** A connector with no baseline lists every tool as `new`
   with the server's description and labels, and the panel asks the user to
-  "Turn on these tools" or "Keep disabled" before its first use. The
+  "Turn on these tools" or "Keep disabled" before its first use. Until then
+  the row shows Review instead of the switch, and the panel's Use in chats
+  switch stays off, so the first enable always goes through the review
+  (the server does not enforce this: `PATCH` still needs only `ready` and
+  the consents). The
   trust-on-first-use baseline of section 6.1 stays for a connector that is
   used in a chat before anyone opens the panel.
 - **Drift review.** `POST /api/v1/connectors/[id]/tools/review`
@@ -2113,7 +2118,8 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   the last name segment, the remote host as text (never a link), the
   description as plain text and "Needs an API key or token" for `header`
   entries, under "From the Official MCP Registry. Not reviewed by Besidka."
-  Add sends `{ registryId }` to `POST /api/v1/connectors`, which reads the
+  Add sends `{ registryId }` to `POST /api/v1/connectors` (which then also
+  needs `connectors.registry`), which reads the
   entry's own URL and title from the local copy (an unknown or inactive id
   is 400) and stores `created_via='registry'`; an entry that matches a preset
   adds the preset instead.
@@ -2134,8 +2140,10 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   a lookup key into `CONNECTOR_CODE_MESSAGES`
   (`shared/utils/connectors-messages.ts`, kept equal to the server's
   `CONNECTOR_ERRORS` by a spec); an unknown value shows a fixed fallback and
-  is never rendered. Both parameters, and the `?connector=<id>` deep link
-  from the chat context panel, are removed from the address after use.
+  is never rendered. The page also opens `?connector=<id>` in the panel
+  (the chat context panel's "Manage connectors" row still links the page
+  itself, because the row is per group, not per connector). Each parameter
+  is removed from the address after use.
 - **Profile tab row.** With Connectors the row has eight tabs, and every
   label does not fit the 704 px row at any width (the layout caps it at
   `max-w-4xl`), so from the eighth tab on inactive tabs show only their
@@ -2143,6 +2151,14 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   Seven tabs keep the old rule (labels from `lg`). Measured on 2026-11-15:
   one row of 46 px at 375, 768, 1024 and 1440 px. Open question 3 (one
   "Integrations" tab) stays the owner's call.
+- **Connectors added over MCP.** A title chosen by an app is not trusted
+  (C-9 audit: "Google Drive" can point at any host). Wherever a connector is
+  shown before it is connected or turned on, the host stands next to the
+  title, and `createdVia: 'mcp'` adds an "Added by a connected app" badge
+  (row, panel, Connect dialog) next to the "Added by <app>, not by you in the
+  app" note. The Connect dialog opens with the host in bold monospace above
+  the title, its heading is "Connect <host>" for such a connector, and the
+  consent names the host from discovery, not the title.
 - **Untrusted text.** Tool names, titles, descriptions, registry titles and
   descriptions and OAuth client names are rendered as text only (no
   `v-html`, no Markdown, no links), as the coordinator asked for C-8 data.

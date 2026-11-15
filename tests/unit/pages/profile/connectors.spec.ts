@@ -191,6 +191,10 @@ describe('profile connectors page', () => {
       expect(rows[1]!.get('[data-testid="connector-avatar"]').text()).toBe('N')
       expect(rows[1]!.get('[data-testid="connector-row-added-by"]').text())
         .toBe('Added by Claude, not by you in the app')
+      expect(rows[1]!.get('[data-testid="connector-row-mcp-badge"]').text())
+        .toBe('Added by a connected app')
+      expect(rows[0]!.find('[data-testid="connector-row-mcp-badge"]').exists())
+        .toBe(false)
       expect(rows[1]!.find('[data-testid="connector-row-connect"]').exists())
         .toBe(true)
       expect(rows[2]!.find('[data-testid="connector-row-review"]').exists())
@@ -198,6 +202,26 @@ describe('profile connectors page', () => {
       expect(wrapper.get('[data-testid="connectors-count"]').text())
         .toBe('3 of 20 connectors')
     })
+
+  it('asks for the tool review instead of a switch before the first '
+    + 'review', async () => {
+    data.value = {
+      connectors: [createConnectorItem({
+        tools: { isBaselined: false, total: 0, enabled: 0, alwaysAllowed: 0 },
+      })],
+    }
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('[data-testid="connector-row-toggle"]').exists())
+      .toBe(false)
+
+    await wrapper.get('[data-testid="connector-row-review"]').trigger('click')
+
+    expect(mocks.sidePanelOpen).toHaveBeenCalledWith(expect.objectContaining({
+      viewKey: 'connector:conn1',
+    }))
+  })
 
   it('turns a connector on and refreshes the list', async () => {
     data.value = { connectors: [createConnectorItem()] }

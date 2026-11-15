@@ -196,6 +196,7 @@ describe('Profile/Connectors/DetailPanel', () => {
   })
 
   it('offers the first review with Keep disabled', async () => {
+    connector.value = createConnectorItem({ enabled: false })
     listing = createToolsReview({
       isBaselined: false,
       tools: [createReviewTool({ change: 'new', enabled: false })],
@@ -207,6 +208,8 @@ describe('Profile/Connectors/DetailPanel', () => {
       .toContain('Review the tools')
     expect(wrapper.find('[data-testid="connector-tools"]').exists())
       .toBe(false)
+    expect(wrapper.get('[data-testid="connector-detail-toggle"]')
+      .attributes('disabled')).toBeDefined()
 
     await wrapper.get('[data-testid="connector-tool-review-keep"]')
       .trigger('click')
