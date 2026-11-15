@@ -743,6 +743,29 @@ describe('Connectors page routes', () => {
       }))).status).toBe(400)
     })
 
+    it('refuses Always allow on a connector that is not connected, with a '
+      + 'fixed code', async () => {
+      const connectorId = await addConnector('linear')
+
+      await serveTools(connectorId, [
+        { name: 'search', annotations: { readOnlyHint: true } },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      const { updateConnector } = await import(
+        '~~/server/utils/connectors/store'
+      )
+
+      await updateConnector(testDb.db, userId, connectorId, {
+        status: 'needs-auth',
+      })
+
+      expect((await failureOf(call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'search', mode: 'allow' }] },
+      }))).code).toBe('CONNECTOR_NOT_READY')
+    })
+
     it('does not change another account\'s tools', async () => {
       const connectorId = await addConnector('linear')
 

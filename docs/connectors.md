@@ -1730,10 +1730,14 @@ changes sections 7.1 to 7.9:
   connector read therefore asks until the user sets its group to Always
   allow. Why reads may run after anything: a read cannot carry data out by
   itself, and every write after outside content still asks.
-  **Residual:** a connector read still sends its arguments to its server,
-  so an Always allow read after another source could put that content in a
-  query. The owner accepted this for reads; open-world fetch-like tools are
-  the case to watch.
+  **Residual, raised for the owner (2026-11-15):** a connector read still
+  sends its arguments to its server, so an Always allow read after another
+  source (F2 no longer applies to reads) could put that content in a query,
+  and an open-world fetch-like tool could send it to any address. The old
+  `openWorldHint: false` condition on the read-only grant is gone with the
+  grant. This follows the owner's rule as written ("read-only tools set to
+  Always allow run without asking after any taint kind"); whether F2 should
+  still apply to connector reads is an open owner question.
 - **Writes, the F1 invariant as it now stands (owner decision,
   2026-11-15).** A connector or Besidka write asks `untrusted-output`
   (Allow once, Deny) when the send holds content from **outside the tool's
@@ -1771,8 +1775,10 @@ changes sections 7.1 to 7.9:
   `{ tools: [{ name, mode }] }` (`blocked`, `ask`, `allow`; at most 40 per
   request, the page sends larger groups in batches). The legacy `enabled`
   and `approval: 'ask'` fields still work, but not together with `mode`.
-  For `allow` the route loads the live tool list (the KV cache the send
-  uses), refuses the whole request when a tool is unknown, unreviewed,
+  For `allow` the route applies the guards of the tool listing (a
+  connector that is not connected answers `CONNECTOR_NOT_READY`, the
+  sign-up consent is required, failures are fixed codes, never remote
+  text), loads the live tool list (the KV cache the send uses), refuses the whole request when a tool is unknown, unreviewed,
   changed since the review or in the always-ask tier, and binds
   `approved_definition_hash` to the reviewed hash (the update also matches
   `definition_hash`, so a concurrent review cannot be skipped). The
@@ -1804,6 +1810,10 @@ changes sections 7.1 to 7.9:
   keeps the description and the Read-only, Changes data and Always asks
   badges; the Labs panel groups Besidka tools by tier (the ask-every-time
   tier is now labeled "Always asks").
+- **Second lines not changed.** The memory write lock and the web search
+  refusal still read the live state at execute time, so a memory write or
+  a Besidka-run web search in the same step as a connector read can still
+  be refused by them although the policy cleared it.
 - **Tests.** `tests/unit/server/utils/tool-approval/policy.spec.ts`
   ("reads (owner decision, 2026-11-15)", own-source writes),
   `send.spec.ts` ("one model step"), `continuation.spec.ts`

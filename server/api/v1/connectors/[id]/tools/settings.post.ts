@@ -4,7 +4,11 @@ import { CONNECTOR_REMOTE_TOOL_NAME_MAX_LENGTH } from '#shared/utils/connectors-
 import { TOOL_PERMISSION_MODES } from '#shared/utils/tool-approval-policy'
 import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
-import { createConnectorError } from '~~/server/utils/connectors/errors'
+import {
+  connectorErrorCodeOf,
+  createConnectorError,
+  isConnectorErrorCode,
+} from '~~/server/utils/connectors/errors'
 import {
   requireConnectorAccess,
   requireOwnedConnector,
@@ -21,6 +25,7 @@ import {
   loadConnectorToolDefinitions,
   resolveAlwaysAllowHashes,
 } from '~~/server/utils/connectors/tool-review'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 
@@ -69,16 +74,12 @@ function toSwitch(
   }
 }
 
-async function resolveAllowedHashes(input: {
+async function loadAllowedHashes(input: {
   connector: ConnectorRecord
   userId: number
   toolNames: string[]
   logger: LoggerLike
 }): Promise<Map<string, string>> {
-  if (input.toolNames.length === 0) {
-    return new Map()
-  }
-
   const db = useDb()
   const { definitions, hashes } = await loadConnectorToolDefinitions({
     db,
@@ -104,6 +105,44 @@ async function resolveAllowedHashes(input: {
   }
 
   return resolved.hashes
+}
+
+/**
+ * The reviewed hash of every tool to set to Always allow, checked on the
+ * live tool list with the same guards as the tool listing: a connector that
+ * is not connected answers `CONNECTOR_NOT_READY`, the sign-up consent is
+ * required before any request that can carry a token, and a failure is
+ * reported by a fixed code, never with text from the remote server.
+ */
+async function resolveAllowedHashes(input: {
+  connector: ConnectorRecord
+  userId: number
+  toolNames: string[]
+  logger: LoggerLike
+}): Promise<Map<string, string>> {
+  if (input.toolNames.length === 0) {
+    return new Map()
+  }
+
+  if (input.connector.status === 'needs-auth' || !input.connector.authType) {
+    throw createConnectorError('CONNECTOR_NOT_READY')
+  }
+
+  await requireLegalConsent(input.userId, useDb())
+
+  try {
+    return await loadAllowedHashes(input)
+  } catch (exception) {
+    const code = connectorErrorCodeOf(exception, 'CONNECTOR_UNREACHABLE')
+
+    input.logger.set({
+      attributes: { connectors: { step: 'tool-settings', code } },
+    })
+
+    throw createConnectorError(
+      isConnectorErrorCode(code) ? code : 'CONNECTOR_UNREACHABLE',
+    )
+  }
 }
 
 /**

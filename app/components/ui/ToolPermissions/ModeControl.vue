@@ -8,7 +8,7 @@
     <div
       v-for="(option, index) in options"
       :key="option.mode"
-      class="tooltip tooltip-left"
+      class="tooltip tooltip-left before:max-w-44 before:text-xs"
       :data-tip="option.hint"
     >
       <button
