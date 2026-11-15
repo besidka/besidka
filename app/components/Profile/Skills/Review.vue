@@ -207,7 +207,7 @@
           v-if="fileStatus === 'ready' && fileText !== null"
           :path="selectedPath"
           :text="fileText"
-          :findings="preview.findings"
+          :findings="allFindings"
           :focus-line="focusLine"
         />
         <div
@@ -232,8 +232,14 @@
       </div>
     </div>
 
+    <ProfileSkillsJevSection
+      :view="jevScreen.view.value"
+      @retry="jevScreen.run()"
+      @check-rest="jevScreen.checkRest()"
+    />
+
     <ProfileSkillsFindingGroups
-      :findings="preview.findings"
+      :findings="allFindings"
       @select="onSelectFinding"
     />
   </div>
@@ -243,6 +249,8 @@
 import { parseError } from 'evlog'
 import { SKILL_MD_FILE_NAME } from '#shared/utils/skills/path'
 import type { SkillImportPreview } from '#shared/types/skills.d'
+import type { SkillFinding } from '#shared/utils/skills/findings'
+import { mergeSkillJevFindings } from '#shared/utils/skills/jev-findings'
 
 const LICENSE_EXCERPT_LINES = 12
 
@@ -370,6 +378,16 @@ const licenseExcerpt = computed<string>(() => {
     : ''
 })
 
+const jevScreen = useSkillJevScreen(() => {
+  return props.preview.jev === 'available'
+    ? { kind: 'stage', stageId: props.preview.stageId }
+    : null
+})
+
+const allFindings = computed<SkillFinding[]>(() => {
+  return mergeSkillJevFindings(props.preview.findings, jevScreen.findings.value)
+})
+
 const findingSummary = computed<string>(() => {
   return describeFindingSummary(props.preview.findingCounts)
 })
@@ -377,7 +395,7 @@ const findingSummary = computed<string>(() => {
 const flaggedByPath = computed<Record<string, number>>(() => {
   const counts: Record<string, number> = {}
 
-  for (const finding of props.preview.findings) {
+  for (const finding of allFindings.value) {
     counts[finding.path] = (counts[finding.path] ?? 0) + 1
   }
 

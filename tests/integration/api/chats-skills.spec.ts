@@ -171,7 +171,12 @@ vi.mock('~~/server/utils/skills/runtime/load', () => {
       })
     }),
     loadSkillContent: vi.fn(async (input: { skill: FakeSkill }) => {
-      return { ...input.skill, body: SKILL_BODY, files: [] }
+      return {
+        ...input.skill,
+        body: SKILL_BODY,
+        skillMdText: SKILL_BODY,
+        files: [],
+      }
     }),
     readSkillFileText: vi.fn(async () => null),
   }

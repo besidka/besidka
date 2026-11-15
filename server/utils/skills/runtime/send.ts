@@ -26,6 +26,7 @@ import {
   collectActivatedSkillNames,
 } from '~~/server/utils/skills/runtime/reinject'
 import { prepareProjectSkillsForSend } from '~~/server/utils/skills/runtime/project'
+import { resolveSkillJevKv } from '~~/server/utils/skills/jev/store'
 import { getSkillTools } from '~~/server/utils/skills/runtime/tools'
 import type { SkillReadBucket } from '~~/server/utils/skills/versions/read'
 
@@ -213,6 +214,7 @@ export async function prepareSkillsForSend(input: {
       ]),
       family,
       guard: input.guard,
+      kv: resolveSkillJevKv(),
       logger,
     })
   }

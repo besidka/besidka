@@ -106,6 +106,18 @@
         </div>
       </div>
 
+      <ProfileSkillsJevSection
+        :view="jevScreen.view.value"
+        @retry="jevScreen.run()"
+        @check-rest="jevScreen.checkRest()"
+      />
+      <ProfileSkillsFindingGroups
+        v-if="jevScreen.findings.value.length"
+        :findings="jevScreen.findings.value"
+        :is-selectable="false"
+        test-id="skill-update-jev-findings"
+      />
+
       <div
         v-if="localEdits.length"
         class="alert alert-warning alert-soft items-start"
@@ -413,6 +425,16 @@ const {
   },
   { watch: [pending] },
 )
+
+const jevScreen = useSkillJevScreen(() => {
+  return pending.value
+    ? {
+      kind: 'version',
+      skillId: props.skillId,
+      version: pending.value.version,
+    }
+    : null
+})
 
 const isReviewed = shallowRef<boolean>(false)
 const isHighlightsRead = shallowRef<boolean>(false)

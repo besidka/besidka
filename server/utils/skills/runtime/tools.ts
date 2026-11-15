@@ -13,16 +13,21 @@ import {
   SKILL_MAX_PATH_LENGTH,
   SKILL_READ_FILE_MAX_BYTES,
 } from '#shared/utils/skills-policy'
-import { normalizeSkillEntryName } from '#shared/utils/skills/path'
+import {
+  SKILL_MD_FILE_NAME,
+  normalizeSkillEntryName,
+} from '#shared/utils/skills/path'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import type { SkillJevKv } from '~~/server/utils/skills/jev/store'
 import { formatSkillContent } from '~~/server/utils/skills/runtime/content'
 import {
   loadSkillContent,
   readSkillFileText,
 } from '~~/server/utils/skills/runtime/load'
 import type { RuntimeSkillRow } from '~~/server/utils/skills/runtime/load'
+import { findSkillHighlightNotice } from '~~/server/utils/skills/runtime/notice'
 import {
   neutralizeSkillDelimiters,
   truncateToByteBudget,
@@ -51,6 +56,10 @@ const READ_FILE_DESCRIPTION = 'Read one text file of a skill you loaded, by '
 export interface SkillToolsRun {
   tools: ToolSet
   getActivations: () => SkillActivationPartData[]
+}
+
+function countLines(text: string): number {
+  return text.split('\n').length
 }
 
 function exceptionMessage(exception: unknown): string {
@@ -83,6 +92,7 @@ export function getSkillTools(input: {
   activeSkillIds: ReadonlySet<string>
   family: KnowledgeTokenFamily
   guard?: UntrustedContentGuard
+  kv?: SkillJevKv | null
   logger?: LoggerLike
 }): SkillToolsRun {
   const names = input.skills.map(skill => skill.name) as [string, ...string[]]
@@ -156,6 +166,18 @@ export function getSkillTools(input: {
               skill: loaded,
               family: input.family,
             })
+            const notice = await findSkillHighlightNotice({
+              db: input.db,
+              kv: input.kv,
+              userId: input.userId,
+              skillId: skill.id,
+              version: skill.currentVersion,
+              path: SKILL_MD_FILE_NAME,
+              fullText: loaded.skillMdText,
+              skippedLines: countLines(loaded.skillMdText)
+                - countLines(loaded.body),
+              shownLines: countLines(loaded.body),
+            })
 
             activations.set(skill.id, toSkillActivationPart(identity).data)
             input.logger?.set({
@@ -171,6 +193,7 @@ export function getSkillTools(input: {
               status: 'activated' as const,
               ...identity,
               content: formatted.text,
+              ...(notice ? { notice } : {}),
             }
           } catch (exception) {
             input.logger?.set({
@@ -241,6 +264,17 @@ export function getSkillTools(input: {
             SKILL_READ_FILE_MAX_BYTES,
           )
 
+          const notice = await findSkillHighlightNotice({
+            db: input.db,
+            kv: input.kv,
+            userId: input.userId,
+            skillId: skill.id,
+            version: skill.currentVersion,
+            path: normalized.path,
+            fullText: file.text,
+            shownLines: countLines(cut.text),
+          })
+
           return {
             skillId: skill.id,
             name: skill.name,
@@ -248,6 +282,7 @@ export function getSkillTools(input: {
             path: normalized.path,
             truncated: cut.isTruncated,
             content: neutralizeSkillDelimiters(cut.text),
+            ...(notice ? { notice } : {}),
           }
         },
       })),
