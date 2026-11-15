@@ -10,6 +10,12 @@ export const BESIDKA_TOOL_PERMISSION_WRITES_PER_MINUTE = 60
 
 export const BESIDKA_TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]{0,63}$/
 
+export const BESIDKA_TOOL_NAME_PREFIX = 'besidka__'
+
+export function isBesidkaChatToolName(toolName: string): boolean {
+  return toolName.startsWith(BESIDKA_TOOL_NAME_PREFIX)
+}
+
 export const BESIDKA_TOOL_TIER_LABELS: Record<
   BesidkaToolPermissionTier,
   string

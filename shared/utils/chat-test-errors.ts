@@ -14,6 +14,7 @@ export const chatTestScenarios = [
   'skill',
   'tool-approval',
   'tool-approvals',
+  'besidka-tool-approval',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]

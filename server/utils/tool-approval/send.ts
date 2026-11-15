@@ -8,6 +8,7 @@ import { createError } from 'evlog'
 import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { CODE_EXECUTION_TOOL_NAME } from '#shared/utils/code-execution'
+import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
 import {
   TOOL_APPROVAL_DATA_PART_TYPE,
   TOOL_GRANT_DATA_PART_TYPE,
@@ -20,6 +21,7 @@ import type {
 } from '#shared/utils/tool-approval-parts'
 import {
   TOOL_APPROVAL_BESIDKA_READ_SOURCE,
+  TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN,
   TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN,
   TOOL_APPROVAL_MEMORY_WRITE_TOOL_NAMES,
   TOOL_APPROVAL_PAYLOAD_MAX_BYTES,
@@ -32,6 +34,7 @@ import type {
   ToolAccess,
   ToolApprovalDenialReason,
   ToolApprovalTaintKind,
+  ToolPermissionMode,
 } from '#shared/utils/tool-approval-policy'
 import { isSkillToolName } from '#shared/utils/skills/runtime'
 import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
@@ -97,10 +100,16 @@ const PROVIDER_READ_TOOL_NAMES = new Set<string>([
  * chat"), each carrying the definition hash it was given for, so a changed
  * tool no longer matches; the policy never lets them lift a prompt caused
  * by untrusted output, a source switch or the always-ask tier.
+ * `permissionMode` is the user's mode for a Besidka tool (Blocked, Needs
+ * approval, Always allow); every other tool is decided as `ask`.
+ * `summarize` writes the summary of one call from its input (a Besidka
+ * tool's registry summarizer); without it every call shows `summary`.
  */
 export interface SendToolEntry {
   descriptor: ToolApprovalDescriptor
   summary: string
+  summarize?: (input: unknown) => string
+  permissionMode?: ToolPermissionMode
   taint: ToolApprovalTaintKind | null
   readSource: string | null
   alwaysGrant: ToolApprovalGrant | null
@@ -133,6 +142,7 @@ export interface PendingToolApprovalDecision {
   toolName: string
   entry: SendToolEntry
   decision: ToolApprovalDecision
+  summary: string
 }
 
 export interface ToolApprovalCall {
@@ -218,6 +228,57 @@ function payloadBytes(value: unknown): number {
 
 function clampSummary(summary: string): string {
   return summary.slice(0, TOOL_APPROVAL_SUMMARY_MAX_LENGTH)
+}
+
+function summarizeCall(entry: SendToolEntry, input: unknown): string {
+  if (!entry.summarize) {
+    return entry.summary
+  }
+
+  try {
+    return clampSummary(entry.summarize(input)) || entry.summary
+  } catch {
+    return entry.summary
+  }
+}
+
+/**
+ * The entry of a `besidka__` tool the send did not describe: Blocked, so a
+ * Besidka tool can never fall back to the native-write entry, which runs
+ * without asking.
+ */
+function buildUndescribedBesidkaEntry(toolName: string): SendToolEntry {
+  return {
+    descriptor: {
+      family: 'besidka',
+      access: 'write',
+      toolName,
+      destructiveHint: true,
+    },
+    summary: clampSummary(`Besidka wants to run ${toolName}`),
+    permissionMode: 'blocked',
+    taint: 'besidka',
+    readSource: TOOL_APPROVAL_BESIDKA_READ_SOURCE,
+    alwaysGrant: null,
+    alwaysGrantWhenTainted: false,
+    connector: null,
+  }
+}
+
+function exceedsCallCap(
+  entry: SendToolEntry,
+  state: ApprovalState,
+): boolean {
+  if (entry.descriptor.family === 'connector') {
+    return state.counters.connectorCalls
+      >= TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN
+  }
+
+  if (entry.descriptor.family === 'besidka') {
+    return state.counters.builtInCalls >= TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN
+  }
+
+  return false
 }
 
 /**
@@ -478,6 +539,10 @@ export function createSendToolApproval(input: {
     if (entry.descriptor.family === 'connector') {
       incrementCounter(state, 'connectorCalls')
     }
+
+    if (entry.descriptor.family === 'besidka') {
+      incrementCounter(state, 'builtInCalls')
+    }
   }
 
   function toolApproval(
@@ -502,10 +567,7 @@ export function createSendToolApproval(input: {
       return 'not-applicable'
     }
 
-    if (
-      entry.descriptor.family === 'connector'
-      && state.counters.connectorCalls >= TOOL_APPROVAL_CONNECTOR_CALLS_PER_TURN
-    ) {
+    if (exceedsCallCap(entry, state)) {
       return denied('over-cap')
     }
 
@@ -518,7 +580,7 @@ export function createSendToolApproval(input: {
     const resolved = resolveToolApproval({
       descriptor: entry.descriptor,
       state,
-      permissionMode: 'ask',
+      permissionMode: entry.permissionMode ?? 'ask',
       alwaysGrant: autoGrant ?? userGrants?.always ?? null,
       chatGrant: userGrants?.chat ?? null,
     })
@@ -560,6 +622,7 @@ export function createSendToolApproval(input: {
       toolName: toolCall.toolName,
       entry,
       decision,
+      summary: summarizeCall(entry, toolCall.input),
     })
 
     return { type: 'user-approval', reason: decision.status.reason }
@@ -574,9 +637,16 @@ export function createSendToolApproval(input: {
     }
 
     for (const toolName of Object.keys(tools ?? {})) {
-      if (!entries.has(toolName)) {
-        entries.set(toolName, buildNativeApprovalEntry(toolName))
+      if (entries.has(toolName)) {
+        continue
       }
+
+      entries.set(
+        toolName,
+        isBesidkaChatToolName(toolName)
+          ? buildUndescribedBesidkaEntry(toolName)
+          : buildNativeApprovalEntry(toolName),
+      )
     }
   }
 
@@ -655,7 +725,7 @@ export function createSendToolApproval(input: {
     return resolveToolApproval({
       descriptor: entry.descriptor,
       state,
-      permissionMode: 'ask',
+      permissionMode: entry.permissionMode ?? 'ask',
     }).status.type !== 'not-applicable'
   }
 
@@ -962,7 +1032,7 @@ export function createToolApprovalStreamCollector(
           toolCallId: chunk.toolCallId,
           toolName: call.toolName,
           reason: pending.decision.reason ?? 'default',
-          summary: pending.entry.summary,
+          summary: pending.summary,
           rememberOptions: [...pending.decision.rememberOptions],
         }
 
@@ -1041,7 +1111,7 @@ export async function recordToolApprovalPause(
         signature: collected.signature,
         reason: decision.reason ?? 'default',
         rememberOptions: [...decision.rememberOptions],
-        summary: entry.summary,
+        summary: collected.pending.summary,
         auditCallId,
         snapshot: input.snapshot,
       })

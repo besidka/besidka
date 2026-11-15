@@ -547,6 +547,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/labs.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
   ]
+  const besidkaToolsChatTests = [
+    'tests/unit/server/utils/besidka-tools/chat-adapter.spec.ts',
+    'tests/unit/server/utils/besidka-tools/chat-settings.spec.ts',
+    'tests/integration/api/chats-besidka-tools.spec.ts',
+    'tests/integration/api/besidka-tools-permissions.spec.ts',
+    'tests/unit/server/utils/tool-approval/send.spec.ts',
+    'tests/unit/server/utils/tool-approval/continuation.spec.ts',
+    'tests/unit/composables/composer-besidka-tools.spec.ts',
+    'tests/unit/components/ChatInput/ConnectorPicker.client.spec.ts',
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+  ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
     'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
@@ -2513,6 +2526,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|shared\/utils\/features\/registry\.ts|server\/utils\/besidka-tools\/(permissions|route|registry|types)\.ts|server\/utils\/tool-approval\/continuation\.ts|server\/api\/v1\/besidka-tools\/.*\.ts|app\/(composables|utils)\/besidka-tool-permissions\.ts|app\/components\/Profile\/BesidkaTools\/.*\.vue|app\/components\/Search\/Modal\.client\.vue|app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|tests\/setup\/helpers\/(memory-extraction-db|connectors-oauth|skills-route)\.ts)$/,
       tests: besidkaToolPermissionsTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep)?\.vue|app\/utils\/(tool-approval-step|reasoning)\.ts|app\/pages\/chats\/new\.vue)$/,
+      tests: besidkaToolsChatTests,
     },
     {
       pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,

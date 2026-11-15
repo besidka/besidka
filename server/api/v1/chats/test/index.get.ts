@@ -17,7 +17,10 @@ import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture
 import { TEST_CODE_MESSAGE } from '~~/server/utils/chats/test/code-fixture'
 import { findLatestTestDocumentPart } from '~~/server/utils/chats/test/document-scenario'
 import { TEST_DOCUMENT_REPLY } from '~~/server/utils/chats/test/document-fixture'
-import { buildTestToolApprovalMessages } from '~~/server/utils/chats/test/tool-approval-fixture'
+import {
+  buildTestBesidkaToolApprovalMessages,
+  buildTestToolApprovalMessages,
+} from '~~/server/utils/chats/test/tool-approval-fixture'
 import { DOCUMENT_FORMATS } from '#shared/utils/documents'
 import type { DocumentFormat } from '#shared/utils/documents'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
@@ -112,6 +115,15 @@ export default defineEventHandler(async (event) => {
   const testKey = error
     ? `${scenarioKey}-error-${error}`
     : scenarioKey
+
+  if (effectiveScenario === 'besidka-tool-approval') {
+    return {
+      id: `test-chat-${testKey}`,
+      slug: `test-chat-${testKey}`,
+      title: `Test Chat - ${testKey}`,
+      messages: buildTestBesidkaToolApprovalMessages(scenarioKey),
+    }
+  }
 
   if (
     effectiveScenario === 'tool-approval'

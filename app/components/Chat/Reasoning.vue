@@ -287,9 +287,9 @@ import {
   getApprovalReasonText,
   getApprovalSourceLabel,
   getApprovalStepModel,
+  getApprovalStepSummaryLine,
   getApprovalStepTitle,
   getGrantMarkerText,
-  getApprovalSummaryLine,
   resolveApprovalStepState,
 } from '~/utils/tool-approval-step'
 import {
@@ -496,7 +496,7 @@ function buildApprovalStep(
       ? titlesBySlug.value.get(connectorSlug) || connectorSlug
       : '',
     reasonText: getApprovalReasonText(entry.model.reason, sourceLabel),
-    summaryLine: getApprovalSummaryLine(entry.model.summary),
+    summaryLine: getApprovalStepSummaryLine(entry.model),
     progress: isLastAwaiting && entry.state !== 'sending'
       ? formatApprovalProgress(answeredCount, awaiting.length)
       : '',
@@ -659,6 +659,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       skill: null,
       connector: null,
       approvalOutcome,
+      grantMarker: getGrantMarkerText(props.message.parts, toolCallId),
     })
   }
 

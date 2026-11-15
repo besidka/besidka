@@ -148,6 +148,7 @@ export interface GetConnectorToolsInput {
   chatPublicId: string
   connectors: readonly ConnectorRecord[]
   existingToolCount: number
+  existingDefinitionBytes?: number
   hashArgs: ConnectorArgsHasher
   consumeClearedCall?: (call: ClearedCallCheck) => boolean
   approvedAuditRow?: (
@@ -515,7 +516,8 @@ async function syncDriftStatus(
  *
  * Across connectors, tools the server marks read-only come first, then the
  * list stops at 40 tools (counting the send's other tools) or 32 KiB of
- * descriptions plus input schemas. Each exposed tool is
+ * descriptions plus input schemas (counting the Besidka tools' definitions,
+ * `existingDefinitionBytes`). Each exposed tool is
  * `mcp__<slug>__<tool>` and marked `withFollowUpTurn()`.
  *
  * With `consumeClearedCall` (the `tool-approvals` flag is on), whether a
@@ -834,7 +836,7 @@ export async function getConnectorTools(
     )
     const tools: ToolSet = {}
     const approvalEntries = new Map<string, SendToolEntry>()
-    let definitionBytes = 0
+    let definitionBytes = Math.max(0, input.existingDefinitionBytes ?? 0)
     let callsThisTurn = Math.max(0, input.callsUsedThisTurn ?? 0)
     let sourceConnectorId: string | null = null
     let isCapped = false

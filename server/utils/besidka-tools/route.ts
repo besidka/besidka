@@ -1,6 +1,8 @@
 import type { RequestEvent } from 'nuxt/server'
 import { BESIDKA_TOOL_PERMISSION_WRITES_PER_MINUTE } from '#shared/utils/besidka-tool-permissions'
 import { createError } from 'evlog'
+import { z } from 'zod'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { assertConnectorWriteRequest } from '~~/server/utils/connectors/route'
 import { requireFeature } from '~~/server/utils/features/guards'
@@ -89,4 +91,41 @@ export async function requireBesidkaToolsAccess(
   useRequestLogger(event).set({ userId })
 
   return userId
+}
+
+function chatNotFoundError() {
+  return createError({
+    message: 'Chat not found.',
+    status: 404,
+  })
+}
+
+/**
+ * The gate of the per-chat Besidka routes: `requireBesidkaToolsAccess`
+ * first, then the chat, which must belong to the user (404 otherwise, also
+ * for a malformed slug).
+ */
+export async function requireBesidkaChatAccess(
+  event: RequestEvent,
+  options: { write: boolean },
+): Promise<{ userId: number, chatPublicId: string }> {
+  const params = z.object({
+    slug: z.ulid(),
+  }).safeParse(getDecodedRouterParams(event))
+  const userId = await requireBesidkaToolsAccess(event, options)
+
+  if (params.error) {
+    throw chatNotFoundError()
+  }
+
+  const chat = await useDb().query.chats.findFirst({
+    where: { slug: params.data.slug, userId },
+    columns: { id: true },
+  })
+
+  if (!chat) {
+    throw chatNotFoundError()
+  }
+
+  return { userId, chatPublicId: chat.id }
 }

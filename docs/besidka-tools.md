@@ -1,12 +1,11 @@
-# Besidka tools: per-tool permissions (BES-394 L8)
+# Besidka tools: permissions and chat exposure (BES-394 L8, L9)
 
 Besidka's own tools (the registry in `server/utils/besidka-tools/`, see
-`docs/mcp-server.md`, "The Besidka tools registry") will let a model use the
-user's Besidka data in a chat (BES-394 L9). This layer adds what the user
-controls first: a permission for each tool, a Labs section to manage them and
-the `besidka-tools` flag. **Nothing in a chat uses any of it yet**: no tool is
-offered to a model, and the chat send does not read the permissions except in
-the continuation replay (below).
+`docs/mcp-server.md`, "The Besidka tools registry") let a model use the
+user's Besidka data in a chat. L8 added what the user controls: a permission
+for each tool, a Labs section to manage them and the `besidka-tools` flag. L9
+offers the tools to chat models through the approval layer (section "In a
+chat" below).
 
 ## The flag
 
@@ -77,16 +76,19 @@ attribute (action, scope, target, mode, count) and no user data.
 
 `server/utils/besidka-tools/permissions.ts`:
 
-- `resolveBesidkaPermissionMode(userId, toolName, { cache, db })` is the
-  function L9 will call for each tool. It accepts a registry name or the
+- `resolveBesidkaPermissionMode(userId, toolName, { cache, db })` resolves
+  one tool. It accepts a registry name or the
   `besidka__<name>` chat name, reads the user's rows once per cache (pass one
   `createBesidkaPermissionCache()` for a whole request) and returns the
   effective mode. A tool that is unknown or not exposed to chats is `blocked`.
 - `pickBesidkaPermissionMode(toolName, modes)` is the same decision over rows
   already loaded, with no I/O.
 - `resolveBesidkaPermissionModes(userId, toolNames)` returns the effective mode
-  of each named tool from one read (used by the replay seam).
-- `loadBesidkaToolPermissionModes(userId)` loads the rows.
+  of each named tool from one read. The chat send calls it for every exposed
+  tool before it offers any, and the replay seam calls it for the answered
+  ones.
+- `loadBesidkaToolPermissionModes(userId)` loads the rows. A stored mode that
+  is not `blocked`, `ask` or `allow` reads as `blocked`, never as the default.
 
 ### The replay seam
 
@@ -128,9 +130,108 @@ replay reads it as missing.
 No MCP tool reads or writes these permissions. See `docs/mcp-server.md`,
 "What MCP does not do", item 8.
 
-## Not built yet
+## In a chat (L9)
 
-L9 (chat exposure): building the tools from the registry for a send, the
-chat-name prefix, the per-chat Besidka row, the budget and the current-chat
-guard. L5 and L6 already pause and resume an approval; they have no Besidka
-tool to pause yet.
+### Gate
+
+A send offers Besidka tools only when all of these hold:
+
+1. the `besidka-tools` flag is active for the user (Labs opt-in);
+2. the `tool-approvals` flag is active. Without approvals the tools are never
+   exposed;
+3. the model can call tools (`toolCallingAllowed`, so not deep research or
+   image generation);
+4. the chat's Besidka row is on: `besidka_chat_settings.enabled`, on when the
+   chat has no row.
+
+The route loads the adapter, registry and permissions with dynamic imports
+only once the gate passed.
+
+### Tools and names
+
+`server/utils/besidka-tools/chat-adapter.ts` builds one AI SDK tool per
+selected registry entry, named `besidka__<name>` (`BESIDKA_TOOL_NAME_PREFIX`
+and `isBesidkaChatToolName` in `shared/utils/besidka-tool-permissions.ts`, the
+one definition the client and the server share), with the entry's
+`chatDescription` and input schema. `execute`:
+
+- runs only a call the policy cleared (`consumeClearedCall`, same name and
+  input, once); any other call answers "This tool call was not approved, so it
+  did not run.";
+- refuses `delete_chats`, `move_chats_to_project` and `delete_chat_message`
+  when they name the chat the send runs in, with a plain tool error. The
+  refusal happens at run time, after the approval, not before the prompt;
+- keeps to 30 calls a minute per user on its own KV prefix
+  (`besidka-tools-chat-calls`), failing closed when KV cannot count;
+- runs the registry handler as the session user with client id
+  `besidka-chat` and **no scopes**, so `list_artifact_shares`,
+  `list_shared_chats` and `get_chat` never put share link tokens into model
+  context;
+- frames the JSON result exactly like a connector result
+  (`<untrusted_tool_result connector="besidka" tool="...">`, cut to 64 KiB) and
+  raises the untrusted-content guard. A handler's client error (4xx) passes
+  its own message on; anything else becomes "The Besidka tool call failed."
+
+The route adds a short system block that explains the `besidka__` tools and
+the frame, also when no connector is on, and gives the tool loop
+`TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN` (12) extra steps when a Besidka tool
+is offered.
+
+### Policy
+
+Each offered tool, and each Blocked tool, gets an approval entry with family
+`besidka`. The registry tier decides the descriptor, never the annotations:
+read tier is `read`, write tier is `write`, and the ask-every-time tier keeps
+its `delete` or `instructions` access (`write` otherwise) and is marked
+destructive. The entry carries the user's mode, so:
+
+| Mode | Untainted send | After any untrusted content |
+| --- | --- | --- |
+| Blocked | not offered; denied if called or replayed | same |
+| Needs approval | asks `default` (Allow once, in this chat, always, Deny) | asks `untrusted-output` (Allow once, Deny) |
+| Always allow | runs, marked "Ran without asking (Always allowed)" | asks `untrusted-output` |
+
+The ask-every-time tier always asks `always-ask` with Allow once and Deny
+only, whatever the mode. Every Besidka result taints the send with `besidka`
+and records the `besidka` read source, so the next Besidka call asks
+(rule 4), a later connector call asks `cross-source`, and the provider's web
+search, grounding and URL context are withheld from later steps (the L5
+egress guard; it is not applied on Anthropic routes, as for connectors). A
+Besidka call past 12 per user turn is denied `over-cap`, on the first request
+and on replay. A `besidka__` tool name with no entry is Blocked, never a
+native write.
+
+The approval summary is the registry's `summarize()` for the call's input
+(`summarizeBesidkaToolCall`, parsed with the tool's schema first). "Allow in
+this chat" stores the tool's registry hash (`hashBesidkaChatTool`: chat name,
+description, input schema, access and tier) in
+`besidka_chat_settings.alwaysAllowTools`; "Always allow" sets the tool's
+permission to Always allow. A tool that changed asks again, and the replay
+denies a call whose hash drifted.
+
+### Budget
+
+Native tools first, then up to 16 Besidka tools (Always allow first, then
+read, write and ask every time, then by name), then connectors, within the
+existing 40 tools and 32 KiB of definitions (Besidka definitions count
+against the connector bytes). Tools that did not fit are named in the
+connector notice: "N Besidka tools were left out to stay within the tool
+limits of a message".
+
+### Per-chat row
+
+The connector picker in the composer shows a "Besidka" row first, outside the
+five-connector limit, whenever the gate's two flags are on; the "+" menu
+shows the Connectors row then too, even with no connector. The row toggles
+`besidka_chat_settings.enabled` through `GET` and `PUT
+/api/v1/chats/[slug]/besidka-tools` (`{ enabled }`, same guards as the
+permission routes plus chat ownership). A new chat keeps the choice in state
+and its first send carries `besidkaToolsEnabled`, which the send stores.
+
+### Approval step
+
+The step shows the Besidka mark before the title. The title is the
+server-written summary ("Delete 1 chat: ..."); the reason after a Besidka
+read names "your Besidka data", and "Always allow" confirms with "Always
+allow Besidka to list projects? ...". A finished Besidka call is a reasoning
+step titled "Besidka: list projects".

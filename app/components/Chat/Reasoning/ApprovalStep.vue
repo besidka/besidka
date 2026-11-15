@@ -14,10 +14,17 @@
   >
     <p
       :id="titleId"
-      class="min-w-0 break-words text-xs font-medium"
+      class="flex min-w-0 items-start gap-1.5 break-words text-xs font-medium"
       data-testid="reasoning-approval-step-title"
     >
-      {{ title }}
+      <Logo
+        v-if="model.isBesidka"
+        short
+        aria-hidden="true"
+        class="mt-px size-3.5 shrink-0"
+        data-testid="reasoning-approval-step-besidka-mark"
+      />
+      <span class="min-w-0">{{ title }}</span>
     </p>
     <p
       v-if="state === 'denied'"
@@ -211,6 +218,7 @@ import type {
 import {
   formatApprovalArguments,
   getApprovalButtons,
+  getBesidkaAlwaysConfirmText,
   isApprovalInputShortened,
 } from '~/utils/tool-approval-step'
 
@@ -254,6 +262,10 @@ const confirmId = computed<string>(() => {
 })
 
 const alwaysConfirmText = computed<string>(() => {
+  if (props.model.isBesidka) {
+    return getBesidkaAlwaysConfirmText(props.model.tool)
+  }
+
   const source = props.connectorName
     ? `${props.model.tool} from ${props.connectorName}`
     : props.model.tool
