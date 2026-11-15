@@ -12,16 +12,26 @@ export const CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT = 'This tool belongs to a '
   + 'different connector than the one already used in this message, so it '
   + 'cannot run without your approval; approvals arrive in the next update.'
 
+export const CONNECTOR_CALL_LIMIT_TEXT = 'Connector call limit for this '
+  + 'message reached. Answer with what you already have.'
+
+export const CONNECTOR_RATE_LIMIT_TEXT = 'This connector received too many '
+  + 'calls in the last minute. Try again later.'
+
 const DENIAL_TEXTS: readonly string[] = [
   CONNECTOR_APPROVAL_DENIAL_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+]
+const LIMIT_TEXTS: readonly string[] = [
+  CONNECTOR_CALL_LIMIT_TEXT,
+  CONNECTOR_RATE_LIMIT_TEXT,
 ]
 const TOOL_NAME_SEPARATOR = '__'
 const FRAMED_OUTPUT_PREFIX = `<${CONNECTOR_RESULT_TAG}`
 const RUNNING_STATES = new Set<string>(['input-streaming', 'input-available'])
 const FAILED_STATES = new Set<string>(['output-error', 'output-denied'])
 
-export type ConnectorToolOutcome = 'ok' | 'error' | 'denied'
+export type ConnectorToolOutcome = 'ok' | 'error' | 'denied' | 'limited'
 
 export interface ParsedConnectorToolName {
   slug: string
@@ -83,6 +93,16 @@ export function isConnectorApprovalDenial(output: unknown): boolean {
   return DENIAL_TEXTS.some(text => trimmed.startsWith(text))
 }
 
+export function isConnectorLimitRefusal(output: unknown): boolean {
+  if (typeof output !== 'string') {
+    return false
+  }
+
+  const trimmed = output.trim()
+
+  return LIMIT_TEXTS.some(text => trimmed.startsWith(text))
+}
+
 /**
  * The persisted `dynamic-tool` part of one connector call as a render model,
  * or null for every other part. A denial arrives as a successful result with
@@ -115,6 +135,8 @@ export function getConnectorToolCall(
       outcome = 'error'
     } else if (isConnectorApprovalDenial(part.output)) {
       outcome = 'denied'
+    } else if (isConnectorLimitRefusal(part.output)) {
+      outcome = 'limited'
     } else {
       outcome = 'ok'
     }

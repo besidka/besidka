@@ -1479,6 +1479,8 @@ export default defineEventHandler(async (event) => {
     && (selectedBraveSearch || selectedExaSearch)
     && gatewayToolCall !== true
   ) {
+    await codeExecutionSession?.tracker.cleanup()
+
     throw createError({
       message: 'The selected model does not support the requested tool.',
       status: 400,
@@ -1845,76 +1847,82 @@ export default defineEventHandler(async (event) => {
   const connectorNotices: string[] = []
   let connectorsRun: ConnectorToolsRun | null = null
 
-  if (sendFeatures.isFeatureActive('connectors')) {
-    const requestedConnectorIds = body.data.connectorIds
-      ?? await listChatConnectorIds(db, userId, chat.id)
+  try {
+    if (sendFeatures.isFeatureActive('connectors')) {
+      const requestedConnectorIds = body.data.connectorIds
+        ?? await listChatConnectorIds(db, userId, chat.id)
 
-    if (requestedConnectorIds.length > 0 || body.data.connectorIds) {
-      const userConnectors = await listConnectors(db, userId)
-      const selection = resolveConnectorSelection(
-        userConnectors,
-        requestedConnectorIds,
-      )
+      if (requestedConnectorIds.length > 0 || body.data.connectorIds) {
+        const userConnectors = await listConnectors(db, userId)
+        const selection = resolveConnectorSelection(
+          userConnectors,
+          requestedConnectorIds,
+        )
 
-      if (body.data.connectorIds) {
-        try {
-          await persistChatConnectorSelection(db, {
+        if (body.data.connectorIds) {
+          try {
+            await persistChatConnectorSelection(db, {
+              userId,
+              chatPublicId: chat.id,
+              selectedIds: selection.selected.map(connector => connector.id),
+            })
+          } catch (exception) {
+            aiLogger.set({
+              attributes: {
+                connectors: {
+                  selectionPersist: 'failed',
+                  error: exceptionMessage(exception),
+                },
+              },
+            })
+          }
+        }
+
+        if (selection.selected.length > 0 && !toolCallingAllowed) {
+          connectorNotices.push('Connectors are off for this message.')
+        }
+
+        if (selection.selected.length > 0 && toolCallingAllowed) {
+          for (const connector of selection.overCap) {
+            connectorNotices.push(
+              `${connector.title} was left out: a message can use at most 5 connectors.`,
+            )
+          }
+
+          for (const connector of selection.skipped) {
+            connectorNotices.push(
+              `${connector.title} is switched off or not connected, so its tools were not used.`,
+            )
+          }
+
+          connectorsRun = await getConnectorTools({
+            db,
+            kv: useKV(),
             userId,
             chatPublicId: chat.id,
-            selectedIds: selection.selected.map(connector => connector.id),
+            connectors: selection.selected,
+            existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
+            hashArgs: createConnectorArgsHasher(
+              useRuntimeConfig().encryptionKey,
+            ),
+            guard: chatSearchBudget,
+            logger: aiLogger,
           })
-        } catch (exception) {
-          aiLogger.set({
-            attributes: {
-              connectors: {
-                selectionPersist: 'failed',
-                error: exceptionMessage(exception),
-              },
-            },
-          })
-        }
-      }
+          connectorNotices.push(...connectorsRun.notices)
 
-      if (selection.selected.length > 0 && !toolCallingAllowed) {
-        connectorNotices.push('Connectors are off for this message.')
-      }
-
-      if (selection.selected.length > 0 && toolCallingAllowed) {
-        for (const connector of selection.overCap) {
-          connectorNotices.push(
-            `${connector.title} was left out: a message can use at most 5 connectors.`,
-          )
-        }
-
-        for (const connector of selection.skipped) {
-          connectorNotices.push(
-            `${connector.title} is switched off or not connected, so its tools were not used.`,
-          )
-        }
-
-        connectorsRun = await getConnectorTools({
-          db,
-          kv: useKV(),
-          userId,
-          chatPublicId: chat.id,
-          connectors: selection.selected,
-          existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
-          hashArgs: createConnectorArgsHasher(
-            useRuntimeConfig().encryptionKey,
-          ),
-          guard: chatSearchBudget,
-          logger: aiLogger,
-        })
-        connectorNotices.push(...connectorsRun.notices)
-
-        if (Object.keys(connectorsRun.tools).length > 0) {
-          parsedTools = {
-            ...parsedTools,
-            tools: { ...parsedTools.tools, ...connectorsRun.tools },
+          if (Object.keys(connectorsRun.tools).length > 0) {
+            parsedTools = {
+              ...parsedTools,
+              tools: { ...parsedTools.tools, ...connectorsRun.tools },
+            }
           }
         }
       }
     }
+  } catch (exception) {
+    await codeExecutionSession?.tracker.cleanup()
+
+    throw exception
   }
 
   const closeConnectorClients = async () => {

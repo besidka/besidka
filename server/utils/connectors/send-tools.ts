@@ -16,7 +16,9 @@ import {
 } from '#shared/utils/connectors-policy'
 import {
   CONNECTOR_APPROVAL_DENIAL_TEXT,
+  CONNECTOR_CALL_LIMIT_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+  CONNECTOR_RATE_LIMIT_TEXT,
 } from '#shared/utils/connectors-parts'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
@@ -93,10 +95,6 @@ export const CONNECTOR_INSTRUCTIONS = [
   'user it cannot run yet.',
 ].join(' ')
 
-export const CONNECTOR_CALL_LIMIT_TEXT = 'Connector call limit for this '
-  + 'message reached. Answer with what you already have.'
-export const CONNECTOR_RATE_LIMIT_TEXT = 'This connector received too many '
-  + 'calls in the last minute. Try again later.'
 export const CONNECTOR_TIMEOUT_TEXT = 'The connector tool did not answer in '
   + 'time.'
 export const CONNECTOR_FAILURE_TEXT = 'The connector tool call failed.'

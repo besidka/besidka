@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildConnectorUsedMarkerPart,
   CONNECTOR_APPROVAL_DENIAL_TEXT,
+  CONNECTOR_CALL_LIMIT_TEXT,
   CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
+  CONNECTOR_RATE_LIMIT_TEXT,
   getConnectorNoticeLines,
   getConnectorToolCall,
   isConnectorUsagePart,
@@ -102,6 +104,22 @@ describe('the cross-connector refusal', () => {
     expect(getConnectorToolCall(createPart({
       output: CONNECTOR_CROSS_CONNECTOR_DENIAL_TEXT,
     }))).toMatchObject({ outcome: 'denied', isFramed: false })
+  })
+})
+
+describe('the limit refusals', () => {
+  it('read as limited, not as ok and not as a denial', () => {
+    expect(getConnectorToolCall(createPart({
+      output: CONNECTOR_CALL_LIMIT_TEXT,
+    }))).toMatchObject({ outcome: 'limited', isFramed: false })
+    expect(getConnectorToolCall(createPart({
+      output: CONNECTOR_RATE_LIMIT_TEXT,
+    }))).toMatchObject({ outcome: 'limited', isFramed: false })
+  })
+
+  it('keep a real framed result ok', () => {
+    expect(getConnectorToolCall(createPart()))
+      .toMatchObject({ outcome: 'ok' })
   })
 })
 

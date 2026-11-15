@@ -32,6 +32,8 @@ describe('getConnectorStepTitle', () => {
       .toBe('Could not use Notion · search')
     expect(getConnectorStepTitle(createCall({ outcome: 'denied' }), 'Notion'))
       .toBe('Needs approval: Notion · search')
+    expect(getConnectorStepTitle(createCall({ outcome: 'limited' }), 'Notion'))
+      .toBe('Skipped Notion · search: limit reached')
   })
 
   it('falls back to the slug for a deleted connector', () => {
@@ -42,6 +44,7 @@ describe('getConnectorStepTitle', () => {
 
 describe('isConnectorStepFailed', () => {
   it('flags errors and denials only', () => {
+    expect(isConnectorStepFailed(createCall({ outcome: 'limited' }))).toBe(false)
     expect(isConnectorStepFailed(createCall({ outcome: 'error' }))).toBe(true)
     expect(isConnectorStepFailed(createCall({ outcome: 'denied' }))).toBe(true)
     expect(isConnectorStepFailed(createCall())).toBe(false)

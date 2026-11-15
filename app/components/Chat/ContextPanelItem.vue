@@ -80,6 +80,7 @@ const CONNECTOR_OUTCOME_LABELS: Record<ChatContextConnectorOutcome, string> = {
   ok: 'Done',
   error: 'Failed',
   denied: 'Needs approval',
+  limited: 'Limit reached',
 }
 
 const thumbnailUrl = computed<string | null>(() => {

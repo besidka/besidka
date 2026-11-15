@@ -1595,6 +1595,19 @@ describe('connector calls in the used group', () => {
     expect(context.kindCounts.connector).toBe(2)
   })
 
+  it('reports a limit refusal as limited, not as done', () => {
+    const context = connectorContext([
+      message('m1', 'assistant', [
+        connectorPart('mcp__notion__search', 't1', {
+          output: 'Connector call limit for this message reached. Answer '
+            + 'with what you already have.',
+        }),
+      ]),
+    ])
+
+    expect(context.used.map(item => item.meta?.outcome)).toEqual(['limited'])
+  })
+
   it('reports an error as the last outcome when the final call failed', () => {
     const context = connectorContext([
       message('m1', 'assistant', [

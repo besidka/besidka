@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   writers: [] as Array<{ write: ReturnType<typeof vi.fn> }>,
   aiLoggerSet: vi.fn(),
   flags: new Set<string>(),
+  codeExecutionActive: false,
+  codeExecutionCleanup: vi.fn(async () => undefined),
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -57,6 +59,33 @@ vi.mock('ai', async (importOriginal) => {
       return { writer, ready: execute({ writer }) }
     },
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
+  }
+})
+
+vi.mock('~~/server/utils/code-execution/send', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/code-execution/send')
+  >()
+
+  return {
+    ...actual,
+    resolveCodeExecutionGate: async (
+      input: Parameters<typeof actual.resolveCodeExecutionGate>[0],
+    ) => {
+      if (!mocks.codeExecutionActive) {
+        return actual.resolveCodeExecutionGate(input)
+      }
+
+      return { tools: input.requestedTools, active: true, filesActive: false }
+    },
+    startCodeExecutionSession: async () => ({
+      provider: 'openai',
+      apiKey: 'test-key',
+      filesActive: false,
+      tracker: { cleanup: mocks.codeExecutionCleanup },
+      uploadedFileIds: [],
+      uploadedFileNames: [],
+    }),
   }
 })
 
@@ -297,7 +326,7 @@ function stubChatProvider(toolCall: boolean) {
     model: {
       id: MODEL_ID,
       name: 'GPT-5 mini',
-      tools: ['web_search', 'image_generation'],
+      tools: ['web_search', 'image_generation', 'code_execution'],
       toolCall,
       modalities: { input: ['text'], output: ['text'] },
     },
@@ -344,6 +373,7 @@ function seedConnector(overrides: Record<string, any> = {}) {
 async function runSend(input: {
   steps: Array<Array<Record<string, unknown>>>
   connectorIds?: string[]
+  tools?: string[]
   server: MockMcpServer
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
@@ -367,7 +397,7 @@ async function runSend(input: {
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     body: {
       model: MODEL_ID,
-      tools: [],
+      tools: input.tools ?? [],
       reasoning: 'off',
       ...(input.connectorIds ? { connectorIds: input.connectorIds } : {}),
       messages: [{
@@ -426,6 +456,7 @@ describe('connector tools in the chat send', () => {
     mocks.mergedStreams = []
     mocks.writers = []
     mocks.flags = new Set(['connectors'])
+    mocks.codeExecutionActive = false
     Object.assign(mocks.store, {
       connectors: [],
       credentials: null,
@@ -739,4 +770,18 @@ describe('connector tools in the chat send', () => {
       })).rejects.toMatchObject({ code: 'CONNECTOR_CONSENT_REQUIRED' })
       expect(server.requests).toHaveLength(0)
     })
+
+  it('cleans up the provider code execution session when the connector '
+    + 'prepare throws', async () => {
+    mocks.codeExecutionActive = true
+    seedConnector({ consentVersion: 'old-version' })
+
+    await expect(runSend({
+      server,
+      connectorIds: [CONNECTOR_ID],
+      tools: ['code_execution'],
+      steps: [textChunks('Never sent.')],
+    })).rejects.toMatchObject({ code: 'CONNECTOR_CONSENT_REQUIRED' })
+    expect(mocks.codeExecutionCleanup).toHaveBeenCalledTimes(1)
+  })
 })

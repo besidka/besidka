@@ -784,6 +784,12 @@ Choices that differ from or add to section 6, 10 and 14:
   no `await` before it, so two parallel calls to different connectors let
   only the first one run. This is stricter than section 7.1, which asks only
   after a result was read; C-6 replaces it with the real F2 card.
+- **Limit refusals have their own outcome.** The per-send call cap and the
+  per-minute rate limit also answer with a plain sentence (audited as
+  `denied`). The message part classifier (`getConnectorToolCall`) reads them
+  as `limited`, so the step title says "Skipped <connector> · <tool>: limit
+  reached" and the context panel shows "Limit reached" instead of "Used" and
+  "Done". The sentences live in `shared/utils/connectors-parts.ts`.
 - **No TypeSafe screening of results.** Section 3 (T8) and section 17 say
   so; the C-5 brief asked for screening when a TypeSafe key exists, and this
   layer follows the document, because private third-party data to another

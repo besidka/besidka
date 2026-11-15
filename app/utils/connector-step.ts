@@ -16,6 +16,10 @@ export function getConnectorStepTitle(
     return `Needs approval: ${subject}`
   }
 
+  if (call.outcome === 'limited') {
+    return `Skipped ${subject}: limit reached`
+  }
+
   if (call.outcome === 'error') {
     return `Could not use ${subject}`
   }

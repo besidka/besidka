@@ -18,7 +18,7 @@ export type ChatContextItemKind
     | 'skill'
     | 'connector'
 
-export type ChatContextConnectorOutcome = 'ok' | 'error' | 'denied'
+export type ChatContextConnectorOutcome = 'ok' | 'error' | 'denied' | 'limited'
 
 export interface ChatContextItemMeta {
   url?: string
