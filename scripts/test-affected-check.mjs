@@ -1814,6 +1814,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/skills/url-hosts.spec.ts',
     'tests/unit/utils/skills/known-names.spec.ts',
     'tests/unit/utils/skills/file-set-findings.spec.ts',
+    'tests/unit/utils/skills/update-changes.spec.ts',
+    'tests/unit/server/utils/skills/versions/changes.spec.ts',
     'tests/unit/server/utils/skills/import/update-findings.spec.ts',
   ]
 
@@ -1874,6 +1876,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/skill-ui-utils.spec.ts',
     'tests/unit/utils/skill-findings-rescan.spec.ts',
     'tests/unit/utils/skill-editor.spec.ts',
+    'tests/unit/utils/skills/update-changes.spec.ts',
     'tests/unit/utils/skills/compose.spec.ts',
     'tests/unit/utils/skills/mode.spec.ts',
     'tests/unit/utils/skills/release.spec.ts',
@@ -1884,6 +1887,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Skills/EditDialog.client.spec.ts',
     'tests/unit/components/Profile/Skills/EditorPane.spec.ts',
     'tests/unit/components/Profile/Skills/FileTree.spec.ts',
+    'tests/unit/components/Profile/Skills/FindingGroups.spec.ts',
+    'tests/unit/components/Profile/Skills/ProblemList.spec.ts',
     'tests/unit/components/Profile/Skills/FileViewer.spec.ts',
     'tests/unit/components/Profile/Skills/Filters.spec.ts',
     'tests/unit/components/Profile/Skills/ImportDialog.client.spec.ts',
@@ -3427,7 +3432,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending|lookalike-context)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
+        /^(shared\/utils\/skills\/(edit|blank|compose|templates\/.*|archive|analyze|license|frontmatter|diff|path|findings|mode|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes)\.ts|shared\/utils\/skills-policy\.ts|server\/utils\/skills\/(unique-violation|cleanup|pending|lookalike-context)\.ts|server\/utils\/skills\/import\/(commit|rate-limit|update-check)\.ts|server\/utils\/skills\/versions\/.*\.ts|server\/api\/v1\/skills\/(index\.(get|post)|\[id\]\/(index\.(get|patch|delete)|files\.get|download\.get|versions\/.*))\.ts|tests\/setup\/helpers\/(skills-db|skills-route|skills-public-id-mock|skill-archives)\.ts)$/,
       tests: skillsVersionsTests,
     },
     {
@@ -3442,7 +3447,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+        /^(app\/pages\/chats\/skills\/index\.vue|app\/components\/Profile\/Skills\/.*|app\/components\/History\/PageShell\.vue|app\/layouts\/profile\.vue|app\/composables\/(skills-library|skill-archive-inspector|skill-editor)\.ts|app\/utils\/(relative-time|skill-file-tree|skill-findings|skill-findings-rescan|skill-labels|skill-editor)\.ts|app\/types\/skills-ui\.d\.ts|shared\/types\/skills\.d\.ts|shared\/utils\/skills\/(findings|hidden-characters|diff|archive|path|edit|compose|frontmatter|blank|mode|templates\/.*|finding-.*|file-set-findings|frontmatter-findings|known-names|lookalikes|url-hosts|update-changes)\.ts|shared\/utils\/skills-policy\.ts|tests\/setup\/helpers\/skills-ui\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
       tests: skillsManagerTests,
     },
     {
