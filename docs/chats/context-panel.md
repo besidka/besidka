@@ -66,6 +66,12 @@ slot 5.
   source opens the page in a new tab (`noopener noreferrer`); anything else
   scrolls the chat to its message (`[data-message-id]`). On mobile the sheet closes first;
   on desktop the panel stays open.
+- **Approvals** (owned chats, `tool-approvals` flag): below the groups,
+  `Chat/ContextPanelApprovals.vue` lists the remembered tool approvals that
+  apply in this chat, with "Reset approvals in this chat" and a per-tool
+  Remove for "Always allow". It reads its own route
+  (`GET /api/v1/chats/[slug]/tool-approvals`), not the context aggregate;
+  see `docs/connectors.md` section 7.9.
 - **States**: `UiSidePanelSkeleton` while loading; an `alert-error` with Retry
   on failure; one sentence when the chat has nothing yet.
 - "Not used for memory" shows only as the header badge and in the history
