@@ -1,13 +1,52 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Review from '../../../../../app/components/Profile/Skills/Review.vue'
+import { EXTRA_FINDING_EXPLANATIONS } from '#shared/utils/skills/finding-explanations'
+import {
+  SKILL_FINDING_CATALOG_CALLOUT,
+  SKILL_TEXT_RULES,
+  getSkillFindingExplanation,
+} from '#shared/utils/skills/findings'
+import type { SkillFinding } from '#shared/utils/skills/findings'
 import { createImportPreview } from '../../../../setup/helpers/skills-ui'
+
+const mocks = vi.hoisted(() => ({
+  fetch: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => mocks.fetch)
 
 enableAutoUnmount(afterEach)
 
+const BANNED_WORDS
+  = /\b(?:safe|safety rating|clean|verified|trusted|harmless|malicious)\b/i
+
 function testId(id: string) {
   return `[data-testid="${id}"]`
+}
+
+function stripMandatedSentences(text: string): string {
+  return text
+    .replace('cannot tell whether a skill is safe', '')
+    .replace(
+      'No highlight does not mean the text is harmless.',
+      '',
+    )
+}
+
+function makeFinding(overrides: Partial<SkillFinding>): SkillFinding {
+  return {
+    type: 'url',
+    rule: 'url',
+    severity: 'low',
+    path: 'SKILL.md',
+    line: 4,
+    snippet: 'x',
+    detail: null,
+    source: 'rules',
+    ...overrides,
+  }
 }
 
 describe('Profile/Skills/Review', () => {
@@ -235,8 +274,112 @@ describe('Profile/Skills/Review', () => {
     })
 
     for (const wrapper of [withFindings, withoutFindings]) {
-      expect(wrapper.text().replace('cannot tell whether a skill is safe', ''))
-        .not.toMatch(/\b(?:safe|clean|verified|trusted|harmless)\b/i)
+      expect(stripMandatedSentences(wrapper.text()))
+        .not.toMatch(BANNED_WORDS)
+    }
+  })
+
+  it('says that no highlight does not mean the text is harmless', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({ findings: [], findingCounts: {} }),
+      },
+    })
+
+    expect(wrapper.get(testId('skill-review-no-highlight-note')).text())
+      .toBe(
+        'No highlight does not mean the text is harmless. Read the files that matter to you.',
+      )
+    expect(wrapper.html()).not.toContain('lucide:circle-check')
+    expect(wrapper.html()).not.toContain('lucide:shield-check')
+  })
+
+  it('lists Look closely first with the path, line and a plain explanation', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          findings: [
+            makeFinding({
+              type: 'url',
+              rule: 'url',
+              severity: 'low',
+              line: 1,
+            }),
+            makeFinding({
+              type: 'execution',
+              rule: 'dynamic-context-inline',
+              severity: 'high',
+              line: 9,
+              snippet: '!`gh pr diff`',
+            }),
+            makeFinding({
+              type: 'secret',
+              rule: 'env-dump',
+              severity: 'medium',
+              line: 3,
+            }),
+          ],
+        }),
+      },
+    })
+    const groups = wrapper.findAll(
+      '[data-testid^="skill-review-findings-"]',
+    ).map((group) => {
+      return group.attributes('data-testid')
+    })
+    const high = wrapper.get(testId('skill-review-findings-high'))
+
+    expect(groups).toEqual([
+      'skill-review-findings-high',
+      'skill-review-findings-medium',
+      'skill-review-findings-low',
+    ])
+    expect(high.get(testId('skill-review-finding')).text())
+      .toContain('SKILL.md:9')
+    expect(high.get(testId('skill-review-finding-explanation')).text())
+      .toContain(getSkillFindingExplanation('dynamic-context-inline')!)
+    expect(high.get(testId('skill-review-finding-explanation')).text())
+      .toContain('Besidka never runs')
+  })
+
+  it('shows the callout for a highlight in the description', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: {
+        preview: createImportPreview({
+          findings: [
+            makeFinding({
+              type: 'injection',
+              rule: 'injection-override',
+              severity: 'high',
+              line: 3,
+              detail: 'sent with every message while the skill is on Auto',
+            }),
+            makeFinding({
+              type: 'injection',
+              rule: 'injection-override',
+              severity: 'high',
+              line: 20,
+            }),
+          ],
+        }),
+      },
+    })
+    const callouts = wrapper.findAll(testId('skill-review-finding-callout'))
+
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0]!.text())
+      .toBe('This text is in every message while the skill is on Auto.')
+  })
+
+  it('keeps every explanation and callout free of banned words', () => {
+    const texts = [
+      ...SKILL_TEXT_RULES.map(rule => rule.explanation),
+      ...Object.values(EXTRA_FINDING_EXPLANATIONS),
+      SKILL_FINDING_CATALOG_CALLOUT,
+    ]
+
+    for (const text of texts) {
+      expect(text, text).not.toMatch(BANNED_WORDS)
     }
   })
 
@@ -248,7 +391,7 @@ describe('Profile/Skills/Review', () => {
     })
 
     expect(wrapper.get(testId('skill-review-finding-counts')).text())
-      .toContain('Nothing was highlighted.')
+      .toContain('The built-in checks highlighted nothing.')
     expect(wrapper.find(testId('skill-review-findings')).exists()).toBe(false)
   })
 
@@ -494,5 +637,285 @@ describe('Profile/Skills/Review', () => {
       .toBe('No license stated')
     expect(wrapper.find(testId('skill-review-license-text')).exists())
       .toBe(false)
+  })
+})
+
+const JEV_BANNED_COPY = /\b(?:clean|no issues|verified|harmless|passed|all clear)\b|[✓✔]/i
+
+function jevResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    state: 'screened',
+    questionSetVersion: 1,
+    status: 'ok',
+    findings: [],
+    marks: [],
+    unchecked: [],
+    tooLarge: false,
+    calls: 1,
+    callsSpent: 1,
+    callsLeft: 47,
+    ...overrides,
+  }
+}
+
+const SEND_OUT_MARK = {
+  path: 'references/setup.md',
+  startLine: 40,
+  endLine: 92,
+  question: 'k1_send_out',
+  rule: 'jev-send-out',
+  severity: 'high',
+  score: 0.9,
+}
+
+const SEND_OUT_FINDING: SkillFinding = {
+  type: 'exfiltration',
+  rule: 'jev-send-out',
+  severity: 'high',
+  path: 'references/setup.md',
+  line: 40,
+  snippet: '',
+  detail: 'TypeSafe AI, lines 40 to 92',
+  source: 'jev',
+}
+
+async function mountJev(response: unknown) {
+  mocks.fetch.mockResolvedValue(response)
+
+  const preview = createImportPreview({ jev: 'available' })
+  const wrapper = await mountSuspended(Review, { props: { preview } })
+
+  await flushPromises()
+
+  return { wrapper, preview }
+}
+
+describe('Profile/Skills/Review: TypeSafe AI section', () => {
+  beforeEach(() => {
+    mocks.fetch.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('makes no request and shows no section without the available flag', async () => {
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview() },
+    })
+
+    await flushPromises()
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(wrapper.find(testId('skill-jev-section')).exists()).toBe(false)
+  })
+
+  it('posts an empty body to the stage route when the review opens', async () => {
+    const { preview } = await mountJev(jevResponse())
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      `/api/v1/skills/import/${preview.stageId}/screen`,
+      { method: 'POST', body: {} },
+    )
+  })
+
+  it('hides the section when the answer is unavailable', async () => {
+    const { wrapper } = await mountJev(jevResponse({ state: 'unavailable' }))
+
+    expect(wrapper.find(testId('skill-jev-section')).exists()).toBe(false)
+  })
+
+  it('shows Checking… while the request is open', async () => {
+    mocks.fetch.mockReturnValue(new Promise(() => undefined))
+
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview({ jev: 'available' }) },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get(testId('skill-jev-checking')).text()).toBe('Checking…')
+    expect(wrapper.get(testId('skill-jev-section')).text())
+      .not.toMatch(JEV_BANNED_COPY)
+  })
+
+  it('names the marks and merges them into the same groups with a TypeSafe AI badge', async () => {
+    const { wrapper, preview } = await mountJev(jevResponse({
+      marks: [SEND_OUT_MARK],
+      findings: [SEND_OUT_FINDING],
+    }))
+    const high = wrapper.get(testId('skill-review-findings-high'))
+
+    expect(wrapper.get(testId('skill-jev-marked')).text()).toBe(
+      'Marked 1 passage: asks to send data out (references/setup.md lines '
+      + '40 to 92).',
+    )
+    expect(high.text()).toContain('Look closely')
+    expect(high.get(testId('skill-review-finding-source')).text())
+      .toBe('TypeSafe AI')
+    expect(high.get(testId('skill-review-finding-source')).classes())
+      .toEqual(expect.arrayContaining(['badge', 'badge-soft']))
+    expect(wrapper.get(testId('skill-review-finding-counts')).text())
+      .not.toContain('TypeSafe')
+    expect(preview.findings.every(finding => finding.source === 'rules'))
+      .toBe(true)
+    expect(wrapper.get(testId('skill-jev-section')).text())
+      .not.toMatch(JEV_BANNED_COPY)
+    expect(high.text()).not.toMatch(JEV_BANNED_COPY)
+  })
+
+  it('keeps every rule finding when the marks arrive', async () => {
+    const withoutJev = await mountSuspended(Review, {
+      props: { preview: createImportPreview() },
+    })
+    const ruleCount = withoutJev
+      .findAll(testId('skill-review-finding')).length
+    const { wrapper } = await mountJev(jevResponse({
+      marks: [SEND_OUT_MARK],
+      findings: [SEND_OUT_FINDING],
+    }))
+
+    expect(wrapper.findAll(testId('skill-review-finding')).length)
+      .toBe(ruleCount + 1)
+  })
+
+  it('says Checked every part when nothing was marked, and never a verdict', async () => {
+    const { wrapper } = await mountJev(jevResponse())
+
+    expect(wrapper.get(testId('skill-jev-all-parts')).text())
+      .toBe('Checked every part. It marked nothing.')
+    expect(wrapper.get(testId('skill-jev-section')).text())
+      .not.toMatch(JEV_BANNED_COPY)
+    expect(wrapper.get(testId('skill-review-no-highlight-note')).text())
+      .toContain('No highlight does not mean')
+  })
+
+  it('offers Check the rest and posts { rest: true } only on click', async () => {
+    const { wrapper, preview } = await mountJev(jevResponse({
+      unchecked: [{ path: 'references/big.md', startLine: 1, endLine: 400 }],
+    }))
+
+    expect(wrapper.get(testId('skill-jev-unchecked-text')).text())
+      .toBe('Not checked: 1 part.')
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+
+    mocks.fetch.mockResolvedValue(jevResponse({ callsLeft: 46 }))
+    await wrapper.get(testId('skill-jev-check-rest')).trigger('click')
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      `/api/v1/skills/import/${preview.stageId}/screen`,
+      { method: 'POST', body: { rest: true } },
+    )
+    expect(wrapper.find(testId('skill-jev-check-rest')).exists()).toBe(false)
+  })
+
+  it('hides Check the rest when the review budget is spent', async () => {
+    const { wrapper } = await mountJev(jevResponse({
+      unchecked: [{ path: 'references/big.md', startLine: 1, endLine: 400 }],
+      callsLeft: 0,
+    }))
+
+    expect(wrapper.find(testId('skill-jev-check-rest')).exists()).toBe(false)
+    expect(wrapper.get(testId('skill-jev-budget')).exists()).toBe(true)
+  })
+
+  it('says Did not finish when TypeSafe AI failed, and keeps the review usable', async () => {
+    const { wrapper } = await mountJev(jevResponse({
+      status: 'timeout',
+      unchecked: [
+        { path: 'a.md', startLine: 1, endLine: 5 },
+        { path: 'b.md', startLine: 1, endLine: 5 },
+      ],
+    }))
+
+    expect(wrapper.get(testId('skill-jev-failed-text')).text()).toBe(
+      'Did not finish: TypeSafe AI did not answer. 2 parts not checked.',
+    )
+    expect(wrapper.find(testId('skill-review-findings')).exists()).toBe(true)
+  })
+
+  it('says Did not finish when the request itself fails', async () => {
+    mocks.fetch.mockRejectedValue({
+      statusCode: 429,
+      data: { message: 'Too many checks this hour' },
+    })
+
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview({ jev: 'available' }) },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get(testId('skill-jev-failed-text')).text())
+      .toContain('Did not finish:')
+  })
+
+  it('retries while another request holds the check, then says it is still checking', async () => {
+    vi.useFakeTimers()
+    mocks.fetch.mockResolvedValue(jevResponse({ state: 'in-progress' }))
+
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview({ jev: 'available' }) },
+    })
+
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    expect(wrapper.find(testId('skill-jev-checking')).exists()).toBe(true)
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await vi.advanceTimersByTimeAsync(2000)
+    }
+
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(6)
+    expect(wrapper.get(testId('skill-jev-still-checking')).text())
+      .toContain('Still checking')
+  })
+
+  it('shows the result of a retry once the first request has finished', async () => {
+    vi.useFakeTimers()
+    mocks.fetch
+      .mockResolvedValueOnce(jevResponse({ state: 'in-progress' }))
+      .mockResolvedValueOnce(jevResponse())
+
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview({ jev: 'available' }) },
+    })
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(2)
+    expect(wrapper.get(testId('skill-jev-all-parts')).exists()).toBe(true)
+  })
+
+  it('treats a malformed answer as unavailable', async () => {
+    const { wrapper } = await mountJev(undefined)
+
+    expect(wrapper.find(testId('skill-jev-section')).exists()).toBe(false)
+  })
+
+  it('drops an answer that arrives after the screen closed', async () => {
+    let resolve: (value: unknown) => void = () => undefined
+
+    mocks.fetch.mockReturnValue(new Promise((done) => {
+      resolve = done
+    }))
+
+    const wrapper = await mountSuspended(Review, {
+      props: { preview: createImportPreview({ jev: 'available' }) },
+    })
+
+    await flushPromises()
+    wrapper.unmount()
+    resolve(jevResponse({ marks: [SEND_OUT_MARK] }))
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
   })
 })

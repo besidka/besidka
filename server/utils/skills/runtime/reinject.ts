@@ -1,7 +1,10 @@
 import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { SKILL_ACTIVE_BLOCK_MAX_TOKENS } from '#shared/utils/skills-policy'
-import { isDataSkillActivationPart } from '#shared/utils/skills/runtime'
+import {
+  isDataSkillActivationPart,
+  isProjectSkillActivationPart,
+} from '#shared/utils/skills/runtime'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { formatSkillContent } from '~~/server/utils/skills/runtime/content'
 import {
@@ -62,6 +65,7 @@ export function collectActivatedSkillIds(
     for (const part of [...message.parts].reverse()) {
       if (
         isDataSkillActivationPart(part)
+        && !isProjectSkillActivationPart(part)
         && !ids.includes(part.data.skillId)
       ) {
         ids.push(part.data.skillId)
@@ -88,7 +92,11 @@ export function collectActivatedSkillNames(
     }
 
     for (const part of [...message.parts].reverse()) {
-      if (isDataSkillActivationPart(part) && !names.has(part.data.skillId)) {
+      if (
+        isDataSkillActivationPart(part)
+        && !isProjectSkillActivationPart(part)
+        && !names.has(part.data.skillId)
+      ) {
         names.set(part.data.skillId, part.data.name)
       }
     }
@@ -115,8 +123,9 @@ function buildUnavailableNotice(
 /**
  * The `<active_skills>` block of the chat's re-injected skills: the current
  * version of each skill that is still owned, enabled, not broken and
- * model-invocable (a skill switched to Only when I ask is one-shot per
- * explicit invocation), newest first, cut to `SKILL_ACTIVE_BLOCK_MAX_TOKENS`.
+ * model-invocable or pinned to the project (a skill switched to Only when I
+ * ask is one-shot per explicit invocation, unless a project pins it), newest
+ * first, cut to `SKILL_ACTIVE_BLOCK_MAX_TOKENS`.
  * Loading stops once the budget is spent: the first skill that does not fit
  * and every older one are counted as omitted without being read. Skills that
  * are gone or unreadable share one `<skill_notice>` that names at most three
@@ -131,6 +140,7 @@ export async function buildActiveSkillsBlock(input: {
   skillIds: readonly string[]
   skillNames?: ReadonlyMap<string, string>
   skipSkillIds?: ReadonlySet<string>
+  pinnedSkillIds?: ReadonlySet<string>
   family: KnowledgeTokenFamily
   logger?: LoggerLike
 }): Promise<ActiveSkillsBlock | null> {
@@ -142,7 +152,12 @@ export async function buildActiveSkillsBlock(input: {
     return null
   }
 
-  const rows = await findRunnableSkills(input.db, input.userId, wanted)
+  const rows = await findRunnableSkills(
+    input.db,
+    input.userId,
+    wanted,
+    input.pinnedSkillIds,
+  )
   const rowsById = new Map(rows.map(row => [row.id, row]))
   const unavailableNames: string[] = []
   const sections: string[] = []

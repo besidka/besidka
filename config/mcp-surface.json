@@ -977,7 +977,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read one of your Besidka projects: name, instructions, pinned and archived state, knowledge mode, project memory state (enabled, status, account memory, entry count), knowledge totals against the limits and the knowledge items (id, kind, title, size, status, flagged, pinned). Use read_project_knowledge_item to read an item. Requires signing in (projects:read).",
+      "description": "Read one of your Besidka projects: name, instructions, pinned and archived state, knowledge mode, project memory state (enabled, status, account memory, entry count), knowledge totals against the limits and the knowledge items (id, kind, title, size, status, flagged, pinned). With the skills:read scope it also lists the skills pinned to the project (id, name, level, state). Use read_project_knowledge_item to read an item. Requires signing in (projects:read).",
       "inputSchema": {
         "properties": {
           "projectId": {
@@ -1951,6 +1951,63 @@
         "admin:features"
       ],
       "title": "Give or remove a feature for one user (admin)"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Replace the skills pinned to one of your projects. A skill at the always level goes into every message of the project's chats; a skill at the prefer level stays in the skills list and is listed first for the model. Only your own existing skills can be pinned, at most 3 at the always level, and the always-level skills must fit a token limit. The tool never changes a skill: a skill that is Off, waiting for review or broken can be pinned but does not load until the user turns it on in Besidka. The result lists the pins, their state and the tokens the always-level skills add to each message. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "inputSchema": {
+        "properties": {
+          "projectId": {
+            "description": "Project id from list_projects",
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "skills": {
+            "description": "The whole list, in order. It replaces the skills pinned to the project now; an empty list removes them all. At most 20 skills and 3 at the always level",
+            "items": {
+              "properties": {
+                "level": {
+                  "description": "always: the skill goes into every message of the project's chats. prefer: the skill stays in the catalog, listed first for the model",
+                  "enum": [
+                    "always",
+                    "prefer"
+                  ],
+                  "type": "string"
+                },
+                "skillId": {
+                  "description": "Skill id from list_skills",
+                  "pattern": "^[A-Za-z0-9]{1,64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "skillId",
+                "level"
+              ],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "type": "array"
+          }
+        },
+        "required": [
+          "projectId",
+          "skills"
+        ],
+        "type": "object"
+      },
+      "name": "set_project_skills",
+      "public": false,
+      "requiredScopes": [
+        "skills:write"
+      ],
+      "title": "Set the skills of a project"
     },
     {
       "annotations": {

@@ -1815,6 +1815,24 @@ describe('Chat/Reasoning', () => {
         expect(wrapper.find('[data-testid="skill-step"]').exists()).toBe(false)
       })
 
+    it('renders a lone project activation as a Project skill step',
+      async () => {
+        const wrapper = await mountSkillMessage([{
+          type: 'data-skill-activation',
+          data: {
+            skillId: 'skl1',
+            name: 'writing-style',
+            version: 1,
+            source: 'project',
+          },
+        }])
+
+        expect(wrapper.get('[data-testid="reasoning-skill-step-title"]').text())
+          .toBe('Project skill · writing-style')
+        expect(wrapper.get('[data-testid="reasoning-skill-step-open"]').text())
+          .toBe('writing-style')
+      })
+
     it('shows a running call as Reading skill and a failed call as failed',
       async () => {
         const running = await mountSkillMessage([{

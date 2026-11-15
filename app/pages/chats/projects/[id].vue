@@ -53,6 +53,11 @@
       @save="saveProjectInstructions"
     />
 
+    <ProjectsSkillsCard
+      v-if="projectId && skillsFeature.active"
+      :project-id="projectId"
+    />
+
     <ProjectsKnowledgePanel
       v-if="projectId"
       :project-id="projectId"
@@ -132,6 +137,7 @@ definePageMeta({
 
 const route = useRoute('chats-projects-id')
 const nuxtApp = useNuxtApp()
+const skillsFeature = useFeature('skills')
 const projectId = computed(() => route.params.id)
 const groupedAt = useState<string>('project-chats:grouped-at', () => {
   return new Date().toISOString()

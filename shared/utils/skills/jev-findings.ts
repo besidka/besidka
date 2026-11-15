@@ -53,6 +53,29 @@ export function createSkillJevMark(input: SkillJevRange & {
   }
 }
 
+export const SKILL_JEV_REASONS: Readonly<Record<string, string>> = {
+  'jev-attack': 'tries to steer an assistant',
+  'jev-send-out': 'asks to send data out',
+  'jev-conceal': 'asks to hide what it does',
+  'jev-secrets': 'asks for keys or secrets',
+  'jev-run-remote': 'asks to download and run code',
+}
+
+export const SKILL_JEV_FALLBACK_REASON = 'worth a second look'
+
+export function getSkillJevReason(rule: string): string {
+  return SKILL_JEV_REASONS[rule] ?? SKILL_JEV_FALLBACK_REASON
+}
+
+export function describeSkillLineRange(range: {
+  startLine: number
+  endLine: number
+}): string {
+  return range.startLine === range.endLine
+    ? `line ${range.startLine}`
+    : `lines ${range.startLine} to ${range.endLine}`
+}
+
 function describeRange(range: SkillJevRange): string {
   return range.startLine === range.endLine
     ? `TypeSafe AI, line ${range.startLine}`

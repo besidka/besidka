@@ -24,6 +24,7 @@ export interface PurgeUserSkillsResult {
   skillVersionsDeleted: number
   skillFilesDeleted: number
   skillChatSettingsDeleted: number
+  projectSkillsDeleted: number
   skillObjectsDeleted: number
   skillStagingObjectsDeleted: number
 }
@@ -33,6 +34,7 @@ export interface DeleteUserSkillResult {
   skillVersionsDeleted: number
   skillFilesDeleted: number
   skillChatSettingsDeleted: number
+  projectSkillsDeleted: number
   skillObjectsDeleted: number
   objectCleanupFailed: boolean
 }
@@ -120,6 +122,9 @@ export async function purgeUserSkills(
   const skillChatSettings = await db.delete(schema.skillChatSettings)
     .where(eq(schema.skillChatSettings.userId, userId))
     .returning({ id: schema.skillChatSettings.id })
+  const projectSkills = await db.delete(schema.projectSkills)
+    .where(eq(schema.projectSkills.userId, userId))
+    .returning({ id: schema.projectSkills.id })
   const skillFiles = await db.delete(schema.skillFiles)
     .where(eq(schema.skillFiles.userId, userId))
     .returning({ id: schema.skillFiles.id })
@@ -144,6 +149,7 @@ export async function purgeUserSkills(
     skillVersionsDeleted: skillVersions.length,
     skillFilesDeleted: skillFiles.length,
     skillChatSettingsDeleted: skillChatSettings.length,
+    projectSkillsDeleted: projectSkills.length,
     skillObjectsDeleted,
     skillStagingObjectsDeleted,
   }
@@ -167,13 +173,19 @@ export async function deleteUserSkill(
   bucket: SkillBlobBucket = useFileStorage(),
 ): Promise<DeleteUserSkillResult> {
   const { userId, skillId, logger } = input
-  const [chatSettings, files, versions, skills] = await db.batch([
+  const [chatSettings, projectPins, files, versions, skills] = await db.batch([
     db.delete(schema.skillChatSettings)
       .where(and(
         eq(schema.skillChatSettings.userId, userId),
         eq(schema.skillChatSettings.skillId, skillId),
       ))
       .returning({ id: schema.skillChatSettings.id }),
+    db.delete(schema.projectSkills)
+      .where(and(
+        eq(schema.projectSkills.userId, userId),
+        eq(schema.projectSkills.skillId, skillId),
+      ))
+      .returning({ id: schema.projectSkills.id }),
     db.delete(schema.skillFiles)
       .where(and(
         eq(schema.skillFiles.userId, userId),
@@ -201,6 +213,7 @@ export async function deleteUserSkill(
     skillVersionsDeleted: versions.length,
     skillFilesDeleted: files.length,
     skillChatSettingsDeleted: chatSettings.length,
+    projectSkillsDeleted: projectPins.length,
     skillObjectsDeleted: 0,
     objectCleanupFailed: false,
   }

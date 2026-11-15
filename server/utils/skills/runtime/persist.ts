@@ -3,6 +3,7 @@ import {
   SKILL_ACTIVATE_TOOL_NAME,
   SKILL_READ_FILE_TOOL_NAME,
   isDataSkillActivationPart,
+  isProjectSkillActivationPart,
   toSkillActivationPart,
 } from '#shared/utils/skills/runtime'
 
@@ -80,11 +81,17 @@ export function appendSkillActivationParts(
   parts: UIMessage['parts'],
   activatedAt: string = new Date().toISOString(),
 ): UIMessage['parts'] {
-  const known = new Set(
-    parts
-      .filter(isDataSkillActivationPart)
-      .map(part => part.data.skillId),
-  )
+  const known = new Set<string>()
+
+  for (const part of parts) {
+    if (
+      isDataSkillActivationPart(part)
+      && !isProjectSkillActivationPart(part)
+    ) {
+      known.add(part.data.skillId)
+    }
+  }
+
   const added: UiMessagePart[] = []
 
   for (const part of parts) {

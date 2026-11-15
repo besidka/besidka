@@ -70,6 +70,15 @@ first real control (the memory toggle), never an info icon.
   chip row is not rendered, and when it appears or goes the scroll offset
   absorbs its height so the tapped control stays put. The scroll area pads
   its bottom by at least the iOS safe area.
+- Clicking "+" while the popover is open closes it and focus stays on "+". The
+  popover also closes when focus leaves it, but a pointer press on "+" is
+  excluded from that rule: Safari does not focus a button on mouse down, so it
+  hands focus to a focusable ancestor outside the menu root. Without the
+  exclusion the focus-out closed the popover on pointer down and the click then
+  reopened it. `tools-menu.spec.ts` runs in the opt-in WebKit project
+  (`E2E_WEBKIT=1`) to cover this; Chromium never showed it. Below md the sheet
+  is modal, so "+" is inert behind it and the sheet closes through its close
+  button, the backdrop or Escape.
 - Radios and toggles keep the menu open. Rows that open a modal (attach,
   library, generated images, project) close it first.
 - The menu and the model picker share `useState('chat-input:open-popover')`,

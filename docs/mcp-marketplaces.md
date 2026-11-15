@@ -303,7 +303,7 @@ consent page lets the user approve each scope separately.
 | `connectors:read` | `list_connectors`, `get_connector` |
 | `connectors:write` | `add_connector` (created switched off, never enabled over MCP), `update_connector_tools` (only turns tools off or back to ask), `delete_connectors` |
 | `skills:read` | `list_skills`, `get_skill` |
-| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (saved switched off for the user's review, never enabled over MCP), `delete_skills` |
+| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (saved switched off for the user's review, never enabled over MCP), `delete_skills`, `set_project_skills` (pins existing skills to a project; never enables one) |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (Besidka admins only; hidden on the consent page and stripped on the server for everyone else) |
 

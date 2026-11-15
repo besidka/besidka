@@ -22,6 +22,7 @@ const SCRIPT_NOTE = 'text only, not executable here'
 export interface FormattedSkillContent {
   text: string
   isTruncated: boolean
+  shownBodyLines: number
 }
 
 function buildTruncationNotice(): string {
@@ -62,13 +63,13 @@ export function buildSkillResourceList(
  * frontmatter, cut at 40 KiB and at `SKILL_ACTIVATE_MAX_TOKENS` for the model
  * family (whichever comes first), with its delimiters neutralized, inside
  * `<skill_content name source version>` and followed by the resource list.
- * `invokedBy` marks a skill the user attached, and `argumentsText` fills
- * `$ARGUMENTS`.
+ * `invokedBy` marks a skill the user attached or the project pinned, and
+ * `argumentsText` fills `$ARGUMENTS`.
  */
 export function formatSkillContent(input: {
   skill: LoadedSkillContent
   family: KnowledgeTokenFamily
-  invokedBy?: 'user'
+  invokedBy?: 'user' | 'project'
   argumentsText?: string
 }): FormattedSkillContent {
   const { skill, family } = input
@@ -97,5 +98,9 @@ export function formatSkillContent(input: {
     ...(resources ? [resources] : []),
   ].join('\n')
 
-  return { text, isTruncated }
+  return {
+    text,
+    isTruncated,
+    shownBodyLines: byTokens.text.split('\n').length,
+  }
 }

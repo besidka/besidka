@@ -10,6 +10,7 @@ import {
   unlinkKnowledgeProjectFiles,
 } from '~~/server/utils/knowledge/linked-files'
 import { purgeProjectKnowledgeForProject } from '~~/server/utils/knowledge/purge'
+import { deleteProjectSkillsForProject } from '~~/server/utils/skills/project/pins'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -172,6 +173,16 @@ export async function deleteProject(
       eq(schema.projects.id, project.id),
       eq(schema.projects.userId, userId),
     ))
+
+  const projectSkillsDeleted = await deleteProjectSkillsForProject(
+    db,
+    userId,
+    project.id,
+  )
+
+  logger.set({
+    attributes: { skills: { projectPinsDeleted: projectSkillsDeleted } },
+  })
 
   try {
     const purgeResult = await purgeProjectKnowledgeForProject(

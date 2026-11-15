@@ -69,5 +69,6 @@ export default withNuxt(configNuxt).append({
     '.cursor/**',
     '.windsurf/**',
     'workers/*/dist/**',
+    'tests/fixtures/skills/anthropics/**',
   ],
 })
