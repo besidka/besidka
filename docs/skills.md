@@ -175,8 +175,10 @@ the old wording is in the git history.
     SS-8): when the user saved a TypeSafe AI key and left "Prompt-injection
     screening" on, opening an import, update or needs-review screen runs that
     check on the skill text, on the user's TypeSafe AI key (section 3.6). No
-    chat model is called. MCP tools and the editor never run it. There is no
-    other prefetch, no background work and no MCP run or activate tool.
+    chat model is called. MCP tools and the editor never run it. The review
+    explains this in a tooltip next to the check (owner decision, 2026-11-15,
+    SS-10, section 3.7). There is no other prefetch, no background work and no
+    MCP run or activate tool.
 
 Feature flags (stage `internal`, `default: false`, `allowRoles: ['admin']`).
 `skills`, `skills.import-url` and `skills.scripts` are already registered in
@@ -1003,6 +1005,21 @@ Look closely group can therefore hold more rows than the tick counts.
   is about the whole version and not about what changed.
 - **"Check the rest"** posts `{ rest: true }` on the user's click and is
   limited by the server to 48 calls per review.
+- **Why it ran (owner decision, 2026-11-15).** The check stays automatic, and
+  in exactly that case the review explains it. An info button
+  (`aria-label` "Why this check ran", `aria-expanded`, `aria-controls`) next
+  to the section title opens a note, closed by default. It is a button that
+  toggles the shared `ChatInputToolsMenuInfoNote`, and not a hover-only DaisyUI
+  `tooltip`, so it works on keyboard and touch. The note reads: "This ran
+  automatically because you saved a TypeSafe AI key and Prompt-injection
+  screening is on. Your key sends this skill's text to TypeSafe AI to look for
+  passages that try to steer the assistant. It only adds highlights, never
+  removes ours, and costs a fraction of a cent. Turn it off in Settings →
+  Smart checks." The link goes to `/profile/keys?tab=memory-checks`, the
+  Smart checks tab that holds the TypeSafe AI role toggles. The button shows
+  whenever the section shows (key saved and the role on) and in every state,
+  and the note has no verdict words (no "clean" or "safe"). No legal text,
+  notice or consent version changes with it.
 
 ## 4. License gate
 

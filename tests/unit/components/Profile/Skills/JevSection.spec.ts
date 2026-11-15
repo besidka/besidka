@@ -49,8 +49,14 @@ async function mountView(view: SkillJevScreenView) {
 function expectNoVerdictCopy(wrapper: Awaited<ReturnType<typeof mountView>>) {
   expect(wrapper.text()).not.toMatch(BANNED_COPY)
   expect(wrapper.find('[class*="success"]').exists()).toBe(false)
-  expect(wrapper.find('svg, [name*="check"], [class*="i-lucide"]').exists())
-    .toBe(false)
+
+  const verdictIcons = wrapper
+    .findAll('svg, [name*="check"], [class*="i-lucide"]')
+    .filter((icon) => {
+      return !icon.element.closest(testId('skill-jev-info'))
+    })
+
+  expect(verdictIcons).toHaveLength(0)
 }
 
 describe('Profile/Skills/JevSection', () => {
@@ -233,5 +239,61 @@ describe('Profile/Skills/JevSection', () => {
 
     expect(wrapper.get(testId('skill-jev-caption')).text())
       .toContain('does not change the highlights')
+  })
+
+  describe('automatic check explanation', () => {
+    it('shows the info button with the section, closed at first', async () => {
+      const wrapper = await mountView(makeView({ kind: 'checking' }))
+      const button = wrapper.get(testId('skill-jev-info'))
+
+      expect(button.element.tagName).toBe('BUTTON')
+      expect(button.attributes('type')).toBe('button')
+      expect(button.attributes('aria-label')).toBe('Why this check ran')
+      expect(button.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.get(testId('skill-jev-info-note')).attributes('style'))
+        .toContain('display: none')
+    })
+
+    it('opens and closes the explanation from the button', async () => {
+      const wrapper = await mountView(makeView())
+      const button = wrapper.get(testId('skill-jev-info'))
+      const note = wrapper.get(testId('skill-jev-info-note'))
+
+      expect(button.attributes('aria-controls')).toBe(note.attributes('id'))
+
+      await button.trigger('click')
+
+      expect(button.attributes('aria-expanded')).toBe('true')
+      expect(note.attributes('style') ?? '').not.toContain('display: none')
+
+      await button.trigger('click')
+
+      expect(button.attributes('aria-expanded')).toBe('false')
+      expect(note.attributes('style')).toContain('display: none')
+    })
+
+    it('explains why the check ran and links to the Smart checks settings', async () => {
+      const wrapper = await mountView(makeView({ kind: 'failed' }))
+      const note = wrapper.get(testId('skill-jev-info-note'))
+      const link = wrapper.get(testId('skill-jev-info-settings-link'))
+
+      expect(note.text()).toContain(
+        'This ran automatically because you saved a TypeSafe AI key and '
+        + 'Prompt-injection screening is on.',
+      )
+      expect(note.text()).toContain('never removes ours')
+      expect(note.text()).toContain('costs a fraction of a cent')
+      expect(note.text()).toContain('Settings → Smart checks')
+      expect(link.attributes('href') ?? link.attributes('to'))
+        .toBe('/profile/keys?tab=memory-checks')
+      expect(note.text()).not.toMatch(BANNED_COPY)
+    })
+
+    it('has no explanation while the section is hidden', async () => {
+      const wrapper = await mountView(makeView({ kind: 'hidden' }))
+
+      expect(wrapper.find(testId('skill-jev-info')).exists()).toBe(false)
+      expect(wrapper.find(testId('skill-jev-info-note')).exists()).toBe(false)
+    })
   })
 })

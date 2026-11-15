@@ -5,12 +5,45 @@
     aria-labelledby="skill-jev-title"
     data-testid="skill-jev-section"
   >
-    <h4
-      id="skill-jev-title"
-      class="text-sm font-semibold"
+    <div class="flex items-center gap-1">
+      <h4
+        id="skill-jev-title"
+        class="text-sm font-semibold"
+      >
+        Extra check by TypeSafe AI (your key)
+      </h4>
+      <button
+        type="button"
+        class="inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-full text-base-content/60 hover:text-accent"
+        aria-label="Why this check ran"
+        :aria-expanded="isExplanationOpen"
+        :aria-controls="explanationId"
+        data-testid="skill-jev-info"
+        @click="isExplanationOpen = !isExplanationOpen"
+      >
+        <Icon
+          name="lucide:info"
+          size="14"
+        />
+      </button>
+    </div>
+
+    <ChatInputToolsMenuInfoNote
+      v-show="isExplanationOpen"
+      :id="explanationId"
+      data-testid="skill-jev-info-note"
     >
-      Extra check by TypeSafe AI (your key)
-    </h4>
+      This ran automatically because you saved a TypeSafe AI key and
+      Prompt-injection screening is on. Your key sends this skill's text to
+      TypeSafe AI to look for passages that try to steer the assistant. It
+      only adds highlights, never removes ours, and costs a fraction of a
+      cent. Turn it off in
+      <NuxtLink
+        :to="checksSettingsPath"
+        class="link"
+        data-testid="skill-jev-info-settings-link"
+      >Settings → Smart checks</NuxtLink>.
+    </ChatInputToolsMenuInfoNote>
 
     <p
       v-if="view.kind === 'checking'"
@@ -115,6 +148,7 @@ import {
 import type { SkillJevScreenView } from '~/composables/skill-jev-screen'
 
 const MAX_LISTED_MARKS = 3
+const checksSettingsPath = '/profile/keys?tab=memory-checks'
 
 const props = defineProps<{
   view: SkillJevScreenView
@@ -124,6 +158,9 @@ const emit = defineEmits<{
   retry: []
   checkRest: []
 }>()
+
+const explanationId = useId()
+const isExplanationOpen = shallowRef<boolean>(false)
 
 function pluralizeParts(count: number): string {
   return `${count} ${count === 1 ? 'part' : 'parts'}`
