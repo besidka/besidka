@@ -29,17 +29,16 @@ describe('connectors feature flags', () => {
     }
   })
 
-  it('marks only connectors and connectors.oauth available', () => {
-    for (const key of ['connectors', 'connectors.oauth'] as const) {
+  it('marks connectors, oauth and registry available, native not', () => {
+    for (const key of [
+      'connectors',
+      'connectors.oauth',
+      'connectors.registry',
+    ] as const) {
       expect(FEATURE_REGISTRY[key].available).toBe(true)
     }
 
-    for (const key of [
-      'connectors.registry',
-      'connectors.native',
-    ] as const) {
-      expect(FEATURE_REGISTRY[key].available).toBe(false)
-    }
+    expect(FEATURE_REGISTRY['connectors.native'].available).toBe(false)
   })
 
   it('has no spend on the flags the remote server bills', () => {
