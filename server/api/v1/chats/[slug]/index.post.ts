@@ -1772,7 +1772,10 @@ export default defineEventHandler(async (event) => {
       userMessageText,
       budget: chatSearchBudget,
       ...(toolApprovalsActive
-        ? { isApprovedByUser: toolApprovalSend.isApprovedByUser }
+        ? {
+          isApprovedByUser: toolApprovalSend.isApprovedByUser,
+          asksForApproval: true,
+        }
         : {}),
       logger: aiLogger,
     })
@@ -1966,6 +1969,9 @@ export default defineEventHandler(async (event) => {
       holdsSkillText: skillsSend.holdsSkillText,
       holdsPastChatExcerpts: pastChatPreRetrieval !== null,
       isBranchedFromShare: Boolean(chat.branchedFromShareSlug),
+      holdsUserAttachments: newMessage.parts.some((part) => {
+        return part.type === 'file'
+      }),
     })
   }
 

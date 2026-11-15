@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="stepRoot"
     role="group"
     class="js-tool-approval-step my-2.5 min-w-0 flex-1 rounded-field outline-offset-2 focus:outline-2 focus:outline-accent"
     :data-approval-id="model.approvalId"
@@ -63,7 +64,42 @@
         >{{ argumentsText }}</pre>
       </details>
       <div
-        v-if="hasButtons"
+        v-if="hasButtons && isConfirmingAlways"
+        role="group"
+        :aria-labelledby="confirmId"
+        class="mt-2 grid gap-1.5 rounded-field bg-base-200 p-2"
+        data-testid="reasoning-approval-step-always-confirm"
+      >
+        <p
+          :id="confirmId"
+          class="min-w-0 break-words text-xs"
+        >
+          {{ alwaysConfirmText }}
+        </p>
+        <div class="flex flex-col gap-1.5 md:flex-row md:flex-wrap md:items-center">
+          <button
+            ref="confirmAlwaysButton"
+            type="button"
+            class="btn btn-primary btn-sm max-md:w-full"
+            :disabled="isBusy"
+            data-testid="reasoning-approval-step-always-confirm-allow"
+            @click="onConfirmAlways"
+          >
+            Always allow
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm max-md:w-full"
+            :disabled="isBusy"
+            data-testid="reasoning-approval-step-always-confirm-cancel"
+            @click="cancelAlways"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+      <div
+        v-else-if="hasButtons"
         class="mt-2 flex flex-col gap-1.5 md:flex-row md:flex-wrap md:items-center"
         data-testid="reasoning-approval-step-actions"
       >
@@ -73,9 +109,10 @@
           type="button"
           class="btn btn-sm max-md:w-full"
           :class="button.remember === 'once' ? 'btn-primary' : 'btn-soft'"
+          :title="button.remember === 'chat' ? CHAT_GRANT_HINT : undefined"
           :disabled="isBusy"
           :data-testid="`reasoning-approval-step-allow-${button.remember}`"
-          @click="onAllow(button.remember)"
+          @click="onAllowClick(button.remember)"
         >
           {{ button.label }}
         </button>
@@ -186,7 +223,11 @@ const props = defineProps<{
   progress: string
   outcome: string
   messageId: string
+  connectorName?: string
 }>()
+
+const CHAT_GRANT_HINT = 'Runs this tool without asking in later messages '
+  + 'of this chat, also after content from earlier messages.'
 
 const controller = useToolApprovalController()
 const sidePanel = useSidePanel()
@@ -194,6 +235,11 @@ const sidePanel = useSidePanel()
 const isArgumentsOpen = shallowRef<boolean>(false)
 const isSubmitting = shallowRef<boolean>(false)
 const isAskAgainHintVisible = shallowRef<boolean>(false)
+const isConfirmingAlways = shallowRef<boolean>(false)
+const stepRoot = useTemplateRef<HTMLDivElement>('stepRoot')
+const confirmAlwaysButton = useTemplateRef<HTMLButtonElement>(
+  'confirmAlwaysButton',
+)
 
 const titleId = computed<string>(() => {
   return `tool-approval-${props.model.approvalId}-title`
@@ -201,6 +247,21 @@ const titleId = computed<string>(() => {
 
 const reasonId = computed<string>(() => {
   return `tool-approval-${props.model.approvalId}-reason`
+})
+
+const confirmId = computed<string>(() => {
+  return `tool-approval-${props.model.approvalId}-always`
+})
+
+const alwaysConfirmText = computed<string>(() => {
+  const source = props.connectorName
+    ? `${props.model.tool} from ${props.connectorName}`
+    : props.model.tool
+
+  return `Always allow ${source}? Besidka will run it without asking in `
+    + 'every chat and in later messages, also after content from earlier '
+    + 'messages, until the tool changes. What the tool does is declared by '
+    + 'the service itself. You can remove this in the chat panel.'
 })
 
 const buttons = computed(() => {
@@ -242,7 +303,30 @@ const failureText = computed<string>(() => {
 
 watch(() => props.state, () => {
   isSubmitting.value = false
+  isConfirmingAlways.value = false
 })
+
+async function onAllowClick(remember: ToolApprovalRemember) {
+  if (remember !== 'always') {
+    await onAllow(remember)
+
+    return
+  }
+
+  isConfirmingAlways.value = true
+  await nextTick()
+  confirmAlwaysButton.value?.focus()
+}
+
+async function onConfirmAlways() {
+  await onAllow('always')
+}
+
+async function cancelAlways() {
+  isConfirmingAlways.value = false
+  await nextTick()
+  stepRoot.value?.focus()
+}
 
 async function onAllow(remember: ToolApprovalRemember) {
   if (!controller || isBusy.value) {
@@ -302,6 +386,12 @@ function onEnter(event: KeyboardEvent) {
 }
 
 function onEscape() {
+  if (isConfirmingAlways.value) {
+    cancelAlways()
+
+    return
+  }
+
   isArgumentsOpen.value = false
 }
 

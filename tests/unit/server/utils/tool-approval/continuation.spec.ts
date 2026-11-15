@@ -206,6 +206,60 @@ describe('decideContinuation', () => {
     })
   })
 
+  it.each([
+    ['chat', 'chat'],
+    ['always', 'always'],
+    ['once', 'once'],
+  ] as const)(
+    'keeps remember %s when the plain write offered it',
+    (remember, expected) => {
+      const [decision] = decideContinuation({
+        answers: [{
+          response: { approvalId: 'approval-1', approved: true, remember },
+          record: pendingRecord({
+            reason: 'default',
+            rememberOptions: ['once', 'chat', 'always'],
+          }),
+        }],
+        entries: connectorEntries(),
+        state: createApprovalState(),
+      })
+
+      expect(decision).toMatchObject({ approved: true, remember: expected })
+    },
+  )
+
+  it.each([
+    ['untrusted-output'],
+    ['cross-source'],
+    ['always-ask'],
+  ] as const)(
+    'clamps a forged chat or always answer to once after %s',
+    (reason) => {
+      const decisions = decideContinuation({
+        answers: (['chat', 'always'] as const).map((remember, index) => {
+          return {
+            response: {
+              approvalId: `approval-${index}`,
+              approved: true,
+              remember,
+            },
+            record: pendingRecord({
+              toolCallId: `call-${index}`,
+              reason,
+              rememberOptions: ['once'],
+            }),
+          }
+        }),
+        entries: connectorEntries(),
+        state: createApprovalState(),
+      })
+
+      expect(decisions.map(decision => decision.remember))
+        .toEqual(['once', 'once'])
+    },
+  )
+
   it('denies a drifted, missing or over-cap call with Besidka text', () => {
     const state = createApprovalState()
     const answer = {

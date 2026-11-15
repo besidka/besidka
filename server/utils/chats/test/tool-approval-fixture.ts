@@ -30,9 +30,9 @@ function connectorCallParts(): UIMessage['parts'] {
         approvalId: 'test-approval-0001',
         toolCallId: CONNECTOR_CALL_ID,
         toolName: 'mcp__linear__create_issue',
-        reason: 'always-ask',
+        reason: 'default',
         summary: 'linear wants to run mcp__linear__create_issue',
-        rememberOptions: ['once'],
+        rememberOptions: ['once', 'chat', 'always'],
       },
     },
   ] as unknown as UIMessage['parts']

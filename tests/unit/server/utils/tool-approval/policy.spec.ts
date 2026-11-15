@@ -756,36 +756,61 @@ describe('fail closed on invalid input', () => {
 })
 
 describe('connectorDestructiveHint', () => {
-  it('is false only for a tool the server marks read-only', () => {
-    expect(connectorDestructiveHint({ readOnlyHint: true })).toBe(false)
-    expect(connectorDestructiveHint({
+  it.each([
+    ['destructiveHint true', { destructiveHint: true }],
+    ['destructiveHint true next to readOnlyHint true', {
       readOnlyHint: true,
       destructiveHint: true,
-    })).toBe(false)
+    }],
+  ])('is true for %s', (_name, annotations) => {
+    expect(connectorDestructiveHint(annotations)).toBe(true)
   })
 
   it.each([
     ['no annotations', undefined],
     ['null annotations', null],
     ['empty annotations', {}],
+    ['readOnlyHint true', { readOnlyHint: true }],
     ['readOnlyHint false', { readOnlyHint: false }],
-    ['readOnlyHint null', { readOnlyHint: null }],
+    ['destructiveHint null', { destructiveHint: null }],
     ['destructiveHint false alone', { destructiveHint: false }],
     ['destructiveHint false next to readOnlyHint false', {
       readOnlyHint: false,
       destructiveHint: false,
     }],
-    ['destructiveHint true', { destructiveHint: true }],
-  ])('is true for %s', (_name, annotations) => {
-    expect(connectorDestructiveHint(annotations)).toBe(true)
+  ])('is false for %s', (_name, annotations) => {
+    expect(connectorDestructiveHint(annotations)).toBe(false)
   })
 
-  it('never trusts destructiveHint false for a tool that may write', () => {
+  it('treats destructiveHint false exactly like a missing hint', () => {
+    const withFalse = decide(connectorTool({
+      destructiveHint: connectorDestructiveHint({ destructiveHint: false }),
+    }))
+    const withoutHint = decide(connectorTool({
+      destructiveHint: connectorDestructiveHint({}),
+    }))
+
+    expect(withFalse).toEqual(withoutHint)
+    expect(withFalse.reason).toBe('default')
+    expect(withFalse.rememberOptions).toEqual(['once', 'chat', 'always'])
+  })
+
+  it('never skips the prompt for destructiveHint false', () => {
     const descriptor = connectorTool({
       destructiveHint: connectorDestructiveHint({ destructiveHint: false }),
     })
 
-    expect(decide(descriptor).rule).toBe(5)
+    expect(decide(descriptor).status.type).toBe('user-approval')
+  })
+
+  it('keeps an explicit destructiveHint true in always-ask', () => {
+    const descriptor = connectorTool({
+      destructiveHint: connectorDestructiveHint({ destructiveHint: true }),
+    })
+    const decision = decide(descriptor)
+
+    expect(decision.rule).toBe(5)
+    expect(decision.rememberOptions).toEqual(['once'])
   })
 })
 

@@ -635,9 +635,9 @@ describe('tool approval requests in the chat send', () => {
         approvalId: toolPart.approval.id,
         toolCallId: 'call-1',
         toolName: 'mcp__linear__create_issue',
-        reason: 'always-ask',
+        reason: 'default',
         summary: 'Linear wants to run mcp__linear__create_issue',
-        rememberOptions: ['once'],
+        rememberOptions: ['once', 'chat', 'always'],
       },
     })
     expect(parts.some((part: any) => {
@@ -658,8 +658,8 @@ describe('tool approval requests in the chat send', () => {
       toolName: 'mcp__linear__create_issue',
       connectorId: 'conn-linear',
       input: { title: 'x' },
-      reason: 'always-ask',
-      rememberOptions: ['once'],
+      reason: 'default',
+      rememberOptions: ['once', 'chat', 'always'],
       summary: 'Linear wants to run mcp__linear__create_issue',
       auditCallId: 1,
       snapshot: {
