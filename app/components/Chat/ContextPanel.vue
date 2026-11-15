@@ -471,8 +471,8 @@ const manageConnectorsLink = computed<string>(() => {
   const [connectorId] = connectorIds
 
   return connectorIds.size === 1 && connectorId
-    ? `/profile/connectors?connector=${encodeURIComponent(connectorId)}`
-    : '/profile/connectors'
+    ? `/chats/connectors?connector=${encodeURIComponent(connectorId)}`
+    : '/chats/connectors'
 })
 
 const visibleGroups = computed<ContextGroup[]>(() => {

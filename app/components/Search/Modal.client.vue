@@ -419,7 +419,7 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
             id: 'search-option-connectors',
             iconName: 'lucide:cable',
             label: 'Connectors',
-            run: () => goTo('/profile/connectors'),
+            run: () => goTo('/chats/connectors'),
           }]
           : []),
       ],

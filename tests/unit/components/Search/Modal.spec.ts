@@ -429,7 +429,7 @@ describe('Search/Modal.client', () => {
 
     await wrapper.find('#search-option-connectors').trigger('click')
 
-    expect(mocks.navigateToMock).toHaveBeenCalledWith('/profile/connectors')
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/connectors')
   })
 
   it('omits the Connectors row without the connectors feature', async () => {

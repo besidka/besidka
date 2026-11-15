@@ -159,7 +159,7 @@ export const CONNECTOR_SCOPE_MAX_LENGTH = 1024
 export const CONNECTOR_ISSUER_HOST_MAX_LENGTH = 253
 export const CONNECTOR_CLIENT_METADATA_PATH = '/connectors/client-metadata.json'
 export const CONNECTOR_OAUTH_CALLBACK_PATH = '/api/v1/connectors/oauth/callback'
-export const CONNECTOR_PAGE_PATH = '/profile/connectors'
+export const CONNECTOR_PAGE_PATH = '/chats/connectors'
 export const CONNECTOR_CLIENT_METADATA_MAX_AGE_SECONDS = HOUR_SECONDS
 export const CONNECTOR_CONSENT_VERSION = '2026-11-a'
 

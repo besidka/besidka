@@ -6,6 +6,7 @@ import HistoryPageShell from '../../../../app/components/History/PageShell.vue'
 const artifactsActive = ref<boolean>(false)
 const documentsActive = ref<boolean>(false)
 const skillsActive = ref<boolean>(false)
+const connectorsActive = ref<boolean>(false)
 
 mockNuxtImport('useFeature', () => {
   return (key: string) => computed(() => {
@@ -13,7 +14,9 @@ mockNuxtImport('useFeature', () => {
       ? documentsActive.value
       : key === 'skills'
         ? skillsActive.value
-        : artifactsActive.value
+        : key === 'connectors'
+          ? connectorsActive.value
+          : artifactsActive.value
 
     return { enabled: active, active, variant: null }
   })
@@ -26,6 +29,7 @@ type ShellTab
     | 'artifacts'
     | 'documents'
     | 'skills'
+    | 'connectors'
 
 function mountShell(activeTab: ShellTab) {
   return mountSuspended(HistoryPageShell, {
@@ -59,6 +63,7 @@ describe('HistoryPageShell', () => {
     artifactsActive.value = false
     documentsActive.value = false
     skillsActive.value = false
+    connectorsActive.value = false
   })
 
   it('renders history navigation as page links styled like tabs', async () => {
@@ -204,5 +209,63 @@ describe('HistoryPageShell', () => {
     const wrapper = await mountShell('chats')
 
     expect(wrapper.find('[data-testid="tab-skills"]').exists()).toBe(false)
+  })
+
+  it('puts the Connectors tab after Skills and before Shared, seven tabs with every feature on',
+    async () => {
+      artifactsActive.value = true
+      documentsActive.value = true
+      skillsActive.value = true
+      connectorsActive.value = true
+
+      const wrapper = await mountShell('connectors')
+      const links = wrapper.get('nav[aria-label="History sections"]')
+        .findAll('a')
+      const collapsed = wrapper.findAll('nav a span:not(.iconify)')
+        .filter(label => label.classes().includes('@max-[44rem]:sr-only'))
+
+      expect(links.map(link => link.attributes('href'))).toEqual([
+        '/chats/history',
+        '/chats/projects',
+        '/chats/artifacts',
+        '/chats/documents',
+        '/chats/skills',
+        '/chats/connectors',
+        '/chats/shared',
+      ])
+      expect(wrapper.get('[data-testid="tab-connectors"]')
+        .attributes('aria-current')).toBe('page')
+      expect(wrapper.get('[data-testid="tab-connectors"]')
+        .attributes('aria-label')).toBe('Connectors')
+      expect(collapsed.map(label => label.text())).toEqual([
+        'Chats',
+        'Projects',
+        'Artifacts',
+        'Documents',
+        'Skills',
+        'Shared',
+      ])
+    })
+
+  it('adds the Connectors tab with only the connectors feature on', async () => {
+    connectorsActive.value = true
+
+    const wrapper = await mountShell('connectors')
+    const links = wrapper.get('nav[aria-label="History sections"]')
+      .findAll('a')
+
+    expect(links.map(link => link.attributes('href'))).toEqual([
+      '/chats/history',
+      '/chats/projects',
+      '/chats/connectors',
+      '/chats/shared',
+    ])
+  })
+
+  it('has no Connectors tab without the connectors feature', async () => {
+    const wrapper = await mountShell('chats')
+
+    expect(wrapper.find('[data-testid="tab-connectors"]').exists())
+      .toBe(false)
   })
 })

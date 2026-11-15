@@ -264,7 +264,7 @@ describe('connector OAuth flow', () => {
       expect(url.searchParams.get('scope')).toBe('read write')
       expect(url.searchParams.get('state')).toMatch(/^[\w-]{43}$/)
       expect(server.requestsTo(REGISTER_URL)).toHaveLength(0)
-      expect(location).toBe(`/profile/connectors?connected=${connector.id}`)
+      expect(location).toBe(`/chats/connectors?connected=${connector.id}`)
 
       const [tokenRequest] = server.requestsTo(TOKEN_URL)
       const form = new URLSearchParams(tokenRequest!.body)
@@ -352,7 +352,7 @@ describe('connector OAuth flow', () => {
       kv.get.mockClear()
 
       expect(await callback({ code: 'x', state: 'short' }))
-        .toBe('/profile/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+        .toBe('/chats/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
       expect(kv.get).not.toHaveBeenCalled()
     })
 
@@ -380,7 +380,7 @@ describe('connector OAuth flow', () => {
         code: approval.code,
         state: approval.state,
         iss: approval.iss,
-      })).toBe(`/profile/connectors?connected=${connector.id}`)
+      })).toBe(`/chats/connectors?connected=${connector.id}`)
     })
 
     it('redirects instead of answering 429 after 20 failures', async () => {
@@ -398,7 +398,7 @@ describe('connector OAuth flow', () => {
         code: approval.code,
         state: approval.state,
         iss: approval.iss,
-      })).toBe('/profile/connectors?error=CONNECTOR_OAUTH_RATE_LIMITED')
+      })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_RATE_LIMITED')
     })
 
     it('does not count successful sign-ins', async () => {
@@ -576,7 +576,7 @@ describe('connector OAuth flow', () => {
       })
 
       expect(location)
-        .toBe('/profile/connectors?error=CONNECTOR_OAUTH_ISSUER_MISMATCH')
+        .toBe('/chats/connectors?error=CONNECTOR_OAUTH_ISSUER_MISMATCH')
       expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
 
       const replay = await callback({
@@ -585,7 +585,7 @@ describe('connector OAuth flow', () => {
         iss: approval.iss,
       })
 
-      expect(replay).toBe('/profile/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+      expect(replay).toBe('/chats/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
       expect(await credentialRows()).toHaveLength(0)
     })
 
@@ -597,7 +597,7 @@ describe('connector OAuth flow', () => {
       const approval = server.authorize(await start(connector.id))
 
       expect(await callback({ code: approval.code, state: approval.state }))
-        .toBe('/profile/connectors?error=CONNECTOR_OAUTH_ISSUER_MISMATCH')
+        .toBe('/chats/connectors?error=CONNECTOR_OAUTH_ISSUER_MISMATCH')
     })
 
     it('refuses a replayed state', async () => {
@@ -608,7 +608,7 @@ describe('connector OAuth flow', () => {
         iss: approval.iss,
       })
 
-      expect(replay).toBe('/profile/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+      expect(replay).toBe('/chats/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
       expect(server.requestsTo(TOKEN_URL)).toHaveLength(1)
     })
 
@@ -626,7 +626,7 @@ describe('connector OAuth flow', () => {
         code: approval.code,
         state: approval.state,
         iss: approval.iss,
-      })).toBe('/profile/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+      })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
       expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
     })
 
@@ -643,7 +643,7 @@ describe('connector OAuth flow', () => {
         code: approval.code,
         state: approval.state,
         iss: approval.iss,
-      })).toBe('/profile/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
+      })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_STATE_INVALID')
       expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
     })
 
@@ -660,7 +660,7 @@ describe('connector OAuth flow', () => {
         code: approval.code,
         state: approval.state,
         iss: approval.iss,
-      })).toBe('/profile/connectors?error=CONNECTOR_OAUTH_REDIRECT_MISMATCH')
+      })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_REDIRECT_MISMATCH')
       expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
     })
 
@@ -675,7 +675,7 @@ describe('connector OAuth flow', () => {
         state: approval.state,
         error: 'access_denied',
         error_description: '<script>alert(1)</script>',
-      })).toBe('/profile/connectors?error=CONNECTOR_OAUTH_DENIED')
+      })).toBe('/chats/connectors?error=CONNECTOR_OAUTH_DENIED')
     })
   })
 
@@ -748,7 +748,7 @@ describe('connector OAuth flow', () => {
           code: approval.code,
           state: approval.state,
           iss: approval.iss,
-        })).toBe('/profile/connectors?error=CONNECTOR_CONSENT_REQUIRED')
+        })).toBe('/chats/connectors?error=CONNECTOR_CONSENT_REQUIRED')
         expect(server.requestsTo(TOKEN_URL)).toHaveLength(0)
       })
 

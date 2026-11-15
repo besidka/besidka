@@ -46,7 +46,7 @@
         >
           <NuxtLink
             v-if="isRegistryAvailable"
-            to="/profile/connectors?add=directory"
+            to="/chats/connectors?add=directory"
             class="btn btn-sm min-h-11 sm:min-h-8"
             data-testid="connector-picker-browse"
             @click="close"
@@ -59,7 +59,7 @@
             Browse connectors
           </NuxtLink>
           <NuxtLink
-            to="/profile/connectors"
+            to="/chats/connectors"
             class="btn btn-sm min-h-11 sm:min-h-8"
             data-testid="connector-picker-manage"
             @click="close"
@@ -187,7 +187,7 @@
               Add a connector, then turn it on here.
             </p>
             <NuxtLink
-              to="/profile/connectors?add=presets"
+              to="/chats/connectors?add=presets"
               class="btn btn-primary btn-sm mt-4 min-h-11 sm:min-h-8"
               data-testid="connector-picker-add"
               @click="close"

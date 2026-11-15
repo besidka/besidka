@@ -43,7 +43,7 @@ offers them to the model, and runs the calls the user approves.
 
 | Term | Meaning |
 | --- | --- |
-| Connector | Outbound: Besidka calls a remote MCP server for the user. Profile tab **Connectors** (`/profile/connectors`, icon `lucide:cable`). |
+| Connector | Outbound: Besidka calls a remote MCP server for the user. Tab **Connectors** next to Skills, Artifacts and Documents (`/chats/connectors`, icon `lucide:cable`). |
 | Connected app | Inbound: an app (Claude, ChatGPT, Cursor) calls Besidka's own `/mcp` server. Profile tab **Connected apps** (`/profile/connected-apps`, icon `lucide:plug`). Unrelated to connectors except that both are OAuth. Each page has one line that links the other. |
 | Preset | A curated catalog entry in `config/connectors-catalog.ts` (GitHub, Notion, Linear, Atlassian). A convenience, not a partnership: text name, URL, auth kinds, notice. |
 | Registry entry | A row mirrored from the official MCP Registry (`https://registry.modelcontextprotocol.io`) into D1, searchable only by signed-in users. "Not reviewed by Besidka". |
@@ -137,7 +137,7 @@ resolves a disagreement between tickets and is listed in section 13.
     2026-11-08).** Anthropic `mcp_servers` is not built in v1. OpenAI
     `type: "mcp"` ships only behind `connectors.native`, per-connector opt-in,
     and only after the C-11 spike proves audit parity (section 12).
-14. **No new nav pill slots.** Profile tab, Search popup row, "+" menu section,
+14. **No new nav pill slots.** History tab, Search popup row, "+" menu section,
     context panel "Used" section.
 15. **No logos or third-party images (pre-check).** Presets, cards and registry
     rows show text and a generated initial avatar. No favicons, no registry
@@ -439,7 +439,7 @@ The card's **Connect** button runs this flow. All requests go through
    `iss` must equal the stored issuer; exchange the code with the verifier and
    `resource`; compare granted and requested `scope` and store the granted one
    (a narrower grant sets a `degraded` note shown on the card); save
-   credentials; redirect to `/profile/connectors?connected=<id>` or
+   credentials; redirect to `/chats/connectors?connected=<id>` or
    `?error=<code>`.
 5. **First authenticated request.** The server gate checks consent, then lists
    tools (`tools/list`), stores a definition hash per tool, and opens the tool
@@ -569,7 +569,7 @@ Choices that differ from or add to sections 5.1 to 5.4 and 14:
   malformed `state` is refused before any KV read; failed callbacks count
   against a separate budget of 20 per 10 minutes per client IP (stored as a
   SHA-256, failures only, failing open when KV errors). Over the budget, or on
-  any error, it redirects to `/profile/connectors?error=<code>`.
+  any error, it redirects to `/chats/connectors?error=<code>`.
 - **Consent gate (server side only).** `CONNECTOR_CONSENT_VERSION` is
   `2026-11-a` in `shared/utils/connectors-policy.ts`. The consent route
   stores the origin, the issuer host the dialog showed, the version and the
@@ -894,9 +894,9 @@ Choices that differ from or add to section 6, 10 and 14:
   The picker (still a dialog, never inline items) shows the Besidka row when
   that feature is active, a toggle per enabled, ready or drifted connector,
   and an empty state "No connectors yet" with a primary "Add a connector"
-  link (`/profile/connectors?add=presets`). At the top it has "Browse
-  connectors" (`/profile/connectors?add=directory`, only with the
-  `connectors.registry` flag) and "Manage connectors" (`/profile/connectors`).
+  link (`/chats/connectors?add=presets`). At the top it has "Browse
+  connectors" (`/chats/connectors?add=directory`, only with the
+  `connectors.registry` flag) and "Manage connectors" (`/chats/connectors`).
   The page reads `add` (`presets`, `url` or `directory`), opens the add dialog
   on that tab (`directory` falls back to `presets` without the registry flag)
   and removes the parameter from the URL. The row badge is the number of
@@ -1075,7 +1075,7 @@ only, `docs/axiom-map-fields.md`).
 The P0-13 registry gains a `connectors` section in the **Used** group,
 collected from persisted `dynamic-tool` parts whose name starts with `mcp__`:
 connector display name, tool name, call count, last outcome and approval mode.
-It links "Manage connectors" (`/profile/connectors`; C-7 adds the `?connector=<id>` deep link). On
+It links "Manage connectors" (`/chats/connectors`; C-7 adds the `?connector=<id>` deep link). On
 shared chats the section is empty because tool parts are already stripped.
 
 ### 7.6 As built: the request side (C-6 L4, 2026-11-15)
@@ -2039,7 +2039,7 @@ No new nav pill slots (roadmap decision).
 
 | Place | What | Ticket |
 | --- | --- | --- |
-| Profile tab | `{ to: '/profile/connectors', label: 'Connectors', icon: 'lucide:cable' }` in `app/layouts/profile.vue`, after Connected apps (and after Labs from P0-7), shown only when `useFeature('connectors')` | C-7 |
+| History tab | `{ id: 'connectors', to: '/chats/connectors', label: 'Connectors', icon: 'lucide:cable' }` in `app/components/History/PageShell.vue`, after Skills and before Shared, shown only when `useFeature('connectors')`. The page is `app/pages/chats/connectors/index.vue` on the shared shell; `/profile/connectors` redirects to it with a 301 and keeps the query string (BES-249) | C-7 |
 | Search popup | Row `search-option-connectors` in the Chat group right after Skills (moved from the last Settings row, BES-249), icon `lucide:cable`, flag-gated, id added to `tests/unit/components/Search/Modal.spec.ts` | C-7 |
 | User dropdown | Nothing (`Sidebar/AuthCta.vue` stays Security and API Keys, plus the chat-page rows from P0-13) | C-7 |
 | "+" menu | One row "Connectors" in the Add section of `app/components/ChatInput/ToolsMenu/Content.vue` that opens `ChatInput/ConnectorPicker.client.vue` (Besidka row, a toggle per enabled, ready or drifted connector, at most five on, "Browse connectors" with `connectors.registry`, "Manage connectors", an empty state with "Add a connector"); never an inline list (owner rule). Shown whenever the `connectors` flag is on and the model can call tools, with or without a connector (section 6.1). Tile "N connectors" from `buildChatInputTiles` (`docs/chats/chat-input-tools-menu.md`) | C-5 |
@@ -2047,7 +2047,7 @@ No new nav pill slots (roadmap decision).
 | Context panel | "Used → Connectors" (section 7.5) | C-5 |
 | Labs | `connectors.native` opt-in row | C-11 |
 
-The Connectors page (`app/pages/profile/connectors.vue`, components in
+The Connectors page (`app/pages/chats/connectors.vue`, components in
 `app/components/Profile/Connectors/`) has: a header with one explainer line
 ("Let models use tools from services you choose. Each server sees only what
 the model sends it.") and a link to Connected apps; "Add connector"; the
@@ -2065,16 +2065,15 @@ with old and new description and schema, removed; "Accept changes" stores new
 baselines, "Keep disabled"). Registry results carry "From the Official MCP
 Registry. Not reviewed by Besidka." and render as plain text (no `v-html`).
 
-Tab-row width: Connectors and Skills make 8 profile tabs with Labs. CLAUDE.md
-only guarantees that a sixth tab fits at 768 to 1024 px. C-7 checks the row at
-768, 1024 and 1440 px; if it does not fit, the fallback is one "Integrations"
-tab with Connectors and Skills as sub-tabs (open question 3).
+Tab-row width: Connectors lives with the history tabs (Chats, Projects,
+Artifacts, Documents, Skills, Connectors, Shared), not with the profile tabs,
+so the profile row keeps its seven tabs (BES-249).
 
 ### 10.1 As built (C-7, 2026-11-15)
 
 Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
 
-- **Layout.** `app/pages/profile/connectors.vue` follows the owner rule for
+- **Layout.** `app/pages/chats/connectors.vue` follows the owner rule for
   list pages: a title and one explainer line with a link to Connected apps,
   then the whole list in one `UiBubble` (count "N of 20 connectors", Add
   connector, rows). There are no connector cards and no drift dialog: a row
@@ -2179,13 +2178,12 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   used one connector (its connector items now carry `meta.connectorId`), and
   to the page itself when it used several. Each parameter is removed from
   the address after use.
-- **Profile tab row.** With Connectors the row has eight tabs, and every
-  label does not fit the 704 px row at any width (the layout caps it at
-  `max-w-4xl`), so from the eighth tab on inactive tabs show only their
-  icon at every width, with the label for screen readers and as a tooltip.
-  Seven tabs keep the old rule (labels from `lg`). Measured on 2026-11-15:
-  one row of 46 px at 375, 768, 1024 and 1440 px. Open question 3 (one
-  "Integrations" tab) stays the owner's call.
+- **History tab row.** Connectors is the sixth of seven history tabs. With
+  all of them on, inactive labels collapse to their icon below a 44rem row
+  (`@max-[44rem]:sr-only` in `History/PageShell.vue`). The profile row is back
+  to seven tabs, labels from `lg`. The first C-7 version put Connectors in the
+  profile row as an eighth tab, which could not show its labels at any width;
+  the owner moved it next to Skills (BES-249).
 - **Connectors added over MCP.** A title chosen by an app is not trusted
   (C-9 audit: "Google Drive" can point at any host). Wherever a connector is
   shown before it is connected or turned on, the host stands next to the
@@ -2199,7 +2197,7 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   `v-html`, no Markdown, no links), as the coordinator asked for C-8 data.
 - **Specs.** `tests/integration/api/connectors-page.spec.ts` (list fields,
   tools list, review, settings, directory create),
-  `tests/unit/pages/profile/connectors.spec.ts`,
+  `tests/unit/pages/chats/connectors.spec.ts`,
   `tests/unit/components/Profile/Connectors/*`,
   `tests/unit/composables/connectors.spec.ts`,
   `tests/unit/utils/connectors-messages.spec.ts`,
@@ -2615,7 +2613,7 @@ term forbids third-party MCP clients or the preset text.
 | --- | --- | --- | --- |
 | 1 | Accept the consent residual (country unknown, ongoing transfers under Art. 49(1)(a)) | Owner | Accept and disclose (pre-check owner item 1) |
 | 2 | Audit retention 90 days, kept after connector delete | Owner | 90 days, kept |
-| 3 | Eight profile tabs at 768 to 1024 px, or one "Integrations" tab | Owner, after C-7 measures | Separate tabs, icon-only when inactive (C-7 measured: labels do not fit at any width, icons do; section 10.1) |
+| 3 | Eight profile tabs at 768 to 1024 px, or one "Integrations" tab | Owner, after C-7 measures | Closed by BES-249: Connectors moved to the history tabs, next to Skills (section 10.1) |
 | 4 | Keep Atlassian as a text-only preset with the notice | Owner | Keep |
 | 5 | When to publish the connectors legal notice (not before 2026-12-18 while `2026-11-legal-notices` is shown) | Owner, C-10 | After 2026-12-18 |
 | 6 | Whether OpenAI native requests should send `store: false` | C-11 spike, then owner | Path stays off |

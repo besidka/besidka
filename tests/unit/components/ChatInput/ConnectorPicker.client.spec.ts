@@ -186,7 +186,7 @@ describe('ChatInput/ConnectorPicker', () => {
     const wrapper = await mountPicker()
 
     expect(get('connector-picker-manage').outerHTML)
-      .toContain('/profile/connectors')
+      .toContain('/chats/connectors')
 
     get('connector-picker-manage').click()
     await flushPromises()
@@ -244,7 +244,7 @@ describe('ChatInput/ConnectorPicker', () => {
     const add = get('connector-picker-add')
 
     expect(add.className).toContain('btn-primary')
-    expect(add.outerHTML).toContain('/profile/connectors')
+    expect(add.outerHTML).toContain('/chats/connectors')
     expect(add.outerHTML).toContain('add=presets')
 
     add.click()
@@ -265,7 +265,7 @@ describe('ChatInput/ConnectorPicker', () => {
 
     const manage = get('connector-picker-manage')
 
-    expect(manage.outerHTML).toContain('/profile/connectors')
+    expect(manage.outerHTML).toContain('/chats/connectors')
     expect(manage.textContent).toContain('Manage connectors')
     expect(get('connector-picker-actions').contains(manage)).toBe(true)
   })

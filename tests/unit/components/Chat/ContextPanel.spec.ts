@@ -1381,7 +1381,7 @@ describe('Chat/ContextPanel', () => {
         const link = wrapper.get(testId('chat-context-manage-connectors'))
 
         expect(link.attributes('to'))
-          .toBe('/profile/connectors?connector=conn1')
+          .toBe('/chats/connectors?connector=conn1')
       })
 
     it('links the page itself when the chat used several connectors',
@@ -1398,7 +1398,7 @@ describe('Chat/ContextPanel', () => {
         const wrapper = await mountPanel()
 
         expect(wrapper.get(testId('chat-context-manage-connectors'))
-          .attributes('to')).toBe('/profile/connectors')
+          .attributes('to')).toBe('/chats/connectors')
       })
   })
 })

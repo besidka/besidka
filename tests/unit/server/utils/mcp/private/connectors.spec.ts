@@ -372,7 +372,7 @@ describe('private MCP connector tools', () => {
           host: 'mcp.example.com',
           status: 'needs-auth',
           enabled: false,
-          manageUrl: 'https://besidka.com/profile/connectors',
+          manageUrl: 'https://besidka.com/chats/connectors',
         })
         expect(JSON.stringify(result)).not.toContain('top-secret-key')
         expect(fetchSpy).not.toHaveBeenCalled()
