@@ -561,6 +561,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Reasoning.spec.ts',
     'tests/integration/api/chats-test-endpoint.spec.ts',
     'tests/unit/composables/composer-connectors.spec.ts',
+    'tests/integration/api/chats-tool-approval-continuation.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/utils/reasoning-step-icons.spec.ts',
   ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/list-my-features.spec.ts',
@@ -2552,7 +2555,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep)?\.vue|app\/utils\/(tool-approval-step|reasoning)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
+        /^(shared\/utils\/(besidka-tool-permissions|tool-approval-policy)\.ts|server\/utils\/besidka-tools\/.*\.ts|server\/utils\/tool-approval\/(send|continuation|policy)\.ts|server\/utils\/ai\/tool-loop\.ts|server\/utils\/connectors\/send-tools\.ts|server\/api\/v1\/chats\/\[slug\]\/(index\.post|besidka-tools\/.*)\.ts|app\/composables\/(composer-besidka-tools|chat)\.ts|app\/components\/ChatInput(\.client|\/ConnectorPicker\.client)\.vue|app\/components\/Chat\/Reasoning(\/ApprovalStep)?\.vue|app\/utils\/(tool-approval-step|reasoning|reasoning-step-icons)\.ts|app\/pages\/chats\/new\.vue|app\/composables\/composer-connectors\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|shared\/utils\/chat-test-errors\.ts)$/,
       tests: besidkaToolsChatTests,
     },
     {

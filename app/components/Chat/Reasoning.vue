@@ -619,7 +619,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
         toolName: approvalEntry.model.connectorSlug
           ? `${CONNECTOR_TOOL_NAME_PREFIX}${approvalEntry.model.connectorSlug}`
           + `__${approvalEntry.model.tool}`
-          : approvalEntry.model.tool,
+          : approvalEntry.model.toolName,
         title: getApprovalStepTitle(
           approvalEntry.model,
           approvalEntry.model.connectorSlug
