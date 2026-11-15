@@ -1592,7 +1592,7 @@ not asserted by a test.
    (a partial answer runs one call and then fails the send). L4
    audits and taints auto-run calls in the first request, and the UI must show
    them as done while the other call waits.
-4. **Worker kill.** Cancelling the stream right after `tool-output-available`
+4. **Worker kill.** Canceling the stream right after `tool-output-available`
    leaves one execution, no `onEnd` and no `onAbort`. Resending the identical
    continuation executes the tool a second time. Consequence: the D1 claim (one
    `INSERT ... ON CONFLICT DO NOTHING` per approval id before the SDK sees the

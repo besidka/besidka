@@ -936,7 +936,9 @@ describe('tool approval spike (ai 7.0.173)', () => {
     }
     const pendingPart = findPendingPart(untampered.assistant)
     const requestPart = (untampered.messages[1]!.content as any[]).find(
-      part => part.type === 'tool-approval-request',
+      (part) => {
+        return part.type === 'tool-approval-request'
+      },
     )
 
     expect(typeof pendingPart.approval.signature).toBe('string')
