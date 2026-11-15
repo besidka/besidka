@@ -117,7 +117,8 @@ resolves a disagreement between tickets and is listed in section 13.
    approval on its own. Only the user's choice in the app ("Always allow")
    does, and that choice is bound to the tool definition hash.
 9. **Approval ends the send.** When a call needs approval, the stream ends with
-   a pending approval card. The user's answer starts a continuation send. No
+   a pending approval in the reasoning step. The user's answer starts a
+   continuation send. No
    stream is held open waiting for a human (section 7).
 10. **New MCP scopes `connectors:read` and `connectors:write`.** Reusing
     `settings:*` was rejected: consent is stored by scope name, so new tools
@@ -160,7 +161,7 @@ Worker's network position), and the integrity of what the model reads.
 | T7 | Tool rug pull: a tool's description or schema changes after approval to steer the model | Malicious or compromised server | Per-tool definition hash (section 8) computed on every `tools/list`; changed or added tools hidden until reviewed in the drift dialog; "Always allow" is bound to the hash and falls away on change; annotations are part of the hash because `fingerprintTools` omits them | C-2, C-5, C-6, C-7 |
 | T8 | Prompt injection through tool results | Content in a third-party system (an issue body, a Notion page) | Results wrapped as `<untrusted_tool_result connector="<slug>" tool="<name>">` with a system rule that the content is data; `UntrustedContentGuard` (`server/utils/ai/tool-loop.ts`) set after any connector result; write calls after untrusted content always ask (section 7); memory write lock extended; results never reach memory extraction or chat search. TypeSafe AI screening is **not** applied to connector results in v1 (pre-check Q13: private third-party data needs its own consent) | C-5, C-6 |
 | T9 | Cross-connector exfiltration: a result from connector A makes the model send A's data to connector B | Injected content | Any call to a connector other than the ones whose results the send has already read asks, read-only or not, "always" or not (section 7, rule F2) | C-6 |
-| T10 | Exfiltration through write tools of the same connector | Injected content | Write tools ask after untrusted content even when set to "Always allow" (rule F1); the approval card shows the real arguments | C-6 |
+| T10 | Exfiltration through write tools of the same connector | Injected content | Write tools ask after untrusted content even when set to "Always allow" (rule F1); the approval step shows the real arguments | C-6 |
 | T11 | Credential theft through a stolen Besidka session | Session thief | Connecting, enabling, "Always allow" and the consent are app-only actions behind the session; MCP can only reduce; audit rows survive connector deletion for 90 days, so a thief cannot erase the trail; the breach runbook gains a connector-credential containment row (C-10) | C-4, C-9, C-10 |
 | T12 | CIMD tampering: a changed `redirect_uris` in Besidka's Client ID Metadata Document captures authorization codes | Attacker with deploy access, or a host-header trick | Document built from configuration only (section 5.3), never from the request except an allowlisted preview host; one exact `redirect_uri`; no secrets in it; `client_id` never changed as a fix (remote caches hold it for hours); breach runbook row | C-4, C-10 |
 | T13 | Token bloat and denial of service: huge tool lists, descriptions or results exhaust the context window, CPU or memory | Malicious server | Limits in section 9: 5 connectors and 40 tools per send, 32 KiB of descriptions plus input schemas, 1 KiB per description, 8 KiB per input schema, 8 s to connect and list, 2 SSE connectors, 64 KiB per result, 1 MiB raw response cap, 60 s per call, 12 calls per turn | C-5 |
@@ -671,7 +672,7 @@ message".
 5. **Filter.** Compute each tool's definition hash. Drop tools that are
    disabled by the user, unreviewed (no baseline row) or drifted (hash
    differs); a drifted or new tool sets `status='drifted'` with a count, and
-   the card asks for review. Truncate each description to 1,024 bytes, skip a
+   the connector card asks for review. Truncate each description to 1,024 bytes, skip a
    tool whose input schema exceeds 8 KiB, and stop adding at 40 tools or
    32 KiB of descriptions plus input schemas across all connectors,
    preferring tools the server marks read-only and tools the user set to
@@ -769,12 +770,15 @@ Choices that differ from or add to section 6, 10 and 14:
   all; the connection opens on the first tool call.
 - **Read-only runs, everything else is refused (until C-6).** This layer
   applies the ticket rule, not decision 8 of section 2: a tool the server
-  marks `readOnlyHint` and does not also mark `destructiveHint` runs without a
-  card (`isDefinitionAutoRunnable`; the stored `server_read_only` still
-  records the `readOnlyHint` alone), and any other tool answers "This
+  marks `readOnlyHint` and does not also mark `destructiveHint` runs without
+  an approval (`isDefinitionAutoRunnable`; the stored `server_read_only`
+  still records the `readOnlyHint` alone), and any other tool answers "This
   tool needs your approval; approvals arrive in the next update." with
-  `outcome='denied'`, `approval='denied'` and no remote call. C-6 replaces
-  this with the section 7.1 order, where `readOnlyHint` never skips a card.
+  `outcome='denied'`, `approval='denied'` and no remote call. **Replaced in
+  C-6 L4** (section 7.6): a tool that is not auto-runnable now pauses the
+  send with a real approval request. The refusal sentences stay in
+  `shared/utils/connectors-parts.ts` only so stored C-5 messages still read
+  as denials.
 - **F2 stopgap: the first connector called owns the send.** Until C-6 has
   approvals, a call to a connector other than the first one this send called
   is refused with "This tool belongs to a different connector than the one
@@ -783,7 +787,8 @@ Choices that differ from or add to section 6, 10 and 14:
   call, shown as denied in the step). The mark is set when a call starts, with
   no `await` before it, so two parallel calls to different connectors let
   only the first one run. This is stricter than section 7.1, which asks only
-  after a result was read; C-6 replaces it with the real F2 card.
+  after a result was read. **Replaced in C-6 L4** by the policy's rule 3
+  (`cross-source`), section 7.6.
 - **Limit refusals have their own outcome.** The per-send call cap and the
   per-minute rate limit also answer with a plain sentence (audited as
   `denied`). The message part classifier (`getConnectorToolCall`) reads them
@@ -857,10 +862,10 @@ Choices that differ from or add to section 6, 10 and 14:
   file still asserts the base consent.
 - **Known gaps, left for C-6 (2026-11-15 audit).**
   - H2: a connector result can still steer the model into the artifact and
-    document write tools, which run without a card and are outside the F1 and
-    F2 stopgaps above. Closing it needs the C-6 approval path (F1 covers
-    every non-read-only tool after untrusted content), so it is recorded here
-    and not patched in C-5.
+    document write tools, which run without an approval and are outside the
+    F1 and F2 stopgaps above. Closing it needs the C-6 approval path (F1
+    covers every non-read-only tool after untrusted content), so it is
+    recorded here and not patched in C-5. **Closed in C-6 L4** (section 7.6).
   - `ai` must be bumped to 7.0.173 or newer before C-6 builds on
     `toolApproval`: that release fixes the approval replay security issue, and
     the repo locks 7.0.153 today (`^7.0.153` in `package.json`).
@@ -942,7 +947,7 @@ When the model calls a tool that needs approval:
    run in this request (section 14.1).
 2. The assistant message is persisted with the tool part in state
    `approval-requested`.
-3. The exact arguments go to KV `connectors:approval:<approvalId>` for 24 h.
+3. The exact arguments go to KV `tool-approval:<approvalId>` for 24 h.
    They are never taken from the client later.
 4. An audit row is written with `outcome='pending'`.
 5. Approval ids are HMAC-signed with `experimental_toolApprovalSecret`. The
@@ -978,7 +983,8 @@ same step that need no approval do run in the first request.
 
 ### 7.3 Approval UI
 
-`app/components/Chat/ToolApproval.vue`, inline in the assistant bubble:
+The approval lives in the reasoning step of the call (`ChatReasoning`), not
+in a separate card (C-6 plan, L6 builds it):
 
 - Header: "<Connector> wants to run <tool>", a `badge badge-soft badge-warning`
   "Changes data" unless the server marks the tool read-only, and the reason
@@ -989,7 +995,8 @@ same step that need no approval do run in the first request.
 - Buttons: `btn btn-primary` **Allow once**; **Allow in this chat**; a
   dropdown item **Always allow this tool** with the confirmation "Besidka will
   run this tool without asking in every chat, until the server changes it"
-  (hidden when F1 or F2 caused the request, since "always" would not apply);
+  (hidden when F1 or F2 caused the request, since "always" would not apply;
+  the always-ask tier offers only Allow once and Deny);
   `btn btn-ghost` **Deny**.
 - "View details" opens the P0-11 `UiSidePanel`: full arguments, the tool
   description, the connector host, earlier decisions.
@@ -997,12 +1004,12 @@ same step that need no approval do run in the first request.
   (muted, "Ask again" re-sends the last user message).
 - A pending approval shows a chip above the composer: "1 action waiting for
   approval". The composer stays enabled.
-- Keyboard and screen reader: focusable card, Enter on the focused card means
+- Keyboard and screen reader: focusable step, Enter on the focused step means
   Allow once, Esc collapses, arguments readable as text, 24 px minimum
   targets, status announced (WCAG 2.2 AA, pre-check gate item 7).
 - Below `md`: buttons full width, details in the bottom-sheet variant of
   `UiSidePanel` (`docs/chats/ios-keyboard.md`).
-- Shared pages never render approval cards (spec).
+- Shared pages never render approval steps (spec).
 
 Revocation: the connector card's tool list sets a tool back to "Ask every
 time" (`POST /api/v1/connectors/[id]/tools/settings`), and the chat context
@@ -1032,6 +1039,99 @@ collected from persisted `dynamic-tool` parts whose name starts with `mcp__`:
 connector display name, tool name, call count, last outcome and approval mode.
 It links "Manage connectors" (`/profile/connectors`; C-7 adds the `?connector=<id>` deep link). On
 shared chats the section is empty because tool parts are already stripped.
+
+### 7.6 As built: the request side (C-6 L4, 2026-11-15)
+
+The send route asks before it runs; the continuation that answers (L5) and
+the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
+
+- **One policy for every tool.** `server/utils/tool-approval/send.ts` builds
+  one entry per tool the model can call, keyed by the name the model sees
+  (and the SDK signs): `mcp__<slug>__<tool>` for connectors, the SDK name for
+  native tools. `streamText` gets one generic `toolApproval` function and
+  `experimental_toolApprovalSecret` (`useToolApprovalSecret()`), but only
+  when some tool could ask (anything other than a native read), so sends
+  with only lookups keep their call arguments exactly as before. Native
+  memory, artifact and document tools are writes; lookups are reads; a tool
+  the classifier does not know is a write. Provider-executed calls are never
+  gated.
+- **Taint is recorded at decision time.** The SDK decides every call of a
+  step, in stream order, before any of them runs (section 14.1), so a call
+  that may run records its taint and read source when it is decided: a
+  connector read next to an artifact write in the same step makes the write
+  ask. This over-asks on purpose: a call in the same step cannot have seen
+  the read's result, but the stricter rule matches the C-5 stopgap and keeps
+  the turn record complete for the continuation. A memory write next to
+  `search_chats` in one step therefore asks too. Before the first step the send records what it already holds, with
+  the memory write lock's triggers: requested web search (`web`), project
+  knowledge text and past-chat excerpts (`knowledge`), the artifact context
+  block (`file`), active skill text (`skill`), and a chat branched from a
+  public share (`shared-branch`, new). Plain attachments add no taint
+  (unchanged from the memory lock). The memory lock itself is unchanged and
+  stays the second line in `memory_write`.
+- **Read-only connector tools still run (deviation).** The L3 policy has no
+  rule that lets a connector read run without a grant, so a tool the server
+  marks `readOnlyHint` and not `destructiveHint` gets a grant from the send,
+  bound to its connector id, exposed name and definition hash. That keeps
+  the C-5 behavior until the C-7 tool review sets real grants; F2 (rule 3)
+  still asks for it after another source was read. A tool marked both
+  read-only and destructive counts as destructive.
+- **Connector writes always land in `always-ask`.** `connectorDestructiveHint`
+  is true for every tool that is not marked read-only, so a connector write
+  offers only Allow once until C-7; `default` and its Always allow option are
+  unreachable for connectors today.
+- **What the SDK may not hold.** A tool with no entry is denied
+  (`missing-tool`). A call that would need approval is denied (`over-cap`)
+  when its input is over the 64 KiB KV cap or when it is the eleventh in one
+  request, so a pause never holds a call Besidka cannot store. A call that
+  may run is never held to that cap (a 600 KB artifact still reaches its own
+  size check).
+- **The C-5 refusals are gone.** A connector call that needs approval is a
+  real `tool-approval-request`; F2 and taint are the policy reasons
+  `cross-source` and `untrusted-output`. `execute` still refuses any call the
+  policy did not clear by tool call id ("This tool call was not approved, so
+  it did not run."), as a second line behind the SDK.
+- **The pause.** The stream collector strips the signature from the
+  `tool-approval-request` chunk (the client and D1 never see it) and writes a
+  `data-tool-approval` part right after it: approval id, tool call id, tool
+  name, reason, a server-written summary ("Linear wants to run create_issue",
+  "Besidka wants to create an artifact") and the remember options the policy
+  allows. The answer guarantee runs no search-answer continuation for a
+  paused send, and persistence adds no empty-answer notice. Once the reply is
+  stored, the route writes per approval the pending record (`input`,
+  `signature`, `toolCallId`, family, access, connector id, hash, reason,
+  `rememberOptions`, summary, `auditCallId`, a snapshot of model, gateway,
+  reasoning, tool names and connector ids), then the turn record (pending ids
+  and the serialized state with `rounds` 1 and the step count) and the
+  per-chat index. A connector call also gets a `connector_tool_calls` row
+  with `outcome='pending'` and `approval='denied'` (the enum has no pending
+  value, and an approval nobody answers never ran), whose id goes into the
+  pending record for L5 to settle. A record that fails is logged and the
+  continuation will answer that the approval expired. `rememberOptions` and
+  `auditCallId` are new fields on the L3 pending schema.
+- **Persistence.** An assistant message whose only content is a waiting call
+  persists (`hasMeaningfulAssistantParts` on the server, and
+  `hasMeaningfulPersistedAssistantParts` on the client, count it), so it
+  shows neither the empty-answer notice nor Regenerate. Artifact and
+  document calls that wait keep only kind or format, title and approval id
+  (the exact input is in KV). Connector parts keep their redacted input.
+  The #263 replay rebuilds the waiting call (`tool-input-available`, then the
+  unsigned `tool-approval-request`) and the data part.
+- **Branches and shares** drop the waiting tool part and `data-tool-approval`,
+  and leave out a message that held nothing else. A waiting connector call
+  is not connector usage, so it adds no branch marker and no share warning.
+- **Expiry.** A new user message in a chat whose stored messages hold a
+  waiting call deletes every key the per-chat index lists, after the #263
+  replay and the generation-in-progress checks, so a disconnect retry never
+  expires its own approval. The history sanitizer already drops the
+  abandoned approval-only reply from later model context.
+- **Rendering until L6.** The waiting call shows as a reasoning step titled
+  "Waiting for approval: <connector> · <tool>" (connectors) or "Waiting for
+  approval: <tool>" (native). A waiting artifact call renders nothing yet.
+- **Merge order.** On its own this layer turns cases that used to run or be
+  refused (a memory write after web search, an artifact write in a send with
+  an active skill or after connector output, any connector write) into a
+  pause nobody can answer until L5 and L6 ship.
 
 ## 8. Data model
 
@@ -1219,7 +1319,9 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `connectors:oauth:<state>` | 600 s | OAuth state and PKCE verifier, deleted on read |
 | `connectors:refresh:<connectorId>` | 30 s | refresh lock |
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
-| `connectors:approval:<approvalId>` | 24 h | exact pending call arguments |
+| `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
+| `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
+| `tool-approval:chat:<chatPublicId>` | 24 h | per-chat index of the keys above, used by chat delete and by expiry |
 | `connectors:registry:updated-since` | none | sync cursor |
 | `connectors:registry:full-pass` | none | id of the last completed full pass |
 | `connectors:registry:erasures` | none | SHA-256 of registry names whose maintainers asked for removal |
@@ -1327,7 +1429,7 @@ No new nav pill slots (roadmap decision).
 | Search popup | Settings row `search-option-connectors`, same icon and label, flag-gated, id added to `tests/unit/components/Search/Modal.spec.ts` | C-7 |
 | User dropdown | Nothing (`Sidebar/AuthCta.vue` stays Security and API Keys, plus the chat-page rows from P0-13) | C-7 |
 | "+" menu | One row "Connectors" in the Add section of `app/components/ChatInput/ToolsMenu/Content.vue` that opens `ChatInput/ConnectorPicker.client.vue` (a toggle per enabled, ready or drifted connector, at most five on, a "Manage connectors" link); never an inline list (owner rule). Shown only when the `connectors` flag is on, the user has a selectable connector and the model can call tools. Tile "N connectors" from `buildChatInputTiles` (`docs/chats/chat-input-tools-menu.md`) | C-5 |
-| Chat bubble | Tool steps in `ChatReasoning`, approval cards (`Chat/ToolApproval.vue`), "Run by OpenAI" badge on native calls | C-5, C-6, C-11 |
+| Chat bubble | Tool steps in `ChatReasoning`, the approval inside the call's reasoning step, "Run by OpenAI" badge on native calls | C-5, C-6, C-11 |
 | Context panel | "Used → Connectors" (section 7.5) | C-5 |
 | Labs | `connectors.native` opt-in row | C-11 |
 
@@ -1426,7 +1528,7 @@ When the native path applies to a tool (all must hold):
 2. The connector has `status='ready'`, current consent and the native opt-in.
 3. The tool is marked read-only by the server **and** set by the user to
    "Always allow" with a matching hash. These are exactly the calls that
-   section 7 would run without a card when no forced rule applies.
+   section 7 would run without an approval when no forced rule applies.
 4. No forced rule can arise in the send: no other connector, no skill and no
    Besidka-side tool that sets the untrusted guard (web search, knowledge) is
    active in the send. Otherwise every tool stays on the Worker path.
@@ -1469,7 +1571,7 @@ P0-3, P0-4 and P0-7.
 | C-3 BES-237 | Two-tier redirect rule by purpose (section 4.2): `mcp` same-origin only, others validated hops; per-purpose UA, timeouts and caps (adds `skills-github`, `skills-url`); single-label hosts and ports other than 443/8443 rejected; header rules (section 4.3) |
 | C-4 BES-239 | No probe at add; header value cap 4,096 bytes and the extended rejected-header list (section 4.3); consent dialog content, accessibility and the Security → Privacy & consent listing (section 5.2); account deletion revokes best effort before the purge; new connect flow with `connect/discover`, then consent, then auth (section 5.2); CIMD path `/connectors/client-metadata.json` with the preview host rule (section 5.3), route `server/routes/connectors/client-metadata.json.get.ts`, spec path moves accordingly; `invalid_grant` terminal; CIMD through `clientInformation()` (section 14) |
 | C-5 BES-241 | Tools cache key `connectors:tools:<connectorId>:<credentialGeneration>`; per-connector call limit 30 per minute besides 60 per user; definition hash includes annotations; tool-name truncation with hash suffix instead of skipping; description 1 KiB and schema 8 KiB per-tool caps; 12 calls per turn; raw response cap 1 MiB; context panel from message parts, not the audit table; no TypeSafe screening of connector results in v1 |
-| C-6 BES-244 | "Always allow" confirmation text gains ", until the server changes it" and the option is hidden when F1 or F2 caused the card; decision order of section 7.1 (F1, F2 before any "always"); every tool defaults to ask, `readOnlyHint` never skips a card; "always" bound to the definition hash; approval secret from HKDF (no new env var); one approval-settings route (C-7's) plus the per-chat reset route; audit pending row updated in place |
+| C-6 BES-244 | "Always allow" confirmation text gains ", until the server changes it" and the option is hidden when F1 or F2 caused the card; decision order of section 7.1 (F1, F2 before any "always"); every tool defaults to ask, `readOnlyHint` never skips an approval; "always" bound to the definition hash; approval secret from HKDF (no new env var); one approval-settings route (C-7's) plus the per-chat reset route; audit pending row updated in place |
 | C-7 BES-249 | No logos or favicons: text tiles and generated initial avatars; consent dialog and withdraw; bulk "Allow read-only tools without asking" is an explicit action; registry label "From the Official MCP Registry. Not reviewed by Besidka."; Connect button flow of section 5.2 |
 | C-8 BES-252 | Store only the section 8.6 columns; daily full pass with mark-and-sweep; erasure list in KV; no `websiteUrl` in search results |
 | C-9 BES-256 | `get_connector` tool field `readOnly` is named `serverReadOnly`; `delete_connectors` under `connectors:write` (not `data:delete`), write limiter; `update_connector_tools` only reduces (no enabling tools); `add_connector` returns `needs-auth` only, no network call; labels as in section 11 |
