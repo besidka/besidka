@@ -501,8 +501,7 @@ describe('decideContinuation with Besidka tool permissions', () => {
         summary: 'Create a file',
         taint: 'besidka',
         readSource: null,
-        alwaysGrant: null,
-        alwaysGrantWhenTainted: false,
+
         connector: null,
       },
     ]])
