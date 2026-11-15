@@ -28,7 +28,8 @@ export interface CapabilityConformanceReaders {
 
 const FEATURE_GUARD_PATTERN
   = /requireFeature\(\s*[^,()]+,\s*['"`]([\w.-]+)['"`]/g
-const MCP_PRIVATE_WRAPPER_PATTERN = /withMcpPrivateTool\(/
+const MCP_PRIVATE_WRAPPER_PATTERN
+  = /withMcpPrivateTool\(|toMcpToolDefinition\(/
 const BLOCK_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g
 const LINE_COMMENT_PATTERN = /(^|[^:'"`])\/\/.*$/gm
 
@@ -146,7 +147,8 @@ function checkJobs(
  * Checks one capability against the contract: its flag is in the registry,
  * every route file under its prefixes calls `requireFeature` with the
  * capability's flag or a child of it, every MCP tool
- * has a scope and goes through `withMcpPrivateTool`, and every job names the
+ * has a scope and goes through `withMcpPrivateTool` (directly or as a shim
+ * over a Besidka tool through `toMcpToolDefinition`), and every job names the
  * capability's flag or a child of it. The source checks are a heuristic;
  * the readers are injected so the spec can run them over fixtures.
  */
