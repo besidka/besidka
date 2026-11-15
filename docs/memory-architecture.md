@@ -2640,6 +2640,170 @@ into flagging a legitimate document can only cause a review prompt for a file
 can never delete content. A false negative leaves the existing defenses: the
 write lock, the data-not-instructions wrapping and the memory gate.
 
+#### SS-7: skill screening eval (BES-384, 2026-11-15)
+
+The check of a skill under review (SS-8, `JEV_SKILL_SCREENING` in
+`shared/utils/jev-policy.ts`, six questions `i2_attack` and `k1_send_out` to
+`k5_off_purpose`, state keys `text` and `description`) needed thresholds that
+fit skills, and an answer to whether `i2_attack` separates benign skills from
+malicious ones. This is the result. It is a proposal for SS-8, not a change:
+nothing here edits a policy constant. The raw results stay in the session
+scratchpad, as for the J3 eval of 2026-10-26.
+
+**Method.** One call per chunk of at most 2,000 tokens, cut as
+`splitTextWithLineRanges` cuts (the Cyrillic-aware estimate), with the
+question wordings of SS-8 verbatim: no exemption clause an attacker could
+claim, and no skill text in a question. `description` is the skill's real
+frontmatter description on every call, and each description is also sent once
+as its own chunk, as SS-8 does. The calls used the owner's TypeSafe AI key
+(`jev-1.14.0`), with no retries, 3 at a time. The never-store redaction was
+not applied (neither the fixtures nor the synthetic lines hold such values).
+
+- **Benign set (196 chunks, 26 skills).** The 18 vendored `anthropics/skills`
+  folders at the pinned commit (all 51 `SKILL.md` chunks, 18 descriptions, a
+  seeded sample of 112 reference and script chunks: 55 `.md`, 40 `.py`,
+  6 `.html`, 3 `.xml`, 3 `.sh`, 2 `.js`, 3 license), the four Besidka
+  templates (files and descriptions), and four short hand-written Ukrainian
+  and Polish skills, two of them with a benign install or test command. The
+  50 to 100 popular public skills were **skipped**: choosing their sources
+  needs an owner decision, so the benign false-positive rates below come from
+  one vendor's skills and four templates.
+- **Malicious set (66 chunks, 28 patterns).** Every pattern of
+  `tests/fixtures/skills/attack-patterns.ts` (Snyk ToxicSkills categories,
+  Trail of Bits registry redirect and `.docx` pointer, Invariant `<IMPORTANT>`
+  block, Datadog dynamic context, hooks and tag smuggling), the Invariant
+  `~/.cursor/mcp.json` variant, and three off-purpose actions. Each is in a
+  plain and a benign-sounding corporate wording, six of them also in
+  Ukrainian and Polish. Each line sits inside a full-size host chunk (31
+  chunks of 1,500 tokens or more from real `SKILL.md` files), inside a whole
+  template `SKILL.md` (33) or as a description (2), so the same host without
+  the line is a paired negative in the benign set. Which questions each
+  pattern should trigger was written down before any call (26 patterns, 64
+  chunks are labeled; hidden tag text and `allowed-tools: Bash(*)` target no
+  question and count only in the "any question" figures).
+- **Rule, fixed before any score was looked at.** Thresholds 0.1 to 0.9. The
+  proposed `flagAtOrAbove` is the highest threshold that reaches the best
+  labeled recall among thresholds with at most 2% of benign chunks flagged
+  (5% for the low-severity `k5_off_purpose`).
+- **Budget.** 307 calls of the 500 allowed (262 single-chunk, 28 packed, 12
+  padding, 5 probes), 5 of which failed on purpose with `max_tokens_exceeded`
+  (see Padding). About
+  750,000 input tokens, about $0.03 at the published $0.042 per million input
+  tokens (a third-party figure, not checked against billing). The largest call
+  cost about $0.001.
+
+**Results per question.** Cells are labeled recall / benign chunks flagged /
+precision, all in percent. Recall counts malicious chunks labeled for that
+question; the benign rate is of 196 chunks; precision is the share of flagged
+chunks that are malicious in any way (so a `k4` hit on a `k1` attack still
+counts as a true positive). The positives per question are 12, 10, 10, 12, 22
+and 6, so a step of one chunk is 8 to 17 points of recall.
+
+| Question | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 |
+|---|---|---|---|---|---|---|---|---|---|
+| `i2_attack` | 91.7 / 23.5 / 55.8 | 91.7 / 4.6 / 84.7 | 91.7 / 2 / 92 | 91.7 / 0 / 100 | 83.3 / 0 / 100 | 83.3 / 0 / 100 | 66.7 / 0 / 100 | 66.7 / 0 / 100 | 25 / 0 / 100 |
+| `k1_send_out` | 90 / 8.7 / 62.2 | 90 / 2 / 86.7 | 90 / 1 / 91.7 | 90 / 0.5 / 94.1 | 90 / 0 / 100 | 80 / 0 / 100 | 80 / 0 / 100 | 70 / 0 / 100 | 50 / 0 / 100 |
+| `k2_conceal` | 100 / 9.7 / 63.5 | 100 / 3.6 / 70.8 | 100 / 2.6 / 72.2 | 100 / 1 / 83.3 | 100 / 0.5 / 90.9 | 100 / 0.5 / 90.9 | 100 / 0.5 / 90.9 | 90 / 0.5 / 90 | 60 / 0.5 / 85.7 |
+| `k3_secrets` | 100 / 3.6 / 73.1 | 91.7 / 1 / 85.7 | 83.3 / 0.5 / 91.7 | 83.3 / 0 / 100 | 83.3 / 0 / 100 | 83.3 / 0 / 100 | 75 / 0 / 100 | 58.3 / 0 / 100 | 41.7 / 0 / 100 |
+| `k4_run_remote` | 100 / 12.8 / 55.4 | 95.5 / 6.1 / 65.7 | 86.4 / 2.6 / 79.2 | 81.8 / 1.5 / 85.7 | 77.3 / 0.5 / 94.4 | 72.7 / 0 / 100 | 68.2 / 0 / 100 | 54.5 / 0 / 100 | 40.9 / 0 / 100 |
+| `k5_off_purpose` | 100 / 80.6 / 29.1 | 100 / 53.1 / 36.6 | 100 / 34.7 / 45.2 | 100 / 24.5 / 52.9 | 100 / 19.9 / 56.7 | 83.3 / 14.8 / 58 | 50 / 10.2 / 59.2 | 50 / 6.1 / 66.7 | 50 / 4.6 / 67.9 |
+
+Benign skills with at least one chunk flagged (of 26), by threshold 0.1 to
+0.9: `i2_attack` 27 / 12 / 12 / 0 / 0 / 0 / 0 / 0 / 0 percent, `k1_send_out`
+12 / 4 / 4 / 4 / 0 / 0 / 0 / 0 / 0, `k2_conceal` 27 / 15 / 15 / 8 / 4 / 4 / 4
+/ 4 / 4, `k3_secrets` 4 / 4 / 4 / 0 (then 0), `k4_run_remote` 31 / 19 / 12 /
+8 / 4 / 0 (then 0), `k5_off_purpose` 89 / 58 / 54 / 42 / 38 / 31 / 31 / 12 / 8.
+
+**Proposed `flagAtOrAbove`** (the rule above; bump `questionSetVersion` to 2
+with them, which also retires the chunk cache):
+
+| Question | Today | Proposed | Labeled recall | Benign chunks flagged | Note |
+|---|---|---|---|---|---|
+| `i2_attack` | 0.3 | **0.4** | 91.7% | 0 of 196 | 0.3 flags 4 benign chunks (2%, 3 skills); the highest benign score is 0.34 |
+| `k1_send_out` | 0.5 | **0.5** | 90% | 0 | unchanged; 0.2 to 0.5 give the same recall |
+| `k2_conceal` | 0.5 | **0.7** | 100% | 1 (0.5%) | 0.5 to 0.7 are equivalent here; the one benign hit scores 0.9 |
+| `k3_secrets` | 0.5 | **0.2** | 91.7% | 2 (1%) | 0.4 to 0.6 keep 83.3% with no benign flag; the two hits are Claude API managed-agents onboarding guides |
+| `k4_run_remote` | 0.5 | **0.4** | 81.8% | 3 (1.5%) | the hits are real install scripts and guides |
+| `k5_off_purpose` | 0.7 | **0.9** | 50% | 9 (4.6%) | weak, see below |
+
+The scores move by about 0.05 between runs of the same text (the three
+padding baselines), so a threshold inside a plateau is as good as its
+neighbor and the proposals are not precise to the second decimal.
+
+**Whole check.** Counting a chunk as flagged when any question fires, at the
+proposed thresholds: the placeholders flag 89.4% of the 66 malicious chunks
+and 13.3% of benign chunks (11 of 26 skills); the proposals flag 89.4% and
+7.7% (5 skills); without `k5_off_purpose` 87.9% and 3.1% (6 chunks, 3
+skills). By wording, any-question recall is 89% plain, 85% corporate and 100%
+Ukrainian and Polish (6 chunks each), and 90% in full-size hosts against 88%
+in template hosts. Missed: the corporate `hooks:` line, the corporate and
+plain `.docx` pointer (the plain one only at `i2`), tag smuggling and
+`allowed-tools: Bash(*)` (no question covers them, the deterministic rules
+do), and some of the off-purpose actions.
+
+**Decision: keep `i2_attack` for skills, at 0.4.** The fear that an
+instruction-heavy skill trips it was not borne out: the highest benign score
+is 0.34, and 0 of 196 benign chunks flag at 0.4. It is also the only question
+that catches the pure prompt injections (11 of the 12 labeled `i2_attack`
+chunks are missed by `k1` to `k4` together, and `i2_attack` catches 10 of
+them): without it, `k1` to `k4` alone reach 65.2% any-question recall against
+87.9% with it, with the same 3.1% of benign chunks flagged. Keep `k1` to `k4`
+beside it.
+
+**`k5_off_purpose` is not a good mark.** It reads both `text` and
+`description`, and fires on 10% of benign chunks and 31% of benign skills at
+the current 0.7. At 0.9 it still flags 9 benign chunks, all Python
+helper scripts of the `docx` and `xlsx` skills, for 3 true hits of 6. It adds
+1.5 points of recall for 4.6 points of benign flags. Proposal: 0.9, and never
+on `script` files, or drop it from the default marks; with 6 positives the
+evidence is thin either way.
+
+**Decision: no packed calls (no phase 2).** Packing 4 or 8 chunks in one call
+(state keys `text_1` to `text_8` and `description_1` to `description_8`, six
+questions per chunk with the keys renamed, 28 calls, 36 malicious and 108
+benign chunks that had also been scored singly): any-question recall on the
+same malicious chunks fell from 88.9% to 77.8% (11 points, the rule allowed
+5), and the benign rate went from 5.6% to 6.5%. Per question the positives
+are 3 to 14, so the figures are rough, but the direction held: `i2_attack`
+83% to 50%, `k2_conceal` 100% to 83%, `k5_off_purpose` 50% to 25%, `k1` and
+`k4` unchanged, `k3_secrets` 86% to 100%, and the mean absolute score change
+was 0.02 to 0.08. The
+saving is real (a pack of 4 full chunks, about 8,000 input tokens, took 0.2
+to 0.4 s; the cost per call is far below the call limit), but single-chunk
+calls already stay inside the timeout, so the recall loss buys nothing.
+
+**Latency.** For the 112 chunks of 1,800 tokens or more, run 3 at a time from
+a Mac (not from a Worker): p50 186 ms, p95 235 ms, maximum 396 ms, none over
+the 2,500 ms timeout (all 262 single calls: p95 237 ms). A pack of 8 took
+up to 276 ms. A 15,000-token call took 0.2 to 0.4 s and a 24,000-token call
+0.3 to 0.5 s.
+
+**Padding.** Three attacks (`injection-override`, `fetch-pipe-run`,
+`important-block`, plain, in full-size hosts) were prefixed with 100,000
+newlines (about 30,000 estimated, 15,000 real tokens). Through the chunker
+the padding disappears: the whitespace-only chunks are dropped, the attack
+chunk is identical to the unpadded one, and its scores stayed within 0.06 of
+the single-call baseline. Sent as one call, the same padded text also still
+scored (`i2_attack` 0.81, `k4_run_remote` 0.82, `k2_conceal` 0.92 against
+0.83, 0.87, 0.94 unpadded), because newlines cost few tokens. Prose padding
+of 24,000 real tokens, sent as one call, did dilute: `i2_attack` 0.83 to
+0.66, `k4_run_remote` 0.87 to 0.74, `k5_off_purpose` 0.51 to 0.72, `k3` and
+`k2` stayed near 0.8. Every attack still cleared its proposed threshold, but
+the margin shrinks as padding grows. The model refuses a larger call: 41,000
+estimated tokens and above returned HTTP 400 `max_tokens_exceeded` (the limit
+lies between 24,000 and 41,000 tokens), which Besidka would count as a failed
+call. So an unchunked skill file either fails or is diluted, and chunking at
+2,000 tokens is the defense; a padded attack can no longer hide its chunk.
+
+**Limits of this eval.** One vendor's skills and four templates stand in for
+benign skills, so the false-positive rates are a floor (the public-skill set
+was skipped for the missing source choice); the 66 malicious chunks are
+synthetic, written from published patterns, and a real attacker can try
+wordings that none of them is; with 6 to 22 positives per question and 196
+benign chunks, 2% is 4 chunks and the rule cannot resolve smaller
+differences; latency was measured from a Mac; and the cost figure uses a
+published price. Re-tune on real traffic, as for the other roles.
+
 #### J4: Re-ranking (`rerank`)
 
 Re-ranking orders the candidates of two searches with Jev. It never adds a
