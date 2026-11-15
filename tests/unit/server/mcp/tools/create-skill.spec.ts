@@ -59,7 +59,10 @@ const AUTH = {
   clientId: 'client-abc',
   scopes: [SCOPE],
 }
-const VALID_INPUT = { files: [{ path: 'SKILL.md', content: 'x' }], slashCommand: 'run-it' }
+const VALID_INPUT = {
+  files: [{ path: 'SKILL.md', content: 'x' }],
+  argumentHint: '[file]',
+}
 
 async function loadTool(context: Record<string, unknown>) {
   vi.resetModules()
@@ -116,7 +119,7 @@ describe('create_skill tool', () => {
     const { inputSchema } = await loadTool({ mcpAuth: AUTH })
     const schema = z.object(inputSchema)
 
-    expect(schema.safeParse({ files: [{ path: 'SKILL.md', content: 'x' }], slashCommand: 'run-it' }).success).toBe(true)
+    expect(schema.safeParse({ files: [{ path: 'SKILL.md', content: 'x' }], argumentHint: '[file]' }).success).toBe(true)
     expect(schema.safeParse({ files: [{ path: 'SKILL.md', content: 'x' }] }).success).toBe(true)
     expect(schema.safeParse({ files: [] }).success).toBe(false)
     expect(schema.safeParse({ files: Array.from({ length: 51 }, (_, index) => ({ path: `f${index}.md`, content: 'x' })) }).success).toBe(false)
@@ -124,7 +127,7 @@ describe('create_skill tool', () => {
     expect(schema.safeParse({ files: [{ path: '', content: 'x' }] }).success).toBe(false)
     expect(schema.safeParse({ files: [{ path: 'SKILL.md', content: 'x' }], argumentHint: 'x'.repeat(101) }).success).toBe(false)
     expect(Object.keys(inputSchema).sort())
-      .toEqual(['argumentHint', 'files', 'modelInvocable', 'slashCommand'])
+      .toEqual(['argumentHint', 'files'])
   })
 
   it('runs the domain function for the token user and logs ids only',
@@ -135,7 +138,10 @@ describe('create_skill tool', () => {
 
       expect(mocks.domain).toHaveBeenCalledWith(
         { marker: 'skill-context' },
-        { files: [{ path: 'SKILL.md', content: 'x' }], slashCommand: 'run-it' },
+        {
+          files: [{ path: 'SKILL.md', content: 'x' }],
+          argumentHint: '[file]',
+        },
       )
       expect(payload).toEqual({ id: 'skl1', name: 'new-skill', filesCount: 1, enabled: false })
       expect(mocks.logger.set).toHaveBeenCalledWith({

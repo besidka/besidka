@@ -1778,8 +1778,9 @@ read them. Sharing is optional and arrives later (S-13).
 New scopes: `skills:read` (read class) and `skills:write` (write class,
 unticked by default). The name `skills:share` is reserved (section 12.1).
 Labels: "See your
-skills and their full text" and "Add or replace skills (saved switched off for
-your review)". Deletes stay on `data:delete`. The scopes make the server a
+skills and their full text" and "Add, change and delete skills. Changes are
+saved switched off for your review". Deletes of skills sit under `skills:write` (changed in the
+audit of S-6, like `delete_connectors`). The scopes make the server a
 **major version bump**: S-6 shipped as MCP `5.0.0`, because `4.0.0` went to
 connectors (C-9) before it merged. Coordinator decision, 2026-11-13: `skills:share` is a name reserved in the docs only: S-6 does not
 register a scope that has no tools, because a consent line that grants nothing
@@ -1794,10 +1795,10 @@ Commands are skills, so there are no separate command tools. Outputs include
 | --- | --- | --- | --- | --- |
 | `list_skills` | `skills:read` | `readOnlyHint` | `{ cursor?, limit? ≤ 50, kind? 'skill' or 'command' }` | Metadata only: `[{ id, name, description, enabled, status, licenseClass, sourceKind, sourceUrl?, sourceRef?, version, filesCount, bytes, createdVia, modelInvocable, slashCommand, argumentHint?, updatedAt }]` |
 | `get_skill` | `skills:read` | `readOnlyHint` | `{ id, version?, path? }` | Metadata and file list; with `path`, the file text (at most 200,000 characters) plus a `truncated` flag |
-| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; slashCommand? (a command name, since S-12), modelInvocable?, argumentHint? }` | Saved disabled with `needs-review`. The license gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
+| `create_skill` | `skills:write` | none | `{ files: [{ path, content ≤ 200,000 chars }] ≤ 50, total ≤ 400 KiB, must include SKILL.md; argumentHint? }` | Saved disabled with `needs-review`. The license gate runs and rejects `restricted`. Returns `{ id, name, enabled: false, status: 'needs-review', licenseClass, findings: [{ type, path, line }], reviewUrl }` |
 | `update_skill` | `skills:write` | `destructiveHint` | `{ id, baseVersion, changes[] (put, delete or rename a file) ≤ 50, total ≤ 400 KiB }` | Writes a persisted pending version (section 3.4), disables the skill, sets `needs-review`. Changing `name` is rejected with "use rename_skill". `LICENSE` and `NOTICE` are protected. Returns the pending version, its `sha256`, `findings`, `reviewUrl` and `diffSummary`. The app's accept and reject are bound to `{ version, sha256 }`, so a change after the user opened the review is refused with 409 |
 | `rename_skill` | `skills:write` | `idempotentHint`, not destructive | `{ id, name }` (regex, 1 to 64 characters, unique per user, reserved slash names refused) | Rewrites only the frontmatter `name`, as a new version (origin `rename`, note "Renamed from x"). Disables the skill and sets `needs-review` |
-| `delete_skills` | `data:delete` | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`, plus provider-copy deletion with S-5 |
+| `delete_skills` | `skills:write` (audit change) | `destructiveHint` | `{ ids ≤ 20, confirm: z.literal(true) }` | `{ deleted, notFound }`, plus provider-copy deletion with S-5 |
 
 **How `rename_skill` handles the name rules.**
 
@@ -1816,8 +1817,9 @@ Commands are skills, so there are no separate command tools. Outputs include
   (`parseSkillMarkdown`, `normalizeSkillPath`, `scanSkillText`, the license
   classifier, which rejects `restricted` with a clear error).
 - MCP never enables a skill and never sets toggles on an existing skill.
-  Create-time toggles (`slashCommand`, `modelInvocable`, `argumentHint`) take
-  effect only once the user enables the skill. There is no `allowScripts`, no
+  `create_skill` takes no `slashCommand` and no `modelInvocable` (audit
+  change): the command and the mode are the user's settings. The
+  `argumentHint` stays. There is no `allowScripts`, no
   activation or run tool, and no URL or GitHub import over MCP.
 - `get_skill` and `list_skills` return only the caller's own skills.
 - A limit of 30 skill writes per hour per user.

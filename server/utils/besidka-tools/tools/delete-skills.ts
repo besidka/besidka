@@ -28,8 +28,8 @@ export const deleteSkillsBesidkaTool = defineBesidkaTool({
     + 'all their versions and files, and the per-chat choices that refer to '
     + 'them. This cannot be undone: ask the user to confirm first and send '
     + 'confirm: true. Reports the ids that were deleted and the ones that '
-    + 'were not found among your skills. Requires signing in '
-    + '(data:delete).',
+    + 'were not found among your skills. At most 20 deletes an hour. '
+    + 'Requires signing in (skills:write).',
   inputSchema,
   annotations: {
     readOnlyHint: false,
@@ -37,7 +37,7 @@ export const deleteSkillsBesidkaTool = defineBesidkaTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  access: 'delete',
+  access: 'write',
   chat: {
     excluded: 'Skill management stays in the Besidka app and on the MCP '
       + 'server.',

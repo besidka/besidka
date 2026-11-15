@@ -438,11 +438,11 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Add a skill (an Agent Skills folder as text files) to your Besidka account. The files go through the same checks as an import: paths, text only, license and content scan. A skill with a restricted license is refused. The skill is saved disabled with status needs-review and cannot be switched on, set to Auto or given permissions by this tool. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result, which also lists the findings of the scan. At most 30 skill changes an hour. Requires signing in (skills:write).",
+      "description": "Add a skill (an Agent Skills folder as text files) to your Besidka account. The files go through the same checks as an import: paths, text only, license and content scan. A skill with a restricted license is refused. The skill is saved disabled with status needs-review and has no command and no mode: this tool cannot switch it on, set it to Auto, give it a command or give it permissions, the user does that in Besidka. The skill is saved disabled. The user must review and enable it in Besidka at the reviewUrl in the result, which also lists the findings of the scan. At most 30 skill changes an hour. Requires signing in (skills:write).",
       "inputSchema": {
         "properties": {
           "argumentHint": {
-            "description": "A short hint shown after the /command, such as [file]",
+            "description": "A short hint for the arguments, such as [file]",
             "maxLength": 100,
             "type": "string"
           },
@@ -471,16 +471,6 @@
             "maxItems": 50,
             "minItems": 1,
             "type": "array"
-          },
-          "modelInvocable": {
-            "description": "Whether the model may pick the skill by itself (Auto). It applies only once the user switches the skill on",
-            "type": "boolean"
-          },
-          "slashCommand": {
-            "description": "A /command for the skill, without the slash. It works only once the user switches the skill on",
-            "maxLength": 65,
-            "minLength": 1,
-            "type": "string"
           }
         },
         "required": [
@@ -791,7 +781,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Permanently delete skills from your Besidka account with all their versions and files, and the per-chat choices that refer to them. This cannot be undone: ask the user to confirm first and send confirm: true. Reports the ids that were deleted and the ones that were not found among your skills. Requires signing in (data:delete).",
+      "description": "Permanently delete skills from your Besidka account with all their versions and files, and the per-chat choices that refer to them. This cannot be undone: ask the user to confirm first and send confirm: true. Reports the ids that were deleted and the ones that were not found among your skills. At most 20 deletes an hour. Requires signing in (skills:write).",
       "inputSchema": {
         "properties": {
           "confirm": {
@@ -819,7 +809,7 @@
       "name": "delete_skills",
       "public": false,
       "requiredScopes": [
-        "data:delete"
+        "skills:write"
       ],
       "title": "Delete skills"
     },

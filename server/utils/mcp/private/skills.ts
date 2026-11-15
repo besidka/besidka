@@ -4,9 +4,13 @@ import {
   SKILL_MCP_DELETE_BATCH,
   SKILL_MCP_FILE_MAX_CHARS,
   SKILL_MCP_FILES_MAX,
+  SKILL_ARGUMENT_HINT_MAX,
   SKILL_MCP_LIST_LIMIT_MAX,
+  SKILL_MCP_READS_PER_HOUR,
   SKILL_MCP_WRITES_PER_HOUR,
 } from '#shared/utils/skills-policy'
+import { sanitizeConnectorText } from '#shared/utils/connectors-text'
+import { SKILL_DESCRIPTION_MAX } from '#shared/utils/skills/frontmatter'
 import type { SkillChange } from '#shared/utils/skills/edit'
 import * as schema from '~~/server/db/schema'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
@@ -62,8 +66,9 @@ const SKILLS_PAGE_PATH = '/chats/skills'
 const LIST_CURSOR_PREFIX = 'skills:'
 const MAX_LIST_OFFSET = 1000
 const WRITE_LIMIT_KEY_PREFIX = 'mcp:rate-limit:skill-writes'
-const WRITE_LIMIT_WINDOW_SECONDS = 60 * 60
-const WRITE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
+const READ_LIMIT_KEY_PREFIX = 'mcp:rate-limit:skill-reads'
+const BUDGET_WINDOW_SECONDS = 60 * 60
+const BUDGET_UNAVAILABLE_RETRY_SECONDS = 60
 
 export type McpSkillKind = 'skill' | 'command'
 
@@ -91,8 +96,6 @@ export interface McpSkillGetInput {
 
 export interface McpSkillCreateInput {
   files: McpSkillFileInput[]
-  slashCommand?: string
-  modelInvocable?: boolean
   argumentHint?: string
 }
 
@@ -153,14 +156,48 @@ function buildReviewUrl(siteUrl: string, skillId: string): string {
   return `${siteUrl}${SKILLS_PAGE_PATH}?skill=${encodeURIComponent(skillId)}`
 }
 
-function createTooManyWritesError(retryAfter: number | null) {
+function createTooManyCallsError(
+  what: string,
+  max: number,
+  retryAfter: number | null,
+) {
   const wait = retryAfter === null ? 'a while' : `${retryAfter} seconds`
 
   return createError({
     status: 429,
-    message: `Too many skill changes through connected apps. At most `
-      + `${SKILL_MCP_WRITES_PER_HOUR} an hour. Wait ${wait} and try again.`,
+    message: `Too many ${what} through connected apps. At most ${max} an `
+      + `hour. Wait ${wait} and try again.`,
   })
+}
+
+async function consumeHourlyBudget(
+  kv: FeatureKv,
+  userId: number,
+  keyPrefix: string,
+  max: number,
+  what: string,
+): Promise<void> {
+  let result: { allowed: boolean, retryAfter: number | null }
+
+  try {
+    result = await createAuthRateLimitStorage(
+      kv as never,
+      keyPrefix,
+    ).consume(String(userId), {
+      window: BUDGET_WINDOW_SECONDS,
+      max,
+    })
+  } catch {
+    throw createTooManyCallsError(
+      what,
+      max,
+      BUDGET_UNAVAILABLE_RETRY_SECONDS,
+    )
+  }
+
+  if (!result.allowed) {
+    throw createTooManyCallsError(what, max, result.retryAfter)
+  }
 }
 
 /**
@@ -189,30 +226,39 @@ export async function assertMcpSkillsAvailable(
 }
 
 /**
- * One hourly counter shared by create, update and rename. The KV counter
- * is not atomic, and it fails closed: when KV cannot be read or written the
- * call is refused with a 429 instead of being let through uncounted.
+ * One hourly counter shared by create, update and rename, taken only when a
+ * call has passed its checks and is about to write, so a refused call costs
+ * nothing. The KV counter is not atomic, and it fails closed: when KV cannot
+ * be read or written the call is refused with a 429 instead of being let
+ * through uncounted.
  */
 export async function enforceMcpSkillWriteLimit(
   context: Pick<McpSkillContext, 'kv' | 'userId'>,
 ): Promise<void> {
-  let result: { allowed: boolean, retryAfter: number | null }
+  await consumeHourlyBudget(
+    context.kv,
+    context.userId,
+    WRITE_LIMIT_KEY_PREFIX,
+    SKILL_MCP_WRITES_PER_HOUR,
+    'skill changes',
+  )
+}
 
-  try {
-    result = await createAuthRateLimitStorage(
-      context.kv as never,
-      WRITE_LIMIT_KEY_PREFIX,
-    ).consume(String(context.userId), {
-      window: WRITE_LIMIT_WINDOW_SECONDS,
-      max: SKILL_MCP_WRITES_PER_HOUR,
-    })
-  } catch {
-    throw createTooManyWritesError(WRITE_LIMIT_UNAVAILABLE_RETRY_SECONDS)
-  }
-
-  if (!result.allowed) {
-    throw createTooManyWritesError(result.retryAfter)
-  }
+/**
+ * A loose hourly cap on `list_skills` and `get_skill`, on top of the
+ * per-minute limit of every private tool, because a read can fetch a file
+ * from storage.
+ */
+export async function enforceMcpSkillReadLimit(
+  context: Pick<McpSkillContext, 'kv' | 'userId'>,
+): Promise<void> {
+  await consumeHourlyBudget(
+    context.kv,
+    context.userId,
+    READ_LIMIT_KEY_PREFIX,
+    SKILL_MCP_READS_PER_HOUR,
+    'skill reads',
+  )
 }
 
 function encodeListCursor(offset: number): string {
@@ -247,7 +293,10 @@ function toSkillSummary(skill: SkillRow): McpSkillSummary {
   return {
     id: skill.id,
     name: skill.name,
-    description: skill.description,
+    description: sanitizeConnectorText(
+      skill.description,
+      SKILL_DESCRIPTION_MAX,
+    ),
     enabled: skill.enabled,
     status: skill.status,
     licenseClass: skill.licenseClass,
@@ -262,7 +311,9 @@ function toSkillSummary(skill: SkillRow): McpSkillSummary {
     modelInvocable: skill.modelInvocable,
     slashCommand: skill.slashName !== null,
     command: skill.slashName,
-    argumentHint: skill.argumentHint,
+    argumentHint: skill.argumentHint === null
+      ? null
+      : sanitizeConnectorText(skill.argumentHint, SKILL_ARGUMENT_HINT_MAX),
     updatedAt: toIsoTimestamp(skill.updatedAt),
   }
 }
@@ -294,6 +345,7 @@ export async function listMcpSkills(
   input: McpSkillListInput,
 ) {
   await assertMcpSkillsAvailable(context)
+  await enforceMcpSkillReadLimit(context)
 
   const limit = clampMcpLimit(
     input.limit,
@@ -328,6 +380,7 @@ export async function getMcpSkill(
   input: McpSkillGetInput,
 ) {
   await assertMcpSkillsAvailable(context)
+  await enforceMcpSkillReadLimit(context)
 
   const skill = await loadSkillOrNotFound(context, input.id)
   const version = input.version ?? skill.currentVersion
@@ -401,7 +454,6 @@ export async function createMcpSkill(
   input: McpSkillCreateInput,
 ) {
   await assertMcpSkillsAvailable(context)
-  await enforceMcpSkillWriteLimit(context)
 
   const created = await readable(async () => {
     return await createSkillForMcpClient({
@@ -410,9 +462,8 @@ export async function createMcpSkill(
       userId: context.userId,
       clientId: context.clientId,
       files: input.files,
-      slashCommand: input.slashCommand,
-      modelInvocable: input.modelInvocable,
       argumentHint: input.argumentHint,
+      beforeWrite: () => enforceMcpSkillWriteLimit(context),
       logger: context.logger,
     })
   })
@@ -441,7 +492,6 @@ export async function updateMcpSkill(
 ) {
   await assertMcpSkillsAvailable(context)
   await loadSkillOrNotFound(context, input.id)
-  await enforceMcpSkillWriteLimit(context)
 
   const staged = await readable(async () => {
     return await stageSkillUpdateForMcpClient({
@@ -452,6 +502,7 @@ export async function updateMcpSkill(
       skillId: input.id,
       baseVersion: input.baseVersion,
       changes: input.changes,
+      beforeWrite: () => enforceMcpSkillWriteLimit(context),
       logger: context.logger,
     })
   })
@@ -498,7 +549,6 @@ export async function renameMcpSkill(
 ) {
   await assertMcpSkillsAvailable(context)
   await loadSkillOrNotFound(context, input.id)
-  await enforceMcpSkillWriteLimit(context)
 
   const renamed = await readable(async () => {
     return await renameSkillForMcpClient({
@@ -508,6 +558,7 @@ export async function renameMcpSkill(
       clientId: context.clientId,
       skillId: input.id,
       name: input.name,
+      beforeWrite: () => enforceMcpSkillWriteLimit(context),
       logger: context.logger,
     })
   })

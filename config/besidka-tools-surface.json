@@ -229,8 +229,8 @@
     },
     {
       "name": "delete_skills",
-      "mcpScope": "data:delete",
-      "access": "delete",
+      "mcpScope": "skills:write",
+      "access": "write",
       "readOnlyHint": false,
       "destructiveHint": true,
       "chat": {

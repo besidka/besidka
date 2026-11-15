@@ -85,10 +85,11 @@ export const settingsBodySchema = z.object({
   mode: z.enum(SKILL_MODES).optional(),
   command: commandSchema.optional(),
   argumentHint: argumentHintSchema.nullable().optional(),
+  licenseAcknowledged: z.boolean().optional(),
 }).strict().refine((body) => {
-  return Object.values(body).some((value) => {
-    return value !== undefined
-  })
+  return body.mode !== undefined
+    || body.command !== undefined
+    || body.argumentHint !== undefined
 }, 'Send at least one setting')
 
 export const versionQuerySchema = z.object({

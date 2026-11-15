@@ -104,16 +104,18 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'asking. You do that in Besidka.',
   },
   'skills:write': {
-    title: 'Add or replace skills (saved switched off for your review)',
-    description: 'Add a skill, change its files or rename it. Every change '
+    title: 'Add, change and delete skills. Changes are saved switched off '
+      + 'for your review',
+    description: 'Add a skill, change its files, rename it, and permanently '
+      + 'delete skills with all their versions. Every addition and change '
       + 'is saved switched off and waits for your review in Besidka. It '
       + 'cannot switch a skill on, set it to Auto or share it.',
   },
   'data:delete': {
     title: 'Delete your data',
     description: 'Permanently delete chats, messages, projects, knowledge, '
-      + 'files, artifacts, skills and memory, and reset memory. Deleted data '
-      + 'cannot be restored.',
+      + 'files, artifacts and memory, and reset memory. Deleted data cannot '
+      + 'be restored.',
   },
   'admin:features': {
     title: 'Manage feature access (admin)',

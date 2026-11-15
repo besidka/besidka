@@ -557,7 +557,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/skills/versions/settings.spec.ts',
     'tests/unit/server/utils/skills/versions/save.spec.ts',
     'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/server/utils/mcp/private-access.spec.ts',
     'tests/unit/server/utils/besidka-tools/parity.spec.ts',
+    'tests/unit/composables/skills-library.spec.ts',
+    'tests/unit/utils/skills/frontmatter.spec.ts',
     'tests/unit/config/mcp-surface.spec.ts',
     'tests/unit/components/OAuth/ScopeLabel.spec.ts',
     'tests/unit/components/OAuth/ScopePicker.spec.ts',
@@ -4329,7 +4332,7 @@ export function getAffectedTests(changedFiles) {
       tests: mcpConnectorTests,
     },
     {
-      pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write)))\.ts$/,
+      pattern: /^server\/(mcp\/tools\/(list|get|create|update|rename|delete)-skills?|utils\/(besidka-tools\/tools\/(list|get|create|update|rename|delete)-skills?|mcp\/private\/(skills|skill-context)|skills\/versions\/(mcp|settings|save|write|statements|route)))\.ts$/,
       tests: mcpSkillTests,
     },
     {

@@ -109,6 +109,7 @@ export const SKILL_MCP_TOTAL_MAX_BYTES = 400 * KIBIBYTE
 export const SKILL_MCP_DELETE_BATCH = 20
 export const SKILL_MCP_LIST_LIMIT_MAX = 50
 export const SKILL_MCP_WRITES_PER_HOUR = 30
+export const SKILL_MCP_READS_PER_HOUR = 600
 export const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
 export const SKILL_RESERVED_SLASH_NAMES = [

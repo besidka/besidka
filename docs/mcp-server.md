@@ -92,8 +92,8 @@ never data.
 | `connectors:read` | `list_connectors`, `get_connector` |
 | `connectors:write` | `add_connector` (created switched off), `update_connector_tools` (only reduces), `delete_connectors` (destructive; the one delete that is not under `data:delete`) |
 | `skills:read` | `list_skills`, `get_skill` |
-| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill) |
-| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts`, `delete_skills` |
+| `skills:write` | `create_skill`, `update_skill`, `rename_skill` (every write is saved switched off with status `needs-review`; none can enable a skill), `delete_skills` (destructive; the second delete that is not under `data:delete`) |
+| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory`, `delete_artifacts` |
 | `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
 The first per-user surface had 32 tools (the artifact tools and
@@ -126,7 +126,7 @@ would reach existing clients silently). The design is in
 | `connectors:read` | read, built in 4.0.0 | `list_connectors`, `get_connector` | C-9 |
 | `connectors:write` | write, built in 4.0.0 | `add_connector` (created disabled), `update_connector_tools`, `delete_connectors` (destructive) | C-9 |
 | `skills:read` | read, built in 5.0.0 | `list_skills`, `get_skill` | S-6 |
-| `skills:write` | write, built in 5.0.0 | `create_skill`, `update_skill`, `rename_skill` (all leave the skill disabled) | S-6 |
+| `skills:write` | write, built in 5.0.0 | `create_skill`, `update_skill`, `rename_skill` (all leave the skill disabled), `delete_skills` (destructive) | S-6 |
 
 `list_my_features` (P0-8) goes under the existing `settings:read`, because
 it only reads the caller's own state. Deletes of the new artifact and skill
@@ -157,7 +157,7 @@ switches the skill off and stages a replacement of its files; `rename_skill`
 is not, because it writes a new version and keeps the old ones.
 
 Since 5.0.0 the surface has 56 private tools: six skill tools under the new
-`skills:read` and `skills:write` scopes (and `data:delete`) were added to the
+`skills:read` and `skills:write` scopes were added to the
 50 of 4.0.0 (see [The skills scopes](#the-skills-scopes)).
 
 Since 4.0.0 the surface had 50 private tools: five connector tools under the
@@ -188,12 +188,11 @@ stays reserved in the docs only: no tool uses it, so S-6 does not register it
 
 - **Where they are registered:** `shared/utils/mcp-oauth-scopes.ts`,
   `MCP_PRIVATE_TOOL_SCOPES`, `app/components/OAuth/ScopeLabel.vue` (labels
-  "See your skills and their full text" and "Add or replace skills (saved
-  switched off for your review)", and "skills" in the `data:delete`
-  description), the write warning in `ScopePicker.vue`, the scope phrases of
-  the security emails, and `MCP_SERVER_VERSION` 5.0.0 in the four version
-  files. The Privacy Policy lists both permissions and names skills under
-  "Delete your data"; its revision hash was updated without a change of
+  "See your skills and their full text" and "Add, change and delete skills.
+  Changes are saved switched off for your review"), the write warning in
+  `ScopePicker.vue`, the scope phrases of the security emails, and `MCP_SERVER_VERSION` 5.0.0 in the four version
+  files. The Privacy Policy lists both permissions and names the skills exception
+  to "Delete your data"; its revision hash was updated without a change of
   classification or notice.
 - **Nothing here enables a skill.** `create_skill` saves the skill disabled
   with status `needs-review` (`created_via` `mcp`, `source_kind` `mcp`, the
@@ -219,8 +218,13 @@ stays reserved in the docs only: no tool uses it, so S-6 does not register it
   of content in all (the authenticated body cap is 512 KiB), 50 changes per
   update, 20 ids per `delete_skills`, 30 skill writes (create, update and
   rename together) an hour per user, in `enforceMcpSkillWriteLimit` (a KV
-  counter that fails closed with 429). `delete_skills` uses the generic
-  `data:delete` limit of 20 an hour.
+  counter that fails closed with 429). The budget is taken only when a call
+  has passed its checks and is about to write, so an invalid, stale or
+  refused call costs nothing. `delete_skills` has an hourly cap of 20 of its
+  own (`MCP_PRIVATE_DELETE_SKILLS_RATE_LIMIT`, like connectors), on top of
+  the write limit, and `list_skills` and `get_skill` share a loose cap of
+  600 reads an hour (`enforceMcpSkillReadLimit`) on top of the per-minute
+  limit of every tool.
 - **The feature gate is in the handler.** `assertMcpSkillsAvailable` checks
   the `skills` flag and answers a generic 404 ("Skills are not available for
   this account.") before any id is read, like connectors.
@@ -231,18 +235,31 @@ stays reserved in the docs only: no tool uses it, so S-6 does not register it
   Besidka.
 - **Review in the app.** A skill the user switches on while it is
   `needs-review` and has no pending update becomes `ready`
-  (`updateSkillSettings`); accepting a pending update makes it `ready` and
+  (`updateSkillSettings`). When its license class is `none` or `custom` the
+  user must tick the license box first (`licenseAcknowledged` on
+  `PATCH /api/v1/skills/[id]`, enforced on the server, with the warning in
+  the confirmation dialog), the same as an import. `update_skill` is refused
+  for a skill that is `needs-review` with no pending update, because the user
+  has not reviewed it yet. Accepting a pending update makes it `ready` and
   leaves it disabled; rejecting leaves `needs-review` until the user enables
   it. After an accepted MCP update `source_kind` is `mcp`, so the memory write
   lock applies to the text like any other third-party skill.
-- **Deviations from the section 11 table.** The command is a separate setting
-  since S-12 (`slash_name`), so `create_skill` takes `slashCommand` as a
-  command name (a string, validated like the app's Command field: pattern,
-  not reserved, not taken) and not a boolean, and `rename_skill` leaves the
-  command alone; its output warns that `/<old name>` no longer works as the
-  skill's name and, when a command is set, that the command is unchanged.
-  `list_skills` returns `command` next to `slashCommand`.
-  `delete_skills` does not delete provider copies, because S-5 is not built.
+- **Deviations from the section 11 table.** The command and the mode are
+  settings the user makes in the app (K10, K16), so `create_skill` has no
+  `slashCommand` and no `modelInvocable` input: a skill it saves has no
+  command and is not model-invocable, whatever its frontmatter says (only the
+  argument hint can come from frontmatter or the `argumentHint` input).
+  `rename_skill` leaves the command alone; its output warns that `/<old
+  name>` no longer works as the skill's name and, when a command is set, that
+  the command is unchanged. `list_skills` returns `command` next to
+  `slashCommand`. `delete_skills` sits under `skills:write` and not
+  `data:delete`, like `delete_connectors` (destructive, `confirm: true`, its
+  own hourly cap), and does not delete provider copies, because S-5 is not
+  built. `rename_skill` is refused while an update waits for review.
+- **Text from outside is cleaned.** A skill description loses control, bidi,
+  format and tag characters when `SKILL.md` is parsed
+  (`stripUnsafeSkillCharacters`), and `list_skills` and `get_skill` return
+  descriptions and hints through `sanitizeConnectorText` as well.
 - **No tool is in the chat.** All six registry entries are `chat: { excluded }`:
   a skill is a persistent instruction source, so a chat must not read or write
   the skills that steer it.
@@ -1100,10 +1117,10 @@ text only and capped.
 | `delete_connectors` | `connectors:write` | yes | Delete connectors with their credentials, tool settings and per-chat settings; revokes the tokens best effort first. Needs `confirm: true`; reports `deleted` and `notFound` | `deleteConnectorsWithRevocation` (`server/utils/connectors/delete.ts`, shared with `POST /api/v1/connectors/delete/bulk`): 10 s revoke deadline, four at a time, the consent-withdrawn log, audit rows kept. Up to 20 ids (`CONNECTOR_MCP_DELETE_BATCH`), the 30 per minute write limit |
 | `list_skills` | `skills:read` | no | The caller's skills and commands, most recently changed first: `id`, `name`, `description`, `enabled`, `status`, `licenseClass`, `sourceKind`, `sourceUrl`, `sourceRef`, `version`, `pendingVersion`, `filesCount`, `bytes`, `createdVia`, `modelInvocable`, `slashCommand`, `command`, `argumentHint`, `updatedAt`; `kind` `skill` or `command` filters on the command; `nextCursor` | `listMcpSkills`. No text. `limit` up to 50 |
 | `get_skill` | `skills:read` | no | One skill: the list fields plus the file list of a version (`version`, default current); with `path`, that file's text up to 200,000 characters and `truncated` | `getMcpSkill`, `loadOwnedSkill`, `readBlobText`. The same 404 for an unknown id and another user's |
-| `create_skill` | `skills:write` | no | 1 to 50 text files, 400 KiB in all, with a `SKILL.md`; optional `slashCommand`, `modelInvocable`, `argumentHint`. Saved disabled with `needs-review`; returns `id`, `name`, `licenseClass`, `findings`, `reviewUrl` | `createSkillForMcpClient` (`server/utils/skills/versions/mcp.ts`): `validateSkillEditPath`, `analyzeSkillFiles` (license gate, scanner), `insertSkillWithinLimits`, `buildVersionStatements` |
+| `create_skill` | `skills:write` | no | 1 to 50 text files, 400 KiB in all, with a `SKILL.md`; optional `argumentHint` (no command, no mode). Saved disabled with `needs-review`; returns `id`, `name`, `licenseClass`, `findings`, `reviewUrl` | `createSkillForMcpClient` (`server/utils/skills/versions/mcp.ts`): `validateSkillEditPath`, `analyzeSkillFiles` (license gate, scanner), `insertSkillWithinLimits`, `buildVersionStatements` |
 | `update_skill` | `skills:write` | yes | `id`, `baseVersion` and up to 50 `put`, `delete` or `rename` changes. A pending version, the skill off with `needs-review`; returns `pendingVersion`, `sha256`, `findings`, `diffSummary`, `reviewUrl`. A stale `baseVersion` is a 409; a changed `name` is refused | `stageSkillUpdateForMcpClient`: `applySkillChanges` with the license files locked, `prepareSkillVersion`, `computeFindingCounts` |
 | `rename_skill` | `skills:write` | no | `id` and `name` (lowercase letters, digits and single hyphens, up to 64, unique, not a reserved name). Rewrites the `name:` line of `SKILL.md` as a `rename` version; disables the skill and sets `needs-review`; returns `warnings` | `renameSkillForMcpClient` over `saveSkillChanges` with `skillSetExtra`. The command is not touched |
-| `delete_skills` | `data:delete` | yes | `ids` (1 to 20) and `confirm: true`; `{ deleted, notFound }` | `deleteUserSkill`, one skill at a time (rows, then the R2 prefix) |
+| `delete_skills` | `skills:write` | yes | `ids` (1 to 20) and `confirm: true`; `{ deleted, notFound }` | `deleteUserSkill`, one skill at a time (rows, then the R2 prefix). Its own hourly cap of 20 |
 | `get_settings` | `settings:read` | no | Reasoning display and default level, favorite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only. Since 3.2.0 also a `storage` block: `usedBytes`, `totalBytes` and `categories` (`id`, `bytes`, `count` for `aiImages`, `uploads`, `generatedFiles`, `artifacts`, `knowledge`, `skills`), the same numbers as the Storage page | `getMcpSettings`, `getMcpStorage` (`getUserStorageBreakdown`) |
 | `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
 | `list_feature_flags` | `admin:features` | no | Admins only. Every registry flag with stage, roles, rule (enabled, rollout percentage, variants), kill switch and grant counts. Read-only | `listAdminFeatures` (the `/admin` query) |
@@ -1572,10 +1589,9 @@ and the design is in `docs/connectors.md` and `docs/skills.md` (section 11).
    - **enable a skill or set its mode.** `create_skill` saves the skill
      disabled with `needs-review`, `update_skill` and `rename_skill` switch it
      off, and no tool has an `enabled` or mode input;
-   - **change `modelInvocable`, the command or the argument hint of an
-     existing skill.** They are inputs of `create_skill` only, and take effect
-     only once the user switches the skill on. `update_skill` and
-     `rename_skill` do not take them;
+   - **set the mode, the command or `modelInvocable`, on a new skill or an
+     existing one.** No tool takes them: the user sets them in Besidka
+     (K10, K16);
    - **share a skill.** `skills:share` is a reserved name only (S-13 is
      optional and not built), and no tool publishes a skill;
    - **grant script permission.** There is no `allowScripts` input (S-5 is not

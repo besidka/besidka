@@ -179,10 +179,11 @@ describe('OAuth scope picker', () => {
       expect(lastSelection(wrapper)).not.toContain('skills:write')
       expect(wrapper.text()).toContain('See your skills and their full text')
       expect(wrapper.text()).toContain(
-        'Add or replace skills (saved switched off for your review)',
+        'Add, change and delete skills. Changes are saved switched off for '
+        + 'your review',
       )
       expect(wrapper.get('[data-testid="oauth-write-warning"]').text())
-        .toContain('they stay switched off until you review them')
+        .toContain('stays switched off until you review it')
     })
 
   it('adds artifacts:share only when the user ticks it', async () => {

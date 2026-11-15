@@ -1,5 +1,5 @@
 import type { BatchItem } from 'drizzle-orm/batch'
-import { and, eq, getTableColumns, sql } from 'drizzle-orm'
+import { and, eq, getTableColumns, isNull, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 import type {
   SkillFileKind,
@@ -154,6 +154,7 @@ export interface GuardedVersionWrite {
   record: SkillVersionRecord
   files: SkillVersionFileRecord[]
   skillSet: Partial<typeof schema.skills.$inferInsert>
+  expectedPendingVersion?: number | null
 }
 
 /**
@@ -165,14 +166,22 @@ export interface GuardedVersionWrite {
  * `skills` update, guarded the same way and returning its row, which is how
  * the caller learns the batch won. A stale save writes nothing, so it can
  * never leave a row on the number the winner uses. `pending_version` is not
- * touched.
+ * touched, unless the caller gives `expectedPendingVersion`: then the writes
+ * also need the pointer to still hold that value (null for none), and
+ * `skillSet` may move it.
  */
 export function buildGuardedVersionStatements(input: GuardedVersionWrite) {
   const { db, userId, skillId, record } = input
+  const pendingGuard = input.expectedPendingVersion === undefined
+    ? undefined
+    : input.expectedPendingVersion === null
+      ? isNull(schema.skills.pendingVersion)
+      : eq(schema.skills.pendingVersion, input.expectedPendingVersion)
   const skillAtBase = and(
     eq(schema.skills.id, skillId),
     eq(schema.skills.userId, userId),
     eq(schema.skills.currentVersion, input.baseVersion),
+    pendingGuard,
   )
   const versionExists = sql`exists (
     select 1 from ${schema.skillVersions}

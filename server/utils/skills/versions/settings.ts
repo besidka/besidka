@@ -1,4 +1,5 @@
 import { and, eq, ne } from 'drizzle-orm'
+import { createError } from 'evlog'
 import {
   normalizeSkillCommand,
   validateSkillSlashName,
@@ -70,6 +71,32 @@ export async function resolveSkillCommand(input: {
 }
 
 /**
+ * A skill a connected app saved is switched on by the user's review. When it
+ * states no license, or a custom one, that review needs the same tick an
+ * import asks for, so the user has seen the terms before it can run.
+ */
+function assertEnableLicenseAcknowledged(
+  licenseClass: string,
+  licenseAcknowledged: boolean | undefined,
+): void {
+  const needsTick = licenseClass === 'none' || licenseClass === 'custom'
+
+  if (!needsTick || licenseAcknowledged === true) {
+    return
+  }
+
+  throw createError({
+    message: 'Confirm that you may use this skill',
+    status: 400,
+    code: 'license-acknowledgement-required',
+    why: licenseClass === 'none'
+      ? 'The skill states no license, so the author keeps all rights'
+      : 'The skill carries a custom license',
+    fix: 'Tick the license box when you turn the skill on',
+  })
+}
+
+/**
  * Settings are not content: no version is created. `mode` sets `enabled` and
  * `modelInvocable` together in one statement and `command` is independent of
  * it: a reserved or invalid command is refused with a 400, a command another
@@ -82,6 +109,7 @@ export async function updateSkillSettings(input: {
   userId: number
   skillId: string
   changes: SkillSettingsChanges
+  licenseAcknowledged?: boolean
   logger: LoggerLike
 }) {
   const { db, userId } = input
@@ -109,12 +137,15 @@ export async function updateSkillSettings(input: {
     })
   }
 
-  if (
-    changes.enabled === true
-    && skill.status === 'needs-review'
-    && skill.pendingVersion === null
-  ) {
-    changes.status = 'ready'
+  if (changes.enabled === true && skill.status === 'needs-review') {
+    assertEnableLicenseAcknowledged(
+      skill.licenseClass,
+      input.licenseAcknowledged,
+    )
+
+    if (skill.pendingVersion === null) {
+      changes.status = 'ready'
+    }
   }
 
   let updated: typeof schema.skills.$inferSelect | undefined

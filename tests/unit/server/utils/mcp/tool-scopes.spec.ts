@@ -116,7 +116,6 @@ describe('mcp tool scopes', () => {
       'delete_memory',
       'reset_memory',
       'delete_artifacts',
-      'delete_skills',
     ] as const
 
     for (const name of deleteTools) {
@@ -227,13 +226,13 @@ describe('mcp tool scopes', () => {
       'create_skill',
       'update_skill',
       'rename_skill',
+      'delete_skills',
     ] as const) {
       expect(getMcpToolRequiredScopes(name), name).toEqual(['skills:write'])
       expect(isMcpWriteTool(name), name).toBe(true)
       expect(isMcpDeleteTool(name), name).toBe(false)
     }
 
-    expect(getMcpToolRequiredScopes('delete_skills')).toEqual(['data:delete'])
     expect(isMcpWriteScope('skills:write')).toBe(true)
     expect(isMcpWriteScope('skills:read')).toBe(false)
     expect(isMcpDeleteScope('skills:write')).toBe(false)

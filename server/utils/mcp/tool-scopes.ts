@@ -59,7 +59,7 @@ export const MCP_PRIVATE_TOOL_SCOPES = {
   create_skill: 'skills:write',
   update_skill: 'skills:write',
   rename_skill: 'skills:write',
-  delete_skills: 'data:delete',
+  delete_skills: 'skills:write',
   list_feature_flags: 'admin:features',
   list_feature_access: 'admin:features',
   set_feature_access: 'admin:features',

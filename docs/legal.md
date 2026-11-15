@@ -367,10 +367,11 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   `skills:write` is unticked by default. The tools list and read the user's
   own skills, add, change and rename them (always saved switched off with
   status `needs-review`, through the same validation, license classifier and
-  content scanner as an import), and `delete_skills` sits under the existing
-  `data:delete`. They never switch a skill on, set it to Auto, share it or
-  import it from a link. The Privacy Policy lists both permissions and names
-  skills under "Delete your data"; the revision hash in
+  content scanner as an import), and `delete_skills` sits under `skills:write`
+  (like `delete_connectors`) with its own hourly cap. They never switch a
+  skill on, set it to Auto, give it a command, share it or import it from a
+  link. The Privacy Policy lists both permissions and names the skills
+  exception to "Delete your data"; the revision hash in
   `legal-document-revisions.ts` moved with an extended note, and the
   classification and notice id stayed as they were. Whether the pending
   notice should mention skills is the owner's decision.

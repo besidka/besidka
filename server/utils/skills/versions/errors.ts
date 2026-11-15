@@ -23,6 +23,7 @@ export type SkillEditErrorCode
     | 'frontmatter-invalid'
     | 'files-missing'
     | 'pending-version'
+    | 'needs-review'
     | 'version-is-current'
     | 'skill-broken'
 
@@ -49,6 +50,7 @@ const STATUS_BY_CODE: Record<SkillEditErrorCode, number> = {
   'frontmatter-invalid': 400,
   'files-missing': 409,
   'pending-version': 409,
+  'needs-review': 409,
   'version-is-current': 409,
   'skill-broken': 409,
 }

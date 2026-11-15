@@ -28,12 +28,17 @@ describe('updateSkillSettings and the needs-review status', () => {
   let testDb: MemoryExtractionTestDb
   let userId: number
 
-  function change(skillId: string, mode: 'off' | 'auto' | 'ask') {
+  function change(
+    skillId: string,
+    mode: 'off' | 'auto' | 'ask',
+    licenseAcknowledged?: boolean,
+  ) {
     return updateSkillSettings({
       db: testDb.db,
       userId,
       skillId,
       changes: { mode },
+      licenseAcknowledged,
       logger,
     })
   }
@@ -69,6 +74,66 @@ describe('updateSkillSettings and the needs-review status', () => {
         enabled: true,
         status: 'ready',
       })
+    })
+
+  it.each(['none', 'custom'] as const)(
+    'needs the license tick to switch on a needs-review skill with a %s '
+    + 'license',
+    async (licenseClass) => {
+      const skillId = await seedSkill(testDb.db, userId, {
+        status: 'needs-review',
+        enabled: false,
+        licenseClass,
+        createdVia: 'mcp',
+      })
+
+      await expect(change(skillId, 'auto')).rejects.toMatchObject({
+        status: 400,
+        code: 'license-acknowledgement-required',
+      })
+      await expect(change(skillId, 'auto', false)).rejects.toMatchObject({
+        status: 400,
+      })
+
+      expect(await skillRow(skillId)).toMatchObject({
+        enabled: false,
+        status: 'needs-review',
+      })
+
+      await change(skillId, 'auto', true)
+
+      expect(await skillRow(skillId)).toMatchObject({
+        enabled: true,
+        status: 'ready',
+      })
+    },
+  )
+
+  it('needs no tick for an open license, a reviewed skill or switching off',
+    async () => {
+      const openId = await seedSkill(testDb.db, userId, {
+        status: 'needs-review',
+        enabled: false,
+        licenseClass: 'open',
+      })
+      const readyId = await seedSkill(testDb.db, userId, {
+        status: 'ready',
+        enabled: false,
+        licenseClass: 'none',
+      })
+      const offId = await seedSkill(testDb.db, userId, {
+        status: 'needs-review',
+        enabled: true,
+        licenseClass: 'none',
+      })
+
+      await change(openId, 'ask')
+      await change(readyId, 'ask')
+      await change(offId, 'off')
+
+      expect((await skillRow(openId)).enabled).toBe(true)
+      expect((await skillRow(readyId)).enabled).toBe(true)
+      expect((await skillRow(offId)).enabled).toBe(false)
     })
 
   it('keeps needs-review while an update is pending or the mode is off',

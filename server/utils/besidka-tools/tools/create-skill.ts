@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { SKILL_ARGUMENT_HINT_MAX, SKILL_NAME_MAX } from '#shared/utils/skills-policy'
+import { SKILL_ARGUMENT_HINT_MAX } from '#shared/utils/skills-policy'
 import { buildMcpSkillContext } from '~~/server/utils/mcp/private/skill-context'
 import {
   MCP_SKILL_FILE_MAX_CHARS,
@@ -26,23 +26,11 @@ const inputSchema = {
     .describe(`1 to ${MCP_SKILL_FILES_MAX} text files, at most 400 KiB in `
       + 'all. Must include SKILL.md with a name and a description in its '
       + 'frontmatter'),
-  slashCommand: z
-    .string()
-    .min(1)
-    .max(SKILL_NAME_MAX + 1)
-    .optional()
-    .describe('A /command for the skill, without the slash. It works only '
-      + 'once the user switches the skill on'),
-  modelInvocable: z
-    .boolean()
-    .optional()
-    .describe('Whether the model may pick the skill by itself (Auto). It '
-      + 'applies only once the user switches the skill on'),
   argumentHint: z
     .string()
     .max(SKILL_ARGUMENT_HINT_MAX)
     .optional()
-    .describe('A short hint shown after the /command, such as [file]'),
+    .describe('A short hint for the arguments, such as [file]'),
 }
 
 type CreateSkillInput = z.infer<z.ZodObject<typeof inputSchema>>
@@ -54,8 +42,10 @@ export const createSkillBesidkaTool = defineBesidkaTool({
     + 'Besidka account. The files go through the same checks as an import: '
     + 'paths, text only, license and content scan. A skill with a '
     + 'restricted license is refused. The skill is saved disabled with '
-    + 'status needs-review and cannot be switched on, set to Auto or given '
-    + 'permissions by this tool. The skill is saved disabled. The user must '
+    + 'status needs-review and has no command and no mode: this tool cannot '
+    + 'switch it on, set it to Auto, give it a command or give it '
+    + 'permissions, the user does that in Besidka. The skill is saved '
+    + 'disabled. The user must '
     + 'review and enable it in Besidka at the reviewUrl in the result, '
     + 'which also lists the findings of the scan. At most 30 skill changes '
     + 'an hour. Requires signing in (skills:write).',

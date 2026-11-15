@@ -1,5 +1,5 @@
 import type { BatchItem } from 'drizzle-orm/batch'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import { analyzeSkillFiles } from '#shared/utils/skills/analyze'
 import type { SkillAnalysisInputFile } from '#shared/utils/skills/analyze'
@@ -44,7 +44,6 @@ import { countUserSkills } from '~~/server/utils/skills/usage'
 import { applySkillChanges } from '~~/server/utils/skills/versions/apply'
 import type { WorkingSkillFile } from '~~/server/utils/skills/versions/apply'
 import {
-  createSkillCommandTakenError,
   createSkillEditError,
   createStaleBaseError,
 } from '~~/server/utils/skills/versions/errors'
@@ -55,12 +54,17 @@ import {
   loadVersionRow,
   readBlobText,
 } from '~~/server/utils/skills/versions/read'
-import { resolveSkillCommand } from '~~/server/utils/skills/versions/settings'
 import {
   computeFindingCounts,
   saveSkillChanges,
 } from '~~/server/utils/skills/versions/save'
-import { buildVersionStatements } from '~~/server/utils/skills/versions/statements'
+import { getEffectiveUserFilePolicy } from '~~/server/utils/files/file-governance'
+import { buildStorageFullError } from '~~/server/utils/storage/guard'
+import {
+  asBatch,
+  buildGuardedVersionStatements,
+  buildVersionStatements,
+} from '~~/server/utils/skills/versions/statements'
 import type { SkillWriteBucket } from '~~/server/utils/skills/versions/write'
 
 type DbClient = ReturnType<typeof useDb>
@@ -302,9 +306,8 @@ export async function createSkillForMcpClient(input: {
   userId: number
   clientId: string
   files: McpSkillFileInput[]
-  slashCommand?: string
-  modelInvocable?: boolean
   argumentHint?: string
+  beforeWrite?: () => Promise<void>
   logger: LoggerLike
 }): Promise<CreatedMcpSkill> {
   const { db, bucket, userId } = input
@@ -324,9 +327,6 @@ export async function createSkillForMcpClient(input: {
     throw createSkillImportError('license-restricted', analysis.license.text)
   }
 
-  const slashName = input.slashCommand === undefined
-    ? null
-    : await resolveSkillCommand({ db, userId, command: input.slashCommand })
   const name = analysis.skill.name
   const existing = await findSkillByName(db, userId, name)
 
@@ -350,6 +350,8 @@ export async function createSkillForMcpClient(input: {
     incomingBytes: analysis.totalBytes,
     isNewSkill: true,
   })
+
+  await input.beforeWrite?.()
 
   const sourceVersion = await createSkillSourceVersion(analysis.contentSha256)
   const now = new Date()
@@ -380,10 +382,9 @@ export async function createSkillForMcpClient(input: {
       filesCount: analysis.files.length,
       bytes: analysis.totalBytes,
       enabled: false,
-      modelInvocable: input.modelInvocable
-        ?? analysis.skill.defaults.modelInvocable,
+      modelInvocable: false,
       slashCommand: false,
-      slashName,
+      slashName: null,
       argumentHint: input.argumentHint
         ?? analysis.skill.defaults.argumentHint,
       allowScripts: false,
@@ -397,10 +398,6 @@ export async function createSkillForMcpClient(input: {
     })
   } catch (exception) {
     const violation = findUniqueViolation(exception)
-
-    if (violation?.includes('slash_name')) {
-      throw createSkillCommandTakenError(slashName ?? '')
-    }
 
     if (violation) {
       throw createNameTakenError()
@@ -536,6 +533,23 @@ function assertSkillNotBroken(skill: { status: string }): void {
   }
 }
 
+function createPendingChangedError() {
+  return createError({
+    message: 'This skill changed while the update was saved',
+    status: 409,
+    code: 'pending-changed',
+    why: 'A newer version or another pending update was saved first',
+    fix: 'Read the skill again and repeat the update',
+  })
+}
+
+/**
+ * One guarded batch: the new version, its files and the pending pointer are
+ * written only while the skill is still at `baseVersion` and its pointer
+ * still holds the update this call replaces (or none). The old pending rows
+ * are deleted last, and only while the pointer holds the new version, so a
+ * lost race changes nothing and answers 409.
+ */
 async function persistMcpPendingVersion(input: {
   db: DbClient
   bucket: SkillWriteBucket
@@ -546,6 +560,7 @@ async function persistMcpPendingVersion(input: {
   replacedPendingVersion: number | null
   files: WorkingSkillFile[]
   blobs: Map<string, Uint8Array>
+  incomingBytes: number
   prepared: Awaited<ReturnType<typeof prepareSkillVersion>>
   findingCounts: Record<string, number>
   sourceVersion: string
@@ -560,11 +575,60 @@ async function persistMcpPendingVersion(input: {
     .orderBy(desc(schema.skillVersions.version))
     .limit(1)
   const version = (latest?.version ?? 0) + 1
+  const maxStorageBytes = input.incomingBytes > 0
+    ? (await getEffectiveUserFilePolicy(userId, db)).maxStorageBytes
+    : 0
 
   for (const bytes of input.blobs.values()) {
     await putSkillBlob({ bucket, userId, skillId, content: bytes })
   }
 
+  const guardedStatements = buildGuardedVersionStatements({
+    db,
+    userId,
+    skillId,
+    baseVersion: input.baseVersion,
+    expectedPendingVersion: input.replacedPendingVersion,
+    maxStorageBytes,
+    incomingBytes: input.incomingBytes,
+    record: {
+      skillId,
+      userId,
+      version,
+      origin: 'mcp',
+      createdByClientId: input.clientId,
+      sourceKind: 'mcp',
+      sourceVersion: input.sourceVersion,
+      sha256: input.prepared.sha256,
+      filesCount: input.files.length,
+      bytes: input.prepared.totalBytes,
+      licenseClass: input.prepared.license.class,
+      licenseFileSha256: input.prepared.license.licenseFileSha256,
+      findings: input.findingCounts,
+      note: UPDATE_NOTE,
+    },
+    files: input.files.map((file) => {
+      return {
+        path: file.path,
+        blobSha256: file.blobSha256,
+        bytes: file.bytes,
+        kind: file.kind,
+      }
+    }),
+    skillSet: {
+      pendingVersion: version,
+      enabled: false,
+      status: 'needs-review',
+    },
+  })
+  const pointerMovedHere = sql`exists (
+    select 1 from ${schema.skills}
+    where ${and(
+      eq(schema.skills.id, skillId),
+      eq(schema.skills.userId, userId),
+      eq(schema.skills.pendingVersion, version),
+    )}
+  )`
   const replacingStatements = input.replacedPendingVersion === null
     ? []
     : [
@@ -572,67 +636,45 @@ async function persistMcpPendingVersion(input: {
         eq(schema.skillFiles.skillId, skillId),
         eq(schema.skillFiles.userId, userId),
         eq(schema.skillFiles.version, input.replacedPendingVersion),
+        pointerMovedHere,
       )),
       db.delete(schema.skillVersions).where(and(
         eq(schema.skillVersions.skillId, skillId),
         eq(schema.skillVersions.userId, userId),
         eq(schema.skillVersions.version, input.replacedPendingVersion),
+        pointerMovedHere,
       )),
     ]
+  let results: unknown[]
 
   try {
-    await db.batch([
-      ...replacingStatements,
-      ...buildVersionStatements(db, {
-        skillId,
-        userId,
-        version,
-        origin: 'mcp',
-        createdByClientId: input.clientId,
-        sourceKind: 'mcp',
-        sourceVersion: input.sourceVersion,
-        sha256: input.prepared.sha256,
-        filesCount: input.files.length,
-        bytes: input.prepared.totalBytes,
-        licenseClass: input.prepared.license.class,
-        licenseFileSha256: input.prepared.license.licenseFileSha256,
-        findings: input.findingCounts,
-        note: UPDATE_NOTE,
-      }, input.files.map((file) => {
-        return {
-          path: file.path,
-          blobSha256: file.blobSha256,
-          bytes: file.bytes,
-          kind: file.kind,
-        }
-      })),
-      db.update(schema.skills)
-        .set({
-          pendingVersion: version,
-          enabled: false,
-          status: 'needs-review',
-        })
-        .where(and(
-          eq(schema.skills.id, skillId),
-          eq(schema.skills.userId, userId),
-          eq(schema.skills.currentVersion, input.baseVersion),
-        )),
-    ] as unknown as [BatchItem<'sqlite'>])
+    results = await db.batch(
+      asBatch([...guardedStatements, ...replacingStatements]),
+    ) as unknown[]
   } catch (exception) {
     if (isUniqueViolation(exception)) {
-      throw createError({
-        message: 'This skill changed while the update was saved',
-        status: 409,
-        code: 'pending-changed',
-        why: 'Another save created the same version number',
-        fix: 'Read the skill again and repeat the update',
-      })
+      throw createPendingChangedError()
     }
 
     throw exception
   }
 
-  return version
+  const claimed = results[guardedStatements.length - 1]
+
+  if (Array.isArray(claimed) && claimed.length > 0) {
+    return version
+  }
+
+  const fresh = await loadOwnedSkill(db, userId, skillId)
+
+  if (
+    fresh.currentVersion !== input.baseVersion
+    || fresh.pendingVersion !== input.replacedPendingVersion
+  ) {
+    throw createPendingChangedError()
+  }
+
+  throw await buildStorageFullError(userId, db)
 }
 
 /**
@@ -651,6 +693,7 @@ export async function stageSkillUpdateForMcpClient(input: {
   skillId: string
   baseVersion: number
   changes: SkillChange[]
+  beforeWrite?: () => Promise<void>
   logger: LoggerLike
 }): Promise<StagedMcpSkillUpdate> {
   const { db, bucket, userId, skillId } = input
@@ -661,6 +704,16 @@ export async function stageSkillUpdateForMcpClient(input: {
   }
 
   assertSkillNotBroken(skill)
+
+  if (skill.status === 'needs-review' && skill.pendingVersion === null) {
+    throw createSkillEditError('needs-review', {
+      message: 'This skill has not been reviewed yet',
+      why: 'It was saved switched off by a connected app and the user has '
+        + 'not switched it on since',
+      fix: 'Ask the user to review the skill in Besidka first, then update '
+        + 'it',
+    })
+  }
 
   let payloadBytes = 0
   const encoder = new TextEncoder()
@@ -792,6 +845,8 @@ export async function stageSkillUpdateForMcpClient(input: {
     }
   }
 
+  await input.beforeWrite?.()
+
   const version = await persistMcpPendingVersion({
     db,
     bucket,
@@ -802,6 +857,7 @@ export async function stageSkillUpdateForMcpClient(input: {
     replacedPendingVersion: skill.pendingVersion,
     files: applied.files,
     blobs,
+    incomingBytes,
     prepared,
     findingCounts,
     sourceVersion: await createSkillSourceVersion(prepared.sha256),
@@ -840,6 +896,7 @@ export async function renameSkillForMcpClient(input: {
   clientId: string
   skillId: string
   name: string
+  beforeWrite?: () => Promise<void>
   logger: LoggerLike
 }): Promise<RenamedMcpSkill> {
   const { db, bucket, userId, skillId, name } = input
@@ -916,6 +973,8 @@ export async function renameSkillForMcpClient(input: {
       fix: 'Add a name line to SKILL.md in Besidka, then rename again',
     })
   }
+
+  await input.beforeWrite?.()
 
   const saved = await saveSkillChanges({
     db,

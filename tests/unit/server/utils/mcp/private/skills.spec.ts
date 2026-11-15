@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { and, eq } from 'drizzle-orm'
-import { SKILL_MCP_WRITES_PER_HOUR } from '#shared/utils/skills-policy'
+import {
+  SKILL_MCP_READS_PER_HOUR,
+  SKILL_MCP_WRITES_PER_HOUR,
+} from '#shared/utils/skills-policy'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -66,12 +69,16 @@ vi.mock('~~/server/utils/features/evaluate', async (importOriginal) => {
 const {
   createMcpSkill,
   deleteMcpSkills,
+  enforceMcpSkillReadLimit,
   enforceMcpSkillWriteLimit,
   getMcpSkill,
   listMcpSkills,
   renameMcpSkill,
   updateMcpSkill,
 } = await import('~~/server/utils/mcp/private/skills')
+const { stageSkillUpdateForMcpClient } = await import(
+  '~~/server/utils/skills/versions/mcp'
+)
 
 const SITE_URL = 'https://besidka.com'
 const CLIENT_ID = 'client-abc'
@@ -230,6 +237,21 @@ describe('MCP skills domain', () => {
       expect(JSON.stringify(all)).not.toContain('not-mine')
     })
 
+    it('cleans control and hidden characters out of what it returns',
+      async () => {
+        const { skillId } = await seedOwned(undefined, {
+          description: 'Review\u202E PRs\u200B\u0007 now',
+          argumentHint: '[fi\u202Ele]',
+        })
+        const listed = await listMcpSkills(context(), {})
+        const detail = await getMcpSkill(context(), { id: skillId })
+
+        for (const entry of [listed.skills[0]!, detail]) {
+          expect(entry.description).toBe('Review PRs now')
+          expect(entry.argumentHint).toBe('[fi le]')
+        }
+      })
+
     it('pages with a cursor and rejects a forged one', async () => {
       for (const name of ['skill-a', 'skill-b', 'skill-c']) {
         await seedOwned(
@@ -360,22 +382,61 @@ describe('MCP skills domain', () => {
         )
       })
 
-    it('keeps toggles off until the user enables the skill', async () => {
+    it('sets no command and no mode, whatever the frontmatter says',
+      async () => {
+        const result = await createMcpSkill(context(), {
+          files: [{
+            path: 'SKILL.md',
+            content: skillMarkdown({
+              name: 'new-skill',
+              extra: 'argument-hint: "[file]"',
+            }),
+          }],
+        })
+        const row = await skillRow(result.id)
+
+        expect(row).toMatchObject({
+          enabled: false,
+          modelInvocable: false,
+          slashName: null,
+          slashCommand: false,
+          status: 'needs-review',
+        })
+      })
+
+    it('takes a hint only without control or hidden characters', async () => {
       const result = await createMcpSkill(context(), {
         files,
-        slashCommand: 'run-it',
-        modelInvocable: true,
         argumentHint: '[file]',
       })
-      const row = await skillRow(result.id)
 
-      expect(row).toMatchObject({
-        enabled: false,
-        modelInvocable: true,
-        slashName: 'run-it',
-        argumentHint: '[file]',
-        status: 'needs-review',
+      expect((await skillRow(result.id)).argumentHint).toBe('[file]')
+
+      for (const argumentHint of ['a\u0007b', 'a\u202Eb', 'x'.repeat(101)]) {
+        expect((await failureOf(createMcpSkill(context(), {
+          files: [{
+            path: 'SKILL.md',
+            content: skillMarkdown({ name: 'other-skill' }),
+          }],
+          argumentHint,
+        }))).status, argumentHint).toBe(400)
+      }
+
+      expect(await skillCount()).toBe(1)
+    })
+
+    it('strips hidden characters from the description', async () => {
+      const result = await createMcpSkill(context(), {
+        files: [{
+          path: 'SKILL.md',
+          content: skillMarkdown({
+            name: 'clean-skill',
+            description: 'Review\u202E PRs\u200B now',
+          }),
+        }],
       })
+
+      expect((await skillRow(result.id)).description).toBe('Review PRs now')
     })
 
     it('runs the content scanner and returns findings', async () => {
@@ -478,29 +539,15 @@ describe('MCP skills domain', () => {
       expect(nothingStored()).toBe(0)
     })
 
-    it('rejects a name another skill has, and a taken command', async () => {
+    it('rejects a name another skill has', async () => {
       await seedOwned(
         { 'SKILL.md': skillMarkdown({ name: 'new-skill' }) },
-        { name: 'new-skill', slashName: 'taken' },
+        { name: 'new-skill' },
       )
 
       expect((await failureOf(
         createMcpSkill(context(), { files }),
       )).status).toBe(409)
-
-      const otherFiles = [{
-        path: 'SKILL.md',
-        content: skillMarkdown({ name: 'another-skill' }),
-      }]
-
-      expect((await failureOf(createMcpSkill(context(), {
-        files: otherFiles,
-        slashCommand: 'taken',
-      }))).status).toBe(409)
-      expect((await failureOf(createMcpSkill(context(), {
-        files: otherFiles,
-        slashCommand: 'memory',
-      }))).status).toBe(400)
       expect(await skillCount()).toBe(1)
     })
 
@@ -552,6 +599,46 @@ describe('MCP skills domain', () => {
       )).status).toBe(429)
     })
 
+    it('does not charge invalid or refused calls to the budget', async () => {
+      const { skillId } = await seedOwned()
+
+      await failureOf(createMcpSkill(context(), {
+        files: [{ path: '../x.md', content: 'x' }],
+      }))
+      await failureOf(createMcpSkill(context(), {
+        files: [{ path: 'notes.md', content: 'x' }],
+      }))
+      await failureOf(updateMcpSkill(context(), {
+        id: skillId,
+        baseVersion: 9,
+        changes: [{ op: 'put', path: 'a.md', content: 'x' }],
+      }))
+      await failureOf(updateMcpSkill(context(), {
+        id: skillId,
+        baseVersion: 1,
+        changes: [{ op: 'put', path: '../x.md', content: 'x' }],
+      }))
+      await failureOf(renameMcpSkill(context(), {
+        id: skillId,
+        name: 'Bad Name',
+      }))
+      await failureOf(renameMcpSkill(context(), {
+        id: 'not-an-id',
+        name: 'check-pr',
+      }))
+
+      expect(kv.put).not.toHaveBeenCalled()
+
+      await renameMcpSkill(context(), { id: skillId, name: 'check-pr' })
+
+      const counters = [...kv.values.values()].map((value) => {
+        return JSON.parse(value) as { count: number }
+      })
+
+      expect(counters).toHaveLength(1)
+      expect(counters[0]!.count).toBe(1)
+    })
+
     it('refuses a write over the limit before anything is saved', async () => {
       for (let call = 0; call < SKILL_MCP_WRITES_PER_HOUR; call++) {
         await enforceMcpSkillWriteLimit({ kv: kv as never, userId })
@@ -570,7 +657,122 @@ describe('MCP skills domain', () => {
     })
   })
 
+  describe('the hourly read limit', () => {
+    it('refuses list and get over a loose hourly cap and fails closed',
+      async () => {
+        const { skillId } = await seedOwned()
+
+        for (let call = 0; call < SKILL_MCP_READS_PER_HOUR; call++) {
+          await enforceMcpSkillReadLimit({ kv: kv as never, userId })
+        }
+
+        expect((await failureOf(
+          listMcpSkills(context(), {}),
+        )).status).toBe(429)
+        expect((await failureOf(
+          getMcpSkill(context(), { id: skillId }),
+        )).status).toBe(429)
+
+        await expect(listMcpSkills(context({ userId: otherUserId }), {}))
+          .resolves.toMatchObject({ skills: [] })
+
+        kv.get.mockRejectedValueOnce(new Error('kv down'))
+
+        expect((await failureOf(
+          listMcpSkills(context({ userId: otherUserId }), {}),
+        )).status).toBe(429)
+      })
+
+    it('does not charge reads when the flag is off', async () => {
+      mocks.enabledFlags = new Set()
+
+      await failureOf(listMcpSkills(context(), {}))
+
+      expect(kv.put).not.toHaveBeenCalled()
+    })
+  })
+
   describe('update_skill', () => {
+    it('refuses a skill the user has not reviewed yet', async () => {
+      const { skillId } = await seedOwned(undefined, {
+        status: 'needs-review',
+        enabled: false,
+      })
+      const failure = await failureOf(updateMcpSkill(context(), {
+        id: skillId,
+        baseVersion: 1,
+        changes: [{ op: 'put', path: 'a.md', content: 'A\n' }],
+      }))
+
+      expect(failure.status).toBe(409)
+      expect(failure.message).toContain('not been reviewed')
+      expect((await skillRow(skillId)).pendingVersion).toBeNull()
+      expect(await versionRows(skillId)).toHaveLength(1)
+      expect(kv.put).not.toHaveBeenCalled()
+    })
+
+    it('allows another update while its own update waits', async () => {
+      const { skillId } = await seedOwned()
+
+      await updateMcpSkill(context(), {
+        id: skillId,
+        baseVersion: 1,
+        changes: [{ op: 'put', path: 'a.md', content: 'A\n' }],
+      })
+
+      await expect(updateMcpSkill(context(), {
+        id: skillId,
+        baseVersion: 1,
+        changes: [{ op: 'put', path: 'b.md', content: 'B\n' }],
+      })).resolves.toMatchObject({ pendingVersion: 3 })
+    })
+
+    it('answers 409 and deletes nothing when another update won the race',
+      async () => {
+        const { skillId } = await seedOwned()
+
+        await updateMcpSkill(context(), {
+          id: skillId,
+          baseVersion: 1,
+          changes: [{ op: 'put', path: 'a.md', content: 'A\n' }],
+        })
+
+        const failure = await failureOf(stageSkillUpdateForMcpClient({
+          db: testDb.db,
+          bucket: bucket as never,
+          userId,
+          clientId: CLIENT_ID,
+          skillId,
+          baseVersion: 1,
+          changes: [{ op: 'put', path: 'b.md', content: 'B\n' }],
+          beforeWrite: async () => {
+            await updateMcpSkill(context(), {
+              id: skillId,
+              baseVersion: 1,
+              changes: [{ op: 'put', path: 'c.md', content: 'C\n' }],
+            })
+          },
+          logger: mocks.logger,
+        }))
+        const versions = await versionRows(skillId)
+
+        expect(failure.status).toBe(409)
+        expect(failure.code).toBe('pending-changed')
+        expect(versions.map(version => version.version).sort())
+          .toEqual([1, 3])
+        expect((await skillRow(skillId)).pendingVersion).toBe(3)
+
+        const pendingFiles = await testDb.db.select()
+          .from(schema.skillFiles)
+          .where(and(
+            eq(schema.skillFiles.skillId, skillId),
+            eq(schema.skillFiles.version, 3),
+          ))
+
+        expect(pendingFiles.map(file => file.path).sort())
+          .toEqual(['SKILL.md', 'c.md', 'references/notes.md'])
+      })
+
     it('stages a pending version and switches the skill off', async () => {
       const { skillId } = await seedOwned()
       const result = await updateMcpSkill(context(), {

@@ -53,7 +53,7 @@ vi.mock('~~/server/utils/mcp/private/skills', async (importOriginal) => {
   return { ...original, deleteMcpSkills: mocks.domain }
 })
 
-const SCOPE = 'data:delete'
+const SCOPE = 'skills:write'
 const AUTH = {
   userId: 42,
   clientId: 'client-abc',
@@ -105,7 +105,7 @@ describe('delete_skills tool', () => {
       idempotentHint: true,
       openWorldHint: false,
     })
-    expect(tool.description).toMatch(/Requires signing in \(data:delete\)\.$/)
+    expect(tool.description).toMatch(/Requires signing in \(skills:write\)\.$/)
     expect(tool.description).toContain('confirm: true')
     expect(tool.description).toContain('cannot be undone')
   })
@@ -152,7 +152,7 @@ describe('delete_skills tool', () => {
         .toHaveBeenCalledWith(42, 'https://besidka.com', expect.anything())
     })
 
-  it('does nothing for a token without data:delete', async () => {
+  it('does nothing for a token without skills:write', async () => {
     const tool = await loadTool({
       mcpAuth: { ...AUTH, scopes: ['skills:read'] },
     })

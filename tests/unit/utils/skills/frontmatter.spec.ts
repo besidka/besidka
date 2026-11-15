@@ -68,6 +68,27 @@ describe('parseSkillMarkdown', () => {
     ).toMatchObject({ ok: false, code: 'description-missing' })
   })
 
+  it('strips control, bidi, format and tag characters from the description',
+    () => {
+      const result = parseOk(markdown(
+        'name: a\ndescription: "Review\\u202E PRs\\u200B\\u0007 now\\U000E0041"',
+      ))
+
+      expect(result.frontmatter.description).toBe('Review PRs now')
+    })
+
+  it('keeps line breaks in a description and rejects one that is only '
+    + 'hidden characters', () => {
+    const multiLine = parseOk(markdown(
+      'name: a\ndescription: "line one\\nline two"',
+    ))
+
+    expect(multiLine.frontmatter.description).toBe('line one\nline two')
+    expect(parseSkillMarkdown(markdown(
+      'name: a\ndescription: "\\u202E\\u200B"',
+    ))).toMatchObject({ ok: false, code: 'description-missing' })
+  })
+
   it('cuts a long description with a warning', () => {
     const result = parseOk(markdown(
       `name: a\ndescription: ${'x'.repeat(2000)}`,
