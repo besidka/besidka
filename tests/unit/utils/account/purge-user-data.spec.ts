@@ -10,6 +10,10 @@ const featureAccessCounts = {
   featureAuditRowsAnonymised: 4,
 }
 
+const legalNoticePurgeCounts = {
+  legalNoticeOptOutsDeleted: 1,
+}
+
 const artifactPurgeCounts = {
   artifactsDeleted: 2,
   artifactsHeld: 1,
@@ -49,6 +53,7 @@ const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
   invalidateStorageCache: vi.fn(),
   purgeUserFeatureAccess: vi.fn(),
+  purgeUserLegalNoticeData: vi.fn(),
   purgeUserArtifacts: vi.fn(),
   purgeUserDocuments: vi.fn(),
   purgeUserSkills: vi.fn(),
@@ -83,6 +88,10 @@ vi.mock('~~/server/utils/artifacts/blob-store', () => ({
 
 vi.mock('~~/server/utils/account/purge-feature-access', () => ({
   purgeUserFeatureAccess: mocks.purgeUserFeatureAccess,
+}))
+
+vi.mock('~~/server/utils/legal/purge', () => ({
+  purgeUserLegalNoticeData: mocks.purgeUserLegalNoticeData,
 }))
 
 vi.mock('~~/server/utils/files/convert-files-for-ai', () => ({
@@ -172,6 +181,7 @@ describe('purgeUserData', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.purgeUserFeatureAccess.mockResolvedValue(featureAccessCounts)
+    mocks.purgeUserLegalNoticeData.mockResolvedValue(legalNoticePurgeCounts)
     mocks.purgeUserArtifacts.mockResolvedValue(artifactPurgeCounts)
     mocks.purgeUserDocuments.mockResolvedValue(documentPurgeCounts)
     mocks.purgeUserSkills.mockResolvedValue(skillPurgeCounts)
@@ -212,6 +222,7 @@ describe('purgeUserData', () => {
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
       ...featureAccessCounts,
+      ...legalNoticePurgeCounts,
       sessionKeysDeleted: 1,
     })
   })
@@ -400,6 +411,7 @@ describe('purgeUserData', () => {
           ...connectorPurgeCounts,
           ...toolApprovalPurgeCounts,
           ...featureAccessCounts,
+          ...legalNoticePurgeCounts,
         },
       },
     }))
@@ -736,6 +748,7 @@ describe('purgeUserData', () => {
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
       ...featureAccessCounts,
+      ...legalNoticePurgeCounts,
       sessionKeysDeleted: 1,
     })
   })
@@ -757,6 +770,49 @@ describe('purgeUserData', () => {
       attributes: {
         accountPurge: expect.objectContaining(featureAccessCounts),
       },
+    }))
+  })
+
+  it('purges legal notice opt-outs with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 42, logger })
+
+    expect(mocks.purgeUserLegalNoticeData).toHaveBeenCalledWith(42, db)
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: {
+        accountPurge: expect.objectContaining(legalNoticePurgeCounts),
+      },
+    }))
+  })
+
+  it('rethrows a legal notice purge failure so the deletion aborts', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserLegalNoticeData.mockRejectedValueOnce(
+      new Error('d1 unavailable'),
+    )
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 1, logger })).rejects.toThrow(
+      'd1 unavailable',
+    )
+    expect(mocks.purgeUserFeatureAccess).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: expect.objectContaining({
+        phase: 'legal-notice-purge',
+        userId: 1,
+      }),
     }))
   })
 

@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('cloudflare:workers', () => ({ env: {} }))
 
+vi.mock('~~/server/utils/custom-db-types', async () => {
+  const { publicIdMockFactory } = await import(
+    '../../setup/helpers/public-id-mock'
+  )
+
+  return await publicIdMockFactory()
+})
+
 const config = {
   legalNoticeSweepEnabled: true,
   legalNoticeSweepBatchSize: 25,
@@ -74,6 +82,37 @@ describe('legal notice sweep plugin', () => {
     expect(createLogger).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['false', false],
+    [' FALSE ', false],
+    ['0', false],
+    ['', false],
+    [0, false],
+    [1, false],
+    [null, false],
+    [undefined, false],
+    ['yes', false],
+    [false, false],
+    ['true', true],
+    [' True ', true],
+    [true, true],
+  ])('reads the switch %o strictly as %s', async (value, isEnabled) => {
+    const { createLogger } = createLoggerMock()
+    const runSweep = vi.fn().mockResolvedValue(sweepResult)
+    const runLegalNoticeSweepJob = await loadJob()
+
+    await runLegalNoticeSweepJob({
+      controller,
+      config: { ...config, legalNoticeSweepEnabled: value },
+      createLogger,
+      runSweep,
+      shipWideEvent: vi.fn(),
+      isDevelopment: false,
+    })
+
+    expect(runSweep).toHaveBeenCalledTimes(isEnabled ? 1 : 0)
+  })
+
   it('does nothing in development even when enabled', async () => {
     const { createLogger } = createLoggerMock()
     const runSweep = vi.fn()
@@ -89,6 +128,71 @@ describe('legal notice sweep plugin', () => {
 
     expect(runSweep).not.toHaveBeenCalled()
     expect(createLogger).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing for an unapproved notice even when enabled', async () => {
+    const { createMemoryExtractionTestDb } = await import(
+      '../../setup/helpers/memory-extraction-db'
+    )
+    const schema = await import('~~/server/db/schema')
+    const { sweepLegalNotices } = await import(
+      '~~/server/utils/legal/notice-sweep'
+    )
+    const testDb = createMemoryExtractionTestDb()
+    const { loggerSet, createLogger } = createLoggerMock()
+    const sendNotice = vi.fn()
+    const renderNotice = vi.fn()
+    const notice = {
+      id: '2026-11-unapproved-notice',
+      documents: ['privacy-policy'] as const,
+      publishedAt: '2026-10-31T06:00:00Z',
+      sendFrom: '2026-10-31T09:00:00Z',
+      effectiveAt: '2026-12-04',
+      summary: ['I changed something.'],
+    }
+
+    await testDb.db.insert(schema.users).values({
+      name: 'Reader',
+      email: 'reader@example.test',
+      emailVerified: true,
+      createdAt: new Date('2026-10-01T00:00:00.000Z'),
+    })
+
+    const runLegalNoticeSweepJob = await loadJob()
+
+    try {
+      await runLegalNoticeSweepJob({
+        controller,
+        config,
+        createLogger,
+        runSweep: (input) => {
+          return sweepLegalNotices({
+            ...input,
+            db: testDb.db,
+            now: () => new Date('2026-11-02T10:00:00.000Z'),
+            notices: [notice],
+            renderNotice,
+            sendNotice,
+          })
+        },
+        shipWideEvent: vi.fn(),
+        isDevelopment: false,
+      })
+    } finally {
+      testDb.close()
+    }
+
+    expect(sendNotice).not.toHaveBeenCalled()
+    expect(renderNotice).not.toHaveBeenCalled()
+    expect(loggerSet).toHaveBeenCalledWith({
+      attributes: {
+        legalNoticeSweepResult: expect.objectContaining({
+          stopReason: 'no-approved-notice',
+          unapprovedNoticeIds: [notice.id],
+          sentCount: 0,
+        }),
+      },
+    })
   })
 
   it('emits a success event with counts and codes only', async () => {

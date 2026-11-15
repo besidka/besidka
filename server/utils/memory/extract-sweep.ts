@@ -24,6 +24,7 @@ import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { currentLegalConsentCondition } from '~~/server/utils/legal/consent'
+import { loadApprovedConsentVersion } from '~~/server/utils/legal/consent-version'
 import {
   MEMORY_EXTRACTION_LIMITS,
   MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
@@ -344,7 +345,11 @@ export async function sweepMemoryExtraction(
   const db = input.db ?? useDb()
   const startedAt = Date.now()
   const now = input.now ?? new Date()
-  const chats = await selectDueChats(db, Math.max(input.batchSize, 1), now)
+  const isConsentVersionKnown
+    = await loadApprovedConsentVersion({ db }) !== null
+  const chats = isConsentVersionKnown
+    ? await selectDueChats(db, Math.max(input.batchSize, 1), now)
+    : []
   const resolveCache = new Map<string, ResolvedMemoryModel>()
   const result: SweepMemoryExtractionResult = {
     selectedCount: chats.length,

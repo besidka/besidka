@@ -3,8 +3,13 @@ import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import {
   CURRENT_CONSENT_VERSION,
   recordLegalConsent,
+  throwConsentVersionUnavailable,
   toLegalConsentState,
 } from '~~/server/utils/legal/consent'
+import {
+  loadApprovedConsentVersion,
+  resolveEffectiveConsentVersion,
+} from '~~/server/utils/legal/consent-version'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
@@ -41,24 +46,40 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (body.data.version !== CURRENT_CONSENT_VERSION) {
+  const approvedVersion = await loadApprovedConsentVersion()
+
+  if (approvedVersion === null) {
+    throwConsentVersionUnavailable()
+  }
+
+  const effectiveVersion = resolveEffectiveConsentVersion(
+    CURRENT_CONSENT_VERSION,
+    approvedVersion,
+  )
+
+  if (body.data.version !== effectiveVersion) {
     throw createError({
       message: 'The consent text has changed',
       status: 409,
-      why: `You agreed to version ${body.data.version}, the current version is ${CURRENT_CONSENT_VERSION}.`,
+      why: `You agreed to version ${body.data.version}, the current version is ${effectiveVersion}.`,
       fix: 'Reload the page and read the updated text before you agree.',
     })
   }
 
   const userId = parseInt(session.user.id)
-  const record = await recordLegalConsent(userId)
+  const record = await recordLegalConsent(
+    userId,
+    useDb(),
+    new Date(),
+    effectiveVersion,
+  )
 
   logger.set({
     userId,
     attributes: {
       legalConsent: {
         action: 'granted',
-        version: CURRENT_CONSENT_VERSION,
+        version: effectiveVersion,
       },
     },
   })

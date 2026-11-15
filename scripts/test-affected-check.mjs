@@ -1392,6 +1392,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/email-template.spec.ts',
   ]
 
+  const legalAdminTests = [
+    'tests/unit/server/utils/legal/admin.spec.ts',
+    'tests/unit/server/utils/legal/consent-version.spec.ts',
+    'tests/unit/server/utils/legal/purge.spec.ts',
+    'tests/unit/utils/legal/notice-sweep.spec.ts',
+    'tests/unit/db/legal-approvals-migration.spec.ts',
+    'tests/unit/pages/admin/legal.spec.ts',
+    'tests/integration/api/admin-legal.spec.ts',
+    'tests/integration/api/admin-features.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+  ]
+
   const legalNoticeEmailTests = [
     'tests/unit/utils/legal/notice-sweep.spec.ts',
     'tests/unit/utils/legal/notice-email.spec.ts',
@@ -2407,6 +2419,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/server/utils/legal/consent.spec.ts',
         'tests/unit/server/utils/legal/consent-text-version.spec.ts',
+        'tests/unit/server/utils/legal/consent-version.spec.ts',
         'tests/integration/api/legal-consent.spec.ts',
         'tests/unit/utils/memory/resolve-model.spec.ts',
         'tests/unit/utils/projects/memory-refresh.spec.ts',
@@ -4245,6 +4258,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/utils\/account\/security-emails\.ts|server\/utils\/legal\/notice-sender\.ts|shared\/utils\/account-emails\.ts|content\/legal\/privacy-policy\.md)$/,
       tests: ['tests/unit/content/account-email-list.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/legal\/(admin|consent|consent-version|notice-approvals|notice-sweep|purge)\.ts|server\/api\/v1\/admin\/legal\/.*\.ts|server\/db\/schemas\/legal-approvals\.ts|shared\/utils\/legal-admin-schemas\.ts|server\/utils\/account\/purge-user-data\.ts|app\/pages\/admin\/legal\.vue|app\/layouts\/admin\.vue|\.drizzle\/migrations\/20261115103710_mute_vision\/migration\.sql)$/,
+      tests: legalAdminTests,
     },
     {
       pattern: /^(server\/utils\/legal\/(notice-sweep|notice-email|notice-sender)\.ts|server\/plugins\/legal-notice-sweep\.ts|server\/db\/schemas\/legal-notice-deliveries\.ts|server\/utils\/email(-template)?\.ts|app\/emails\/LegalNoticeEmail\.vue|shared\/utils\/legal-notices\.ts)$/,
