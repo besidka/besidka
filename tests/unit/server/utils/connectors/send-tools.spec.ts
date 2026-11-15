@@ -145,6 +145,7 @@ describe('getConnectorTools', () => {
     guard?: { untrustedResultSeen: boolean }
     limitCalls?: () => Promise<boolean>
     prepareDeadlineMs?: number
+    keepSeedOrder?: boolean
     wrapFetch?: (base: typeof fetch) => typeof fetch
   }) {
     const baseFetch = createMockMcpFetch(options.servers) as typeof fetch
@@ -157,9 +158,21 @@ describe('getConnectorTools', () => {
       kv: kv as never,
       userId,
       chatPublicId: chatId,
-      connectors: connectors.filter((connector) => {
-        return options.connectorSeeds.some(seed => seed.slug === connector.slug)
-      }),
+      connectors: connectors
+        .filter((connector) => {
+          return options.connectorSeeds.some((seed) => {
+            return seed.slug === connector.slug
+          })
+        })
+        .sort((first, second) => {
+          if (!options.keepSeedOrder) {
+            return 0
+          }
+
+          const slugs = options.connectorSeeds.map(seed => seed.slug)
+
+          return slugs.indexOf(first.slug) - slugs.indexOf(second.slug)
+        }),
       existingToolCount: options.existingToolCount ?? 0,
       hashArgs,
       guard: options.guard,
@@ -1287,6 +1300,92 @@ describe('getConnectorTools', () => {
         ])
         expect(summary.failedConnectors).toBe(1)
       })
+
+    it('serves a queued connector from cache and skips an uncontacted one '
+      + 'without marking it unreachable when the deadline fires', async () => {
+      const stalledNames = ['one', 'two', 'three']
+      const stalledServers = stalledNames.map((name) => {
+        return server(`mcp.${name}.example.com`)
+      })
+      const cached = server('mcp.cached.example.com')
+      const late = server('mcp.late.example.com')
+      const stalledSeeds: ConnectorSeed[] = stalledNames.map((name, index) => {
+        return { slug: name, url: stalledServers[index]!.url, auth: 'none' }
+      })
+      const cachedSeed: ConnectorSeed = {
+        slug: 'cached',
+        url: cached.url,
+        auth: 'none',
+      }
+      const lateSeed: ConnectorSeed = {
+        slug: 'late',
+        url: late.url,
+        auth: 'none',
+      }
+      const seeds = [...stalledSeeds, cachedSeed, lateSeed]
+      const connectorIds = new Map<string, string>()
+
+      for (const seed of seeds) {
+        connectorIds.set(seed.slug, await addConnector(seed))
+      }
+
+      await run({ connectorSeeds: [cachedSeed], servers: [cached] })
+
+      const lateRequestsBefore = late.requests.length
+      const stalledHosts = new Set(stalledServers.map(({ host }) => host))
+      const startedAt = Date.now()
+      const { tools, notices, summary } = await run({
+        connectorSeeds: seeds,
+        servers: [...stalledServers, cached, late],
+        keepSeedOrder: true,
+        prepareDeadlineMs: 150,
+        wrapFetch: base => (async (input, init) => {
+          const url = new URL(
+            typeof input === 'string' || input instanceof URL
+              ? input
+              : input.url,
+          )
+          const isListing = typeof init?.body === 'string'
+            && init.body.includes('"tools/list"')
+
+          if (isListing && stalledHosts.has(url.host)) {
+            return await new Promise<Response>(() => {})
+          }
+
+          return await base(input, init)
+        }) as typeof fetch,
+      })
+      const connectors = await listConnectors(testDb.db, userId)
+
+      function lastErrorOf(slug: string) {
+        return connectors.find((connector) => {
+          return connector.id === connectorIds.get(slug)
+        })?.lastError
+      }
+
+      expect(Date.now() - startedAt).toBeLessThan(2000)
+      expect(Object.keys(tools).some(name => name.startsWith('mcp__cached__')))
+        .toBe(true)
+      expect(Object.keys(tools).some(name => name.startsWith('mcp__late__')))
+        .toBe(false)
+      expect(late.requests.length).toBe(lateRequestsBefore)
+      expect(notices).toEqual([
+        'one could not be reached, so its tools were not used.',
+        'two could not be reached, so its tools were not used.',
+        'three could not be reached, so its tools were not used.',
+        'late was skipped because other connectors took too long, so its '
+        + 'tools were not used. Try again.',
+      ])
+      expect(summary.failedConnectors).toBe(3)
+      expect(summary.cacheHits).toBe(1)
+
+      for (const slug of stalledNames) {
+        expect(lastErrorOf(slug)?.code).toBe('CONNECTOR_UNREACHABLE')
+      }
+
+      expect(lastErrorOf('cached')).toBeNull()
+      expect(lastErrorOf('late')).toBeNull()
+    })
 
     it('skips connectors on the legacy SSE transport past the second, before '
       + 'any request', async () => {

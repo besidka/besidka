@@ -180,6 +180,11 @@ function noticeForFailure(title: string, code: string): string {
   return `${title} could not be reached, so its tools were not used.`
 }
 
+function noticeForSkippedConnector(title: string): string {
+  return `${title} was skipped because other connectors took too long, so its `
+    + 'tools were not used. Try again.'
+}
+
 function resolveAuth(input: {
   connector: ConnectorRecord
   credentials: ConnectorCredentials | null
@@ -512,10 +517,6 @@ export async function getConnectorTools(
     const secrets = new Set<string>()
 
     try {
-      if (signal.aborted) {
-        throw createConnectorError('CONNECTOR_UNREACHABLE')
-      }
-
       const resolver = resolveAuth({
         connector,
         credentials,
@@ -558,6 +559,19 @@ export async function getConnectorTools(
       const fromCache = definitions !== null
 
       if (!definitions) {
+        if (signal.aborted) {
+          logger.set({
+            attributes: {
+              connectors: { id: connector.id, skippedByDeadline: true },
+            },
+          })
+
+          return {
+            prepared: null,
+            notice: noticeForSkippedConnector(connector.title),
+          }
+        }
+
         const client = await untilDeadline(handle.getClient(), signal)
         const listed = await untilDeadline(
           listRemoteDefinitions(client, signal),

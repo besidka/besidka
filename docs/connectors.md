@@ -847,7 +847,10 @@ Choices that differ from or add to section 6, 10 and 14:
 - **Timeouts and cleanup (2026-11-15 audit).** `listTools` gets the send's
   abort signal and an 8 s timeout, and every connector's connect and list is
   raced against one shared 8 s deadline, so a server that stalls costs the
-  send at most 8 s and is skipped with the usual notice. Anything that throws
+  send at most 8 s and is skipped with the usual notice; the cached tool list
+  is read before the deadline is checked, and a connector still queued behind
+  the 3-at-once limit when the deadline fires is skipped with its own notice
+  and is never marked unreachable. Anything that throws
   after a client opened (settings, baseline, tool building) closes the opened
   clients before it rethrows. Clients close in parallel under one shared 2 s
   deadline instead of one after another. An OAuth connector with no issuer on
