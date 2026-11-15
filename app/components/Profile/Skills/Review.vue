@@ -167,11 +167,11 @@
             The built-in checks highlighted nothing.
           </template>
           Besidka highlights links and commands so you can review them. It
-          cannot tell whether a skill is safe.
+          shows what to look at. It does not decide whether to use a skill.
         </p>
         <p data-testid="skill-review-no-highlight-note">
-          No highlight does not mean the text is harmless. Read the files
-          that matter to you.
+          A skill with no highlights can still do things you do not want.
+          Read the files that matter to you.
         </p>
       </div>
     </div>

@@ -63,8 +63,8 @@
         data-testid="skill-model-findings-note"
       >
         Highlighted: {{ describeFindingSummary(findingCounts) }}.
-        Besidka highlights links and commands so you can review them. It cannot
-        tell whether a skill is safe.
+        Besidka highlights links and commands so you can review them. It shows
+        what to look at. It does not decide whether to use a skill.
       </p>
     </section>
   </div>

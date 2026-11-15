@@ -26,15 +26,6 @@ function testId(id: string) {
   return `[data-testid="${id}"]`
 }
 
-function stripMandatedSentences(text: string): string {
-  return text
-    .replace('cannot tell whether a skill is safe', '')
-    .replace(
-      'No highlight does not mean the text is harmless.',
-      '',
-    )
-}
-
 function makeFinding(overrides: Partial<SkillFinding>): SkillFinding {
   return {
     type: 'url',
@@ -175,12 +166,11 @@ describe('Profile/Skills/Review', () => {
       'Installing a skill is like installing software. Only continue if you trust its author.',
     )
     expect(text).toContain(
-      'Besidka highlights links and commands so you can review them. It cannot tell whether a skill is safe.',
+      'Besidka highlights links and commands so you can review them. It shows what to look at. It does not decide whether to use a skill.',
     )
     expect(text).toContain('1 link')
     expect(text).toContain('1 command')
-    expect(wrapper.text().replace('cannot tell whether a skill is safe', ''))
-      .not.toMatch(/\bis safe\b|\bsafe to\b|\bverified\b/i)
+    expect(wrapper.text()).not.toMatch(BANNED_WORDS)
   })
 
   it('groups the highlights by severity in three named groups', async () => {
@@ -274,12 +264,11 @@ describe('Profile/Skills/Review', () => {
     })
 
     for (const wrapper of [withFindings, withoutFindings]) {
-      expect(stripMandatedSentences(wrapper.text()))
-        .not.toMatch(BANNED_WORDS)
+      expect(wrapper.text()).not.toMatch(BANNED_WORDS)
     }
   })
 
-  it('says that no highlight does not mean the text is harmless', async () => {
+  it('says a skill with no highlights can still do things the user does not want', async () => {
     const wrapper = await mountSuspended(Review, {
       props: {
         preview: createImportPreview({ findings: [], findingCounts: {} }),
@@ -288,7 +277,7 @@ describe('Profile/Skills/Review', () => {
 
     expect(wrapper.get(testId('skill-review-no-highlight-note')).text())
       .toBe(
-        'No highlight does not mean the text is harmless. Read the files that matter to you.',
+        'A skill with no highlights can still do things you do not want. Read the files that matter to you.',
       )
     expect(wrapper.html()).not.toContain('lucide:circle-check')
     expect(wrapper.html()).not.toContain('lucide:shield-check')
@@ -788,7 +777,7 @@ describe('Profile/Skills/Review: TypeSafe AI section', () => {
     expect(wrapper.get(testId('skill-jev-section')).text())
       .not.toMatch(JEV_BANNED_COPY)
     expect(wrapper.get(testId('skill-review-no-highlight-note')).text())
-      .toContain('No highlight does not mean')
+      .toContain('A skill with no highlights can still')
   })
 
   it('offers Check the rest and posts { rest: true } only on click', async () => {

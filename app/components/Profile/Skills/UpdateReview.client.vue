@@ -95,7 +95,7 @@
               The version in use has: {{ currentFindingSummary }}.
             </template>
             Besidka highlights links and commands so you can review them. It
-            cannot tell whether a skill is safe.
+            shows what to look at. It does not decide whether to use a skill.
             <template v-if="isRescanned">
               Rescanned with newer checks.
             </template>

@@ -611,8 +611,9 @@ attribution text lands with SS-10. No OWASP text is copied.
   severities until it is rescanned in the update review. No new hard block.
   Banned in all skill UI: safe, safety rating, clean, verified, trusted,
   harmless, malicious (for the user's skill) and a green check for "no
-  findings"; the two mandated sentences that contain "safe" and "harmless" are
-  the only exceptions.
+  findings". There are no exceptions: the notes say "It shows what to look at.
+  It does not decide whether to use a skill." and "A skill with no highlights
+  can still do things you do not want." (2026-11-15, BES-392).
 - **Corpus guard (BES-389).** `tests/fixtures/skills/anthropics/` holds 18
   skill folders of `anthropics/skills@2c5958ec` (Apache-2.0, see its
   `SOURCE.md`). `corpus-benign.spec.ts` asserts 0 high, only the 27 measured
@@ -2046,8 +2047,10 @@ update is accepted; shared with the editor in read-only mode;
   plain text.
 - `alert alert-warning` "Installing a skill is like installing software. Only
   continue if you trust its author." plus finding counts by type, and the line
-  "Besidka highlights links and commands so you can review them. It cannot tell
-  whether a skill is safe."
+  "Besidka highlights links and commands so you can review them. It shows what
+  to look at. It does not decide whether to use a skill.", and "A skill with no
+  highlights can still do things you do not want. Read the files that matter to
+  you."
 - File tree (`menu menu-sm`, a `select` on mobile) and a plain monospace
   viewer with line numbers, a wrap toggle, findings marked with a background
   and a text marker (not color alone), hidden characters shown as

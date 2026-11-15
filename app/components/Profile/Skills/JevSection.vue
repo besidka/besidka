@@ -5,7 +5,7 @@
     aria-labelledby="skill-jev-title"
     data-testid="skill-jev-section"
   >
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-1.5">
       <h4
         id="skill-jev-title"
         class="text-sm font-semibold"
