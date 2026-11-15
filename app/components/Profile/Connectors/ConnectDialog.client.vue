@@ -19,7 +19,10 @@
       class="mb-4 flex items-center gap-3"
       data-testid="connector-connect-identity"
     >
-      <ProfileConnectorsAvatar :title="connector.title" />
+      <ProfileConnectorsAvatar
+        :title="connector.title"
+        :preset-id="connector.presetId"
+      />
       <div class="grid min-w-0 gap-0.5">
         <p class="break-all font-mono text-base font-semibold">
           {{ connector.host }}
