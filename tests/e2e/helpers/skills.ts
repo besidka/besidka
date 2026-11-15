@@ -9,7 +9,7 @@ import {
 export const E2E_ADMIN_EMAIL = 'e2e-admin@example.com'
 const CONSENT_COOKIE_NAME = 'cookies_consent'
 const ONE_DAY_IN_SECONDS = 60 * 60 * 24
-const GRANTED_FLAGS = ['skills', 'skills.commands'] as const
+const GRANTED_FLAGS: readonly string[] = ['skills', 'skills.commands']
 
 export function markEmailVerified(email: string) {
   execFileSync('pnpm', [
@@ -61,6 +61,7 @@ export async function readUserId(page: Page): Promise<number> {
 export async function openGrantedMember(
   browser: Browser,
   prefix: string,
+  flags: readonly string[] = GRANTED_FLAGS,
 ): Promise<Page> {
   const admin = {
     ...createUniqueUser('e2e-admin'),
@@ -75,7 +76,7 @@ export async function openGrantedMember(
 
   const userId = await readUserId(page)
 
-  for (const flag of GRANTED_FLAGS) {
+  for (const flag of flags) {
     const grant = await adminPage.request.post(
       `/api/v1/admin/features/${flag}/grants`,
       {

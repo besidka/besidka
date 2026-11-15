@@ -1618,6 +1618,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/audit.spec.ts',
   ]
 
+  const toolApprovalUiTests = [
+    'tests/unit/utils/tool-approval-step.spec.ts',
+    'tests/unit/composables/tool-approvals.spec.ts',
+    'tests/unit/composables/chat.tool-approvals.spec.ts',
+    'tests/unit/components/Chat/Reasoning/ApprovalStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.approvals.spec.ts',
+    'tests/unit/components/Chat/Reasoning.connectors.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+    'tests/unit/components/ChatInput/ToolApprovalChip.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/e2e/chat/tool-approval.spec.ts',
+  ]
+
   const skillsStorageTests = [
     'tests/unit/utils/skills-policy.spec.ts',
     'tests/unit/utils/features/skills-registry.spec.ts',
@@ -3194,6 +3207,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/tool-approval-(policy|parts)\.ts|server\/utils\/tool-approval\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/index\.post\.ts|server\/utils\/chats\/request-schema\.ts|server\/utils\/connectors\/(send-tools|audit|store)\.ts|server\/utils\/ai\/message-usage\.ts|app\/composables\/(chat|tool-approvals)\.ts|tests\/setup\/helpers\/mock-mcp-server\.ts|package\.json)$/,
       tests: toolApprovalContinuationTests,
+    },
+    {
+      pattern:
+        /^(app\/utils\/(tool-approval-step|connector-step)\.ts|app\/composables\/(chat|tool-approvals|side-panel)\.ts|app\/components\/Chat\/Reasoning\.vue|app\/components\/Chat\/Reasoning\/Approval(Step|Details)\.vue|app\/components\/ChatInput\/ToolApprovalChip\.vue|app\/components\/ChatInput\.client\.vue|shared\/utils\/(tool-approval-parts|tool-approval-policy|connectors-parts|chat-test-errors)\.ts|server\/api\/v1\/chats\/test\/index\.get\.ts|server\/utils\/chats\/test\/tool-approval-fixture\.ts|tests\/e2e\/helpers\/skills\.ts)$/,
+      tests: toolApprovalUiTests,
     },
     {
       pattern:
