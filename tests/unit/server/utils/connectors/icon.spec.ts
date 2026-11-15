@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   CONNECTOR_ICON_MAX_BYTES,
   CONNECTOR_ICON_MISS_TTL_SECONDS,
+  CONNECTOR_ICON_RESOLVE_BUDGET_MS,
   CONNECTOR_ICON_TTL_SECONDS,
 } from '#shared/utils/connectors-policy'
 import {
   CONNECTOR_ICON_BUSY,
   connectorIconKey,
   connectorIconLockKey,
-  connectorIconOrigins,
   connectorIconSourcesKey,
   deleteConnectorIconCache,
   fetchConnectorIconHtml,
@@ -267,9 +267,8 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(result).toBeNull()
-    expect(fetchImage).toHaveBeenCalledTimes(2)
-    expect(fetchImage).toHaveBeenNthCalledWith(
-      1,
+    expect(fetchImage).toHaveBeenCalledTimes(1)
+    expect(fetchImage).toHaveBeenCalledWith(
       'https://mcp.notion.com/favicon.ico',
       undefined,
     )
@@ -290,10 +289,7 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
-      .toEqual([
-        'https://mcp.notion.com/favicon.ico',
-        'https://notion.com/favicon.ico',
-      ])
+      .toEqual(['https://mcp.notion.com/favicon.ico'])
   })
 
   it('falls back to the favicon of the host, then to nothing', async () => {
@@ -346,7 +342,7 @@ describe('resolveConnectorIcon', () => {
       dependencies: { fetchImage, fetchHtml },
     })
 
-    expect(fetchImage).toHaveBeenCalledTimes(2)
+    expect(fetchImage).toHaveBeenCalledTimes(1)
     expect(kv.entries.get(connectorIconKey(connector.id))?.ttl)
       .toBe(CONNECTOR_ICON_MISS_TTL_SECONDS)
   })
@@ -707,22 +703,6 @@ describe('parseConnectorIconLinks', () => {
   })
 })
 
-describe('connectorIconOrigins', () => {
-  it('adds the parent domain for the usual service prefixes only', () => {
-    expect(connectorIconOrigins('https://mcp.linear.app'))
-      .toEqual(['https://mcp.linear.app', 'https://linear.app'])
-    expect(connectorIconOrigins('https://api.example.co.uk:8443'))
-      .toEqual(['https://api.example.co.uk:8443', 'https://example.co.uk:8443'])
-    expect(connectorIconOrigins('https://linear.app'))
-      .toEqual(['https://linear.app'])
-    expect(connectorIconOrigins('https://mcp.dev'))
-      .toEqual(['https://mcp.dev'])
-    expect(connectorIconOrigins('https://tools.linear.app'))
-      .toEqual(['https://tools.linear.app'])
-    expect(connectorIconOrigins('not a url')).toEqual([])
-  })
-})
-
 describe('resolveConnectorIcon beyond the favicon', () => {
   it('reads the icon links of the page when /favicon.ico is missing', async () => {
     const kv = createFakeIconKv()
@@ -746,24 +726,49 @@ describe('resolveConnectorIcon beyond the favicon', () => {
       .toMatchObject({ origin: 'favicon' })
   })
 
-  it('tries the parent domain of a service host last', async () => {
+  it('never asks the parent domain of the host', async () => {
     const kv = createFakeIconKv()
-    const fetchImage = vi.fn(async (url: string) => {
-      return url === 'https://notion.com/favicon.ico'
-        ? image('image/x-icon')
-        : null
-    })
+    const fetchImage = vi.fn(async () => null)
 
-    const result = await resolveConnectorIcon(asKv(kv), connector, {
-      dependencies: { fetchImage, fetchHtml },
-    })
+    await resolveConnectorIcon(
+      asKv(kv),
+      { id: 'vercel1', origin: 'https://mcp.vercel.app' },
+      { dependencies: { fetchImage, fetchHtml } },
+    )
 
-    expect(result?.contentType).toBe('image/x-icon')
     expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
-      .toEqual([
-        'https://mcp.notion.com/favicon.ico',
-        'https://notion.com/favicon.ico',
-      ])
+      .toEqual(['https://mcp.vercel.app/favicon.ico'])
+    expect(fetchHtml).toHaveBeenCalledWith('https://mcp.vercel.app/', undefined)
+  })
+
+  it('stops trying sources once the time budget is spent', async () => {
+    const kv = createFakeIconKv()
+    const now = vi.spyOn(Date, 'now')
+    let clock = 0
+
+    now.mockImplementation(() => clock)
+
+    const fetchImage = vi.fn(async () => {
+      clock += CONNECTOR_ICON_RESOLVE_BUDGET_MS + 1
+
+      return null
+    })
+
+    await resolveConnectorIcon(
+      asKv(kv),
+      {
+        ...connector,
+        readRemoteSources: async () => [
+          { src: 'https://static.example.com/a.png' },
+          { src: 'https://static.example.com/b.png' },
+        ],
+      },
+      { dependencies: { fetchImage, fetchHtml } },
+    )
+    now.mockRestore()
+
+    expect(fetchImage).toHaveBeenCalledTimes(1)
+    expect(fetchHtml).not.toHaveBeenCalled()
   })
 
   it('fetches remote sources from any https host, before the origin', async () => {

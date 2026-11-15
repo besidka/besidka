@@ -26,16 +26,6 @@ const SVG_SNIFF_BYTES = 512
 const SVG_START = /^(?:<\?xml\s|<!--|<svg[\s>])/i
 const LINK_TAG = /<link\s[^>]*>/gi
 const LINK_ATTRIBUTE = /([a-z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi
-const SERVICE_HOST_PREFIXES: ReadonlySet<string> = new Set([
-  'mcp',
-  'api',
-  'app',
-  'www',
-  'server',
-  'remote',
-  'gateway',
-  'mcp-server',
-])
 
 export const CONNECTOR_ICON_CONTENT_TYPES = [
   'image/png',
@@ -615,9 +605,13 @@ async function fetchDeclaredIcon(
   origin: string,
   fetchImage: NonNullable<ConnectorIconDependencies['fetchImage']>,
   logger?: LoggerLike,
-  options: { isAnyOriginAllowed?: boolean } = {},
+  options: { isAnyOriginAllowed?: boolean, isExpired?: () => boolean } = {},
 ): Promise<ConnectorIconImage | null> {
   for (const icon of declared) {
+    if (options.isExpired?.()) {
+      return null
+    }
+
     if (icon.src.startsWith('data:')) {
       const image = decodeDataUriIcon(icon.src)
 
@@ -752,27 +746,6 @@ export async function fetchConnectorIconHtml(
   }
 }
 
-/**
- * The origin itself, plus its parent for the usual service prefixes
- * (`mcp.linear.app` also asks `linear.app`, where the brand icon lives).
- */
-export function connectorIconOrigins(origin: string): string[] {
-  try {
-    const url = new URL(origin)
-    const [first = '', ...rest] = url.hostname.split('.')
-
-    if (rest.length < 2 || !SERVICE_HOST_PREFIXES.has(first)) {
-      return [url.origin]
-    }
-
-    url.hostname = rest.join('.')
-
-    return [new URL(origin).origin, url.origin]
-  } catch {
-    return []
-  }
-}
-
 async function fetchOriginIcon(
   origin: string,
   dependencies: {
@@ -862,7 +835,7 @@ async function fetchAndStoreIcon(
     connector.origin,
     fetchImage,
     options.logger,
-    { isAnyOriginAllowed: true },
+    { isAnyOriginAllowed: true, isExpired },
   )
 
   if (remoteImage) {
@@ -877,6 +850,7 @@ async function fetchAndStoreIcon(
     connector.origin,
     fetchImage,
     options.logger,
+    { isExpired },
   )
 
   if (declaredImage) {
@@ -885,23 +859,19 @@ async function fetchAndStoreIcon(
     return declaredImage
   }
 
-  for (const origin of connectorIconOrigins(connector.origin)) {
-    if (isExpired()) {
-      break
-    }
-
-    const image = await fetchOriginIcon(
-      origin,
+  const originImage = isExpired()
+    ? null
+    : await fetchOriginIcon(
+      connector.origin,
       { fetchImage, fetchHtml },
       isExpired,
       options.logger,
     )
 
-    if (image) {
-      await storeIcon(kv, connector.id, image, 'favicon')
+  if (originImage) {
+    await storeIcon(kv, connector.id, originImage, 'favicon')
 
-      return image
-    }
+    return originImage
   }
 
   await storeIcon(kv, connector.id, null, null)
@@ -916,8 +886,7 @@ async function fetchAndStoreIcon(
  * server's own origin), then the favicon of the server's host. Every fetched
  * image is re-validated by its magic bytes and its declared size, so what is
  * kept and served is never trusted from a header. A page's own icon links
- * and the parent domain of a service host (`mcp.` and `api.` prefixes) are
- * tried after the favicon, within a 15 s budget. Null means no icon: the
+ * are tried after the favicon, within a 15 s budget. Null means no icon: the
  * client shows a letter. A short in-flight marker in KV (best effort, KV is
  * eventually consistent) makes concurrent cold requests answer `busy` instead
  * of all fetching. Callers gate this on a consented, connected connector.

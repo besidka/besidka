@@ -329,6 +329,43 @@ describe('GET /api/v1/connectors/registry', () => {
       expect((await failureOf(search())).status).toBe(404)
     })
 
+    it('stops offering Show more where the next cursor would pass the cap',
+      async () => {
+        const cap = REGISTRY_SEARCH_MAX_CURSOR
+        const pageSize = REGISTRY_SEARCH_PAGE_SIZE
+        const total = cap + pageSize + 5
+
+        for (let start = 0; start < total; start += 50) {
+          await testDb.db.insert(schema.mcpRegistryServers).values(
+            Array.from({
+              length: Math.min(50, total - start),
+            }, (_row, index) => {
+              const number = String(start + index).padStart(5, '0')
+
+              return {
+                id: `io.example/bulk-${number}@1.0.0`,
+                name: `io.example/bulk-${number}`,
+                title: `Bulk ${number}`,
+                description: 'Bulk entry',
+                remoteUrl: `https://mcp.bulk${number}.example.com/mcp`,
+                remoteType: 'streamable-http' as const,
+                headerNames: [],
+                status: 'active',
+                registryUpdatedAt: new Date(0),
+                syncedAt: new Date(0),
+              }
+            }),
+          )
+        }
+
+        const beforeCap = await search({ cursor: String(cap - pageSize) })
+        const atCap = await search({ cursor: String(cap) })
+
+        expect(beforeCap.nextCursor).toBe(cap)
+        expect(atCap.items).toHaveLength(pageSize)
+        expect(atCap.nextCursor).toBeNull()
+      })
+
     it('bounds the cursor at the cap', async () => {
       await addServer('io.example/one')
 

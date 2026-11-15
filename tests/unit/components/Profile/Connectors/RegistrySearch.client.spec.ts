@@ -170,6 +170,29 @@ describe('Profile/Connectors/RegistrySearch', () => {
     expect(byId('connector-registry-total')?.textContent?.trim()).toBe('21')
   })
 
+  it('says so when the last page is capped before the total is shown',
+    async () => {
+      mocks.fetch.mockResolvedValue(
+        page([item(1), item(2)], { nextCursor: null, total: 12000 }),
+      )
+
+      await mountSearch()
+      await flushPromises()
+
+      expect(byId('connector-registry-truncated')?.textContent)
+        .toContain('Showing the first 2. Search to find the rest.')
+      expect(byId('connector-registry-more')).toBeNull()
+    })
+
+  it('does not say it when everything is shown', async () => {
+    mocks.fetch.mockResolvedValue(page([item(1)], { total: 1 }))
+
+    await mountSearch()
+    await flushPromises()
+
+    expect(byId('connector-registry-truncated')).toBeNull()
+  })
+
   it('says the directory is being copied when the table is empty', async () => {
     mocks.fetch.mockResolvedValue(page([], { syncing: true, total: 0 }))
 

@@ -167,6 +167,41 @@ describe('GET /api/v1/connectors/registry/icon', () => {
     ])
   })
 
+  it('serves an SVG with a CSP that still allows inline styles, and a '
+    + 'script SVG never', async () => {
+    await addServer()
+
+    const safeSvg = '<svg xmlns="http://www.w3.org/2000/svg">'
+      + '<circle r="3" style="fill:#f00"/></svg>'
+
+    fetchMock.mockImplementation(async (input: unknown) => {
+      return String(input).startsWith('https://registry.modelcontextprotocol')
+        ? jsonBody({ server: { icons: [{ src: 'https://cdn.example.com/a.svg' }] } })
+        : new Response(safeSvg)
+    })
+
+    const response = await request()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('image/svg+xml')
+    expect(response.headers.get('content-security-policy'))
+      .toBe('default-src \'none\'; style-src \'unsafe-inline\'; sandbox')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+  })
+
+  it('rejects an SVG with script and answers 404', async () => {
+    await addServer()
+    fetchMock.mockImplementation(async (input: unknown) => {
+      return String(input).startsWith('https://registry.modelcontextprotocol')
+        ? jsonBody({ server: { icons: [{ src: 'https://cdn.example.com/a.svg' }] } })
+        : new Response(
+          '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+        )
+    })
+
+    expect((await request()).status).toBe(404)
+  })
+
   it('falls back to the favicon of the entry host, taken from the row',
     async () => {
       await addServer()

@@ -202,6 +202,14 @@
         <div class="skeleton skeleton--default h-28 w-full rounded-box" />
       </div>
 
+      <p
+        v-if="isTruncated"
+        class="text-center text-xs text-base-content/70"
+        data-testid="connector-registry-truncated"
+      >
+        Showing the first {{ items.length }}. Search to find the rest.
+      </p>
+
       <button
         v-if="nextCursor !== null"
         type="button"
@@ -279,6 +287,13 @@ const isSearchActive = computed<boolean>(() => {
 
 const effectiveQuery = computed<string>(() => {
   return isSearchActive.value ? trimmedQuery.value : ''
+})
+
+const isTruncated = computed<boolean>(() => {
+  return hasLoaded.value
+    && nextCursor.value === null
+    && total.value !== null
+    && items.value.length < total.value
 })
 
 const adminStatusText = computed<string>(() => {

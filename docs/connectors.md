@@ -1658,7 +1658,10 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   tool-list cache miss in `send-tools.ts` and kept as sources in KV. Only a
   `data:` image or a URL on the server's own origin is fetched; dark-theme
   icons are skipped (the tile is light). (2) `/favicon.ico` of the server's
-  host. (3) A letter avatar, drawn by the client when the route answers 404.
+  host. (3) Since BES-398, the `<link rel="apple-touch-icon">` and
+  `<link rel="icon">` tags of the host's home page (same origin only, three
+  links). (4) A letter avatar, drawn by the client when the route answers 404
+  (a connector with a preset mark shows that mark instead).
   Registry icons are not read here (the connector route needs the user's
   own consented connector); BES-398 reads them for directory cards, section
   10.2.
@@ -1667,8 +1670,9 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   origin, as for `mcp`; 32 KiB, 5 s). The answer must be a success and a
   raster image by its magic bytes (PNG, JPEG, GIF, WebP, ICO) whose own header
   declares at most 512 by 512 pixels (an ICO with an entry pointing outside the
-  file is refused too). SVG is refused: it is served from the app's own origin
-  and can carry script. The bytes live in KV under `connectors:icon:<id>` for
+  file is refused too), or an SVG that passes the allowlist of section 10.2
+  (BES-395 refused every SVG: it is served from the app's own origin and can
+  carry script). The bytes live in KV under `connectors:icon:<id>` for
   7 days; a miss is kept for a day, so a server without an icon is not asked on
   every render. A changed set of declared sources drops the kept icon. Deleting a connector
   (`delete/bulk` is the only delete path), disconnecting it, withdrawing its
@@ -1694,8 +1698,10 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   serve `/favicon.ico` (Sentry, Vercel); Notion, Linear, Stripe, Atlassian and
   others answer 404, so most connectors showed the letter unless the server
   declares icons. BES-398 (section 10.2) added the page's `<link rel=icon>`,
-  the parent domain of a service host, SVG and, for directory cards, the
-  registry's own `icons`.
+  SVG and, for directory cards, the registry's own `icons`. A parent-domain
+  hop (`mcp.linear.app` also asking `linear.app`) was built and removed in
+  review: on a shared platform host (`mcp.vercel.app`) it would show the
+  platform's logo for someone else's server (threat T6).
 - **Dev check.** `GET /chats/test?scenario=reasoning-icons` renders one reply
   with every kind of icon (connector slugs `sentry`, `vercel`, `linear`).
 
@@ -2054,6 +2060,8 @@ the scheduled handler.
   the same name under another id (the id is name plus version), then an
   `onConflictDoUpdate` insert. Never a multi-row `values([...])`.
 - **Search.** `GET /api/v1/connectors/registry?q=<2..64>&cursor=<0..1000>`
+  (as built by C-8; BES-398 made `q` optional for browsing and raised the cursor
+  cap to 2,000, section 10.2)
   (`server/api/v1/connectors/registry/index.get.ts`): session, `connectors`
   and `connectors.registry` flags, 30 searches a minute per user (own KV
   bucket), `LIKE` with `ESCAPE` over name, title and description on the local
@@ -2062,7 +2070,8 @@ the scheduled handler.
   `id`, `name`, `title`, `description`, `remoteUrl`, `transport`, `authHint`
   (`header` when the entry names a header, else `unknown`; the registry has no
   auth-type field) and `presetId` (exact URL match). An empty table answers
-  `syncing: true`. No `websiteUrl` and no icons.
+  `syncing: true`. No `websiteUrl` and no icons in the local copy (the
+  registry's `icons` are read live for directory cards, section 10.2).
 - **Not built here.** The 90-day `connector_tool_calls` prune the ticket put
   in this plugin (`CONNECTOR_AUDIT_PRUNE_BATCH` is still unused); no MCP tool
   (section 11 lists none for C-8); no UI (C-7).
@@ -2086,8 +2095,9 @@ The Connectors page (`app/pages/chats/connectors.vue`, components in
 ("Let models use tools from services you choose. Each server sees only what
 the model sends it.") and a link to Connected apps; "Add connector"; the
 preset list as text tiles with a generated initial avatar; the add dialog
-(`modal modal-bottom sm:modal-middle js-connector-add-modal`, tabs Presets ·
-URL · Search registry); connector cards with host, status badge, "Added by
+(`modal modal-bottom sm:modal-middle js-connector-add-modal`; tabs Presets ·
+URL · Search registry as built by C-7, Browse · Add by URL with the registry
+flag since BES-398, section 10.2); connector cards with host, status badge, "Added by
 <client>, not by you in the app" for MCP-created rows, the consent state with
 "Withdraw", enable toggle, Connect / Reconnect / Disconnect / Rename / Delete;
 the tool list with "Read-only (as reported by the server)" or "Changes data"
@@ -2256,7 +2266,8 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   Registry. Not reviewed by Besidka." stays under the grid.
 - **Browse and search route.** `GET /api/v1/connectors/registry` takes an
   optional `q` (blank browses, 2 to 64 characters searches) and `cursor` (0 to
-  2,000). Browse leaves out the four featured presets, puts entries with a
+  2,000; `nextCursor` is `null` once the next one would pass the cap, so the
+  last page shows no "Show more" and a search narrows the rest). Browse leaves out the four featured presets, puts entries with a
   `title` first (the registry has no popularity data, no stars and no download
   counts, so a curated title is the only quality proxy) and then sorts by
   title. Search ranking is unchanged. The first page also returns `total`.
@@ -2274,21 +2285,21 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   registry id, looks the row up (active only), and resolves the icon from the
   row, never from the request: (1) the entry's registry `icons`, read live
   with one `GET /v0.1/servers/<name>/versions/latest` through `safeFetch`
-  (`registry` purpose) only on a cache miss, because the mirror has no icons
-  column and a D1 migration is out of scope; any `https` icon URL is fetched
-  through `safeFetch` (an icon on `static.<vendor>.com` is the normal case),
-  (2) `/favicon.ico` of the entry's host, (3) the `<link rel="apple-touch-icon">`
-  and `<link rel="icon">` tags of its home page (same origin only, three
-  links), (4) the same for the parent domain when the host starts with `mcp.`,
-  `api.`, `app.`, `www.`, `server.`, `remote.`, `gateway.` or `mcp-server.`.
-  The whole cold resolution is bounded by 15 s. The result is kept in KV under
+  (`registry` purpose, 5 s) only on a cache miss, because the mirror has no
+  icons column and a D1 migration is out of scope; any `https` icon URL is
+  fetched through `safeFetch` (an icon on `static.<vendor>.com` is the normal
+  case), (2) `/favicon.ico` of the entry's host, (3) the
+  `<link rel="apple-touch-icon">` and `<link rel="icon">` tags of its home
+  page (same origin only, three links). There is no parent-domain step.
+  The whole cold resolution is bounded by 15 s: the budget is checked between
+  steps, and every request has its own 5 s timeout. The result is kept in KV under
   a hash of the registry name (versions and users share it; it is public data)
   for 7 days, a miss for 1 day, with the same in-flight lock as connector
   icons, so 20 cards open at once cost at most one fetch each. In the first
   production measurement 29 of 100 registry entries declared icons.
-- **Same code for connector icons.** Steps 2 to 4 now also run for a connected
-  connector (section 7.10), so Notion and Linear stop showing letters when
-  their home page names an icon. A connector's own declared icons keep the
+- **Same code for connector icons.** Steps 2 and 3 now also run for a
+  connected connector (section 7.10), so a connector stops showing a letter
+  when its home page names an icon. A connector's own declared icons keep the
   same-origin rule; only registry `icons` may come from another host, because
   they come from the registry and not from the server being connected.
 - **SVG.** Icons may now be `image/svg+xml` besides PNG, JPEG, GIF, WebP and
@@ -2299,8 +2310,11 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   external, `data:` or entity reference, `xml:base`, foreign namespace,
   DOCTYPE, ENTITY, CDATA or processing instruction fails the file. The cap is
   still 32 KiB, and the route keeps `default-src 'none'; sandbox`, `nosniff`
-  and `cross-origin-resource-policy: same-origin`; the client loads the icon
-  only through `<img referrerpolicy="no-referrer">`, where script never runs.
+  and `cross-origin-resource-policy: same-origin` (an SVG response adds
+  `style-src 'unsafe-inline'` so an inline `style` attribute still applies;
+  script stays blocked by `default-src 'none'` and `sandbox`); the client
+  loads the icon only through `<img referrerpolicy="no-referrer">`, where
+  script never runs.
 - **Where the icon shows.** Directory cards (registry route); the four
   presets in Featured and in the Presets tab (bundled `simple-icons` marks,
   also for a connector whose `presetId` is a preset, in the list and the "+"

@@ -4,7 +4,10 @@ import {
   CONNECTOR_PRESETS,
   findConnectorPresetByUrl,
 } from '~~/config/connectors-catalog'
-import { REGISTRY_SEARCH_PAGE_SIZE } from '#shared/utils/connectors-policy'
+import {
+  REGISTRY_SEARCH_MAX_CURSOR,
+  REGISTRY_SEARCH_PAGE_SIZE,
+} from '#shared/utils/connectors-policy'
 import { deriveConnectorPublisher } from '#shared/utils/connectors-publisher'
 import * as schema from '~~/server/db/schema'
 import {
@@ -228,7 +231,9 @@ export async function searchMcpRegistry(
     }
   }
 
+  const nextCursor = input.cursor + REGISTRY_SEARCH_PAGE_SIZE
   const hasMore = rows.length > REGISTRY_SEARCH_PAGE_SIZE
+    && nextCursor <= REGISTRY_SEARCH_MAX_CURSOR
   const items = rows.slice(0, REGISTRY_SEARCH_PAGE_SIZE).map(toItem)
   const added = await findAddedUrls(
     db,
@@ -251,7 +256,7 @@ export async function searchMcpRegistry(
 
       return { ...item, isAdded: !!normalized && added.has(normalized) }
     }),
-    nextCursor: hasMore ? input.cursor + REGISTRY_SEARCH_PAGE_SIZE : null,
+    nextCursor: hasMore ? nextCursor : null,
     total,
   }
 }

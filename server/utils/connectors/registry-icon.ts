@@ -1,6 +1,7 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
 import { eq } from 'drizzle-orm'
 import {
+  CONNECTOR_ICON_TIMEOUT_MS,
   REGISTRY_BASE_URL,
   REGISTRY_SERVERS_PATH,
 } from '#shared/utils/connectors-policy'
@@ -48,6 +49,7 @@ export async function fetchRegistryEntryIconSources(
       {
         purpose: 'registry',
         headers: { accept: 'application/json' },
+        timeoutMs: CONNECTOR_ICON_TIMEOUT_MS,
         logger,
       },
     )
