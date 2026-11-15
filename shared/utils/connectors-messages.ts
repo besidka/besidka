@@ -38,6 +38,8 @@ export const CONNECTOR_CODE_MESSAGES: Readonly<Record<string, string>> = {
   CONNECTOR_TOOLS_REVIEW_REQUIRED:
     'Review the tools before turning this connector on',
   CONNECTOR_TOOLS_REVIEW_STALE: 'The tools changed again',
+  CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED:
+    'This tool cannot be set to Always allow',
   CONNECTOR_TOOL_NOT_FOUND: 'Tool not found',
   CONNECTOR_UNREACHABLE: 'The connector could not be reached',
   CONNECTOR_NOT_READY: 'The connector is not connected yet',

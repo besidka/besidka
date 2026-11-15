@@ -221,7 +221,7 @@ function toToolList(rows: ToolSettingRows): McpConnectorTool[] {
     return {
       name: cleanToolName(row.toolName),
       enabled: row.enabled,
-      approval: row.approval,
+      approval: row.approval === 'needs-approval' ? 'ask' : row.approval,
       serverReadOnly: row.serverReadOnly,
     }
   })

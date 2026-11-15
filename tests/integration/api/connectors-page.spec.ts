@@ -474,7 +474,7 @@ describe('Connectors page routes', () => {
       expect(rows.new_tool).toMatchObject({ enabled: true, approval: 'ask' })
       expect(rows.update_issue).toMatchObject({
         enabled: false,
-        approval: 'ask',
+        approval: 'needs-approval',
         approvedDefinitionHash: null,
       })
       expect(rows.search).toMatchObject({ approval: 'always' })
@@ -618,7 +618,7 @@ describe('Connectors page routes', () => {
       expect(rows.search).toMatchObject({ enabled: false, approval: 'always' })
       expect(rows.post).toMatchObject({
         enabled: true,
-        approval: 'ask',
+        approval: 'needs-approval',
         approvedDefinitionHash: null,
         definitionHash: postHash,
       })
@@ -642,6 +642,222 @@ describe('Connectors page routes', () => {
         params: { id: connectorId },
         body: { tools: [{ name: '', enabled: true }] },
       }))).status).toBe(400)
+    })
+
+    it('sets modes: Blocked, Needs approval and Always allow bound to the '
+      + 'reviewed hash', async () => {
+      const connectorId = await addConnector('linear')
+
+      await serveTools(connectorId, [
+        { name: 'search', annotations: { readOnlyHint: true } },
+        { name: 'create_page' },
+        { name: 'list' },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      const result = await call(settingsPath, {
+        params: { id: connectorId },
+        body: {
+          tools: [
+            { name: 'search', mode: 'allow' },
+            { name: 'create_page', mode: 'allow' },
+            { name: 'list', mode: 'blocked' },
+          ],
+        },
+      })
+
+      expect(result.updated.sort()).toEqual(['create_page', 'list', 'search'])
+
+      const rows = Object.fromEntries((await settingsOf(connectorId)).settings
+        .map(row => [row.toolName, row]))
+
+      expect(rows.search).toMatchObject({
+        enabled: true,
+        approval: 'always',
+        approvedDefinitionHash: rows.search!.definitionHash,
+      })
+      expect(rows.create_page).toMatchObject({ enabled: true, approval: 'always' })
+      expect(rows.list).toMatchObject({ enabled: false })
+
+      const listing = await listTools(connectorId)
+      const modes = Object.fromEntries(listing.tools.map((tool) => {
+        return [tool.name, tool.mode]
+      }))
+
+      expect(modes).toEqual({ search: 'allow', create_page: 'allow', list: 'blocked' })
+
+      await call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'search', mode: 'ask' }] },
+      })
+
+      expect((await settingsOf(connectorId)).settings
+        .find(row => row.toolName === 'search'))
+        .toMatchObject({
+          enabled: true,
+          approval: 'needs-approval',
+          approvedDefinitionHash: null,
+        })
+      expect((await listTools(connectorId)).tools
+        .find(tool => tool.name === 'search')?.mode).toBe('ask')
+    })
+
+    it('defaults a plain read to Always allow and resets an explicit choice '
+      + 'to Needs approval when the tool changes', async () => {
+      const connectorId = await addConnector('linear')
+
+      await serveTools(connectorId, [
+        { name: 'search', annotations: { readOnlyHint: true } },
+        { name: 'list', annotations: { readOnlyHint: true } },
+        { name: 'post' },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      expect(Object.fromEntries((await listTools(connectorId)).tools
+        .map(tool => [tool.name, tool.mode])))
+        .toEqual({ search: 'allow', list: 'allow', post: 'ask' })
+
+      await call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'list', mode: 'allow' }] },
+      })
+      await serveTools(connectorId, [
+        {
+          name: 'search',
+          description: 'changed',
+          annotations: { readOnlyHint: true },
+        },
+        {
+          name: 'list',
+          description: 'changed',
+          annotations: { readOnlyHint: true },
+        },
+        { name: 'post' },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      const rows = Object.fromEntries((await settingsOf(connectorId)).settings
+        .map(row => [row.toolName, row]))
+
+      expect(rows.search).toMatchObject({ approval: 'ask' })
+      expect(rows.list).toMatchObject({
+        approval: 'needs-approval',
+        approvedDefinitionHash: null,
+      })
+      expect(Object.fromEntries((await listTools(connectorId)).tools
+        .map(tool => [tool.name, tool.mode])))
+        .toEqual({ search: 'allow', list: 'ask', post: 'ask' })
+    })
+
+    it('refuses Always allow for the always-ask tier and a drifted tool, '
+      + 'whatever the server labels say', async () => {
+      const connectorId = await addConnector('linear')
+
+      await serveTools(connectorId, [
+        { name: 'search', annotations: { readOnlyHint: true } },
+        { name: 'delete_page', annotations: { readOnlyHint: true } },
+        { name: 'archive', annotations: { destructiveHint: true } },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      for (const name of ['delete_page', 'archive']) {
+        expect((await failureOf(call(settingsPath, {
+          params: { id: connectorId },
+          body: {
+            tools: [
+              { name: 'search', mode: 'allow' },
+              { name, mode: 'allow' },
+            ],
+          },
+        }))).code).toBe('CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED')
+      }
+
+      await serveTools(connectorId, [
+        {
+          name: 'search',
+          description: 'Now also sends mail',
+          annotations: { readOnlyHint: true },
+        },
+      ])
+
+      expect((await failureOf(call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'search', mode: 'allow' }] },
+      }))).code).toBe('CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED')
+      expect((await settingsOf(connectorId)).settings
+        .every(row => row.approval === 'ask')).toBe(true)
+      expect((await failureOf(call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'search', mode: 'allow', enabled: true }] },
+      }))).status).toBe(400)
+    })
+
+    it('refuses Always allow for send, post, forward and unshare tools '
+      + 'labeled read-only, and stores a legacy ask as Needs approval',
+    async () => {
+      const connectorId = await addConnector('mail')
+      const names = ['send_email', 'sendMessage', 'post-comment',
+        'forwardMessage', 'unshare_page']
+
+      await serveTools(connectorId, [
+        ...names.map((name) => {
+          return { name, annotations: { readOnlyHint: true } }
+        }),
+        { name: 'search_posts', annotations: { readOnlyHint: true } },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      for (const name of names) {
+        expect((await failureOf(call(settingsPath, {
+          params: { id: connectorId },
+          body: { tools: [{ name, mode: 'allow' }] },
+        }))).code, name).toBe('CONNECTOR_TOOL_ALWAYS_ALLOW_REFUSED')
+      }
+
+      const listing = await listTools(connectorId)
+
+      expect(Object.fromEntries(listing.tools.map((tool) => {
+        return [tool.name, [tool.alwaysAsk, tool.mode]]
+      }))).toEqual({
+        'send_email': [true, 'ask'],
+        'sendMessage': [true, 'ask'],
+        'post-comment': [true, 'ask'],
+        'forwardMessage': [true, 'ask'],
+        'unshare_page': [true, 'ask'],
+        'search_posts': [false, 'allow'],
+      })
+
+      await call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'search_posts', approval: 'ask' }] },
+      })
+
+      expect((await settingsOf(connectorId)).settings
+        .find(row => row.toolName === 'search_posts'))
+        .toMatchObject({ approval: 'needs-approval' })
+    })
+
+    it('refuses Always allow on a connector that is not connected, with a '
+      + 'fixed code', async () => {
+      const connectorId = await addConnector('linear')
+
+      await serveTools(connectorId, [
+        { name: 'search', annotations: { readOnlyHint: true } },
+      ])
+      await review(connectorId, (await listTools(connectorId)).reviewToken)
+
+      const { updateConnector } = await import(
+        '~~/server/utils/connectors/store'
+      )
+
+      await updateConnector(testDb.db, userId, connectorId, {
+        status: 'needs-auth',
+      })
+
+      expect((await failureOf(call(settingsPath, {
+        params: { id: connectorId },
+        body: { tools: [{ name: 'search', mode: 'allow' }] },
+      }))).code).toBe('CONNECTOR_NOT_READY')
     })
 
     it('does not change another account\'s tools', async () => {

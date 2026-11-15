@@ -24,7 +24,11 @@ export const CONNECTOR_CREATED_VIA = [
 
 export const CONNECTOR_REGISTRATION_KINDS = ['cimd', 'dcr'] as const
 
-export const CONNECTOR_TOOL_APPROVALS = ['ask', 'always'] as const
+export const CONNECTOR_TOOL_APPROVALS = [
+  'ask',
+  'always',
+  'needs-approval',
+] as const
 
 export const CONNECTOR_AUDIT_OUTCOMES = [
   'ok',

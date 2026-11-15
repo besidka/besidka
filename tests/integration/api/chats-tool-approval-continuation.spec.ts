@@ -1368,42 +1368,57 @@ describe('tool approval continuation', () => {
     expect(mocks.claims.size).toBe(0)
   })
 
-  it('withholds provider web search after a connector read', async () => {
-    const listIssues = linear.tools.find(tool => tool.name === 'list_issues')!
-
-    listIssues.annotations = { readOnlyHint: true, openWorldHint: false }
+  it('asks an Always allow connector read after a requested web search, '
+    + 'then withholds web search once the approved read ran', async () => {
     mocks.providerTools = {
       tools: { web_search: openai.tools.webSearch() },
     }
 
-    const { doStream } = await request({
+    await request({
       servers: [linear],
-      steps: [
-        toolCallChunks('call-read', 'mcp__linear__list_issues', {}),
-        textChunks('Here are the issues.'),
-      ],
+      steps: [textChunks('Ready.')],
       body: {
         model: MODEL_ID,
-        tools: ['web_search'],
+        tools: [],
         reasoning: 'off',
         connectorIds: ['conn-linear'],
         messages: [{
-          id: USER_MESSAGE_ID,
+          id: 'user-baseline',
           role: 'user',
-          parts: [{ type: 'text', text: 'List and search' }],
+          parts: [{ type: 'text', text: 'Hello' }],
         }],
       },
     })
-    const toolNamesOf = (callIndex: number) => {
-      const options = doStream.mock.calls[callIndex]?.[0] as any
 
-      return (options?.tools ?? []).map((tool: any) => tool.name)
+    for (const setting of mocks.store.toolSettings) {
+      if (setting.toolName === 'list_issues') {
+        setting.approval = 'always'
+        setting.approvedDefinitionHash = setting.definitionHash
+      }
     }
 
+    const paused = await pauseTurn({
+      servers: [linear],
+      tools: ['web_search'],
+      steps: [toolCallChunks('call-read', 'mcp__linear__list_issues', {})],
+    })
+    const [approvalId] = paused.approvalIds
+    const pending = readKvJson(`tool-approval:${approvalId}`)
+
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(pending).toMatchObject({
+      reason: 'untrusted-output',
+      rememberOptions: ['once', 'chat', 'always'],
+    })
+
+    const { doStream } = await answer(paused, [
+      { approvalId, approved: true },
+    ], [textChunks('Here are the issues.')])
+    const options = doStream.mock.calls[0]?.[0] as any
+    const toolNames = (options?.tools ?? []).map((tool: any) => tool.name)
+
     expect(linear.callCount('tools/call')).toBe(1)
-    expect(toolNamesOf(0)).toContain('web_search')
-    expect(toolNamesOf(1)).not.toContain('web_search')
-    expect(toolNamesOf(1)).toContain('mcp__linear__list_issues')
+    expect(toolNames).not.toContain('web_search')
   })
 
   describe('Besidka tools', () => {

@@ -381,6 +381,7 @@ export function getApprovalSourceLabel(
 export function getApprovalReasonText(
   reason: ToolApprovalReason,
   sourceLabel: string,
+  toolName = '',
 ): string {
   if (reason === 'untrusted-output') {
     return sourceLabel
@@ -394,6 +395,14 @@ export function getApprovalReasonText(
 
   if (reason === 'always-ask') {
     return 'Changes or deletes data'
+  }
+
+  if (isBesidkaChatToolName(toolName)) {
+    return 'Asks before each use. Change it in Tool permissions in Labs.'
+  }
+
+  if (parseConnectorToolName(toolName)) {
+    return 'Asks before each use. Change it in the connector\'s tool settings.'
   }
 
   return 'Runs only after you allow it'

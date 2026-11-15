@@ -246,7 +246,7 @@ export function isDecodableConnectorId(connectorId: string): boolean {
 }
 
 /**
- * Sets one connector tool back to "Ask every time": the setting keeps its
+ * Sets one connector tool back to "Needs approval": the setting keeps its
  * reviewed definition hash and loses the approved one. The connector id is
  * decoded and looked up through the user's own connectors first, so an id
  * that does not decode or belongs to someone else changes nothing. Returns
@@ -268,7 +268,7 @@ export async function revokeAlwaysToolApprovalGrant(
   }
 
   const rows = await db.update(schema.connectorToolSettings)
-    .set({ approval: 'ask', approvedDefinitionHash: null })
+    .set({ approval: 'needs-approval', approvedDefinitionHash: null })
     .where(and(
       eq(schema.connectorToolSettings.userId, userId),
       eq(schema.connectorToolSettings.connectorId, input.connectorId),

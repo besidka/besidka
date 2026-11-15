@@ -42,78 +42,11 @@
         Only {{ BESIDKA_CHAT_TOOLS_MAX }} Besidka tools are offered per
         message; block the ones you don't need.
       </p>
-      <section
-        v-for="group in groups"
-        :key="group.tier"
-        class="grid grid-cols-1 gap-3"
-        :data-testid="`besidka-tool-group-${group.tier}`"
-      >
-        <header class="flex items-start justify-between gap-3">
-          <div class="grid min-w-0 gap-1">
-            <h3
-              :id="`${idPrefix}-${group.tier}`"
-              class="font-bold"
-            >
-              {{ group.label }}
-            </h3>
-            <p class="text-xs text-base-content/60">
-              {{ group.description }}
-            </p>
-          </div>
-          <select
-            class="select select-sm w-40 shrink-0"
-            :aria-labelledby="`${idPrefix}-${group.tier}`"
-            :value="group.mode"
-            :data-testid="`besidka-tool-group-select-${group.tier}`"
-            @change="onGroupChange(group.tier, $event)"
-          >
-            <option
-              v-if="group.mode === 'custom'"
-              value="custom"
-              disabled
-            >
-              Custom
-            </option>
-            <option
-              v-for="mode in group.modes"
-              :key="mode"
-              :value="mode"
-            >
-              {{ BESIDKA_TOOL_MODE_LABELS[mode] }}
-            </option>
-          </select>
-        </header>
-        <ul class="grid grid-cols-1 gap-2">
-          <li
-            v-for="tool in group.tools"
-            :key="tool.name"
-            class="flex items-center justify-between gap-3 border-t border-base-content/10 pt-2"
-            :data-testid="`besidka-tool-row-${tool.name}`"
-          >
-            <label
-              :for="`${idPrefix}-tool-${tool.name}`"
-              class="min-w-0 text-sm leading-snug"
-            >
-              {{ tool.title }}
-            </label>
-            <select
-              :id="`${idPrefix}-tool-${tool.name}`"
-              class="select select-sm w-40 shrink-0"
-              :value="tool.mode"
-              :data-testid="`besidka-tool-select-${tool.name}`"
-              @change="onToolChange(tool.name, $event)"
-            >
-              <option
-                v-for="mode in group.modes"
-                :key="mode"
-                :value="mode"
-              >
-                {{ BESIDKA_TOOL_MODE_LABELS[mode] }}
-              </option>
-            </select>
-          </li>
-        </ul>
-      </section>
+      <UiToolPermissions
+        :groups="groups"
+        @set-tools="onSetTools"
+        @set-group="onSetGroup"
+      />
     </template>
   </div>
 </template>
@@ -122,7 +55,6 @@
 import { parseError } from 'evlog'
 import {
   BESIDKA_CHAT_TOOLS_MAX,
-  BESIDKA_TOOL_MODE_LABELS,
   BESIDKA_TOOL_TIERS,
   BESIDKA_TOOL_TIER_DESCRIPTIONS,
   BESIDKA_TOOL_TIER_LABELS,
@@ -130,13 +62,15 @@ import {
   isBesidkaToolModeAllowed,
 } from '#shared/utils/besidka-tool-permissions'
 import type { BesidkaToolPermissionTier } from '#shared/utils/besidka-tool-permissions'
-import {
-  TOOL_PERMISSION_MODES,
-} from '#shared/utils/tool-approval-policy'
 import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
-import { getBesidkaToolGroupMode } from '~/utils/besidka-tool-permissions'
+import type {
+  ToolPermissionChange,
+  ToolPermissionGroup,
+} from '~/utils/tool-permissions'
 
-const idPrefix = useId()
+const ASK_EVERY_TIME_HINT = 'this tool deletes, shares or rewrites '
+  + 'instructions, so it always asks'
+
 const { tools, status, error, refresh, save } = useBesidkaToolPermissions()
 
 const isOverOfferLimit = computed<boolean>(() => {
@@ -144,21 +78,31 @@ const isOverOfferLimit = computed<boolean>(() => {
     > BESIDKA_CHAT_TOOLS_MAX
 })
 
-const groups = computed(() => {
-  return BESIDKA_TOOL_TIERS
-    .map((tier) => {
-      const groupTools = tools.value.filter(tool => tool.tier === tier)
+const groups = computed<ToolPermissionGroup[]>(() => {
+  return BESIDKA_TOOL_TIERS.map((tier) => {
+    const modes = getAllowedBesidkaToolModes(tier)
+    const isAskEveryTime = tier === 'ask-every-time'
 
-      return {
-        tier,
-        label: BESIDKA_TOOL_TIER_LABELS[tier],
-        description: BESIDKA_TOOL_TIER_DESCRIPTIONS[tier],
-        modes: getAllowedBesidkaToolModes(tier),
-        tools: groupTools,
-        mode: getBesidkaToolGroupMode(groupTools.map(tool => tool.mode)),
-      }
-    })
-    .filter(group => group.tools.length > 0)
+    return {
+      id: tier,
+      label: BESIDKA_TOOL_TIER_LABELS[tier],
+      description: BESIDKA_TOOL_TIER_DESCRIPTIONS[tier],
+      isLocked: isAskEveryTime,
+      tools: tools.value
+        .filter(tool => tool.tier === tier)
+        .map((tool) => {
+          return {
+            name: tool.name,
+            title: tool.title,
+            mode: tool.mode,
+            modes,
+            ...(isAskEveryTime
+              ? { unavailableHint: ASK_EVERY_TIME_HINT }
+              : {}),
+          }
+        }),
+    }
+  })
 })
 
 const errorMessage = computed<string>(() => {
@@ -167,34 +111,27 @@ const errorMessage = computed<string>(() => {
     : ''
 })
 
-function readMode(event: Event): ToolPermissionMode | null {
-  const value = event.target instanceof HTMLSelectElement
-    ? event.target.value
-    : ''
-
-  return (TOOL_PERMISSION_MODES as readonly string[]).includes(value)
-    ? value as ToolPermissionMode
-    : null
+function isTier(value: string): value is BesidkaToolPermissionTier {
+  return (BESIDKA_TOOL_TIERS as readonly string[]).includes(value)
 }
 
-async function onGroupChange(tier: BesidkaToolPermissionTier, event: Event) {
-  const mode = readMode(event)
-
-  if (!mode || !isBesidkaToolModeAllowed(tier, mode)) {
+async function onSetGroup(groupId: string, mode: ToolPermissionMode) {
+  if (!isTier(groupId) || !isBesidkaToolModeAllowed(groupId, mode)) {
     return
   }
 
-  await save({ tier }, mode)
+  await save({ tier: groupId }, mode)
 }
 
-async function onToolChange(name: string, event: Event) {
-  const mode = readMode(event)
-  const tool = tools.value.find(candidate => candidate.name === name)
+async function onSetTools(changes: ToolPermissionChange[]) {
+  for (const change of changes) {
+    const tool = tools.value.find(candidate => candidate.name === change.name)
 
-  if (!mode || !tool || !isBesidkaToolModeAllowed(tool.tier, mode)) {
-    return
+    if (!tool || !isBesidkaToolModeAllowed(tool.tier, change.mode)) {
+      continue
+    }
+
+    await save({ tool: change.name }, change.mode)
   }
-
-  await save({ tool: name }, mode)
 }
 </script>

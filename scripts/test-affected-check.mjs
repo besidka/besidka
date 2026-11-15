@@ -1679,6 +1679,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Search/Modal.spec.ts',
   ]
 
+  const toolPermissionsUiTests = [
+    'tests/unit/components/ui/ToolPermissions.spec.ts',
+    'tests/unit/components/ui/ToolPermissions/ModeControl.spec.ts',
+    'tests/unit/utils/tool-permissions.spec.ts',
+    'tests/unit/utils/besidka-tool-permissions.spec.ts',
+    'tests/unit/components/Profile/BesidkaTools/Permissions.spec.ts',
+    'tests/unit/components/Profile/Connectors/DetailPanel.spec.ts',
+  ]
+
   const toolApprovalPolicyTests = [
     'tests/unit/utils/tool-approval-policy.spec.ts',
     'tests/unit/server/utils/tool-approval/policy.spec.ts',
@@ -3465,6 +3474,16 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/(connectors-policy|connectors-parts)\.ts|app\/composables\/(composer-connectors|chat|chat-share)\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/utils\/(connector-step|chat-input-tiles)\.ts|app\/types\/chat-input-tools\.d\.ts|app\/components\/ChatInput\.client\.vue|app\/components\/ChatInput\/(ConnectorPicker\.client|ToolsMenu\.client)\.vue|app\/components\/ChatInput\/ToolsMenu\/Content\.vue|app\/components\/Chat\/(Reasoning|ContextPanel|ContextPanelItem|ConnectorsNotice)\.vue|app\/components\/Chat\/Reasoning\/ConnectorStep\.vue|app\/pages\/chats\/(\[slug\]|new)\.vue)$/,
       tests: connectorsChatToolsUiTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/ui\/ToolPermissions(\.vue|\/.*\.vue)|app\/utils\/(tool-permissions|besidka-tool-permissions)\.ts|app\/components\/Profile\/(BesidkaTools|Connectors)\/.*\.vue|shared\/utils\/besidka-tool-permissions\.ts)$/,
+      tests: toolPermissionsUiTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/connectors\/(tool-review|page|errors|store)\.ts$/,
+      tests: ['tests/unit/server/utils/connectors/tool-review.spec.ts'],
     },
     {
       pattern:

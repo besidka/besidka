@@ -170,7 +170,6 @@ describe('resolveToolApproval rules', () => {
   describe('rule 2, a write after untrusted content', () => {
     it.each<ToolApprovalTaintKind>([
       'web',
-      'connector',
       'skill',
       'knowledge',
       'file',
@@ -193,10 +192,68 @@ describe('resolveToolApproval rules', () => {
       'skill',
       'knowledge',
       'file',
-      'besidka',
       'shared-branch',
     ])('asks for a Besidka write after %s taint', (kind) => {
       const decision = decide(besidkaTool(), { state: stateWith([kind]) })
+
+      expect(decision.rule).toBe(2)
+    })
+
+    it('does not count taint from the same connector for a write', () => {
+      const state = stateWith(['connector'], [connectorReadSource(CONNECTOR_ID)])
+
+      expect(decide(connectorTool(), { state }).rule).toBe(9)
+      expect(decide(connectorTool(), {
+        state,
+        alwaysGrant: grant(),
+      }).rule).toBe(6)
+      expect(decide(connectorTool(), {
+        state,
+        chatGrant: grant(),
+      }).rule).toBe(7)
+    })
+
+    it('counts connector taint as foreign once another source was read', () => {
+      for (const otherSource of [
+        connectorReadSource(OTHER_CONNECTOR_ID),
+        'besidka',
+        'overflow',
+      ]) {
+        const decision = decide(connectorTool(), {
+          state: stateWith(['connector'], [
+            connectorReadSource(CONNECTOR_ID),
+            otherSource,
+          ]),
+          alwaysGrant: grant(),
+        })
+
+        expect(decision.rule, otherSource).toBe(2)
+        expect(decision.rememberOptions, otherSource).toEqual(['once'])
+      }
+    })
+
+    it('counts connector taint as foreign when the connector id is unknown', () => {
+      const decision = decide(connectorTool({ connectorId: undefined }), {
+        state: stateWith(['connector'], [connectorReadSource(CONNECTOR_ID)]),
+      })
+
+      expect(decision.rule).toBe(2)
+    })
+
+    it('does not count Besidka taint for a Besidka write set to Allow', () => {
+      const decision = decide(besidkaTool(), {
+        state: stateWith(['besidka'], ['besidka']),
+        permissionMode: 'allow',
+      })
+
+      expect(decision.rule).toBe(6)
+    })
+
+    it('counts Besidka taint as foreign after a connector read', () => {
+      const decision = decide(besidkaTool(), {
+        state: stateWith(['besidka'], [connectorReadSource(CONNECTOR_ID)]),
+        permissionMode: 'allow',
+      })
 
       expect(decision.rule).toBe(2)
     })
@@ -321,18 +378,19 @@ describe('resolveToolApproval rules', () => {
       expect(decision.reason).toBe('untrusted-output')
     })
 
-    it('does not apply to a connector read', () => {
+    it('asks for a connector read with every answer offered', () => {
       const decision = decide(connectorTool({ access: 'read' }), {
         state: stateWith(['web']),
       })
 
-      expect(decision.rule).toBe(9)
+      expect(decision.rule).toBe(2)
+      expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
     })
   })
 
-  describe('rule 3, a connector call after reading another source', () => {
+  describe('rule 3, a connector write after reading another source', () => {
     it('asks when another connector was read', () => {
-      const decision = decide(connectorTool({ access: 'read' }), {
+      const decision = decide(connectorTool(), {
         state: stateWith([], [connectorReadSource(OTHER_CONNECTOR_ID)]),
       })
 
@@ -341,7 +399,7 @@ describe('resolveToolApproval rules', () => {
     })
 
     it('asks when Besidka data was read', () => {
-      const decision = decide(connectorTool({ access: 'read' }), {
+      const decision = decide(connectorTool(), {
         state: stateWith([], ['besidka']),
       })
 
@@ -349,7 +407,7 @@ describe('resolveToolApproval rules', () => {
     })
 
     it('asks when both this and another connector were read', () => {
-      const decision = decide(connectorTool({ access: 'read' }), {
+      const decision = decide(connectorTool(), {
         state: stateWith([], [
           connectorReadSource(CONNECTOR_ID),
           connectorReadSource(OTHER_CONNECTOR_ID),
@@ -360,7 +418,7 @@ describe('resolveToolApproval rules', () => {
     })
 
     it('does not ask when only this connector was read', () => {
-      const decision = decide(connectorTool({ access: 'read' }), {
+      const decision = decide(connectorTool(), {
         state: stateWith([], [connectorReadSource(CONNECTOR_ID)]),
       })
 
@@ -369,7 +427,7 @@ describe('resolveToolApproval rules', () => {
 
     it('asks when the connector id is unknown and anything was read', () => {
       const decision = decide(
-        connectorTool({ access: 'read', connectorId: undefined }),
+        connectorTool({ connectorId: undefined }),
         { state: stateWith([], [connectorReadSource(CONNECTOR_ID)]) },
       )
 
@@ -377,7 +435,7 @@ describe('resolveToolApproval rules', () => {
     })
 
     it('is not lifted by an always grant or a chat grant', () => {
-      const decision = decide(connectorTool({ access: 'read' }), {
+      const decision = decide(connectorTool(), {
         state: stateWith([], ['besidka']),
         alwaysGrant: grant({ definitionHash: HASH }),
         chatGrant: grant({ definitionHash: HASH }),
@@ -387,7 +445,7 @@ describe('resolveToolApproval rules', () => {
     })
 
     it('does not apply to Besidka tools', () => {
-      const decision = decide(besidkaTool({ access: 'read' }), {
+      const decision = decide(besidkaTool(), {
         state: stateWith([], [connectorReadSource(CONNECTOR_ID)]),
       })
 
@@ -395,32 +453,112 @@ describe('resolveToolApproval rules', () => {
     })
   })
 
-  describe('rule 4, a Besidka tool after untrusted content', () => {
-    it('asks for a read after any taint', () => {
+  describe('reads (owner decision, 2026-11-15)', () => {
+    const everyTaint = [...TOOL_APPROVAL_TAINT_KINDS]
+    const otherSources = [
+      connectorReadSource(OTHER_CONNECTOR_ID),
+      'besidka',
+      'overflow',
+    ]
+    const ownSource = [connectorReadSource(CONNECTOR_ID)]
+
+    it('runs a Besidka read set to Always allow after every taint kind', () => {
       const decision = decide(besidkaTool({ access: 'read' }), {
-        state: stateWith(['web']),
-      })
-
-      expect(decision.rule).toBe(4)
-      expect(decision.reason).toBe('untrusted-output')
-    })
-
-    it('is not lifted by Allow or grants', () => {
-      const decision = decide(besidkaTool({ access: 'read' }), {
-        state: stateWith(['file']),
-        permissionMode: 'allow',
-        alwaysGrant: grant({ definitionHash: HASH }),
-      })
-
-      expect(decision.rule).toBe(4)
-    })
-
-    it('does not apply when nothing is tainted', () => {
-      const decision = decide(besidkaTool({ access: 'read' }), {
+        state: stateWith(everyTaint, otherSources),
         permissionMode: 'allow',
       })
 
       expect(decision.rule).toBe(6)
+      expect(decision.status).toEqual({ type: 'not-applicable' })
+    })
+
+    it('runs a connector read with an always or chat grant after its own '
+      + 'connector\'s result', () => {
+      const state = stateWith(['connector'], ownSource)
+
+      expect(decide(connectorTool({ access: 'read' }), {
+        state,
+        alwaysGrant: grant(),
+      }).rule).toBe(6)
+      expect(decide(connectorTool({ access: 'read' }), {
+        state,
+        chatGrant: grant(),
+      }).rule).toBe(7)
+    })
+
+    it.each<ToolApprovalTaintKind>([
+      'web',
+      'skill',
+      'knowledge',
+      'file',
+      'besidka',
+      'shared-branch',
+    ])('asks an Always allow connector read after %s taint with every answer',
+      (kind) => {
+        const decision = decide(connectorTool({ access: 'read' }), {
+          state: stateWith([kind]),
+          alwaysGrant: grant(),
+          chatGrant: grant(),
+        })
+
+        expect(decision.rule).toBe(2)
+        expect(decision.reason).toBe('untrusted-output')
+        expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
+      })
+
+    it('asks an Always allow connector read after another source (F2)', () => {
+      for (const otherSource of otherSources) {
+        const decision = decide(connectorTool({ access: 'read' }), {
+          state: stateWith([], [...ownSource, otherSource]),
+          alwaysGrant: grant(),
+        })
+
+        expect(decision.rule, otherSource).toBe(3)
+        expect(decision.reason, otherSource).toBe('cross-source')
+        expect(decision.rememberOptions, otherSource)
+          .toEqual(['once', 'chat', 'always'])
+      }
+    })
+
+    it.each<ToolApprovalTaintKind>(TOOL_APPROVAL_TAINT_KINDS)(
+      'asks a Besidka read set to Needs approval after %s taint with every '
+      + 'answer',
+      (kind) => {
+        const decision = decide(besidkaTool({ access: 'read' }), {
+          state: stateWith([kind], otherSources),
+        })
+
+        expect(decision.rule).toBe(9)
+        expect(decision.reason).toBe('default')
+        expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
+      },
+    )
+
+    it('asks a connector read set to Needs approval with every answer', () => {
+      const decision = decide(connectorTool({ access: 'read' }), {
+        state: stateWith(['connector'], ownSource),
+      })
+
+      expect(decision.rule).toBe(9)
+      expect(decision.rememberOptions).toEqual(['once', 'chat', 'always'])
+    })
+
+    it('asks a read again after its definition changed', () => {
+      const decision = decide(connectorTool({ access: 'read' }), {
+        alwaysGrant: grant({ definitionHash: OTHER_HASH }),
+      })
+
+      expect(decision.rule).toBe(9)
+    })
+
+    it('ignores Always allow on a read in the always-ask tier', () => {
+      const decision = decide(
+        connectorTool({ access: 'read', destructiveHint: true }),
+        { alwaysGrant: grant(), chatGrant: grant() },
+      )
+
+      expect(decision.rule).toBe(5)
+      expect(decision.rememberOptions).toEqual(['once'])
     })
   })
 
@@ -823,7 +961,7 @@ describe('button matrix', () => {
   ])('offers %j remember options %j', (reason, options) => {
     const decisions = [
       decide(connectorTool(), { state: stateWith(['web']) }),
-      decide(connectorTool({ access: 'read' }), {
+      decide(connectorTool(), {
         state: stateWith([], ['besidka']),
       }),
       decide(besidkaTool({ access: 'delete' })),
@@ -890,13 +1028,13 @@ describe('resolveToolApproval and approval state', () => {
     expect(serializeApprovalState(state)).toEqual(before)
   })
 
-  it('sees taint recorded between two decisions of one step', () => {
+  it('sees taint recorded between two decisions on the same state', () => {
     const state = createApprovalState()
     const descriptor = connectorTool()
 
     expect(decide(descriptor, { state }).rule).toBe(9)
 
-    recordTaint(state, 'connector')
+    recordTaint(state, 'web')
 
     expect(decide(descriptor, { state }).rule).toBe(2)
   })

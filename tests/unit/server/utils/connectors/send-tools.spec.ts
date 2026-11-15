@@ -435,11 +435,16 @@ describe('getConnectorTools', () => {
         destructiveHint: false,
       })
       expect(read.descriptor.definitionHash).toMatch(/^[0-9a-f]{64}$/)
-      expect(read.alwaysGrant).toEqual({
-        definitionHash: read.descriptor.definitionHash,
-        connectorId,
-        toolName: 'mcp__alpha__list_issues',
+      expect(read.userGrants).toEqual({
+        always: {
+          definitionHash: read.descriptor.definitionHash,
+          connectorId,
+          toolName: 'mcp__alpha__list_issues',
+        },
+        chat: null,
+        isAlwaysDefault: true,
       })
+      expect(write.userGrants).toEqual({ always: null, chat: null })
       expect(read.connector).toEqual({
         id: connectorId,
         host: 'mcp.alpha.example.com',
@@ -449,12 +454,10 @@ describe('getConnectorTools', () => {
         access: 'write',
         destructiveHint: false,
       })
-      expect(write.alwaysGrant).toBeNull()
       expect(purge.descriptor).toMatchObject({
         access: 'write',
         destructiveHint: true,
       })
-      expect(purge.alwaysGrant).toBeNull()
     })
 
     it('answers a failed call with a sentence Besidka wrote, not the '
@@ -2007,7 +2010,7 @@ describe('getConnectorTools', () => {
       )).filter(row => row.toolName === 'create_issue')
 
       expect(setting).toMatchObject({
-        approval: 'ask',
+        approval: 'needs-approval',
         approvedDefinitionHash: null,
       })
       expect(setting?.definitionHash).toMatch(/^[0-9a-f]{64}$/)

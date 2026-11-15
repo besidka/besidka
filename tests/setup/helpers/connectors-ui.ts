@@ -35,7 +35,7 @@ export function createConnectorItem(
 export function createReviewTool(
   overrides: Partial<ConnectorReviewTool> = {},
 ): ConnectorReviewTool {
-  return {
+  const base = {
     name: 'search_issues',
     title: null,
     description: 'Search issues in the workspace.',
@@ -43,10 +43,18 @@ export function createReviewTool(
     destructive: false,
     openWorld: null,
     alwaysAsk: false,
-    change: 'none',
+    change: 'none' as const,
     enabled: true,
     alwaysAllowed: false,
     ...overrides,
+  }
+  const derivedMode = base.alwaysAllowed ? 'allow' : 'ask'
+
+  return {
+    ...base,
+    mode: overrides.mode ?? (base.enabled ? derivedMode : 'blocked'),
+    canAlwaysAllow: overrides.canAlwaysAllow
+      ?? (!base.alwaysAsk && base.change === 'none'),
   }
 }
 
