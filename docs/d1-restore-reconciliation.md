@@ -59,6 +59,10 @@ command below is for the operator, preview first.
 | Tool permissions set to Blocked in the window, or "Allow" set in the window to a Besidka tool (`besidka_tool_permissions`) | Rolled back: a Blocked tool is callable again, and rows are gone or back as they were at B | High (a switched-off or ask-first tool runs without a prompt) | No |
 | "Always allow" grants (`connector_tool_settings.approval`, `approved_definition_hash`) and "Allow in this chat" grants (`connector_chat_settings.always_allow_tools`, `besidka_chat_settings.always_allow_tools`) revoked in the window | Return, with the hash they were given for | High (a revoked grant runs a tool without asking) | No |
 | `tool_approval_claims` and the `tool-approval:` KV records | Claims are rolled back while KV keeps its state, so a claim can be missing for a record that still exists, and an old approval can execute a second time | Medium | Yes (KV expires in 24 hours, claims are swept after 48) |
+| Legal notice approvals withdrawn in the window (`legal_notice_approvals`) | Active again, so the sweep can email a notice the owner stopped | **High (mass email to every user)** | No |
+| Legal notice approvals given in the window | Gone; the notice stops being emailed | Low | No (the owner approves again) |
+| Consent version approved in the window (`legal_consent_version_approvals`) | Reverts to the older version once the `legal:consent-version:approved` KV cache (1 hour) and the isolate memo (1 minute) expire, so users who agreed to the newer version are asked again for the older one | Medium | No |
+| Legal notice email opt-outs added or removed in the window (`legal_notice_email_optouts`) | Added ones vanish and removed ones return, so a user who asked not to be mailed can be mailed | Medium | No |
 | `d1_migrations` | Rolled back, so the next deploy re-applies migrations | **Blocking** | No |
 
 ## Sessions: why a restore revives revoked sessions
@@ -593,6 +597,26 @@ by the hourly garbage collection.
   response already expired.
 - `user_settings`, `projects` and favorites revert to B.
 
+## Legal notice approvals and opt-outs
+
+`legal_notice_approvals`, `legal_consent_version_approvals` and
+`legal_notice_email_optouts` (`server/db/schemas/legal-approvals.ts`,
+`docs/legal.md`, "Owner approval in the admin area") have no foreign key to
+`users`. A notice is emailed only while it has an active approval and
+`NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on, so a restore that revives a
+withdrawn approval re-arms a mass email. The approved consent version is read
+from KV (`legal:consent-version:approved`, 1 hour) before D1, so after a
+restore the old value keeps answering until that key expires.
+
+The `feature_audit_log` rows of these actions (`legal-notice.approve`,
+`legal-notice.withdraw`, `legal-consent-version.approve`,
+`legal-notice-opt-out.add`, `legal-notice-opt-out.remove`) roll back with
+them. The ledger is Axiom `besidka-prod`, `attributes.legalAdmin` (action,
+notice id, version, target user id).
+
+Reconcile with runbook step 2c, before the first sweep tick after the
+restore.
+
 ## Runbook
 
 Run every step on `besidka-preview` first (`--remote`, no `--env`), check it,
@@ -669,6 +693,37 @@ npx wrangler kv bulk delete tool-approval-key-names.json --binding KV --env prod
 See "Tool approvals" above for why every grant is reset. Tools set to
 `blocked` stay as they were at B. Tell users to re-grant "Always allow" in
 the notice (step 7).
+
+### 2c. Disarm legal notice emails and restore the owner's decisions
+
+Right after the session wipe, and before the next 5-minute sweep tick, run
+on `besidka-preview` and then `besidka`:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="UPDATE legal_notice_approvals SET withdrawn_at = CAST(strftime('%s','now') AS INTEGER), updated_at = CAST(strftime('%s','now') AS INTEGER) WHERE withdrawn_at IS NULL;"
+```
+
+Do **not** delete the KV key `legal:consent-version:approved` here. While it
+holds a version approved in the window, users who agreed to that version stay
+current; deleting it first would make every location read the older version
+from the restored D1 and ask those users again, and record them under the
+older version.
+
+Every approval is withdrawn, whether or not the restore revived it, so no
+notice is emailed until the owner approves it again in `/admin/legal`. If
+`NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on, turning it off first is the faster
+stop. Then query `attributes.legalAdmin` in `besidka-prod` for the window
+and:
+
+1. re-approve, in the admin area and within an hour of the restore (the KV
+   lifetime), a consent version approved in the window
+   (`legal-consent-version.approve`). The approval writes D1 and rewrites the
+   KV key, so users who agreed to it are not asked again for the older one,
+2. re-add opt-outs added in the window (`legal-notice-opt-out.add`) and
+   remove those removed in it (`legal-notice-opt-out.remove`), in the admin
+   area, for users with `created_at <= <B_s>` only (the `users.id` reuse
+   guard of step 4),
+3. ask the owner which notices to approve again.
 
 ### 3. Push id sequences past the pre-restore high-water marks
 

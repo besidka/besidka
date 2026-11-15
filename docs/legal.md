@@ -136,15 +136,20 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   `docs/legal-memory-sensitive-data.md`) is superseded.
 - **The predicate is `server/utils/legal/consent.ts`.** Status is `current` only
   when `sensitive_content_consent_version` **and** `terms_version` both equal
-  `CURRENT_CONSENT_VERSION`, `terms_accepted_at` and `age_confirmed_at` are set,
+  the effective consent version (`CURRENT_CONSENT_VERSION` capped at the
+  owner-approved one), `terms_accepted_at` and `age_confirmed_at` are set,
   and the consent was not withdrawn after it was given. One version string
   therefore gates the Terms acceptance, the age confirmation and the Art. 9
   consent together. `currentLegalConsentCondition()` is the same rule as SQL for
   the background memory passes.
-- **Bumping the version re-prompts everyone.** Change `CURRENT_CONSENT_VERSION`
-  when the consent text changes in a way that matters (a new purpose, a new kind
-  of recipient). Every user then has status `outdated` and must confirm the gate
-  again before the next send. `CURRENT_CONSENT_TEXT_SHA256`, next to the
+- **Bumping the version re-prompts everyone, once the owner approves it.**
+  Change `CURRENT_CONSENT_VERSION` (owner only) when the consent text changes
+  in a way that matters (a new purpose, a new kind of recipient). Nothing
+  happens until the owner approves the new version in `/admin/legal`; from
+  then every user has status `outdated` and must confirm the gate again before
+  the next send. The predicates compare with the effective version, the lower
+  of the code version and the approved one (see "Owner approval in the admin
+  area"). `CURRENT_CONSENT_TEXT_SHA256`, next to the
   version, is a hash of the two consent boxes' wording in
   `app/components/Legal/ConsentModal.client.vue` (the `data-consent-text`
   spans). `tests/unit/server/utils/legal/consent-text-version.spec.ts` fails
@@ -381,8 +386,15 @@ users when it is material. Three signals exist, and they are independent:
 | Signal | Source of truth | Means | Effect |
 | --- | --- | --- | --- |
 | Last updated date | git commit date of the page (and of the registries it renders), `config/legal-updated-at.ts` | Cosmetic: something was committed | Date shown on the page, nothing else |
-| `CURRENT_CONSENT_VERSION` | `server/utils/legal/consent.ts` | The consent text changed in a way that needs a fresh agreement | Everyone re-confirms the consent gate (see "Consent records"), unchanged by this feature |
-| `LEGAL_NOTICES` | `shared/utils/legal-notices.ts` | A material change, announced in advance | Email to every verified account that exists when the notice is published, an in-app banner and an entry in the public change history |
+| `CURRENT_CONSENT_VERSION` | `server/utils/legal/consent.ts`, capped by the owner's approval in `/admin/legal` | The consent text changed in a way that needs a fresh agreement | Nothing until the owner approves that version in the admin area; then everyone re-confirms the consent gate (see "Consent records") |
+| `LEGAL_NOTICES` | `shared/utils/legal-notices.ts` | A material change, announced in advance | An in-app banner and an entry in the public change history. An email only after the owner approves the notice in `/admin/legal` **and** `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on; both are off in production (see "Owner approval in the admin area") |
+
+**Announcing a legal change is the owner's decision, made in the admin
+area.** An agent never adds, schedules or changes a `LEGAL_NOTICES` entry or
+raises `CURRENT_CONSENT_VERSION` without the owner's approval in chat for that
+exact change (`CLAUDE.md`, "Legal notices and consent versions: owner only"),
+and even a merged entry or bump does nothing to users until the owner
+approves it in `/admin/legal`.
 
 **Who decides materiality: the author of the change, forced by CI.**
 `shared/utils/legal-document-revisions.ts` records, per document, the hash of
@@ -432,12 +444,93 @@ Minor, so record the new hash as `minor` with a note:
 When unsure, treat it as material: an unneeded notice costs one email, a missed
 one costs trust and may breach the duty below.
 
+### Owner approval in the admin area
+
+Built in BES-396 after the incident of 2026-11-15: three Privacy Policy
+notices that agents had scheduled in code emailed every user three times in
+one morning, and users asked to unsubscribe. Production then set
+`NUXT_LEGAL_NOTICE_SWEEP_ENABLED=false` (#906, #909), every user got a
+`skipped` delivery row for those three notices (`E_OWNER_STOPPED`, and
+`E_RECIPIENT_UNSUBSCRIBED` for the user who asked), and the owner decided
+that **legal notice emails stay off until there are many more users**, and
+that only the owner approves a notice email or a consent version, in the
+admin area.
+
+**Notice emails need two switches.** The sweep emails a notice only when
+both hold:
+
+1. `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is on in the Worker (off in production,
+   and the sweep never runs in development), and
+2. the notice has an active approval in `legal_notice_approvals`, made in
+   `/admin/legal` (**Legal** tab), whose stored hash still matches the
+   notice in code. The hash covers the id, documents, the three dates, the
+   short-notice reason, `alreadyAvailable` and the summary, so editing an
+   approved notice in code stops its emails (the page shows "Changed after
+   approval") until the owner approves it again.
+
+The dates still apply on top: an approved notice is emailed only from
+`sendFrom` until `effectiveAt`, and a notice already in effect cannot be
+approved. Withdrawing an approval stops the emails from the next 5-minute
+tick; a tick already running finishes its batch of at most 25. The sweep
+logs `unapprovedNoticeIds` and `changedNoticeIds` and stops with
+`no-approved-notice` when nothing in its window is approved; if the approvals
+cannot be read it stops with `error` and sends nothing.
+
+**The confirmation states the number of recipients.** The page shows, for
+each notice, the sent, skipped and failed counts and how many users the sweep
+would email right now (`countLegalNoticeRecipients`, the same rule the sweep
+selects with: verified, created before `publishedAt`, no `sent` or `skipped`
+row, not opted out). For the three incident notices that number is 0, because
+every user already has a `skipped` row. The approve request carries the
+number the owner confirmed, and the server refuses it with 409 when the count
+changed in between.
+
+**Consent versions.** The version users are asked for and recorded under is
+the lower of `CURRENT_CONSENT_VERSION` and the newest version in
+`legal_consent_version_approvals` (`getEffectiveConsentVersion()` in
+`server/utils/legal/consent.ts`). With no row it is the baseline
+`2026-11-a` (`BASELINE_APPROVED_CONSENT_VERSION` in
+`server/utils/legal/consent-version.ts`): `CURRENT_CONSENT_VERSION` was set to
+that value in #531 and never changed, so every stored consent carries it, and
+introducing the gate changed nobody's status. The migration seeds nothing.
+Only the version currently in code can be approved, and only when it is newer
+than the approved one. The approved version is cached in KV
+(`legal:consent-version:approved`, 1 hour) and per isolate (1 minute); a
+failed read keeps the last known value, or the baseline, so a storage outage
+never lets a code bump take effect. Known limit: a bump in code still ships
+the new consent wording to first-time users at once, recorded under the old
+approved version until the owner approves the new one.
+
+**Opt-outs.** `legal_notice_email_optouts` holds accounts that never get a
+legal notice email; they still see the in-app banner. The owner adds or
+removes one in `/admin/legal` (search by email or name). There is no
+self-service switch. The published Privacy Policy still says the only way to
+stop these emails is to delete the account; an opt-out the owner records on
+request is more than the policy promises, but align the wording when the
+policy is next revised.
+
+**Audit and access.** Every approval, withdrawal, consent version approval
+and opt-out change writes a `feature_audit_log` row (actions
+`legal-notice.approve`, `legal-notice.withdraw`,
+`legal-consent-version.approve`, `legal-notice-opt-out.add`,
+`legal-notice-opt-out.remove`; user ids only in the target column) and an
+Axiom line under `attributes.legalAdmin`. The routes under
+`/api/v1/admin/legal/` are admin-only (`requireAdmin`, which requires a
+verified email and 2FA), writes are same-origin only, and the writers refuse
+any actor other than the admin UI, so MCP cannot reach them
+(`docs/mcp-server.md`, "What MCP does not do"). The tables have no foreign
+key to `users`: `purgeUserData` deletes the user's opt-out and nulls their id
+as an approver. A D1 restore can revive a withdrawn approval; see
+`docs/d1-restore-reconciliation.md`, runbook step 2c.
+
 ### How the email is delivered
 
 The email half is sent by the `legal-notice-sweep` cron job
 (`server/utils/legal/notice-sweep.ts`, `server/plugins/legal-notice-sweep.ts`),
-which is off by default and on only in the production Worker. It mails every
-verified account created before `publishedAt`, from `sendFrom` until
+which is off by default and sends only notices the owner approved (see
+above). It mails every
+verified account without an opt-out created before `publishedAt`, from
+`sendFrom` until
 `effectiveAt`, 25 a tick and 300 a day at most, renders the email once per
 notice per tick, and records each delivery in
 `legal_notice_deliveries` (one row per user and notice; kept until the account
@@ -494,9 +587,11 @@ rules. Two consequences for whoever publishes a notice:
   telling the user before a new purpose. Art. 6(1)(f) for the rest, with the
   right to object (Art. 21). The Privacy Policy legal-basis row and
   `docs/legal/art30-record.md` row 20 carry the same wording.
-- **No unsubscribe.** The email is a legal notice about the service, not
+- **No unsubscribe link.** The email is a legal notice about the service, not
   marketing, like the security notices. The policies say so. Do not add a
-  marketing-style opt-out, and keep the email free of promotion.
+  marketing-style unsubscribe link, and keep the email free of promotion. The
+  owner can still record an opt-out for a user who asks (see "Owner approval
+  in the admin area").
 
 ### In-app banner dismissal
 
@@ -568,7 +663,10 @@ Users who dismissed the banner before this change see it once more.
 3. Decide with the checklist above. Minor: set the document's `hash` to the new
    value, `classification: 'minor'`, drop any `noticeId` and write a one-line
    `note`. Stop here.
-4. Material: add an entry at the end of `LEGAL_NOTICES` in
+4. Material: **stop and tell the owner.** Only the owner adds a notice, and
+   only the owner approves its email in `/admin/legal`. With the owner's
+   approval in chat for that exact notice, add an entry at the end of
+   `LEGAL_NOTICES` in
    `shared/utils/legal-notices.ts` with a unique `id` (`YYYY-MM-name`),
    `documents`, `publishedAt` (when the in-app notice appears; it must be at
    or after the deploy that ships the new text, because anyone who signs up
@@ -586,8 +684,13 @@ Users who dismissed the banner before this change see it once more.
    (`publishedAt`) before `effectiveAt - 30 days`. Write the page so it is
    accurate from the day it ships and say in the notice when each change
    applies if that is later.
-6. Raise `CURRENT_CONSENT_VERSION` separately, and only if the consent text
-   itself changed (see "Consent records").
+6. The entry alone emails nobody. The owner approves the email in
+   `/admin/legal` after reading the stated number of recipients, and the
+   sweep switch must be on as well.
+7. Raise `CURRENT_CONSENT_VERSION` separately, only if the consent text
+   itself changed (see "Consent records"), and only with the owner's
+   approval. The bump takes effect when the owner approves the version in
+   `/admin/legal`.
 
 ## How legal text reaches production
 

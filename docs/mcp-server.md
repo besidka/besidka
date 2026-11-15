@@ -1273,10 +1273,21 @@ only, and S-6 does not register it.
    change made over MCP stays pending until the admin confirms it in the app;
    not planned for opt-ins; for roles, when the owner asks for tester
    management from an agent.
+7. **Legal notice emails, consent versions and legal notice email
+   opt-outs** (BES-396). No tool reads or writes `legal_notice_approvals`,
+   `legal_consent_version_approvals` or `legal_notice_email_optouts`, and the
+   writers in `server/utils/legal/admin.ts` refuse any actor that is not the
+   admin UI (`actor.kind` other than `ui` answers 403), so an admin token with
+   `admin:features` cannot reach them either. Why: approving a notice emails
+   every user and approving a consent version asks every user to agree again;
+   on 2026-11-15 notices scheduled by agents mailed every user three times in
+   one morning. Only the owner decides this, in `/admin/legal`, behind a
+   confirmation that states the number of recipients (see `docs/legal.md`,
+   "Owner approval in the admin area"). **Revisit when:** not planned.
 
 ### Not possible, not omitted
 
-7. **Chat archive and restore.** Besidka has no chat archive (only
+8. **Chat archive and restore.** Besidka has no chat archive (only
    project archive, which `update_project` has). **Knowledge folders** are a
    client-only idea: a `folderId` plus browser-local names, with no server
    entity to call. **Binary, PDF and image upload, and project file
