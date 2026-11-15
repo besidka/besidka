@@ -77,11 +77,10 @@ const ANY_KEY_PATTERN = /^[A-Za-z0-9_-]+ ?:/
 export function skillScreeningCacheKey(input: {
   userId: number
   chunkSha256: string
-  descriptionSha256: string
 }): string {
   return `skills:jev:u${input.userId}:${
     JEV_SKILL_SCREENING.questionSetVersion
-  }:${input.chunkSha256}:${input.descriptionSha256}`
+  }:${input.chunkSha256}`
 }
 
 function rankFile(file: SkillScreeningFile): number {
@@ -378,7 +377,6 @@ function mergeUncheckedRanges(
 async function loadCachedChunkScores(input: {
   kv: SkillScreeningKv
   userId: number
-  descriptionSha256: string
   chunks: SkillChunk[]
 }): Promise<Map<string, ChunkScores>> {
   const scoresByHash = new Map<string, ChunkScores>()
@@ -392,7 +390,6 @@ async function loadCachedChunkScores(input: {
     const cached = await readCachedScores(input.kv, skillScreeningCacheKey({
       userId: input.userId,
       chunkSha256: chunk.sha256,
-      descriptionSha256: input.descriptionSha256,
     }))
 
     if (cached) {
@@ -404,37 +401,33 @@ async function loadCachedChunkScores(input: {
 }
 
 /**
- * Asks Jev (`JEV_SKILL_SCREENING`) the six skill questions about every chunk
+ * Asks Jev (`JEV_SKILL_SCREENING`) the five skill questions about every chunk
  * of a skill, in one call per chunk. The skill text only ever travels in the
- * state keys `text` (one chunk) and `description`; the questions are
- * constants. Never-store values are redacted from both before they are
- * hashed, cached or sent. Only the first `maxCallsPerStage` chunks of the send
+ * state key `text` (one chunk); the questions are constants. The description
+ * is screened as the first chunk and is not sent as state, because no
+ * question reads it. Never-store values are redacted before they are hashed,
+ * cached or sent. Only the first `maxCallsPerStage` chunks of the send
  * order are ever considered, so later chunks carry a line range only.
  *
  * Scores are cached per user for 30 days by the hash of the redacted chunk
- * and of the redacted description (`k5_off_purpose` reads both), so the same
- * text costs nothing the second time and an update pays only for the chunks
- * that changed. At most `maxCalls` calls are made, in waves of
- * `maxConcurrentCalls`. Every chunk that was not reached, or whose call
- * failed (401, 403, 429, 529, timeout, network, refusal, a missing
- * probability), is returned as an unchecked line range. The result only adds
- * marks: it has no "clean" state, and a failed call never throws.
+ * (the key carries no description hash, since no question reads the
+ * description), so the same text costs nothing the second time and an
+ * update pays only for the chunks that changed. At most `maxCalls` calls are
+ * made, in waves of `maxConcurrentCalls`. Every chunk that was not reached,
+ * or whose call failed (401, 403, 429, 529, timeout, network, refusal, a
+ * missing probability), is returned as an unchecked line range. The result
+ * only adds marks: it has no "clean" state, and a failed call never throws.
  */
 export async function screenSkillText(
   input: SkillScreeningInput,
 ): Promise<SkillScreeningOutcome> {
   const startedAt = Date.now()
   const chunks = await buildChunks(input)
-  const redactedDescription = redactNeverStorePreservingLines(
-    input.description,
-  ).text
-  const descriptionSha256 = await sha256Hex(redactedDescription)
   const { maxCallsPerStage, maxConcurrentCalls } = JEV_SKILL_SCREENING
   const considered = chunks.slice(0, maxCallsPerStage)
   const scoresByHash = await loadCachedChunkScores({
     kv: input.kv,
     userId: input.userId,
-    descriptionSha256,
     chunks,
   })
   const cachedChunks = considered.filter((chunk) => {
@@ -462,10 +455,7 @@ export async function screenSkillText(
     const results = await Promise.all(wave.map((chunk) => {
       return jevDecide({
         model: input.model,
-        state: {
-          text: chunk.text,
-          description: redactedDescription,
-        },
+        state: { text: chunk.text },
         questions: { ...JEV_SKILL_SCREENING.questions },
         timeoutMs: JEV_SKILL_SCREENING.timeoutMs,
         abortSignal: input.abortSignal,
@@ -498,7 +488,6 @@ export async function screenSkillText(
       await writeCachedScores(input.kv, skillScreeningCacheKey({
         userId: input.userId,
         chunkSha256: chunk.sha256,
-        descriptionSha256,
       }), scores)
     }
   }

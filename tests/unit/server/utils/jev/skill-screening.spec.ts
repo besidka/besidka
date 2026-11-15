@@ -48,7 +48,7 @@ const DESCRIPTION = 'Review a pull request carefully'
 const CARD_NUMBER = '4111 1111 1111 1111'
 
 interface DecideCall {
-  state: { text: string, description: string }
+  state: { text: string }
   questions: Record<string, { instructions: string, criteria?: unknown }>
 }
 
@@ -167,16 +167,13 @@ describe('screenSkillText', () => {
         expect(questionText).not.toContain(descriptionMarker)
         expect(questionText).not.toContain(pathMarker)
         expect(JSON.stringify(call.state)).not.toContain(pathMarker)
-        expect(Object.keys(call.state).sort()).toEqual([
-          'description',
-          'text',
-        ])
+        expect(Object.keys(call.state)).toEqual(['text'])
       }
 
       const texts = calls.map(call => call.state.text).join('\n')
 
       expect(texts).toContain(textMarker)
-      expect(calls[0]!.state.description).toContain(descriptionMarker)
+      expect(calls[0]!.state.text).toContain(descriptionMarker)
     })
 
     it('sends the constant wordings of the policy', async () => {
@@ -196,7 +193,7 @@ describe('screenSkillText', () => {
     })
   })
 
-  it('makes one call per chunk with all six questions', async () => {
+  it('makes one call per chunk with all five questions', async () => {
     const body = paragraphs('Section', 30)
     const files = [
       file('SKILL.md', skillMd(), 'skill-md'),
@@ -212,7 +209,7 @@ describe('screenSkillText', () => {
     expect(mocks.decide).toHaveBeenCalledTimes(expectedChunks)
 
     for (const call of decideCalls()) {
-      expect(Object.keys(call.questions)).toHaveLength(6)
+      expect(Object.keys(call.questions)).toHaveLength(5)
     }
   })
 
@@ -382,7 +379,6 @@ describe('screenSkillText', () => {
         k2_conceal: flagAtOrAbove.k2_conceal,
         k3_secrets: flagAtOrAbove.k3_secrets,
         k4_run_remote: flagAtOrAbove.k4_run_remote,
-        k5_off_purpose: flagAtOrAbove.k5_off_purpose,
       }))
 
       const { outcome } = await screen({
@@ -399,14 +395,12 @@ describe('screenSkillText', () => {
         k2_conceal: 'high',
         k3_secrets: 'high',
         k4_run_remote: 'medium',
-        k5_off_purpose: 'low',
       })
     })
 
     it('does not mark a chunk just below the threshold', async () => {
       mocks.decide.mockImplementation(async () => answers({
         i2_attack: flagAtOrAbove.i2_attack - 0.01,
-        k5_off_purpose: flagAtOrAbove.k5_off_purpose - 0.01,
       }))
 
       const { outcome } = await screen({
@@ -569,7 +563,7 @@ describe('screenSkillText', () => {
       expect(decideCalls()[0]!.state.text).toContain('Changed 0')
     })
 
-    it('screens again when the description changes (k5 reads it)', async () => {
+    it('pays only for the description chunk when the description changes', async () => {
       const files = [file('references/a.md', 'SAME TEXT\n')]
       const first = await screen({ files })
 
@@ -581,10 +575,14 @@ describe('screenSkillText', () => {
         description: 'A completely different purpose',
       })
 
-      expect(second.outcome.calls).toBe(second.outcome.totalChunks)
+      expect(second.outcome.calls).toBe(1)
+      expect(decideCalls()[0]!.state).toEqual({
+        text: 'A completely different purpose',
+      })
+      expect(second.outcome.cachedChunks).toBe(second.outcome.totalChunks - 1)
     })
 
-    it('keys the cache by user, question set and both hashes, never text', async () => {
+    it('keys the cache by user, question set and chunk hash, never text', async () => {
       const { kv } = await screen({
         files: [file('references/a.md', 'SECRETLINE visible text\n')],
       })
@@ -596,7 +594,7 @@ describe('screenSkillText', () => {
         expect(key).toMatch(
           new RegExp(`^skills:jev:u${USER_ID}:${
             JEV_SKILL_SCREENING.questionSetVersion
-          }:[0-9a-f]{64}:[0-9a-f]{64}$`),
+          }:[0-9a-f]{64}$`),
         )
         expect(key).not.toContain('SECRETLINE')
       }
@@ -609,10 +607,9 @@ describe('screenSkillText', () => {
       expect(skillScreeningCacheKey({
         userId: 1,
         chunkSha256: 'a'.repeat(64),
-        descriptionSha256: 'b'.repeat(64),
       })).toBe(`skills:jev:u1:${
         JEV_SKILL_SCREENING.questionSetVersion
-      }:${'a'.repeat(64)}:${'b'.repeat(64)}`)
+      }:${'a'.repeat(64)}`)
     })
 
     it('does not cache a failed or incomplete answer', async () => {
@@ -677,7 +674,6 @@ describe('screenSkillText', () => {
 
       for (const call of calls) {
         expect(call.state.text).not.toContain(CARD_NUMBER)
-        expect(call.state.description).not.toContain(CARD_NUMBER)
         expect(call.state.text).not.toContain('4111')
       }
     })
@@ -868,7 +864,9 @@ describe('a Jev result is add-only', () => {
         path: `file-${Math.floor(random() * 3)}.md`,
         startLine,
         endLine: startLine + Math.floor(random() * 5),
-        question: JEV_SKILL_QUESTION_IDS[Math.floor(random() * 6)]!,
+        question: JEV_SKILL_QUESTION_IDS[
+          Math.floor(random() * JEV_SKILL_QUESTION_IDS.length)
+        ]!,
         score: random(),
       })
     })

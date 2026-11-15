@@ -808,12 +808,17 @@ needs-review screen opens, never on the GitHub pick list, never from MCP
 writes, the editor, an in-app save or a restore. This is the server side
 (BES-390); the review UI is SS-9 (BES-391).
 
-**The thresholds are placeholders.** `flagAtOrAbove` in `JEV_SKILL_SCREENING`
-(`shared/utils/jev-policy.ts`) holds the starting values of the proposal
-(`i2_attack` 0.3, `k1` to `k4` 0.5, `k5_off_purpose` 0.7). The SS-7 eval has
-not run yet and re-tunes them; `questionSetVersion` goes up with every
-wording or threshold change, which also retires the chunk cache and the
-stored results.
+**The thresholds come from the SS-7 eval** (BES-384, besidka/besidka#931,
+`docs/memory-architecture.md` section 3.19). `flagAtOrAbove` in
+`JEV_SKILL_SCREENING` (`shared/utils/jev-policy.ts`) is `i2_attack` 0.4,
+`k1_send_out` 0.5, `k2_conceal` 0.7, `k3_secrets` 0.2 and `k4_run_remote` 0.4.
+The eval dropped `k5_off_purpose` (50% recall on 6 positives, and all 9 false
+positives on helper scripts), so there are five questions and no question
+reads the skill description as state; the description is still screened as the
+first chunk. Packed calls (several chunks in one call) stay off: the eval
+measured recall falling from 88.9% to 77.8%. `questionSetVersion` is 2 and
+goes up with every wording or threshold change, which also retires the chunk
+cache and the stored results.
 
 What Jev can and cannot do:
 
@@ -829,11 +834,11 @@ What Jev can and cannot do:
 - Without a key, with the role off, or without the `skills` flag, nothing is
   read or sent: the route answers `{ state: 'unavailable' }`.
 
-Questions. Six boolean questions per chunk in one call, all constants in
+Questions. Five boolean questions per chunk in one call, all constants in
 `JEV_SKILL_SCREENING.questions`; `i2_attack` is `JEV_INJECTION_SCREENING.question`.
-Skill text only ever goes into the state keys `text` (one chunk) and
-`description`; the `instructions` never interpolate skill text, names or
-paths, and there are no `criteria`. Never-store redaction runs on the whole
+Skill text only ever goes into the state key `text` (one chunk); the
+`instructions` never interpolate skill text, names or paths, and there are no
+`criteria`. Never-store redaction runs on the whole
 text of every file and on the description, before the text is cut into chunks
 and before anything is hashed, cached or sent, so a private key block or a long
 token that would straddle a chunk boundary (or a slice of a very long line) is
@@ -848,7 +853,6 @@ ranges stay true.
 | `k2_conceal` | hides actions from the user | `jev-conceal` | `concealment` | high |
 | `k3_secrets` | collects or reveals keys and tokens | `jev-secrets` | `credential` | high |
 | `k4_run_remote` | downloads and runs code or moves package sources | `jev-run-remote` | `execution` | medium |
-| `k5_off_purpose` | asks for actions the `description` does not serve | `jev-off-purpose` | `injection` | low |
 
 Send order and budget. The description, then `SKILL.md`, then references and
 other `.md` and `.txt` files, other text, scripts, and license files last. Text
@@ -861,9 +865,11 @@ stored result. Only the first 48 chunks of the send order are ever considered;
 a skill with more shows `tooLarge: true`. A reopened review gets the stored
 result with no call; only `rest` goes further.
 
-Cache. `skills:jev:u<userId>:<questionSetVersion>:<sha256(chunk)>:<sha256(description)>`
-holds the six scores (no text), 30 days, per user. The description hash is part
-of the key because `k5_off_purpose` reads both. A chunk costs nothing the second
+Cache. `skills:jev:u<userId>:<questionSetVersion>:<sha256(chunk)>`
+holds the five scores (no text), 30 days, per user. The key has no description
+hash: it was there only because `k5_off_purpose` read the description, and no
+remaining question does. A changed description is a changed first chunk, so
+it costs one call. A chunk costs nothing the second
 time, and an update pays only for the chunks that changed. Only a complete
 answer is cached; a KV failure just means a miss.
 
@@ -1545,7 +1551,7 @@ Unchanged by the 2026-11-13 amendments.
 | `skills:jev-stage:<stageId>` | the stage's remaining lifetime | result of the optional TypeSafe AI check of an import preview (marks, unchecked ranges, calls spent; no text), read by `import/commit`, deleted with the stage (section 3.6) |
 | `skills:jev-lock:<stageId>` and `skills:jev-lock:u<userId>:<skillId>:<version>` | 60 s | in-flight marker of one screen, so parallel requests do not all spend (section 3.6) |
 | `skills:marks:u<userId>:<skillId>:<version>` | none; deleted with the version | result of the optional TypeSafe AI check of one stored version (line ranges and scores, no text; section 3.6) |
-| `skills:jev:u<userId>:<questionSetVersion>:<sha256(chunk)>:<sha256(description)>` | 30 days | the six TypeSafe AI scores of one chunk, no text (section 3.6) |
+| `skills:jev:u<userId>:<questionSetVersion>:<sha256(chunk)>` | 30 days | the five TypeSafe AI scores of one chunk, no text (section 3.6) |
 | `skills:update-state:<userId>` | 45 days, refreshed on write | per account: when each GitHub skill was last looked at by the daily check, the newest upstream version found and the version the review saw hold no change (section 3.4); not a source of truth |
 
 ### 8.6 Status transitions
@@ -1649,7 +1655,7 @@ Constants in `shared/utils/skills-policy.ts` (S-1).
 | `SKILL_IMPORTS_PER_HOUR` | 10 per user | S-2, S-2G |
 | `SKILL_SAVES_PER_HOUR` | 120 per user | S-10 |
 | `SKILL_SCREENS_PER_HOUR` | 60 per user, its own counter (section 3.6) | SS-8 |
-| `JEV_SKILL_SCREENING` | 2,000-token chunks, 12 calls per request, 48 per review, 3 concurrent, 2.5 s per call, 30-day cache; thresholds are placeholders until SS-7 (`shared/utils/jev-policy.ts`, section 3.6) | SS-8 |
+| `JEV_SKILL_SCREENING` | 2,000-token chunks, 12 calls per request, 48 per review, 3 concurrent, 2.5 s per call, 30-day cache; thresholds from the SS-7 eval (`shared/utils/jev-policy.ts`, section 3.6) | SS-8 |
 | `SKILL_SAVE_MAX_CHANGES` | 50 per save | S-10 |
 | `SKILL_SAVE_MAX_BYTES` | 2 MiB per save | S-10 |
 | `SKILL_EDIT_MAX_FILE_BYTES` | 256 KiB; larger files open read-only | S-10, S-11 |
