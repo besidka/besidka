@@ -1,7 +1,10 @@
 import { defineEventHandler } from 'nuxt/server'
 import { CONNECTOR_ICON_CACHE_SECONDS } from '#shared/utils/connectors-policy'
 import { isConnectorConsentCurrent } from '~~/server/utils/connectors/consent'
-import { resolveConnectorIcon } from '~~/server/utils/connectors/icon'
+import {
+  CONNECTOR_ICON_BUSY,
+  resolveConnectorIcon,
+} from '~~/server/utils/connectors/icon'
 import {
   requireConnectorAccess,
   requireOwnedConnector,
@@ -9,12 +12,14 @@ import {
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const MISS_CACHE_SECONDS = 3600
+const BUSY_CACHE_SECONDS = 5
 
 function buildHeaders(cacheSeconds: number): Record<string, string> {
   return {
     'cache-control': `private, max-age=${cacheSeconds}`,
     'x-content-type-options': 'nosniff',
     'content-security-policy': 'default-src \'none\'; sandbox',
+    'cross-origin-resource-policy': 'same-origin',
   }
 }
 
@@ -29,7 +34,7 @@ function buildHeaders(cacheSeconds: number): Record<string, string> {
 export default defineEventHandler(async (event) => {
   const userId = await requireConnectorAccess(event, {
     write: false,
-    rateLimit: false,
+    icon: true,
   })
   const connector = await requireOwnedConnector(event, userId)
   const isEligible = isConnectorConsentCurrent(connector)
@@ -47,6 +52,13 @@ export default defineEventHandler(async (event) => {
     { id: connector.id, origin: connector.origin },
     { logger: useRequestLogger(event) },
   )
+
+  if (image === CONNECTOR_ICON_BUSY) {
+    return new Response(null, {
+      status: 404,
+      headers: buildHeaders(BUSY_CACHE_SECONDS),
+    })
+  }
 
   if (!image) {
     return new Response(null, {

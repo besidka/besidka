@@ -5,11 +5,14 @@ import {
   CONNECTOR_ICON_TTL_SECONDS,
 } from '#shared/utils/connectors-policy'
 import {
+  CONNECTOR_ICON_BUSY,
   connectorIconKey,
+  connectorIconLockKey,
   connectorIconSourcesKey,
   deleteConnectorIconCache,
   fetchConnectorIconImage,
   parseDeclaredConnectorIcons,
+  readConnectorIconDimensions,
   recordDeclaredConnectorIcons,
   resolveConnectorIcon,
   sniffConnectorIconType,
@@ -20,6 +23,9 @@ import {
   PNG_BYTES,
   SVG_BYTES,
   createFakeIconKv,
+  createGifBytes,
+  createIcoBytes,
+  createPngBytes,
 } from '../../../../setup/helpers/connector-icon-kv'
 
 const connector = { id: 'conn1', origin: 'https://mcp.notion.com' }
@@ -63,6 +69,91 @@ describe('sniffConnectorIconType', () => {
       new Uint8Array([0x00, 0x00, 0x02, 0x00, 0x01, 0x00]),
     )).toBeNull()
     expect(sniffConnectorIconType(new Uint8Array())).toBeNull()
+  })
+})
+
+describe('readConnectorIconDimensions', () => {
+  it('reads the size from the header of each type', () => {
+    expect(readConnectorIconDimensions(createPngBytes(48, 32), 'image/png'))
+      .toEqual({ width: 48, height: 32 })
+    expect(readConnectorIconDimensions(createGifBytes(20, 10), 'image/gif'))
+      .toEqual({ width: 20, height: 10 })
+    expect(readConnectorIconDimensions(
+      createIcoBytes({ size: 32 }),
+      'image/x-icon',
+    )).toEqual({ width: 32, height: 32 })
+    expect(readConnectorIconDimensions(
+      createIcoBytes({ size: 0 }),
+      'image/x-icon',
+    )).toEqual({ width: 256, height: 256 })
+  })
+
+  it('reads the three WebP layouts', () => {
+    const lossy = new Uint8Array(30)
+
+    lossy.set(new TextEncoder().encode('RIFF'), 0)
+    lossy.set(new TextEncoder().encode('WEBPVP8 '), 8)
+    lossy.set([64, 0, 32, 0], 26)
+
+    expect(readConnectorIconDimensions(lossy, 'image/webp'))
+      .toEqual({ width: 64, height: 32 })
+
+    const lossless = new Uint8Array(30)
+    const bits = (64 - 1) | ((32 - 1) << 14)
+
+    lossless.set(new TextEncoder().encode('RIFF'), 0)
+    lossless.set(new TextEncoder().encode('WEBPVP8L'), 8)
+    lossless[20] = 0x2F
+    lossless.set([
+      bits & 0xFF,
+      (bits >> 8) & 0xFF,
+      (bits >> 16) & 0xFF,
+      (bits >>> 24) & 0xFF,
+    ], 21)
+
+    expect(readConnectorIconDimensions(lossless, 'image/webp'))
+      .toEqual({ width: 64, height: 32 })
+
+    const extended = new Uint8Array(30)
+
+    extended.set(new TextEncoder().encode('RIFF'), 0)
+    extended.set(new TextEncoder().encode('WEBPVP8X'), 8)
+    extended.set([99, 0, 0], 24)
+    extended.set([49, 0, 0], 27)
+
+    expect(readConnectorIconDimensions(extended, 'image/webp'))
+      .toEqual({ width: 100, height: 50 })
+  })
+
+  it('reads a JPEG frame header after other segments', () => {
+    const jpeg = new Uint8Array([
+      0xFF, 0xD8,
+      0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00,
+      0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x20, 0x00, 0x40,
+      0x01, 0x01, 0x11, 0x00,
+    ])
+
+    expect(readConnectorIconDimensions(jpeg, 'image/jpeg'))
+      .toEqual({ width: 64, height: 32 })
+  })
+
+  it('returns null for a header that cannot be read', () => {
+    expect(readConnectorIconDimensions(
+      new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+      'image/png',
+    )).toBeNull()
+    expect(readConnectorIconDimensions(
+      new Uint8Array([0xFF, 0xD8, 0xFF]),
+      'image/jpeg',
+    )).toBeNull()
+    expect(readConnectorIconDimensions(
+      createIcoBytes({ offset: 500 }),
+      'image/x-icon',
+    )).toBeNull()
+    expect(readConnectorIconDimensions(
+      new Uint8Array([0x00, 0x00, 0x01, 0x00, 0x03, 0x00]),
+      'image/x-icon',
+    )).toBeNull()
   })
 })
 
@@ -316,6 +407,84 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(result).toBeNull()
+  })
+
+  it('refuses an image larger than 512 by 512 pixels', async () => {
+    const kv = createFakeIconKv()
+
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(createPngBytes(600, 600))
+    }))
+
+    const result = await resolveConnectorIcon(asKv(kv), connector)
+
+    vi.unstubAllGlobals()
+
+    expect(result).toBeNull()
+    expect(kv.entries.get(connectorIconKey(connector.id))?.metadata)
+      .toMatchObject({ origin: 'none' })
+  })
+
+  it('accepts an image of exactly 512 by 512 pixels', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(createPngBytes(512, 512))
+    }))
+
+    const result = await resolveConnectorIcon(
+      asKv(createFakeIconKv()),
+      connector,
+    )
+
+    vi.unstubAllGlobals()
+
+    expect(result).toMatchObject({ contentType: 'image/png' })
+  })
+
+  it('answers busy while another request fetches, without fetching', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async () => image('image/png'))
+
+    await kv.put(connectorIconLockKey(connector.id), '1', {
+      expirationTtl: 60,
+    })
+
+    expect(await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: { fetchImage },
+    })).toBe(CONNECTOR_ICON_BUSY)
+    expect(fetchImage).not.toHaveBeenCalled()
+    expect(kv.entries.has(connectorIconKey(connector.id))).toBe(false)
+  })
+
+  it('takes the lock while fetching and releases it afterwards', async () => {
+    const kv = createFakeIconKv()
+    let lockDuringFetch: unknown = null
+
+    await resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: {
+        fetchImage: async () => {
+          lockDuringFetch = kv.entries.get(connectorIconLockKey(connector.id))
+
+          return image('image/png')
+        },
+      },
+    })
+
+    expect(lockDuringFetch).toMatchObject({ ttl: 60 })
+    expect(kv.entries.has(connectorIconLockKey(connector.id))).toBe(false)
+  })
+
+  it('releases the lock when the fetch throws', async () => {
+    const kv = createFakeIconKv()
+
+    await expect(resolveConnectorIcon(asKv(kv), connector, {
+      dependencies: {
+        fetchImage: async () => {
+          throw new Error('boom')
+        },
+      },
+    })).rejects.toThrow('boom')
+
+    expect(kv.entries.has(connectorIconLockKey(connector.id))).toBe(false)
   })
 
   it('removes the icon and its sources with the connector', async () => {

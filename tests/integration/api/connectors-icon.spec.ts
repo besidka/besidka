@@ -50,7 +50,13 @@ vi.mock('~~/server/utils/logging/request-logger', () => ({
   useRequestLogger: () => ({ set: vi.fn() }),
 }))
 
+vi.mock('~~/server/utils/request-public-origin', () => ({
+  resolveRequestPublicOrigin: () => 'https://besidka.com',
+}))
+
 const iconPath = '~~/server/api/v1/connectors/[id]/icon.get'
+const disconnectPath = '~~/server/api/v1/connectors/[id]/disconnect.post'
+const withdrawPath = '~~/server/api/v1/connectors/[id]/consent/withdraw.post'
 
 async function failureOf(promise: Promise<unknown>) {
   try {
@@ -144,6 +150,8 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     expect(response.headers.get('cache-control'))
       .toBe('private, max-age=86400')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(response.headers.get('cross-origin-resource-policy'))
+      .toBe('same-origin')
     expect(response.headers.get('content-security-policy'))
       .toBe('default-src \'none\'; sandbox')
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES)
@@ -203,6 +211,72 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     }
 
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('answers a short 404 while another request is fetching', async () => {
+    const connectorId = await addConnector()
+
+    await kv.put(`connectors:icon-lock:${connectorId}`, '1', {
+      expirationTtl: 60,
+    })
+
+    const response = await request(connectorId)
+
+    expect(response.status).toBe(404)
+    expect(response.headers.get('cache-control')).toBe('private, max-age=5')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('limits the icon route to 120 requests a minute per user', async () => {
+    const connectorId = await addConnector()
+
+    for (let index = 0; index < 120; index += 1) {
+      expect((await request(connectorId)).status).toBe(200)
+    }
+
+    const exception = await failureOf(request(connectorId))
+
+    expect(exception.status).toBe(429)
+  })
+
+  describe('cleanup', () => {
+    async function seedIconKeys(connectorId: string) {
+      await kv.put(`connectors:icon:${connectorId}`, 'x')
+      await kv.put(`connectors:icon-sources:${connectorId}`, 'x')
+    }
+
+    async function callWrite(path: string, connectorId: string) {
+      const handler = (await import(path)).default as (
+        event: SkillsRouteEvent,
+      ) => Promise<unknown>
+
+      return await handler(createSkillsRouteEvent({
+        params: { id: connectorId },
+        headers: { 'origin': 'https://besidka.com', 'sec-fetch-site': 'same-origin' },
+      }))
+    }
+
+    it('drops the icon caches when the connector is disconnected', async () => {
+      const connectorId = await addConnector()
+
+      await seedIconKeys(connectorId)
+      await callWrite(disconnectPath, connectorId)
+
+      expect([...kv.entries.keys()].filter((key) => {
+        return key.startsWith('connectors:icon')
+      })).toEqual([])
+    })
+
+    it('drops the icon caches when the consent is withdrawn', async () => {
+      const connectorId = await addConnector()
+
+      await seedIconKeys(connectorId)
+      await callWrite(withdrawPath, connectorId)
+
+      expect([...kv.entries.keys()].filter((key) => {
+        return key.startsWith('connectors:icon')
+      })).toEqual([])
+    })
   })
 
   it('answers a cacheable 404 when the host has no usable icon', async () => {

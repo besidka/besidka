@@ -63,7 +63,7 @@ export const SAFE_FETCH_PURPOSE_POLICY: Readonly<
     userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,
   },
   'favicon': {
-    redirects: 'validated',
+    redirects: 'same-origin',
     timeoutMs: CONNECTOR_ICON_TIMEOUT_MS,
     maxResponseBytes: CONNECTOR_ICON_MAX_BYTES,
     userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,

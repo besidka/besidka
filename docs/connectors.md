@@ -1606,19 +1606,28 @@ a label, and `Chat/Reasoning/StepIcon.vue` draws it (`aria-hidden`, empty
   Registry icons are not read: `mcp_registry_servers` has no icons column and
   nothing syncs it yet.
 - **Fetch and storage.** `server/utils/connectors/icon.ts`, through
-  `safeFetch` with the new `favicon` purpose (validated redirects, 32 KiB, 5 s).
-  The answer must be a success and a raster image by its magic bytes (PNG,
-  JPEG, GIF, WebP, ICO). SVG is refused: it is served from the app's own origin
+  `safeFetch` with the new `favicon` purpose (redirects stay on the server's
+  origin, as for `mcp`; 32 KiB, 5 s). The answer must be a success and a
+  raster image by its magic bytes (PNG, JPEG, GIF, WebP, ICO) whose own header
+  declares at most 512 by 512 pixels (an ICO with an entry pointing outside the
+  file is refused too). SVG is refused: it is served from the app's own origin
   and can carry script. The bytes live in KV under `connectors:icon:<id>` for
   7 days; a miss is kept for a day, so a server without an icon is not asked on
-  every render. A changed set of declared sources drops the kept icon. Deleting a connector (`delete/bulk` is the only delete path) removes both keys; an account purge relies
-  on the TTL and on the owner check below.
+  every render. A changed set of declared sources drops the kept icon. Deleting a connector
+  (`delete/bulk` is the only delete path), disconnecting it, withdrawing its
+  consent and an account purge (`purgeUserConnectors`, best effort, one KV
+  delete at a time) remove the keys. No route changes a connector's URL or
+  origin (a new URL is a new connector), so there is nothing to clear there. A
+  short in-flight marker, `connectors:icon-lock:<connectorId>` (60 s, best
+  effort because KV is eventually consistent), makes concurrent cold requests
+  answer a 5 s 404 instead of all fetching.
 - **Route.** `GET /api/v1/connectors/[id]/icon`: session, `connectors` flag,
   the connector must be the user's (404 otherwise), have current consent and
   be `ready` or `drifted`, so nothing is fetched for a connector the user has
-  not connected. Headers: `cache-control: private, max-age=86400` (3600 for a
+  not connected. A loose per-user bucket allows 120 requests a minute. Headers: `cache-control: private, max-age=86400` (3600 for a
   404), `x-content-type-options: nosniff`, `content-security-policy:
-  default-src 'none'; sandbox`, and `content-type` from the sniffed type.
+  default-src 'none'; sandbox`, `cross-origin-resource-policy: same-origin`,
+  and `content-type` from the sniffed type.
 - **Never remote.** The chat loads the image only from this route
   (`referrerpolicy="no-referrer"`), so a connector cannot see the viewer's
   address. Shared pages pass `is-shared` to `ChatReasoning`, which forces the
@@ -1819,6 +1828,7 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 | `connectors:refresh:<connectorId>` | 30 s | refresh lock |
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
 | `connectors:icon:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10) |
+| `connectors:icon-lock:<connectorId>` | 60 s | in-flight marker of a cold icon fetch |
 | `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
 | `tool-approval:turn:<messagePublicId>` | 24 h | pending approval ids and the serialized approval state of the paused turn |
@@ -1885,6 +1895,9 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_ICON_MAX_DECLARED` | 4 declared icons kept per server | BES-395 |
 | `CONNECTOR_ICON_SOURCE_MAX_LENGTH` | 65,536 characters per declared source | BES-395 |
 | `CONNECTOR_ICON_CACHE_SECONDS` | 86,400 browser cache of the icon route | BES-395 |
+| `CONNECTOR_ICON_MAX_DIMENSION` | 512 pixels, width and height | BES-395 |
+| `CONNECTOR_ICON_ROUTES_PER_MINUTE` | 120 per user on the icon route | BES-395 |
+| `CONNECTOR_ICON_LOCK_TTL_SECONDS` | 60 | BES-395 |
 | `SAFE_FETCH_OAUTH_MAX_BYTES` | 262,144 | C-3, C-4 |
 | `SAFE_FETCH_REGISTRY_MAX_BYTES` | 2,097,152 per page | C-3, C-8 |
 | Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`). `skills-github` uses the narrow allowlisted fetcher (`docs/skills.md` section 3.1) until C-3 lands, and then may move to `safeFetch`. `skills-url` waits for C-3 (S-2U) | S-2G, S-2U, C-3 |

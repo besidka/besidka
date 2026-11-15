@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
 import { getRequestHeader, getRouterParam } from 'nuxt/server'
 import {
+  CONNECTOR_ICON_ROUTES_PER_MINUTE,
   CONNECTOR_ROUTES_PER_MINUTE,
   CONNECTOR_SELECTION_WRITES_PER_MINUTE,
 } from '#shared/utils/connectors-policy'
@@ -15,6 +16,7 @@ import { resolveRequestPublicOrigin } from '~~/server/utils/request-public-origi
 
 const RATE_LIMIT_KEY_PREFIX = 'connectors-rate-limit'
 const SELECTION_RATE_LIMIT_KEY_PREFIX = 'connectors-selection-rate-limit'
+const ICON_RATE_LIMIT_KEY_PREFIX = 'connectors-icon-rate-limit'
 const RATE_LIMIT_WINDOW_SECONDS = 60
 const RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 60
 const CONNECTOR_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/
@@ -64,6 +66,11 @@ const DEFAULT_BUCKET: RateLimitBucket = {
 const SELECTION_BUCKET: RateLimitBucket = {
   prefix: SELECTION_RATE_LIMIT_KEY_PREFIX,
   max: CONNECTOR_SELECTION_WRITES_PER_MINUTE,
+}
+
+const ICON_BUCKET: RateLimitBucket = {
+  prefix: ICON_RATE_LIMIT_KEY_PREFIX,
+  max: CONNECTOR_ICON_ROUTES_PER_MINUTE,
 }
 
 function tooManyRequests(
@@ -123,13 +130,25 @@ export async function enforceConnectorRateLimit(
   }
 }
 
+function resolveBucket(options: {
+  selection?: boolean
+  icon?: boolean
+}): RateLimitBucket {
+  if (options.icon) {
+    return ICON_BUCKET
+  }
+
+  return options.selection ? SELECTION_BUCKET : DEFAULT_BUCKET
+}
+
 /**
  * The common gate of the connector routes, in this order: the write guard
  * (unless `write: false`, only the GET callback), a session, the
  * `connectors` flag (and `connectors.oauth` for sign-in routes), then the
  * per-user limit (`selection: true` uses the looser bucket of the per-chat
  * toggles, 60 a minute, so flipping switches in the picker is not throttled
- * like connecting a server). Ownership lookups come after it in the route.
+ * like connecting a server; `icon: true` uses the loose bucket of the icon
+ * route, 120 a minute). Ownership lookups come after it in the route.
  */
 export async function requireConnectorAccess(
   event: RequestEvent,
@@ -137,6 +156,7 @@ export async function requireConnectorAccess(
     oauth?: boolean
     rateLimit?: boolean
     selection?: boolean
+    icon?: boolean
     write?: boolean
   } = {},
 ): Promise<number> {
@@ -162,7 +182,7 @@ export async function requireConnectorAccess(
     await enforceConnectorRateLimit(
       event,
       userId,
-      options.selection ? SELECTION_BUCKET : DEFAULT_BUCKET,
+      resolveBucket(options),
     )
   }
 
