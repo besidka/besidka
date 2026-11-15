@@ -162,6 +162,8 @@ describe('admin API routes', () => {
       'artifact-takedowns/restore.post.ts',
       'artifacts/[id]/versions/[version].get.ts',
       'audit/index.get.ts',
+      'connectors/registry/index.get.ts',
+      'connectors/registry/sync.post.ts',
       'features/[flag]/grants/index.get.ts',
       'features/[flag]/grants/index.post.ts',
       'features/[flag]/index.get.ts',
