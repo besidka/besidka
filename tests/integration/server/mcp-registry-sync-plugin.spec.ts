@@ -15,7 +15,7 @@ import {
 } from '../../fixtures/mcp-registry/builders'
 
 const SCHEDULED_TIME = Date.UTC(2026, 10, 15, 12, 0, 0)
-const REGISTRY_CRON = '0 * * * *'
+const REGISTRY_CRON = '7 * * * *'
 
 function createLoggerDouble(wideEvent: unknown = undefined) {
   const set = vi.fn()
@@ -146,9 +146,11 @@ describe('mcp registry sync plugin', () => {
       },
     })
 
-    await hooks.get('cloudflare:scheduled')!({
-      controller: { cron: '*/5 * * * *', scheduledTime: SCHEDULED_TIME },
-    })
+    for (const cron of ['*/5 * * * *', '0 * * * *']) {
+      await hooks.get('cloudflare:scheduled')!({
+        controller: { cron, scheduledTime: SCHEDULED_TIME },
+      })
+    }
 
     expect(fetchSpy).not.toHaveBeenCalled()
 

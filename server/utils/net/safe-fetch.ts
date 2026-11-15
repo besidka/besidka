@@ -54,7 +54,7 @@ export const SAFE_FETCH_PURPOSE_POLICY: Readonly<
     userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,
   },
   'registry': {
-    redirects: 'validated',
+    redirects: 'same-origin',
     timeoutMs: REGISTRY_FETCH_TIMEOUT_MS,
     maxResponseBytes: SAFE_FETCH_REGISTRY_MAX_BYTES,
     userAgent: SAFE_FETCH_CONNECTORS_USER_AGENT,

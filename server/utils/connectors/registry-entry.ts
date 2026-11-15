@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   CONNECTOR_HEADER_NAME_PATTERN,
   CONNECTOR_REJECTED_HEADER_NAMES,
+  REGISTRY_CURSOR_MAX_LENGTH,
   REGISTRY_DESCRIPTION_MAX_CHARS,
   REGISTRY_TITLE_MAX_LENGTH,
 } from '#shared/utils/connectors-policy'
@@ -12,9 +13,8 @@ export const REGISTRY_OFFICIAL_META_KEY
 
 const REGISTRY_NAME_PATTERN = /^[A-Za-z0-9._/-]{3,200}$/
 const TEMPLATE_MARKER_PATTERN = /[{}$]|%7b|%7d|%24/i
-const LAST_C0_CONTROL = 0x1f
-const FIRST_DELETE_OR_C1_CONTROL = 0x7f
-const LAST_C1_CONTROL = 0x9f
+const SEPARATOR_AND_CONTROL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}]/gu
+const INVISIBLE_FORMAT_CHARACTERS = /[\p{Cf}\u{E0000}-\u{E007F}]/gu
 const HEADER_NAMES_MAX = 10
 
 export const REGISTRY_SKIP_REASONS = [
@@ -48,7 +48,7 @@ export type RegistryEntryOutcome
 export const registryPageSchema = z.object({
   servers: z.array(z.unknown()),
   metadata: z.object({
-    nextCursor: z.string().nullish(),
+    nextCursor: z.string().max(REGISTRY_CURSOR_MAX_LENGTH).nullish(),
   }).nullish(),
 })
 
@@ -80,21 +80,14 @@ const headerSchema = z.object({
   name: z.string(),
 })
 
-function isControlCharacter(character: string): boolean {
-  const code = character.charCodeAt(0)
-
-  return code <= LAST_C0_CONTROL
-    || (code >= FIRST_DELETE_OR_C1_CONTROL && code <= LAST_C1_CONTROL)
-}
-
 function cleanText(value: string, maxLength: number): string {
-  return Array.from(value, (character) => {
-    return isControlCharacter(character) ? ' ' : character
-  })
-    .join('')
+  const cleaned = value
+    .replace(SEPARATOR_AND_CONTROL_CHARACTERS, ' ')
+    .replace(INVISIBLE_FORMAT_CHARACTERS, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, maxLength)
+
+  return Array.from(cleaned).slice(0, maxLength).join('')
 }
 
 function readHeaderNames(headers: unknown[] | null | undefined): string[] {

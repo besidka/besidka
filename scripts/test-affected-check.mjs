@@ -1542,6 +1542,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/connectors/registry-sync.spec.ts',
     'tests/integration/server/mcp-registry-sync-plugin.spec.ts',
     'tests/integration/api/connectors-registry.spec.ts',
+    'tests/unit/config/wrangler-registry-cron.spec.ts',
+    'tests/unit/server/utils/net/safe-fetch.spec.ts',
   ]
 
   const connectorsOAuthTests = [
@@ -3246,7 +3248,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-catalog\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/registry-(entry|sync|search)\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-catalog\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/registry-(entry|sync|search)\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
       tests: connectorsRegistryTests,
     },
     {

@@ -36,7 +36,8 @@ export default defineNitroPlugin((nitroApp) => {
 })
 
 /**
- * Hourly mirror of the official MCP Registry (docs/connectors.md section 9).
+ * Hourly mirror of the official MCP Registry, on its own `7 * * * *` trigger
+ * so it never delays the other hourly sweeps (docs/connectors.md section 9).
  * It runs whatever the state of the `connectors.registry` flag, so the data
  * is ready when the flag flips. A registry outage, a bad page or a missing
  * binding is logged and ends the run with status 500; nothing is ever thrown
@@ -75,6 +76,7 @@ export async function runMcpRegistrySyncJob(
           skipped: result.skipped,
           skippedByReason: result.skippedByReason,
           swept: result.swept,
+          sweepAborted: result.sweepAborted,
           error: result.error,
         },
       },

@@ -226,7 +226,7 @@ Redirects follow a two-tier rule **(this doc)**:
 | --- | --- | --- | --- | --- | --- |
 | `mcp` | MCP transport calls to the connector's server URL | Same-origin only, at most 3 hops. A redirect to another origin stops with `CONNECTOR_ORIGIN_CHANGED`: the user edits the URL, which asks for consent again | 60 s per call, 10 s per connect | 1 MiB raw | `Besidka-Connectors/<version>` |
 | `oauth` | PRM, AS metadata, registration, token, revocation | At most 3 hops, each re-validated; `Authorization` and request body dropped on origin change; 303 becomes GET | 10 s | 256 KiB | `Besidka-Connectors/<version>` |
-| `registry` | `registry.modelcontextprotocol.io` | At most 3 validated hops | 30 s | 2 MiB per page | `Besidka-Connectors/<version>` |
+| `registry` | `registry.modelcontextprotocol.io` | Same-origin only, at most 3 hops; another origin stops with `CONNECTOR_ORIGIN_CHANGED` | 30 s | 2 MiB per page | `Besidka-Connectors/<version>` |
 | `skills-github` | Exactly `github.com/<owner>/<repo>.git/info/refs?service=git-upload-pack` (ref to commit SHA, update checks), and `codeload.github.com/<owner>/<repo>/zip/<sha>` (never `api.github.com`), through the narrow fetcher of `docs/skills.md` section 3.1 until C-3 lands. `githubFetch` returns `{ status, bytes }` (404 and 401 passed to the caller), not a `Response`, so the later `safeFetch` swap needs a small adapter | No redirect followed (`redirect: 'manual'`, any 3xx is an error); the older `github.com/.../archive` hop is gone | 30 s per call, body read included, inside one 60 s request deadline | 15 MiB (API answers 2 MiB) | `Besidka-Skills/<version>` (GitHub answers 403 without a UA) |
 | `skills-url` | A raw `SKILL.md` URL | At most 3 validated hops | 10 s | 256 KiB | `Besidka-Skills/<version>` |
 
@@ -1756,6 +1756,12 @@ Index (`name`). Not stored (pre-check Q6): `repository`, `websiteUrl`,
 `icons`, `_meta` publisher fields, `packages`. Not user data, so no
 `user_id`.
 
+`title` and `description` come from third parties and are plain text only:
+the sync strips control, separator and invisible format characters (bidi
+controls, tag characters) and cuts by code points, but a consumer must still
+render them as text, never with `v-html`, markdown or any interpolation into
+HTML (C-7 consumes them).
+
 ### 8.7 KV keys
 
 | Key | TTL | Content |
@@ -1840,7 +1846,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `SAFE_FETCH_DEFAULT_TIMEOUT_MS` | 10,000 | C-3 |
 | `SAFE_FETCH_DEFAULT_MAX_BYTES` | 2,097,152 | C-3 |
 | `SAFE_FETCH_MAX_REDIRECTS` | 3 | C-3 |
-| `REGISTRY_SYNC_CRON` | `0 * * * *` (the existing hourly trigger) | C-8 |
+| `REGISTRY_SYNC_CRON` | `7 * * * *` (its own hourly trigger, minute 7) | C-8 |
 | `REGISTRY_PAGE_SIZE` | 100 | C-8 |
 | `REGISTRY_PAGES_PER_RUN` | 20 | C-8 |
 | `REGISTRY_FETCH_TIMEOUT_MS` | 30,000 | C-8 |
@@ -1870,8 +1876,9 @@ the scheduled handler.
 
 ### 9.1 As built (C-8, 2026-11-15)
 
-- **Cron.** `server/plugins/mcp-registry-sync.ts` runs on the existing
-  `0 * * * *` trigger whatever the `connectors.registry` flag says, so data is
+- **Cron.** `server/plugins/mcp-registry-sync.ts` runs on its own
+  `7 * * * *` trigger (so a slow run never delays the `0 * * * *` sweeps; added
+  to both `triggers.crons` lists in `wrangler.jsonc`) whatever the `connectors.registry` flag says, so data is
   ready when the flag flips. `syncMcpRegistry` in
   `server/utils/connectors/registry-sync.ts` reads at most 20 pages of 100
   per run, stops early after four minutes of wall clock, and ends with
@@ -1882,10 +1889,18 @@ the scheduled handler.
   continues. The cursor advances only after a page is written, the
   `updated-since` watermark moves only when a pass reaches the end, and a
   daily full pass deletes by `synced_at` only after it reaches the end. A full
-  pass that returns no entries sweeps nothing and counts as a failure. The
+  pass that returns no entries sweeps nothing and counts as a failure, and so
+  does one whose sweep would delete more than half of the existing rows: the
+  sweep is aborted, the full-pass key does not advance, and the wide event
+  carries `attributes.registry.sweepAborted` (`stale`, `total`) for the owner
+  to look at. A page whose `nextCursor` is over 512 characters is a failure
+  and nothing from it is written. The
   watermark after a full pass is its start minus five minutes (clock skew);
-  after an incremental pass it is the newest `updatedAt` seen.
-- **Entries.** Each list entry is parsed on its own with zod. Kept: `active`
+  after an incremental pass it is the newest `updatedAt` seen, never later
+  than the run's start.
+- **Entries.** Each list entry is parsed on its own with zod; `title` and
+  `description` lose control, line and paragraph separator, `Cf` and tag
+  characters. Kept: `active`
   status and the first `streamable-http` remote whose URL has no `{`, `}`, `$`
   (or their encoded forms) and passes `parseSafeOutboundUrl`; header names
   matching the connector header pattern. An entry that turns deleted,

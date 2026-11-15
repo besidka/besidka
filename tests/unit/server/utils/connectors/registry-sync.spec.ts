@@ -363,6 +363,42 @@ describe('syncMcpRegistry', () => {
       expect(await names()).toEqual(['io.example/stays'])
     })
 
+    it('aborts a sweep that would delete more than half of the rows', async () => {
+      await run(pagedRegistryFetch([[
+        registryEntry({ name: 'io.example/a' }),
+        registryEntry({ name: 'io.example/b' }),
+        registryEntry({ name: 'io.example/c' }),
+      ]]).fetchImpl)
+
+      const result = await run(pagedRegistryFetch([[
+        registryEntry({ name: 'io.example/a' }),
+      ]]).fetchImpl, { now: new Date(NOW.getTime() + 25 * HOUR) })
+
+      expect(result).toMatchObject({
+        outcome: 'failed',
+        sweepAborted: { stale: 2, total: 3 },
+      })
+      expect(await names()).toEqual([
+        'io.example/a',
+        'io.example/b',
+        'io.example/c',
+      ])
+      expect(kv.values.get(REGISTRY_FULL_PASS_KEY)).toBe(NOW.toISOString())
+    })
+
+    it('sweeps exactly half of the rows', async () => {
+      await run(pagedRegistryFetch([[
+        registryEntry({ name: 'io.example/a' }),
+        registryEntry({ name: 'io.example/b' }),
+      ]]).fetchImpl)
+
+      const result = await run(pagedRegistryFetch([[
+        registryEntry({ name: 'io.example/a' }),
+      ]]).fetchImpl, { now: new Date(NOW.getTime() + 25 * HOUR) })
+
+      expect(result).toMatchObject({ outcome: 'completed', swept: 1 })
+    })
+
     it('does not sweep when a full pass returns no entries', async () => {
       await run(pagedRegistryFetch([[
         registryEntry({ name: 'io.example/stays' }),
@@ -375,6 +411,55 @@ describe('syncMcpRegistry', () => {
       expect(result.outcome).toBe('failed')
       expect(await names()).toEqual(['io.example/stays'])
       expect(kv.values.get(REGISTRY_FULL_PASS_KEY)).toBe(NOW.toISOString())
+    })
+  })
+
+  describe('watermark and cursor limits', () => {
+    it('never moves the watermark past the start of the run', async () => {
+      await run(pagedRegistryFetch([[
+        registryEntry({ name: 'io.example/alpha' }),
+      ]]).fetchImpl)
+
+      await run(pagedRegistryFetch([[
+        registryEntry({
+          name: 'io.example/future',
+          updatedAt: '2030-01-01T00:00:00.000Z',
+        }),
+      ]]).fetchImpl, { now: new Date(NOW.getTime() + HOUR) })
+
+      expect(kv.values.get(REGISTRY_UPDATED_SINCE_KEY))
+        .toBe(new Date(NOW.getTime() + HOUR).toISOString())
+      expect((await rows()).find(row => row.name === 'io.example/future')!
+        .registryUpdatedAt).toEqual(new Date('2030-01-01T00:00:00.000Z'))
+    })
+
+    it('fails on a nextCursor over 512 characters and writes nothing', async () => {
+      const { fetchImpl } = createRegistryFetch(() => {
+        return jsonResponse(registryPage(
+          [registryEntry({ name: 'io.example/first' })],
+          'c'.repeat(513),
+        ))
+      })
+      const result = await run(fetchImpl)
+
+      expect(result).toMatchObject({ outcome: 'failed', pages: 0 })
+      expect(await rows()).toEqual([])
+      expect(JSON.parse(kv.values.get(REGISTRY_PROGRESS_KEY)!).cursor)
+        .toBeNull()
+    })
+
+    it('accepts a nextCursor of exactly 512 characters', async () => {
+      const { fetchImpl } = createRegistryFetch((call) => {
+        return call.url.searchParams.has('cursor')
+          ? jsonResponse(registryPage([]))
+          : jsonResponse(registryPage(
+            [registryEntry({ name: 'io.example/first' })],
+            'c'.repeat(512),
+          ))
+      })
+      const result = await run(fetchImpl)
+
+      expect(result.pages).toBe(2)
     })
   })
 

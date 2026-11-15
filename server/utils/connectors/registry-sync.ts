@@ -1,12 +1,14 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
-import { and, eq, lt, ne } from 'drizzle-orm'
+import { and, count, eq, lt, ne } from 'drizzle-orm'
 import {
   REGISTRY_BASE_URL,
+  REGISTRY_CURSOR_MAX_LENGTH,
   REGISTRY_FULL_PASS_HOURS,
   REGISTRY_PAGE_SIZE,
   REGISTRY_PAGES_PER_RUN,
   REGISTRY_RUN_BUDGET_MS,
   REGISTRY_SERVERS_PATH,
+  REGISTRY_SWEEP_MAX_SHARE,
   REGISTRY_UPSERT_BATCH,
 } from '#shared/utils/connectors-policy'
 import * as schema from '~~/server/db/schema'
@@ -28,7 +30,6 @@ export const REGISTRY_ERASURES_KEY = 'connectors:registry:erasures'
 export const REGISTRY_PROGRESS_KEY = 'connectors:registry:progress'
 
 const MILLISECONDS_PER_HOUR = 60 * 60 * 1000
-const MAX_CURSOR_LENGTH = 512
 const WATERMARK_SKEW_MS = 5 * 60 * 1000
 const STATEMENTS_PER_BATCH = 2 * REGISTRY_UPSERT_BATCH
 
@@ -64,6 +65,7 @@ export interface RegistrySyncResult {
   skipped: number
   skippedByReason: Partial<Record<RegistrySkipReason, number>>
   swept: number
+  sweepAborted?: { stale: number, total: number }
   error?: string
 }
 
@@ -143,7 +145,7 @@ function parseProgress(raw: string | null): RegistrySyncProgress | null {
       (value.mode !== 'full' && value.mode !== 'incremental')
       || !isValidDate(value.startedAt)
       || (value.cursor !== null && typeof value.cursor !== 'string')
-      || (value.cursor && value.cursor.length > MAX_CURSOR_LENGTH)
+      || (value.cursor && value.cursor.length > REGISTRY_CURSOR_MAX_LENGTH)
     ) {
       return null
     }
@@ -266,7 +268,26 @@ async function writePage(
   }
 }
 
+class RegistrySweepAbortedError extends Error {
+  constructor(readonly stale: number, readonly total: number) {
+    super(`The stale sweep was aborted: ${stale} of ${total} rows`)
+  }
+}
+
 async function sweepStaleRows(db: RegistryDatabase, passStartedAt: Date) {
+  const [stale] = await db.select({ value: count() })
+    .from(schema.mcpRegistryServers)
+    .where(lt(schema.mcpRegistryServers.syncedAt, passStartedAt))
+  const [total] = await db.select({ value: count() })
+    .from(schema.mcpRegistryServers)
+
+  if (
+    total!.value > 0
+    && stale!.value > total!.value * REGISTRY_SWEEP_MAX_SHARE
+  ) {
+    throw new RegistrySweepAbortedError(stale!.value, total!.value)
+  }
+
   const removed = await db.delete(schema.mcpRegistryServers)
     .where(lt(schema.mcpRegistryServers.syncedAt, passStartedAt))
     .returning({ id: schema.mcpRegistryServers.id })
@@ -285,6 +306,10 @@ function nextWatermark(progress: RegistrySyncProgress): string {
     progress.maxUpdatedAt,
     progress.updatedSince ?? progress.startedAt,
   )
+}
+
+function clampToNow(updatedAt: Date, now: Date): string {
+  return new Date(Math.min(updatedAt.getTime(), now.getTime())).toISOString()
 }
 
 function later(first: string | null, second: string): string {
@@ -369,7 +394,7 @@ export async function syncMcpRegistry(
           deletedNames.delete(outcome.row.name)
           progress.maxUpdatedAt = later(
             progress.maxUpdatedAt,
-            outcome.row.registryUpdatedAt.toISOString(),
+            clampToNow(outcome.row.registryUpdatedAt, now),
           )
 
           continue
@@ -433,6 +458,14 @@ export async function syncMcpRegistry(
     return result
   } catch (exception) {
     result.error = exceptionMessage(exception)
+
+    if (exception instanceof RegistrySweepAbortedError) {
+      result.sweepAborted = {
+        stale: exception.stale,
+        total: exception.total,
+      }
+    }
+
     discardProgress = result.pages === 0
       && resumedCursor !== null
       && isRejectedCursor(exception)

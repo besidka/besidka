@@ -61,6 +61,29 @@ describe('classifyRegistryEntry', () => {
     expect(row.description.startsWith('Line one x')).toBe(true)
   })
 
+  it('strips bidi, zero-width, tag and separator characters', () => {
+    const row = upsertRow({
+      name: 'io.example/hidden',
+      title: 'Lin\u202Eear\u200B\u2066 App\u00AD',
+      description: `Safe\u2028text\u2029here ${String.fromCodePoint(0xE0041, 0xE0042)}done\u200F`,
+    })
+
+    expect(row.title).toBe('Linear App')
+    expect(row.description).toBe('Safe text here done')
+  })
+
+  it('cuts by code points and never splits a surrogate pair', () => {
+    const row = upsertRow({
+      name: 'io.example/emoji',
+      title: '😀'.repeat(200),
+      description: '😀'.repeat(400),
+    })
+
+    expect(Array.from(row.title!)).toHaveLength(120)
+    expect(Array.from(row.description)).toHaveLength(300)
+    expect(row.description).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
+  })
+
   it('uses the first remote that passes and skips sse', () => {
     const row = upsertRow({
       name: 'io.example/mixed',
