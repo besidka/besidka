@@ -833,8 +833,13 @@ Questions. Six boolean questions per chunk in one call, all constants in
 `JEV_SKILL_SCREENING.questions`; `i2_attack` is `JEV_INJECTION_SCREENING.question`.
 Skill text only ever goes into the state keys `text` (one chunk) and
 `description`; the `instructions` never interpolate skill text, names or
-paths, and there are no `criteria`. `redactNeverStore` runs on every chunk and
-on the description before it is hashed, cached or sent.
+paths, and there are no `criteria`. Never-store redaction runs on the whole
+text of every file and on the description, before the text is cut into chunks
+and before anything is hashed, cached or sent, so a private key block or a long
+token that would straddle a chunk boundary (or a slice of a very long line) is
+already gone. Each redacted match keeps its line breaks
+(`redactNeverStorePreservingLines`), so the line ranges of marks and unchecked
+ranges stay true.
 
 | Question | Asks whether the text | Mark rule | Finding type | Severity |
 | --- | --- | --- | --- | --- |
@@ -871,11 +876,25 @@ with its own counter, then ownership):
 - `POST /api/v1/skills/[id]/versions/[v]/screen` (the directory is `[v]`, the
   same name `diff` and `restore` use; the URL is the ticket's).
 
-Body `{}` or `{ rest: true }`. The answer is `state` (`unavailable` or
-`screened`), `status`, `findings` (Jev findings), `marks`, `unchecked`,
+Body `{}` or `{ rest: true }`. The answer is `state` (`unavailable`,
+`screened`, or `in-progress` when another request is already screening that
+stage or version), `status`, `findings` (Jev findings), `marks`, `unchecked`,
 `tooLarge`, `calls`, `callsSpent`, `callsLeft` and `questionSetVersion`. The
 import preview carries `jev: 'available'` when the role resolves a model, and
 leaves the key out otherwise.
+
+Parallel requests. Only one request per stage or version spends at a time.
+It takes an in-flight marker (`skills:jev-lock:<stageId>` or
+`skills:jev-lock:u<userId>:<skillId>:<version>`, 60 s, the KV minimum: read,
+write a random token, read it back), re-reads the stored result under it, writes
+`callsSpent` plus the calls it plans before the first call, and replaces that
+with the real count afterwards (the refund). A request that does not get the
+marker answers `in-progress` with what is stored and spends nothing. KV is not
+atomic, so this narrows the race and does not fully close it: a few requests
+can still slip through together, but each one's reservation is counted against
+the 48-call cap. The only spender is the user's own TypeSafe AI key, from their
+own session, behind the cross-site guard. A request that dies after reserving
+keeps its reservation (the budget errs on the side of too little).
 
 Storage. The stage result lives in its own KV key `skills:jev-stage:<stageId>`
 with the stage's remaining lifetime, not inside the manifest: a commit claims
@@ -889,7 +908,7 @@ go into `skill_versions.findings` as `jev:marked`, `jev:unchecked` and
 `jev:questionSet`, and the marks go to the new version's key (a new skill's
 version 1, or the pending version of an update); at accept they move to the
 new version number the accept creates. They are deleted with the version
-(prune, reject, replaced pending version, skill delete) and by prefix on
+(prune, reject, a pending version replaced by an import or an MCP update, skill delete) and by prefix on
 account deletion. Per-version deletes are best effort; the account purge is
 not (marks name file paths), so a failure there makes `purgeUserSkills`
 rethrow and the account deletion stays retryable. The chunk cache holds scores
@@ -1524,6 +1543,7 @@ Unchanged by the 2026-11-13 amendments.
 | --- | --- | --- |
 | `skills:stage:<stageId>` | 1 h | staged manifest of an import preview, before `import/commit`; never used by update checks or MCP |
 | `skills:jev-stage:<stageId>` | the stage's remaining lifetime | result of the optional TypeSafe AI check of an import preview (marks, unchecked ranges, calls spent; no text), read by `import/commit`, deleted with the stage (section 3.6) |
+| `skills:jev-lock:<stageId>` and `skills:jev-lock:u<userId>:<skillId>:<version>` | 60 s | in-flight marker of one screen, so parallel requests do not all spend (section 3.6) |
 | `skills:marks:u<userId>:<skillId>:<version>` | none; deleted with the version | result of the optional TypeSafe AI check of one stored version (line ranges and scores, no text; section 3.6) |
 | `skills:jev:u<userId>:<questionSetVersion>:<sha256(chunk)>:<sha256(description)>` | 30 days | the six TypeSafe AI scores of one chunk, no text (section 3.6) |
 | `skills:update-state:<userId>` | 45 days, refreshed on write | per account: when each GitHub skill was last looked at by the daily check, the newest upstream version found and the version the review saw hold no change (section 3.4); not a source of truth |

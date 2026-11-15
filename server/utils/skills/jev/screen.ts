@@ -19,7 +19,9 @@ import {
 } from '~~/server/utils/skills/import/stage'
 import type { SkillStageBucket } from '~~/server/utils/skills/import/stage'
 import {
+  acquireSkillJevLock,
   readStoredSkillJevResult,
+  releaseSkillJevLock,
   readVersionSkillJevResult,
   skillJevMarksKey,
   skillJevStageKey,
@@ -40,31 +42,18 @@ import type { SkillReadBucket } from '~~/server/utils/skills/versions/read'
 
 type DbClient = ReturnType<typeof useDb>
 
-export type SkillScreenResponse
-  = | {
-    state: 'unavailable'
-    questionSetVersion: number
-    status: 'ok'
-    findings: []
-    marks: []
-    unchecked: []
-    tooLarge: false
-    calls: 0
-    callsSpent: 0
-    callsLeft: 0
-  }
-  | {
-    state: 'screened'
-    questionSetVersion: number
-    status: JevStatus
-    findings: SkillFinding[]
-    marks: SkillJevMark[]
-    unchecked: SkillJevRange[]
-    tooLarge: boolean
-    calls: number
-    callsSpent: number
-    callsLeft: number
-  }
+export interface SkillScreenResponse {
+  state: 'unavailable' | 'screened' | 'in-progress'
+  questionSetVersion: number
+  status: JevStatus
+  findings: SkillFinding[]
+  marks: SkillJevMark[]
+  unchecked: SkillJevRange[]
+  tooLarge: boolean
+  calls: number
+  callsSpent: number
+  callsLeft: number
+}
 
 interface SkillScreenContent {
   description: string
@@ -74,39 +63,27 @@ interface SkillScreenContent {
 const SCREENING_ROLE = 'injectionScreening'
 const textDecoder = new TextDecoder()
 
-function unavailableResponse(): SkillScreenResponse {
-  return {
-    state: 'unavailable',
-    questionSetVersion: JEV_SKILL_SCREENING.questionSetVersion,
-    status: 'ok',
-    findings: [],
-    marks: [],
-    unchecked: [],
-    tooLarge: false,
-    calls: 0,
-    callsSpent: 0,
-    callsLeft: 0,
-  }
-}
-
 function toResponse(
-  stored: StoredSkillJevResult,
+  state: SkillScreenResponse['state'],
+  stored: StoredSkillJevResult | null,
   calls: number,
 ): SkillScreenResponse {
+  const callsSpent = stored?.callsSpent ?? 0
+
   return {
-    state: 'screened',
-    questionSetVersion: stored.questionSetVersion,
-    status: stored.status,
-    findings: toSkillJevFindings(stored.marks),
-    marks: stored.marks,
-    unchecked: stored.unchecked,
-    tooLarge: stored.tooLarge,
+    state,
+    questionSetVersion: stored?.questionSetVersion
+      ?? JEV_SKILL_SCREENING.questionSetVersion,
+    status: stored?.status ?? 'ok',
+    findings: toSkillJevFindings(stored?.marks ?? []),
+    marks: stored?.marks ?? [],
+    unchecked: stored?.unchecked ?? [],
+    tooLarge: stored?.tooLarge ?? false,
     calls,
-    callsSpent: stored.callsSpent,
-    callsLeft: Math.max(
-      0,
-      JEV_SKILL_SCREENING.maxCallsPerStage - stored.callsSpent,
-    ),
+    callsSpent,
+    callsLeft: state === 'unavailable'
+      ? 0
+      : Math.max(0, JEV_SKILL_SCREENING.maxCallsPerStage - callsSpent),
   }
 }
 
@@ -128,17 +105,27 @@ function isReusable(stored: StoredSkillJevResult, rest: boolean): boolean {
  * without a failure is returned as it is (reopening a review costs nothing);
  * only `rest` (the user's "Check the rest") goes past it. One request makes
  * at most `maxCallsPerScreen` calls and one review at most
- * `maxCallsPerStage` in total, counted in the stored result. A failed call
- * keeps the result as it is: the chunks that were not checked come back as
- * line ranges, and a later request tries them again.
+ * `maxCallsPerStage` in total, counted in the stored result.
+ *
+ * Parallel requests: only the request that wins the in-flight marker spends;
+ * the others answer `in-progress` with what is stored. The winner re-reads the
+ * stored result under the marker and writes `callsSpent` plus the calls it
+ * plans before the first call, then replaces it with the real count, so the
+ * calls of requests that slip past the marker are still counted against the
+ * cap. KV is not atomic, so this narrows the race and does not close it; the
+ * only spender is the user's own key, from their own session, behind the
+ * cross-site guard. A failed call keeps the result as it is: the chunks that
+ * were not checked come back as line ranges, and a later request tries them
+ * again.
  */
 async function runSkillScreen(input: {
   db: DbClient
   userId: number
   rest: boolean
-  stored: StoredSkillJevResult | null
+  lockScope: string
   versionSha256: string | null
   kv: SkillJevKv
+  readStored: () => Promise<StoredSkillJevResult | null>
   loadContent: () => Promise<SkillScreenContent>
   persist: (result: StoredSkillJevResult) => Promise<void>
   logger?: JevLogger
@@ -151,45 +138,78 @@ async function runSkillScreen(input: {
   })
 
   if (!model) {
-    return unavailableResponse()
+    return toResponse('unavailable', null, 0)
   }
 
-  if (input.stored && isReusable(input.stored, input.rest)) {
-    return toResponse(input.stored, 0)
+  const initial = await input.readStored()
+
+  if (initial && isReusable(initial, input.rest)) {
+    return toResponse('screened', initial, 0)
   }
 
-  const isCurrentSet = input.stored?.questionSetVersion
-    === JEV_SKILL_SCREENING.questionSetVersion
-  const previous = isCurrentSet ? input.stored : null
-  const callsSpent = previous?.callsSpent ?? 0
-  const callsLeft = Math.max(
-    0,
-    JEV_SKILL_SCREENING.maxCallsPerStage - callsSpent,
-  )
-  const content = await input.loadContent()
-  const outcome = await screenSkillText({
-    model,
-    userId: input.userId,
-    kv: input.kv,
-    description: content.description,
-    files: content.files,
-    maxCalls: Math.min(JEV_SKILL_SCREENING.maxCallsPerScreen, callsLeft),
-    logger: input.logger,
-  })
-  const stored: StoredSkillJevResult = {
-    questionSetVersion: JEV_SKILL_SCREENING.questionSetVersion,
-    status: outcome.status,
-    marks: outcome.marks,
-    unchecked: outcome.unchecked,
-    tooLarge: outcome.tooLarge,
-    callsSpent: callsSpent + outcome.calls,
-    screenedAt: Date.now(),
-    versionSha256: input.versionSha256,
+  const token = await acquireSkillJevLock(input.kv, input.lockScope)
+
+  if (!token) {
+    return toResponse('in-progress', initial, 0)
   }
 
-  await input.persist(stored)
+  try {
+    const current = await input.readStored()
 
-  return toResponse(stored, outcome.calls)
+    if (current && isReusable(current, input.rest)) {
+      return toResponse('screened', current, 0)
+    }
+
+    const isCurrentSet = current?.questionSetVersion
+      === JEV_SKILL_SCREENING.questionSetVersion
+    const previous = isCurrentSet ? current : null
+    const callsSpent = previous?.callsSpent ?? 0
+    const allowance = Math.min(
+      JEV_SKILL_SCREENING.maxCallsPerScreen,
+      Math.max(0, JEV_SKILL_SCREENING.maxCallsPerStage - callsSpent),
+    )
+    const content = await input.loadContent()
+    const result = (patch: Partial<StoredSkillJevResult>) => {
+      return {
+        questionSetVersion: JEV_SKILL_SCREENING.questionSetVersion,
+        status: previous?.status ?? 'error',
+        marks: previous?.marks ?? [],
+        unchecked: previous?.unchecked ?? [],
+        tooLarge: previous?.tooLarge ?? false,
+        callsSpent,
+        screenedAt: Date.now(),
+        versionSha256: input.versionSha256,
+        ...patch,
+      } satisfies StoredSkillJevResult
+    }
+
+    if (allowance > 0) {
+      await input.persist(result({ callsSpent: callsSpent + allowance }))
+    }
+
+    const outcome = await screenSkillText({
+      model,
+      userId: input.userId,
+      kv: input.kv,
+      description: content.description,
+      files: content.files,
+      maxCalls: allowance,
+      logger: input.logger,
+    })
+    const stored = result({
+      status: outcome.status,
+      marks: outcome.marks,
+      unchecked: outcome.unchecked,
+      tooLarge: outcome.tooLarge,
+      callsSpent: callsSpent + outcome.calls,
+    })
+
+    await input.persist(stored)
+
+    return toResponse('screened', stored, outcome.calls)
+  } finally {
+    await releaseSkillJevLock(input.kv, input.lockScope, token)
+  }
 }
 
 function createStageExpiredError() {
@@ -247,8 +267,9 @@ export async function screenSkillStage(input: {
     db: input.db,
     userId: input.userId,
     rest: input.rest,
-    stored: await readStoredSkillJevResult(input.kv, key),
+    lockScope: manifest.stageId,
     versionSha256: null,
+    readStored: () => readStoredSkillJevResult(input.kv, key),
     kv: input.kv,
     logger: input.logger,
     loadContent: async () => {
@@ -335,12 +356,15 @@ export async function screenSkillVersion(input: {
     db: input.db,
     userId: input.userId,
     rest: input.rest,
-    stored: await readVersionSkillJevResult({
-      kv: input.kv,
-      key,
-      versionSha256: row.sha256,
-    }),
+    lockScope: `u${input.userId}:${skill.id}:${input.version}`,
     versionSha256: row.sha256,
+    readStored: () => {
+      return readVersionSkillJevResult({
+        kv: input.kv,
+        key,
+        versionSha256: row.sha256,
+      })
+    },
     kv: input.kv,
     logger: input.logger,
     loadContent: async () => {

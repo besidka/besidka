@@ -14,7 +14,8 @@ import type { JevStatus } from '~~/server/utils/jev/client'
 import { splitTextWithLineRanges } from '~~/server/utils/jev/injection-screening'
 import { recordJevRoleLog } from '~~/server/utils/jev/logging'
 import type { JevLogger } from '~~/server/utils/jev/logging'
-import { redactNeverStore } from '~~/server/utils/memory/compliance'
+import { detectNeverStore } from '~~/server/utils/memory/compliance'
+import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
 
 export interface SkillScreeningKv {
   get: (key: string) => Promise<string | null>
@@ -168,17 +169,45 @@ export function locateDescriptionLines(
   return { startLine: startIndex + 1, endLine: endIndex + 1 }
 }
 
-async function toRedactedChunk(
+/**
+ * Never-store redaction of a whole text with its line structure kept: every
+ * match is replaced by the placeholder followed by as many line breaks as the
+ * match held, so a private key block that spans lines leaves the lines after
+ * it where they were and the line ranges of the chunks stay true. It runs on
+ * the whole text before it is cut, so a value that would straddle a chunk
+ * boundary (or a slice of a very long line) is already gone.
+ */
+export function redactNeverStorePreservingLines(
+  text: string,
+): { text: string, redacted: number } {
+  const matches = detectNeverStore(text)
+  let redacted = ''
+  let cursor = 0
+
+  for (const match of matches) {
+    const matched = text.slice(match.start, match.end)
+
+    redacted += text.slice(cursor, match.start)
+      + REDACTION_PLACEHOLDER
+      + '\n'.repeat(matched.split('\n').length - 1)
+    cursor = match.end
+  }
+
+  redacted += text.slice(cursor)
+
+  return { text: redacted, redacted: matches.length }
+}
+
+async function toChunk(
   range: SkillJevRange,
   text: string,
+  redacted: number,
 ): Promise<SkillChunk> {
-  const redaction = redactNeverStore(text)
-
   return {
     ...range,
-    text: redaction.text,
-    sha256: await sha256Hex(redaction.text),
-    redacted: redaction.blockedTotal,
+    text,
+    sha256: await sha256Hex(text),
+    redacted,
   }
 }
 
@@ -187,37 +216,44 @@ async function buildChunks(input: {
   files: SkillScreeningFile[]
 }): Promise<SkillChunk[]> {
   const chunks: SkillChunk[] = []
-  const toChunk = async (
-    range: SkillJevRange,
-    text: string,
-  ): Promise<SkillChunk> => {
+  const isConsidered = () => {
     return chunks.length < JEV_SKILL_SCREENING.maxCallsPerStage
-      ? await toRedactedChunk(range, text)
-      : { ...range, text: '', sha256: '', redacted: 0 }
   }
   const skillMarkdown = input.files.find((file) => {
     return file.path === SKILL_MD_FILE_NAME
   })
 
   if (input.description.trim().length > 0) {
+    const description = redactNeverStorePreservingLines(input.description)
+
     chunks.push(await toChunk(
       {
         path: SKILL_MD_FILE_NAME,
         ...locateDescriptionLines(skillMarkdown?.text ?? null),
       },
-      input.description,
+      description.text,
+      description.redacted,
     ))
   }
 
   for (const file of orderFilesForScreening(input.files)) {
+    const redaction = redactNeverStorePreservingLines(file.text)
+    let redactedLeft = redaction.redacted
+
     for (const part of splitTextWithLineRanges(
-      file.text,
+      redaction.text,
       JEV_SKILL_SCREENING.maxChunkTokens,
     )) {
-      chunks.push(await toChunk(
-        { path: file.path, startLine: part.startLine, endLine: part.endLine },
-        part.text,
-      ))
+      const range = {
+        path: file.path,
+        startLine: part.startLine,
+        endLine: part.endLine,
+      }
+
+      chunks.push(isConsidered()
+        ? await toChunk(range, part.text, redactedLeft)
+        : { ...range, text: '', sha256: '', redacted: 0 })
+      redactedLeft = 0
     }
   }
 
@@ -389,7 +425,9 @@ export async function screenSkillText(
 ): Promise<SkillScreeningOutcome> {
   const startedAt = Date.now()
   const chunks = await buildChunks(input)
-  const redactedDescription = redactNeverStore(input.description).text
+  const redactedDescription = redactNeverStorePreservingLines(
+    input.description,
+  ).text
   const descriptionSha256 = await sha256Hex(redactedDescription)
   const { maxCallsPerStage, maxConcurrentCalls } = JEV_SKILL_SCREENING
   const considered = chunks.slice(0, maxCallsPerStage)

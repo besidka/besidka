@@ -35,11 +35,17 @@ export interface SkillJevKv {
 
 export const SKILL_JEV_STAGE_KEY_PREFIX = 'skills:jev-stage:'
 export const SKILL_JEV_MARKS_KEY_PREFIX = 'skills:marks:'
+export const SKILL_JEV_LOCK_KEY_PREFIX = 'skills:jev-lock:'
+export const SKILL_JEV_LOCK_TTL_SECONDS = 60
 
 const MAX_PURGE_PAGES = 50
 
 export function skillJevStageKey(stageId: string): string {
   return `${SKILL_JEV_STAGE_KEY_PREFIX}${stageId}`
+}
+
+export function skillJevLockKey(scope: string): string {
+  return `${SKILL_JEV_LOCK_KEY_PREFIX}${scope}`
 }
 
 export function skillJevMarksUserPrefix(userId: number): string {
@@ -115,6 +121,53 @@ export async function writeStoredSkillJevResult(input: {
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * An in-flight marker for one screen (a stage or a version), so a second
+ * request that arrives while the first is calling TypeSafe AI is told so
+ * instead of spending too. KV has no compare-and-set: the marker is read, then
+ * written with a random token, then read back, and only the request that finds
+ * its own token goes on. That narrows the race but cannot close it, so the
+ * budget is also reserved before the calls start. The marker expires after
+ * `SKILL_JEV_LOCK_TTL_SECONDS` (the KV minimum), so a request that died never
+ * blocks a review for longer. Returns the token, or null when someone else
+ * holds the marker or KV cannot be used (the request then does not spend).
+ */
+export async function acquireSkillJevLock(
+  kv: SkillJevKv,
+  scope: string,
+): Promise<string | null> {
+  const key = skillJevLockKey(scope)
+  const token = crypto.randomUUID()
+
+  try {
+    if (await kv.get(key)) {
+      return null
+    }
+
+    await kv.put(key, token, { expirationTtl: SKILL_JEV_LOCK_TTL_SECONDS })
+
+    return (await kv.get(key)) === token ? token : null
+  } catch {
+    return null
+  }
+}
+
+export async function releaseSkillJevLock(
+  kv: SkillJevKv,
+  scope: string,
+  token: string,
+): Promise<void> {
+  const key = skillJevLockKey(scope)
+
+  try {
+    if ((await kv.get(key)) === token) {
+      await kv.delete(key)
+    }
+  } catch {
+    return
   }
 }
 

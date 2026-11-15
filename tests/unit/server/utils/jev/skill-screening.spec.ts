@@ -15,6 +15,7 @@ import { splitTextWithLineRanges } from '~~/server/utils/jev/injection-screening
 import {
   locateDescriptionLines,
   orderFilesForScreening,
+  redactNeverStorePreservingLines,
   screenSkillText,
   skillScreeningCacheKey,
 } from '~~/server/utils/jev/skill-screening'
@@ -679,6 +680,101 @@ describe('screenSkillText', () => {
         expect(call.state.description).not.toContain(CARD_NUMBER)
         expect(call.state.text).not.toContain('4111')
       }
+    })
+
+    it('redacts a private key that a chunk boundary would cut in two', async () => {
+      const keyBody = Array.from({ length: 40 }, (_value, index) => {
+        return `MIIEvQIBADANBgkqhkiG9w0BAQEFAASC${index}`.padEnd(64, 'A')
+      }).join('\n')
+      const key = `-----BEGIN PRIVATE KEY-----\n${keyBody}\n`
+        + '-----END PRIVATE KEY-----'
+      let text = ''
+
+      for (let lines = 1; lines < 400; lines++) {
+        const candidate = `${'filler words here\n'.repeat(lines * 10)}${key}\n`
+        const chunks = splitTextWithLineRanges(
+          candidate,
+          JEV_SKILL_SCREENING.maxChunkTokens,
+        )
+        const hasWhole = chunks.some((chunk) => {
+          return chunk.text.includes('BEGIN PRIVATE KEY')
+            && chunk.text.includes('END PRIVATE KEY')
+        })
+        const hasPart = chunks.some((chunk) => {
+          return chunk.text.includes('BEGIN PRIVATE KEY')
+        })
+
+        if (hasPart && !hasWhole) {
+          text = candidate
+
+          break
+        }
+      }
+
+      expect(text).not.toBe('')
+
+      await screen({ files: [file('references/keys.md', text)] })
+
+      const sent = decideCalls().map(call => call.state.text).join('\n')
+
+      expect(sent).not.toContain('PRIVATE KEY')
+      expect(sent).not.toContain('MIIEvQIBADANBgkqhkiG9w0BAQEFAASC')
+    })
+
+    it('redacts a long token that slicing a very long line would cut', async () => {
+      const token = `sk-${'A1b2C3d4E5f6G7h8'.repeat(4)}`
+      let text = ''
+
+      for (let padding = 1000; padding < 60000; padding += 7) {
+        const candidate = `${'x'.repeat(padding)} ${token} ${'y'.repeat(9000)}\n`
+        const chunks = splitTextWithLineRanges(
+          candidate,
+          JEV_SKILL_SCREENING.maxChunkTokens,
+        )
+
+        if (!chunks.some(chunk => chunk.text.includes(token))) {
+          text = candidate
+
+          break
+        }
+      }
+
+      expect(text).not.toBe('')
+
+      await screen({ files: [file('references/long.md', text)] })
+
+      const sent = decideCalls().map(call => call.state.text).join('\n')
+
+      expect(sent).not.toContain('sk-A1b2')
+      expect(sent).not.toContain('G7h8A1b2')
+    })
+
+    it('keeps line ranges true when a redacted block spans lines', async () => {
+      const key = [
+        '-----BEGIN PRIVATE KEY-----',
+        'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSj',
+        'AoIBAQC7VJTUt9Us8cKjMzEfYyjiWA4R4/M2bS1G',
+        '-----END PRIVATE KEY-----',
+      ].join('\n')
+      const text = `first\n${key}\nMARKERLINE\nlast\n`
+      const markerLine = text.split('\n').indexOf('MARKERLINE') + 1
+
+      mocks.decide.mockImplementation(async (call: DecideCall) => {
+        return call.state.text.includes('MARKERLINE')
+          ? answers({ k1_send_out: 0.9 })
+          : answers()
+      })
+
+      const { outcome } = await screen({
+        description: '',
+        files: [file('references/a.md', text)],
+      })
+
+      expect(outcome.marks).toHaveLength(1)
+      expect(outcome.marks[0]!.startLine).toBeLessThanOrEqual(markerLine)
+      expect(outcome.marks[0]!.endLine).toBe(markerLine + 1)
+      expect(redactNeverStorePreservingLines(text).text.split('\n'))
+        .toHaveLength(text.split('\n').length)
     })
 
     it('hashes the redacted text, so the cache holds no trace of the value', async () => {

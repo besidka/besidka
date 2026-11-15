@@ -326,6 +326,121 @@ describe('skill screen services', () => {
       expect(mocks.decide).not.toHaveBeenCalled()
     })
 
+    it('lets one of two parallel screens spend and tells the other it is in progress', async () => {
+      mocks.decide.mockImplementation(async () => {
+        await new Promise(resolve => setTimeout(resolve, 5))
+
+        return answers()
+      })
+
+      const manifest = await stage(bigSkillFiles())
+      const [first, second] = await Promise.all([
+        screenStage(manifest.stageId),
+        screenStage(manifest.stageId),
+      ])
+      const states = [first.state, second.state].sort()
+      const spender = first.state === 'screened' ? first : second
+
+      expect(states).toEqual(['in-progress', 'screened'])
+      expect(mocks.decide).toHaveBeenCalledTimes(maxCallsPerScreen)
+      expect(spender.calls).toBe(maxCallsPerScreen)
+      expect(spender.callsSpent).toBe(maxCallsPerScreen)
+
+      const waiting = first.state === 'in-progress' ? first : second
+
+      expect(waiting.calls).toBe(0)
+      expect(waiting.marks).toEqual([])
+    })
+
+    it('does not let many parallel screens go past the stage total', async () => {
+      mocks.decide.mockImplementation(async () => {
+        await new Promise(resolve => setTimeout(resolve, 2))
+
+        return answers()
+      })
+
+      const manifest = await stage([
+        archiveFile('SKILL.md', skillMarkdown()),
+        archiveFile('references/huge.md', paragraphs('Row', 900)),
+      ])
+
+      for (let round = 0; round < 3; round++) {
+        await Promise.all(Array.from({ length: 20 }, () => {
+          return screenStage(manifest.stageId, { rest: true })
+        }))
+      }
+
+      const stored = await readStoredSkillJevResult(
+        kv,
+        skillJevStageKey(manifest.stageId),
+      )
+
+      expect(mocks.decide.mock.calls.length).toBeLessThanOrEqual(
+        maxCallsPerStage,
+      )
+      expect(stored?.callsSpent).toBeLessThanOrEqual(maxCallsPerStage)
+    })
+
+    it('writes the planned calls to the stored result before the first call', async () => {
+      const manifest = await stage(bigSkillFiles())
+      const spentDuringCall: number[] = []
+
+      mocks.decide.mockImplementation(async () => {
+        const stored = await readStoredSkillJevResult(
+          kv,
+          skillJevStageKey(manifest.stageId),
+        )
+
+        spentDuringCall.push(stored?.callsSpent ?? -1)
+
+        return answers()
+      })
+
+      const result = await screenStage(manifest.stageId)
+
+      expect(spentDuringCall.length).toBeGreaterThan(0)
+      expect(new Set(spentDuringCall)).toEqual(new Set([maxCallsPerScreen]))
+      expect(result.callsSpent).toBe(maxCallsPerScreen)
+    })
+
+    it('refunds the calls it did not make and frees the marker', async () => {
+      const manifest = await stage([
+        archiveFile('SKILL.md', skillMarkdown()),
+      ])
+      const result = await screenStage(manifest.stageId)
+
+      expect(result.calls).toBeLessThan(maxCallsPerScreen)
+      expect(result.callsSpent).toBe(result.calls)
+      expect([...kv.values.keys()].some(key => key.includes('jev-lock')))
+        .toBe(false)
+
+      const again = await screenStage(manifest.stageId, { rest: true })
+
+      expect(again.state).toBe('screened')
+    })
+
+    it('answers in progress for a version while the marker is held', async () => {
+      const { skillId } = await seedSkillWithFiles(testDb.db, bucket, {
+        userId,
+        files: { 'SKILL.md': skillMarkdown() },
+      })
+
+      kv.values.set(`skills:jev-lock:u${userId}:${skillId}:1`, 'other-request')
+
+      const result = await screenSkillVersion({
+        db: testDb.db,
+        kv,
+        bucket,
+        userId,
+        skillId,
+        version: 1,
+        rest: false,
+      })
+
+      expect(result.state).toBe('in-progress')
+      expect(mocks.decide).not.toHaveBeenCalled()
+    })
+
     it('tries again after a failure instead of reusing it', async () => {
       mocks.decide.mockImplementation(async () => {
         throw new APICallError({
