@@ -595,7 +595,7 @@ async function syncDriftStatus(
  * Every enabled, reviewed tool becomes an AI SDK tool named
  * `mcp__<slug>__<tool>` and marked `withFollowUpTurn()`, with its approval
  * entry. Which ones the model sees up front depends on the connector's mode
- * (`connectors.tool_mode`, null is Auto): tools of an Always on connector,
+ * (`resolveConnectorToolMode`): tools of an Always on connector,
  * read-only first, are offered up front while they fit in 40 tools (counting
  * the send's other tools and `reserve`, the room kept for loading) and
  * 32 KiB of descriptions plus input schemas (counting the Besidka tools'
@@ -603,6 +603,16 @@ async function syncDriftStatus(
  * fitting, goes to `indexEntries` for the tool index and is offered only
  * once the model loads it (`server/utils/ai/tool-index.ts`). No tool is left
  * out, so there is no "left out" notice.
+ *
+ * `catalogConnectors` are Auto connectors the chat did not switch off
+ * (section 6.3): their tools come from the 30-day snapshot of their last
+ * live listing, checked against the reviewed baseline, with no connection;
+ * at most two without a snapshot get a warm-up listing. They are indexed
+ * with a `catalogKey`, closed until the model opens the connector, and a
+ * first call connects and checks the hash against a live listing. A
+ * connector in `optionalConnectorIds` (an Always on connector the chat did
+ * not ask for) with a stale consent is left out with a notice instead of
+ * refusing the send.
  *
  * With `consumeClearedCall` (the `tool-approvals` flag is on), whether a
  * call may run is decided by the send's approval policy
