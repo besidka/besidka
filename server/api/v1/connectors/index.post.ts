@@ -75,16 +75,18 @@ export default defineEventHandler(async (event) => {
   await requireLegalConsent(userId, db)
   await assertConnectorCapacity(db, userId)
 
-  logger.set({
-    attributes: {
-      legalConsent: {
-        action: 'connector-granted',
-        host: target.host,
-        issuerHost: '',
-        version: body.consent.version,
+  function logConsentNotStored() {
+    logger.set({
+      attributes: {
+        legalConsent: {
+          action: 'connector-consent-not-stored',
+          host: target.host,
+          issuerHost: '',
+          version: body.consent.version,
+        },
       },
-    },
-  })
+    })
+  }
 
   try {
     if (body.header) {
@@ -99,6 +101,7 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (exception) {
+    logConsentNotStored()
     logger.set({
       attributes: {
         connectors: {
@@ -140,6 +143,7 @@ export default defineEventHandler(async (event) => {
         headerValue: body.header.value,
       })
     } catch (exception) {
+      logConsentNotStored()
       await deleteConnector(db, userId, connector.id, logger)
 
       throw exception
@@ -155,7 +159,13 @@ export default defineEventHandler(async (event) => {
         authType: connector.authType ?? 'none',
         stored: true,
       },
-      legalConsent: { connectorId: connector.id },
+      legalConsent: {
+        action: 'connector-granted',
+        connectorId: connector.id,
+        host: target.host,
+        issuerHost: '',
+        version: body.consent.version,
+      },
     },
   })
 

@@ -9,6 +9,8 @@ import { connectorErrorCodeOf } from '~~/server/utils/connectors/errors'
 import { discoverConnectorAuth } from '~~/server/utils/connectors/oauth-metadata'
 import { requireConnectorAccess } from '~~/server/utils/connectors/route'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
+import { evaluateFeatureForEvent } from '~~/server/utils/features/context'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 import { assertConnectorCapacity } from '~~/server/utils/connectors/store'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -19,7 +21,10 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * request goes out, and the same unauthenticated probe and OAuth discovery
  * as the Connect step run. The answer names what the consent screen shows:
  * the host, the issuer host when it differs, the auth kind, the notice of a
- * preset and the title and preset the connector would get.
+ * preset and the title and preset the connector would get. The sign-up
+ * consent is required like on the other write routes, and the OAuth metadata
+ * requests are made only for an account that has `connectors.oauth`; without
+ * it a 401 answers as a key.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireConnectorAccess(event)
@@ -30,13 +35,17 @@ export default defineEventHandler(async (event) => {
 
   event.res.headers.set('cache-control', 'no-store')
 
+  await requireLegalConsent(userId, db)
   await assertConnectorCapacity(db, userId)
+
+  const isOAuthEnabled = target.allowOAuth
+    && (await evaluateFeatureForEvent(event, 'connectors.oauth')).active
 
   let discovery: Awaited<ReturnType<typeof discoverConnectorAuth>>
 
   try {
     discovery = await discoverConnectorAuth(target.url, logger, {
-      allowOAuth: target.allowOAuth,
+      allowOAuth: isOAuthEnabled,
     })
   } catch (exception) {
     logger.set({

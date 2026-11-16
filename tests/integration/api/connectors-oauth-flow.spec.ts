@@ -67,6 +67,21 @@ vi.mock('~~/server/utils/features/guards', () => ({
   },
 }))
 
+vi.mock('~~/server/utils/features/context', async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import('~~/server/utils/features/context')
+  >()
+
+  return {
+    ...original,
+    evaluateFeatureForEvent: async (_event: unknown, flag: string) => {
+      const isOn = mocks.flags.has(flag)
+
+      return { value: isOn, active: isOn }
+    },
+  }
+})
+
 vi.mock('~~/server/utils/logging/request-logger', () => ({
   useRequestLogger: () => ({
     set: (values: unknown) => {
@@ -1209,6 +1224,29 @@ describe('connector OAuth flow', () => {
             expect(await connectorRows()).toHaveLength(20)
           })
 
+        it('needs the sign-up consent, and sends no request without it',
+          async () => {
+            useServer()
+            sessionUserId = await seedUser(testDb.db, null)
+
+            const failure = await failureOf(discoverNew())
+
+            expect(failure.code).toBe('LEGAL_CONSENT_REQUIRED')
+            expect(server.fetch).not.toHaveBeenCalled()
+          })
+
+        it('makes no OAuth metadata request without the connectors.oauth '
+          + 'flag, and answers a key', async () => {
+          mocks.flags.delete('connectors.oauth')
+          useServer()
+
+          const result = await discoverNew()
+
+          expect(result).toMatchObject({ authType: 'header', issuerHost: null })
+          expect(server.requests.map(request => request.url))
+            .toEqual([MCP_SERVER_URL])
+        })
+
         it('refuses an address that fails the URL rules without a request',
           async () => {
             useServer()
@@ -1253,18 +1291,16 @@ describe('connector OAuth flow', () => {
           expect(stored.lastConnectedAt).toBeInstanceOf(Date)
           expect(await credentialRows()).toEqual([])
           expect(mocks.logged).toContainEqual({
-            attributes: {
+            attributes: expect.objectContaining({
               legalConsent: expect.objectContaining({
                 action: 'connector-granted',
+                connectorId: connector.id,
                 host: 'mcp.example.com',
               }),
-            },
-          })
-          expect(mocks.logged).toContainEqual({
-            attributes: expect.objectContaining({
-              legalConsent: { connectorId: connector.id },
             }),
           })
+          expect(JSON.stringify(mocks.logged))
+            .not.toContain('connector-consent-not-stored')
         })
 
         it('stores nothing and says a sign-in or key is needed when the '
@@ -1338,11 +1374,13 @@ describe('connector OAuth flow', () => {
           expect(mocks.logged).toContainEqual({
             attributes: {
               legalConsent: expect.objectContaining({
-                action: 'connector-granted',
+                action: 'connector-consent-not-stored',
                 host: 'api.githubcopilot.com',
               }),
             },
           })
+          expect(JSON.stringify(mocks.logged))
+            .not.toContain('connector-granted')
           expect(JSON.stringify({
             failure,
             logged: mocks.logged,
@@ -1382,6 +1420,10 @@ describe('connector OAuth flow', () => {
               header: { name: 'Authorization', value: 'Bearer ghp_secret' },
             }))
             await expectNothingStored()
+            expect(JSON.stringify(mocks.logged))
+              .toContain('connector-consent-not-stored')
+            expect(JSON.stringify(mocks.logged))
+              .not.toContain('connector-granted')
           })
 
         it('makes no request for a user at the cap, or with an outdated '
@@ -1475,6 +1517,54 @@ describe('connector OAuth flow', () => {
                 issuerHost: 'auth.example.com',
               }),
             }),
+          })
+        })
+
+        it('revokes the fresh tokens even when the cleanup delete throws, '
+          + 'and logs both outcomes', async () => {
+          useServer()
+          vi.stubGlobal('useEncryptText', vi.fn(async (plain: string) => {
+            if (plain === 'access-token-1') {
+              throw new Error('encryption failed')
+            }
+
+            return fakeEncrypt(plain)
+          }))
+
+          const approval = server.authorize(await startNew())
+          const batch = testDb.db.batch.bind(testDb.db) as (
+            statements: unknown[],
+          ) => Promise<unknown>
+
+          vi.spyOn(testDb.db, 'batch').mockImplementation(
+            (async (statements: unknown[]) => {
+              if (statements.length === 4) {
+                throw new Error('delete failed')
+              }
+
+              return await batch(statements)
+            }) as never,
+          )
+
+          await callback({
+            code: approval.code,
+            state: approval.state,
+            iss: approval.iss,
+          })
+
+          const revocations = server.requestsTo(REVOKE_URL)
+
+          expect(revocations.length).toBeGreaterThan(0)
+          expect(revocations.map(request => request.body).join('&'))
+            .toContain('access-token-1')
+          expect(mocks.logged).toContainEqual({
+            attributes: {
+              connectors: {
+                step: 'oauth-create-failed',
+                rowDeleted: false,
+                tokensRevoked: true,
+              },
+            },
           })
         })
 

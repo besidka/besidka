@@ -37,6 +37,7 @@ import type {
   ConnectorOAuthState,
 } from '~~/server/utils/connectors/oauth-state'
 import { revokeConnectorCredentials } from '~~/server/utils/connectors/revoke'
+import type { RevocationResult } from '~~/server/utils/connectors/revoke'
 import {
   compareGrantedScope,
   degradedScopeNote,
@@ -489,8 +490,8 @@ async function revokeFreshTokens(
     scope: string | null
     expiresAt: Date | null
   },
-): Promise<void> {
-  await revokeConnectorCredentials({
+): Promise<RevocationResult> {
+  return await revokeConnectorCredentials({
     connectorId: '',
     issuer: state.issuer,
     clientRegistration: state.registration,
@@ -575,11 +576,22 @@ async function completeNewConnector(
       ...tokens,
     })
   } catch (exception) {
-    if (connectorId) {
-      await deleteConnector(input.db, input.userId, connectorId, input.logger)
-    }
+    let isRowDeleted = connectorId === null
 
-    await revokeFreshTokens(input, state, tokens)
+    try {
+      if (connectorId) {
+        await deleteConnector(input.db, input.userId, connectorId, input.logger)
+        isRowDeleted = true
+      }
+    } finally {
+      const revocation = await revokeFreshTokens(input, state, tokens)
+
+      logStep(input.logger, {
+        step: 'oauth-create-failed',
+        rowDeleted: isRowDeleted,
+        tokensRevoked: revocation.revoked > 0,
+      })
+    }
 
     throw exception
   }

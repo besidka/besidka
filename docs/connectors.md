@@ -419,10 +419,12 @@ until the dialog asks:
      version, issuerHost }, header?: { name, value } }`. The order is: header
      validation (section 4.3, and a preset must allow `header`), the consent
      version (`CONNECTOR_CONSENT_OUTDATED`), the sign-up consent
-     (`requireLegalConsent`), the per-user cap, then the probe. The grant is
-     logged (`attributes.legalConsent`, action `connector-granted`, host, no
-     connector id) before the probe sends the key, so a rejected key still has
-     a consent trace; the connector id is added only when the row exists. With a key
+     (`requireLegalConsent`), the per-user cap, then the probe. The grant
+     (`attributes.legalConsent` action `connector-granted`, with the connector
+     id) is logged only after the row exists; a failed probe or credential
+     write logs `connector-consent-not-stored` instead, which a consent ledger
+     replay never counts. `connect/discover` needs the sign-up consent too, and
+     makes OAuth metadata requests only with `connectors.oauth`. With a key
      the probe is the same MCP `initialize` request carrying that one header
      to the server's address only (`verifyConnectorCredentialHeader`, through
      `safeFetch`; a redirect to another origin is refused, so the key never
@@ -541,8 +543,8 @@ of an id and store nothing until the connect succeeds. All requests go through
    tool mode, `last_connected_at`) and the credentials, logs
    `legalConsent: connector-granted` there and nowhere earlier, and returns the
    new id. If creating the row or saving the credentials fails after the
-   exchange, the row is deleted again and the fresh tokens are revoked best
-   effort. A canceled or failed sign-in (`error=access_denied`, a refused
+   exchange, the fresh tokens are revoked best effort even when deleting the row
+   fails, and both outcomes are logged (`oauth-create-failed`). A canceled or failed sign-in (`error=access_denied`, a refused
    code, a wrong issuer, an expired or replayed state) writes nothing to D1.
    What a canceled flow leaves: a KV state for at most 600 s (single use,
    expires on its own) and, for an issuer that needs DCR, a client registered
