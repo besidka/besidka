@@ -3348,7 +3348,6 @@ export default defineEventHandler(async (event) => {
               model: modelId,
               gateway: gatewayId ?? null,
               reasoning: reasoningLevel,
-              toolNames: Object.keys(parsedTools.tools ?? {}),
               connectorIds: connectorsRun?.connectorIds ?? [],
             },
             hashArgs: hashConnectorArgs,

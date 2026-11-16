@@ -700,7 +700,7 @@ describe('tool approval requests in the chat send', () => {
     })
     expect(pending?.signature).toEqual(expect.any(String))
     expect(pending?.definitionHash).toMatch(/^[0-9a-f]{64}$/)
-    expect(pending?.snapshot.toolNames).toContain('mcp__linear__create_issue')
+    expect(pending?.snapshot).not.toHaveProperty('toolNames')
     expect(readKvJson(`tool-approval:turn:${messagePublicId}`)).toMatchObject({
       userId: 1,
       chatPublicId: CHAT_PUBLIC_ID,

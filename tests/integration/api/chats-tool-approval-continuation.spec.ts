@@ -1735,6 +1735,42 @@ describe('tool approval continuation', () => {
         expect(mocks.claims.get(approvalId)?.status).toBe('done')
       })
 
+    it.each([
+      ['Deny', false, 'output-denied'],
+      ['Allow once', true, 'output-available'],
+    ] as const)('answers %s for a send whose Auto connector has over 200 '
+      + 'tools', async (_label, approved, state) => {
+      const github = createMockMcpServer({
+        url: LINEAR_URL,
+        tools: Array.from({ length: 250 }, (_value, index) => {
+          return {
+            name: `tool_${index}`,
+            description: `Tool ${index}.`,
+            annotations: { readOnlyHint: true },
+          }
+        }),
+        respond: name => ({ text: `${name} result` }),
+      })
+
+      mocks.store.connectors[0]!.toolMode = 'auto'
+      mocks.store.chatSettings = []
+
+      const paused = await pauseTurn({
+        servers: [github],
+        connectorIds: [],
+        steps: [toolCallChunks('call-b', 'besidka__list_projects', {})],
+      })
+      const [approvalId] = paused.approvalIds
+
+      await answer(paused, [{ approvalId, approved }])
+
+      expect(findPart(
+        mocks.updates.at(-1)!.parts,
+        'tool-besidka__list_projects',
+      )).toMatchObject({ state })
+      expect(mocks.claims.get(approvalId)?.status).toBe('done')
+    })
+
     it('denies an approved Besidka call the user has since blocked',
       async () => {
         const paused = await pauseListProjects()

@@ -90,7 +90,6 @@ function pendingRecord(
       model: 'gpt-5-mini',
       gateway: null,
       reasoning: 'off',
-      toolNames: [TOOL_NAME],
       connectorIds: ['c1'],
     },
     ...overrides,

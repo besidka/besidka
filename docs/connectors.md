@@ -1718,7 +1718,7 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   stored, the route writes per approval the pending record (`input`,
   `signature`, `toolCallId`, family, access, connector id, hash, reason,
   `rememberOptions`, summary, `auditCallId`, a snapshot of model, gateway,
-  reasoning, tool names and connector ids), then the turn record (pending ids
+  reasoning and connector ids), then the turn record (pending ids
   and the serialized state with `rounds` 1 and the step count) and the
   per-chat index. A connector call also gets a `connector_tool_calls` row
   with `outcome='pending'` and `approval='pending'` (both columns are plain
@@ -1726,8 +1726,14 @@ the buttons (L6) come later. Where this differs from sections 7.1 to 7.4:
   new value needs no migration), whose id goes into the pending record for
   L5 to settle. When the pending record cannot be stored after its audit
   row was written, the row is settled right away as `outcome='error'`,
-  `approval='denied'` (audit L4). A record that fails is logged and the
-  continuation will answer that the approval expired. `rememberOptions` and
+  `approval='denied'` (audit L4). The pending and turn records are checked
+  against the schema they are read back with before they are written, so a
+  record that could never be read fails at the pause instead of reading as
+  expired at the answer. A record that fails is logged and the
+  continuation will answer that the approval expired. The snapshot no longer
+  holds the offered tool names: nothing read them, and with the tool index
+  and Auto connectors a send can offer more than the 200 the schema allowed,
+  which made every answer to that pause a 409 `TOOL_APPROVAL_EXPIRED`. `rememberOptions` and
   `auditCallId` are new fields on the L3 pending schema.
 - **Persistence.** An assistant message whose only content is a waiting call
   persists (`hasMeaningfulAssistantParts` on the server, and

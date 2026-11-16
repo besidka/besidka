@@ -29,7 +29,6 @@ const SNAPSHOT = {
   model: 'claude-haiku-4-5',
   gateway: null,
   reasoning: 'off' as const,
-  toolNames: ['create_artifact'],
   connectorIds: [],
 }
 
