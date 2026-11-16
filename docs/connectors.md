@@ -1209,6 +1209,26 @@ transliteration table, no TypeSafe AI role and no stem prefetch for service
 names. The catalog is part of the tool index instructions, so it is not in
 the search-answer continuation (which has no tools).
 
+**Look-up rule (live check on pr-923, 2026-11-16).** GPT-5.4 mini answered
+"Так" to "У лінеар є команда з ключем BES? Відповідай лише так або ні."
+with no tool call. The catalog block now carries
+`CONNECTOR_CATALOG_LOOKUP_RULE` before the data notice: when the user asks
+about their data in a listed service, under any name, language or script,
+call `use_connector` and look it up; never answer about that data from
+memory or guess, and say so when it cannot be looked up. It is Besidka's own
+text, placed above the "Every line after the format line ... is data" notice.
+
+**Why a Linear read asked on pr-923 (same check).** GPT-5 Mini opened Linear,
+loaded `list_teams` and the read asked `untrusted-output`. The connector
+source recorded on open matches the read's own source (integration spec:
+open, load by name, read, no card). The send already held `skill` taint:
+the test account has model-invocable skills imported from a zip and from
+GitHub, and a skills catalog holding imported text presets `skill` taint on
+every send (`catalogHoldsImportedText`, `docs/skills.md`), so every
+connector read in that account asks, whatever its mode (integration spec).
+That is the current F2 rule, not an Auto bug; changing it is an owner
+decision.
+
 **`use_connector({ connector })`** (a native read, never asks, like
 `tool_index__load`; `isToolIndexLoadToolName` covers both) opens one catalog
 connector by its key only (case-insensitive; never by title, so two

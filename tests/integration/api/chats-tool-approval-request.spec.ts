@@ -1002,6 +1002,58 @@ describe('tool approval requests in the chat send', () => {
     expect(pendingPart).toMatchObject({ toolName: 'mcp__notion__list_pages' })
   })
 
+  it('runs an Auto connector read opened and then loaded by name without '
+    + 'a card, because its own taint is the only one', async () => {
+    const autoLinear = mocks.store.connectors.find((connector) => {
+      return connector.id === 'conn-linear'
+    })!
+
+    autoLinear.toolMode = 'auto'
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-2', 'tool_index__load', {
+          names: ['mcp__linear__list_issues'],
+        }),
+        toolCallChunks('call-3', 'mcp__linear__list_issues', {}),
+        textChunks('One open issue.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(findPart(parts, 'dynamic-tool'))
+      .toMatchObject({ state: 'output-available' })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+  })
+
+  it('asks before an Auto connector read in a send that holds imported '
+    + 'skill text, whatever opened it', async () => {
+    const autoLinear = mocks.store.connectors.find((connector) => {
+      return connector.id === 'conn-linear'
+    })!
+
+    autoLinear.toolMode = 'auto'
+    mocks.holdsSkillText = true
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-2', 'mcp__linear__list_issues', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: { reason: 'untrusted-output' },
+    })
+  })
+
   it('runs an Auto connector read opened first, with nothing read before',
     async () => {
       const autoLinear = mocks.store.connectors.find((connector) => {

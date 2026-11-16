@@ -8,6 +8,7 @@ import {
 } from '#shared/utils/tool-index'
 import {
   buildConnectorCatalogInstructions,
+  CONNECTOR_CATALOG_LOOKUP_RULE,
   buildToolIndexInstructions,
   createToolIndex,
   describeToolIndexLoad,
@@ -599,6 +600,25 @@ describe('buildConnectorCatalogInstructions', () => {
       ])
   })
 
+  it('tells the model to look up the user\'s data in a listed service, '
+    + 'never to answer from memory, before the data lines', () => {
+    const lines = buildConnectorCatalogInstructions([
+      catalogConnector('linear'),
+    ]).split('\n')
+    const ruleIndex = lines.indexOf(CONNECTOR_CATALOG_LOOKUP_RULE)
+    const formatIndex = lines.findIndex(line => line.startsWith('Format:'))
+
+    expect(CONNECTOR_CATALOG_LOOKUP_RULE).toContain(
+      TOOL_INDEX_USE_CONNECTOR_TOOL_NAME,
+    )
+    expect(CONNECTOR_CATALOG_LOOKUP_RULE).toContain('any name, language or '
+      + 'script')
+    expect(CONNECTOR_CATALOG_LOOKUP_RULE).toContain('Never answer about that '
+      + 'data from memory and never guess')
+    expect(ruleIndex).toBeGreaterThan(0)
+    expect(ruleIndex).toBeLessThan(formatIndex)
+  })
+
   it('cleans remote text so a line cannot open or close a tag', () => {
     const text = buildConnectorCatalogInstructions([
       catalogConnector('notion', {
@@ -610,9 +630,9 @@ describe('buildConnectorCatalogInstructions', () => {
 
     expect(lines.filter(line => line === '</connector_catalog>'))
       .toHaveLength(1)
-    expect(lines).toHaveLength(5)
-    expect(lines[3]).not.toMatch(/[<>`]/)
-    expect(lines[3].split(' | ')).toHaveLength(4)
+    expect(lines).toHaveLength(7)
+    expect(lines[5]).not.toMatch(/[<>`]/)
+    expect(lines[5].split(' | ')).toHaveLength(4)
   })
 
   it('names the rest by key and counts them past the byte cap', () => {
