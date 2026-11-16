@@ -4282,6 +4282,13 @@ describe('ChatInput.client', () => {
         .toBe('Doop is off in this chat. Turn it on?')
       expect(composerConnectorState.toggle).not.toHaveBeenCalled()
 
+      const overlays = wrapper.get('[data-testid="chat-input-overlays"]')
+
+      expect(overlays.classes()).toContain('absolute')
+      expect(overlays.classes()).toContain('bottom-full')
+      expect(overlays.find('[data-testid="connector-suggestion"]').exists())
+        .toBe(true)
+
       await wrapper.get('[data-testid="connector-suggestion-turn-on"]')
         .trigger('click')
       await flushPromises()
