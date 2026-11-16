@@ -286,6 +286,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the `layout` prop on the shared Panel, inline filter chips, the
   horizontal provider chip row, no search autofocus, the visual-viewport
   keyboard lift, and the only events that close the sheet
+- `docs/ui/semantic-colors.md` - The daisyUI semantic color pairs and their
+  measured contrast (light `success-content` was emerald-950 on emerald-700 at
+  2.8:1, fixed once in `main.css`), the rule to never patch a solid success,
+  warning or error element per component, and why `btn-soft` alone renders
+  solid on a button with `aria-checked` (the `btn-soft-selected` utility)
 - `docs/ui/side-panel.md` - The shared right side panel (`UiSidePanel`,
   `useSidePanel()`): one surface for every "view a result" screen, docked at
   lg with the nav pill on the seam, overlay at md, full-screen bottom sheet

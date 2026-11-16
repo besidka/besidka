@@ -327,6 +327,24 @@ function createConnectorMcpLimitError() {
 }
 
 /**
+ * Throws the connector-limit error when the user is already at the cap. A
+ * cheap early check for callers that do slow work (a probe) before
+ * `createConnector`; the atomic cap in `createConnector` stays the guard.
+ */
+export async function assertConnectorCapacity(
+  db: DbClient,
+  userId: number,
+): Promise<void> {
+  const [row] = await db.select({ total: sql<number>`count(*)` })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.userId, userId))
+
+  if ((row?.total ?? 0) >= CONNECTORS_PER_USER) {
+    throw createConnectorLimitError()
+  }
+}
+
+/**
  * Inserts a disabled connector in `needs-auth`: defaults live here, not in
  * SQL. The origin is derived from the URL here, never taken from the caller.
  * The slug is the base, or the base with `-2`, `-3`, and is retried when a

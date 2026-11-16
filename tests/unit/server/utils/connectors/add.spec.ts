@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { addConnector } from '~~/server/utils/connectors/add'
+import { assertConnectorCapacity } from '~~/server/utils/connectors/store'
 import { CONNECTOR_ERRORS } from '~~/server/utils/connectors/errors'
+
+vi.mock('~~/server/utils/connectors/store', async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import('~~/server/utils/connectors/store')
+  >()
+
+  return { ...original, assertConnectorCapacity: vi.fn(async () => undefined) }
+})
 
 type DbClient = Parameters<typeof addConnector>[0]
 
@@ -129,5 +138,24 @@ describe('addConnector verifyServer', () => {
       url: 'https://api.githubcopilot.com/mcp/',
       allowOAuth: false,
     })
+  })
+})
+
+describe('addConnector capacity check', () => {
+  it('stops at the cap before any verification request', async () => {
+    const verifyServer = vi.fn()
+    const limit = Object.assign(new Error('limit'), {
+      code: 'CONNECTOR_LIMIT_REACHED',
+    })
+
+    vi.mocked(assertConnectorCapacity).mockRejectedValueOnce(limit)
+
+    await expect(addConnector(db, {
+      userId: 1,
+      url: 'https://mcp.example.com/mcp',
+      source: { via: 'app' },
+      verifyServer,
+    })).rejects.toBe(limit)
+    expect(verifyServer).not.toHaveBeenCalled()
   })
 })

@@ -1107,6 +1107,22 @@ describe('connector OAuth flow', () => {
       expect(await connectorRows()).toEqual([])
     })
 
+    it('makes no request for a user who is at the connector cap',
+      async () => {
+        useServer()
+
+        for (let index = 0; index < 20; index++) {
+          await createConnector({ url: `https://mcp${index}.example.com/mcp` })
+        }
+
+        const requestsBefore = server.requests.length
+        const failure = await failureOf(createConnectorThroughRoute())
+
+        expect(failure.code).toBe('CONNECTOR_LIMIT_REACHED')
+        expect(server.requests).toHaveLength(requestsBefore)
+        expect(await connectorRows()).toHaveLength(20)
+      })
+
     it('keeps a connector whose sign-in was never finished', async () => {
       useServer()
 

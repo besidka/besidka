@@ -9,7 +9,10 @@ import { deriveConnectorSlugBase } from '#shared/utils/connectors-slug'
 import { findConnectorPreset } from '~~/config/connectors-catalog'
 import * as schema from '~~/server/db/schema'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
-import { createConnector } from '~~/server/utils/connectors/store'
+import {
+  assertConnectorCapacity,
+  createConnector,
+} from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
 import { parseSafeOutboundUrl } from '~~/server/utils/net/safe-url'
 
@@ -105,11 +108,12 @@ export async function findActiveRegistryEntry(
  * syntactically, a preset's own URL (or a directory entry's, from the local
  * MCP Registry copy) replaces the input, and the row starts disabled in
  * `needs-auth`. Without `verifyServer` (the MCP tool) no request is made.
- * With it (the app route) the callback runs after the URL check and before
- * the insert, and a throw means nothing is stored: a server that never
- * answered as an MCP server never becomes a connector. Anything added over
- * MCP is recorded as `mcp` with the OAuth client that added it, even from a
- * preset; a directory entry as `registry`.
+ * With it (the app route) the per-user cap is checked first, so a user at
+ * the cap never causes an outbound request, then the callback runs after the
+ * URL check and before the insert, and a throw means nothing is stored: a
+ * server that never answered as an MCP server never becomes a connector.
+ * Anything added over MCP is recorded as `mcp` with the OAuth client that
+ * added it, even from a preset; a directory entry as `registry`.
  */
 export async function addConnector(
   db: DbClient,
@@ -153,10 +157,13 @@ export async function addConnector(
     CONNECTOR_TITLE_MAX_LENGTH,
   ) || parsed.url.hostname
 
-  await input.verifyServer?.({
-    url: parsed.url.toString(),
-    allowOAuth: !preset || preset.auth.includes('oauth'),
-  })
+  if (input.verifyServer) {
+    await assertConnectorCapacity(db, input.userId)
+    await input.verifyServer({
+      url: parsed.url.toString(),
+      allowOAuth: !preset || preset.auth.includes('oauth'),
+    })
+  }
 
   const connector = await createConnector(db, {
     userId: input.userId,
