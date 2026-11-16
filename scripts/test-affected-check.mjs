@@ -3269,6 +3269,14 @@ export function getAffectedTests(changedFiles) {
         /^(app\/assets\/css\/main\.css|app\/components\/Search\/Modal\.client\.vue|app\/components\/ChatInput\.client\.vue)$/,
       tests: [
         'tests/e2e/search/keyboard-inset.spec.ts',
+        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^app\/components\/ChatInput\/(CommandPicker|ConnectorSuggestion|ToolApprovalChip)\.vue$/,
+      tests: [
+        'tests/e2e/chat/composer-overlays-spacer.spec.ts',
       ],
     },
     {
