@@ -1,6 +1,8 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
 import { z } from 'zod'
 import {
+  CONNECTOR_CATALOG_SNAPSHOT_TTL_SECONDS,
+  CONNECTOR_CATALOG_WARMUP_BACKOFF_SECONDS,
   CONNECTOR_TOOLS_CACHE_TTL_MAX_SECONDS,
   CONNECTOR_TOOLS_CACHE_TTL_MIN_SECONDS,
   CONNECTOR_TOOLS_CACHE_TTL_SECONDS,
@@ -8,6 +10,8 @@ import {
 import type { ConnectorToolDefinition } from '~~/server/utils/connectors/tool-definitions'
 
 const KEY_PREFIX = 'connectors:tools:'
+const SNAPSHOT_KEY_PREFIX = 'connectors:catalog:'
+const WARMUP_KEY_PREFIX = 'connectors:catalog-warmup:'
 const MILLISECONDS_PER_SECOND = 1000
 
 const cachedDefinitionsSchema = z.object({
@@ -79,6 +83,82 @@ export async function writeCachedToolDefinitions(
     await kv.put(key, JSON.stringify({ definitions }), {
       expirationTtl: ttlSeconds,
     })
+  } catch {
+    return
+  }
+}
+
+export function connectorCatalogSnapshotKey(connectorId: string): string {
+  return `${SNAPSHOT_KEY_PREFIX}${connectorId}`
+}
+
+export function connectorCatalogWarmupKey(connectorId: string): string {
+  return `${WARMUP_KEY_PREFIX}${connectorId}`
+}
+
+/**
+ * The last tool list a live `tools/list` returned for a connector, kept for
+ * 30 days so an Auto connector can offer its tools at send start without a
+ * connection (docs/connectors.md section 6.3). Only a live listing writes
+ * it; the send still compares it with the reviewed baseline and checks it
+ * again against a live listing before the first call.
+ */
+export async function readCatalogSnapshot(
+  kv: KVNamespace,
+  connectorId: string,
+): Promise<ConnectorToolDefinition[] | null> {
+  return await readCachedToolDefinitions(
+    kv,
+    connectorCatalogSnapshotKey(connectorId),
+  )
+}
+
+export async function writeCatalogSnapshot(
+  kv: KVNamespace,
+  connectorId: string,
+  definitions: readonly ConnectorToolDefinition[],
+): Promise<void> {
+  await writeCachedToolDefinitions(
+    kv,
+    connectorCatalogSnapshotKey(connectorId),
+    definitions,
+    CONNECTOR_CATALOG_SNAPSHOT_TTL_SECONDS,
+  )
+}
+
+/**
+ * Whether a send may list an Auto connector that has no snapshot yet. A
+ * failed or skipped warm-up is not retried for 15 minutes, so a server that
+ * is down is not contacted on every send.
+ */
+export async function claimCatalogWarmup(
+  kv: KVNamespace,
+  connectorId: string,
+): Promise<boolean> {
+  const key = connectorCatalogWarmupKey(connectorId)
+
+  try {
+    if (await kv.get(key)) {
+      return false
+    }
+
+    await kv.put(key, '1', {
+      expirationTtl: CONNECTOR_CATALOG_WARMUP_BACKOFF_SECONDS,
+    })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function deleteCatalogSnapshot(
+  kv: KVNamespace,
+  connectorId: string,
+): Promise<void> {
+  try {
+    await kv.delete(connectorCatalogSnapshotKey(connectorId))
+    await kv.delete(connectorCatalogWarmupKey(connectorId))
   } catch {
     return
   }

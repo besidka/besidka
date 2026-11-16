@@ -81,7 +81,11 @@ describe('connector chat selection routes', () => {
   async function addConnector(
     slug: string,
     owner: number = userId,
-    patch: Record<string, unknown> = { status: 'ready', enabled: true },
+    patch: Record<string, unknown> = {
+      status: 'ready',
+      enabled: true,
+      toolMode: 'manual',
+    },
   ) {
     const { createConnector, updateConnector } = await import(
       '~~/server/utils/connectors/store'
@@ -181,11 +185,16 @@ describe('connector chat selection routes', () => {
 
   describe('PUT and GET /api/v1/chats/[slug]/connectors', () => {
     it('stores the choice per chat and reads it back', async () => {
-      const first = await addConnector('first')
-      const second = await addConnector('second')
+      const manualPatch = {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'manual',
+      }
+      const first = await addConnector('first', userId, manualPatch)
+      const second = await addConnector('second', userId, manualPatch)
 
       expect(await call(getPath, { params: { slug: chat.slug } }))
-        .toEqual({ connectorIds: [] })
+        .toEqual({ connectorIds: [], offConnectorIds: [] })
 
       const saved = await call(putPath, {
         params: { slug: chat.slug },
@@ -204,6 +213,86 @@ describe('connector chat selection routes', () => {
       expect((await call(getPath, { params: { slug: chat.slug } }))
         .connectorIds).toEqual([second])
     })
+
+    it('stores offConnectorIds, returns them, and clears an Auto off when '
+      + 'it is no longer listed', async () => {
+      const auto = await addConnector('auto', userId, {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'auto',
+      })
+      const manual = await addConnector('manual', userId, {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'manual',
+      })
+      const saved = await call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [], offConnectorIds: [auto, manual] },
+      })
+
+      expect(saved.connectorIds).toEqual([])
+      expect(saved.offConnectorIds.sort()).toEqual([auto, manual].sort())
+      expect((await call(getPath, { params: { slug: chat.slug } }))
+        .offConnectorIds.sort()).toEqual([auto, manual].sort())
+
+      const cleared = await call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [], offConnectorIds: [manual] },
+      })
+
+      expect(cleared.connectorIds).toEqual([])
+      expect(cleared.offConnectorIds).toEqual([manual])
+
+      const { listConnectorChatSettings } = await import(
+        '~~/server/utils/connectors/store'
+      )
+      const rows = await listConnectorChatSettings(
+        testDb.db,
+        userId,
+        chat.id,
+      )
+
+      expect(rows.map(row => row.connectorId)).toEqual([manual])
+    })
+
+    it('never writes an on row for an Auto connector, and never switches '
+      + 'it off when the client sends no offConnectorIds', async () => {
+      const auto = await addConnector('auto', userId, {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'auto',
+      })
+
+      const turnedOn = await call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [auto] },
+      })
+
+      expect(turnedOn.connectorIds).toEqual([])
+
+      const saved = await call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [] },
+      })
+
+      expect(saved.connectorIds).toEqual([])
+      expect(saved.offConnectorIds).toEqual([])
+    })
+
+    it('refuses an offConnectorIds entry that is not the account\'s',
+      async () => {
+        const foreign = await addConnector(
+          'foreign',
+          await seedUser(testDb.db, null),
+        )
+        const failure = await failureOf(call(putPath, {
+          params: { slug: chat.slug },
+          body: { connectorIds: [], offConnectorIds: [foreign] },
+        }))
+
+        expect(failure.status).toBe(404)
+      })
 
     it('omits a stored connector that was turned off or needs sign-in, '
       + 'and returns it once it is selectable again', async () => {

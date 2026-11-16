@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   CONNECTOR_TITLE_MAX_LENGTH,
   CONNECTOR_TOOL_MODES,
+  resolveConnectorToolMode,
 } from '#shared/utils/connectors-policy'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import {
@@ -17,6 +18,7 @@ import {
 import {
   readConnectorCredentials,
   readConnectorToolBaseline,
+  resetConnectorChatSettings,
   updateConnector,
 } from '~~/server/utils/connectors/store'
 import type { ConnectorRecord } from '~~/server/utils/connectors/store'
@@ -84,7 +86,9 @@ async function assertCanEnable(userId: number, connector: ConnectorRecord) {
  * current sign-up consent and a current per-connector consent for its
  * origin and issuer; turning it off is always allowed. The review rule is
  * enforced here, not only in the page, because any client can call this
- * route.
+ * route. A mode change resets every chat's on or off choice for the
+ * connector (`resetConnectorChatSettings`), keeping "Allow in this chat"
+ * grants.
  */
 export default defineEventHandler(async (event) => {
   const userId = await requireConnectorAccess(event)
@@ -100,6 +104,16 @@ export default defineEventHandler(async (event) => {
     enabled: body.enabled,
     toolMode: body.toolMode,
   })
+  const isModeChanged = !!body.toolMode
+    && body.toolMode !== resolveConnectorToolMode(connector.toolMode)
+
+  if (isModeChanged) {
+    await resetConnectorChatSettings(useDb(), {
+      userId,
+      connectorId: connector.id,
+      enabled: body.toolMode !== 'manual',
+    })
+  }
 
   useRequestLogger(event).set({
     attributes: {

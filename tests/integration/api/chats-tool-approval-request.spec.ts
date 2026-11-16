@@ -420,6 +420,7 @@ async function runSend(input: {
   connectorIds?: string[]
   servers: MockMcpServer[]
   messageId?: string
+  tools?: string[]
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -441,7 +442,7 @@ async function runSend(input: {
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     body: {
       model: MODEL_ID,
-      tools: [],
+      tools: input.tools ?? [],
       reasoning: 'off',
       ...(input.connectorIds ? { connectorIds: input.connectorIds } : {}),
       messages: [{
@@ -890,6 +891,140 @@ describe('tool approval requests in the chat send', () => {
       counters: { connectorCalls: 1 },
     })
   })
+
+  it('asks before an Auto connector read that follows another '
+    + 'connector\'s output, with no chat selection', async () => {
+    seedConnector({
+      id: 'conn-notion',
+      slug: 'notion',
+      title: 'Notion',
+      url: NOTION_URL,
+    })
+
+    const autoLinear = mocks.store.connectors.find((connector) => {
+      return connector.id === 'conn-linear'
+    })!
+
+    autoLinear.toolMode = 'auto'
+
+    const { assistantInsert } = await runSend({
+      servers: [linear, notion],
+      steps: [
+        toolCallChunks('call-1', 'mcp__notion__list_pages', {}),
+        toolCallChunks('call-2', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-3', 'mcp__linear__list_issues', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+    const pendingPart = parts.find((part: any) => {
+      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
+    })
+
+    expect(notion.callCount('tools/call')).toBe(1)
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(findPart(parts, 'tool-use_connector')).toMatchObject({
+      state: 'output-available',
+    })
+    expect(pendingPart).toMatchObject({ toolName: 'mcp__linear__list_issues' })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: { reason: 'untrusted-output' },
+    })
+
+    const pending = readKvJson(`tool-approval:${pendingPart.approval.id}`)
+
+    expect(pending).toMatchObject({
+      family: 'connector',
+      connectorId: 'conn-linear',
+      access: 'read',
+    })
+  })
+
+  it('asks before the first use of an Auto connector read in a message '
+    + 'that requested web search', async () => {
+    const autoLinear = mocks.store.connectors.find((connector) => {
+      return connector.id === 'conn-linear'
+    })!
+
+    autoLinear.toolMode = 'auto'
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      tools: ['web_search'],
+      steps: [
+        toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-2', 'mcp__linear__list_issues', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+    const pendingPart = parts.find((part: any) => {
+      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
+    })
+
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(pendingPart).toMatchObject({ toolName: 'mcp__linear__list_issues' })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: { reason: 'untrusted-output' },
+    })
+  })
+
+  it('asks before another connector\'s read once an Auto connector was '
+    + 'opened, because its tool list is remote text', async () => {
+    seedConnector({
+      id: 'conn-notion',
+      slug: 'notion',
+      title: 'Notion',
+      url: NOTION_URL,
+    })
+
+    for (const connector of mocks.store.connectors) {
+      connector.toolMode = connector.id === 'conn-linear'
+        ? 'auto'
+        : 'always-on'
+    }
+
+    const { assistantInsert } = await runSend({
+      servers: [linear, notion],
+      steps: [
+        toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-2', 'mcp__notion__list_pages', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+    const pendingPart = parts.find((part: any) => {
+      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
+    })
+
+    expect(notion.callCount('tools/call')).toBe(0)
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(pendingPart).toMatchObject({ toolName: 'mcp__notion__list_pages' })
+  })
+
+  it('runs an Auto connector read opened first, with nothing read before',
+    async () => {
+      const autoLinear = mocks.store.connectors.find((connector) => {
+        return connector.id === 'conn-linear'
+      })!
+
+      autoLinear.toolMode = 'auto'
+
+      const { assistantInsert } = await runSend({
+        servers: [linear],
+        steps: [
+          toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+          toolCallChunks('call-2', 'mcp__linear__list_issues', {}),
+          textChunks('One open issue.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+
+      expect(linear.callCount('tools/call')).toBe(1)
+      expect(findPart(parts, 'dynamic-tool'))
+        .toMatchObject({ state: 'output-available' })
+      expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+    })
 
   it('asks before an artifact write that follows connector output',
     async () => {

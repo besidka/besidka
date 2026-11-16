@@ -7,7 +7,7 @@ import type { DocumentFormat } from '#shared/utils/documents'
 import { CONNECTOR_TOOL_NAME_PREFIX } from '#shared/utils/connectors-policy'
 import { BESIDKA_TOOL_NAME_PREFIX } from '#shared/utils/besidka-tool-permissions'
 import { SKILL_ACTIVATE_TOOL_NAME } from '#shared/utils/skills/runtime'
-import { TOOL_INDEX_LOAD_TOOL_NAME } from '#shared/utils/tool-index'
+import { isToolIndexLoadToolName } from '#shared/utils/tool-index'
 import type { SearchProvider } from '#shared/types/message-usage.d'
 import { CHAT_MEMORY_ICON } from '~/utils/chat-memory-exclusion'
 import { CODE_EXECUTION_TOOL_ICON } from '~/utils/code-execution-ui'
@@ -259,7 +259,7 @@ function getStaticIcon(toolName: string): ReasoningStepIcon {
     return { kind: 'iconify', name: REASONING_STEP_IMAGE_ICON }
   }
 
-  if (toolName === TOOL_INDEX_LOAD_TOOL_NAME) {
+  if (isToolIndexLoadToolName(toolName)) {
     return { kind: 'iconify', name: REASONING_STEP_CONNECTOR_ICON }
   }
 

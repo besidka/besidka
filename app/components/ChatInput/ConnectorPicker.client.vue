@@ -22,7 +22,7 @@
               Connectors
             </h3>
             <p class="mt-1 text-sm text-base-content/70">
-              Let the model use tools from the services you turn on for this
+              Choose which connected services the model can use in this
               chat
             </p>
           </div>
@@ -74,7 +74,7 @@
         </div>
 
         <div
-          v-if="items.length >= 2"
+          v-if="manualItems.length >= 2"
           class="mb-3 flex shrink-0 flex-wrap items-center gap-2"
           data-testid="connector-picker-bulk"
         >
@@ -162,7 +162,7 @@
             >
               <label
                 class="flex w-full items-center gap-3 rounded-box px-3 py-2 hover:bg-base-200 max-sm:min-h-11"
-                :class="isRowDisabled(item.id)
+                :class="isRowDisabled(item)
                   ? 'cursor-not-allowed opacity-60'
                   : 'cursor-pointer'
                 "
@@ -181,8 +181,7 @@
                     class="truncate text-xs text-base-content/60"
                     :data-testid="`connector-picker-mode-${item.slug}`"
                   >
-                    {{ item.host }} ·
-                    {{ CONNECTOR_TOOL_MODE_LABELS[item.toolMode] }}
+                    {{ item.host }} · {{ getModeText(item) }}
                   </span>
                 </span>
                 <span
@@ -196,8 +195,8 @@
                   type="checkbox"
                   class="toggle toggle-sm toggle-accent shrink-0"
                   role="switch"
-                  :checked="isSelected(item.id)"
-                  :disabled="isRowDisabled(item.id)"
+                  :checked="isSelected(item)"
+                  :disabled="isRowDisabled(item)"
                   :aria-label="`Use ${item.title} in this chat`"
                   :data-testid="`connector-picker-toggle-${item.slug}`"
                   @change="onToggle(item.id)"
@@ -241,6 +240,14 @@
           </div>
         </div>
         <p
+          v-if="hasAutoItem"
+          class="mt-3 shrink-0 text-xs text-base-content/60"
+          data-testid="connector-picker-auto-hint"
+        >
+          Auto connectors are available in every chat. The model uses them
+          when a request needs them.
+        </p>
+        <p
           class="mt-3 shrink-0 text-xs"
           :class="isAtLimit ? 'text-warning' : 'text-base-content/60'"
           data-testid="connector-picker-limit-hint"
@@ -271,12 +278,14 @@ import type { ComposerConnectorItem } from '~/composables/composer-connectors'
 const props = withDefaults(defineProps<{
   items: ComposerConnectorItem[]
   selectedIds: string[]
+  offIds?: string[]
   isAtLimit: boolean
   isSaving: boolean
   besidka?: { enabled: boolean, isSaving: boolean } | null
   isLoaded?: boolean
   isRegistryAvailable?: boolean
 }>(), {
+  offIds: () => [],
   besidka: null,
   isLoaded: true,
   isRegistryAvailable: false,
@@ -298,8 +307,24 @@ const boxRef = useTemplateRef<HTMLDivElement>('boxRef')
 
 const bulkNotice = shallowRef<string>('')
 
+const manualItems = computed<ComposerConnectorItem[]>(() => {
+  return props.items.filter(item => item.toolMode === 'manual')
+})
+
 const itemIds = computed<string[]>(() => {
-  return props.items.map(item => item.id)
+  return manualItems.value.map(item => item.id)
+})
+
+const hasAutoItem = computed<boolean>(() => {
+  return props.items.some(item => item.toolMode === 'auto')
+})
+
+const manualCapacity = computed<number>(() => {
+  const alwaysOnAvailableCount = props.items.filter((item) => {
+    return item.toolMode === 'always-on' && !props.offIds.includes(item.id)
+  }).length
+
+  return Math.max(0, CONNECTORS_PER_SEND - alwaysOnAvailableCount)
 })
 
 const selectedItemCount = computed<number>(() => {
@@ -307,8 +332,11 @@ const selectedItemCount = computed<number>(() => {
 })
 
 const canTurnAllOn = computed<boolean>(() => {
-  return planTurnAllOn(itemIds.value, props.selectedIds).ids.length
-    > selectedItemCount.value
+  return planTurnAllOn(
+    itemIds.value,
+    props.selectedIds,
+    manualCapacity.value,
+  ).ids.length > selectedItemCount.value
 })
 
 const canTurnAllOff = computed<boolean>(() => {
@@ -325,11 +353,15 @@ const limitHint = computed<string>(() => {
 })
 
 function turnAllOn() {
-  const plan = planTurnAllOn(itemIds.value, props.selectedIds)
+  const plan = planTurnAllOn(
+    itemIds.value,
+    props.selectedIds,
+    manualCapacity.value,
+  )
 
   bulkNotice.value = plan.skippedCount > 0
-    ? `${plan.ids.length} of ${props.items.length} are on. At most `
-    + `${CONNECTORS_PER_SEND} can be on at once.`
+    ? `${plan.ids.length} of ${manualItems.value.length} are on. At most `
+    + `${manualCapacity.value} can be on at once.`
     : ''
   emit('set-all', plan.ids)
 }
@@ -344,12 +376,26 @@ function onToggle(connectorId: string) {
   emit('toggle', connectorId)
 }
 
-function isSelected(connectorId: string): boolean {
-  return props.selectedIds.includes(connectorId)
+function isSelected(item: ComposerConnectorItem): boolean {
+  return item.toolMode === 'manual'
+    ? props.selectedIds.includes(item.id)
+    : !props.offIds.includes(item.id)
 }
 
-function isRowDisabled(connectorId: string): boolean {
-  return props.isSaving || (props.isAtLimit && !isSelected(connectorId))
+function isRowDisabled(item: ComposerConnectorItem): boolean {
+  if (props.isSaving) {
+    return true
+  }
+
+  return item.toolMode === 'manual' && props.isAtLimit && !isSelected(item)
+}
+
+function getModeText(item: ComposerConnectorItem): string {
+  if (item.toolMode !== 'manual' && props.offIds.includes(item.id)) {
+    return 'Off in this chat'
+  }
+
+  return CONNECTOR_TOOL_MODE_LABELS[item.toolMode]
 }
 
 async function showDialog() {

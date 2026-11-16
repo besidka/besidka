@@ -115,7 +115,7 @@
           name="connector-detail-mode"
           class="join-item btn btn-sm min-h-11 flex-1 sm:min-h-8"
           :class="{
-            'btn-active btn-primary': connector.toolMode === mode,
+            [SELECTED_MODE_CLASS]: connector.toolMode === mode,
           }"
           :value="mode"
           :aria-label="CONNECTOR_TOOL_MODE_LABELS[mode]"
@@ -298,6 +298,9 @@ import {
 import type { ConnectorToolMode } from '#shared/utils/connectors-policy'
 import type { ToolPermissionChange } from '~/utils/tool-permissions'
 
+const SELECTED_MODE_CLASS = 'btn-soft btn-soft-selected font-semibold '
+  + '[--btn-color:var(--color-base-content)]'
+
 const TOOL_SETTINGS_PER_REQUEST = 40
 
 const STATUS_BADGE_CLASS: Record<ConnectorStatusTone, string> = {
@@ -366,11 +369,18 @@ const isReviewed = computed<boolean>(() => {
     && listing.value.counts.pending === 0
 })
 
+const ENABLED_HINTS: Record<ConnectorToolMode, string> = {
+  'manual': 'Turn it on in a chat\'s + menu to let the model use it.',
+  'auto': 'Available in every chat. Switch it off for one chat in the + menu.',
+  'always-on': 'Its tools go with every message. Switch it off for one chat in '
+    + 'the + menu.',
+}
+
 const enableHint = computed<string>(() => {
   const current = connector.value
 
   if (!current || current.enabled) {
-    return 'Turn it on in a chat\'s + menu to let the model use it.'
+    return ENABLED_HINTS[current?.toolMode ?? 'manual']
   }
 
   if (current.status === 'drifted') {

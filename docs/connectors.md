@@ -912,6 +912,17 @@ Choices that differ from or add to section 6, 10 and 14:
   minute instead of the 10 of the connector routes, so picker toggles are not
   throttled). The send body field `connectorIds`
   replaces the stored choice when present and leaves it alone when absent.
+  **Amended by C-15 Auto (2026-11-16, section 6.3):** the per-chat choice now
+  also holds explicit offs. `GET` returns `{ connectorIds, offConnectorIds }`;
+  the `PUT` and the send body take an optional `offConnectorIds`. Which
+  connectors a send uses is `planSendConnectors` (section 6.3), not the
+  chat-on list alone: a Manual connector joins only when on in the chat, an
+  Always on connector joins every chat, an Auto connector is offered in every
+  chat through the catalog, and an off row always wins. For an Auto or Always
+  on connector only an off row means anything: leaving it out of
+  `connectorIds` never switches it off, so an old client bundle cannot switch
+  every Auto connector off by omission, and clearing an off writes the row
+  back as on ("available").
 - **Memory.** An assistant turn that called a connector tool is skipped by
   memory extraction like a turn that recalled memory, because its text quotes
   a third party's data. Connector parts never reach shares, branches, later
@@ -1036,17 +1047,21 @@ byte cap, and the search returns remote descriptions as tool output.
       step's tool list for that message only, which costs one cache write
       (see Prompt cache below). Logged as `toolIndex.prefetched`.
 
-**Modes** (`connectors.tool_mode`, section 8.1): **Off** is the existing
-switch (`enabled = false`); **Auto** (null, the default for every connector,
-existing ones included) lists the tools in the index; **Always on** offers
-them up front within the caps and indexes the rest. The mode is set in the
+**Modes** (`connectors.tool_mode`, section 8.1; superseded by section 6.3
+on 2026-11-16): **Off** is the account-wide switch (`enabled = false`).
+**Manual** connectors are used only in chats where the user turns them on;
+their tools go to the index. **Auto** connectors are available in every chat
+through the connector catalog (section 6.3). **Always on** connectors offer
+their tools up front in every chat within the caps and index the rest. A
+chat's explicit off wins over Auto and Always on. The mode is set in the
 connector's detail panel on `/chats/connectors` ("How the model gets its
-tools", Auto or Always on), shown as a badge on the row when the connector is
-on, and next to the host in the composer picker. Only the app sets it: the
-`PATCH` route takes `toolMode`, and no MCP tool has the field (the
-`mcp-surface.spec.ts` check). The model can never turn on a connector: it
-only sees tools of connectors on for the chat, and `tool_index__load` cannot
-reach anything else.
+tools": Manual, Auto, Always on) and on the consent step of the connect
+dialog (Auto preselected for a new connection), shown as a badge on the row,
+and in the composer picker. Only the app sets it: the `PATCH` route takes
+`toolMode`, and no MCP tool has the field (the `mcp-surface.spec.ts` check).
+The model can never turn on a Manual connector or one that is off in the
+chat: their tools are not registered, and neither `tool_index__load` nor
+`use_connector` can reach anything else.
 
 **Prompt cache.** The index sits in the system prompt and is the same text
 from send to send while the tool lists do not change (sorted, no timestamps),
@@ -1062,7 +1077,9 @@ byte-identical between the steps before and after a load. Not measured live:
 the cache-read token count before and after a load on a real Haiku send is
 still to be taken on the PR preview.
 
-**Suggest on mention** (`app/utils/connector-mention.ts`,
+**Suggest on mention** (amended in section 6.3: only for Manual connectors
+and connectors switched off in the chat; an Auto or Always on connector is
+already usable) (`app/utils/connector-mention.ts`,
 `app/components/ChatInput/ConnectorSuggestion.vue`): when the text the user
 is typing (or the message they just sent) names a connector that is on in
 the app but off in this chat, as a whole word (the title of at least 3
@@ -1082,6 +1099,199 @@ describe connector tools as sent with a message. With Auto, a connector's
 tool names and one-line descriptions go to the model provider with every
 message, and its full definitions only once the model loads them. That line,
 and the mode itself, go into the end-of-phase legal batch.
+
+### 6.3 As built: Auto connectors in every chat (C-15, 2026-11-16)
+
+Owner request (2026-11-16): a connector in Auto should be used at send time
+without being toggled on per chat, also when the user names the service in
+Cyrillic ("ноушн", "лінеар"), the way skills work: the model sees a catalog
+and decides. Before this, Auto only changed how tools loaded after the
+per-chat toggle, and the owner's chat answered "Linear is off in this chat"
+for an Auto Linear.
+
+**Modes and the null mapping.** `CONNECTOR_TOOL_MODES` is
+`manual | auto | always-on` (`shared/utils/connectors-policy.ts`).
+`tool_mode` is a plain text column, so `manual` needs no migration
+(`db:generate` shows no diff). A null `tool_mode` (every connector added
+before modes) resolves through the one constant `CONNECTOR_UNSET_TOOL_MODE`:
+**Auto, owner decision of 2026-11-16** (the feature is internal-only, so only
+tester accounts have connectors). Flipping it to `manual` is a one-line
+change with no data migration. New connections are written with
+`CONNECTOR_NEW_TOOL_MODE` (Auto) in `createConnector`, so they never depend
+on the null mapping; the connect dialog's consent step shows the choice with
+Auto preselected and `PATCH`es a different choice before the auth step (and
+so before any OAuth redirect). A connector added over MCP gets the same Auto,
+and MCP still cannot set a mode.
+
+**Which connectors a send uses** (`planSendConnectors`,
+`server/utils/connectors/chat-selection.ts`):
+
+| Mode | No row in the chat | On row | Off row |
+| --- | --- | --- | --- |
+| Manual | not used | live | not used |
+| Auto | catalog | catalog | not used |
+| Always on | live | live | not used |
+
+"Live" connectors (chat-on Manual first, then Always on) are listed at send
+start exactly as before (KV `tools/list` cache or a live listing under the
+8 s deadline), capped together at `CONNECTORS_PER_SEND` (5) with the
+existing "left out" notice. An Always on connector the chat did not ask for
+is optional: a stale consent becomes a notice ("needs you to review its
+permissions") instead of refusing the send, so one connector cannot block
+every chat. Chat-on connectors keep the hard consent refusal.
+
+**Mechanism: a tool-definition snapshot, not `use_connector` connecting
+mid-send.** The brief asked first whether an Auto connector's tool
+definitions can come from the KV `tools/list` cache without a connection at
+send start. The cache path itself never connects (`prepare` only calls
+`handle.getClient()` on a miss, and calls connect lazily), but the cache
+lives 60 s to 1 h (default 10 min) and is keyed by the credential
+generation, so the first message of a new chat is almost always a miss, and
+listing on a miss would connect to every Auto connector on every send.
+Adding tools mid-send was the other option: `PrepareStepResult` in
+`ai@7.0.173` has `activeTools` but no `tools`, so a `use_connector` that
+connects and adds tools would need a second `streamText` in the send
+endpoint, with its own persistence, cost, approval registration and step
+budget. Instead:
+
+1. Every live listing (a send, the tool review in the detail panel, a
+   warm-up) also writes `connectors:catalog:<connectorId>`, the listed
+   definitions, for 30 days (`CONNECTOR_CATALOG_SNAPSHOT_TTL_SECONDS`).
+2. At send start, each Auto connector reads its snapshot (one KV read) and
+   its reviewed baseline (one D1 read). Its tools are registered with the
+   AI SDK like any deferred tool (approval entry, taint, grants, definition
+   hash), but only the tools whose snapshot hash matches the reviewed
+   baseline; a changed or new one is hidden, and nothing is written to D1
+   from snapshot data (no baseline, no drift status). A snapshot connector
+   with no baseline is skipped. No credential, URL or consent issuer is read
+   and nothing is contacted.
+3. The first call to one of its tools in the send reads the credentials,
+   checks the consent for the token's issuer, connects, and lists the tools
+   live once (`verify`). A tool whose live hash differs from the hash the
+   send offered is refused with `CONNECTOR_TOOL_CHANGED_TEXT` and never
+   called; the connector is marked `drifted` and the snapshot is refreshed.
+4. An Auto connector with no snapshot yet (never listed since this shipped,
+   or unused for 30 days) gets a one-time **warm-up**: a live listing at send
+   start under the shared 8 s deadline, at most 2 per send
+   (`CONNECTOR_CATALOG_WARMUPS_PER_SEND`), and not again for 15 minutes
+   after a try (`connectors:catalog-warmup:<id>`), so a server that is down
+   is not contacted on every send. The rest are skipped for this send and
+   logged (`catalogSkipped: 'no-snapshot'`). Only `tools/list` is sent,
+   never `tools/call`. A legacy SSE connector never gets a warm-up (it would
+   hold one of the two SSE streams of the send); it gets its snapshot from a
+   chat-on send or the detail panel. Opening the connector's detail panel
+   also writes the snapshot.
+5. A catalog connector whose consent is not current is skipped silently
+   (logged), never refused.
+
+So a send connects to no Auto connector unless a warm-up is due or the model
+calls one of its tools.
+
+**The catalog** (`buildConnectorCatalogInstructions`,
+`server/utils/ai/tool-index.ts`). Auto connectors' tools are not in the
+`<tool_index>` block. The system prompt gets one `<connector_catalog>` block
+instead, one line per Auto connector: `name | title | host | N tools`,
+sorted by name. Security review of #943 (2026-11-16): a line holds no text
+the server wrote, so no server-authored tool name or description sits in
+every system prompt. `name` is the slug, `title` the connector title the
+user sees (from a preset or edited by the user), `host` the URL host. Title
+and host are still cleaned (control, format, `<`, `>`, `|` and backtick
+characters removed, title cut to 40 and host to 80 characters), and the
+block says it is data, never instructions. Past `CONNECTOR_CATALOG_MAX_BYTES`
+(6 KiB) the remaining connectors are named by key only. Measured with
+`buildConnectorCatalogInstructions` (2026-11-16): the header is 482 bytes, a
+Linear line 43 bytes, and 20 connectors (the account maximum) with
+40-character titles and long hosts 2,552 bytes in all (about 640 tokens at
+4 bytes a token, sent with every message of an account that has them). The
+block's rule tells the model to open a connector whatever language, alphabet or spelling the user names it in, which is how
+"лінеар" reaches Linear: the chat model classifies, with no
+transliteration table, no TypeSafe AI role and no stem prefetch for service
+names. The catalog is part of the tool index instructions, so it is not in
+the search-answer continuation (which has no tools).
+
+**`use_connector({ connector })`** (a native read, never asks, like
+`tool_index__load`; `isToolIndexLoadToolName` covers both) opens one catalog
+connector by its key only (case-insensitive; never by title, so two
+connectors with similar titles cannot be confused). Opening records
+connector taint with that connector as the read source
+(`recordConnectorOpened`) and marks the send's untrusted-content guard,
+because its result can carry the connector's tool names and descriptions:
+from then on F2 applies, so a read on another connector, or any write,
+asks; a read on the same connector does not. With the `tool-approvals` flag
+off, the opened connector becomes the send's source connector in the C-5
+rule, so another connector's call is refused. Until then its tools are "closed": `tool_index__load` answers
+"not open yet, call use_connector first", and the prefetch cannot load them.
+Opening loads all of the connector's tools when they fit in the step's room
+without unloading anything, and otherwise returns them as a
+`<connector_tools>` list (same sanitized line format, marked as data) for
+`tool_index__load`. One send opens at most `CONNECTORS_PER_SEND` minus the
+live connectors, and at most `CONNECTOR_SSE_PER_SEND` legacy SSE connectors
+minus the live ones; past that it answers "was not opened" and the model
+answers without it. `use_connector` adds one loader tool to the room count
+and `TOOL_INDEX_CATALOG_STEPS` (1) to the tool loop. An approval
+continuation rebuilds the opened set and the loaded tools from the resumed
+parts (`replay`, `use_connector` before `tool_index__load`, in part order);
+the paused send's `connectorIds` hold only live connectors, and the resumed
+send rebuilds the catalog from the snapshot, so an approved call to an Auto
+connector runs through the same lazy `verify` (integration spec).
+
+**Cost of an idle Auto connector.** An account with Auto connectors
+registers their tools (deferred, not sent) in every send, so every chat gets
+the catalog block, the connector trust instructions and the connector step
+budget (`CONNECTOR_STEPS_PER_TURN`, a ceiling, not spent unless used). The
+provider web search guard is not affected: it withholds search only after a
+tool call of the turn actually read a connector. At send start each Auto
+connector costs one KV read, one D1 baseline read and hashing its tool
+definitions; this was not measured on a real Worker.
+
+**Exception to section 6.2 point 5.** `use_connector` is the one loader
+whose result can carry remote text (and it records connector taint for it,
+see above): when a connector's tools do not fit at
+once, it returns their sanitized one-line descriptions in a
+`<connector_tools>` block marked as data, the same lines the `<tool_index>`
+block shows for indexed tools. Its parts are tool parts like
+`tool_index__load`'s, so the existing tool-part rules for shares, branches,
+later model context and chat search apply to them unchanged.
+
+**Guards kept.** The F2 rule applies unchanged: an Auto connector's read
+after content from another source (a web result, a file, another
+connector) asks with `untrusted-output`, also on its first use in the send
+(integration specs in `chats-tool-approval-request.spec.ts`: after another
+connector's read, and in a message that requested web search). Approvals, grants, the audit row,
+the 12-call and per-minute limits and result framing are the same path as
+any connector tool.
+
+**Per-chat rows and mode changes (security review, 2026-11-16).** An Auto
+or Always on connector is never written as on in a chat
+(`persistChatConnectorSelection` skips it, in the `PUT` route and the send),
+and clearing its off deletes the row, or keeps it with `enabled` true only
+when it holds "Allow in this chat" grants. A mode change
+(`PATCH /api/v1/connectors/[id]` with a different `toolMode`) resets every
+chat's choice for that connector (`resetConnectorChatSettings`): rows with
+no grant are deleted, and the rest keep their grants with `enabled` set to
+the new mode's default (false for Manual). So a connector switched to Manual
+is never still live in a chat because of a row written while it was Auto or
+Always on (an approval grant on an Auto connector writes such a row).
+Every Always on connector is consent-optional, also when the chat has a row
+for it: a stale consent leaves it out with a notice and never fails the
+send. A warm-up is claimed only after the consent check passed. The per-send
+warm-up count is local to the send; the 15-minute cross-send backoff is a
+best-effort KV marker (a concurrent send can miss it and warm the same
+connector once more).
+
+**UI.** The composer picker shows Manual connectors with today's toggle,
+and Auto and Always on connectors checked by default with their mode badge;
+unchecking one stores "Off in this chat". The "+" tile and the bulk buttons
+count and act on Manual connectors only. The suggestion chip ("X is off in
+this chat. Turn it on?") only appears for a Manual connector or one switched
+off in the chat. The detail panel hint follows the mode.
+
+**Legal batch (not edited here).** Consent and Privacy Policy wording that
+says connector tools are used "in a chat where you turn it on" needs, for
+Auto: the connector may be used in any chat when the model decides; its
+name, host and tool count go to the model provider with every message; its
+tool names and definitions only once the model opens it. Listed in
+the PR body for the end-of-phase legal batch.
 
 ## 7. Approvals
 
@@ -2116,7 +2326,7 @@ to the public id on the way out (`encodePublicId`) and decodes it on the way in
 | `consented_at` | timestamp, null | |
 | `consent_withdrawn_at` | timestamp, null | |
 | `native_opt_in_at` | timestamp, null | OpenAI-run calls opt-in (section 12) |
-| `tool_mode` | text, null | how the tools reach the model (C-15, section 6.2): null or `auto` is Auto, `always-on` is Always on; no SQL default (`resolveConnectorToolMode` reads null as Auto). Set only in the app (`PATCH /api/v1/connectors/[id]`), never over MCP. Off is `enabled = false` |
+| `tool_mode` | text, null | how the tools reach the model (C-15, sections 6.2 and 6.3): `manual`, `auto` or `always-on`; null resolves through `CONNECTOR_UNSET_TOOL_MODE` (Auto, owner decision 2026-11-16); new connectors are written as `auto`; no SQL default. Set only in the app (`PATCH /api/v1/connectors/[id]`), never over MCP. Off is `enabled = false` |
 | `last_error` | json, null | a fixed code plus a short fixed message, and the scope `degraded` note. **Never upstream text**: no response body, no remote error message, no URL (a URL can carry a secret, and upstream text is attacker-controlled and shown on the card). Map every failure to a code and a message Besidka wrote |
 | `last_connected_at` | timestamp, null | |
 | `created_at`, `updated_at` | timestamps | |
@@ -2246,6 +2456,8 @@ HTML (C-7 consumes them).
 | `connectors:oauth:<state>` | 600 s | OAuth state and PKCE verifier, deleted on read |
 | `connectors:refresh:<connectorId>` | 30 s | refresh lock |
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
+| `connectors:catalog:<connectorId>` | 30 days | C-15 Auto: the last live `tools/list` result, read at send start for the connector catalog (section 6.3); deleted with the connector, on disconnect and by the account purge |
+| `connectors:catalog-warmup:<connectorId>` | 15 min | C-15 Auto: a warm-up listing was tried, so the next one waits |
 | `connectors:icon:v2:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10). C-14 v2 added `v2:` to every icon key below so misses kept before the head-only page read and the parent-site step are not reused |
 | `connectors:icon-lock:<connectorId>` | 60 s | in-flight marker of a cold icon fetch |
 | `connectors:icon:v2:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |

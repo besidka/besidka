@@ -30,15 +30,23 @@ export const CONNECTOR_TOOL_APPROVALS = [
   'needs-approval',
 ] as const
 
-export const CONNECTOR_TOOL_MODES = ['auto', 'always-on'] as const
+export const CONNECTOR_TOOL_MODES = ['manual', 'auto', 'always-on'] as const
 
-export const CONNECTOR_DEFAULT_TOOL_MODE = 'auto'
+/**
+ * The mode of a connector whose `tool_mode` was never set (every connector
+ * added before C-15 modes existed). Owner decision of 2026-11-16: Auto.
+ */
+export const CONNECTOR_UNSET_TOOL_MODE: ConnectorToolMode = 'auto'
+
+export const CONNECTOR_NEW_TOOL_MODE: ConnectorToolMode = 'auto'
 
 export function resolveConnectorToolMode(value: unknown): ConnectorToolMode {
-  return value === 'always-on' ? 'always-on' : CONNECTOR_DEFAULT_TOOL_MODE
+  return CONNECTOR_TOOL_MODES.find(mode => mode === value)
+    ?? CONNECTOR_UNSET_TOOL_MODE
 }
 
 export const CONNECTOR_TOOL_MODE_LABELS: Record<ConnectorToolMode, string> = {
+  'manual': 'Manual',
   'auto': 'Auto',
   'always-on': 'Always on',
 }
@@ -47,9 +55,11 @@ export const CONNECTOR_TOOL_MODE_DESCRIPTIONS: Record<
   ConnectorToolMode,
   string
 > = {
-  'auto': 'The model sees a short list of the tools and loads the ones a '
-    + 'request needs.',
-  'always-on': 'The model gets the tools with every message, as many as fit.',
+  'manual': 'Used only in chats where you turn it on.',
+  'auto': 'Available in every chat. The model uses it when a request needs '
+    + 'it.',
+  'always-on': 'The model gets its tools with every message in every chat, '
+    + 'as many as fit.',
 }
 
 export const CONNECTOR_AUDIT_OUTCOMES = [
@@ -140,6 +150,10 @@ export const SAFE_FETCH_REGISTRY_MAX_BYTES = 2 * MEBIBYTE
 export const CONNECTOR_TOOLS_CACHE_TTL_SECONDS = 10 * MINUTE_SECONDS
 export const CONNECTOR_TOOLS_CACHE_TTL_MIN_SECONDS = MINUTE_SECONDS
 export const CONNECTOR_TOOLS_CACHE_TTL_MAX_SECONDS = HOUR_SECONDS
+export const CONNECTOR_CATALOG_SNAPSHOT_TTL_SECONDS = 30 * 24 * HOUR_SECONDS
+export const CONNECTOR_CATALOG_WARMUPS_PER_SEND = 2
+export const CONNECTOR_CATALOG_WARMUP_BACKOFF_SECONDS = 15 * MINUTE_SECONDS
+export const CONNECTOR_CATALOG_MAX_BYTES = 6 * KIBIBYTE
 export const CONNECTOR_OAUTH_STATE_TTL_SECONDS = 10 * MINUTE_SECONDS
 export const CONNECTOR_REFRESH_LOCK_TTL_SECONDS = 30
 export const CONNECTOR_REFRESH_SKEW_SECONDS = 60

@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { deleteConnectorIconCache } from '~~/server/utils/connectors/icon'
+import { deleteCatalogSnapshot } from '~~/server/utils/connectors/tool-cache'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -37,6 +38,7 @@ async function deleteIconCaches(connectorIds: readonly string[]) {
 
     for (const connectorId of connectorIds) {
       await deleteConnectorIconCache(kv, connectorId)
+      await deleteCatalogSnapshot(kv, connectorId)
     }
   } catch {
     return

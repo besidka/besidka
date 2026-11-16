@@ -651,6 +651,7 @@ async function pauseTurn(input: {
   steps: Array<Array<Record<string, unknown>>>
   servers: MockMcpServer[]
   tools?: string[]
+  connectorIds?: string[]
 }): Promise<PausedTurn> {
   const first = await request({
     servers: input.servers,
@@ -659,7 +660,7 @@ async function pauseTurn(input: {
       model: MODEL_ID,
       tools: input.tools ?? [],
       reasoning: 'off',
-      connectorIds: ['conn-linear'],
+      connectorIds: input.connectorIds ?? ['conn-linear'],
       messages: [{
         id: USER_MESSAGE_ID,
         role: 'user',
@@ -1123,7 +1124,7 @@ describe('tool approval continuation', () => {
 
   it('keeps a tool loaded before the pause offered after the approval',
     async () => {
-      mocks.store.connectors[0]!.toolMode = null
+      mocks.store.connectors[0]!.toolMode = 'manual'
 
       const paused = await pauseTurn({
         servers: [linear],
@@ -1152,6 +1153,41 @@ describe('tool approval continuation', () => {
         expect.objectContaining({ outcome: 'ok', approval: 'once' }),
       ])
     })
+
+  it('keeps an Auto connector opened before the pause open after the '
+    + 'approval, from its snapshot', async () => {
+    mocks.store.connectors[0]!.toolMode = 'auto'
+    mocks.store.chatSettings = []
+
+    const paused = await pauseTurn({
+      servers: [linear],
+      connectorIds: [],
+      steps: [
+        toolCallChunks('call-open', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-1', CREATE_ISSUE, { title: 'x' }),
+      ],
+    })
+    const [approvalId] = paused.approvalIds
+
+    expect(approvalId).toBeDefined()
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(readKvJson('connectors:catalog:conn-linear')).toBeTruthy()
+
+    const listsBeforeResume = linear.callCount('tools/list')
+    const { doStream } = await answer(paused, [
+      { approvalId, approved: true },
+    ], [textChunks('Created the issue.')])
+    const toolNames = ((doStream.mock.calls[0]?.[0] as any)?.tools ?? [])
+      .map((tool: { name: string }) => tool.name)
+
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(linear.callCount('tools/list')).toBe(listsBeforeResume + 1)
+    expect(toolNames).toContain('use_connector')
+    expect(toolNames).toContain(CREATE_ISSUE)
+    expect(mocks.store.settlements).toEqual([
+      expect.objectContaining({ outcome: 'ok', approval: 'once' }),
+    ])
+  })
 
   it('stores the call provider metadata and replays it to the model',
     async () => {

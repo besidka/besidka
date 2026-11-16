@@ -63,6 +63,21 @@ describe('matchToolIndexEntries', () => {
     expect(match(text)[0]).toBe('besidka__delete_files')
   })
 
+  it('never spends a slot on a closed catalog connector tool', () => {
+    const catalogEntries = [
+      'mcp__linear__create_issue',
+      'mcp__linear__update_issue',
+      'mcp__linear__delete_issue',
+    ].map((name) => {
+      return { ...entry(name), catalogKey: 'linear' }
+    })
+
+    expect(matchToolIndexEntries(
+      'Delete the issue and the file',
+      [...catalogEntries, entry('besidka__delete_files')],
+    )).toEqual(['besidka__delete_files'])
+  })
+
   it('matches other actions and things', () => {
     expect(match('rename the file to cover.png'))
       .toEqual(['besidka__rename_file'])

@@ -13,7 +13,7 @@ const items: ComposerConnectorItem[] = [
     title: 'Notion',
     host: 'mcp.notion.com',
     status: 'ready',
-    toolMode: 'auto',
+    toolMode: 'manual',
     presetId: 'notion',
     isIconAvailable: false,
   },
@@ -23,7 +23,7 @@ const items: ComposerConnectorItem[] = [
     title: 'Linear',
     host: 'mcp.linear.app',
     status: 'drifted',
-    toolMode: 'always-on',
+    toolMode: 'manual',
     presetId: null,
     isIconAvailable: true,
   },
@@ -33,7 +33,7 @@ const items: ComposerConnectorItem[] = [
     title: 'Sentry',
     host: 'mcp.sentry.dev',
     status: 'ready',
-    toolMode: 'auto',
+    toolMode: 'manual',
     presetId: null,
     isIconAvailable: false,
   },
@@ -57,6 +57,7 @@ async function mountPicker(
   overrides: Partial<{
     items: ComposerConnectorItem[]
     selectedIds: string[]
+    offIds: string[]
     isAtLimit: boolean
     isSaving: boolean
     besidka: { enabled: boolean, isSaving: boolean } | null
@@ -327,6 +328,9 @@ describe('ChatInput/ConnectorPicker', () => {
           title: `Connector ${index}`,
           host: `mcp${index}.example.com`,
           status: 'ready' as const,
+          toolMode: 'manual' as const,
+          presetId: null,
+          isIconAvailable: false,
         }
       },
     )
@@ -447,12 +451,154 @@ describe('ChatInput/ConnectorPicker', () => {
     })
   })
 
-  it('shows each connector\'s mode next to its host', async () => {
-    await mountPicker()
+  describe('modes', () => {
+    const modeItems: ComposerConnectorItem[] = [
+      {
+        id: 'a1',
+        slug: 'alpha',
+        title: 'Alpha',
+        host: 'mcp.alpha.com',
+        status: 'ready',
+        toolMode: 'auto',
+        presetId: null,
+        isIconAvailable: false,
+      },
+      {
+        id: 'o1',
+        slug: 'omega',
+        title: 'Omega',
+        host: 'mcp.omega.com',
+        status: 'ready',
+        toolMode: 'always-on',
+        presetId: null,
+        isIconAvailable: false,
+      },
+      {
+        id: 'm1',
+        slug: 'manual',
+        title: 'Manual',
+        host: 'mcp.manual.com',
+        status: 'ready',
+        toolMode: 'manual',
+        presetId: null,
+        isIconAvailable: false,
+      },
+    ]
 
-    expect(get('connector-picker-mode-notion').textContent?.replace(/\s+/g, ' ')
-      .trim()).toBe('mcp.notion.com · Auto')
-    expect(get('connector-picker-mode-linear').textContent?.replace(/\s+/g, ' ')
-      .trim()).toBe('mcp.linear.app · Always on')
+    function modeText(slug: string): string {
+      return get(`connector-picker-mode-${slug}`).textContent
+        ?.replace(/\s+/g, ' ').trim() ?? ''
+    }
+
+    it('shows each connector\'s mode next to its host', async () => {
+      await mountPicker({ items: modeItems })
+
+      expect(modeText('alpha')).toBe('mcp.alpha.com · Auto')
+      expect(modeText('omega')).toBe('mcp.omega.com · Always on')
+      expect(modeText('manual')).toBe('mcp.manual.com · Manual')
+    })
+
+    it('checks Auto and Always on connectors by default and a Manual one only when selected', async () => {
+      await mountPicker({ items: modeItems })
+
+      const isChecked = (slug: string) => {
+        return (get(`connector-picker-toggle-${slug}`) as HTMLInputElement)
+          .checked
+      }
+
+      expect(isChecked('alpha')).toBe(true)
+      expect(isChecked('omega')).toBe(true)
+      expect(isChecked('manual')).toBe(false)
+
+      document.body.innerHTML = ''
+
+      await mountPicker({ items: modeItems, selectedIds: ['m1'] })
+
+      expect(isChecked('manual')).toBe(true)
+    })
+
+    it('unchecks an Auto connector that is off in this chat and says so', async () => {
+      await mountPicker({ items: modeItems, offIds: ['a1'] })
+
+      expect((get('connector-picker-toggle-alpha') as HTMLInputElement).checked)
+        .toBe(false)
+      expect(modeText('alpha')).toBe('mcp.alpha.com · Off in this chat')
+      expect(modeText('omega')).toBe('mcp.omega.com · Always on')
+    })
+
+    it('emits a toggle for an Auto connector to switch it off', async () => {
+      const wrapper = await mountPicker({ items: modeItems })
+
+      get('connector-picker-toggle-alpha').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('toggle')).toEqual([['a1']])
+    })
+
+    it('keeps Auto and Always on toggles usable at the limit', async () => {
+      await mountPicker({
+        items: modeItems,
+        selectedIds: [],
+        offIds: ['a1'],
+        isAtLimit: true,
+      })
+
+      expect((get('connector-picker-toggle-alpha') as HTMLInputElement)
+        .disabled).toBe(false)
+      expect((get('connector-picker-toggle-omega') as HTMLInputElement)
+        .disabled).toBe(false)
+      expect((get('connector-picker-toggle-manual') as HTMLInputElement)
+        .disabled).toBe(true)
+    })
+
+    it('shows the Auto hint only when an Auto connector exists', async () => {
+      await mountPicker({ items: modeItems })
+
+      expect(get('connector-picker-auto-hint').textContent)
+        .toContain('Auto connectors are available in every chat')
+
+      document.body.innerHTML = ''
+
+      await mountPicker()
+
+      expect(find('connector-picker-auto-hint')).toBeNull()
+    })
+
+    it('turns all on and off for Manual connectors only', async () => {
+      const wrapper = await mountPicker({
+        items: [
+          ...modeItems,
+          { ...modeItems[2]!, id: 'm2', slug: 'manual-two', title: 'Two' },
+        ],
+      })
+
+      get('connector-picker-turn-all-on').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('set-all')).toEqual([[['m1', 'm2']]])
+    })
+
+    it('leaves less room for Manual connectors when Always on ones count', async () => {
+      const manualItems = Array.from({ length: 6 }, (_, index) => {
+        return {
+          ...modeItems[2]!,
+          id: `m${index}`,
+          slug: `manual-${index}`,
+          title: `Manual ${index}`,
+        }
+      })
+      const wrapper = await mountPicker({
+        items: [modeItems[1]!, ...manualItems],
+      })
+
+      get('connector-picker-turn-all-on').click()
+      await flushPromises()
+
+      expect(wrapper.emitted('set-all')).toEqual([
+        [['m0', 'm1', 'm2', 'm3']],
+      ])
+      expect(get('connector-picker-bulk-notice').textContent)
+        .toContain('4 of 6 are on. At most 4 can be on at once.')
+    })
   })
 })

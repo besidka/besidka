@@ -49,7 +49,8 @@
       <ChatInputConnectorSuggestion
         v-if="connectorSuggestion"
         :title="connectorSuggestion.title"
-        :is-at-limit="composerConnectors.isAtLimit.value"
+        :is-at-limit="composerConnectors.isAtLimit.value
+          && connectorSuggestion.toolMode === 'manual'"
         :is-saving="composerConnectors.isSaving.value"
         @turn-on="turnOnSuggestedConnector"
         @dismiss="dismissSuggestedConnector"
@@ -232,6 +233,7 @@
       v-model:open="isConnectorPickerOpen"
       :items="composerConnectors.items.value"
       :selected-ids="composerConnectors.selectedIds.value"
+      :off-ids="composerConnectors.offIds.value"
       :is-at-limit="composerConnectors.isAtLimit.value"
       :is-saving="composerConnectors.isSaving.value"
       :besidka="besidkaPickerRow"
@@ -1025,7 +1027,7 @@ const connectorSuggestion = computed(() => {
   return findMentionedConnector({
     text: message.value.trim() || lastSentConnectorText.value,
     candidates: composerConnectors.items.value,
-    selectedIds: composerConnectors.selectedIds.value,
+    selectedIds: composerConnectors.availableIds.value,
     dismissedIds: dismissedConnectorIds.value,
   })
 })

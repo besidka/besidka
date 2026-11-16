@@ -5,6 +5,7 @@ import { createError } from 'evlog'
 import {
   CONNECTOR_CALL_TIMEOUT_MS,
   CONNECTOR_CALLS_PER_TURN,
+  CONNECTOR_CATALOG_WARMUPS_PER_SEND,
   CONNECTOR_CLOSE_TIMEOUT_MS,
   CONNECTOR_LIST_PAGES_MAX,
   CONNECTOR_LIST_TIMEOUT_MS,
@@ -23,7 +24,10 @@ import {
   CONNECTOR_UNAPPROVED_CALL_TEXT,
 } from '#shared/utils/connectors-parts'
 import { toolIndexClassOf } from '~~/server/utils/ai/tool-index'
-import type { ToolIndexEntry } from '~~/server/utils/ai/tool-index'
+import type {
+  ToolIndexCatalogConnector,
+  ToolIndexEntry,
+} from '~~/server/utils/ai/tool-index'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import {
@@ -36,6 +40,7 @@ import { createConnectorCallLimiter } from '~~/server/utils/connectors/call-limi
 import type { ConnectorCallLimiter } from '~~/server/utils/connectors/call-limits'
 import {
   assertConnectorConsent,
+  isConnectorConsentCurrent,
   issuerHostOf,
 } from '~~/server/utils/connectors/consent'
 import {
@@ -72,10 +77,13 @@ import type {
   ConnectorRecord,
 } from '~~/server/utils/connectors/store'
 import {
+  claimCatalogWarmup,
   connectorToolsCacheKey,
   readCachedToolDefinitions,
+  readCatalogSnapshot,
   resolveToolsCacheTtlSeconds,
   writeCachedToolDefinitions,
+  writeCatalogSnapshot,
 } from '~~/server/utils/connectors/tool-cache'
 import {
   buildExposedToolName,
@@ -125,6 +133,9 @@ export const CONNECTOR_APPROVAL_INSTRUCTIONS = [
 export const CONNECTOR_TIMEOUT_TEXT = 'The connector tool did not answer in '
   + 'time.'
 export const CONNECTOR_FAILURE_TEXT = 'The connector tool call failed.'
+export const CONNECTOR_TOOL_CHANGED_TEXT = 'This tool changed on the '
+  + 'connected service since it was reviewed, so it did not run. Tell the '
+  + 'user to review the connector\'s tools on the Connectors page.'
 
 export interface ConnectorSendSummary {
   connectors: number
@@ -134,6 +145,10 @@ export interface ConnectorSendSummary {
   hiddenTools: number
   cacheHits: number
   failedConnectors: number
+  catalogConnectors: number
+  catalogSnapshots: number
+  catalogWarmups: number
+  catalogSkipped: number
 }
 
 export interface ConnectorToolsRun {
@@ -143,6 +158,9 @@ export interface ConnectorToolsRun {
   definitionBytes: number
   approvalEntries: Map<string, SendToolEntry>
   connectorIds: string[]
+  catalog: ToolIndexCatalogConnector[]
+  liveLegacySseCount: number
+  recordOpened: (connectorId: string) => void
   handles: ConnectorClientHandle[]
   notices: string[]
   summary: ConnectorSendSummary
@@ -156,6 +174,8 @@ export interface GetConnectorToolsInput {
   userId: number
   chatPublicId: string
   connectors: readonly ConnectorRecord[]
+  catalogConnectors?: readonly ConnectorRecord[]
+  optionalConnectorIds?: ReadonlySet<string>
   existingToolCount: number
   existingDefinitionBytes?: number
   reserve?: { tools: number, bytes: number }
@@ -183,6 +203,8 @@ interface Candidate {
   isAlwaysOn: boolean
   handle: ConnectorClientHandle
   secrets: Set<string>
+  catalogKey?: string
+  verify?: (toolName: string, definitionHash: string) => Promise<boolean>
 }
 
 interface PreparedConnector {
@@ -192,6 +214,13 @@ interface PreparedConnector {
   definitions: ConnectorToolDefinition[]
   hashes: Map<string, string>
   fromCache: boolean
+  isCatalog: boolean
+  isSnapshot: boolean
+  verify?: (toolName: string, definitionHash: string) => Promise<boolean>
+}
+
+interface SnapshotHandle extends ConnectorClientHandle {
+  verify: (toolName: string, definitionHash: string) => Promise<boolean>
 }
 
 interface ConnectorPlan {
@@ -547,7 +576,7 @@ async function syncDriftStatus(
  * Every enabled, reviewed tool becomes an AI SDK tool named
  * `mcp__<slug>__<tool>` and marked `withFollowUpTurn()`, with its approval
  * entry. Which ones the model sees up front depends on the connector's mode
- * (`connectors.tool_mode`, null is Auto): tools of an Always on connector,
+ * (`resolveConnectorToolMode`): tools of an Always on connector,
  * read-only first, are offered up front while they fit in 40 tools (counting
  * the send's other tools and `reserve`, the room kept for loading) and
  * 32 KiB of descriptions plus input schemas (counting the Besidka tools'
@@ -555,6 +584,16 @@ async function syncDriftStatus(
  * fitting, goes to `indexEntries` for the tool index and is offered only
  * once the model loads it (`server/utils/ai/tool-index.ts`). No tool is left
  * out, so there is no "left out" notice.
+ *
+ * `catalogConnectors` are Auto connectors the chat did not switch off
+ * (section 6.3): their tools come from the 30-day snapshot of their last
+ * live listing, checked against the reviewed baseline, with no connection;
+ * at most two without a snapshot get a warm-up listing. They are indexed
+ * with a `catalogKey`, closed until the model opens the connector, and a
+ * first call connects and checks the hash against a live listing. A
+ * connector in `optionalConnectorIds` (every Always on connector, also one
+ * the chat has on) with a stale consent is left out with a notice instead of
+ * refusing the send.
  *
  * With `consumeClearedCall` (the `tool-approvals` flag is on), whether a
  * call may run is decided by the send's approval policy
@@ -603,6 +642,10 @@ export async function getConnectorTools(
     hiddenTools: 0,
     cacheHits: 0,
     failedConnectors: 0,
+    catalogConnectors: input.catalogConnectors?.length ?? 0,
+    catalogSnapshots: 0,
+    catalogWarmups: 0,
+    catalogSkipped: 0,
   }
   const credentialsByConnector = new Map<string, ConnectorCredentials | null>()
   const connectors: ConnectorRecord[] = []
@@ -626,6 +669,17 @@ export async function getConnectorTools(
     connectors.push(connector)
   }
 
+  function isConsentCurrent(
+    connector: ConnectorRecord,
+    credentials: ConnectorCredentials | null,
+  ): boolean {
+    return connector.authType === 'oauth' && credentials?.issuer
+      ? isConnectorConsentCurrent(connector, issuerHostOf(credentials.issuer))
+      : isConnectorConsentCurrent(connector)
+  }
+
+  const consentedConnectors: ConnectorRecord[] = []
+
   for (const connector of connectors) {
     const credentials = await readConnectorCredentials(
       db,
@@ -635,11 +689,25 @@ export async function getConnectorTools(
 
     credentialsByConnector.set(connector.id, credentials)
 
+    if (
+      input.optionalConnectorIds?.has(connector.id)
+      && !isConsentCurrent(connector, credentials)
+    ) {
+      notices.push(
+        `${connector.title} needs you to review its permissions on the `
+        + 'Connectors page, so its tools were not used.',
+      )
+
+      continue
+    }
+
     if (connector.authType === 'oauth' && credentials?.issuer) {
       assertConnectorConsent(connector, issuerHostOf(credentials.issuer))
     } else {
       assertConnectorConsent(connector)
     }
+
+    consentedConnectors.push(connector)
   }
 
   const handles: ConnectorClientHandle[] = []
@@ -739,6 +807,7 @@ export async function getConnectorTools(
           definitions,
           resolveToolsCacheTtlSeconds(listed.ttlMs),
         )
+        await writeCatalogSnapshot(kv, connector.id, definitions)
       }
 
       return {
@@ -749,6 +818,8 @@ export async function getConnectorTools(
           definitions,
           hashes: await hashToolDefinitions(definitions),
           fromCache,
+          isCatalog: catalogIds.has(connector.id),
+          isSnapshot: false,
         },
         notice: null,
       }
@@ -767,7 +838,143 @@ export async function getConnectorTools(
       })
       await recordConnectorFailure(db, userId, connector, code)
 
-      return { prepared: null, notice: noticeForFailure(connector.title, code) }
+      return {
+        prepared: null,
+        notice: catalogIds.has(connector.id)
+          ? null
+          : noticeForFailure(connector.title, code),
+      }
+    }
+  }
+
+  /**
+   * A connection for an Auto connector whose tools came from its snapshot:
+   * nothing is read or contacted until the first call, which reads the
+   * credentials, checks the consent for the token's issuer and connects.
+   * `verify` lists the tools live once per send and answers whether the
+   * called tool still has the hash the send offered; a mismatch marks the
+   * connector `drifted` and refreshes the snapshot.
+   */
+  function createSnapshotHandle(
+    connector: ConnectorRecord,
+    secrets: Set<string>,
+  ): SnapshotHandle {
+    let realHandle: ConnectorClientHandle | null = null
+    let realHandlePromise: Promise<ConnectorClientHandle> | null = null
+    let liveHashesPromise: Promise<Map<string, string>> | null = null
+
+    async function openRealHandle(): Promise<ConnectorClientHandle> {
+      const credentials = await readConnectorCredentials(
+        db,
+        userId,
+        connector.id,
+      )
+
+      if (connector.authType === 'oauth' && credentials?.issuer) {
+        assertConnectorConsent(connector, issuerHostOf(credentials.issuer))
+      } else {
+        assertConnectorConsent(connector)
+      }
+
+      const resolver = resolveAuth({
+        connector,
+        credentials,
+        secrets,
+        db,
+        kv,
+        userId,
+        logger,
+        inFlight,
+      })
+
+      if (!resolver) {
+        throw createConnectorError('CONNECTOR_REAUTH_REQUIRED')
+      }
+
+      const url = await readConnectorUrl(db, userId, connector.id)
+
+      if (!url) {
+        throw createConnectorError('CONNECTOR_NOT_FOUND')
+      }
+
+      realHandle = createConnectorClientHandle({
+        connectorId: connector.id,
+        slug: connector.slug,
+        url,
+        transport: connector.transport,
+        resolveAuth: resolver,
+        limiter: connectLimiter,
+        logger,
+        dependencies: input.dependencies,
+      })
+
+      return realHandle
+    }
+
+    async function getClient(): Promise<ConnectorClient> {
+      realHandlePromise ??= openRealHandle()
+
+      return await (await realHandlePromise).getClient()
+    }
+
+    async function listLiveHashes(): Promise<Map<string, string>> {
+      const client = await getClient()
+      const listed = await listRemoteDefinitions(
+        client,
+        AbortSignal.timeout(CONNECTOR_LIST_TIMEOUT_MS),
+      )
+
+      await writeCatalogSnapshot(kv, connector.id, listed.definitions)
+
+      return await hashToolDefinitions(listed.definitions)
+    }
+
+    return {
+      connectorId: connector.id,
+      slug: connector.slug,
+      getClient,
+      async close() {
+        await realHandle?.close()
+      },
+      async verify(toolName, definitionHash) {
+        liveHashesPromise ??= listLiveHashes()
+
+        const liveHashes = await liveHashesPromise
+        const isCurrent = liveHashes.get(toolName) === definitionHash
+
+        if (!isCurrent) {
+          logger.set({
+            attributes: {
+              connectors: { id: connector.id, snapshotDrift: true },
+            },
+          })
+          await syncDriftStatus(db, userId, connector, 1)
+        }
+
+        return isCurrent
+      },
+    }
+  }
+
+  async function prepareFromSnapshot(
+    connector: ConnectorRecord,
+    definitions: ConnectorToolDefinition[],
+  ): Promise<PreparedConnector> {
+    const secrets = new Set<string>()
+    const handle = createSnapshotHandle(connector, secrets)
+
+    handles.push(handle)
+
+    return {
+      connector,
+      handle,
+      secrets,
+      definitions,
+      hashes: await hashToolDefinitions(definitions),
+      fromCache: true,
+      isCatalog: true,
+      isSnapshot: true,
+      verify: handle.verify,
     }
   }
 
@@ -776,16 +983,84 @@ export async function getConnectorTools(
     const timer = setTimeout(() => deadline.abort(), prepareDeadlineMs)
 
     try {
-      return await Promise.all(connectors.map((connector) => {
-        return prepareLimiter.run(() => prepare(connector, deadline.signal))
-      }))
+      return await Promise.all(
+        [...consentedConnectors, ...warmupConnectors].map((connector) => {
+          return prepareLimiter.run(() => prepare(connector, deadline.signal))
+        }),
+      )
     } finally {
       clearTimeout(timer)
     }
   }
 
+  const catalogIds = new Set<string>()
+  const warmupConnectors: ConnectorRecord[] = []
+  const snapshotPlans: ConnectorPlan[] = []
+
+  function skipCatalog(connector: ConnectorRecord, reason: string) {
+    summary.catalogSkipped += 1
+    logger.set({
+      attributes: {
+        connectors: { id: connector.id, catalogSkipped: reason },
+      },
+    })
+  }
+
   try {
-    const plans = await prepareAll()
+    for (const connector of input.catalogConnectors ?? []) {
+      catalogIds.add(connector.id)
+
+      if (!isConnectorConsentCurrent(connector)) {
+        skipCatalog(connector, 'consent')
+
+        continue
+      }
+
+      const snapshot = await readCatalogSnapshot(kv, connector.id)
+
+      if (snapshot) {
+        summary.catalogSnapshots += 1
+        snapshotPlans.push({
+          prepared: await prepareFromSnapshot(connector, snapshot),
+          notice: null,
+        })
+
+        continue
+      }
+
+      if (
+        connector.transport === 'sse'
+        || warmupConnectors.length >= CONNECTOR_CATALOG_WARMUPS_PER_SEND
+      ) {
+        skipCatalog(connector, 'no-snapshot')
+
+        continue
+      }
+
+      const credentials = await readConnectorCredentials(
+        db,
+        userId,
+        connector.id,
+      )
+
+      if (!isConsentCurrent(connector, credentials)) {
+        skipCatalog(connector, 'consent')
+
+        continue
+      }
+
+      if (!await claimCatalogWarmup(kv, connector.id)) {
+        skipCatalog(connector, 'warmup-backoff')
+
+        continue
+      }
+
+      credentialsByConnector.set(connector.id, credentials)
+      summary.catalogWarmups += 1
+      warmupConnectors.push(connector)
+    }
+
+    const plans = [...await prepareAll(), ...snapshotPlans]
     const candidates: Candidate[] = []
     const chatGrantsByConnector = input.consumeClearedCall
       ? await readChatGrants(db, userId, input.chatPublicId, logger)
@@ -801,8 +1076,9 @@ export async function getConnectorTools(
       }
 
       const { connector, definitions, hashes, handle, secrets } = plan.prepared
+      const { isCatalog, isSnapshot } = plan.prepared
 
-      if (plan.prepared.fromCache) {
+      if (plan.prepared.fromCache && !isSnapshot) {
         summary.cacheHits += 1
       }
 
@@ -813,6 +1089,12 @@ export async function getConnectorTools(
       )
       let enabledNames: Set<string>
       let hiddenCount = 0
+
+      if (!isBaselined && isSnapshot) {
+        skipCatalog(connector, 'no-baseline')
+
+        continue
+      }
 
       if (!isBaselined) {
         await saveBaseline(db, userId, connector.id, definitions, hashes)
@@ -837,10 +1119,15 @@ export async function getConnectorTools(
         )
       }
 
-      await syncDriftStatus(db, userId, connector, hiddenCount)
+      if (!isSnapshot) {
+        await syncDriftStatus(db, userId, connector, hiddenCount)
+      }
 
       if (hiddenCount > 0) {
         summary.hiddenTools += hiddenCount
+      }
+
+      if (hiddenCount > 0 && !isCatalog) {
         notices.push(
           `${hiddenCount} tool${hiddenCount === 1 ? '' : 's'} of ${
             connector.title
@@ -866,10 +1153,12 @@ export async function getConnectorTools(
             })
             : { hash: null, isDefault: false },
           isReadOnly: isDefinitionAutoRunnable(definition),
-          isAlwaysOn: resolveConnectorToolMode(connector.toolMode)
-            === 'always-on',
+          isAlwaysOn: !isCatalog
+            && resolveConnectorToolMode(connector.toolMode) === 'always-on',
           handle,
           secrets,
+          ...(isCatalog ? { catalogKey: connector.slug } : {}),
+          ...(plan.prepared.verify ? { verify: plan.prepared.verify } : {}),
         })
       }
     }
@@ -1006,6 +1295,37 @@ export async function getConnectorTools(
         return await deny(CONNECTOR_RATE_LIMIT_TEXT)
       }
 
+      if (candidate.verify) {
+        let isCurrent: boolean
+
+        try {
+          isCurrent = await candidate.verify(
+            candidate.definition.name,
+            candidate.definitionHash,
+          )
+        } catch {
+          await recordCall({
+            candidate,
+            args,
+            resultBytes: 0,
+            outcome: 'error',
+            startedAt,
+            toolCallId: options?.toolCallId,
+          })
+
+          throw createError({
+            message: CONNECTOR_FAILURE_TEXT,
+            status: 502,
+            why: 'The connected service could not be reached.',
+            fix: 'Answer without it and tell the user to check the connector.',
+          })
+        }
+
+        if (!isCurrent) {
+          return await deny(CONNECTOR_TOOL_CHANGED_TEXT)
+        }
+      }
+
       if (input.guard) {
         input.guard.untrustedResultSeen = true
       }
@@ -1123,6 +1443,7 @@ export async function getConnectorTools(
           description: candidate.definition.description,
           toolClass: toolIndexClassOf(approvalEntry.descriptor),
           bytes,
+          ...(candidate.catalogKey ? { catalogKey: candidate.catalogKey } : {}),
         })
       }
 
@@ -1171,9 +1492,38 @@ export async function getConnectorTools(
           hiddenTools: summary.hiddenTools,
           cacheHits: summary.cacheHits,
           failed: summary.failedConnectors,
+          catalog: summary.catalogConnectors,
+          catalogSnapshots: summary.catalogSnapshots,
+          catalogWarmups: summary.catalogWarmups,
+          catalogSkipped: summary.catalogSkipped,
         },
       },
     })
+
+    function buildCatalog(): ToolIndexCatalogConnector[] {
+      const catalogPlans = plans.flatMap((plan) => {
+        return plan.prepared?.isCatalog ? [plan.prepared] : []
+      })
+
+      return catalogPlans.flatMap((prepared) => {
+        const offered = candidates.filter((candidate) => {
+          return candidate.catalogKey === prepared.connector.slug
+        })
+
+        if (offered.length === 0) {
+          return []
+        }
+
+        return [{
+          key: prepared.connector.slug,
+          connectorId: prepared.connector.id,
+          title: prepared.connector.title,
+          host: hostOf(prepared.connector),
+          toolCount: offered.length,
+          isLegacySse: prepared.connector.transport === 'sse',
+        }]
+      })
+    }
 
     function collectSecrets(): string[] {
       return [
@@ -1187,9 +1537,19 @@ export async function getConnectorTools(
       indexEntries,
       definitionBytes: upFrontBytes,
       approvalEntries,
-      connectorIds: [...new Set(candidates.map((candidate) => {
-        return candidate.connector.id
-      }))],
+      connectorIds: [...new Set(candidates
+        .filter(candidate => !candidate.catalogKey)
+        .map(candidate => candidate.connector.id))],
+      catalog: buildCatalog(),
+      recordOpened(connectorId) {
+        sourceConnectorId ??= connectorId
+      },
+      liveLegacySseCount: new Set(candidates
+        .filter((candidate) => {
+          return !candidate.catalogKey
+            && candidate.connector.transport === 'sse'
+        })
+        .map(candidate => candidate.connector.id)).size,
       handles,
       notices,
       summary,

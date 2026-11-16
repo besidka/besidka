@@ -201,6 +201,7 @@ export interface SendToolApproval {
   ) => PendingToolApprovalDecision | undefined
   getGrantScope: (toolCallId: string) => ToolGrantScope | null
   listWithheldProviderTools: (tools: ToolSet | undefined) => string[]
+  recordConnectorOpened: (connectorId: string) => void
 }
 
 interface NativeToolClass {
@@ -917,6 +918,10 @@ export function createSendToolApproval(input: {
     getPendingDecision: toolCallId => pendingDecisions.get(toolCallId),
     getGrantScope: toolCallId => grantedCalls.get(toolCallId) ?? null,
     listWithheldProviderTools,
+    recordConnectorOpened: (connectorId) => {
+      recordTaint(state, 'connector')
+      recordToolRead(state, connectorReadSource(connectorId))
+    },
   }
 }
 

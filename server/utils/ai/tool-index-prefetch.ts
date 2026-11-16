@@ -236,7 +236,9 @@ export function toolNameTokens(exposedName: string): string[] {
  * languages above; read tools such as `list_` and `get_` are left to the
  * model. Ties go to the name with fewer extra words, then by name, and at
  * most `TOOL_INDEX_PREFETCH_MAX` are returned. Only the text the user sent
- * is read, never model output or tool results.
+ * is read, never model output or tool results. Tools of a catalog
+ * connector are skipped: they stay closed until the model opens the
+ * connector, so they must not take a prefetch slot.
  */
 export function matchToolIndexEntries(
   userText: string,
@@ -244,8 +246,9 @@ export function matchToolIndexEntries(
   limit: number = TOOL_INDEX_PREFETCH_MAX,
 ): string[] {
   const words = wordsOf(userText)
+  const openEntries = entries.filter(entry => !entry.catalogKey)
 
-  if (words.length === 0 || entries.length === 0) {
+  if (words.length === 0 || openEntries.length === 0) {
     return []
   }
 
@@ -256,7 +259,7 @@ export function matchToolIndexEntries(
     return []
   }
 
-  return entries
+  return openEntries
     .map((entry) => {
       const tokens = toolNameTokens(entry.name)
       const toolVerbs = tokens.filter(token => ACTION_VERBS.has(token))

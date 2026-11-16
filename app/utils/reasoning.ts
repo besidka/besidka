@@ -39,6 +39,11 @@ const TOOL_STEP_TITLES = new Map<string, {
     done: 'Loaded tools',
     failed: 'Loading tools failed',
   }],
+  ['use_connector', {
+    pending: 'Opening a connector',
+    done: 'Opened a connector',
+    failed: 'Opening a connector failed',
+  }],
   ['create_document', {
     pending: 'Creating a document',
     done: 'Created a document',
