@@ -34,6 +34,11 @@ const TOOL_STEP_TITLES = new Map<string, {
   done: string
   failed: string
 }>([
+  ['tool_index__load', {
+    pending: 'Loading tools',
+    done: 'Loaded tools',
+    failed: 'Loading tools failed',
+  }],
   ['create_document', {
     pending: 'Creating a document',
     done: 'Created a document',

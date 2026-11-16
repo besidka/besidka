@@ -796,7 +796,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   directory (Browse and search over the registry mirror, the Featured
   presets), icons on directory cards through the Besidka registry icon
   route (registry `icons`, favicon, page `<link rel=icon>`, SVG allowlist) and
-  the admin-only "Sync now"
+  the admin-only "Sync now"; section 6.2 for the tool index (C-15): the
+  `tool_index__load` tool over `prepareStep` `activeTools`, the per-connector
+  mode (`connectors.tool_mode`: null or `auto` is Auto, `always-on`; Off is
+  `enabled`), the room kept for loading, the prompt-cache effect, and the
+  "Turn it on?" chip triggered only by the user's own text
 - `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
   amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
   from templates, or added by archive (zip, `.skill`), pasted text, GitHub link
@@ -826,9 +830,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the Search row, why MCP has no tool for it, and the chat exposure (L9): the
   four-part gate, `besidka__` tools from the registry, the current-chat
   guard, no scopes for handlers, the mode-by-taint table (Besidka reads
-  ignore Besidka taint), the 24-tool budget with the Labs line instead of a
-  chat notice, the per-chat Besidka row in the connector picker, the
-  approval step and Besidka grants in the chat panel
+  ignore Besidka taint), the 24 tools offered up front with the rest in the
+  tool index (C-15: loaded on demand, never cut, no notice or Labs line),
+  the per-chat Besidka row in the connector picker, the approval step and
+  Besidka grants in the chat panel
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the

@@ -54,6 +54,7 @@ command below is for the operator, preview first.
 | Skill blobs written in the window | No `skill_files` row references them | Low (privacy) | Yes (the hourly sweep, after one hour) |
 | Project skill pins added, changed or removed in the window (`project_skills`) | A removed pin returns; a pin of a deleted skill or project returns but loads nothing | Low (a pin only loads an enabled, ready skill, and skills are disabled after a restore) | No |
 | Connectors deleted, disconnected or disabled in the window (`connectors`, `connector_tool_settings`, `connector_chat_settings`) | Rows return as they were at B, often enabled, with their consent columns | High (a switched-off data channel to a third-party server is open again) | No |
+| A connector's tool mode changed in the window (`connectors.tool_mode`, C-15) | Auto or Always on returns as it was at B | Low (only how the tools reach the model changes; whether the connector is on, and every approval, is decided elsewhere) | No, nothing to do |
 | Connector credentials revoked in the window (`connector_credentials`) | Encrypted access and refresh tokens and header values return, usable again; the provider may or may not have revoked them | **High (a revoked credential works again)** | No |
 | `connector_tool_calls` audit rows | Rolled back, so the window's calls vanish from the audit trail; rows older than the retention that the sweep deleted return | Medium | Yes (the 90-day sweep) |
 | `mcp_registry_servers` | Rolled back to B | None | Yes (the next sync) |

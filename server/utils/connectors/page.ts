@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import { resolveConnectorToolMode } from '#shared/utils/connectors-policy'
 import type {
   ConnectorConsentState,
   ConnectorPageItem,
@@ -129,6 +130,7 @@ export function toConnectorPageItem(
     host: new URL(connector.origin).host,
     status: connector.status,
     enabled: connector.enabled,
+    toolMode: resolveConnectorToolMode(connector.toolMode),
     authType: connector.authType,
     createdVia: connector.createdVia,
     presetId: connector.presetId,

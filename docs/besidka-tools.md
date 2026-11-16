@@ -255,17 +255,31 @@ description, input schema, access and tier) in
 permission to Always allow. A tool that changed asks again, and the replay
 denies a call whose hash drifted.
 
-### Budget
+### Budget and the tool index (C-15)
 
-Native tools first, then up to 24 Besidka tools (`BESIDKA_CHAT_TOOLS_MAX` in
-`shared/utils/besidka-tool-permissions.ts`; Always allow first, then read,
-write and ask every time, then by name), then connectors in what is left of
-the existing 40 tools and 32 KiB of definitions (Besidka definitions count
-against the connector bytes). With the default modes the 24 reach the
-ask-every-time tier. A Besidka tool that did not fit is only logged, never
-named in the chat; the Labs "Tool permissions" panel shows "Only 24 Besidka
-tools are offered per message; block the ones you don't need" while more
-than 24 tools are not Blocked. Connector notices are unchanged.
+Native tools first, then up to 24 Besidka tools up front
+(`BESIDKA_CHAT_TOOLS_MAX` in `shared/utils/besidka-tool-permissions.ts`;
+Always allow first, then read, write and ask every time, then by name), then
+connectors, all within the existing 40 tools and 32 KiB of definitions
+(Besidka definitions count against the connector bytes) minus the room kept
+for loading (`TOOL_INDEX_RESERVED_TOOLS` 10 plus the load tool,
+`TOOL_INDEX_RESERVED_BYTES` 12 KiB, `shared/utils/tool-index.ts`). When an
+Always on connector's up-front tools and Besidka's do not fit together, the
+connector wins and Besidka's last up-front tools move to the index.
+
+No Besidka tool is cut any more. Every tool that is not Blocked is built with
+its approval entry; the ones that do not fit up front (with the default modes,
+part of the ask-every-time tier, such as `delete_files`) go to the tool
+index and reach the model through `tool_index__load`, exactly like an Auto
+connector's tools (`docs/connectors.md` section 6.2). A loaded tool keeps its
+mode, tier, taint rule, definition hash and chat grant, so a loaded delete
+still asks Allow once or Deny. A Blocked tool is never built and never
+listed, so a load of it answers "not available". The chat shows no notice,
+and the Labs panel no longer warns that only 24 tools are offered.
+
+Owner report (2026-11-15, preview pr-923): "delete kyiv-chestnut-leaf.jpg"
+was answered with "no tool to delete files", because `delete_files` was the
+25th tool. With the index the model loads it and the user is asked.
 
 ### Per-chat row
 

@@ -14,6 +14,7 @@ export function createConnectorItem(
     host: 'mcp.linear.app',
     status: 'ready',
     enabled: false,
+    toolMode: 'auto',
     authType: 'oauth',
     createdVia: 'preset',
     presetId: 'linear',

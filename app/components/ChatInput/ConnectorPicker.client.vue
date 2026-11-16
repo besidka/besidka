@@ -177,8 +177,12 @@
                   <span class="truncate text-sm font-medium">
                     {{ item.title }}
                   </span>
-                  <span class="truncate text-xs text-base-content/60">
-                    {{ item.host }}
+                  <span
+                    class="truncate text-xs text-base-content/60"
+                    :data-testid="`connector-picker-mode-${item.slug}`"
+                  >
+                    {{ item.host }} ·
+                    {{ CONNECTOR_TOOL_MODE_LABELS[item.toolMode] }}
                   </span>
                 </span>
                 <span
@@ -257,7 +261,10 @@
 </template>
 
 <script setup lang="ts">
-import { CONNECTORS_PER_SEND } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_TOOL_MODE_LABELS,
+  CONNECTORS_PER_SEND,
+} from '#shared/utils/connectors-policy'
 import { planTurnAllOn } from '~/composables/composer-connectors'
 import type { ComposerConnectorItem } from '~/composables/composer-connectors'
 

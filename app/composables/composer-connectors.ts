@@ -1,6 +1,7 @@
 import { parseError } from 'evlog'
 import type { MaybeRefOrGetter } from 'vue'
 import { CONNECTORS_PER_SEND } from '#shared/utils/connectors-policy'
+import type { ConnectorToolMode } from '#shared/utils/connectors-policy'
 
 export const CONNECTORS_LIBRARY_KEY = 'connectors-library'
 export const NEW_CHAT_CONNECTORS_KEY = 'new'
@@ -11,6 +12,7 @@ export interface ComposerConnectorItem {
   title: string
   host: string
   status: 'ready' | 'drifted'
+  toolMode: ConnectorToolMode
   presetId: string | null
   isIconAvailable: boolean
 }
@@ -147,6 +149,7 @@ export function useComposerConnectors(
           title: connector.title,
           host: connector.host,
           status: connector.status as ComposerConnectorItem['status'],
+          toolMode: connector.toolMode,
           presetId: connector.presetId,
           isIconAvailable: hasConnectorIcon(connector),
         }
@@ -321,10 +324,16 @@ export function useComposerConnectors(
     await setSelectedIds([])
   }
 
+  const isSelectionKnown = computed<boolean>(() => {
+    return selection.value.chatKey === chatKey.value
+      && selection.value.isKnown
+  })
+
   return {
     items,
     isVisible,
     isLoaded: library.isLoaded,
+    isSelectionKnown,
     selectedIds,
     selectedCount,
     isAtLimit,

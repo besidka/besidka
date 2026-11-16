@@ -502,6 +502,27 @@ each button is disabled when it cannot change anything or while a save is
 running. Hiding the row (image mode, a model without tool calling) does
 not clear the choice. See `docs/connectors.md` section 6.1.
 
+### Tool mode and the "Turn it on?" chip (C-15)
+
+Each connector row in the picker shows its tool mode after the host
+("mcp.notion.com · Auto" or "· Always on", `connector-picker-mode-<slug>`).
+The mode is set on `/chats/connectors`, never in the picker: Auto lists the
+connector's tools in the tool index for the model to load, Always on sends
+them with every message as far as they fit (`docs/connectors.md` section
+6.2).
+
+Above the composer, next to the approval chip, `ChatInput/ConnectorSuggestion`
+asks "Notion is off in this chat. Turn it on?" with Turn on and Not now when
+the text the user is typing, or the message they just sent, names a connector
+that is on in the app but off in this chat (`findMentionedConnector` in
+`app/utils/connector-mention.ts`: whole words, the title of at least 3
+characters, the host or its main label). It waits until the library and the
+chat's stored choice have loaded, and shows only while the Connectors row
+could show. Turn on calls the picker's own toggle, so the per-chat save and
+the five-connector cap apply (at the cap the button is disabled with a hint).
+Not now hides it for the page in component state; there is no storage key and
+no Cookie Policy row. Model output and tool results never trigger it.
+
 ## Add key links in Web search
 
 When Brave or Exa has no key, the Web search section lists one "Add a Brave

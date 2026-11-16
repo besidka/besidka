@@ -55,6 +55,7 @@ export type ConnectorPatch = Partial<Pick<
   | 'nativeOptInAt'
   | 'lastError'
   | 'lastConnectedAt'
+  | 'toolMode'
 >>
 
 const CONNECTOR_PATCH_KEYS = [
@@ -70,6 +71,7 @@ const CONNECTOR_PATCH_KEYS = [
   'nativeOptInAt',
   'lastError',
   'lastConnectedAt',
+  'toolMode',
 ] as const satisfies ReadonlyArray<keyof ConnectorPatch>
 
 export interface CreateConnectorInput {

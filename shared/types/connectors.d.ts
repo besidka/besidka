@@ -2,6 +2,7 @@ import type {
   ConnectorAuthType,
   ConnectorCreatedVia,
   ConnectorStatus,
+  ConnectorToolMode,
 } from '#shared/utils/connectors-policy'
 import type { ToolPermissionMode } from '#shared/utils/tool-approval-policy'
 
@@ -30,6 +31,7 @@ export interface ConnectorPageItem {
   host: string
   status: ConnectorStatus
   enabled: boolean
+  toolMode: ConnectorToolMode
   authType: ConnectorAuthType | null
   createdVia: ConnectorCreatedVia
   presetId: string | null

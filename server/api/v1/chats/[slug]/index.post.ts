@@ -5,6 +5,7 @@ import type {
   UIMessageChunk,
   LanguageModelUsage,
   ModelMessage,
+  ToolSet,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { GatewayProvider } from '@ai-sdk/gateway'
@@ -350,6 +351,17 @@ import {
 } from '#shared/utils/connectors-policy'
 import { TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN } from '#shared/utils/tool-approval-policy'
 import { isBesidkaChatToolName } from '#shared/utils/besidka-tool-permissions'
+import {
+  isToolIndexLoadToolName,
+  TOOL_INDEX_LOAD_STEPS,
+  TOOL_INDEX_RESERVED_BYTES,
+  TOOL_INDEX_RESERVED_TOOLS,
+} from '#shared/utils/tool-index'
+import {
+  createToolIndex,
+  fitUpFrontTools,
+} from '~~/server/utils/ai/tool-index'
+import type { ToolIndex } from '~~/server/utils/ai/tool-index'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
 import type { ClearedCallCheck } from '~~/server/utils/tool-approval/send'
@@ -2097,6 +2109,12 @@ export default defineEventHandler(async (event) => {
   )
   let connectorsRun: ConnectorToolsRun | null = null
   let besidkaToolsRun: PreparedBesidkaChatTools | null = null
+  let toolIndex: ToolIndex | null
+  const toolIndexReserve = {
+    tools: TOOL_INDEX_RESERVED_TOOLS + 1,
+    bytes: TOOL_INDEX_RESERVED_BYTES,
+  }
+  const nativeToolCount = Object.keys(parsedTools.tools ?? {}).length
   let toolApprovalSecret: string | undefined
   let resumeDecisions: ContinuationDecision[] = []
   let resumedStoredMessage: UIMessage | null = null
@@ -2118,7 +2136,8 @@ export default defineEventHandler(async (event) => {
         chatPublicId: chat.id,
         chatSlug: params.data.slug,
         requestedEnabled: isResume ? undefined : sendBody.besidkaToolsEnabled,
-        existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
+        existingToolCount: nativeToolCount,
+        reserve: toolIndexReserve,
         consumeClearedCall: toolApprovalSend.consumeClearedCall,
         guard: chatSearchBudget,
         logger: aiLogger,
@@ -2185,8 +2204,8 @@ export default defineEventHandler(async (event) => {
             userId,
             chatPublicId: chat.id,
             connectors: selection.selected,
-            existingToolCount: Object.keys(parsedTools.tools ?? {}).length,
-            existingDefinitionBytes: besidkaToolsRun?.definitionBytes ?? 0,
+            existingToolCount: nativeToolCount,
+            reserve: toolIndexReserve,
             hashArgs: hashConnectorArgs,
             ...(toolApprovalsActive
               ? { consumeClearedCall: toolApprovalSend.consumeClearedCall }
@@ -2211,6 +2230,34 @@ export default defineEventHandler(async (event) => {
             }
           }
         }
+      }
+    }
+
+    besidkaToolsRun = fitBesidkaUpFrontTools({
+      besidka: besidkaToolsRun,
+      connectors: connectorsRun,
+      nativeToolCount,
+      reserve: toolIndexReserve,
+    })
+    toolIndex = attachToolIndex({
+      besidka: besidkaToolsRun,
+      connectors: connectorsRun,
+      nativeToolCount,
+      logger: aiLogger,
+    })
+
+    if (toolIndex) {
+      parsedTools = {
+        ...parsedTools,
+        tools: { ...parsedTools.tools, ...toolIndex.tools },
+      }
+    } else {
+      parsedTools = {
+        ...parsedTools,
+        tools: withoutDeferredTools(parsedTools.tools, [
+          ...besidkaToolsRun?.indexEntries ?? [],
+          ...connectorsRun?.indexEntries ?? [],
+        ]),
       }
     }
 
@@ -2247,6 +2294,8 @@ export default defineEventHandler(async (event) => {
     }
 
     if (resume) {
+      toolIndex?.replay(resume.assistant.parts)
+
       const besidkaToolNames = resume.loaded.answers
         .filter(answer => answer.record.family === 'besidka')
         .map(answer => answer.record.toolName)
@@ -2306,6 +2355,7 @@ export default defineEventHandler(async (event) => {
   const connectorsInstructionBlock = [
     connectorToolsInstructionBlock,
     hasBesidkaTools ? besidkaToolsRun?.instructions : null,
+    toolIndex?.instructions ?? null,
   ].filter(Boolean).join('\n\n') || null
 
   const toolLoop = resolveToolLoop(parsedTools.tools, {
@@ -2320,12 +2370,22 @@ export default defineEventHandler(async (event) => {
       ? CONNECTOR_STEPS_PER_TURN
       : 0,
     besidkaSteps: hasBesidkaTools ? TOOL_APPROVAL_BUILT_IN_CALLS_PER_TURN : 0,
+    toolIndexSteps: toolIndex ? TOOL_INDEX_LOAD_STEPS : 0,
     guard: chatSearchBudget,
   })
-  const containerToolLoopOptions = toolLoop
+  const forwardedToolLoopOptions = toolLoop
     && codeExecutionSession?.provider === 'anthropic'
     ? withAnthropicContainerForwarding(toolLoop.options)
     : toolLoop?.options
+  const containerToolLoopOptions = toolIndex && forwardedToolLoopOptions
+    ? {
+      ...forwardedToolLoopOptions,
+      prepareStep: toolIndex.withActivation({
+        base: forwardedToolLoopOptions.prepareStep,
+        toolNames: Object.keys(parsedTools.tools ?? {}),
+      }),
+    }
+    : forwardedToolLoopOptions
   const guardsProviderTools = toolApprovalsActive
     && !isAnthropicRoute
     && hasGuardedProviderTool(toolApprovalSend, parsedTools.tools)
@@ -2353,7 +2413,9 @@ export default defineEventHandler(async (event) => {
   }
   const answerGuaranteeToolNames = new Set(
     [...followUpToolNames].filter((toolName) => {
-      return !isSkillToolName(toolName) && !isApprovalGatedToolName(toolName)
+      return !isSkillToolName(toolName)
+        && !isToolIndexLoadToolName(toolName)
+        && !isApprovalGatedToolName(toolName)
     }),
   )
   const persistenceFollowUpToolNames = new Set([
@@ -3372,15 +3434,128 @@ interface PreparedBesidkaChatTools extends BesidkaChatToolsRun {
 }
 
 /**
+ * The tool index of a send (`server/utils/ai/tool-index.ts`): the Besidka
+ * and connector tools that were not offered up front, with the room a step
+ * has left for loading them once every up-front tool and the load tool are
+ * counted (40 tools, 32 KiB of Besidka and connector definitions). Null when
+ * nothing is deferred or no room is left.
+ */
+function attachToolIndex(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  logger: { set: (data: Record<string, unknown>) => void }
+}): ToolIndex | null {
+  const entries = [
+    ...input.besidka?.indexEntries ?? [],
+    ...input.connectors?.indexEntries ?? [],
+  ]
+  const upFrontNames = [
+    ...input.besidka?.upFrontNames ?? [],
+    ...input.connectors?.upFrontNames ?? [],
+  ]
+  const room = {
+    tools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
+      - upFrontNames.length - 1,
+    bytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
+      - (input.besidka?.definitionBytes ?? 0)
+      - (input.connectors?.definitionBytes ?? 0),
+  }
+  const toolIndex = createToolIndex({
+    entries,
+    room,
+    upFrontNames: new Set(upFrontNames),
+    logger: input.logger,
+  })
+
+  if (entries.length > 0) {
+    input.logger.set({
+      attributes: {
+        toolIndex: {
+          entries: entries.length,
+          roomTools: room.tools,
+          roomBytes: room.bytes,
+          ...(toolIndex ? {} : { noRoom: true }),
+        },
+      },
+    })
+  }
+
+  return toolIndex
+}
+
+/**
+ * Gives an Always on connector's up-front tools priority over Besidka's:
+ * both were sized against the same room (40 tools and 32 KiB minus the
+ * native tools and the index reserve), so when together they do not fit,
+ * Besidka's last up-front tools move to the tool index, where they stay
+ * reachable.
+ */
+function fitBesidkaUpFrontTools(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  reserve: { tools: number, bytes: number }
+}): PreparedBesidkaChatTools | null {
+  const { besidka, connectors } = input
+
+  if (!besidka || !connectors || connectors.upFrontNames.length === 0) {
+    return besidka
+  }
+
+  const { upFront, demoted } = fitUpFrontTools({
+    keptTools: connectors.upFrontNames.length,
+    keptBytes: connectors.definitionBytes,
+    demotable: besidka.upFrontEntries,
+    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
+      - input.reserve.tools,
+    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES - input.reserve.bytes,
+  })
+
+  if (demoted.length === 0) {
+    return besidka
+  }
+
+  return {
+    ...besidka,
+    upFrontNames: upFront.map(entry => entry.name),
+    upFrontEntries: upFront,
+    indexEntries: [...demoted, ...besidka.indexEntries],
+    definitionBytes: upFront.reduce((total, entry) => {
+      return total + entry.bytes
+    }, 0),
+  }
+}
+
+/**
+ * Removes the deferred tools from a send that has no room for the tool
+ * index, so a tool meant to wait for a load is never offered up front.
+ */
+function withoutDeferredTools(
+  tools: ToolSet | undefined,
+  entries: ReadonlyArray<{ name: string }>,
+): ToolSet | undefined {
+  if (!tools || entries.length === 0) {
+    return tools
+  }
+
+  const deferredNames = new Set(entries.map(entry => entry.name))
+
+  return Object.fromEntries(Object.entries(tools).filter(([toolName]) => {
+    return !deferredNames.has(toolName)
+  }))
+}
+
+/**
  * The Besidka tools of a send, loaded only once the gate passed (the
  * `besidka-tools` opt-in flag, `tool-approvals` and a tool-capable model):
  * the chat's Besidka row decides whether there are any (on by default; a
  * new chat's first send may carry the choice made before it had a slug,
  * which is stored here), then the user's mode for every tool is resolved in
- * one read before a tool is offered, and the tools are built within the
- * room the native tools left (at most 24, 40 tools and 32 KiB in all). A
- * tool that did not fit is only logged: the Labs permissions panel tells the
- * user when more tools are allowed than a message offers.
+ * one read before a tool is offered. The tools offered up front fit in the
+ * room the native tools and `reserve` (the room kept for the tool index)
+ * left: at most 24, 40 tools and 32 KiB in all. Every other tool that is
+ * not Blocked goes to the tool index, so none is out of reach.
  */
 async function prepareBesidkaChatTools(input: {
   db: ReturnType<typeof useDb>
@@ -3389,6 +3564,7 @@ async function prepareBesidkaChatTools(input: {
   chatSlug: string
   requestedEnabled: boolean | undefined
   existingToolCount: number
+  reserve: { tools: number, bytes: number }
   consumeClearedCall: (call: ClearedCallCheck) => boolean
   guard: UntrustedContentGuard | undefined
   logger: { set: (data: Record<string, unknown>) => void }
@@ -3433,7 +3609,9 @@ async function prepareBesidkaChatTools(input: {
       tools: {},
       approvalEntries: new Map(),
       definitionBytes: 0,
-      leftOutCount: 0,
+      upFrontNames: [],
+      upFrontEntries: [],
+      indexEntries: [],
       instructions: adapter.BESIDKA_TOOLS_INSTRUCTIONS,
     }
   }
@@ -3455,8 +3633,9 @@ async function prepareBesidkaChatTools(input: {
     currentChatSlug: input.chatSlug,
     modes,
     chatGrants: settings.alwaysAllowTools,
-    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount,
-    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES,
+    maxTools: CONNECTOR_TOOLS_PER_REQUEST - input.existingToolCount
+      - input.reserve.tools,
+    maxBytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES - input.reserve.bytes,
     consumeClearedCall: input.consumeClearedCall,
     limitCalls: adapter.createBesidkaCallLimiter(useKV()),
     ...(input.guard ? { guard: input.guard } : {}),

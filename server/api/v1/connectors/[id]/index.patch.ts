@@ -1,6 +1,9 @@
 import { defineEventHandler } from 'nuxt/server'
 import { z } from 'zod'
-import { CONNECTOR_TITLE_MAX_LENGTH } from '#shared/utils/connectors-policy'
+import {
+  CONNECTOR_TITLE_MAX_LENGTH,
+  CONNECTOR_TOOL_MODES,
+} from '#shared/utils/connectors-policy'
 import { readConnectorBody } from '~~/server/utils/connectors/body'
 import {
   assertConnectorConsent,
@@ -23,6 +26,7 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 const bodySchema = z.object({
   enabled: z.boolean().optional(),
   title: z.string().trim().min(1).max(CONNECTOR_TITLE_MAX_LENGTH).optional(),
+  toolMode: z.enum(CONNECTOR_TOOL_MODES).optional(),
 })
 
 async function assertConsentsForEnable(
@@ -71,7 +75,10 @@ async function assertCanEnable(userId: number, connector: ConnectorRecord) {
 }
 
 /**
- * Renames a connector or turns it on or off, in the app only. Turning it on
+ * Renames a connector, turns it on or off, or sets how its tools reach the
+ * model (`toolMode`: Auto lists them in the tool index for the model to load
+ * when a request needs them, Always on offers them with every message), in
+ * the app only; MCP has no tool for any of it. Turning it on
  * needs a connected connector whose tools were reviewed on the Connectors
  * page (a first review, and no unaccepted change: `drifted` is refused), a
  * current sign-up consent and a current per-connector consent for its
@@ -91,6 +98,7 @@ export default defineEventHandler(async (event) => {
   const updated = await updateConnector(useDb(), userId, connector.id, {
     title: body.title,
     enabled: body.enabled,
+    toolMode: body.toolMode,
   })
 
   useRequestLogger(event).set({
@@ -98,6 +106,7 @@ export default defineEventHandler(async (event) => {
       connectors: {
         step: 'update',
         ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+        ...(body.toolMode ? { toolMode: body.toolMode } : {}),
       },
     },
   })

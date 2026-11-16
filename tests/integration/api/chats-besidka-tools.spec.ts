@@ -8,6 +8,10 @@ import {
   readVercelGatewayCost,
   readVercelGenerationId,
 } from '../../../server/utils/gateways/index'
+import {
+  createMockMcpFetch,
+  createMockMcpServer,
+} from '../../setup/helpers/mock-mcp-server'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -904,4 +908,90 @@ describe('Besidka tools in the chat send', () => {
       expect(names).toContain('besidka__delete_chats')
       expect(noticeLines()).toEqual([])
     })
+
+  it('offers an Always on connector up front ahead of Besidka\'s tail and '
+    + 'indexes the Besidka tools that no longer fit', async () => {
+    const connectorUrl = 'https://mcp.linear.example.com/mcp'
+    const now = new Date()
+    const server = createMockMcpServer({
+      url: connectorUrl,
+      tools: Array.from({ length: 12 }, (_unused, index) => ({
+        name: `tool_${String(index).padStart(2, '0')}`,
+        description: 'Tool.',
+        annotations: { readOnlyHint: true },
+      })),
+      respond: name => ({ text: `${name} result` }),
+    })
+
+    setModes({}, 'ask')
+    mocks.flags.add('connectors')
+    mocks.connectorUrls = { conn1: connectorUrl }
+    mocks.store.connectors = [{
+      id: 'conn1',
+      userId: 1,
+      slug: 'linear',
+      title: 'Linear',
+      origin: 'https://mcp.linear.example.com',
+      transport: 'streamable-http',
+      authType: 'none',
+      status: 'ready',
+      enabled: true,
+      createdVia: 'app',
+      consentOrigin: 'https://mcp.linear.example.com',
+      consentIssuer: null,
+      consentVersion: '2026-11-a',
+      consentedAt: now,
+      consentWithdrawnAt: null,
+      toolMode: 'always-on',
+      updatedAt: now,
+    }]
+    mocks.store.chatSettings = [{
+      connectorId: 'conn1',
+      enabled: true,
+      alwaysAllowTools: {},
+    }]
+    vi.stubGlobal('fetch', createMockMcpFetch([server]))
+
+    const { doStream } = await runSend({ steps: finalAnswer })
+    const names = readToolNames(doStream.mock.calls[0]?.[0])
+    const besidkaNames = names.filter(name => name.startsWith('besidka__'))
+    const connectorNames = names.filter(name => name.startsWith('mcp__'))
+    const system = JSON.stringify(doStream.mock.calls[0]?.[0]?.prompt)
+
+    expect(connectorNames).toHaveLength(12)
+    expect(besidkaNames.length).toBeGreaterThan(0)
+    expect(besidkaNames.length).toBeLessThan(24)
+    expect(names.length).toBeLessThanOrEqual(40 - 10)
+    expect(names).toContain('tool_index__load')
+    expect(system).toContain('besidka__delete_files | Besidka | always-ask')
+    expect(noticeLines()).toEqual([])
+  })
+
+  it('reaches delete_files past the up-front cap through the tool index and '
+    + 'still asks before the loaded delete', async () => {
+    setModes({}, 'ask')
+
+    const { doStream, assistantInsert } = await runSend({
+      steps: [
+        toolCallChunks('call-load', 'tool_index__load', {
+          names: ['besidka__delete_files'],
+        }),
+        toolCallChunks('call-1', 'besidka__delete_files', {
+          fileIds: ['file-1'],
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const system = JSON.stringify(doStream.mock.calls[0]?.[0]?.prompt)
+
+    expect(firstCallToolNames(doStream)).not.toContain('besidka__delete_files')
+    expect(system).toContain('besidka__delete_files | Besidka | always-ask')
+    expect(readToolNames(doStream.mock.calls[1]?.[0]))
+      .toContain('besidka__delete_files')
+    expect(findPart(assistantInsert?.parts ?? [], TOOL_APPROVAL_DATA_PART_TYPE))
+      .toMatchObject({
+        data: { reason: 'always-ask', rememberOptions: ['once'] },
+      })
+    expect(noticeLines()).toEqual([])
+  })
 })

@@ -38,6 +38,7 @@ import type {
   ToolPermissionMode,
 } from '#shared/utils/tool-approval-policy'
 import { isSkillToolName } from '#shared/utils/skills/runtime'
+import { isToolIndexLoadToolName } from '#shared/utils/tool-index'
 import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
 import { isProjectKnowledgeToolName } from '~~/server/utils/ai/knowledge-tools'
 import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
@@ -377,7 +378,7 @@ export function classifyNativeTool(toolName: string): NativeToolClass {
     return { ...NATIVE_READ, taint: 'skill' }
   }
 
-  if (toolName === 'generate_image') {
+  if (toolName === 'generate_image' || isToolIndexLoadToolName(toolName)) {
     return NATIVE_READ
   }
 

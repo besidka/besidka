@@ -9,11 +9,14 @@ import {
   BESIDKA_TOOL_TIERS,
 } from '#shared/utils/besidka-tool-permissions'
 import { CONNECTOR_UNAPPROVED_CALL_TEXT } from '#shared/utils/connectors-parts'
+import { TOOL_INDEX_SOURCE_BESIDKA } from '#shared/utils/tool-index'
 import { TOOL_APPROVAL_BESIDKA_READ_SOURCE } from '#shared/utils/tool-approval-policy'
 import type {
   ToolAccess,
   ToolPermissionMode,
 } from '#shared/utils/tool-approval-policy'
+import { toolIndexClassOf } from '~~/server/utils/ai/tool-index'
+import type { ToolIndexEntry } from '~~/server/utils/ai/tool-index'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
@@ -105,7 +108,9 @@ export interface BesidkaChatToolsRun {
   tools: ToolSet
   approvalEntries: Map<string, SendToolEntry>
   definitionBytes: number
-  leftOutCount: number
+  upFrontNames: string[]
+  upFrontEntries: ToolIndexEntry[]
+  indexEntries: ToolIndexEntry[]
 }
 
 export type BesidkaCallLimiter = (userId: number) => Promise<boolean>
@@ -230,7 +235,9 @@ function rankOf(candidate: BesidkaChatToolCandidate): number {
  * tools are never offered. The rest are ordered Always allow first, then by
  * tier (read, write, ask every time), then by name, and taken while they fit
  * in `maxTools` (at most `BESIDKA_CHAT_TOOLS_MAX`, 24) and `maxBytes` of
- * descriptions plus input schemas. The ones that do not fit are `leftOut`.
+ * descriptions plus input schemas, which are offered up front. The ones
+ * that do not fit are `leftOut`: they go to the tool index and are loaded on
+ * demand (`server/utils/ai/tool-index.ts`), never dropped.
  */
 export function selectBesidkaChatTools(input: {
   modes: ReadonlyMap<string, ToolPermissionMode>
@@ -493,19 +500,22 @@ function buildApprovalEntry(input: {
 }
 
 /**
- * Builds the Besidka tools of one chat send (docs/besidka-tools.md): one AI
- * SDK tool per selected registry entry, named `besidka__<name>`, with the
- * registry's chat description and input schema, plus one approval entry per
- * offered tool and per Blocked tool (so a Blocked tool is denied if it is
- * ever called or replayed). The policy decides every call; `execute` runs
- * only a call the policy cleared (`consumeClearedCall`, once, same name and
- * input), refuses to delete or move the current chat or delete one of its
- * messages, keeps to 30 calls a minute per user (failing closed when KV
- * cannot count), runs the registry handler as the session user, and frames
- * the JSON result as untrusted like a connector result. A handler that fails
- * with a client error passes its own message on; anything else becomes one
- * sentence Besidka wrote. Bindings and the logger are captured here, never
- * read inside `execute`.
+ * Builds the Besidka tools of one chat send (docs/besidka-tools.md): one AI SDK
+ * tool per registry entry that is not Blocked, named `besidka__<name>`, with
+ * the registry's chat description and input schema, plus one approval entry per
+ * such tool and per Blocked tool (so a Blocked tool is denied if it is ever
+ * called or replayed). The selected tools are offered up front
+ * (`upFrontNames`); the rest are listed in the tool index (`indexEntries`) and
+ * offered only once the model loads them, through the same approval entry. A
+ * Blocked tool is never built, so it can never be loaded. The policy decides
+ * every call; `execute` runs only a call the policy cleared
+ * (`consumeClearedCall`, once, same name and input), refuses to delete or move
+ * the current chat or delete one of its messages, keeps to 30 calls a minute
+ * per user (failing closed when KV cannot count), runs the registry handler as
+ * the session user, and frames the JSON result as untrusted like a connector
+ * result. A handler that fails with a client error passes its own message on;
+ * anything else becomes one sentence Besidka wrote. Bindings and the logger are
+ * captured here, never read inside `execute`.
  */
 export async function buildBesidkaChatTools(input: {
   db: DbClient
@@ -529,7 +539,13 @@ export async function buildBesidkaChatTools(input: {
   const tools: ToolSet = {}
   const approvalEntries = new Map<string, SendToolEntry>()
 
-  for (const candidate of [...selection.selected, ...selection.blocked]) {
+  const candidates = [
+    ...selection.selected,
+    ...selection.leftOut,
+    ...selection.blocked,
+  ]
+
+  for (const candidate of candidates) {
     const exposedName = toBesidkaChatToolName(candidate.tool.name)
     const definitionHash = await hashBesidkaChatTool(candidate.tool)
 
@@ -638,7 +654,7 @@ export async function buildBesidkaChatTools(input: {
     }
   }
 
-  for (const candidate of selection.selected) {
+  for (const candidate of [...selection.selected, ...selection.leftOut]) {
     const besidkaTool = candidate.tool
 
     tools[toBesidkaChatToolName(besidkaTool.name)] = withFollowUpTurn(tool({
@@ -648,12 +664,27 @@ export async function buildBesidkaChatTools(input: {
     })) as ToolSet[string]
   }
 
+  function toIndexEntry(candidate: BesidkaChatToolCandidate): ToolIndexEntry {
+    const exposedName = toBesidkaChatToolName(candidate.tool.name)
+
+    return {
+      name: exposedName,
+      sourceKey: TOOL_INDEX_SOURCE_BESIDKA,
+      sourceTitle: 'Besidka',
+      description: chatDescriptionOf(candidate.tool),
+      toolClass: toolIndexClassOf(approvalEntries.get(exposedName)!.descriptor),
+      bytes: candidate.definitionBytes,
+    }
+  }
+
+  const indexEntries = selection.leftOut.map(toIndexEntry)
+
   logger.set({
     attributes: {
       besidkaTools: {
         exposed: selection.selected.length,
         blocked: selection.blocked.length,
-        leftOut: selection.leftOut.length,
+        deferred: selection.leftOut.length,
         definitionBytes: selection.definitionBytes,
       },
     },
@@ -663,6 +694,10 @@ export async function buildBesidkaChatTools(input: {
     tools,
     approvalEntries,
     definitionBytes: selection.definitionBytes,
-    leftOutCount: selection.leftOut.length,
+    upFrontNames: selection.selected.map((candidate) => {
+      return toBesidkaChatToolName(candidate.tool.name)
+    }),
+    upFrontEntries: selection.selected.map(toIndexEntry),
+    indexEntries,
   }
 }
