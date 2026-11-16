@@ -27,7 +27,7 @@ function buildConnector() {
     host: 'mcp.linear.app',
     status: 'ready',
     enabled: true,
-    toolMode: 'ask',
+    toolMode: 'manual',
     authType: 'oauth',
     createdVia: 'manual',
     presetId: null,
