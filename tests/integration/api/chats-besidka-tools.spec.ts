@@ -424,6 +424,7 @@ async function runSend(input: {
   besidkaToolsEnabled?: boolean
   messageId?: string
   tools?: string[]
+  text?: string
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -452,7 +453,7 @@ async function runSend(input: {
       messages: [{
         id: input.messageId ?? USER_MESSAGE_ID,
         role: 'user',
-        parts: [{ type: 'text', text: 'Do the thing' }],
+        parts: [{ type: 'text', text: input.text ?? 'Do the thing' }],
       }],
     },
   } as any)
@@ -965,6 +966,46 @@ describe('Besidka tools in the chat send', () => {
     expect(names).toContain('tool_index__load')
     expect(system).toContain('besidka__delete_files | Besidka | always-ask')
     expect(noticeLines()).toEqual([])
+  })
+
+  it('loads delete_files up front for a Ukrainian request to delete a file, '
+    + 'and still asks before it runs', async () => {
+    setModes({}, 'ask')
+
+    const { doStream, assistantInsert } = await runSend({
+      text: 'Видали файл kyiv-chestnut-leaf.jpg з моїх файлів',
+      steps: [
+        toolCallChunks('call-1', 'besidka__delete_files', {
+          fileIds: ['file-1'],
+        }),
+        textChunks('Never reached.'),
+      ],
+    })
+    const firstCall = doStream.mock.calls[0]?.[0] as any
+    const system = String(firstCall?.prompt?.find((message: any) => {
+      return message.role === 'system'
+    })?.content ?? '')
+
+    expect(readToolNames(firstCall)).toContain('besidka__delete_files')
+    expect(system).toContain('Never use a different tool to approximate')
+    expect(system.indexOf('<tool_index>'))
+      .toBeLessThan(system.indexOf('Tools whose names start with besidka__'))
+    expect(findPart(assistantInsert?.parts ?? [], TOOL_APPROVAL_DATA_PART_TYPE))
+      .toMatchObject({
+        data: { reason: 'always-ask', rememberOptions: ['once'] },
+      })
+  })
+
+  it('prefetches nothing for a request that names no action', async () => {
+    setModes({}, 'ask')
+
+    const { doStream } = await runSend({
+      text: 'Які файли в мене є?',
+      steps: finalAnswer,
+    })
+
+    expect(readToolNames(doStream.mock.calls[0]?.[0]))
+      .not.toContain('besidka__delete_files')
   })
 
   it('reaches delete_files past the up-front cap through the tool index and '
