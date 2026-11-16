@@ -46,7 +46,7 @@
         >
           <NuxtLink
             v-if="isRegistryAvailable"
-            to="/chats/connectors?add=directory"
+            to="/chats/connectors?tab=discover"
             class="btn btn-sm min-h-11 sm:min-h-8"
             data-testid="connector-picker-browse"
             @click="close"

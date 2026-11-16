@@ -1,6 +1,7 @@
 <template>
   <div
     ref="chatInputRef"
+    data-testid="chat-input"
     class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-[calc((100vw-var(--side-panel-width,0px))/2)] sm:-translate-x-1/2 sm:w-3xl sm:max-w-chat-column side-panel-follow"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
@@ -31,24 +32,30 @@
       @files-dropped="uploadFiles"
     />
     <LazyChatScroll v-show="isChatScrollButtonVisible" />
-    <ChatInputCommandPicker
-      ref="commandPicker"
-      :is-open="commands.isOpen.value"
-      :matches="commands.matches.value"
-      :active-index="commands.activeIndex.value"
-      :has-no-commands="commands.hasNoCommands.value"
-      @pick="commands.pick"
-    />
-    <ChatInputToolApprovalChip />
-    <ChatInputConnectorSuggestion
-      v-if="connectorSuggestion"
-      :title="connectorSuggestion.title"
-      :is-at-limit="composerConnectors.isAtLimit.value
-        && connectorSuggestion.toolMode === 'manual'"
-      :is-saving="composerConnectors.isSaving.value"
-      @turn-on="turnOnSuggestedConnector"
-      @dismiss="dismissSuggestedConnector"
-    />
+    <div
+      v-show="visible && !anyMessagesSelected"
+      class="absolute bottom-full left-0 right-0 flex flex-col"
+      data-testid="chat-input-overlays"
+    >
+      <ChatInputCommandPicker
+        ref="commandPicker"
+        :is-open="commands.isOpen.value"
+        :matches="commands.matches.value"
+        :active-index="commands.activeIndex.value"
+        :has-no-commands="commands.hasNoCommands.value"
+        @pick="commands.pick"
+      />
+      <ChatInputToolApprovalChip />
+      <ChatInputConnectorSuggestion
+        v-if="connectorSuggestion"
+        :title="connectorSuggestion.title"
+        :is-at-limit="composerConnectors.isAtLimit.value
+          && connectorSuggestion.toolMode === 'manual'"
+        :is-saving="composerConnectors.isSaving.value"
+        @turn-on="turnOnSuggestedConnector"
+        @dismiss="dismissSuggestedConnector"
+      />
+    </div>
     <div class="flex justify-center w-full px-2">
       <UiBubble
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"

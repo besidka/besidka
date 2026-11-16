@@ -299,7 +299,7 @@ describe('ChatInput/ConnectorPicker', () => {
     const browse = get('connector-picker-browse')
 
     expect(browse.textContent).toContain('Browse connectors')
-    expect(browse.outerHTML).toContain('add=directory')
+    expect(browse.outerHTML).toContain('tab=discover')
   })
 
   it('keeps the limit hint with no connectors', async () => {

@@ -21,6 +21,19 @@
       </p>
     </template>
 
+    <template
+      v-if="registryFeature.active"
+      #toolbar
+    >
+      <HistoryBoxTabs
+        :options="VIEW_OPTIONS"
+        :model-value="view"
+        label="Connectors"
+        test-id-prefix="connectors-view"
+        @select="selectView"
+      />
+    </template>
+
     <p
       class="sr-only"
       aria-live="polite"
@@ -29,6 +42,9 @@
       {{ liveMessage }}
     </p>
 
+    <LazyProfileConnectorsDirectory v-if="view === 'discover'" />
+
+    <template v-else>
     <div class="flex flex-wrap items-center justify-between gap-3 px-1">
       <p
         class="text-sm text-base-content/70"
@@ -38,21 +54,35 @@
           {{ connectors.length }} of {{ CONNECTORS_PER_USER }} connectors
         </template>
       </p>
-      <button
+      <div
         v-if="connectors.length"
-        type="button"
-        class="btn btn-primary btn-sm min-h-11 sm:min-h-8"
-        :disabled="connectors.length >= CONNECTORS_PER_USER"
-        data-testid="connectors-add"
-        @click="openAdd('presets')"
+        class="flex flex-wrap items-center gap-2"
       >
-        <Icon
-          name="lucide:plus"
-          size="16"
-          aria-hidden="true"
-        />
-        Add connector
-      </button>
+        <button
+          v-if="registryFeature.active"
+          type="button"
+          class="btn btn-sm min-h-11 sm:min-h-8"
+          :disabled="connectors.length >= CONNECTORS_PER_USER"
+          data-testid="connectors-add-url"
+          @click="openAdd('url')"
+        >
+          Add by URL
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary btn-sm min-h-11 sm:min-h-8"
+          :disabled="connectors.length >= CONNECTORS_PER_USER"
+          data-testid="connectors-add"
+          @click="startAdding"
+        >
+          <Icon
+            name="lucide:plus"
+            size="16"
+            aria-hidden="true"
+          />
+          Add connector
+        </button>
+      </div>
     </div>
 
     <div
@@ -122,9 +152,9 @@
           type="button"
           class="btn btn-primary btn-sm min-h-11 sm:min-h-8"
           data-testid="connectors-empty-presets"
-          @click="openAdd('presets')"
+          @click="startAdding"
         >
-          Browse presets
+          {{ registryFeature.active ? 'Browse connectors' : 'Browse presets' }}
         </button>
         <button
           type="button"
@@ -153,6 +183,7 @@
         @toggle="toggleConnector"
       />
     </ul>
+    </template>
   </HistoryPageShell>
 
   <LazyProfileConnectorsAddDialog
@@ -171,7 +202,6 @@
 </template>
 
 <script setup lang="ts">
-import { LazyProfileConnectorsDetailPanel } from '#components'
 import type { ConnectorPageItem } from '#shared/types/connectors.d'
 import { CONNECTORS_PER_USER } from '#shared/utils/connectors-policy'
 
@@ -187,10 +217,24 @@ useSeoMeta({
 
 const SKELETON_ROWS = 3
 const ADD_TAB_IDS = ['presets', 'url', 'directory'] as const
+const VIEW_OPTIONS = [
+  { value: 'yours', label: 'Yours' },
+  { value: 'discover', label: 'Discover' },
+]
+
+const HANDLED_QUERY_KEYS = new Set([
+  'connected',
+  'error',
+  'connector',
+  'add',
+  'tab',
+])
 
 type AddTabId = typeof ADD_TAB_IDS[number]
+type ConnectorsView = 'yours' | 'discover'
 
 const connectorsFeature = useFeature('connectors')
+const registryFeature = useFeature('connectors.registry')
 
 if (!connectorsFeature.value.active) {
   await navigateTo('/chats/history', { replace: true })
@@ -200,9 +244,11 @@ const route = useRoute()
 const router = useRouter()
 const sidePanel = useSidePanel()
 const connect = useConnectorConnect()
+const detailPanel = useConnectorDetailPanel()
 const { connectors, hasLoaded, error, refresh } = useConnectorsPage()
 
 const addTab = shallowRef<AddTabId | null>(null)
+const view = shallowRef<ConnectorsView>('yours')
 const busyIds = shallowRef<Set<string>>(new Set())
 const liveMessage = shallowRef<string>('')
 const pendingOpenId = shallowRef<string | null>(null)
@@ -225,14 +271,29 @@ function openAdd(tab: AddTabId) {
   addTab.value = tab
 }
 
-function openDetail(connector: Pick<ConnectorPageItem, 'id' | 'title'>) {
-  sidePanel.open({
-    viewKey: `${CONNECTOR_VIEW_KEY_PREFIX}${connector.id}`,
-    title: connector.title,
-    mode: 'detail',
-    component: LazyProfileConnectorsDetailPanel,
-    props: { connectorId: connector.id },
+async function selectView(next: string) {
+  view.value = next === 'discover' ? 'discover' : 'yours'
+  await router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      tab: view.value === 'discover' ? 'discover' : undefined,
+    },
   })
+}
+
+async function startAdding() {
+  if (registryFeature.value.active) {
+    await selectView('discover')
+
+    return
+  }
+
+  openAdd('presets')
+}
+
+function openDetail(connector: Pick<ConnectorPageItem, 'id' | 'title'>) {
+  detailPanel.open(connector)
 }
 
 function setBusy(connectorId: string, isBusy: boolean) {
@@ -284,12 +345,20 @@ async function handleRouteQuery() {
 
   const requestedAddTab = ADD_TAB_IDS.find(id => id === query.add) ?? null
 
+  if (query.tab === 'discover' && registryFeature.value.active) {
+    view.value = 'discover'
+  }
+
   if (!callback && !requestedId && !requestedAddTab) {
     return
   }
 
-  if (requestedAddTab) {
-    openAdd(requestedAddTab)
+  if (requestedAddTab === 'url' || !registryFeature.value.active) {
+    if (requestedAddTab) {
+      openAdd(requestedAddTab)
+    }
+  } else if (requestedAddTab) {
+    view.value = 'discover'
   }
 
   if (callback?.kind === 'connected') {
@@ -309,12 +378,12 @@ async function handleRouteQuery() {
 
   await router.replace({
     path: route.path,
-    query: Object.fromEntries(Object.entries(query).filter(([key]) => {
-      return key !== 'connected'
-        && key !== 'error'
-        && key !== 'connector'
-        && key !== 'add'
-    })),
+    query: {
+      ...Object.fromEntries(Object.entries(query).filter(([key]) => {
+        return !HANDLED_QUERY_KEYS.has(key)
+      })),
+      ...(view.value === 'discover' ? { tab: 'discover' } : {}),
+    },
   })
 }
 
@@ -339,8 +408,19 @@ watch(
 
 onMounted(handleRouteQuery)
 
+watch(() => route.query.connector, async (connectorId) => {
+  if (typeof connectorId === 'string') {
+    await handleRouteQuery()
+  }
+})
+
 onBeforeUnmount(() => {
-  if (sidePanel.viewKey.value?.startsWith(CONNECTOR_VIEW_KEY_PREFIX)) {
+  const viewKey = sidePanel.viewKey.value ?? ''
+
+  if (
+    viewKey.startsWith(CONNECTOR_VIEW_KEY_PREFIX)
+    || viewKey.startsWith(CONNECTOR_DIRECTORY_VIEW_KEY_PREFIX)
+  ) {
     sidePanel.close()
   }
 

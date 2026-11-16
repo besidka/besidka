@@ -486,6 +486,38 @@ export async function readConnectorUrl(
   return await useDecryptText(row.urlEncrypted)
 }
 
+/**
+ * The full URLs of all of a user's connectors (at most 20), decrypted in
+ * memory, for comparing them with directory addresses. Same rule as
+ * `readConnectorUrl`: never log or return the URLs to a client.
+ */
+export async function listConnectorUrls(
+  db: DbClient,
+  userId: number,
+): Promise<Array<{ id: string, url: string }>> {
+  const rows = await db
+    .select({
+      id: schema.connectors.id,
+      urlEncrypted: schema.connectors.urlEncrypted,
+    })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.userId, userId))
+  const urls: Array<{ id: string, url: string }> = []
+
+  for (const row of rows) {
+    try {
+      urls.push({
+        id: encodePublicId(row.id),
+        url: await useDecryptText(row.urlEncrypted),
+      })
+    } catch {
+      continue
+    }
+  }
+
+  return urls
+}
+
 export async function updateConnector(
   db: DbClient,
   userId: number,

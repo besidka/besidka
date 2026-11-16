@@ -1048,7 +1048,8 @@ export async function getConnectorTools(
       }
 
       if (
-        warmupConnectors.length >= CONNECTOR_CATALOG_WARMUPS_PER_SEND
+        connector.transport === 'sse'
+        || warmupConnectors.length >= CONNECTOR_CATALOG_WARMUPS_PER_SEND
         || !await claimCatalogWarmup(kv, connector.id)
       ) {
         skipCatalog(connector, 'no-snapshot')

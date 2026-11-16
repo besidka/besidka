@@ -420,6 +420,7 @@ async function runSend(input: {
   connectorIds?: string[]
   servers: MockMcpServer[]
   messageId?: string
+  tools?: string[]
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -441,7 +442,7 @@ async function runSend(input: {
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     body: {
       model: MODEL_ID,
-      tools: [],
+      tools: input.tools ?? [],
       reasoning: 'off',
       ...(input.connectorIds ? { connectorIds: input.connectorIds } : {}),
       messages: [{
@@ -936,6 +937,35 @@ describe('tool approval requests in the chat send', () => {
       family: 'connector',
       connectorId: 'conn-linear',
       access: 'read',
+    })
+  })
+
+  it('asks before the first use of an Auto connector read in a message '
+    + 'that requested web search', async () => {
+    const autoLinear = mocks.store.connectors.find((connector) => {
+      return connector.id === 'conn-linear'
+    })!
+
+    autoLinear.toolMode = 'auto'
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      tools: ['web_search'],
+      steps: [
+        toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-2', 'mcp__linear__list_issues', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+    const pendingPart = parts.find((part: any) => {
+      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
+    })
+
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(pendingPart).toMatchObject({ toolName: 'mcp__linear__list_issues' })
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toMatchObject({
+      data: { reason: 'untrusted-output' },
     })
   })
 

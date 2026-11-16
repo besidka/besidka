@@ -939,12 +939,12 @@ Choices that differ from or add to section 6, 10 and 14:
   that feature is active, a toggle per enabled, ready or drifted connector,
   and an empty state "No connectors yet" with a primary "Add a connector"
   link (`/chats/connectors?add=presets`). At the top it has "Browse
-  connectors" (`/chats/connectors?add=directory`, only with the
+  connectors" (`/chats/connectors?tab=discover`, only with the
   `connectors.registry` flag) and "Manage connectors" (`/chats/connectors`).
-  The page reads `add` (`presets`, `url` or `directory`), opens the add dialog
-  on that tab and removes the parameter from the URL. With the registry flag
-  on, `presets` and `directory` both open Browse (the four presets are its
-  Featured row); without it, `directory` falls back to Presets (section 10.2). The row badge is the number of
+  The page reads `add` (`presets`, `url` or `directory`) and removes it from
+  the URL. With the registry flag on, `presets` and `directory` open the
+  Discover tab and `url` opens the address form (section 10.3); without it,
+  they open the add dialog on that tab and `directory` falls back to Presets. The row badge is the number of
   connectors on in the chat plus one when Besidka tools are on.
 
 ### 6.2 As built: the tool index and connector modes (C-15, 2026-11-16)
@@ -1177,8 +1177,10 @@ budget. Instead:
    after a try (`connectors:catalog-warmup:<id>`), so a server that is down
    is not contacted on every send. The rest are skipped for this send and
    logged (`catalogSkipped: 'no-snapshot'`). Only `tools/list` is sent,
-   never `tools/call`. Opening the connector's detail panel also writes the
-   snapshot.
+   never `tools/call`. A legacy SSE connector never gets a warm-up (it would
+   hold one of the two SSE streams of the send); it gets its snapshot from a
+   chat-on send or the detail panel. Opening the connector's detail panel
+   also writes the snapshot.
 5. A catalog connector whose consent is not current is skipped silently
    (logged), never refused.
 
@@ -1228,10 +1230,28 @@ the paused send's `connectorIds` hold only live connectors, and the resumed
 send rebuilds the catalog from the snapshot, so an approved call to an Auto
 connector runs through the same lazy `verify` (integration spec).
 
+**Cost of an idle Auto connector.** An account with Auto connectors
+registers their tools (deferred, not sent) in every send, so every chat gets
+the catalog block, the connector trust instructions and the connector step
+budget (`CONNECTOR_STEPS_PER_TURN`, a ceiling, not spent unless used). The
+provider web search guard is not affected: it withholds search only after a
+tool call of the turn actually read a connector. At send start each Auto
+connector costs one KV read, one D1 baseline read and hashing its tool
+definitions; this was not measured on a real Worker.
+
+**Exception to section 6.2 point 5.** `use_connector` is the one loader
+whose result can carry remote text: when a connector's tools do not fit at
+once, it returns their sanitized one-line descriptions in a
+`<connector_tools>` block marked as data, the same lines the `<tool_index>`
+block shows for indexed tools. Its parts are tool parts like
+`tool_index__load`'s, so the existing tool-part rules for shares, branches,
+later model context and chat search apply to them unchanged.
+
 **Guards kept.** The F2 rule applies unchanged: an Auto connector's read
 after content from another source (a web result, a file, another
-connector) asks with `untrusted-output` (integration spec,
-`chats-tool-approval-request.spec.ts`). Approvals, grants, the audit row,
+connector) asks with `untrusted-output`, also on its first use in the send
+(integration specs in `chats-tool-approval-request.spec.ts`: after another
+connector's read, and in a message that requested web search). Approvals, grants, the audit row,
 the 12-call and per-minute limits and result framing are the same path as
 any connector tool.
 
@@ -2414,10 +2434,15 @@ HTML (C-7 consumes them).
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
 | `connectors:catalog:<connectorId>` | 30 days | C-15 Auto: the last live `tools/list` result, read at send start for the connector catalog (section 6.3); deleted with the connector, on disconnect and by the account purge |
 | `connectors:catalog-warmup:<connectorId>` | 15 min | C-15 Auto: a warm-up listing was tried, so the next one waits |
-| `connectors:icon:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10) |
+| `connectors:icon:v2:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10). C-14 v2 added `v2:` to every icon key below so misses kept before the head-only page read and the parent-site step are not reused |
 | `connectors:icon-lock:<connectorId>` | 60 s | in-flight marker of a cold icon fetch |
-| `connectors:icon:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |
-| `connectors:icon:registry-origin:<sha256(origin)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the favicon or page-link result for one host, shared by every directory entry on it; its lock is `connectors:icon-lock:registry-origin:<hash>` |
+| `connectors:icon:v2:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |
+| `connectors:icon:v2:registry-origin:<sha256(origin)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the favicon or page-link result for one host, shared by every directory entry on it and (C-14 v2) by every user's connector on it; its lock is `connectors:icon-lock:registry-origin:<hash>` |
+| `connectors:registry:directory:v1:<curation version>` | 1 hour | C-14 v2: the filtered, de-duplicated, categorized directory as one JSON blob (about 5.7 MB for 12,400 entries), dropped by a sync that changed rows; never stored for an empty mirror (section 10.3) |
+| `connectors:registry:probe:<sha256(registry name + address)[:32 hex]>` | 1 day (a failure: 1 hour) | C-14 v2: the auth kind and public tool list of one directory entry, shared by every user; a changed address is a new key (section 10.3) |
+| `connectors:registry:probe-lock:<sha256(origin)[:32 hex]>` | 60 s (value: busy until, the probe plus a 10 s cooldown) | C-14 v2: one probe per host at a time and about one every ten seconds |
+| `connectors:registry:directory:v1:<curation version>:lock` | 60 s (value: busy until, 30 s) | C-14 v2: an index rebuild in progress; another isolate waits up to 3 s for the built copy |
+| `connectors-icon-rate-limit:<userId>:<minute>` | 120 s | C-14 v2: the icon routes' per-user count for one calendar minute, written at most once a second per isolate (`consumeIconRateLimit`, fails open) |
 | `connectors:registry:sync-now-lock` | 150 s | BES-398: best-effort marker that an admin's Sync now is running |
 | `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
@@ -2439,6 +2464,20 @@ HTML (C-7 consumes them).
 | `notion` | Notion | `https://mcp.notion.com/mcp` | `['oauth']` | "If your workspace limits MCP clients, ask the admin to approve Besidka." |
 | `linear` | Linear | `https://mcp.linear.app/mcp` | `['oauth', 'header']` | none |
 | `atlassian` | Atlassian | `https://mcp.atlassian.com/v2/mcp` | `['oauth', 'header']` | "Your Atlassian admin must allow besidka.com (or enable API tokens). Some tools use Rovo credits from your organization." |
+| `stripe` | Stripe | `https://mcp.stripe.com/` | `['oauth', 'header']` | "For a key, use an agent API key: Stripe stops accepting other secret keys on its MCP server from November 30, 2026." |
+| `vercel` | Vercel | `https://mcp.vercel.com/` | `['oauth']` | none |
+| `supabase` | Supabase | `https://mcp.supabase.com/mcp` | `['oauth']` | none |
+| `sentry` | Sentry | `https://mcp.sentry.dev/mcp` | `['oauth']` | none |
+| `square` | Square | `https://mcp.squareup.com/mcp` | `['oauth']` | none |
+| `intercom` | Intercom | `https://mcp.intercom.com/mcp` | `['oauth', 'header']` | "For US workspaces. An EU workspace uses https://mcp.eu.intercom.com/mcp: add it by URL." |
+| `clickup` | ClickUp | `https://mcp.clickup.com/mcp` | `['oauth']` | none |
+| `miro` | Miro | `https://mcp.miro.com/` | `['oauth']` | "On an Enterprise plan an admin must turn on MCP first." |
+| `todoist` | Todoist | `https://ai.todoist.net/mcp` | `['oauth']` | none |
+| `webflow` | Webflow | `https://mcp.webflow.com/mcp` | `['oauth']` | none |
+| `wix` | Wix | `https://mcp.wix.com/mcp` | `['oauth']` | none |
+
+The eleven presets after Atlassian were added by C-14 v2 for services the
+registry mirror lacks; their sources and probe results are in section 10.3.
 
 Text names, plus (BES-398) a bundled `simple-icons` mark per preset
 (`app/utils/connector-brand-icons.ts`; no request, no remote image). The catalog footer reads "Names belong to their
@@ -2488,7 +2527,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_ICON_SOURCE_MAX_LENGTH` | 65,536 characters per declared source | BES-395 |
 | `CONNECTOR_ICON_CACHE_SECONDS` | 86,400 browser cache of the icon route | BES-395 |
 | `CONNECTOR_ICON_MAX_DIMENSION` | 512 pixels, width and height | BES-395 |
-| `CONNECTOR_ICON_ROUTES_PER_MINUTE` | 120 per user on the icon route | BES-395 |
+| `CONNECTOR_ICON_ROUTES_PER_MINUTE` | 300 per user on the icon routes (120 before C-14 v2: the Discover home alone shows 102 cards) | BES-395, C-14 |
 | `CONNECTOR_ICON_LOCK_TTL_SECONDS` | 60 | BES-395 |
 | `CONNECTOR_ICON_HTML_MAX_BYTES` | 131,072 for the home page read for `<link rel=icon>` | BES-398 |
 | `CONNECTOR_ICON_HTML_LINKS` | 3 icon links tried per page | BES-398 |
@@ -2842,9 +2881,8 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   letter), the detail panel header and the reasoning steps through the
   existing connector icon route once the connector is connected. A letter is
   the fallback everywhere: an unavailable icon, a 404 and an image `error`
-  all end there. A connector the user added but has not connected still
-  shows a letter (or its preset mark), because "adding sends nothing" stays
-  true: the host is first contacted when the user connects it. Browsing the
+  all end there. (Superseded by section 10.3: every connector of the user
+  now gets an icon, connected or not.) Browsing the
   directory does contact the host of each visible card (a favicon request
   from Besidka's servers, no user data, no cookies, user agent
   `Besidka-Connectors/1.0`), and the registry for entries that declare
@@ -2886,6 +2924,259 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   registry `icons` kept in D1 or per-row KV (a migration; thousands of KV
   writes per sync), an admin page for the sync (the button is enough), a
   "Featured" list longer than the four curated presets, category filters.
+
+### 10.3 As built: directory v2, Yours and Discover (C-14, 2026-11-16)
+
+The owner compared the directory with Claude's Settings → Connectors and
+asked for the same shape. This replaces the Browse tab of section 10.2.
+
+- **Yours and Discover.** With `connectors.registry` the Connectors page has
+  box tabs (`HistoryBoxTabs`, `connectors-view-*`) under the history tabs:
+  **Yours** is the user's connectors as before, **Discover** is
+  `Profile/Connectors/Directory.client.vue`. The tab is in the address as
+  `?tab=discover`; `?add=presets` and `?add=directory` (old links) open
+  Discover, `?add=url` opens the address form. "Add connector" (primary)
+  opens Discover, "Add by URL" (secondary) opens the add dialog, which with
+  the flag is the address form only (title "Add by URL", no tabs). Without
+  the flag nothing changes: no tabs, the dialog keeps Presets and Add by URL.
+  The chat picker's "Browse connectors" links to `?tab=discover`.
+  `RegistrySearch.client.vue` is gone.
+- **Discover home.** `GET /api/v1/connectors/registry/home` answers
+  `{ top, topCount, new, newCount, categories: [{ id, label, count, items }],
+  total, syncing? }`. The page shows **Top connectors**, **New connectors**,
+  then every category that has entries in taxonomy order, each with its
+  count, six cards and "Show all" when there are more. Show all opens the
+  full list in place (`GET /api/v1/connectors/registry?view=top|new` or
+  `?category=<id>`, 20 a page, "Show more", "Back" returns to the home). The
+  search box searches everything (a 250 ms pause, 2 to 64 characters) and
+  replaces the home with ranked, paged results; clearing it returns to where
+  the user was. Installed entries say **Added** with a check and still open.
+  The admin Sync now row moved here unchanged.
+- **Cards.** `DirectoryCard.vue`: icon (registry icon route, or the bundled
+  mark for a preset), title as a button that opens the details (stretched
+  over the card), a **Featured** check (`lucide:badge-check`) for a curated
+  entry or a muted **Community** badge (`badge-soft`) for every other one, "by
+  <publisher>", **Add** (`btn-primary`) or the Added badge, two lines of
+  description, host and auth hint. All third-party text is plain text.
+- **Detail view.** A card opens `DirectoryDetailPanel.vue` in the shared
+  side panel (`connector-directory:<id>` view key, same chrome as the
+  connector panel, "Back to the list" closes it): icon, title, the
+  **Featured** badge with its tooltip or the **Community** badge, publisher (full domain), one primary button, the
+  description, the full server address as text, the sign-in kind, the
+  category, the publisher and **Tools**. The button is **Add and connect**
+  (adds, then opens the Connect dialog), **Connect** for an added connector
+  that still needs a sign-in, **Open** for one that is connected (it opens
+  that connector's panel). `GET /api/v1/connectors/registry/entry?id=` answers
+  `{ item, categoryLabel, probe }` from the index only, never contacting the
+  server; `probe` is set when the entry declares header names (a key is
+  needed, no request) or a probe is cached. Otherwise the panel calls
+  `GET /api/v1/connectors/registry/tools?id=`
+  (`server/utils/connectors/registry-probe.ts`): one unauthenticated MCP
+  `initialize` to the stored address (never one from the request), a 401 or
+  403 then looks for protected-resource metadata (found: OAuth, else: API key
+  or token), a 2xx lists the tools anonymously through the same MCP client and
+  `safeFetch` rules as a connected connector (`resolveAuth` gives no headers)
+  and closes it. The whole probe has an 8 s deadline, at most 100 tools are
+  kept as plain text (name 128, title 120, description 300 code points,
+  control and invisible format characters removed), and the result is kept in
+  KV for a day (a failure for an hour) for every user. 20 probes a minute
+  per user (`REGISTRY_PROBES_PER_MINUTE`). The panel shows "Tools are listed
+  after you connect." for anything but a listed server. A preset card that is
+  not in the registry (GitHub) answers its preset's auth without a request.
+- **Index.** The registry has no categories, popularity or quality signals,
+  and SQLite cannot fold accents, so the directory is built in code
+  (`shared/utils/connectors-directory.ts`, pure functions) and not in SQL.
+  `server/utils/connectors/directory-index.ts` reads the active rows in pages
+  of 2,500, builds the index and keeps it in KV (`connectors:registry:
+  directory:v1:<curation version>`, 1 hour) and in isolate memory (5
+  minutes). A cold isolate parses the KV copy; only a miss on both reads D1.
+  A sync run that upserted, deleted or swept rows drops the KV copy and the
+  memory of its own isolate; other isolates catch up within five minutes.
+  Measured on the 14,517-row preview mirror: in Node on an M-series Mac the
+  build takes about 220 ms; in local workerd (`wrangler dev` on the
+  production build) a cold `/registry/home` (D1 read, build, KV put) took
+  504 ms, warm ones 14 ms, the first search 100 ms (it builds the search
+  keys) and later ones about 20 ms; the JSON is about 5.7 MB. Search keys
+  are built on the first search only, and the sorted Top, New and category
+  lists once per index (an `Intl.Collator`, kept on the index). No D1 migration, no new column.
+  `REGISTRY_SEARCHES_PER_MINUTE` is 60 now (home, lists and search share the
+  bucket) and `REGISTRY_SEARCH_MAX_CURSOR` is 20,000, because paging is
+  in-memory and a category's Show all must reach its end.
+- **Quality filter** (`findDirectoryExclusion`): an entry is hidden without a
+  title, with a description under 20 characters, with a non-https remote, or
+  with a remote that is not a public DNS name (IP literals, single labels,
+  `localhost`, `.local`, `.internal`, `.lan`, `.home`, `.test`, `.example`,
+  `.invalid`, `.onion`, and tunnel hosts in `EPHEMERAL_TUNNEL_SUFFIXES` such
+  as `trycloudflare.com` and `ngrok`). Duplicate remotes (same host, path
+  without trailing slash and query) collapse to one: curated, then official,
+  then titled, then newest, then lowest id. On 2026-11-16 the preview mirror
+  of 14,517 rows gave **12,431 registry entries plus the GitHub preset =
+  12,432** (2,067 without a title, 6 short descriptions, 1 not public, 12
+  duplicates). Claude shows about 11.3k; the threshold was not tuned to match.
+- **Curation** (`config/connectors-directory.ts`, `CURATED_CONNECTORS`,
+  versioned by `CONNECTOR_CURATION_VERSION`): the only ranking signal. Each
+  entry has an id, a display title (many official entries have no registry
+  title: Notion, monday.com, PayPal, Airtable, GitLab, Exa, Close, Mux,
+  Axiom, Cloudflare), an optional description (Jotform's is 11 characters),
+  and either the exact registry `name` or a preset id for a service the
+  registry does not list. A curated entry skips the title and description
+  rules and its title wins everywhere, including the title stored when it is
+  added (`findActiveRegistryEntry`). Top is the curated list ∩ the mirror in
+  list order; a curated preset missing from the mirror becomes a card with
+  the id `preset:<id>`; when the mirror later lists a preset's exact URL,
+  that row takes the preset's curated rank and title instead. The list has
+  **46 entries**: 34 registry names checked read-only against
+  `besidka-preview` on 2026-11-16 and 12 presets. In rank order: GitHub,
+  Notion, Linear, Atlassian, Figma, Canva, Stripe, Vercel, Supabase, Sentry,
+  monday.com, Airtable, GitLab, PayPal, Square, Intercom, ClickUp, Miro,
+  Todoist, Webflow, Wix, Hugging Face, Exa, Apify, Cloudflare Docs, Neon,
+  Railway, Postman, New Relic, CircleCI, Amplitude, Make, Basecamp, Lucid,
+  Fireflies.ai, Ahrefs, Close, Jotform, PandaDoc, Bitly, Mux, Cloudinary,
+  Egnyte, Axiom, Microsoft Learn, ScrapingBee. The mirror lacked the big
+  services the owner named, so the verified ones became presets (table
+  below); the others are skipped with a reason. The
+  mirror keeps only `streamable-http` remotes, so a service with only an SSE
+  or local server is missing too. **To edit**: find the exact name with
+  `pnpm exec wrangler d1 execute besidka-preview --remote --command "SELECT
+  name, title, remote_url FROM mcp_registry_servers WHERE remote_url LIKE
+  '%vendor.com%'"`, prefer the entry whose namespace is the vendor's domain
+  (it is official), add it in rank order, and bump
+  `CONNECTOR_CURATION_VERSION` (the KV key carries it, so the next request
+  rebuilds). A name that disappears from the registry is skipped silently.
+  `tests/unit/utils/connectors-directory.spec.ts` checks unique ids and
+  names, one source per entry and that preset ids exist.
+- **Presets for services the registry lacks** (verified 2026-11-16). A
+  preset is added only when the vendor's own documentation names the URL and
+  an anonymous `initialize` through `probeConnectorServer` and
+  `discoverConnectorAuth` (the connect flow's own SSRF-safe code) answers
+  401 with protected-resource metadata whose authorization server offers
+  dynamic client registration or a client ID metadata document, so Besidka
+  can actually sign in. No URL was guessed.
+
+  | Preset | URL | Auth | Source (fetched 2026-11-16) | Probe |
+  | --- | --- | --- | --- | --- |
+  | `stripe` | `https://mcp.stripe.com/` | OAuth or agent API key (`Authorization`) | [docs.stripe.com/mcp](https://docs.stripe.com/mcp): "use `https://mcp.stripe.com` as the server URL" | 401, issuer `access.stripe.com/mcp`, DCR |
+  | `vercel` | `https://mcp.vercel.com/` | OAuth | [vercel.com/docs/mcp/vercel-mcp](https://vercel.com/docs/mcp/vercel-mcp): "Vercel's official MCP endpoint: `https://mcp.vercel.com`" | 401, issuer `vercel.com`, DCR and CIMD |
+  | `supabase` | `https://mcp.supabase.com/mcp` | OAuth | [supabase.com/docs/guides/getting-started/mcp](https://supabase.com/docs/guides/getting-started/mcp) | 401, issuer `api.supabase.com`, DCR |
+  | `sentry` | `https://mcp.sentry.dev/mcp` | OAuth | [mcp.sentry.dev](https://mcp.sentry.dev/) (redirect target of docs.sentry.io/product/sentry-mcp) | 401, issuer `mcp.sentry.dev`, DCR and CIMD |
+  | `square` | `https://mcp.squareup.com/mcp` | OAuth | [developer.squareup.com/docs/mcp](https://developer.squareup.com/docs/mcp) | 401, issuer `mcp.squareup.com`, DCR |
+  | `intercom` | `https://mcp.intercom.com/mcp` | OAuth or API token (`Authorization`) | [developers.intercom.com/docs/guides/mcp](https://developers.intercom.com/docs/guides/mcp) (US; EU is `mcp.eu.intercom.com/mcp`) | 401, issuer `mcp.intercom.com`, DCR |
+  | `clickup` | `https://mcp.clickup.com/mcp` | OAuth | [developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server](https://developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server) | 401, issuer `mcp.clickup.com`, DCR |
+  | `miro` | `https://mcp.miro.com/` | OAuth | [developers.miro.com/docs/mcp-intro](https://developers.miro.com/docs/mcp-intro) | 401, issuer `mcp.miro.com`, DCR |
+  | `todoist` | `https://ai.todoist.net/mcp` | OAuth | [developer.todoist.com/api/v1](https://developer.todoist.com/api/v1/) | 401, issuer `todoist.com`, DCR and CIMD |
+  | `webflow` | `https://mcp.webflow.com/mcp` | OAuth | [developers.webflow.com/mcp/reference/getting-started](https://developers.webflow.com/mcp/reference/getting-started) | 401, issuer `mcp.webflow.com`, DCR |
+  | `wix` | `https://mcp.wix.com/mcp` | OAuth (its API key needs a second `wix-account-id` header, which presets cannot carry) | [dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp](https://dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp) | 401, issuer `mcp.wix.com`, DCR |
+
+  Skipped:
+
+  | Service | Reason |
+  | --- | --- |
+  | Slack | `https://mcp.slack.com/mcp` answers, but its authorization server has no DCR or CIMD; the docs say only Slack-registered apps may connect |
+  | HubSpot | `https://mcp.hubspot.com` answers, but no DCR or CIMD; the docs require a user-level HubSpot app with its own client credentials |
+  | Box | `https://mcp.box.com` answers, but no DCR or CIMD; the docs require admin-generated integration credentials |
+  | Asana | `https://mcp.asana.com/v2/mcp` answers, but no DCR or CIMD (the docs mention a client ID and secret for some clients) |
+  | Shopify | No single URL: each store has its own endpoint (`https://{shop}/api/ucp/mcp`) |
+  | Salesforce | Per-org hosted servers that need an org-side app; the vendor URL could not be confirmed from Salesforce's own page |
+  | Zapier | The vendor docs do not print the server URL |
+  | Pipedream | The hosted server needs a developer token and project headers, not an end-user sign-in |
+  | Brave | No Brave-hosted remote server; the official server is local |
+
+  A preset that later fails is still caught by the scheduled
+  `scripts/check-connector-presets.mjs` probe (warn only). Each new preset
+  has a bundled `simple-icons` mark (all eleven names confirmed in the
+  collection).
+- **New connectors**: entries with a registry title, newest
+  `registry_updated_at` first. The registry has no "first published" field
+  in the mirror, so an updated entry counts as new.
+- **Categories** (`CONNECTOR_CATEGORIES`, same file, display order):
+  Developer tools, Project management, Communication, Docs & knowledge,
+  Design, Sales & CRM, Marketing, Finance & payments, Data & analytics, Cloud
+  & infrastructure, Productivity, Search & web, Shopping & commerce, Legal &
+  government, Other. Derived at index time from the words of the title and
+  the last name segment (weight 3) and the description (weight 1), after the
+  same normalization as search; one-word keywords match whole words, phrases
+  match word sequences; the highest score wins, a tie keeps the earlier
+  category, no hit is Other. The two extra categories took Other from 2,440
+  to 1,934 entries. Counts on 2026-11-16: Finance & payments 1,559, Docs &
+  knowledge 1,266, Communication 1,007, Data & analytics 942, Search & web
+  889, Shopping & commerce 840, Design 783, Marketing 772, Project management
+  501, Sales & CRM 423, Cloud & infrastructure 427, Productivity 425,
+  Developer tools 408, Legal & government 256, Other 1,934. Changing a
+  keyword changes categories after the next index build; bump the curation
+  version to rebuild at once.
+- **Search ranking** (`rankDirectoryEntry`, lower is better): 0 the whole
+  title, 1 a title prefix, 2 every query word starts a title word or the
+  title contains the query, 3 every word starts a word of the title, the
+  registry name (namespace labels included), the publisher or the host, 4
+  every word starts a word anywhere, the description included; no match is
+  left out. Case, accents (NFKD without marks) and separators are ignored, so
+  "huggingface", "hugging face" and "Hugging-Face" are equal; "contains"
+  needs at least three letters. Within a rank: official first, then the
+  browse order (curated rank, titles starting with a letter, then
+  alphabetical). Measured: "notion" puts Notion first and the InsightfulPipe
+  wrapper second.
+- **Featured and Community.** A curated entry shows a **Featured** check
+  with the tooltip "Picked by Besidka as a well-known service. Not a security
+  review."; every other entry shows a muted **Community** badge
+  (`badge badge-soft`). An earlier "Official" badge (the remote host equals
+  the reversed registry namespace or is a subdomain of it,
+  `isOfficialRegistryEntry`) was dropped from the UI because 11,852 of
+  12,432 entries (95%) qualified, so it carried no signal. The flag is still
+  computed: it breaks ties in search ranking and decides which row wins a
+  duplicate address, and items keep `isOfficial` in the API.
+- **Icons for every connector.** `GET /api/v1/connectors/[id]/icon` now
+  answers for every connector of the owner except one whose consent was
+  withdrawn, connected or not, and `hasConnectorIcon` follows. Order: the
+  registry `icons` when the connector's exact address is an active
+  directory row, the icons the server declared when it was connected, then
+  the host. The host step is cached under the same per-origin key as the
+  directory (`registry-origin:<hash>`), so a host is fetched once for every
+  entry and every user. The host step is now: `/favicon.ico`, the page's
+  `<link rel=icon>` tags, `/apple-touch-icon.png`, then the same on the
+  parent site when the first label is generic (`mcp`, `api`, `app`, `www`,
+  `server`, `gateway`, `mcp-*`, ...), never when the parent is a shared
+  hosting platform (`SHARED_HOSTING_SUFFIXES`) or a bare `co.uk`-style
+  suffix (`parentIconOrigin`). The page is read only up to `</head>` or
+  128 KiB and the rest is canceled (`readHtmlHead`), so a 309 KB home page
+  such as doop.design's still yields its 2.4 KB `favicon.png` (its 106 KB
+  `favicon.ico` is over the 32 KiB cap). `api.axiomide.com` did not resolve
+  from the build machine and is not in the preview `connectors` table, so it
+  is unverified. **Privacy change**: adding a connector already contacts its
+  server (the add probe of e4d875ed); the icon fetch before connecting is the same
+  kind of anonymous request from Besidka's servers (no user data, no
+  cookies, `Besidka-Connectors/1.0`) as browsing the directory. No legal
+  text, consent version or notice was touched.
+- **Hardening after the security review.** `readHtmlHead` tests only the
+  new chunk plus a 16-character tail for `</head>` (a page sent one byte at a
+  time stays linear) and has its own 5 s deadline on top of `safeFetch`'s
+  timer, which already covers the body read. The probe is single-flight per
+  entry in an isolate and takes a KV lock per host with a 10 s cooldown, so
+  entries on one host that differ only by query cannot make Besidka hit it
+  repeatedly; the probe cache key covers name and address. The index rebuild
+  reads rows by keyset on `id` (each row once, no `OFFSET`) under a KV lock.
+  The icon routes count per user and calendar minute in the isolate and
+  write the KV key at most once a second (KV allows about one write a second
+  per key, and the old read-then-write counter wrote it on every icon), and
+  they fail open. `findConnectorPresetByUrl` ignores host case and a trailing
+  slash, like `directoryUrlKey`.
+- **Avatar while loading.** The letter (or preset mark) stays until the
+  image has loaded, so a slow cold icon never shows an empty white disc. The
+  icon bucket is 300 a minute per user (was 120), because the home renders
+  102 cards and Show all adds 20 a page; browser caching keeps repeats away.
+- **Primary buttons.** The main action is `btn-primary`: Add on cards and on
+  preset cards, Add connector on Yours, Add and connect, Connect or Open in
+  the detail view. Secondary actions (Add by URL, Show all, Back, Sync now)
+  are not.
+- **Not in the registry.** Google Gmail, Calendar, Drive and Docs connectors
+  in Claude are Anthropic-built integrations, not entries of the open MCP
+  Registry; Google comes with Phase 4b (Linear BES-230).
+- **Specs.** `tests/unit/utils/connectors-directory.spec.ts`,
+  `tests/unit/server/utils/connectors/{registry-probe,icon}.spec.ts`,
+  `tests/integration/api/{connectors-registry,connectors-registry-directory,
+  connectors-icon}.spec.ts`,
+  `tests/unit/components/Profile/Connectors/{Directory.client,DirectoryCard,
+  DirectoryDetailPanel,AddDialog.client}.spec.ts`,
+  `tests/unit/composables/connector-directory.spec.ts` and the page spec.
 
 ## 11. MCP exposure
 

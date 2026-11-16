@@ -801,11 +801,19 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   directory (Browse and search over the registry mirror, the Featured
   presets), icons on directory cards through the Besidka registry icon
   route (registry `icons`, favicon, page `<link rel=icon>`, SVG allowlist) and
-  the admin-only "Sync now"; section 6.2 for the tool index (C-15): the
+  the admin-only "Sync now"; section 10.3 for directory v2 (Yours and
+  Discover tabs, the curated Top list in `config/connectors-directory.ts` and
+  how to edit it, New, keyword categories, the quality filter, ranked search,
+  the Featured and Community marks, the verified presets for services the registry lacks, the detail view with its anonymous tool probe, the
+  KV directory index, and icons for every connector); section 6.2 for the tool index (C-15): the
   `tool_index__load` tool over `prepareStep` `activeTools`, the per-connector
-  mode (`connectors.tool_mode`: null or `auto` is Auto, `always-on`; Off is
-  `enabled`), the room kept for loading, the prompt-cache effect, and the
-  "Turn it on?" chip triggered only by the user's own text
+  mode (`connectors.tool_mode`: `manual`, `auto` or `always-on`, null is
+  Auto through `CONNECTOR_UNSET_TOOL_MODE`; Off is `enabled`), the room kept
+  for loading, the prompt-cache effect, and the "Turn it on?" chip triggered
+  only by the user's own text; section 6.3 for Auto connectors in every
+  chat: the per-chat plan (an off always wins), the 30-day tool-definition
+  snapshot with no connection at send start, warm-ups, the live hash check
+  on first call, the `<connector_catalog>` block and `use_connector`
 - `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
   amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
   from templates, or added by archive (zip, `.skill`), pasted text, GitHub link

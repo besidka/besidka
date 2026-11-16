@@ -40,14 +40,13 @@ export function getConnectorStatusLabel(
 
 /**
  * Whether the icon route can answer for this connector (it 404s otherwise):
- * the same rule as `GET /api/v1/connectors/[id]/icon`, so the page never
- * asks for an icon of a connector the user has not connected.
+ * the same rule as `GET /api/v1/connectors/[id]/icon`, which serves an icon
+ * for every connector except one whose consent was withdrawn.
  */
 export function hasConnectorIcon(
-  connector: Pick<ConnectorPageItem, 'status' | 'consent'>,
+  connector: Pick<ConnectorPageItem, 'consent'>,
 ): boolean {
-  return connector.consent.state === 'current'
-    && (connector.status === 'ready' || connector.status === 'drifted')
+  return connector.consent.state !== 'withdrawn'
 }
 
 export function getConnectorInitial(title: string): string {

@@ -34,6 +34,14 @@ async function hashIconKeyPart(value: string): Promise<string> {
 }
 
 /**
+ * The KV key part of the favicon and page-link result for one host, shared
+ * by every directory entry and every user's connector on that host.
+ */
+export async function registryOriginIconKey(origin: string): Promise<string> {
+  return `registry-origin:${await hashIconKeyPart(origin)}`
+}
+
+/**
  * The `icons` of one registry entry, read live from the registry (the local
  * copy keeps no icons): one `latest` lookup through `safeFetch`, only on an
  * icon cache miss. Any failure is an empty list, so the host favicon is used.
@@ -122,7 +130,7 @@ export async function resolveRegistryEntryIcon(
     {
       id: `registry:${await hashIconKeyPart(entry.name)}`,
       origin,
-      originKey: `registry-origin:${await hashIconKeyPart(origin)}`,
+      originKey: await registryOriginIconKey(origin),
       readRemoteSources: () => readRemoteSources(entry.name),
     },
     { logger: options.logger, dependencies: options.dependencies },
