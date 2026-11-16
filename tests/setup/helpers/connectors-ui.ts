@@ -1,4 +1,5 @@
 import type {
+  ConnectorDirectoryItem,
   ConnectorPageItem,
   ConnectorReviewTool,
   ConnectorToolsReview,
@@ -77,5 +78,27 @@ export function createToolsReview(
       perMessageLimit: 40,
     },
     ...overrides,
+  }
+}
+
+export function createDirectoryItem(
+  patch: Partial<ConnectorDirectoryItem> = {},
+): ConnectorDirectoryItem {
+  return {
+    id: 'io.example/tracker@1.0.0',
+    name: 'io.example/tracker',
+    title: 'Tracker',
+    description: 'Tracks issues across your projects',
+    remoteUrl: 'https://mcp.tracker.example.com/mcp',
+    host: 'mcp.tracker.example.com',
+    authHint: 'unknown',
+    presetId: null,
+    publisher: 'example.io',
+    isOfficial: true,
+    isCurated: false,
+    category: 'project-management',
+    isAdded: false,
+    addedConnectorId: null,
+    ...patch,
   }
 }

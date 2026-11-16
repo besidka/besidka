@@ -928,12 +928,12 @@ Choices that differ from or add to section 6, 10 and 14:
   that feature is active, a toggle per enabled, ready or drifted connector,
   and an empty state "No connectors yet" with a primary "Add a connector"
   link (`/chats/connectors?add=presets`). At the top it has "Browse
-  connectors" (`/chats/connectors?add=directory`, only with the
+  connectors" (`/chats/connectors?tab=discover`, only with the
   `connectors.registry` flag) and "Manage connectors" (`/chats/connectors`).
-  The page reads `add` (`presets`, `url` or `directory`), opens the add dialog
-  on that tab and removes the parameter from the URL. With the registry flag
-  on, `presets` and `directory` both open Browse (the four presets are its
-  Featured row); without it, `directory` falls back to Presets (section 10.2). The row badge is the number of
+  The page reads `add` (`presets`, `url` or `directory`) and removes it from
+  the URL. With the registry flag on, `presets` and `directory` open the
+  Discover tab and `url` opens the address form (section 10.3); without it,
+  they open the add dialog on that tab and `directory` falls back to Presets. The row badge is the number of
   connectors on in the chat plus one when Besidka tools are on.
 
 ### 6.2 As built: the tool index and connector modes (C-15, 2026-11-16)
@@ -2218,10 +2218,12 @@ HTML (C-7 consumes them).
 | `connectors:oauth:<state>` | 600 s | OAuth state and PKCE verifier, deleted on read |
 | `connectors:refresh:<connectorId>` | 30 s | refresh lock |
 | `connectors:tools:<connectorId>:<generation>` | `ttlMs` clamped 60 to 3,600 s, default 600 s | `tools/list` result |
-| `connectors:icon:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10) |
+| `connectors:icon:v2:<connectorId>` | 7 days (a miss: 1 day) | the connector's icon image with its type in the metadata, or a miss marker (section 7.10). C-14 v2 added `v2:` to every icon key below so misses kept before the head-only page read and the parent-site step are not reused |
 | `connectors:icon-lock:<connectorId>` | 60 s | in-flight marker of a cold icon fetch |
-| `connectors:icon:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |
-| `connectors:icon:registry-origin:<sha256(origin)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the favicon or page-link result for one host, shared by every directory entry on it; its lock is `connectors:icon-lock:registry-origin:<hash>` |
+| `connectors:icon:v2:registry:<sha256(registry name)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the icon of one directory entry, shared by its versions and by every user (public data, no user id); its lock is `connectors:icon-lock:registry:<hash>` |
+| `connectors:icon:v2:registry-origin:<sha256(origin)[:32 hex]>` | 7 days (a miss: 1 day) | BES-398: the favicon or page-link result for one host, shared by every directory entry on it and (C-14 v2) by every user's connector on it; its lock is `connectors:icon-lock:registry-origin:<hash>` |
+| `connectors:registry:directory:v1:<curation version>` | 1 hour | C-14 v2: the filtered, de-duplicated, categorized directory as one JSON blob (about 5.7 MB for 12,400 entries), dropped by a sync that changed rows; never stored for an empty mirror (section 10.3) |
+| `connectors:registry:probe:<sha256(registry name)[:32 hex]>` | 1 day (a failure: 1 hour) | C-14 v2: the auth kind and public tool list of one directory entry, shared by every user (section 10.3) |
 | `connectors:registry:sync-now-lock` | 150 s | BES-398: best-effort marker that an admin's Sync now is running |
 | `connectors:icon-sources:<connectorId>` | 7 days | the icon sources the server declared in `initialize`; a change drops the icon key |
 | `tool-approval:<approvalId>` | 24 h | exact pending call arguments and signature (section 7.6, shared with native tools) |
@@ -2646,9 +2648,8 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   letter), the detail panel header and the reasoning steps through the
   existing connector icon route once the connector is connected. A letter is
   the fallback everywhere: an unavailable icon, a 404 and an image `error`
-  all end there. A connector the user added but has not connected still
-  shows a letter (or its preset mark), because "adding sends nothing" stays
-  true: the host is first contacted when the user connects it. Browsing the
+  all end there. (Superseded by section 10.3: every connector of the user
+  now gets an icon, connected or not.) Browsing the
   directory does contact the host of each visible card (a favicon request
   from Besidka's servers, no user data, no cookies, user agent
   `Besidka-Connectors/1.0`), and the registry for entries that declare
@@ -2690,6 +2691,200 @@ Choices that differ from or add to sections 5.2, 6.1, 7.3 and 10:
   registry `icons` kept in D1 or per-row KV (a migration; thousands of KV
   writes per sync), an admin page for the sync (the button is enough), a
   "Featured" list longer than the four curated presets, category filters.
+
+### 10.3 As built: directory v2, Yours and Discover (C-14, 2026-11-16)
+
+The owner compared the directory with Claude's Settings → Connectors and
+asked for the same shape. This replaces the Browse tab of section 10.2.
+
+- **Yours and Discover.** With `connectors.registry` the Connectors page has
+  box tabs (`HistoryBoxTabs`, `connectors-view-*`) under the history tabs:
+  **Yours** is the user's connectors as before, **Discover** is
+  `Profile/Connectors/Directory.client.vue`. The tab is in the address as
+  `?tab=discover`; `?add=presets` and `?add=directory` (old links) open
+  Discover, `?add=url` opens the address form. "Add connector" (primary)
+  opens Discover, "Add by URL" (secondary) opens the add dialog, which with
+  the flag is the address form only (title "Add by URL", no tabs). Without
+  the flag nothing changes: no tabs, the dialog keeps Presets and Add by URL.
+  The chat picker's "Browse connectors" links to `?tab=discover`.
+  `RegistrySearch.client.vue` is gone.
+- **Discover home.** `GET /api/v1/connectors/registry/home` answers
+  `{ top, topCount, new, newCount, categories: [{ id, label, count, items }],
+  total, syncing? }`. The page shows **Top connectors**, **New connectors**,
+  then every category that has entries in taxonomy order, each with its
+  count, six cards and "Show all" when there are more. Show all opens the
+  full list in place (`GET /api/v1/connectors/registry?view=top|new` or
+  `?category=<id>`, 20 a page, "Show more", "Back" returns to the home). The
+  search box searches everything (a 250 ms pause, 2 to 64 characters) and
+  replaces the home with ranked, paged results; clearing it returns to where
+  the user was. Installed entries say **Added** with a check and still open.
+  The admin Sync now row moved here unchanged.
+- **Cards.** `DirectoryCard.vue`: icon (registry icon route, or the bundled
+  mark for a preset), title as a button that opens the details (stretched
+  over the card), an official check (`lucide:badge-check`, labeled), "by
+  <publisher>", **Add** (`btn-primary`) or the Added badge, two lines of
+  description, host and auth hint. All third-party text is plain text.
+- **Detail view.** A card opens `DirectoryDetailPanel.vue` in the shared
+  side panel (`connector-directory:<id>` view key, same chrome as the
+  connector panel, "Back to the list" closes it): icon, title, **Official**
+  badge with a tooltip, publisher (full domain), one primary button, the
+  description, the full server address as text, the sign-in kind, the
+  category, the publisher and **Tools**. The button is **Add and connect**
+  (adds, then opens the Connect dialog), **Connect** for an added connector
+  that still needs a sign-in, **Open** for one that is connected (it opens
+  that connector's panel). `GET /api/v1/connectors/registry/entry?id=` answers
+  `{ item, categoryLabel, probe }` from the index only, never contacting the
+  server; `probe` is set when the entry declares header names (a key is
+  needed, no request) or a probe is cached. Otherwise the panel calls
+  `GET /api/v1/connectors/registry/tools?id=`
+  (`server/utils/connectors/registry-probe.ts`): one unauthenticated MCP
+  `initialize` to the stored address (never one from the request), a 401 or
+  403 then looks for protected-resource metadata (found: OAuth, else: API key
+  or token), a 2xx lists the tools anonymously through the same MCP client and
+  `safeFetch` rules as a connected connector (`resolveAuth` gives no headers)
+  and closes it. The whole probe has an 8 s deadline, at most 100 tools are
+  kept as plain text (name 128, title 120, description 300 code points,
+  control and invisible format characters removed), and the result is kept in
+  KV for a day (a failure for an hour) for every user. 20 probes a minute
+  per user (`REGISTRY_PROBES_PER_MINUTE`). The panel shows "Tools are listed
+  after you connect." for anything but a listed server. A preset card that is
+  not in the registry (GitHub) answers its preset's auth without a request.
+- **Index.** The registry has no categories, popularity or quality signals,
+  and SQLite cannot fold accents, so the directory is built in code
+  (`shared/utils/connectors-directory.ts`, pure functions) and not in SQL.
+  `server/utils/connectors/directory-index.ts` reads the active rows in pages
+  of 2,500, builds the index and keeps it in KV (`connectors:registry:
+  directory:v1:<curation version>`, 1 hour) and in isolate memory (5
+  minutes). A cold isolate parses the KV copy; only a miss on both reads D1.
+  A sync run that upserted, deleted or swept rows drops the KV copy and the
+  memory of its own isolate; other isolates catch up within five minutes.
+  Measured on the 14,517-row preview mirror on an M-series Mac: build about
+  220 ms, a search 5 to 15 ms, the JSON about 5.7 MB. Search keys are built
+  on the first search only. No D1 migration, no new column.
+  `REGISTRY_SEARCHES_PER_MINUTE` is 60 now (home, lists and search share the
+  bucket) and `REGISTRY_SEARCH_MAX_CURSOR` is 20,000, because paging is
+  in-memory and a category's Show all must reach its end.
+- **Quality filter** (`findDirectoryExclusion`): an entry is hidden without a
+  title, with a description under 20 characters, with a non-https remote, or
+  with a remote that is not a public DNS name (IP literals, single labels,
+  `localhost`, `.local`, `.internal`, `.lan`, `.home`, `.test`, `.example`,
+  `.invalid`, `.onion`, and tunnel hosts in `EPHEMERAL_TUNNEL_SUFFIXES` such
+  as `trycloudflare.com` and `ngrok`). Duplicate remotes (same host, path
+  without trailing slash and query) collapse to one: curated, then official,
+  then titled, then newest, then lowest id. On 2026-11-16 the preview mirror
+  of 14,517 rows gave **12,431 registry entries plus the GitHub preset =
+  12,432** (2,067 without a title, 6 short descriptions, 1 not public, 12
+  duplicates). Claude shows about 11.3k; the threshold was not tuned to match.
+- **Curation** (`config/connectors-directory.ts`, `CURATED_CONNECTORS`,
+  versioned by `CONNECTOR_CURATION_VERSION`): the only ranking signal. Each
+  entry has an id, a display title (many official entries have no registry
+  title: Notion, monday.com, PayPal, Airtable, GitLab, Exa, Close, Mux,
+  Axiom, Cloudflare), an optional description (Jotform's is 11 characters),
+  and either the exact registry `name` or a preset id for a service the
+  registry does not list. A curated entry skips the title and description
+  rules and its title wins everywhere, including the title stored when it is
+  added (`findActiveRegistryEntry`). Top is the curated list ∩ the mirror in
+  list order; a curated preset missing from the mirror becomes a card with
+  the id `preset:<id>`. The list has **35 entries** (34 registry names checked
+  read-only against `besidka-preview` on 2026-11-16, plus GitHub as a
+  preset): GitHub, Notion, Linear, Atlassian, Figma, Canva, monday.com,
+  Airtable, GitLab, PayPal, Hugging Face, Exa, Apify, Cloudflare Docs, Neon,
+  Railway, Postman, New Relic, CircleCI, Amplitude, Make, Basecamp, Lucid,
+  Fireflies.ai, Ahrefs, Close, Jotform, PandaDoc, Bitly, Mux, Cloudinary,
+  Egnyte, Axiom, Microsoft Learn, ScrapingBee. Not in the mirror on that day
+  (only third-party wrappers or nothing): Slack, Stripe, HubSpot, Asana,
+  Square, Shopify, Salesforce, Intercom, Zapier, Sentry, Vercel, Supabase,
+  Box, Webflow, Wix, ClickUp, Todoist, Miro, Pipedream, Brave, GitHub. The
+  mirror keeps only `streamable-http` remotes, so a service with only an SSE
+  or local server is missing too. **To edit**: find the exact name with
+  `pnpm exec wrangler d1 execute besidka-preview --remote --command "SELECT
+  name, title, remote_url FROM mcp_registry_servers WHERE remote_url LIKE
+  '%vendor.com%'"`, prefer the entry whose namespace is the vendor's domain
+  (it is official), add it in rank order, and bump
+  `CONNECTOR_CURATION_VERSION` (the KV key carries it, so the next request
+  rebuilds). A name that disappears from the registry is skipped silently.
+  `tests/unit/utils/connectors-directory.spec.ts` checks unique ids and
+  names, one source per entry and that preset ids exist.
+- **New connectors**: entries with a registry title, newest
+  `registry_updated_at` first. The registry has no "first published" field
+  in the mirror, so an updated entry counts as new.
+- **Categories** (`CONNECTOR_CATEGORIES`, same file, display order):
+  Developer tools, Project management, Communication, Docs & knowledge,
+  Design, Sales & CRM, Marketing, Finance & payments, Data & analytics, Cloud
+  & infrastructure, Productivity, Search & web, Shopping & commerce, Legal &
+  government, Other. Derived at index time from the words of the title and
+  the last name segment (weight 3) and the description (weight 1), after the
+  same normalization as search; one-word keywords match whole words, phrases
+  match word sequences; the highest score wins, a tie keeps the earlier
+  category, no hit is Other. The two extra categories took Other from 2,440
+  to 1,934 entries. Counts on 2026-11-16: Finance & payments 1,559, Docs &
+  knowledge 1,266, Communication 1,007, Data & analytics 942, Search & web
+  889, Shopping & commerce 840, Design 783, Marketing 772, Project management
+  501, Sales & CRM 423, Cloud & infrastructure 427, Productivity 425,
+  Developer tools 408, Legal & government 256, Other 1,934. Changing a
+  keyword changes categories after the next index build; bump the curation
+  version to rebuild at once.
+- **Search ranking** (`rankDirectoryEntry`, lower is better): 0 the whole
+  title, 1 a title prefix, 2 every query word starts a title word or the
+  title contains the query, 3 every word starts a word of the title, the
+  registry name (namespace labels included), the publisher or the host, 4
+  every word starts a word anywhere, the description included; no match is
+  left out. Case, accents (NFKD without marks) and separators are ignored, so
+  "huggingface", "hugging face" and "Hugging-Face" are equal; "contains"
+  needs at least three letters. Within a rank: official first, then the
+  browse order (curated rank, titles starting with a letter, then
+  alphabetical). Measured: "notion" puts Notion first and the InsightfulPipe
+  wrapper second.
+- **Official badge** (`isOfficialRegistryEntry`): the remote host equals the
+  reversed namespace or is a subdomain of it (`com.notion` and
+  `mcp.notion.com`). The registry accepts a domain namespace only from a
+  publisher who proved control of that domain, so the publisher and the host
+  are the same party. Code-hosting namespaces (`io.github.*` and the like)
+  never count. Deviation from "registrable domain": no public-suffix list is
+  bundled (only a transitive `tldts` exists), and the subdomain rule cannot
+  over-match on a shared suffix, at the price of missing
+  `com.example.docs` on `mcp.example.com`. **11,852 of 12,432 entries (95%)
+  qualify**, so the badge is common; its value is in the 5% it is missing
+  from, such as lookalike wrappers ("Notion MCP by InsightfulPipe" on
+  `notion.insightfulmcp.com`). The tooltip says: "The publisher proved in
+  the MCP Registry that it owns <domain>, and the server runs on that domain.
+  Besidka does not review connectors."
+- **Icons for every connector.** `GET /api/v1/connectors/[id]/icon` now
+  answers for every connector of the owner except one whose consent was
+  withdrawn, connected or not, and `hasConnectorIcon` follows. Order: the
+  registry `icons` when the connector's exact address is an active
+  directory row, the icons the server declared when it was connected, then
+  the host. The host step is cached under the same per-origin key as the
+  directory (`registry-origin:<hash>`), so a host is fetched once for every
+  entry and every user. The host step is now: `/favicon.ico`, the page's
+  `<link rel=icon>` tags, `/apple-touch-icon.png`, then the same on the
+  parent site when the first label is generic (`mcp`, `api`, `app`, `www`,
+  `server`, `gateway`, `mcp-*`, ...), never when the parent is a shared
+  hosting platform (`SHARED_HOSTING_SUFFIXES`) or a bare `co.uk`-style
+  suffix (`parentIconOrigin`). The page is read only up to `</head>` or
+  128 KiB and the rest is canceled (`readHtmlHead`), so a 309 KB home page
+  such as doop.design's still yields its 2.4 KB `favicon.png` (its 106 KB
+  `favicon.ico` is over the 32 KiB cap). `api.axiomide.com` did not resolve
+  from the build machine and is not in the preview `connectors` table, so it
+  is unverified. **Privacy change**: adding a connector already contacts its
+  server (the add probe of e4d875ed); the icon fetch before connecting is the same
+  kind of anonymous request from Besidka's servers (no user data, no
+  cookies, `Besidka-Connectors/1.0`) as browsing the directory. No legal
+  text, consent version or notice was touched.
+- **Primary buttons.** The main action is `btn-primary`: Add on cards and on
+  preset cards, Add connector on Yours, Add and connect, Connect or Open in
+  the detail view. Secondary actions (Add by URL, Show all, Back, Sync now)
+  are not.
+- **Not in the registry.** Google Gmail, Calendar, Drive and Docs connectors
+  in Claude are Anthropic-built integrations, not entries of the open MCP
+  Registry; Google comes with Phase 4b (Linear BES-230).
+- **Specs.** `tests/unit/utils/connectors-directory.spec.ts`,
+  `tests/unit/server/utils/connectors/{registry-probe,icon}.spec.ts`,
+  `tests/integration/api/{connectors-registry,connectors-registry-directory,
+  connectors-icon}.spec.ts`,
+  `tests/unit/components/Profile/Connectors/{Directory.client,DirectoryCard,
+  DirectoryDetailPanel,AddDialog.client}.spec.ts`,
+  `tests/unit/composables/connector-directory.spec.ts` and the page spec.
 
 ## 11. MCP exposure
 

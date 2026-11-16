@@ -23,6 +23,7 @@ import type {
   RegistryServerRow,
   RegistrySkipReason,
 } from '~~/server/utils/connectors/registry-entry'
+import { invalidateDirectoryIndex } from '~~/server/utils/connectors/directory-index'
 
 export const REGISTRY_UPDATED_SINCE_KEY = 'connectors:registry:updated-since'
 export const REGISTRY_FULL_PASS_KEY = 'connectors:registry:full-pass'
@@ -476,6 +477,10 @@ export async function syncMcpRegistry(
     return result
   } finally {
     await persistProgress(kv, progress, discardProgress, result)
+
+    if (result.upserted + result.deleted + result.swept > 0) {
+      await invalidateDirectoryIndex(kv)
+    }
   }
 }
 

@@ -1616,6 +1616,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/admin-connectors-registry.spec.ts',
     'tests/unit/server/utils/connectors/registry-sync-now.spec.ts',
     'tests/unit/utils/connectors-publisher.spec.ts',
+    'tests/unit/utils/connectors-directory.spec.ts',
+    'tests/unit/server/utils/connectors/registry-probe.spec.ts',
+    'tests/integration/api/connectors-registry-directory.spec.ts',
     'tests/unit/config/wrangler-registry-cron.spec.ts',
     'tests/unit/server/utils/net/safe-fetch.spec.ts',
   ]
@@ -1692,7 +1695,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/connectors.spec.ts',
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/Profile/Connectors/AddDialog.client.spec.ts',
-    'tests/unit/components/Profile/Connectors/RegistrySearch.client.spec.ts',
+    'tests/unit/components/Profile/Connectors/Directory.client.spec.ts',
+    'tests/unit/components/Profile/Connectors/DirectoryCard.spec.ts',
+    'tests/unit/components/Profile/Connectors/DirectoryDetailPanel.spec.ts',
+    'tests/unit/composables/connector-directory.spec.ts',
     'tests/unit/components/Profile/Connectors/Avatar.spec.ts',
     'tests/unit/components/Profile/Connectors/PresetCard.spec.ts',
     'tests/unit/utils/connector-brand-icons.spec.ts',
@@ -1778,6 +1784,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/utils/net/safe-fetch.spec.ts',
     'tests/integration/api/connectors-icon.spec.ts',
     'tests/integration/api/connectors-registry-icon.spec.ts',
+    'tests/unit/server/utils/connectors/cleanup.spec.ts',
   ]
 
   const toolApprovalSpikeTests = [
@@ -3465,7 +3472,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-catalog\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(registry-(entry|sync|search|sync-now|icon)|icon|icon-response|svg-icon)\.ts|server\/api\/v1\/admin\/connectors\/.*\.ts|shared\/utils\/connectors-publisher\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
+        /^(shared\/utils\/(connectors-policy|features\/registry)\.ts|config\/connectors-(catalog|directory)\.ts|shared\/utils\/connectors-directory\.ts|server\/db\/schemas\/connectors\.ts|server\/utils\/connectors\/(registry-(entry|sync|search|sync-now|icon|probe)|directory-index|add|icon|icon-response|svg-icon)\.ts|server\/api\/v1\/admin\/connectors\/.*\.ts|shared\/utils\/connectors-publisher\.ts|server\/utils\/db\/like\.ts|server\/utils\/net\/(safe-url|safe-fetch)\.ts|server\/plugins\/mcp-registry-sync\.ts|wrangler\.jsonc|server\/api\/v1\/connectors\/registry\/.*\.ts|tests\/fixtures\/mcp-registry\/.*\.ts|tests\/setup\/helpers\/(connectors-oauth|skills-route|skills-public-id-mock|memory-extraction-db)\.ts)$/,
       tests: connectorsRegistryTests,
     },
     {
@@ -3530,7 +3537,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors)\.ts|app\/utils\/connector-brand-icons\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
+        /^(shared\/types\/connectors\.d\.ts|shared\/utils\/(connectors-messages|connectors-policy)\.ts|server\/utils\/connectors\/(page|tool-review|store|errors|send-tools|consent|route|body)\.ts|server\/api\/v1\/connectors\/.*\.ts|app\/pages\/(profile\/connectors|chats\/connectors\/index)\.vue|app\/components\/History\/PageShell\.vue|app\/components\/Profile\/Connectors\/.*\.vue|app\/composables\/(connectors|composer-connectors|connector-directory)\.ts|app\/utils\/connector-brand-icons\.ts|shared\/utils\/connectors-directory\.ts|config\/connectors-directory\.ts|shared\/utils\/connectors-publisher\.ts|app\/layouts\/profile\.vue|app\/components\/Search\/Modal\.client\.vue|config\/connectors-catalog\.ts|tests\/setup\/helpers\/(connectors-ui|dom-dialog|connectors-oauth|memory-extraction-db)\.ts)$/,
       tests: connectorsPageTests,
     },
     {

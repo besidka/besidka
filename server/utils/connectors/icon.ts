@@ -2,6 +2,7 @@ import type { KVNamespace } from '@cloudflare/workers-types'
 import {
   CONNECTOR_ICON_HTML_LINKS,
   CONNECTOR_ICON_HTML_MAX_BYTES,
+  CONNECTOR_ICON_HTML_STREAM_MAX_BYTES,
   CONNECTOR_ICON_LOCK_TTL_SECONDS,
   CONNECTOR_ICON_MAX_BYTES,
   CONNECTOR_ICON_MAX_DECLARED,
@@ -11,16 +12,18 @@ import {
   CONNECTOR_ICON_SOURCE_MAX_LENGTH,
   CONNECTOR_ICON_TTL_SECONDS,
 } from '#shared/utils/connectors-policy'
+import { SHARED_HOSTING_SUFFIXES } from '~~/config/connectors-directory'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { isSafeSvgIcon } from '~~/server/utils/connectors/svg-icon'
 import { safeFetch } from '~~/server/utils/net/safe-fetch'
 
-const ICON_KEY_PREFIX = 'connectors:icon:'
+const ICON_KEY_PREFIX = 'connectors:icon:v2:'
 const ICON_SOURCES_KEY_PREFIX = 'connectors:icon-sources:'
 const ICON_LOCK_KEY_PREFIX = 'connectors:icon-lock:'
 const LOCK_MARKER = '1'
 const DATA_URI_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/i
 const FAVICON_PATH = '/favicon.ico'
+const APPLE_TOUCH_ICON_PATH = '/apple-touch-icon.png'
 const MISS_MARKER = '-'
 const SVG_SNIFF_BYTES = 512
 const SVG_START = /^(?:<\?xml\s|<!--|<svg[\s>])/i
@@ -715,10 +718,55 @@ export function parseConnectorIconLinks(
   return Array.from(new Set(urls)).slice(0, CONNECTOR_ICON_HTML_LINKS)
 }
 
+const HEAD_END = /<\/head\s*>/i
+
+/**
+ * The start of an HTML body, up to the end of `<head>` or `maxBytes`,
+ * whichever comes first; the rest of the stream is canceled unread, so a
+ * large page costs no more than its head.
+ */
+export async function readHtmlHead(
+  response: Response,
+  maxBytes: number = CONNECTOR_ICON_HTML_MAX_BYTES,
+): Promise<string> {
+  const reader = response.body?.getReader()
+
+  if (!reader) {
+    return ''
+  }
+
+  const decoder = new TextDecoder()
+  let html = ''
+  let bytes = 0
+
+  try {
+    while (bytes < maxBytes && !HEAD_END.test(html)) {
+      const { done, value } = await reader.read()
+
+      if (done) {
+        break
+      }
+
+      const chunk = value.byteLength + bytes > maxBytes
+        ? value.subarray(0, maxBytes - bytes)
+        : value
+
+      bytes += chunk.byteLength
+      html += decoder.decode(chunk, { stream: true })
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined)
+  }
+
+  return html
+}
+
 /**
  * The home page of a host, for its `<link rel="icon">` tags only: through
- * `safeFetch` (https, public hosts, same-origin redirects, 128 KiB cap) and
- * only when the answer is a successful HTML page. Any failure is a miss.
+ * `safeFetch` (https, public hosts, same-origin redirects) and only when the
+ * answer is a successful HTML page. Only the `<head>` is read, at most
+ * 128 KiB, so a large page still yields its icon links. Any failure is a
+ * miss.
  */
 export async function fetchConnectorIconHtml(
   url: string,
@@ -728,7 +776,7 @@ export async function fetchConnectorIconHtml(
     const response = await safeFetch(url, {
       purpose: 'favicon',
       headers: { accept: 'text/html' },
-      maxResponseBytes: CONNECTOR_ICON_HTML_MAX_BYTES,
+      maxResponseBytes: CONNECTOR_ICON_HTML_STREAM_MAX_BYTES,
       logger,
     })
 
@@ -741,13 +789,79 @@ export async function fetchConnectorIconHtml(
       return null
     }
 
-    return { html: await response.text(), url: response.url || url }
+    return { html: await readHtmlHead(response), url: response.url || url }
   } catch {
     return null
   }
 }
 
-async function fetchOriginIcon(
+const GENERIC_SUBDOMAIN_LABELS = new Set([
+  'mcp',
+  'api',
+  'app',
+  'www',
+  'server',
+  'gateway',
+  'remote',
+  'connect',
+  'connector',
+  'ai',
+  'agent',
+  'agents',
+  'edge',
+  'sse',
+  'prod',
+])
+const SECOND_LEVEL_LABELS = new Set([
+  'co',
+  'com',
+  'net',
+  'org',
+  'gov',
+  'ac',
+  'edu',
+  'ltd',
+  'plc',
+])
+
+/**
+ * The site a service subdomain belongs to, for its icon: `api.example.com`
+ * and `mcp.example.co` give `https://example.com` and `https://example.co`.
+ * Only a generic first label (`mcp`, `api`, `app`, `www`, ...) is dropped,
+ * never a parent that is a shared hosting platform (a tenant of
+ * `vercel.app` would get Vercel's icon) or a bare second-level suffix such
+ * as `co.uk`. Null when there is no such parent.
+ */
+export function parentIconOrigin(origin: string): string | null {
+  let url: URL
+
+  try {
+    url = new URL(origin)
+  } catch {
+    return null
+  }
+
+  const labels = url.hostname.toLowerCase().split('.')
+  const [first = '', ...rest] = labels
+  const parent = rest.join('.')
+  const isGeneric = GENERIC_SUBDOMAIN_LABELS.has(first)
+    || first.startsWith('mcp-')
+    || first.endsWith('-mcp')
+
+  if (!isGeneric || rest.length < 2) {
+    return null
+  }
+
+  if (rest.length === 2 && SECOND_LEVEL_LABELS.has(rest[0] ?? '')) {
+    return null
+  }
+
+  return SHARED_HOSTING_SUFFIXES.some(suffix => suffix === parent)
+    ? null
+    : `https://${parent}`
+}
+
+async function fetchSiteIcon(
   origin: string,
   dependencies: {
     fetchImage: NonNullable<ConnectorIconDependencies['fetchImage']>
@@ -767,11 +881,7 @@ async function fetchOriginIcon(
 
   const page = await dependencies.fetchHtml(`${origin}/`, logger)
 
-  if (!page) {
-    return null
-  }
-
-  for (const link of parseConnectorIconLinks(page.html, page.url)) {
+  for (const link of page ? parseConnectorIconLinks(page.html, page.url) : []) {
     if (isExpired()) {
       return null
     }
@@ -783,7 +893,32 @@ async function fetchOriginIcon(
     }
   }
 
-  return null
+  const touchIconUrl = isExpired()
+    ? null
+    : resolveSameOriginUrl(APPLE_TOUCH_ICON_PATH, origin)
+
+  return touchIconUrl
+    ? await dependencies.fetchImage(touchIconUrl, logger)
+    : null
+}
+
+async function fetchOriginIcon(
+  origin: string,
+  dependencies: {
+    fetchImage: NonNullable<ConnectorIconDependencies['fetchImage']>
+    fetchHtml: NonNullable<ConnectorIconDependencies['fetchHtml']>
+  },
+  isExpired: () => boolean,
+  logger?: LoggerLike,
+): Promise<ConnectorIconImage | null> {
+  const image = await fetchSiteIcon(origin, dependencies, isExpired, logger)
+  const parent = parentIconOrigin(origin)
+
+  if (image || !parent || isExpired()) {
+    return image
+  }
+
+  return await fetchSiteIcon(parent, dependencies, isExpired, logger)
 }
 
 export const CONNECTOR_ICON_BUSY = 'busy'

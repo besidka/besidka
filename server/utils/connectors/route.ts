@@ -5,6 +5,7 @@ import {
   CONNECTOR_ICON_ROUTES_PER_MINUTE,
   CONNECTOR_ROUTES_PER_MINUTE,
   CONNECTOR_SELECTION_WRITES_PER_MINUTE,
+  REGISTRY_SEARCHES_PER_MINUTE,
 } from '#shared/utils/connectors-policy'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import { createConnectorError } from '~~/server/utils/connectors/errors'
@@ -53,7 +54,7 @@ export function assertConnectorWriteRequest(event: RequestEvent): void {
   }
 }
 
-interface RateLimitBucket {
+export interface RateLimitBucket {
   prefix: string
   max: number
 }
@@ -223,4 +224,27 @@ export async function requireOwnedConnector(
   })
 
   return connector
+}
+
+/**
+ * The gate of the directory routes: a session, the `connectors` and
+ * `connectors.registry` flags, then the directory bucket (60 a minute, or
+ * the given bucket). Read-only, so no write guard.
+ */
+export async function requireRegistryAccess(
+  event: RequestEvent,
+  bucket: RateLimitBucket = {
+    prefix: 'connectors-registry-rate-limit',
+    max: REGISTRY_SEARCHES_PER_MINUTE,
+  },
+): Promise<number> {
+  const userId = await requireConnectorAccess(event, {
+    write: false,
+    rateLimit: false,
+  })
+
+  await requireFeature(event, 'connectors.registry')
+  await enforceConnectorRateLimit(event, userId, bucket)
+
+  return userId
 }

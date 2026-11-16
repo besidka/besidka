@@ -13,7 +13,9 @@ import {
   deleteConnectorIconCache,
   fetchConnectorIconHtml,
   fetchConnectorIconImage,
+  parentIconOrigin,
   parseConnectorIconLinks,
+  readHtmlHead,
   parseDeclaredConnectorIcons,
   readConnectorIconDimensions,
   recordDeclaredConnectorIcons,
@@ -32,6 +34,12 @@ import {
 } from '../../../../setup/helpers/connector-icon-kv'
 
 const connector = { id: 'conn1', origin: 'https://mcp.notion.com' }
+const NOTION_ICON_REQUESTS = [
+  'https://mcp.notion.com/favicon.ico',
+  'https://mcp.notion.com/apple-touch-icon.png',
+  'https://notion.com/favicon.ico',
+  'https://notion.com/apple-touch-icon.png',
+]
 
 const fetchHtml = vi.fn(async () => null)
 
@@ -267,11 +275,8 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(result).toBeNull()
-    expect(fetchImage).toHaveBeenCalledTimes(1)
-    expect(fetchImage).toHaveBeenCalledWith(
-      'https://mcp.notion.com/favicon.ico',
-      undefined,
-    )
+    expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
+      .toEqual(NOTION_ICON_REQUESTS)
   })
 
   it('never fetches a declared icon on another origin', async () => {
@@ -289,7 +294,7 @@ describe('resolveConnectorIcon', () => {
     })
 
     expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
-      .toEqual(['https://mcp.notion.com/favicon.ico'])
+      .toEqual(NOTION_ICON_REQUESTS)
   })
 
   it('falls back to the favicon of the host, then to nothing', async () => {
@@ -342,7 +347,7 @@ describe('resolveConnectorIcon', () => {
       dependencies: { fetchImage, fetchHtml },
     })
 
-    expect(fetchImage).toHaveBeenCalledTimes(1)
+    expect(fetchImage).toHaveBeenCalledTimes(NOTION_ICON_REQUESTS.length)
     expect(kv.entries.get(connectorIconKey(connector.id))?.ttl)
       .toBe(CONNECTOR_ICON_MISS_TTL_SECONDS)
   })
@@ -350,7 +355,7 @@ describe('resolveConnectorIcon', () => {
   it('lets a declared icon replace a cached miss or favicon', async () => {
     const kv = createFakeIconKv()
     const fetchImage = vi.fn(async (url: string) => {
-      return url.endsWith('/favicon.ico') ? null : image('image/png')
+      return url.endsWith('/icon.png') ? image('image/png') : null
     })
 
     expect(await resolveConnectorIcon(asKv(kv), connector, {
@@ -726,7 +731,7 @@ describe('resolveConnectorIcon beyond the favicon', () => {
       .toMatchObject({ origin: 'favicon' })
   })
 
-  it('never asks the parent domain of the host', async () => {
+  it('never asks a shared hosting platform as the parent', async () => {
     const kv = createFakeIconKv()
     const fetchImage = vi.fn(async () => null)
 
@@ -737,8 +742,35 @@ describe('resolveConnectorIcon beyond the favicon', () => {
     )
 
     expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
-      .toEqual(['https://mcp.vercel.app/favicon.ico'])
+      .toEqual([
+        'https://mcp.vercel.app/favicon.ico',
+        'https://mcp.vercel.app/apple-touch-icon.png',
+      ])
     expect(fetchHtml).toHaveBeenCalledWith('https://mcp.vercel.app/', undefined)
+    expect(fetchHtml).not.toHaveBeenCalledWith('https://vercel.app/', undefined)
+  })
+
+  it('falls back to the site of a service subdomain', async () => {
+    const kv = createFakeIconKv()
+    const fetchImage = vi.fn(async (url: string) => {
+      return url === 'https://example.com/favicon.ico'
+        ? image('image/png')
+        : null
+    })
+
+    const result = await resolveConnectorIcon(
+      asKv(kv),
+      { id: 'api1', origin: 'https://api.example.com' },
+      { dependencies: { fetchImage, fetchHtml } },
+    )
+
+    expect(result?.contentType).toBe('image/png')
+    expect(fetchImage.mock.calls.map(call => (call as unknown[])[0]))
+      .toEqual([
+        'https://api.example.com/favicon.ico',
+        'https://api.example.com/apple-touch-icon.png',
+        'https://example.com/favicon.ico',
+      ])
   })
 
   it('stops trying sources once the time budget is spent', async () => {
@@ -844,12 +876,16 @@ describe('resolveConnectorIcon with an origin key', () => {
     await resolveConnectorIcon(asKv(kv), first, {
       dependencies: { fetchImage, fetchHtml },
     })
+
+    const imageRequests = fetchImage.mock.calls.length
+    const pageRequests = fetchHtml.mock.calls.length
+
     await resolveConnectorIcon(asKv(kv), second, {
       dependencies: { fetchImage, fetchHtml },
     })
 
-    expect(fetchImage).toHaveBeenCalledTimes(1)
-    expect(fetchHtml).toHaveBeenCalledTimes(1)
+    expect(fetchImage).toHaveBeenCalledTimes(imageRequests)
+    expect(fetchHtml).toHaveBeenCalledTimes(pageRequests)
     expect(kv.entries.get(connectorIconKey(first.originKey))?.ttl)
       .toBe(CONNECTOR_ICON_MISS_TTL_SECONDS)
   })
@@ -921,5 +957,60 @@ describe('fetchConnectorIconHtml', () => {
     expect(await fetchConnectorIconHtml('https://192.168.0.1/')).toBeNull()
     expect(await fetchConnectorIconHtml('https://localhost/')).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reads only the head of a page larger than the HTML cap', async () => {
+    const head = '<html><head><link rel="icon" href="/favicon.png"></head>'
+    const body = `<body>${'x'.repeat(300 * 1024)}</body></html>`
+
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(head + body, {
+        headers: { 'content-type': 'text/html' },
+      })
+    }))
+
+    const page = await fetchConnectorIconHtml('https://doop.design/')
+
+    expect(page?.html.startsWith(head)).toBe(true)
+    expect(page?.html.length).toBeLessThan(200 * 1024)
+  })
+})
+
+describe('readHtmlHead', () => {
+  it('stops at the end of the head', async () => {
+    const response = new Response(
+      '<head><link rel="icon" href="/a.png"></head><body>rest</body>',
+    )
+
+    expect(await readHtmlHead(response))
+      .toContain('<link rel="icon" href="/a.png">')
+  })
+
+  it('cuts a page without a head end at the byte cap', async () => {
+    const response = new Response('a'.repeat(5000))
+
+    expect((await readHtmlHead(response, 1000)).length).toBe(1000)
+  })
+})
+
+describe('parentIconOrigin', () => {
+  it.each([
+    ['https://api.axiomide.com', 'https://axiomide.com'],
+    ['https://mcp.notion.com', 'https://notion.com'],
+    ['https://mcp-server.egnyte.com', 'https://egnyte.com'],
+    ['https://mcp.foo.vercel.app', 'https://foo.vercel.app'],
+  ])('gives the site of %s', (origin, parent) => {
+    expect(parentIconOrigin(origin)).toBe(parent)
+  })
+
+  it.each([
+    'https://doop.design',
+    'https://agentready.vercel.app',
+    'https://mcp.vercel.app',
+    'https://api.co.uk',
+    'https://docs.example.com',
+    'not a url',
+  ])('gives nothing for %s', (origin) => {
+    expect(parentIconOrigin(origin)).toBeNull()
   })
 })

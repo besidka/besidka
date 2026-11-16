@@ -1,37 +1,33 @@
-import { and, asc, count, eq, inArray, notInArray, or, sql } from 'drizzle-orm'
-import type { SQL } from 'drizzle-orm'
+import type { KVNamespace } from '@cloudflare/workers-types'
+import { CONNECTOR_CATEGORIES } from '~~/config/connectors-directory'
+import type { ConnectorCategoryId } from '~~/config/connectors-directory'
+import { REGISTRY_SEARCH_PAGE_SIZE } from '#shared/utils/connectors-policy'
 import {
-  CONNECTOR_PRESETS,
-  findConnectorPresetByUrl,
-} from '~~/config/connectors-catalog'
-import {
-  REGISTRY_SEARCH_MAX_CURSOR,
-  REGISTRY_SEARCH_PAGE_SIZE,
-} from '#shared/utils/connectors-policy'
-import { deriveConnectorPublisher } from '#shared/utils/connectors-publisher'
-import * as schema from '~~/server/db/schema'
-import {
-  containsLikeEscaped,
-  escapeLikePattern,
-} from '~~/server/utils/db/like'
+  countDirectoryCategories,
+  directoryUrlKey,
+  listCategoryDirectoryEntries,
+  listNewDirectoryEntries,
+  listTopDirectoryEntries,
+  searchDirectoryIndex,
+} from '#shared/utils/connectors-directory'
+import type {
+  DirectoryEntry,
+  DirectoryIndex,
+} from '#shared/utils/connectors-directory'
+import type {
+  ConnectorDirectoryHome,
+  ConnectorDirectoryItem,
+} from '#shared/types/connectors.d'
+import { listConnectorUrls } from '~~/server/utils/connectors/store'
+import { loadDirectoryIndex } from '~~/server/utils/connectors/directory-index'
 
-export type RegistryAuthHint = 'header' | 'unknown'
+export const DIRECTORY_HOME_SECTION_SIZE = 6
+export const DIRECTORY_VIEWS = ['all', 'top', 'new'] as const
 
-export interface RegistrySearchItem {
-  id: string
-  name: string
-  title: string | null
-  description: string
-  remoteUrl: string
-  transport: 'streamable-http'
-  authHint: RegistryAuthHint
-  presetId: string | null
-  publisher: string | null
-  isAdded: boolean
-}
+export type DirectoryView = typeof DIRECTORY_VIEWS[number]
 
 export interface RegistrySearchResult {
-  items: RegistrySearchItem[]
+  items: ConnectorDirectoryItem[]
   nextCursor: number | null
   total: number | null
   syncing?: true
@@ -41,222 +37,164 @@ export interface RegistrySearchInput {
   query: string
   cursor: number
   userId: number
+  category?: ConnectorCategoryId | null
+  view?: DirectoryView
 }
 
-const FEATURED_PRESET_URLS: string[] = CONNECTOR_PRESETS.map((preset) => {
-  return preset.url
-})
-
-function likeClause(column: unknown, pattern: string) {
-  return sql`${column} like ${pattern} escape '\\'`
-}
-
-function buildRanking(query: string, escapedQuery: string): SQL {
-  const { name, title } = schema.mcpRegistryServers
-  const lowered = query.toLowerCase()
-
-  return sql`CASE
-    WHEN lower(${name}) = ${lowered}
-      OR ${likeClause(name, `%/${escapedQuery}`)} THEN 0
-    WHEN lower(${title}) = ${lowered} THEN 1
-    WHEN ${likeClause(title, `${escapedQuery}%`)}
-      OR ${likeClause(name, `${escapedQuery}%`)}
-      OR ${likeClause(name, `%/${escapedQuery}%`)} THEN 2
-    WHEN ${likeClause(title, `%${escapedQuery}%`)}
-      OR ${likeClause(name, `%${escapedQuery}%`)} THEN 3
-    ELSE 4
-  END`
-}
-
-function normalizeUrl(url: string): string | null {
-  try {
-    return new URL(url).toString()
-  } catch {
-    return null
-  }
-}
+type RegistryDatabase = ReturnType<typeof useDb>
 
 /**
- * The remote URLs among `remoteUrls` that the user already has a connector
- * for, compared by full URL (decrypted, in memory only; nothing is returned
- * but which of the given URLs matched). The plain `origin` column narrows
- * the rows first, so at most a handful are decrypted.
+ * The user's own connectors by remote address (decrypted in memory; a user
+ * has at most 20), so a directory card can say "Added" and open the
+ * connector. Only the id of a match ever leaves this function.
  */
-async function findAddedUrls(
-  db: ReturnType<typeof useDb>,
+export async function loadAddedConnectorIds(
+  db: RegistryDatabase,
   userId: number,
-  remoteUrls: readonly string[],
-): Promise<Set<string>> {
-  const wanted = new Map<string, string>()
+): Promise<Map<string, string>> {
+  const added = new Map<string, string>()
 
-  for (const remoteUrl of remoteUrls) {
-    const normalized = normalizeUrl(remoteUrl)
-
-    if (normalized) {
-      wanted.set(normalized, new URL(normalized).origin)
-    }
-  }
-
-  if (wanted.size === 0) {
-    return new Set()
-  }
-
-  const rows = await db.select({
-    urlEncrypted: schema.connectors.urlEncrypted,
-  })
-    .from(schema.connectors)
-    .where(and(
-      eq(schema.connectors.userId, userId),
-      inArray(schema.connectors.origin, [...new Set(wanted.values())]),
-    ))
-  const added = new Set<string>()
-
-  for (const row of rows) {
-    const url = normalizeUrl(await useDecryptText(row.urlEncrypted))
-
-    if (url && wanted.has(url)) {
-      added.add(url)
-    }
+  for (const connector of await listConnectorUrls(db, userId)) {
+    added.set(directoryUrlKey(connector.url), connector.id)
   }
 
   return added
 }
 
-function toItem(row: {
-  id: string
-  name: string
-  title: string | null
-  description: string
-  remoteUrl: string
-  headerNames: string[]
-}): RegistrySearchItem {
+export function toDirectoryItem(
+  entry: DirectoryEntry,
+  added: ReadonlyMap<string, string>,
+): ConnectorDirectoryItem {
+  const addedConnectorId = added.get(directoryUrlKey(entry.remoteUrl)) ?? null
+
   return {
-    id: row.id,
-    name: row.name,
-    title: row.title,
-    description: row.description,
-    remoteUrl: row.remoteUrl,
-    transport: 'streamable-http',
-    authHint: row.headerNames.length > 0 ? 'header' : 'unknown',
-    presetId: findConnectorPresetByUrl(row.remoteUrl)?.id ?? null,
-    publisher: deriveConnectorPublisher(row.name),
-    isAdded: false,
+    id: entry.id,
+    name: entry.name,
+    title: entry.title,
+    description: entry.description,
+    remoteUrl: entry.remoteUrl,
+    host: entry.host,
+    authHint: entry.headerNames.length > 0 ? 'header' : 'unknown',
+    presetId: entry.presetId,
+    publisher: entry.publisher,
+    isOfficial: entry.isOfficial,
+    isCurated: entry.curatedRank !== null,
+    category: entry.category,
+    isAdded: addedConnectorId !== null,
+    addedConnectorId,
   }
 }
 
-function buildSearchCondition(query: string): SQL | undefined {
-  const { name, title, description, status } = schema.mcpRegistryServers
+function selectEntries(
+  index: DirectoryIndex,
+  input: RegistrySearchInput,
+): DirectoryEntry[] {
+  const category = input.category ?? null
 
-  if (!query) {
-    return and(
-      eq(status, 'active'),
-      notInArray(schema.mcpRegistryServers.remoteUrl, FEATURED_PRESET_URLS),
-    )
+  if (input.query) {
+    return searchDirectoryIndex(index, input.query, (entry) => {
+      return category === null || entry.category === category
+    })
   }
 
-  return and(
-    eq(status, 'active'),
-    or(
-      containsLikeEscaped(name, query),
-      containsLikeEscaped(title, query),
-      containsLikeEscaped(description, query),
-    ),
-  )
-}
-
-function buildOrdering(query: string, escapedQuery: string): SQL[] {
-  const { name, title } = schema.mcpRegistryServers
-  const alphabetical = [
-    asc(sql`lower(coalesce(${title}, ${name}))`),
-    asc(name),
-    asc(schema.mcpRegistryServers.id),
-  ]
-
-  if (!query) {
-    return [
-      asc(sql`CASE
-        WHEN ${title} IS NULL THEN 2
-        WHEN ${title} GLOB '[A-Za-z]*' THEN 0
-        ELSE 1
-      END`),
-      ...alphabetical,
-    ]
+  if (input.view === 'top') {
+    return listTopDirectoryEntries(index)
   }
 
-  return [buildRanking(query, escapedQuery), ...alphabetical]
+  if (input.view === 'new') {
+    return listNewDirectoryEntries(index)
+  }
+
+  return listCategoryDirectoryEntries(index, category)
 }
 
 /**
- * Lists or searches the local copy of the registry only. An empty query is
- * the browse mode: entries without the four featured presets, those with a
- * title first (the registry has no popularity data, so a curated title is the
- * only quality proxy) and a letter-first title before one that starts with a
- * digit or symbol, then alphabetical regardless of case. A query runs
- * `LIKE` with an explicit `ESCAPE` clause and the user's `%`, `_` and `\` are
- * escaped, so it is always a literal substring. Ranking: exact name (or
- * last name segment), exact title, prefix, substring in name or title, then
- * description-only matches; ties by title and name. The first page also
- * answers the total count. An empty table on the first page answers
- * `syncing: true`, so the UI can say the directory is being prepared. Each
- * item says whether the user already has a connector for its exact URL.
+ * One page of the directory (docs/connectors.md section 10.3): a ranked
+ * search when there is a query (optionally inside one category), else the
+ * Top or New list, one category, or every entry in the browse order. It
+ * reads only the cached directory index, never the registry. An empty
+ * mirror answers `syncing: true`. Each item carries the id of the user's
+ * own connector for the same address, if any.
  */
 export async function searchMcpRegistry(
-  db: ReturnType<typeof useDb>,
+  db: RegistryDatabase,
+  kv: KVNamespace,
   input: RegistrySearchInput,
 ): Promise<RegistrySearchResult> {
-  const { name, title, description } = schema.mcpRegistryServers
-  const escapedQuery = escapeLikePattern(input.query)
-  const condition = buildSearchCondition(input.query)
-  const rows = await db.select({
-    id: schema.mcpRegistryServers.id,
-    name,
-    title,
-    description,
-    remoteUrl: schema.mcpRegistryServers.remoteUrl,
-    headerNames: schema.mcpRegistryServers.headerNames,
-  })
-    .from(schema.mcpRegistryServers)
-    .where(condition)
-    .orderBy(...buildOrdering(input.query, escapedQuery))
-    .limit(REGISTRY_SEARCH_PAGE_SIZE + 1)
-    .offset(input.cursor)
+  const index = await loadDirectoryIndex(db, kv)
 
-  if (rows.length === 0 && input.cursor === 0) {
-    const [anyRow] = await db.select({ id: schema.mcpRegistryServers.id })
-      .from(schema.mcpRegistryServers)
-      .limit(1)
-
-    if (!anyRow) {
-      return { items: [], nextCursor: null, total: 0, syncing: true }
-    }
+  if (index.sourceRows === 0 && input.cursor === 0) {
+    return { items: [], nextCursor: null, total: 0, syncing: true }
   }
 
-  const nextCursor = input.cursor + REGISTRY_SEARCH_PAGE_SIZE
-  const hasMore = rows.length > REGISTRY_SEARCH_PAGE_SIZE
-    && nextCursor <= REGISTRY_SEARCH_MAX_CURSOR
-  const items = rows.slice(0, REGISTRY_SEARCH_PAGE_SIZE).map(toItem)
-  const added = await findAddedUrls(
-    db,
-    input.userId,
-    items.map(item => item.remoteUrl),
+  const entries = selectEntries(index, input)
+  const page = entries.slice(
+    input.cursor,
+    input.cursor + REGISTRY_SEARCH_PAGE_SIZE,
   )
-  let total: number | null = null
+  const nextCursor = input.cursor + REGISTRY_SEARCH_PAGE_SIZE
+  const added = page.length > 0
+    ? await loadAddedConnectorIds(db, input.userId)
+    : new Map<string, string>()
 
-  if (input.cursor === 0) {
-    const [row] = await db.select({ total: count() })
-      .from(schema.mcpRegistryServers)
-      .where(condition)
+  return {
+    items: page.map(entry => toDirectoryItem(entry, added)),
+    nextCursor: nextCursor < entries.length ? nextCursor : null,
+    total: input.cursor === 0 ? entries.length : null,
+  }
+}
 
-    total = row?.total ?? 0
+/**
+ * The Discover home: six Top and six New cards, then every category that
+ * has entries, in the taxonomy order, with its count and first six cards.
+ */
+export async function loadMcpRegistryHome(
+  db: RegistryDatabase,
+  kv: KVNamespace,
+  userId: number,
+): Promise<ConnectorDirectoryHome> {
+  const index = await loadDirectoryIndex(db, kv)
+  const added = await loadAddedConnectorIds(db, userId)
+  const top = listTopDirectoryEntries(index)
+  const newest = listNewDirectoryEntries(index)
+  const counts = countDirectoryCategories(index)
+
+  function firstItems(entries: DirectoryEntry[]): ConnectorDirectoryItem[] {
+    return entries
+      .slice(0, DIRECTORY_HOME_SECTION_SIZE)
+      .map(entry => toDirectoryItem(entry, added))
   }
 
   return {
-    items: items.map((item) => {
-      const normalized = normalizeUrl(item.remoteUrl)
-
-      return { ...item, isAdded: !!normalized && added.has(normalized) }
-    }),
-    nextCursor: hasMore ? nextCursor : null,
-    total,
+    top: firstItems(top),
+    topCount: top.length,
+    new: firstItems(newest),
+    newCount: newest.length,
+    categories: CONNECTOR_CATEGORIES
+      .filter(category => (counts.get(category.id) ?? 0) > 0)
+      .map((category) => {
+        return {
+          id: category.id,
+          label: category.label,
+          count: counts.get(category.id) ?? 0,
+          items: firstItems(listCategoryDirectoryEntries(index, category.id)),
+        }
+      }),
+    total: index.entries.length,
+    ...(index.sourceRows === 0 ? { syncing: true as const } : {}),
   }
+}
+
+/**
+ * One directory entry by id for the detail view, or null when the id is not
+ * in the directory (unknown, inactive, filtered out or a duplicate).
+ */
+export async function findMcpRegistryEntry(
+  db: RegistryDatabase,
+  kv: KVNamespace,
+  id: string,
+): Promise<DirectoryEntry | null> {
+  const index = await loadDirectoryIndex(db, kv)
+
+  return index.byId.get(id) ?? null
 }

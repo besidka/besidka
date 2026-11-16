@@ -477,7 +477,7 @@ it to add one (BES-249). The badge is the number of connectors on in this chat
 plus one when Besidka tools are on. It emits `open-connectors-picker`, which
 opens `ChatInput/ConnectorPicker.client.vue`: a dialog with, from the top,
 "Browse connectors" (only with the `connectors.registry` flag, opens the
-Directory tab of the add dialog on `/chats/connectors?add=directory`) and
+Discover tab of `/chats/connectors?tab=discover`) and
 "Manage connectors" (`/chats/connectors`), the Besidka row when that feature
 is active, a toggle per connector (title, host as plain text, a `badge
 badge-soft` when it is `drifted`), at most five on, and the limit hint. With no

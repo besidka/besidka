@@ -77,11 +77,13 @@ describe('GET /api/v1/connectors/registry', () => {
     name: string,
     patch: Partial<typeof schema.mcpRegistryServers.$inferInsert> = {},
   ) {
+    const segment = name.split('/').at(-1) ?? name
+
     await testDb.db.insert(schema.mcpRegistryServers).values({
       id: `${name}@1.0.0`,
       name,
-      title: null,
-      description: `${name} description`,
+      title: segment.charAt(0).toUpperCase() + segment.slice(1),
+      description: `The ${segment} server for the tests`,
       remoteUrl: `https://mcp.${name.replace(/\W/g, '-')}.example.com/mcp`,
       remoteType: 'streamable-http',
       headerNames: [],
@@ -98,7 +100,18 @@ describe('GET /api/v1/connectors/registry', () => {
     return await run(createSkillsRouteEvent({ query }))
   }
 
+  function names(result: { items: Array<{ name: string }> }) {
+    return result.items
+      .map(item => item.name)
+      .filter(name => !name.startsWith('preset/'))
+  }
+
   beforeEach(async () => {
+    const { resetDirectoryIndexMemo } = await import(
+      '~~/server/utils/connectors/directory-index'
+    )
+
+    resetDirectoryIndexMemo()
     mocks.flags = new Set(['connectors', 'connectors.registry'])
     testDb = createMemoryExtractionTestDb()
     kv = createFakeConnectorKv()
@@ -144,6 +157,8 @@ describe('GET /api/v1/connectors/registry', () => {
     ['a bad cursor', { q: 'linear', cursor: '-1' }],
     ['a huge cursor', { q: 'linear', cursor: '999999' }],
     ['a text cursor', { q: 'linear', cursor: 'abc' }],
+    ['an unknown category', { category: 'weather-control' }],
+    ['an unknown view', { view: 'popular' }],
   ])('answers 400 for %s', async (_label, query) => {
     expect((await failureOf(search(query as Record<string, string>))).status)
       .toBe(400)
@@ -174,84 +189,101 @@ describe('GET /api/v1/connectors/registry', () => {
     vi.stubGlobal('fetch', fetchSpy)
     await addServer('io.example/notes', {
       title: 'Notes',
-      description: 'Take notes',
+      description: 'Take notes and keep them in one place',
       remoteUrl: 'https://mcp.notes.example.com/mcp',
       headerNames: ['Authorization'],
-    })
-    await addServer('io.example/open', {
-      title: 'Notes open',
-      remoteUrl: 'https://mcp.open.example.com/mcp',
     })
 
     const result = await search({ q: 'notes' })
 
-    expect(result.items).toEqual([
-      {
-        id: 'io.example/notes@1.0.0',
-        name: 'io.example/notes',
-        title: 'Notes',
-        description: 'Take notes',
-        remoteUrl: 'https://mcp.notes.example.com/mcp',
-        transport: 'streamable-http',
-        authHint: 'header',
-        presetId: null,
-        publisher: 'example.io',
-        isAdded: false,
-      },
-      expect.objectContaining({
-        name: 'io.example/open',
-        authHint: 'unknown',
-      }),
-    ])
+    expect(result.items[0]).toEqual({
+      id: 'io.example/notes@1.0.0',
+      name: 'io.example/notes',
+      title: 'Notes',
+      description: 'Take notes and keep them in one place',
+      remoteUrl: 'https://mcp.notes.example.com/mcp',
+      host: 'mcp.notes.example.com',
+      authHint: 'header',
+      presetId: null,
+      publisher: 'example.io',
+      isOfficial: false,
+      isCurated: false,
+      category: 'docs-knowledge',
+      isAdded: false,
+      addedConnectorId: null,
+    })
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('marks an entry whose URL equals a preset', async () => {
+  it('marks an entry whose URL equals a preset and gives it its curated '
+    + 'title', async () => {
     await addServer('app.linear/linear', {
-      title: 'Linear',
+      title: null,
       remoteUrl: 'https://mcp.linear.app/mcp',
     })
 
     expect((await search({ q: 'linear' })).items[0]).toMatchObject({
+      title: 'Linear',
       presetId: 'linear',
+      isOfficial: true,
+      isCurated: true,
     })
   })
 
-  it('ranks exact name, exact title, prefix, substring, then description', async () => {
+  it('ranks title, title prefix, title words, name, then description', async () => {
     await addServer('io.example/zz-description', {
       title: 'Zeta',
-      description: 'works with gamma too',
+      description: 'Works with gamma rays and more',
     })
-    await addServer('io.example/contains-gamma-inside', { title: 'Inside' })
-    await addServer('io.example/gamma-prefix', { title: 'Prefix' })
-    await addServer('io.example/other', { title: 'gamma' })
-    await addServer('io.example/gamma', { title: 'Zebra' })
+    await addServer('io.example/gamma-name', { title: 'Something' })
+    await addServer('io.example/words', { title: 'Big Gamma Tool' })
+    await addServer('io.example/prefix', { title: 'Gammatron' })
+    await addServer('io.example/exact', { title: 'Gamma' })
     await addServer('io.example/deleted-gamma', { status: 'deleted' })
 
-    const result = await search({ q: 'Gamma' })
-
-    expect(result.items.map(item => item.name)).toEqual([
-      'io.example/gamma',
-      'io.example/other',
-      'io.example/gamma-prefix',
-      'io.example/contains-gamma-inside',
+    expect(names(await search({ q: 'gamma' }))).toEqual([
+      'io.example/exact',
+      'io.example/prefix',
+      'io.example/words',
+      'io.example/gamma-name',
       'io.example/zz-description',
     ])
   })
 
-  it('treats percent, underscore and backslash literally', async () => {
-    await addServer('io.example/100-percent', { description: 'up to 100% off' })
-    await addServer('io.example/snake', { description: 'a_b and a\\b' })
-    await addServer('io.example/plain', { description: 'axb axxb' })
+  it('ignores accents, case and a missing space or hyphen', async () => {
+    await addServer('io.example/verif', { title: 'Vérif Entreprise' })
+    await addServer('io.example/hf', { title: 'Hugging-Face Hub' })
 
-    expect((await search({ q: '100%' })).items.map(item => item.name))
-      .toEqual(['io.example/100-percent'])
-    expect((await search({ q: 'a_b' })).items.map(item => item.name))
-      .toEqual(['io.example/snake'])
-    expect((await search({ q: 'a\\b' })).items.map(item => item.name))
-      .toEqual(['io.example/snake'])
+    expect(names(await search({ q: 'VERIF' }))).toEqual(['io.example/verif'])
+    expect(names(await search({ q: 'huggingface' }))).toEqual(['io.example/hf'])
+    expect(names(await search({ q: 'hugging face' }))).toEqual(['io.example/hf'])
+  })
+
+  it('treats percent, underscore and backslash as plain text', async () => {
+    await addServer('io.example/plain', { title: 'Plain thing' })
+
     expect((await search({ q: '%%' })).items).toEqual([])
     expect((await search({ q: '__' })).items).toEqual([])
+    expect((await search({ q: '\\x' })).items).toEqual([])
+  })
+
+  it('hides entries without a title or with a short description, and '
+    + 'collapses duplicate addresses', async () => {
+    await addServer('io.example/untitled', { title: null })
+    await addServer('io.example/short', { description: 'Too short' })
+    await addServer('io.example/tunnel', {
+      remoteUrl: 'https://abc.trycloudflare.com/mcp',
+    })
+    await addServer('io.example/first', {
+      remoteUrl: 'https://mcp.same.example.com/mcp',
+    })
+    await addServer('com.example/second', {
+      remoteUrl: 'https://mcp.same.example.com/mcp/',
+      registryUpdatedAt: new Date(1000),
+    })
+
+    expect(names(await search({ q: 'io.example' }))).toEqual([])
+    expect(names(await search())).toEqual(['com.example/second'])
   })
 
   it('pages with an integer cursor, 20 per page', async () => {
@@ -265,6 +297,7 @@ describe('GET /api/v1/connectors/registry', () => {
 
     expect(first.items).toHaveLength(REGISTRY_SEARCH_PAGE_SIZE)
     expect(first.nextCursor).toBe(REGISTRY_SEARCH_PAGE_SIZE)
+    expect(first.total).toBe(REGISTRY_SEARCH_PAGE_SIZE + 5)
 
     const second = await search({
       q: 'tool',
@@ -272,108 +305,76 @@ describe('GET /api/v1/connectors/registry', () => {
     })
 
     expect(second.items).toHaveLength(5)
+    expect(second.total).toBeNull()
     expect(second.nextCursor).toBeNull()
     expect(second.items[0].name).toBe('io.example/tool-20')
   })
 
-  describe('browse mode (no search text)', () => {
-    it('lists the directory for a missing or blank q: letter titles, then '
-      + 'symbols and untitled, by name ignoring case, no featured presets', async () => {
+  it('bounds the cursor at the cap', async () => {
+    await addServer('io.example/one')
+
+    expect((await search({ cursor: String(REGISTRY_SEARCH_MAX_CURSOR) }))
+      .items).toEqual([])
+    expect((await failureOf(search({
+      cursor: String(REGISTRY_SEARCH_MAX_CURSOR + 1),
+    }))).status).toBe(400)
+  })
+
+  describe('views', () => {
+    it('lists curated entries first, then letter titles before symbols', async () => {
       await addServer('io.example/zebra', { title: 'Zebra' })
-      await addServer('io.example/alpha', { title: 'Alpha' })
-      await addServer('io.example/untitled-a')
+      await addServer('io.example/alpha', { title: 'alpha' })
       await addServer('io.example/symbol', { title: '$Symbol' })
-      await addServer('io.example/lower', { title: 'bravo' })
-      await addServer('app.linear/linear', {
-        title: 'Linear',
-        remoteUrl: 'https://mcp.linear.app/mcp',
+      await addServer('com.notion/mcp', {
+        title: null,
+        remoteUrl: 'https://mcp.notion.com/mcp',
+        description: 'Official Notion MCP server',
       })
 
-      const missing = await search()
-      const blank = await search({ q: '   ' })
+      const result = await search()
 
-      expect(missing.items.map(item => item.name)).toEqual([
-        'io.example/alpha',
-        'io.example/lower',
-        'io.example/zebra',
-        'io.example/symbol',
-        'io.example/untitled-a',
+      expect(result.items.map(item => item.title)).toEqual([
+        'GitHub',
+        'Notion',
+        'alpha',
+        'Zebra',
+        '$Symbol',
       ])
-      expect(blank.items.map(item => item.name))
-        .toEqual(missing.items.map(item => item.name))
-      expect(missing.total).toBe(5)
     })
 
-    it('pages the whole directory and counts only on the first page', async () => {
-      for (let index = 0; index < REGISTRY_SEARCH_PAGE_SIZE + 3; index++) {
-        await addServer(`io.example/tool-${String(index).padStart(2, '0')}`, {
-          title: `Tool ${String(index).padStart(2, '0')}`,
-        })
-      }
-
-      const first = await search()
-      const second = await search({ cursor: String(first.nextCursor) })
-
-      expect(first.items).toHaveLength(REGISTRY_SEARCH_PAGE_SIZE)
-      expect(first.total).toBe(REGISTRY_SEARCH_PAGE_SIZE + 3)
-      expect(second.items).toHaveLength(3)
-      expect(second.total).toBeNull()
-      expect(second.nextCursor).toBeNull()
-    })
-
-    it('answers syncing for an empty table and 404 when the flag is off', async () => {
-      expect(await search()).toMatchObject({ items: [], syncing: true })
-
-      mocks.flags.delete('connectors.registry')
-
-      expect((await failureOf(search())).status).toBe(404)
-    })
-
-    it('stops offering Show more where the next cursor would pass the cap',
-      async () => {
-        const cap = REGISTRY_SEARCH_MAX_CURSOR
-        const pageSize = REGISTRY_SEARCH_PAGE_SIZE
-        const total = cap + pageSize + 5
-
-        for (let start = 0; start < total; start += 50) {
-          await testDb.db.insert(schema.mcpRegistryServers).values(
-            Array.from({
-              length: Math.min(50, total - start),
-            }, (_row, index) => {
-              const number = String(start + index).padStart(5, '0')
-
-              return {
-                id: `io.example/bulk-${number}@1.0.0`,
-                name: `io.example/bulk-${number}`,
-                title: `Bulk ${number}`,
-                description: 'Bulk entry',
-                remoteUrl: `https://mcp.bulk${number}.example.com/mcp`,
-                remoteType: 'streamable-http' as const,
-                headerNames: [],
-                status: 'active',
-                registryUpdatedAt: new Date(0),
-                syncedAt: new Date(0),
-              }
-            }),
-          )
-        }
-
-        const beforeCap = await search({ cursor: String(cap - pageSize) })
-        const atCap = await search({ cursor: String(cap) })
-
-        expect(beforeCap.nextCursor).toBe(cap)
-        expect(atCap.items).toHaveLength(pageSize)
-        expect(atCap.nextCursor).toBeNull()
+    it('lists Top as the curated list and New by registry update time', async () => {
+      await addServer('io.example/old', {
+        registryUpdatedAt: new Date(1_000_000),
+      })
+      await addServer('io.example/fresh', {
+        registryUpdatedAt: new Date(9_000_000),
+      })
+      await addServer('com.figma.mcp/mcp', {
+        title: 'Figma MCP Server',
+        remoteUrl: 'https://mcp.figma.com/mcp',
+        registryUpdatedAt: new Date(0),
       })
 
-    it('bounds the cursor at the cap', async () => {
-      await addServer('io.example/one')
+      expect((await search({ view: 'top' })).items.map(item => item.title))
+        .toEqual(['GitHub', 'Figma'])
+      expect(names(await search({ view: 'new' })))
+        .toEqual(['io.example/fresh', 'io.example/old'])
+    })
 
-      expect((await search({ cursor: String(REGISTRY_SEARCH_MAX_CURSOR) }))
-        .items).toEqual([])
-      expect((await failureOf(search({
-        cursor: String(REGISTRY_SEARCH_MAX_CURSOR + 1),
-      }))).status).toBe(400)
+    it('lists one category and searches inside it', async () => {
+      await addServer('io.example/pay', {
+        title: 'Invoice helper',
+        description: 'Send invoices and track payments',
+      })
+      await addServer('io.example/repo', {
+        title: 'Repo helper',
+        description: 'Review pull requests in your repository',
+      })
+
+      expect(names(await search({ category: 'finance-payments' })))
+        .toEqual(['io.example/pay'])
+      expect(names(await search({ q: 'helper', category: 'developer-tools' })))
+        .toEqual(['io.example/repo'])
     })
   })
 
@@ -383,7 +384,7 @@ describe('GET /api/v1/connectors/registry', () => {
         '~~/server/utils/connectors/store'
       )
 
-      await createConnector(testDb.db, {
+      return await createConnector(testDb.db, {
         userId: owner,
         title: 'Mine',
         url,
@@ -392,20 +393,26 @@ describe('GET /api/v1/connectors/registry', () => {
       })
     }
 
-    it('marks only an entry whose exact URL the user has', async () => {
+    it('marks only an entry whose address the user has, with its id', async () => {
       await addServer('io.example/one', {
         remoteUrl: 'https://mcp.gateway.example.com/one',
       })
       await addServer('io.example/two', {
         remoteUrl: 'https://mcp.gateway.example.com/two',
       })
-      await addUserConnector('https://mcp.gateway.example.com/one')
 
+      const connector = await addUserConnector(
+        'https://mcp.gateway.example.com/one',
+      )
       const result = await search({ q: 'io.example' })
 
-      expect(result.items.map(item => [item.name, item.isAdded])).toEqual([
-        ['io.example/one', true],
-        ['io.example/two', false],
+      expect(result.items.map(item => [
+        item.name,
+        item.isAdded,
+        item.addedConnectorId,
+      ])).toEqual([
+        ['io.example/one', true, connector.id],
+        ['io.example/two', false, null],
       ])
     })
 
@@ -423,7 +430,7 @@ describe('GET /api/v1/connectors/registry', () => {
     })
   })
 
-  it('limits each user to 30 searches a minute', async () => {
+  it('limits each user to 60 directory requests a minute', async () => {
     await addServer('io.example/linear')
 
     for (let count = 0; count < REGISTRY_SEARCHES_PER_MINUTE; count++) {
@@ -436,6 +443,6 @@ describe('GET /api/v1/connectors/registry', () => {
 
     userId = await seedUser(testDb.db, null)
 
-    expect((await search({ q: 'linear' })).items).toHaveLength(1)
+    expect(names(await search({ q: 'linear' }))).toHaveLength(1)
   })
 })

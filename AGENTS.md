@@ -801,7 +801,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   directory (Browse and search over the registry mirror, the Featured
   presets), icons on directory cards through the Besidka registry icon
   route (registry `icons`, favicon, page `<link rel=icon>`, SVG allowlist) and
-  the admin-only "Sync now"; section 6.2 for the tool index (C-15): the
+  the admin-only "Sync now"; section 10.3 for directory v2 (Yours and
+  Discover tabs, the curated Top list in `config/connectors-directory.ts` and
+  how to edit it, New, keyword categories, the quality filter, ranked search,
+  the official badge rule, the detail view with its anonymous tool probe, the
+  KV directory index, and icons for every connector); section 6.2 for the tool index (C-15): the
   `tool_index__load` tool over `prepareStep` `activeTools`, the per-connector
   mode (`connectors.tool_mode`: null or `auto` is Auto, `always-on`; Off is
   `enabled`), the room kept for loading, the prompt-cache effect, and the
