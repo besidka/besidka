@@ -115,8 +115,7 @@
           name="connector-detail-mode"
           class="join-item btn btn-sm min-h-11 flex-1 sm:min-h-8"
           :class="{
-            'btn-soft btn-soft-selected btn-primary font-semibold':
-              connector.toolMode === mode,
+            [SELECTED_MODE_CLASS]: connector.toolMode === mode,
           }"
           :value="mode"
           :aria-label="CONNECTOR_TOOL_MODE_LABELS[mode]"
@@ -298,6 +297,9 @@ import {
 } from '#shared/utils/connectors-policy'
 import type { ConnectorToolMode } from '#shared/utils/connectors-policy'
 import type { ToolPermissionChange } from '~/utils/tool-permissions'
+
+const SELECTED_MODE_CLASS = 'btn-soft btn-soft-selected font-semibold '
+  + '[--btn-color:var(--color-base-content)]'
 
 const TOOL_SETTINGS_PER_REQUEST = 40
 
