@@ -792,7 +792,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `@ai-sdk/mcp` verification, host portability, the vendor-policy re-check,
   and the ticket changes it imposes on C-2 to C-11; section 7.10 for the
   reasoning step icons (one registry, connector icons only through the
-  owner-only KV-backed route, never a remote image)
+  owner-only KV-backed route, never a remote image); section 10.2 for the
+  directory (Browse and search over the registry mirror, the Featured
+  presets), icons on directory cards through the Besidka registry icon
+  route (registry `icons`, favicon, page `<link rel=icon>`, SVG allowlist) and
+  the admin-only "Sync now"
 - `docs/skills.md` - Skills and commands design (Phase 4c, not built yet,
   amended 2026-11-13): Agent Skills (agentskills.io) written in the app, started
   from templates, or added by archive (zip, `.skill`), pasted text, GitHub link

@@ -54,6 +54,7 @@ export interface RegistrySyncInput {
   fetchImpl?: typeof fetch
   logger?: LoggerLike
   clock?: () => number
+  maxPages?: number
 }
 
 export interface RegistrySyncResult {
@@ -364,7 +365,9 @@ export async function syncMcpRegistry(
     const startedAtDate = new Date(progress.startedAt)
     const runStartedAt = clock()
 
-    for (let page = 0; page < REGISTRY_PAGES_PER_RUN; page++) {
+    const maxPages = input.maxPages ?? REGISTRY_PAGES_PER_RUN
+
+    for (let page = 0; page < maxPages; page++) {
       if (page > 0 && clock() - runStartedAt >= REGISTRY_RUN_BUDGET_MS) {
         break
       }

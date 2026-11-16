@@ -1,5 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 import AddDialog from '../../../../../app/components/Profile/Connectors/AddDialog.client.vue'
@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const registryActive = ref<boolean>(false)
+
+const emptyDirectory = { items: [], nextCursor: null, total: 0 }
 
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('refreshConnectors', () => mocks.refreshConnectors)
@@ -63,7 +65,7 @@ describe('Profile/Connectors/AddDialog', () => {
   })
 
   it('opens as a bottom sheet with presets and Add by URL, and hides the '
-    + 'Directory until the registry flag is on', async () => {
+    + 'Browse tab until the registry flag is on', async () => {
     await mountDialog()
 
     const dialog = document.body.querySelector('dialog.js-connector-add-modal')
@@ -77,16 +79,40 @@ describe('Profile/Connectors/AddDialog', () => {
     expect(document.body.querySelector('img')).toBeNull()
   })
 
-  it('opens on the Directory tab when asked and the registry flag is on', async () => {
+  it('opens on Browse by default and for the old presets link when the '
+    + 'registry flag is on', async () => {
     registryActive.value = true
+    mocks.fetch.mockResolvedValue(emptyDirectory)
 
-    await mountDialog({ initialTab: 'directory' })
+    await mountDialog()
+
+    expect(getByTestId('connector-add-tab-directory').textContent)
+      .toContain('Browse')
+    expect(getByTestId('connector-add-tab-directory')
+      .getAttribute('aria-selected')).toBe('true')
+    expect(findByTestId('connector-add-tab-presets')).toBeNull()
+    expect(getByTestId('connector-add-presets').textContent)
+      .toContain('Linear')
+
+    document.body.innerHTML = ''
+
+    await mountDialog({ initialTab: 'presets' })
 
     expect(getByTestId('connector-add-tab-directory')
       .getAttribute('aria-selected')).toBe('true')
   })
 
-  it('falls back to Presets when the Directory is asked for without the registry flag', async () => {
+  it('opens Add by URL when asked, with or without the registry flag', async () => {
+    registryActive.value = true
+    mocks.fetch.mockResolvedValue(emptyDirectory)
+
+    await mountDialog({ initialTab: 'url' })
+
+    expect(getByTestId('connector-add-tab-url')
+      .getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('falls back to Presets when Browse is asked for without the registry flag', async () => {
     await mountDialog({ initialTab: 'directory' })
 
     expect(findByTestId('connector-add-tab-directory')).toBeNull()
@@ -114,8 +140,8 @@ describe('Profile/Connectors/AddDialog', () => {
     expect(wrapper.emitted('added')?.[0]).toEqual(['new1'])
   })
 
-  it('searches the directory, shows its text as plain text and adds an '
-    + 'entry by its id', async () => {
+  it('browses the directory, searches it, shows its text as plain text '
+    + 'and adds an entry by its id', async () => {
     registryActive.value = true
     mocks.fetch.mockImplementation(async (url: string) => {
       if (url === '/api/v1/connectors/registry') {
@@ -129,8 +155,11 @@ describe('Profile/Connectors/AddDialog', () => {
             transport: 'streamable-http',
             authHint: 'header',
             presetId: null,
+            publisher: 'example.com',
+            isAdded: false,
           }],
           nextCursor: null,
+          total: 1,
         }
       }
 
@@ -139,9 +168,15 @@ describe('Profile/Connectors/AddDialog', () => {
 
     const wrapper = await mountDialog()
 
-    await clickTestId('connector-add-tab-directory')
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/registry', {
+      query: {},
+    })
+
     await setTestIdValue('connector-registry-query', 'tracker')
-    await clickTestId('connector-registry-submit')
+    await new Promise(resolve => setTimeout(resolve, 350))
+    await flushPromises()
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors/registry', {
       query: { q: 'tracker' },
@@ -151,6 +186,7 @@ describe('Profile/Connectors/AddDialog', () => {
 
     expect(results.textContent).toContain('tracker')
     expect(results.textContent).toContain('mcp.tracker.example')
+    expect(results.textContent).toContain('by example.com')
     expect(results.textContent).toContain('<script>alert(1)</script>')
     expect(results.querySelector('script')).toBeNull()
     expect(results.querySelector('a')).toBeNull()
@@ -159,7 +195,7 @@ describe('Profile/Connectors/AddDialog', () => {
 
     await clickTestId('connector-registry-add')
 
-    expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/connectors', {
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/connectors', {
       method: 'POST',
       body: { registryId: 'io.example/tracker@1.0.0' },
     })

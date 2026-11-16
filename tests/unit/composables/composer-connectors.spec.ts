@@ -56,6 +56,8 @@ function createConnector(
     enabled: true,
     authType: 'oauth',
     createdVia: 'preset',
+    presetId: 'notion',
+    consent: { state: 'current' },
     updatedAt: '2026-11-14T00:00:00.000Z',
     ...overrides,
   }
@@ -145,6 +147,8 @@ describe('useComposerConnectors', () => {
       title: 'Drift',
       host: 'mcp.notion.com',
       status: 'drifted',
+      presetId: 'notion',
+      isIconAvailable: true,
     })
     expect(composable.isVisible.value).toBe(true)
   })

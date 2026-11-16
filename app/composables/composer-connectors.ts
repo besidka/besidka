@@ -11,6 +11,8 @@ export interface ComposerConnectorItem {
   title: string
   host: string
   status: 'ready' | 'drifted'
+  presetId: string | null
+  isIconAvailable: boolean
 }
 
 export interface ChatConnectorSelectionState {
@@ -145,6 +147,8 @@ export function useComposerConnectors(
           title: connector.title,
           host: connector.host,
           status: connector.status as ComposerConnectorItem['status'],
+          presetId: connector.presetId,
+          isIconAvailable: hasConnectorIcon(connector),
         }
       })
       .sort((left, right) => left.title.localeCompare(right.title))

@@ -8,6 +8,7 @@
     <ProfileConnectorsAvatar
       :title="connector.title"
       :connector-id="connector.id"
+      :preset-id="connector.presetId"
       :is-icon-available="hasConnectorIcon(connector)"
     />
     <div class="list-col-grow min-w-0">

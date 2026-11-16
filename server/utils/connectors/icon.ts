@@ -1,14 +1,18 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
 import {
+  CONNECTOR_ICON_HTML_LINKS,
+  CONNECTOR_ICON_HTML_MAX_BYTES,
   CONNECTOR_ICON_LOCK_TTL_SECONDS,
   CONNECTOR_ICON_MAX_BYTES,
   CONNECTOR_ICON_MAX_DECLARED,
   CONNECTOR_ICON_MAX_DIMENSION,
   CONNECTOR_ICON_MISS_TTL_SECONDS,
+  CONNECTOR_ICON_RESOLVE_BUDGET_MS,
   CONNECTOR_ICON_SOURCE_MAX_LENGTH,
   CONNECTOR_ICON_TTL_SECONDS,
 } from '#shared/utils/connectors-policy'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { isSafeSvgIcon } from '~~/server/utils/connectors/svg-icon'
 import { safeFetch } from '~~/server/utils/net/safe-fetch'
 
 const ICON_KEY_PREFIX = 'connectors:icon:'
@@ -18,6 +22,10 @@ const LOCK_MARKER = '1'
 const DATA_URI_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/i
 const FAVICON_PATH = '/favicon.ico'
 const MISS_MARKER = '-'
+const SVG_SNIFF_BYTES = 512
+const SVG_START = /^(?:<\?xml\s|<!--|<svg[\s>])/i
+const LINK_TAG = /<link\s[^>]*>/gi
+const LINK_ATTRIBUTE = /([a-z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi
 
 export const CONNECTOR_ICON_CONTENT_TYPES = [
   'image/png',
@@ -25,6 +33,7 @@ export const CONNECTOR_ICON_CONTENT_TYPES = [
   'image/gif',
   'image/webp',
   'image/x-icon',
+  'image/svg+xml',
 ] as const
 
 export type ConnectorIconContentType
@@ -49,6 +58,8 @@ export interface DeclaredConnectorIcon {
 export interface ConnectorIconTarget {
   id: string
   origin: string
+  originKey?: string
+  readRemoteSources?: () => Promise<DeclaredConnectorIcon[]>
 }
 
 export interface ConnectorIconDependencies {
@@ -56,6 +67,10 @@ export interface ConnectorIconDependencies {
     url: string,
     logger?: LoggerLike,
   ) => Promise<ConnectorIconImage | null>
+  fetchHtml?: (
+    url: string,
+    logger?: LoggerLike,
+  ) => Promise<{ html: string, url: string } | null>
 }
 
 export function connectorIconKey(connectorId: string): string {
@@ -90,10 +105,21 @@ function isIco(bytes: Uint8Array): boolean {
     && ((bytes[4] ?? 0) | ((bytes[5] ?? 0) << 8)) > 0
 }
 
+function stripByteOrderMark(value: string): string {
+  return value.startsWith(String.fromCharCode(0xFEFF)) ? value.slice(1) : value
+}
+
+function isSvgStart(bytes: Uint8Array): boolean {
+  const head = new TextDecoder().decode(bytes.subarray(0, SVG_SNIFF_BYTES))
+
+  return SVG_START.test(stripByteOrderMark(head).trimStart())
+}
+
 /**
  * The image type of a byte string, read from its magic bytes and never from
- * a header or a file name. Only raster formats pass: SVG is refused because
- * it can carry script, and the icon is served from the app's own origin.
+ * a header or a file name. SVG is recognized only by its text start; it
+ * still has to pass `isSafeSvgIcon` before it is kept, because it can carry
+ * script and the icon is served from the app's own origin.
  */
 export function sniffConnectorIconType(
   bytes: Uint8Array,
@@ -117,7 +143,11 @@ export function sniffConnectorIconType(
     return 'image/webp'
   }
 
-  return isIco(bytes) ? 'image/x-icon' : null
+  if (isIco(bytes)) {
+    return 'image/x-icon'
+  }
+
+  return isSvgStart(bytes) ? 'image/svg+xml' : null
 }
 
 export interface ConnectorIconDimensions {
@@ -294,6 +324,8 @@ export function readConnectorIconDimensions(
       return readJpegDimensions(bytes)
     case 'image/x-icon':
       return readIcoDimensions(bytes)
+    case 'image/svg+xml':
+      return null
   }
 }
 
@@ -302,6 +334,13 @@ export function isConnectorIconContentType(
 ): value is ConnectorIconContentType {
   return typeof value === 'string'
     && (CONNECTOR_ICON_CONTENT_TYPES as readonly string[]).includes(value)
+}
+
+function copyBytes(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer
 }
 
 function toImage(bytes: Uint8Array): ConnectorIconImage | null {
@@ -313,6 +352,12 @@ function toImage(bytes: Uint8Array): ConnectorIconImage | null {
 
   if (!contentType) {
     return null
+  }
+
+  if (contentType === 'image/svg+xml') {
+    return isSafeSvgIcon(new TextDecoder().decode(bytes))
+      ? { bytes: copyBytes(bytes), contentType }
+      : null
   }
 
   const dimensions = readConnectorIconDimensions(bytes, contentType)
@@ -327,13 +372,7 @@ function toImage(bytes: Uint8Array): ConnectorIconImage | null {
     return null
   }
 
-  return {
-    bytes: bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer,
-    contentType,
-  }
+  return { bytes: copyBytes(bytes), contentType }
 }
 
 /**
@@ -567,8 +606,13 @@ async function fetchDeclaredIcon(
   origin: string,
   fetchImage: NonNullable<ConnectorIconDependencies['fetchImage']>,
   logger?: LoggerLike,
+  options: { isAnyOriginAllowed?: boolean, isExpired?: () => boolean } = {},
 ): Promise<ConnectorIconImage | null> {
   for (const icon of declared) {
+    if (options.isExpired?.()) {
+      return null
+    }
+
     if (icon.src.startsWith('data:')) {
       const image = decodeDataUriIcon(icon.src)
 
@@ -579,13 +623,160 @@ async function fetchDeclaredIcon(
       continue
     }
 
-    const url = resolveSameOriginUrl(icon.src, origin)
+    const url = options.isAnyOriginAllowed
+      ? resolveHttpsUrl(icon.src, origin)
+      : resolveSameOriginUrl(icon.src, origin)
 
     if (!url) {
       continue
     }
 
     const image = await fetchImage(url, logger)
+
+    if (image) {
+      return image
+    }
+  }
+
+  return null
+}
+
+function resolveHttpsUrl(src: string, base: string): string | null {
+  try {
+    const url = new URL(src, base)
+
+    return url.protocol === 'https:' ? url.toString() : null
+  } catch {
+    return null
+  }
+}
+
+function rankIconRelation(relation: string): number | null {
+  const tokens = relation.toLowerCase().split(/\s+/)
+
+  if (
+    tokens.includes('apple-touch-icon')
+    || tokens.includes('apple-touch-icon-precomposed')
+  ) {
+    return 0
+  }
+
+  return tokens.includes('icon') ? 1 : null
+}
+
+/**
+ * The icon links of an HTML page, best first (the Apple touch icon, then the
+ * plain icon), as absolute URLs on the page's own origin only. Only the
+ * `<link>` tags are read, by a linear scan, so a hostile page cannot make it
+ * slow, and a `data:` or foreign address is dropped.
+ */
+export function parseConnectorIconLinks(
+  html: string,
+  pageUrl: string,
+): string[] {
+  const ranked: Array<{ url: string, rank: number }> = []
+  let pageOrigin: string
+
+  try {
+    pageOrigin = new URL(pageUrl).origin
+  } catch {
+    return []
+  }
+
+  for (const tag of html.matchAll(LINK_TAG)) {
+    const attributes = new Map<string, string>()
+
+    for (const match of tag[0].matchAll(LINK_ATTRIBUTE)) {
+      attributes.set(
+        (match[1] ?? '').toLowerCase(),
+        match[2] ?? match[3] ?? '',
+      )
+    }
+
+    const rank = rankIconRelation(attributes.get('rel') ?? '')
+    const href = attributes.get('href')
+
+    if (rank === null || !href) {
+      continue
+    }
+
+    const url = resolveSameOriginUrl(href, pageUrl)
+
+    if (url && new URL(url).origin === pageOrigin) {
+      ranked.push({ url, rank })
+    }
+  }
+
+  const urls = ranked
+    .map((entry, index) => ({ ...entry, index }))
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .map(entry => entry.url)
+
+  return Array.from(new Set(urls)).slice(0, CONNECTOR_ICON_HTML_LINKS)
+}
+
+/**
+ * The home page of a host, for its `<link rel="icon">` tags only: through
+ * `safeFetch` (https, public hosts, same-origin redirects, 128 KiB cap) and
+ * only when the answer is a successful HTML page. Any failure is a miss.
+ */
+export async function fetchConnectorIconHtml(
+  url: string,
+  logger?: LoggerLike,
+): Promise<{ html: string, url: string } | null> {
+  try {
+    const response = await safeFetch(url, {
+      purpose: 'favicon',
+      headers: { accept: 'text/html' },
+      maxResponseBytes: CONNECTOR_ICON_HTML_MAX_BYTES,
+      logger,
+    })
+
+    if (
+      !response.ok
+      || !(response.headers.get('content-type') ?? '').includes('html')
+    ) {
+      await response.body?.cancel().catch(() => undefined)
+
+      return null
+    }
+
+    return { html: await response.text(), url: response.url || url }
+  } catch {
+    return null
+  }
+}
+
+async function fetchOriginIcon(
+  origin: string,
+  dependencies: {
+    fetchImage: NonNullable<ConnectorIconDependencies['fetchImage']>
+    fetchHtml: NonNullable<ConnectorIconDependencies['fetchHtml']>
+  },
+  isExpired: () => boolean,
+  logger?: LoggerLike,
+): Promise<ConnectorIconImage | null> {
+  const faviconUrl = resolveSameOriginUrl(FAVICON_PATH, origin)
+  const favicon = faviconUrl
+    ? await dependencies.fetchImage(faviconUrl, logger)
+    : null
+
+  if (favicon || isExpired()) {
+    return favicon
+  }
+
+  const page = await dependencies.fetchHtml(`${origin}/`, logger)
+
+  if (!page) {
+    return null
+  }
+
+  for (const link of parseConnectorIconLinks(page.html, page.url)) {
+    if (isExpired()) {
+      return null
+    }
+
+    const image = await dependencies.fetchImage(link, logger)
 
     if (image) {
       return image
@@ -627,6 +818,60 @@ async function releaseIconLock(
   }
 }
 
+/**
+ * The favicon and page-link steps for one origin. With an `originKey`, the
+ * result (a hit, or a miss for a day) and an in-flight lock live under that
+ * key, so many directory entries that point at one host fetch it once; a
+ * request that finds the origin locked answers busy and stores nothing for
+ * its own entry.
+ */
+async function resolveOriginIcon(
+  kv: KVNamespace,
+  connector: ConnectorIconTarget,
+  dependencies: {
+    fetchImage: NonNullable<ConnectorIconDependencies['fetchImage']>
+    fetchHtml: NonNullable<ConnectorIconDependencies['fetchHtml']>
+  },
+  isExpired: () => boolean,
+  logger?: LoggerLike,
+): Promise<ConnectorIconImage | null | typeof CONNECTOR_ICON_BUSY> {
+  const { originKey } = connector
+
+  if (!originKey) {
+    return await fetchOriginIcon(
+      connector.origin,
+      dependencies,
+      isExpired,
+      logger,
+    )
+  }
+
+  const stored = await readStoredIcon(kv, originKey)
+
+  if (stored.isStored) {
+    return stored.image
+  }
+
+  if (!await acquireIconLock(kv, originKey)) {
+    return CONNECTOR_ICON_BUSY
+  }
+
+  try {
+    const image = await fetchOriginIcon(
+      connector.origin,
+      dependencies,
+      isExpired,
+      logger,
+    )
+
+    await storeIcon(kv, originKey, image, image ? 'favicon' : null)
+
+    return image
+  } finally {
+    await releaseIconLock(kv, originKey)
+  }
+}
+
 async function fetchAndStoreIcon(
   kv: KVNamespace,
   connector: ConnectorIconTarget,
@@ -634,14 +879,33 @@ async function fetchAndStoreIcon(
     logger?: LoggerLike
     dependencies?: ConnectorIconDependencies
   },
-): Promise<ConnectorIconImage | null> {
+): Promise<ConnectorIconImage | null | typeof CONNECTOR_ICON_BUSY> {
   const fetchImage = options.dependencies?.fetchImage ?? fetchConnectorIconImage
+  const fetchHtml = options.dependencies?.fetchHtml ?? fetchConnectorIconHtml
+  const expiresAt = Date.now() + CONNECTOR_ICON_RESOLVE_BUDGET_MS
+  const isExpired = () => Date.now() > expiresAt
+  const remote = await connector.readRemoteSources?.() ?? []
+  const remoteImage = await fetchDeclaredIcon(
+    remote,
+    connector.origin,
+    fetchImage,
+    options.logger,
+    { isAnyOriginAllowed: true, isExpired },
+  )
+
+  if (remoteImage) {
+    await storeIcon(kv, connector.id, remoteImage, 'declared')
+
+    return remoteImage
+  }
+
   const declared = await readDeclaredConnectorIcons(kv, connector.id)
   const declaredImage = await fetchDeclaredIcon(
     declared,
     connector.origin,
     fetchImage,
     options.logger,
+    { isExpired },
   )
 
   if (declaredImage) {
@@ -650,28 +914,40 @@ async function fetchAndStoreIcon(
     return declaredImage
   }
 
-  const faviconUrl = resolveSameOriginUrl(FAVICON_PATH, connector.origin)
-  const faviconImage = faviconUrl
-    ? await fetchImage(faviconUrl, options.logger)
-    : null
+  const originImage = isExpired()
+    ? null
+    : await resolveOriginIcon(
+      kv,
+      connector,
+      { fetchImage, fetchHtml },
+      isExpired,
+      options.logger,
+    )
 
-  await storeIcon(
-    kv,
-    connector.id,
-    faviconImage,
-    faviconImage ? 'favicon' : null,
-  )
+  if (originImage === CONNECTOR_ICON_BUSY) {
+    return CONNECTOR_ICON_BUSY
+  }
 
-  return faviconImage
+  if (originImage) {
+    await storeIcon(kv, connector.id, originImage, 'favicon')
+
+    return originImage
+  }
+
+  await storeIcon(kv, connector.id, null, null)
+
+  return null
 }
 
 /**
  * The icon of one connector, in this order: the copy kept in KV (a miss is
  * kept too, for a day, so a server without an icon is not asked on every
  * render), an icon the server declared (a `data:` image, or a URL on the
- * server's own origin), then the favicon of the server's host. Every fetched
+ * server's own origin), then the favicon of the server's host (kept once per
+ * origin when the target has an `originKey`). Every fetched
  * image is re-validated by its magic bytes and its declared size, so what is
- * kept and served is never trusted from a header. Null means no icon: the
+ * kept and served is never trusted from a header. A page's own icon links
+ * are tried after the favicon, within a 15 s budget. Null means no icon: the
  * client shows a letter. A short in-flight marker in KV (best effort, KV is
  * eventually consistent) makes concurrent cold requests answer `busy` instead
  * of all fetching. Callers gate this on a consented, connected connector.
