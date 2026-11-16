@@ -71,6 +71,14 @@ export const CONNECTOR_ERRORS = {
     why: 'Dynamic client registration failed',
     fix: 'Try again later, or ask the workspace admin to allow Besidka',
   },
+  CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED: {
+    message: 'This service does not allow Besidka to sign in',
+    status: 502,
+    why: 'Its sign-in server only accepts redirect addresses it has '
+      + 'approved, and it refused the one Besidka sent',
+    fix: 'Use an API key if the server offers one. Besidka cannot sign in '
+      + 'to this service until it approves Besidka',
+  },
   CONNECTOR_OAUTH_STATE_INVALID: {
     message: 'The sign-in link expired or was already used',
     status: 400,
