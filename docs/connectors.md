@@ -2758,9 +2758,13 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   minutes). A cold isolate parses the KV copy; only a miss on both reads D1.
   A sync run that upserted, deleted or swept rows drops the KV copy and the
   memory of its own isolate; other isolates catch up within five minutes.
-  Measured on the 14,517-row preview mirror on an M-series Mac: build about
-  220 ms, a search 5 to 15 ms, the JSON about 5.7 MB. Search keys are built
-  on the first search only. No D1 migration, no new column.
+  Measured on the 14,517-row preview mirror: in Node on an M-series Mac the
+  build takes about 220 ms; in local workerd (`wrangler dev` on the
+  production build) a cold `/registry/home` (D1 read, build, KV put) took
+  504 ms, warm ones 14 ms, the first search 100 ms (it builds the search
+  keys) and later ones about 20 ms; the JSON is about 5.7 MB. Search keys
+  are built on the first search only, and the sorted Top, New and category
+  lists once per index (an `Intl.Collator`, kept on the index). No D1 migration, no new column.
   `REGISTRY_SEARCHES_PER_MINUTE` is 60 now (home, lists and search share the
   bucket) and `REGISTRY_SEARCH_MAX_CURSOR` is 20,000, because paging is
   in-memory and a category's Show all must reach its end.

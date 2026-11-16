@@ -35,6 +35,7 @@ const NON_PUBLIC_SUFFIXES = [
   'onion',
 ]
 const COMBINING_MARKS = /\p{M}+/gu
+const TITLE_COLLATOR = new Intl.Collator('en', { sensitivity: 'base' })
 const WORD_SEPARATORS = /[^\p{L}\p{N}]+/u
 
 export type DirectoryExclusionReason
@@ -85,6 +86,7 @@ export interface DirectoryIndex {
   byId: Map<string, DirectoryEntry>
   excluded: Partial<Record<DirectoryExclusionReason, number>>
   sourceRows: number
+  sortedLists?: Map<string, DirectoryEntry[]>
 }
 
 /**
@@ -634,8 +636,8 @@ export function compareDirectoryEntries(
     return leftLetter ? -1 : 1
   }
 
-  return left.title.localeCompare(right.title, 'en', { sensitivity: 'base' })
-    || left.id.localeCompare(right.id)
+  return TITLE_COLLATOR.compare(left.title, right.title)
+    || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
 }
 
 /**
@@ -672,12 +674,39 @@ export function searchDirectoryIndex(
     .map(match => match.entry)
 }
 
+function memoizeList(
+  index: DirectoryIndex,
+  key: string,
+  build: () => DirectoryEntry[],
+): DirectoryEntry[] {
+  index.sortedLists ??= new Map()
+
+  const cached = index.sortedLists.get(key)
+
+  if (cached) {
+    return cached
+  }
+
+  const list = build()
+
+  index.sortedLists.set(key, list)
+
+  return list
+}
+
+/**
+ * The curated entries in curation order. This and the other list helpers
+ * sort once per index and keep the result on it, because sorting 12,000
+ * titles with `localeCompare` on every request is the slow part.
+ */
 export function listTopDirectoryEntries(
   index: DirectoryIndex,
 ): DirectoryEntry[] {
-  return index.entries
-    .filter(entry => entry.curatedRank !== null)
-    .sort(compareDirectoryEntries)
+  return memoizeList(index, 'top', () => {
+    return index.entries
+      .filter(entry => entry.curatedRank !== null)
+      .sort(compareDirectoryEntries)
+  })
 }
 
 /**
@@ -687,22 +716,29 @@ export function listTopDirectoryEntries(
 export function listNewDirectoryEntries(
   index: DirectoryIndex,
 ): DirectoryEntry[] {
-  return index.entries
-    .filter(entry => entry.hasRegistryTitle && entry.updatedAt > 0)
-    .sort((left, right) => {
-      return right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
-    })
+  return memoizeList(index, 'new', () => {
+    return index.entries
+      .filter(entry => entry.hasRegistryTitle && entry.updatedAt > 0)
+      .sort((left, right) => {
+        return right.updatedAt - left.updatedAt
+          || (left.id < right.id ? -1 : 1)
+      })
+  })
 }
 
 export function listCategoryDirectoryEntries(
   index: DirectoryIndex,
   categoryId: ConnectorCategoryId | null,
 ): DirectoryEntry[] {
-  return index.entries
-    .filter((entry) => {
-      return categoryId === null || entry.category === categoryId
+  return memoizeList(index, `category:${categoryId ?? '*'}`, () => {
+    const all = memoizeList(index, 'category:*', () => {
+      return [...index.entries].sort(compareDirectoryEntries)
     })
-    .sort(compareDirectoryEntries)
+
+    return categoryId === null
+      ? all
+      : all.filter(entry => entry.category === categoryId)
+  })
 }
 
 export function countDirectoryCategories(
