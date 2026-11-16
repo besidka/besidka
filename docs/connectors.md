@@ -2294,7 +2294,7 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_ICON_SOURCE_MAX_LENGTH` | 65,536 characters per declared source | BES-395 |
 | `CONNECTOR_ICON_CACHE_SECONDS` | 86,400 browser cache of the icon route | BES-395 |
 | `CONNECTOR_ICON_MAX_DIMENSION` | 512 pixels, width and height | BES-395 |
-| `CONNECTOR_ICON_ROUTES_PER_MINUTE` | 120 per user on the icon route | BES-395 |
+| `CONNECTOR_ICON_ROUTES_PER_MINUTE` | 300 per user on the icon routes (120 before C-14 v2: the Discover home alone shows 102 cards) | BES-395, C-14 |
 | `CONNECTOR_ICON_LOCK_TTL_SECONDS` | 60 | BES-395 |
 | `CONNECTOR_ICON_HTML_MAX_BYTES` | 131,072 for the home page read for `<link rel=icon>` | BES-398 |
 | `CONNECTOR_ICON_HTML_LINKS` | 3 icon links tried per page | BES-398 |
@@ -2871,6 +2871,10 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   kind of anonymous request from Besidka's servers (no user data, no
   cookies, `Besidka-Connectors/1.0`) as browsing the directory. No legal
   text, consent version or notice was touched.
+- **Avatar while loading.** The letter (or preset mark) stays until the
+  image has loaded, so a slow cold icon never shows an empty white disc. The
+  icon bucket is 300 a minute per user (was 120), because the home renders
+  102 cards and Show all adds 20 a page; browser caching keeps repeats away.
 - **Primary buttons.** The main action is `btn-primary`: Add on cards and on
   preset cards, Add connector on Yours, Add and connect, Connect or Open in
   the detail view. Secondary actions (Add by URL, Show all, Back, Sync now)

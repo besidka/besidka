@@ -273,10 +273,10 @@ describe('GET /api/v1/connectors/[id]/icon', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('limits the icon route to 120 requests a minute per user', async () => {
+  it('limits the icon route to 300 requests a minute per user', async () => {
     const connectorId = await addConnector()
 
-    for (let index = 0; index < 120; index += 1) {
+    for (let index = 0; index < 300; index += 1) {
       expect((await request(connectorId)).status).toBe(200)
     }
 
