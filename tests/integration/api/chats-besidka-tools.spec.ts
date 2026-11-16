@@ -425,6 +425,8 @@ async function runSend(input: {
   messageId?: string
   tools?: string[]
   text?: string
+  gateway?: 'openrouter' | 'vercel'
+  gatewayModel?: string
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -432,6 +434,13 @@ async function runSend(input: {
     instance: model,
     tools: {},
     providerOptions: {},
+  })))
+  vi.stubGlobal('useGateway', vi.fn(async () => ({
+    instance: model,
+    tools: {},
+    providerOptions: {},
+    toolCall: true,
+    supportsReasoning: false,
   })))
 
   const handler = (await import(
@@ -444,7 +453,8 @@ async function runSend(input: {
   const result = await handler({
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     body: {
-      model: MODEL_ID,
+      model: input.gatewayModel ?? MODEL_ID,
+      ...(input.gateway ? { gateway: input.gateway } : {}),
       tools: input.tools ?? [],
       reasoning: 'off',
       ...(input.besidkaToolsEnabled === undefined
@@ -1034,5 +1044,63 @@ describe('Besidka tools in the chat send', () => {
         data: { reason: 'always-ask', rememberOptions: ['once'] },
       })
     expect(noticeLines()).toEqual([])
+  })
+  describe('a Claude model through a signed-thinking gateway', () => {
+    const loadThenAnswer = [
+      toolCallChunks('call-load', 'tool_index__load', {
+        names: ['besidka__delete_files'],
+      }),
+      toolCallChunks('call-list', 'besidka__list_projects', {}),
+      textChunks('Done.'),
+    ]
+
+    it.each([
+      ['openrouter', 'anthropic/claude-opus-5'],
+      ['vercel', 'anthropic/claude-opus-5'],
+    ] as const)('keeps one tool list across every step on %s', async (
+      gateway,
+      gatewayModel,
+    ) => {
+      setModes({}, 'ask')
+
+      const { doStream } = await runSend({
+        steps: loadThenAnswer,
+        gateway,
+        gatewayModel,
+      })
+      const toolLists = doStream.mock.calls.map(([callOptions]) => {
+        return readToolNames(callOptions)
+      })
+      const system = JSON.stringify(doStream.mock.calls[0]?.[0]?.prompt)
+
+      expect(toolLists.length).toBeGreaterThan(1)
+      expect(toolLists.every(names => names.length > 0)).toBe(true)
+
+      for (const names of toolLists) {
+        expect(names).toEqual(toolLists[0])
+      }
+
+      expect(toolLists[0]).not.toContain('tool_index__load')
+      expect(toolLists[0]).not.toContain('tool_index__use_connector')
+      expect(system).not.toContain('<tool_index>')
+    })
+
+    it('keeps on-demand loading for a non-Anthropic gateway model',
+      async () => {
+        setModes({}, 'ask')
+
+        const { doStream } = await runSend({
+          steps: loadThenAnswer,
+          gateway: 'openrouter',
+          gatewayModel: 'openai/gpt-5-mini',
+        })
+        const toolLists = doStream.mock.calls.map(([callOptions]) => {
+          return readToolNames(callOptions)
+        })
+
+        expect(toolLists[0]).toContain('tool_index__load')
+        expect(toolLists[0]).not.toContain('besidka__delete_files')
+        expect(toolLists[1]).toContain('besidka__delete_files')
+      })
   })
 })

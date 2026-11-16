@@ -14,7 +14,9 @@ import {
   describeToolIndexLoad,
   firstSentenceOf,
   fitUpFrontTools,
+  keepsFixedToolList,
   sanitizeToolIndexText,
+  selectFixedToolListEntries,
   TOOL_INDEX_USAGE_RULE,
   toolIndexClassOf,
 } from '~~/server/utils/ai/tool-index'
@@ -890,5 +892,71 @@ describe('createToolIndex with a connector catalog', () => {
 
     expect(toolIndex.activeToolNames(allNames))
       .toEqual([TOOL_INDEX_USE_CONNECTOR_TOOL_NAME, 'mcp__linear__list'])
+  })
+})
+
+describe('keepsFixedToolList', () => {
+  it.each([
+    ['openrouter', 'anthropic', true],
+    ['vercel', 'anthropic', true],
+    ['openrouter', '~anthropic', true],
+    ['cloudflare', 'anthropic', false],
+    ['openrouter', 'openai', false],
+    ['vercel', 'google', false],
+    [undefined, 'anthropic', false],
+    [null, undefined, false],
+  ])('%s with a %s model is %s', (gatewayId, modelProviderId, expected) => {
+    expect(keepsFixedToolList({ gatewayId, modelProviderId }))
+      .toBe(expected)
+  })
+})
+
+describe('selectFixedToolListEntries', () => {
+  it('keeps the entries that fit in order and drops the rest', () => {
+    const entries = [
+      entry('a', { bytes: 100 }),
+      entry('b', { bytes: 100 }),
+      entry('c', { bytes: 100 }),
+    ]
+
+    expect(selectFixedToolListEntries({
+      entries,
+      room: { tools: 2, bytes: 10_000 },
+    })).toEqual({ kept: [entries[0], entries[1]], dropped: [entries[2]] })
+  })
+
+  it('skips an entry that is too large and keeps a smaller later one', () => {
+    const entries = [
+      entry('big', { bytes: 900 }),
+      entry('huge', { bytes: 500 }),
+      entry('small', { bytes: 50 }),
+    ]
+    const { kept, dropped } = selectFixedToolListEntries({
+      entries,
+      room: { tools: 10, bytes: 1000 },
+    })
+
+    expect(kept.map(candidate => candidate.name)).toEqual(['big', 'small'])
+    expect(dropped.map(candidate => candidate.name)).toEqual(['huge'])
+  })
+
+  it('never keeps the tools of a catalog connector', () => {
+    const { kept, dropped } = selectFixedToolListEntries({
+      entries: [entry('closed', { catalogKey: 'linear' }), entry('open')],
+      room: { tools: 10, bytes: 10_000 },
+    })
+
+    expect(kept.map(candidate => candidate.name)).toEqual(['open'])
+    expect(dropped.map(candidate => candidate.name)).toEqual(['closed'])
+  })
+
+  it('keeps nothing when there is no room', () => {
+    const { kept, dropped } = selectFixedToolListEntries({
+      entries: [entry('a')],
+      room: { tools: 0, bytes: 10_000 },
+    })
+
+    expect(kept).toEqual([])
+    expect(dropped).toHaveLength(1)
   })
 })

@@ -1160,6 +1160,18 @@ byte cap, and the search returns remote descriptions as tool output.
       step's tool list for that message only, which costs one cache write
       (see Prompt cache below). Logged as `toolIndex.prefetched`.
 
+11. **Claude through OpenRouter or the Vercel AI Gateway (2026-11-16).**
+    These routes replay signed Anthropic thinking, and Anthropic rejects it
+    when the tool list differs from the request that produced it, which
+    `withActivation` causes after a load. For those sends the index is not
+    attached: no load or `use_connector` tool, no index or catalog block, one
+    tool list for every step. The deferred tools that fit in the same caps
+    (40 tools, 32 KiB) are offered up front in their order, the rest and all
+    Auto connector tools are not offered, and approval, taint and hash gating
+    are unchanged. Fewer tools are reachable there; the direct Anthropic path
+    keeps the index and drops the thinking block instead. Details in
+    `docs/providers/gateways.md`.
+
 **Modes** (`connectors.tool_mode`, section 8.1; superseded by section 6.3
 on 2026-11-16): **Off** is the account-wide switch (`enabled = false`).
 **Manual** connectors are used only in chats where the user turns them on;

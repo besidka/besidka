@@ -364,6 +364,8 @@ import {
 import {
   createToolIndex,
   fitUpFrontTools,
+  keepsFixedToolList,
+  selectFixedToolListEntries,
 } from '~~/server/utils/ai/tool-index'
 import { matchToolIndexEntries } from '~~/server/utils/ai/tool-index-prefetch'
 import type { ToolIndex } from '~~/server/utils/ai/tool-index'
@@ -2277,23 +2279,52 @@ export default defineEventHandler(async (event) => {
       nativeToolCount,
       reserve: toolIndexReserve,
     })
-    toolIndex = attachToolIndex({
-      besidka: besidkaToolsRun,
-      connectors: connectorsRun,
-      nativeToolCount,
-      onConnectorOpened: (connectorId) => {
-        connectorsRun?.recordOpened(connectorId)
+    const fixedToolList = keepsFixedToolList({ gatewayId, modelProviderId })
+      ? selectFixedToolListEntries({
+        entries: [
+          ...besidkaToolsRun?.indexEntries ?? [],
+          ...connectorsRun?.indexEntries ?? [],
+        ],
+        room: toolIndexRoom({
+          besidka: besidkaToolsRun,
+          connectors: connectorsRun,
+          nativeToolCount,
+          loaderToolCount: 0,
+        }),
+      })
+      : null
 
-        if (chatSearchBudget) {
-          chatSearchBudget.untrustedResultSeen = true
-        }
+    if (fixedToolList) {
+      aiLogger.set({
+        attributes: {
+          toolIndex: {
+            fixedList: true,
+            fixedKept: fixedToolList.kept.length,
+            fixedDropped: fixedToolList.dropped.length,
+          },
+        },
+      })
+    }
 
-        if (toolApprovalsActive) {
-          toolApprovalSend.recordConnectorOpened(connectorId)
-        }
-      },
-      logger: aiLogger,
-    })
+    toolIndex = fixedToolList
+      ? null
+      : attachToolIndex({
+        besidka: besidkaToolsRun,
+        connectors: connectorsRun,
+        nativeToolCount,
+        onConnectorOpened: (connectorId) => {
+          connectorsRun?.recordOpened(connectorId)
+
+          if (chatSearchBudget) {
+            chatSearchBudget.untrustedResultSeen = true
+          }
+
+          if (toolApprovalsActive) {
+            toolApprovalSend.recordConnectorOpened(connectorId)
+          }
+        },
+        logger: aiLogger,
+      })
 
     if (toolIndex && !isResume && userMessageText) {
       prefetchToolIndexEntries(toolIndex, userMessageText, aiLogger)
@@ -2307,10 +2338,13 @@ export default defineEventHandler(async (event) => {
     } else {
       parsedTools = {
         ...parsedTools,
-        tools: withoutDeferredTools(parsedTools.tools, [
-          ...besidkaToolsRun?.indexEntries ?? [],
-          ...connectorsRun?.indexEntries ?? [],
-        ]),
+        tools: withoutDeferredTools(
+          parsedTools.tools,
+          fixedToolList?.dropped ?? [
+            ...besidkaToolsRun?.indexEntries ?? [],
+            ...connectorsRun?.indexEntries ?? [],
+          ],
+        ),
       }
     }
 
@@ -3521,6 +3555,29 @@ interface PreparedBesidkaChatTools extends BesidkaChatToolsRun {
 }
 
 /**
+ * How many more tools and definition bytes a step may carry once the native
+ * tools, every tool offered up front and the index's own tools
+ * (`loaderToolCount`) are counted.
+ */
+function toolIndexRoom(input: {
+  besidka: PreparedBesidkaChatTools | null
+  connectors: ConnectorToolsRun | null
+  nativeToolCount: number
+  loaderToolCount: number
+}): { tools: number, bytes: number } {
+  const upFrontCount = (input.besidka?.upFrontNames.length ?? 0)
+    + (input.connectors?.upFrontNames.length ?? 0)
+
+  return {
+    tools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
+      - upFrontCount - input.loaderToolCount,
+    bytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
+      - (input.besidka?.definitionBytes ?? 0)
+      - (input.connectors?.definitionBytes ?? 0),
+  }
+}
+
+/**
  * The tool index of a send (`server/utils/ai/tool-index.ts`): the Besidka
  * and connector tools that were not offered up front, with the room a step
  * has left for loading them once every up-front tool and the load tool are
@@ -3543,14 +3600,12 @@ function attachToolIndex(input: {
     ...input.connectors?.upFrontNames ?? [],
   ]
   const catalogConnectors = input.connectors?.catalog ?? []
-  const loaderToolCount = catalogConnectors.length > 0 ? 2 : 1
-  const room = {
-    tools: CONNECTOR_TOOLS_PER_REQUEST - input.nativeToolCount
-      - upFrontNames.length - loaderToolCount,
-    bytes: CONNECTOR_TOOL_DEFINITIONS_MAX_BYTES
-      - (input.besidka?.definitionBytes ?? 0)
-      - (input.connectors?.definitionBytes ?? 0),
-  }
+  const room = toolIndexRoom({
+    besidka: input.besidka,
+    connectors: input.connectors,
+    nativeToolCount: input.nativeToolCount,
+    loaderToolCount: catalogConnectors.length > 0 ? 2 : 1,
+  })
   const liveConnectorCount = input.connectors?.connectorIds.length ?? 0
   const toolIndex = createToolIndex({
     entries,

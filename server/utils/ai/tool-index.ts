@@ -325,6 +325,64 @@ export function fitUpFrontTools(input: {
   return { upFront, demoted }
 }
 
+const FIXED_TOOL_LIST_GATEWAY_IDS: ReadonlySet<string> = new Set([
+  'openrouter',
+  'vercel',
+])
+
+/**
+ * Whether a send must offer the same tools at every step: a Claude model
+ * through a gateway that replays its signed thinking (OpenRouter's
+ * `reasoning_details`, the Vercel AI Gateway's forwarded provider
+ * metadata). Anthropic rejects a signed thinking block when the tool list
+ * differs from the request that produced it, so these sends cannot grow
+ * `activeTools` in the middle of a send the way the tool index does. The
+ * direct Anthropic path drops the thinking block instead
+ * (`withAnthropicThinkingBinding`) and keeps the index.
+ */
+export function keepsFixedToolList(input: {
+  gatewayId: string | null | undefined
+  modelProviderId: string | undefined
+}): boolean {
+  return !!input.gatewayId
+    && FIXED_TOOL_LIST_GATEWAY_IDS.has(input.gatewayId)
+    && input.modelProviderId?.replace(/^~/, '') === 'anthropic'
+}
+
+/**
+ * The deferred tools a fixed tool list offers up front: the entries that
+ * fit in `room` (tools and definition bytes), in the order the entries came
+ * in so the list is the same at every step and on an approval
+ * continuation, and the rest, which are not offered at all. Tools of a
+ * catalog connector stay out because they could only be reached by opening
+ * the connector in the middle of the send.
+ */
+export function selectFixedToolListEntries(input: {
+  entries: readonly ToolIndexEntry[]
+  room: ToolIndexRoom
+}): { kept: ToolIndexEntry[], dropped: ToolIndexEntry[] } {
+  const kept: ToolIndexEntry[] = []
+  const dropped: ToolIndexEntry[] = []
+  let keptBytes = 0
+
+  for (const entry of input.entries) {
+    const fitsRoom = !entry.catalogKey
+      && kept.length + 1 <= input.room.tools
+      && keptBytes + entry.bytes <= input.room.bytes
+
+    if (!fitsRoom) {
+      dropped.push(entry)
+
+      continue
+    }
+
+    kept.push(entry)
+    keptBytes += entry.bytes
+  }
+
+  return { kept, dropped }
+}
+
 function readNames(names: readonly unknown[]): string[] {
   const seen = new Set<string>()
 
