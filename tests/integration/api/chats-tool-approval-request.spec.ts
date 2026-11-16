@@ -969,6 +969,39 @@ describe('tool approval requests in the chat send', () => {
     })
   })
 
+  it('asks before another connector\'s read once an Auto connector was '
+    + 'opened, because its tool list is remote text', async () => {
+    seedConnector({
+      id: 'conn-notion',
+      slug: 'notion',
+      title: 'Notion',
+      url: NOTION_URL,
+    })
+
+    for (const connector of mocks.store.connectors) {
+      connector.toolMode = connector.id === 'conn-linear'
+        ? 'auto'
+        : 'always-on'
+    }
+
+    const { assistantInsert } = await runSend({
+      servers: [linear, notion],
+      steps: [
+        toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-2', 'mcp__notion__list_pages', {}),
+        textChunks('Never reached.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+    const pendingPart = parts.find((part: any) => {
+      return part.type === 'dynamic-tool' && part.state === 'approval-requested'
+    })
+
+    expect(notion.callCount('tools/call')).toBe(0)
+    expect(linear.callCount('tools/call')).toBe(0)
+    expect(pendingPart).toMatchObject({ toolName: 'mcp__notion__list_pages' })
+  })
+
   it('runs an Auto connector read opened first, with nothing read before',
     async () => {
       const autoLinear = mocks.store.connectors.find((connector) => {

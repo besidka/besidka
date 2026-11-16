@@ -1947,12 +1947,13 @@ describe('getConnectorTools', () => {
         ])
         expect(result.catalog).toEqual([{
           key: 'alpha',
+          connectorId: expect.any(String),
           title: 'alpha',
           host: 'mcp.alpha.example.com',
           toolCount: 2,
-          description: 'Tools: list_issues, create_issue',
           isLegacySse: false,
         }])
+        expect(JSON.stringify(result.catalog)).not.toContain('list_issues')
         expect(result.summary).toMatchObject({
           catalogConnectors: 1,
           catalogSnapshots: 1,
@@ -2077,6 +2078,27 @@ describe('getConnectorTools', () => {
       expect(result.notices).toEqual([])
       expect(result.summary.catalogSkipped).toBe(1)
     })
+
+    it('never claims a warm-up for a catalog connector with stale consent',
+      async () => {
+        const alpha = server('mcp.alpha.example.com')
+        const connectorId = await addConnector(seedOf('alpha', alpha))
+
+        await updateConnector(testDb.db, userId, connectorId, {
+          consentVersion: 'old-version',
+        })
+
+        const result = await run({
+          connectorSeeds: [],
+          catalogSlugs: ['alpha'],
+          servers: [alpha],
+        })
+
+        expect(alpha.requests).toHaveLength(0)
+        expect(kv.values.has(`connectors:catalog-warmup:${connectorId}`))
+          .toBe(false)
+        expect(result.summary.catalogSkipped).toBe(1)
+      })
 
     it('skips a catalog connector with stale consent silently, even with '
       + 'a snapshot', async () => {

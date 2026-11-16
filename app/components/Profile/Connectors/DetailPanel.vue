@@ -115,7 +115,8 @@
           name="connector-detail-mode"
           class="join-item btn btn-sm min-h-11 flex-1 sm:min-h-8"
           :class="{
-            'btn-active btn-primary': connector.toolMode === mode,
+            'btn-soft btn-soft-selected btn-primary font-semibold':
+              connector.toolMode === mode,
           }"
           :value="mode"
           :aria-label="CONNECTOR_TOOL_MODE_LABELS[mode]"

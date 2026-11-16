@@ -1190,31 +1190,36 @@ calls one of its tools.
 **The catalog** (`buildConnectorCatalogInstructions`,
 `server/utils/ai/tool-index.ts`). Auto connectors' tools are not in the
 `<tool_index>` block. The system prompt gets one `<connector_catalog>` block
-instead, one line per Auto connector:
-`name | title | host | N tools | description`, sorted by name. The
-description is "Tools: " and the titles (or names) of up to 8 offered tools,
-read-only first: there is no connector description column, and tool names
-are what tells the model what a service does. Title, host and description
-are remote or user text: control, format, `<`, `>`, `|` and backtick
-characters are removed, title cut to 40, host to 80 and description to 120
-characters (`CONNECTOR_CATALOG_DESCRIPTION_MAX`), and the block says it is
-data, never instructions. Past `CONNECTOR_CATALOG_MAX_BYTES` (6 KiB) the
-remaining connectors are named by key only. Measured with
-`buildConnectorCatalogInstructions` (2026-11-16): the header is 496 bytes, a
-line with no description 43 bytes, a Linear line with 8 tool names 164
-bytes, and 20 connectors (the account maximum) with 40-character titles and
-long hosts 4,986 bytes in all, under the cap (about 1,250 tokens at 4 bytes
-a token, sent with every message of an account that has them). The block's rule tells the model to open a connector
-whatever language, alphabet or spelling the user names it in, which is how
+instead, one line per Auto connector: `name | title | host | N tools`,
+sorted by name. Security review of #943 (2026-11-16): a line holds no text
+the server wrote, so no server-authored tool name or description sits in
+every system prompt. `name` is the slug, `title` the connector title the
+user sees (from a preset or edited by the user), `host` the URL host. Title
+and host are still cleaned (control, format, `<`, `>`, `|` and backtick
+characters removed, title cut to 40 and host to 80 characters), and the
+block says it is data, never instructions. Past `CONNECTOR_CATALOG_MAX_BYTES`
+(6 KiB) the remaining connectors are named by key only. Measured with
+`buildConnectorCatalogInstructions` (2026-11-16): the header is 482 bytes, a
+Linear line 43 bytes, and 20 connectors (the account maximum) with
+40-character titles and long hosts 2,552 bytes in all (about 640 tokens at
+4 bytes a token, sent with every message of an account that has them). The
+block's rule tells the model to open a connector whatever language, alphabet or spelling the user names it in, which is how
 "лінеар" reaches Linear: the chat model classifies, with no
 transliteration table, no TypeSafe AI role and no stem prefetch for service
 names. The catalog is part of the tool index instructions, so it is not in
 the search-answer continuation (which has no tools).
 
-**`use_connector({ connector })`** (a native read, no taint, never asks,
-like `tool_index__load`; `isToolIndexLoadToolName` covers both) opens one
-catalog connector by its exact name (a case-insensitive key or title match
-is accepted). Until then its tools are "closed": `tool_index__load` answers
+**`use_connector({ connector })`** (a native read, never asks, like
+`tool_index__load`; `isToolIndexLoadToolName` covers both) opens one catalog
+connector by its key only (case-insensitive; never by title, so two
+connectors with similar titles cannot be confused). Opening records
+connector taint with that connector as the read source
+(`recordConnectorOpened`) and marks the send's untrusted-content guard,
+because its result can carry the connector's tool names and descriptions:
+from then on F2 applies, so a read on another connector, or any write,
+asks; a read on the same connector does not. With the `tool-approvals` flag
+off, the opened connector becomes the send's source connector in the C-5
+rule, so another connector's call is refused. Until then its tools are "closed": `tool_index__load` answers
 "not open yet, call use_connector first", and the prefetch cannot load them.
 Opening loads all of the connector's tools when they fit in the step's room
 without unloading anything, and otherwise returns them as a
@@ -1240,7 +1245,8 @@ connector costs one KV read, one D1 baseline read and hashing its tool
 definitions; this was not measured on a real Worker.
 
 **Exception to section 6.2 point 5.** `use_connector` is the one loader
-whose result can carry remote text: when a connector's tools do not fit at
+whose result can carry remote text (and it records connector taint for it,
+see above): when a connector's tools do not fit at
 once, it returns their sanitized one-line descriptions in a
 `<connector_tools>` block marked as data, the same lines the `<tool_index>`
 block shows for indexed tools. Its parts are tool parts like
@@ -1255,6 +1261,24 @@ connector's read, and in a message that requested web search). Approvals, grants
 the 12-call and per-minute limits and result framing are the same path as
 any connector tool.
 
+**Per-chat rows and mode changes (security review, 2026-11-16).** An Auto
+or Always on connector is never written as on in a chat
+(`persistChatConnectorSelection` skips it, in the `PUT` route and the send),
+and clearing its off deletes the row, or keeps it with `enabled` true only
+when it holds "Allow in this chat" grants. A mode change
+(`PATCH /api/v1/connectors/[id]` with a different `toolMode`) resets every
+chat's choice for that connector (`resetConnectorChatSettings`): rows with
+no grant are deleted, and the rest keep their grants with `enabled` set to
+the new mode's default (false for Manual). So a connector switched to Manual
+is never still live in a chat because of a row written while it was Auto or
+Always on (an approval grant on an Auto connector writes such a row).
+Every Always on connector is consent-optional, also when the chat has a row
+for it: a stale consent leaves it out with a notice and never fails the
+send. A warm-up is claimed only after the consent check passed. The per-send
+warm-up count is local to the send; the 15-minute cross-send backoff is a
+best-effort KV marker (a concurrent send can miss it and warm the same
+connector once more).
+
 **UI.** The composer picker shows Manual connectors with today's toggle,
 and Auto and Always on connectors checked by default with their mode badge;
 unchecking one stores "Off in this chat". The "+" tile and the bulk buttons
@@ -1265,8 +1289,8 @@ off in the chat. The detail panel hint follows the mode.
 **Legal batch (not edited here).** Consent and Privacy Policy wording that
 says connector tools are used "in a chat where you turn it on" needs, for
 Auto: the connector may be used in any chat when the model decides; its
-name, host and up to 8 tool names go to the model provider with every
-message; its full tool definitions only once the model opens it. Listed in
+name, host and tool count go to the model provider with every message; its
+tool names and definitions only once the model opens it. Listed in
 the PR body for the end-of-phase legal batch.
 
 ## 7. Approvals

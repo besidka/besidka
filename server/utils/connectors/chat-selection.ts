@@ -4,6 +4,7 @@ import {
 } from '#shared/utils/connectors-policy'
 import type { ConnectorStatus } from '#shared/utils/connectors-policy'
 import {
+  deleteConnectorChatSetting,
   listConnectorChatSettings,
   listConnectors,
   upsertConnectorChatSettings,
@@ -219,15 +220,18 @@ export async function listSelectableChatConnectorIds(
 }
 
 /**
- * Stores the chat's connector choice: every selected connector is written
- * as on, and every connector the chat had on that is no longer selected is
- * written as off, unless it is an Auto or Always on connector: for those
- * only an off row means anything, so a client that never sends `offIds`
- * cannot switch them off by leaving them out. With `offIds`, those
- * connectors are written as off, and an Auto or Always on connector that
- * was off and is no longer listed is written as on again ("available").
- * The per-tool "always allow" map of an existing row is kept. Writes only
- * rows that change.
+ * Stores the chat's connector choice. A selected Manual connector (or one
+ * whose mode is not known, without `connectors`) is written as on; an Auto
+ * or Always on connector is never written as on, because for those only an
+ * off row means anything. Every Manual connector the chat had on that is no
+ * longer selected is written as off, and an Auto or Always on connector is
+ * never switched off by being left out, so a client that never sends
+ * `offIds` cannot switch them all off. With `offIds`, those connectors are
+ * written as off, and an Auto or Always on connector that was off and is no
+ * longer listed is available again: its row is deleted, or, when it holds
+ * "Allow in this chat" grants, kept with `enabled` back to true. The
+ * per-tool "always allow" map of an existing row is kept. Writes only rows
+ * that change.
  */
 export async function persistChatConnectorSelection(
   db: DbClient,
@@ -254,6 +258,11 @@ export async function persistChatConnectorSelection(
   const modesById = new Map((input.connectors ?? []).map((connector) => {
     return [connector.id, resolveConnectorToolMode(connector.toolMode)]
   }))
+  const isManualOrUnknown = (connectorId: string) => {
+    const mode = modesById.get(connectorId)
+
+    return !mode || mode === 'manual'
+  }
 
   async function write(connectorId: string, enabled: boolean) {
     const row = rowsByConnectorId.get(connectorId)
@@ -272,7 +281,9 @@ export async function persistChatConnectorSelection(
   }
 
   for (const connectorId of selectedIds) {
-    await write(connectorId, true)
+    if (isManualOrUnknown(connectorId)) {
+      await write(connectorId, true)
+    }
   }
 
   for (const connectorId of offIds) {
@@ -284,12 +295,26 @@ export async function persistChatConnectorSelection(
       continue
     }
 
-    const mode = modesById.get(row.connectorId)
-
-    if (row.enabled && (!mode || mode === 'manual')) {
+    if (row.enabled && isManualOrUnknown(row.connectorId)) {
       await write(row.connectorId, false)
-    } else if (!row.enabled && input.offIds && mode && mode !== 'manual') {
-      await write(row.connectorId, true)
+
+      continue
     }
+
+    if (row.enabled || !input.offIds || isManualOrUnknown(row.connectorId)) {
+      continue
+    }
+
+    if (Object.keys(row.alwaysAllowTools ?? {}).length > 0) {
+      await write(row.connectorId, true)
+
+      continue
+    }
+
+    await deleteConnectorChatSetting(db, {
+      userId: input.userId,
+      chatPublicId: input.chatPublicId,
+      connectorId: row.connectorId,
+    })
   }
 }

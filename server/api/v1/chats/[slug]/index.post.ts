@@ -346,6 +346,7 @@ import {
 import {
   CONNECTORS_PER_SEND,
   CONNECTORS_PER_USER,
+  resolveConnectorToolMode,
   CONNECTOR_SSE_PER_SEND,
   CONNECTOR_STEPS_PER_TURN,
   CONNECTOR_TOOLS_PER_REQUEST,
@@ -2227,7 +2228,10 @@ export default defineEventHandler(async (event) => {
           connectors: selection.selected,
           catalogConnectors: plan.catalog,
           optionalConnectorIds: new Set(selection.selected
-            .filter(connector => !onConnectorIds.includes(connector.id))
+            .filter((connector) => {
+              return resolveConnectorToolMode(connector.toolMode)
+                === 'always-on'
+            })
             .map(connector => connector.id)),
           existingToolCount: nativeToolCount,
           reserve: toolIndexReserve,
@@ -2267,6 +2271,17 @@ export default defineEventHandler(async (event) => {
       besidka: besidkaToolsRun,
       connectors: connectorsRun,
       nativeToolCount,
+      onConnectorOpened: (connectorId) => {
+        connectorsRun?.recordOpened(connectorId)
+
+        if (chatSearchBudget) {
+          chatSearchBudget.untrustedResultSeen = true
+        }
+
+        if (toolApprovalsActive) {
+          toolApprovalSend.recordConnectorOpened(connectorId)
+        }
+      },
       logger: aiLogger,
     })
 
@@ -3475,6 +3490,7 @@ function attachToolIndex(input: {
   besidka: PreparedBesidkaChatTools | null
   connectors: ConnectorToolsRun | null
   nativeToolCount: number
+  onConnectorOpened?: (connectorId: string) => void
   logger: { set: (data: Record<string, unknown>) => void }
 }): ToolIndex | null {
   const entries = [
@@ -3509,6 +3525,9 @@ function attachToolIndex(input: {
             CONNECTOR_SSE_PER_SEND
             - (input.connectors?.liveLegacySseCount ?? 0),
           ),
+          onOpen: (connector) => {
+            input.onConnectorOpened?.(connector.connectorId)
+          },
         },
       }
       : {}),

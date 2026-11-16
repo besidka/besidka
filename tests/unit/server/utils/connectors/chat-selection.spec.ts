@@ -30,6 +30,7 @@ const {
   createConnector,
   listConnectorChatSettings,
   listConnectors,
+  resetConnectorChatSettings,
   updateConnector,
   upsertConnectorChatSettings,
 } = await import('~~/server/utils/connectors/store')
@@ -231,7 +232,7 @@ describe('connector chat selection', () => {
         .toEqual({ connectorIds: [], offConnectorIds: [known] })
     })
 
-    it('writes off rows for offIds and clears an Auto off back to on',
+    it('writes off rows for offIds and deletes an Auto off row once cleared',
       async () => {
         const manual = await addConnector('manual', {
           status: 'ready',
@@ -274,14 +275,92 @@ describe('connector chat selection', () => {
           connectors,
         })
 
-        expect((await listChatConnectorIds(testDb.db, userId, chatId)).sort())
-          .toEqual([auto, alwaysOn].sort())
+        expect(await listChatConnectorIds(testDb.db, userId, chatId))
+          .toEqual([])
         expect((await listSelectableChatConnectorIds(
           testDb.db,
           userId,
           chatId,
         )).offConnectorIds).toEqual([manual])
+        expect((await listConnectorChatSettings(testDb.db, userId, chatId))
+          .map(row => row.connectorId)).toEqual([manual])
       })
+
+    it('keeps the grants of a cleared Auto off row and never writes an on '
+      + 'row for an Auto connector', async () => {
+      const auto = await addConnector('auto', {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'auto',
+      })
+      const granted = await addConnector('granted', {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'auto',
+      })
+      const connectors = await listConnectors(testDb.db, userId)
+
+      await upsertConnectorChatSettings(testDb.db, {
+        userId,
+        chatPublicId: chatId,
+        connectorId: granted,
+        enabled: false,
+        alwaysAllowTools: { mcp__granted__read: 'hash' },
+      })
+      await persistChatConnectorSelection(testDb.db, {
+        userId,
+        chatPublicId: chatId,
+        selectedIds: [auto],
+        offIds: [],
+        connectors,
+      })
+
+      const rows = await listConnectorChatSettings(testDb.db, userId, chatId)
+
+      expect(rows).toEqual([expect.objectContaining({
+        connectorId: granted,
+        enabled: true,
+        alwaysAllowTools: { mcp__granted__read: 'hash' },
+      })])
+    })
+
+    it('resets every chat row of a connector after a mode change, keeping '
+      + 'grants', async () => {
+      const connectorId = await addConnector('linear', {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'auto',
+      })
+      const otherChatId = (await seedChat(testDb.db, userId)).id
+
+      await upsertConnectorChatSettings(testDb.db, {
+        userId,
+        chatPublicId: chatId,
+        connectorId,
+        enabled: true,
+        alwaysAllowTools: {},
+      })
+      await upsertConnectorChatSettings(testDb.db, {
+        userId,
+        chatPublicId: otherChatId,
+        connectorId,
+        enabled: true,
+        alwaysAllowTools: { mcp__linear__read: 'hash' },
+      })
+      await resetConnectorChatSettings(testDb.db, {
+        userId,
+        connectorId,
+        enabled: false,
+      })
+
+      expect(await listConnectorChatSettings(testDb.db, userId, chatId))
+        .toEqual([])
+      expect(await listConnectorChatSettings(testDb.db, userId, otherChatId))
+        .toEqual([expect.objectContaining({
+          enabled: false,
+          alwaysAllowTools: { mcp__linear__read: 'hash' },
+        })])
+    })
 
     it('keeps an Auto and Always on row on when offIds is absent, and still '
       + 'turns a deselected Manual off', async () => {

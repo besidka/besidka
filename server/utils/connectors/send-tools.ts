@@ -136,7 +136,6 @@ export const CONNECTOR_FAILURE_TEXT = 'The connector tool call failed.'
 export const CONNECTOR_TOOL_CHANGED_TEXT = 'This tool changed on the '
   + 'connected service since it was reviewed, so it did not run. Tell the '
   + 'user to review the connector\'s tools on the Connectors page.'
-const CATALOG_DESCRIPTION_TOOLS = 8
 
 export interface ConnectorSendSummary {
   connectors: number
@@ -161,6 +160,7 @@ export interface ConnectorToolsRun {
   connectorIds: string[]
   catalog: ToolIndexCatalogConnector[]
   liveLegacySseCount: number
+  recordOpened: (connectorId: string) => void
   handles: ConnectorClientHandle[]
   notices: string[]
   summary: ConnectorSendSummary
@@ -238,25 +238,6 @@ function byteLength(text: string): number {
 
 function hostOf(connector: ConnectorRecord): string {
   return new URL(connector.origin).host
-}
-
-/**
- * The catalog line's description of an Auto connector: the names of its
- * first tools, read-only ones first. Remote text, cleaned and cut where the
- * catalog is built.
- */
-export function catalogDescriptionOf(
-  definitions: readonly ConnectorToolDefinition[],
-): string {
-  const ordered = [
-    ...definitions.filter(definition => isDefinitionAutoRunnable(definition)),
-    ...definitions.filter(definition => !isDefinitionAutoRunnable(definition)),
-  ]
-  const names = ordered
-    .slice(0, CATALOG_DESCRIPTION_TOOLS)
-    .map(definition => definition.title || definition.name)
-
-  return names.length > 0 ? `Tools: ${names.join(', ')}` : ''
 }
 
 function stripBearer(value: string): string {
@@ -610,8 +591,8 @@ async function syncDriftStatus(
  * at most two without a snapshot get a warm-up listing. They are indexed
  * with a `catalogKey`, closed until the model opens the connector, and a
  * first call connects and checks the hash against a live listing. A
- * connector in `optionalConnectorIds` (an Always on connector the chat did
- * not ask for) with a stale consent is left out with a notice instead of
+ * connector in `optionalConnectorIds` (every Always on connector, also one
+ * the chat has on) with a stale consent is left out with a notice instead of
  * refusing the send.
  *
  * With `consumeClearedCall` (the `tool-approvals` flag is on), whether a
@@ -1050,7 +1031,6 @@ export async function getConnectorTools(
       if (
         connector.transport === 'sse'
         || warmupConnectors.length >= CONNECTOR_CATALOG_WARMUPS_PER_SEND
-        || !await claimCatalogWarmup(kv, connector.id)
       ) {
         skipCatalog(connector, 'no-snapshot')
 
@@ -1065,6 +1045,12 @@ export async function getConnectorTools(
 
       if (!isConsentCurrent(connector, credentials)) {
         skipCatalog(connector, 'consent')
+
+        continue
+      }
+
+      if (!await claimCatalogWarmup(kv, connector.id)) {
+        skipCatalog(connector, 'warmup-backoff')
 
         continue
       }
@@ -1530,12 +1516,10 @@ export async function getConnectorTools(
 
         return [{
           key: prepared.connector.slug,
+          connectorId: prepared.connector.id,
           title: prepared.connector.title,
           host: hostOf(prepared.connector),
           toolCount: offered.length,
-          description: catalogDescriptionOf(
-            offered.map(candidate => candidate.definition),
-          ),
           isLegacySse: prepared.connector.transport === 'sse',
         }]
       })
@@ -1557,6 +1541,9 @@ export async function getConnectorTools(
         .filter(candidate => !candidate.catalogKey)
         .map(candidate => candidate.connector.id))],
       catalog: buildCatalog(),
+      recordOpened(connectorId) {
+        sourceConnectorId ??= connectorId
+      },
       liveLegacySseCount: new Set(candidates
         .filter((candidate) => {
           return !candidate.catalogKey

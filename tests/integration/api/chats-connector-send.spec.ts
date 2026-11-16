@@ -605,9 +605,7 @@ describe('connector tools in the chat send', () => {
       connectorHost: 'mcp.linear.example.com',
       chatPublicId: 'chat-1',
     })
-    expect(mocks.store.chatSettings).toEqual([
-      expect.objectContaining({ connectorId: CONNECTOR_ID, enabled: true }),
-    ])
+    expect(mocks.store.chatSettings).toEqual([])
     expect(
       server.requests.filter(request => request.method === 'DELETE'),
     ).toHaveLength(1)
@@ -659,11 +657,10 @@ describe('connector tools in the chat send', () => {
     expect(readUserText(firstCall)).toContain('лінеар')
     expect(systemPrompt).toContain('<connector_catalog>')
     expect(systemPrompt).toContain(
-      'linear | Linear | mcp.linear.example.com | 2 tools | Tools: '
-      + 'list_issues, create_issue',
+      'linear | Linear | mcp.linear.example.com | 2 tools\n',
     )
     expect(systemPrompt).not.toContain('<tool_index>')
-    expect(systemPrompt).not.toContain('mcp__linear__list_issues')
+    expect(systemPrompt).not.toContain('list_issues')
     expect(readToolNames(secondCall)).toEqual(expect.arrayContaining([
       'mcp__linear__list_issues',
       'mcp__linear__create_issue',
@@ -1041,7 +1038,7 @@ describe('connector tools in the chat send', () => {
 
   it('refuses the send without a current consent before any request',
     async () => {
-      seedConnector({ consentVersion: 'old-version' })
+      seedConnector({ consentVersion: 'old-version', toolMode: 'manual' })
 
       await expect(runSend({
         server,
@@ -1051,10 +1048,47 @@ describe('connector tools in the chat send', () => {
       expect(server.requests).toHaveLength(0)
     })
 
+  it('skips an Always on connector with a stale consent with a notice, '
+    + 'also when the chat has it on', async () => {
+    seedConnector({ consentVersion: 'old-version', toolMode: 'always-on' })
+    mocks.store.chatSettings = [{
+      connectorId: CONNECTOR_ID,
+      enabled: true,
+      alwaysAllowTools: {},
+    }]
+
+    const { doStream } = await runSend({
+      server,
+      connectorIds: [CONNECTOR_ID],
+      steps: [textChunks('Plain answer.')],
+    })
+
+    expect((doStream.mock.calls[0]?.[0] as any)?.tools).toBeUndefined()
+    expect(server.requests).toHaveLength(0)
+    expect(connectorNoticeLines().join(' '))
+      .toContain('needs you to review its permissions')
+  })
+
+  it('never writes an on row for an Auto or Always on connector sent as on',
+    async () => {
+      for (const toolMode of ['auto', 'always-on']) {
+        seedConnector({ toolMode })
+        mocks.store.chatSettings = []
+
+        await runSend({
+          server,
+          connectorIds: [CONNECTOR_ID],
+          steps: [textChunks('Done.')],
+        })
+
+        expect(mocks.store.chatSettings).toEqual([])
+      }
+    })
+
   it('cleans up the provider code execution session when the connector '
     + 'prepare throws', async () => {
     mocks.codeExecutionActive = true
-    seedConnector({ consentVersion: 'old-version' })
+    seedConnector({ consentVersion: 'old-version', toolMode: 'manual' })
 
     await expect(runSend({
       server,

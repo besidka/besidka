@@ -81,7 +81,11 @@ describe('connector chat selection routes', () => {
   async function addConnector(
     slug: string,
     owner: number = userId,
-    patch: Record<string, unknown> = { status: 'ready', enabled: true },
+    patch: Record<string, unknown> = {
+      status: 'ready',
+      enabled: true,
+      toolMode: 'manual',
+    },
   ) {
     const { createConnector, updateConnector } = await import(
       '~~/server/utils/connectors/store'
@@ -237,31 +241,44 @@ describe('connector chat selection routes', () => {
         body: { connectorIds: [], offConnectorIds: [manual] },
       })
 
-      expect(cleared.connectorIds).toEqual([auto])
+      expect(cleared.connectorIds).toEqual([])
       expect(cleared.offConnectorIds).toEqual([manual])
+
+      const { listConnectorChatSettings } = await import(
+        '~~/server/utils/connectors/store'
+      )
+      const rows = await listConnectorChatSettings(
+        testDb.db,
+        userId,
+        chat.id,
+      )
+
+      expect(rows.map(row => row.connectorId)).toEqual([manual])
     })
 
-    it('keeps an Auto connector on when the client sends no offConnectorIds',
-      async () => {
-        const auto = await addConnector('auto', userId, {
-          status: 'ready',
-          enabled: true,
-          toolMode: 'auto',
-        })
-
-        await call(putPath, {
-          params: { slug: chat.slug },
-          body: { connectorIds: [auto] },
-        })
-
-        const saved = await call(putPath, {
-          params: { slug: chat.slug },
-          body: { connectorIds: [] },
-        })
-
-        expect(saved.connectorIds).toEqual([auto])
-        expect(saved.offConnectorIds).toEqual([])
+    it('never writes an on row for an Auto connector, and never switches '
+      + 'it off when the client sends no offConnectorIds', async () => {
+      const auto = await addConnector('auto', userId, {
+        status: 'ready',
+        enabled: true,
+        toolMode: 'auto',
       })
+
+      const turnedOn = await call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [auto] },
+      })
+
+      expect(turnedOn.connectorIds).toEqual([])
+
+      const saved = await call(putPath, {
+        params: { slug: chat.slug },
+        body: { connectorIds: [] },
+      })
+
+      expect(saved.connectorIds).toEqual([])
+      expect(saved.offConnectorIds).toEqual([])
+    })
 
     it('refuses an offConnectorIds entry that is not the account\'s',
       async () => {

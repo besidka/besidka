@@ -1187,6 +1187,47 @@ export async function upsertConnectorChatSettings(
     })
 }
 
+export async function deleteConnectorChatSetting(
+  db: DbClient,
+  input: { userId: number, chatPublicId: string, connectorId: string },
+): Promise<void> {
+  await db.delete(schema.connectorChatSettings)
+    .where(and(
+      eq(schema.connectorChatSettings.userId, input.userId),
+      eq(schema.connectorChatSettings.chatPublicId, input.chatPublicId),
+      eq(schema.connectorChatSettings.connectorId, input.connectorId),
+    ))
+}
+
+/**
+ * Resets every chat's on or off choice for one connector after its mode
+ * changed (docs/connectors.md section 6.3): rows with no "Allow in this
+ * chat" grant are deleted, and the rest keep their grants with `enabled`
+ * set to the new mode's default (`false` for Manual, `true`, which means
+ * "available", for Auto and Always on). So a connector switched to Manual
+ * is never still on in a chat because of a row written while it was Auto.
+ */
+export async function resetConnectorChatSettings(
+  db: DbClient,
+  input: { userId: number, connectorId: string, enabled: boolean },
+): Promise<void> {
+  const owned = and(
+    eq(schema.connectorChatSettings.userId, input.userId),
+    eq(schema.connectorChatSettings.connectorId, input.connectorId),
+  )
+
+  await db.batch([
+    db.delete(schema.connectorChatSettings)
+      .where(and(
+        owned,
+        sql`${schema.connectorChatSettings.alwaysAllowTools} = '{}'`,
+      )),
+    db.update(schema.connectorChatSettings)
+      .set({ enabled: input.enabled, updatedAt: new Date() })
+      .where(owned),
+  ])
+}
+
 export async function listConnectorChatSettings(
   db: DbClient,
   userId: number,
