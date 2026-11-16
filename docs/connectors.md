@@ -1007,6 +1007,34 @@ byte cap, and the search returns remote descriptions as tool output.
    and logs `toolIndex.noRoom`.
 9. Loading gets its own `TOOL_INDEX_LOAD_STEPS` (2) in the tool loop, and the
    load tool is not an answer-guarantee tool (like skill activation).
+10. **Helping models that do not load (2026-11-16).** On preview pr-923,
+    GPT-5 Mini loaded `besidka__delete_files` and asked as expected, but
+    GPT-5.4 mini never called the load tool in 3 of 3 runs of "Видали файл
+    kyiv-chestnut-leaf.jpg з моїх файлів" and improvised with `list_files`,
+    `create_file` or `rename_file`. Three changes:
+    - The index block opens with a firm rule (`TOOL_INDEX_USAGE_RULE`): check
+      the index before saying you cannot do something, load the listed tool
+      first, and never use a different tool to approximate the request (no
+      rename, move or create for a delete). The load tool's description says
+      the same and that loading runs nothing and needs no approval.
+    - The index sits right after the memory and project instructions and
+      before the project knowledge block and the connector and Besidka
+      instructions, so long knowledge text does not bury it.
+    - **Prefetch** (`server/utils/ai/tool-index-prefetch.ts`): before the
+      first step of a new message (never on an approval continuation), the
+      user's own message is matched against the index by an action verb
+      (delete, remove, rename, create, add, share, revoke, move, update,
+      branch) and a thing (file, chat, project, note, message, memory,
+      setting, skill, page, issue, task, comment, ...), from word stems in
+      English, Ukrainian, Russian, Polish, German, Spanish and French
+      (`видал` covers видали, видалити, видаліть). A short English stem must be
+      the whole word or take a plain suffix, so `add` never matches
+      `address`. Read tools (`list_`, `get_`, `search`) are never prefetched.
+      At most 3 matches, closest name first, are loaded through the same
+      `load()` (caps, unloading and approval unchanged), so the model sees
+      them as ordinary tools on step one. A prefetch changes the first
+      step's tool list for that message only, which costs one cache write
+      (see Prompt cache below). Logged as `toolIndex.prefetched`.
 
 **Modes** (`connectors.tool_mode`, section 8.1): **Off** is the existing
 switch (`enabled = false`); **Auto** (null, the default for every connector,

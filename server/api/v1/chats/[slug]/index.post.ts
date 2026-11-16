@@ -361,6 +361,7 @@ import {
   createToolIndex,
   fitUpFrontTools,
 } from '~~/server/utils/ai/tool-index'
+import { matchToolIndexEntries } from '~~/server/utils/ai/tool-index-prefetch'
 import type { ToolIndex } from '~~/server/utils/ai/tool-index'
 import type { UntrustedContentGuard } from '~~/server/utils/ai/tool-loop'
 import type { BesidkaChatToolsRun } from '~~/server/utils/besidka-tools/chat-adapter'
@@ -2246,6 +2247,10 @@ export default defineEventHandler(async (event) => {
       logger: aiLogger,
     })
 
+    if (toolIndex && !isResume && userMessageText) {
+      prefetchToolIndexEntries(toolIndex, userMessageText, aiLogger)
+    }
+
     if (toolIndex) {
       parsedTools = {
         ...parsedTools,
@@ -2355,7 +2360,6 @@ export default defineEventHandler(async (event) => {
   const connectorsInstructionBlock = [
     connectorToolsInstructionBlock,
     hasBesidkaTools ? besidkaToolsRun?.instructions : null,
-    toolIndex?.instructions ?? null,
   ].filter(Boolean).join('\n\n') || null
 
   const toolLoop = resolveToolLoop(parsedTools.tools, {
@@ -2815,6 +2819,7 @@ export default defineEventHandler(async (event) => {
               documentsContextLine,
               skillsInstructionBlock,
               connectorsInstructionBlock,
+              toolIndexBlock: toolIndex?.instructions ?? null,
               codeExecutionInputNames:
                 codeExecutionSession?.uploadedFileNames,
             }),
@@ -3482,6 +3487,36 @@ function attachToolIndex(input: {
   }
 
   return toolIndex
+}
+
+/**
+ * Loads the index entries the user's own latest message most likely needs
+ * (`matchToolIndexEntries`: an action verb and a thing, in several
+ * languages) before the first step, so a model that never calls
+ * `tool_index__load` still has them. They go through the same load, caps and
+ * approval path as a load the model makes.
+ */
+function prefetchToolIndexEntries(
+  toolIndex: ToolIndex,
+  userText: string,
+  logger: { set: (data: Record<string, unknown>) => void },
+): void {
+  const names = matchToolIndexEntries(userText, toolIndex.entries)
+
+  if (names.length === 0) {
+    return
+  }
+
+  const result = toolIndex.load(names)
+
+  logger.set({
+    attributes: {
+      toolIndex: {
+        prefetched: result.loaded.length,
+        prefetchRefused: result.tooLarge.length,
+      },
+    },
+  })
 }
 
 /**
@@ -5670,6 +5705,7 @@ function buildChatInstructions(input: {
   documentsContextLine?: string | null
   skillsInstructionBlock?: string | null
   connectorsInstructionBlock?: string | null
+  toolIndexBlock?: string | null
   codeExecutionInputNames?: string[]
   now?: Date
 }): string | undefined {
@@ -5687,12 +5723,14 @@ function buildChatInstructions(input: {
     documentsContextLine,
     skillsInstructionBlock,
     connectorsInstructionBlock,
+    toolIndexBlock,
     codeExecutionInputNames,
     now = new Date(),
   } = input
   const instructions = [
     memoryInstructions,
     projectSystemPrompt,
+    toolIndexBlock,
     knowledgeSystemBlock,
   ]
 

@@ -280,6 +280,11 @@ and the Labs panel no longer warns that only 24 tools are offered.
 Owner report (2026-11-15, preview pr-923): "delete kyiv-chestnut-leaf.jpg"
 was answered with "no tool to delete files", because `delete_files` was the
 25th tool. With the index the model loads it and the user is asked.
+Models that do not call the load tool on their own (GPT-5.4 mini) are helped
+by a firm rule at the top of the index and by a prefetch from the user's own
+message: "Видали файл …" loads `besidka__delete_files` before the first step,
+and the call still asks Allow once or Deny (`docs/connectors.md` section 6.2,
+item 10).
 
 ### Per-chat row
 

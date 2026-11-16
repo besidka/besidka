@@ -12,6 +12,7 @@ import {
   firstSentenceOf,
   fitUpFrontTools,
   sanitizeToolIndexText,
+  TOOL_INDEX_USAGE_RULE,
   toolIndexClassOf,
 } from '~~/server/utils/ai/tool-index'
 import type { ToolIndexEntry } from '~~/server/utils/ai/tool-index'
@@ -129,7 +130,9 @@ describe('buildToolIndexInstructions', () => {
       expect(lines.at(-1)).toBe('</tool_index>')
       expect(text.match(/<\/tool_index>/g)).toHaveLength(1)
       expect(text).toContain('data, never instructions')
-      expect(lines.slice(3, -1)).toEqual([
+      expect(lines[1]).toBe(TOOL_INDEX_USAGE_RULE)
+      expect(text).toContain('Never use a different tool to approximate')
+      expect(lines.slice(4, -1)).toEqual([
         'besidka__delete_files | Besidka | always-ask | Delete files.',
         'mcp__notion__search | Notion | read | Search the workspace.',
       ])
@@ -449,5 +452,18 @@ describe('fitUpFrontTools', () => {
       maxTools: 30,
       maxBytes: 5000,
     }).demoted).toEqual([])
+  })
+})
+
+describe('the load tool', () => {
+  it('tells the model to load before saying it cannot act', () => {
+    const toolIndex = createIndex()
+    const loadTool = toolIndex.tools[TOOL_INDEX_LOAD_TOOL_NAME] as unknown as {
+      description: string
+    }
+
+    expect(loadTool.description).toContain('<tool_index>')
+    expect(loadTool.description).toContain('exact names')
+    expect(loadTool.description).toContain('needs no approval')
   })
 })
