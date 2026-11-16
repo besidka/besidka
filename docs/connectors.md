@@ -627,6 +627,29 @@ Registration order at OAuth start:
 
 An AS that rejects a preview host's CIMD falls back to DCR on that host.
 
+CIMD is used only when the AS also advertises
+`authorization_response_iss_parameter_supported` (section 5.5 rule, mix-up
+defense). An AS that offers CIMD without `iss` goes to DCR, and a DCR
+refusal is mapped from its RFC 7591 `error` code only (the description is
+never shown): `invalid_redirect_uri` becomes
+`CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED` ("This service does not allow
+Besidka to sign in"), and the Connect dialog offers "Use a token instead"
+when the preset allows `header`. The code and HTTP status are logged as
+`attributes.connectors.step: 'oauth-registration-refused'`.
+
+**Vercel (2026-11-16, probed).** `mcp.vercel.com` is authorized by
+`vercel.com`, which lists `client_id_metadata_document_supported: true` but
+not `authorization_response_iss_parameter_supported`, so Besidka registers
+with DCR at `api.vercel.com/login/oauth/register`. That endpoint answers 400
+`invalid_redirect_uri` ("not approved for use by this authorization server")
+for `https://besidka.com/api/v1/connectors/oauth/callback` as well as for a
+`*.workers.dev` preview: Vercel keeps an allowlist of approved client
+redirect addresses, so this is not a preview-only limit and not a Besidka
+request bug. Vercel connects only after Vercel approves Besidka (or if its
+AS adds `iss`, which would switch Besidka to CIMD). The presets Stripe
+(DCR, accepts both origins) and Cloudflare (CIMD with `iss`) were checked the
+same day and are not affected.
+
 A preset whose `auth` has no `oauth` (GitHub) never starts OAuth: the
 discover route passes `allowOAuth: false` to `discoverConnectorAuth`, so a 401
 or 403 means header auth without any metadata request, and the Connect dialog

@@ -424,6 +424,35 @@ describe('Profile/Connectors/ConnectDialog', () => {
     })
   })
 
+  describe('when the sign-in server does not approve the redirect address',
+    () => {
+      it('offers a token for a server without a preset', async () => {
+        connector.value = createConnectorItem({
+          presetId: null,
+          status: 'needs-auth',
+          consent: { state: 'missing', issuerHost: null, givenAt: null },
+        })
+        respond({
+          '/connect/discover': OAUTH_DISCOVERY,
+          '/consent': { connector: {} },
+          '/oauth/start': Object.assign(new Error('x'), {
+            data: {
+              message: 'This service does not allow Besidka to sign in',
+              code: 'CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED',
+            },
+          }),
+        })
+        await mountDialog()
+        await checkTestId('connector-consent-checkbox')
+        await clickTestId('connector-consent-continue')
+        await clickTestId('connector-connect-sign-in')
+
+        expect(getByTestId('connector-connect-error').textContent)
+          .toContain('This service does not allow Besidka to sign in')
+        expect(findByTestId('connector-connect-use-token')).not.toBeNull()
+      })
+    })
+
   it('shows a fixed error when the server cannot be reached', async () => {
     respond({
       '/connect/discover': Object.assign(new Error('x'), {

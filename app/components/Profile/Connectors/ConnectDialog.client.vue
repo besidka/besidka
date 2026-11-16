@@ -405,9 +405,14 @@ const canUseHeader = computed<boolean>(() => {
   return !preset.value || preset.value.auth.includes('header')
 })
 
+const TOKEN_FALLBACK_ERROR_CODES: readonly string[] = [
+  'CONNECTOR_OAUTH_NO_REGISTRATION',
+  'CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED',
+]
+
 const canOfferToken = computed<boolean>(() => {
   return step.value === 'failed'
-    && errorCode.value === 'CONNECTOR_OAUTH_NO_REGISTRATION'
+    && TOKEN_FALLBACK_ERROR_CODES.includes(errorCode.value ?? '')
     && discovery.value !== null
     && canUseHeader.value
 })

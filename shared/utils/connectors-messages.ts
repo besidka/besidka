@@ -22,6 +22,8 @@ export const CONNECTOR_CODE_MESSAGES: Readonly<Record<string, string>> = {
   CONNECTOR_OAUTH_NO_REGISTRATION: 'This server needs a pre-registered client',
   CONNECTOR_OAUTH_REGISTRATION_FAILED:
     'The sign-in server refused to register Besidka',
+  CONNECTOR_OAUTH_REDIRECT_NOT_ALLOWED:
+    'This service does not allow Besidka to sign in',
   CONNECTOR_OAUTH_STATE_INVALID: 'The sign-in link expired or was already used',
   CONNECTOR_OAUTH_REDIRECT_MISMATCH:
     'The sign-in came back to a different address',
