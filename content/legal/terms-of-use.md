@@ -78,7 +78,7 @@ This section applies to every key you enter: an AI provider key, an AI gateway k
 - **TypeSafe AI is a separate cost too.** Every check you leave on is billed to your TypeSafe AI account, a fraction of a cent each, separately from your model usage. You can switch single checks off, or delete the key to stop all of them.
 - **An AI gateway bills you itself.** If you route a chat through a gateway, the model usage is charged through your gateway account, under the gateway's own pricing and terms.
 - I cannot see, refund or cap your spending with any of them. Set spending limits in your provider, gateway and search provider accounts if you want a ceiling.
-- **Running code is the provider's service, on your key.** If you turn on **Run code**, the code runs in the sandbox of your own Anthropic, OpenAI or Google account, under that provider's terms and usage policy, which apply to you directly. I do not run the code and I cannot see or cap what it costs. Anthropic's document skills, if I offer them, are Anthropic's: they run under your own agreement with Anthropic, and I do not license or distribute them.
+- **Running code is the provider's service, on your key.** If you turn on **Run code**, the code runs in the sandbox of your own Anthropic, OpenAI or Google account, under that provider's terms and usage policy, which apply to you directly. I do not run the code and I cannot see or cap what it costs. Anthropic's document skills, if I offer them, are Anthropic's: they run under your own agreement with Anthropic, and I do not license or distribute them. The same applies to the scripts of one of your own skills that you allow to run there (see [Skills](#skills)).
 
 ## You are interacting with an AI system
 
@@ -121,6 +121,7 @@ Do not use Besidka to:
 - Harass, threaten, defame, stalk or doxx anyone.
 - Produce malware, exploits, phishing pages or other material designed to break into systems or defraud people.
 - Use code that you or the assistant write or run through Besidka, including with **Run code**, to attack or disrupt systems. That means no malware, no denial-of-service attacks or botnets, and no bypassing security controls without authorization. It also means no attacks on critical infrastructure, such as energy, water, transport, health or communications networks. The usage policy of your AI provider applies to code run on your key as well.
+- Create, import or run a skill built to harm people or systems, or to get around the safeguards of Besidka or of a provider's service.
 - Present AI output as human-written where doing so deceives someone to their detriment, or impersonate a real person or organization.
 - Attack the service — no scraping at scale, no brute forcing, no attempt to bypass rate limits or access other users' data, no probing for vulnerabilities beyond good-faith reporting to me.
 - Resell or wrap the hosted service as your own commercial product. You may self-host the code instead; that is what the license is for.
@@ -138,6 +139,16 @@ A connector is a remote server that you add so that the AI model in your chats c
 - **You can disconnect at any time.** Disconnecting, or deleting a connector, stops any further calls and removes your sign-in details from Besidka. It does not undo what a server already received or did.
 - **Names belong to their owners.** GitHub, Notion, Linear, Atlassian and every other name are the marks of their owners, and I am not affiliated with them.
 - **Your other responsibilities stay.** What a connector reads or writes through your account is your use of Besidka, so [Other people's data](#other-peoples-data) and [What you may not do](#what-you-may-not-do) apply.
+
+## Skills
+
+A skill is a set of instructions, with optional files and scripts, that the AI model in your chats can follow. A command is a skill you run yourself by typing `/` and its name. How skills work and what happens to your data is in the [Privacy Policy](/privacy-policy#skills).
+
+- **You need the right to use what you add.** Create, paste or import only skills you have the right to use and to store. Besidka refuses a skill whose license forbids copying it or using it outside a named service, and asks you to confirm your right when a skill states no license, but it cannot judge every license, so the choice and the responsibility stay yours.
+- **I do not review skills.** Besidka's checks point at passages worth a second look. They do not tell you that a skill is safe, legal or correct. A skill can steer the model, and what the model then does in your chats is your use of Besidka. Read a skill before you switch it on.
+- **Scripts run in your own provider account.** If you allow a skill's scripts, they run in the code sandbox of your own Anthropic account, under Anthropic's terms and usage policy, like any other code you run there (see [You need your own API key](#you-need-your-own-api-key)), and [What you may not do](#what-you-may-not-do) applies to them.
+- **Skills are private.** I do not publish, share or list your skills, and there is no marketplace.
+- **I may disable a skill** that breaks the law or these terms, or puts the service or other people at risk. I tell you why with a [statement of reasons](#statement-of-reasons). Anyone can report a skill they believe is illegal, as described under [Reporting illegal content](#reporting-illegal-content).
 
 ## Sensitive information
 
@@ -161,7 +172,7 @@ You keep all rights in what you write and upload. I claim no ownership of it.
 To run the service, I need a **narrow, limited permission** from you. You grant me a non-exclusive, royalty-free license, limited strictly to operating the service for you, to:
 
 1. store your content and serve it back to you;
-2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, including your memory, project knowledge and excerpts of your earlier chats; transmit chat text to the model you chose for memory, using your key, when memory is written from your chats as described in the [Privacy Policy](/privacy-policy#memory); and transmit the search queries your model writes from it to the search provider you turned on, using your key; transmit the text the TypeSafe AI checks you left on need to TypeSafe AI, using your key, as described in the [Privacy Policy](/privacy-policy#typesafe-ai-checks);
+2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, including your memory, project knowledge, skills and excerpts of your earlier chats; copy the files of a skill to your own Anthropic account when you allow its scripts; transmit chat text to the model you chose for memory, using your key, when memory is written from your chats as described in the [Privacy Policy](/privacy-policy#memory); and transmit the search queries your model writes from it to the search provider you turned on, using your key; transmit the text the TypeSafe AI checks you left on need to TypeSafe AI, using your key, as described in the [Privacy Policy](/privacy-policy#typesafe-ai-checks);
 3. keep the memory entries and project knowledge you create or allow, and use them as context for your own later chats; and
 4. render your content on a share page or an artifact link **that you yourself created**, and in a chat you shared, for as long as that share or link is active, and run the artifacts in it in a sealed frame for the people who open it.
 
@@ -212,7 +223,7 @@ Revoking a share or an artifact link stops access through me immediately. Revoki
 
 ## Reporting illegal content
 
-Anyone — user or not — can tell me about content on Besidka they believe is illegal. Besidka hosts content that users choose to publish, through share links and artifact links. I voluntarily follow the notice-and-action rules of the Digital Services Act (Arts. 11, 12, 14, 16, 17 and 18): a single point of contact, reports by email or by form, a decision by a person, and a statement of reasons when I act.
+Anyone — user or not — can tell me about content on Besidka they believe is illegal. That includes a skill stored in someone's account, although skills are private, so I can act only on what a report lets me find. Besidka hosts content that users choose to publish, through share links and artifact links. I voluntarily follow the notice-and-action rules of the Digital Services Act (Arts. 11, 12, 14, 16, 17 and 18): a single point of contact, reports by email or by form, a decision by a person, and a statement of reasons when I act.
 
 **Send reports to :privacy-email-link{}.** The mailbox is read by a person — it is not a bot-only address. For an artifact, you can also use the **Report** button on its public page, or next to it in a shared chat. The form fills in the address for you and asks for the reason: child sexual abuse material, terrorist content, a threat to someone's life or safety, phishing or fraud, copyright, privacy, other illegal content, harmful content, or something else. If you are not signed in, it also runs a bot check from Cloudflare.
 
@@ -291,9 +302,10 @@ Besidka has a few automatic checks on content. None of them is moderation: none 
 
 - **The memory check.** Before text is saved to memory, it is checked so that sensitive topics and never-stored items such as card numbers are kept out, and never-stored items are removed from chat text before it is sent to the memory model. It only decides what memory may keep.
 - **The optional TypeSafe AI checks,** which run only if you add a TypeSafe AI key and leave them on. They decide whether to search the web, whether memory is worth generating from a chat, how search results are ordered, whether to warn you about personal data before you share a chat, and whether a project file or a search result looks like hidden instructions aimed at the AI. A flagged project file waits for your review and a flagged search result is left out of the model's context, but nothing is deleted, nothing is reported to anyone, and there is no effect on your account.
+- **Skill checks.** When you add or review a skill, Besidka points at passages worth a second look and refuses a license that forbids copying. They report nothing and only inform your choice.
 - **Artifact safety checks.** Before you publish an artifact, Besidka looks for emails, phone numbers and similar identifiers and warns you; it never blocks you. When an artifact tries to navigate its frame to another address, Besidka blocks it, closes the frame for the person viewing it and shows an error. It records only that this happened, by the artifact's id, and it does not take the artifact down.
 
-Moderation is therefore **reactive**. I act on reports, on notices from authorities, and on things I notice while running the service. When I act, I may remove or disable specific content, revoke a share link, take down an artifact and its links, restrict a feature for an account, or suspend or terminate an account for serious or repeated breaches of these terms. I aim to act proportionately, and I send a statement of reasons as described above.
+Moderation is therefore **reactive**. I act on reports, on notices from authorities, and on things I notice while running the service. When I act, I may remove or disable specific content, revoke a share link, take down an artifact and its links, disable a skill, restrict a feature for an account, or suspend or terminate an account for serious or repeated breaches of these terms. I aim to act proportionately, and I send a statement of reasons as described above.
 
 ## Availability and changes to the service
 

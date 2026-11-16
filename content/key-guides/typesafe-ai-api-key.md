@@ -1,6 +1,6 @@
 ---
 title: How to get a TypeSafe AI API key
-description: Create a TypeSafe AI API key and add it to Besidka. The key powers Jev, a decision model that answers yes/no questions for seven optional smart checks, such as memory checks and Auto web search. It adds no chat models.
+description: Create a TypeSafe AI API key and add it to Besidka. The key powers Jev, a decision model that answers yes/no questions for eight optional smart checks, such as memory checks and Auto web search. It adds no chat models.
 provider: typesafe
 keyUrl: https://console.typesafe.ai/keys
 keyUrlLabel: Open TypeSafe AI keys page
@@ -58,7 +58,7 @@ faq:
   - question: How is Jev different from GPT, Claude or Gemini?
     answer: GPT, Claude and Gemini are language models. They write answers, and you pay for the words they read and write. Jev only returns yes/no probabilities, which makes each call fast and cheap. In Besidka's tests a typical check came back in about 170 to 200 ms (median), and TypeSafe AI lists $0.042 per million input tokens with free output. That suits small decisions around a chat, such as whether to search the web, and not the chat itself. Your conversations always run on the chat model you pick.
   - question: What is the TypeSafe AI key for in Besidka?
-    answer: It powers Jev, a small decision model from TypeSafe AI that answers short yes/no questions. Besidka uses it for seven optional smart checks, each with its own toggle. They are a second opinion on whether a memory entry holds sensitive data, a pre-filter that skips memory generation when a chat holds nothing worth remembering, deciding whether a web search is needed, screening project files and search results for hidden instructions, ordering search results, a personal-data warning before you share a chat, and searching your past chats for models without tool calling, only while Search and reference chats is on. It does not answer your messages. Your chats keep running on the provider keys you added.
+    answer: It powers Jev, a small decision model from TypeSafe AI that answers short yes/no questions. Besidka uses it for eight optional smart checks, each with its own toggle. They are a second opinion on whether a memory entry holds sensitive data, a pre-filter that skips memory generation when a chat holds nothing worth remembering, deciding whether a web search is needed, screening project files and search results for hidden instructions, ordering search results, a personal-data warning before you share a chat, searching your past chats for models without tool calling, only while Search and reference chats is on, and, where skills are available and only if you switch it on, picking one of your skills for a message. It does not answer your messages. Your chats keep running on the provider keys you added.
   - question: What does Auto web search do?
     answer: With a TypeSafe AI key, the web search menu in the chat input gets an Auto switch. Pick a search provider (the model's built-in search, Brave or Exa) and turn Auto on. For each message, Jev decides whether a web search is needed, and Besidka either gives the model the search provider you picked, so the model decides whether to search, or answers without searching. A link, a domain or words such as "today" or "latest" always search, without asking Jev. If TypeSafe AI is slow or unavailable, Besidka searches as usual. Each answer shows a small note saying whether the web was searched, or whether search was allowed but not used (or, for some providers, just allowed). Auto sends your message and your last three turns, with never-stored data removed; a message that always searches is not sent at all. Switch it off in the menu, or turn off the Auto web search check under Profile, API Keys, Smart checks.
   - question: Do I need this key?
@@ -100,7 +100,7 @@ Some useful decisions in a chat app are too small to ask a chat model about and 
 
 Jev sits between the two. Besidka's own rules run first and stay in charge; Jev adds a second opinion where a yes/no answer saves you money, time or a mistake. Every one of these smart checks is optional, runs on your own TypeSafe AI key and has its own switch under **Profile**, **API Keys**, **Smart checks**.
 
-## The seven smart checks
+## The eight smart checks
 
 Each check below says what it does, what Besidka sends to TypeSafe AI, and what happens if TypeSafe AI is slow, unavailable or rate-limited. Never-stored values, such as card numbers, passwords and API keys, are removed from the text before every call.
 
@@ -131,7 +131,7 @@ This check sends the most text, because it reads whole chats. Switch it off on i
 
 A prompt injection is text written to give orders to an AI that reads it, hidden in a file or a web page. Jev screens project files and notes when you add or edit them, and Brave and Exa search results before the model reads them. A flagged file is marked "needs review" and stays out of your chats until you choose **Allow anyway**. A flagged search result is left out, and the model is told how many were withheld. Nothing is ever deleted.
 
-- **Sent:** the extracted text of project files and notes, in chunks of about 2,000 tokens, and the title and snippet of each Brave or Exa result.
+- **Sent:** the extracted text of project files and notes, in chunks of about 2,000 tokens, and the title and snippet of each Brave or Exa result. Where skills are available, also the text of a skill whose review screen you open, in the same chunks; it only points at passages and never blocks the skill.
 - **If it fails:** files are added anyway and checked again later, usually within the hour. Search results are used unscreened.
 - **Not covered:** results of a chat model's own built-in web search, which go straight to the model, and anything a PDF holds outside its text layer, such as a scan.
 
@@ -156,6 +156,13 @@ Models that cannot call tools cannot search your chat history themselves. For th
 - **Sent:** your message and your last three turns.
 - **If it fails:** Besidka searches your past chats anyway, because missing a needed search costs more than one quick lookup. Without the key, or with the check off, there is no such search.
 
+### Skill selection
+
+Off until you switch it on, and shown only where skills are available. When one of your skills that the model may pick by itself shares a word with your message, Jev decides whether one of them fits. If one clearly does, it is used for that message only, and the reply shows "Applied skill". Besidka finds the candidates itself first, so a message that matches none of your skills sends nothing.
+
+- **Sent:** your message, cut to 4,000 characters, and the names and descriptions of up to three matching skills.
+- **If it fails:** nothing changes; the model picks from your skills as it does without the key.
+
 ## Privacy: what leaves Besidka and where it goes
 
 - **Only the checks you leave on.** Nothing goes to TypeSafe AI until you save a key, and a switched-off check sends nothing.
@@ -169,7 +176,7 @@ The [Privacy Policy](/privacy-policy#typesafe-ai-checks) lists what each check s
 ## Why it is optional and BYOK
 
 - **Your key, your account.** TypeSafe AI bills its own account, the one you create, at its own price. Besidka adds nothing on top and holds no TypeSafe AI key of its own.
-- **Saving the key is the opt-in.** All seven checks are on once you save it. Each one has its own switch, and deleting the key stops all of them at once.
+- **Saving the key is the opt-in.** All checks except Skill selection are on once you save it; Skill selection stays off until you switch it on. Each one has its own switch, and deleting the key stops all of them at once.
 - **Nothing breaks without it.** Besidka works fully without a TypeSafe AI key. Every check except past-chat retrieval falls back to exactly what Besidka does without the key.
 
 ## How well it works: the eval, with caveats

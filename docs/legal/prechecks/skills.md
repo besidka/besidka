@@ -494,10 +494,24 @@ runs in parallel with the stack. Add these to the input list above.
   never-store values from the message and caps it at 4,000 characters, the
   same path as Auto web search; skill names and descriptions are redacted in
   `toSkillStateLine`.
-- **Not written:** the Terms of Use items of the input list (right-to-use
-  promise, disable power, reportable content, run-code rules for scripts), the
-  breach-runbook rows of `docs/skills.md` section 13 and the DSA sentence in
-  `compliance-review-2026-10.md`. They are open items for the owner
+- **Terms of Use: written** (a "Skills" section with the right-to-use
+  promise, no review, scripts, privacy, the disable power and reporting; a
+  "What you may not do" item; the "Your content" license; a skill check under
+  "Content moderation").
+- **Decision: third parties in skills rest on Art. 6(1)(f), with Art.
+  14(5)(b) as the exemption from informing them.** Authors of imported
+  skills (named in the skill or its GitHub address) and people named in
+  skill files are not the user. Besidka stores and forwards what the user
+  brought in, does not read skills and cannot know whom they name, so
+  telling each person is impossible or disproportionate. The Privacy Policy
+  paragraph "Other people in a skill" is the notice, with a route to the
+  privacy mailbox. Same reading as connector results and registry
+  maintainers (`docs/legal/prechecks/connectors.md`).
+- **The daily update check rests on Art. 6(1)(f)**, not the contract: it runs
+  for skills on a branch or release tag, without a request each time, and
+  never for a commit-pinned skill.
+- **Not written:** the breach-runbook rows of `docs/skills.md` section 13
+  and the DSA sentence in `compliance-review-2026-10.md`. They are open items for the owner
   (`docs/legal.md`, "2026-11-16 Phase 4 legal batch").
 - **Notice: superseded by the owner decision of 2026-11-16.** The texts are
   updated without notice emails; no `LEGAL_NOTICES` entry and no consent

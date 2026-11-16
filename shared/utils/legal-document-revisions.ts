@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '6080b6a96488d27347a5ec323a415f82f3fa3a3475a7fe153d6b977138cf953b',
+    hash: '2ac8ff662c2de4e732fe264ef23234626fce0e7e362481bd57e1b9df7b4567c2',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -59,7 +59,7 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'on, Manual) with the catalog sent to the provider, per-tool modes, '
       + 'the 30-day tool snapshot and the anonymous directory requests, with '
       + 'the matching recipient, transfer, logging, retention and deletion '
-      + 'rows. Judged MATERIAL under WP260 (new purposes, new recipients '
+      + 'rows, and the paragraph on other people in a skill. Judged MATERIAL under WP260 (new purposes, new recipients '
       + 'GitHub and the Anthropic workspace copy, new retention) and NOT '
       + 'described by the notice id on this record. Owner decision of '
       + '2026-11-16: updated without notice emails, no LEGAL_NOTICES entry '
@@ -69,7 +69,7 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'classification.',
   },
   'terms-of-use': {
-    hash: '0ed3e797911d7fb10e00c9c56051e257d416a6095972b6231e507613510c1031',
+    hash: '6a7cf7f84be8e9a5f0ea0068a9fe705aaf4c63c00cb341f7bcc7da8d62109539',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'New prohibited use for code run with Run code or written through '
@@ -85,7 +85,16 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'items) are judged MATERIAL and are NOT described by the notice id '
       + 'on this record, which predates them. No notice exists for '
       + 'connectors: announcing them is the owner\'s decision in '
-      + '/admin/legal. Latest earlier edit is spelling only (British '
+      + '/admin/legal. PHASE 4 LEGAL BATCH (2026-11-16): a new Skills '
+      + 'section (right to use what you create, paste or import, no review '
+      + 'by Besidka, scripts under the provider\'s terms, private skills, '
+      + 'the power to disable a skill with a statement of reasons, '
+      + 'reporting), a What you may not do item, skills in the Your content '
+      + 'license and a skill check under Content moderation. Judged '
+      + 'MATERIAL (new obligations on users) and NOT described by the '
+      + 'notice id on this record. Owner decision of 2026-11-16: updated '
+      + 'without notice emails, no LEGAL_NOTICES entry and no consent '
+      + 'version bump. Latest earlier edit is spelling only (British '
       + 'variants changed to American English), with no change of meaning, '
       + 'so it adds no new classification.',
   },

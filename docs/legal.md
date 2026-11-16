@@ -1125,7 +1125,7 @@ residual items 33 to 36.
     30-day connector tool snapshot, the 30-day TypeSafe AI chunk score cache
     and per-version marks, the 45-day GitHub update-check state.
   - *Change of basis, rights, controller:* no.
-  - *Terms:* not edited in this batch (see below).
+  - *Terms:* yes, new obligations on users (the skills section, see below).
   Minor on their own: the per-tool modes (they describe approvals the policy
   already covered), project skills (the same text to the same provider) and
   the anonymous directory requests (no user data). When unsure the checklist
@@ -1134,14 +1134,25 @@ residual items 33 to 36.
   keeps its `material` classification and its existing `noticeId`, with a note
   that the Phase 4 text is not described by that notice. The Terms and Cookie
   Policy are unchanged, so their hashes stay.
-- **Terms of Use: not written, open for the owner.** The skills pre-check asks
-  for a right-to-use promise for "create, paste or import", a power to disable
-  a skill with a statement of reasons, skills as reportable stored content,
-  and, for S-5, the run-code rules of D-10 to cover skill scripts (the existing
-  "Running code" clause speaks of code the model writes in the user's provider
-  sandbox, which arguably covers scripts run there, but it does not name
-  skills). These are new user obligations, so they are material Terms changes
-  and were left out of this batch on purpose.
+- **Terms of Use: written, material.** A new "Skills" section (the
+  right-to-use promise for "create, paste or import", no review by Besidka,
+  scripts under the provider's terms like any code run there, private skills
+  and no marketplace, the power to disable a skill with a statement of
+  reasons, reporting), a "What you may not do" item for skills built to harm
+  or to get around safeguards, skills and the Anthropic copy in the "Your
+  content" license, and a skill check under "Content moderation". These are
+  new obligations on users, so the Terms change is material under the
+  checklist; its revision record moves to the new hash with the same note
+  pattern as the Privacy Policy.
+- **Third parties in skills: Art. 6(1)(f) with Art. 14(5)(b).** Authors of
+  imported skills and people named in skill files get a paragraph in the
+  Privacy Policy ("Other people in a skill"), on the same reading as people in
+  connector results and registry maintainers. Recorded in
+  `docs/legal/prechecks/skills.md` (addendum 2026-11-16).
+- **Daily GitHub check: Art. 6(1)(f).** It runs only for skills on a branch or
+  release tag (commit-pinned skills are skipped) and is not a request the user
+  makes each time, so the basis is legitimate interests (telling the user the
+  source changed), with the right to object, not the contract.
 - **Connector consent wording.** The consent screen text (pinned by
   `CONNECTOR_CONSENT_TEXT_SHA256` on `feat/connectors-page`) does not mention
   the modes. It stays accurate (it names the host, what is sent and the

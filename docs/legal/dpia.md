@@ -424,8 +424,9 @@ removed.
   only; 1 day). For skills: the chunk score cache (scores under a SHA-256 of
   the chunk, no text, per user, 30 days), the import-stage result (no text,
   the stage's remaining hour) and the marks of a stored version (line ranges
-  and scores, no text, until the version is deleted; deleted by prefix in the
-  account purge, which fails and stays retryable if that delete fails).
+  and scores, no text, naming file paths; no expiry: normally deleted with
+  the version, best effort, and always by prefix in the account purge, which
+  fails and stays retryable if that delete fails).
 - **Data in logs.** Counts, scores, statuses and latency under
   `attributes.<role>Jev` (the memory check keeps `memoryJev`), never text.
 
@@ -1332,8 +1333,14 @@ decided how to announce it (section 6, item 33).
   - *Directory.* Data-flow row 26: anonymous requests to third-party
     servers that carry no user data (risk row 89).
   - *Approvals.* Within one send, any connector call after content from
-    another source asks whatever its mode; a plain read defaults to Always
-    allow; open-world reads now ask until set to Always allow.
+    another source asks whatever its mode; content from the tool's own
+    connector is not foreign (own-source exemption, `docs/connectors.md`
+    section 7.11), so a write set to Always allow or granted in the chat runs
+    unasked when the send read only that connector. The body of an imported
+    skill taints the send; the skills catalog alone does not (commit
+    5a84b94d on `feat/connectors-page`). A plain read defaults to Always
+    allow and runs unmarked; a run under an explicit grant is marked.
+    Open-world reads now ask until set to Always allow.
 
 ### 3.16 Skills and commands -- built behind `skills` (`internal`); scripts behind `skills.scripts`
 
@@ -1361,8 +1368,9 @@ the skills half of the Phase 4 legal batch (PR #922, 2026-11-16).
      the text of a skill the model activates, the user attaches or invokes,
      the project pins as Always load (S-15), or `skillSelection` picks
      (section 3.7a). Skill text is framed as untrusted; while a skill is
-     active the memory write lock is preset and connector writes ask even
-     when set to Always allow.
+     in a send the memory write lock is preset, and while the body of an
+     imported skill is in the send every connector call asks, even when set
+     to Always allow (the catalog alone does not taint, commit 5a84b94d).
   5. *Scripts* (S-5). Data-flow row 29: the skill's files go to the user's
      own Anthropic workspace, only after a disclosure dialog, the Labs
      opt-in and a per-chat consent through the C-6 policy (rule 10, Allow
@@ -1388,10 +1396,12 @@ the skills half of the Phase 4 legal batch (PR #922, 2026-11-16).
   Always load. Same text, same provider, same purpose as project
   instructions: no new category or recipient. `set_project_skills` sits
   under `skills:write`; a pin loads only an enabled, ready skill.
-- **(h) Not covered here.** The Terms of Use items of the pre-check (the
-  right-to-use promise for "create, paste or import", the disable power,
-  skills as reportable content, the run-code rules for skill scripts) are
-  not written in this batch; see section 6, item 36.
+- **(h) Terms of Use.** The pre-check's items are written in the same batch:
+  a "Skills" section (the right-to-use promise for "create, paste or
+  import", no review by Besidka, scripts under the provider's terms, private
+  skills, the disable power with a statement of reasons, reporting), a "What
+  you may not do" item, skills in the "Your content" license and a skill
+  check under "Content moderation". See section 6, item 36.
 
 ## 4. Necessity and proportionality
 
@@ -1626,14 +1636,14 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 83 | A provider-run connector path (OpenAI `type: "mcp"` or Anthropic `mcp_servers`) sends the connector token and results to an extra recipient and bypasses Besidka's approval and audit | Low | High | Not built: the Anthropic path is NO-GO for v1 (beta, not covered by zero data retention, token handling unverified); the OpenAI path is behind `connectors.native` (unavailable, off by default), needs a per-connector opt-in that names OpenAI as an extra recipient, and audit and approval parity first. Enabling either needs a new review of this section and the Privacy Policy | not built | Low (nothing ships) |
 | 84 | Consent fatigue: the user ticks one box that covers a transfer and sensitive data without reading it, for several connectors | Medium | Medium | One screen per connector in plain words, a real unticked checkbox, the host in plain text, bound to the origin, withdrawable per connector, versioned and recorded, asked again on change; the single tick for two named parts is a pre-check choice (owner item 1) | server gate built, screen planned | Medium |
 | 85 | A D1 restore brings back revoked connector credentials, withdrawn consent, removed grants and re-enabled connectors | Medium | High | `docs/d1-restore-reconciliation.md`, "Connectors": wipe `connector_credentials`, set every connector to disabled and needs-auth, reset grants, replay withdrawals and deletes from the Axiom `connectors` and `legalConsent` lines; KV approvals expire in 24 hours | built (a documented runbook) | Low once followed |
-| 86 | Standing grants ("Allow in this chat", "Always allow") let a write run in a later message although an earlier message read untrusted text that is still in the history | Medium | Medium | Grants are bound to the definition hash and never lift the untrusted-output, cross-connector or always-ask rules inside one send; a run under a grant shows as "Ran without asking" with a Manage link; the chat panel lists and resets grants; the confirmation text states the residual; taint is not carried across sends by design (the owner asked for that behavior) | built | Medium, accepted (section 6, item 32) |
+| 86 | Standing grants ("Allow in this chat", "Always allow") let a write run in a later message although an earlier message read untrusted text that is still in the history | Medium | Medium | Grants are bound to the definition hash and never lift the untrusted-output, cross-connector or always-ask rules inside one send, except the own-source exemption (content from the tool's own connector is not foreign, so a granted write runs after reading only that connector, `docs/connectors.md` section 7.11); a run under a grant shows as "Ran without asking" with a Manage link; the chat panel lists and resets grants; the confirmation text states the residual; taint is not carried across sends by design (the owner asked for that behavior) | built | Medium, accepted (section 6, item 32) |
 | 87 | Besidka's own tools in a chat (BES-394) return the user's own chats, files or memory to the model, which may be steered to change or share them | Low | Medium | Same provider and recipient as the chat (no new recipient); a Labs opt-in, a permission per tool (blocked, ask or allow; deleting, sharing and rewriting tools can never be "allow") and the same approval policy as connectors; the chat exposure PR #919 is not merged | planned | Low |
 | 88 | An Auto connector is used in a chat the user never switched it on in, so server-written tool text and tool calls reach a chat the user did not expect | Medium | Medium | Auto is shown and chosen on the consent screen and in the picker; an off switch in the chat always wins; the catalog line carries no server-written text; `use_connector` records connector taint, so later reads on another connector and every write ask; tools whose hash differs from the reviewed baseline are hidden or refused | built on `feat/connectors-page` | Medium (the consent wording does not name the modes) |
 | 89 | Directory browsing makes Besidka's server contact third-party servers (icons, anonymous MCP probes), which could be abused for SSRF or to track users | Low | Low | Only a directory id reaches the route, the stored address is used; `safeFetch`, magic-byte, size and SVG allowlist checks; no user data, token or cookie; results cached for all users so one user's browsing is not visible per request; per-user and per-host rate limits | built on `feat/connectors-page` | Low |
-| 90 | A malicious skill steers the model to exfiltrate data or act | Medium | High | Imports, updates and MCP writes saved switched off for review; rule findings and the optional TypeSafe AI marks on the review screen; untrusted framing; memory write lock while a skill is active; connector writes ask even when set to Always allow; the C-6 policy | built | Medium |
+| 90 | A malicious skill steers the model to exfiltrate data or act | Medium | High | Imports, updates and MCP writes saved switched off for review; rule findings and the optional TypeSafe AI marks on the review screen; untrusted framing; memory write lock while skill text is in the send; every connector call asks while an imported skill's body is in the send, even when set to Always allow; the C-6 policy | built | Medium |
 | 91 | Hidden instructions or padding in skill files escape review | Medium | Medium | Plain-text viewer, findings for invisible characters, homoglyphs and long lines, optional add-only Jev marks with the parts not checked listed; no "clean" verdict | built | Medium (scanner bypasses are known) |
 | 92 | Skill scripts run in the user's Anthropic workspace and the copy is visible to the whole workspace, not zero-data-retention, and kept until deleted | Medium | Medium | Anthropic only; disclosure dialog with these facts; Labs opt-in; per-chat consent bound to the skill set; deletion on toggle-off, skill delete (refused while the provider delete fails) and account purge; key removal lists live copies | built (not checked with a real key) | Medium (a failed purge leaves the copy in the user's workspace) |
-| 93 | An import breaches a license or copyright | Medium | Medium | License classifier on the license file at the pinned commit; restricted licenses refused; an extra "I have the right to use this skill" tick for skills with no license; private storage only | built (the Terms clause is not written, section 6, item 36) | Medium (classification is heuristic) |
+| 93 | An import breaches a license or copyright | Medium | Medium | License classifier on the license file at the pinned commit; restricted licenses refused; an extra "I have the right to use this skill" tick for skills with no license; private storage only | built | Medium (classification is heuristic) |
 | 94 | Skill selection sends the user's message and skill descriptions to TypeSafe AI on ordinary sends | Low | Medium | Opt-in role, off by default including `null` settings; a local prefilter so most messages send nothing; never-store redaction; at most one call, merged with Auto web search when that runs; fails to no change | built | Low |
 | 95 | Skill text sent to TypeSafe AI for screening holds secrets or third-party data | Low | Medium | Runs only with the user's key and the screening toggle on; never-store redaction before chunking, hashing or caching; the cache keeps scores only; marks hold no text | built | Low |
 | 96 | A D1 restore brings back a deleted or switched-off skill, switched on, or a stale Anthropic copy reference | Medium | Medium | `docs/d1-restore-reconciliation.md`, "Skills": switch restored skills off, replay deletes from Axiom, mark rows with missing blobs `broken` | built (runbook) | Low |
@@ -1945,7 +1955,8 @@ beta on the same account, treat row 54 as high and review this DPIA first.
 36. **Skills in the Terms of Use, and materiality.** The pre-check's Terms
     items (the right-to-use promise, the disable power with a statement of
     reasons, skills as reportable content, the run-code rules for scripts)
-    are not written. The Privacy Policy changes for skills are material under
+    are written in this batch and are new user duties, so the Terms change is
+    material too. The Privacy Policy changes for skills are material under
     WP260 (a new purpose with S-5, new recipients GitHub and the user's
     Anthropic workspace, new retention) and the eighth TypeSafe AI role is a
     new purpose; see `docs/legal.md`, "2026-11-16 Phase 4 legal batch".
