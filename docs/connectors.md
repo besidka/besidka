@@ -969,7 +969,11 @@ byte cap, and the search returns remote descriptions as tool output.
    and name, the description cut to its first sentence and 100 characters,
    control, format, `<`, `>`, `|` and backtick characters removed from remote
    text, and a line saying the block is data, not instructions. Past 24 KiB
-   a line keeps only the name, source and access, so no tool drops out.
+   a line keeps only the name, source and access. The lines never pass
+   40 KiB in all (`TOOL_INDEX_TOTAL_MAX_BYTES`): past that the rest are
+   dropped and one line says how many more tools there are, to be loaded by
+   exact name, so the block has a fixed maximum size whatever the tool
+   counts (5 connectors of 200 tools stay under it).
    `access` is `read`, `write` or `always-ask`, from the approval descriptor.
 5. One more tool, `tool_index__load({ names })` (at most 10 names), marks
    tools loaded for the next step. It is a native read with no taint
@@ -1031,7 +1035,9 @@ toggle (the per-chat PUT, consent and the 5-connector cap apply; at the cap
 the button is disabled and says why). Not now hides it for this page only, in
 component state, so there is no new storage key. Only the composer's text
 triggers it, never model output or a tool result, and nothing is turned on
-without the click. No TypeSafe AI role.
+without the click. While the message holds text that was prefilled (an
+artifact's "Ask to fix" error, an earlier prompt), the chip stays hidden even
+after edits, until the message is cleared or sent. No TypeSafe AI role.
 
 **Legal batch (not edited here).** The consent copy and the Privacy Policy
 describe connector tools as sent with a message. With Auto, a connector's

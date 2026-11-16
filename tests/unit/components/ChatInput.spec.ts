@@ -4305,25 +4305,34 @@ describe('ChatInput.client', () => {
         expect(composerConnectorState.toggle).not.toHaveBeenCalled()
       })
 
-    it('ignores text that was prefilled, such as an artifact error',
-      async () => {
-        const wrapper = await mountChatInput()
+    it('stays hidden while prefilled text, such as an artifact error, is in '
+      + 'the message, even after an edit',
+    async () => {
+      const wrapper = await mountChatInput()
 
-        await useNuxtApp().callHook(
-          'chat-input:prefill',
-          'Fix this error: Doop is not defined',
-        )
-        await flushPromises()
+      await useNuxtApp().callHook(
+        'chat-input:prefill',
+        'Fix this error: Doop is not defined',
+      )
+      await flushPromises()
 
-        expect(hasTestId(wrapper, 'connector-suggestion')).toBe(false)
+      expect(hasTestId(wrapper, 'connector-suggestion')).toBe(false)
 
-        await wrapper.get('[data-testid="chat-input-textarea"]').setValue(
-          'Fix this error: Doop is not defined\n\nand check Doop',
-        )
-        await flushPromises()
+      await wrapper.get('[data-testid="chat-input-textarea"]').setValue(
+        'Fix this error: Doop is not defined\n\nand check Doop',
+      )
+      await flushPromises()
 
-        expect(hasTestId(wrapper, 'connector-suggestion')).toBe(true)
-      })
+      expect(hasTestId(wrapper, 'connector-suggestion')).toBe(false)
+
+      await wrapper.get('[data-testid="chat-input-textarea"]').setValue('')
+      await flushPromises()
+      await wrapper.get('[data-testid="chat-input-textarea"]')
+        .setValue('now check Doop')
+      await flushPromises()
+
+      expect(hasTestId(wrapper, 'connector-suggestion')).toBe(true)
+    })
 
     it('says nothing for a connector that is already on or not named',
       async () => {

@@ -521,7 +521,10 @@ chat's stored choice have loaded, and shows only while the Connectors row
 could show. Turn on calls the picker's own toggle, so the per-chat save and
 the five-connector cap apply (at the cap the button is disabled with a hint).
 Not now hides it for the page in component state; there is no storage key and
-no Cookie Policy row. Model output and tool results never trigger it.
+no Cookie Policy row. Model output and tool results never trigger it, and
+neither does prefilled text: while the message holds a `chat-input:prefill`
+text (an artifact error, an earlier prompt), the chip stays hidden, even
+after edits, until the message is cleared or sent.
 
 ## Add key links in Web search
 

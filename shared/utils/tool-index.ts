@@ -12,6 +12,8 @@ export const TOOL_INDEX_DESCRIPTION_MAX = 100
 
 export const TOOL_INDEX_TEXT_MAX_BYTES = 24 * 1024
 
+export const TOOL_INDEX_TOTAL_MAX_BYTES = 40 * 1024
+
 export const TOOL_INDEX_LOAD_STEPS = 2
 
 export const TOOL_INDEX_CLASSES = ['read', 'write', 'always-ask'] as const

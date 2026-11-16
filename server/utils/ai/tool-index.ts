@@ -7,6 +7,7 @@ import {
   TOOL_INDEX_LOAD_NAMES_MAX,
   TOOL_INDEX_LOAD_TOOL_NAME,
   TOOL_INDEX_TEXT_MAX_BYTES,
+  TOOL_INDEX_TOTAL_MAX_BYTES,
 } from '#shared/utils/tool-index'
 import type { ToolIndexClass } from '#shared/utils/tool-index'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
@@ -119,8 +120,10 @@ function compareEntries(first: ToolIndexEntry, second: ToolIndexEntry) {
  * by source and name so the text stays the same from send to send while the
  * tools do not change. Descriptions are remote text, so every line is
  * cleaned and cut, and the block says it is data. Past
- * `TOOL_INDEX_TEXT_MAX_BYTES`, lines keep only the name and source, so no
- * tool drops out of the index.
+ * `TOOL_INDEX_TEXT_MAX_BYTES`, lines keep only the name, source and access.
+ * The lines never pass `TOOL_INDEX_TOTAL_MAX_BYTES` in all: the rest are
+ * dropped and one closing line says how many more tools can be loaded by
+ * name, so the block has a fixed maximum size whatever the tool counts.
  */
 export function buildToolIndexInstructions(
   entries: readonly ToolIndexEntry[],
@@ -138,7 +141,9 @@ export function buildToolIndexInstructions(
   const lines: string[] = []
   let usedBytes = 0
 
-  for (const entry of [...entries].sort(compareEntries)) {
+  const sorted = [...entries].sort(compareEntries)
+
+  for (const [entryIndex, entry] of sorted.entries()) {
     const source = sanitizeToolIndexText(entry.sourceTitle, SOURCE_TITLE_MAX)
       || entry.sourceKey
     const base = `${entry.name} | ${source} | ${entry.toolClass}`
@@ -156,7 +161,17 @@ export function buildToolIndexInstructions(
       continue
     }
 
+    const baseBytes = byteLength(base) + 1
+
+    if (usedBytes + baseBytes > TOOL_INDEX_TOTAL_MAX_BYTES) {
+      lines.push(`…and ${sorted.length - entryIndex} more tools not listed `
+        + 'here; load one by its exact name.')
+
+      break
+    }
+
     lines.push(base)
+    usedBytes += baseBytes
   }
 
   return [...header, ...lines, '</tool_index>'].join('\n')

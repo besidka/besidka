@@ -999,10 +999,10 @@ const isConnectorsEnabled = computed<boolean>(() => {
     && !isImageGenerationRequired.value
 })
 
-const typedMessageText = computed<string>(() => {
-  return prefilledTexts.value.reduce((text, prefilled) => {
-    return prefilled ? text.split(prefilled).join(' ') : text
-  }, message.value)
+watch(message, (text) => {
+  if (!text.trim() && prefilledTexts.value.length > 0) {
+    prefilledTexts.value = []
+  }
 })
 
 const connectorSuggestion = computed(() => {
@@ -1010,12 +1010,13 @@ const connectorSuggestion = computed(() => {
     !isConnectorsEnabled.value
     || !composerConnectors.isLoaded.value
     || !composerConnectors.isSelectionKnown.value
+    || prefilledTexts.value.length > 0
   ) {
     return null
   }
 
   return findMentionedConnector({
-    text: typedMessageText.value.trim() || lastSentConnectorText.value,
+    text: message.value.trim() || lastSentConnectorText.value,
     candidates: composerConnectors.items.value,
     selectedIds: composerConnectors.selectedIds.value,
     dismissedIds: dismissedConnectorIds.value,
@@ -1746,7 +1747,9 @@ async function sendMessage() {
     return
   }
 
-  lastSentConnectorText.value = commands.stripFromText(typedMessageText.value)
+  lastSentConnectorText.value = prefilledTexts.value.length > 0
+    ? ''
+    : commands.stripFromText(message.value)
   prefilledTexts.value = []
 
   const text = joinMessageWithPastedTexts(

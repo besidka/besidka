@@ -3,6 +3,7 @@ import {
   TOOL_INDEX_LOAD_NAMES_MAX,
   TOOL_INDEX_LOAD_TOOL_NAME,
   TOOL_INDEX_TEXT_MAX_BYTES,
+  TOOL_INDEX_TOTAL_MAX_BYTES,
 } from '#shared/utils/tool-index'
 import {
   buildToolIndexInstructions,
@@ -140,6 +141,27 @@ describe('buildToolIndexInstructions', () => {
     expect(buildToolIndexInstructions(entries))
       .toBe(buildToolIndexInstructions([...entries].reverse()))
   })
+
+  it('never grows past the total cap and says how many tools are left out',
+    () => {
+      const entries = Array.from({ length: 3000 }, (_unused, index) => {
+        return entry(`mcp__notion__tool_${String(index).padStart(4, '0')}`, {
+          description: 'd'.repeat(300),
+        })
+      })
+      const text = buildToolIndexInstructions(entries)
+      const lines = text.split('\n')
+      const listed = lines.filter(line => line.startsWith('mcp__')).length
+      const header = buildToolIndexInstructions([])
+
+      expect(new TextEncoder().encode(text).byteLength)
+        .toBeLessThan(TOOL_INDEX_TOTAL_MAX_BYTES
+          + new TextEncoder().encode(header).byteLength + 200)
+      expect(lines.at(-2)).toBe(`…and ${3000 - listed} more tools not listed `
+        + 'here; load one by its exact name.')
+      expect(lines.at(-1)).toBe('</tool_index>')
+      expect(listed).toBeLessThan(3000)
+    })
 
   it('keeps every name past the byte budget, without descriptions', () => {
     const entries = Array.from({ length: 400 }, (_unused, index) => {
