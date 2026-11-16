@@ -166,7 +166,13 @@ describe('categorizeDirectoryEntry', () => {
       row('io.example/b', { description: 'Track expenses and invoices fast' }),
     ])
 
-    expect(countDirectoryCategories(index).get('finance-payments')).toBe(2)
+    const presetCount = index.entries.filter((entry) => {
+      return entry.id.startsWith('preset:')
+        && entry.category === 'finance-payments'
+    }).length
+
+    expect(countDirectoryCategories(index).get('finance-payments'))
+      .toBe(2 + presetCount)
   })
 })
 
@@ -223,7 +229,7 @@ describe('search ranking', () => {
 
 describe('curated list', () => {
   it('has a version, unique ids and names, and a source per entry', () => {
-    expect(CONNECTOR_CURATION_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(CONNECTOR_CURATION_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}(\.\d+)?$/)
     expect(new Set(curated.map(entry => entry.id)).size).toBe(curated.length)
 
     const names = curated
@@ -263,7 +269,9 @@ describe('curated list', () => {
       row('io.example/plain'),
     ])
 
-    expect(listTopDirectoryEntries(index).map(entry => [
+    expect(listTopDirectoryEntries(index).filter((entry) => {
+      return !entry.id.startsWith('preset:') || entry.id === 'preset:github'
+    }).map(entry => [
       entry.title,
       entry.presetId,
     ])).toEqual([
@@ -275,11 +283,31 @@ describe('curated list', () => {
       .toBe('https://api.githubcopilot.com/mcp/')
   })
 
-  it('skips a curated entry that is missing from the mirror', () => {
+  it('uses a preset\'s registry row when the mirror lists it, keeping the '
+    + 'curated rank', () => {
+    const index = buildDirectoryIndex([
+      row('com.stripe/mcp', {
+        title: 'Stripe MCP',
+        remoteUrl: 'https://mcp.stripe.com/',
+      }),
+    ])
+    const stripe = listTopDirectoryEntries(index)
+      .find(entry => entry.presetId === 'stripe')
+
+    expect(stripe?.id).toBe('com.stripe/mcp@1.0.0')
+    expect(stripe?.title).toBe('Stripe')
+    expect(index.byId.has('preset:stripe')).toBe(false)
+  })
+
+  it('skips a curated registry entry that is missing from the mirror', () => {
     const index = buildDirectoryIndex([row('io.example/plain')])
+    const presetCount = curated.filter(entry => !!entry.presetId).length
 
     expect(listTopDirectoryEntries(index).map(entry => entry.id))
-      .toEqual(['preset:github'])
+      .toEqual(curated
+        .filter(entry => !!entry.presetId)
+        .map(entry => `preset:${entry.presetId}`))
+    expect(listTopDirectoryEntries(index)).toHaveLength(presetCount)
   })
 })
 

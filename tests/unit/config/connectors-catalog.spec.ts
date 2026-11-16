@@ -8,12 +8,23 @@ import {
 import { CONNECTOR_SLUG_PATTERN } from '#shared/utils/connectors-policy'
 
 describe('connector catalog', () => {
-  it('lists the four curated presets', () => {
+  it('lists the curated presets, the four originals first', () => {
     expect(CONNECTOR_PRESETS.map(preset => preset.id)).toEqual([
       'github',
       'notion',
       'linear',
       'atlassian',
+      'stripe',
+      'vercel',
+      'supabase',
+      'sentry',
+      'square',
+      'intercom',
+      'clickup',
+      'miro',
+      'todoist',
+      'webflow',
+      'wix',
     ])
   })
 

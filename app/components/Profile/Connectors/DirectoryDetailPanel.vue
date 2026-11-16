@@ -43,23 +43,30 @@
               {{ item.title }}
             </span>
             <span
-              v-if="item.isOfficial"
+              v-if="item.isCurated"
               class="tooltip tooltip-bottom"
-              :data-tip="getOfficialBadgeTip(item)"
+              :data-tip="FEATURED_CONNECTOR_TIP"
             >
               <span
                 class="badge badge-soft badge-info badge-sm gap-1"
                 tabindex="0"
-                :aria-label="`Official. ${getOfficialBadgeTip(item)}`"
-                data-testid="connector-directory-detail-official"
+                :aria-label="`Featured. ${FEATURED_CONNECTOR_TIP}`"
+                data-testid="connector-directory-detail-featured"
               >
                 <Icon
                   name="lucide:badge-check"
                   size="12"
                   aria-hidden="true"
                 />
-                Official
+                Featured
               </span>
+            </span>
+            <span
+              v-else
+              class="badge badge-soft badge-sm"
+              data-testid="connector-directory-detail-community"
+            >
+              Community
             </span>
           </p>
           <p

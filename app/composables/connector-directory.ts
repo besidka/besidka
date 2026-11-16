@@ -34,19 +34,8 @@ export function isDirectoryPresetItem(
   return item.id.startsWith(DIRECTORY_PRESET_ID_PREFIX)
 }
 
-/**
- * The text of the Official badge's tooltip: what the mark means and that it
- * is not a review.
- */
-export function getOfficialBadgeTip(
-  item: Pick<ConnectorDirectoryItem, 'publisher'>,
-): string {
-  const domain = item.publisher ?? 'its domain'
-
-  return `The publisher proved in the MCP Registry that it owns ${domain}, `
-    + 'and the server runs on that domain. Besidka does not review '
-    + 'connectors.'
-}
+export const FEATURED_CONNECTOR_TIP = 'Picked by Besidka as a well-known '
+  + 'service. Not a security review.'
 
 /**
  * Opens one of the user's connectors in the side panel, from the page or

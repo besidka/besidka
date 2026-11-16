@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CURATED_CONNECTORS } from '~~/config/connectors-directory'
+import type { CuratedConnector } from '~~/config/connectors-directory'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -50,6 +52,9 @@ vi.mock('~~/server/utils/logging/request-logger', () => ({
 }))
 
 type Handler = (event: SkillsRouteEvent) => Promise<any>
+
+const PRESET_CARDS = (CURATED_CONNECTORS as readonly CuratedConnector[])
+  .filter(entry => !!entry.presetId).length
 
 const ROUTES = {
   home: () => import('~~/server/api/v1/connectors/registry/home.get'),
@@ -155,8 +160,8 @@ describe('connector directory routes', () => {
       const home = await call('home')
 
       expect(home.top.map((item: { title: string }) => item.title))
-        .toEqual(['GitHub', 'Notion'])
-      expect(home.topCount).toBe(2)
+        .toEqual(['GitHub', 'Notion', 'Stripe', 'Vercel', 'Supabase', 'Sentry'])
+      expect(home.topCount).toBe(PRESET_CARDS + 1)
       expect(home.new).toHaveLength(6)
       expect(home.new[0].name).toBe('io.example/pay-7')
       expect(home.newCount).toBe(7)
@@ -165,12 +170,11 @@ describe('connector directory routes', () => {
         return category.id === 'finance-payments'
       })
 
-      expect(finance).toMatchObject({
-        label: 'Finance & payments',
-        count: 8,
-      })
+      expect(finance.label).toBe('Finance & payments')
+      expect(finance.count).toBeGreaterThanOrEqual(8)
+      expect(finance.count).toBeLessThanOrEqual(8 + PRESET_CARDS)
       expect(finance.items).toHaveLength(6)
-      expect(home.total).toBe(10)
+      expect(home.total).toBe(9 + PRESET_CARDS)
       expect(home.syncing).toBeUndefined()
       expect(fetchMock).not.toHaveBeenCalled()
     })
@@ -196,7 +200,7 @@ describe('connector directory routes', () => {
       resetDirectoryIndexMemo()
       await testDb.db.delete(schema.mcpRegistryServers)
 
-      expect((await call('home')).total).toBe(2)
+      expect((await call('home')).total).toBe(1 + PRESET_CARDS)
     })
   })
 

@@ -2245,6 +2245,20 @@ HTML (C-7 consumes them).
 | `notion` | Notion | `https://mcp.notion.com/mcp` | `['oauth']` | "If your workspace limits MCP clients, ask the admin to approve Besidka." |
 | `linear` | Linear | `https://mcp.linear.app/mcp` | `['oauth', 'header']` | none |
 | `atlassian` | Atlassian | `https://mcp.atlassian.com/v2/mcp` | `['oauth', 'header']` | "Your Atlassian admin must allow besidka.com (or enable API tokens). Some tools use Rovo credits from your organization." |
+| `stripe` | Stripe | `https://mcp.stripe.com/` | `['oauth', 'header']` | "For a key, use an agent API key: Stripe stops accepting other secret keys on its MCP server from November 30, 2026." |
+| `vercel` | Vercel | `https://mcp.vercel.com/` | `['oauth']` | none |
+| `supabase` | Supabase | `https://mcp.supabase.com/mcp` | `['oauth']` | none |
+| `sentry` | Sentry | `https://mcp.sentry.dev/mcp` | `['oauth']` | none |
+| `square` | Square | `https://mcp.squareup.com/mcp` | `['oauth']` | none |
+| `intercom` | Intercom | `https://mcp.intercom.com/mcp` | `['oauth', 'header']` | "For US workspaces. An EU workspace uses https://mcp.eu.intercom.com/mcp: add it by URL." |
+| `clickup` | ClickUp | `https://mcp.clickup.com/mcp` | `['oauth']` | none |
+| `miro` | Miro | `https://mcp.miro.com/` | `['oauth']` | "On an Enterprise plan an admin must turn on MCP first." |
+| `todoist` | Todoist | `https://ai.todoist.net/mcp` | `['oauth']` | none |
+| `webflow` | Webflow | `https://mcp.webflow.com/mcp` | `['oauth']` | none |
+| `wix` | Wix | `https://mcp.wix.com/mcp` | `['oauth']` | none |
+
+The eleven presets after Atlassian were added by C-14 v2 for services the
+registry mirror lacks; their sources and probe results are in section 10.3.
 
 Text names, plus (BES-398) a bundled `simple-icons` mark per preset
 (`app/utils/connector-brand-icons.ts`; no request, no remote image). The catalog footer reads "Names belong to their
@@ -2721,13 +2735,14 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   The admin Sync now row moved here unchanged.
 - **Cards.** `DirectoryCard.vue`: icon (registry icon route, or the bundled
   mark for a preset), title as a button that opens the details (stretched
-  over the card), an official check (`lucide:badge-check`, labeled), "by
+  over the card), a **Featured** check (`lucide:badge-check`) for a curated
+  entry or a muted **Community** badge (`badge-soft`) for every other one, "by
   <publisher>", **Add** (`btn-primary`) or the Added badge, two lines of
   description, host and auth hint. All third-party text is plain text.
 - **Detail view.** A card opens `DirectoryDetailPanel.vue` in the shared
   side panel (`connector-directory:<id>` view key, same chrome as the
-  connector panel, "Back to the list" closes it): icon, title, **Official**
-  badge with a tooltip, publisher (full domain), one primary button, the
+  connector panel, "Back to the list" closes it): icon, title, the
+  **Featured** badge with its tooltip or the **Community** badge, publisher (full domain), one primary button, the
   description, the full server address as text, the sign-in kind, the
   category, the publisher and **Tools**. The button is **Add and connect**
   (adds, then opens the Connect dialog), **Connect** for an added connector
@@ -2789,16 +2804,18 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   rules and its title wins everywhere, including the title stored when it is
   added (`findActiveRegistryEntry`). Top is the curated list ∩ the mirror in
   list order; a curated preset missing from the mirror becomes a card with
-  the id `preset:<id>`. The list has **35 entries** (34 registry names checked
-  read-only against `besidka-preview` on 2026-11-16, plus GitHub as a
-  preset): GitHub, Notion, Linear, Atlassian, Figma, Canva, monday.com,
-  Airtable, GitLab, PayPal, Hugging Face, Exa, Apify, Cloudflare Docs, Neon,
+  the id `preset:<id>`; when the mirror later lists a preset's exact URL,
+  that row takes the preset's curated rank and title instead. The list has
+  **46 entries**: 34 registry names checked read-only against
+  `besidka-preview` on 2026-11-16 and 12 presets. In rank order: GitHub,
+  Notion, Linear, Atlassian, Figma, Canva, Stripe, Vercel, Supabase, Sentry,
+  monday.com, Airtable, GitLab, PayPal, Square, Intercom, ClickUp, Miro,
+  Todoist, Webflow, Wix, Hugging Face, Exa, Apify, Cloudflare Docs, Neon,
   Railway, Postman, New Relic, CircleCI, Amplitude, Make, Basecamp, Lucid,
   Fireflies.ai, Ahrefs, Close, Jotform, PandaDoc, Bitly, Mux, Cloudinary,
-  Egnyte, Axiom, Microsoft Learn, ScrapingBee. Not in the mirror on that day
-  (only third-party wrappers or nothing): Slack, Stripe, HubSpot, Asana,
-  Square, Shopify, Salesforce, Intercom, Zapier, Sentry, Vercel, Supabase,
-  Box, Webflow, Wix, ClickUp, Todoist, Miro, Pipedream, Brave, GitHub. The
+  Egnyte, Axiom, Microsoft Learn, ScrapingBee. The mirror lacked the big
+  services the owner named, so the verified ones became presets (table
+  below); the others are skipped with a reason. The
   mirror keeps only `streamable-http` remotes, so a service with only an SSE
   or local server is missing too. **To edit**: find the exact name with
   `pnpm exec wrangler d1 execute besidka-preview --remote --command "SELECT
@@ -2809,6 +2826,46 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   rebuilds). A name that disappears from the registry is skipped silently.
   `tests/unit/utils/connectors-directory.spec.ts` checks unique ids and
   names, one source per entry and that preset ids exist.
+- **Presets for services the registry lacks** (verified 2026-11-16). A
+  preset is added only when the vendor's own documentation names the URL and
+  an anonymous `initialize` through `probeConnectorServer` and
+  `discoverConnectorAuth` (the connect flow's own SSRF-safe code) answers
+  401 with protected-resource metadata whose authorization server offers
+  dynamic client registration or a client ID metadata document, so Besidka
+  can actually sign in. No URL was guessed.
+
+  | Preset | URL | Auth | Source (fetched 2026-11-16) | Probe |
+  | --- | --- | --- | --- | --- |
+  | `stripe` | `https://mcp.stripe.com/` | OAuth or agent API key (`Authorization`) | [docs.stripe.com/mcp](https://docs.stripe.com/mcp): "use `https://mcp.stripe.com` as the server URL" | 401, issuer `access.stripe.com/mcp`, DCR |
+  | `vercel` | `https://mcp.vercel.com/` | OAuth | [vercel.com/docs/mcp/vercel-mcp](https://vercel.com/docs/mcp/vercel-mcp): "Vercel's official MCP endpoint: `https://mcp.vercel.com`" | 401, issuer `vercel.com`, DCR and CIMD |
+  | `supabase` | `https://mcp.supabase.com/mcp` | OAuth | [supabase.com/docs/guides/getting-started/mcp](https://supabase.com/docs/guides/getting-started/mcp) | 401, issuer `api.supabase.com`, DCR |
+  | `sentry` | `https://mcp.sentry.dev/mcp` | OAuth | [mcp.sentry.dev](https://mcp.sentry.dev/) (redirect target of docs.sentry.io/product/sentry-mcp) | 401, issuer `mcp.sentry.dev`, DCR and CIMD |
+  | `square` | `https://mcp.squareup.com/mcp` | OAuth | [developer.squareup.com/docs/mcp](https://developer.squareup.com/docs/mcp) | 401, issuer `mcp.squareup.com`, DCR |
+  | `intercom` | `https://mcp.intercom.com/mcp` | OAuth or API token (`Authorization`) | [developers.intercom.com/docs/guides/mcp](https://developers.intercom.com/docs/guides/mcp) (US; EU is `mcp.eu.intercom.com/mcp`) | 401, issuer `mcp.intercom.com`, DCR |
+  | `clickup` | `https://mcp.clickup.com/mcp` | OAuth | [developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server](https://developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server) | 401, issuer `mcp.clickup.com`, DCR |
+  | `miro` | `https://mcp.miro.com/` | OAuth | [developers.miro.com/docs/mcp-intro](https://developers.miro.com/docs/mcp-intro) | 401, issuer `mcp.miro.com`, DCR |
+  | `todoist` | `https://ai.todoist.net/mcp` | OAuth | [developer.todoist.com/api/v1](https://developer.todoist.com/api/v1/) | 401, issuer `todoist.com`, DCR and CIMD |
+  | `webflow` | `https://mcp.webflow.com/mcp` | OAuth | [developers.webflow.com/mcp/reference/getting-started](https://developers.webflow.com/mcp/reference/getting-started) | 401, issuer `mcp.webflow.com`, DCR |
+  | `wix` | `https://mcp.wix.com/mcp` | OAuth (its API key needs a second `wix-account-id` header, which presets cannot carry) | [dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp](https://dev.wix.com/docs/sdk/articles/use-the-wix-mcp/about-the-wix-mcp) | 401, issuer `mcp.wix.com`, DCR |
+
+  Skipped:
+
+  | Service | Reason |
+  | --- | --- |
+  | Slack | `https://mcp.slack.com/mcp` answers, but its authorization server has no DCR or CIMD; the docs say only Slack-registered apps may connect |
+  | HubSpot | `https://mcp.hubspot.com` answers, but no DCR or CIMD; the docs require a user-level HubSpot app with its own client credentials |
+  | Box | `https://mcp.box.com` answers, but no DCR or CIMD; the docs require admin-generated integration credentials |
+  | Asana | `https://mcp.asana.com/v2/mcp` answers, but no DCR or CIMD (the docs mention a client ID and secret for some clients) |
+  | Shopify | No single URL: each store has its own endpoint (`https://{shop}/api/ucp/mcp`) |
+  | Salesforce | Per-org hosted servers that need an org-side app; the vendor URL could not be confirmed from Salesforce's own page |
+  | Zapier | The vendor docs do not print the server URL |
+  | Pipedream | The hosted server needs a developer token and project headers, not an end-user sign-in |
+  | Brave | No Brave-hosted remote server; the official server is local |
+
+  A preset that later fails is still caught by the scheduled
+  `scripts/check-connector-presets.mjs` probe (warn only). Each new preset
+  has a bundled `simple-icons` mark (all eleven names confirmed in the
+  collection).
 - **New connectors**: entries with a registry title, newest
   `registry_updated_at` first. The registry has no "first published" field
   in the mirror, so an updated entry counts as new.
@@ -2839,20 +2896,15 @@ asked for the same shape. This replaces the Browse tab of section 10.2.
   browse order (curated rank, titles starting with a letter, then
   alphabetical). Measured: "notion" puts Notion first and the InsightfulPipe
   wrapper second.
-- **Official badge** (`isOfficialRegistryEntry`): the remote host equals the
-  reversed namespace or is a subdomain of it (`com.notion` and
-  `mcp.notion.com`). The registry accepts a domain namespace only from a
-  publisher who proved control of that domain, so the publisher and the host
-  are the same party. Code-hosting namespaces (`io.github.*` and the like)
-  never count. Deviation from "registrable domain": no public-suffix list is
-  bundled (only a transitive `tldts` exists), and the subdomain rule cannot
-  over-match on a shared suffix, at the price of missing
-  `com.example.docs` on `mcp.example.com`. **11,852 of 12,432 entries (95%)
-  qualify**, so the badge is common; its value is in the 5% it is missing
-  from, such as lookalike wrappers ("Notion MCP by InsightfulPipe" on
-  `notion.insightfulmcp.com`). The tooltip says: "The publisher proved in
-  the MCP Registry that it owns <domain>, and the server runs on that domain.
-  Besidka does not review connectors."
+- **Featured and Community.** A curated entry shows a **Featured** check
+  with the tooltip "Picked by Besidka as a well-known service. Not a security
+  review."; every other entry shows a muted **Community** badge
+  (`badge badge-soft`). An earlier "Official" badge (the remote host equals
+  the reversed registry namespace or is a subdomain of it,
+  `isOfficialRegistryEntry`) was dropped from the UI because 11,852 of
+  12,432 entries (95%) qualified, so it carried no signal. The flag is still
+  computed: it breaks ties in search ranking and decides which row wins a
+  duplicate address, and items keep `isOfficial` in the API.
 - **Icons for every connector.** `GET /api/v1/connectors/[id]/icon` now
   answers for every connector of the owner except one whose consent was
   withdrawn, connected or not, and `hasConnectorIcon` follows. Order: the

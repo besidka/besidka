@@ -3,6 +3,17 @@ const CONNECTOR_BRAND_ICONS: Readonly<Record<string, string>> = {
   notion: 'simple-icons:notion',
   linear: 'simple-icons:linear',
   atlassian: 'simple-icons:atlassian',
+  stripe: 'simple-icons:stripe',
+  vercel: 'simple-icons:vercel',
+  supabase: 'simple-icons:supabase',
+  sentry: 'simple-icons:sentry',
+  square: 'simple-icons:square',
+  intercom: 'simple-icons:intercom',
+  clickup: 'simple-icons:clickup',
+  miro: 'simple-icons:miro',
+  todoist: 'simple-icons:todoist',
+  webflow: 'simple-icons:webflow',
+  wix: 'simple-icons:wix',
 }
 
 /**

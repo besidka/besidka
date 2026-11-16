@@ -333,7 +333,9 @@ describe('GET /api/v1/connectors/registry', () => {
 
       const result = await search()
 
-      expect(result.items.map(item => item.title)).toEqual([
+      expect(result.items.filter((item) => {
+        return !item.name.startsWith('preset/') || item.name === 'preset/github'
+      }).map(item => item.title)).toEqual([
         'GitHub',
         'Notion',
         'alpha',
@@ -355,8 +357,9 @@ describe('GET /api/v1/connectors/registry', () => {
         registryUpdatedAt: new Date(0),
       })
 
-      expect((await search({ view: 'top' })).items.map(item => item.title))
-        .toEqual(['GitHub', 'Figma'])
+      expect((await search({ view: 'top' })).items.filter((item) => {
+        return !item.name.startsWith('preset/') || item.name === 'preset/github'
+      }).map(item => item.title)).toEqual(['GitHub', 'Figma'])
       expect(names(await search({ view: 'new' })))
         .toEqual(['io.example/fresh', 'io.example/old'])
     })

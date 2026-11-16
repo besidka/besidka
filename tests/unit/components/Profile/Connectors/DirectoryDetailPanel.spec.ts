@@ -90,7 +90,7 @@ describe('Profile/Connectors/DirectoryDetailPanel', () => {
     }
   })
 
-  it('shows the details as plain text, the official badge and a primary Add', async () => {
+  it('shows the details as plain text, the Community badge and a primary Add', async () => {
     const wrapper = await mountPanel()
 
     expect(wrapper.get('[data-testid="connector-directory-detail-title"]')
@@ -102,10 +102,10 @@ describe('Profile/Connectors/DirectoryDetailPanel', () => {
     expect(wrapper.get('[data-testid="connector-directory-detail-category"]')
       .text()).toBe('Project management')
 
-    const official = wrapper
-      .get('[data-testid="connector-directory-detail-official"]')
-
-    expect(official.attributes('aria-label')).toContain('does not review')
+    expect(wrapper.get('[data-testid="connector-directory-detail-community"]')
+      .text()).toBe('Community')
+    expect(wrapper.find('[data-testid="connector-directory-detail-featured"]')
+      .exists()).toBe(false)
 
     const primary = wrapper
       .get('[data-testid="connector-directory-detail-primary"]')
@@ -190,6 +190,20 @@ describe('Profile/Connectors/DirectoryDetailPanel', () => {
     await primary.trigger('click')
 
     expect(mocks.connectOpen).toHaveBeenCalledWith('conn1')
+  })
+
+  it('marks a curated entry as Featured with its tooltip', async () => {
+    entryData.value!.item = createDirectoryItem({ isCurated: true })
+
+    const wrapper = await mountPanel()
+    const featured = wrapper
+      .get('[data-testid="connector-directory-detail-featured"]')
+
+    expect(featured.text()).toBe('Featured')
+    expect(featured.attributes('aria-label'))
+      .toContain('Picked by Besidka as a well-known service')
+    expect(wrapper.find('[data-testid="connector-directory-detail-community"]')
+      .exists()).toBe(false)
   })
 
   it('goes back to the list', async () => {

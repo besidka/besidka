@@ -22,15 +22,28 @@
             >
               {{ item.title }}
             </button>
-            <Icon
-              v-if="item.isOfficial"
-              name="lucide:badge-check"
-              size="16"
-              class="shrink-0 text-info"
-              aria-label="Official"
-              role="img"
-              data-testid="connector-directory-official"
-            />
+            <span
+              v-if="item.isCurated"
+              class="tooltip tooltip-bottom relative z-10 inline-flex shrink-0"
+              :data-tip="FEATURED_CONNECTOR_TIP"
+            >
+              <Icon
+                name="lucide:badge-check"
+                size="16"
+                class="text-info"
+                role="img"
+                tabindex="0"
+                :aria-label="`Featured. ${FEATURED_CONNECTOR_TIP}`"
+                data-testid="connector-directory-featured"
+              />
+            </span>
+            <span
+              v-else
+              class="badge badge-soft badge-xs shrink-0"
+              data-testid="connector-directory-community"
+            >
+              Community
+            </span>
           </p>
           <p
             v-if="item.publisher"

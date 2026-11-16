@@ -482,12 +482,17 @@ export function buildDirectoryIndex(
   rows: readonly DirectorySourceRow[],
 ): DirectoryIndex {
   const curatedByName = new Map<string, [CuratedConnector, number]>()
+  const curatedByPreset = new Map<string, [CuratedConnector, number]>()
   const excluded: Partial<Record<DirectoryExclusionReason, number>> = {}
   const byUrl = new Map<string, DirectoryEntry>()
 
   CURATED_CONNECTORS.forEach((curated: CuratedConnector, rank) => {
     if (curated.registryName) {
       curatedByName.set(curated.registryName, [curated, rank])
+    }
+
+    if (curated.presetId) {
+      curatedByPreset.set(curated.presetId, [curated, rank])
     }
   })
 
@@ -496,7 +501,10 @@ export function buildDirectoryIndex(
   }
 
   for (const row of rows) {
-    const [curated, rank] = curatedByName.get(row.name) ?? [undefined, null]
+    const presetId = findConnectorPresetByUrl(row.remoteUrl)?.id ?? ''
+    const [curated, rank] = curatedByName.get(row.name)
+      ?? curatedByPreset.get(presetId)
+      ?? [undefined, null]
     const reason = findDirectoryExclusion(row, curated)
 
     if (reason) {

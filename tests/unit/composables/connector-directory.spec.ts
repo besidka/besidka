@@ -2,7 +2,7 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import {
-  getOfficialBadgeTip,
+  FEATURED_CONNECTOR_TIP,
   isDirectoryPresetItem,
   useConnectorDirectoryActions,
 } from '../../../app/composables/connector-directory'
@@ -83,11 +83,12 @@ describe('connector directory composable', () => {
     }))
   })
 
-  it('tells presets apart and explains the official badge', () => {
+  it('tells presets apart and explains the Featured mark', () => {
     expect(isDirectoryPresetItem({ id: 'preset:github' })).toBe(true)
     expect(isDirectoryPresetItem({ id: 'com.notion/mcp@1' })).toBe(false)
-    expect(getOfficialBadgeTip({ publisher: 'notion.com' }))
-      .toContain('owns notion.com')
+    expect(FEATURED_CONNECTOR_TIP).toBe(
+      'Picked by Besidka as a well-known service. Not a security review.',
+    )
   })
 
   it('asks for a connector icon unless its consent was withdrawn', () => {

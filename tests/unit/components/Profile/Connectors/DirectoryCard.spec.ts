@@ -27,8 +27,10 @@ describe('Profile/Connectors/DirectoryCard', () => {
     expect(wrapper.get('[data-testid="connector-avatar-image"]')
       .attributes('src'))
       .toBe('/api/v1/connectors/registry/icon?id=io.example%2Ftracker%401.0.0')
-    expect(wrapper.find('[data-testid="connector-directory-official"]')
-      .exists()).toBe(true)
+    expect(wrapper.find('[data-testid="connector-directory-community"]')
+      .text()).toBe('Community')
+    expect(wrapper.find('[data-testid="connector-directory-featured"]')
+      .exists()).toBe(false)
 
     const add = wrapper.get('[data-testid="connector-directory-add"]')
 
@@ -46,14 +48,16 @@ describe('Profile/Connectors/DirectoryCard', () => {
     const wrapper = await mountCard(createDirectoryItem({
       isAdded: true,
       addedConnectorId: 'conn1',
-      isOfficial: false,
+      isCurated: true,
     }))
 
     expect(wrapper.get('[data-testid="connector-directory-added"]').text())
       .toBe('Added')
     expect(wrapper.find('[data-testid="connector-directory-add"]').exists())
       .toBe(false)
-    expect(wrapper.find('[data-testid="connector-directory-official"]')
+    expect(wrapper.get('[data-testid="connector-directory-featured"]')
+      .attributes('aria-label')).toContain('Not a security review')
+    expect(wrapper.find('[data-testid="connector-directory-community"]')
       .exists()).toBe(false)
     expect(wrapper.find('[data-testid="connector-directory-open"]').exists())
       .toBe(true)

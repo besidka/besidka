@@ -1,4 +1,4 @@
-export const CONNECTOR_CURATION_VERSION = '2026-11-16'
+export const CONNECTOR_CURATION_VERSION = '2026-11-16.2'
 
 export interface CuratedConnector {
   id: string
@@ -17,7 +17,12 @@ export interface CuratedConnector {
  * are in docs/connectors.md section 10.3.
  */
 export const CURATED_CONNECTORS = [
-  { id: 'github', title: 'GitHub', presetId: 'github' },
+  {
+    id: 'github',
+    title: 'GitHub',
+    description: 'Work with repositories, issues and pull requests on GitHub.',
+    presetId: 'github',
+  },
   { id: 'notion', title: 'Notion', registryName: 'com.notion/mcp' },
   { id: 'linear', title: 'Linear', registryName: 'app.linear/linear' },
   {
@@ -28,6 +33,30 @@ export const CURATED_CONNECTORS = [
   { id: 'figma', title: 'Figma', registryName: 'com.figma.mcp/mcp' },
   { id: 'canva', title: 'Canva', registryName: 'com.canva.mcp/mcp' },
   {
+    id: 'stripe',
+    title: 'Stripe',
+    description: 'Work with your Stripe account: payments, customers, invoices and the docs.',
+    presetId: 'stripe',
+  },
+  {
+    id: 'vercel',
+    title: 'Vercel',
+    description: 'Search the Vercel docs and manage projects and deployments.',
+    presetId: 'vercel',
+  },
+  {
+    id: 'supabase',
+    title: 'Supabase',
+    description: 'Manage your Supabase projects and databases.',
+    presetId: 'supabase',
+  },
+  {
+    id: 'sentry',
+    title: 'Sentry',
+    description: 'Look into Sentry issues and errors in your projects.',
+    presetId: 'sentry',
+  },
+  {
     id: 'monday',
     title: 'monday.com',
     registryName: 'com.monday/monday.com',
@@ -35,6 +64,48 @@ export const CURATED_CONNECTORS = [
   { id: 'airtable', title: 'Airtable', registryName: 'com.airtable/mcp' },
   { id: 'gitlab', title: 'GitLab', registryName: 'com.gitlab/mcp' },
   { id: 'paypal', title: 'PayPal', registryName: 'com.paypal.mcp/mcp' },
+  {
+    id: 'square',
+    title: 'Square',
+    description: 'Work with your Square seller account.',
+    presetId: 'square',
+  },
+  {
+    id: 'intercom',
+    title: 'Intercom',
+    description: 'Work with Intercom conversations and contacts.',
+    presetId: 'intercom',
+  },
+  {
+    id: 'clickup',
+    title: 'ClickUp',
+    description: 'Find and manage tasks and docs in your ClickUp workspace.',
+    presetId: 'clickup',
+  },
+  {
+    id: 'miro',
+    title: 'Miro',
+    description: 'Read and create content on your Miro boards.',
+    presetId: 'miro',
+  },
+  {
+    id: 'todoist',
+    title: 'Todoist',
+    description: 'Manage your Todoist tasks and projects.',
+    presetId: 'todoist',
+  },
+  {
+    id: 'webflow',
+    title: 'Webflow',
+    description: 'Manage your Webflow sites and CMS content.',
+    presetId: 'webflow',
+  },
+  {
+    id: 'wix',
+    title: 'Wix',
+    description: 'Search the Wix docs and manage your Wix sites.',
+    presetId: 'wix',
+  },
   {
     id: 'hugging-face',
     title: 'Hugging Face',
