@@ -1,4 +1,4 @@
-export const CONNECTOR_CURATION_VERSION = '2026-11-16.3'
+export const CONNECTOR_CURATION_VERSION = '2026-11-16.4'
 
 export interface CuratedConnector {
   id: string

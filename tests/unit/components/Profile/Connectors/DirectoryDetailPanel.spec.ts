@@ -114,6 +114,25 @@ describe('Profile/Connectors/DirectoryDetailPanel', () => {
     expect(wrapper.find('a').exists()).toBe(false)
   })
 
+  it('shows no Add and connect for a server whose sign-in refuses Besidka', async () => {
+    entryData.value = {
+      item: createDirectoryItem({
+        title: 'Vercel',
+        host: 'mcp.vercel.com',
+        remoteUrl: 'https://mcp.vercel.com/',
+      }),
+      categoryLabel: 'Cloud & infrastructure',
+      probe: null,
+    }
+
+    const wrapper = await mountPanel()
+
+    expect(wrapper.find('[data-testid="connector-directory-detail-primary"]')
+      .exists()).toBe(false)
+    expect(wrapper.get('[data-testid="connector-directory-detail-unavailable"]')
+      .text()).toBe('Sign-in not available for Besidka yet')
+  })
+
   it('probes the tools on open and lists them', async () => {
     const wrapper = await mountPanel()
 

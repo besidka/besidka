@@ -89,6 +89,19 @@
         >
           {{ needsConnect ? 'Connect' : 'Open' }}
         </button>
+        <p
+          v-else-if="isSignInUnavailable"
+          class="flex items-center gap-1 text-sm text-base-content/70"
+          data-testid="connector-directory-detail-unavailable"
+        >
+          <Icon
+            name="lucide:info"
+            size="16"
+            class="shrink-0"
+            aria-hidden="true"
+          />
+          {{ CONNECTOR_SIGN_IN_UNAVAILABLE_LABEL }}
+        </p>
         <button
           v-else
           type="button"
@@ -207,7 +220,11 @@
 </template>
 
 <script setup lang="ts">
-import { CONNECTOR_CATALOG_FOOTER } from '~~/config/connectors-catalog'
+import {
+  CONNECTOR_CATALOG_FOOTER,
+  CONNECTOR_SIGN_IN_UNAVAILABLE_LABEL,
+  isConnectorSignInUnavailable,
+} from '~~/config/connectors-catalog'
 import type {
   ConnectorDirectoryItem,
   ConnectorDirectoryProbe,
@@ -256,6 +273,10 @@ const probe = computed<ConnectorDirectoryProbe | null>(() => {
 
 const isPreset = computed<boolean>(() => {
   return !!item.value && isDirectoryPresetItem(item.value)
+})
+
+const isSignInUnavailable = computed<boolean>(() => {
+  return !!item.value && isConnectorSignInUnavailable(item.value.host)
 })
 
 const categoryLabel = computed<string>(() => {

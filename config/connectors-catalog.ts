@@ -12,6 +12,22 @@ export interface ConnectorPreset {
 export const CONNECTOR_CATALOG_FOOTER
   = 'Names belong to their owners. Besidka is not affiliated with them.'
 
+export const CONNECTOR_SIGN_IN_UNAVAILABLE_LABEL
+  = 'Sign-in not available for Besidka yet'
+
+/**
+ * Servers whose only way in is OAuth and whose authorization server refuses
+ * Besidka's client registration (probed 2026-11-16, docs/connectors.md
+ * section 10.3). They stay in the directory without an Add button until the
+ * server accepts Besidka.
+ */
+export const CONNECTOR_SIGN_IN_UNAVAILABLE_HOSTS: readonly string[] = [
+  'mcp.vercel.com',
+  'mcp.squareup.com',
+  'mcp.circleci.com',
+  'mcp.figma.com',
+]
+
 export const CONNECTOR_PRESETS = [
   {
     id: 'github',
@@ -93,9 +109,10 @@ export const CONNECTOR_PRESETS = [
     id: 'intercom',
     title: 'Intercom',
     url: 'https://mcp.intercom.com/mcp',
-    auth: ['oauth', 'header'],
+    auth: ['header'],
     headerName: 'Authorization',
-    notice: 'For US workspaces. An EU workspace uses '
+    notice: 'Intercom does not accept Besidka\'s sign-in yet, so use an API '
+      + 'token. This is the US server; an EU workspace uses '
       + 'https://mcp.eu.intercom.com/mcp: add it by URL.',
   },
   {
@@ -188,6 +205,10 @@ export function findConnectorPresetByUrl(
 
 function normalizeHost(host: string): string {
   return host.trim().toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
+}
+
+export function isConnectorSignInUnavailable(host: string): boolean {
+  return CONNECTOR_SIGN_IN_UNAVAILABLE_HOSTS.includes(normalizeHost(host))
 }
 
 function registrableDomainOf(host: string): string {

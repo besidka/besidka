@@ -77,4 +77,37 @@ describe('Profile/Connectors/DirectoryCard', () => {
     expect(wrapper.find('[data-testid="connector-avatar-brand"]').exists())
       .toBe(true)
   })
+
+  it('shows no Add button for a server whose sign-in refuses Besidka', async () => {
+    const wrapper = await mountCard(createDirectoryItem({
+      id: 'preset:vercel',
+      name: 'preset/vercel',
+      title: 'Vercel',
+      host: 'mcp.vercel.com',
+      remoteUrl: 'https://mcp.vercel.com/',
+      presetId: 'vercel',
+      publisher: null,
+      isCurated: true,
+    }))
+
+    expect(wrapper.find('[data-testid="connector-directory-add"]').exists())
+      .toBe(false)
+    expect(wrapper.get('[data-testid="connector-directory-unavailable"]')
+      .text()).toBe('Sign-in not available for Besidka yet')
+    expect(wrapper.find('[data-testid="connector-directory-open"]').exists())
+      .toBe(true)
+  })
+
+  it('keeps an added connector on an unavailable host as Added', async () => {
+    const wrapper = await mountCard(createDirectoryItem({
+      host: 'mcp.figma.com',
+      isAdded: true,
+      addedConnectorId: 'conn1',
+    }))
+
+    expect(wrapper.find('[data-testid="connector-directory-added"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-testid="connector-directory-unavailable"]')
+      .exists()).toBe(false)
+  })
 })
