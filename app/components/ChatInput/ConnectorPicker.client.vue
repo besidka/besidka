@@ -22,7 +22,7 @@
               Connectors
             </h3>
             <p class="mt-1 text-sm text-base-content/70">
-              Let the model use tools from the services you turn on for this
+              Choose which connected services the model can use in this
               chat
             </p>
           </div>
