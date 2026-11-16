@@ -2459,8 +2459,7 @@ export default defineEventHandler(async (event) => {
     || (toolIndex?.openedConnectors().length ?? 0) > 0
   const bindThinkingFromStart = isResume
     && !!anthropicThinkingBinding
-    && (anthropicThinkingBinding.type === 'adaptive'
-      || resumeReplaysChangedTools)
+    && (!!reasoningEffort || resumeReplaysChangedTools)
   const toolLoopOptions = anthropicThinkingBinding && guardedToolLoopOptions
     ? {
       ...guardedToolLoopOptions,

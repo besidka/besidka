@@ -155,9 +155,16 @@ builds the option. An explicit `thinking` replaces the one the provider
 derives from `reasoning`, so with reasoning on it spells out the derived
 `{ type: 'adaptive', display: 'summarized' }` in full (without `display` the
 reasoning text can come back empty). With reasoning off the provider sends no
-`thinking` and these models default to adaptive thinking, so only the binding
-is set. The unit test captures the request bodies and fails if the provider's
-derived object ever drifts from this one.
+`thinking` and these models default to adaptive thinking ("Leaving `thinking`
+out gives adaptive thinking on these models too"), so the binding goes with a
+bare `{ type: 'adaptive' }` and no `display`, which keeps the API's default.
+The API requires `type` next to `block_binding`: a `thinking` object with only
+the binding fails with "thinking.type: Field required" (Claude Haiku 5.5 on
+PR #923, after #946 sent that shape), and sending the binding with
+`disabled` or `between_tools` is a 400 on every model. The AI SDK schema
+accepts the typeless shape, so the unit test captures every request body and
+fails if a `thinking` object ever lacks a valid `type`, and if the provider's
+derived object drifts from the one spelled out here.
 
 Cost: a dropped block is not billed, and the step that changed the tools or
 instructions already misses the prompt cache. The API drops the first

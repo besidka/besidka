@@ -39,10 +39,12 @@ const DROP_MISMATCHED_THINKING_BLOCKS = {
  * produced, instead of failing the request with "The block is bound to a
  * different conversation". Only the models with preserved thinking run that
  * prefix check. An explicit `thinking` replaces the one the provider derives
- * from `reasoning`, so the derived adaptive object is spelled out in full;
- * with reasoning off the provider sends no `thinking`, so only the binding
- * is set and the API keeps its default. See docs/providers/anthropic.md,
- * "Thinking blocks and the prefix check".
+ * from `reasoning`, so the derived adaptive object is spelled out in full.
+ * With reasoning off the provider sends no `thinking`, and these models then
+ * think adaptively by default, so the binding goes with a bare `adaptive`
+ * type: the API requires `type` next to `block_binding` and rejects the
+ * binding with `disabled` or `between_tools`. See
+ * docs/providers/anthropic.md, "Thinking blocks and the prefix check".
  */
 export function getAnthropicThinkingBinding(
   modelId: string,
@@ -53,7 +55,10 @@ export function getAnthropicThinkingBinding(
   }
 
   if (reasoningLevel === 'off') {
-    return { blockBinding: DROP_MISMATCHED_THINKING_BLOCKS }
+    return {
+      type: 'adaptive',
+      blockBinding: DROP_MISMATCHED_THINKING_BLOCKS,
+    }
   }
 
   return {
