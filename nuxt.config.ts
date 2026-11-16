@@ -729,7 +729,13 @@ export default defineNuxtConfig({
       collections: iconCollections,
     },
     clientBundle: {
-      icons: ['lucide:git-branch-plus', 'thesvg:zhipu'],
+      icons: [
+        'lucide:git-branch-plus',
+        'thesvg:zhipu',
+        'streamline-logos:github-logo-2-solid',
+        'streamline-logos:linkedin-logo-block',
+        'streamline-logos:twitter-logo-1-solid',
+      ],
     },
   },
   future: {
