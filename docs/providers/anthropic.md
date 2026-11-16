@@ -63,7 +63,8 @@ byte-identical, in the order tools, system, messages. These changes break it:
   modifies the system prompt").
 - **The tool-loop final-step instruction.** `prepareStep` edits the
   instructions on the last allowed step, so that step does not reuse the
-  entry written by earlier steps.
+  entry written by earlier steps. On models with preserved thinking it also
+  fails the prefix check; see "Thinking blocks and the prefix check".
 - **The UTC date line.** The current-date instruction changes when UTC
   midnight passes, invalidating every chat's cache once per day.
 - **Project memory and instruction edits.** They live in the system prompt.
@@ -108,6 +109,73 @@ can't be turned off"
 `defaultLevel: 'medium'`: the menu has no `Off`, and `off` is sent and
 persisted as `medium`. Every other Claude model still offers `Off`. See
 [`docs/chat-reasoning.md`](../chat-reasoning.md#models-that-cannot-disable-reasoning).
+
+## Thinking blocks and the prefix check
+
+Claude Fable 5.1 and 5.2, Mythos 5.1 and 5.2, Opus 5.5, Sonnet 5.5 and
+Haiku 5.5 bind every thinking block to what came before it. Anthropic's
+[preserved thinking docs](https://platform.claude.com/docs/en/build-with-claude/preserved-thinking)
+say a block is tied to "`system`, `tools`, and every earlier message. If any
+of them changes, the block fails the prefix check, and the request can get a
+400 error." The error reads "The block is bound to a different
+conversation". `tool_choice`, `effort`, `max_tokens` and other parameters are
+not part of the check
+([prefix checks](https://platform.claude.com/docs/en/build-with-claude/preserved-thinking/prefix-checks)).
+
+Across sends this never matters: the history sanitizer drops reasoning and
+its signature from earlier assistant turns
+([`model-switch-context.md`](../chats/model-switch-context.md)). Inside one
+send it does, because the tool loop replays each step's thinking to the next
+step, and Besidka changes the prefix between steps on purpose:
+
+- **The tool index (C-15).** `tool_index__load` and `use_connector` add the
+  loaded tools to `activeTools` from the next step on, so `tools` grows. This
+  is what failed on PR #923 with Claude Haiku 5.5.
+- **The forced final step.** For a direct Anthropic model, `prepareStep`
+  adds the final-step addendum to the instructions, so `system` changes.
+- **Approval resumes.** A resumed send replays the paused send's thinking
+  blocks with their signatures, under the tool set rebuilt for the resume.
+
+`withAnthropicThinkingBinding()` (`server/utils/ai/anthropic-thinking-binding.ts`)
+wraps the send's `prepareStep` for a direct Anthropic model with preserved
+thinking. It compares each step's tools, tool order and instructions with
+the earlier steps'. From the first step that differs, and on every step
+after it, it sends `thinking.blockBinding: { prefixMismatchBehavior:
+'drop_block' }`. The provider then adds the
+`thinking-binding-controls-2026-08-01` beta, and the API drops the blocks
+that no longer match instead of failing: "The API drops the invalid blocks,
+and the request succeeds. You aren't billed for those blocks". A step that
+replays no signed thinking block never gets it. A resumed send gets it from
+the first step when reasoning is on, or when the resume reloaded tools or
+reopened a connector. Steps before any change, and sends that never change,
+are sent exactly as before.
+
+`getAnthropicThinkingBinding()` (`server/utils/providers/anthropic.ts`)
+builds the option. An explicit `thinking` replaces the one the provider
+derives from `reasoning`, so with reasoning on it spells out the derived
+`{ type: 'adaptive', display: 'summarized' }` in full (without `display` the
+reasoning text can come back empty). With reasoning off the provider sends no
+`thinking` and these models default to adaptive thinking, so only the binding
+is set. The unit test captures the request bodies and fails if the provider's
+derived object ever drifts from this one.
+
+Cost: a dropped block is not billed, and the step that changed the tools or
+instructions already misses the prompt cache. The API drops the first
+mismatched block and every thinking block after it in that request, so from
+the change on the model can answer without the thinking of the earlier
+steps. Each send that drops blocks logs
+`attributes.anthropicThinking` (prefix changes and the `thinking_dropped`
+count from `input_transformations`).
+
+Not done, and the better long-term fix: declare the deferred tools with
+`providerOptions.anthropic.deferLoading: true` from the first step and surface
+a loaded one with a `toolChanges` `tool_addition` in a system message appended
+after its tool result (the `mid-conversation-tool-changes-2026-07-01` beta),
+and move the final-step addendum into an appended system message. That keeps
+every thinking block and the prompt cache, but the wire shape was not checked
+against the live API yet. Also not covered: gateway routes (Vercel AI
+Gateway, OpenRouter) to these models, and the search-answer continuation of a
+resumed send, which replays the resumed thinking with no tools.
 
 ## Cost accounting
 
