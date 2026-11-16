@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   artifactExecute: null as null | ReturnType<typeof vi.fn>,
   connectorUrls: {} as Record<string, string>,
   holdsSkillText: false,
+  skillsInstructionBlock: null as string | null,
   store: {
     connectors: [] as Array<Record<string, any>>,
     credentials: null as Record<string, any> | null,
@@ -137,7 +138,7 @@ vi.mock('~~/server/utils/skills/runtime/send', () => ({
   prepareSkillsForSend: async () => ({
     tools: {},
     toolsRegistered: false,
-    instructionBlock: null,
+    instructionBlock: mocks.skillsInstructionBlock,
     activeSkillsBlock: null,
     invocationBlock: null,
     holdsSkillText: mocks.holdsSkillText,
@@ -526,6 +527,7 @@ describe('tool approval requests in the chat send', () => {
     mocks.writers = []
     mocks.flags = new Set(['connectors', 'tool-approvals'])
     mocks.holdsSkillText = false
+    mocks.skillsInstructionBlock = null
     mocks.kv = new Map()
     mocks.chatMessages = []
     mocks.capabilityTools = {}
@@ -1029,8 +1031,32 @@ describe('tool approval requests in the chat send', () => {
     expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
   })
 
-  it('asks before an Auto connector read in a send that holds imported '
-    + 'skill text, whatever opened it', async () => {
+  it('runs an Auto connector read in a send whose skills catalog lists an '
+    + 'imported skill, because a catalog alone does not taint', async () => {
+    const autoLinear = mocks.store.connectors.find((connector) => {
+      return connector.id === 'conn-linear'
+    })!
+
+    autoLinear.toolMode = 'auto'
+    mocks.skillsInstructionBlock = '<skills_catalog>\n'
+      + '- release-notes: Writes release notes (imported)\n</skills_catalog>'
+
+    const { assistantInsert } = await runSend({
+      servers: [linear],
+      steps: [
+        toolCallChunks('call-1', 'use_connector', { connector: 'linear' }),
+        toolCallChunks('call-2', 'mcp__linear__list_issues', {}),
+        textChunks('One open issue.'),
+      ],
+    })
+    const parts = assistantInsert?.parts ?? []
+
+    expect(linear.callCount('tools/call')).toBe(1)
+    expect(findPart(parts, TOOL_APPROVAL_DATA_PART_TYPE)).toBeUndefined()
+  })
+
+  it('asks before an Auto connector read in a send that holds an activated '
+    + 'imported skill\'s body', async () => {
     const autoLinear = mocks.store.connectors.find((connector) => {
       return connector.id === 'conn-linear'
     })!

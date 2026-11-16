@@ -1223,11 +1223,12 @@ loaded `list_teams` and the read asked `untrusted-output`. The connector
 source recorded on open matches the read's own source (integration spec:
 open, load by name, read, no card). The send already held `skill` taint:
 the test account has model-invocable skills imported from a zip and from
-GitHub, and a skills catalog holding imported text presets `skill` taint on
-every send (`catalogHoldsImportedText`, `docs/skills.md`), so every
-connector read in that account asks, whatever its mode (integration spec).
-That is the current F2 rule, not an Auto bug; changing it is an owner
-decision.
+GitHub, and a skills catalog holding imported text used to preset `skill`
+taint on every send (`catalogHoldsImportedText`), so every connector read in
+that account asked. Decision of 2026-11-16: the catalog alone no longer
+taints a send; only an imported skill's body does (`docs/skills.md` section
+5.2). Integration specs: catalog only, the Auto read runs; an
+activated imported skill, the read asks.
 
 **`use_connector({ connector })`** (a native read, never asks, like
 `tool_index__load`; `isToolIndexLoadToolName` covers both) opens one catalog

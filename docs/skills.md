@@ -1120,6 +1120,18 @@ the full 1,024 characters is about 930 tokens; in English it would be about
 `SKILL_DESCRIPTION_CATALOG_SOFT_MAX` (300 characters, "Shortened in the
 catalog"), and why slash-only commands stay out of the catalog.
 
+**The catalog alone does not taint a send (decision of 2026-11-16).** The
+skills catalog holds only names and one-line descriptions, capped and
+reviewed by the user at import, inside its untrusted delimiter. Listing an
+imported skill there no longer sets `holdsSkillText`, so it presets no
+`skill` approval taint and no memory write lock
+(`catalogHoldsImportedText` is still logged). A skill's body taints the
+send as before: an `activate_skill` result, a "+" attachment, a `/`
+invocation, a project-pinned skill whose text is injected, or a skill
+TypeSafe AI picked. Before this, an account with any model-invocable
+imported skill had every connector read ask `untrusted-output` in every
+chat (found on pr-923, `docs/connectors.md` section 6.3).
+
 ### 5.3 Tools
 
 `getSkillTools({ db, bucket, userId, skills, activeSkillIds, family, guard, kv, logger })`
