@@ -973,7 +973,7 @@ byte cap, and the search returns remote descriptions as tool output.
    40 KiB in all (`TOOL_INDEX_TOTAL_MAX_BYTES`): past that the rest are
    dropped and one line says how many more tools there are, to be loaded by
    exact name, so the block has a fixed maximum size whatever the tool
-   counts (5 connectors of 200 tools stay under it).
+   counts.
    `access` is `read`, `write` or `always-ask`, from the approval descriptor.
 5. One more tool, `tool_index__load({ names })` (at most 10 names), marks
    tools loaded for the next step. It is a native read with no taint
