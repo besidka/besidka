@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '6030f8c37e93d81b31c997b82779cd2c0357c5fef3da55501405090b2bd0250b',
+    hash: '6080b6a96488d27347a5ec323a415f82f3fa3a3475a7fe153d6b977138cf953b',
     classification: 'material',
     noticeId: '2026-12-code-and-documents',
     note: 'Documents (stored outline and file, deleted with the file and '
@@ -51,6 +51,19 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'skill on or set it to Auto), with no new purpose, recipient, '
       + 'transfer or retention; whether the existing notice needs to say '
       + 'more is the owner\'s decision. '
+      + 'PHASE 4 LEGAL BATCH (2026-11-16): the new Skills section (sources, '
+      + 'GitHub import, what is kept, catalog and text to the chat\'s '
+      + 'provider, never public, scripts copied to the user\'s Anthropic '
+      + 'workspace and deleted again), TypeSafe AI skill screening and the '
+      + 'eighth, opt-in Skill selection check, connector modes (Auto, Always '
+      + 'on, Manual) with the catalog sent to the provider, per-tool modes, '
+      + 'the 30-day tool snapshot and the anonymous directory requests, with '
+      + 'the matching recipient, transfer, logging, retention and deletion '
+      + 'rows. Judged MATERIAL under WP260 (new purposes, new recipients '
+      + 'GitHub and the Anthropic workspace copy, new retention) and NOT '
+      + 'described by the notice id on this record. Owner decision of '
+      + '2026-11-16: updated without notice emails, no LEGAL_NOTICES entry '
+      + 'and no consent version bump. '
       + 'An earlier edit changed British spellings to American '
       + 'English, with no change of meaning, so it adds no new '
       + 'classification.',

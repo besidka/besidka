@@ -1090,6 +1090,76 @@ breach runbook (`docs/legal/breach-runbook.md`, sections 2.2, 2.5 and 3).
   The icon is a same-origin image and the connect flow uses a full-page
   redirect. If C-7 stores any UI state in the browser, check it.
 
+## 2026-11-16 Phase 4 legal batch, connectors and skills: decisions
+
+Engineer-drafted, not lawyer-reviewed. This batch extends the connectors text
+of 2026-11-15 to what was built since on the umbrella `feat/connectors-page`
+(PR #923: C-6 tool modes, C-7 page, C-14 directory, C-15 modes and Auto
+connectors) and writes the skills baseline that S-7 (BES-294) never landed,
+plus the skills work merged on `main`: TypeSafe AI skill screening (SS-8,
+SS-9), the eighth TypeSafe AI role `skillSelection` (S-14), scripts in the
+user's Anthropic workspace (S-5) and project skills (S-15). Records: Art. 30
+rows 4, 10b, 10c, 10d (new) and 11a, section 6.1; DPIA sections 3.7a, 3.15
+(i) and 3.16 (new), data-flow rows 5a and 25 to 29, risk rows 88 to 96,
+residual items 33 to 36.
+
+- **Owner decision, 2026-11-16: no notice emails.** The legal texts are
+  updated without notice emails. No `LEGAL_NOTICES` entry is added or changed,
+  `CURRENT_CONSENT_VERSION` and `CONNECTOR_CONSENT_VERSION` are unchanged,
+  `NUXT_LEGAL_NOTICE_SWEEP_ENABLED` is untouched and no approval is recorded.
+  Only the texts and the hashes in `shared/utils/legal-document-revisions.ts`
+  change.
+- **WP260 result: material, recorded and not acted on.** Against the
+  checklist above:
+  - *New purpose:* yes. S-5 copies skill files to the user's Anthropic
+    workspace to run scripts; `skillSelection` picks a skill from the message;
+    skills as a whole (store and follow user-imported instructions) were never
+    described before.
+  - *New recipient or transfer:* yes. GitHub (United States) receives the
+    address of a skill import; the user's Anthropic workspace holds a copy of
+    a skill; TypeSafe AI receives two new data sets (skill text, and the
+    message with skill names and descriptions). Auto connectors widen the
+    chats a connector can reach and send server-written tool text to the
+    chat's provider (the same recipient, so not a new one on its own).
+  - *Longer retention:* yes, new stores: skills with up to 20 versions, the
+    30-day connector tool snapshot, the 30-day TypeSafe AI chunk score cache
+    and per-version marks, the 45-day GitHub update-check state.
+  - *Change of basis, rights, controller:* no.
+  - *Terms:* not edited in this batch (see below).
+  Minor on their own: the per-tool modes (they describe approvals the policy
+  already covered), project skills (the same text to the same provider) and
+  the anonymous directory requests (no user data). When unsure the checklist
+  says material, and several items are clearly met.
+- **Revision record.** The Privacy Policy record moves to the new hash and
+  keeps its `material` classification and its existing `noticeId`, with a note
+  that the Phase 4 text is not described by that notice. The Terms and Cookie
+  Policy are unchanged, so their hashes stay.
+- **Terms of Use: not written, open for the owner.** The skills pre-check asks
+  for a right-to-use promise for "create, paste or import", a power to disable
+  a skill with a statement of reasons, skills as reportable stored content,
+  and, for S-5, the run-code rules of D-10 to cover skill scripts (the existing
+  "Running code" clause speaks of code the model writes in the user's provider
+  sandbox, which arguably covers scripts run there, but it does not name
+  skills). These are new user obligations, so they are material Terms changes
+  and were left out of this batch on purpose.
+- **Connector consent wording.** The consent screen text (pinned by
+  `CONNECTOR_CONSENT_TEXT_SHA256` on `feat/connectors-page`) does not mention
+  the modes. It stays accurate (it names the host, what is sent and the
+  transfer), and the mode buttons sit on the same step, but a sentence such as
+  "In Auto, the model may use this connector in any chat when it decides it
+  is needed" would close DPIA residual item 34. Changing the text needs a
+  `CONNECTOR_CONSENT_VERSION` bump, which re-asks every connector, so it is the
+  owner's call.
+- **Public copy that now reads wrong** (not legal pages, not edited here):
+  `content/key-guides/typesafe-ai-api-key.md` and `content/guides/memory.md`
+  say every TypeSafe AI check is on once the key is saved; Skill selection is
+  off by default.
+- **No change to the Cookie Policy.** No browser storage was added by the
+  connectors page, directory, modes or the skills screens (checked by grep
+  across `app/` on `main` and on `feat/connectors-page` for `localStorage`,
+  `sessionStorage`, the VueUse storage helpers and `usePreferenceStorage`
+  keys).
+
 ## Not legal advice
 
 The whole legal package is engineer-drafted and has not been reviewed by a

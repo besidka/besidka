@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.11, 2026-11-15 (connectors, C-10: new section 3.15, data-flow steps 20 to 24, section 4 rows, risk rows 73 to 87, section 6 items 28 to 33, section 7 question); 1.10, 2026-11-12 (Office attachments, BES-370: data-flow row 16); 1.9, 2026-11-11 (documents and provider code execution: new section 3.14, data-flow steps 15 to 19, `create_document` in section 3.11 and risk row 37, risk rows 61 to 72, section 6 items 24 to 27, DPF re-check in item 5; 1.8, 2026-11-08: artifacts: new section 3.13, data-flow steps 10 to 14, section 4 rows, risk rows 49 to 60, section 6 items 20 to 23; 1.7, 2026-11-08: feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.12, 2026-11-16 (Phase 4 legal batch: new section 3.16 skills; section 3.7a skill screening and the eighth role `skillSelection`; section 3.15 item (i); data-flow row 5a and rows 25 to 29; risk rows 88 to 96; section 6 items 34 to 36 and an update to item 33); 1.11, 2026-11-15 (connectors, C-10: new section 3.15, data-flow steps 20 to 24, section 4 rows, risk rows 73 to 87, section 6 items 28 to 33, section 7 question); 1.10, 2026-11-12 (Office attachments, BES-370: data-flow row 16); 1.9, 2026-11-11 (documents and provider code execution: new section 3.14, data-flow steps 15 to 19, `create_document` in section 3.11 and risk row 37, risk rows 61 to 72, section 6 items 24 to 27, DPF re-check in item 5; 1.8, 2026-11-08: artifacts: new section 3.13, data-flow steps 10 to 14, section 4 rows, risk rows 49 to 60, section 6 items 20 to 23; 1.7, 2026-11-08: feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -372,13 +372,16 @@ removed.
 
 - **Purpose.** Catch special-category data and never-store values the rules
   in 3.7 miss, and reject entries a model wrote that are not supported by the
-  user's own text (the memory check). The same key also powers six more
+  user's own text (the memory check). The same key also powers seven more
   assistive checks, listed in the table below.
 - **When.** Only for a user who saved a TypeSafe AI key (Profile → API Keys
   → Smart checks). Saving the key is the opt-in; deleting it stops every
   check. Each check also has its own toggle in a "TypeSafe AI checks" section
   on that tab. All are on after the key is saved; a role is on unless the
-  user switched it off. Only on paths already behind the consent gate.
+  user switched it off. The exception is `skillSelection` (S-14), which is
+  off until the user switches it on, also when the settings are `null`
+  (`JEV_OPT_IN_ROLE_IDS`), because it spends the key on ordinary sends. Only on
+  paths already behind the consent gate.
 - **How (memory check).** `server/utils/memory/jev-check.ts`. The rules in
   3.7 run first. Only entries they allow are sent, with never-store values
   removed, plus, for model-written entries, a short excerpt of the user's
@@ -386,11 +389,13 @@ removed.
   only add a refusal. Model pinned to `jev-1.14.0`; threshold 0.5.
 - **Shared client.** All roles call one client in `server/utils/jev/`. The
   per-role setting is `user_settings.typesafe_roles` (nullable JSON, null =
-  all on). Timeouts: 800 ms on the send path, 2.5 s in the background, 1.5 s
+  all on except `skillSelection`). Timeouts: 800 ms on the send path, 2.5 s in the background, 1.5 s
   for the share check. Role ids (`JEV_ROLE_IDS` in
   `shared/utils/jev-policy.ts`): `memoryChecks`, `autoWebSearch`,
   `extractionPrefilter`, `injectionScreening`, `rerank`, `sharePiiCheck`,
-  `pastChatRetrieval`; the table below has one row for each.
+  `pastChatRetrieval`, `skillSelection`; the table below has one row for
+  each. Skill screening (SS-8) is not a role of its own: it runs under
+  `injectionScreening` and its toggle.
   Thresholds come from a synthetic eval run on 2026-10-26 and are re-tuned on
   real traffic.
 - **Recipient.** TypeSafe AI, Inc., United States, independent controller
@@ -409,12 +414,18 @@ removed.
   table: `memoryChecks` falls back to the gate alone, `autoWebSearch` and
   `pastChatRetrieval` fall toward searching, `extractionPrefilter` toward
   generating memory, `rerank` keeps the original order, `injectionScreening`
-  treats undecided text as unscreened, and `sharePiiCheck` only warns.
+  treats undecided text as unscreened (for a skill, the review lists the
+  parts not checked), `sharePiiCheck` only warns, and `skillSelection` changes
+  nothing, so the model picks from the catalog as without the key.
 - **Retention at Besidka.** The prompts are not stored. Two KV markers exist:
   the re-screening queue entry of `injectionScreening` (user, project and item
   ids, plus an attempt counter; 14 days) and the Auto web search first-message
   marker (`auto-web-search-first-message:<chat>:<message>`, holds the outcome
-  only; 1 day).
+  only; 1 day). For skills: the chunk score cache (scores under a SHA-256 of
+  the chunk, no text, per user, 30 days), the import-stage result (no text,
+  the stage's remaining hour) and the marks of a stored version (line ranges
+  and scores, no text, until the version is deleted; deleted by prefix in the
+  account purge, which fails and stays retryable if that delete fails).
 - **Data in logs.** Counts, scores, statuses and latency under
   `attributes.<role>Jev` (the memory check keeps `memoryJev`), never text.
 
@@ -423,9 +434,10 @@ removed.
 | `memoryChecks` | Second opinion before a memory entry is saved | Each entry the rules allowed | Entry text with never-store values removed, plus a short redacted source excerpt | Rules alone; add-only, so it can never allow what the rules refused |
 | `autoWebSearch` | Decide whether a web search is needed | Only in the Auto web search mode, each message, unless a URL, a domain or a recency phrase ("today", "latest") already decides it without a Jev call | The message and the last three turns, with never-store values removed | Search as usual |
 | `extractionPrefilter` | Skip the memory model when nothing is worth remembering (saves the user's cost) | Before memory is generated from a chat: opt-in extraction, backfill from past chats, project Refresh. Never for extract-now or import | Chat text with never-store values removed, in chunks of up to about 8,000 tokens | Unsure or unavailable: generate memory as usual |
-| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results (title and snippet) fetched through Besidka | That text in chunks of up to about 2,000 tokens, with never-store values removed | Text used unscreened: search results are kept; a project file or note is stored ready and queued in KV (ids only, no text, kept 14 days, at most 5 failed attempts) and screened again by the hourly sweep, only while the user's consent is current and the key and check are still on; a flag holds a file for review or leaves a result out of context and never deletes anything |
+| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results (title and snippet) fetched through Besidka; skills (SS-8, BES-390), automatically when an import, update or needs-review screen opens, never from the pick list, MCP writes, the editor, an in-app save or a restore | That text in chunks of up to about 2,000 tokens, with never-store values removed. For a skill: the description, `SKILL.md`, references, other text, scripts and license files in that order, at most 12 calls a request and 48 a review, five constant questions per chunk, skill text only in the state key `text`; add-only marks, no "clean" verdict | Text used unscreened: search results are kept; a project file or note is stored ready and queued in KV (ids only, no text, kept 14 days, at most 5 failed attempts) and screened again by the hourly sweep, only while the user's consent is current and the key and check are still on; a flag holds a file for review or leaves a result out of context and never deletes anything |
 | `rerank` | Order search candidates by relevance and leave out clearly irrelevant ones while enough relevant ones remain | Past-chat and project-knowledge search | The query and excerpts of about 300 tokens each, up to 30 per search, with never-store values removed | Original order |
 | `sharePiiCheck` | Warn about personal data before publishing | When the share window opens or its files toggle changes, before a public share link is created; only with current legal consent | The chat text being shared, with never-store values, emails and phone numbers removed, in chunks of up to about 25,000 tokens | Generic reminder next to the built-in detector warnings; never blocks sharing |
+| `skillSelection` | Pick at most one of the user's own Auto skills for a message (S-14, BES-380), the only way an Auto skill reaches a model without tool calling | Opt-in, off by default. Only with the `skills` flag, when the user did not attach or type a skill, not on a resume, and only when a local BM25 prefilter over the names and descriptions of the user's Auto skills finds a candidate (at most three); otherwise no call | The message (never-store redacted, at most 4,000 characters) and each candidate's name and description (300 characters, never-store redacted) in state keys `skill_<i>`, never in a question. Rides in the Auto web search call when that call is made, else one call of its own; at most one call per send | Nothing changes; the pick applies to that send only and is never stored as an active skill |
 | `pastChatRetrieval` | Pre-search past chats for sends where the chat search tools are not registered (models without tool calling) | Each such message, only while "Search and reference chats" is on, unless a listed phrase ("last time", "we discussed") already starts the search without a Jev call | The message and the last three turns, with never-store values removed | No key or role off: no pre-search. Jev unsure or unavailable: the search runs anyway, so a failed call sends nothing extra to TypeSafe AI |
 
 ### 3.8 Consent gate, version 2026-11-a
@@ -562,7 +574,7 @@ removed.
 | 3 | Worker | Provider or gateway | Message, history, memory index, excerpts, knowledge | User's own key; transfer notice and consent where needed |
 | 4 | Worker | Search provider | Query the model writes | Only if the user turned search on, user's own key |
 | 5 | Worker | Memory model | New chat text (opt-in) | Never-store redaction, then gate on output |
-| 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge and Brave or Exa results for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
+| 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge, Brave or Exa results and the text of a skill under review for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval; the message and up to three skill names and descriptions for skill selection (opt-in) | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
 | 6 | Worker | Axiom | Counts and ids | No memory or chat text |
 | 7 | AI client (pulls) | Worker (MCP server) | Token, then the chats, projects, knowledge, files, memory and settings the user approved; for write scopes, new values (names, instructions, notes, text files, memory entries, settings) and which items to move or delete | OAuth 2.1 with PKCE, scopes ticked per client, 15-minute tokens, per-user ownership in SQL, consent gate, never-store and sensitive-topic gate on memory writes. The client is an independent controller the user chose |
 | 8 | Worker | Workers Analytics Engine | `feature_exposure`, flag, variant, reason for hash-based decisions | No bucket, path or user id (C1). Pseudonymous while a cohort is tiny |
@@ -582,6 +594,11 @@ removed.
 | 22 | Worker | The chat's provider or gateway | The result, as part of the history | The user's own key and the existing provider consent; no new recipient |
 | 23 | Worker | D1, KV (connector tables) | Encrypted credentials, tool settings, consent columns, tool-call log (HMAC, no content); pending approval (exact arguments, 24 hours) in KV | Encryption as for keys, ownership in SQL, 90-day prune, explicit purge on account deletion |
 | 24 | Worker (cron) | D1 `mcp_registry_servers`, from the registry host | Registry names (maintainer usernames), titles, descriptions, remote addresses | No user data sent; local search for signed-in users; erasure list of hashes |
+| 25 | Worker | The chat's provider or gateway (built on `feat/connectors-page`, C-15) | With every send of an account with Auto connectors: one catalog line per Auto connector (key, user-visible title, host, tool count; no server-written text). For connectors that are opened, Always on or switched on in the chat: server-written tool names and descriptions, and the definitions of loaded tools | The user's own key and the existing provider consent; no new recipient; catalog capped at 6 KiB and sanitized; `use_connector` records connector taint |
+| 26 | Worker | Servers listed in the connector directory (built on `feat/connectors-page`, C-14) | Anonymous icon fetches and, when a user opens an entry's details, MCP `initialize` and `tools/list` without credentials | No user data, token or cookie; `safeFetch`; results cached in KV for all users (icon 7 days, probe 1 day); rate limits per user and per host |
+| 27 | Worker | The chat's provider or gateway (built, section 3.16) | The skill catalog (names and descriptions of enabled, model-invocable skills) on each send; the text of an activated, attached, invoked, pinned or selected skill; other skill files the model reads | The user's own key and the existing provider consent; no new recipient; untrusted framing, memory write lock, writes ask while a skill is active |
+| 28 | Worker | GitHub (`api.github.com`, `codeload.github.com`; built, section 3.16) | The repository address, ref and path the user gave, on import and in the daily update check | Allowlisted hosts only, no redirect followed, no account or chat data, no Besidka-wide token |
+| 29 | Worker | The user's Anthropic workspace (built, flag `skills.scripts`, section 3.16) | The files of a skill the user allowed scripts for (renamed when the name holds `claude` or `anthropic`), then attached to the code execution container | Disclosure dialog, Labs opt-in, per-chat consent (Allow once or in this chat), direct Anthropic with Run code only, deletion on toggle-off, skill delete and account purge (best effort) |
 
 ### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- built
 
@@ -1289,6 +1306,92 @@ decided how to announce it (section 6, item 33).
   review (C-7), the OpenAI-run path (C-11, off by default, `connectors.native`
   unavailable), and the Anthropic path (not built in v1, NO-GO). Read every
   UI measure below as `planned` until C-7 ships.
+- **(i) Update 2026-11-16 (Phase 4 legal batch).** Built on the umbrella
+  branch `feat/connectors-page` (PR #923, not merged): the Connectors page,
+  consent screen and tool review (C-7), per-tool modes Always allow, Needs
+  approval and Blocked with defaults by kind (C-6, `docs/connectors.md`
+  section 7.11), the directory with featured entries, icons and anonymous
+  tool probes (C-14, sections 10.2 and 10.3), the tool index and connector
+  modes Manual, Auto (the default, also for connectors added before modes)
+  and Always on (C-15, sections 6.2 and 6.3). What this changes here:
+  - *Which chats.* An Auto connector can be used in any chat without the
+    per-chat switch: the model sees a catalog line and opens it with
+    `use_connector`. An off switch in a chat always wins. The consent screen
+    shows the mode buttons, so the user chooses the scope at the same time
+    as consenting; the consent wording itself (pinned by
+    `CONNECTOR_CONSENT_TEXT_SHA256`) does not name the modes.
+  - *What the provider receives.* Data-flow row 25: catalog lines on every
+    send (no server-written text since the #943 security review) and the
+    server-written tool text of connectors in use. The same recipient as
+    row 4, so no new recipient, but server-written text now reaches the
+    prompt of chats the user never switched the connector on in, once the
+    model opens it (risk row 88).
+  - *What is stored.* The 30-day tool snapshot in KV
+    (`connectors:catalog:<id>`, no chat content), the mode column and the
+    per-chat off row.
+  - *Directory.* Data-flow row 26: anonymous requests to third-party
+    servers that carry no user data (risk row 89).
+  - *Approvals.* Within one send, any connector call after content from
+    another source asks whatever its mode; a plain read defaults to Always
+    allow; open-world reads now ask until set to Always allow.
+
+### 3.16 Skills and commands -- built behind `skills` (`internal`); scripts behind `skills.scripts`
+
+Phase 4c of the agentic capabilities program (BES-231). Compliance pre-check:
+`docs/legal/prechecks/skills.md` (S-8, BES-315) and its addendum of
+2026-11-13. Design and as-built notes: `docs/skills.md`. Art. 30 row 10d.
+The legal ticket S-7 (BES-294) never landed as its own PR; this section is
+the skills half of the Phase 4 legal batch (PR #922, 2026-11-16).
+
+- **(a) Purpose.** Let the user's chosen model follow instructions the user
+  wrote or imported (Agent Skills format), and let the user run a skill as a
+  `/` command.
+- **(b) Flow of data.**
+  1. *Create or import.* The editor and templates (class `authored`, saved
+     switched on), an archive, pasted text, a GitHub link, or MCP
+     (`skills:write`, saved switched off and `needs-review`). An import is
+     staged for one hour, reviewed and committed switched off. A rule
+     scanner and the license classifier run in the Worker with no model call.
+  2. *GitHub.* Data-flow row 28: the ref lookup at `api.github.com` and the
+     zip at `codeload.github.com`, plus a daily update check for GitHub
+     skills; a newer version waits as a pending version for review.
+  3. *Optional TypeSafe AI screening* (SS-8, SS-9): section 3.7a,
+     `injectionScreening`, when a review screen opens.
+  4. *A send.* Data-flow row 27: the catalog of model-invocable skills, then
+     the text of a skill the model activates, the user attaches or invokes,
+     the project pins as Always load (S-15), or `skillSelection` picks
+     (section 3.7a). Skill text is framed as untrusted; while a skill is
+     active the memory write lock is preset and connector writes ask even
+     when set to Always allow.
+  5. *Scripts* (S-5). Data-flow row 29: the skill's files go to the user's
+     own Anthropic workspace, only after a disclosure dialog, the Labs
+     opt-in and a per-chat consent through the C-6 policy (rule 10, Allow
+     once or in this chat, bound to the hash of the skill set).
+- **(c) Data stored.** Art. 30 row 10d: skills, up to 20 versions, files in
+  R2 by content hash, per-chat and per-project settings, provenance, license
+  details, finding counts, the Anthropic copy's ids, KV staging and update
+  state, the TypeSafe AI caches of section 3.7a.
+- **(d) Roles.** The chat's provider or gateway receives skill text as part
+  of the request (row 4, no new recipient). Anthropic holds the uploaded
+  copy in the user's own workspace, under the user's agreement (independent
+  controller, as in row 4). GitHub receives only the address the user typed,
+  from Besidka's server. TypeSafe AI as in section 3.7a.
+- **(e) Basis.** Art. 6(1)(b) at the user's request; Art. 9(2)(a) through the
+  chat consent for special categories in skill text; Art. 6(1)(f) for third
+  parties named in skill files, with Art. 14(5)(b) as the exemption from
+  informing them (the same reading as connectors, section 3.15 (f)).
+- **(f) Never public.** No share, public route, sitemap, markdown twin or
+  agent-discovery file carries a skill; `filterPublicParts` drops skill
+  activation and invocation parts. Sharing by link (S-13) is not built and
+  needs its own addendum, rows and notice.
+- **(g) Project skills (S-15).** A project pins up to 20 skills, 3 of them
+  Always load. Same text, same provider, same purpose as project
+  instructions: no new category or recipient. `set_project_skills` sits
+  under `skills:write`; a pin loads only an enabled, ready skill.
+- **(h) Not covered here.** The Terms of Use items of the pre-check (the
+  right-to-use promise for "create, paste or import", the disable power,
+  skills as reportable content, the run-code rules for skill scripts) are
+  not written in this batch; see section 6, item 36.
 
 ## 4. Necessity and proportionality
 
@@ -1525,6 +1628,15 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 85 | A D1 restore brings back revoked connector credentials, withdrawn consent, removed grants and re-enabled connectors | Medium | High | `docs/d1-restore-reconciliation.md`, "Connectors": wipe `connector_credentials`, set every connector to disabled and needs-auth, reset grants, replay withdrawals and deletes from the Axiom `connectors` and `legalConsent` lines; KV approvals expire in 24 hours | built (a documented runbook) | Low once followed |
 | 86 | Standing grants ("Allow in this chat", "Always allow") let a write run in a later message although an earlier message read untrusted text that is still in the history | Medium | Medium | Grants are bound to the definition hash and never lift the untrusted-output, cross-connector or always-ask rules inside one send; a run under a grant shows as "Ran without asking" with a Manage link; the chat panel lists and resets grants; the confirmation text states the residual; taint is not carried across sends by design (the owner asked for that behavior) | built | Medium, accepted (section 6, item 32) |
 | 87 | Besidka's own tools in a chat (BES-394) return the user's own chats, files or memory to the model, which may be steered to change or share them | Low | Medium | Same provider and recipient as the chat (no new recipient); a Labs opt-in, a permission per tool (blocked, ask or allow; deleting, sharing and rewriting tools can never be "allow") and the same approval policy as connectors; the chat exposure PR #919 is not merged | planned | Low |
+| 88 | An Auto connector is used in a chat the user never switched it on in, so server-written tool text and tool calls reach a chat the user did not expect | Medium | Medium | Auto is shown and chosen on the consent screen and in the picker; an off switch in the chat always wins; the catalog line carries no server-written text; `use_connector` records connector taint, so later reads on another connector and every write ask; tools whose hash differs from the reviewed baseline are hidden or refused | built on `feat/connectors-page` | Medium (the consent wording does not name the modes) |
+| 89 | Directory browsing makes Besidka's server contact third-party servers (icons, anonymous MCP probes), which could be abused for SSRF or to track users | Low | Low | Only a directory id reaches the route, the stored address is used; `safeFetch`, magic-byte, size and SVG allowlist checks; no user data, token or cookie; results cached for all users so one user's browsing is not visible per request; per-user and per-host rate limits | built on `feat/connectors-page` | Low |
+| 90 | A malicious skill steers the model to exfiltrate data or act | Medium | High | Imports, updates and MCP writes saved switched off for review; rule findings and the optional TypeSafe AI marks on the review screen; untrusted framing; memory write lock while a skill is active; connector writes ask even when set to Always allow; the C-6 policy | built | Medium |
+| 91 | Hidden instructions or padding in skill files escape review | Medium | Medium | Plain-text viewer, findings for invisible characters, homoglyphs and long lines, optional add-only Jev marks with the parts not checked listed; no "clean" verdict | built | Medium (scanner bypasses are known) |
+| 92 | Skill scripts run in the user's Anthropic workspace and the copy is visible to the whole workspace, not zero-data-retention, and kept until deleted | Medium | Medium | Anthropic only; disclosure dialog with these facts; Labs opt-in; per-chat consent bound to the skill set; deletion on toggle-off, skill delete (refused while the provider delete fails) and account purge; key removal lists live copies | built (not checked with a real key) | Medium (a failed purge leaves the copy in the user's workspace) |
+| 93 | An import breaches a license or copyright | Medium | Medium | License classifier on the license file at the pinned commit; restricted licenses refused; an extra "I have the right to use this skill" tick for skills with no license; private storage only | built (the Terms clause is not written, section 6, item 36) | Medium (classification is heuristic) |
+| 94 | Skill selection sends the user's message and skill descriptions to TypeSafe AI on ordinary sends | Low | Medium | Opt-in role, off by default including `null` settings; a local prefilter so most messages send nothing; never-store redaction; at most one call, merged with Auto web search when that runs; fails to no change | built | Low |
+| 95 | Skill text sent to TypeSafe AI for screening holds secrets or third-party data | Low | Medium | Runs only with the user's key and the screening toggle on; never-store redaction before chunking, hashing or caching; the cache keeps scores only; marks hold no text | built | Low |
+| 96 | A D1 restore brings back a deleted or switched-off skill, switched on, or a stale Anthropic copy reference | Medium | Medium | `docs/d1-restore-reconciliation.md`, "Skills": switch restored skills off, replay deletes from Axiom, mark rows with missing blobs `broken` | built (runbook) | Low |
 
 ## 6. Residual risks
 
@@ -1814,6 +1926,29 @@ beta on the same account, treat row 54 as high and review this DPIA first.
     `2026-11-legal-notices` banner before 2026-12-18. `CURRENT_CONSENT_VERSION`
     is unchanged; `CONNECTOR_CONSENT_VERSION` is separate. The connectors flag
     stays at `internal` until the notice takes effect.
+    **Update 2026-11-16 (owner decision):** the Phase 4 legal texts
+    (connectors and skills) are updated without notice emails. No
+    `LEGAL_NOTICES` entry is added and no consent version is bumped. The
+    WP260 result (material, item 36 and `docs/legal.md`) is recorded and not
+    acted on. Whether the `connectors` and `skills` flags may leave
+    `internal` without a notice is the owner's decision.
+34. **Server-written text in every chat through Auto connectors.** Once the
+    model opens an Auto connector, its tool names and descriptions reach the
+    provider of a chat the user may never have meant to use it in (risk row
+    88). The catalog itself carries none, and the off switch wins, but the
+    connector consent wording predates modes and does not name them.
+35. **Skill copies outside Besidka's reach.** A failed account purge, or a
+    removed Anthropic key, leaves a skill copy in the user's own Anthropic
+    workspace; Besidka cannot delete it then and the Privacy Policy tells the
+    user to use the Anthropic Console. The upload path is not yet checked
+    with a real key (owner key capped until 2026-12-01).
+36. **Skills in the Terms of Use, and materiality.** The pre-check's Terms
+    items (the right-to-use promise, the disable power with a statement of
+    reasons, skills as reportable content, the run-code rules for scripts)
+    are not written. The Privacy Policy changes for skills are material under
+    WP260 (a new purpose with S-5, new recipients GitHub and the user's
+    Anthropic workspace, new retention) and the eighth TypeSafe AI role is a
+    new purpose; see `docs/legal.md`, "2026-11-16 Phase 4 legal batch".
 
 ## 7. Consultation
 
